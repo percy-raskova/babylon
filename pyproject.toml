@@ -56,6 +56,12 @@ Documentation = "https://github.com/bogdanscarwash/babylon#readme"
 Issues = "https://github.com/bogdanscarwash/babylon/issues"
 Source = "https://github.com/bogdanscarwash/babylon"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/babylon"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/babylon", "tests", "docs"]
+
 [tool.poetry]
 package-mode = false
 

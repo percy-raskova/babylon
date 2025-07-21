@@ -4,12 +4,11 @@ import uuid
 from typing import Any, Optional
 
 import chromadb
-from babylon.exceptions import DatabaseError
+from babylon.utils.exceptions import BabylonError, DatabaseError
 from chromadb.config import Settings
 from chromadb.errors import ChromaError, InvalidDimensionException, NoIndexException
-from utils.retry import retry_on_exception
-
-from config.base import BaseConfig as Config
+from babylon.utils.retry import retry_on_exception
+from babylon.config.chromadb_config import ChromaDBConfig
 
 logger = logging.getLogger(__name__)
 
@@ -122,16 +121,13 @@ class ChromaManager:
                 "Initializing ChromaDB client",
                 extra={
                     "correlation_id": correlation_id,
-                    "persist_dir": Config.CHROMADB_PERSIST_DIR,
+                    "persist_dir": ChromaDBConfig.BASE_DIR,
                 },
             )
 
             # Create client with local persistence configuration
             self._client = chromadb.Client(
-                Settings(
-                    chroma_db_impl="duckdb+parquet",
-                    persist_directory=Config.CHROMADB_PERSIST_DIR,
-                )
+                ChromaDBConfig.get_settings()
             )
 
             # Test connection

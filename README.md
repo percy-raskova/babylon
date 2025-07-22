@@ -6,23 +6,47 @@
 
 - [The Fall of Babylon](#the-fall-of-babylon)
   - [Table of Contents](#table-of-contents)
+  - [Quick Start](#quick-start)
+  - [Documentation](#documentation)
   - [Introduction](#introduction)
   - [Project Structure](#project-structure)
-  - [Setup and Installation](#setup-and-installation)
-    - [Prerequisites](#prerequisites)
-    - [Installation Steps](#installation-steps)
-  - [Usage Instructions](#usage-instructions)
   - [Game Mechanics](#game-mechanics)
   - [AI Integration](#ai-integration)
-    - [ChromaDB Vector Database](#chromadb-vector-database)
-    - [Metrics Collection](#metrics-collection)
-    - [Current Features](#current-features)
-    - [Planned Features](#planned-features)
-  - [Error Handling \& Logging](#error-handling--logging)
-    - [Error Management](#error-management)
-    - [Logging System](#logging-system)
   - [Contributing](#contributing)
   - [License](#license)
+
+## Quick Start
+
+**New to Babylon?** Follow our step-by-step [Getting Started Guide](docs/diataxis/tutorials/getting-started.md)
+
+**Want to contribute?** See the [Development Setup Guide](docs/diataxis/how-to/development-setup.md)
+
+**Need help?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md)
+
+## Documentation
+
+Our documentation follows the [Diataxis framework](https://diataxis.fr/) for better organization:
+
+### 📚 [**Tutorials**](docs/diataxis/tutorials/) - Learn by doing
+- [Getting Started](docs/diataxis/tutorials/getting-started.md) - Install and run your first game
+- [First Game Session](docs/diataxis/tutorials/first-game-session.md) - Complete gameplay walkthrough  
+- [Basic Configuration](docs/diataxis/tutorials/basic-configuration.md) - Customize your setup
+
+### 🛠️ [**How-to Guides**](docs/diataxis/how-to/) - Solve specific problems
+- [Configure ChromaDB](docs/diataxis/how-to/configure-chromadb.md) - Set up vector database
+- [Development Setup](docs/diataxis/how-to/development-setup.md) - Prepare for contributing
+- [Troubleshooting](docs/diataxis/how-to/troubleshooting.md) - Fix common issues
+
+### 📖 [**Reference**](docs/diataxis/reference/) - Look up details  
+- [Configuration Reference](docs/diataxis/reference/configuration.md) - All settings explained
+- [API Reference](docs/diataxis/reference/api/) - Technical specifications
+
+### 💡 [**Explanation**](docs/diataxis/explanation/) - Understand concepts
+- [Architecture Overview](docs/diataxis/explanation/architecture.md) - How Babylon is built
+- [Design Philosophy](docs/diataxis/explanation/design-philosophy.md) - Why we made these choices
+- [Dialectical Materialism in Gaming](docs/diataxis/explanation/dialectical-materialism.md) - Theory as game engine
+
+➡️ **[Start with the complete documentation index](docs/diataxis/index.md)**
 
 ## Introduction
 
@@ -58,77 +82,21 @@
 - `pyproject.toml`: Project configuration
 - `logging.yaml`: Logging configuration
 
-## Setup and Installation
+## Quick Installation
 
-### Prerequisites
-
-- Python 3.8 or higher
-- PostgreSQL 13 or higher
-- Virtual environment tool (recommended)
-- Rust toolchain (for ChromaDB optimizations)
-
-### Installation Steps
-
-1. **Clone the Repository**
-
-   ```shell
-   git clone https://github.com/yourusername/fall-of-babylon.git
-   cd fall-of-babylon
-   ```
-
-2. **Set Up Directory Structure**
-
-   ```shell
-   mkdir -p data/metrics
-   mkdir -p logs/metrics
-   mkdir -p backups
-   mkdir -p chroma
-   ```
-
-3. **Create and Activate Virtual Environment**
-
-   ```shell
-   python -m venv venv
-   source venv/bin/activate  # On Windows use venv\Scripts\activate
-   ```
-
-4. **Install Dependencies**
-
-   ```shell
-   pip install -r requirements.txt
-   ```
-
-5. **Configure Environment**
-
-   Copy `.env.example` to `.env`:
-
-   ```shell
-   cp .env.example .env
-   ```
-
-   Update the values in `.env` with your configuration.
-
-6. **Initialize Databases**
-
-   - Set up PostgreSQL database
-   - Initialize ChromaDB storage
-   - Configure metrics collection
-
-   Refer to [CONFIGURATION.md](docs/CONFIGURATION.md) for detailed setup instructions.
-
-## Usage Instructions
-
-Start the game:
-
-```shell
-python src/babylon/__main__.py
+```bash
+git clone https://github.com/bogdanscarwash/babylon.git
+cd babylon
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+python -m babylon
 ```
 
-The game features:
-- Terminal-based interface
-- Real-time metrics collection
-- Automatic state persistence
-- Configurable logging levels
+**For detailed installation instructions**, see the [Getting Started Tutorial](docs/diataxis/tutorials/getting-started.md).
+
+**Having issues?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md).
 
 ## Game Mechanics
 

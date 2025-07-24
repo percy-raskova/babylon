@@ -47,10 +47,9 @@ class EmbeddableEntity:
             entity: The Entity to update
         """
         if self.embedding is not None:
-            try:
-                import numpy as np
+            if _NUMPY_AVAILABLE:
                 entity.embedding = np.array(self.embedding)
-            except ImportError:
+            else:
                 logger.warning("NumPy not available, cannot update entity embedding")
 
 

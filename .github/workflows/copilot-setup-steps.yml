@@ -1,15 +1,29 @@
-name: Copilot Agent: Build, Lint, Type-Check, and Test
+
+    steps (see above)
+    permissions (see above)
+    runs-on (see below)
+    container 
+    services
+    snapshot
+    timeout-minutes (maximum value: 59)
+
+
+
+name: Copilot Setup Steps
 
 on:
-  workflow_dispatch:
   push:
-    branches: [main]
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
   pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
 
 jobs:
-  build-lint-typecheck-test:
-    runs-on: ubuntu-latest
-
+  copilot-run-steps:
+    runs-on: debian-latest
+				 permissions:
+     contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,12 +56,7 @@ jobs:
         run: poetry run isort --check-only .
 
       - name: Lint code (ruff or flake8)
-        run: |
-          if poetry run ruff --version 2>/dev/null; then
-            poetry run ruff .
-          else
-            poetry run flake8 .
-          fi
+        run: poetry run ruff .
 
       - name: Type check (mypy)
         run: poetry run mypy .

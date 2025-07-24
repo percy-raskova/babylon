@@ -156,7 +156,7 @@ class Contradiction(Base):
         "ContradictionHistory", back_populates="contradiction", cascade="all, delete-orphan"
     )
     child_contradictions: Mapped[List["Contradiction"]] = relationship(
-        "Contradiction", remote_side=[parent_contradiction_id]
+        "Contradiction", remote_side=[id]
     )
     effects: Mapped[List["ContradictionEffect"]] = relationship(
         "ContradictionEffect", back_populates="contradiction", cascade="all, delete-orphan"

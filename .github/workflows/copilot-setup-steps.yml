@@ -1,38 +1,60 @@
-name: "Copilot Setup Steps"
+name: Copilot Agent: Build, Lint, Type-Check, and Test
 
-# Automatically run the setup steps when they are changed to allow for easy validation, and
-# allow manual testing through the repository's "Actions" tab
 on:
   workflow_dispatch:
   push:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
+    branches: [main]
   pull_request:
-    paths:
-      - .github/workflows/copilot-setup-steps.yml
 
 jobs:
-  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
-  copilot-setup-steps:
+  build-lint-typecheck-test:
     runs-on: ubuntu-latest
 
-    # Set the permissions to the lowest permissions possible needed for your steps.
-    # Copilot will be given its own token for its operations.
-    permissions:
-      # If you want to clone the repository as part of your setup steps, for example to install dependencies, you'll need the `contents: read` permission. If you don't clone the repository in your setup steps, Copilot will do this for you automatically after the steps complete.
-      contents: read
-
-    # You can define any steps you want, and they will run before the agent starts.
-    # If you do not check out your code, Copilot will do this for you.
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: "20"
-          cache: "npm"
+          python-version: '3.11'  # Or parse from pyproject.toml
 
-      - name: Install JavaScript dependencies
-        run: npm ci
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            ~/.virtualenvs
+          key: poetry-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Check formatting (black)
+        run: poetry run black --check .
+
+      - name: Check imports (isort)
+        run: poetry run isort --check-only .
+
+      - name: Lint code (ruff or flake8)
+        run: |
+          if poetry run ruff --version 2>/dev/null; then
+            poetry run ruff .
+          else
+            poetry run flake8 .
+          fi
+
+      - name: Type check (mypy)
+        run: poetry run mypy .
+
+      - name: Run tests
+        run: poetry run pytest --maxfail=1 --disable-warnings -q
+
+      # Optional: Log job output to Memory
+      # - name: Log to Memory
+      #   run: python scripts/log_to_memory.py --summary "${{ steps.test.outputs.summary }}"

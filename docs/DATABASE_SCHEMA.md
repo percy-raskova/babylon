@@ -26,7 +26,7 @@ The database schema is designed to capture the complex interactions between econ
 **Players Table** - Player information and statistics
 - Links players to specific games
 - Tracks player decisions and strategy preferences
-- Records performance metrics
+- Records performance metrics (game score, decision effectiveness, resource management efficiency, dialectical understanding score, revolutionary success rate)
 
 **GameStates Table** - Game state snapshots
 - Enables save/load functionality
@@ -42,11 +42,13 @@ The database schema is designed to capture the complex interactions between econ
 
 **Economies Table** - Core economic state management
 Based on Marxist economic theory, tracking:
-- Basic indicators (GDP, unemployment, inflation)
-- Marxist metrics (constant capital, variable capital, surplus value)
-- Derived ratios (organic composition of capital, rate of profit)
-- Class relations and exploitation rates
-- Crisis indicators and phases
+- Basic indicators (GDP, unemployment, inflation) - Surface-level economic measurements
+- Marxist metrics (constant capital, variable capital, surplus value) - Underlying class relations and exploitation
+- Derived ratios (organic composition of capital, rate of profit) - Calculated from Marxist base metrics
+- Class relations and exploitation rates - Social dynamics derived from economic foundation
+- Crisis indicators and phases - Dialectical contradictions manifesting in economic sphere
+
+*Note: Basic indicators reflect the economic superstructure while Marxist metrics capture the underlying material base. The relationship follows historical materialism - changes in the material base (constant/variable capital, surplus value) drive changes in the superstructure (GDP, unemployment rates).*
 
 **EconomicTimeSeries Table** - Historical economic data
 - Tracks all economic metrics over time

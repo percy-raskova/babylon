@@ -25,8 +25,7 @@ def test_schema_creation():
             PoliticalSystem, Policy, Institution, ElectionEvent,
             Entity, EntityAttribute, EntityAttributeHistory, EntityRelationship, EntityEvent,
             Contradiction, ContradictionHistory, ContradictionEffect, ContradictionNetwork, ContradictionResolution,
-            Event, Trigger,
-            LogEntry, Metric
+            Event, Trigger
         )
         
         print("✓ Successfully imported all database models")
@@ -141,6 +140,75 @@ def test_model_creation():
         print(f"✗ Model creation test failed: {e}")
         return False
 
+def test_contradiction_methods():
+    """Test that contradiction models have proper methods."""
+    try:
+        from babylon.data.models.contradictions import Contradiction, ContradictionType, ContradictionAntagonism, ContradictionIntensity
+        from babylon.data.models.contradiction_engine import ContradictionEngine
+        
+        # Test Contradiction methods
+        contradiction = Contradiction(
+            game_id=1,
+            name="Test Economic Contradiction",
+            description="Testing contradiction functionality",
+            contradiction_type=ContradictionType.ECONOMIC,
+            antagonism=ContradictionAntagonism.ANTAGONISTIC,
+            intensity=ContradictionIntensity.MEDIUM,
+            intensity_value=0.5,
+            first_observed_turn=1
+        )
+        
+        # Test basic methods
+        pressure = contradiction.calculate_transformation_pressure()
+        assert 0.0 <= pressure <= 1.0
+        print(f"✓ Transformation pressure calculation: {pressure:.2f}")
+        
+        ready = contradiction.is_ready_for_resolution()
+        print(f"✓ Resolution readiness check: {ready}")
+        
+        options = contradiction.get_resolution_options()
+        assert len(options) > 0
+        print(f"✓ Resolution options generated: {len(options)} options")
+        
+        # Test evolution
+        changed = contradiction.evolve_contradiction(2, {"economic_crisis": True})
+        print(f"✓ Contradiction evolution: {'changed' if changed else 'stable'}")
+        
+        # Test factory methods
+        economic_contradiction = Contradiction.create_economic_contradiction(
+            game_id=1,
+            name="Rate of Profit Fall",
+            description="Tendency of rate of profit to fall",
+            intensity=0.6
+        )
+        print("✓ Economic contradiction factory method")
+        
+        class_contradiction = Contradiction.create_class_contradiction(
+            game_id=1,
+            name="Class Struggle",
+            description="Worker vs capitalist contradiction",
+            intensity=0.7
+        )
+        print("✓ Class contradiction factory method")
+        
+        # Test ContradictionEngine
+        engine = ContradictionEngine(game_id=1)
+        engine.add_contradiction(contradiction)
+        engine.add_contradiction(economic_contradiction)
+        
+        stability = engine.get_system_stability_assessment()
+        assert "stability" in stability
+        print(f"✓ System stability assessment: {stability['status']}")
+        
+        principal = engine.identify_principal_contradiction()
+        print(f"✓ Principal contradiction identification: {'found' if principal else 'none'}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"✗ Contradiction methods test failed: {e}")
+        return False
+
 def main():
     """Run all tests."""
     print("Testing Babylon Database Schema")
@@ -150,6 +218,7 @@ def main():
         ("Schema Creation", test_schema_creation),
         ("Enum Definitions", test_model_enums),
         ("Model Creation", test_model_creation),
+        ("Contradiction Methods", test_contradiction_methods),
     ]
     
     passed = 0

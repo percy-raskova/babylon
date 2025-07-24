@@ -7,8 +7,8 @@ and ensures the schema can be created successfully.
 import sys
 import os
 
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
+# Ensure the src directory is included in PYTHONPATH when running this script.
+# Example: PYTHONPATH=../../src python test_schema.py
 
 def test_schema_creation():
     """Test that the schema can be created without errors."""

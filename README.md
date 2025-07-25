@@ -4,142 +4,192 @@
 
 ## Table of Contents
 
-- [Introduction](#introduction)
-- [Project Structure](#project-structure)
-- [Setup and Installation](#setup-and-installation)
-- [Usage Instructions](#usage-instructions)
-- [Game Mechanics](#game-mechanics)
-- [AI Integration](#ai-integration)
-- [Contributing](#contributing)
-- [License](#license)
+- [The Fall of Babylon](#the-fall-of-babylon)
+  - [Table of Contents](#table-of-contents)
+  - [Quick Start](#quick-start)
+  - [Documentation](#documentation)
+  - [Introduction](#introduction)
+  - [Project Structure](#project-structure)
+  - [Game Mechanics](#game-mechanics)
+  - [AI Integration](#ai-integration)
+  - [Contributing](#contributing)
+  - [License](#license)
+
+## Quick Start
+
+**New to Babylon?** Follow our step-by-step [Getting Started Guide](docs/diataxis/tutorials/getting-started.md)
+
+**Want to contribute?** See the [Development Setup Guide](docs/diataxis/how-to/development-setup.md)
+
+**Need help?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md)
+
+## Documentation
+
+Our documentation follows the [Diataxis framework](https://diataxis.fr/) for better organization:
+
+### 📚 [**Tutorials**](docs/diataxis/tutorials/) - Learn by doing
+- [Getting Started](docs/diataxis/tutorials/getting-started.md) - Install and run your first game
+- [First Game Session](docs/diataxis/tutorials/first-game-session.md) - Complete gameplay walkthrough  
+- [Basic Configuration](docs/diataxis/tutorials/basic-configuration.md) - Customize your setup
+
+### 🛠️ [**How-to Guides**](docs/diataxis/how-to/) - Solve specific problems
+- [Configure ChromaDB](docs/diataxis/how-to/configure-chromadb.md) - Set up vector database
+- [Development Setup](docs/diataxis/how-to/development-setup.md) - Prepare for contributing
+- [Troubleshooting](docs/diataxis/how-to/troubleshooting.md) - Fix common issues
+
+### 📖 [**Reference**](docs/diataxis/reference/) - Look up details  
+- [Configuration Reference](docs/diataxis/reference/configuration.md) - All settings explained
+- [API Reference](docs/diataxis/reference/api/) - Technical specifications
+
+### 💡 [**Explanation**](docs/diataxis/explanation/) - Understand concepts
+- [Architecture Overview](docs/diataxis/explanation/architecture.md) - How Babylon is built
+- [Design Philosophy](docs/diataxis/explanation/design-philosophy.md) - Why we made these choices
+- [Dialectical Materialism in Gaming](docs/diataxis/explanation/dialectical-materialism.md) - Theory as game engine
+
+➡️ **[Start with the complete documentation index](docs/diataxis/index.md)**
 
 ## Introduction
 
-*The Fall of Babylon* aims to provide an immersive experience where players navigate a dynamically changing world shaped by their decisions and underlying societal contradictions. The game leverages AI for non-player character (NPC) behaviors and incorporates real-world data to enhance realism.
+*The Fall of Babylon* aims to provide an immersive experience where players navigate a dynamically changing world shaped by their decisions and underlying societal contradictions. The game leverages AI for non-player character (NPC) behaviors and incorporates real-time metrics collection and analysis to enhance gameplay dynamics.
 
 ## Project Structure
 
-- `docs/`: Contains documentation such as the [CHANGELOG](docs/CHANGELOG.md), [TODO](docs/TODO.md), [MECHANICS](docs/MECHANICS.md), and [IDEAS](docs/IDEAS.md) files.
-- `src/babylon/`: The main source code for the game.
-  - `data/xml/`: XML schemas and data defining game entities and mechanics.
-  - `ai/`: AI components and integrations (planned).
-  - `utils/`: Utility scripts and helper functions.
-- `pyproject.toml`: Project configuration file.
+- `docs/`: Documentation including:
+  - [CHANGELOG](docs/CHANGELOG.md): Version history and updates
+  - [TODO](docs/TODO.md): Planned features and improvements
+  - [MECHANICS](docs/MECHANICS.md): Game mechanics documentation
+  - [CHROMA](docs/CHROMA.md): ChromaDB integration details
+  - [ERROR_CODES](docs/ERROR_CODES.md): Error handling system
+  - [LOGGING](docs/LOGGING.md): Logging system documentation
+  - [CONFIGURATION](docs/CONFIGURATION.md): Configuration guide
+  - [ECONOMY](docs/ECONOMY.md): Economic system documentation
+- `src/babylon/`: Main source code
+  - `ai/`: AI components and ChromaDB integration
+  - `census/`: Census data integration and API
+  - `config/`: Configuration management
+  - `core/`: Core game systems (contradictions, economy, politics)
+  - `data/`: Data management and persistence
+    - `xml/`: Game entity and mechanics definitions
+    - `models/`: Data models and schemas
+    - `chromadb/`: Vector database storage
+  - `metrics/`: Performance and gameplay metrics collection
+  - `utils/`: Utility functions and helpers
+- `tests/`: Comprehensive test suite
+  - `unit/`: Unit tests
+  - `integration/`: Integration tests
+  - `fixtures/`: Test data and fixtures
+- `website/`: Game website and documentation
+- `pyproject.toml`: Project configuration
+- `logging.yaml`: Logging configuration
 
-## Setup and Installation
+## Quick Installation
 
-### Prerequisites
-
-- Python 3.8 or higher
-- Virtual environment tool (optional but recommended)
-
-### Installation Steps
-
-1. **Clone the Repository**
-
-   ```shell
-   git clone https://github.com/yourusername/fall-of-babylon.git
-   cd fall-of-babylon
-   ```
-
-2. **Create and Activate a Virtual Environment**
-
-   ```shell
-   python -m venv venv
-   source venv/bin/activate  # On Windows use venv\Scripts\activate
-   ```
-
-3. **Install Dependencies**
-
-   ```shell
-   pip install -r requirements.txt
-   ```
-
-4. **Validate XML Schemas (Optional but Recommended)**
-
-   Ensure that all XML files conform to their schemas.
-
-   ```shell
-   # Command or script to validate XML files
-   ```
-
-### Environment Variables
-
-   Create a `.env` file at the root of the project to store environment variables for local development:
-
-   ```dotenv
-   ENVIRONMENT='development'
-   SECRET_KEY='your-secret-key'
-   DATABASE_URL='your-database-url'
-   DEBUG=True
-   ```
-
-   **Note:** The `.env` file is included in `.gitignore` and should not be committed to version control.
-
-   In production, set these variables in your environment instead of using a `.env` file.
-   
-   Copy the `.env.example` file to `.env`:
-
-   ```shell
-   cp .env.example .env
-   ```
-
-   Then, update the values in `.env` with your own configuration.
-
-## Usage Instructions
-
-To start the game, run the main script:
-
-```shell
-python src/babylon/__main__.py
+```bash
+git clone https://github.com/bogdanscarwash/babylon.git
+cd babylon
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env
+python -m babylon
 ```
 
-Currently, the game is in a development state with placeholder mechanics. The initial game world is defined by the XML files in the `data/xml/` directory.
+**For detailed installation instructions**, see the [Getting Started Tutorial](docs/diataxis/tutorials/getting-started.md).
 
-**Note:** The game is terminal-based and interacts via text input and output.
+**Having issues?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md).
 
 ## Game Mechanics
 
 - **Contradiction Analysis System**: 
-  - Advanced engine modeling societal contradictions based on Marxist theory
-  - Network visualization of entity relationships
-  - Dialectical mapping interface for contradiction analysis
-  - Real-time intensity tracking and historical data
+  - Advanced engine modeling societal contradictions
+  - Network visualization of relationships
+  - Real-time intensity tracking
+  - Historical data analysis
 - **Event Generation System**:
-  - Procedural event generation based on contradiction states
-  - Dynamic consequence chains affecting the game world
-  - Escalation paths for major contradictions
-- **Supply and Demand**: Dynamic resource availability affecting prices and economy (planned).
-- **Combat System**: Placeholder schemas for combat mechanics are defined but not yet implemented.
-- **Political Systems**: Structures for elections, policies, and governance (in development).
+  - Procedural event generation
+  - Dynamic consequence chains
+  - Contradiction-based escalation
+- **Economic System**:
+  - Dynamic resource management
+  - Market simulation
+  - Supply chain modeling
+- **Political Systems**:
+  - Electoral processes
+  - Policy implementation
+  - Governance structures
 
-For more detailed information, refer to the [MECHANICS.md](docs/MECHANICS.md) and [IDEAS.md](docs/IDEAS.md) files.
+For details, see [MECHANICS.md](docs/MECHANICS.md).
 
 ## AI Integration
 
-The game currently incorporates AI models for:
+### ChromaDB Vector Database
 
-- **Contradiction Analysis**: AI-powered analysis of societal contradictions and their relationships
-- **Event Generation**: Smart event creation based on game state and historical patterns
-- **Visualization**: Intelligent layout and organization of network graphs and dialectical maps
+- **Entity Storage**: Efficient vector representations
+- **Similarity Search**: Fast kNN queries
+- **Persistence**: DuckDB+Parquet backend
+- **Performance**:
+  - Query response < 100ms
+  - Memory optimization
+  - Cache management
+  - Automatic backups
 
-Planned AI features include:
-- **NPC Behaviors**: More realistic and dynamic non-player character interactions
-- **Decision Making**: AI-driven events and responses based on game state
-- **Language Processing**: Understanding complex player commands
+### Metrics Collection
 
-For development status and upcoming features, see the [TODO.md](docs/TODO.md) file.
+- Real-time performance monitoring
+- Gameplay pattern analysis
+- System resource tracking
+- Cache performance optimization
+
+### Current Features
+
+- Entity embeddings via SentenceTransformer
+- Contradiction relationship analysis
+- Dynamic event generation
+- Performance metrics collection
+- Pre-embeddings system with:
+  - Content preprocessing and normalization
+  - Intelligent content chunking
+  - Embedding cache management
+  - Integration with lifecycle management
+
+### Planned Features
+
+- Enhanced NPC behaviors
+- Advanced decision systems
+- Natural language processing
+- Dynamic world generation
+- Context window management
+- Priority queuing for object lifecycle
+
+For implementation details, see [CHROMA.md](docs/CHROMA.md).
+
+## Error Handling & Logging
+
+### Error Management
+
+- Structured error codes by subsystem
+- Comprehensive error tracking
+- Automatic error recovery
+- Detailed error context
+
+### Logging System
+
+- JSON-structured logging
+- Multiple log streams
+- Automatic rotation
+- Performance metrics
+- Error context capture
+
+For complete documentation:
+- [ERROR_CODES.md](docs/ERROR_CODES.md)
+- [LOGGING.md](docs/LOGGING.md)
 
 ## Contributing
 
-Contributions are welcome! Please see the [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to get involved.
-
-**To Do:**
-- Create a `CONTRIBUTING.md` file outlining the contribution process.
-- Establish coding standards and pull request procedures.
+Contributions welcome! Guidelines coming soon in CONTRIBUTING.md.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE).
 
-For a detailed list of changes and progress, refer to the [CHANGELOG.md](docs/CHANGELOG.md).
+For detailed progress and updates, see [CHANGELOG.md](docs/CHANGELOG.md).

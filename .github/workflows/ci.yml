@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  PYTHON_VERSION: '3.12'
+
 jobs:
   lint:
     name: Code Quality
@@ -18,10 +21,26 @@ jobs:
       with:
         python-version: '3.12'
     
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+    
+    - name: Install project
+      run: poetry install --no-interaction
     
     - name: Run pre-commit
       uses: pre-commit/action@v3.0.1
@@ -41,15 +60,30 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+    
+    - name: Install project
+      run: poetry install --no-interaction
     
     - name: Run tests with coverage
       run: |
-        pytest tests/ --cov=src/babylon --cov-report=xml --cov-report=html
+        poetry run pytest tests/ --cov=src/babylon --cov-report=xml --cov-report=html
     
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
@@ -69,15 +103,21 @@ jobs:
       with:
         python-version: '3.12'
     
-    - name: Install dependencies
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install security tools
       run: |
-        python -m pip install --upgrade pip
-        pip install bandit[toml] safety
+        poetry add --group dev bandit[toml] safety
     
     - name: Run security checks
       run: |
-        bandit -r src/ -f json -o bandit-report.json || true
-        safety check --json --output safety-report.json || true
+        poetry run bandit -r src/ -f json -o bandit-report.json || true
+        poetry run safety check --json --output safety-report.json || true
     
     - name: Upload security reports
       uses: actions/upload-artifact@v3

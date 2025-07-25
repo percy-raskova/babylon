@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Python dependencies
+  # Python dependencies via Poetry
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -11,6 +11,18 @@ updates:
     labels:
       - "dependencies"
       - "python"
+    # Allow both direct and indirect dependencies
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    # Group minor and patch updates
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -23,3 +35,11 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    # Group minor and patch updates for actions
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

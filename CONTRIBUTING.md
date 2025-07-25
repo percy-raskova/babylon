@@ -12,20 +12,30 @@ Thank you for your interest in contributing to The Fall of Babylon! This documen
 
 2. **Set Up Development Environment**
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   pip install -r requirements-dev.txt  # Development dependencies
+   # Install Poetry (if not already installed)
+   curl -sSL https://install.python-poetry.org | python3 -
+   
+   # Install dependencies using Poetry
+   poetry install
+   
+   # Activate the virtual environment
+   poetry shell
+   
+   # Alternative: switching to Poetry soon
+   # python -m venv venv
+   # source venv/bin/activate  # On Windows: venv\Scripts\activate
+   # pip install -r requirements.txt
+   # pip install -r requirements-dev.txt  # Development dependencies
    ```
 
 3. **Run Tests**
    ```bash
-   python -m pytest tests/
+   poetry run pytest tests/
    ```
 
 4. **Run the Game**
    ```bash
-   python src/babylon/__main__.py
+   poetry run python src/babylon/__main__.py
    ```
 
 ## Development Setup Issues?
@@ -36,16 +46,15 @@ If you encounter issues during setup, please check our [troubleshooting guide](d
 
 We use the following tools to maintain code quality:
 
-- **Black** for code formatting
-- **flake8** for linting
+- **Ruff** for code formatting and linting
 - **mypy** for type checking
 - **isort** for import sorting
 
 Before submitting a PR, run:
 ```bash
-black src/ tests/
-flake8 src/ tests/
-mypy src/
+poetry run ruff format src/ tests/
+poetry run ruff check src/ tests/
+poetry run mypy src/
 ```
 
 ## Testing Guidelines
@@ -77,7 +86,7 @@ When reporting bugs, please include:
 - **Core Game Mechanics**: Politics, economy, contradiction systems
 - **AI/ML Integration**: RAG system, ChromaDB optimization
 - **User Interface**: Terminal UI improvements, web interface
-- **Documentation**: Guides, tutorials, API documentation
+- **User Experience**: Art, narrative storytelling, creative pizzazz
 - **Testing**: Unit tests, integration tests, performance tests
 - **DevOps**: CI/CD, deployment, monitoring
 

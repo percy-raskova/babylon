@@ -1,26 +1,39 @@
 root = true
 
+# apply to all files
 [*]
 charset = utf-8
 end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+max_line_length = off     # we'll override per-language below
 
+# Python files
 [*.py]
 indent_style = space
 indent_size = 4
-max_line_length = 88
+max_line_length = 100
 
+# JavaScript, TypeScript, JSON, HTML, CSS
 [*.{js,ts,json,html,css}]
 indent_style = space
 indent_size = 2
 
+# YAML files
 [*.{yml,yaml}]
 indent_style = space
 indent_size = 2
 
+# Markdown (tech docs)
 [*.md]
-trim_trailing_whitespace = false
+trim_trailing_whitespace = false   # preserve manual line breaks
+insert_final_newline = true
+max_line_length = 100
+word_wrap = semantic             # NeoVim or plugin-specific hint
 
-[Makefile]
-indent_style = tab
+# Poetry configuration files
+[pyproject.toml]
+indent_style = space
+indent_size = 4

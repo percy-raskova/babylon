@@ -47,7 +47,8 @@ dependencies = [
    "certifi==2024.8.30",
    "ratelimit>=2.2.1",
    "async>=0.6.2",
-   "black==25.1.0"
+   "black==25.1.0",
+   "chromadb>=1.0.0"
 ]
 
 [project.urls]
@@ -55,6 +56,9 @@ dependencies = [
 Documentation = "https://github.com/bogdanscarwash/babylon#readme"
 Issues = "https://github.com/bogdanscarwash/babylon/issues"
 Source = "https://github.com/bogdanscarwash/babylon"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/babylon"]
 
 [tool.poetry]
 package-mode = false

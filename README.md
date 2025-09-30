@@ -17,10 +17,7 @@
 
 ## Quick Start
 
-**New to Babylon?** Follow our step-by-step [Getting Started Guide](docs/diataxis/tutorials/getting-started.md)
-
 **Want to contribute?** See the [Development Setup Guide](docs/diataxis/how-to/development-setup.md)
-
 **Need help?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md)
 
 ## Documentation
@@ -41,65 +38,63 @@ Our documentation follows the [Diataxis framework](https://diataxis.fr/) for bet
 - [Configuration Reference](docs/diataxis/reference/configuration.md) - All settings explained
 - [API Reference](docs/diataxis/reference/api/) - Technical specifications
 
-### 💡 [**Explanation**](docs/diataxis/explanation/) - Understand concepts
-- [Architecture Overview](docs/diataxis/explanation/architecture.md) - How Babylon is built
-- [Design Philosophy](docs/diataxis/explanation/design-philosophy.md) - Why we made these choices
-- [Dialectical Materialism in Gaming](docs/diataxis/explanation/dialectical-materialism.md) - Theory as game engine
+2. **Set Up Directory Structure**
 
-➡️ **[Start with the complete documentation index](docs/diataxis/index.md)**
+   ```shell
+   mkdir -p data/metrics
+   mkdir -p logs/metrics
+   mkdir -p backups
+   mkdir -p chroma
+   ```
 
-## Introduction
+3. **Create and Activate Virtual Environment**
 
-*The Fall of Babylon* aims to provide an immersive experience where players navigate a dynamically changing world shaped by their decisions and underlying societal contradictions. The game leverages AI for non-player character (NPC) behaviors and incorporates real-time metrics collection and analysis to enhance gameplay dynamics.
+   ```shell
+   python -m venv venv
+   source venv/bin/activate  # On Windows use venv\Scripts\activate
+   ```
 
-## Project Structure
+4. **Install Dependencies**
 
-- `docs/`: Documentation including:
-  - [CHANGELOG](docs/CHANGELOG.md): Version history and updates
-  - [TODO](docs/TODO.md): Planned features and improvements
-  - [MECHANICS](docs/MECHANICS.md): Game mechanics documentation
-  - [CHROMA](docs/CHROMA.md): ChromaDB integration details
-  - [ERROR_CODES](docs/ERROR_CODES.md): Error handling system
-  - [LOGGING](docs/LOGGING.md): Logging system documentation
-  - [CONFIGURATION](docs/CONFIGURATION.md): Configuration guide
-  - [ECONOMY](docs/ECONOMY.md): Economic system documentation
-- `src/babylon/`: Main source code
-  - `ai/`: AI components and ChromaDB integration
-  - `census/`: Census data integration and API
-  - `config/`: Configuration management
-  - `core/`: Core game systems (contradictions, economy, politics)
-  - `data/`: Data management and persistence
-    - `xml/`: Game entity and mechanics definitions
-    - `models/`: Data models and schemas
-    - `chromadb/`: Vector database storage
-  - `metrics/`: Performance and gameplay metrics collection
-  - `utils/`: Utility functions and helpers
-- `tests/`: Comprehensive test suite
-  - `unit/`: Unit tests
-  - `integration/`: Integration tests
-  - `fixtures/`: Test data and fixtures
-- `website/`: Game website and documentation
-- `pyproject.toml`: Project configuration
-- `logging.yaml`: Logging configuration
+   ```shell
+   pip install -r requirements.txt
+   ```
 
-## Quick Installation
+5. **Configure Environment**
 
-```bash
-git clone https://github.com/bogdanscarwash/babylon.git
-cd babylon
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-python -m babylon
-```
+   Copy `.env.example` to `.env`:
 
-**For detailed installation instructions**, see the [Getting Started Tutorial](docs/diataxis/tutorials/getting-started.md).
+   ```shell
+   cp .env.example .env
+   ```
 
-**Having issues?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md).
+   Update the values in `.env` with your configuration.
 
-## Game Mechanics
+6. **Initialize Databases**
 
+   - Set up PostgreSQL database
+   - Initialize ChromaDB storage
+   - Configure metrics collection
+
+   Refer to [CONFIGURATION.md](docs/CONFIGURATION.md) for detailed setup instructions.
+
+Start the game:
+
+
+### Current Features
+
+
+The game features:
+- Terminal-based interface
+- Real-time metrics collection
+- Automatic state persistence
+- Configurable logging levels
+- Enhanced NPC behaviors
+- Advanced decision systems
+- Natural language processing
+- Dynamic world generation
+- Context window management
+- Priority queuing for object lifecycle
 - **Contradiction Analysis System**: 
   - Advanced engine modeling societal contradictions
   - Network visualization of relationships
@@ -119,8 +114,6 @@ python -m babylon
   - Governance structures
 
 For details, see [MECHANICS.md](docs/MECHANICS.md).
-
-## AI Integration
 
 ### ChromaDB Vector Database
 

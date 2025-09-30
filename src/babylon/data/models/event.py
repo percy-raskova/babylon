@@ -41,6 +41,7 @@ class EventStatus(PyEnum):
     CANCELLED = "cancelled"
 
 
+
 class Event(Base):
     """
     Represents a game event that can occur based on certain conditions.

@@ -6,75 +6,37 @@
 
 - [The Fall of Babylon](#the-fall-of-babylon)
   - [Table of Contents](#table-of-contents)
+  - [Quick Start](#quick-start)
+  - [Documentation](#documentation)
   - [Introduction](#introduction)
   - [Project Structure](#project-structure)
-  - [Setup and Installation](#setup-and-installation)
-    - [Prerequisites](#prerequisites)
-    - [Installation Steps](#installation-steps)
-  - [Usage Instructions](#usage-instructions)
   - [Game Mechanics](#game-mechanics)
   - [AI Integration](#ai-integration)
-    - [ChromaDB Vector Database](#chromadb-vector-database)
-    - [Metrics Collection](#metrics-collection)
-    - [Current Features](#current-features)
-    - [Planned Features](#planned-features)
-  - [Error Handling \& Logging](#error-handling--logging)
-    - [Error Management](#error-management)
-    - [Logging System](#logging-system)
   - [Contributing](#contributing)
   - [License](#license)
 
-## Introduction
+## Quick Start
 
-*The Fall of Babylon* aims to provide an immersive experience where players navigate a dynamically changing world shaped by their decisions and underlying societal contradictions. The game leverages AI for non-player character (NPC) behaviors and incorporates real-time metrics collection and analysis to enhance gameplay dynamics.
+**Want to contribute?** See the [Development Setup Guide](docs/diataxis/how-to/development-setup.md)
+**Need help?** Check the [Troubleshooting Guide](docs/diataxis/how-to/troubleshooting.md)
 
-## Project Structure
+## Documentation
 
-- `docs/`: Documentation including:
-  - [CHANGELOG](docs/CHANGELOG.md): Version history and updates
-  - [TODO](docs/TODO.md): Planned features and improvements
-  - [MECHANICS](docs/MECHANICS.md): Game mechanics documentation
-  - [CHROMA](docs/CHROMA.md): ChromaDB integration details
-  - [ERROR_CODES](docs/ERROR_CODES.md): Error handling system
-  - [LOGGING](docs/LOGGING.md): Logging system documentation
-  - [CONFIGURATION](docs/CONFIGURATION.md): Configuration guide
-  - [ECONOMY](docs/ECONOMY.md): Economic system documentation
-- `src/babylon/`: Main source code
-  - `ai/`: AI components and ChromaDB integration
-  - `census/`: Census data integration and API
-  - `config/`: Configuration management
-  - `core/`: Core game systems (contradictions, economy, politics)
-  - `data/`: Data management and persistence
-    - `xml/`: Game entity and mechanics definitions
-    - `models/`: Data models and schemas
-    - `chromadb/`: Vector database storage
-  - `metrics/`: Performance and gameplay metrics collection
-  - `utils/`: Utility functions and helpers
-- `tests/`: Comprehensive test suite
-  - `unit/`: Unit tests
-  - `integration/`: Integration tests
-  - `fixtures/`: Test data and fixtures
-- `website/`: Game website and documentation
-- `pyproject.toml`: Project configuration
-- `logging.yaml`: Logging configuration
+Our documentation follows the [Diataxis framework](https://diataxis.fr/) for better organization:
 
-## Setup and Installation
+### 📚 [**Tutorials**](docs/diataxis/tutorials/) - Learn by doing
+- [Getting Started](docs/diataxis/tutorials/getting-started.md) - Install and run your first game
+- [First Game Session](docs/diataxis/tutorials/first-game-session.md) - Complete gameplay walkthrough  
+- [Basic Configuration](docs/diataxis/tutorials/basic-configuration.md) - Customize your setup
 
-### Prerequisites
+### 🛠️ [**How-to Guides**](docs/diataxis/how-to/) - Solve specific problems
+- [Configure ChromaDB](docs/diataxis/how-to/configure-chromadb.md) - Set up vector database
+- [Development Setup](docs/diataxis/how-to/development-setup.md) - Prepare for contributing
+- [Troubleshooting](docs/diataxis/how-to/troubleshooting.md) - Fix common issues
 
-- Python 3.8 or higher
-- PostgreSQL 13 or higher
-- Virtual environment tool (recommended)
-- Rust toolchain (for ChromaDB optimizations)
-
-### Installation Steps
-
-1. **Clone the Repository**
-
-   ```shell
-   git clone https://github.com/yourusername/fall-of-babylon.git
-   cd fall-of-babylon
-   ```
+### 📖 [**Reference**](docs/diataxis/reference/) - Look up details  
+- [Configuration Reference](docs/diataxis/reference/configuration.md) - All settings explained
+- [API Reference](docs/diataxis/reference/api/) - Technical specifications
 
 2. **Set Up Directory Structure**
 
@@ -116,22 +78,23 @@
 
    Refer to [CONFIGURATION.md](docs/CONFIGURATION.md) for detailed setup instructions.
 
-## Usage Instructions
-
 Start the game:
 
-```shell
-python src/babylon/__main__.py
-```
+
+### Current Features
+
 
 The game features:
 - Terminal-based interface
 - Real-time metrics collection
 - Automatic state persistence
 - Configurable logging levels
-
-## Game Mechanics
-
+- Enhanced NPC behaviors
+- Advanced decision systems
+- Natural language processing
+- Dynamic world generation
+- Context window management
+- Priority queuing for object lifecycle
 - **Contradiction Analysis System**: 
   - Advanced engine modeling societal contradictions
   - Network visualization of relationships
@@ -151,8 +114,6 @@ The game features:
   - Governance structures
 
 For details, see [MECHANICS.md](docs/MECHANICS.md).
-
-## AI Integration
 
 ### ChromaDB Vector Database
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/institutions.schema.json",
+  "title": "Institutions Collection",
+  "description": "Collection of societal institutions",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "institutions": {
+      "type": "array",
+      "items": { "$ref": "../entities/institution.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "institutions"],
+  "additionalProperties": false
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/policies.schema.json",
+  "title": "Policies Collection",
+  "description": "Collection of government policies",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "policies": {
+      "type": "array",
+      "items": { "$ref": "../entities/policy.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "policies"],
+  "additionalProperties": false
+}

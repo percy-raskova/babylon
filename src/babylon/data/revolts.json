@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.085830+00:00",
+  "sourceFormat": "xml",
+  "revolts": [
+    {
+      "id": "police_brutality_uprising",
+      "name": "Police Brutality Uprising",
+      "description": "Mass uprising triggered by systematic police violence against marginalized communities",
+      "type": "Protest",
+      "location": "Urban Centers",
+      "triggers": [],
+      "participants": [],
+      "effects": []
+    }
+  ]
+}

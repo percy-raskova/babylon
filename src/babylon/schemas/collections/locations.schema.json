@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/locations.schema.json",
+  "title": "Locations Collection",
+  "description": "Collection of geographic locations",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "locations": {
+      "type": "array",
+      "items": { "$ref": "../entities/location.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "locations"],
+  "additionalProperties": false
+}

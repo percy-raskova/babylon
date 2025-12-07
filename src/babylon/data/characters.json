@@ -1,0 +1,501 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.055170+00:00",
+  "sourceFormat": "xml",
+  "characters": [
+    {
+      "id": "colonel_richard_blackwood",
+      "name": "Colonel Richard Blackwood",
+      "age": 52,
+      "gender": "Man",
+      "biography": "Colonel Blackwood is a career military officer with strong nationalist views. He maintains significant influence within military circles and has formed strategic alliances with wealthy conservatives like Robert Sterling to advance their shared political agenda.",
+      "class": "military_elite",
+      "occupation": "Military Officer",
+      "incomeLevel": 120000,
+      "propertyOwned": [
+        "Military pension, residential property"
+      ],
+      "ideology": "Military Nationalism",
+      "culture": "White American",
+      "languages": [
+        "English"
+      ],
+      "customs": [
+        "Military Tradition",
+        "Conservative Elite"
+      ],
+      "skills": [
+        {
+          "name": "Military Strategy",
+          "level": 90
+        },
+        {
+          "name": "Political Networking",
+          "level": 85
+        },
+        {
+          "name": "Command Leadership",
+          "level": 88
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Military Supremacy",
+          "intensity": 95
+        },
+        {
+          "belief": "National Security",
+          "intensity": 90
+        }
+      ],
+      "factionMembership": {
+        "factionId": "military_command_structure",
+        "role": "Senior Officer",
+        "loyalty": 95
+      },
+      "contradictions": [
+        {
+          "type": "Loyalty Conflicts",
+          "impact": "Balancing military duty with political ambitions"
+        },
+        {
+          "type": "Power Dynamics",
+          "impact": "Tension between military authority and civilian oversight"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "robert_sterling",
+          "type": "strategic_alliance",
+          "strength": 75
+        }
+      ]
+    },
+    {
+      "id": "emma_goldman",
+      "name": "Emma Goldman",
+      "age": 45,
+      "gender": "Woman",
+      "biography": "Emma is a veteran labor organizer and nurse who has spent decades building worker power in healthcare. She leads organizing efforts at several hospitals and serves as a mentor to younger organizers like Sarah Martinez. Her experience in both healthcare and labor organizing makes her a respected figure in the movement.",
+      "class": "working_class",
+      "occupation": "Nurse and Union Organizer",
+      "incomeLevel": 65000,
+      "propertyOwned": [
+        "None"
+      ],
+      "ideology": "Revolutionary Syndicalism",
+      "culture": "Jewish American",
+      "languages": [
+        "English",
+        "Yiddish"
+      ],
+      "customs": [
+        "Labor Activist",
+        "Healthcare Worker"
+      ],
+      "skills": [
+        {
+          "name": "Labor Organizing",
+          "level": 90
+        },
+        {
+          "name": "Nursing",
+          "level": 85
+        },
+        {
+          "name": "Negotiation",
+          "level": 85
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Worker Power",
+          "intensity": 95
+        },
+        {
+          "belief": "Healthcare Justice",
+          "intensity": 90
+        }
+      ],
+      "factionMembership": {
+        "factionId": "healthcare_workers_united",
+        "role": "Lead Organizer",
+        "loyalty": 95
+      },
+      "contradictions": [
+        {
+          "type": "Work Stress",
+          "impact": "Balancing healthcare duties with organizing responsibilities"
+        },
+        {
+          "type": "Institutional Pressure",
+          "impact": "Facing potential retaliation for union activities"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "sarah_martinez",
+          "type": "union_mentor",
+          "strength": 90
+        }
+      ]
+    },
+    {
+      "id": "persephone_raskova",
+      "name": "Persephone Raskova",
+      "age": 36,
+      "gender": "Trans woman",
+      "biography": "Persephone is a trans woman who served in the US army for a decade before leaving many years ago. She has developed into a committed Marxist-Leninist-Maoist and has dedicated her life to communism. She works as a software developer, keeping her political views private while using her high-paying position to fund revolutionary activity. She currently leads the Kansas Socialist Book Club, working to advance Maoist ideology in Kansas, and has plans to relocate to Baltimore to live with her partner Astra Dremel.",
+      "class": "petit_bourgeoisie",
+      "occupation": "Computer programmer",
+      "incomeLevel": 100000,
+      "propertyOwned": [
+        "Personal vehicle"
+      ],
+      "ideology": "Marxism-Leninism-Maoism Third Worldism",
+      "culture": "White American",
+      "languages": [
+        "English"
+      ],
+      "customs": [
+        "Veteran",
+        "Atheist",
+        "Transgender"
+      ],
+      "skills": [
+        {
+          "name": "Firearms",
+          "level": 70
+        },
+        {
+          "name": "Computer Programming",
+          "level": 80
+        },
+        {
+          "name": "Military Training",
+          "level": 65
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Revolutionary Communism",
+          "intensity": 100
+        },
+        {
+          "belief": "Anti-Imperialism",
+          "intensity": 95
+        }
+      ],
+      "factionMembership": {
+        "factionId": "kansas_socialist_book_club",
+        "role": "Leader",
+        "loyalty": 100
+      },
+      "contradictions": [
+        {
+          "type": "Substance Dependency",
+          "impact": "Causes mood swings, unpredictable behavior, and risk-taking"
+        },
+        {
+          "type": "PTSD",
+          "impact": "Negative impacts on mental health and behavior patterns"
+        },
+        {
+          "type": "Parental Responsibilities",
+          "impact": "Constant tension between revolutionary leadership and parental duties"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "astra_dremel",
+          "type": "romantic",
+          "strength": 95
+        },
+        {
+          "targetId": "nick_mc_kee-_rist",
+          "type": "mentor",
+          "strength": 90
+        },
+        {
+          "targetId": "alkemy_roanoke",
+          "type": "comrade_and_close_friend",
+          "strength": 80
+        }
+      ]
+    },
+    {
+      "id": "robert_sterling",
+      "name": "Robert Sterling",
+      "age": 58,
+      "gender": "Man",
+      "biography": "Robert Sterling is a wealthy industrialist who uses his financial influence to support conservative political causes. His alliance with Colonel Blackwood represents a merger of economic and military interests in pursuit of nationalist objectives.",
+      "class": "bourgeoisie",
+      "occupation": "Industrial Magnate",
+      "incomeLevel": 15000000,
+      "propertyOwned": [
+        "Multiple corporate assets, real estate portfolio"
+      ],
+      "ideology": "Corporate Nationalism",
+      "culture": "White American",
+      "languages": [
+        "English"
+      ],
+      "customs": [
+        "Corporate Elite",
+        "Political Donor"
+      ],
+      "skills": [
+        {
+          "name": "Corporate Management",
+          "level": 95
+        },
+        {
+          "name": "Political Influence",
+          "level": 90
+        },
+        {
+          "name": "Financial Strategy",
+          "level": 92
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Free Market Capitalism",
+          "intensity": 95
+        },
+        {
+          "belief": "Military-Industrial Complex",
+          "intensity": 90
+        }
+      ],
+      "factionMembership": {
+        "factionId": "industrial-_military_complex",
+        "role": "Key Financier",
+        "loyalty": 90
+      },
+      "contradictions": [
+        {
+          "type": "Public Relations",
+          "impact": "Managing corporate image while pursuing controversial political agenda"
+        },
+        {
+          "type": "Business Ethics",
+          "impact": "Conflict between profit maximization and nationalist objectives"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "colonel_richard_blackwood",
+          "type": "strategic_alliance",
+          "strength": 75
+        }
+      ]
+    },
+    {
+      "id": "sarah_martinez",
+      "name": "Sarah Martinez",
+      "age": 28,
+      "gender": "Woman",
+      "biography": "Sarah is a rising labor organizer in the healthcare sector, working as a medical technician while building worker power from within. Under Emma Goldman's mentorship, she has become increasingly effective at organizing her fellow workers and understanding the broader implications of labor struggle.",
+      "class": "working_class",
+      "occupation": "Medical Technician",
+      "incomeLevel": 38000,
+      "propertyOwned": [
+        "None"
+      ],
+      "ideology": "Socialist Labor Organizing",
+      "culture": "Mexican American",
+      "languages": [
+        "English",
+        "Spanish"
+      ],
+      "customs": [
+        "First Generation American",
+        "Healthcare Worker"
+      ],
+      "skills": [
+        {
+          "name": "Medical Technology",
+          "level": 80
+        },
+        {
+          "name": "Organizing",
+          "level": 75
+        },
+        {
+          "name": "Bilingual Communication",
+          "level": 85
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Worker Rights",
+          "intensity": 90
+        },
+        {
+          "belief": "Healthcare Justice",
+          "intensity": 85
+        }
+      ],
+      "factionMembership": {
+        "factionId": "healthcare_workers_united",
+        "role": "Shop Steward",
+        "loyalty": 85
+      },
+      "contradictions": [
+        {
+          "type": "Career Risk",
+          "impact": "Fear of retaliation for union activities"
+        },
+        {
+          "type": "Family Pressure",
+          "impact": "Balancing activism with family expectations"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "emma_goldman",
+          "type": "mentee",
+          "strength": 90
+        }
+      ]
+    },
+    {
+      "id": "victoria_chen",
+      "name": "Victoria Chen",
+      "age": 42,
+      "gender": "Woman",
+      "biography": "Victoria is a prominent tech executive and AI researcher who champions the development of artificial intelligence without regulatory constraints. Her corporate success and technological vision put her in direct ideological conflict with privacy advocates and tech critics like Zero Day.",
+      "class": "bourgeoisie",
+      "occupation": "Tech Executive / AI Researcher",
+      "incomeLevel": 850000,
+      "propertyOwned": [
+        "Multiple properties, stock options"
+      ],
+      "ideology": "Techno-capitalism",
+      "culture": "Chinese American",
+      "languages": [
+        "English",
+        "Mandarin"
+      ],
+      "customs": [
+        "Silicon Valley Elite",
+        "Tech Industry Leader"
+      ],
+      "skills": [
+        {
+          "name": "AI Development",
+          "level": 95
+        },
+        {
+          "name": "Corporate Leadership",
+          "level": 90
+        },
+        {
+          "name": "Strategic Planning",
+          "level": 88
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Technological Progress",
+          "intensity": 95
+        },
+        {
+          "belief": "Free Market Innovation",
+          "intensity": 90
+        }
+      ],
+      "factionMembership": {
+        "factionId": "tech_industry_alliance",
+        "role": "Board Member",
+        "loyalty": 95
+      },
+      "contradictions": [
+        {
+          "type": "Ethical Conflicts",
+          "impact": "Tension between profit motives and societal impact of AI"
+        },
+        {
+          "type": "Public Image",
+          "impact": "Managing corporate interests while facing privacy advocacy criticism"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "zero_day",
+          "type": "ideological_opponent",
+          "strength": -85
+        }
+      ]
+    },
+    {
+      "id": "zero_day",
+      "name": "Zero Day",
+      "age": "Unknown",
+      "gender": "Unknown",
+      "biography": "Zero Day is a mysterious hacktivist and privacy advocate known for exposing corporate surveillance and privacy violations. Their true identity remains unknown, but their technical expertise and commitment to digital rights have made them a significant force in the resistance against tech industry overreach.",
+      "class": "unknown",
+      "occupation": "Hacktivist",
+      "incomeLevel": "Unknown",
+      "propertyOwned": [
+        "Unknown"
+      ],
+      "ideology": "Digital Liberation",
+      "culture": "Digital Underground",
+      "languages": [
+        "Multiple Programming Languages"
+      ],
+      "customs": [
+        "Anonymity",
+        "Hacker Ethics"
+      ],
+      "skills": [
+        {
+          "name": "Cyber Security",
+          "level": 95
+        },
+        {
+          "name": "Network Infiltration",
+          "level": 90
+        },
+        {
+          "name": "Digital Forensics",
+          "level": 88
+        }
+      ],
+      "beliefs": [
+        {
+          "belief": "Privacy Rights",
+          "intensity": 100
+        },
+        {
+          "belief": "Anti-Corporate Surveillance",
+          "intensity": 95
+        }
+      ],
+      "factionMembership": {
+        "factionId": "digital_rights_underground",
+        "role": "Anonymous Operative",
+        "loyalty": 95
+      },
+      "contradictions": [
+        {
+          "type": "Methods vs Ethics",
+          "impact": "Balancing illegal actions with moral imperatives"
+        },
+        {
+          "type": "Identity Protection",
+          "impact": "Isolation required to maintain anonymity"
+        }
+      ],
+      "relationships": [
+        {
+          "targetId": "victoria_chen",
+          "type": "ideological_opponent",
+          "strength": -85
+        }
+      ]
+    }
+  ]
+}

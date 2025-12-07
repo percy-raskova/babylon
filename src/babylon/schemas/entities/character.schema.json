@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/character.schema.json",
+  "title": "Character",
+  "description": "A character entity in the geopolitical simulation",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*[a-z0-9]$",
+      "description": "Unique snake_case identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Full name of the character"
+    },
+    "age": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "maximum": 150 },
+        { "type": "string" }
+      ],
+      "description": "Age in years or 'Unknown'"
+    },
+    "gender": {
+      "type": "string",
+      "description": "Gender identity"
+    },
+    "biography": {
+      "type": "string",
+      "description": "Detailed biography"
+    },
+    "class": {
+      "type": "string",
+      "description": "Social class"
+    },
+    "occupation": {
+      "type": "string",
+      "description": "Primary occupation"
+    },
+    "incomeLevel": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "string" }
+      ],
+      "description": "Annual income in currency units"
+    },
+    "propertyOwned": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of owned property"
+    },
+    "ideology": {
+      "type": "string",
+      "description": "Political ideology"
+    },
+    "culture": {
+      "type": "string",
+      "description": "Cultural background"
+    },
+    "languages": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Languages spoken"
+    },
+    "customs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Cultural customs"
+    },
+    "skills": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Skill" },
+      "description": "Character skills"
+    },
+    "beliefs": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Belief" },
+      "description": "Core beliefs"
+    },
+    "factionMembership": {
+      "oneOf": [
+        { "$ref": "../core/common.schema.json#/$defs/FactionMembership" },
+        { "type": "null" }
+      ],
+      "description": "Primary faction affiliation"
+    },
+    "contradictions": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/CharacterContradiction" },
+      "description": "Personal contradictions"
+    },
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Relationship" },
+      "description": "Relationships with other characters"
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

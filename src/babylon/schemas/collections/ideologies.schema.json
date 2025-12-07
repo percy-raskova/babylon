@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/ideologies.schema.json",
+  "title": "Ideologies Collection",
+  "description": "Collection of political ideologies",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "ideologies": {
+      "type": "array",
+      "items": { "$ref": "../entities/ideology.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "ideologies"],
+  "additionalProperties": false
+}

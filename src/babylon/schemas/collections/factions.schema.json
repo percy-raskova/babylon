@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/factions.schema.json",
+  "title": "Factions Collection",
+  "description": "Collection of faction entities",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "factions": {
+      "type": "array",
+      "items": { "$ref": "../entities/faction.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "factions"],
+  "additionalProperties": false
+}

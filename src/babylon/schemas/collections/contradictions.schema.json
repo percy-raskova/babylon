@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/contradictions.schema.json",
+  "title": "Contradictions Collection",
+  "description": "Collection of dialectical contradictions",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "contradictions": {
+      "type": "array",
+      "items": { "$ref": "../entities/contradiction.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "contradictions"],
+  "additionalProperties": false
+}

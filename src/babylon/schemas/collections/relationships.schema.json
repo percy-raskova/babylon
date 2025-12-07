@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/relationships.schema.json",
+  "title": "Relationships Collection",
+  "description": "Collection of entity relationships",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "relationships": {
+      "type": "array",
+      "items": { "$ref": "../entities/relationship.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "relationships"],
+  "additionalProperties": false
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/revolts.schema.json",
+  "title": "Revolts Collection",
+  "description": "Collection of revolt events",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "revolts": {
+      "type": "array",
+      "items": { "$ref": "../entities/revolt.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "revolts"],
+  "additionalProperties": false
+}

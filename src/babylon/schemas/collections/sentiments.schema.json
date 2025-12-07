@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/sentiments.schema.json",
+  "title": "Sentiments Collection",
+  "description": "Collection of public sentiments",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "sentiments": {
+      "type": "array",
+      "items": { "$ref": "../entities/sentiment.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "sentiments"],
+  "additionalProperties": false
+}

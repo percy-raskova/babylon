@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/law.schema.json",
+  "title": "Law",
+  "description": "A legal framework element",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "enactedBy": {
+      "type": "string"
+    },
+    "enactmentDate": {
+      "type": "string"
+    },
+    "effects": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Effect" }
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

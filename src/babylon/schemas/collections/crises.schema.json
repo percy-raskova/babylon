@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/crises.schema.json",
+  "title": "Crises Collection",
+  "description": "Collection of crisis events",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "crises": {
+      "type": "array",
+      "items": { "$ref": "../entities/crisis.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "crises"],
+  "additionalProperties": false
+}

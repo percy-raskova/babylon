@@ -1,0 +1,197 @@
+# Babylon Anti-Patterns
+# What NOT to do - learn from mistakes
+
+meta:
+  version: "1.0.0"
+  updated: "2024-12-07"
+  principle: "Document mistakes so they're not repeated"
+
+# =============================================================================
+# CODE ANTI-PATTERNS
+# =============================================================================
+
+code_antipatterns:
+
+  raw_dicts:
+    description: "Passing untyped dictionaries instead of Pydantic models"
+    why_bad: "No validation, no IDE support, runtime errors"
+    wrong: |
+      def process_faction(faction: dict):
+          return faction["name"]  # KeyError waiting to happen
+    right: |
+      def process_faction(faction: Faction) -> str:
+          return faction.name  # Type-safe, validated
+
+  hardcoded_logic:
+    description: "Game rules embedded in code instead of data"
+    why_bad: "Can't modify without code changes, violates data-driven design"
+    wrong: |
+      if faction.id == "F001":
+          bonus = 10
+      elif faction.id == "F002":
+          bonus = 5
+    right: |
+      bonus = faction.modifiers.get("base_bonus", 0)
+
+  ai_controls_mechanics:
+    description: "Letting LLM determine game outcomes"
+    why_bad: "Non-deterministic, untestable, violates Trinity architecture"
+    wrong: |
+      outcome = llm.decide("What happens when workers strike?")
+      apply_outcome(outcome)
+    right: |
+      outcome = calculate_strike_outcome(state)  # Deterministic
+      narrative = llm.describe(outcome)  # AI narrates only
+
+  generic_exceptions:
+    description: "Catching all exceptions without specificity"
+    why_bad: "Hides bugs, makes debugging impossible"
+    wrong: |
+      try:
+          process()
+      except Exception:
+          pass  # Silent failure!
+    right: |
+      try:
+          process()
+      except ValidationError as e:
+          log.error(f"Validation failed: {e}")
+          raise
+
+  unbounded_loops:
+    description: "Loops without provable termination"
+    why_bad: "Violates project coding standards, potential infinite loops"
+    wrong: |
+      while True:
+          if condition:
+              break
+    right: |
+      MAX_ITERATIONS = 1000
+      for _ in range(MAX_ITERATIONS):
+          if condition:
+              break
+      else:
+          raise MaxIterationsExceeded()
+
+# =============================================================================
+# ARCHITECTURE ANTI-PATTERNS
+# =============================================================================
+
+architecture_antipatterns:
+
+  bypassing_layers:
+    description: "Accessing Ledger directly from UI, skipping Topology"
+    why_bad: "Breaks separation of concerns, duplicates logic"
+    wrong: |
+      # In UI code
+      factions = json.load(open("data/factions.json"))
+    right: |
+      # Through proper layer
+      factions = game_state.get_factions()
+
+  schema_drift:
+    description: "Changing data without updating schemas"
+    why_bad: "Validation becomes meaningless, false confidence"
+    fix: "Always run validate_schemas.py after data changes"
+
+  eager_optimization:
+    description: "Optimizing before measuring"
+    why_bad: "Wastes time, often makes code worse"
+    rule: "Profile first, optimize second, document why"
+
+  documentation_features:
+    description: "Documenting planned features as if implemented"
+    why_bad: "Creates false expectations, stale docs"
+    rule: "Only document what exists in code"
+
+# =============================================================================
+# THEORETICAL ANTI-PATTERNS
+# =============================================================================
+
+theoretical_antipatterns:
+
+  idealist_framing:
+    description: "Treating ideas as primary, material conditions as secondary"
+    why_bad: "Violates materialist methodology of the game"
+    wrong: "Revolution fails because workers have wrong ideas"
+    right: "Revolution fails because material conditions (Φ > 0) don't support it"
+
+  class_reductionism:
+    description: "Ignoring race, gender, nation in class analysis"
+    why_bad: "MLM-TW explicitly addresses national oppression, labor aristocracy"
+    note: "Class is primary but not exclusive lens"
+
+  mechanical_determinism:
+    description: "Treating outcomes as inevitable from conditions"
+    why_bad: "Ignores role of organization, consciousness, contingency"
+    note: "Conditions enable/constrain, don't determine"
+
+  both_sides_ism:
+    description: "Treating oppressor and oppressed as morally equivalent"
+    why_bad: "Contradicts the entire theoretical framework"
+    note: "Contradictions have principal and secondary aspects"
+
+# =============================================================================
+# WORKFLOW ANTI-PATTERNS
+# =============================================================================
+
+workflow_antipatterns:
+
+  big_bang_implementation:
+    description: "Building everything before testing anything"
+    why_bad: "Discover problems late, expensive to fix"
+    right: "Vertical slices, minimum playable features"
+
+  premature_abstraction:
+    description: "Creating frameworks before having concrete cases"
+    why_bad: "Wrong abstraction is worse than duplication"
+    rule: "Rule of three - abstract after third occurrence"
+
+  test_after:
+    description: "Writing tests after implementation"
+    why_bad: "Violates TDD, tests become afterthought"
+    right: "Red-Green-Refactor cycle"
+
+  orphan_brainstorms:
+    description: "Brainstorming without capturing ideas"
+    why_bad: "Good ideas evaporate"
+    right: "Write to brainstorm/ directory, even if rough"
+
+# =============================================================================
+# NAMING ANTI-PATTERNS
+# =============================================================================
+
+naming_antipatterns:
+
+  confusing_terms:
+    description: "Using terms that conflict with project ontology"
+    why_bad: "Creates confusion, especially for AI assistants"
+    examples:
+      - "Don't use 'class' for Python class near game class discussion"
+      - "Don't use 'state' ambiguously (political vs. program state)"
+    fix: "Check ai-docs/ontology.yaml#disambiguation"
+
+  percygame_remnants:
+    description: "Old project name appearing in code"
+    why_bad: "Confusing, inconsistent branding"
+    rule: "Project is 'Babylon', always"
+
+# =============================================================================
+# LEARNED LESSONS
+# =============================================================================
+
+lessons_learned:
+
+  postgres_overkill:
+    date: "2024-12-07"
+    mistake: "Initially configured PostgreSQL for local game"
+    lesson: "SQLite is sufficient for local-only applications"
+    fix: "Simplified to SQLite-only"
+
+  xml_complexity:
+    date: "2024-12-07"
+    mistake: "Original XML structure had deeply nested attributes"
+    lesson: "Flatter JSON structures are easier to work with"
+    fix: "Migrated to JSON with flattened structure"
+
+  # Add new lessons as they occur

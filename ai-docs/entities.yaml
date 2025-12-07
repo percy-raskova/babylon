@@ -1,0 +1,287 @@
+# Babylon Entity Reference
+# All game entities and their relationships
+
+meta:
+  version: "1.0.0"
+  updated: "2024-12-07"
+  total_entity_types: 17
+
+# =============================================================================
+# ENTITY OVERVIEW
+# =============================================================================
+
+entities:
+
+  character:
+    id_pattern: "snake_case (e.g., persephone_raskova)"
+    schema: "schemas/entities/character.schema.json"
+    data: "data/characters.json"
+    description: "Individual actors in the simulation"
+    key_fields:
+      - "faction: Faction membership"
+      - "class_position: Their class"
+      - "skills: Capabilities"
+      - "beliefs: Ideological positions"
+      - "relationships: Connections to other characters"
+    relationships:
+      - "belongs_to → Faction"
+      - "located_in → Location"
+      - "knows → Character"
+
+  faction:
+    id_pattern: "F001, F002, ..."
+    schema: "schemas/entities/faction.schema.json"
+    data: "data/factions.json"
+    description: "Organized political forces"
+    key_fields:
+      - "class_composition: Which classes make up the faction"
+      - "military_capacity: Armed capability"
+      - "dialectical_relationships: Relations with other factions"
+      - "ideology: Guiding ideology"
+    relationships:
+      - "controls → Location"
+      - "allied_with/opposed_to → Faction"
+      - "follows → Ideology"
+      - "contains → Character"
+
+  contradiction:
+    id_pattern: "CON001, CON002, ..."
+    schema: "schemas/entities/contradiction.schema.json"
+    data: "data/contradictions.json"
+    description: "Dialectical tensions driving change"
+    key_fields:
+      - "entities: The opposing forces"
+      - "antagonism_type: antagonistic/non_antagonistic"
+      - "intensity: Current sharpness"
+      - "effects: What happens as intensity changes"
+    relationships:
+      - "involves → Entity (any type)"
+      - "manifests_as → Crisis"
+      - "intensified_by → Event"
+
+  location:
+    id_pattern: "L001, L001A, ..."
+    schema: "schemas/entities/location.schema.json"
+    data: "data/locations.json"
+    description: "Geographic/political spaces"
+    key_fields:
+      - "coordinates: Lat/long"
+      - "parent_location: Hierarchy"
+      - "sub_locations: Children"
+      - "controlling_faction: Who rules"
+      - "resources: What's produced here"
+    relationships:
+      - "contains → Location (sub-locations)"
+      - "produces → Resource"
+      - "controlled_by → Faction"
+
+  resource:
+    id_pattern: "R001, R002, ..."
+    schema: "schemas/entities/resource.schema.json"
+    data: "data/resources.json"
+    description: "Economic inputs and outputs"
+    key_fields:
+      - "category: Type of resource"
+      - "scarcity: Abundance level"
+      - "production: How it's made"
+      - "consumption: Who uses it"
+    relationships:
+      - "produced_at → Location"
+      - "consumed_by → Faction"
+      - "required_for → Technology"
+
+  technology:
+    id_pattern: "T001, T002, ..."
+    schema: "schemas/entities/technology.schema.json"
+    data: "data/technologies.json"
+    description: "Researchable capabilities"
+    key_fields:
+      - "category: Economic/Control/Liberation/Repression"
+      - "prerequisites: Required prior tech"
+      - "effects: What it enables"
+      - "available_to_classes: Class restrictions"
+      - "dialectical_contradictions: Internal tensions"
+    relationships:
+      - "requires → Technology (prerequisites)"
+      - "unlocks → Technology"
+      - "available_to → Class"
+    note: "T006-T011 are LLM-related technologies"
+
+  movement:
+    id_pattern: "M001, M002, ..."
+    schema: "schemas/entities/movement.schema.json"
+    data: "data/movements.json"
+    description: "Broad political currents (less organized than factions)"
+    key_fields:
+      - "goals: What they want"
+      - "tactics: How they operate"
+      - "challenges: What they face"
+    relationships:
+      - "supported_by → Class"
+      - "opposed_by → Faction"
+      - "may_crystallize_into → Faction"
+
+  class:
+    id_pattern: "C001 or snake_case (bourgeoisie, proletariat)"
+    schema: "schemas/entities/class.schema.json"
+    data: "data/classes.json"
+    description: "Relation to means of production"
+    key_fields:
+      - "relation_to_production: Owner/seller/etc."
+      - "interests: Material interests"
+      - "consciousness: Current awareness"
+    relationships:
+      - "exploits → Class"
+      - "exploited_by → Class"
+      - "comprises → Faction (class composition)"
+
+  crisis:
+    id_pattern: "CRISIS_001, CRISIS_002, ..."
+    schema: "schemas/entities/crisis.schema.json"
+    data: "data/crises.json"
+    description: "Acute manifestations of contradictions"
+    key_fields:
+      - "type: Economic/political/legitimacy/ecological"
+      - "severity: Intensity"
+      - "triggers: What caused it"
+      - "effects: Consequences"
+    relationships:
+      - "manifests → Contradiction"
+      - "affects → Location"
+      - "may_trigger → Revolt"
+
+  policy:
+    id_pattern: "Policy ID"
+    schema: "schemas/entities/policy.schema.json"
+    data: "data/policies.json"
+    description: "Government/faction actions"
+    key_fields:
+      - "type: Economic/social/political"
+      - "effects: What it does"
+      - "support/opposition: Class reactions"
+
+  institution:
+    id_pattern: "Inst001, Inst002, ..."
+    schema: "schemas/entities/institution.schema.json"
+    data: "data/institutions.json"
+    description: "Organized structures (state apparatus, civil society)"
+    key_fields:
+      - "type: State/civil/economic"
+      - "function: What it does"
+      - "controlled_by: Which class/faction"
+    note: "Distinction between repressive and ideological apparatus"
+
+  ideology:
+    id_pattern: "IDE001, IDE002, ..."
+    schema: "schemas/entities/ideology.schema.json"
+    data: "data/ideologies.json"
+    description: "Systems of belief and worldview"
+    key_fields:
+      - "core_beliefs: Central tenets"
+      - "class_basis: Which class it serves"
+    relationships:
+      - "adopted_by → Faction"
+      - "opposed_to → Ideology"
+
+  culture:
+    id_pattern: "CUL001, CUL002, ..."
+    schema: "schemas/entities/culture.schema.json"
+    data: "data/cultures.json"
+    description: "Cultural groups and practices"
+    key_fields:
+      - "traditions: Cultural practices"
+      - "values: Core values"
+
+  law:
+    id_pattern: "LAW001, LAW002, ..."
+    schema: "schemas/entities/law.schema.json"
+    data: "data/laws.json"
+    description: "Legal framework elements"
+    key_fields:
+      - "type: Constitutional/criminal/economic"
+      - "effects: What it enforces"
+      - "class_bias: Who benefits"
+
+  revolt:
+    id_pattern: "Revolt ID"
+    schema: "schemas/entities/revolt.schema.json"
+    data: "data/revolts.json"
+    description: "Uprising events"
+    key_fields:
+      - "participants: Who's involved"
+      - "demands: What they want"
+      - "outcome: Success/failure/ongoing"
+    relationships:
+      - "triggered_by → Crisis"
+      - "led_by → Faction/Movement"
+      - "occurs_in → Location"
+
+  relationship:
+    id_pattern: "Relationship ID"
+    schema: "schemas/entities/relationship.schema.json"
+    data: "data/relationships.json"
+    description: "Connections between entities"
+    key_fields:
+      - "source/target: Linked entities"
+      - "type: Nature of relationship"
+      - "strength: Intensity"
+    note: "Meta-entity describing other entity connections"
+
+  sentiment:
+    id_pattern: "Sentiment ID"
+    schema: "schemas/entities/sentiment.schema.json"
+    data: "data/sentiments.json"
+    description: "Public opinion patterns"
+    key_fields:
+      - "type: Pro/anti various positions"
+      - "magnitude: Strength"
+      - "region: Where"
+    note: "Currently unpopulated - planned feature"
+
+# =============================================================================
+# ENTITY RELATIONSHIPS GRAPH
+# =============================================================================
+
+relationship_overview:
+  note: "Simplified view of how entities connect"
+  graph: |
+    Character ─belongs_to→ Faction ─controls→ Location
+        │                     │                   │
+        └──located_in────────┘                   │
+                              │                   │
+                              ├─follows→ Ideology │
+                              │                   │
+                              ├─opposes→ Faction  │
+                              │                   │
+    Class ─comprises────────→─┤                   │
+                              │                   │
+    Movement ─may_become────→─┘                   │
+                                                  │
+    Resource ←──produces──────────────────────────┘
+        │
+        └─required_for→ Technology
+
+    Contradiction ─involves→ [any entity]
+        │
+        └─manifests_as→ Crisis ─triggers→ Revolt
+
+# =============================================================================
+# COMMON QUERIES
+# =============================================================================
+
+common_queries:
+
+  find_faction_by_id:
+    pattern: "factions.json → filter by id"
+
+  get_location_resources:
+    pattern: "locations.json → location.resources[]"
+
+  find_contradictions_involving:
+    pattern: "contradictions.json → filter entities[] contains target"
+
+  tech_tree_traversal:
+    pattern: "technologies.json → follow prerequisites chains"
+
+  class_composition_of_faction:
+    pattern: "factions.json → faction.class_composition[]"

@@ -1,0 +1,245 @@
+# Babylon Formula Specifications
+# Machine-readable spec for the core mathematical engine
+# Source: ~/projects/game/notes/manifesto.md
+
+meta:
+  version: "1.1.0"
+  created: "2024-12-07"
+  updated: "2024-12-07"
+  purpose: "Document the implemented mathematical formulas that transform types into behavior"
+  principle: "Types are nouns, formulas are verbs"
+  status: "IMPLEMENTED"
+  location: "src/babylon/systems/formulas.py"
+  tests: "tests/unit/formulas/ (40 tests, ALL PASSING)"
+  note: "This spec was created to plan formulas that already existed. Now serves as reference."
+
+# =============================================================================
+# FORMULA INVENTORY (ALL IMPLEMENTED)
+# =============================================================================
+# These formulas exist in src/babylon/systems/formulas.py with 40 passing tests.
+# This section documents the API and theory, not a to-do list.
+
+formulas:
+
+  # ---------------------------------------------------------------------------
+  # IMPERIAL RENT (The Edge)
+  # ---------------------------------------------------------------------------
+  imperial_rent:
+    symbol: "Φ"
+    equation: "Φ = V - W"
+    description: |
+      The value extracted from periphery labor. This IS the exploitation edge.
+      In MLM-TW theory, this flow from South to North is why First World
+      revolution is impossible while Imperial Rent flows.
+
+    inputs:
+      labor_value:
+        symbol: "V"
+        type: "Currency"
+        range: "[0, ∞)"
+        description: "Value produced by worker"
+
+      wage_paid:
+        symbol: "W"
+        type: "Currency"
+        range: "[0, V]"
+        description: "Wages paid to worker"
+
+    output:
+      type: "Currency"
+      range: "[0, ∞)"
+      description: "Imperial Rent extracted"
+
+    constraints:
+      - "W ≤ V (wages cannot exceed value in exploitation)"
+      - "Φ ≥ 0 (rent is never negative)"
+
+    tests:
+      - "calculate_imperial_rent(100, 20) == 80"
+      - "calculate_imperial_rent(100, 0) == 100  # slavery"
+      - "calculate_imperial_rent(50, 50) == 0    # fair exchange"
+      - "calculate_imperial_rent(50, 60) raises ValueError"
+
+  # ---------------------------------------------------------------------------
+  # SURVIVAL BY ACQUIESCENCE (The Cliff)
+  # ---------------------------------------------------------------------------
+  p_acquiescence:
+    symbol: "P(S|A)"
+    equation: "P(S|A) = 1 / (1 + e^(-k(W - S)))"
+    description: |
+      Probability of survival by obeying. Uses sigmoid function.
+      As wealth approaches subsistence, survival crashes off a cliff.
+      This models "Can I survive if I keep my head down and work?"
+
+    inputs:
+      wealth:
+        symbol: "W"
+        type: "Currency"
+        description: "Current wealth/wages"
+
+      subsistence:
+        symbol: "S"
+        type: "Currency"
+        description: "Minimum required for survival"
+
+      steepness:
+        symbol: "k"
+        type: "Coefficient"
+        default: 0.5
+        description: "How sharp the cliff (higher = sharper drop)"
+
+    output:
+      type: "Probability"
+      range: "[0, 1]"
+      description: "Probability of surviving by continuing to work"
+
+    key_insight: |
+      At W = S (wealth equals subsistence), P(S|A) = 0.5.
+      This is the "50/50 survival" point - the cliff edge.
+
+    tests:
+      - "calculate_p_acquiescence(100, 20) > 0.95  # rich worker"
+      - "calculate_p_acquiescence(20, 20) ≈ 0.5   # at subsistence"
+      - "calculate_p_acquiescence(10, 20) < 0.3   # below subsistence"
+
+  # ---------------------------------------------------------------------------
+  # SURVIVAL BY REVOLUTION (The Gamble)
+  # ---------------------------------------------------------------------------
+  p_revolution:
+    symbol: "P(S|R)"
+    equation: "P(S|R) = O / (R + ε), normalized"
+    description: |
+      Probability of survival by revolting. Based on Lanchester's Laws.
+      Compares class organization against state repression capacity.
+      This models "Can I survive if I attack the state?"
+
+    inputs:
+      organization:
+        symbol: "O"
+        type: "Probability"
+        description: "Class cohesion/unity [0, 1]"
+
+      repression:
+        symbol: "R"
+        type: "Probability"
+        description: "State violence capacity [0, 1]"
+
+      epsilon:
+        symbol: "ε"
+        type: "float"
+        default: 0.1
+        description: "Small constant to prevent division by zero"
+
+    output:
+      type: "Probability"
+      range: "[0, 1]"
+      description: "Probability of surviving revolution attempt"
+
+    key_insight: |
+      This is NOT about winning the revolution, it's about SURVIVING IT.
+      Even a failed revolution might be rational if working means certain death.
+
+    tests:
+      - "calculate_p_revolution(0.9, 0.1) > 0.8  # strong union vs weak police"
+      - "calculate_p_revolution(0.1, 0.9) < 0.2  # atomized vs strong state"
+      - "calculate_p_revolution(0.5, 0.5) ≈ 0.5  # equal forces"
+
+  # ---------------------------------------------------------------------------
+  # SURVIVAL VERDICT (The Decision)
+  # ---------------------------------------------------------------------------
+  survival_verdict:
+    symbol: "V"
+    equation: "V = REVOLT if P(S|R) > P(S|A) else ACQUIESCE"
+    description: |
+      The fundamental decision: obey or revolt?
+      This is the "cross-over point" - when revolution becomes mathematically
+      rational because it offers better survival odds than compliance.
+
+    inputs:
+      p_acquiescence:
+        type: "Probability"
+        description: "P(S|A) from calculate_p_acquiescence"
+
+      p_revolution:
+        type: "Probability"
+        description: "P(S|R) from calculate_p_revolution"
+
+    output:
+      type: "dict"
+      fields:
+        p_acquiescence: "Probability"
+        p_revolution: "Probability"
+        incentive: "float (p_revolution - p_acquiescence)"
+        action: "'REVOLT' | 'ACQUIESCE'"
+
+    key_insight: |
+      The "incentive" value is the revolutionary gap.
+      Positive incentive = revolution is rational.
+      Negative incentive = obedience is rational.
+      Zero = indifference point (unstable equilibrium).
+
+    tests:
+      - "verdict(0.8, 0.2)['action'] == 'ACQUIESCE'"
+      - "verdict(0.2, 0.8)['action'] == 'REVOLT'"
+      - "verdict(0.51, 0.49)['action'] == 'ACQUIESCE'  # just below crossover"
+      - "verdict(0.49, 0.51)['action'] == 'REVOLT'     # just above crossover"
+
+# =============================================================================
+# PHASE 1 INTEGRATION TEST
+# =============================================================================
+
+integration_test:
+  name: "The Squeeze"
+  description: |
+    Prove that squeezing the worker (lowering wages, raising organization)
+    causes the survival calculus to flip from ACQUIESCE to REVOLT.
+
+  scenario:
+    initial_state:
+      wealth: 50.0
+      subsistence: 20.0
+      organization: 0.2
+      repression: 0.7
+      expected_action: "ACQUIESCE"
+
+    crisis_state:
+      wealth: 15.0
+      subsistence: 20.0
+      organization: 0.7
+      repression: 0.3
+      expected_action: "REVOLT"
+
+  assertion: |
+    The same worker, under different material conditions,
+    rationally chooses different actions. This proves the math.
+
+# =============================================================================
+# DEFERRED FORMULAS (Phase 2+)
+# =============================================================================
+
+deferred:
+
+  ideological_drift:
+    equation: "dΨc/dt = k(1 - Wc/Vc) - λΨc"
+    phase: 2
+    description: "How ideology changes over time based on exploitation ratio"
+
+  imperial_rent_function:
+    equation: "Φ(Wp, Ψp) = α·Wp·(1 - Ψp)"
+    phase: 2
+    description: "How periphery consciousness affects rent extraction"
+
+  loss_aversion:
+    constant: "LAMBDA_LOSS = 2.25"
+    phase: 3
+    description: "Prospect theory coefficient for mobility panic"
+
+  bell_curve_distribution:
+    concept: "Class as Gaussian distribution, not scalar"
+    phase: 3
+    description: "Enables Engels defectors and fascist workers"
+
+  ideological_rotation:
+    concept: "Rotation matrix for anger redirection"
+    phase: 3+
+    description: "How ideology redirects anger from system to scapegoat"

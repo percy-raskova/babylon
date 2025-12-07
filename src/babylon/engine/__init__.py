@@ -4,7 +4,7 @@ This package contains the core game loop logic:
 - simulation_engine: The step() function for state transformation
 - scenarios: Factory functions for creating initial states
 
-Sprint 5-6: Phase 2 game loop implementation.
+Phase 2.1: Refactored to modular System architecture.
 """
 
 from babylon.engine.scenarios import (
@@ -12,10 +12,11 @@ from babylon.engine.scenarios import (
     create_labor_aristocracy_scenario,
     create_two_node_scenario,
 )
-from babylon.engine.simulation_engine import step
+from babylon.engine.simulation_engine import SimulationEngine, step
 
 __all__ = [
     "step",
+    "SimulationEngine",
     "create_two_node_scenario",
     "create_high_tension_scenario",
     "create_labor_aristocracy_scenario",

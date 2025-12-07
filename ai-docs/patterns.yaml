@@ -1,0 +1,224 @@
+# Babylon Development Patterns
+# How to do things in this codebase
+
+meta:
+  version: "1.0.0"
+  updated: "2024-12-07"
+
+# =============================================================================
+# DATA PATTERNS
+# =============================================================================
+
+data_patterns:
+
+  adding_entity_data:
+    when: "Adding new entity to an existing collection"
+    steps:
+      - "Edit src/babylon/data/{collection}.json"
+      - "Follow ID pattern from ai-docs/ontology.yaml"
+      - "Run: poetry run python tools/validate_schemas.py -f {collection}.json"
+      - "All fields should match schema in schemas/entities/{entity}.schema.json"
+    example: |
+      # Adding technology T012
+      {
+        "id": "T012",
+        "name": "New Technology",
+        "category": "Economic",
+        ...
+      }
+
+  creating_new_entity_type:
+    when: "Adding entirely new category of game object"
+    steps:
+      - "Create schemas/entities/{entity}.schema.json"
+      - "Create schemas/collections/{entities}.schema.json"
+      - "Create src/babylon/data/{entities}.json with metadata envelope"
+      - "Add Pydantic model to src/babylon/data/models/"
+      - "Update ai-docs/ontology.yaml with new term"
+      - "Run validation"
+
+  modifying_schema:
+    when: "Changing entity structure"
+    steps:
+      - "Edit schema in schemas/entities/"
+      - "Update all existing data to match"
+      - "Run validation to confirm"
+      - "Update Pydantic models if they exist"
+    warning: "Schema changes may break existing data"
+
+# =============================================================================
+# CODE PATTERNS
+# =============================================================================
+
+code_patterns:
+
+  pydantic_first:
+    rule: "All game objects are Pydantic BaseModel, never raw dicts"
+    good: |
+      class Faction(BaseModel):
+          id: str
+          name: str
+          class_composition: list[ClassComposition]
+    bad: |
+      faction = {"id": "F001", "name": "..."}  # NO!
+
+  data_driven_logic:
+    rule: "Game logic in data files, not hardcoded conditionals"
+    good: |
+      anger += faction.modifiers.repression_impact.calculate(state)
+    bad: |
+      if faction.name == "proletariat":
+          anger += 10  # NO!
+
+  effect_structure:
+    rule: "Use standard Effect format for all state modifications"
+    structure: |
+      {
+        "target": "EntityOrSystem",
+        "attribute": "AttributeName",
+        "operation": "increase|decrease|modify|set|intensify|resolve",
+        "magnitude": 0.25,
+        "description": "Human-readable explanation"
+      }
+
+  type_hints:
+    rule: "Explicit types on all function signatures"
+    good: |
+      def calculate_rent(wages: float, value: float) -> float:
+          return wages - value
+    bad: |
+      def calculate_rent(wages, value):  # NO!
+          return wages - value
+
+  error_handling:
+    infrastructure_layer: "try/except in database, network, file I/O"
+    logic_layer: "Let exceptions bubble up - math should fail loud"
+    example: |
+      # Infrastructure (catch)
+      try:
+          data = load_json(path)
+      except FileNotFoundError:
+          raise DataLoadError(f"Missing: {path}")
+
+      # Logic (don't catch)
+      intensity = calculate_intensity(factors)  # Let it crash if bad input
+
+# =============================================================================
+# TESTING PATTERNS
+# =============================================================================
+
+testing_patterns:
+
+  tdd_cycle:
+    rule: "Red → Green → Refactor"
+    steps:
+      - "Write failing test first"
+      - "Implement minimum code to pass"
+      - "Refactor for clarity/performance"
+      - "Verify test still passes"
+
+  marker_usage:
+    math: "Pure functions, deterministic, fast"
+    ledger: "State management, deterministic"
+    topology: "Graph operations, deterministic"
+    integration: "Database, file I/O, medium speed"
+    ai: "LLM calls, non-deterministic, slow"
+    example: |
+      @pytest.mark.math
+      def test_imperial_rent_calculation():
+          assert calculate_rent(wages=100, value=80) == 20
+
+  test_separation:
+    rule: "Logic tests and AI evals never mixed"
+    fast_tests: "poetry run pytest -m 'not ai'"
+    slow_tests: "poetry run pytest -m 'ai'"
+
+  single_test:
+    command: "poetry run pytest tests/unit/path/test_file.py::test_name -v"
+
+# =============================================================================
+# AI INTEGRATION PATTERNS
+# =============================================================================
+
+ai_patterns:
+
+  ai_as_observer:
+    rule: "AI generates narrative from state, never controls mechanics"
+    good: |
+      # State changes → AI describes
+      narrative = ai.describe_event(state_delta)
+    bad: |
+      # AI decides what happens
+      next_state = ai.determine_outcome(current_state)  # NO!
+
+  rag_queries:
+    rule: "Query Archive for context, return to caller"
+    pattern: |
+      context = archive.query_similar(event_description)
+      narrative = generate_with_context(state_delta, context)
+
+  structured_output:
+    rule: "When AI fills templates, use structured extraction"
+    good: "Jinja templates with AI filling specific slots"
+    bad: "AI generates entire unstructured documents"
+
+# =============================================================================
+# DIALECTICAL PATTERNS
+# =============================================================================
+
+dialectical_patterns:
+
+  contradiction_structure:
+    rule: "Contradictions have thesis, antithesis, potential synthesis"
+    example: |
+      dialecticalContradictions:
+        - thesis: "Capital concentrates AI capability"
+          antithesis: "Open source democratizes access"
+          potentialSynthesis: "Socialized AI infrastructure"
+
+  intensity_operations:
+    intensify: "Contradiction sharpens, approaches rupture"
+    resolve: "Contradiction dissolved (temporarily or permanently)"
+    note: "Antagonistic contradictions cannot truly resolve under current system"
+
+  class_analysis:
+    rule: "Always analyze from class position perspective"
+    questions:
+      - "Which class benefits?"
+      - "Which class is harmed?"
+      - "How does this affect class consciousness?"
+      - "Does this intensify or obscure contradictions?"
+
+# =============================================================================
+# DOCUMENTATION PATTERNS
+# =============================================================================
+
+documentation_patterns:
+
+  code_comments:
+    rule: "Explain WHY, not WHAT"
+    good: |
+      # Imperial rent creates material basis for labor aristocracy
+      rent = wages - value_produced
+    bad: |
+      # Calculate rent by subtracting value from wages
+      rent = wages - value_produced
+
+  ai_docs_updates:
+    when:
+      - "New domain concept introduced → ontology.yaml"
+      - "Architectural decision made → architecture.yaml, decisions.yaml"
+      - "Implementation status changes → state.yaml"
+      - "New pattern emerges → patterns.yaml"
+      - "Mistake made → anti-patterns.yaml"
+
+  brainstorm_format:
+    structure: |
+      # Idea Title
+
+      **Status:** Brainstorm | Developing | Ready | Abandoned
+      **Created:** YYYY-MM-DD
+      **Core Insight:** One sentence
+
+      ## The Concept
+      ...

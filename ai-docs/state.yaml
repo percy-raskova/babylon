@@ -1,0 +1,263 @@
+# Babylon Project State
+# What exists vs what's planned - KEEP THIS UPDATED
+
+meta:
+  version: "1.0.0"
+  updated: "2024-12-07"
+  principle: "Be honest about what's implemented vs aspirational"
+
+# =============================================================================
+# IMPLEMENTATION STATUS
+# =============================================================================
+
+implemented:
+
+  data_layer:
+    status: "functional"
+    components:
+      json_data_files:
+        status: "complete"
+        details: "17 entity collections migrated from XML"
+        location: "src/babylon/data/*.json"
+
+      json_schemas:
+        status: "complete"
+        details: "Draft 2020-12 schemas for all entities"
+        location: "src/babylon/schemas/"
+        validation: "poetry run python tools/validate_schemas.py"
+
+      pydantic_models:
+        status: "partial"
+        details: "Some models exist, not all entities covered"
+        location: "src/babylon/data/models/"
+
+      database:
+        status: "configured"
+        details: "SQLite setup, no tables populated yet"
+        location: "src/babylon/data/database.py"
+
+  core_logic:
+    status: "scaffolded"
+    components:
+      contradiction_analysis:
+        status: "partial"
+        details: "ContradictionAnalysis class exists, basic methods work"
+        location: "src/babylon/core/contradiction.py"
+        missing: "Full game loop integration"
+
+      entity_base:
+        status: "functional"
+        details: "Entity class with embeddings support"
+        location: "src/babylon/core/entity.py"
+
+      formulas:
+        status: "defined"
+        details: "Mathematical formulas specified, some implemented"
+        location: "src/babylon/systems/formulas.py"
+        tested: "tests/unit/formulas/"
+
+  ai_layer:
+    status: "scaffolded"
+    components:
+      chromadb:
+        status: "configured"
+        details: "Connection setup exists"
+        location: "src/babylon/rag/"
+        missing: "Populated embeddings, query interface"
+
+      embeddings:
+        status: "partial"
+        details: "entity_embedding_service.py exists"
+        missing: "Full corpus embedded"
+
+  tooling:
+    status: "functional"
+    components:
+      xml_migration:
+        status: "complete"
+        location: "tools/migrate_xml_to_json.py"
+
+      schema_validation:
+        status: "complete"
+        location: "tools/validate_schemas.py"
+
+      testing:
+        status: "configured"
+        details: "Pytest with markers, some tests exist"
+
+      linting:
+        status: "configured"
+        details: "Ruff + MyPy strict"
+
+# =============================================================================
+# NOT YET IMPLEMENTED
+# =============================================================================
+
+not_implemented:
+
+  game_loop:
+    priority: "high"
+    description: "Turn-based simulation loop"
+    blockers: "Need core mechanics finalized"
+
+  ui:
+    priority: "medium"
+    description: "Player interface (NiceGUI planned)"
+    blockers: "Game loop needed first"
+
+  event_generation:
+    priority: "high"
+    description: "Procedural event system based on contradictions"
+    blockers: "ContradictionAnalysis needs completion"
+
+  ai_narrative:
+    priority: "medium"
+    description: "LLM generates prose from state changes"
+    blockers: "ChromaDB population, event system"
+
+  save_load:
+    priority: "medium"
+    description: "Persist and restore game state"
+    blockers: "Game loop needed"
+
+# =============================================================================
+# PLANNED FEATURES (BRAINSTORM)
+# =============================================================================
+
+planned:
+
+  gramscian_wiki:
+    status: "brainstorm"
+    location: "brainstorm/gramscian-wiki-engine.md"
+    description: "Hegemony as factional control over in-game wiki"
+    dependencies: ["jinja2", "markdown renderer"]
+
+  llm_tech_tree:
+    status: "implemented"
+    location: "src/babylon/data/technologies.json (T006-T011)"
+    description: "AI as dual-use technology in game mechanics"
+
+# =============================================================================
+# CURRENT FOCUS
+# =============================================================================
+
+current_focus:
+  primary: "PHASE 1: MINIMUM VIABLE DIALECTIC"
+  roadmap: "brainstorm/plans/four-phase-engine-blueprint.md"
+  detailed_plan: "~/.claude/plans/deep-wishing-ladybug.md"
+
+  recently_completed:
+    - "XML to JSON migration"
+    - "JSON Schema system (36 schemas)"
+    - "Schema validation tooling"
+    - "LLM technology entries (T006-T011)"
+    - "Project rename to Babylon"
+    - "AI documentation system (ai-docs/)"
+    - "Four-phase engine blueprint"
+    - "Sprint 1: Types & Enums (Probability, Currency, Ideology, etc.)"
+    - "Sprint 1: StrEnums (SocialRole, EdgeType, IntensityLevel, ResolutionType)"
+    - "Tech debt cleanup: Migrated dataclasses to Pydantic"
+    - "Created src/babylon/models/entities/ (Effect, Contradiction, Trigger)"
+    - "Deleted old files: data/models/contradiction.py, data/models/trigger.py, core/contradiction.py"
+    - "Sprint 2: SocialClass entity model (Phase 1 node)"
+    - "Sprint 2: Relationship entity model (Phase 1 edge)"
+    - "Phase 1 integration tests (11 tests proving the equations)"
+
+  current_phase:
+    name: "Phase 1: The Petri Dish"
+    goal: "Two nodes, one edge, proven equations"
+    tech: "Pure Python, Pydantic, Pytest - NO UI, NO AI"
+
+  sprint_status:
+    sprint_1:
+      name: "Value Types & Enums"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/types.py (6 types)"
+        - "src/babylon/models/enums.py (4 enums)"
+        - "tests/unit/models/test_types.py (45 tests)"
+        - "tests/unit/models/test_enums.py (22 tests)"
+      tests_passing: 131
+
+    sprint_1_5:
+      name: "Physics Module"
+      status: "COMPLETE (PRE-EXISTING)"
+      discovery: "2024-12-07 - Formulas already existed in src/babylon/systems/formulas.py"
+      location: "src/babylon/systems/formulas.py (349 lines)"
+      tests: "tests/unit/formulas/ (40 tests, ALL PASSING)"
+      formulas_implemented:
+        - "calculate_imperial_rent() - Imperial rent extraction"
+        - "calculate_acquiescence_probability() - P(S|A) sigmoid"
+        - "calculate_revolution_probability() - P(S|R)"
+        - "calculate_crossover_threshold() - When revolt becomes rational"
+        - "calculate_labor_aristocracy_ratio() - Wc/Vc ratio"
+        - "is_labor_aristocracy() - Boolean check"
+        - "calculate_consciousness_drift() - dΨ/dt ideology change"
+        - "apply_loss_aversion() - Kahneman-Tversky λ=2.25"
+        - "calculate_exchange_ratio() - Unequal exchange ε"
+        - "calculate_value_transfer() - Core-periphery flows"
+        - "prebisch_singer_effect() - Deteriorating terms of trade"
+      lesson_learned: "Always explore actual codebase before planning new work"
+
+    sprint_2:
+      name: "Entity Models"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/entities/social_class.py (SocialClass)"
+        - "src/babylon/models/entities/relationship.py (Relationship)"
+        - "tests/unit/models/test_social_class.py (31 tests)"
+        - "tests/unit/models/test_relationship.py (29 tests)"
+        - "tests/integration/test_phase1_blueprint.py (11 tests)"
+      tests_passing: 202
+      phase_1_complete: true
+      notes: "Phase 1 blueprint proven: two nodes, one edge, formulas work"
+
+  phase_roadmap:
+    phase_1: "Minimum Viable Dialectic - prove the equations"
+    phase_2: "Topological Engine - the physics/update loop"
+    phase_3: "Observer Pattern - AI narrates, never controls"
+    phase_4: "Control Room - NiceGUI dashboard"
+
+  next_steps:
+    - "PHASE 1 COMPLETE - Move to Phase 2: Topological Engine"
+    - "Design game loop architecture (turn-based simulation)"
+    - "Create WorldState container for graph + ledger"
+    - "Implement turn processor with formula applications"
+    - "Add tension propagation between connected nodes"
+    - "Create contradiction resolution events"
+
+  mantra: "Two nodes. One edge. Passing tests. Ship."
+  milestone: "PHASE 1 ACHIEVED: 202 tests passing, equations proven"
+
+# =============================================================================
+# IDEA QUARANTINE PROTOCOL
+# =============================================================================
+
+quarantine:
+  location: "~/projects/game/notes/"
+  purpose: "Dump ideas without derailing implementation"
+  rule: "If it's not in next_steps, it goes in notes/ or brainstorm/deferred-ideas.md"
+  deferred_parking: "brainstorm/deferred-ideas.md"
+
+# =============================================================================
+# TECH DEBT
+# =============================================================================
+
+tech_debt:
+
+  legacy_xml:
+    location: "src/babylon/data/xml/"
+    status: "Migrated, kept for reference"
+    action: "Can delete after confidence in JSON"
+
+  incomplete_models:
+    issue: "Not all entities have Pydantic models"
+    action: "Generate from JSON schemas"
+
+  test_coverage:
+    issue: "Many modules lack tests"
+    action: "TDD for new features, backfill critical paths"
+
+  documentation_drift:
+    issue: "README.md still references PostgreSQL, old structure"
+    action: "Update when stabilized"

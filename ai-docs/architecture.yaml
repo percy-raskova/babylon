@@ -1,0 +1,189 @@
+# Babylon System Architecture
+# How the pieces fit together
+
+meta:
+  version: "1.0.0"
+  updated: "2024-12-07"
+
+# =============================================================================
+# THE EMBEDDED TRINITY
+# =============================================================================
+
+core_architecture:
+  name: "The Embedded Trinity"
+  principle: "Three-layer local system, no external servers"
+
+  layers:
+    ledger:
+      purpose: "Rigid, material state"
+      technology: "SQLite + Pydantic"
+      location: "src/babylon/data/"
+      contains:
+        - "JSON data files (17 entity collections)"
+        - "database.py (SQLAlchemy session)"
+        - "Pydantic models for validation"
+      data_flow: "Read at startup, modified by game events, persisted on save"
+
+    topology:
+      purpose: "Fluid, relational state"
+      technology: "NetworkX (in-memory graph)"
+      location: "src/babylon/core/"
+      contains:
+        - "ContradictionAnalysis (dialectical engine)"
+        - "Entity relationships"
+        - "Class solidarity networks"
+        - "Supply chain graphs"
+      data_flow: "Built from Ledger at startup, evolves during gameplay"
+      key_insight: "Relationships change faster than material base"
+
+    archive:
+      purpose: "Semantic history and theory"
+      technology: "ChromaDB + embeddings"
+      location: "src/babylon/rag/"
+      contains:
+        - "Historical events"
+        - "Theoretical texts (MLM-TW corpus)"
+        - "Past game states for narrative"
+      data_flow: "AI queries for context, generates narrative from state changes"
+      key_insight: "AI observes and narrates, never controls mechanics"
+
+# =============================================================================
+# DIRECTORY STRUCTURE
+# =============================================================================
+
+directory_map:
+  src/babylon/:
+    config/: "BaseConfig, environment variables, logging setup"
+    core/:
+      purpose: "Topology layer - game logic"
+      key_files:
+        - "contradiction.py: ContradictionAnalysis engine"
+        - "entity.py: Base Entity class"
+        - "economy.py: Economic calculations"
+        - "politics.py: Political mechanics"
+    data/:
+      purpose: "Ledger layer - persistent state"
+      key_files:
+        - "*.json: 17 entity collection files"
+        - "database.py: SQLAlchemy setup"
+        - "entity_registry.py: Entity lookup"
+      subdirs:
+        - "models/: Pydantic model definitions"
+        - "xml/: Legacy XML (reference only)"
+    schemas/:
+      purpose: "JSON Schema validation"
+      structure:
+        - "core/common.schema.json: Shared $defs"
+        - "core/base.schema.json: Metadata envelope"
+        - "entities/*.schema.json: 17 entity schemas"
+        - "collections/*.schema.json: 17 collection schemas"
+    rag/:
+      purpose: "Archive layer - semantic memory"
+      key_files:
+        - "Chunking and embedding logic"
+        - "ChromaDB integration"
+    systems/:
+      purpose: "Game systems implementation"
+      key_files:
+        - "formulas.py: Mathematical core"
+        - "contradiction_analysis.py: Dialectical engine"
+    metrics/: "Performance and gameplay metrics"
+    utils/: "Shared utilities, exceptions"
+
+  tools/:
+    purpose: "CLI utilities"
+    key_files:
+      - "migrate_xml_to_json.py: Legacy migration"
+      - "validate_schemas.py: Schema validation"
+
+  tests/:
+    structure:
+      - "unit/: Fast, deterministic tests"
+      - "fixtures/: Test data"
+      - "mocks/: Test doubles"
+    markers:
+      - "math: Pure formula tests"
+      - "ledger: State tests"
+      - "topology: Graph tests"
+      - "integration: I/O tests"
+      - "ai: Slow AI evals"
+
+  brainstorm/: "Ideas not yet ready for implementation"
+  ai-docs/: "Machine-readable docs for AI assistants"
+
+# =============================================================================
+# DATA FLOW
+# =============================================================================
+
+data_flows:
+
+  startup:
+    steps:
+      - "Load JSON data files from src/babylon/data/"
+      - "Validate against schemas"
+      - "Build Pydantic models"
+      - "Construct NetworkX graph (Topology)"
+      - "Initialize ChromaDB connection (Archive)"
+
+  game_turn:
+    steps:
+      - "Read current state from Ledger"
+      - "Calculate contradiction intensities (Topology)"
+      - "Check rupture conditions"
+      - "Generate events based on state"
+      - "Apply effects to Ledger"
+      - "AI generates narrative from changes (Archive)"
+      - "Persist state"
+
+  ai_narrative:
+    principle: "AI is observer, not controller"
+    steps:
+      - "Receive state delta (what changed)"
+      - "Query Archive for relevant history/theory"
+      - "Generate narrative text"
+      - "Never modify game mechanics"
+
+# =============================================================================
+# KEY INTERFACES
+# =============================================================================
+
+interfaces:
+
+  entity_to_ledger:
+    pattern: "Pydantic models validated against JSON Schema"
+    example: "Faction model → factions.json → factions.schema.json"
+
+  ledger_to_topology:
+    pattern: "JSON data → NetworkX nodes/edges"
+    example: "faction.dialectical_relationships → graph edges"
+
+  topology_to_archive:
+    pattern: "State changes → ChromaDB queries → narrative"
+    example: "Contradiction intensified → find similar historical events → generate description"
+
+# =============================================================================
+# EXTENSION POINTS
+# =============================================================================
+
+extension_points:
+
+  new_entity_type:
+    steps:
+      - "Add schema to schemas/entities/"
+      - "Add collection schema to schemas/collections/"
+      - "Add JSON data file to data/"
+      - "Add Pydantic model to data/models/"
+      - "Register in entity_registry.py"
+
+  new_game_mechanic:
+    steps:
+      - "Add formula to systems/formulas.py"
+      - "Add tests with @pytest.mark.math"
+      - "Integrate with ContradictionAnalysis if dialectical"
+      - "Document in ai-docs/ontology.yaml if new concept"
+
+  new_ai_capability:
+    steps:
+      - "Add to rag/ layer only"
+      - "Query existing state, never modify directly"
+      - "Add @pytest.mark.ai tests (separate from logic tests)"

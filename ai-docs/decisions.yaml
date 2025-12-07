@@ -1,0 +1,302 @@
+# Babylon Architecture Decisions
+# Key decisions and their rationale (ADR-style)
+
+meta:
+  version: "1.1.0"
+  updated: "2025-12-07"
+  format: "decision_id: {status, date, context, decision, rationale, consequences}"
+
+# =============================================================================
+# ARCHITECTURAL DECISIONS
+# =============================================================================
+
+decisions:
+
+  ADR001_embedded_trinity:
+    status: "accepted"
+    date: "2024-12"
+    title: "Three-layer local architecture (Ledger/Topology/Archive)"
+    context: |
+      Game needs to handle rigid state (economics), fluid state (relationships),
+      and semantic memory (history/narrative) differently.
+    decision: |
+      Separate into three architectural layers:
+      - Ledger: SQLite/Pydantic for material state
+      - Topology: NetworkX for relational state
+      - Archive: ChromaDB for semantic memory
+    rationale:
+      - "Each layer has different consistency/mutability requirements"
+      - "Separation enables independent testing and evolution"
+      - "Mirrors materialist distinction: base/relations/superstructure"
+    consequences:
+      positive:
+        - "Clear separation of concerns"
+        - "Can swap implementations per layer"
+      negative:
+        - "More complexity than single-store approach"
+        - "Cross-layer queries require coordination"
+
+  ADR002_sqlite_over_postgres:
+    status: "accepted"
+    date: "2024-12-07"
+    title: "SQLite instead of PostgreSQL"
+    context: |
+      Initially configured PostgreSQL, but this is a local game
+      with no multi-user requirements.
+    decision: "Use SQLite for all persistent storage"
+    rationale:
+      - "No server to manage"
+      - "Zero configuration"
+      - "Portable game saves (single file)"
+      - "Sufficient performance for single-player"
+    consequences:
+      positive:
+        - "Simpler deployment"
+        - "No external dependencies"
+      negative:
+        - "Can't easily add multiplayer later"
+        - "No concurrent writes (not needed)"
+
+  ADR003_ai_as_observer:
+    status: "accepted"
+    date: "2024-12"
+    title: "AI generates narrative, never controls mechanics"
+    context: |
+      LLMs are non-deterministic. Game mechanics must be
+      reproducible and testable.
+    decision: |
+      AI sits in Archive layer only. It can:
+      - Query state and history
+      - Generate narrative text
+      It cannot:
+      - Modify game state
+      - Determine mechanical outcomes
+    rationale:
+      - "Deterministic mechanics enable testing"
+      - "Reproducible gameplay"
+      - "AI failures don't break game"
+      - "Separation of narration from simulation"
+    consequences:
+      positive:
+        - "Game works without AI"
+        - "Testable mechanics"
+      negative:
+        - "Less emergent AI behavior"
+        - "More explicit mechanics required"
+
+  ADR004_json_over_xml:
+    status: "accepted"
+    date: "2024-12-07"
+    title: "JSON for game data instead of XML"
+    context: |
+      Legacy data was in XML. Need machine-readable format
+      that's easy to validate and work with.
+    decision: "Migrate all game data to JSON with JSON Schema validation"
+    rationale:
+      - "Native Python support (json module)"
+      - "JSON Schema provides validation"
+      - "Easier to read/write programmatically"
+      - "Better tooling ecosystem"
+    consequences:
+      positive:
+        - "Schema validation catches errors early"
+        - "Cleaner data structures"
+      negative:
+        - "Migration effort (completed)"
+        - "XML kept as reference (minor storage cost)"
+
+  ADR005_json_schema_2020:
+    status: "accepted"
+    date: "2024-12-07"
+    title: "JSON Schema Draft 2020-12"
+    context: |
+      Need schema validation for game data. Multiple JSON Schema
+      versions exist.
+    decision: "Use Draft 2020-12, the latest stable version"
+    rationale:
+      - "Best $ref resolution"
+      - "Dynamic references support"
+      - "Active development"
+      - "referencing library support"
+    consequences:
+      positive:
+        - "Modern features available"
+        - "Good library support"
+      negative:
+        - "Some older tools may not support"
+
+  ADR006_pydantic_models:
+    status: "accepted"
+    date: "2024-12"
+    title: "Pydantic for all game objects"
+    context: |
+      Need runtime validation and type safety for game entities.
+    decision: "All game objects are Pydantic BaseModel subclasses"
+    rationale:
+      - "Runtime validation"
+      - "Automatic serialization"
+      - "IDE support"
+      - "Clear schema definition"
+    consequences:
+      positive:
+        - "Type safety"
+        - "Self-documenting models"
+      negative:
+        - "Slight performance overhead"
+        - "Learning curve"
+
+  ADR007_data_driven_design:
+    status: "accepted"
+    date: "2024-12"
+    title: "Game logic in data, not code"
+    context: |
+      Game has many entities with varying behaviors. Hardcoding
+      each case leads to unmaintainable code.
+    decision: |
+      Define game rules in data files (JSON/TOML).
+      Code provides engine, data provides content.
+    rationale:
+      - "Easy content modification"
+      - "Modding support"
+      - "Clear separation of concerns"
+      - "Non-programmers can adjust balance"
+    consequences:
+      positive:
+        - "Flexible content"
+        - "Moddable"
+      negative:
+        - "More complex data structures"
+        - "Data validation critical"
+
+  ADR008_test_separation:
+    status: "accepted"
+    date: "2024-12"
+    title: "Separate fast tests from AI tests"
+    context: |
+      AI tests are slow and non-deterministic.
+      Logic tests should be fast and reliable.
+    decision: |
+      Use pytest markers to separate:
+      - math, ledger, topology: fast, deterministic
+      - ai: slow, can be flaky
+    rationale:
+      - "Fast feedback loop for logic changes"
+      - "CI can run fast tests on every commit"
+      - "AI tests run less frequently"
+    consequences:
+      positive:
+        - "Fast TDD cycle"
+        - "Clear test categories"
+      negative:
+        - "Must remember to run both"
+
+  ADR009_networkx_topology:
+    status: "accepted"
+    date: "2024-12-07"
+    title: "NetworkX for Topology layer graph storage"
+    context: |
+      The Embedded Trinity architecture (ADR001) specifies a Topology layer for
+      fluid relational state: class solidarity networks, dialectical relationships,
+      supply chains, tension flows. This requires a graph data structure.
+
+      Options evaluated:
+      - NetworkX: Pure Python, rich algorithms, in-memory
+      - igraph: C-based, faster, less Pythonic API
+      - graph-tool: C++ core, fastest, complex installation
+      - Neo4j: Full graph DB, requires external server
+      - SQLite edge tables: DIY graph, no built-in algorithms
+      - RDFLib: Semantic web focus, overkill for game state
+    decision: |
+      Use NetworkX as the graph engine for the Topology layer.
+      Graph state persists to SQLite (Ledger) for save/load.
+      At startup, build NetworkX graph from SQLite edge data.
+      During gameplay, mutate graph in-memory.
+      On save, serialize graph back to SQLite.
+    rationale:
+      - "Pure Python: no external servers, matches 'no external dependencies' principle"
+      - "Rich algorithm library: centrality, paths, community detection built-in"
+      - "Sufficient performance: game will have ~1000-10000 nodes max, not millions"
+      - "Pythonic API: easy to test, integrates well with Pydantic models"
+      - "Serializable: nx.node_link_data() exports to JSON for SQLite storage"
+      - "Phase 1 scope: 2 nodes, 1 edge - any graph library works, pick simplest"
+      - "TDD-friendly: graph operations are pure functions, easy to unit test"
+    alternatives_rejected:
+      igraph:
+        reason: "C dependency complicates installation; performance gain unnecessary at our scale"
+      graph_tool:
+        reason: "Difficult to install (needs C++ compilation); overkill for game-sized graphs"
+      neo4j:
+        reason: "Violates 'no external servers' principle; adds operational complexity"
+      sqlite_edges:
+        reason: "Would require implementing graph algorithms from scratch; NetworkX provides them"
+    consequences:
+      positive:
+        - "Zero external dependencies beyond Python package"
+        - "Rich built-in algorithms for atomization metrics, hub detection, path analysis"
+        - "Easy serialization to SQLite for game saves"
+        - "Well-documented, mature library with active maintenance"
+        - "Trivial to test graph logic in isolation"
+      negative:
+        - "Pure Python slower than C-based alternatives (acceptable at our scale)"
+        - "In-memory only: requires explicit save/load logic to persist state"
+        - "No concurrent write safety (not needed for single-player turn-based game)"
+    performance_notes: |
+      NetworkX handles 10,000+ nodes efficiently for in-memory operations.
+      Phase 4 projection: 17 entity types × ~100 instances = ~1,700 nodes.
+      This is well within NetworkX's comfortable range.
+      If future requirements exceed 100,000 nodes, reconsider igraph migration.
+    integration_pattern: |
+      SQLite (Ledger)         NetworkX (Topology)        ChromaDB (Archive)
+        ┌──────────┐           ┌───────────────┐           ┌──────────┐
+        │ entities │──startup──▶│ G = nx.DiGraph│◀──query───│ semantic │
+        │ edges    │           │ nodes + edges │           │ embeddings│
+        └──────────┘           └───────────────┘           └──────────┘
+             ▲                        │
+             │                        │
+             └───────save game────────┘
+
+# =============================================================================
+# PENDING DECISIONS
+# =============================================================================
+
+pending:
+
+  PDR001_ui_framework:
+    status: "pending"
+    options:
+      - "NiceGUI (Python-native)"
+      - "Obsidian-like custom renderer"
+      - "Terminal-only (Rich)"
+    leaning: "NiceGUI for game, Obsidian-like for wiki"
+    blockers: "Game loop needs to exist first"
+
+  PDR002_wiki_implementation:
+    status: "brainstorm"
+    reference: "brainstorm/gramscian-wiki-engine.md"
+    options:
+      - "Jinja templates + Markdown + Obsidian"
+      - "Structured JSON + custom renderer"
+    considerations:
+      - "Hegemony mechanic integration"
+      - "Factional control model"
+      - "Player interaction model"
+
+# =============================================================================
+# REJECTED DECISIONS
+# =============================================================================
+
+rejected:
+
+  RDR001_postgres:
+    date: "2024-12-07"
+    proposal: "Use PostgreSQL for persistence"
+    rejection_reason: "Overkill for local single-player game"
+    replaced_by: "ADR002_sqlite_over_postgres"
+
+  RDR002_toml_data:
+    date: "2024-12-07"
+    proposal: "Use TOML for game data"
+    rejection_reason: |
+      JSON has better schema validation ecosystem.
+      TOML better for config, JSON better for data.
+    note: "TOML may still be used for configuration files"

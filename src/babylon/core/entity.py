@@ -1,26 +1,42 @@
+"""Legacy Entity class for backwards compatibility.
+
+NOTE: This module is deprecated. Use babylon.models.entities.social_class.SocialClass
+for new code. This exists only for backwards compatibility with the old
+entity_registry and __main__.py modules which are being phased out.
+
+The new Phase 2+ architecture uses Pydantic models with constrained types.
+"""
+
+from __future__ import annotations
+
 import logging
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
-    import numpy as np
+if TYPE_CHECKING:
     from numpy.typing import NDArray
-
-    HAS_NUMPY = True
-except ImportError:
-    # For testing without numpy
-    NDArray = Any
-    np = None
-    HAS_NUMPY = False
 
 logger = logging.getLogger(__name__)
 
 
-class Entity:
-    """Base class for all game entities."""
+# Check if numpy is available at runtime
+try:
+    import numpy as np
 
-    def __init__(self, type: str, role: str):
+    HAS_NUMPY = True
+except ImportError:
+    np = None  # type: ignore[assignment]
+    HAS_NUMPY = False
+
+
+class Entity:
+    """Legacy base class for game entities.
+
+    DEPRECATED: Use babylon.models.entities.social_class.SocialClass instead.
+    """
+
+    def __init__(self, type: str, role: str) -> None:
         """Initialize a new Entity.
 
         Args:
@@ -41,7 +57,7 @@ class Entity:
         self.power = 1.0  # Ability to influence other entities
 
         # Vector embedding (initialized as None)
-        self.embedding: NDArray | None = None
+        self.embedding: NDArray[Any] | None = None
 
         # Lifecycle tracking
         self.created_at = datetime.now()
@@ -51,7 +67,7 @@ class Entity:
         """Get the entity's metadata for ChromaDB storage.
 
         Returns:
-            Dict[str, Any]: A dictionary containing the entity's attributes
+            A dictionary containing the entity's attributes
         """
         return {
             "type": self.type,
@@ -71,7 +87,7 @@ class Entity:
         for AI systems to understand and process.
 
         Returns:
-            str: Text representation suitable for embedding
+            Text representation suitable for embedding
         """
         return (
             f"Entity Type: {self.type}. "
@@ -84,7 +100,7 @@ class Entity:
             f"in societal contradictions."
         )
 
-    def generate_embedding(self, embedding_model) -> None:
+    def generate_embedding(self, embedding_model: Any) -> None:
         """Generate vector embedding for this entity.
 
         Uses the provided embedding model to create a vector representation
@@ -95,6 +111,7 @@ class Entity:
                            (e.g., SentenceTransformer instance)
 
         Raises:
+            ImportError: If numpy is not installed
             Exception: If embedding generation fails
         """
         if not HAS_NUMPY:
@@ -112,12 +129,12 @@ class Entity:
             )
         except Exception as e:
             logger.error(
-                f"Failed to generate embedding for entity {self.id}: {str(e)}",
+                f"Failed to generate embedding for entity {self.id}: {e!s}",
                 extra={"entity_id": self.id, "entity_type": self.type},
             )
             raise
 
-    def add_to_chromadb(self, collection) -> None:
+    def add_to_chromadb(self, collection: Any) -> None:
         """Add this entity to a ChromaDB collection.
 
         Stores the entity's embedding and metadata in the specified ChromaDB collection.
@@ -149,14 +166,14 @@ class Entity:
             )
         except Exception as e:
             logger.error(
-                f"Failed to add entity {self.id} to ChromaDB: {str(e)}",
+                f"Failed to add entity {self.id} to ChromaDB: {e!s}",
                 extra={"entity_id": self.id, "entity_type": self.type},
             )
             raise
 
     @classmethod
     def search_similar_entities(
-        cls, collection, query_embedding: NDArray, n_results: int = 5
+        cls, collection: Any, query_embedding: NDArray[Any], n_results: int = 5
     ) -> list[dict[str, Any]]:
         """Search for entities similar to a given embedding.
 
@@ -169,7 +186,7 @@ class Entity:
             n_results: Number of similar entities to return
 
         Returns:
-            List[dict]: List of similar entities with their metadata and distances
+            List of similar entities with their metadata and distances
 
         Raises:
             Exception: If search fails
@@ -182,7 +199,7 @@ class Entity:
             )
 
             # Format results for easier consumption
-            similar_entities = []
+            similar_entities: list[dict[str, Any]] = []
             if results["ids"][0]:  # Check if we got any results
                 for i in range(len(results["ids"][0])):
                     similar_entities.append(
@@ -201,7 +218,7 @@ class Entity:
 
             return similar_entities
         except Exception as e:
-            logger.error(f"Failed to search similar entities: {str(e)}")
+            logger.error(f"Failed to search similar entities: {e!s}")
             raise
 
     def reconstruct_from_embedding(self) -> str:
@@ -211,7 +228,7 @@ class Entity:
         content from the entity's vector representation.
 
         Returns:
-            str: Reconstructed description of the entity
+            Reconstructed description of the entity
 
         Raises:
             ValueError: If no embedding exists
@@ -224,28 +241,29 @@ class Entity:
         # use a model to reconstruct content from the embedding.
         return self.get_content_for_embedding()
 
-    def get_embedding_similarity(self, other: "Entity") -> float:
+    def get_embedding_similarity(self, other: Entity) -> float:
         """Calculate similarity between this entity and another.
 
         Args:
             other: Another Entity to compare with
 
         Returns:
-            float: Cosine similarity score between -1 and 1
+            Cosine similarity score between -1 and 1
 
         Raises:
+            ImportError: If numpy is not installed
             ValueError: If either entity lacks an embedding
         """
-        if not HAS_NUMPY:
+        if not HAS_NUMPY or np is None:
             raise ImportError("NumPy is required for similarity calculation")
 
         if self.embedding is None or other.embedding is None:
             raise ValueError("Both entities must have embeddings for similarity calculation")
 
         # Calculate cosine similarity
-        dot_product = np.dot(self.embedding, other.embedding)
-        norm_a = np.linalg.norm(self.embedding)
-        norm_b = np.linalg.norm(other.embedding)
+        dot_product: float = float(np.dot(self.embedding, other.embedding))
+        norm_a: float = float(np.linalg.norm(self.embedding))
+        norm_b: float = float(np.linalg.norm(other.embedding))
 
         if norm_a == 0 or norm_b == 0:
             return 0.0

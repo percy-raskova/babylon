@@ -33,8 +33,9 @@ class BaseConfig:
 
     # === Database Configuration (The Ledger) ===
     # SQLite: simple, embedded, no server required
+    # Default location: data/babylon.db (relative to project root)
     DATABASE_URL: Final[str] = os.getenv(
-        "DATABASE_URL", f"sqlite:///{Path.cwd() / 'babylon.db'}"
+        "DATABASE_URL", f"sqlite:///{Path.cwd() / 'data' / 'babylon.db'}"
     )
 
     # === Logging Configuration ===
@@ -51,6 +52,7 @@ class BaseConfig:
     # === Paths ===
     BASE_DIR: Final[Path] = Path(__file__).parent.parent.parent.parent
     DATA_DIR: Final[Path] = BASE_DIR / "data"
+    EXTERNAL_DATA_DIR: Final[Path] = DATA_DIR / "external"
 
     @classmethod
     def get_database_url(cls) -> str:

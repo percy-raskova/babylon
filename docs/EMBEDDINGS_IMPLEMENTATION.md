@@ -17,7 +17,7 @@ The implementation provides a comprehensive embedding system that bridges the ga
    - Provides content generation, embedding creation, and ChromaDB integration
    - Includes similarity calculations and reconstruction capabilities
 
-2. **EntityEmbeddingService** (`src/babylon/core/entity_embedding_service.py`) 
+2. **EntityEmbeddingService** (`src/babylon/core/entity_embedding_service.py`)
    - High-level service layer integrating existing RAG infrastructure
    - Leverages OpenAI API, caching, and batch processing from EmbeddingManager
    - Provides advanced operations like semantic search and entity retrieval
@@ -128,8 +128,8 @@ The embedding system enables sophisticated AI-driven gameplay:
 Entities are converted to meaningful text for embedding:
 
 ```
-"Entity Type: Class. Role: Oppressed. Characteristics - Freedom: 0.30, 
-Wealth: 0.20, Stability: 0.80, Power: 0.40. This entity represents a 
+"Entity Type: Class. Role: Oppressed. Characteristics - Freedom: 0.30,
+Wealth: 0.20, Stability: 0.80, Power: 0.40. This entity represents a
 class with oppressed role in societal contradictions."
 ```
 

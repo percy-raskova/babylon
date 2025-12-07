@@ -4,7 +4,7 @@
         <h1>{{ .Title }}</h1>
         {{ .Content }}
     </div>
-    
+
     <section>
         <h2>Latest Updates</h2>
         {{ range first 5 (where .Site.RegularPages "Section" "in" .Site.Params.mainSections) }}

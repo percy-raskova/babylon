@@ -29,7 +29,7 @@ if [ -n "$python_files" ]; then
             existing_files="$existing_files $file"
         fi
     done
-    
+
     if [ -n "$existing_files" ]; then
         # Check virtual environment
 #        if [ ! -d "venv" ] && [ ! -d "env" ]; then

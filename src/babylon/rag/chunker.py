@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from babylon.rag.exceptions import ChunkingError, PreprocessingError
 
@@ -241,13 +241,14 @@ class TextChunker:
         best_break = -1
 
         for i in range(end_pos - 1, start_pos - 1, -1):
-            if content[i] in sentence_endings:
-                # Check if this is likely a real sentence ending
-                if i + 1 < len(content) and (content[i + 1].isspace() or content[i + 1] == '"'):
-                    # Skip common abbreviations
-                    if not self._is_abbreviation(content, i):
-                        best_break = i + 1
-                        break
+            if (
+                content[i] in sentence_endings
+                and i + 1 < len(content)
+                and (content[i + 1].isspace() or content[i + 1] == '"')
+                and not self._is_abbreviation(content, i)
+            ):
+                best_break = i + 1
+                break
 
         return best_break if best_break > start_pos else -1
 

@@ -18,8 +18,6 @@ from pydantic import ValidationError
 # These imports should fail until the model is implemented
 from babylon.models import Relationship
 from babylon.models.enums import EdgeType
-from babylon.models.types import Currency, Intensity
-
 
 # =============================================================================
 # CREATION TESTS
@@ -385,6 +383,7 @@ class TestRelationshipNetworkX:
     def test_phase1_complete_graph(self) -> None:
         """Phase 1 blueprint: two nodes + one edge complete graph."""
         import networkx as nx
+
         from babylon.models import SocialClass
         from babylon.models.enums import SocialRole
 

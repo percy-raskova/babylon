@@ -92,7 +92,7 @@ class TriggerCondition(BaseModel):
                 return None
 
         # Convert to float if possible
-        if isinstance(current, (int, float)):
+        if isinstance(current, int | float):
             return float(current)
         if isinstance(current, str):
             try:
@@ -131,15 +131,9 @@ class Trigger(BaseModel):
     logic: Literal["all", "any"] = Field(
         default="all", description="Logic for combining conditions: all (AND) or any (OR)"
     )
-    parameters: dict[str, Any] = Field(
-        default_factory=dict, description="Optional parameters"
-    )
-    cooldown_turns: int = Field(
-        default=0, ge=0, description="Minimum turns between activations"
-    )
-    last_triggered_turn: int | None = Field(
-        default=None, description="Turn when last triggered"
-    )
+    parameters: dict[str, Any] = Field(default_factory=dict, description="Optional parameters")
+    cooldown_turns: int = Field(default=0, ge=0, description="Minimum turns between activations")
+    last_triggered_turn: int | None = Field(default=None, description="Turn when last triggered")
 
     model_config = {"extra": "forbid"}
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import networkx as nx  # type: ignore[import-not-found]
+import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.models.entities.relationship import Relationship
@@ -75,7 +75,7 @@ class WorldState(BaseModel):
     # NetworkX Conversion
     # =========================================================================
 
-    def to_graph(self) -> nx.DiGraph:
+    def to_graph(self) -> nx.DiGraph[str]:
         """Convert state to NetworkX DiGraph for formula application.
 
         Nodes are entity IDs with all SocialClass fields as attributes.
@@ -90,7 +90,7 @@ class WorldState(BaseModel):
                 data["wealth"] += 10  # Modify in graph
             new_state = WorldState.from_graph(G, tick=state.tick + 1)
         """
-        G: nx.DiGraph = nx.DiGraph()
+        G: nx.DiGraph[str] = nx.DiGraph()
 
         # Add nodes with entity data
         for entity_id, entity in self.entities.items():
@@ -98,14 +98,15 @@ class WorldState(BaseModel):
 
         # Add edges with relationship data
         for rel in self.relationships:
-            G.add_edge(*rel.edge_tuple, **rel.edge_data)
+            source, target = rel.edge_tuple
+            G.add_edge(source, target, **rel.edge_data)
 
         return G
 
     @classmethod
     def from_graph(
         cls,
-        G: nx.DiGraph,
+        G: nx.DiGraph[str],
         tick: int,
         event_log: list[str] | None = None,
     ) -> WorldState:

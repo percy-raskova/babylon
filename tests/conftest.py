@@ -4,7 +4,7 @@ import tempfile
 import time
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import sessionmaker
 
 from babylon.config.testing import TestingConfig
@@ -45,6 +45,6 @@ def test_db():
 
 
 @pytest.fixture(scope="function")
-def metrics_collector(test_db):
+def metrics_collector(_test_db: Engine) -> MetricsCollector:
     """Create a fresh metrics collector for each test."""
     return MetricsCollector()

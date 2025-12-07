@@ -8,7 +8,7 @@
 - Sequential CPU Offload: Disabled
 
 ## Performance Settings
-- Sampling Steps: 
+- Sampling Steps:
   * Initial Pass: 50 steps
   * Hires Fix: 25-30 steps
   * Total: 75-80 steps (A100 can handle higher step counts efficiently)

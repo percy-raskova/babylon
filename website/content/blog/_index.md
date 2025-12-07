@@ -3,7 +3,7 @@ title: "Babylon Development Update: Expanding Contradiction Systems"
 date: 2024-12-01
 draft: false
 description: "Progress report on entity management, contradiction analysis, and a look ahead."
-featured_image: "/images/contradiction-mapping.png" 
+featured_image: "/images/contradiction-mapping.png"
 ---
 
 Greetings Babylon followers! We've been hard at work expanding the core systems that drive societal progression in our historical materialism simulation. Let's dive into what's new.
@@ -12,11 +12,11 @@ Greetings Babylon followers! We've been hard at work expanding the core systems 
 
 The heart of Babylon is the dialectical contradiction system - the way the game models the conflicts and resolutions that emerge from social forces interacting. We've greatly expanded our tools for analyzing and visualizing these contradictions (`contradiction_analysis.py`):
 
-- Added network graph visualization to show the web of relationships between entities like social classes, economic actors, and political factions. 
+- Added network graph visualization to show the web of relationships between entities like social classes, economic actors, and political factions.
 - Implemented dialectical mapping to chart the intensity and progression of key contradictions over time.
 - Enhanced tracking of contradiction intensity and history for a more dynamic simulation.
 
-## Robust Entity Management 
+## Robust Entity Management
 
 To populate our simulated world with a rich set of interacting entities, we've been expanding our entity management systems:
 

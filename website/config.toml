@@ -43,7 +43,7 @@ theme = 'babylon-theme'
     [markup.goldmark.renderer]
       unsafe = true
 =======
-  
+
 [module]
   [[module.mounts]]
     source = "static"

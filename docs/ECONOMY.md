@@ -6,12 +6,12 @@ To develop Marxist-inspired metrics for tracking the economic system in the game
 - **Ownership Structure**: Percentage distribution of ownership (private, communal, state-owned).
 - **Technological Advancement Index**: Represents the level of development of productive forces (based on the "Technology.xsd").
 - **Capacity Utilization Rate**: Ratio of actual to potential output.
-  
+
 #### **Labor Dynamics**
 - **Rate of Exploitation (s/v)**: Surplus labor (s) to necessary labor (v) ratio.
 - **Labor Participation Rate**: Proportion of the population actively engaged in production.
 - **Labor Intensity**: Average hours worked per laborer versus standard hours.
-  
+
 #### **Capital Dynamics**
 - **Organic Composition of Capital (c/v)**: Ratio of constant capital (c) to variable capital (v).
 - **Turnover Time of Capital**: Time taken for capital to complete its cycle (from production to realization).
@@ -449,7 +449,7 @@ To analyze an economy through the lens of labor power and labor hours, it's esse
 - **Analysis**: Use statistical software to analyze the data, focusing on metrics such as total labor hours, labor force participation rates, and the distribution between paid and unpaid labor.
 - **Visualization**: Create charts and graphs to visualize trends, comparisons across countries, and changes over time.
 
-By leveraging these resources, you can comprehensively measure and analyze labor power and labor hours within an economy, providing valuable insights into workforce dynamics and economic productivity. 
+By leveraging these resources, you can comprehensively measure and analyze labor power and labor hours within an economy, providing valuable insights into workforce dynamics and economic productivity.
 
 ---
 
@@ -533,7 +533,7 @@ To analyze an economy through the lens of labor power and labor hours, it's esse
 - **Analysis**: Use statistical software to analyze the data, focusing on metrics such as total labor hours, labor force participation rates, and the distribution between paid and unpaid labor.
 - **Visualization**: Create charts and graphs to visualize trends, comparisons across countries, and changes over time.
 
-By leveraging these resources, you can comprehensively measure and analyze labor power and labor hours within an economy, providing valuable insights into workforce dynamics and economic productivity. 
+By leveraging these resources, you can comprehensively measure and analyze labor power and labor hours within an economy, providing valuable insights into workforce dynamics and economic productivity.
 
 ---
 

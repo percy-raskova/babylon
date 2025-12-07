@@ -66,6 +66,8 @@ pre-commit = "^4.0.0"
 # Versioning
 commitizen = "^4.1.0"
 types-jsonschema = "^4.25.1.20251009"
+types-pyyaml = "^6.0.12.20250915"
+types-networkx = "^3.6.0.20251127"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

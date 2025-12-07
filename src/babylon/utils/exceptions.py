@@ -25,11 +25,14 @@ class BabylonError(Exception):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         self.message = message
         self.error_code = error_code or "SYS_000"
-        self.details = details or {}
+        self.details: dict[str, object] = details or {}
         super().__init__(self.message)
 
     def __str__(self) -> str:
@@ -40,7 +43,7 @@ class BabylonError(Exception):
             f"{self.__class__.__name__}(message={self.message!r}, error_code={self.error_code!r})"
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, object]:
         """Serialize exception for logging/API responses."""
         return {
             "error_type": self.__class__.__name__,
@@ -57,7 +60,10 @@ class ConfigurationError(BabylonError):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "CFG_001", details=details)
 
@@ -69,7 +75,10 @@ class DatabaseError(BabylonError):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "DB_001", details=details)
 
@@ -81,7 +90,10 @@ class EmbeddingError(BabylonError):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "EMB_001", details=details)
 
@@ -93,7 +105,10 @@ class ValidationError(BabylonError):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "VAL_001", details=details)
 
@@ -105,7 +120,10 @@ class TopologyError(BabylonError):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "TOP_001", details=details)
 
@@ -117,6 +135,9 @@ class SimulationError(BabylonError):
     """
 
     def __init__(
-        self, message: str, error_code: str | None = None, details: dict | None = None
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "SIM_001", details=details)

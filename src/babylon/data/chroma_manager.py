@@ -4,11 +4,11 @@ import uuid
 from typing import Any, Optional
 
 import chromadb
-from babylon.utils.exceptions import BabylonError, DatabaseError
-from chromadb.config import Settings
 from chromadb.errors import ChromaError, InvalidDimensionException, NoIndexException
-from babylon.utils.retry import retry_on_exception
+
 from babylon.config.chromadb_config import ChromaDBConfig
+from babylon.utils.exceptions import DatabaseError
+from babylon.utils.retry import retry_on_exception
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +126,7 @@ class ChromaManager:
             )
 
             # Create client with local persistence configuration
-            self._client = chromadb.Client(
-                ChromaDBConfig.get_settings()
-            )
+            self._client = chromadb.Client(ChromaDBConfig.get_settings())
 
             # Test connection
             self._client.heartbeat()

@@ -103,13 +103,13 @@ class CorruptStateError(LifecycleError):
 
 class PreEmbeddingError(RagError):
     """Base class for pre-embedding errors.
-    
+
     Error Code Ranges:
     - RAG_400 to RAG_419: Preprocessing errors
     - RAG_420 to RAG_439: Chunking errors
     - RAG_440 to RAG_459: Cache management errors
     """
-    
+
     def __init__(
         self,
         message: str,
@@ -121,14 +121,14 @@ class PreEmbeddingError(RagError):
 
 class PreprocessingError(PreEmbeddingError):
     """Error raised during content preprocessing.
-    
+
     Common Error Codes:
     - RAG_401: Content too short
     - RAG_402: Content too long
     - RAG_403: Invalid content format
     - RAG_404: Language detection failed
     """
-    
+
     def __init__(
         self,
         message: str,
@@ -142,14 +142,14 @@ class PreprocessingError(PreEmbeddingError):
 
 class ChunkingError(PreEmbeddingError):
     """Error raised during content chunking.
-    
+
     Common Error Codes:
     - RAG_421: Empty content
     - RAG_422: Invalid chunk size
     - RAG_423: Invalid chunking strategy
     - RAG_424: Chunking failed
     """
-    
+
     def __init__(
         self,
         message: str,
@@ -163,14 +163,14 @@ class ChunkingError(PreEmbeddingError):
 
 class CacheError(PreEmbeddingError):
     """Error raised during embedding cache operations.
-    
+
     Common Error Codes:
     - RAG_441: Cache initialization failed
     - RAG_442: Cache persistence error
     - RAG_443: Cache corruption
     - RAG_444: Cache capacity exceeded
     """
-    
+
     def __init__(
         self,
         message: str,

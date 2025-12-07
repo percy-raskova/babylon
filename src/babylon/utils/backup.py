@@ -1,179 +1,117 @@
+"""Backup and restore utilities for the Archive (ChromaDB).
+
+Data preservation is a revolutionary act.
+The historical record must survive state repression.
+"""
+
 import logging
 import shutil
 from datetime import datetime
-import hashlib
-import json
-import tarfile
-import tempfile
 from pathlib import Path
 
-import chromadb
-from babylon.exceptions import BackupError
+from babylon.config.chromadb_config import ChromaDBConfig
 
 logger = logging.getLogger(__name__)
 
 
 def backup_chroma(
-    client: chromadb.Client,
-    backup_dir: str,
-    persist_directory: str = None,
-    max_backups: int = 5,
-) -> bool:
-    """Backup ChromaDB data to the specified backup directory.
+    backup_dir: Path | None = None,
+    backup_name: str | None = None,
+) -> Path:
+    """Create a backup of the ChromaDB data directory.
 
     Args:
-        client: The ChromaDB client instance to backup
-        backup_dir: The path where backup will be stored
-        persist_directory: Optional directory where ChromaDB data is persisted
-        max_backups: Maximum number of backups to keep
+        backup_dir: Directory to store backups. Defaults to ./backups
+        backup_name: Name for the backup. Defaults to timestamp-based name.
 
     Returns:
-        bool: True if backup completed successfully, False otherwise
+        Path to the created backup directory
+
+    Raises:
+        FileNotFoundError: If ChromaDB directory doesn't exist
+        PermissionError: If backup directory isn't writable
     """
-    try:
-        # Get persist directory from client settings if not provided
-        if persist_directory is None:
-            if hasattr(client, "_settings"):
-                persist_directory = client._settings.persist_directory
-            else:
-                raise BackupError("No persistence directory specified", "BACKUP_001")
+    source_dir = ChromaDBConfig.BASE_DIR
 
-        persist_dir = Path(persist_directory)
-        backup_path = Path(backup_dir)
+    if not source_dir.exists():
+        logger.warning("ChromaDB directory does not exist: %s", source_dir)
+        raise FileNotFoundError(f"ChromaDB directory not found: {source_dir}")
 
-        # Validate persistence directory exists
-        if not persist_dir.exists():
-            raise BackupError(
-                "ChromaDB persistence directory does not exist", "BACKUP_001"
-            )
+    # Set up backup destination
+    if backup_dir is None:
+        backup_dir = Path("./backups")
 
-        # Create backup directory
-        backup_path.mkdir(parents=True, exist_ok=True)
+    backup_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create backup archive with timestamp
+    if backup_name is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archive_name = f"chroma_backup_{timestamp}.tar.gz"
-        archive_path = backup_path / archive_name
+        backup_name = f"chromadb_backup_{timestamp}"
 
-        # Create backup metadata
-        metadata = {
-            "timestamp": timestamp,
-            "version": chromadb.__version__,
-            "size": 0,  # Will be updated after archive creation
-            "checksum": None,  # Will be updated after archive creation
-        }
+    destination = backup_dir / backup_name
 
-        # Create compressed archive
-        with tarfile.open(archive_path, "w:gz") as tar:
-            # Add the entire persist directory
-            tar.add(persist_dir, arcname=".")
+    logger.info("Creating ChromaDB backup: %s -> %s", source_dir, destination)
 
-        # Update metadata with actual file size
-        metadata["size"] = archive_path.stat().st_size
+    # Perform the backup
+    shutil.copytree(source_dir, destination)
 
-        # Calculate checksum of archive
-        with open(archive_path, "rb") as f:
-            metadata["checksum"] = hashlib.sha256(f.read()).hexdigest()
-
-        # Save metadata
-        with open(backup_path / f"{archive_name}.meta", "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        # Rotate old backups
-        backups = sorted(backup_path.glob("chroma_backup_*.tar.gz"))
-        if len(backups) > max_backups:
-            for old_backup in backups[:-max_backups]:
-                old_backup.unlink()
-                meta_file = backup_path / f"{old_backup.name}.meta"
-                if meta_file.exists():
-                    meta_file.unlink()
-
-        logger.info(f"ChromaDB backup completed: {archive_path}")
-        return True
-
-    except OSError as e:
-        logger.error(f"Error during ChromaDB backup: {e}")
-        raise  # Re-raise OSError
-    except Exception as e:
-        logger.error(f"Error during ChromaDB backup: {e}")
-        return False
+    logger.info("Backup completed successfully: %s", destination)
+    return destination
 
 
-def restore_chroma(backup_path: str, persist_directory: str = None) -> bool:
-    """Restore ChromaDB data from the specified backup.
+def restore_chroma(
+    backup_path: Path,
+    force: bool = False,
+) -> None:
+    """Restore ChromaDB from a backup.
 
     Args:
-        backup_path: Path to the backup file
-        persist_directory: Optional directory where ChromaDB data should be restored
+        backup_path: Path to the backup directory
+        force: If True, overwrite existing ChromaDB data
+
+    Raises:
+        FileNotFoundError: If backup doesn't exist
+        FileExistsError: If ChromaDB exists and force=False
+    """
+    target_dir = ChromaDBConfig.BASE_DIR
+
+    if not backup_path.exists():
+        raise FileNotFoundError(f"Backup not found: {backup_path}")
+
+    if target_dir.exists():
+        if not force:
+            raise FileExistsError(
+                f"ChromaDB directory already exists: {target_dir}. " "Use force=True to overwrite."
+            )
+        logger.warning("Removing existing ChromaDB directory: %s", target_dir)
+        shutil.rmtree(target_dir)
+
+    logger.info("Restoring ChromaDB: %s -> %s", backup_path, target_dir)
+
+    shutil.copytree(backup_path, target_dir)
+
+    logger.info("Restore completed successfully")
+
+
+def list_backups(backup_dir: Path | None = None) -> list[Path]:
+    """List all available ChromaDB backups.
+
+    Args:
+        backup_dir: Directory containing backups. Defaults to ./backups
 
     Returns:
-        bool: True if restore completed successfully, False otherwise
+        List of backup directory paths, sorted by modification time (newest first)
     """
-    try:
-        backup_path = Path(backup_path)
+    if backup_dir is None:
+        backup_dir = Path("./backups")
 
-        # Get persist directory
-        if persist_directory is None:
-            raise BackupError("No persistence directory specified", "BACKUP_003")
-        persist_dir = Path(persist_directory)
+    if not backup_dir.exists():
+        return []
 
-        # Validate backup file exists and is a tar.gz
-        if not backup_path.exists() or not backup_path.name.endswith(".tar.gz"):
-            logger.error(f"Invalid backup file: {backup_path}")
-            return False
+    backups = [
+        p for p in backup_dir.iterdir() if p.is_dir() and p.name.startswith("chromadb_backup_")
+    ]
 
-        # Check for metadata file
-        meta_path = backup_path.parent / f"{backup_path.name}.meta"
-        if not meta_path.exists():
-            logger.error(f"Backup metadata not found: {meta_path}")
-            return False
+    # Sort by modification time, newest first
+    backups.sort(key=lambda p: p.stat().st_mtime, reverse=True)
 
-        # Load and validate metadata
-        with open(meta_path) as f:
-            metadata = json.load(f)
-
-        # Verify backup checksum
-        with open(backup_path, "rb") as f:
-            current_checksum = hashlib.sha256(f.read()).hexdigest()
-        if current_checksum != metadata["checksum"]:
-            logger.error("Backup checksum verification failed")
-            return False
-
-        # Remove existing persistence directory if it exists
-        if persist_dir.exists():
-            # Create backup of current data
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            current_backup = persist_dir.parent / f"pre_restore_backup_{timestamp}"
-            shutil.copytree(persist_dir, current_backup)
-            shutil.rmtree(persist_dir)
-
-        # Create persistence directory
-        persist_dir.mkdir(parents=True, exist_ok=True)
-
-        # Extract backup directly to persistence directory
-        with tarfile.open(backup_path, "r:gz") as tar:
-            import os
-
-            def is_within_directory(directory, target):
-                abs_directory = os.path.abspath(directory)
-                abs_target = os.path.abspath(os.path.join(directory, target))
-                prefix = os.path.commonprefix([abs_directory, abs_target])
-                return prefix == abs_directory
-
-            def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
-                for member in tar.getmembers():
-                    member_path = os.path.join(path, member.name)
-                    if not is_within_directory(path, member_path):
-                        raise BackupError(
-                            "Attempted Path Traversal in Tar File", "BACKUP_004"
-                        )
-                tar.extractall(path, members, numeric_owner=numeric_owner)
-
-            safe_extract(tar, persist_dir)
-
-        logger.info(f"ChromaDB restored from backup: {backup_path}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Error during ChromaDB restore: {e}")
-        return False
+    return backups

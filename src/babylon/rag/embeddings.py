@@ -1,20 +1,20 @@
 """Embedding management for the RAG system."""
 
-from typing import List, Dict, Any, Optional, Protocol
-import numpy as np
-import logging
-import time
 import asyncio
-import aiohttp
-from concurrent.futures import ThreadPoolExecutor
-import threading
-from dataclasses import dataclass
 import hashlib
+import logging
+import threading
+import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from typing import Protocol
+
+import aiohttp
 import backoff
 from ratelimit import limits, sleep_and_retry
-from babylon.metrics.collector import MetricsCollector
+
 from babylon.config.openai_config import OpenAIConfig
+from babylon.metrics.collector import MetricsCollector
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class Embeddable(Protocol):
 
     id: str
     content: str
-    embedding: Optional[List[float]]
+    embedding: list[float] | None
 
 
 class EmbeddingManager:
@@ -54,8 +54,8 @@ class EmbeddingManager:
 
     def __init__(
         self,
-        embedding_dimension: Optional[int] = None,
-        batch_size: Optional[int] = None,
+        embedding_dimension: int | None = None,
+        batch_size: int | None = None,
         max_cache_size: int = 1000,
         max_concurrent_requests: int = 4,
     ):
@@ -89,7 +89,7 @@ class EmbeddingManager:
         self.max_concurrent_requests = max_concurrent_requests
 
         # Use OrderedDict for LRU cache implementation
-        self._cache: OrderedDict[str, List[float]] = OrderedDict()
+        self._cache: OrderedDict[str, list[float]] = OrderedDict()
         self._cache_lock = threading.Lock()
 
         # Thread pool for concurrent operations
@@ -99,7 +99,7 @@ class EmbeddingManager:
         self._request_semaphore = asyncio.Semaphore(max_concurrent_requests)
 
         # HTTP session for API requests
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
         # Initialize metrics collector
         self.metrics = MetricsCollector()
@@ -134,7 +134,7 @@ class EmbeddingManager:
     )
     @sleep_and_retry
     @limits(calls=OpenAIConfig.RATE_LIMIT_RPM, period=60)
-    async def _generate_embedding_api(self, content: str) -> List[float]:
+    async def _generate_embedding_api(self, content: str) -> list[float]:
         """Generate embedding using OpenAI API with retry and rate limiting.
 
         Args:
@@ -164,7 +164,7 @@ class EmbeddingManager:
 
         except aiohttp.ClientError as e:
             raise OpenAIError(f"API request failed: {str(e)}") from e
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise OpenAIError("API request timed out") from e
         except Exception as e:
             raise OpenAIError(f"Unexpected error: {str(e)}") from e
@@ -238,9 +238,7 @@ class EmbeddingManager:
 
                 # Record memory usage
                 self.metrics.record_memory_usage(
-                    len(self._cache)
-                    * self.embedding_dimension
-                    * 8  # Approximate bytes used
+                    len(self._cache) * self.embedding_dimension * 8  # Approximate bytes used
                 )
 
                 # Record total operation time
@@ -279,7 +277,7 @@ class EmbeddingManager:
         """
         return asyncio.run(self.aembed(obj))
 
-    async def aembed_batch(self, objects: List[Embeddable]) -> List[Embeddable]:
+    async def aembed_batch(self, objects: list[Embeddable]) -> list[Embeddable]:
         """Asynchronously generate embeddings for multiple objects efficiently.
 
         Args:
@@ -300,9 +298,7 @@ class EmbeddingManager:
                 if len(batch) >= self.batch_size:
                     batch_start = time.time()
                     # Process batch concurrently
-                    batch_results = await asyncio.gather(
-                        *[self.aembed(obj) for obj in batch]
-                    )
+                    batch_results = await asyncio.gather(*[self.aembed(obj) for obj in batch])
                     results.extend(batch_results)
                     # Record batch processing time
                     self.metrics.record_metric(
@@ -316,9 +312,7 @@ class EmbeddingManager:
             if batch:
                 batch_start = time.time()
                 # Process remaining batch concurrently
-                batch_results = await asyncio.gather(
-                    *[self.aembed(obj) for obj in batch]
-                )
+                batch_results = await asyncio.gather(*[self.aembed(obj) for obj in batch])
                 results.extend(batch_results)
                 self.metrics.record_metric(
                     name="batch_processing_time",
@@ -356,7 +350,7 @@ class EmbeddingManager:
                 f"Batch embedding failed: {str(e)}. {len(results)} objects were successfully embedded."
             ) from e
 
-    def embed_batch(self, objects: List[Embeddable]) -> List[Embeddable]:
+    def embed_batch(self, objects: list[Embeddable]) -> list[Embeddable]:
         """Synchronously generate embeddings for multiple objects efficiently.
 
         This is a convenience wrapper around aembed_batch for synchronous code.
@@ -385,7 +379,7 @@ class EmbeddingManager:
         obj.embedding = None
         return obj
 
-    def debed_batch(self, objects: List[Embeddable]) -> List[Embeddable]:
+    def debed_batch(self, objects: list[Embeddable]) -> list[Embeddable]:
         """Remove embeddings from multiple objects.
 
         Args:

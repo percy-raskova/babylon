@@ -1,0 +1,205 @@
+"""WorldState model for the Babylon simulation.
+
+WorldState is an immutable snapshot of the entire simulation at a specific tick.
+It encapsulates:
+- All entities (social classes) as nodes
+- All relationships (value flows, tensions) as edges
+- A tick counter for temporal tracking
+- An event log for narrative/debugging
+
+The state is designed for functional transformation:
+    new_state = step(old_state, config)
+
+Sprint 4: Phase 2 game loop state container with NetworkX integration.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import networkx as nx  # type: ignore[import-not-found]
+from pydantic import BaseModel, ConfigDict, Field
+
+from babylon.models.entities.relationship import Relationship
+from babylon.models.entities.social_class import SocialClass
+from babylon.models.enums import EdgeType
+
+if TYPE_CHECKING:
+    pass
+
+
+class WorldState(BaseModel):
+    """Immutable snapshot of the simulation at a specific tick.
+
+    WorldState follows the Data/Logic separation principle:
+    - State holds WHAT exists (pure data)
+    - Engine determines HOW it transforms (pure logic)
+
+    This enables:
+    - Determinism: Same state + same engine = same output
+    - Replayability: Save initial state, replay entire history
+    - Counterfactuals: Modify a parameter, run forward, compare
+    - Testability: Feed state in, assert on state out
+
+    Attributes:
+        tick: Current turn number (0-indexed)
+        entities: Map of entity ID to SocialClass (the nodes)
+        relationships: List of Relationship edges (the edges)
+        event_log: Recent events for narrative/debugging
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tick: int = Field(
+        default=0,
+        ge=0,
+        description="Current turn number (0-indexed)",
+    )
+
+    entities: dict[str, SocialClass] = Field(
+        default_factory=dict,
+        description="Map of entity ID to SocialClass (graph nodes)",
+    )
+
+    relationships: list[Relationship] = Field(
+        default_factory=list,
+        description="List of relationships (graph edges)",
+    )
+
+    event_log: list[str] = Field(
+        default_factory=list,
+        description="Recent events for narrative/debugging",
+    )
+
+    # =========================================================================
+    # NetworkX Conversion
+    # =========================================================================
+
+    def to_graph(self) -> nx.DiGraph:
+        """Convert state to NetworkX DiGraph for formula application.
+
+        Nodes are entity IDs with all SocialClass fields as attributes.
+        Edges are relationships with all Relationship fields as attributes.
+
+        Returns:
+            NetworkX DiGraph with nodes and edges from this state.
+
+        Example:
+            G = state.to_graph()
+            for node_id, data in G.nodes(data=True):
+                data["wealth"] += 10  # Modify in graph
+            new_state = WorldState.from_graph(G, tick=state.tick + 1)
+        """
+        G: nx.DiGraph = nx.DiGraph()
+
+        # Add nodes with entity data
+        for entity_id, entity in self.entities.items():
+            G.add_node(entity_id, **entity.model_dump())
+
+        # Add edges with relationship data
+        for rel in self.relationships:
+            G.add_edge(*rel.edge_tuple, **rel.edge_data)
+
+        return G
+
+    @classmethod
+    def from_graph(
+        cls,
+        G: nx.DiGraph,
+        tick: int,
+        event_log: list[str] | None = None,
+    ) -> WorldState:
+        """Reconstruct WorldState from NetworkX DiGraph.
+
+        Args:
+            G: NetworkX DiGraph with node/edge data
+            tick: The tick number for the new state
+            event_log: Optional event log to preserve
+
+        Returns:
+            New WorldState with entities and relationships from graph.
+
+        Example:
+            G = state.to_graph()
+            # ... modify graph ...
+            new_state = WorldState.from_graph(G, tick=state.tick + 1)
+        """
+        # Reconstruct entities from nodes
+        entities: dict[str, SocialClass] = {}
+        for node_id, data in G.nodes(data=True):
+            entities[node_id] = SocialClass(**data)
+
+        # Reconstruct relationships from edges
+        relationships: list[Relationship] = []
+        for source_id, target_id, data in G.edges(data=True):
+            # Reconstruct edge_type from stored value
+            edge_type = data.get("edge_type", EdgeType.EXPLOITATION)
+            if isinstance(edge_type, str):
+                edge_type = EdgeType(edge_type)
+
+            relationships.append(
+                Relationship(
+                    source_id=source_id,
+                    target_id=target_id,
+                    edge_type=edge_type,
+                    value_flow=data.get("value_flow", 0.0),
+                    tension=data.get("tension", 0.0),
+                    description=data.get("description", ""),
+                )
+            )
+
+        return cls(
+            tick=tick,
+            entities=entities,
+            relationships=relationships,
+            event_log=event_log or [],
+        )
+
+    # =========================================================================
+    # Immutable Mutation Methods
+    # =========================================================================
+
+    def add_entity(self, entity: SocialClass) -> WorldState:
+        """Return new state with entity added.
+
+        Args:
+            entity: SocialClass to add
+
+        Returns:
+            New WorldState with the entity included.
+
+        Example:
+            new_state = state.add_entity(worker)
+        """
+        new_entities = {**self.entities, entity.id: entity}
+        return self.model_copy(update={"entities": new_entities})
+
+    def add_relationship(self, relationship: Relationship) -> WorldState:
+        """Return new state with relationship added.
+
+        Args:
+            relationship: Relationship edge to add
+
+        Returns:
+            New WorldState with the relationship included.
+
+        Example:
+            new_state = state.add_relationship(exploitation_edge)
+        """
+        new_relationships = [*self.relationships, relationship]
+        return self.model_copy(update={"relationships": new_relationships})
+
+    def add_event(self, event: str) -> WorldState:
+        """Return new state with event appended to log.
+
+        Args:
+            event: Event description string
+
+        Returns:
+            New WorldState with event in log.
+
+        Example:
+            new_state = state.add_event("Worker crossed poverty threshold")
+        """
+        new_log = [*self.event_log, event]
+        return self.model_copy(update={"event_log": new_log})

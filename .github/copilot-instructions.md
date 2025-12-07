@@ -1,4 +1,4 @@
-# 
+#
 This is a Python-based repository for Babylon, a text-based RPG simulating the interplay of political, economic, and social forces. Contributions should adhere to the following workflow and standards:
 
 ## Core Principles
@@ -17,7 +17,7 @@ This is a Python-based repository for Babylon, a text-based RPG simulating the i
 - **Testing:** Use the Pytest suite for all tests.
     - Run all tests: `poetry run pytest`
     - Add tests for each new feature or bugfix before or as you implement changes.
-- **Formatting & Linting:** 
+- **Formatting & Linting:**
     - Format code with [black](https://black.readthedocs.io/) and organize imports with [isort](https://pycqa.github.io/isort/).
     - Lint with [flake8](https://flake8.pycqa.org/) or [ruff](https://docs.astral.sh/ruff/).
     - Typical commands:

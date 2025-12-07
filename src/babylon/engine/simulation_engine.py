@@ -21,7 +21,7 @@ Sprint 5: Phase 2 game loop implementation.
 
 from __future__ import annotations
 
-import networkx as nx  # type: ignore[import-not-found]
+import networkx as nx
 
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EdgeType
@@ -79,7 +79,7 @@ def step(state: WorldState, config: SimulationConfig) -> WorldState:
 
 
 def _apply_imperial_rent(
-    G: nx.DiGraph,
+    G: nx.DiGraph[str],
     config: SimulationConfig,
     _events: list[str],
     _tick: int,
@@ -134,7 +134,7 @@ def _apply_imperial_rent(
 
 
 def _update_consciousness_drift(
-    G: nx.DiGraph,
+    G: nx.DiGraph[str],
     config: SimulationConfig,
 ) -> None:
     """Apply consciousness drift to all entities based on material conditions.
@@ -226,7 +226,7 @@ def _update_consciousness_drift(
 
 
 def _update_survival_probabilities(
-    G: nx.DiGraph,
+    G: nx.DiGraph[str],
     config: SimulationConfig,
 ) -> None:
     """Update P(S|A) and P(S|R) for all entities.
@@ -259,7 +259,7 @@ def _update_survival_probabilities(
 
 
 def _update_contradiction_tension(
-    G: nx.DiGraph,
+    G: nx.DiGraph[str],
     config: SimulationConfig,
     events: list[str],
     tick: int,

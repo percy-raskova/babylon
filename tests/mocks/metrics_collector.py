@@ -54,7 +54,7 @@ class MockMetricsCollector:
     def record_metric(
         self,
         name: str,
-        value: float,
+        value: float,  # noqa: ARG002
         context: str = "",
         object_id: str | None = None,
         context_level: str | None = None,

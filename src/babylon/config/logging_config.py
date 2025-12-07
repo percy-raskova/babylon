@@ -35,7 +35,7 @@ def setup_logging(config_path: Path | None = None, default_level: str = "INFO") 
 
         # Update file handler paths to use configured log directory
         if "handlers" in config:
-            for handler_name, handler_config in config["handlers"].items():
+            for _handler_name, handler_config in config["handlers"].items():
                 if "filename" in handler_config:
                     # Make path relative to LOG_DIR
                     filename = Path(handler_config["filename"]).name

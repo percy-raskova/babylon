@@ -298,7 +298,7 @@ class Retriever:
 
             # Convert results to QueryResult objects
             results = []
-            for i, (chunk_id, doc, embedding, metadata, distance) in enumerate(
+            for _i, (chunk_id, doc, embedding, metadata, distance) in enumerate(
                 zip(ids, documents, embeddings, metadatas, distances, strict=False)
             ):
                 similarity_score = max(0.0, 1.0 - distance)  # Convert distance to similarity

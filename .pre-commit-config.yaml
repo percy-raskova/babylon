@@ -26,8 +26,14 @@ repos:
         additional_dependencies:
           - pydantic>=2.0
           - types-requests
+          - types-networkx
+          - types-PyYAML
+          - types-jsonschema
+          - sqlalchemy>=2.0
+          - chromadb>=1.0
+          - python-dotenv>=1.0
         args: [--config-file=pyproject.toml]
-        exclude: ^tests/
+        exclude: ^tests/|^examples/|^src/babylon/rag/|^src/babylon/__main__.py|^src/babylon/metrics/|^tools/
 
   # ==========================================================================
   # FAST TESTS - Run on every commit

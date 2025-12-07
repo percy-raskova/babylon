@@ -1,10 +1,13 @@
+"""ChromaDB client management module."""
+
 import logging
 import time
 import uuid
-from typing import Any, Optional
 
 import chromadb
-from chromadb.errors import ChromaError, InvalidDimensionException, NoIndexException
+from chromadb.api import ClientAPI
+from chromadb.api.models.Collection import Collection
+from chromadb.errors import ChromaError, InvalidDimensionException
 
 from babylon.config.chromadb_config import ChromaDBConfig
 from babylon.utils.exceptions import DatabaseError
@@ -15,7 +18,6 @@ logger = logging.getLogger(__name__)
 # Define ChromaDB specific exceptions to handle
 CHROMA_RETRYABLE_EXCEPTIONS = (
     ChromaError,
-    NoIndexException,
     ConnectionError,
     TimeoutError,
 )
@@ -61,16 +63,16 @@ class ChromaManager:
         collection.add(documents=[...], embeddings=[...])
 
     Attributes:
-        _instance (Optional[ChromaManager]): Singleton instance of the manager
-        _client (Optional[chromadb.Client]): The ChromaDB client instance
+        _instance: Singleton instance of the manager
+        _client: The ChromaDB client instance
 
     Note:
         The class uses lazy initialization - the client is only created when first needed.
         This helps optimize resource usage and startup time.
     """
 
-    _instance: Optional["ChromaManager"] = None
-    _client: chromadb.Client | None = None
+    _instance: "ChromaManager | None" = None
+    _client: ClientAPI | None = None
 
     def __new__(cls) -> "ChromaManager":
         """Implement singleton pattern for ChromaManager.
@@ -83,7 +85,7 @@ class ChromaManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the ChromaManager instance.
 
         The initialization is lazy - the client is only created when needed.
@@ -129,7 +131,8 @@ class ChromaManager:
             self._client = chromadb.Client(ChromaDBConfig.get_settings())
 
             # Test connection
-            self._client.heartbeat()
+            if self._client is not None:
+                self._client.heartbeat()
 
             elapsed = time.perf_counter() - start_time
             logger.info(
@@ -159,17 +162,20 @@ class ChromaManager:
                 },
                 exc_info=True,
             )
-            raise DatabaseError(f"Failed to initialize ChromaDB client: {e}", "DB_001")
+            raise DatabaseError(f"Failed to initialize ChromaDB client: {e}", "DB_001") from e
 
     @property
-    def client(self) -> chromadb.Client:
+    def client(self) -> ClientAPI:
         """Get the ChromaDB client instance.
 
         This property implements lazy initialization of the client.
         If the client doesn't exist, it will be created on first access.
 
         Returns:
-            chromadb.Client: The initialized ChromaDB client instance
+            ClientAPI: The initialized ChromaDB client instance
+
+        Raises:
+            DatabaseError: If client initialization fails
 
         Note:
             This is the preferred way to access the client throughout the application
@@ -178,9 +184,11 @@ class ChromaManager:
         if self._client is None:
             # Initialize client if it doesn't exist
             self._initialize_client()
+        if self._client is None:
+            raise DatabaseError("Failed to initialize ChromaDB client", "DB_001")
         return self._client
 
-    def get_or_create_collection(self, name: str) -> Any:
+    def get_or_create_collection(self, name: str) -> Collection:
         """Get an existing collection or create a new one if it doesn't exist.
 
         This method provides a safe way to access collections, ensuring they exist
@@ -191,7 +199,7 @@ class ChromaManager:
             name: Name of the collection to get or create
 
         Returns:
-            Any: The ChromaDB collection instance
+            Collection: The ChromaDB collection instance
 
         Note:
             Collections are the main way to organize embeddings in ChromaDB.
@@ -219,10 +227,13 @@ class ChromaManager:
         if self._client:
             try:
                 # Ensure all changes are written to disk
-                self._client.persist()
+                # Note: persist() may not be available in newer chromadb versions
+                if hasattr(self._client, "persist"):
+                    self._client.persist()
 
                 # Reset the client to close connections
-                self._client.reset()
+                if hasattr(self._client, "reset"):
+                    self._client.reset()
 
                 # Clear the client reference
                 self._client = None

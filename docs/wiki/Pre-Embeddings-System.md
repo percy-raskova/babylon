@@ -18,7 +18,7 @@ classDiagram
         +prepare_batch_for_embedding(objects: List~Any~) List~Dict~
         +get_stats() Dict
     }
-    
+
     class ContentPreprocessor {
         -PreprocessingConfig config
         -MetricsCollector metrics
@@ -29,7 +29,7 @@ classDiagram
         +handle_special_chars(content: str) str
         +validate_content_length(content: str) str
     }
-    
+
     class ChunkingStrategy {
         -ChunkingConfig config
         -MetricsCollector metrics
@@ -38,7 +38,7 @@ classDiagram
         -fixed_size_chunking(content: str) List~str~
         -semantic_chunking(content: str) List~str~
     }
-    
+
     class EmbeddingCacheManager {
         -CacheConfig config
         -Dict cache
@@ -51,7 +51,7 @@ classDiagram
         +load_cache() None
         +get_cache_stats() Dict
     }
-    
+
     class PreprocessingConfig {
         +bool normalize_whitespace
         +bool normalize_case
@@ -59,26 +59,26 @@ classDiagram
         +int min_content_length
         +int max_content_length
     }
-    
+
     class ChunkingConfig {
         +str strategy
         +int chunk_size
         +int chunk_overlap
         +str chunk_delimiter
     }
-    
+
     class CacheConfig {
         +int max_cache_size
         +bool persist_cache
         +str cache_file_path
     }
-    
+
     class PreEmbeddingsConfig {
         +PreprocessingConfig preprocessing_config
         +ChunkingConfig chunking_config
         +CacheConfig cache_config
     }
-    
+
     PreEmbeddingsManager --> ContentPreprocessor
     PreEmbeddingsManager --> ChunkingStrategy
     PreEmbeddingsManager --> EmbeddingCacheManager
@@ -169,25 +169,25 @@ The PreEmbeddingsManager integrates with the LifecycleManager to retrieve object
 class LifecycleManager:
     def get_object(self, object_id: str) -> Any:
         """Retrieve an object by its ID.
-        
+
         Args:
             object_id: Unique identifier for the object
-            
+
         Returns:
             The object with the specified ID
-            
+
         Raises:
             ObjectNotFoundError: If the object is not found
         """
         pass
-    
+
     def update_object_state(self, object_id: str, state: str) -> None:
         """Update the state of an object.
-        
+
         Args:
             object_id: Unique identifier for the object
             state: New state for the object
-            
+
         Raises:
             ObjectNotFoundError: If the object is not found
             InvalidStateError: If the state is invalid
@@ -197,10 +197,10 @@ class LifecycleManager:
 # Usage in PreEmbeddingsManager
 def prepare_for_embedding(self, obj: Any) -> Dict[str, Any]:
     """Prepare an object for embedding by processing its content.
-    
+
     Args:
         obj: Object with content to prepare for embedding
-        
+
     Returns:
         Dictionary with processed content and metadata
     """
@@ -208,13 +208,13 @@ def prepare_for_embedding(self, obj: Any) -> Dict[str, Any]:
         try:
             # Retrieve the latest version of the object
             obj = self.lifecycle_manager.get_object(obj.id)
-            
+
             # Process the object's content
             processed_chunks = self.process_content(obj.content)
-            
+
             # Update the object's state
             self.lifecycle_manager.update_object_state(obj.id, "PREPROCESSED")
-            
+
             return {
                 "object_id": obj.id,
                 "chunks": processed_chunks,
@@ -239,59 +239,59 @@ The PreEmbeddingsManager prepares content for the EmbeddingManager:
 class EmbeddingManager:
     def create_embedding(self, content: str) -> List[float]:
         """Create an embedding for the given content.
-        
+
         Args:
             content: Content to embed
-            
+
         Returns:
             Vector embedding for the content
-            
+
         Raises:
             EmbeddingError: If embedding creation fails
         """
         pass
-    
+
     def create_embeddings_batch(self, contents: List[str]) -> List[List[float]]:
         """Create embeddings for multiple content items.
-        
+
         Args:
             contents: List of content items to embed
-            
+
         Returns:
             List of vector embeddings
-            
+
         Raises:
             EmbeddingError: If batch embedding creation fails
         """
         pass
 
 # Usage with PreEmbeddingsManager
-def embed_preprocessed_content(pre_embeddings_manager: PreEmbeddingsManager, 
+def embed_preprocessed_content(pre_embeddings_manager: PreEmbeddingsManager,
                               embedding_manager: EmbeddingManager,
                               content: str) -> Dict[str, Any]:
     """Process content and create embeddings.
-    
+
     Args:
         pre_embeddings_manager: PreEmbeddingsManager instance
         embedding_manager: EmbeddingManager instance
         content: Raw content to process and embed
-        
+
     Returns:
         Dictionary with processed chunks and their embeddings
     """
     # Process the content
     processed_chunks = pre_embeddings_manager.process_content(content)
-    
+
     # Create embeddings for chunks that don't have cached embeddings
     for chunk in processed_chunks:
         if "embedding" not in chunk:
             try:
                 # Create embedding for the chunk
                 embedding = embedding_manager.create_embedding(chunk["content"])
-                
+
                 # Add the embedding to the chunk
                 chunk["embedding"] = embedding
-                
+
                 # Cache the embedding for future use
                 pre_embeddings_manager.cache_manager.add_to_cache(
                     chunk["content_hash"], embedding
@@ -299,7 +299,7 @@ def embed_preprocessed_content(pre_embeddings_manager: PreEmbeddingsManager,
             except Exception as e:
                 # Handle errors
                 chunk["embedding_error"] = str(e)
-    
+
     return {
         "chunks": processed_chunks,
         "chunk_count": len(processed_chunks),

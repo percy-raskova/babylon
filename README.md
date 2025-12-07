@@ -132,7 +132,7 @@ The game features:
 
 ## Game Mechanics
 
-- **Contradiction Analysis System**: 
+- **Contradiction Analysis System**:
   - Advanced engine modeling societal contradictions
   - Network visualization of relationships
   - Real-time intensity tracking

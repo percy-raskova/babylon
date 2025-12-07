@@ -88,7 +88,7 @@ query = {
 ```python
 # Example tabulated query
 query = {
-  "year": "2019", 
+  "year": "2019",
   "variables": "SEX,DIS",
   "geography": "state:11,24,51",
   "query_type": "tabulate",
@@ -117,11 +117,11 @@ def validate_parameters(params):
     for field in required:
         if field not in params:
             raise ValueError(f"Missing required field: {field}")
-            
+
     # Validate year format
     if not params['year'].isdigit():
         raise ValueError("Year must be numeric")
-        
+
     # Additional validation...
 ```
 
@@ -129,19 +129,19 @@ def validate_parameters(params):
 ```python
 def construct_query(params):
     base_url = f"https://api.census.gov/data/{params['year']}/acs/acs1/pums"
-    
+
     if params['query_type'] == 'raw':
         query = f"?get={params['variables']}"
     else:
         query = f"?tabulate=weight({params['weight']})"
-        
+
     # Add geography
     query += f"&for={params['geography']}"
-    
+
     # Add filters if present
     if 'filters' in params:
         query += f"&{params['filters']}"
-        
+
     return base_url + query
 ```
 
@@ -149,7 +149,7 @@ def construct_query(params):
 ```python
 def process_response(response, query_type):
     data = response.json()
-    
+
     if query_type == 'raw':
         return {
             "records": format_raw_records(data),

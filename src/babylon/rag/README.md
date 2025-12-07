@@ -7,7 +7,7 @@ This directory contains the Retrieval-Augmented Generation (RAG) system for the 
 The RAG system integrates ChromaDB as a vector database with OpenAI embeddings to provide:
 
 - **Document Ingestion**: Process and chunk text documents for storage
-- **Vector Storage**: Store document embeddings in ChromaDB for efficient retrieval  
+- **Vector Storage**: Store document embeddings in ChromaDB for efficient retrieval
 - **Semantic Search**: Query documents using natural language for relevant content
 - **Context Generation**: Assemble retrieved content for LLM prompts
 - **Metadata Filtering**: Filter results by document metadata
@@ -75,15 +75,15 @@ config = RagConfig(
     chunk_size=1000,
     chunk_overlap=100,
     min_chunk_length=50,
-    
+
     # Embedding settings
     embedding_batch_size=10,
     max_concurrent_embeds=4,
-    
+
     # Retrieval settings
     default_top_k=10,
     default_similarity_threshold=0.0,
-    
+
     # Storage settings
     collection_name="my_documents",
     use_persistent_storage=True
@@ -122,20 +122,20 @@ from babylon.rag import RagPipeline
 
 async def main():
     pipeline = RagPipeline()
-    
+
     # Ingest a document
     await pipeline.aingest_text(
         "Historical materialism is the Marxist method...",
         "marxist_theory"
     )
-    
+
     # Query for relevant content
     response = await pipeline.aquery("What is historical materialism?")
-    
+
     # Get context for LLM
     context = response.get_combined_context(max_length=2000)
     print(f"Relevant context: {context}")
-    
+
     await pipeline.aclose()
 
 asyncio.run(main())
@@ -147,7 +147,7 @@ asyncio.run(main())
 # Process single file
 result = await pipeline.aingest_file("documents/theory.txt")
 
-# Process multiple files concurrently  
+# Process multiple files concurrently
 results = await pipeline.aingest_files([
     "documents/theory.txt",
     "documents/practice.txt",
@@ -205,7 +205,7 @@ async with RagPipeline() as pipeline:
 The RAG system integrates seamlessly with existing Babylon components:
 
 - **Configuration**: Uses existing `OpenAIConfig` for API settings
-- **Logging**: Integrated with Babylon's logging framework  
+- **Logging**: Integrated with Babylon's logging framework
 - **Exceptions**: Follows Babylon's error hierarchy
 - **Metrics**: Compatible with existing metrics collection
 - **Lifecycle**: Works with object lifecycle management
@@ -251,7 +251,7 @@ pipeline = RagPipeline(config=config)
 
 Key metrics to monitor:
 - Embedding generation times
-- Query response times  
+- Query response times
 - Cache hit ratios
 - Storage growth
 - API usage and costs

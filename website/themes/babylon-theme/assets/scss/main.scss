@@ -28,7 +28,7 @@ body {
     padding: 2rem 0;
     margin-top: 4rem;
     border-top: 2px solid $soviet-red;
-    
+
     p {
         margin: 0;
         text-align: center;
@@ -46,7 +46,7 @@ a {
     color: $soviet-red;
     text-decoration: none;
     transition: color 0.3s ease;
-    
+
     &:hover {
         color: $gold;
     }
@@ -70,7 +70,7 @@ code {
 nav {
     background: $dark-gray;
     padding: 1rem 0;
-    
+
     ul {
         list-style: none;
         display: flex;
@@ -86,7 +86,7 @@ nav {
     padding: 2rem;
     margin: 2rem 0;
     position: relative;
-    
+
     &::before {
         content: '';
         position: absolute;

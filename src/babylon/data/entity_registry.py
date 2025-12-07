@@ -40,7 +40,7 @@ class EntityRegistry:
 
         return entity
 
-    def update_entity(self, entity_id: str, **attributes) -> None:
+    def update_entity(self, entity_id: str, **attributes: object) -> None:
         """Update an entity's attributes.
 
         Args:

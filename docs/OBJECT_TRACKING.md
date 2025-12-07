@@ -142,18 +142,18 @@ class ObjectManager:
         self.active_objects = LRUCache(max_size=30)
         self.cached_objects = LRUCache(max_size=200)
         self.metrics = MetricsCollector()
-        
+
     def get_object(self, object_id):
         self.metrics.record_access(object_id)
-        
+
         if object_id in self.active_objects:
             self.metrics.record_cache_hit('active')
             return self.active_objects[object_id]
-            
+
         if object_id in self.cached_objects:
             self.metrics.record_cache_hit('secondary')
             return self._promote_to_active(object_id)
-            
+
         self.metrics.record_cache_miss()
         return self._load_from_vector_db(object_id)
 ```
@@ -174,7 +174,7 @@ class MetricsCollector:
                 'context_switches': []
             }
         }
-        
+
     def analyze_performance(self):
         return {
             'cache_hit_rate': self._calculate_hit_rate(),

@@ -1,58 +1,49 @@
-from typing import Dict, List, Optional
+from collections import Counter, deque
 from dataclasses import dataclass
-import os
 from datetime import datetime
 from pathlib import Path
-import pytest
 from statistics import mean
-from collections import Counter, deque
+
 
 @dataclass
 class PerformanceMetrics:
     """Data class for performance metrics results."""
-    hot_objects: List[str]
-    cache_hit_rate: Dict[str, float]
+
+    hot_objects: list[str]
+    cache_hit_rate: dict[str, float]
     avg_token_usage: float
-    latency_stats: Dict[str, float]
-    memory_profile: Dict[str, float]
+    latency_stats: dict[str, float]
+    memory_profile: dict[str, float]
+
 
 class MockMetricsCollector:
     """Mock metrics collector for testing."""
-    
-    def __init__(self, log_dir: Optional[Path] = None):
+
+    def __init__(self, log_dir: Path | None = None):
         self.log_dir = log_dir
         self.current_session = {
             "start_time": datetime.now(),
             "total_objects": 0,
             "active_objects": 0,
-            "cached_objects": 0
+            "cached_objects": 0,
         }
         self.metrics = {
             "object_access": Counter(),
             "token_usage": deque(maxlen=1000),
-            "cache_performance": {
-                "hits": Counter(),
-                "misses": Counter()
-            },
-            "latency": {
-                "db_queries": deque(maxlen=100),
-                "context_switches": deque(maxlen=100)
-            },
+            "cache_performance": {"hits": Counter(), "misses": Counter()},
+            "latency": {"db_queries": deque(maxlen=100), "context_switches": deque(maxlen=100)},
             "memory_usage": deque(maxlen=1000),
             "errors": Counter(),  # Track error counts by type
             "failed_operations": [],  # Track failed operation details
-            "contradiction_tracking": {
-                "total": 0,
-                "active": 0
-            }
+            "contradiction_tracking": {"total": 0, "active": 0},
         }
-        
+
         # Initialize default cache levels
         self.metrics["cache_performance"]["hits"]["L1"] = 0
         self.metrics["cache_performance"]["hits"]["L2"] = 0
         self.metrics["cache_performance"]["misses"]["L1"] = 0
         self.metrics["cache_performance"]["misses"]["L2"] = 0
-        
+
     def record_object_access(self, object_id: str, context: str) -> None:
         """Record an object access."""
         self.metrics["object_access"][object_id] += 1
@@ -60,7 +51,14 @@ class MockMetricsCollector:
         if context == "contradiction_system":
             self.metrics["contradiction_tracking"]["total"] += 1
 
-    def record_metric(self, name: str, value: float, context: str = "", object_id: Optional[str] = None, context_level: Optional[str] = None) -> None:
+    def record_metric(
+        self,
+        name: str,
+        value: float,
+        context: str = "",
+        object_id: str | None = None,
+        context_level: str | None = None,
+    ) -> None:
         """Record a metric."""
         if name.startswith("error:"):
             self.metrics["errors"][context] += 1
@@ -91,19 +89,19 @@ class MockMetricsCollector:
         """Record memory usage."""
         self.metrics["memory_usage"].append(memory_mb)
 
-    def _analyze_memory_usage(self) -> Dict[str, float]:
+    def _analyze_memory_usage(self) -> dict[str, float]:
         """Analyze memory usage statistics."""
         if not self.metrics["memory_usage"]:
             raise ValueError("No memory usage data available")
-            
+
         memory_values = list(self.metrics["memory_usage"])
         return {
             "avg": mean(memory_values),
             "peak": max(memory_values),
-            "current": memory_values[-1]  # Last recorded value
+            "current": memory_values[-1],  # Last recorded value
         }
 
-    def _calculate_latency_stats(self) -> Dict[str, Dict[str, float]]:
+    def _calculate_latency_stats(self) -> dict[str, dict[str, float]]:
         """Calculate latency statistics."""
         stats = {}
         for metric_type in ["db_queries", "context_switches"]:
@@ -113,7 +111,7 @@ class MockMetricsCollector:
                 "avg": mean(values) if values else 0.0,
                 "min": min(values) if values else 0.0,
                 "max": max(values) if values else 0.0,
-                "values": values
+                "values": values,
             }
         return stats
 
@@ -124,25 +122,35 @@ class MockMetricsCollector:
             hot_objects[obj_id] = {"access_count": count}
 
         cache_hit_rate = {}
-        for level in self.metrics["cache_performance"]["hits"].keys() | self.metrics["cache_performance"]["misses"].keys():
+        for level in (
+            self.metrics["cache_performance"]["hits"].keys()
+            | self.metrics["cache_performance"]["misses"].keys()
+        ):
             hits = self.metrics["cache_performance"]["hits"][level]
             misses = self.metrics["cache_performance"]["misses"][level]
             total = hits + misses
             cache_hit_rate[level] = hits / total if total > 0 else 0
 
-        memory_stats = self._analyze_memory_usage() if self.metrics["memory_usage"] else {"avg": 0, "peak": 0, "current": 0}
+        memory_stats = (
+            self._analyze_memory_usage()
+            if self.metrics["memory_usage"]
+            else {"avg": 0, "peak": 0, "current": 0}
+        )
         latency_stats = self._calculate_latency_stats()
 
         return {
             "hot_objects": hot_objects,
             "cache_hit_rate": cache_hit_rate,
-            "avg_token_usage": mean(self.metrics["token_usage"]) if self.metrics["token_usage"] else 0,
+            "avg_token_usage": mean(self.metrics["token_usage"])
+            if self.metrics["token_usage"]
+            else 0,
             "latency_stats": latency_stats,
             "memory_profile": memory_stats,
             "error_count": sum(self.metrics["errors"].values()),
             "failed_operations": self.metrics["failed_operations"],
-            "contradiction_count": self.metrics["contradiction_tracking"]["total"]
+            "contradiction_count": self.metrics["contradiction_tracking"]["total"],
         }
+
 
 def test_mock_metrics_collector_initialization():
     collector = MockMetricsCollector()
@@ -153,29 +161,32 @@ def test_mock_metrics_collector_initialization():
     assert collector.metrics["cache_performance"]["misses"]["L1"] == 0
     assert collector.metrics["cache_performance"]["misses"]["L2"] == 0
 
+
 def test_record_object_access():
     collector = MockMetricsCollector()
     collector.record_object_access("obj1", "test")
     collector.record_object_access("obj1", "test")
     collector.record_object_access("obj2", "test")
-    
+
     assert collector.metrics["object_access"]["obj1"] == 2
     assert collector.metrics["object_access"]["obj2"] == 1
+
 
 def test_record_cache_events():
     collector = MockMetricsCollector()
     collector.record_cache_event("L1", True)
     collector.record_cache_event("L1", False)
     collector.record_cache_event("L2", True)
-    
+
     assert collector.metrics["cache_performance"]["hits"]["L1"] == 1
     assert collector.metrics["cache_performance"]["misses"]["L1"] == 1
     assert collector.metrics["cache_performance"]["hits"]["L2"] == 1
     assert collector.metrics["cache_performance"]["misses"]["L2"] == 0
 
+
 def test_analyze_performance():
     collector = MockMetricsCollector()
-    
+
     # Add some test data
     collector.record_object_access("hot_obj", "test")
     collector.record_object_access("hot_obj", "test")
@@ -188,9 +199,9 @@ def test_analyze_performance():
     collector.record_memory_usage(50.0)
     collector.record_memory_usage(70.0)
     collector.record_metric("error:test", 1.0, "test_operation")
-    
+
     results = collector.analyze_performance()
-    
+
     assert "hot_obj" in results["hot_objects"]
     assert results["cache_hit_rate"]["L1"] == 0.5
     assert results["avg_token_usage"] == 150.0

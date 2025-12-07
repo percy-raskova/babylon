@@ -25,11 +25,7 @@ def parse_contradictions(xml_file):
         for entity_elem in between_entities_elem.findall("Entity"):
             entity_id = entity_elem.find("EntityID").text
             entity_type = entity_elem.find("EntityType").text
-            role = (
-                entity_elem.find("Role").text
-                if entity_elem.find("Role") is not None
-                else None
-            )
+            role = entity_elem.find("Role").text if entity_elem.find("Role") is not None else None
             entities.append(Entity(entity_id, entity_type, role))
 
         # Parse contradiction nature
@@ -40,9 +36,7 @@ def parse_contradictions(xml_file):
         )
         principal_aspect = contradiction_elem.find("PrincipalAspect").text
         secondary_aspect_elem = contradiction_elem.find("SecondaryAspect")
-        secondary_aspect = (
-            secondary_aspect_elem.text if secondary_aspect_elem is not None else None
-        )
+        secondary_aspect = secondary_aspect_elem.text if secondary_aspect_elem is not None else None
 
         # Parse attributes
         antagonism = contradiction_elem.find("Antagonism").text
@@ -55,21 +49,16 @@ def parse_contradictions(xml_file):
         )
         conditions_for_transformation = [
             cond.text
-            for cond in contradiction_elem.find("ConditionsForTransformation").findall(
-                "Condition"
-            )
+            for cond in contradiction_elem.find("ConditionsForTransformation").findall("Condition")
         ]
 
         # Parse resolution
         resolution_methods = [
-            method.text
-            for method in contradiction_elem.find("ResolutionMethods").findall("Method")
+            method.text for method in contradiction_elem.find("ResolutionMethods").findall("Method")
         ]
         resolution_conditions = [
             cond.text
-            for cond in contradiction_elem.find("ResolutionConditions").findall(
-                "Condition"
-            )
+            for cond in contradiction_elem.find("ResolutionConditions").findall("Condition")
         ]
 
         # Parse effects
@@ -81,12 +70,8 @@ def parse_contradictions(xml_file):
             value_elem = effect_elem.find("Value")
             value = float(value_elem.text) if value_elem is not None else None
             description_elem = effect_elem.find("Description")
-            description = (
-                description_elem.text if description_elem is not None else None
-            )
-            effects.append(
-                Effect(target, attribute, modification_type, value, description)
-            )
+            description = description_elem.text if description_elem is not None else None
+            effects.append(Effect(target, attribute, modification_type, value, description))
 
         # Parse additional attributes
         attributes = {}

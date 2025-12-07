@@ -1,55 +1,52 @@
-"""ChromaDB configuration module.
+"""ChromaDB configuration for the Archive layer.
 
-Provides centralized configuration for ChromaDB settings including:
-- Client initialization parameters
-- Persistence settings
-- Reset behavior
-- Collection defaults
+The Archive stores the semantic history and ideological context.
+It is the collective unconscious of the simulation.
 """
 
 import os
 from pathlib import Path
+from typing import Final
 
-import chromadb
+from chromadb.config import Settings
 
 
 class ChromaDBConfig:
-    """ChromaDB configuration settings."""
+    """Configuration for ChromaDB vector database.
 
-    # Base directory for ChromaDB persistence
-    BASE_DIR = Path(os.getenv("CHROMADB_DIR", "data/chromadb"))
+    The Archive persists embeddings locally using DuckDB+Parquet.
+    No external servers required - fully embedded, fully materialist.
+    """
 
-    # Collection settings
-    DEFAULT_COLLECTION_NAME = "entities"
-    DEFAULT_METADATA = {"source": "babylon"}
+    # === Storage Configuration ===
+    BASE_DIR: Final[Path] = Path(os.getenv("CHROMADB_PERSIST_DIR", "./chromadb"))
 
-    # Backup settings
-    BACKUP_DIR = BASE_DIR / "backups"
-    MAX_BACKUPS = 5
+    # === Collection Names ===
+    THEORY_COLLECTION: Final[str] = "marxist_theory"
+    HISTORY_COLLECTION: Final[str] = "game_history"
+    ENTITIES_COLLECTION: Final[str] = "entity_embeddings"
+
+    # === Performance Tuning ===
+    BATCH_SIZE: Final[int] = int(os.getenv("CHROMADB_BATCH_SIZE", "100"))
+    SEARCH_LIMIT: Final[int] = int(os.getenv("CHROMADB_SEARCH_LIMIT", "10"))
+    DISTANCE_THRESHOLD: Final[float] = float(os.getenv("CHROMADB_DISTANCE_THRESHOLD", "0.4"))
 
     @classmethod
-    def get_settings(cls, persist_directory=None, **overrides) -> chromadb.Settings:
-        """Get ChromaDB settings with optional overrides.
+    def get_settings(cls) -> Settings:
+        """Get ChromaDB Settings object for client initialization.
 
-        Args:
-            persist_directory: Directory for ChromaDB persistence
-            **overrides: Override any default settings
-
-        Returns:
-            chromadb.Settings: ChromaDB settings instance
+        Uses the new ChromaDB 1.x API with local persistence.
         """
-        settings_dict = {
-            "allow_reset": True,
-            "anonymized_telemetry": False,
-            "is_persistent": True,
-            "persist_directory": persist_directory or str(cls.BASE_DIR / "persist"),
-        }
-        settings_dict.update(overrides)
-        return chromadb.Settings(**settings_dict)
+        # Ensure persistence directory exists
+        cls.BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+        return Settings(
+            persist_directory=str(cls.BASE_DIR),
+            anonymized_telemetry=False,
+            allow_reset=True,
+        )
 
     @classmethod
-    def ensure_directories(cls) -> None:
-        """Ensure required directories exist."""
-        cls.BASE_DIR.mkdir(parents=True, exist_ok=True)
-        cls.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        (cls.BASE_DIR / "persist").mkdir(parents=True, exist_ok=True)
+    def get_persist_directory(cls) -> str:
+        """Get the persistence directory as a string."""
+        return str(cls.BASE_DIR)

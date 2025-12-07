@@ -8,18 +8,17 @@ from typing import Any
 
 import chromadb
 from sentence_transformers import SentenceTransformer
-from chromadb.config import Settings
 
 from babylon.config.base import BaseConfig as Config
 from babylon.config.logging_config import setup_logging
-from babylon.data.entity_registry import EntityRegistry
-from babylon.data.models.event import Event
 from babylon.core.economy import Economy
 from babylon.core.politics import Politics
+from babylon.data.chroma_manager import ChromaManager
+from babylon.data.entity_registry import EntityRegistry
+from babylon.data.models.event import Event
 from babylon.exceptions import BabylonError
 from babylon.systems.contradiction_analysis import ContradictionAnalysis
 from babylon.utils.backup import backup_chroma, restore_chroma
-from babylon.data.chroma_manager import ChromaManager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,9 +81,7 @@ def main() -> None:
     setup_logging()
 
     # Prompt user for backup directory
-    backup_dir = input(
-        "Enter the path to the backup directory (or press Enter to skip restore): "
-    )
+    backup_dir = input("Enter the path to the backup directory (or press Enter to skip restore): ")
     if backup_dir:
         restore_chroma(backup_dir)
 
@@ -105,9 +102,7 @@ def main() -> None:
 
     # Initialize core game systems
     entity_registry: EntityRegistry = EntityRegistry()
-    contradiction_analysis: ContradictionAnalysis = ContradictionAnalysis(
-        entity_registry
-    )
+    contradiction_analysis: ContradictionAnalysis = ContradictionAnalysis(entity_registry)
 
     # Initialize the game state dictionary that tracks all game systems
     game_state: dict[str, Any] = {

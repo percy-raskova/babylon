@@ -1,264 +1,255 @@
-try:
-    from babylon.data.database import SessionLocal
+"""Metrics collection system for Babylon/Babylon.
 
-    from .models import Metric
+The MetricsCollector observes the simulation without interfering.
+It is the Party's Central Statistical Bureau - recording material
+conditions for analysis by the planning committee.
+"""
 
-    DB_AVAILABLE = True
-except ImportError:
-    DB_AVAILABLE = False
-import json
 import logging
+import threading
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from sqlalchemy.exc import OperationalError
-from typing import Any
+from typing import Any, Optional
+
+from babylon.config.base import BaseConfig
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MetricEvent:
+    """A single metric measurement.
+
+    Immutable record of a moment in the simulation's history.
+    """
+
+    name: str
+    value: float
+    timestamp: datetime
+    tags: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class MetricsCollector:
-    """Collects and analyzes performance metrics for object tracking.
+    """Centralized metrics collection and aggregation.
 
-    See ERROR_CODES.md section 1500-1599 for error handling details."""
+    This class implements the Singleton pattern to ensure a single
+    source of truth for all metrics across the simulation.
 
-    def __init__(self, log_dir: Path | None = None) -> None:
-        from collections import Counter, deque
-        from typing import Any
+    The collector is thread-safe for concurrent metric recording.
 
-        # Set up logging directory, default to logs/metrics if not specified
-        self.log_dir = log_dir or Path("logs/metrics")
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+    Metrics Categories:
+    - performance: Timing, throughput, latency
+    - simulation: Game state metrics (P(S|A), P(S|R), Rent flow)
+    - cache: Hit rates, evictions, memory usage
+    - embedding: Generation times, batch sizes, errors
+    """
 
-        # Initialize database session if available
-        if DB_AVAILABLE:
-            try:
-                self.db = SessionLocal()
-            except OperationalError as e:
-                logging.warning(f"Failed to initialize database session: {e}")
-                self.db = None
-        else:
-            self.db = None
+    _instance: Optional["MetricsCollector"] = None
+    _lock: threading.Lock = threading.Lock()
 
-        # Initialize metrics storage containers with proper typing
-        self.metrics: dict[str, Any] = {
-            "object_access": Counter[str](),  # Tracks access frequency per object
-            "token_usage": deque[int](maxlen=1000),  # Rolling window of token counts
-            "cache_performance": {
-                "hits": Counter[str](),  # Successful cache retrievals by type
-                "misses": Counter[str](),  # Failed cache lookups by type
-            },
-            "latency": {
-                "db_queries": deque[float](maxlen=100),  # Database query response times
-                "context_switches": deque[float](
-                    maxlen=100
-                ),  # Context switch durations
-            },
-            "memory_usage": deque[int](maxlen=1000),  # Rolling window of memory samples
-        }
+    def __new__(cls) -> "MetricsCollector":
+        """Implement singleton pattern with thread safety."""
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
 
-        # Track current session statistics
-        self.current_session = {
-            "start_time": datetime.now(),  # Session start timestamp
-            "total_objects": 0,  # Total objects created in session
-            "active_objects": 0,  # Currently active objects
-            "cached_objects": 0,  # Objects currently in cache
-        }
+    def __init__(self) -> None:
+        """Initialize the metrics collector."""
+        if getattr(self, "_initialized", False):
+            return
 
-    def record_object_access(self, object_id: str, context: str) -> None:
-        """Record an object access event.
+        self._metrics: dict[str, list[MetricEvent]] = {}
+        self._counters: dict[str, int] = {}
+        self._gauges: dict[str, float] = {}
+        self._timers: dict[str, list[float]] = {}
+        self._enabled: bool = BaseConfig.METRICS_ENABLED
+        self._data_lock = threading.Lock()
+        self._initialized = True
 
-        Args:
-            object_id: ID of the accessed object
-            context: Context of the access (e.g., "entity_registry", "contradiction_system")
-        """
-        self.metrics["object_access"][object_id] += 1
-        logging.info(f"Object accessed: {object_id} in {context}")
+        logger.debug("MetricsCollector initialized (enabled=%s)", self._enabled)
 
-    def record_metric(
+    @property
+    def enabled(self) -> bool:
+        """Check if metrics collection is enabled."""
+        return self._enabled
+
+    def record(
         self,
         name: str,
         value: float,
-        context: str = "",
-        object_id: str | None = None,
-        context_level: str | None = None,
+        tags: dict[str, str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Record a metric in the database if available."""
-        if DB_AVAILABLE and self.db is not None:
-            try:
-                metric = Metric(name=name, value=value, context=context)
-                self.db.add(metric)
-                self.db.commit()
-            except OperationalError as e:
-                logging.warning(f"Failed to record metric '{name}': {e}")
-                self.db.rollback()
+        """Record a metric value.
 
-        # Record an object access event if object_id is provided
-        if object_id is not None:
-            self.metrics["object_access"][object_id] += 1
-            logging.info(f"Object accessed: {object_id} in {context_level}")
-
-    def record_token_usage(self, tokens_used: int) -> None:
-        """Record token usage."""
-        self.metrics["token_usage"].append(tokens_used)
-        logging.info(f"Token usage: {tokens_used}")
-
-    def record_cache_event(self, cache_type: str, hit: bool) -> None:
-        """Record cache hit/miss."""
-        if hit:
-            self.metrics["cache_performance"]["hits"][cache_type] += 1
-        else:
-            self.metrics["cache_performance"]["misses"][cache_type] += 1
-
-    def record_query_latency(self, latency_ms: float) -> None:
-        """Record database query latency."""
-        self.metrics["latency"]["db_queries"].append(latency_ms)
-
-    def record_context_switch(self, latency_ms: float) -> None:
-        """Record context switch latency."""
-        self.metrics["latency"]["context_switches"].append(latency_ms)
-
-    def record_memory_usage(self, bytes_used: int) -> None:
-        """Record memory usage."""
-        self.metrics["memory_usage"].append(bytes_used)
-
-    def analyze_performance(self) -> dict[str, Any]:
-        """Analyze collected metrics and return insights."""
-        analysis = {
-            "cache_hit_rate": self._calculate_hit_rate(),
-            "avg_token_usage": self._calculate_avg_tokens(),
-            "hot_objects": self._identify_hot_objects(),
-            "latency_stats": self._calculate_latency_stats(),
-            "memory_profile": self._analyze_memory_usage(),
-            "optimization_suggestions": self._generate_suggestions(),
-        }
-
-        # Log analysis
-        logging.info(f"Performance analysis: {json.dumps(analysis, indent=2)}")
-        return analysis
-
-    def _calculate_hit_rate(self) -> dict[str, float]:
-        """Calculate cache hit rates for different cache levels.
-
-        Computes the ratio of cache hits to total accesses for each cache type.
-        A higher hit rate indicates better cache efficiency.
-
-        Returns:
-            Dict[str, float]: Mapping of cache type to hit rate (0.0 to 1.0)
+        Args:
+            name: Metric name (e.g., "simulation.p_revolution")
+            value: Numeric value
+            tags: Key-value pairs for filtering/grouping
+            metadata: Additional context
         """
-        rates = {}
-        for cache_type in self.metrics["cache_performance"]["hits"]:
-            hits = self.metrics["cache_performance"]["hits"][cache_type]
-            misses = self.metrics["cache_performance"]["misses"][cache_type]
-            total = hits + misses
-            # Avoid division by zero for unused cache types
-            rates[cache_type] = (hits / total) if total > 0 else 0
-        return rates
+        if not self._enabled:
+            return
 
-    def _calculate_avg_tokens(self) -> float:
-        """Calculate average token usage."""
-        return (
-            sum(self.metrics["token_usage"]) / len(self.metrics["token_usage"])
-            if self.metrics["token_usage"]
-            else 0
+        event = MetricEvent(
+            name=name,
+            value=value,
+            timestamp=datetime.now(),
+            tags=tags or {},
+            metadata=metadata or {},
         )
 
-    def _identify_hot_objects(self, threshold: int = 3) -> list[str]:
-        """Identify frequently accessed objects."""
-        return [
-            obj_id
-            for obj_id, count in self.metrics["object_access"].most_common()
-            if count >= threshold
-        ]
+        with self._data_lock:
+            if name not in self._metrics:
+                self._metrics[name] = []
+            self._metrics[name].append(event)
 
-    def _calculate_latency_stats(self) -> dict[str, dict[str, Any]]:
-        """Calculate latency statistics."""
-        stats = {}
-        for metric_type in ["db_queries", "context_switches"]:
-            values = list(self.metrics["latency"][metric_type])
-            # Always include the metric type, even if there are no values
-            stats[metric_type] = {
-                "avg": sum(values) / len(values) if values else 0.0,
-                "min": min(values) if values else 0.0,
-                "max": max(values) if values else 0.0,
-                "values": values,
-            }
-        return stats
+    def increment(self, name: str, value: int = 1) -> None:
+        """Increment a counter metric.
 
-    def _analyze_memory_usage(self) -> dict[str, float]:
-        """Analyze memory usage patterns."""
-        values = list(self.metrics["memory_usage"])
-        if not values:
-            return {}
-        return {
-            "avg": sum(values) / len(values),
-            "peak": max(values),
-            "current": values[-1],
-        }
+        Args:
+            name: Counter name
+            value: Amount to increment
+        """
+        if not self._enabled:
+            return
 
-    def _generate_suggestions(self) -> list[str]:
-        """Generate optimization suggestions based on metrics.
+        with self._data_lock:
+            self._counters[name] = self._counters.get(name, 0) + value
 
-        Analyzes various performance metrics and generates actionable suggestions:
-        - Cache size adjustments when hit rates are below target (80%)
-        - Token usage optimizations when approaching context limits
-        - Memory management recommendations when usage is high
+    def gauge(self, name: str, value: float) -> None:
+        """Set a gauge metric to a specific value.
+
+        Args:
+            name: Gauge name
+            value: Current value
+        """
+        if not self._enabled:
+            return
+
+        with self._data_lock:
+            self._gauges[name] = value
+
+    def time(self, name: str) -> "TimerContext":
+        """Context manager for timing operations.
+
+        Args:
+            name: Timer name
 
         Returns:
-            List of suggestion strings for system optimization
+            TimerContext that records duration on exit
+
+        Example:
+            with collector.time("embedding.generation"):
+                embeddings = generate_embeddings(texts)
         """
-        suggestions = []
+        return TimerContext(self, name)
 
-        # Cache performance suggestions - target 80% hit rate
-        hit_rates = self._calculate_hit_rate()
-        for cache_type, rate in hit_rates.items():
-            if rate < 0.8:  # Below target efficiency
-                suggestions.append(
-                    f"Consider increasing {cache_type} cache size (current hit rate: {rate:.2%})"
-                )
+    def record_timing(self, name: str, duration: float) -> None:
+        """Record a timing measurement directly.
 
-        # Token usage suggestions - warn at 75% of context window
-        avg_tokens = self._calculate_avg_tokens()
-        if avg_tokens > 150000:  # 75% of context window
-            suggestions.append(
-                "High token usage detected. Consider implementing more aggressive object summarization."
-            )
+        Args:
+            name: Timer name
+            duration: Duration in seconds
+        """
+        if not self._enabled:
+            return
 
-        # Memory usage suggestions - warn at 80% of peak
-        memory_stats = self._analyze_memory_usage()
-        if memory_stats.get("current", 0) > 0.8 * memory_stats.get("peak", 0):
-            suggestions.append(
-                "Memory usage approaching peak. Consider garbage collection."
-            )
+        with self._data_lock:
+            if name not in self._timers:
+                self._timers[name] = []
+            self._timers[name].append(duration)
 
-        return suggestions
+    def get_counter(self, name: str) -> int:
+        """Get current counter value."""
+        with self._data_lock:
+            return self._counters.get(name, 0)
 
-    def save_metrics(self) -> None:
-        """Save current metrics to disk."""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        metrics_file = self.log_dir / f"metrics_{timestamp}.json"
+    def get_gauge(self, name: str) -> float | None:
+        """Get current gauge value."""
+        with self._data_lock:
+            return self._gauges.get(name)
 
-        # Create a copy of current_session with datetime converted to string
-        session_info = dict(self.current_session)
-        session_info["start_time"] = session_info["start_time"].isoformat()
+    def get_timer_stats(self, name: str) -> dict[str, float]:
+        """Get statistics for a timer.
 
-        with open(metrics_file, "w") as f:
-            json.dump(
-                {
-                    "session_info": session_info,
-                    "metrics": {
-                        "object_access": dict(self.metrics["object_access"]),
-                        "token_usage": list(self.metrics["token_usage"]),
-                        "cache_performance": {
-                            "hits": dict(self.metrics["cache_performance"]["hits"]),
-                            "misses": dict(self.metrics["cache_performance"]["misses"]),
-                        },
-                        "latency": {
-                            "db_queries": list(self.metrics["latency"]["db_queries"]),
-                            "context_switches": list(
-                                self.metrics["latency"]["context_switches"]
-                            ),
-                        },
-                        "memory_usage": list(self.metrics["memory_usage"]),
-                    },
-                },
-                f,
-                indent=2,
-            )
+        Returns:
+            Dict with count, sum, mean, min, max
+        """
+        with self._data_lock:
+            timings = self._timers.get(name, [])
+
+        if not timings:
+            return {"count": 0, "sum": 0.0, "mean": 0.0, "min": 0.0, "max": 0.0}
+
+        return {
+            "count": len(timings),
+            "sum": sum(timings),
+            "mean": sum(timings) / len(timings),
+            "min": min(timings),
+            "max": max(timings),
+        }
+
+    def get_metrics(self, name: str, limit: int = 100) -> list[MetricEvent]:
+        """Get recent metric events.
+
+        Args:
+            name: Metric name
+            limit: Maximum number of events to return
+
+        Returns:
+            List of recent MetricEvent objects
+        """
+        with self._data_lock:
+            events = self._metrics.get(name, [])
+            return events[-limit:]
+
+    def clear(self) -> None:
+        """Clear all collected metrics.
+
+        Used primarily for testing or resetting between game sessions.
+        """
+        with self._data_lock:
+            self._metrics.clear()
+            self._counters.clear()
+            self._gauges.clear()
+            self._timers.clear()
+
+        logger.debug("MetricsCollector cleared")
+
+    def summary(self) -> dict[str, Any]:
+        """Get a summary of all collected metrics.
+
+        Returns:
+            Dict with counters, gauges, and timer statistics
+        """
+        with self._data_lock:
+            return {
+                "counters": dict(self._counters),
+                "gauges": dict(self._gauges),
+                "timers": {name: self.get_timer_stats(name) for name in self._timers},
+                "metric_series_count": len(self._metrics),
+                "total_events": sum(len(events) for events in self._metrics.values()),
+            }
+
+
+class TimerContext:
+    """Context manager for timing code blocks."""
+
+    def __init__(self, collector: MetricsCollector, name: str) -> None:
+        self.collector = collector
+        self.name = name
+        self.start_time: float = 0.0
+
+    def __enter__(self) -> "TimerContext":
+        self.start_time = time.perf_counter()
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        duration = time.perf_counter() - self.start_time
+        self.collector.record_timing(self.name, duration)

@@ -1,8 +1,9 @@
 """Event model for handling game events and their effects."""
 
-from typing import Any, List, Optional
-from sqlalchemy import Column, Integer, String, JSON, ForeignKey
-from sqlalchemy.orm import relationship
+from typing import Any
+
+from sqlalchemy import JSON, Column, Integer, String
+
 from babylon.data.database import Base
 
 
@@ -29,10 +30,10 @@ class Event(Base):
         name: str,
         description: str,
         event_type: str,
-        effects: Optional[List[dict[str, Any]]] = None,
-        triggers: Optional[List[dict[str, Any]]] = None,
-        consequences: Optional[List[dict[str, Any]]] = None,
-        escalation_paths: Optional[List[dict[str, Any]]] = None,
+        effects: list[dict[str, Any]] | None = None,
+        triggers: list[dict[str, Any]] | None = None,
+        consequences: list[dict[str, Any]] | None = None,
+        escalation_paths: list[dict[str, Any]] | None = None,
     ) -> None:
         """
         Initialize a new event.
@@ -71,9 +72,7 @@ class Event(Base):
             elif effect_type == "social":
                 self._apply_social_effect(effect, game_state)
 
-    def _apply_economic_effect(
-        self, effect: dict[str, Any], game_state: dict[str, Any]
-    ) -> None:
+    def _apply_economic_effect(self, effect: dict[str, Any], game_state: dict[str, Any]) -> None:
         """Apply economic effects to the game state."""
         if "economy" in game_state:
             economy = game_state["economy"]
@@ -82,9 +81,7 @@ class Event(Base):
             if "unemployment_change" in effect:
                 economy.unemployment_rate += effect["unemployment_change"]
 
-    def _apply_political_effect(
-        self, effect: dict[str, Any], game_state: dict[str, Any]
-    ) -> None:
+    def _apply_political_effect(self, effect: dict[str, Any], game_state: dict[str, Any]) -> None:
         """Apply political effects to the game state."""
         if "politics" in game_state:
             politics = game_state["politics"]
@@ -94,9 +91,7 @@ class Event(Base):
                 for policy in effect["policy_changes"]:
                     politics.implement_policy(policy)
 
-    def _apply_social_effect(
-        self, effect: dict[str, Any], game_state: dict[str, Any]
-    ) -> None:
+    def _apply_social_effect(self, effect: dict[str, Any], game_state: dict[str, Any]) -> None:
         """Apply social effects to the game state."""
         # TODO: Implement social effects when social systems are added
         pass
@@ -111,13 +106,9 @@ class Event(Base):
         Returns:
             bool: True if all triggers are met, False otherwise
         """
-        return all(
-            self._evaluate_trigger(trigger, game_state) for trigger in self.triggers
-        )
+        return all(self._evaluate_trigger(trigger, game_state) for trigger in self.triggers)
 
-    def _evaluate_trigger(
-        self, trigger: dict[str, Any], game_state: dict[str, Any]
-    ) -> bool:
+    def _evaluate_trigger(self, trigger: dict[str, Any], game_state: dict[str, Any]) -> bool:
         """
         Evaluate a single trigger condition.
 
@@ -162,10 +153,7 @@ class Event(Base):
         politics = game_state["politics"]
         condition = trigger.get("condition", {})
 
-        if (
-            "min_stability" in condition
-            and politics.stability < condition["min_stability"]
-        ):
+        if "min_stability" in condition and politics.stability < condition["min_stability"]:
             return False
         if "required_policies" in condition:
             required_policies = set(condition["required_policies"])

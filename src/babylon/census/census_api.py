@@ -1,8 +1,10 @@
-from census import Census
-from us import states
 import os
+
 from dotenv import load_dotenv
 from src.babylon.census.data_dictionary import CensusDataDictionary
+from us import states
+
+from census import Census
 
 # Load environment variables and initialize Census API client
 load_dotenv()

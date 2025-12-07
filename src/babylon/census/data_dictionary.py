@@ -1,16 +1,14 @@
-import pandas as pd
-from pathlib import Path
-from typing import List, Dict, Optional
 import re
+from pathlib import Path
+
+import pandas as pd
 
 
 class CensusDataDictionary:
     def __init__(self, excel_path: str = None):
         if excel_path is None:
             # Default to the config location
-            excel_path = (
-                Path(__file__).parent.parent / "config" / "2022_DataProductList.xlsx"
-            )
+            excel_path = Path(__file__).parent.parent / "config" / "2022_DataProductList.xlsx"
 
         self.df = pd.read_excel(excel_path)
         # Clean up column names for easier access
@@ -24,7 +22,7 @@ class CensusDataDictionary:
         ].str.contains(pattern, na=False)
         return self.df[mask]
 
-    def get_table_info(self, table_id: str) -> Dict:
+    def get_table_info(self, table_id: str) -> dict:
         """Get detailed information about a specific table."""
         table = self.df[self.df["Table ID"] == table_id]
         if len(table) == 0:
@@ -32,9 +30,7 @@ class CensusDataDictionary:
 
         return table.iloc[0].to_dict()
 
-    def get_available_geographies(
-        self, table_id: str, estimate_type: str = "5-Year"
-    ) -> str:
+    def get_available_geographies(self, table_id: str, estimate_type: str = "5-Year") -> str:
         """Get geography restrictions for a table."""
         table = self.df[self.df["Table ID"] == table_id]
         if len(table) == 0:
@@ -43,7 +39,7 @@ class CensusDataDictionary:
         col = f"{estimate_type} Geography Restrictions"
         return table.iloc[0][col]
 
-    def list_data_product_types(self) -> List[str]:
+    def list_data_product_types(self) -> list[str]:
         """Get all available data product types."""
         return sorted(self.df["Data Product Type"].unique())
 
@@ -69,9 +65,7 @@ def example_usage():
         print(f"Title: {table_info['Table Title']}")
         print(f"Universe: {table_info['Table Universe']}")
         print(f"Data Product Type: {table_info['Data Product Type']}")
-        print(
-            f"5-Year Geography Restrictions: {table_info['5-Year Geography Restrictions']}"
-        )
+        print(f"5-Year Geography Restrictions: {table_info['5-Year Geography Restrictions']}")
 
 
 if __name__ == "__main__":

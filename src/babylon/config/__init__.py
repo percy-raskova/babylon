@@ -1,30 +1,22 @@
-"""Configuration management module for the Babylon application.
+"""Configuration package for Babylon/Babylon.
 
-This module determines which configuration to use based on the ENVIRONMENT
-environment variable. It supports three environments:
-- development (default)
-- testing
-- production
+The configuration hierarchy:
+1. Environment variables (.env file)
+2. Default values (defined in each config class)
 
-The appropriate configuration class is imported and exposed as 'Config'.
-
-Usage:
-    from babylon.config import Config
-    debug_mode = Config.DEBUG
+All configs are immutable after initialization.
 """
 
-import os
+from babylon.config.base import BaseConfig
+from babylon.config.chromadb_config import ChromaDBConfig
+from babylon.config.logging_config import setup_logging
+from babylon.config.openai_config import OpenAIConfig
+from babylon.config.testing import TestingConfig
 
-# Get environment setting, defaulting to development
-environment = os.getenv("ENVIRONMENT", "development").lower()
-
-# Import appropriate config based on environment
-if environment == "production":
-    from babylon.config.production import ProductionConfig as Config
-elif environment == "testing":
-    from babylon.config.testing import TestingConfig as Config
-else:
-    from babylon.config.development import DevelopmentConfig as Config
-
-# Export Config as the public interface
-__all__ = ["Config"]
+__all__ = [
+    "BaseConfig",
+    "ChromaDBConfig",
+    "OpenAIConfig",
+    "TestingConfig",
+    "setup_logging",
+]

@@ -12,9 +12,7 @@ The configuration system provides centralized management of application settings
 The BaseConfig class serves as the foundation for all configuration management:
 
 ### Database Settings
-- `DATABASE_URL`: PostgreSQL connection string
-- `DB_POOL_SIZE`: Connection pool size (default: 5)
-- `DB_MAX_OVERFLOW`: Max pool overflow (default: 10)
+- `DATABASE_URL`: SQLite connection string (default: `sqlite:///babylon.db`)
 
 ### ChromaDB Settings
 - `CHROMA_PERSIST_DIR`: Vector database persistence directory
@@ -54,9 +52,8 @@ BaseConfig.METRICS_ENABLED = False
 The following environment variables can be used to override default settings:
 
 ```bash
-# Database
-BABYLON_DATABASE_URL=postgresql://user:pass@localhost/dbname
-BABYLON_DB_POOL_SIZE=10
+# Database (SQLite)
+DATABASE_URL=sqlite:///babylon.db
 
 # ChromaDB
 BABYLON_CHROMA_PERSIST_DIR=/path/to/persist

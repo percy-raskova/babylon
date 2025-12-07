@@ -1,11 +1,12 @@
+import logging
 import uuid
 from datetime import datetime
-from typing import Any, Optional, List
-import logging
+from typing import Any
 
 try:
-    from numpy.typing import NDArray
     import numpy as np
+    from numpy.typing import NDArray
+
     HAS_NUMPY = True
 except ImportError:
     # For testing without numpy
@@ -98,21 +99,21 @@ class Entity:
         """
         if not HAS_NUMPY:
             raise ImportError("NumPy is required for embedding generation")
-            
+
         try:
             content = self.get_content_for_embedding()
             # Generate embedding using the model
             self.embedding = embedding_model.encode([content])[0]
             self.last_updated = datetime.now()
-            
+
             logger.debug(
                 f"Generated embedding for entity {self.id} ({self.type})",
-                extra={"entity_id": self.id, "content_length": len(content)}
+                extra={"entity_id": self.id, "content_length": len(content)},
             )
         except Exception as e:
             logger.error(
                 f"Failed to generate embedding for entity {self.id}: {str(e)}",
-                extra={"entity_id": self.id, "entity_type": self.type}
+                extra={"entity_id": self.id, "entity_type": self.type},
             )
             raise
 
@@ -130,30 +131,33 @@ class Entity:
             Exception: If storage in ChromaDB fails
         """
         if self.embedding is None:
-            raise ValueError(f"Entity {self.id} must have embedding generated before adding to ChromaDB")
+            raise ValueError(
+                f"Entity {self.id} must have embedding generated before adding to ChromaDB"
+            )
 
         try:
             collection.add(
                 documents=[self.get_content_for_embedding()],
                 embeddings=[self.embedding.tolist()],
                 metadatas=[self.get_metadata()],
-                ids=[self.id]
+                ids=[self.id],
             )
-            
+
             logger.debug(
                 f"Added entity {self.id} to ChromaDB collection",
-                extra={"entity_id": self.id, "entity_type": self.type}
+                extra={"entity_id": self.id, "entity_type": self.type},
             )
         except Exception as e:
             logger.error(
                 f"Failed to add entity {self.id} to ChromaDB: {str(e)}",
-                extra={"entity_id": self.id, "entity_type": self.type}
+                extra={"entity_id": self.id, "entity_type": self.type},
             )
             raise
 
     @classmethod
-    def search_similar_entities(cls, collection, query_embedding: NDArray, 
-                               n_results: int = 5) -> List[dict[str, Any]]:
+    def search_similar_entities(
+        cls, collection, query_embedding: NDArray, n_results: int = 5
+    ) -> list[dict[str, Any]]:
         """Search for entities similar to a given embedding.
 
         This is a "debedding" operation that retrieves entities based on
@@ -174,25 +178,27 @@ class Entity:
             results = collection.query(
                 query_embeddings=[query_embedding.tolist()],
                 n_results=n_results,
-                include=["documents", "metadatas", "distances"]
+                include=["documents", "metadatas", "distances"],
             )
-            
+
             # Format results for easier consumption
             similar_entities = []
-            if results['ids'][0]:  # Check if we got any results
-                for i in range(len(results['ids'][0])):
-                    similar_entities.append({
-                        'id': results['ids'][0][i],
-                        'document': results['documents'][0][i],
-                        'metadata': results['metadatas'][0][i],
-                        'distance': results['distances'][0][i]
-                    })
-            
+            if results["ids"][0]:  # Check if we got any results
+                for i in range(len(results["ids"][0])):
+                    similar_entities.append(
+                        {
+                            "id": results["ids"][0][i],
+                            "document": results["documents"][0][i],
+                            "metadata": results["metadatas"][0][i],
+                            "distance": results["distances"][0][i],
+                        }
+                    )
+
             logger.debug(
                 f"Found {len(similar_entities)} similar entities",
-                extra={"query_results": len(similar_entities)}
+                extra={"query_results": len(similar_entities)},
             )
-            
+
             return similar_entities
         except Exception as e:
             logger.error(f"Failed to search similar entities: {str(e)}")
@@ -218,7 +224,7 @@ class Entity:
         # use a model to reconstruct content from the embedding.
         return self.get_content_for_embedding()
 
-    def get_embedding_similarity(self, other: 'Entity') -> float:
+    def get_embedding_similarity(self, other: "Entity") -> float:
         """Calculate similarity between this entity and another.
 
         Args:
@@ -232,7 +238,7 @@ class Entity:
         """
         if not HAS_NUMPY:
             raise ImportError("NumPy is required for similarity calculation")
-            
+
         if self.embedding is None or other.embedding is None:
             raise ValueError("Both entities must have embeddings for similarity calculation")
 
@@ -240,9 +246,9 @@ class Entity:
         dot_product = np.dot(self.embedding, other.embedding)
         norm_a = np.linalg.norm(self.embedding)
         norm_b = np.linalg.norm(other.embedding)
-        
+
         if norm_a == 0 or norm_b == 0:
             return 0.0
-            
+
         similarity = dot_product / (norm_a * norm_b)
         return float(similarity)

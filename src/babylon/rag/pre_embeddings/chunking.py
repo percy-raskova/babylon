@@ -5,14 +5,14 @@ before embedding generation.
 """
 
 import time
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from babylon.metrics.collector import MetricsCollector
 from babylon.rag.exceptions import ChunkingError
 
 
-@dataclass
-class ChunkingConfig:
+class ChunkingConfig(BaseModel):
     """Configuration for content chunking.
 
     Attributes:
@@ -23,6 +23,8 @@ class ChunkingConfig:
         min_chunk_size: Minimum allowed chunk size
         max_chunk_size: Maximum allowed chunk size
     """
+
+    model_config = ConfigDict(frozen=True)
 
     strategy: str = "fixed"
     chunk_size: int = 1000

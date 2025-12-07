@@ -72,7 +72,7 @@ class EntityRegistry:
 
         entity = self._entities.get(entity_id)
         if entity:
-            self.metrics.record_object_access(entity_id, "entity_registry")
+            self.metrics.increment("entity_registry.access")
         return entity
 
     def delete_entity(self, entity_id: str) -> None:

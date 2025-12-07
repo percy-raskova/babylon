@@ -1,0 +1,66 @@
+# Pre-commit hooks for Babylon
+# Install: poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit
+# Run manually: poetry run pre-commit run --all-files
+
+repos:
+  # ==========================================================================
+  # RUFF - Linting and Formatting
+  # ==========================================================================
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        name: ruff (format)
+
+  # ==========================================================================
+  # MYPY - Type Checking
+  # ==========================================================================
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        name: mypy (typecheck)
+        additional_dependencies:
+          - pydantic>=2.0
+          - types-requests
+        args: [--config-file=pyproject.toml]
+        exclude: ^tests/
+
+  # ==========================================================================
+  # FAST TESTS - Run on every commit
+  # ==========================================================================
+  - repo: local
+    hooks:
+      - id: pytest-fast
+        name: pytest (fast tests)
+        entry: poetry run pytest tests/unit/formulas tests/unit/engine -q --tb=no
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+  # ==========================================================================
+  # COMMITIZEN - Conventional Commits
+  # ==========================================================================
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.1.0
+    hooks:
+      - id: commitizen
+        name: commitizen (commit message)
+        stages: [commit-msg]
+
+  # ==========================================================================
+  # GENERAL HYGIENE
+  # ==========================================================================
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict

@@ -1,0 +1,199 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.084965+00:00",
+  "sourceFormat": "xml",
+  "contradictions": [
+    {
+      "id": "CON001",
+      "name": "Capital vs Labor",
+      "description": "The fundamental contradiction between capitalist owners and working class over surplus value and means of production",
+      "entities": [
+        {
+          "entityId": "C001",
+          "entityType": "class",
+          "role": "oppressor"
+        },
+        {
+          "entityId": "C002",
+          "entityType": "class",
+          "role": "oppressed"
+        }
+      ],
+      "universality": true,
+      "particularity": "Manifests in wage relations, working conditions, and control over production",
+      "isPrincipal": true,
+      "principalAspect": "C002",
+      "antagonism": "Antagonistic",
+      "intensity": "high",
+      "state": "active",
+      "potentialForTransformation": true,
+      "conditionsForTransformation": [
+        "Class consciousness development",
+        "Worker organization",
+        "Economic crisis"
+      ],
+      "resolutionMethods": [
+        "Revolution",
+        "Reform",
+        "Collective action"
+      ],
+      "resolutionConditions": [
+        "Abolition of private property",
+        "Democratic control of production"
+      ],
+      "effects": [
+        {
+          "target": "ClassStruggle",
+          "attribute": "Intensity",
+          "operation": "increase",
+          "magnitude": 0.5,
+          "description": "Intensifies class struggle"
+        }
+      ]
+    },
+    {
+      "id": "CON002",
+      "name": "Colonizer vs Colonized",
+      "description": "The contradiction between imperial powers and colonized peoples, manifesting in economic exploitation and cultural domination",
+      "entities": [
+        {
+          "entityId": "F001",
+          "entityType": "faction",
+          "role": "oppressor"
+        },
+        {
+          "entityId": "F002",
+          "entityType": "faction",
+          "role": "oppressed"
+        }
+      ],
+      "universality": true,
+      "particularity": "Expressed through economic dependency, resource extraction, and cultural imperialism",
+      "isPrincipal": false,
+      "principalAspect": "F002",
+      "antagonism": "Antagonistic",
+      "intensity": "high",
+      "state": "active",
+      "potentialForTransformation": true,
+      "conditionsForTransformation": [
+        "National liberation movement",
+        "Economic independence",
+        "Cultural revival"
+      ],
+      "resolutionMethods": [
+        "Liberation struggle",
+        "Decolonization",
+        "Economic sovereignty"
+      ],
+      "resolutionConditions": [
+        "Political independence",
+        "Economic self-determination"
+      ],
+      "effects": [
+        {
+          "target": "NationalLiberation",
+          "attribute": "Strength",
+          "operation": "increase",
+          "magnitude": 0.6,
+          "description": "Strengthens liberation movements"
+        }
+      ]
+    },
+    {
+      "id": "CON003",
+      "name": "Economic Growth vs Environmental Degradation",
+      "description": "The contradiction between capitalist expansion and ecological sustainability",
+      "entities": [
+        {
+          "entityId": "Inst001",
+          "entityType": "institution",
+          "role": "economic system"
+        },
+        {
+          "entityId": "M001",
+          "entityType": "movement",
+          "role": "environmental movement"
+        }
+      ],
+      "universality": true,
+      "particularity": "Manifests in climate change, resource depletion, and pollution",
+      "isPrincipal": false,
+      "principalAspect": "M001",
+      "antagonism": "Antagonistic",
+      "intensity": "high",
+      "state": "active",
+      "potentialForTransformation": true,
+      "conditionsForTransformation": [
+        "Sustainable technology adoption",
+        "Economic system restructuring",
+        "Public awareness"
+      ],
+      "resolutionMethods": [
+        "Green technology",
+        "Economic reform",
+        "Social movement"
+      ],
+      "resolutionConditions": [
+        "Sustainable economy",
+        "Environmental protection"
+      ],
+      "effects": [
+        {
+          "target": "Environment",
+          "attribute": "Degradation",
+          "operation": "increase",
+          "magnitude": 0.7,
+          "description": "Accelerates environmental damage"
+        }
+      ]
+    },
+    {
+      "id": "CON004",
+      "name": "Racism vs Equality",
+      "description": "The contradiction between systemic racism and the struggle for racial equality and justice",
+      "entities": [
+        {
+          "entityId": "Inst002",
+          "entityType": "institution",
+          "role": "systemic racism"
+        },
+        {
+          "entityId": "M002",
+          "entityType": "movement",
+          "role": "equality movement"
+        }
+      ],
+      "universality": true,
+      "particularity": "Manifests in institutional discrimination, social inequality, and cultural oppression",
+      "isPrincipal": false,
+      "principalAspect": "M002",
+      "antagonism": "Antagonistic",
+      "intensity": "high",
+      "state": "active",
+      "potentialForTransformation": true,
+      "conditionsForTransformation": [
+        "Social consciousness",
+        "Institutional reform",
+        "Cultural change"
+      ],
+      "resolutionMethods": [
+        "Social movement",
+        "Legal reform",
+        "Education"
+      ],
+      "resolutionConditions": [
+        "Institutional equality",
+        "Cultural transformation"
+      ],
+      "effects": [
+        {
+          "target": "SocialUnity",
+          "attribute": "Cohesion",
+          "operation": "decrease",
+          "magnitude": 0.8,
+          "description": "Decreases social cohesion"
+        }
+      ]
+    }
+  ]
+}

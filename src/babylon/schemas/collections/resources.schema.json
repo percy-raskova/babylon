@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/resources.schema.json",
+  "title": "Resources Collection",
+  "description": "Collection of economic resources",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "resources": {
+      "type": "array",
+      "items": { "$ref": "../entities/resource.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "resources"],
+  "additionalProperties": false
+}

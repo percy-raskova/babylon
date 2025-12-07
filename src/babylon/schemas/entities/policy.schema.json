@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/policy.schema.json",
+  "title": "Policy",
+  "description": "A government policy",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "origin": {
+      "type": "string"
+    },
+    "enactmentDate": {
+      "type": "string"
+    },
+    "objectives": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Goal" }
+    },
+    "effects": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Effect" }
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

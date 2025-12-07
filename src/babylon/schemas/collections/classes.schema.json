@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/classes.schema.json",
+  "title": "Classes Collection",
+  "description": "Collection of social classes",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "classes": {
+      "type": "array",
+      "items": { "$ref": "../entities/class.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "classes"],
+  "additionalProperties": false
+}

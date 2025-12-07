@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/relationship.schema.json",
+  "title": "Relationship",
+  "description": "A standalone relationship between entities",
+
+  "type": "object",
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "Source entity ID"
+    },
+    "target": {
+      "type": "string",
+      "description": "Target entity ID"
+    },
+    "type": {
+      "type": "string"
+    },
+    "strength": {
+      "type": "integer",
+      "minimum": -100,
+      "maximum": 100
+    },
+    "dynamic": {
+      "type": "string"
+    },
+    "influences": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/RelationshipInfluence" }
+    },
+    "history": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/HistoricalEvent" }
+    }
+  },
+  "required": ["source", "target"],
+  "additionalProperties": true
+}

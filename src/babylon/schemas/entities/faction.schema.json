@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/faction.schema.json",
+  "title": "Faction",
+  "description": "A political faction in the geopolitical simulation",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^F[0-9]{3}$",
+      "description": "Faction identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "ideology": {
+      "type": "string"
+    },
+    "classComposition": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/ClassComposition" }
+    },
+    "economicBase": {
+      "type": "object",
+      "properties": {
+        "modeOfProduction": { "type": "string" },
+        "resources": {
+          "type": "array",
+          "items": { "$ref": "../core/common.schema.json#/$defs/ResourceAllocation" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "strategicDoctrine": {
+      "type": "object",
+      "properties": {
+        "political": { "type": "string" },
+        "military": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "dialecticalRelationships": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/DialecticalRelationship" }
+    },
+    "historicalDevelopment": {
+      "type": "string"
+    },
+    "leader": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "background": { "type": "string" },
+        "traits": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "influence": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/InfluenceZone" }
+    },
+    "military": {
+      "type": "object",
+      "properties": {
+        "totalStrength": { "type": "integer", "minimum": 0 },
+        "units": {
+          "type": "array",
+          "items": { "$ref": "../core/common.schema.json#/$defs/MilitaryUnit" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

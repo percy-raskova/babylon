@@ -1,0 +1,99 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.068990+00:00",
+  "sourceFormat": "xml",
+  "policies": [
+    {
+      "id": "comprehensive_immigration_reform",
+      "name": "Comprehensive Immigration Reform",
+      "description": "Major overhaul of immigration system with increased restrictions",
+      "category": "Political",
+      "origin": "Executive Branch",
+      "enactmentDate": "2024-08-01T00:00:00",
+      "objectives": [],
+      "effects": [
+        {
+          "target": "Immigrant Communities",
+          "operation": "modify",
+          "type": "Social",
+          "description": "Increased social tensions"
+        },
+        {
+          "target": "Economy",
+          "operation": "modify",
+          "type": "Economic",
+          "description": "Labor market disruption"
+        }
+      ]
+    },
+    {
+      "id": "foreign_military_aid_enhancement",
+      "name": "Foreign Military Aid Enhancement",
+      "description": "Massive increase in military aid to strategic allies",
+      "category": "Military",
+      "origin": "Department of Defense",
+      "enactmentDate": "2024-07-15T00:00:00",
+      "objectives": [],
+      "effects": [
+        {
+          "target": "Global Politics",
+          "operation": "modify",
+          "type": "Political",
+          "description": "Intensified regional conflicts"
+        },
+        {
+          "target": "National Economy",
+          "operation": "modify",
+          "type": "Economic",
+          "description": "Strain on domestic budget"
+        }
+      ]
+    },
+    {
+      "id": "enhanced_domestic_surveillance_act",
+      "name": "Enhanced Domestic Surveillance Act",
+      "description": "Expansion of state surveillance powers over social movements and protests",
+      "category": "Political",
+      "origin": "Federal Government",
+      "enactmentDate": "2024-06-01T00:00:00",
+      "objectives": [],
+      "effects": [
+        {
+          "target": "All Social Movements",
+          "operation": "modify",
+          "type": "Political",
+          "description": "Increased tension between state and protest movements"
+        },
+        {
+          "target": "Civil Society",
+          "operation": "modify",
+          "type": "Social",
+          "description": "Chilling effect on public protests"
+        }
+      ]
+    },
+    {
+      "id": "progressive_wealth_tax_initiative",
+      "name": "Progressive Wealth Tax Initiative",
+      "description": "Implementation of substantial wealth tax on ultra-high net worth individuals",
+      "category": "Economic",
+      "origin": "Progressive Congressional Caucus",
+      "enactmentDate": "2024-09-01T00:00:00",
+      "objectives": [],
+      "effects": [
+        {
+          "target": "Economic System",
+          "operation": "modify",
+          "type": "Economic",
+          "description": "Significant wealth redistribution"
+        },
+        {
+          "target": "Social Classes",
+          "operation": "modify",
+          "type": "Political",
+          "description": "Increased class conflict"
+        }
+      ]
+    }
+  ]
+}

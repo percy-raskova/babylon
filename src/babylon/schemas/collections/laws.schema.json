@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/laws.schema.json",
+  "title": "Laws Collection",
+  "description": "Collection of legal framework elements",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "laws": {
+      "type": "array",
+      "items": { "$ref": "../entities/law.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "laws"],
+  "additionalProperties": false
+}

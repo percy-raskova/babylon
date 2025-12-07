@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/resource.schema.json",
+  "title": "Resource",
+  "description": "An economic resource in the simulation",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^R[0-9]{3}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "attributes": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "production": {
+      "$ref": "../core/common.schema.json#/$defs/ProductionDetails"
+    },
+    "consumption": {
+      "$ref": "../core/common.schema.json#/$defs/ConsumptionDetails"
+    },
+    "value": {
+      "type": "number",
+      "minimum": 0
+    },
+    "marketPrice": {
+      "type": "number",
+      "minimum": 0
+    },
+    "availability": {
+      "$ref": "../core/common.schema.json#/$defs/Availability"
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

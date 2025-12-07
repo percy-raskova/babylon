@@ -1,0 +1,549 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.078560+00:00",
+  "sourceFormat": "xml",
+  "locations": [
+    {
+      "id": "L001",
+      "name": "Los Angeles-Long Beach-Anaheim",
+      "type": "metropolitan",
+      "description": "Major West Coast metropolitan area with diverse economy",
+      "coordinates": {
+        "latitude": 34.0522,
+        "longitude": -118.2437
+      },
+      "terrain": "Coastal Urban",
+      "climate": "Mediterranean",
+      "controlledBy": "F001",
+      "population": 12799100,
+      "dominantClass": "C001",
+      "resources": [
+        {
+          "resourceId": "R001",
+          "quantity": 1000.0
+        }
+      ],
+      "subLocations": [
+        {
+          "id": "L001A",
+          "name": "Long Beach Port",
+          "type": "industrial",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F001",
+          "population": 466451,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L001"
+        },
+        {
+          "id": "L001B",
+          "name": "Hollywood",
+          "type": "cultural",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 153075,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L001"
+        }
+      ]
+    },
+    {
+      "id": "L001A",
+      "name": "Long Beach Port",
+      "type": "industrial",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F001",
+      "population": 466451,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L001B",
+      "name": "Hollywood",
+      "type": "cultural",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 153075,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L002",
+      "name": "Chicago-Naperville-Elgin",
+      "type": "metropolitan",
+      "description": "Major Midwestern industrial and financial hub",
+      "coordinates": {
+        "latitude": 41.8781,
+        "longitude": -87.6298
+      },
+      "terrain": "Urban Plains",
+      "climate": "Continental",
+      "controlledBy": "F002",
+      "population": 9262559,
+      "dominantClass": "C002",
+      "resources": [],
+      "subLocations": [
+        {
+          "id": "L002A",
+          "name": "Industrial Corridor",
+          "type": "industrial",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 311598,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L002"
+        },
+        {
+          "id": "L002B",
+          "name": "Financial District",
+          "type": "financial",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F003",
+          "population": 247280,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L002"
+        }
+      ]
+    },
+    {
+      "id": "L002A",
+      "name": "Industrial Corridor",
+      "type": "industrial",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 311598,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L002B",
+      "name": "Financial District",
+      "type": "financial",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F003",
+      "population": 247280,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L003",
+      "name": "Washington-Arlington-Alexandria",
+      "type": "metropolitan",
+      "description": "Capital region and political center",
+      "coordinates": {
+        "latitude": 38.9072,
+        "longitude": -77.0369
+      },
+      "terrain": "Urban Coastal Plain",
+      "climate": "Humid Subtropical",
+      "controlledBy": "F001",
+      "population": 6304449,
+      "dominantClass": "C003",
+      "resources": [],
+      "subLocations": [
+        {
+          "id": "L003A",
+          "name": "Capitol Hill",
+          "type": "government",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F001",
+          "population": 876150,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L003"
+        },
+        {
+          "id": "L003B",
+          "name": "Pentagon City",
+          "type": "military",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F001",
+          "population": 547196,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L003"
+        },
+        {
+          "id": "L003C",
+          "name": "Alexandria Old Town",
+          "type": "historical",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 293693,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L003"
+        }
+      ]
+    },
+    {
+      "id": "L003A",
+      "name": "Capitol Hill",
+      "type": "government",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F001",
+      "population": 876150,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L003B",
+      "name": "Pentagon City",
+      "type": "military",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F001",
+      "population": 547196,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L003C",
+      "name": "Alexandria Old Town",
+      "type": "historical",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 293693,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L004",
+      "name": "Denver-Aurora-Centennial",
+      "type": "metropolitan",
+      "description": "Mountain region hub with tech and resource industries",
+      "coordinates": {
+        "latitude": 39.7392,
+        "longitude": -104.9903
+      },
+      "terrain": "Mountain Urban",
+      "climate": "Semi-arid",
+      "controlledBy": "F003",
+      "population": 3005131,
+      "dominantClass": "C002",
+      "resources": [],
+      "subLocations": [
+        {
+          "id": "L004A",
+          "name": "Tech Center",
+          "type": "technology",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F003",
+          "population": 151321,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L004"
+        },
+        {
+          "id": "L004B",
+          "name": "Mining District",
+          "type": "industrial",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 121485,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L004"
+        }
+      ]
+    },
+    {
+      "id": "L004A",
+      "name": "Tech Center",
+      "type": "technology",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F003",
+      "population": 151321,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L004B",
+      "name": "Mining District",
+      "type": "industrial",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 121485,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L005",
+      "name": "Baltimore-Columbia-Towson",
+      "type": "metropolitan",
+      "description": "Major port and industrial center",
+      "coordinates": {
+        "latitude": 39.2904,
+        "longitude": -76.6122
+      },
+      "terrain": "Coastal Urban",
+      "climate": "Humid Subtropical",
+      "controlledBy": "F002",
+      "population": 2834316,
+      "dominantClass": "C001",
+      "resources": [],
+      "subLocations": [
+        {
+          "id": "L005A",
+          "name": "Inner Harbor",
+          "type": "port",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 131381,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L005"
+        },
+        {
+          "id": "L005B",
+          "name": "Industrial Park",
+          "type": "industrial",
+          "description": "",
+          "coordinates": null,
+          "terrain": "",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 110672,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L005"
+        }
+      ]
+    },
+    {
+      "id": "L005A",
+      "name": "Inner Harbor",
+      "type": "port",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 131381,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L005B",
+      "name": "Industrial Park",
+      "type": "industrial",
+      "description": "",
+      "coordinates": null,
+      "terrain": "",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 110672,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L006",
+      "name": "Kansas City",
+      "type": "metropolitan",
+      "description": "Major Midwestern transportation and cultural hub",
+      "coordinates": {
+        "latitude": 39.0997,
+        "longitude": -94.5786
+      },
+      "terrain": "Urban Plains",
+      "climate": "Continental",
+      "controlledBy": "F001",
+      "population": 2219865,
+      "dominantClass": "C001",
+      "resources": [
+        {
+          "resourceId": "R001",
+          "quantity": 500.0
+        }
+      ],
+      "subLocations": [
+        {
+          "id": "L006A",
+          "name": "Manhattan",
+          "type": "educational",
+          "description": "Home to Kansas State University",
+          "coordinates": {
+            "latitude": 39.1836,
+            "longitude": -96.5717
+          },
+          "terrain": "Plains",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 132831,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L006"
+        },
+        {
+          "id": "L006B",
+          "name": "Lawrence",
+          "type": "educational",
+          "description": "Home to University of Kansas",
+          "coordinates": {
+            "latitude": 38.9717,
+            "longitude": -95.2353
+          },
+          "terrain": "Plains",
+          "climate": "",
+          "controlledBy": "F002",
+          "population": 120553,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L006"
+        },
+        {
+          "id": "L006C",
+          "name": "Topeka",
+          "type": "government",
+          "description": "State Capital of Kansas",
+          "coordinates": {
+            "latitude": 39.0473,
+            "longitude": -95.6752
+          },
+          "terrain": "Plains",
+          "climate": "",
+          "controlledBy": "F001",
+          "population": 126587,
+          "dominantClass": "",
+          "resources": [],
+          "subLocations": [],
+          "parentId": "L006"
+        }
+      ]
+    },
+    {
+      "id": "L006A",
+      "name": "Manhattan",
+      "type": "educational",
+      "description": "Home to Kansas State University",
+      "coordinates": {
+        "latitude": 39.1836,
+        "longitude": -96.5717
+      },
+      "terrain": "Plains",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 132831,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L006B",
+      "name": "Lawrence",
+      "type": "educational",
+      "description": "Home to University of Kansas",
+      "coordinates": {
+        "latitude": 38.9717,
+        "longitude": -95.2353
+      },
+      "terrain": "Plains",
+      "climate": "",
+      "controlledBy": "F002",
+      "population": 120553,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    },
+    {
+      "id": "L006C",
+      "name": "Topeka",
+      "type": "government",
+      "description": "State Capital of Kansas",
+      "coordinates": {
+        "latitude": 39.0473,
+        "longitude": -95.6752
+      },
+      "terrain": "Plains",
+      "climate": "",
+      "controlledBy": "F001",
+      "population": 126587,
+      "dominantClass": "",
+      "resources": [],
+      "subLocations": []
+    }
+  ]
+}

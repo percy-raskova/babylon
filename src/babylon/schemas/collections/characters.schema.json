@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/characters.schema.json",
+  "title": "Characters Collection",
+  "description": "Collection of character entities",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "characters": {
+      "type": "array",
+      "items": { "$ref": "../entities/character.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "characters"],
+  "additionalProperties": false
+}

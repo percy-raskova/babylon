@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/location.schema.json",
+  "title": "Location",
+  "description": "A geographic location in the simulation",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^L[0-9]{3}[A-Z]?$",
+      "description": "Location identifier"
+    },
+    "parentId": {
+      "type": "string",
+      "description": "Parent location ID for sub-locations"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "type": "string",
+      "description": "Location type"
+    },
+    "description": {
+      "type": "string"
+    },
+    "coordinates": {
+      "oneOf": [
+        { "$ref": "../core/common.schema.json#/$defs/Coordinates" },
+        { "type": "null" }
+      ]
+    },
+    "terrain": {
+      "type": "string"
+    },
+    "climate": {
+      "type": "string"
+    },
+    "controlledBy": {
+      "type": "string",
+      "description": "Faction ID controlling this location"
+    },
+    "population": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "dominantClass": {
+      "type": "string"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "resourceId": { "type": "string" },
+          "quantity": { "type": "number" }
+        }
+      }
+    },
+    "subLocations": {
+      "type": "array",
+      "items": { "$ref": "#" },
+      "description": "Nested sub-locations"
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

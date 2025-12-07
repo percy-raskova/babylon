@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/technologies.schema.json",
+  "title": "Technologies Collection",
+  "description": "Collection of technologies",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "technologies": {
+      "type": "array",
+      "items": { "$ref": "../entities/technology.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "technologies"],
+  "additionalProperties": false
+}

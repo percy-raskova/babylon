@@ -1,0 +1,98 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.080034+00:00",
+  "sourceFormat": "xml",
+  "institutions": [
+    {
+      "id": "Inst001",
+      "name": "Systemic Racism",
+      "type": "Social",
+      "description": "A system of structures, policies, practices, and cultural norms that perpetuate racial inequality and discrimination.",
+      "controlledBy": "",
+      "functions": [
+        "Social Control",
+        "Economic Oppression",
+        "Cultural Hegemony"
+      ],
+      "attributes": {}
+    },
+    {
+      "id": "Inst002",
+      "name": "Policing",
+      "type": "Legal",
+      "description": "State-sanctioned law enforcement institution responsible for maintaining order and enforcing laws.",
+      "controlledBy": "",
+      "functions": [
+        "Law Enforcement",
+        "Social Control",
+        "Public Safety"
+      ],
+      "attributes": {}
+    },
+    {
+      "id": "Inst003",
+      "name": "Mass Media",
+      "type": "Cultural",
+      "description": "System of communication channels that shape public opinion and cultural narratives.",
+      "controlledBy": "",
+      "functions": [
+        "Information Distribution",
+        "Ideological Production",
+        "Social Control"
+      ],
+      "attributes": {}
+    },
+    {
+      "id": "Inst004",
+      "name": "Labor Unions",
+      "type": "Economic",
+      "description": "Organizations of workers formed to protect and advance their rights and interests.",
+      "controlledBy": "",
+      "functions": [
+        "Worker Organization",
+        "Collective Bargaining",
+        "Class Struggle"
+      ],
+      "attributes": {}
+    },
+    {
+      "id": "Inst005",
+      "name": "Military",
+      "type": "State",
+      "description": "Armed forces responsible for national defense and projection of state power.",
+      "controlledBy": "",
+      "functions": [
+        "National Defense",
+        "Imperial Power Projection",
+        "Internal Control"
+      ],
+      "attributes": {}
+    },
+    {
+      "id": "Inst006",
+      "name": "Religious Institutions",
+      "type": "Religious",
+      "description": "Organized religious bodies that shape moral and social values.",
+      "controlledBy": "",
+      "functions": [
+        "Moral Guidance",
+        "Social Control",
+        "Community Organization"
+      ],
+      "attributes": {}
+    },
+    {
+      "id": "Inst007",
+      "name": "Higher Education",
+      "type": "Educational",
+      "description": "Academic institutions for advanced learning and research.",
+      "controlledBy": "",
+      "functions": [
+        "Knowledge Production",
+        "Professional Training",
+        "Social Reproduction"
+      ],
+      "attributes": {}
+    }
+  ]
+}

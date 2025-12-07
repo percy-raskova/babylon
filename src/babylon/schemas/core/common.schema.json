@@ -1,0 +1,522 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/core/common.schema.json",
+  "title": "Common Definitions",
+  "description": "Reusable definitions for the Babylon schema system",
+
+  "$defs": {
+    "FactionId": {
+      "type": "string",
+      "pattern": "^F[0-9]{3}$",
+      "description": "Faction identifier (e.g., F001)"
+    },
+
+    "ResourceId": {
+      "type": "string",
+      "pattern": "^R[0-9]{3}$",
+      "description": "Resource identifier (e.g., R001)"
+    },
+
+    "TechnologyId": {
+      "type": "string",
+      "pattern": "^T[0-9]{3}$",
+      "description": "Technology identifier (e.g., T001)"
+    },
+
+    "LocationId": {
+      "type": "string",
+      "pattern": "^L[0-9]{3}[A-Z]?$",
+      "description": "Location identifier (e.g., L001, L001A)"
+    },
+
+    "ClassId": {
+      "type": "string",
+      "pattern": "^(C[0-9]{3}|[a-z_]+)$",
+      "description": "Class identifier (e.g., C001 or bourgeoisie)"
+    },
+
+    "MovementId": {
+      "type": "string",
+      "pattern": "^M[0-9]{3}$",
+      "description": "Movement identifier (e.g., M001)"
+    },
+
+    "ContradictionId": {
+      "type": "string",
+      "pattern": "^CON[0-9]{3}$",
+      "description": "Contradiction identifier (e.g., CON001)"
+    },
+
+    "InstitutionId": {
+      "type": "string",
+      "pattern": "^Inst[0-9]{3}$",
+      "description": "Institution identifier (e.g., Inst001)"
+    },
+
+    "IdeologyId": {
+      "type": "string",
+      "pattern": "^IDE[0-9]{3}$",
+      "description": "Ideology identifier (e.g., IDE001)"
+    },
+
+    "CultureId": {
+      "type": "string",
+      "pattern": "^CUL[0-9]{3}$",
+      "description": "Culture identifier (e.g., CUL001)"
+    },
+
+    "LawId": {
+      "type": "string",
+      "pattern": "^LAW[0-9]{3}$",
+      "description": "Law identifier (e.g., LAW001)"
+    },
+
+    "CrisisId": {
+      "type": "string",
+      "pattern": "^CRISIS_[0-9]{3}$",
+      "description": "Crisis identifier (e.g., CRISIS_001)"
+    },
+
+    "CharacterId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*[a-z0-9]$",
+      "description": "Character identifier in snake_case (e.g., persephone_raskova)"
+    },
+
+    "Coordinates": {
+      "type": "object",
+      "description": "Geographic coordinates",
+      "properties": {
+        "latitude": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Latitude in decimal degrees"
+        },
+        "longitude": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Longitude in decimal degrees"
+        }
+      },
+      "required": ["latitude", "longitude"],
+      "additionalProperties": false
+    },
+
+    "Effect": {
+      "type": "object",
+      "description": "An effect that modifies a game attribute",
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The entity or attribute being affected"
+        },
+        "attribute": {
+          "type": "string",
+          "description": "Specific attribute being modified"
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["increase", "decrease", "modify", "set", "intensify", "resolve"],
+          "description": "Type of modification (intensify/resolve for dialectical contradictions)"
+        },
+        "magnitude": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" }
+          ],
+          "description": "Strength of the effect"
+        },
+        "type": {
+          "type": "string",
+          "description": "Category of the effect"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "Relationship": {
+      "type": "object",
+      "description": "A relationship between two entities",
+      "properties": {
+        "targetId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ID of the related entity"
+        },
+        "type": {
+          "type": "string",
+          "description": "Nature of the relationship"
+        },
+        "strength": {
+          "oneOf": [
+            { "type": "integer", "minimum": -100, "maximum": 100 },
+            { "type": "string" }
+          ],
+          "description": "Relationship strength (-100 hostile to 100 allied)"
+        }
+      },
+      "required": ["targetId"],
+      "additionalProperties": false
+    },
+
+    "Skill": {
+      "type": "object",
+      "description": "A character skill",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": ["name", "level"],
+      "additionalProperties": false
+    },
+
+    "Belief": {
+      "type": "object",
+      "description": "A character belief or value",
+      "properties": {
+        "belief": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intensity": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": ["belief", "intensity"],
+      "additionalProperties": false
+    },
+
+    "FactionMembership": {
+      "type": "object",
+      "description": "A character's membership in a faction",
+      "properties": {
+        "factionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string"
+        },
+        "loyalty": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": ["factionId", "role", "loyalty"],
+      "additionalProperties": false
+    },
+
+    "CharacterContradiction": {
+      "type": "object",
+      "description": "A personal contradiction affecting a character",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "impact": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "impact"],
+      "additionalProperties": false
+    },
+
+    "ClassComposition": {
+      "type": "object",
+      "description": "Percentage of a class within an organization",
+      "properties": {
+        "classId": {
+          "type": "string"
+        },
+        "percentage": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "required": ["classId", "percentage"],
+      "additionalProperties": false
+    },
+
+    "ResourceAllocation": {
+      "type": "object",
+      "description": "An allocation of a resource type",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        },
+        "quantity": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "MilitaryUnit": {
+      "type": "object",
+      "description": "A military unit",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string"
+        },
+        "strength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["name", "type", "strength"],
+      "additionalProperties": false
+    },
+
+    "InfluenceZone": {
+      "type": "object",
+      "description": "A zone of influence for a faction",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "controlLevel": {
+          "type": "string",
+          "enum": ["none", "low", "medium", "high", "total", "High", "Medium", "Low"]
+        }
+      },
+      "required": ["name", "controlLevel"],
+      "additionalProperties": false
+    },
+
+    "DialecticalRelationship": {
+      "type": "object",
+      "description": "Dialectical relationship between factions",
+      "properties": {
+        "targetFactionId": {
+          "type": "string"
+        },
+        "nature": {
+          "type": "string",
+          "enum": ["antagonistic", "non_antagonistic", "cooperative", "competitive"]
+        },
+        "intensity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "critical"]
+        }
+      },
+      "required": ["targetFactionId", "nature", "intensity"],
+      "additionalProperties": false
+    },
+
+    "Goal": {
+      "type": "object",
+      "description": "A strategic goal",
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["description", "priority"],
+      "additionalProperties": false
+    },
+
+    "Tactic": {
+      "type": "object",
+      "description": "A tactical approach",
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "effectiveness": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "impact": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "effectiveness", "impact"],
+      "additionalProperties": false
+    },
+
+    "Challenge": {
+      "type": "object",
+      "description": "A challenge facing an entity",
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "response": {
+          "type": "string"
+        }
+      },
+      "required": ["description", "severity", "response"],
+      "additionalProperties": false
+    },
+
+    "MembershipEntry": {
+      "type": "object",
+      "description": "A membership entry for movements",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "role"],
+      "additionalProperties": false
+    },
+
+    "ContradictionEntity": {
+      "type": "object",
+      "description": "An entity involved in a contradiction",
+      "properties": {
+        "entityId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entityType": {
+          "type": "string",
+          "enum": ["class", "faction", "institution", "movement", "character"]
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": ["entityId", "entityType", "role"],
+      "additionalProperties": false
+    },
+
+    "RelationshipInfluence": {
+      "type": "object",
+      "description": "An influence affecting a relationship",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "impact"],
+      "additionalProperties": false
+    },
+
+    "HistoricalEvent": {
+      "type": "object",
+      "description": "A historical event in a relationship",
+      "properties": {
+        "timestamp": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "required": ["timestamp", "description"],
+      "additionalProperties": false
+    },
+
+    "ProductionDetails": {
+      "type": "object",
+      "description": "Production details for a resource",
+      "properties": {
+        "baseRate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "units": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "requiredTechnologies": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "ConsumptionDetails": {
+      "type": "object",
+      "description": "Consumption details for a resource",
+      "properties": {
+        "rate": {
+          "type": "number",
+          "minimum": 0
+        },
+        "consumers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "Availability": {
+      "type": "object",
+      "description": "Resource availability",
+      "properties": {
+        "locations": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scarcity": {
+          "type": "string",
+          "enum": ["abundant", "moderate", "limited", "scarce", "critical", ""]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "IntensityLevel": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "General intensity level"
+    },
+
+    "ControlLevel": {
+      "type": "string",
+      "enum": ["none", "low", "medium", "high", "total"],
+      "description": "Level of control or influence"
+    }
+  }
+}

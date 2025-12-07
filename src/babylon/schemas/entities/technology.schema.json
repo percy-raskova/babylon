@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/technology.schema.json",
+  "title": "Technology",
+  "description": "A technology that can be researched, analyzed through its material effects on class relations and productive forces",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^T[0-9]{3}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "category": {
+      "type": "string",
+      "enum": ["Economic", "Control", "Liberation", "Repression", "Military", "Infrastructure"],
+      "description": "Technology category reflecting its primary class function"
+    },
+    "description": {
+      "type": "string"
+    },
+    "prerequisites": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Technology IDs that must be researched first"
+    },
+    "requiredResources": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Resource IDs needed to research this technology"
+    },
+    "researchCost": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Base cost in research points"
+    },
+    "researchTime": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Base time in game turns to complete research"
+    },
+    "effects": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Effect" },
+      "description": "Mechanical effects when technology is deployed"
+    },
+    "availableToClasses": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Which class positions can access this technology"
+    },
+    "dialecticalContradictions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "thesis": {
+            "type": "string",
+            "description": "The primary tendency or force"
+          },
+          "antithesis": {
+            "type": "string",
+            "description": "The opposing tendency or counter-force"
+          },
+          "potentialSynthesis": {
+            "type": "string",
+            "description": "Possible resolution or transformation of the contradiction"
+          }
+        },
+        "required": ["thesis", "antithesis"],
+        "additionalProperties": false
+      },
+      "description": "Dialectical contradictions inherent in this technology's development and deployment"
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

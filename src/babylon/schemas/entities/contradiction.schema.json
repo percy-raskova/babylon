@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/contradiction.schema.json",
+  "title": "Contradiction",
+  "description": "A dialectical contradiction in the geopolitical simulation",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^CON[0-9]{3}$",
+      "description": "Contradiction identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "entities": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/ContradictionEntity" },
+      "minItems": 2,
+      "description": "Entities involved in the contradiction"
+    },
+    "universality": {
+      "type": "boolean",
+      "description": "Whether this contradiction is universal"
+    },
+    "particularity": {
+      "type": "string",
+      "description": "How the contradiction manifests specifically"
+    },
+    "isPrincipal": {
+      "type": "boolean",
+      "description": "Whether this is the principal contradiction"
+    },
+    "principalAspect": {
+      "type": "string",
+      "description": "The entity ID of the principal aspect"
+    },
+    "antagonism": {
+      "type": "string",
+      "description": "Type of dialectical antagonism"
+    },
+    "intensity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "critical"],
+      "description": "Current intensity level"
+    },
+    "state": {
+      "type": "string",
+      "enum": ["dormant", "latent", "active", "critical", "resolved"],
+      "description": "Current state"
+    },
+    "potentialForTransformation": {
+      "type": "boolean"
+    },
+    "conditionsForTransformation": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "resolutionMethods": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "resolutionConditions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "effects": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Effect" }
+    }
+  },
+  "required": ["id", "name", "entities"],
+  "additionalProperties": true
+}

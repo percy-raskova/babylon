@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.066612+00:00",
+  "sourceFormat": "xml",
+  "crises": [
+    {
+      "id": "CRISIS_003",
+      "name": "Wealth Tax Rebellion",
+      "description": "Economic crisis triggered by capital flight and market manipulation in response to wealth tax implementation, leading to class tensions and economic instability.",
+      "type": "Economic",
+      "participants": [
+        "SOCIALIST_MOVEMENT",
+        "FASCIST_FACTION",
+        "LUMPENPROLETARIAT"
+      ],
+      "triggers": [],
+      "contradictions": [],
+      "resolutions": [],
+      "effects": [
+        {
+          "operation": "modify",
+          "magnitude": "High"
+        }
+      ]
+    },
+    {
+      "id": "CRISIS_002",
+      "name": "Palestine Military Aid Controversy",
+      "description": "International crisis erupts over military aid policies and their impact on Palestinian civilians, leading to global protests and diplomatic tensions.",
+      "type": "Military",
+      "participants": [
+        "PALESTINE_MOVEMENT",
+        "MAOIST_FACTION",
+        "SOCIALIST_MOVEMENT"
+      ],
+      "triggers": [],
+      "contradictions": [],
+      "resolutions": [],
+      "effects": [
+        {
+          "operation": "modify",
+          "magnitude": "High"
+        }
+      ]
+    },
+    {
+      "id": "CRISIS_001",
+      "name": "Surveillance State Backlash",
+      "description": "Mass protests erupt after leaked documents reveal extensive domestic surveillance program targeting social movements and activists, leading to constitutional crisis.",
+      "type": "Political",
+      "participants": [
+        "FASCIST_FACTION",
+        "SOCIALIST_MOVEMENT",
+        "PALESTINE_MOVEMENT"
+      ],
+      "triggers": [],
+      "contradictions": [],
+      "resolutions": [],
+      "effects": [
+        {
+          "operation": "modify",
+          "magnitude": "High"
+        }
+      ]
+    }
+  ]
+}

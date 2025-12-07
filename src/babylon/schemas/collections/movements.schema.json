@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/movements.schema.json",
+  "title": "Movements Collection",
+  "description": "Collection of political movements",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "movements": {
+      "type": "array",
+      "items": { "$ref": "../entities/movement.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "movements"],
+  "additionalProperties": false
+}

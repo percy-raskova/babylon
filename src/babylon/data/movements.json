@@ -1,0 +1,671 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.064677+00:00",
+  "sourceFormat": "xml",
+  "movements": [
+    {
+      "id": "M004",
+      "name": "Christian Nationalist Movement",
+      "description": "A religious-political movement seeking to align national identity and governance with conservative Christian principles and beliefs, promoting the idea of a Christian nation.",
+      "type": "Religious-Nationalist",
+      "foundingDate": "1970-01-01T00:00:00",
+      "primaryCause": "Perceived secularization of society and desire to establish Christian dominance in governance",
+      "membership": [
+        {
+          "name": "Conservative Christian Organizations",
+          "role": "Core organizing bodies"
+        },
+        {
+          "name": "Religious Political Action Committees",
+          "role": "Political advocacy"
+        },
+        {
+          "name": "Conservative Media Networks",
+          "role": "Message amplification"
+        }
+      ],
+      "affiliatedFactions": [],
+      "ideology": "Christian dominionism, religious nationalism, traditional values, moral majoritarianism",
+      "goals": [
+        {
+          "description": "Establish Christian principles in law and governance",
+          "priority": 1
+        },
+        {
+          "description": "Promote Christian education and prayer in schools",
+          "priority": 2
+        },
+        {
+          "description": "Restrict LGBTQ+ rights and abortion access",
+          "priority": 2
+        },
+        {
+          "description": "Define national identity through Christian lens",
+          "priority": 3
+        }
+      ],
+      "tactics": [
+        {
+          "type": "Electoral Mobilization",
+          "effectiveness": 8,
+          "impact": "Political influence through voting blocs"
+        },
+        {
+          "type": "Legal Advocacy",
+          "effectiveness": 7,
+          "impact": "Religious liberty litigation and policy changes"
+        },
+        {
+          "type": "Media Campaigns",
+          "effectiveness": 8,
+          "impact": "Cultural narrative shaping and value promotion"
+        }
+      ],
+      "impact": [
+        {
+          "target": "Legislative Agenda",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Political"
+        },
+        {
+          "target": "Religious Expression",
+          "operation": "modify",
+          "magnitude": 7,
+          "type": "Social"
+        },
+        {
+          "target": "Public Education",
+          "operation": "modify",
+          "magnitude": 6,
+          "type": "Cultural"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Growing religious diversity and secularization",
+          "severity": 9,
+          "response": "Intensified advocacy and political engagement"
+        },
+        {
+          "description": "Constitutional separation of church and state",
+          "severity": 8,
+          "response": "Legal reinterpretation and strategic litigation"
+        },
+        {
+          "description": "Internal denominational divisions",
+          "severity": 6,
+          "response": "Focus on shared cultural and political goals"
+        }
+      ]
+    },
+    {
+      "id": "M002",
+      "name": "Feminist Movement",
+      "description": "A social and political movement advocating for women's rights, gender equality, and the dismantling of patriarchal systems of oppression.",
+      "type": "Civil Rights",
+      "foundingDate": "1848-07-19T00:00:00",
+      "primaryCause": "Systemic gender-based discrimination and patriarchal oppression",
+      "membership": [
+        {
+          "name": "Women's Rights Organizations",
+          "role": "Core organizing bodies"
+        },
+        {
+          "name": "LGBTQ+ Activists",
+          "role": "Intersectional allies"
+        },
+        {
+          "name": "Academic Feminists",
+          "role": "Theoretical development"
+        }
+      ],
+      "affiliatedFactions": [],
+      "ideology": "Intersectional feminism, gender equality, reproductive rights, bodily autonomy",
+      "goals": [
+        {
+          "description": "Achieve full economic equality and workplace rights",
+          "priority": 1
+        },
+        {
+          "description": "Secure and protect reproductive rights",
+          "priority": 1
+        },
+        {
+          "description": "End gender-based violence and discrimination",
+          "priority": 2
+        },
+        {
+          "description": "Achieve equal political representation",
+          "priority": 3
+        }
+      ],
+      "tactics": [
+        {
+          "type": "Mass Protests",
+          "effectiveness": 8,
+          "impact": "Public awareness and political pressure"
+        },
+        {
+          "type": "Legislative Advocacy",
+          "effectiveness": 7,
+          "impact": "Legal reforms for gender equality"
+        },
+        {
+          "type": "Education Campaigns",
+          "effectiveness": 8,
+          "impact": "Cultural transformation and consciousness-raising"
+        }
+      ],
+      "impact": [
+        {
+          "target": "Women's Rights Legislation",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Political"
+        },
+        {
+          "target": "Gender Roles",
+          "operation": "modify",
+          "magnitude": 7,
+          "type": "Social"
+        },
+        {
+          "target": "Workplace Equality",
+          "operation": "modify",
+          "magnitude": 6,
+          "type": "Economic"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Patriarchal resistance and backlash",
+          "severity": 9,
+          "response": "Coalition building and sustained organizing"
+        },
+        {
+          "description": "Intersectional inclusion and representation",
+          "severity": 7,
+          "response": "Developing inclusive feminist theory and practice"
+        },
+        {
+          "description": "Religious and cultural opposition",
+          "severity": 8,
+          "response": "Interfaith dialogue and cultural education"
+        }
+      ]
+    },
+    {
+      "id": "M001",
+      "name": "Labor Movement",
+      "description": "A broad social movement advocating for workers' rights, better working conditions, and economic justice through collective action and organization.",
+      "type": "Labor",
+      "foundingDate": "1866-08-20T00:00:00",
+      "primaryCause": "Worker exploitation and poor working conditions under industrial capitalism",
+      "membership": [
+        {
+          "name": "Industrial Workers",
+          "role": "Core constituency"
+        },
+        {
+          "name": "Trade Unions",
+          "role": "Organizational backbone"
+        }
+      ],
+      "affiliatedFactions": [
+        "F003",
+        "F004"
+      ],
+      "ideology": "Working class solidarity, trade unionism, collective bargaining, workers' rights",
+      "goals": [
+        {
+          "description": "Establish living wages for all workers",
+          "priority": 1
+        },
+        {
+          "description": "Secure workplace safety regulations",
+          "priority": 2
+        },
+        {
+          "description": "Achieve universal labor rights and protections",
+          "priority": 3
+        }
+      ],
+      "tactics": [
+        {
+          "type": "Strikes",
+          "effectiveness": 8,
+          "impact": "Direct economic pressure on employers"
+        },
+        {
+          "type": "Collective Bargaining",
+          "effectiveness": 7,
+          "impact": "Negotiated improvements in working conditions"
+        },
+        {
+          "type": "Political Lobbying",
+          "effectiveness": 6,
+          "impact": "Legislative reforms for workers' rights"
+        }
+      ],
+      "impact": [
+        {
+          "target": "Working Class",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Economic"
+        },
+        {
+          "target": "Labor Laws",
+          "operation": "modify",
+          "magnitude": 7,
+          "type": "Political"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Union-busting tactics by corporations",
+          "severity": 8,
+          "response": "Legal action and worker solidarity campaigns"
+        },
+        {
+          "description": "Automation and technological displacement",
+          "severity": 7,
+          "response": "Worker retraining programs and technology adaptation strategies"
+        }
+      ]
+    },
+    {
+      "id": "M007",
+      "name": "MAGA Movement",
+      "description": "A right-wing populist movement centered around former President Donald Trump's \"Make America Great Again\" slogan and ideology.",
+      "type": "Political-Populist",
+      "foundingDate": "2015-06-16T00:00:00",
+      "primaryCause": "Perceived decline of traditional American values and economic displacement",
+      "membership": [
+        {
+          "name": "Conservative Political Organizations",
+          "role": "Political mobilization"
+        },
+        {
+          "name": "Right-wing Media Networks",
+          "role": "Message amplification"
+        },
+        {
+          "name": "Grassroots Supporters",
+          "role": "Rally attendance and social media"
+        }
+      ],
+      "affiliatedFactions": [
+        "America First Republicans",
+        "Tea Party remnants",
+        "Populist Right"
+      ],
+      "ideology": "Right-wing populism, economic nationalism, cultural conservatism",
+      "goals": [
+        {
+          "description": "Electoral victory and political control",
+          "priority": 1
+        },
+        {
+          "description": "Immigration restriction and border control",
+          "priority": 2
+        },
+        {
+          "description": "Economic protectionism and nationalism",
+          "priority": 2
+        },
+        {
+          "description": "Cultural traditionalism",
+          "priority": 3
+        }
+      ],
+      "tactics": [
+        {
+          "type": "Mass Rallies",
+          "effectiveness": 9,
+          "impact": "Base mobilization and media attention"
+        },
+        {
+          "type": "Social Media Campaigns",
+          "effectiveness": 8,
+          "impact": "Message dissemination and coordination"
+        },
+        {
+          "type": "Electoral Politics",
+          "effectiveness": 8,
+          "impact": "Political power and policy influence"
+        }
+      ],
+      "impact": [
+        {
+          "target": "Party Alignment",
+          "operation": "modify",
+          "magnitude": 9,
+          "type": "Political"
+        },
+        {
+          "target": "Political Polarization",
+          "operation": "modify",
+          "magnitude": 9,
+          "type": "Social"
+        },
+        {
+          "target": "Public Discourse",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Cultural"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Electoral setbacks and legal issues",
+          "severity": 8,
+          "response": "Claims of election fraud and system rigging"
+        },
+        {
+          "description": "Mainstream media opposition",
+          "severity": 7,
+          "response": "Alternative media networks and direct communication"
+        },
+        {
+          "description": "Internal Republican Party divisions",
+          "severity": 6,
+          "response": "Primary challenges and party realignment"
+        }
+      ]
+    },
+    {
+      "id": "M006",
+      "name": "Palestine Liberation Movement",
+      "description": "A national liberation movement seeking self-determination, sovereignty, and rights for the Palestinian people.",
+      "type": "National Liberation",
+      "foundingDate": "1964-05-28T00:00:00",
+      "primaryCause": "Palestinian displacement and occupation",
+      "membership": [
+        {
+          "name": "Palestinian Civil Society Organizations",
+          "role": "Grassroots organizing"
+        },
+        {
+          "name": "International Solidarity Groups",
+          "role": "Global advocacy"
+        },
+        {
+          "name": "Palestinian Diaspora Communities",
+          "role": "International representation"
+        }
+      ],
+      "affiliatedFactions": [
+        "Political Organizations",
+        "Civil Rights Groups",
+        "Student Movements"
+      ],
+      "ideology": "Palestinian nationalism, anti-colonialism, self-determination",
+      "goals": [
+        {
+          "description": "Palestinian self-determination and sovereignty",
+          "priority": 1
+        },
+        {
+          "description": "Right of return for refugees",
+          "priority": 1
+        },
+        {
+          "description": "End to occupation and settlements",
+          "priority": 2
+        },
+        {
+          "description": "International recognition and support",
+          "priority": 3
+        }
+      ],
+      "tactics": [
+        {
+          "type": "International Advocacy",
+          "effectiveness": 8,
+          "impact": "Global awareness and solidarity"
+        },
+        {
+          "type": "Civil Resistance",
+          "effectiveness": 7,
+          "impact": "Popular mobilization and protest"
+        },
+        {
+          "type": "Legal Advocacy",
+          "effectiveness": 6,
+          "impact": "International law and human rights"
+        }
+      ],
+      "impact": [
+        {
+          "target": "International Recognition",
+          "operation": "modify",
+          "magnitude": 7,
+          "type": "Political"
+        },
+        {
+          "target": "Global Solidarity",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Social"
+        },
+        {
+          "target": "Palestinian Identity",
+          "operation": "modify",
+          "magnitude": 9,
+          "type": "Cultural"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Military occupation and expansion",
+          "severity": 10,
+          "response": "International law advocacy and resistance"
+        },
+        {
+          "description": "Internal political divisions",
+          "severity": 8,
+          "response": "Unity initiatives and dialogue"
+        },
+        {
+          "description": "Humanitarian crisis",
+          "severity": 9,
+          "response": "International aid and solidarity networks"
+        }
+      ]
+    },
+    {
+      "id": "M005",
+      "name": "Socialist Movement",
+      "description": "A political and economic movement advocating for worker control of the means of production, economic democracy, and the elimination of class-based exploitation.",
+      "type": "Political-Economic",
+      "foundingDate": "1848-02-21T00:00:00",
+      "primaryCause": "Class exploitation and economic inequality under capitalism",
+      "membership": [
+        {
+          "name": "Labor Unions",
+          "role": "Worker organization and direct action"
+        },
+        {
+          "name": "Socialist Political Parties",
+          "role": "Electoral politics and policy advocacy"
+        },
+        {
+          "name": "Worker Cooperatives",
+          "role": "Alternative economic models"
+        }
+      ],
+      "affiliatedFactions": [
+        "Democratic Socialists",
+        "Revolutionary Socialists",
+        "Market Socialists"
+      ],
+      "ideology": "Socialist economics, worker democracy, class consciousness, anti-capitalism",
+      "goals": [
+        {
+          "description": "Democratic control of the means of production",
+          "priority": 1
+        },
+        {
+          "description": "Universal public services and welfare",
+          "priority": 2
+        },
+        {
+          "description": "Workplace democracy and worker rights",
+          "priority": 2
+        },
+        {
+          "description": "Economic planning for social needs",
+          "priority": 3
+        }
+      ],
+      "tactics": [
+        {
+          "type": "Labor Strikes",
+          "effectiveness": 9,
+          "impact": "Economic pressure and worker solidarity"
+        },
+        {
+          "type": "Electoral Politics",
+          "effectiveness": 7,
+          "impact": "Legislative reforms and policy changes"
+        },
+        {
+          "type": "Education and Theory",
+          "effectiveness": 8,
+          "impact": "Class consciousness and ideological development"
+        }
+      ],
+      "impact": [
+        {
+          "target": "Labor Rights",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Economic"
+        },
+        {
+          "target": "Social Democracy",
+          "operation": "modify",
+          "magnitude": 7,
+          "type": "Political"
+        },
+        {
+          "target": "Class Consciousness",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Social"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Opposition from capitalist interests",
+          "severity": 9,
+          "response": "Building class solidarity and alternative institutions"
+        },
+        {
+          "description": "Internal ideological divisions",
+          "severity": 7,
+          "response": "Focus on common goals and practical unity"
+        },
+        {
+          "description": "Media opposition and propaganda",
+          "severity": 8,
+          "response": "Independent media and grassroots communication"
+        }
+      ]
+    },
+    {
+      "id": "M003",
+      "name": "White Nationalist Movement",
+      "description": "A far-right, ethnonationalist movement promoting white supremacy and racial segregation through various political and social means.",
+      "type": "Nationalist",
+      "foundingDate": "1865-12-24T00:00:00",
+      "primaryCause": "Opposition to racial integration and perceived loss of white social dominance",
+      "membership": [
+        {
+          "name": "White Supremacist Organizations",
+          "role": "Core organizing bodies"
+        },
+        {
+          "name": "Neo-Confederate Groups",
+          "role": "Historical revisionism"
+        },
+        {
+          "name": "Militia Groups",
+          "role": "Paramilitary wing"
+        }
+      ],
+      "affiliatedFactions": [],
+      "ideology": "White supremacy, ethnonationalism, anti-immigration, racial separatism",
+      "goals": [
+        {
+          "description": "Establish white ethnostate",
+          "priority": 1
+        },
+        {
+          "description": "Restrict non-white immigration",
+          "priority": 1
+        },
+        {
+          "description": "Preserve \"white culture\" and demographics",
+          "priority": 2
+        }
+      ],
+      "tactics": [
+        {
+          "type": "Online Propaganda",
+          "effectiveness": 8,
+          "impact": "Recruitment and radicalization"
+        },
+        {
+          "type": "Political Infiltration",
+          "effectiveness": 6,
+          "impact": "Policy influence and legitimization"
+        },
+        {
+          "type": "Intimidation",
+          "effectiveness": 7,
+          "impact": "Fear and social control"
+        }
+      ],
+      "impact": [
+        {
+          "target": "Immigration Policy",
+          "operation": "modify",
+          "magnitude": 6,
+          "type": "Political"
+        },
+        {
+          "target": "Racial Relations",
+          "operation": "modify",
+          "magnitude": 8,
+          "type": "Social"
+        },
+        {
+          "target": "Public Discourse",
+          "operation": "modify",
+          "magnitude": 7,
+          "type": "Cultural"
+        }
+      ],
+      "challenges": [
+        {
+          "description": "Growing racial diversity and integration",
+          "severity": 9,
+          "response": "Increased propaganda and recruitment efforts"
+        },
+        {
+          "description": "Legal and social opposition",
+          "severity": 8,
+          "response": "Rebranding and coded language"
+        },
+        {
+          "description": "Internal ideological conflicts",
+          "severity": 6,
+          "response": "Attempts at coalition building"
+        }
+      ]
+    }
+  ]
+}

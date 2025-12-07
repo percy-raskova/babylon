@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/cultures.schema.json",
+  "title": "Cultures Collection",
+  "description": "Collection of cultural groups",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "cultures": {
+      "type": "array",
+      "items": { "$ref": "../entities/culture.schema.json" }
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "cultures"],
+  "additionalProperties": false
+}

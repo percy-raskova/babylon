@@ -1,0 +1,335 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.060896+00:00",
+  "sourceFormat": "xml",
+  "factions": [
+    {
+      "id": "F001",
+      "name": "National Revival Movement",
+      "description": "A far-right nationalist movement that has gained significant influence through populist rhetoric and promises of national renewal.",
+      "ideology": "Fascism",
+      "classComposition": [
+        {
+          "classId": "C001",
+          "percentage": 40
+        },
+        {
+          "classId": "C002",
+          "percentage": 35
+        },
+        {
+          "classId": "C003",
+          "percentage": 25
+        }
+      ],
+      "economicBase": {
+        "modeOfProduction": "Corporate State Capitalism",
+        "resources": [
+          {
+            "type": "Industrial Capital",
+            "quantity": 8000
+          },
+          {
+            "type": "Military Industry",
+            "quantity": 5000
+          }
+        ]
+      },
+      "strategicDoctrine": {
+        "political": "Populist Authoritarianism",
+        "military": "Militant Nationalism"
+      },
+      "dialecticalRelationships": [
+        {
+          "targetFactionId": "F003",
+          "nature": "antagonistic",
+          "intensity": "high"
+        },
+        {
+          "targetFactionId": "F004",
+          "nature": "antagonistic",
+          "intensity": "critical"
+        }
+      ],
+      "historicalDevelopment": "Emerged from economic crisis and social instability, capitalizing on middle class fears and nationalist sentiments",
+      "leader": {
+        "name": "Viktor Thule",
+        "background": "Former military officer and business executive",
+        "traits": [
+          "Charismatic",
+          "Authoritarian",
+          "Nationalist"
+        ]
+      },
+      "influence": [
+        {
+          "name": "Urban Regions",
+          "controlLevel": "high"
+        },
+        {
+          "name": "Industrial Regions",
+          "controlLevel": "medium"
+        }
+      ],
+      "military": {
+        "totalStrength": 8500,
+        "units": [
+          {
+            "name": "Nationalist Guard",
+            "type": "Paramilitary",
+            "strength": 3500
+          }
+        ]
+      },
+      "attributes": {
+        "popularSupport": 35,
+        "organizationalCapacity": "High"
+      }
+    },
+    {
+      "id": "F002",
+      "name": "Liberal Democratic Alliance",
+      "description": "Traditional liberal democratic party representing establishment interests and maintaining status quo policies.",
+      "ideology": "Liberal Democracy",
+      "classComposition": [
+        {
+          "classId": "C002",
+          "percentage": 60
+        },
+        {
+          "classId": "C003",
+          "percentage": 40
+        }
+      ],
+      "economicBase": {
+        "modeOfProduction": "Market Capitalism",
+        "resources": [
+          {
+            "type": "Financial Capital",
+            "quantity": 10000
+          },
+          {
+            "type": "Media Control",
+            "quantity": 7000
+          }
+        ]
+      },
+      "strategicDoctrine": {
+        "political": "Centrist Compromise",
+        "military": "International Coalition Building"
+      },
+      "dialecticalRelationships": [
+        {
+          "targetFactionId": "F001",
+          "nature": "non_antagonistic",
+          "intensity": "medium"
+        },
+        {
+          "targetFactionId": "F004",
+          "nature": "antagonistic",
+          "intensity": "high"
+        }
+      ],
+      "historicalDevelopment": "Long-standing establishment party that has dominated politics through market-friendly policies and institutional control",
+      "leader": {
+        "name": "Elizabeth Morgan",
+        "background": "Corporate lawyer and career politician",
+        "traits": [
+          "Diplomatic",
+          "Pragmatic",
+          "Status-quo oriented"
+        ]
+      },
+      "influence": [
+        {
+          "name": "Financial Districts",
+          "controlLevel": "high"
+        },
+        {
+          "name": "Suburban Areas",
+          "controlLevel": "medium"
+        }
+      ],
+      "military": {
+        "totalStrength": 5000,
+        "units": [
+          {
+            "name": "State Security",
+            "type": "Police",
+            "strength": 5000
+          }
+        ]
+      },
+      "attributes": {
+        "popularSupport": 30,
+        "institutionalControl": "High"
+      }
+    },
+    {
+      "id": "F004",
+      "name": "People's Liberation Front",
+      "description": "Marxist-Leninist-Maoist organization emphasizing protracted people's war and mass line organizing among urban and rural poor.",
+      "ideology": "Marxism-Leninism-Maoism",
+      "classComposition": [
+        {
+          "classId": "C001",
+          "percentage": 80
+        },
+        {
+          "classId": "C002",
+          "percentage": 15
+        },
+        {
+          "classId": "C003",
+          "percentage": 5
+        }
+      ],
+      "economicBase": {
+        "modeOfProduction": "Collective Communes",
+        "resources": [
+          {
+            "type": "Community Centers",
+            "quantity": 4000
+          },
+          {
+            "type": "Agricultural Collectives",
+            "quantity": 5000
+          }
+        ]
+      },
+      "strategicDoctrine": {
+        "political": "Mass Line",
+        "military": "Protracted People's War"
+      },
+      "dialecticalRelationships": [
+        {
+          "targetFactionId": "F001",
+          "nature": "antagonistic",
+          "intensity": "critical"
+        },
+        {
+          "targetFactionId": "F003",
+          "nature": "non_antagonistic",
+          "intensity": "low"
+        }
+      ],
+      "historicalDevelopment": "Developed through urban-rural mass movements and community organizing among the most oppressed sections of society",
+      "leader": {
+        "name": "Maria Santos",
+        "background": "Community organizer and guerrilla strategist",
+        "traits": [
+          "Revolutionary",
+          "Mass-oriented",
+          "Strategic"
+        ]
+      },
+      "influence": [
+        {
+          "name": "Urban Slums",
+          "controlLevel": "high"
+        },
+        {
+          "name": "Rural Areas",
+          "controlLevel": "medium"
+        }
+      ],
+      "military": {
+        "totalStrength": 6000,
+        "units": [
+          {
+            "name": "People's Guerrilla Army",
+            "type": "Guerrilla",
+            "strength": 6000
+          }
+        ]
+      },
+      "attributes": {
+        "popularSupport": 15,
+        "massOrganization": "High"
+      }
+    },
+    {
+      "id": "F003",
+      "name": "Revolutionary Workers Party",
+      "description": "Orthodox Marxist-Leninist party focused on building a vanguard party and organizing industrial workers.",
+      "ideology": "Marxism-Leninism",
+      "classComposition": [
+        {
+          "classId": "C001",
+          "percentage": 70
+        },
+        {
+          "classId": "C002",
+          "percentage": 20
+        },
+        {
+          "classId": "C003",
+          "percentage": 10
+        }
+      ],
+      "economicBase": {
+        "modeOfProduction": "Trade Union Cooperatives",
+        "resources": [
+          {
+            "type": "Union Funds",
+            "quantity": 3000
+          },
+          {
+            "type": "Industrial Network",
+            "quantity": 6000
+          }
+        ]
+      },
+      "strategicDoctrine": {
+        "political": "Democratic Centralism",
+        "military": "Mass Line Defense"
+      },
+      "dialecticalRelationships": [
+        {
+          "targetFactionId": "F001",
+          "nature": "antagonistic",
+          "intensity": "high"
+        },
+        {
+          "targetFactionId": "F004",
+          "nature": "non_antagonistic",
+          "intensity": "low"
+        }
+      ],
+      "historicalDevelopment": "Emerged from the traditional labor movement with strong ties to industrial unions and orthodox Marxist theory",
+      "leader": {
+        "name": "Alexandra Petrova",
+        "background": "Former union organizer and theoretical scholar",
+        "traits": [
+          "Disciplined",
+          "Theoretical",
+          "Worker-oriented"
+        ]
+      },
+      "influence": [
+        {
+          "name": "Industrial Districts",
+          "controlLevel": "high"
+        },
+        {
+          "name": "Working Class Neighborhoods",
+          "controlLevel": "medium"
+        }
+      ],
+      "military": {
+        "totalStrength": 4000,
+        "units": [
+          {
+            "name": "Workers Defense Guard",
+            "type": "Militia",
+            "strength": 4000
+          }
+        ]
+      },
+      "attributes": {
+        "popularSupport": 20,
+        "workerOrganization": "High"
+      }
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/movement.schema.json",
+  "title": "Movement",
+  "description": "A political or social movement",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^M[0-9]{3}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string"
+    },
+    "foundingDate": {
+      "type": "string"
+    },
+    "primaryCause": {
+      "type": "string"
+    },
+    "membership": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/MembershipEntry" }
+    },
+    "affiliatedFactions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "ideology": {
+      "type": "string"
+    },
+    "goals": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Goal" }
+    },
+    "tactics": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Tactic" }
+    },
+    "impact": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Effect" }
+    },
+    "challenges": {
+      "type": "array",
+      "items": { "$ref": "../core/common.schema.json#/$defs/Challenge" }
+    }
+  },
+  "required": ["id", "name"],
+  "additionalProperties": true
+}

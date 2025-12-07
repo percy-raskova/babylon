@@ -9,6 +9,20 @@ All game state flows through these validated types.
 """
 
 # Sprint 1: Enums and Value Types
+# Sprint 3: Simulation Configuration
+from babylon.models.config import SimulationConfig
+
+# Entity Models (migrated from old dataclasses)
+from babylon.models.entities import (
+    Contradiction,
+    ContradictionState,
+    Effect,
+    Relationship,
+    ResolutionOutcome,
+    SocialClass,
+    Trigger,
+    TriggerCondition,
+)
 from babylon.models.enums import (
     EdgeType,
     IntensityLevel,
@@ -24,17 +38,8 @@ from babylon.models.types import (
     Ratio,
 )
 
-# Entity Models (migrated from old dataclasses)
-from babylon.models.entities import (
-    Contradiction,
-    ContradictionState,
-    Effect,
-    Relationship,
-    ResolutionOutcome,
-    SocialClass,
-    Trigger,
-    TriggerCondition,
-)
+# Sprint 4: World State
+from babylon.models.world_state import WorldState
 
 __all__ = [
     # Enums
@@ -49,6 +54,10 @@ __all__ = [
     "Intensity",
     "Coefficient",
     "Ratio",
+    # Sprint 3: Configuration
+    "SimulationConfig",
+    # Sprint 4: World State
+    "WorldState",
     # Phase 1 Entities
     "SocialClass",
     "Relationship",

@@ -1,0 +1,472 @@
+# Babylon Game Loop Architecture
+# The Engine/State separation for Phase 2
+#
+# Core Insight: Data (State) is separate from Logic (Systems).
+# The State is "what the dice land on." The Engine is "the physics of the throw."
+
+meta:
+  version: "2.0.0"
+  created: "2024-12-07"
+  updated: "2024-12-07"
+  status: "implemented"
+  phase: 2
+  principle: "State is pure data. Engine is pure transformation. They never mix."
+  implementation_status: "330 tests passing, all feedback loops proven"
+
+# =============================================================================
+# THE FUNDAMENTAL SEPARATION
+# =============================================================================
+
+architecture:
+  name: "Data/Logic Separation"
+  analogy:
+    state: "The chessboard position"
+    engine: "The rules of chess"
+
+  properties:
+    determinism: "Same WorldState + same Engine = same next WorldState. Always."
+    replayability: "Save initial state, replay entire history."
+    testability: "Feed state in, assert on state out."
+    counterfactuals: "Load any state, modify parameter, run forward, compare."
+
+# =============================================================================
+# WORLD STATE (THE DATA)
+# =============================================================================
+
+world_state:
+  purpose: "Immutable snapshot of all material conditions at a specific tick"
+  principle: "State doesn't know HOW to change. It just IS."
+  location: "src/babylon/models/world_state.py"
+
+  actual_implementation:
+    class: "WorldState(BaseModel)"
+    frozen: true
+    fields:
+      tick:
+        type: "int"
+        description: "Current turn number (0-indexed)"
+        default: 0
+
+      entities:
+        type: "dict[str, SocialClass]"
+        description: "Map of Entity ID to SocialClass (graph nodes)"
+        example: '{"C001": worker, "C002": owner}'
+
+      relationships:
+        type: "list[Relationship]"
+        description: "Edges between entities (exploitation, solidarity, etc.)"
+        example: "[Relationship(source_id='C001', target_id='C002', edge_type=EXPLOITATION)]"
+
+      event_log:
+        type: "list[str]"
+        description: "Log of significant events (crossover, rupture)"
+
+    methods:
+      to_graph: "Convert to NetworkX DiGraph for formula application"
+      from_graph: "Reconstruct WorldState from modified graph"
+      add_entity: "Return new state with entity added (immutable)"
+      add_relationship: "Return new state with relationship added (immutable)"
+      add_event: "Return new state with event logged (immutable)"
+
+  design_note: |
+    Per ADR011, there are NO separate Economy or Politics classes.
+    "The Economy is the sum of all EXTRACTS_FROM edges."
+    All economic and political state is embedded in:
+    - Entity attributes (wealth, ideology, organization, p_acquiescence, p_revolution)
+    - Relationship attributes (value_flow, tension, edge_type)
+
+  legacy_fields_removed:
+    - economy (EconomicState) - merged into entity.wealth
+    - politics (PoliticalState) - merged into entity.ideology, entity.p_*, relationship.tension
+    - date (datetime) - not needed for Phase 2
+
+# =============================================================================
+# THE MATRYOSHKA HIERARCHY
+# =============================================================================
+
+geographic_hierarchy:
+  principle: "Nested containers for spatial organization"
+  insight: "Administrative structure, not ontological claim about legitimacy"
+
+  levels:
+    - world: "Top-level container"
+    - country: "Nation-state (e.g., USA)"
+    - region: "Multi-state area (e.g., Pacific Northwest)"
+    - state: "Political subdivision (e.g., Oregon)"
+    - city: "Urban center (e.g., Portland)"
+    - neighborhood: "Local community (e.g., Alberta Arts District)"
+
+  mlm_tw_tension:
+    problem: "Settler-colonial boundaries are politically constructed, not natural"
+    resolution: "Hierarchy is for STORAGE. Graph edges are for DYNAMICS."
+    key_insight: "Relationships can cross hierarchy levels"
+    example: "Neighborhood in Portland can have direct edge to mining operation in Congo"
+
+  implementation_strategy:
+    phase_2: "Start shallow: World -> SocialClass (just two nodes)"
+    phase_3_plus: "Expand: World -> Country -> SocialClass (multiple per country)"
+    principle: "Architecture supports arbitrary depth. Start minimal."
+
+# =============================================================================
+# SIMULATION ENGINE (THE LOGIC)
+# =============================================================================
+
+simulation_engine:
+  purpose: "Pure transformation: Input State -> Calculation -> Output State"
+  principle: "Engine doesn't know WHAT values are. It knows HOW to transform."
+
+  role: "The Turn Processor"
+  behavior: "Doesn't decide anything. Calculates and sets things in motion."
+
+  subsystems:
+    economy:
+      purpose: "Updates material base"
+      location: "babylon.core.economy"
+
+    politics:
+      purpose: "Updates superstructure based on material conditions"
+      location: "babylon.core.politics"
+
+    contradiction_analysis:
+      purpose: "Tracks tensions, detects ruptures/syntheses"
+      location: "babylon.systems.contradiction_analysis"
+
+    formulas:
+      purpose: "Pure mathematical calculations"
+      location: "babylon.systems.formulas"
+
+# =============================================================================
+# ORDER OF OPERATIONS (THE DIALECTIC)
+# =============================================================================
+
+turn_order:
+  principle: "Order encodes historical materialism: base determines superstructure"
+  insight: "To model idealism, you would reverse steps 1 and 2"
+
+  steps:
+    1_economic_base:
+      name: "Material Base Updates"
+      quote: "Men must be in a position to live in order to be able to 'make history'. - Marx"
+      actions:
+        - "Calculate value flows between entities"
+        - "Update wealth based on extraction"
+        - "Process imperial rent transfers"
+
+    2_superstructure:
+      name: "Political Superstructure Reacts"
+      actions:
+        - "Update stability based on economic conditions"
+        - "Recalculate class consciousness from inequality metrics"
+        - "Adjust legitimacy based on material conditions"
+
+    3_contradictions:
+      name: "Contradiction Evolution"
+      actions:
+        - "Update tension levels in all contradictions"
+        - "Check for rupture conditions (tension >= 1.0)"
+        - "Check for synthesis conditions (tension <= 0.0)"
+        - "Detect new contradictions arising from state"
+
+    4_events:
+      name: "Event Processing"
+      actions:
+        - "Fire events for threshold crossings"
+        - "Log significant state changes"
+
+    5_capture:
+      name: "State Serialization"
+      actions:
+        - "Generate immutable WorldState snapshot"
+        - "Record metrics"
+        - "Prepare for next tick"
+
+# =============================================================================
+# FEEDBACK LOOPS
+# =============================================================================
+
+feedback_loops:
+  principle: "Loops are IMPLICIT in order of operations, not explicitly coded"
+  insight: "You don't code 'feedback loop'. You code 'Economy runs before Politics'."
+
+  loop_1_rent_spiral:
+    name: "The Rent Spiral"
+    flow:
+      - "Economy.update() transfers wealth from worker to owner"
+      - "Worker wealth drops"
+      - "P(S|A) drops (can't survive through compliance)"
+      - "P(S|A) < P(S|R) -> Revolution becomes rational"
+      - "Worker consciousness rises"
+      - "Tension rises"
+      - "(Next tick input)"
+
+  loop_2_consciousness_decay:
+    name: "The Consciousness Decay"
+    flow:
+      - "Worker gets raise (Wc increases)"
+      - "Wc/Vc > 1 (labor aristocracy)"
+      - "Consciousness drifts reactionary"
+      - "Organization drops"
+      - "P(S|R) drops"
+      - "Worker accepts system again"
+      - "(Next tick input)"
+
+  loop_3_repression_trap:
+    name: "The Repression Trap"
+    flow:
+      - "State increases repression"
+      - "P(S|R) drops (revolution harder)"
+      - "Workers comply short-term"
+      - "But repression costs money -> Economy.gdp decreases"
+      - "Owner cuts wages to fund police"
+      - "Worker wealth drops"
+      - "Eventually P(S|A) < P(S|R) despite repression"
+      - "(Rupture delayed but intensified)"
+
+# =============================================================================
+# ARCHITECTURAL DECISION: DIRECT FORMULAS (ADR010)
+# =============================================================================
+
+architectural_decision:
+  id: "ADR010"
+  title: "Direct Entities + Formulas architecture"
+  reference: "ai-docs/decisions.yaml"
+
+  discovery: |
+    Found THREE disconnected math systems:
+    - formulas.py (40 tests, MLM-TW theory)
+    - Economy class (0 tests, generic simulation)
+    - Politics class (0 tests, generic simulation)
+
+    Economy/Politics don't use the tested MLM-TW formulas at all.
+
+  decision: |
+    Bypass Economy/Politics classes entirely.
+    SimulationEngine calls formulas.py directly on entities.
+
+  components_used:
+    - "babylon.systems.formulas (all functions)"
+    - "babylon.systems.contradiction_analysis.ContradictionAnalysis"
+    - "babylon.models.entities.SocialClass"
+    - "babylon.models.entities.Relationship"
+
+  components_not_used:
+    - "babylon.core.economy.Economy (preserved for future)"
+    - "babylon.core.politics.Politics (preserved for future)"
+
+# =============================================================================
+# FORMULA-TO-ENTITY WIRING
+# =============================================================================
+
+formula_wiring:
+  principle: "Explicit mapping from formula parameters to entity/config fields"
+
+  imperial_rent:
+    formula: "calculate_imperial_rent(alpha, periphery_wages, periphery_consciousness)"
+    inputs:
+      alpha: "SimulationConfig.extraction_efficiency"
+      periphery_wages: "Worker.wealth / (Worker.wealth + Owner.wealth)"
+      periphery_consciousness: "(Worker.ideology + 1) / 2  # map [-1,1] to [0,1]"
+    outputs:
+      - "Relationship.value_flow = rent"
+    effects:
+      - "Worker.wealth -= rent"
+      - "Owner.wealth += rent"
+
+  labor_aristocracy:
+    formula: "calculate_labor_aristocracy_ratio(core_wages, value_produced)"
+    inputs:
+      core_wages: "SocialClass.wealth"
+      value_produced: "Relationship.value_flow (for that class)"
+    outputs:
+      - "ratio (used for consciousness drift)"
+    effects:
+      - "None directly (input to other calculations)"
+
+  consciousness_drift:
+    formula: "calculate_consciousness_drift(core_wages, value_produced, current_consciousness, k, lambda)"
+    inputs:
+      core_wages: "SocialClass.wealth"
+      value_produced: "Relationship.value_flow"
+      current_consciousness: "SocialClass.ideology"
+      k: "SimulationConfig.consciousness_sensitivity"
+      lambda: "2.25 (constant)"
+    outputs:
+      - "delta_ideology"
+    effects:
+      - "SocialClass.ideology += delta_ideology (clamped to [-1, 1])"
+
+  acquiescence_probability:
+    formula: "calculate_acquiescence_probability(wealth, subsistence_threshold, steepness_k)"
+    inputs:
+      wealth: "SocialClass.wealth"
+      subsistence_threshold: "SimulationConfig.subsistence_threshold"
+      steepness_k: "SimulationConfig.survival_steepness"
+    outputs:
+      - "probability"
+    effects:
+      - "SocialClass.p_acquiescence = probability"
+
+  revolution_probability:
+    formula: "calculate_revolution_probability(cohesion, repression)"
+    inputs:
+      cohesion: "SocialClass.organization"
+      repression: "SimulationConfig.repression_level"
+    outputs:
+      - "probability"
+    effects:
+      - "SocialClass.p_revolution = probability"
+
+  tension_update:
+    formula: "ContradictionAnalysis.update_tension(contradiction_id, delta)"
+    inputs:
+      delta: "Derived from entity state changes (e.g., wealth gap increase)"
+    outputs:
+      - "ResolutionOutcome (if rupture/synthesis)"
+    effects:
+      - "Contradiction.tension updated"
+      - "Contradiction.resolved = True (if phase transition)"
+
+# =============================================================================
+# SIMULATION CONFIG
+# =============================================================================
+
+simulation_config:
+  purpose: "Global coefficients and parameters for the simulation"
+  location: "src/babylon/models/config.py"
+  implementation: "Pydantic BaseModel (frozen=True)"
+
+  fields:
+    extraction_efficiency:
+      type: "Coefficient"  # [0, 1]
+      default: 0.8
+      description: "Alpha (α) - how efficiently the core extracts value"
+
+    consciousness_sensitivity:
+      type: "Coefficient"
+      default: 0.5
+      description: "k - how quickly consciousness responds to material conditions"
+
+    consciousness_decay_lambda:
+      type: "PositiveFloat"
+      default: 0.1
+      description: "λ - decay rate for consciousness without material reinforcement"
+
+    subsistence_threshold:
+      type: "Currency"
+      default: 0.3
+      description: "Minimum wealth for survival through compliance"
+
+    survival_steepness:
+      type: "PositiveFloat"
+      default: 10.0
+      description: "How sharp the survival sigmoid transition is"
+
+    repression_level:
+      type: "Probability"
+      default: 0.5
+      description: "State capacity for violence"
+
+    initial_worker_wealth:
+      type: "Currency"
+      default: 0.5
+      description: "Starting wealth for periphery worker"
+
+    initial_owner_wealth:
+      type: "Currency"
+      default: 0.5
+      description: "Starting wealth for core owner"
+
+    loss_aversion_lambda:
+      type: "PositiveFloat"
+      default: 2.25
+      description: "Kahneman-Tversky coefficient - losses felt 2.25x more than gains"
+
+    tension_accumulation_rate:
+      type: "Coefficient"
+      default: 0.05
+      description: "Rate at which tension accumulates from wealth gaps"
+
+# =============================================================================
+# PHASE 2 SUCCESS CRITERIA
+# =============================================================================
+
+success_criteria:
+  status: "ACHIEVED"
+  test_count: 330
+  verification: "tests/unit/engine/ and tests/integration/"
+
+  core_test:
+    description: "Run 100 turns, observe deterministic outcomes"
+    status: "PROVEN - test_hundred_turns_deterministic passes"
+    example: |
+      def test_repression_triggers_revolution():
+          state = create_initial_state()
+
+          # Turn 0-49: High repression, worker quiet
+          for _ in range(50):
+              state = advance_turn(state)
+          assert state.worker.p_revolution < 0.3
+
+          # Turn 50: Reduce repression
+          state.repression = 0.1
+
+          # Turn 51: Revolution probability spikes
+          state = advance_turn(state)
+          assert state.worker.p_revolution > 0.7
+
+  properties_verified:
+    determinism:
+      status: "PROVEN"
+      test: "test_hundred_turns_deterministic"
+      evidence: "Same inputs always produce same outputs"
+
+    parameter_responsiveness:
+      status: "PROVEN"
+      test: "TestStepTensionRate, TestStepConsciousnessDrift"
+      evidence: "Parameter changes cause predictable state transitions"
+
+    feedback_loops:
+      status: "PROVEN"
+      tests:
+        - "TestRentSpiral - extraction impoverishes worker"
+        - "TestConsciousnessFeedbackLoop - exploited workers become revolutionary"
+        - "TestRepressionTrap - high repression delays but doesn't prevent revolution"
+      evidence: "Feedback loops produce compounding effects over time"
+
+    phase_transitions:
+      status: "PROVEN"
+      test: "test_thousand_tick_stability"
+      evidence: "Thresholds trigger bounded state transitions"
+
+    save_load:
+      status: "TRIVIAL (Pydantic)"
+      evidence: "WorldState.model_dump_json() / model_validate_json()"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+
+  abstract_base_approach:
+    recommendation: "Use abstract base or protocol for geographic hierarchy"
+    rationale: "Allows shallow start (2 nodes) with deep expansion later"
+    pattern: |
+      class GeographicEntity(Protocol):
+          id: str
+          name: str
+          parent_id: Optional[str]
+          children_ids: List[str]
+
+      # Phase 2: Just SocialClass implements this
+      # Phase 3+: Country, Region, City also implement
+
+  state_immutability:
+    recommendation: "WorldState should be treated as immutable"
+    pattern: "advance_turn(state) -> new_state, not state.advance()"
+    benefit: "Enables diffing, history, counterfactuals"
+
+  engine_statelessness:
+    recommendation: "Engine can hold configuration but not game state"
+    allowed: "Engine stores formulas, coefficients, subsystem references"
+    forbidden: "Engine stores current tick, entity values, etc."

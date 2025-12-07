@@ -11,11 +11,12 @@ from sentence_transformers import SentenceTransformer
 
 from babylon.config.base import BaseConfig as Config
 from babylon.config.logging_config import setup_logging
-from babylon.core.economy import Economy
-from babylon.core.politics import Politics
 from babylon.data.chroma_manager import ChromaManager
 from babylon.data.entity_registry import EntityRegistry
 from babylon.data.models.event import Event
+
+# Phase 2: Using new engine instead of deprecated Economy/Politics
+from babylon.engine import create_two_node_scenario, step
 from babylon.exceptions import BabylonError
 from babylon.systems.contradiction_analysis import ContradictionAnalysis
 from babylon.utils.backup import backup_chroma, restore_chroma
@@ -65,7 +66,7 @@ def cleanup_chroma(client: chromadb.Client) -> None:
         print(f"Error during ChromaDB cleanup: {e}")
 
 
-def signal_handler(signum: int, frame: Any) -> None:
+def signal_handler(signum: int, _frame: Any) -> None:
     """Handle system signals for graceful shutdown.
 
     Args:
@@ -104,11 +105,14 @@ def main() -> None:
     entity_registry: EntityRegistry = EntityRegistry()
     contradiction_analysis: ContradictionAnalysis = ContradictionAnalysis(entity_registry)
 
-    # Initialize the game state dictionary that tracks all game systems
+    # Phase 2: Initialize the new game state using the topological engine
+    world_state, sim_config = create_two_node_scenario()
+
+    # Legacy game state for backwards compatibility with event system
     game_state: dict[str, Any] = {
         "entity_registry": entity_registry,  # Manages all game entities
-        "economy": Economy(),  # Handles economic simulation
-        "politics": Politics(),  # Manages political simulation
+        "world_state": world_state,  # Phase 2: Immutable world state
+        "sim_config": sim_config,  # Phase 2: Simulation configuration
         "event_queue": [],  # Queue of pending events to process
         "is_player_responsible": False,  # Flag for player vs AI decision making
         "event_history": [],  # History of processed events
@@ -128,11 +132,14 @@ def main() -> None:
 
     # Main game loop - runs until an exit condition is met
     while True:
-        # Update economic simulation (prices, production, trade, etc)
-        game_state["economy"].update()
+        # Phase 2: Advance simulation using the topological engine
+        # This replaces the old Economy.update() and Politics.update()
+        world_state = step(game_state["world_state"], game_state["sim_config"])
+        game_state["world_state"] = world_state
 
-        # Update political simulation (stability, factions, power relations)
-        game_state["politics"].update()
+        logger.info(
+            f"Tick {world_state.tick}: Worker wealth={world_state.entities['C001'].wealth:.4f}"
+        )
 
         # Analyze and update dialectical contradictions in society
         contradiction_analysis.update_contradictions(game_state)
@@ -143,10 +150,11 @@ def main() -> None:
 
         # Evaluate triggers for all events
         for event in all_events:
-            if event not in game_state["event_history"]:
-                if all(trigger.evaluate(game_state) for trigger in event.triggers):
-                    game_state["event_queue"].append(event)
-                    game_state["event_history"].append(event)
+            if event not in game_state["event_history"] and all(
+                trigger.evaluate(game_state) for trigger in event.triggers
+            ):
+                game_state["event_queue"].append(event)
+                game_state["event_history"].append(event)
 
         # Process all pending events in the queue
         while game_state["event_queue"]:

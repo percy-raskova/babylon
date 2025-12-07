@@ -1,0 +1,181 @@
+# Babylon Domain Ontology
+# Defines terms as used in THIS project - not general definitions
+
+meta:
+  version: "1.0.0"
+  updated: "2024-12-07"
+  purpose: "Canonical definitions for domain terms in Babylon"
+
+# =============================================================================
+# THEORETICAL FRAMEWORK (MLM-TW)
+# =============================================================================
+
+theoretical_terms:
+
+  mlm_tw:
+    full_name: "Marxist-Leninist-Maoist Third Worldist"
+    definition: >
+      Theoretical framework holding that revolution in imperial core nations
+      is structurally impossible while imperial rent extraction continues.
+      The global proletariat is primarily located in the periphery.
+    key_insight: "First World workers benefit from imperialism, creating labor aristocracy"
+    in_game: "Determines which regions can achieve revolutionary rupture"
+
+  imperial_rent:
+    symbol: "Φ"
+    definition: >
+      The difference between wages paid to core workers (W_c) and value they produce (V_c).
+      Φ = W_c - V_c. When Φ > 0, core workers receive more than their labor creates,
+      extracted from peripheral exploitation.
+    formula: "Φ = W_c - V_c"
+    in_game: "Core mechanic determining revolutionary potential by region"
+
+  labor_aristocracy:
+    definition: >
+      Working class segment in imperial core that benefits from imperial rent.
+      Material interest aligned with capital against global proletariat.
+    in_game: "Class category with high wages but low revolutionary potential"
+
+  unequal_exchange:
+    definition: >
+      Mechanism by which value flows from periphery to core through trade.
+      Peripheral labor is systematically undervalued relative to core labor.
+    in_game: "Modifies resource flows between locations"
+
+  contradiction:
+    definition: >
+      Dialectical tension between opposing forces that drives historical change.
+      Not a "problem to solve" but a structural dynamic that intensifies or resolves.
+    types:
+      - antagonistic: "Cannot be resolved within current system (capital vs labor)"
+      - non_antagonistic: "Can be resolved through reform (tactical disagreements)"
+    in_game: "Primary driver of events, crises, and potential ruptures"
+
+  rupture:
+    definition: >
+      Revolutionary break with existing order. Occurs when P(S|R) > P(S|A) -
+      probability of survival through revolution exceeds survival through acquiescence.
+    conditions: "Organization/Repression > Sigmoid(Wealth - Subsistence)"
+    in_game: "Win condition for revolutionary factions"
+
+  hegemony:
+    definition: >
+      Gramsci's concept: ruling class power through cultural/ideological control,
+      not just coercion. Control over what counts as "common sense."
+    in_game: "Planned as wiki control mechanic - factions control narrative"
+
+  atomization:
+    definition: >
+      Destruction of organic social bonds, replacing them with market relations.
+      Workers isolated from each other, unable to organize collectively.
+    in_game: "Reduces organization capacity, increases acquiescence"
+
+# =============================================================================
+# ARCHITECTURAL TERMS
+# =============================================================================
+
+architecture_terms:
+
+  the_ledger:
+    definition: "SQLite/Pydantic layer storing rigid, material state"
+    contains: "Economics, resources, turn history, quantitative facts"
+    location: "src/babylon/data/"
+    principle: "Source of truth for material reality"
+
+  the_topology:
+    definition: "NetworkX layer storing fluid, relational state"
+    contains: "Class solidarity, factional tensions, supply chains"
+    location: "src/babylon/core/"
+    principle: "Relationships change faster than material base"
+
+  the_archive:
+    definition: "ChromaDB/RAG layer storing semantic history"
+    contains: "Past events, theoretical texts, narrative context"
+    location: "src/babylon/rag/"
+    principle: "AI observes and narrates, doesn't control mechanics"
+
+  entity:
+    definition: "Any game object with an ID and attributes"
+    types: "character, faction, location, resource, technology, etc."
+    principle: "Always Pydantic models, never raw dicts"
+
+  effect:
+    definition: "A modification to game state"
+    structure: "{target, attribute, operation, magnitude, description}"
+    operations: ["increase", "decrease", "modify", "set", "intensify", "resolve"]
+
+# =============================================================================
+# GAME ENTITIES
+# =============================================================================
+
+entity_terms:
+
+  faction:
+    definition: "Organized political force with interests and capabilities"
+    examples: "Revolutionary party, bourgeois state, labor union, corporation"
+    key_attributes: ["class_composition", "military_capacity", "dialectical_relationships"]
+
+  class:
+    definition: "Relationship to means of production, not income level"
+    categories:
+      - bourgeoisie: "Owns means of production"
+      - proletariat: "Sells labor power"
+      - petty_bourgeoisie: "Small owners, professionals"
+      - peasantry: "Agricultural producers"
+      - lumpenproletariat: "Outside formal economy"
+      - labor_aristocracy: "Core workers benefiting from imperial rent"
+
+  movement:
+    definition: "Organized effort toward political change"
+    distinct_from: "Faction (movements are broader, less structured)"
+
+  crisis:
+    definition: "Acute manifestation of contradictions"
+    types: "Economic, political, legitimacy, ecological"
+    in_game: "Triggers events, intensifies contradictions"
+
+# =============================================================================
+# DATA TERMS
+# =============================================================================
+
+data_terms:
+
+  json_schema:
+    definition: "Draft 2020-12 schemas validating all game data"
+    location: "src/babylon/schemas/"
+    structure: "core/ (shared defs), entities/ (17 types), collections/ (wrappers)"
+
+  collection:
+    definition: "JSON file containing array of entities plus metadata envelope"
+    envelope: "{version, generatedAt, sourceFormat, [entities]}"
+    location: "src/babylon/data/*.json"
+
+  id_patterns:
+    faction: "F001, F002, ..."
+    resource: "R001, R002, ..."
+    technology: "T001, T002, ..."
+    location: "L001, L001A, ..."
+    contradiction: "CON001, CON002, ..."
+    character: "snake_case_name"
+
+# =============================================================================
+# DISAMBIGUATION
+# =============================================================================
+
+disambiguation:
+
+  "class":
+    programming: "Python class - use 'Python class' or 'class definition'"
+    game: "Social class - use 'social class' or reference specific (proletariat, etc.)"
+
+  "state":
+    political: "The state apparatus - use 'state apparatus' or 'political state'"
+    programming: "Application state - use 'game state' or 'app state'"
+
+  "contradiction":
+    general: "Any conflict - NOT this meaning in Babylon"
+    dialectical: "Structural tension driving change - THIS meaning in Babylon"
+
+  "revolution":
+    general: "Any big change"
+    babylon: "Rupture event where oppressed class seizes power from oppressor"

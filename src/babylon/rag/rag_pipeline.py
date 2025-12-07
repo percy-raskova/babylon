@@ -3,9 +3,10 @@
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.data.chroma_manager import ChromaManager
 from babylon.rag.chunker import DocumentProcessor
@@ -16,9 +17,10 @@ from babylon.rag.retrieval import QueryResponse, Retriever, VectorStore
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class IngestionResult:
+class IngestionResult(BaseModel):
     """Result of document ingestion process."""
+
+    model_config = ConfigDict(frozen=True)
 
     success: bool
     chunks_processed: int
@@ -26,13 +28,14 @@ class IngestionResult:
     processing_time_ms: float
     embedding_time_ms: float
     storage_time_ms: float
-    errors: list[str]
-    source_files: list[str]
+    errors: list[str] = Field(default_factory=list)
+    source_files: list[str] = Field(default_factory=list)
 
 
-@dataclass
-class RagConfig:
+class RagConfig(BaseModel):
     """Configuration for RAG pipeline."""
+
+    model_config = ConfigDict(frozen=True)
 
     # Document processing config
     chunk_size: int = 1000

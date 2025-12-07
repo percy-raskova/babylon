@@ -8,27 +8,29 @@ conditions for analysis by the planning committee.
 import logging
 import threading
 import time
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.config.base import BaseConfig
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class MetricEvent:
+class MetricEvent(BaseModel):
     """A single metric measurement.
 
     Immutable record of a moment in the simulation's history.
     """
 
+    model_config = ConfigDict(frozen=True)
+
     name: str
     value: float
     timestamp: datetime
-    tags: dict[str, str] = field(default_factory=dict)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    tags: dict[str, str] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class MetricsCollector:

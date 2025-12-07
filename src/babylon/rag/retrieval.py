@@ -2,8 +2,9 @@
 
 import logging
 import time
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.data.chroma_manager import ChromaManager
 from babylon.rag.chunker import DocumentChunk
@@ -13,28 +14,32 @@ from babylon.rag.exceptions import RagError
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class QueryResult:
+class QueryResult(BaseModel):
     """Represents a single query result with similarity score."""
+
+    model_config = ConfigDict(validate_assignment=True)
 
     chunk: DocumentChunk
     similarity_score: float
-    distance: float
+    distance: float = 0.0
     metadata: dict[str, Any] | None = None
 
-    def __post_init__(self):
+    @model_validator(mode="after")
+    def convert_similarity_to_distance(self) -> "QueryResult":
         """Convert similarity score to distance if not provided."""
         if self.distance == 0.0 and self.similarity_score > 0.0:
             # Convert cosine similarity to distance
-            self.distance = 1.0 - self.similarity_score
+            object.__setattr__(self, "distance", 1.0 - self.similarity_score)
+        return self
 
 
-@dataclass
-class QueryResponse:
+class QueryResponse(BaseModel):
     """Represents the complete response to a query."""
 
+    model_config = ConfigDict(validate_assignment=True)
+
     query: str
-    results: list[QueryResult] = field(default_factory=list)
+    results: list[QueryResult] = Field(default_factory=list)
     total_results: int = 0
     processing_time_ms: float = 0.0
     embedding_time_ms: float = 0.0
@@ -274,13 +279,8 @@ class Retriever:
 
         try:
             # Create a temporary object for embedding the query
-            @dataclass
-            class QueryObject:
-                id: str = "query"
-                content: str = query
-                embedding: list[float] | None = None
-
-            query_obj = QueryObject(content=query)
+            # Use DocumentChunk directly since EmbeddingManager expects it
+            query_obj = DocumentChunk(id="query", content=query)
 
             # Generate embedding for the query
             embed_start = time.perf_counter()

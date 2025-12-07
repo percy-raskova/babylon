@@ -1,10 +1,9 @@
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 from babylon.config.base import BaseConfig
 
 
-@dataclass
-class ContextWindowConfig:
+class ContextWindowConfig(BaseModel):
     """Configuration for the Context Window Management system.
 
     Attributes:
@@ -13,6 +12,8 @@ class ContextWindowConfig:
         prioritization_strategy: Strategy for content prioritization (relevance, recency, hybrid)
         min_content_importance: Minimum importance score for content to be kept in context
     """
+
+    model_config = ConfigDict(frozen=True)
 
     max_token_limit: int = 150000  # Default to 150k tokens
     capacity_threshold: float = 0.75  # Default to 75% capacity

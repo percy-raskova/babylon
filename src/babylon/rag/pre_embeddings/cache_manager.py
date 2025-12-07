@@ -8,15 +8,15 @@ import hashlib
 import pickle
 import time
 from collections import OrderedDict
-from dataclasses import dataclass
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from babylon.metrics.collector import MetricsCollector
 from babylon.rag.exceptions import CacheError
 
 
-@dataclass
-class CacheConfig:
+class CacheConfig(BaseModel):
     """Configuration for embedding cache management.
 
     Attributes:
@@ -25,6 +25,8 @@ class CacheConfig:
         cache_file_path: Path to cache file for persistence
         hash_algorithm: Algorithm to use for content hashing
     """
+
+    model_config = ConfigDict(frozen=True)
 
     max_cache_size: int = 10000
     persist_cache: bool = False

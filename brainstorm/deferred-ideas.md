@@ -10,11 +10,11 @@
 
 These ideas require the Phase 1 foundation to be complete first.
 
-### Ideological Drift Formula
+### ~~Ideological Drift Formula~~ IMPLEMENTED
 **Source:** `notes/manifesto.md`
 **Equation:** `dΨc/dt = k(1 - Wc/Vc) - λΨc`
-**What it does:** Models how class ideology changes over time based on the exploitation ratio (wages/value)
-**Why wait:** Need working survival calculus first
+**Status:** Implemented in Sprint 7.5 via `_update_consciousness_drift()` in simulation_engine.py
+**Tests:** 7 new tests in TestStepConsciousnessDrift (325 total passing)
 
 ### Full Imperial Rent Function
 **Source:** `notes/manifesto.md`
@@ -31,6 +31,12 @@ These ideas require the Phase 1 foundation to be complete first.
 ## Phase 3: AI Observer Layer
 
 These ideas require the engine to be running and generating events.
+
+### Sanity Spies (The Babylon Protocol)
+**Source:** `brainstorm/babylon-protocol-verification.md`
+**What it does:** Runtime observers that validate invariants (conservation laws, P(S) calculus, topology integrity, determinism)
+**Why it matters:** Distinguishes "Holy Shit" (emergence) from "Absolute Nonsense" (bugs)
+**Why wait:** Requires event system and observer pattern infrastructure
 
 ### Loss Aversion Coefficient
 **Source:** `notes/manifesto.md`

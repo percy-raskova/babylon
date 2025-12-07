@@ -255,6 +255,248 @@ decisions:
              │                        │
              └───────save game────────┘
 
+  ADR011_pure_graph_architecture:
+    status: "accepted"
+    date: "2024-12-07"
+    title: "Pure Graph Architecture: Graph + Math = History"
+    context: |
+      Following ADR010 (bypass Economy/Politics), a deeper architectural review
+      was conducted with multi-AI consensus (Claude + Gemini + User).
+
+      Key insight from Gemini:
+      "The previous architecture was trying to simulate INSTITUTIONS.
+       The new architecture simulates MATERIAL RELATIONS.
+       This is the shift from Liberalism to Materialism."
+
+      The Economy class modeled "the economy" as a liberal abstraction.
+      In MLM-TW, "the economy" doesn't exist as a thing - it's the name we give
+      to the totality of production relations. The graph makes this explicit.
+
+    decisions:
+      delete_legacy_classes:
+        action: "Delete Economy and Politics classes immediately"
+        rationale: |
+          - Not "preserve for future" - that's hoarding technical debt
+          - If patterns needed later, write fresh with correct architecture
+          - git log is the museum for old code
+        files_to_delete:
+          - "src/babylon/core/economy.py"
+          - "src/babylon/core/politics.py"
+
+      pure_graph_option_c:
+        action: "Everything is nodes and edges (Option C)"
+        rationale: |
+          - Geography is just another relation type
+          - Hierarchy exists as CONTAINS edges, doesn't constrain other edges
+          - A neighborhood in Global South can have direct edge to hedge fund in NYC
+          - Imperialism doesn't respect administrative boundaries - neither should our graph
+        edge_types:
+          - "CONTAINS (geographic hierarchy)"
+          - "EXTRACTS_FROM (economic exploitation)"
+          - "REPRESSES (political violence)"
+          - "PRODUCES (labor value)"
+          - "ORGANIZES (class solidarity)"
+        example: |
+          USA --[CONTAINS]--> Kansas_City
+          Proletariat_KC --[EXTRACTS_FROM]--> Bourgeoisie_NY
+          Police_KC --[REPRESSES]--> Proletariat_KC
+
+      hybrid_state_management:
+        action: "Snapshots for Engine, Events for Archive"
+        rationale: |
+          - Engine needs current state to calculate next state (Snapshots)
+          - AI narrative needs history of what happened (Events)
+          - Math and Story have different data needs - don't confuse them
+          - Testing is cleaner: Engine tests are pure functions on snapshots
+        structure:
+          engine: "Immutable WorldState snapshots"
+          archive: "Event log for narrative generation"
+
+      networkx_from_day_one:
+        action: "Use NetworkX immediately, not deferred"
+        rationale: |
+          - If concept is "everything is a graph," implementation should be a graph
+          - Using dict for 2 nodes then switching later is chosen technical debt
+          - NetworkX is lightweight - no cost for small graphs
+          - Built-in algorithms available when needed (centrality, paths)
+          - Keeps implementation honest to architecture
+        revision: "Supersedes ADR010 recommendation to defer NetworkX"
+
+      simulation_config_is_core:
+        action: "SimulationConfig is part of irreducible kernel"
+        rationale: |
+          - Formulas are parameterized (α, λ, S, k)
+          - Without coefficients, formulas are abstract math, not simulation
+          - Config is as essential as State and Engine
+
+    the_true_kernel:
+      description: "The irreducible core of the simulation"
+      components:
+        world_state:
+          purpose: "The Data"
+          contains:
+            - "Graph (Nodes: entities)"
+            - "Graph (Edges: relations)"
+            - "tick: current turn"
+
+        simulation_config:
+          purpose: "The Constants"
+          contains:
+            - "α (extraction_efficiency)"
+            - "λ (loss_aversion = 2.25)"
+            - "S (subsistence_threshold)"
+            - "k (consciousness_sensitivity)"
+            - "repression_level"
+
+        formula_library:
+          purpose: "The Laws"
+          pattern: "f(data, config) → value"
+          location: "babylon.systems.formulas"
+
+        simulation_engine:
+          purpose: "The Time"
+          pattern: "step(state, config) → new_state"
+
+      equation: "Graph + Math = History"
+
+    philosophical_grounding:
+      insight: |
+        "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
+        "Politics is not a class; it is the sum of all REPRESSES edges."
+
+        In materialist analysis, abstractions like "the economy" or "politics"
+        don't exist as things. They are names for the totality of material relations.
+        The graph architecture makes this explicit:
+        - No Economy node exists
+        - Only relations of extraction, production, exchange
+        - "The economy" is a QUERY over those edges, not an entity
+
+      alignment: "Architecture encodes theory. The code IS the analysis."
+
+    consequences:
+      positive:
+        - "Code matches MLM-TW theoretical framework"
+        - "No liberal abstractions hiding material relations"
+        - "Flexible: any node can relate to any other node"
+        - "Queryable: 'total extraction' is sum of EXTRACTS_FROM edges"
+        - "Testable: graph operations are well-understood"
+        - "Scalable: NetworkX handles large graphs efficiently"
+      negative:
+        - "Requires deleting existing code (minimal loss)"
+        - "Slightly more abstract than class-based approach"
+        - "Team must understand graph thinking"
+
+    consensus:
+      participants:
+        - "Claude (Opus 4.5)"
+        - "Gemini (via user)"
+        - "User (Persephone)"
+      mantra: "Graph + Math = History"
+      supersedes:
+        - "ADR010 NetworkX deferral recommendation"
+
+  ADR010_direct_formula_architecture:
+    status: "accepted"
+    date: "2024-12-07"
+    title: "Direct Entities + Formulas architecture (bypass Economy/Politics classes)"
+    context: |
+      During Phase 2 design review, discovered THREE disconnected math systems:
+
+      1. formulas.py (349 lines, 40 tests)
+         - MLM-TW formulas: imperial rent, survival calculus, consciousness drift
+         - Pure functions, theoretically grounded, TESTED
+
+      2. Economy class (core/economy.py, 148 lines, 0 tests)
+         - Generic economic simulation with its own internal formulas
+         - Has update() method but doesn't use formulas.py
+         - UNTESTED
+
+      3. Politics class (core/politics.py, 164 lines, 0 tests)
+         - Generic political simulation with its own internal formulas
+         - Has update() method but doesn't use formulas.py
+         - UNTESTED
+
+      4. ContradictionAnalysis (systems/contradiction_analysis.py, 20 tests)
+         - Tension tracking and phase transitions
+         - Works well but doesn't call formulas.py either
+
+      These systems are completely disconnected. Economy._update_class_relations()
+      uses generic formulas, not the MLM-TW formulas we carefully designed and tested.
+
+      Options evaluated:
+      A. Replace Economy/Politics entirely with new subsystems
+      B. Refactor Economy/Politics to use formulas.py internally
+      C. Direct Entities + Formulas (no subsystems)
+    decision: |
+      Option C: Direct Entities + Formulas architecture for Phase 2.
+
+      SimulationEngine.step() calls formulas directly on entities:
+
+      1. For each Relationship:
+         - Call calculate_imperial_rent()
+         - Update entity wealth
+
+      2. For each SocialClass:
+         - Call calculate_consciousness_drift()
+         - Call calculate_acquiescence_probability()
+         - Call calculate_revolution_probability()
+         - Update entity state
+
+      3. For each Contradiction:
+         - Update tension based on entity states
+         - Check for rupture/synthesis via ContradictionAnalysis
+
+      No Economy class. No Politics class in the game loop.
+      Just: Entities (data) + Formulas (math) + Engine (orchestration)
+    rationale:
+      - "Simplest possible architecture for 2-node Phase 2"
+      - "formulas.py has 40 tests; Economy/Politics have 0 tests"
+      - "Avoids two layers of abstraction"
+      - "MLM-TW formulas ARE the theory; generic subsystems obscure it"
+      - "Single source of truth for calculations"
+      - "Easier to trace: entity field -> formula -> new value"
+      - "YAGNI: Economy/Politics may be useful later, but not needed now"
+    alternatives_rejected:
+      replace_economy_politics:
+        reason: "Throws away existing code; may be useful for future complexity"
+      refactor_to_use_formulas:
+        reason: "Adds abstraction layer without benefit for 2-node simulation"
+    consequences:
+      positive:
+        - "Direct traceability from entity to formula to result"
+        - "No untested code in critical path"
+        - "Simpler debugging: fewer layers"
+        - "Engine logic matches theoretical documentation"
+      negative:
+        - "Economy/Politics classes deleted (see ADR011)"
+        - "May need to introduce subsystems when scaling to many entities"
+        - "Engine.step() may grow complex (mitigate with clear sections)"
+    related_gap_analysis:
+      gap_1: "Entity-to-Aggregate: Aggregates computed from entities, not stored"
+      gap_2: "Formula-to-Entity wiring: Explicit mapping required (see game-loop-architecture.yaml)"
+      gap_3: "This decision resolves the disconnected systems gap"
+      gap_4: "Initialization: Factory function for test scenarios"
+      gap_5: "Phase transitions: ContradictionAnalysis handles rupture/synthesis"
+      gap_6: "Coefficients: SimulationConfig object holds global constants"
+      gap_7: "NetworkX: Used from day one per ADR011 (supersedes original ADR010 recommendation)"
+      gap_8: "Testing: Property-based tests for feedback loop verification"
+    future_considerations: |
+      When scaling beyond Phase 2 (many entities, multiple countries),
+      may introduce subsystem layer for:
+      - Aggregate calculations (GDP computed from all entities)
+      - Batch updates (process all entities of a type together)
+      - Performance optimization (cache intermediate results)
+
+      Note: Economy/Politics classes were DELETED per ADR011.
+      If subsystems are needed in future, write fresh with correct architecture.
+      git log preserves the old code for reference if needed.
+
+    implementation_status: |
+      IMPLEMENTED in Phase 2 with 330 tests proving:
+      - Direct formula wiring works
+      - Feedback loops produce emergent behavior
+      - No subsystem layer needed for 2-node simulation
+
 # =============================================================================
 # PENDING DECISIONS
 # =============================================================================

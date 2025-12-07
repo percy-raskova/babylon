@@ -2,67 +2,38 @@
 
 from typing import Any
 
-from sqlalchemy import JSON, Column, Integer, String
+from sqlalchemy import JSON, String
+from sqlalchemy.orm import Mapped, mapped_column
 
 from babylon.data.database import Base
 
 
 class Event(Base):
-    """
-    Represents a game event that can occur based on certain conditions.
+    """Represents a game event that can occur based on certain conditions.
+
     Events can have effects, triggers, and consequences.
     """
 
     __tablename__ = "events"
-    __table_args__ = {"extend_existing": True}  # Added to handle table redefinition
+    __table_args__ = {"extend_existing": True}
 
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    description = Column(String)
-    type = Column(String)  # e.g., 'economic', 'political', 'social'
-    effects = Column(JSON)  # List of effects when event occurs
-    triggers = Column(JSON)  # Conditions that trigger the event
-    consequences = Column(JSON)  # Follow-up events or effects
-    escalation_paths = Column(JSON)  # Possible event escalations
-
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        event_type: str,
-        effects: list[dict[str, Any]] | None = None,
-        triggers: list[dict[str, Any]] | None = None,
-        consequences: list[dict[str, Any]] | None = None,
-        escalation_paths: list[dict[str, Any]] | None = None,
-    ) -> None:
-        """
-        Initialize a new event.
-
-        Args:
-            name: Name of the event
-            description: Detailed description of the event
-            event_type: Type of event (economic, political, social, etc.)
-            effects: List of effects this event has when triggered
-            triggers: List of conditions that trigger this event
-            consequences: List of follow-up events or effects
-            escalation_paths: List of possible event escalations
-        """
-        super().__init__()
-        self.name = name
-        self.description = description
-        self.type = event_type
-        self.effects = effects or []
-        self.triggers = triggers or []
-        self.consequences = consequences or []
-        self.escalation_paths = escalation_paths or []
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(String, default=None)
+    type: Mapped[str | None] = mapped_column(String, default=None)  # economic/political/social
+    effects: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=None)
+    triggers: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=None)
+    consequences: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=None)
+    escalation_paths: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, default=None)
 
     def apply_effects(self, game_state: dict[str, Any]) -> None:
-        """
-        Apply all effects of this event to the game state.
+        """Apply all effects of this event to the game state.
 
         Args:
             game_state: Current game state to modify
         """
+        if self.effects is None:
+            return
         for effect in self.effects:
             effect_type = effect.get("type")
             if effect_type == "economic":
@@ -97,8 +68,7 @@ class Event(Base):
         pass
 
     def check_triggers(self, game_state: dict[str, Any]) -> bool:
-        """
-        Check if this event's triggers are met in the current game state.
+        """Check if this event's triggers are met in the current game state.
 
         Args:
             game_state: Current game state to check against
@@ -106,11 +76,12 @@ class Event(Base):
         Returns:
             bool: True if all triggers are met, False otherwise
         """
+        if self.triggers is None:
+            return True
         return all(self._evaluate_trigger(trigger, game_state) for trigger in self.triggers)
 
     def _evaluate_trigger(self, trigger: dict[str, Any], game_state: dict[str, Any]) -> bool:
-        """
-        Evaluate a single trigger condition.
+        """Evaluate a single trigger condition.
 
         Args:
             trigger: Trigger condition to evaluate
@@ -137,12 +108,10 @@ class Event(Base):
 
         if "min_gdp" in condition and economy.gdp < condition["min_gdp"]:
             return False
-        if (
+        return not (
             "max_unemployment" in condition
             and economy.unemployment_rate > condition["max_unemployment"]
-        ):
-            return False
-        return True
+        )
 
     def _evaluate_political_trigger(
         self, trigger: dict[str, Any], game_state: dict[str, Any]

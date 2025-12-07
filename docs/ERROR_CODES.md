@@ -2,7 +2,7 @@
 
 ## System Metrics (1000-1999)
 - 1000: Invalid CPU usage value
-- 1001: Invalid memory usage value 
+- 1001: Invalid memory usage value
 - 1002: Invalid disk usage value
 - 1003: GPU metrics collection failed
 - 1004: System metrics validation failed
@@ -58,7 +58,7 @@
 
 Backup errors occur during backup/restore operations and include:
 - Space validation failures (6002)
-- Access permission issues (6003) 
+- Access permission issues (6003)
 - Data integrity problems (6004, 6007)
 - Operation failures (6000, 6005, 6006)
 - Resource cleanup issues (6008)

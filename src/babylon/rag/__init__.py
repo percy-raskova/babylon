@@ -101,13 +101,13 @@ except ImportError as e:
 
     # Define placeholder classes to maintain API consistency
     class RagPipeline:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise ImportError(
                 f"RAG pipeline requires additional dependencies. Install with: pip install chromadb numpy. Errors: {_import_errors}"
             )
 
     class RagConfig:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise ImportError(
                 f"RAG config requires additional dependencies. Install with: pip install chromadb numpy. Errors: {_import_errors}"
             )

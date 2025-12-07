@@ -11,8 +11,8 @@ From four-phase-engine-blueprint.md:
 These tests prove that the mathematical core works end-to-end.
 """
 
-import pytest
 import networkx as nx
+import pytest
 
 from babylon.models import Relationship, SocialClass
 from babylon.models.enums import EdgeType, SocialRole
@@ -24,7 +24,6 @@ from babylon.systems.formulas import (
     calculate_revolution_probability,
     is_labor_aristocracy,
 )
-
 
 # =============================================================================
 # THE PHASE 1 BLUEPRINT TEST
@@ -281,7 +280,9 @@ class TestDialecticalTension:
 
         # Simple tension model: tension proportional to value flow
         tension_coefficient = 0.01
-        new_tension = min(1.0, exploitation.tension + (exploitation.value_flow * tension_coefficient))
+        new_tension = min(
+            1.0, exploitation.tension + (exploitation.value_flow * tension_coefficient)
+        )
 
         assert new_tension > exploitation.tension
         assert new_tension <= 1.0
@@ -291,8 +292,8 @@ class TestDialecticalTension:
         # Existing exploitation creates tension
         system_tension = 0.7
 
-        # Solidarity relationship
-        solidarity = Relationship(
+        # Solidarity relationship (demonstrates model structure)
+        _solidarity = Relationship(
             source_id="C001",
             target_id="C003",
             edge_type=EdgeType.SOLIDARITY,
@@ -358,8 +359,8 @@ class TestEndToEndScenario:
             wealth=1000.0,
         )
 
-        # Create exploitation relationship
-        exploitation = Relationship(
+        # Create exploitation relationship (demonstrates model usage, not used in calculations)
+        _exploitation = Relationship(
             source_id=worker.id,
             target_id=owner.id,
             edge_type=EdgeType.EXPLOITATION,
@@ -404,7 +405,9 @@ class TestEndToEndScenario:
             repression=worker.repression_faced,
         )
 
-        assert p_revolt_2 > p_acquiesce_2, "After exploitation and organization, revolt should be rational"
+        assert (
+            p_revolt_2 > p_acquiesce_2
+        ), "After exploitation and organization, revolt should be rational"
 
         # Verify the transition occurred
         assert worker.wealth < worker.subsistence_threshold

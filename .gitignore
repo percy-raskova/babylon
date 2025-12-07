@@ -19,6 +19,9 @@
 # Logs and Databases
 *.log
 *.sqlite3
+*.db
+data/babylon.db
+data/*.db
 
 # Tool Configuration
 .continue*

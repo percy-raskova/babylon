@@ -150,7 +150,7 @@ class ContextWindowManager:
             )
             return True
         except Exception as e:
-            raise ContentInsertionError(f"Failed to add content {content_id}: {str(e)}")
+            raise ContentInsertionError(f"Failed to add content {content_id}: {str(e)}") from e
 
     def get_content(self, content_id: str) -> Any:
         """Get content from the context window and update its priority.
@@ -193,7 +193,7 @@ class ContextWindowManager:
         try:
             return self._remove_content(content_id)
         except Exception as e:
-            raise ContentRemovalError(f"Failed to remove content {content_id}: {str(e)}")
+            raise ContentRemovalError(f"Failed to remove content {content_id}: {str(e)}") from e
 
     def _remove_content(self, content_id: str) -> bool:
         """Internal method to remove content without error handling."""
@@ -231,7 +231,7 @@ class ContextWindowManager:
         try:
             return self._optimize_context_window(target_tokens=target_tokens)
         except Exception as e:
-            raise OptimizationFailedError(f"Failed to optimize context window: {str(e)}")
+            raise OptimizationFailedError(f"Failed to optimize context window: {str(e)}") from e
 
     def _optimize_context_window(
         self, target_tokens: int | None = None, needed_tokens: int = 0
@@ -303,10 +303,7 @@ class ContextWindowManager:
             f"freed {tokens_freed} tokens. New total: {self._total_tokens}"
         )
 
-        if tokens_freed < needed_reduction:
-            return False
-
-        return True
+        return tokens_freed >= needed_reduction
 
     def _calculate_priority(self, content_id: str, importance: float) -> float:
         """Calculate priority score for content.
@@ -375,4 +372,4 @@ class ContextWindowManager:
             words = content.split()
             return int(len(words) * 1.3) + 1  # +1 to avoid zero
         except Exception as e:
-            raise TokenCountError(f"Failed to count tokens: {str(e)}")
+            raise TokenCountError(f"Failed to count tokens: {str(e)}") from e

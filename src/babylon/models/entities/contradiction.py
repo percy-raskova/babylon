@@ -11,12 +11,10 @@ This module consolidates:
 All models now use Sprint 1 types for consistency.
 """
 
-from typing import Any
-
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from babylon.models.enums import IntensityLevel, ResolutionType
-from babylon.models.types import Intensity, Probability
+from babylon.models.types import Intensity
 
 from .effect import Effect
 

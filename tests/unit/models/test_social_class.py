@@ -17,8 +17,6 @@ from pydantic import ValidationError
 # These imports should fail until the model is implemented
 from babylon.models import SocialClass
 from babylon.models.enums import SocialRole
-from babylon.models.types import Currency, Ideology, Probability
-
 
 # =============================================================================
 # CREATION TESTS
@@ -391,9 +389,7 @@ class TestSocialClassSerialization:
         assert restored.ideology == pytest.approx(original.ideology)
         assert restored.p_acquiescence == pytest.approx(original.p_acquiescence)
         assert restored.p_revolution == pytest.approx(original.p_revolution)
-        assert restored.subsistence_threshold == pytest.approx(
-            original.subsistence_threshold
-        )
+        assert restored.subsistence_threshold == pytest.approx(original.subsistence_threshold)
         assert restored.organization == pytest.approx(original.organization)
         assert restored.repression_faced == pytest.approx(original.repression_faced)
 

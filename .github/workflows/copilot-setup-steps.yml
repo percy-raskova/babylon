@@ -1,14 +1,3 @@
-
-    steps (see above)
-    permissions (see above)
-    runs-on (see below)
-    container 
-    services
-    snapshot
-    timeout-minutes (maximum value: 59)
-
-
-
 name: Copilot Setup Steps
 
 on:
@@ -21,9 +10,9 @@ on:
 
 jobs:
   copilot-run-steps:
-    runs-on: debian-latest
-				 permissions:
-     contents: read
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'  # Or parse from pyproject.toml
+          python-version: '3.11'
 
       - name: Install Poetry
         run: |
@@ -63,7 +52,3 @@ jobs:
 
       - name: Run tests
         run: poetry run pytest --maxfail=1 --disable-warnings -q
-
-      # Optional: Log job output to Memory
-      # - name: Log to Memory
-      #   run: python scripts/log_to_memory.py --summary "${{ steps.test.outputs.summary }}"

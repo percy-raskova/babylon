@@ -18,11 +18,11 @@
     - Use logging for debugging and monitoring.
     - When writing functions, ensure that you explicitly declare types for type safety.
 
-## Vector Database: 
+## Vector Database:
     - Use a vector database for storing and querying game objects.
     - Use appropriate indexing techniques for efficient querying.
     - Use vector similarity search for finding similar game objects.
-    
+
 ## Testing Guidelines
     - Write unit tests for individual functions and components.
     - Write integration tests for the overall system.

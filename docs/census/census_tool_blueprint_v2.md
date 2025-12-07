@@ -24,7 +24,7 @@ This document outlines the design for a Claude tool that enables querying of Cen
 
 #### Subject Categories
 - Housing Variables (e.g. BEDROOMS, ROOMS, TENURE)
-- Population Variables (e.g. AGE, SEX, RACE) 
+- Population Variables (e.g. AGE, SEX, RACE)
 - Economic Variables (e.g. INCOME, EMPLOYMENT)
 - Social Variables (e.g. EDUCATION, LANGUAGE)
 
@@ -63,21 +63,21 @@ This document outlines the design for a Claude tool that enables querying of Cen
 def construct_query(params):
     # Validate parameters
     validate_parameters(params)
-    
+
     # Build base URL
     base_url = f"https://api.census.gov/data/{params['year']}/acs/acs1"
-    
+
     # Add query parameters
     query_params = {
         'get': params['variables'],
         'for': params['geography'],
         'key': API_KEY
     }
-    
+
     # Add optional parameters
     if 'filters' in params:
         query_params['predicates'] = params['filters']
-        
+
     return base_url, query_params
 ```
 
@@ -85,18 +85,18 @@ def construct_query(params):
 ```python
 def process_response(response, params):
     """Process Census API response and apply quality checks"""
-    
+
     # Parse JSON response
     data = response.json()
-    
+
     # Apply quality measures if requested
     if 'quality_measures' in params:
         quality_data = get_quality_measures(data, params)
-        
+
     # Calculate derived measures if requested
     if 'derived_measures' in params:
         derived_data = calculate_derived_measures(data, params)
-        
+
     return {
         'data': format_data(data),
         'quality': quality_data if 'quality_measures' in params else None,
@@ -141,7 +141,7 @@ class CensusAPIError(Exception):
 class GeographyError(CensusAPIError):
     """Error for invalid geographic specifications"""
     pass
-    
+
 class VariableError(CensusAPIError):
     """Error for invalid variable specifications"""
     pass
@@ -223,13 +223,13 @@ POPULATION_VARIABLES = {
     'AGE': {
         'description': 'Age',
         'table': 'B01001',
-        'categories': ['Under 5 years', '5-17 years', '18-24 years', '25-44 years', 
+        'categories': ['Under 5 years', '5-17 years', '18-24 years', '25-44 years',
                       '45-64 years', '65 years and over']
     },
     'RACE': {
         'description': 'Race',
         'table': 'B02001',
-        'categories': ['White alone', 'Black alone', 'American Indian alone', 
+        'categories': ['White alone', 'Black alone', 'American Indian alone',
                       'Asian alone', 'Pacific Islander alone', 'Other race alone',
                       'Two or more races']
     }

@@ -151,30 +151,30 @@ Your site will be available at: `https://<username>.github.io/<repository>/`
 or at your custom domain if configured.
 
 
-# First, let's move to the parent directory                         
-cd ..                                                               
-                                                                    
-# Clone your main project repository (if you haven't already)       
-# Replace with your actual repository URL                           
-git clone https://github.com/yourusername/babylon.git               
-                                                                    
-# Move the current Hugo site into the main project as a subdirectory
-mv babylon-website babylon/website                                  
-                                                                    
-# Navigate into the main project                                    
-cd babylon                                                          
-                                                                    
-# Add and commit the website subdirectory                           
-git add website/                                                    
-git commit -m "feat: Add Hugo website as subdirectory"              
-                                                                    
-# Push the changes                                                  
-git push origin main    
+# First, let's move to the parent directory
+cd ..
 
-mkdir -p .github/workflows                                             
-git mv website/.github/workflows/hugo.yml .github/workflows/           
-                                                                       
-# Commit and push the changes                                          
-git add .github/workflows/hugo.yml                                     
-git commit -m "ci: Update Hugo workflow for website subdirectory"      
-git push origin main 
+# Clone your main project repository (if you haven't already)
+# Replace with your actual repository URL
+git clone https://github.com/yourusername/babylon.git
+
+# Move the current Hugo site into the main project as a subdirectory
+mv babylon-website babylon/website
+
+# Navigate into the main project
+cd babylon
+
+# Add and commit the website subdirectory
+git add website/
+git commit -m "feat: Add Hugo website as subdirectory"
+
+# Push the changes
+git push origin main
+
+mkdir -p .github/workflows
+git mv website/.github/workflows/hugo.yml .github/workflows/
+
+# Commit and push the changes
+git add .github/workflows/hugo.yml
+git commit -m "ci: Update Hugo workflow for website subdirectory"
+git push origin main

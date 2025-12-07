@@ -13,7 +13,7 @@ In Babylon, you'll navigate the complex web of social forces, economic systems, 
 ## Immerse Yourself in a Living World
 
 - Dive into a richly detailed simulation where every choice you make reverberates through the fabric of society
-- Watch as opposing forces collide, giving rise to new social formations and modes of production  
+- Watch as opposing forces collide, giving rise to new social formations and modes of production
 - Contend with the unintended consequences of your decisions as they ripple across the political and economic landscape
 
 ## Master the Dynamics of Social Change

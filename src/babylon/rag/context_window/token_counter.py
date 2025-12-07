@@ -23,7 +23,7 @@ def count_tokens(content: str | list | dict | Any) -> int:
         return sum(count_tokens(item) for item in content)
 
     elif isinstance(content, dict):
-        key_tokens = sum(count_tokens(str(k)) for k in content.keys())
+        key_tokens = sum(count_tokens(str(k)) for k in content)
         value_tokens = sum(count_tokens(v) for v in content.values())
         return key_tokens + value_tokens
 

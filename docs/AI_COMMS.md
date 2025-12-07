@@ -14,7 +14,7 @@ This document outlines the approach for using Large Language Models (LLMs) like 
 
 ### Vector Database Contents
 - Previous actions and outcomes
-- Entity descriptions and properties  
+- Entity descriptions and properties
 - Historical events and consequences
 - Contradiction patterns and resolutions
 
@@ -22,7 +22,7 @@ This document outlines the approach for using Large Language Models (LLMs) like 
 
 ### Core Principles
 1. Ground all responses in material conditions
-2. Maintain internal consistency 
+2. Maintain internal consistency
 3. Consider class relations and power dynamics
 4. Provide structured, parseable responses
 5. Include both mechanical effects and narrative description
@@ -118,12 +118,12 @@ def extract_relevant_context(xml_objects):
 def economic_action_prompt(action, state):
     return f"""
     The player has taken an economic action: {action}
-    
+
     Current Economic Indicators:
     - Unemployment Rate: {state.unemployment}
     - Class Inequality Index: {state.inequality}
     - Industrial Capacity: {state.industry_capacity}
-    
+
     How do the following groups respond:
     1. Working Class
     2. Capitalist Class
@@ -136,12 +136,12 @@ def economic_action_prompt(action, state):
 def political_action_prompt(action, state):
     return f"""
     The player has taken a political action: {action}
-    
+
     Current Political Landscape:
     - Class Consciousness Level: {state.class_consciousness}
     - State Legitimacy: {state.legitimacy}
     - Opposition Strength: {state.opposition_power}
-    
+
     Analyze effects on:
     1. Balance of class forces
     2. State authority

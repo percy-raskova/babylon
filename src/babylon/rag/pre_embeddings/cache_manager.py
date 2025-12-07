@@ -194,7 +194,7 @@ class EmbeddingCacheManager:
         except Exception as e:
             error_msg = f"Failed to save cache to {self.config.cache_file_path}: {str(e)}"
             self.metrics.record_metric(name="cache_save_error", value=1, context=error_msg[:100])
-            raise CacheError(error_msg, error_code="RAG_442", cache_key=None)
+            raise CacheError(error_msg, error_code="RAG_442", cache_key=None) from e
 
     def load_cache(self) -> None:
         """Load the cache from disk if persistence is enabled."""
@@ -225,7 +225,7 @@ class EmbeddingCacheManager:
             error_msg = f"Failed to load cache from {self.config.cache_file_path}: {str(e)}"
             self.metrics.record_metric(name="cache_load_error", value=1, context=error_msg[:100])
             self.cache = OrderedDict()
-            raise CacheError(error_msg, error_code="RAG_443", cache_key=None)
+            raise CacheError(error_msg, error_code="RAG_443", cache_key=None) from e
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get statistics about the current cache state.

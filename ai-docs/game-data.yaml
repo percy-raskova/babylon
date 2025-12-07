@@ -1,0 +1,546 @@
+# Babylon External Data Reference
+# Reality data sources for grounding the simulation in material conditions
+#
+# This file documents:
+# 1. What external data the simulation needs
+# 2. Where to fetch it from
+# 3. How it maps to game entities
+# 4. Future automation plans
+
+meta:
+  version: "1.0.0"
+  created: "2024-12-07"
+  updated: "2024-12-07"
+  status: "planning"
+  principle: "Ground simulation in material reality, not abstract numbers"
+
+# =============================================================================
+# DATA CATEGORIES
+# =============================================================================
+
+data_categories:
+
+  reality_data:
+    description: "Static reference facts about the real world"
+    purpose: "Constrain simulation to material reality"
+    update_frequency: "Annually (Census), Quarterly (FRED), Monthly (Trade)"
+    examples:
+      - "Kansas has 2.9M people"
+      - "Median income is $62,000"
+      - "Gini coefficient is 0.45"
+
+  game_state_data:
+    description: "Mutable quantities that change during simulation"
+    purpose: "Track resources, stockpiles, flows"
+    update_frequency: "Every simulation tick"
+    examples:
+      - "Worker class wealth = 0.35"
+      - "Oil stockpile = 350M barrels"
+      - "Tension on exploitation edge = 0.72"
+
+# =============================================================================
+# DATA SOURCES
+# =============================================================================
+
+data_sources:
+
+  census_acs:
+    name: "US Census American Community Survey"
+    url: "https://data.census.gov/"
+    api_url: "https://api.census.gov/data/{year}/acs/acs5"
+    documentation: "docs/census/api-user-guide.pdf"
+    api_key_required: true
+    rate_limit: "500 queries/day without key, 50,000 with key"
+    update_frequency: "Annual (5-year estimates)"
+
+    datasets:
+      state_population:
+        purpose: "Map real populations to game classes"
+        variables:
+          B01001_001E: "Total population"
+          B23025_004E: "Employed population"
+          B23025_005E: "Unemployed population"
+          B23025_007E: "Not in labor force"
+          B24080_012E: "Self-employed (unincorporated)"
+          B19013_001E: "Median household income"
+          B17001_002E: "Population below poverty"
+        geography: "state:*"
+        output_file: "data/external/census/census_state_population.csv"
+
+      metro_demographics:
+        purpose: "Populate locations.json metro areas"
+        variables:
+          B01001_001E: "Total population"
+          B19013_001E: "Median household income"
+          B19083_001E: "Gini index"
+          B25064_001E: "Median gross rent"
+          B25077_001E: "Median home value"
+        geography: "metropolitan statistical area/micropolitan statistical area:*"
+        output_file: "data/external/census/census_metro_demographics.csv"
+
+      housing:
+        purpose: "Calculate subsistence threshold"
+        variables:
+          B25064_001E: "Median gross rent"
+          B25070_010E: "Rent burden 30-34.9%"
+          B25070_011E: "Rent burden 35%+"
+        geography: "metropolitan statistical area/micropolitan statistical area:*"
+        output_file: "data/external/census/census_housing.csv"
+
+  fred:
+    name: "Federal Reserve Economic Data"
+    url: "https://fred.stlouisfed.org/"
+    api_url: "https://api.stlouisfed.org/fred/series/observations"
+    api_key_required: true
+    rate_limit: "120 requests/minute"
+    update_frequency: "Varies by series (daily to annual)"
+
+    series:
+      GDPC1:
+        description: "Real GDP (billions of chained 2017 dollars)"
+        frequency: "quarterly"
+        game_use: "Overall economic health"
+
+      UNRATE:
+        description: "Unemployment Rate (%)"
+        frequency: "monthly"
+        game_use: "Lumpenproletariat size proxy"
+
+      CPIAUCSL:
+        description: "Consumer Price Index"
+        frequency: "monthly"
+        game_use: "Real wage calculations"
+
+      FEDFUNDS:
+        description: "Federal Funds Rate (%)"
+        frequency: "daily"
+        game_use: "Capital mobility / investment climate"
+
+      GFDEBTN:
+        description: "Federal Debt (millions)"
+        frequency: "quarterly"
+        game_use: "State capacity constraints"
+
+      M2SL:
+        description: "M2 Money Supply"
+        frequency: "monthly"
+        game_use: "Inflation pressure"
+
+      MEHOINUSA672N:
+        description: "Real Median Household Income"
+        frequency: "annual"
+        game_use: "Working class material conditions"
+
+      GINIALLRF:
+        description: "Gini Index"
+        frequency: "annual"
+        game_use: "Inequality / contradiction tension"
+
+    output_file: "data/external/fred/fred_economic_indicators.csv"
+
+  census_trade:
+    name: "US Census Bureau Foreign Trade"
+    url: "https://www.census.gov/foreign-trade/data/"
+    api_url: "https://api.census.gov/data/timeseries/intltrade/exports"
+    api_key_required: true
+    update_frequency: "Monthly"
+
+    datasets:
+      trade_balance:
+        purpose: "Model unequal exchange / Imperial Rent"
+        variables:
+          - "CTY_CODE (Country code)"
+          - "ALL_VAL_MO (Total value)"
+          - "I_COMMODITY (Import commodity)"
+          - "E_COMMODITY (Export commodity)"
+        key_countries:
+          CHN: "China"
+          MEX: "Mexico"
+          CAN: "Canada"
+          JPN: "Japan"
+          DEU: "Germany"
+          VNM: "Vietnam"
+          KOR: "South Korea"
+          IND: "India"
+          TWN: "Taiwan"
+          GBR: "United Kingdom"
+        output_file: "data/external/trade/trade_balance_by_country.csv"
+
+      imports_by_category:
+        purpose: "Link trade to game resources"
+        hs_codes:
+          "27": "Mineral fuels, oils -> Crude Oil, Gasoline"
+          "72": "Iron and steel -> Steel, Iron Ore"
+          "84": "Machinery -> Industrial capacity"
+          "85": "Electrical machinery -> Semiconductors"
+          "87": "Vehicles -> Automobiles"
+        output_file: "data/external/trade/imports_by_category.csv"
+
+  bls:
+    name: "Bureau of Labor Statistics"
+    url: "https://www.bls.gov/"
+    api_url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+    api_key_required: true
+    rate_limit: "500 queries/day with key"
+    update_frequency: "Quarterly (QCEW), Annual (Union)"
+
+    datasets:
+      employment_by_industry:
+        purpose: "Map labor to production capacity"
+        source: "QCEW (Quarterly Census of Employment and Wages)"
+        naics_codes:
+          "11": "Agriculture -> Wheat"
+          "21": "Mining -> Iron Ore, Crude Oil"
+          "31-33": "Manufacturing -> Steel, Automobiles, Semiconductors"
+          "22": "Utilities -> Energy sector"
+        output_file: "data/external/bls/bls_employment_by_industry.csv"
+
+      union_membership:
+        purpose: "Proxy for working class organization (P(S|R) input)"
+        source: "Current Population Survey"
+        variables:
+          - "Total employed"
+          - "Union members"
+          - "Percent unionized"
+          - "Covered by union contract"
+        output_file: "data/external/bls/bls_union_membership.csv"
+
+  eia:
+    name: "Energy Information Administration"
+    url: "https://www.eia.gov/"
+    api_url: "https://api.eia.gov/v2/"
+    api_key_required: true
+    update_frequency: "Weekly (petroleum), Monthly (production)"
+
+    datasets:
+      petroleum:
+        purpose: "Oil resource tracking"
+        series:
+          - "PET.WCRSTUS1.W (Weekly crude stocks)"
+          - "PET.WCRFPUS2.W (Weekly production)"
+          - "PET.RWTC.D (WTI spot price)"
+        output_file: "data/external/eia/eia_petroleum.csv"
+
+  usgs:
+    name: "US Geological Survey"
+    url: "https://www.usgs.gov/centers/national-minerals-information-center"
+    api_url: null  # No API, manual download
+    update_frequency: "Annual"
+
+    datasets:
+      mineral_production:
+        purpose: "Iron ore, steel, mineral resources"
+        commodities:
+          - "Iron ore (million metric tons)"
+          - "Steel (million metric tons)"
+          - "Copper"
+          - "Aluminum"
+        output_file: "data/external/usgs/usgs_minerals.csv"
+
+# =============================================================================
+# DATA TO GAME ENTITY MAPPING
+# =============================================================================
+
+entity_mapping:
+
+  social_class:
+    description: "How census data maps to SocialClass entities"
+
+    bourgeoisie:
+      definition: "Owns means of production"
+      census_proxy: "Top 1% income (>$500k) + business owners with employees"
+      data_source: "Census ACS B19001 (income brackets) + SCF wealth data"
+
+    proletariat:
+      definition: "Sells labor power"
+      census_proxy: "Employed population minus self-employed"
+      data_source: "B23025_004E - B24080_012E"
+
+    petit_bourgeoisie:
+      definition: "Self-employed, small business"
+      census_proxy: "Self-employed unincorporated + small business owners"
+      data_source: "B24080_012E"
+
+    lumpenproletariat:
+      definition: "Outside formal economy"
+      census_proxy: "Unemployed + below poverty + not in labor force (some)"
+      data_source: "B23025_005E + B17001_002E"
+
+  location:
+    description: "How census geography maps to Location entities"
+    mapping:
+      metropolitan: "CBSA (Core Based Statistical Area)"
+      state: "State FIPS"
+      county: "County FIPS"
+    enrich_with:
+      - "Population from B01001_001E"
+      - "Median income from B19013_001E"
+      - "Gini from B19083_001E"
+
+  resources:
+    description: "How production data maps to Resource entities"
+
+    crude_oil:
+      game_id: "R002"
+      eia_series: "PET.WCRFPUS2.W"
+      unit: "barrels/day"
+      strategic_reserve: "PET.WCRSTUS1.W"
+
+    iron_ore:
+      game_id: "R001"
+      usgs_commodity: "Iron ore"
+      unit: "metric tons"
+
+    steel:
+      game_id: "R003"
+      usgs_commodity: "Raw steel"
+      unit: "metric tons"
+
+    wheat:
+      game_id: "R006"
+      usda_series: "Wheat production"
+      unit: "bushels"
+
+  formula_inputs:
+    description: "How external data feeds into simulation formulas"
+
+    p_acquiescence:
+      formula: "calculate_acquiescence_probability(wealth, subsistence_threshold, k)"
+      data_mapping:
+        wealth: "Median income / Cost of living index"
+        subsistence_threshold: "HUD Fair Market Rent * 12 * 3 (30% rule)"
+
+    p_revolution:
+      formula: "calculate_revolution_probability(cohesion, repression)"
+      data_mapping:
+        cohesion: "Union membership rate"
+        repression: "Law enforcement per capita + military presence"
+
+    imperial_rent:
+      formula: "calculate_imperial_rent(alpha, periphery_wages, periphery_consciousness)"
+      data_mapping:
+        alpha: "Trade surplus / Partner GDP (extraction efficiency)"
+        periphery_wages: "Partner country median wage / US median wage"
+
+# =============================================================================
+# FILE ORGANIZATION
+# =============================================================================
+
+file_organization:
+  base_path: "data/external/"
+
+  structure:
+    census:
+      - "census_state_population.csv"
+      - "census_metro_demographics.csv"
+      - "census_housing.csv"
+    fred:
+      - "fred_economic_indicators.csv"
+    trade:
+      - "trade_balance_by_country.csv"
+      - "imports_by_category.csv"
+    bls:
+      - "bls_employment_by_industry.csv"
+      - "bls_union_membership.csv"
+    eia:
+      - "eia_petroleum.csv"
+    usgs:
+      - "usgs_minerals.csv"
+    resources:
+      - "strategic_resources.csv"
+
+# =============================================================================
+# FUTURE: CI/CD DATA PIPELINE
+# =============================================================================
+
+future_automation:
+
+  status: "DEFERRED"
+  priority: "low"
+  description: "Automated pipeline to refresh external data on schedule"
+
+  architecture:
+    name: "Data Refresh Pipeline"
+    trigger: "GitHub Actions scheduled workflow"
+
+    components:
+      data_fetchers:
+        description: "Python scripts to pull from each API"
+        location: "tools/data_pipeline/"
+        scripts:
+          - "fetch_census.py"
+          - "fetch_fred.py"
+          - "fetch_trade.py"
+          - "fetch_bls.py"
+          - "fetch_eia.py"
+
+      validators:
+        description: "Validate fetched data against schemas"
+        checks:
+          - "Schema validation (column names, types)"
+          - "Range validation (no negative populations)"
+          - "Completeness (all states present)"
+          - "Freshness (data timestamp within expected range)"
+
+      transformers:
+        description: "Transform raw data to game format"
+        operations:
+          - "Calculate derived fields (class populations)"
+          - "Normalize to game scale (0-1 ranges)"
+          - "Join related datasets"
+          - "Generate SQLite inserts"
+
+      loaders:
+        description: "Load into SQLite database"
+        operations:
+          - "Backup existing data"
+          - "Truncate and reload tables"
+          - "Verify row counts"
+          - "Update metadata table with fetch timestamp"
+
+  github_actions_workflow:
+    file: ".github/workflows/data-refresh.yaml"
+
+    schedule:
+      census: "0 0 1 1 *"      # Annually: Jan 1
+      fred: "0 0 1 */3 *"      # Quarterly: 1st of Jan/Apr/Jul/Oct
+      trade: "0 0 15 * *"      # Monthly: 15th
+      bls: "0 0 1 */3 *"       # Quarterly
+      eia: "0 0 * * 1"         # Weekly: Monday
+
+    workflow_sketch: |
+      name: Data Refresh Pipeline
+
+      on:
+        schedule:
+          - cron: '0 0 1 */3 *'  # Quarterly default
+        workflow_dispatch:
+          inputs:
+            source:
+              description: 'Data source to refresh'
+              required: true
+              type: choice
+              options: [all, census, fred, trade, bls, eia]
+
+      jobs:
+        fetch:
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                python-version: '3.11'
+
+            - name: Install dependencies
+              run: poetry install --only data-pipeline
+
+            - name: Fetch Census data
+              if: inputs.source == 'all' || inputs.source == 'census'
+              env:
+                CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+              run: python tools/data_pipeline/fetch_census.py
+
+            - name: Fetch FRED data
+              if: inputs.source == 'all' || inputs.source == 'fred'
+              env:
+                FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+              run: python tools/data_pipeline/fetch_fred.py
+
+            - name: Validate data
+              run: python tools/data_pipeline/validate_all.py
+
+            - name: Transform to game format
+              run: python tools/data_pipeline/transform.py
+
+            - name: Load to SQLite
+              run: python tools/data_pipeline/load_sqlite.py
+
+            - name: Commit changes
+              run: |
+                git config user.name "github-actions[bot]"
+                git add data/external/ data/babylon.db
+                git commit -m "chore(data): refresh external data $(date +%Y-%m-%d)" || exit 0
+                git push
+
+    secrets_required:
+      - "CENSUS_API_KEY"
+      - "FRED_API_KEY"
+      - "BLS_API_KEY"
+      - "EIA_API_KEY"
+
+  implementation_steps:
+    phase_1:
+      name: "Manual Scripts"
+      tasks:
+        - "Create tools/data_pipeline/ directory"
+        - "Write fetch_*.py scripts for each source"
+        - "Test locally with API keys in .env"
+        - "Document API key acquisition process"
+
+    phase_2:
+      name: "Validation & Transform"
+      tasks:
+        - "Define JSON schemas for each CSV"
+        - "Write validation script"
+        - "Write transformation logic"
+        - "Create SQLite schema"
+
+    phase_3:
+      name: "GitHub Actions"
+      tasks:
+        - "Create workflow file"
+        - "Add secrets to repository"
+        - "Test with workflow_dispatch"
+        - "Enable scheduled runs"
+
+    phase_4:
+      name: "Monitoring"
+      tasks:
+        - "Add Slack/Discord notification on failure"
+        - "Create dashboard for data freshness"
+        - "Set up alerts for anomalies"
+
+  estimated_effort:
+    phase_1: "4-6 hours"
+    phase_2: "4-6 hours"
+    phase_3: "2-3 hours"
+    phase_4: "2-3 hours"
+    total: "12-18 hours"
+
+# =============================================================================
+# CURRENT STATUS
+# =============================================================================
+
+current_status:
+
+  manual_collection:
+    status: "PENDING"
+    document: "brainstorm/data-requirements.md"
+    priority_order:
+      P1:
+        - "census_state_population.csv"
+        - "fred_economic_indicators.csv"
+        - "bls_union_membership.csv"
+        - "strategic_resources.csv"
+      P2:
+        - "trade_balance_by_country.csv"
+        - "imports_by_category.csv"
+        - "bls_employment_by_industry.csv"
+        - "housing_costs_metro.csv"
+      P3:
+        - "military_by_state.csv"
+        - "law_enforcement_by_state.csv"
+
+  sqlite_schema:
+    status: "NOT_STARTED"
+    location: "src/babylon/data/schema.sql"
+
+  import_scripts:
+    status: "NOT_STARTED"
+    location: "tools/import_csv.py"
+
+  pydantic_models:
+    status: "NOT_STARTED"
+    location: "src/babylon/models/external_data/"

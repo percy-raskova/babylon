@@ -19,7 +19,7 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
   - Production units (factories, farms, mines)
   - Resources and commodities
   - Labor and capital relations
-  
+
 - **Social Classes**
   - Class definitions and relationships
   - Class consciousness and mobility

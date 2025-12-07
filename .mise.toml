@@ -1,0 +1,87 @@
+# Mise Task Runner Configuration for Babylon
+# https://mise.jdx.dev/
+
+[tools]
+python = "3.12"
+
+[env]
+PYTHONPATH = "src"
+BABYLON_ENV = "development"
+
+# =============================================================================
+# INSTALLATION
+# =============================================================================
+
+[tasks.install]
+description = "Install all dependencies"
+run = "poetry install --with dev"
+
+# =============================================================================
+# CODE QUALITY
+# =============================================================================
+
+[tasks.lint]
+description = "Run ruff linter with auto-fix"
+run = "poetry run ruff check src tests --fix"
+
+[tasks.format]
+description = "Run ruff formatter"
+run = "poetry run ruff format src tests"
+
+[tasks.typecheck]
+description = "Run mypy type checker"
+run = "poetry run mypy src"
+
+[tasks.check]
+description = "Run all quality checks (lint, format, typecheck, test-fast)"
+depends = ["lint", "format", "typecheck", "test-fast"]
+
+# =============================================================================
+# TESTING
+# =============================================================================
+
+[tasks.test]
+description = "Run all non-AI tests"
+run = "poetry run pytest -m 'not ai' --tb=short"
+
+[tasks.test-fast]
+description = "Run fast math/engine tests only"
+run = "poetry run pytest tests/unit/formulas tests/unit/engine -v"
+
+[tasks.test-cov]
+description = "Run tests with coverage report"
+run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
+
+[tasks.test-all]
+description = "Run all tests including AI evals"
+run = "poetry run pytest --tb=short"
+
+# =============================================================================
+# VERSIONING
+# =============================================================================
+
+[tasks.bump]
+description = "Bump version with commitizen"
+run = "poetry run cz bump --changelog"
+
+[tasks.bump-dry]
+description = "Preview version bump without changes"
+run = "poetry run cz bump --dry-run"
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+[tasks.clean]
+description = "Clean build artifacts and caches"
+run = """
+rm -rf .pytest_cache .mypy_cache .ruff_cache
+rm -rf dist build *.egg-info
+rm -rf .coverage htmlcov
+find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+echo "Cleaned!"
+"""
+
+[tasks.hooks]
+description = "Install pre-commit hooks"
+run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit"

@@ -74,6 +74,7 @@ brainstorm/
 | File | Status | One-liner |
 |------|--------|-----------|
 | [plans/four-phase-engine-blueprint.md](plans/four-phase-engine-blueprint.md) | **ACTIVE** | The 4-phase roadmap: Equations → Engine → AI → UI |
+| [plans/phase2-game-loop-design.md](plans/phase2-game-loop-design.md) | **ACTIVE** | Data/Logic separation, WorldState, SimulationEngine |
 
 ## Deferred Ideas
 

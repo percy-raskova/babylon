@@ -2,8 +2,9 @@
 # How the pieces fit together
 
 meta:
-  version: "1.0.0"
-  updated: "2024-12-07"
+  version: "2.0.0"
+  updated: "2025-12-07"
+  status: "Phase 2 complete (330 tests)"
 
 # =============================================================================
 # THE EMBEDDED TRINITY
@@ -27,14 +28,17 @@ core_architecture:
     topology:
       purpose: "Fluid, relational state"
       technology: "NetworkX (in-memory graph)"
-      location: "src/babylon/core/"
+      locations:
+        primary: "src/babylon/models/world_state.py (to_graph/from_graph)"
+        formulas: "src/babylon/systems/formulas.py"
+        engine: "src/babylon/engine/simulation_engine.py"
       contains:
-        - "ContradictionAnalysis (dialectical engine)"
-        - "Entity relationships"
-        - "Class solidarity networks"
-        - "Supply chain graphs"
-      data_flow: "Built from Ledger at startup, evolves during gameplay"
-      key_insight: "Relationships change faster than material base"
+        - "WorldState.to_graph() - DiGraph of entities and relationships"
+        - "Relationship edges (EXPLOITATION, SOLIDARITY, REPRESSION)"
+        - "Node attributes (wealth, ideology, organization, p_*)"
+        - "Edge attributes (value_flow, tension)"
+      data_flow: "WorldState converted to graph for step(), then back"
+      key_insight: "Graph + Math = History (ADR011)"
 
     archive:
       purpose: "Semantic history and theory"
@@ -55,12 +59,29 @@ directory_map:
   src/babylon/:
     config/: "BaseConfig, environment variables, logging setup"
     core/:
-      purpose: "Topology layer - game logic"
+      purpose: "Legacy topology layer (partially deprecated)"
+      status: "economy.py and politics.py DELETED per ADR011"
       key_files:
-        - "contradiction.py: ContradictionAnalysis engine"
+        - "contradiction.py: Legacy ContradictionAnalysis"
         - "entity.py: Base Entity class"
-        - "economy.py: Economic calculations"
-        - "politics.py: Political mechanics"
+      note: "See engine/ and systems/ for Phase 2+ implementation"
+
+    engine/:
+      purpose: "Simulation engine - the Phase 2 game loop"
+      key_files:
+        - "simulation_engine.py: step(state, config) → new_state"
+        - "scenarios.py: Factory functions for test scenarios"
+      status: "IMPLEMENTED (26 tests)"
+
+    models/:
+      purpose: "Pydantic models for the simulation"
+      key_files:
+        - "world_state.py: Immutable state snapshot"
+        - "config.py: SimulationConfig (frozen)"
+        - "types.py: Constrained types (Probability, Currency, etc.)"
+        - "enums.py: StrEnum definitions"
+        - "entities/: SocialClass, Relationship, etc."
+      status: "IMPLEMENTED (150+ tests)"
     data/:
       purpose: "Ledger layer - persistent state"
       key_files:
@@ -126,14 +147,19 @@ data_flows:
       - "Initialize ChromaDB connection (Archive)"
 
   game_turn:
+    implementation: "step(WorldState, SimulationConfig) → WorldState"
+    location: "src/babylon/engine/simulation_engine.py"
     steps:
-      - "Read current state from Ledger"
-      - "Calculate contradiction intensities (Topology)"
-      - "Check rupture conditions"
-      - "Generate events based on state"
-      - "Apply effects to Ledger"
+      - "1. Convert WorldState to NetworkX DiGraph"
+      - "2. Update economic base (imperial rent calculation)"
+      - "3. Update survival probabilities (P(S|A), P(S|R))"
+      - "4. Update consciousness drift (dΨ/dt)"
+      - "5. Update contradiction tension"
+      - "6. Convert graph back to new WorldState"
+      - "7. Increment tick"
+    phase_3_additions:
       - "AI generates narrative from changes (Archive)"
-      - "Persist state"
+      - "Event bus emits signals for crossovers/ruptures"
 
   ai_narrative:
     principle: "AI is observer, not controller"

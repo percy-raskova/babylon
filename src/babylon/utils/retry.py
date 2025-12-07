@@ -1,36 +1,53 @@
-"""Retry decorator for handling transient failures."""
+"""Retry decorator for transient failure handling.
 
+In the material world, systems fail. Networks drop.
+Databases timeout. The revolutionary must persevere.
+"""
+
+import functools
 import logging
 import time
 from collections.abc import Callable
-from functools import wraps
-from typing import Any
+from typing import Any, TypeVar
 
-logger = logging.getLogger(__name__)
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def retry_on_exception(
     max_retries: int = 3,
     delay: float = 1.0,
-    exceptions: tuple[type[Exception], ...] = (Exception,),
+    backoff: float = 2.0,
+    exceptions: type[Exception] | tuple[type[Exception], ...] = Exception,
     logger: logging.Logger | None = None,
-) -> Callable:
+) -> Callable[[F], F]:
     """Decorator that retries a function on specified exceptions.
+
+    Uses exponential backoff to avoid hammering failing resources.
+    This is a materialist approach: we respect the physical constraints
+    of the systems we depend on.
 
     Args:
         max_retries: Maximum number of retry attempts
-        delay: Delay between retries in seconds
-        exceptions: Tuple of exception types to catch and retry on
-        logger: Optional logger instance for retry attempts
+        delay: Initial delay between retries (seconds)
+        backoff: Multiplier applied to delay after each retry
+        exceptions: Exception types that trigger a retry
+        logger: Logger instance for retry messages
 
     Returns:
-        Callable: Decorated function that implements retry logic
+        Decorated function with retry logic
+
+    Example:
+        @retry_on_exception(max_retries=3, delay=1.0, exceptions=(ConnectionError,))
+        def fetch_data():
+            return requests.get("https://api.example.com")
     """
 
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
+    def decorator(func: F) -> F:
+        @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            last_exception = None
+            _logger = logger or logging.getLogger(func.__module__)
+            current_delay = delay
+            last_exception: Exception | None = None
 
             for attempt in range(max_retries + 1):
                 try:
@@ -38,23 +55,32 @@ def retry_on_exception(
                 except exceptions as e:
                     last_exception = e
 
-                    if attempt < max_retries:
-                        if logger:
-                            logger.warning(
-                                f"Attempt {attempt + 1}/{max_retries} failed: {e!s}. "
-                                f"Retrying in {delay} seconds..."
-                            )
-                        time.sleep(delay)
-                    else:
-                        if logger:
-                            logger.error(
-                                f"All {max_retries} retry attempts failed. "
-                                f"Last error: {e!s}"
-                            )
-                        raise last_exception
+                    if attempt == max_retries:
+                        _logger.error(
+                            "Function %s failed after %d attempts: %s",
+                            func.__name__,
+                            max_retries + 1,
+                            str(e),
+                        )
+                        raise
 
-            return None  # Should never reach here
+                    _logger.warning(
+                        "Function %s failed (attempt %d/%d): %s. Retrying in %.1fs...",
+                        func.__name__,
+                        attempt + 1,
+                        max_retries + 1,
+                        str(e),
+                        current_delay,
+                    )
 
-        return wrapper
+                    time.sleep(current_delay)
+                    current_delay *= backoff
+
+            # This should never be reached, but satisfies the type checker
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Retry logic failed unexpectedly")
+
+        return wrapper  # type: ignore[return-value]
 
     return decorator

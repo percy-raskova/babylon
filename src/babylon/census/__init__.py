@@ -1,13 +1,13 @@
 """Census data access and processing package"""
 
 from .census_api import (
+    HOUSING_VARIABLES,
+    POPULATION_VARIABLES,
     CensusAPI,
     CensusAPIError,
     GeographyError,
-    VariableError,
     QualityError,
-    HOUSING_VARIABLES,
-    POPULATION_VARIABLES,
+    VariableError,
 )
 
 __all__ = [

@@ -1,153 +1,86 @@
-"""Logging configuration for the Babylon application.
+"""Logging configuration for Babylon/Babylon.
 
-Provides centralized logging configuration with:
-- JSON structured logging
-- Correlation ID tracking
-- Performance metrics
-- Error tracking
-- User analytics
+Logging is the nervous system of the simulation.
+Every action must be traceable, every decision auditable.
 """
 
 import logging
-import logging.handlers
-import os
-import traceback
-import uuid
-from datetime import datetime
-from typing import Any
+import logging.config
+import sys
+from pathlib import Path
 
-from babylon.logging_handlers.database_handler import DatabaseHandler
-from pythonjsonlogger import jsonlogger
+import yaml
+
+from babylon.config.base import BaseConfig
 
 
-class CorrelationIDFilter(logging.Filter):
-    """Adds correlation ID to all log records."""
+def setup_logging(config_path: Path | None = None, default_level: str = "INFO") -> None:
+    """Initialize the logging system.
 
-    def __init__(self):
-        super().__init__()
-        self._correlation_id: str | None = None
+    Args:
+        config_path: Path to a YAML logging configuration file.
+                    If None, uses default configuration.
+        default_level: Fallback log level if config file is missing.
 
-    @property
-    def correlation_id(self) -> str:
-        """Get current correlation ID, creating if needed."""
-        if self._correlation_id is None:
-            self._correlation_id = str(uuid.uuid4())
-        return self._correlation_id
+    The logging system is deterministic - given the same inputs,
+    it produces the same outputs. No probabilistic behavior.
+    """
+    # Ensure log directory exists
+    BaseConfig.LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-    @correlation_id.setter
-    def correlation_id(self, value: str) -> None:
-        """Set correlation ID."""
-        self._correlation_id = value
+    # Try to load YAML config if provided
+    if config_path and config_path.exists():
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
 
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Add correlation ID to log record."""
-        record.correlation_id = self.correlation_id
-        return True
+        # Update file handler paths to use configured log directory
+        if "handlers" in config:
+            for handler_name, handler_config in config["handlers"].items():
+                if "filename" in handler_config:
+                    # Make path relative to LOG_DIR
+                    filename = Path(handler_config["filename"]).name
+                    handler_config["filename"] = str(BaseConfig.LOG_DIR / filename)
 
-
-class ErrorContextFilter(logging.Filter):
-    """Adds error context information to log records."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if record.exc_info:
-            record.error_details = {
-                "type": record.exc_info[0].__name__,
-                "message": str(record.exc_info[1]),
-                "traceback": traceback.format_exception(*record.exc_info),
-            }
-        return True
+        logging.config.dictConfig(config)
+    else:
+        # Default configuration
+        _setup_default_logging(default_level)
 
 
-def setup_logging() -> None:
-    """Configure logging for the application."""
+def _setup_default_logging(level: str) -> None:
+    """Set up default logging configuration.
 
-    # Create logs directory if needed
-    log_dir = "logs"
-    os.makedirs(log_dir, exist_ok=True)
+    Simple, functional, materialist.
+    """
+    log_level = getattr(logging, level.upper(), logging.INFO)
 
-    # Create JSON formatters
-    class CustomJsonFormatter(jsonlogger.JsonFormatter):
-        def add_fields(
-            self,
-            log_record: dict[str, Any],
-            record: logging.LogRecord,
-            message_dict: dict[str, Any],
-        ) -> None:
-            super().add_fields(log_record, record, message_dict)
-            log_record["timestamp"] = datetime.utcnow().isoformat()
-            log_record["level"] = record.levelname
-            log_record["correlation_id"] = getattr(record, "correlation_id", None)
-
-            # Add error context if present
-            if hasattr(record, "error_details"):
-                log_record["error"] = record.error_details
-
-            # Add metrics if present
-            if hasattr(record, "metrics"):
-                log_record["metrics"] = record.metrics
-
-    # Configure formatters
-    json_formatter = CustomJsonFormatter(
-        "%(timestamp)s %(level)s %(name)s %(correlation_id)s %(message)s"
-    )
-
-    # Configure handlers
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(json_formatter)
-    console_handler.setLevel(logging.INFO)
-
-    # Main log file
-    main_log = os.path.join(log_dir, f"babylon_{datetime.now():%Y%m%d}.log")
-    file_handler = logging.handlers.RotatingFileHandler(
-        main_log, maxBytes=10485760, backupCount=5  # 10MB
-    )
-    file_handler.setFormatter(json_formatter)
-    file_handler.setLevel(logging.DEBUG)
-
-    # Error log file
-    error_log = os.path.join(log_dir, f"babylon_errors_{datetime.now():%Y%m%d}.log")
-    error_handler = logging.handlers.RotatingFileHandler(
-        error_log, maxBytes=10485760, backupCount=5
-    )
-    error_handler.setFormatter(json_formatter)
-    error_handler.setLevel(logging.ERROR)
-
-    # Metrics log file
-    metrics_log = os.path.join(log_dir, f"babylon_metrics_{datetime.now():%Y%m%d}.log")
-    metrics_handler = logging.handlers.RotatingFileHandler(
-        metrics_log, maxBytes=10485760, backupCount=5
-    )
-    metrics_handler.setFormatter(json_formatter)
-    metrics_handler.setLevel(logging.INFO)
-
-    # Add the database handler
-    db_handler = DatabaseHandler()
-    db_handler.setLevel(logging.INFO)
+    # Root logger configuration
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
+    root_logger.setLevel(log_level)
 
-    # Add filters
-    correlation_filter = CorrelationIDFilter()
-    error_filter = ErrorContextFilter()
-    root_logger.addFilter(correlation_filter)
-    root_logger.addFilter(error_filter)
+    # Clear any existing handlers
+    root_logger.handlers.clear()
 
-    # Add handlers
+    # Console handler - the immediate feedback loop
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(log_level)
+    console_formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
+
+    # File handler - the permanent record
+    log_file = BaseConfig.LOG_DIR / "gameplay.log"
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setLevel(logging.DEBUG)
+    file_formatter = logging.Formatter(
+        "%(asctime)s|%(levelname)s|%(name)s|%(funcName)s:%(lineno)d|%(message)s"
+    )
+    file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
-    root_logger.addHandler(error_handler)
-    root_logger.addHandler(metrics_handler)
 
-    # Configure specific loggers
-    loggers = {
-        "chromadb": logging.INFO,
-        "babylon.data": logging.DEBUG,
-        "babylon.entities": logging.DEBUG,
-        "babylon.systems": logging.DEBUG,
-        "babylon.metrics": logging.INFO,
-        "babylon.ai": logging.DEBUG,
-    }
-
-    for logger_name, level in loggers.items():
-        logger = logging.getLogger(logger_name)
-        logger.setLevel(level)
+    # Suppress noisy third-party loggers
+    logging.getLogger("chromadb").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)

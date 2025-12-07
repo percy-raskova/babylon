@@ -1,70 +1,67 @@
-"""Base configuration module providing core settings.
+"""Base configuration for the Babylon/Babylon engine.
 
-This module defines the BaseConfig class which serves as the foundation for
-environment-specific configurations. It loads settings from environment variables
-with sensible defaults.
+This module loads configuration from environment variables with sensible defaults.
+The configuration is materialist: it reflects the actual constraints of the runtime
+environment, not abstract ideals.
 """
 
 import os
 from pathlib import Path
-from typing import ClassVar, Final
+from typing import Final
 
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# Load .env file if it exists
 load_dotenv()
 
 
 class BaseConfig:
-    """Base configuration class providing default settings.
+    """Base configuration singleton.
 
-    This class defines the base configuration settings used across all environments.
-    It should be subclassed by environment-specific configurations that can
-    override these values as needed.
-
-    Class Attributes:
-        SECRET_KEY (ClassVar[str]): Secret key for security features
-        DATABASE_URL (ClassVar[str]): Database connection string
-        DB_POOL_SIZE (ClassVar[int]): Database connection pool size
-        DB_MAX_OVERFLOW (ClassVar[int]): Maximum pool overflow
-        DEBUG (ClassVar[bool]): Debug mode flag
-        TESTING (ClassVar[bool]): Testing mode flag
-        CHROMADB_PERSIST_DIR (ClassVar[Path]): Directory for ChromaDB persistence
-        METRICS_ENABLED (ClassVar[bool]): Enable metrics collection
-        METRICS_INTERVAL (ClassVar[int]): Metrics collection interval in seconds
-        LOG_LEVEL (ClassVar[str]): Minimum logging level
-        LOG_FORMAT (ClassVar[str]): Log message format
-        LOG_DIR (ClassVar[Path]): Log file directory
+    All values are class attributes for direct access without instantiation.
+    This mirrors the material reality: configuration exists whether you
+    acknowledge it or not.
     """
 
-    # Security settings
-    SECRET_KEY: ClassVar[str] = os.getenv("SECRET_KEY", "default-secret-key")
+    # === Application Identity ===
+    APP_NAME: Final[str] = "Babylon"
+    VERSION: Final[str] = "0.2.0"
 
-    # Database settings
-    DATABASE_URL: ClassVar[str] = os.getenv(
-        "DATABASE_URL", "postgresql://username:password@localhost:5432/babylon_db"
-    )
-    DB_POOL_SIZE: ClassVar[int] = int(os.getenv("DB_POOL_SIZE", "5"))
-    DB_MAX_OVERFLOW: ClassVar[int] = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+    # === Runtime Mode ===
+    DEBUG: Final[bool] = os.getenv("DEBUG", "false").lower() == "true"
+    TESTING: Final[bool] = os.getenv("TESTING", "false").lower() == "true"
 
-    # Application mode flags
-    DEBUG: ClassVar[bool] = os.getenv("DEBUG", "false").lower() == "true"
-    TESTING: ClassVar[bool] = os.getenv("TESTING", "false").lower() == "true"
-
-    # ChromaDB settings
-    CHROMADB_PERSIST_DIR: ClassVar[Path] = Path(
-        os.getenv("CHROMADB_PERSIST_DIR", "./chromadb")
+    # === Database Configuration (The Ledger) ===
+    # SQLite: simple, embedded, no server required
+    DATABASE_URL: Final[str] = os.getenv(
+        "DATABASE_URL", f"sqlite:///{Path.cwd() / 'babylon.db'}"
     )
 
-    # Metrics settings
-    METRICS_ENABLED: ClassVar[bool] = (
-        os.getenv("METRICS_ENABLED", "true").lower() == "true"
-    )
-    METRICS_INTERVAL: ClassVar[int] = int(os.getenv("METRICS_INTERVAL", "60"))
-
-    # Logging settings
+    # === Logging Configuration ===
     LOG_LEVEL: Final[str] = os.getenv("LOG_LEVEL", "INFO")
     LOG_FORMAT: Final[str] = os.getenv(
         "LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    LOG_DIR: ClassVar[Path] = Path(os.getenv("LOG_DIR", "./logs"))
+    LOG_DIR: Final[Path] = Path(os.getenv("LOG_DIR", "./logs"))
+
+    # === Metrics Configuration ===
+    METRICS_ENABLED: Final[bool] = os.getenv("METRICS_ENABLED", "true").lower() == "true"
+    METRICS_INTERVAL: Final[int] = int(os.getenv("METRICS_INTERVAL", "60"))
+
+    # === Paths ===
+    BASE_DIR: Final[Path] = Path(__file__).parent.parent.parent.parent
+    DATA_DIR: Final[Path] = BASE_DIR / "data"
+
+    @classmethod
+    def get_database_url(cls) -> str:
+        """Get the database URL, resolving any path variables."""
+        return cls.DATABASE_URL
+
+    @classmethod
+    def ensure_directories(cls) -> None:
+        """Ensure all required directories exist.
+
+        The material preconditions for operation must be established.
+        """
+        cls.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        cls.DATA_DIR.mkdir(parents=True, exist_ok=True)

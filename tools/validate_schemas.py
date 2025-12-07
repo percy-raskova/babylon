@@ -194,24 +194,18 @@ def main() -> int:
     """Main entry point."""
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Validate JSON data files against schemas"
+    parser = argparse.ArgumentParser(description="Validate JSON data files against schemas")
+    parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Print detailed validation progress"
     )
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Print detailed validation progress"
-    )
-    parser.add_argument(
-        "--file", "-f",
-        type=str,
-        help="Validate only a specific file (e.g., characters.json)"
+        "--file", "-f", type=str, help="Validate only a specific file (e.g., characters.json)"
     )
     parser.add_argument(
         "--max-errors",
         type=int,
         default=10,
-        help="Maximum errors to display per file (default: 10)"
+        help="Maximum errors to display per file (default: 10)",
     )
 
     args = parser.parse_args()
@@ -227,9 +221,7 @@ def main() -> int:
     console.print("\n" + "=" * 50)
 
     if files_with_errors == 0:
-        console.print(
-            f"[bold green]All {files_validated} files passed validation![/bold green]"
-        )
+        console.print(f"[bold green]All {files_validated} files passed validation![/bold green]")
         return 0
 
     print_error_summary(all_errors, max_errors=args.max_errors)
@@ -241,10 +233,7 @@ def main() -> int:
     table.add_row("Files validated", str(files_validated))
     table.add_row("Files passed", str(files_validated - files_with_errors))
     table.add_row("Files failed", f"[red]{files_with_errors}[/red]")
-    table.add_row(
-        "Total errors",
-        f"[red]{sum(len(e) for e in all_errors.values())}[/red]"
-    )
+    table.add_row("Total errors", f"[red]{sum(len(e) for e in all_errors.values())}[/red]")
 
     console.print(table)
 

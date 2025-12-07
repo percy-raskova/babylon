@@ -44,9 +44,7 @@ class Economy:
         """Update production-related indicators."""
         # Update production based on labor productivity and resource utilization
         effective_production = (
-            self.production_capacity
-            * self.resource_utilization
-            * self.labor_productivity
+            self.production_capacity * self.resource_utilization * self.labor_productivity
         )
 
         # Adjust GDP based on production changes
@@ -101,9 +99,7 @@ class Economy:
     def simulate_market(self) -> None:
         """Simulate market interactions between economic actors."""
         # Update market demand based on economic conditions
-        demand_change = (
-            1 - self.unemployment_rate / 100
-        ) * 0.1 + (  # Employment effect
+        demand_change = (1 - self.unemployment_rate / 100) * 0.1 + (  # Employment effect
             1 - self.inflation_rate / 10
         ) * 0.05  # Price stability effect
         self.market_demand *= 1 + demand_change
@@ -123,9 +119,7 @@ class Economy:
             policy: Dictionary containing policy parameters and values
         """
         if "wage_adjustment" in policy:
-            self.wage_share = max(
-                0.0, min(1.0, self.wage_share + policy["wage_adjustment"])
-            )
+            self.wage_share = max(0.0, min(1.0, self.wage_share + policy["wage_adjustment"]))
 
         if "production_boost" in policy:
             self.production_capacity *= 1 + policy["production_boost"]

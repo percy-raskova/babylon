@@ -1,86 +1,146 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[project]
+[tool.poetry]
 name = "babylon"
 version = "0.2.0"
-description = "A Marxist text-based role playing game powered on the backend by Claude 3.5 Sonnet. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
+description = "A Marxist text-based role playing game powered by Claude. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
 license = "Apache-2.0"
+authors = ["Persephone Raskova <percy@babylonrpg.com>"]
 keywords = ["ai", "llm", "marxism", "rpg", "dystopian"]
-authors = [
-   {name = "Persephone Raskova", email = "percy@babylonrpg.com" },
-]
-classifiers = []
+packages = [{include = "babylon", from = "src"}]
 
-dependencies = [
-   "backoff>=2.2.1",
-   "xmlschema>=3.4.3",
-   "python-dotenv>=1.0.1",
-   "numpy>=1.26.4",
-   "psutil==6.1.0",
-   "gputil==1.4.0",
-   "pandas>=2.2.3",
-   "sqlalchemy>=2.0.36",
-   "psycopg2-binary>=2.9.9",
-   "tokenizers>=0.19.1",
-   "pytest>=8.3.4",
-   "pytest-mock>=3.14.0",
-   "pytest-asyncio>=0.25.0",
-   "requests>=2.32.3",
-   "census>=0.8.22",
-   "openpyxl>=3.1.5",
-   "fastapi>=0.115.6",
-   "uvicorn>=0.32.1",
-   "pydantic>=2.10.3",
-   "python-multipart>=0.0.19",
-   "typer>=0.15.1",
-   "rich>=13.9.4",
-   "coloredlogs>=15.0.1",
-   "pyyaml>=6.0.2",
-   "jellyfish>=0.8.9,<0.9.0",
-   "us>=3.2.0",
-   "networkx>=3.2.1",
-   "matplotlib>=3.9.3",
-   "certifi==2024.8.30",
-   "ratelimit>=2.2.1",
-   "async>=0.6.2",
-   "black==25.1.0",
-   "chromadb>=1.0.0"
-]
-
-[project.urls]
+[tool.poetry.urls]
 "Homepage" = "https://babylonrpg.com"
-Documentation = "https://github.com/bogdanscarwash/babylon#readme"
-Issues = "https://github.com/bogdanscarwash/babylon/issues"
-Source = "https://github.com/bogdanscarwash/babylon"
+"Documentation" = "https://github.com/bogdanscarwash/babylon#readme"
+"Issues" = "https://github.com/bogdanscarwash/babylon/issues"
+"Source" = "https://github.com/bogdanscarwash/babylon"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/babylon"]
+[tool.poetry.dependencies]
+python = "^3.12"
+# Core
+pydantic = ">=2.10.3"
+numpy = ">=1.26.4"
+networkx = ">=3.2.1"
+sqlalchemy = ">=2.0.36"
+# CLI/UI
+typer = ">=0.15.1"
+rich = ">=13.9.4"
+coloredlogs = ">=15.0.1"
+# API
+fastapi = ">=0.115.6"
+uvicorn = ">=0.32.1"
+python-multipart = ">=0.0.19"
+# Data
+pandas = ">=2.2.3"
+pyyaml = ">=6.0.2"
+xmlschema = ">=3.4.3"
+python-dotenv = ">=1.0.1"
+openpyxl = ">=3.1.5"
+# AI/RAG
+chromadb = ">=1.0.0"
+tokenizers = ">=0.19.1"
+# Utils
+backoff = ">=2.2.1"
+requests = ">=2.32.3"
+certifi = "==2024.8.30"
+ratelimit = ">=2.2.1"
+psutil = "==6.1.0"
+gputil = "==1.4.0"
+# Legacy (review for removal)
+census = ">=0.8.22"
+jellyfish = ">=0.8.9,<0.9.0"
+us = ">=3.2.0"
+matplotlib = ">=3.9.3"
+jsonschema = "^4.25.1"
+referencing = "^0.37.0"
 
-[tool.poetry]
-package-mode = false
+[tool.poetry.group.dev.dependencies]
+# Testing
+pytest = "^8.3.4"
+pytest-mock = "^3.14.0"
+pytest-asyncio = "^0.25.0"
+pytest-cov = "^7.0.0"
+# Code Quality
+mypy = "^1.13.0"
+ruff = "^0.8.0"
+pre-commit = "^4.0.0"
+# Versioning
+commitizen = "^4.1.0"
+types-jsonschema = "^4.25.1.20251009"
 
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+# =============================================================================
+# PYTEST
+# =============================================================================
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "math: Deterministic mathematical formulas (fast, pure functions)",
+    "ledger: Economic/Political state tests (fast, deterministic)",
+    "topology: Graph/Network operations (fast, deterministic)",
+    "integration: Database/ChromaDB tests (medium, I/O bound)",
+    "ai: AI/RAG evaluation tests (slow, non-deterministic)",
+]
 
-[tool.black]
-line-length = 88
-target-version = ['py312']
-include = '\.pyi?$'
+# =============================================================================
+# RUFF (Linting + Formatting + Import Sorting)
+# =============================================================================
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
 
-[tool.isort]
-profile = "black"
-multi_line_output = 3
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # unused arguments
+    "SIM",    # flake8-simplify
+]
+ignore = ["E501"]  # line length handled by formatter
 
+[tool.ruff.lint.isort]
+known-first-party = ["babylon"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# =============================================================================
+# MYPY (Type Checking)
+# =============================================================================
 [tool.mypy]
 python_version = "3.12"
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+disallow_incomplete_defs = true
 check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+show_error_codes = true
+exclude = ["tests/", "build/", "dist/"]
+
+# =============================================================================
+# COMMITIZEN (Conventional Commits)
+# =============================================================================
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.2.0"
+tag_format = "v$version"
+version_files = ["pyproject.toml:version"]
+update_changelog_on_bump = true

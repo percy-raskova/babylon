@@ -77,6 +77,18 @@ implemented:
           - "create_high_tension_scenario()"
           - "create_labor_aristocracy_scenario()"
 
+      history_persistence:
+        status: "complete"
+        details: "History stack, file I/O, auto-checkpointing"
+        location: "src/babylon/engine/history/"
+        tests: "tests/unit/engine/history/ (123 tests)"
+        includes:
+          - "HistoryStack - undo/redo with max_depth pruning"
+          - "save_state/load_state - WorldState file I/O"
+          - "save_checkpoint/load_checkpoint - full state + config + metadata"
+          - "AutoCheckpointer - interval-based automatic saves"
+          - "Atomic writes - temp file + rename pattern"
+
       contradiction_analysis:
         status: "partial"
         details: "ContradictionAnalysis class exists, basic methods work"
@@ -140,11 +152,11 @@ not_implemented:
     blockers: "Phase 3 narrative layer"
     phase: 4
 
-  save_load:
-    priority: "medium"
-    description: "Persist and restore WorldState"
-    blockers: "None - can implement anytime"
-    notes: "WorldState is Pydantic, serialization is trivial"
+  branching_history:
+    priority: "low"
+    description: "Timeline branching for history stack (branch_id, create_branch)"
+    blockers: "None - deferred for simplicity"
+    notes: "Current linear history sufficient; add branching if needed for UI"
 
   sanity_spies:
     priority: "low"
@@ -215,13 +227,14 @@ current_focus:
     - "Sprint 7.5: Consciousness Drift integration (7 tests, 325 total)"
     - "Brainstorm: Babylon Protocol - emergence vs bugs verification framework"
     - "Sprint 7.6: Configurable tension rate + consciousness feedback tests (5 tests, 330 total)"
+    - "Sprint 8: History Stack with File I/O and Auto-Checkpointing (123 tests, 453 total)"
 
   current_phase:
     name: "Phase 2: The Topological Engine"
     status: "COMPLETE"
     goal: "Game loop that runs equations forward in time"
     tech: "Pure Python, Pydantic, Pytest - NO UI, NO AI"
-    result: "330 tests passing, deterministic simulation, all feedback loops proven"
+    result: "453 tests passing, deterministic simulation, all feedback loops proven"
     key_insight: "Separate Data (WorldState) from Logic (SimulationEngine)"
     key_decisions:
       - "ADR010 - Direct Entities + Formulas"
@@ -354,6 +367,18 @@ current_focus:
       tests_passing: 330
       notes: "All feedback loops now proven with integration tests"
 
+    sprint_8:
+      name: "History Stack with File I/O and Auto-Checkpointing"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/history/models.py (5 Pydantic models)"
+        - "src/babylon/engine/history/stack.py (7 pure functions)"
+        - "src/babylon/engine/history/io.py (6 I/O functions + 4 exception types)"
+        - "src/babylon/engine/history/auto_checkpoint.py (AutoCheckpointer class)"
+        - "tests/unit/engine/history/ (123 tests)"
+      tests_passing: 453
+      notes: "Undo/redo, save/load, auto-checkpointing. Branching deferred."
+
   phase_roadmap:
     phase_1: "Minimum Viable Dialectic - prove the equations"
     phase_2: "Topological Engine - the physics/update loop"
@@ -361,17 +386,17 @@ current_focus:
     phase_4: "Control Room - NiceGUI dashboard"
 
   next_steps:
-    - "PHASE 2+ COMPLETE - 330 tests passing, all feedback loops proven"
+    - "PHASE 2+ COMPLETE - 453 tests passing, all feedback loops + persistence proven"
     - "Phase 3: Event Bus - emit signals on significant state changes"
     - "Phase 3: AI Observer - LLM narrates events (read-only access)"
     - "Phase 3: Sanity Spies - runtime invariant validation"
     - "Phase 4: NiceGUI Control Room - dashboard for simulation"
-    - "Optional: Save/Load for WorldState (trivial with Pydantic)"
+    - "Optional: Timeline branching for history stack"
     - "Optional: Additional entity types and relationship types"
 
   mantra: "Graph + Math = History"
   old_mantra: "State is data. Engine is logic. They never mix."
-  milestone: "PHASE 2+ ACHIEVED: 330 tests passing, all feedback loops proven"
+  milestone: "PHASE 2+ ACHIEVED: 453 tests passing, history/persistence complete"
   next_milestone: "PHASE 3: AI Observer generates narrative from state changes"
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
@@ -411,8 +436,8 @@ tech_debt:
 
   test_coverage:
     status: "GOOD"
-    current: "330 tests passing"
-    coverage: "Core engine fully tested, TDD discipline maintained"
+    current: "453 tests passing"
+    coverage: "Core engine + persistence fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
 
   documentation_drift:

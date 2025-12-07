@@ -72,7 +72,7 @@ from babylon.models import Effect, ContradictionState, Contradiction, Trigger
 
 ## Formula System (Implemented)
 
-All mathematical formulas exist in `src/babylon/systems/formulas.py` (40 formula tests, 330 total tests):
+All mathematical formulas exist in `src/babylon/systems/formulas.py` (40 formula tests, 453 total tests):
 
 - `calculate_imperial_rent()` - Value extraction (Φ = α × Wp × (1 - Ψp))
 - `calculate_acquiescence_probability()` - P(S|A) sigmoid survival
@@ -90,7 +90,7 @@ All mathematical formulas exist in `src/babylon/systems/formulas.py` (40 formula
 
 ## Current Focus
 
-**Phase 2: COMPLETE** - 330 tests passing, deterministic game loop with all feedback loops proven.
+**Phase 2: COMPLETE** - 453 tests passing, deterministic game loop with all feedback loops proven.
 
 **Next: Phase 3 - Observer Pattern** - AI narrates state changes (read-only).
 
@@ -100,12 +100,32 @@ All mathematical formulas exist in `src/babylon/systems/formulas.py` (40 formula
 - `SimulationConfig` - All formula coefficients (frozen)
 - Feedback loops proven: Rent Spiral, Consciousness Drift, Consciousness Resistance, Repression Trap
 
+### History & Persistence (Sprint 8)
+
+```python
+# History stack with undo/redo
+from babylon.engine.history import HistoryStack, push_state, undo, redo
+
+# File I/O
+from babylon.engine.history import save_state, load_state, save_checkpoint, load_checkpoint
+
+# Auto-checkpointing
+from babylon.engine.history import AutoCheckpointer, CheckpointConfig
+```
+
+**Location**: `src/babylon/engine/history/`
+- `models.py` - CheckpointMetadata, Checkpoint, HistoryEntry, HistoryStack, CheckpointConfig
+- `stack.py` - Pure functions: push_state, undo, redo, get_current_state, prune_history
+- `io.py` - save_state/load_state, save_checkpoint/load_checkpoint, atomic writes
+- `auto_checkpoint.py` - AutoCheckpointer class with interval-based saves
+
 ### Key Files (Phase 2)
 ```
 src/babylon/engine/simulation_engine.py  # The game loop
 src/babylon/models/world_state.py        # Immutable state
 src/babylon/models/config.py             # SimulationConfig
 src/babylon/engine/scenarios.py          # Factory functions
+src/babylon/engine/history/              # Persistence layer (Sprint 8)
 ```
 
 Check `ai-docs/state.yaml` for current implementation status and `brainstorm/plans/four-phase-engine-blueprint.md` for the roadmap.

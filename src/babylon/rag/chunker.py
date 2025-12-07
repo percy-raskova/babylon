@@ -3,20 +3,22 @@
 import hashlib
 import logging
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.rag.exceptions import ChunkingError, PreprocessingError
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class DocumentChunk:
+class DocumentChunk(BaseModel):
     """Represents a chunk of a document with metadata."""
 
-    id: str
+    model_config = ConfigDict(validate_assignment=True)
+
+    id: str = ""
     content: str
     source_file: str | None = None
     chunk_index: int = 0
@@ -25,11 +27,13 @@ class DocumentChunk:
     metadata: dict[str, Any] | None = None
     embedding: list[float] | None = None
 
-    def __post_init__(self):
+    @model_validator(mode="after")
+    def generate_id_if_empty(self) -> "DocumentChunk":
         """Generate ID if not provided."""
         if not self.id:
             content_hash = hashlib.sha256(self.content.encode()).hexdigest()[:12]
-            self.id = f"chunk_{content_hash}_{self.chunk_index}"
+            object.__setattr__(self, "id", f"chunk_{content_hash}_{self.chunk_index}")
+        return self
 
 
 class Preprocessor:

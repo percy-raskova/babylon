@@ -6,14 +6,14 @@ before it is chunked and embedded.
 
 import re
 import time
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from babylon.metrics.collector import MetricsCollector
 from babylon.rag.exceptions import PreprocessingError
 
 
-@dataclass
-class PreprocessingConfig:
+class PreprocessingConfig(BaseModel):
     """Configuration for content preprocessing.
 
     Attributes:
@@ -24,6 +24,8 @@ class PreprocessingConfig:
         min_content_length: Minimum allowed content length
         max_content_length: Maximum allowed content length
     """
+
+    model_config = ConfigDict(frozen=True)
 
     normalize_whitespace: bool = True
     normalize_case: bool = False

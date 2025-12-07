@@ -5,8 +5,9 @@ chunking, and caching components to prepare content for embedding.
 """
 
 import time
-from dataclasses import dataclass
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from babylon.metrics.collector import MetricsCollector
 from babylon.rag.exceptions import PreEmbeddingError
@@ -15,8 +16,7 @@ from babylon.rag.pre_embeddings.chunking import ChunkingConfig, ChunkingStrategy
 from babylon.rag.pre_embeddings.preprocessor import ContentPreprocessor, PreprocessingConfig
 
 
-@dataclass
-class PreEmbeddingsConfig:
+class PreEmbeddingsConfig(BaseModel):
     """Configuration for the pre-embeddings system.
 
     Attributes:
@@ -24,6 +24,8 @@ class PreEmbeddingsConfig:
         chunking_config: Configuration for content chunking
         cache_config: Configuration for embedding cache management
     """
+
+    model_config = ConfigDict(frozen=True)
 
     preprocessing_config: PreprocessingConfig | None = None
     chunking_config: ChunkingConfig | None = None

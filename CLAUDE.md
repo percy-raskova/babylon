@@ -72,7 +72,7 @@ from babylon.models import Effect, ContradictionState, Contradiction, Trigger
 
 ## Formula System (Implemented)
 
-All mathematical formulas exist in `src/babylon/systems/formulas.py` with 40 passing tests:
+All mathematical formulas exist in `src/babylon/systems/formulas.py` (40 formula tests, 330 total tests):
 
 - `calculate_imperial_rent()` - Value extraction (Φ = α × Wp × (1 - Ψp))
 - `calculate_acquiescence_probability()` - P(S|A) sigmoid survival
@@ -90,9 +90,23 @@ All mathematical formulas exist in `src/babylon/systems/formulas.py` with 40 pas
 
 ## Current Focus
 
-**Phase 1: COMPLETE** - Two nodes, one edge, proven equations (202 tests passing).
+**Phase 2: COMPLETE** - 330 tests passing, deterministic game loop with all feedback loops proven.
 
-**Next: Phase 2 - Topological Engine** - The physics/update loop.
+**Next: Phase 3 - Observer Pattern** - AI narrates state changes (read-only).
+
+### Phase 2 Achievements
+- `SimulationEngine.step()` - Pure function: `step(WorldState, SimulationConfig) → WorldState`
+- `WorldState` - Immutable snapshots with NetworkX graph conversion
+- `SimulationConfig` - All formula coefficients (frozen)
+- Feedback loops proven: Rent Spiral, Consciousness Drift, Consciousness Resistance, Repression Trap
+
+### Key Files (Phase 2)
+```
+src/babylon/engine/simulation_engine.py  # The game loop
+src/babylon/models/world_state.py        # Immutable state
+src/babylon/models/config.py             # SimulationConfig
+src/babylon/engine/scenarios.py          # Factory functions
+```
 
 Check `ai-docs/state.yaml` for current implementation status and `brainstorm/plans/four-phase-engine-blueprint.md` for the roadmap.
 
@@ -124,4 +138,6 @@ Check `ai-docs/state.yaml` for current implementation status and `brainstorm/pla
 
 Good ideas go to `brainstorm/deferred-ideas.md` tagged by phase. If it's not in `ai-docs/state.yaml:next_steps`, it's quarantine.
 
-**Mantra**: Two nodes. One edge. Passing tests. Ship.
+**Mantra**: Graph + Math = History
+
+**Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.

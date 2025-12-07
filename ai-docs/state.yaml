@@ -37,24 +37,51 @@ implemented:
         location: "src/babylon/data/database.py"
 
   core_logic:
-    status: "scaffolded"
+    status: "complete"
     components:
+      simulation_engine:
+        status: "complete"
+        details: "Pure function step() transforms WorldState deterministically"
+        location: "src/babylon/engine/simulation_engine.py"
+        tests: "tests/unit/engine/test_simulation_engine.py (26 tests)"
+
+      world_state:
+        status: "complete"
+        details: "Immutable state with NetworkX graph conversion"
+        location: "src/babylon/models/world_state.py"
+        tests: "tests/unit/models/test_world_state.py (35 tests)"
+
+      simulation_config:
+        status: "complete"
+        details: "Frozen config with all formula coefficients"
+        location: "src/babylon/models/config.py"
+        tests: "tests/unit/models/test_config.py (42 tests)"
+
+      formulas:
+        status: "complete"
+        details: "All MLM-TW formulas implemented and tested"
+        location: "src/babylon/systems/formulas.py (348 lines)"
+        tests: "tests/unit/formulas/ (40 tests)"
+        includes:
+          - "calculate_imperial_rent() - consciousness-dependent extraction"
+          - "calculate_acquiescence_probability() - P(S|A) sigmoid"
+          - "calculate_revolution_probability() - P(S|R)"
+          - "calculate_consciousness_drift() - dΨ/dt ideology change"
+
+      scenarios:
+        status: "complete"
+        details: "Factory functions for test scenarios"
+        location: "src/babylon/engine/scenarios.py"
+        includes:
+          - "create_two_node_scenario()"
+          - "create_high_tension_scenario()"
+          - "create_labor_aristocracy_scenario()"
+
       contradiction_analysis:
         status: "partial"
         details: "ContradictionAnalysis class exists, basic methods work"
-        location: "src/babylon/core/contradiction.py"
-        missing: "Full game loop integration"
-
-      entity_base:
-        status: "functional"
-        details: "Entity class with embeddings support"
-        location: "src/babylon/core/entity.py"
-
-      formulas:
-        status: "defined"
-        details: "Mathematical formulas specified, some implemented"
-        location: "src/babylon/systems/formulas.py"
-        tested: "tests/unit/formulas/"
+        location: "src/babylon/systems/contradiction_analysis.py"
+        note: "Legacy - tension now tracked on Relationship edges"
 
   ai_layer:
     status: "scaffolded"
@@ -95,30 +122,35 @@ implemented:
 
 not_implemented:
 
-  game_loop:
+  event_bus:
     priority: "high"
-    description: "Turn-based simulation loop"
-    blockers: "Need core mechanics finalized"
+    description: "Event emission system for significant state changes"
+    blockers: "None - ready to implement"
+    phase: 3
+
+  ai_narrative:
+    priority: "high"
+    description: "LLM generates prose from state changes (Observer Pattern)"
+    blockers: "Event bus needed"
+    phase: 3
 
   ui:
     priority: "medium"
     description: "Player interface (NiceGUI planned)"
-    blockers: "Game loop needed first"
-
-  event_generation:
-    priority: "high"
-    description: "Procedural event system based on contradictions"
-    blockers: "ContradictionAnalysis needs completion"
-
-  ai_narrative:
-    priority: "medium"
-    description: "LLM generates prose from state changes"
-    blockers: "ChromaDB population, event system"
+    blockers: "Phase 3 narrative layer"
+    phase: 4
 
   save_load:
     priority: "medium"
-    description: "Persist and restore game state"
-    blockers: "Game loop needed"
+    description: "Persist and restore WorldState"
+    blockers: "None - can implement anytime"
+    notes: "WorldState is Pydantic, serialization is trivial"
+
+  sanity_spies:
+    priority: "low"
+    description: "Runtime invariant validators (Babylon Protocol)"
+    blockers: "Event bus for integration"
+    design_doc: "brainstorm/babylon-protocol-verification.md"
 
 # =============================================================================
 # PLANNED FEATURES (BRAINSTORM)
@@ -142,9 +174,11 @@ planned:
 # =============================================================================
 
 current_focus:
-  primary: "PHASE 1: MINIMUM VIABLE DIALECTIC"
+  primary: "PHASE 2 COMPLETE - Ready for Phase 3: Observer Pattern"
   roadmap: "brainstorm/plans/four-phase-engine-blueprint.md"
-  detailed_plan: "~/.claude/plans/deep-wishing-ladybug.md"
+  phase2_design: "brainstorm/plans/phase2-game-loop-design.md"
+  architecture_spec: "ai-docs/game-loop-architecture.yaml"
+  verification_framework: "brainstorm/babylon-protocol-verification.md"
 
   recently_completed:
     - "XML to JSON migration"
@@ -162,11 +196,53 @@ current_focus:
     - "Sprint 2: SocialClass entity model (Phase 1 node)"
     - "Sprint 2: Relationship entity model (Phase 1 edge)"
     - "Phase 1 integration tests (11 tests proving the equations)"
+    - "Phase 2 architecture design (Data/Logic separation)"
+    - "Created ai-docs/game-loop-architecture.yaml"
+    - "Created brainstorm/plans/phase2-game-loop-design.md"
+    - "ADR010: Direct Entities + Formulas architecture (bypass Economy/Politics)"
+    - "Gap analysis: 8 gaps identified and resolved"
+    - "Formula-to-Entity wiring specification documented"
+    - "ADR011: Pure Graph Architecture (multi-AI consensus: Claude + Gemini)"
+    - "Decision: Delete Economy/Politics classes (not preserve)"
+    - "Decision: NetworkX from day one (not deferred)"
+    - "Decision: Hybrid state management (Snapshots + Events)"
+    - "Sprint 3: SimulationConfig model (42 tests)"
+    - "Sprint 4: WorldState with NetworkX integration (35 tests)"
+    - "Sprint 5: SimulationEngine step() function (19 tests)"
+    - "Sprint 6: Factory functions and integration tests (20 tests)"
+    - "Sprint 7: Deleted Economy/Politics classes per ADR011"
+    - "PHASE 2 COMPLETE: 318 tests passing, deterministic game loop"
+    - "Sprint 7.5: Consciousness Drift integration (7 tests, 325 total)"
+    - "Brainstorm: Babylon Protocol - emergence vs bugs verification framework"
+    - "Sprint 7.6: Configurable tension rate + consciousness feedback tests (5 tests, 330 total)"
 
   current_phase:
-    name: "Phase 1: The Petri Dish"
-    goal: "Two nodes, one edge, proven equations"
+    name: "Phase 2: The Topological Engine"
+    status: "COMPLETE"
+    goal: "Game loop that runs equations forward in time"
     tech: "Pure Python, Pydantic, Pytest - NO UI, NO AI"
+    result: "330 tests passing, deterministic simulation, all feedback loops proven"
+    key_insight: "Separate Data (WorldState) from Logic (SimulationEngine)"
+    key_decisions:
+      - "ADR010 - Direct Entities + Formulas"
+      - "ADR011 - Pure Graph Architecture (multi-AI consensus)"
+    feedback_loops_proven:
+      - "Rent Spiral - extraction impoverishes worker"
+      - "Consciousness Drift - exploited workers become revolutionary"
+      - "Consciousness Resistance - revolutionary workers resist extraction"
+      - "Repression Trap - high repression delays but doesn't prevent revolution"
+      - "Tension Accumulation - wealth gap increases contradiction tension"
+    architecture: "Graph + Math = History"
+
+  next_phase:
+    name: "Phase 3: The Observer Pattern"
+    goal: "AI narrates state changes without controlling simulation"
+    tech: "Event Bus + LLM integration + ChromaDB RAG"
+    key_components:
+      - "Event Bus - emit signals on crossover, rupture, etc."
+      - "AI Observer - generate narrative from events (read-only)"
+      - "Sanity Spies - runtime verification (Babylon Protocol)"
+    blockers: "None - ready to begin"
 
   sprint_status:
     sprint_1:
@@ -212,6 +288,72 @@ current_focus:
       phase_1_complete: true
       notes: "Phase 1 blueprint proven: two nodes, one edge, formulas work"
 
+    sprint_3:
+      name: "SimulationConfig"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/config.py (SimulationConfig)"
+        - "tests/unit/models/test_config.py (42 tests)"
+      tests_passing: 244
+      notes: "Frozen config with all formula coefficients"
+
+    sprint_4:
+      name: "WorldState with NetworkX"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/world_state.py (WorldState)"
+        - "tests/unit/models/test_world_state.py (35 tests)"
+      tests_passing: 279
+      notes: "Immutable state, to_graph()/from_graph() conversion"
+
+    sprint_5:
+      name: "SimulationEngine step()"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/simulation_engine.py"
+        - "tests/unit/engine/test_simulation_engine.py (19 tests)"
+      tests_passing: 298
+      notes: "Pure function, deterministic, encodes historical materialism"
+
+    sprint_6:
+      name: "Factory Functions & Integration Tests"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/scenarios.py"
+        - "tests/integration/test_phase2_game_loop.py (20 tests)"
+      tests_passing: 318
+      notes: "Feedback loops proven: rent spiral, repression trap"
+
+    sprint_7:
+      name: "Delete Economy/Politics per ADR011"
+      status: "COMPLETE"
+      deliverables:
+        - "Deleted src/babylon/core/economy.py"
+        - "Deleted src/babylon/core/politics.py"
+        - "Updated __main__.py to use engine"
+      tests_passing: 318
+      notes: "Pure Graph Architecture - no institutional classes"
+
+    sprint_7_5:
+      name: "Consciousness Drift Integration"
+      status: "COMPLETE"
+      deliverables:
+        - "_update_consciousness_drift() helper function"
+        - "consciousness_decay_lambda config field"
+        - "tests/unit/engine/test_simulation_engine.py::TestStepConsciousnessDrift (7 tests)"
+      tests_passing: 325
+      notes: "Worker ideology drifts revolutionary as extraction continues"
+
+    sprint_7_6:
+      name: "Configurable Tension Rate & Feedback Tests"
+      status: "COMPLETE"
+      deliverables:
+        - "tension_accumulation_rate config field"
+        - "TestStepTensionRate (3 tests)"
+        - "TestConsciousnessFeedbackLoop (2 tests)"
+      tests_passing: 330
+      notes: "All feedback loops now proven with integration tests"
+
   phase_roadmap:
     phase_1: "Minimum Viable Dialectic - prove the equations"
     phase_2: "Topological Engine - the physics/update loop"
@@ -219,15 +361,21 @@ current_focus:
     phase_4: "Control Room - NiceGUI dashboard"
 
   next_steps:
-    - "PHASE 1 COMPLETE - Move to Phase 2: Topological Engine"
-    - "Design game loop architecture (turn-based simulation)"
-    - "Create WorldState container for graph + ledger"
-    - "Implement turn processor with formula applications"
-    - "Add tension propagation between connected nodes"
-    - "Create contradiction resolution events"
+    - "PHASE 2+ COMPLETE - 330 tests passing, all feedback loops proven"
+    - "Phase 3: Event Bus - emit signals on significant state changes"
+    - "Phase 3: AI Observer - LLM narrates events (read-only access)"
+    - "Phase 3: Sanity Spies - runtime invariant validation"
+    - "Phase 4: NiceGUI Control Room - dashboard for simulation"
+    - "Optional: Save/Load for WorldState (trivial with Pydantic)"
+    - "Optional: Additional entity types and relationship types"
 
-  mantra: "Two nodes. One edge. Passing tests. Ship."
-  milestone: "PHASE 1 ACHIEVED: 202 tests passing, equations proven"
+  mantra: "Graph + Math = History"
+  old_mantra: "State is data. Engine is logic. They never mix."
+  milestone: "PHASE 2+ ACHIEVED: 330 tests passing, all feedback loops proven"
+  next_milestone: "PHASE 3: AI Observer generates narrative from state changes"
+  philosophical_grounding: |
+    "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
+    Architecture encodes theory. The code IS the analysis.
 
 # =============================================================================
 # IDEA QUARANTINE PROTOCOL
@@ -249,15 +397,31 @@ tech_debt:
     location: "src/babylon/data/xml/"
     status: "Migrated, kept for reference"
     action: "Can delete after confidence in JSON"
+    priority: "low"
+
+  legacy_economy_politics:
+    status: "RESOLVED"
+    action: "Deleted in Sprint 7 per ADR011"
+    notes: "Pure Graph Architecture - no institutional classes"
 
   incomplete_models:
     issue: "Not all entities have Pydantic models"
-    action: "Generate from JSON schemas"
+    action: "Generate from JSON schemas as needed"
+    priority: "low - current models sufficient for Phase 2-3"
 
   test_coverage:
-    issue: "Many modules lack tests"
-    action: "TDD for new features, backfill critical paths"
+    status: "GOOD"
+    current: "330 tests passing"
+    coverage: "Core engine fully tested, TDD discipline maintained"
+    action: "Continue TDD for new features"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"
-    action: "Update when stabilized"
+    action: "Update when Phase 3 complete"
+    priority: "low - ai-docs/ is source of truth"
+
+  legacy_contradiction_analysis:
+    location: "src/babylon/systems/contradiction_analysis.py"
+    status: "Partially superseded"
+    notes: "Tension now tracked on Relationship edges, but legacy class still used in __main__.py"
+    action: "Evaluate during Phase 3"

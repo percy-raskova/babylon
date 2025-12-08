@@ -487,3 +487,193 @@ class TestSocialClassNetworkX:
         assert G.number_of_nodes() == 2
         assert G.nodes["C001"]["role"] == "periphery_proletariat"
         assert G.nodes["C002"]["role"] == "core_bourgeoisie"
+
+
+# =============================================================================
+# COMPONENT MODEL TESTS
+# =============================================================================
+
+
+@pytest.mark.math
+class TestComponentModels:
+    """Test component model creation and validation."""
+
+    def test_economic_component_creation(self) -> None:
+        """Can create EconomicComponent with valid data."""
+        from babylon.models.entities.social_class import EconomicComponent
+
+        econ = EconomicComponent(wealth=50.0, subsistence_threshold=10.0)
+        assert econ.wealth == 50.0
+        assert econ.subsistence_threshold == 10.0
+
+    def test_ideological_component_creation(self) -> None:
+        """Can create IdeologicalComponent with valid data."""
+        from babylon.models.entities.social_class import IdeologicalComponent
+
+        ideo = IdeologicalComponent(ideology=-0.5, organization=0.3)
+        assert ideo.ideology == -0.5
+        assert ideo.organization == 0.3
+
+    def test_survival_component_creation(self) -> None:
+        """Can create SurvivalComponent with valid data."""
+        from babylon.models.entities.social_class import SurvivalComponent
+
+        surv = SurvivalComponent(p_acquiescence=0.6, p_revolution=0.4)
+        assert surv.p_acquiescence == 0.6
+        assert surv.p_revolution == 0.4
+
+    def test_material_conditions_component_creation(self) -> None:
+        """Can create MaterialConditionsComponent with valid data."""
+        from babylon.models.entities.social_class import MaterialConditionsComponent
+
+        mat = MaterialConditionsComponent(repression_faced=0.7)
+        assert mat.repression_faced == 0.7
+
+    def test_component_is_frozen(self) -> None:
+        """Components are immutable."""
+        from babylon.models.entities.social_class import EconomicComponent
+
+        econ = EconomicComponent(wealth=50.0)
+        with pytest.raises(ValidationError):
+            econ.wealth = 100.0  # type: ignore[misc]
+
+
+@pytest.mark.math
+class TestSocialClassComponentConstruction:
+    """Test component-based SocialClass construction."""
+
+    def test_create_with_economic_component(self) -> None:
+        """Can create SocialClass using EconomicComponent."""
+        from babylon.models.entities.social_class import EconomicComponent
+
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            economic=EconomicComponent(wealth=50.0, subsistence_threshold=10.0),
+        )
+        assert worker.wealth == 50.0
+        assert worker.subsistence_threshold == 10.0
+
+    def test_create_with_all_components(self) -> None:
+        """Can create SocialClass using all components."""
+        from babylon.models.entities.social_class import (
+            EconomicComponent,
+            IdeologicalComponent,
+            MaterialConditionsComponent,
+            SurvivalComponent,
+        )
+
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            economic=EconomicComponent(wealth=50.0),
+            ideological=IdeologicalComponent(ideology=-0.5, organization=0.3),
+            survival=SurvivalComponent(p_acquiescence=0.6, p_revolution=0.4),
+            material_conditions=MaterialConditionsComponent(repression_faced=0.7),
+        )
+        assert worker.wealth == 50.0
+        assert worker.ideology == -0.5
+        assert worker.organization == 0.3
+        assert worker.p_acquiescence == 0.6
+        assert worker.p_revolution == 0.4
+        assert worker.repression_faced == 0.7
+
+    def test_flat_construction_still_works(self) -> None:
+        """Flat field construction is unchanged."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=50.0,
+            ideology=-0.3,
+        )
+        assert worker.wealth == 50.0
+        assert worker.ideology == -0.3
+
+    def test_serialization_remains_flat(self) -> None:
+        """model_dump() produces flat output."""
+        from babylon.models.entities.social_class import EconomicComponent
+
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            economic=EconomicComponent(wealth=50.0),
+        )
+        data = worker.model_dump()
+
+        assert "wealth" in data
+        assert data["wealth"] == 50.0
+        assert "economic" not in data
+
+
+@pytest.mark.math
+class TestSocialClassComponentAccess:
+    """Test accessing entity data via component properties."""
+
+    def test_access_economic_component(self) -> None:
+        """Can access economic data via component property."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=50.0,
+            subsistence_threshold=10.0,
+        )
+        assert worker.economic.wealth == 50.0
+        assert worker.economic.subsistence_threshold == 10.0
+
+    def test_access_ideological_component(self) -> None:
+        """Can access ideological data via component property."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            ideology=-0.5,
+            organization=0.3,
+        )
+        assert worker.ideological.ideology == -0.5
+        assert worker.ideological.organization == 0.3
+
+    def test_access_survival_component(self) -> None:
+        """Can access survival data via component property."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            p_acquiescence=0.6,
+            p_revolution=0.4,
+        )
+        assert worker.survival.p_acquiescence == 0.6
+        assert worker.survival.p_revolution == 0.4
+
+    def test_access_material_conditions_component(self) -> None:
+        """Can access material conditions via component property."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            repression_faced=0.7,
+        )
+        assert worker.material_conditions.repression_faced == 0.7
+
+    def test_component_returns_correct_type(self) -> None:
+        """Component properties return correct types."""
+        from babylon.models.entities.social_class import (
+            EconomicComponent,
+            IdeologicalComponent,
+            MaterialConditionsComponent,
+            SurvivalComponent,
+        )
+
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+        )
+        assert isinstance(worker.economic, EconomicComponent)
+        assert isinstance(worker.ideological, IdeologicalComponent)
+        assert isinstance(worker.survival, SurvivalComponent)
+        assert isinstance(worker.material_conditions, MaterialConditionsComponent)

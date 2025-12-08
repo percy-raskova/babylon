@@ -18,8 +18,14 @@ from babylon.models.entities.contradiction import (
     ResolutionOutcome,
 )
 from babylon.models.entities.effect import Effect
-from babylon.models.entities.relationship import Relationship
-from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.relationship import FlowComponent, Relationship
+from babylon.models.entities.social_class import (
+    EconomicComponent,
+    IdeologicalComponent,
+    MaterialConditionsComponent,
+    SocialClass,
+    SurvivalComponent,
+)
 from babylon.models.entities.trigger import Trigger, TriggerCondition
 
 __all__ = [
@@ -36,4 +42,10 @@ __all__ = [
     # Trigger
     "Trigger",
     "TriggerCondition",
+    # Component Models
+    "EconomicComponent",
+    "IdeologicalComponent",
+    "SurvivalComponent",
+    "MaterialConditionsComponent",
+    "FlowComponent",
 ]

@@ -6,8 +6,9 @@ import logging
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 import aiohttp
 import backoff
@@ -37,6 +38,10 @@ class Embeddable(Protocol):
     id: str
     content: str
     embedding: list[float] | None
+
+
+# TypeVar for preserving specific Embeddable subtype through operations
+E = TypeVar("E", bound=Embeddable)
 
 
 class EmbeddingManager:
@@ -160,7 +165,8 @@ class EmbeddingManager:
                     )
 
                 data = await response.json()
-                return data["data"][0]["embedding"]
+                embedding: list[float] = data["data"][0]["embedding"]
+                return embedding
 
         except aiohttp.ClientError as e:
             raise OpenAIError(f"API request failed: {str(e)}") from e
@@ -169,7 +175,7 @@ class EmbeddingManager:
         except Exception as e:
             raise OpenAIError(f"Unexpected error: {str(e)}") from e
 
-    async def aembed(self, obj: Embeddable) -> Embeddable:
+    async def aembed(self, obj: E) -> E:
         """Asynchronously generate and attach embedding for a single object.
 
         Args:
@@ -259,7 +265,7 @@ class EmbeddingManager:
             logger.error(f"Failed to generate embedding for object {obj.id}: {str(e)}")
             raise
 
-    def embed(self, obj: Embeddable) -> Embeddable:
+    def embed(self, obj: E) -> E:
         """Synchronously generate and attach embedding for a single object.
 
         This is a convenience wrapper around aembed for synchronous code.
@@ -277,7 +283,7 @@ class EmbeddingManager:
         """
         return asyncio.run(self.aembed(obj))
 
-    async def aembed_batch(self, objects: list[Embeddable]) -> list[Embeddable]:
+    async def aembed_batch(self, objects: Sequence[E]) -> list[E]:
         """Asynchronously generate embeddings for multiple objects efficiently.
 
         Args:
@@ -290,8 +296,8 @@ class EmbeddingManager:
             EmbeddingError: If any object's embedding generation fails
         """
         start_time = time.time()
-        results = []
-        batch = []
+        results: list[E] = []
+        batch: list[E] = []
 
         try:
             for obj in objects:
@@ -350,7 +356,7 @@ class EmbeddingManager:
                 f"Batch embedding failed: {str(e)}. {len(results)} objects were successfully embedded."
             ) from e
 
-    def embed_batch(self, objects: list[Embeddable]) -> list[Embeddable]:
+    def embed_batch(self, objects: Sequence[E]) -> list[E]:
         """Synchronously generate embeddings for multiple objects efficiently.
 
         This is a convenience wrapper around aembed_batch for synchronous code.
@@ -367,7 +373,7 @@ class EmbeddingManager:
         """
         return asyncio.run(self.aembed_batch(objects))
 
-    def debed(self, obj: Embeddable) -> Embeddable:
+    def debed(self, obj: E) -> E:
         """Remove embedding from an object.
 
         Args:
@@ -379,7 +385,7 @@ class EmbeddingManager:
         obj.embedding = None
         return obj
 
-    def debed_batch(self, objects: list[Embeddable]) -> list[Embeddable]:
+    def debed_batch(self, objects: Sequence[E]) -> list[E]:
         """Remove embeddings from multiple objects.
 
         Args:

@@ -49,12 +49,14 @@ class ContextWindowManager:
         self.metrics_collector = metrics_collector
         self.lifecycle_manager = lifecycle_manager
 
-        self._content = {}  # id -> content mapping
-        self._token_counts = {}  # id -> token count mapping
-        self._priority_queue = []  # (priority, id) heap for quick access to lowest priority
-        self._priority_lookup = {}  # id -> priority mapping for quick updates
-        self._access_counts = Counter()  # id -> access count for recency tracking
-        self._last_access = {}  # id -> datetime of last access
+        self._content: dict[str, Any] = {}  # id -> content mapping
+        self._token_counts: dict[str, int] = {}  # id -> token count mapping
+        self._priority_queue: list[
+            tuple[float, str]
+        ] = []  # (priority, id) heap for quick access to lowest priority
+        self._priority_lookup: dict[str, float] = {}  # id -> priority mapping for quick updates
+        self._access_counts: Counter[str] = Counter()  # id -> access count for recency tracking
+        self._last_access: dict[str, datetime] = {}  # id -> datetime of last access
 
         self._total_tokens = 0
 
@@ -337,7 +339,7 @@ class ContextWindowManager:
 
     def _rebuild_priority_queue(self) -> None:
         """Rebuild the priority queue to remove stale entries."""
-        updated_queue = []
+        updated_queue: list[tuple[float, str]] = []
         for content_id, priority in self._priority_lookup.items():
             if content_id in self._content:
                 heappush(updated_queue, (priority, content_id))

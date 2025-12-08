@@ -293,9 +293,7 @@ class TestDirectorRAGQueryBehavior:
         # Check top_k parameter
         call_args = mock_rag_pipeline.query.call_args
         # Could be positional or keyword
-        top_k = (
-            call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("top_k")
-        )
+        top_k = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("top_k")
 
         assert top_k == 3
 

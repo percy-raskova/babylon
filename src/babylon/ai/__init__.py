@@ -9,8 +9,12 @@ the Material Base (simulation mechanics).
 
 Components:
 - NarrativeDirector: AI Game Master that observes and narrates
+- DialecticalPromptBuilder: Builds prompts following Marxist dialectical materialism
+
+Sprint 3.2: Added RAG integration for historical/theoretical context.
 """
 
 from babylon.ai.director import NarrativeDirector
+from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
-__all__ = ["NarrativeDirector"]
+__all__ = ["NarrativeDirector", "DialecticalPromptBuilder"]

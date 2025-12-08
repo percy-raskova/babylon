@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
-from babylon.models.config import SimulationConfig
-from babylon.systems.formulas import (
-    calculate_acquiescence_probability,
-    calculate_revolution_probability,
-)
+if TYPE_CHECKING:
+    from babylon.engine.services import ServiceContainer
 
 
 class SurvivalSystem:
@@ -21,20 +18,26 @@ class SurvivalSystem:
     def step(
         self,
         graph: nx.DiGraph[str],
-        config: SimulationConfig,
+        services: ServiceContainer,
         _context: dict[str, Any],
     ) -> None:
         """Update P(S|A) and P(S|R) for all entities."""
+        # Get formulas from registry
+        calculate_acquiescence_probability = services.formulas.get("acquiescence_probability")
+        calculate_revolution_probability = services.formulas.get("revolution_probability")
+        survival_steepness = services.config.survival_steepness
+        default_subsistence = services.config.subsistence_threshold
+
         for node_id, data in graph.nodes(data=True):
             wealth = data.get("wealth", 0.0)
             organization = data.get("organization", 0.1)
             repression = data.get("repression_faced", 0.5)
-            subsistence = data.get("subsistence_threshold", config.subsistence_threshold)
+            subsistence = data.get("subsistence_threshold", default_subsistence)
 
             p_acq = calculate_acquiescence_probability(
                 wealth=wealth,
                 subsistence_threshold=subsistence,
-                steepness_k=config.survival_steepness,
+                steepness_k=survival_steepness,
             )
 
             p_rev = calculate_revolution_probability(

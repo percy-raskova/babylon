@@ -18,6 +18,7 @@ from babylon.engine.event_bus import Event, EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.formula_registry import FormulaRegistry
 from babylon.engine.history_formatter import format_class_struggle_history
+from babylon.engine.observer import SimulationObserver
 from babylon.engine.scenarios import (
     create_high_tension_scenario,
     create_labor_aristocracy_scenario,
@@ -47,4 +48,6 @@ __all__ = [
     "DatabaseConnection",
     "FormulaRegistry",
     "ServiceContainer",
+    # Observer Pattern (Sprint 3.1)
+    "SimulationObserver",
 ]

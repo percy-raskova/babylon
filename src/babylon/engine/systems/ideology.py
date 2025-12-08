@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
-from babylon.models.config import SimulationConfig
 from babylon.models.enums import EdgeType
-from babylon.systems.formulas import calculate_consciousness_drift
+
+if TYPE_CHECKING:
+    from babylon.engine.services import ServiceContainer
 
 
 class ConsciousnessSystem:
@@ -19,10 +20,15 @@ class ConsciousnessSystem:
     def step(
         self,
         graph: nx.DiGraph[str],
-        config: SimulationConfig,
+        services: ServiceContainer,
         _context: dict[str, Any],
     ) -> None:
         """Apply consciousness drift to all entities."""
+        # Get formula from registry
+        calculate_consciousness_drift = services.formulas.get("consciousness_drift")
+        sensitivity_k = services.config.consciousness_sensitivity
+        decay_lambda = services.config.consciousness_decay_lambda
+
         for node_id in graph.nodes():
             # Calculate value_produced (sum of outgoing exploitation)
             value_produced = 0.0
@@ -47,8 +53,8 @@ class ConsciousnessSystem:
                 core_wages=core_wages,
                 value_produced=value_produced,
                 current_consciousness=current_consciousness,
-                sensitivity_k=config.consciousness_sensitivity,
-                decay_lambda=config.consciousness_decay_lambda,
+                sensitivity_k=sensitivity_k,
+                decay_lambda=decay_lambda,
             )
 
             new_consciousness = max(0.0, min(1.0, current_consciousness + drift))

@@ -17,12 +17,14 @@ Turn Order (encodes historical materialism):
 5. Event Logging - Record significant state changes
 
 Phase 2.1: Refactored to modular System architecture.
+Phase 4a: Refactored to use ServiceContainer for dependency injection.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
@@ -30,6 +32,9 @@ from babylon.engine.systems.protocol import System
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 
 class SimulationEngine:
@@ -59,19 +64,19 @@ class SimulationEngine:
 
     def run_tick(
         self,
-        graph: Any,
-        config: SimulationConfig,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
         context: dict[str, Any],
     ) -> None:
         """Execute all systems in order for one tick.
 
         Args:
             graph: NetworkX graph (mutated in place by systems)
-            config: Simulation configuration
+            services: ServiceContainer with config, formulas, event_bus, database
             context: Mutable context dict passed to all systems
         """
         for system in self._systems:
-            system.step(graph, config, context)
+            system.step(graph, services, context)
 
 
 # Initialize the machine with Historical Materialist order
@@ -113,14 +118,20 @@ def step(state: WorldState, config: SimulationConfig) -> WorldState:
     G = state.to_graph()
     events: list[str] = list(state.event_log)
 
+    # Create ServiceContainer for this tick
+    services = ServiceContainer.create(config)
+
     # The Context acts as the shared bus for the tick
     context: dict[str, Any] = {
-        "events": events,
         "tick": state.tick,
     }
 
     # Run all systems through the engine
-    _DEFAULT_ENGINE.run_tick(G, config, context)
+    _DEFAULT_ENGINE.run_tick(G, services, context)
+
+    # Convert EventBus history to string log for backward compatibility
+    for event in services.event_bus.get_history():
+        events.append(f"Tick {event.tick + 1}: {event.type.upper()}")
 
     # Reconstruct state from modified graph
     return WorldState.from_graph(G, tick=state.tick + 1, event_log=events)

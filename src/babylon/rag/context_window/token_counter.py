@@ -3,7 +3,7 @@
 from typing import Any
 
 
-def count_tokens(content: str | list | dict | Any) -> int:
+def count_tokens(content: str | list[Any] | dict[str, Any] | Any) -> int:
     """Count the number of tokens in content of various types.
 
     This is a simple implementation that estimates token counts. For production,

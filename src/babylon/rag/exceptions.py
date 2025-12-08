@@ -49,11 +49,11 @@ class InvalidObjectError(LifecycleError):
         message: str,
         error_code: str = "RAG_101",
         field_name: str | None = None,
-        current_value: any = None,
+        current_value: object = None,
     ) -> None:
         self.field_name = field_name
         self.current_value = current_value
-        details = {"field_name": field_name, "current_value": str(current_value)}
+        details: dict[str, object] = {"field_name": field_name, "current_value": str(current_value)}
         super().__init__(message, error_code, details)
 
 
@@ -76,7 +76,7 @@ class StateTransitionError(LifecycleError):
     ) -> None:
         self.current_state = current_state
         self.target_state = target_state
-        details = {"current_state": current_state, "target_state": target_state}
+        details: dict[str, object] = {"current_state": current_state, "target_state": target_state}
         super().__init__(message, error_code, details)
 
 
@@ -97,7 +97,7 @@ class CorruptStateError(LifecycleError):
         affected_objects: list[str] | None = None,
     ) -> None:
         self.affected_objects = affected_objects or []
-        details = {"affected_objects": self.affected_objects}
+        details: dict[str, object] = {"affected_objects": self.affected_objects}
         super().__init__(message, error_code, details)
 
 
@@ -114,7 +114,7 @@ class PreEmbeddingError(RagError):
         self,
         message: str,
         error_code: str = "RAG_400",
-        details: dict | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code, details or {})
 
@@ -136,7 +136,7 @@ class PreprocessingError(PreEmbeddingError):
         content_id: str | None = None,
     ) -> None:
         self.content_id = content_id
-        details = {"content_id": content_id}
+        details: dict[str, object] = {"content_id": content_id}
         super().__init__(message, error_code, details)
 
 
@@ -157,7 +157,7 @@ class ChunkingError(PreEmbeddingError):
         content_id: str | None = None,
     ) -> None:
         self.content_id = content_id
-        details = {"content_id": content_id}
+        details: dict[str, object] = {"content_id": content_id}
         super().__init__(message, error_code, details)
 
 
@@ -178,5 +178,5 @@ class CacheError(PreEmbeddingError):
         cache_key: str | None = None,
     ) -> None:
         self.cache_key = cache_key
-        details = {"cache_key": cache_key}
+        details: dict[str, object] = {"cache_key": cache_key}
         super().__init__(message, error_code, details)

@@ -167,6 +167,58 @@ class MetricsCollector:
                 self._timers[name] = []
             self._timers[name].append(duration)
 
+    def record_metric(
+        self,
+        name: str,
+        value: float,
+        context: str = "",
+        object_id: str | None = None,
+        context_level: str | None = None,
+    ) -> None:
+        """Record a named metric with context.
+
+        Args:
+            name: Metric name
+            value: Metric value
+            context: Optional context string
+            object_id: Optional object identifier
+            context_level: Optional context level
+        """
+        tags: dict[str, str] = {}
+        if context:
+            tags["context"] = context
+        if object_id:
+            tags["object_id"] = object_id
+        if context_level:
+            tags["context_level"] = context_level
+        self.record(name, value, tags=tags)
+
+    def record_cache_event(self, level: str, hit: bool) -> None:
+        """Record a cache hit or miss event.
+
+        Args:
+            level: Cache level (e.g., "L1", "L2", "embedding")
+            hit: Whether this was a cache hit (True) or miss (False)
+        """
+        event_name = f"cache.{level}.{'hit' if hit else 'miss'}"
+        self.increment(event_name)
+
+    def record_token_usage(self, tokens: int) -> None:
+        """Record token usage.
+
+        Args:
+            tokens: Number of tokens used
+        """
+        self.record("token_usage", float(tokens))
+
+    def record_memory_usage(self, memory_bytes: float) -> None:
+        """Record memory usage.
+
+        Args:
+            memory_bytes: Memory usage in bytes
+        """
+        self.record("memory_usage", memory_bytes)
+
     def get_counter(self, name: str) -> int:
         """Get current counter value."""
         with self._data_lock:

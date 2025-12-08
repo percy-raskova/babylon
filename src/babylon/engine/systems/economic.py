@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
-from babylon.models.config import SimulationConfig
 from babylon.models.enums import EdgeType
-from babylon.systems.formulas import calculate_imperial_rent
+
+if TYPE_CHECKING:
+    from babylon.engine.services import ServiceContainer
 
 
 class ImperialRentSystem:
@@ -19,10 +20,14 @@ class ImperialRentSystem:
     def step(
         self,
         graph: nx.DiGraph[str],
-        config: SimulationConfig,
+        services: ServiceContainer,
         _context: dict[str, Any],
     ) -> None:
         """Apply imperial rent extraction to all exploitation edges."""
+        # Get formula from registry
+        calculate_imperial_rent = services.formulas.get("imperial_rent")
+        extraction_efficiency = services.config.extraction_efficiency
+
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
             if isinstance(edge_type, str):
@@ -41,7 +46,7 @@ class ImperialRentSystem:
 
             # Calculate imperial rent
             rent = calculate_imperial_rent(
-                alpha=config.extraction_efficiency,
+                alpha=extraction_efficiency,
                 periphery_wages=worker_wealth,
                 periphery_consciousness=consciousness,
             )

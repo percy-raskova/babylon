@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
-from babylon.models.config import SimulationConfig
+from babylon.engine.event_bus import Event
+
+if TYPE_CHECKING:
+    from babylon.engine.services import ServiceContainer
 
 
 class ContradictionSystem:
@@ -17,19 +20,19 @@ class ContradictionSystem:
     def step(
         self,
         graph: nx.DiGraph[str],
-        config: SimulationConfig,
+        services: ServiceContainer,
         context: dict[str, Any],
     ) -> None:
         """Update tension on edges based on wealth gaps."""
-        events: list[str] = context.get("events", [])
         tick: int = context.get("tick", 0)
+        tension_accumulation_rate = services.config.tension_accumulation_rate
 
         for source_id, target_id, data in graph.edges(data=True):
             source_wealth = graph.nodes[source_id].get("wealth", 0.0)
             target_wealth = graph.nodes[target_id].get("wealth", 0.0)
 
             wealth_gap = abs(target_wealth - source_wealth)
-            tension_delta = wealth_gap * config.tension_accumulation_rate
+            tension_delta = wealth_gap * tension_accumulation_rate
 
             current_tension = data.get("tension", 0.0)
             new_tension = min(1.0, current_tension + tension_delta)
@@ -37,4 +40,10 @@ class ContradictionSystem:
             graph.edges[source_id, target_id]["tension"] = new_tension
 
             if new_tension >= 1.0 and current_tension < 1.0:
-                events.append(f"Tick {tick + 1}: RUPTURE on edge {source_id}->{target_id}")
+                services.event_bus.publish(
+                    Event(
+                        type="rupture",
+                        tick=tick,
+                        payload={"edge": f"{source_id}->{target_id}"},
+                    )
+                )

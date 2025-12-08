@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 import networkx as nx
 
-from babylon.models.config import SimulationConfig
+if TYPE_CHECKING:
+    from babylon.engine.services import ServiceContainer
 
 
 @runtime_checkable
@@ -21,7 +22,7 @@ class System(Protocol):
     def step(
         self,
         graph: nx.DiGraph[str],
-        config: SimulationConfig,
+        services: ServiceContainer,
         context: dict[str, Any],
     ) -> None:
         """
@@ -29,7 +30,7 @@ class System(Protocol):
 
         Args:
             graph: Mutable NetworkX graph representing WorldState
-            config: Read-only simulation configuration
-            context: Shared dictionary for 'events' (list[str]) and 'tick' (int)
+            services: ServiceContainer with config, formulas, event_bus, database
+            context: Shared dictionary for 'tick' (int)
         """
         ...

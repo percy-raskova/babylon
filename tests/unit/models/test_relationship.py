@@ -495,3 +495,87 @@ class TestRelationshipEdgeTuple:
         assert data["edge_type"] == "exploitation"
         assert data["value_flow"] == 80.0
         assert data["tension"] == 0.5
+
+
+# =============================================================================
+# FLOW COMPONENT TESTS
+# =============================================================================
+
+
+@pytest.mark.math
+class TestFlowComponent:
+    """Test FlowComponent model."""
+
+    def test_flow_component_creation(self) -> None:
+        """Can create FlowComponent with valid data."""
+        from babylon.models.entities.relationship import FlowComponent
+
+        flow = FlowComponent(value_flow=80.0, tension=0.5)
+        assert flow.value_flow == 80.0
+        assert flow.tension == 0.5
+
+    def test_flow_component_is_frozen(self) -> None:
+        """FlowComponent is immutable."""
+        from babylon.models.entities.relationship import FlowComponent
+
+        flow = FlowComponent(value_flow=80.0)
+        with pytest.raises(ValidationError):
+            flow.value_flow = 100.0  # type: ignore[misc]
+
+
+@pytest.mark.math
+class TestRelationshipComponentConstruction:
+    """Test component-based Relationship construction."""
+
+    def test_create_with_flow_component(self) -> None:
+        """Can create Relationship using FlowComponent."""
+        from babylon.models.entities.relationship import FlowComponent
+
+        rel = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.EXPLOITATION,
+            flow=FlowComponent(value_flow=80.0, tension=0.5),
+        )
+        assert rel.value_flow == 80.0
+        assert rel.tension == 0.5
+
+    def test_flat_construction_still_works(self) -> None:
+        """Flat field construction is unchanged."""
+        rel = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.EXPLOITATION,
+            value_flow=80.0,
+            tension=0.5,
+        )
+        assert rel.value_flow == 80.0
+        assert rel.tension == 0.5
+
+
+@pytest.mark.math
+class TestRelationshipComponentAccess:
+    """Test accessing relationship data via flow property."""
+
+    def test_access_flow_component(self) -> None:
+        """Can access flow data via component property."""
+        rel = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.EXPLOITATION,
+            value_flow=80.0,
+            tension=0.5,
+        )
+        assert rel.flow.value_flow == 80.0
+        assert rel.flow.tension == 0.5
+
+    def test_flow_returns_correct_type(self) -> None:
+        """Flow property returns correct type."""
+        from babylon.models.entities.relationship import FlowComponent
+
+        rel = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.EXPLOITATION,
+        )
+        assert isinstance(rel.flow, FlowComponent)

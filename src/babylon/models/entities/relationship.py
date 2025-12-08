@@ -11,10 +11,21 @@ Relationships encode:
 This is the Phase 1 edge type from the four-phase blueprint.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.models.enums import EdgeType
 from babylon.models.types import Currency, Intensity
+
+
+class FlowComponent(BaseModel):
+    """Value flow and tension state of a relationship."""
+
+    model_config = ConfigDict(frozen=True)
+
+    value_flow: Currency = Field(default=0.0, description="Imperial rent (Phi)")
+    tension: Intensity = Field(default=0.0, description="Dialectical tension")
 
 
 class Relationship(BaseModel):
@@ -42,6 +53,24 @@ class Relationship(BaseModel):
         validate_assignment=True,  # Validate on attribute mutation
         str_strip_whitespace=True,  # Clean string inputs
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def unpack_flow_component(cls, data: Any) -> Any:
+        """Unpack flow component into flat fields if provided."""
+        if not isinstance(data, dict):
+            return data
+
+        if "flow" in data:
+            flow = data.pop("flow")
+            if isinstance(flow, FlowComponent):
+                flow = flow.model_dump()
+            elif not isinstance(flow, dict):
+                raise ValueError("flow must be FlowComponent or dict")
+            data.setdefault("value_flow", flow.get("value_flow", 0.0))
+            data.setdefault("tension", flow.get("tension", 0.0))
+
+        return data
 
     # Required fields
     source_id: str = Field(
@@ -103,3 +132,11 @@ class Relationship(BaseModel):
             G.add_edge(*relationship.edge_tuple, **relationship.edge_data)
         """
         return self.model_dump(exclude={"source_id", "target_id"})
+
+    @property
+    def flow(self) -> FlowComponent:
+        """Return flow component view (computed, not live)."""
+        return FlowComponent(
+            value_flow=self.value_flow,
+            tension=self.tension,
+        )

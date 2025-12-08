@@ -2,8 +2,8 @@
 # Defines terms as used in THIS project - not general definitions
 
 meta:
-  version: "1.0.0"
-  updated: "2024-12-07"
+  version: "1.1.0"
+  updated: "2025-12-08"
   purpose: "Canonical definitions for domain terms in Babylon"
 
 # =============================================================================
@@ -79,13 +79,14 @@ architecture_terms:
   the_ledger:
     definition: "SQLite/Pydantic layer storing rigid, material state"
     contains: "Economics, resources, turn history, quantitative facts"
-    location: "src/babylon/data/"
+    location: "src/babylon/data/game/ (JSON files), src/babylon/models/ (Pydantic)"
     principle: "Source of truth for material reality"
 
   the_topology:
     definition: "NetworkX layer storing fluid, relational state"
     contains: "Class solidarity, factional tensions, supply chains"
-    location: "src/babylon/core/"
+    location: "src/babylon/models/world_state.py (to_graph/from_graph), src/babylon/systems/formulas.py"
+    note: "core/economy.py and core/politics.py DELETED per ADR011"
     principle: "Relationships change faster than material base"
 
   the_archive:
@@ -93,6 +94,23 @@ architecture_terms:
     contains: "Past events, theoretical texts, narrative context"
     location: "src/babylon/rag/"
     principle: "AI observes and narrates, doesn't control mechanics"
+
+  simulation_engine:
+    definition: "Pure transformation engine: WorldState → Calculation → WorldState"
+    location: "src/babylon/engine/simulation_engine.py"
+    key_method: "step(state: WorldState, config: SimulationConfig) -> WorldState"
+    systems:
+      - "ImperialRentSystem (economic.py)"
+      - "ConsciousnessSystem (ideology.py)"
+      - "SurvivalSystem (survival.py)"
+      - "ContradictionSystem (contradiction.py)"
+    principle: "Engine doesn't decide anything. Calculates and sets things in motion."
+
+  service_container:
+    definition: "Dependency injection container for simulation services"
+    location: "src/babylon/engine/services.py"
+    services: ["config", "database", "event_bus", "formulas"]
+    principle: "Systems receive services, don't create them"
 
   entity:
     definition: "Any game object with an ID and attributes"
@@ -148,7 +166,7 @@ data_terms:
   collection:
     definition: "JSON file containing array of entities plus metadata envelope"
     envelope: "{version, generatedAt, sourceFormat, [entities]}"
-    location: "src/babylon/data/*.json"
+    location: "src/babylon/data/game/*.json"
 
   id_patterns:
     faction: "F001, F002, ..."

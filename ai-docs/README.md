@@ -15,13 +15,16 @@ This directory helps AI assistants:
 
 | File | Purpose | Format |
 |------|---------|--------|
-| `ontology.yaml` | Domain terms and their meanings | YAML |
-| `architecture.yaml` | System structure and data flow | YAML |
-| `entities.yaml` | Game entities and relationships | YAML |
-| `decisions.yaml` | Key decisions and rationale | YAML |
-| `state.yaml` | What exists vs what's planned | YAML |
+| `state.yaml` | Current project state, sprint history, test counts | YAML |
+| `architecture.yaml` | System structure, directory map, data flow | YAML |
+| `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas | YAML |
+| `formulas-spec.yaml` | All 12 mathematical formulas with signatures | YAML |
+| `entities.yaml` | 17 game entity types and relationships | YAML |
+| `ontology.yaml` | Domain terms (MLM-TW, architecture, game) | YAML |
+| `decisions.yaml` | Architecture Decision Records (ADR001-ADR013) | YAML |
 | `patterns.yaml` | How to do things here | YAML |
 | `anti-patterns.yaml` | What NOT to do | YAML |
+| `game-data.yaml` | External data sources and CI/CD pipeline | YAML |
 | `theory.md` | MLM-TW theoretical foundation | Markdown |
 
 ## Usage

@@ -2,8 +2,8 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.0.0"
-  updated: "2024-12-07"
+  version: "1.1.0"
+  updated: "2025-12-08"
   principle: "Be honest about what's implemented vs aspirational"
 
 # =============================================================================
@@ -18,7 +18,7 @@ implemented:
       json_data_files:
         status: "complete"
         details: "17 entity collections migrated from XML"
-        location: "src/babylon/data/*.json"
+        location: "src/babylon/data/game/*.json"
 
       json_schemas:
         status: "complete"
@@ -41,9 +41,68 @@ implemented:
     components:
       simulation_engine:
         status: "complete"
-        details: "Pure function step() transforms WorldState deterministically"
+        details: "Modular engine with 4 Systems, ServiceContainer DI"
         location: "src/babylon/engine/simulation_engine.py"
-        tests: "tests/unit/engine/test_simulation_engine.py (26 tests)"
+        tests: "tests/unit/engine/test_simulation_engine.py (30+ tests)"
+        architecture:
+          - "SimulationEngine.run_tick(graph, services, context)"
+          - "4 Systems: ImperialRent, Consciousness, Survival, Contradiction"
+          - "ServiceContainer: config, database, event_bus, formulas"
+
+      service_container:
+        status: "complete"
+        details: "Dependency injection container for all services"
+        location: "src/babylon/engine/services.py"
+        tests: "tests/unit/engine/test_services.py"
+        provides:
+          - "config: SimulationConfig"
+          - "database: DatabaseConnection"
+          - "event_bus: EventBus"
+          - "formulas: FormulaRegistry"
+
+      event_bus:
+        status: "complete"
+        details: "Publish/subscribe event system"
+        location: "src/babylon/engine/event_bus.py"
+        tests: "tests/unit/engine/test_event_bus.py (20 tests)"
+        events_published:
+          - "rupture - when tension reaches 1.0"
+
+      formula_registry:
+        status: "complete"
+        details: "Hot-swappable formula lookup with 12 registered formulas"
+        location: "src/babylon/engine/formula_registry.py"
+        tests: "tests/unit/engine/test_formula_registry.py (14 tests)"
+
+      systems:
+        status: "complete"
+        details: "4 modular System implementations"
+        location: "src/babylon/engine/systems/"
+        components:
+          protocol: "System protocol with step(graph, services, context)"
+          imperial_rent: "ImperialRentSystem - economic extraction"
+          consciousness: "ConsciousnessSystem - ideology drift"
+          survival: "SurvivalSystem - P(S|A) and P(S|R)"
+          contradiction: "ContradictionSystem - tension accumulation"
+
+      simulation_facade:
+        status: "complete"
+        details: "Stateful wrapper for multi-tick simulations"
+        location: "src/babylon/engine/simulation.py"
+        tests: "tests/unit/engine/test_simulation_facade.py (19 tests)"
+        provides:
+          - "Simulation.step() - advance one tick"
+          - "Simulation.run(n) - run n ticks"
+          - "Simulation.get_history() - all state snapshots"
+
+      entity_factories:
+        status: "complete"
+        details: "Factory functions for entity creation"
+        location: "src/babylon/engine/factories.py"
+        tests: "tests/unit/engine/test_factories.py (30 tests)"
+        provides:
+          - "create_proletariat() - exploited class"
+          - "create_bourgeoisie() - exploiter class"
 
       world_state:
         status: "complete"
@@ -134,9 +193,15 @@ implemented:
 
 not_implemented:
 
-  event_bus:
+  observer_protocol:
     priority: "high"
-    description: "Event emission system for significant state changes"
+    description: "Interface for LLM to observe state changes"
+    blockers: "None - ready to implement"
+    phase: 3
+
+  context_builder:
+    priority: "high"
+    description: "Token-aware function to build LLM context from state"
     blockers: "None - ready to implement"
     phase: 3
 
@@ -228,13 +293,18 @@ current_focus:
     - "Brainstorm: Babylon Protocol - emergence vs bugs verification framework"
     - "Sprint 7.6: Configurable tension rate + consciousness feedback tests (5 tests, 330 total)"
     - "Sprint 8: History Stack with File I/O and Auto-Checkpointing (123 tests, 453 total)"
+    - "Sprint 9: Component System (Material, Vitality, Spatial, Ideological, Organization)"
+    - "Sprint 10: ServiceContainer dependency injection (Sprint 3 architecture)"
+    - "Sprint 11: System Protocol and 4 System implementations"
+    - "Sprint 12: Simulation facade and entity factories (57 tests, 704 total)"
+    - "Integration Proof: 100-tick simulation proves wealth transfer dynamics"
 
   current_phase:
     name: "Phase 2: The Topological Engine"
     status: "COMPLETE"
     goal: "Game loop that runs equations forward in time"
     tech: "Pure Python, Pydantic, Pytest - NO UI, NO AI"
-    result: "453 tests passing, deterministic simulation, all feedback loops proven"
+    result: "704 tests passing, modular System architecture, all feedback loops proven"
     key_insight: "Separate Data (WorldState) from Logic (SimulationEngine)"
     key_decisions:
       - "ADR010 - Direct Entities + Formulas"
@@ -250,12 +320,19 @@ current_focus:
   next_phase:
     name: "Phase 3: The Observer Pattern"
     goal: "AI narrates state changes without controlling simulation"
-    tech: "Event Bus + LLM integration + ChromaDB RAG"
+    tech: "Observer Protocol + LLM abstraction + Context Builder"
     key_components:
-      - "Event Bus - emit signals on crossover, rupture, etc."
+      - "Observer Protocol - interface for LLM to observe state"
+      - "Context Builder - token-aware state serialization"
+      - "LLM Abstraction - Ollama/Claude provider"
+      - "More Event Types - wealth_transfer, ideology_drift, etc."
       - "AI Observer - generate narrative from events (read-only)"
-      - "Sanity Spies - runtime verification (Babylon Protocol)"
     blockers: "None - ready to begin"
+    prerequisites_complete:
+      - "EventBus implemented (src/babylon/engine/event_bus.py)"
+      - "ServiceContainer implemented (src/babylon/engine/services.py)"
+      - "History system complete (undo/redo, persistence)"
+      - "100-tick simulation proven working"
 
   sprint_status:
     sprint_1:
@@ -379,6 +456,59 @@ current_focus:
       tests_passing: 453
       notes: "Undo/redo, save/load, auto-checkpointing. Branching deferred."
 
+    sprint_9:
+      name: "Component System (Material Ontology)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/models/components/base.py (Component protocol)"
+        - "src/babylon/models/components/material.py (MaterialComponent)"
+        - "src/babylon/models/components/vitality.py (VitalityComponent)"
+        - "src/babylon/models/components/spatial.py (SpatialComponent)"
+        - "src/babylon/models/components/ideological.py (IdeologicalComponent)"
+        - "src/babylon/models/components/organization.py (OrganizationComponent)"
+        - "tests/unit/models/components/ (129 tests)"
+      tests_passing: 582
+      notes: "Frozen Pydantic models with constrained types"
+
+    sprint_10:
+      name: "ServiceContainer & Dependency Injection"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/services.py (ServiceContainer)"
+        - "src/babylon/engine/event_bus.py (EventBus)"
+        - "src/babylon/engine/formula_registry.py (FormulaRegistry)"
+        - "src/babylon/engine/database.py (DatabaseConnection)"
+        - "tests/unit/engine/test_services.py"
+        - "tests/unit/engine/test_event_bus.py (20 tests)"
+        - "tests/unit/engine/test_formula_registry.py (14 tests)"
+      tests_passing: 630
+      notes: "Clean dependency injection for testability"
+
+    sprint_11:
+      name: "System Protocol & Implementations"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/systems/protocol.py (System protocol)"
+        - "src/babylon/engine/systems/economic.py (ImperialRentSystem)"
+        - "src/babylon/engine/systems/ideology.py (ConsciousnessSystem)"
+        - "src/babylon/engine/systems/survival.py (SurvivalSystem)"
+        - "src/babylon/engine/systems/contradiction.py (ContradictionSystem)"
+      tests_passing: 647
+      notes: "Modular systems with shared ServiceContainer"
+
+    sprint_12:
+      name: "Simulation Facade & Entity Factories"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/simulation.py (Simulation class)"
+        - "src/babylon/engine/factories.py (create_proletariat, create_bourgeoisie)"
+        - "src/babylon/engine/history_formatter.py (format_class_struggle_history)"
+        - "tests/unit/engine/test_simulation_facade.py (19 tests)"
+        - "tests/unit/engine/test_factories.py (30 tests)"
+        - "tests/integration/test_class_struggle.py (8 tests)"
+      tests_passing: 704
+      notes: "Integration proof: 100-tick wealth transfer verified"
+
   phase_roadmap:
     phase_1: "Minimum Viable Dialectic - prove the equations"
     phase_2: "Topological Engine - the physics/update loop"
@@ -386,17 +516,19 @@ current_focus:
     phase_4: "Control Room - NiceGUI dashboard"
 
   next_steps:
-    - "PHASE 2+ COMPLETE - 453 tests passing, all feedback loops + persistence proven"
-    - "Phase 3: Event Bus - emit signals on significant state changes"
+    - "PHASE 2 COMPLETE - 704 tests passing, modular System architecture proven"
+    - "Phase 3: Observer Protocol - interface for LLM to observe state"
+    - "Phase 3: Context Builder - token-aware state serialization"
+    - "Phase 3: LLM Abstraction - Ollama/Claude provider"
+    - "Phase 3: More Event Types - wealth_transfer, ideology_drift, tension_change"
     - "Phase 3: AI Observer - LLM narrates events (read-only access)"
-    - "Phase 3: Sanity Spies - runtime invariant validation"
     - "Phase 4: NiceGUI Control Room - dashboard for simulation"
     - "Optional: Timeline branching for history stack"
     - "Optional: Additional entity types and relationship types"
 
   mantra: "Graph + Math = History"
   old_mantra: "State is data. Engine is logic. They never mix."
-  milestone: "PHASE 2+ ACHIEVED: 453 tests passing, history/persistence complete"
+  milestone: "PHASE 2 ACHIEVED: 704 tests passing, modular System architecture"
   next_milestone: "PHASE 3: AI Observer generates narrative from state changes"
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
@@ -435,9 +567,9 @@ tech_debt:
     priority: "low - current models sufficient for Phase 2-3"
 
   test_coverage:
-    status: "GOOD"
-    current: "453 tests passing"
-    coverage: "Core engine + persistence fully tested, TDD discipline maintained"
+    status: "EXCELLENT"
+    current: "704 tests passing"
+    coverage: "Core engine + systems + persistence + components fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
 
   documentation_drift:

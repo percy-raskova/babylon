@@ -5,13 +5,13 @@
 # The State is "what the dice land on." The Engine is "the physics of the throw."
 
 meta:
-  version: "2.0.0"
+  version: "3.0.0"
   created: "2024-12-07"
-  updated: "2024-12-07"
+  updated: "2025-12-08"
   status: "implemented"
   phase: 2
   principle: "State is pure data. Engine is pure transformation. They never mix."
-  implementation_status: "330 tests passing, all feedback loops proven"
+  implementation_status: "704 tests passing, modular System architecture proven"
 
 # =============================================================================
 # THE FUNDAMENTAL SEPARATION
@@ -118,22 +118,98 @@ simulation_engine:
   role: "The Turn Processor"
   behavior: "Doesn't decide anything. Calculates and sets things in motion."
 
-  subsystems:
-    economy:
-      purpose: "Updates material base"
-      location: "babylon.core.economy"
+  actual_implementation:
+    class: "SimulationEngine"
+    location: "src/babylon/engine/simulation_engine.py"
+    method: "run_tick(graph: nx.DiGraph, services: ServiceContainer, context: dict) -> None"
+    note: "Engine orchestrates Systems; each System mutates the graph in place"
 
-    politics:
-      purpose: "Updates superstructure based on material conditions"
-      location: "babylon.core.politics"
+  step_function:
+    signature: "step(state: WorldState, config: SimulationConfig) -> WorldState"
+    pure: true
+    deterministic: true
+    steps:
+      - "Convert WorldState to NetworkX DiGraph"
+      - "Create ServiceContainer with config, event_bus, formulas, database"
+      - "Run all 4 Systems in order via engine.run_tick()"
+      - "Collect events from EventBus"
+      - "Convert graph back to new WorldState"
+      - "Return new state at tick + 1"
 
-    contradiction_analysis:
-      purpose: "Tracks tensions, detects ruptures/syntheses"
-      location: "babylon.systems.contradiction_analysis"
+  service_container:
+    class: "ServiceContainer"
+    location: "src/babylon/engine/services.py"
+    purpose: "Dependency injection for all simulation services"
+    services:
+      config: "SimulationConfig - all formula coefficients"
+      database: "DatabaseConnection - SQLite persistence"
+      event_bus: "EventBus - publish/subscribe for events"
+      formulas: "FormulaRegistry - 12 hot-swappable formulas"
 
-    formulas:
-      purpose: "Pure mathematical calculations"
-      location: "babylon.systems.formulas"
+  systems:
+    note: "Systems implement the System protocol and run in historical materialist order"
+    location: "src/babylon/engine/systems/"
+
+    1_imperial_rent:
+      class: "ImperialRentSystem"
+      file: "economic.py"
+      purpose: "Extract imperial rent from exploitation edges"
+      formula: "calculate_imperial_rent(alpha, periphery_wages, periphery_consciousness)"
+      effects:
+        - "Worker.wealth -= rent"
+        - "Owner.wealth += rent"
+        - "Relationship.value_flow = rent"
+
+    2_consciousness:
+      class: "ConsciousnessSystem"
+      file: "ideology.py"
+      purpose: "Apply consciousness drift based on material conditions"
+      formula: "calculate_consciousness_drift(core_wages, value_produced, current_consciousness, k, lambda)"
+      effects:
+        - "SocialClass.ideology += delta (clamped to [-1, 1])"
+
+    3_survival:
+      class: "SurvivalSystem"
+      file: "survival.py"
+      purpose: "Update survival probabilities for all entities"
+      formulas:
+        - "calculate_acquiescence_probability(wealth, threshold, steepness)"
+        - "calculate_revolution_probability(organization, repression)"
+      effects:
+        - "SocialClass.p_acquiescence = P(S|A)"
+        - "SocialClass.p_revolution = P(S|R)"
+
+    4_contradiction:
+      class: "ContradictionSystem"
+      file: "contradiction.py"
+      purpose: "Accumulate tension and publish rupture events"
+      effects:
+        - "Relationship.tension += delta (clamped to [0, 1])"
+        - "Publish 'rupture' event when tension reaches 1.0"
+
+  event_bus:
+    class: "EventBus"
+    location: "src/babylon/engine/event_bus.py"
+    purpose: "Publish/subscribe system for simulation events"
+    events_published:
+      rupture: "When tension on an edge reaches 1.0"
+    future_events:
+      - "wealth_transfer - when rent is extracted"
+      - "ideology_drift - when consciousness changes significantly"
+      - "survival_crisis - when P(S|A) drops below threshold"
+
+  formula_registry:
+    class: "FormulaRegistry"
+    location: "src/babylon/engine/formula_registry.py"
+    purpose: "Hot-swappable formula lookup"
+    formulas_registered: 12
+    method: "get(name: str) -> FormulaFunc"
+
+  legacy_note: |
+    Per ADR011, Economy and Politics classes were DELETED.
+    Their functionality is now in the 4 System classes above.
+    ContradictionAnalysis class in systems/ is legacy but tension
+    is now tracked directly on Relationship edges.
 
 # =============================================================================
 # ORDER OF OPERATIONS (THE DIALECTIC)
@@ -249,9 +325,9 @@ architectural_decision:
     - "babylon.models.entities.SocialClass"
     - "babylon.models.entities.Relationship"
 
-  components_not_used:
-    - "babylon.core.economy.Economy (preserved for future)"
-    - "babylon.core.politics.Politics (preserved for future)"
+  components_deleted:
+    - "babylon.core.economy.Economy (DELETED per ADR011)"
+    - "babylon.core.politics.Politics (DELETED per ADR011)"
 
 # =============================================================================
 # FORMULA-TO-ENTITY WIRING
@@ -392,7 +468,7 @@ simulation_config:
 
 success_criteria:
   status: "ACHIEVED"
-  test_count: 330
+  test_count: 704
   verification: "tests/unit/engine/ and tests/integration/"
 
   core_test:

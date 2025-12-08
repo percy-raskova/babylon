@@ -2,9 +2,11 @@
 # All game entities and their relationships
 
 meta:
-  version: "1.0.0"
-  updated: "2024-12-07"
+  version: "1.1.0"
+  updated: "2025-12-08"
   total_entity_types: 17
+  schema_location: "src/babylon/schemas/entities/"
+  data_location: "src/babylon/data/game/"
 
 # =============================================================================
 # ENTITY OVERVIEW
@@ -14,8 +16,8 @@ entities:
 
   character:
     id_pattern: "snake_case (e.g., persephone_raskova)"
-    schema: "schemas/entities/character.schema.json"
-    data: "data/characters.json"
+    schema: "src/babylon/schemas/entities/character.schema.json"
+    data: "src/babylon/data/game/characters.json"
     description: "Individual actors in the simulation"
     key_fields:
       - "faction: Faction membership"
@@ -30,8 +32,8 @@ entities:
 
   faction:
     id_pattern: "F001, F002, ..."
-    schema: "schemas/entities/faction.schema.json"
-    data: "data/factions.json"
+    schema: "src/babylon/schemas/entities/faction.schema.json"
+    data: "src/babylon/data/game/factions.json"
     description: "Organized political forces"
     key_fields:
       - "class_composition: Which classes make up the faction"
@@ -46,8 +48,8 @@ entities:
 
   contradiction:
     id_pattern: "CON001, CON002, ..."
-    schema: "schemas/entities/contradiction.schema.json"
-    data: "data/contradictions.json"
+    schema: "src/babylon/schemas/entities/contradiction.schema.json"
+    data: "src/babylon/data/game/contradictions.json"
     description: "Dialectical tensions driving change"
     key_fields:
       - "entities: The opposing forces"
@@ -61,8 +63,8 @@ entities:
 
   location:
     id_pattern: "L001, L001A, ..."
-    schema: "schemas/entities/location.schema.json"
-    data: "data/locations.json"
+    schema: "src/babylon/schemas/entities/location.schema.json"
+    data: "src/babylon/data/game/locations.json"
     description: "Geographic/political spaces"
     key_fields:
       - "coordinates: Lat/long"
@@ -77,8 +79,8 @@ entities:
 
   resource:
     id_pattern: "R001, R002, ..."
-    schema: "schemas/entities/resource.schema.json"
-    data: "data/resources.json"
+    schema: "src/babylon/schemas/entities/resource.schema.json"
+    data: "src/babylon/data/game/resources.json"
     description: "Economic inputs and outputs"
     key_fields:
       - "category: Type of resource"
@@ -92,8 +94,8 @@ entities:
 
   technology:
     id_pattern: "T001, T002, ..."
-    schema: "schemas/entities/technology.schema.json"
-    data: "data/technologies.json"
+    schema: "src/babylon/schemas/entities/technology.schema.json"
+    data: "src/babylon/data/game/technologies.json"
     description: "Researchable capabilities"
     key_fields:
       - "category: Economic/Control/Liberation/Repression"
@@ -109,8 +111,8 @@ entities:
 
   movement:
     id_pattern: "M001, M002, ..."
-    schema: "schemas/entities/movement.schema.json"
-    data: "data/movements.json"
+    schema: "src/babylon/schemas/entities/movement.schema.json"
+    data: "src/babylon/data/game/movements.json"
     description: "Broad political currents (less organized than factions)"
     key_fields:
       - "goals: What they want"
@@ -123,8 +125,8 @@ entities:
 
   class:
     id_pattern: "C001 or snake_case (bourgeoisie, proletariat)"
-    schema: "schemas/entities/class.schema.json"
-    data: "data/classes.json"
+    schema: "src/babylon/schemas/entities/class.schema.json"
+    data: "src/babylon/data/game/classes.json"
     description: "Relation to means of production"
     key_fields:
       - "relation_to_production: Owner/seller/etc."
@@ -137,8 +139,8 @@ entities:
 
   crisis:
     id_pattern: "CRISIS_001, CRISIS_002, ..."
-    schema: "schemas/entities/crisis.schema.json"
-    data: "data/crises.json"
+    schema: "src/babylon/schemas/entities/crisis.schema.json"
+    data: "src/babylon/data/game/crises.json"
     description: "Acute manifestations of contradictions"
     key_fields:
       - "type: Economic/political/legitimacy/ecological"
@@ -152,8 +154,8 @@ entities:
 
   policy:
     id_pattern: "Policy ID"
-    schema: "schemas/entities/policy.schema.json"
-    data: "data/policies.json"
+    schema: "src/babylon/schemas/entities/policy.schema.json"
+    data: "src/babylon/data/game/policies.json"
     description: "Government/faction actions"
     key_fields:
       - "type: Economic/social/political"
@@ -162,8 +164,8 @@ entities:
 
   institution:
     id_pattern: "Inst001, Inst002, ..."
-    schema: "schemas/entities/institution.schema.json"
-    data: "data/institutions.json"
+    schema: "src/babylon/schemas/entities/institution.schema.json"
+    data: "src/babylon/data/game/institutions.json"
     description: "Organized structures (state apparatus, civil society)"
     key_fields:
       - "type: State/civil/economic"
@@ -173,8 +175,8 @@ entities:
 
   ideology:
     id_pattern: "IDE001, IDE002, ..."
-    schema: "schemas/entities/ideology.schema.json"
-    data: "data/ideologies.json"
+    schema: "src/babylon/schemas/entities/ideology.schema.json"
+    data: "src/babylon/data/game/ideologies.json"
     description: "Systems of belief and worldview"
     key_fields:
       - "core_beliefs: Central tenets"
@@ -185,8 +187,8 @@ entities:
 
   culture:
     id_pattern: "CUL001, CUL002, ..."
-    schema: "schemas/entities/culture.schema.json"
-    data: "data/cultures.json"
+    schema: "src/babylon/schemas/entities/culture.schema.json"
+    data: "src/babylon/data/game/cultures.json"
     description: "Cultural groups and practices"
     key_fields:
       - "traditions: Cultural practices"
@@ -194,8 +196,8 @@ entities:
 
   law:
     id_pattern: "LAW001, LAW002, ..."
-    schema: "schemas/entities/law.schema.json"
-    data: "data/laws.json"
+    schema: "src/babylon/schemas/entities/law.schema.json"
+    data: "src/babylon/data/game/laws.json"
     description: "Legal framework elements"
     key_fields:
       - "type: Constitutional/criminal/economic"
@@ -204,8 +206,8 @@ entities:
 
   revolt:
     id_pattern: "Revolt ID"
-    schema: "schemas/entities/revolt.schema.json"
-    data: "data/revolts.json"
+    schema: "src/babylon/schemas/entities/revolt.schema.json"
+    data: "src/babylon/data/game/revolts.json"
     description: "Uprising events"
     key_fields:
       - "participants: Who's involved"
@@ -218,8 +220,8 @@ entities:
 
   relationship:
     id_pattern: "Relationship ID"
-    schema: "schemas/entities/relationship.schema.json"
-    data: "data/relationships.json"
+    schema: "src/babylon/schemas/entities/relationship.schema.json"
+    data: "src/babylon/data/game/relationships.json"
     description: "Connections between entities"
     key_fields:
       - "source/target: Linked entities"
@@ -229,8 +231,8 @@ entities:
 
   sentiment:
     id_pattern: "Sentiment ID"
-    schema: "schemas/entities/sentiment.schema.json"
-    data: "data/sentiments.json"
+    schema: "src/babylon/schemas/entities/sentiment.schema.json"
+    data: "src/babylon/data/game/sentiments.json"
     description: "Public opinion patterns"
     key_fields:
       - "type: Pro/anti various positions"

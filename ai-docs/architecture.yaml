@@ -2,9 +2,9 @@
 # How the pieces fit together
 
 meta:
-  version: "2.0.0"
-  updated: "2025-12-07"
-  status: "Phase 2 complete (330 tests)"
+  version: "3.0.0"
+  updated: "2025-12-08"
+  status: "Phase 2 complete (704 tests, modular System architecture)"
 
 # =============================================================================
 # THE EMBEDDED TRINITY
@@ -69,28 +69,67 @@ directory_map:
     engine/:
       purpose: "Simulation engine - the Phase 2 game loop"
       key_files:
-        - "simulation_engine.py: step(state, config) → new_state"
+        - "simulation_engine.py: SimulationEngine class + step() function"
+        - "services.py: ServiceContainer (dependency injection)"
+        - "event_bus.py: EventBus (publish/subscribe)"
+        - "formula_registry.py: FormulaRegistry (12 formulas)"
+        - "database.py: DatabaseConnection (SQLAlchemy)"
+        - "simulation.py: Simulation facade class"
+        - "factories.py: create_proletariat(), create_bourgeoisie()"
         - "scenarios.py: Factory functions for test scenarios"
-      status: "IMPLEMENTED (26 tests)"
+        - "history_formatter.py: format_class_struggle_history()"
+      subdirs:
+        systems/:
+          purpose: "Modular System implementations"
+          files:
+            - "protocol.py: System protocol with step(graph, services, context)"
+            - "economic.py: ImperialRentSystem"
+            - "ideology.py: ConsciousnessSystem"
+            - "survival.py: SurvivalSystem"
+            - "contradiction.py: ContradictionSystem"
+        history/:
+          purpose: "State persistence and undo/redo"
+          files:
+            - "models.py: HistoryStack, Checkpoint, CheckpointConfig"
+            - "stack.py: push_state, undo, redo, prune_history"
+            - "io.py: save_state, load_state, atomic writes"
+            - "auto_checkpoint.py: AutoCheckpointer"
+      status: "IMPLEMENTED (150+ tests)"
 
     models/:
       purpose: "Pydantic models for the simulation"
       key_files:
-        - "world_state.py: Immutable state snapshot"
-        - "config.py: SimulationConfig (frozen)"
-        - "types.py: Constrained types (Probability, Currency, etc.)"
-        - "enums.py: StrEnum definitions"
-        - "entities/: SocialClass, Relationship, etc."
-      status: "IMPLEMENTED (150+ tests)"
+        - "world_state.py: Immutable state snapshot with NetworkX integration"
+        - "config.py: SimulationConfig (frozen, 11 parameters)"
+        - "types.py: Constrained types (Probability, Currency, Ideology, etc.)"
+        - "enums.py: StrEnum definitions (SocialRole, EdgeType, etc.)"
+      subdirs:
+        entities/:
+          purpose: "Game entity models"
+          files:
+            - "social_class.py: SocialClass (Phase 1 node)"
+            - "relationship.py: Relationship (Phase 1 edge)"
+            - "effect.py, contradiction.py, trigger.py: Supporting models"
+        components/:
+          purpose: "Component system (Material Ontology)"
+          files:
+            - "base.py: Component protocol"
+            - "material.py: MaterialComponent (wealth, resources, means_of_production)"
+            - "vitality.py: VitalityComponent (population, subsistence_needs)"
+            - "spatial.py: SpatialComponent (location_id, mobility)"
+            - "ideological.py: IdeologicalComponent (alignment, adherence)"
+            - "organization.py: OrganizationComponent (cohesion, cadre_level)"
+      status: "IMPLEMENTED (200+ tests)"
     data/:
       purpose: "Ledger layer - persistent state"
       key_files:
-        - "*.json: 17 entity collection files"
-        - "database.py: SQLAlchemy setup"
         - "entity_registry.py: Entity lookup"
       subdirs:
-        - "models/: Pydantic model definitions"
-        - "xml/: Legacy XML (reference only)"
+        game/:
+          purpose: "Game data JSON files"
+          files: "17 entity collection JSON files (characters, factions, classes, etc.)"
+        xml/:
+          purpose: "Legacy XML (reference only)"
     schemas/:
       purpose: "JSON Schema validation"
       structure:
@@ -149,17 +188,28 @@ data_flows:
   game_turn:
     implementation: "step(WorldState, SimulationConfig) → WorldState"
     location: "src/babylon/engine/simulation_engine.py"
+    architecture:
+      engine: "SimulationEngine.run_tick(graph, services, context)"
+      systems:
+        - "1. ImperialRentSystem - Extract imperial rent from exploitation edges"
+        - "2. ConsciousnessSystem - Apply consciousness drift (dΨ/dt)"
+        - "3. SurvivalSystem - Update P(S|A) and P(S|R)"
+        - "4. ContradictionSystem - Accumulate tension, publish rupture events"
+      services:
+        container: "ServiceContainer aggregates all dependencies"
+        config: "SimulationConfig with all formula coefficients"
+        formulas: "FormulaRegistry with 12 hot-swappable formulas"
+        event_bus: "EventBus for event publishing"
+        database: "DatabaseConnection for persistence"
     steps:
       - "1. Convert WorldState to NetworkX DiGraph"
-      - "2. Update economic base (imperial rent calculation)"
-      - "3. Update survival probabilities (P(S|A), P(S|R))"
-      - "4. Update consciousness drift (dΨ/dt)"
-      - "5. Update contradiction tension"
-      - "6. Convert graph back to new WorldState"
-      - "7. Increment tick"
+      - "2. Create ServiceContainer with config"
+      - "3. Run all 4 Systems in historical materialist order"
+      - "4. Convert graph back to new WorldState"
+      - "5. Increment tick and return new state"
     phase_3_additions:
-      - "AI generates narrative from changes (Archive)"
-      - "Event bus emits signals for crossovers/ruptures"
+      - "AI generates narrative from changes (Observer Pattern)"
+      - "More event types (wealth_transfer, ideology_drift, etc.)"
 
   ai_narrative:
     principle: "AI is observer, not controller"
@@ -204,8 +254,9 @@ extension_points:
   new_game_mechanic:
     steps:
       - "Add formula to systems/formulas.py"
+      - "Register formula in formula_registry.py FormulaRegistry.default()"
       - "Add tests with @pytest.mark.math"
-      - "Integrate with ContradictionAnalysis if dialectical"
+      - "Create new System class in engine/systems/ if needed"
       - "Document in ai-docs/ontology.yaml if new concept"
 
   new_ai_capability:

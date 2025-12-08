@@ -47,3 +47,30 @@ class OpenAIConfig:
         if cls.ORGANIZATION_ID:
             headers["OpenAI-Organization"] = cls.ORGANIZATION_ID
         return headers
+
+    @classmethod
+    def validate(cls) -> None:
+        """Validate the OpenAI configuration.
+
+        Raises:
+            ValueError: If required configuration is missing
+        """
+        if not cls.is_configured():
+            raise ValueError(
+                "OpenAI API key not configured. Set OPENAI_API_KEY environment variable."
+            )
+
+    @classmethod
+    def get_model_dimensions(cls) -> int:
+        """Get the embedding dimensions for the configured model.
+
+        Returns:
+            Number of dimensions for the embedding model
+        """
+        # Embedding dimensions by model
+        model_dimensions: dict[str, int] = {
+            "text-embedding-ada-002": 1536,
+            "text-embedding-3-small": 1536,
+            "text-embedding-3-large": 3072,
+        }
+        return model_dimensions.get(cls.EMBEDDING_MODEL, 1536)

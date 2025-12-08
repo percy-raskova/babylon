@@ -57,6 +57,8 @@ Usage:
     ```
 """
 
+from typing import Any
+
 # Document processing (core functionality)
 from .chunker import DocumentChunk, DocumentProcessor, Preprocessor, TextChunker
 
@@ -73,12 +75,24 @@ from .exceptions import (
     StateTransitionError,
 )
 
-# Lifecycle management (existing)
+# Lifecycle management
 from .lifecycle import LifecycleManager, ObjectState, PerformanceMetrics
 
 # Optional imports that require external dependencies
 _optional_imports_available = True
-_import_errors = []
+_import_errors: list[str] = []
+
+# Declare module-level names with proper types for mypy
+RagPipeline: type[Any]
+RagConfig: type[Any]
+EmbeddingManager: type[Any] | None
+VectorStore: type[Any] | None
+Retriever: type[Any] | None
+QueryResponse: type[Any] | None
+QueryResult: type[Any] | None
+IngestionResult: type[Any] | None
+quick_ingest_text: Any
+quick_query: Any
 
 try:
     # Main RAG pipeline
@@ -100,21 +114,30 @@ except ImportError as e:
     _import_errors.append(str(e))
 
     # Define placeholder classes to maintain API consistency
-    class RagPipeline:
+    class _RagPipelinePlaceholder:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise ImportError(
                 f"RAG pipeline requires additional dependencies. Install with: pip install chromadb numpy. Errors: {_import_errors}"
             )
 
-    class RagConfig:
+    class _RagConfigPlaceholder:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise ImportError(
                 f"RAG config requires additional dependencies. Install with: pip install chromadb numpy. Errors: {_import_errors}"
             )
 
-    # Define other placeholder classes
-    EmbeddingManager = VectorStore = Retriever = QueryResponse = QueryResult = None
-    IngestionResult = quick_ingest_text = quick_query = None
+    RagPipeline = _RagPipelinePlaceholder
+    RagConfig = _RagConfigPlaceholder
+
+    # Define other placeholder values
+    EmbeddingManager = None
+    VectorStore = None
+    Retriever = None
+    QueryResponse = None
+    QueryResult = None
+    IngestionResult = None
+    quick_ingest_text = None
+    quick_query = None
 
 __all__ = [
     # Always available - core functionality

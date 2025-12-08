@@ -86,7 +86,7 @@ class VectorStore:
         """
         self.collection_name = collection_name
         self.chroma_manager = chroma_manager or ChromaManager()
-        self._collection = None
+        self._collection: Any = None
 
     @property
     def collection(self) -> Any:
@@ -228,7 +228,8 @@ class VectorStore:
     def get_collection_count(self) -> int:
         """Get the number of chunks in the collection."""
         try:
-            return self.collection.count()
+            count: int = self.collection.count()
+            return count
         except Exception as e:
             raise RagError(
                 message=f"Failed to get collection count: {str(e)}",
@@ -286,6 +287,13 @@ class Retriever:
             embed_start = time.perf_counter()
             embedded_query = await self.embedding_manager.aembed(query_obj)
             embed_time = (time.perf_counter() - embed_start) * 1000
+
+            if embedded_query.embedding is None:
+                raise RagError(
+                    message="Failed to generate query embedding",
+                    error_code="RAG_311",
+                    details={"query": query[:100]},
+                )
 
             # Search for similar chunks
             search_start = time.perf_counter()

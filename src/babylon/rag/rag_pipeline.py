@@ -4,7 +4,8 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -112,7 +113,7 @@ class RagPipeline:
             RagError: If ingestion fails
         """
         start_time = time.perf_counter()
-        errors = []
+        errors: list[str] = []
 
         try:
             # Process document into chunks
@@ -278,9 +279,9 @@ class RagPipeline:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Convert exceptions to failed IngestionResult objects
-        processed_results = []
+        processed_results: list[IngestionResult] = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 processed_results.append(
                     IngestionResult(
                         success=False,
@@ -434,11 +435,16 @@ class RagPipeline:
         """Synchronously close the RAG pipeline and clean up resources."""
         asyncio.run(self.aclose())
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         """Context manager entry."""
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         """Context manager exit with cleanup."""
         self.close()
 

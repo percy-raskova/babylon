@@ -27,6 +27,7 @@ from babylon.models.entities import (
     Contradiction,
     ContradictionState,
     Effect,
+    IdeologicalProfile,
     Relationship,
     ResolutionOutcome,
     SocialClass,
@@ -71,6 +72,7 @@ __all__ = [
     # Phase 1 Entities
     "SocialClass",
     "Relationship",
+    "IdeologicalProfile",  # Sprint 3.4.3 - George Jackson Refactor
     # Other Entities
     "Effect",
     "ContradictionState",

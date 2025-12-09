@@ -6,11 +6,15 @@ the defaults appropriate for a specific social class.
 
 Factories support the **kwargs pattern for extensibility while
 maintaining type safety through Pydantic validation.
+
+Sprint 3.4.3 (George Jackson Refactor): ideology parameter accepts both
+float (legacy) and IdeologicalProfile (new format). Float values are
+automatically converted to IdeologicalProfile by the SocialClass validator.
 """
 
 from __future__ import annotations
 
-from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.enums import SocialRole
 from babylon.models.types import Currency, Ideology, Probability
 
@@ -19,7 +23,7 @@ def create_proletariat(
     id: str = "C001",
     name: str = "Proletariat",
     wealth: Currency = 0.5,
-    ideology: Ideology = -0.3,
+    ideology: Ideology | IdeologicalProfile = -0.3,
     organization: Probability = 0.1,
     repression_faced: Probability = 0.5,
     subsistence_threshold: Currency = 0.3,
@@ -80,7 +84,7 @@ def create_bourgeoisie(
     id: str = "C002",
     name: str = "Bourgeoisie",
     wealth: Currency = 10.0,
-    ideology: Ideology = 0.8,
+    ideology: Ideology | IdeologicalProfile = 0.8,
     organization: Probability = 0.7,
     repression_faced: Probability = 0.1,
     subsistence_threshold: Currency = 0.1,

@@ -76,7 +76,7 @@ def format_class_struggle_history(simulation: Simulation) -> str:
         lines.append(f"  - The {final_entity.name} {direction}.")
         lines.append("")
 
-    # Ideological changes
+    # Ideological changes (Sprint 3.4.3: Updated for IdeologicalProfile)
     lines.append("### Consciousness Drift")
     lines.append("")
 
@@ -85,17 +85,26 @@ def format_class_struggle_history(simulation: Simulation) -> str:
             continue
 
         final_entity = final_state.entities[entity_id]
-        ideology_change = final_entity.ideology - initial_entity.ideology
 
-        if ideology_change < -0.1:
+        # Get class_consciousness from IdeologicalProfile
+        initial_consciousness = initial_entity.ideology.class_consciousness
+        final_consciousness = final_entity.ideology.class_consciousness
+        consciousness_change = final_consciousness - initial_consciousness
+
+        if consciousness_change > 0.1:
             direction = "developed revolutionary consciousness"
-        elif ideology_change > 0.1:
+        elif consciousness_change < -0.1:
             direction = "drifted toward reaction"
         else:
             direction = "maintained ideological position"
 
         lines.append(f"**{final_entity.name}**:")
-        lines.append(f"  - Ideology: {initial_entity.ideology:.4f} -> {final_entity.ideology:.4f}")
+        lines.append(
+            f"  - Class Consciousness: {initial_consciousness:.4f} -> {final_consciousness:.4f}"
+        )
+        lines.append(
+            f"  - National Identity: {initial_entity.ideology.national_identity:.4f} -> {final_entity.ideology.national_identity:.4f}"
+        )
         lines.append(f"  - {final_entity.name} {direction}.")
         lines.append("")
 

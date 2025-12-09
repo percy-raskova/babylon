@@ -9,12 +9,21 @@ The fascist faction's music represents two faces:
 - PRIVATE: Anxious, desperate, hollow (the exhausted reality)
 
 Key: E Phrygian (the flat 2nd note F is dread itself)
+
+Architecture:
+    This module provides backward-compatible exports while the new
+    core/ subpackage provides the improved type-safe infrastructure.
+
+    For new code, prefer importing from:
+        from tools.fascist_soundtrack.core import TypedMIDI, Pattern, etc.
+
+    This __init__.py maintains the original API for existing generators.
 """
 
 from pathlib import Path
 from typing import Final
 
-from midiutil import MIDIFile
+from midiutil import MIDIFile  # type: ignore[import-untyped]
 
 # =============================================================================
 # E PHRYGIAN SCALE - The sound of dread
@@ -132,12 +141,24 @@ OUTPUT_DIR: Final[Path] = Path(__file__).parent.parent.parent / "assets" / "musi
 
 
 def create_midi(num_tracks: int = 5) -> MIDIFile:
-    """Create a new MIDI file with standard configuration."""
+    """Create a new MIDI file with standard configuration.
+
+    Args:
+        num_tracks: Number of tracks (default 5)
+
+    Returns:
+        MIDIFile: New MIDI file instance
+    """
     return MIDIFile(num_tracks, deinterleave=False)
 
 
 def setup_standard_tracks(midi: MIDIFile, tempo: int) -> None:
-    """Configure the standard 5-voice fascist soundtrack."""
+    """Configure the standard 5-voice fascist soundtrack.
+
+    Args:
+        midi: MIDIFile to configure
+        tempo: Beats per minute
+    """
     # Track names (philosophical meaning)
     midi.addTrackName(CH_HARPSI, 0, "Harpsichord - The Machine")
     midi.addTrackName(CH_STRINGS, 0, "Strings - Anxiety")
@@ -157,7 +178,17 @@ def setup_standard_tracks(midi: MIDIFile, tempo: int) -> None:
 
 
 def save_midi(midi: MIDIFile, filename: str, tempo: int, total_bars: int) -> Path:
-    """Save MIDI file and print duration info."""
+    """Save MIDI file and print duration info.
+
+    Args:
+        midi: MIDIFile to save
+        filename: Output filename
+        tempo: Track tempo (for duration calculation)
+        total_bars: Total bars (for duration calculation)
+
+    Returns:
+        Path: Path to saved file
+    """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output_path = OUTPUT_DIR / filename
 
@@ -177,7 +208,15 @@ def save_midi(midi: MIDIFile, filename: str, tempo: int, total_bars: int) -> Pat
 
 
 def beats_to_duration(bars: int, tempo: int) -> str:
-    """Convert bars to human-readable duration."""
+    """Convert bars to human-readable duration.
+
+    Args:
+        bars: Number of bars
+        tempo: Beats per minute
+
+    Returns:
+        Duration string in "M:SS" format
+    """
     duration_beats = bars * 4
     duration_seconds = (duration_beats * 60) // tempo
     minutes = duration_seconds // 60
@@ -197,7 +236,15 @@ def add_clock_tick(
     base_velocity: int = 80,
     accent_velocity: int = 90,
 ) -> None:
-    """Add the relentless timpani clock pattern (the jackboot rhythm)."""
+    """Add the relentless timpani clock pattern (the jackboot rhythm).
+
+    Args:
+        midi: MIDIFile to add notes to
+        start_bar: Starting bar (0-indexed)
+        num_bars: Number of bars to fill
+        base_velocity: Base hit velocity
+        accent_velocity: Accented beat velocity
+    """
     for bar in range(num_bars):
         time = (start_bar + bar) * 4
         for beat in range(4):
@@ -212,8 +259,15 @@ def add_surveillance_pings(
     num_bars: int,
     velocity: int = 70,
 ) -> None:
-    """Add high harpsichord surveillance pings."""
-    ping_pattern = [
+    """Add high harpsichord surveillance pings.
+
+    Args:
+        midi: MIDIFile to add notes to
+        start_bar: Starting bar
+        num_bars: Number of bars
+        velocity: Ping velocity
+    """
+    ping_pattern: list[tuple[float, int]] = [
         (0.5, E5),
         (1.5, F5),  # Dread note
         (2.5, E5),
@@ -233,7 +287,15 @@ def add_drone(
     notes: list[int],
     velocity: int = 60,
 ) -> None:
-    """Add sustained drone notes (usually strings or organ)."""
+    """Add sustained drone notes (usually strings or organ).
+
+    Args:
+        midi: MIDIFile to add notes to
+        start_bar: Starting bar
+        num_bars: Number of bars
+        notes: Notes to sustain
+        velocity: Drone velocity
+    """
     for bar in range(num_bars):
         time = (start_bar + bar) * 4
         for note in notes:
@@ -246,7 +308,14 @@ def add_tritone_drone(
     num_bars: int,
     velocity: int = 45,
 ) -> None:
-    """Add the devil's interval drone on organ."""
+    """Add the devil's interval drone on organ.
+
+    Args:
+        midi: MIDIFile to add notes to
+        start_bar: Starting bar
+        num_bars: Duration in bars
+        velocity: Drone velocity
+    """
     time = start_bar * 4
     duration = num_bars * 4
     midi.addNote(CH_ORGAN, CH_ORGAN, E2, time, duration, velocity)
@@ -259,8 +328,15 @@ def add_mechanical_figure(
     num_bars: int,
     velocity: int = 65,
 ) -> None:
-    """Add the standard mechanical harpsichord figure."""
-    figure = [E3, F3, E3, G3, E3, F3, E3, A3]
+    """Add the standard mechanical harpsichord figure.
+
+    Args:
+        midi: MIDIFile to add notes to
+        start_bar: Starting bar
+        num_bars: Number of bars
+        velocity: Figure velocity
+    """
+    figure: list[int] = [E3, F3, E3, G3, E3, F3, E3, A3]
     for bar in range(num_bars):
         time = (start_bar + bar) * 4
         for i, note in enumerate(figure):
@@ -274,6 +350,44 @@ def add_brass_stab(
     duration: float = 0.5,
     velocity: int = 100,
 ) -> None:
-    """Add a sudden brass stab (state violence)."""
+    """Add a sudden brass stab (state violence).
+
+    Args:
+        midi: MIDIFile to add notes to
+        time: Time in beats
+        notes: Chord notes
+        duration: Stab duration
+        velocity: Stab velocity
+    """
     for note in notes:
         midi.addNote(CH_BRASS, CH_BRASS, note, time, duration, velocity)
+
+
+# =============================================================================
+# VELOCITY UTILITIES
+# =============================================================================
+
+
+def clamp_velocity(vel: int) -> int:
+    """Clamp velocity to valid MIDI range (0-127).
+
+    Args:
+        vel: Velocity value (may be outside range)
+
+    Returns:
+        Clamped velocity
+    """
+    return max(0, min(127, vel))
+
+
+def scale_velocity(vel: int, scale: float) -> int:
+    """Scale velocity by a factor, clamped to valid range.
+
+    Args:
+        vel: Base velocity
+        scale: Scale factor
+
+    Returns:
+        Scaled and clamped velocity
+    """
+    return clamp_velocity(int(vel * scale))

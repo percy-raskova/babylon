@@ -3,16 +3,17 @@
 # Source: ~/projects/game/notes/manifesto.md
 
 meta:
-  version: "2.0.0"
+  version: "2.1.0"
   created: "2024-12-07"
-  updated: "2025-12-08"
+  updated: "2025-12-09"
   purpose: "Document the implemented mathematical formulas that transform types into behavior"
   principle: "Types are nouns, formulas are verbs"
-  status: "IMPLEMENTED (ALL 12 FORMULAS)"
+  status: "IMPLEMENTED (ALL 13 FORMULAS)"
   location: "src/babylon/systems/formulas.py"
   tests: "tests/unit/formulas/ (40+ tests, ALL PASSING)"
-  formula_count: 12
+  formula_count: 13
   note: "This spec documents the complete formula inventory driving the simulation."
+  sprint_3_4_3_update: "Added calculate_ideological_routing() for George Jackson Refactor"
 
 # =============================================================================
 # FORMULA INVENTORY (12 FORMULAS, ALL IMPLEMENTED)
@@ -200,6 +201,60 @@ formulas:
     tests:
       - "calculate_consciousness_drift(80, 100, 0.5, 0.5, 0.1) > 0  # exploited → revolutionary"
       - "calculate_consciousness_drift(120, 100, 0.5, 0.5, 0.1) < 0  # aristocrat → reactionary"
+
+  # ---------------------------------------------------------------------------
+  # IDEOLOGICAL ROUTING (The George Jackson Refactor)
+  # ---------------------------------------------------------------------------
+  ideological_routing:
+    function: "calculate_ideological_routing"
+    symbol: "Route(Δw, σ, Π)"
+    equation: |
+      If wage_change < 0:
+        agitation = abs(wage_change) × LOSS_AVERSION_LAMBDA
+        solidarity_factor = min(1.0, solidarity_pressure)
+        class_delta = agitation × solidarity_factor
+        nation_delta = agitation × (1 - solidarity_factor)
+    description: |
+      Routes crisis energy (agitation) into either class consciousness or national
+      identity based on solidarity infrastructure. This is the core of the
+      "Fascist Bifurcation" mechanic.
+
+      Key insight: "Fascism is the defensive form of capitalism."
+      The same material crisis (falling wages) produces opposite outcomes
+      depending on whether solidarity infrastructure was built beforehand.
+
+    inputs:
+      wage_change:
+        symbol: "Δw"
+        type: "float"
+        description: "Change in wages (negative = crisis)"
+
+      solidarity_pressure:
+        symbol: "σ"
+        type: "float [0, 1]"
+        description: "Solidarity infrastructure level (sum of SOLIDARITY edge strengths)"
+
+      current_profile:
+        symbol: "Π"
+        type: "IdeologicalProfile"
+        description: "Current ideological state (class_consciousness, national_identity, agitation)"
+
+    output:
+      type: "tuple[float, float, float]"
+      description: "(delta_class_consciousness, delta_national_identity, new_agitation)"
+
+    key_insight: |
+      With solidarity: crisis → class consciousness → revolution
+      Without solidarity: crisis → national identity → fascism
+      "Agitation without solidarity produces fascism, not revolution."
+
+    tests:
+      - "wage_decline + solidarity_strength=1.0 → class_consciousness increases"
+      - "wage_decline + solidarity_strength=0.0 → national_identity increases"
+      - "wage_stable → no agitation generated"
+
+    location: "src/babylon/systems/formulas.py"
+    added_in: "Sprint 3.4.3"
 
   # ---------------------------------------------------------------------------
   # SECTION 2: SURVIVAL CALCULUS FUNCTIONS (4 formulas)
@@ -577,6 +632,7 @@ formula_summary:
     - { name: "calculate_labor_aristocracy_ratio", symbol: "Wc/Vc", purpose: "Bribery measure" }
     - { name: "is_labor_aristocracy", symbol: "-", purpose: "Boolean bribery check" }
     - { name: "calculate_consciousness_drift", symbol: "dΨ/dt", purpose: "Ideology change" }
+    - { name: "calculate_ideological_routing", symbol: "Route", purpose: "Fascist Bifurcation" }
 
   survival_calculus:
     - { name: "calculate_acquiescence_probability", symbol: "P(S|A)", purpose: "Survival by compliance" }

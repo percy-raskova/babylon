@@ -276,9 +276,9 @@ class SocialClass(BaseModel):
         default=10.0,
         description="Economic resources",
     )
-    ideology: IdeologicalProfile | float = Field(
+    ideology: IdeologicalProfile = Field(
         default_factory=IdeologicalProfile,
-        description="Multi-dimensional ideological profile (Sprint 3.4.3). Accepts float for legacy compatibility.",
+        description="Multi-dimensional ideological profile (Sprint 3.4.3). Float input auto-converts via model_validator.",
     )
 
     # Survival calculus outputs (computed, can be updated)

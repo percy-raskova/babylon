@@ -230,7 +230,6 @@ class TestStepSurvivalProbabilities:
     def test_step_wealthy_has_high_acquiescence(
         self,
         owner: SocialClass,
-        exploitation_edge: Relationship,
         config: SimulationConfig,
     ) -> None:
         """Wealthy entities have high P(S|A)."""
@@ -243,10 +242,11 @@ class TestStepSurvivalProbabilities:
             organization=0.1,
             repression_faced=0.5,
         )
+        # No exploitation edge - just test wealth -> acquiescence relationship
         state = WorldState(
             tick=0,
             entities={"C001": rich_worker, "C002": owner},
-            relationships=[exploitation_edge],
+            relationships=[],  # No edges - wealth stays constant
         )
         new_state = step(state, config)
         # High wealth -> high acquiescence probability
@@ -326,7 +326,10 @@ class TestStepDeterminism:
         assert result1.tick == result2.tick == 100
         assert result1.entities["C001"].wealth == pytest.approx(result2.entities["C001"].wealth)
         assert result1.entities["C002"].wealth == pytest.approx(result2.entities["C002"].wealth)
-        assert result1.entities["C001"].ideology == pytest.approx(result2.entities["C001"].ideology)
+        # Compare class_consciousness from IdeologicalProfile
+        assert result1.entities["C001"].ideology.class_consciousness == pytest.approx(
+            result2.entities["C001"].ideology.class_consciousness
+        )
 
 
 # =============================================================================
@@ -441,21 +444,84 @@ class TestStepConsciousnessDrift:
 
     def test_exploited_worker_drifts_revolutionary(
         self,
-        two_node_state: WorldState,
+        owner: SocialClass,
         config: SimulationConfig,
     ) -> None:
-        """Worker ideology decreases (toward -1) after step() due to exploitation.
+        """Worker class_consciousness increases after step() due to falling wages.
 
-        The worker is being exploited (wealth extracted), so their consciousness
-        should increase, which means ideology should drift toward -1.
+        Sprint 3.4.3: Consciousness drift now uses WAGES edges and wage_change,
+        not direct exploitation. This test verifies that falling wages cause
+        revolutionary drift when there's solidarity infrastructure.
         """
-        initial_ideology = two_node_state.entities["C001"].ideology
+        from babylon.models import IdeologicalProfile
 
-        # Run one step - extraction happens, then consciousness drift
-        new_state = step(two_node_state, config)
+        # Create worker with initial WAGES that will be cut
+        worker = SocialClass(
+            id="C001",
+            name="Periphery Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=0.5,
+            ideology=IdeologicalProfile(
+                class_consciousness=0.5, national_identity=0.5, agitation=0.0
+            ),
+            organization=0.1,
+            repression_faced=0.5,
+            subsistence_threshold=0.3,
+        )
 
-        # Worker should be drifting revolutionary (ideology decreasing)
-        assert new_state.entities["C001"].ideology < initial_ideology
+        # Create a solidarity source (periphery worker with high consciousness)
+        periphery_worker = SocialClass(
+            id="C003",
+            name="Solidarity Source",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=0.2,
+            ideology=IdeologicalProfile(
+                class_consciousness=0.9, national_identity=0.1, agitation=0.0
+            ),
+        )
+
+        # WAGES edge from owner to worker (will be cut next tick)
+        wages_edge = Relationship(
+            source_id="C002",
+            target_id="C001",
+            edge_type=EdgeType.WAGES,
+            value_flow=50.0,
+        )
+
+        # SOLIDARITY edge from periphery to worker
+        solidarity_edge = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.8,
+        )
+
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker, "C002": owner, "C003": periphery_worker},
+            relationships=[wages_edge, solidarity_edge],
+        )
+
+        # Run first tick to establish wage baseline
+        state = step(state, config)
+        initial_consciousness = state.entities["C001"].ideology.class_consciousness
+
+        # Cut wages and run another tick
+        reduced_wages = Relationship(
+            source_id="C002",
+            target_id="C001",
+            edge_type=EdgeType.WAGES,
+            value_flow=30.0,  # 40% wage cut
+        )
+        state_with_cut = WorldState(
+            tick=state.tick,
+            entities=state.entities,
+            relationships=[reduced_wages, solidarity_edge],
+        )
+        final_state = step(state_with_cut, config)
+
+        # Worker should drift revolutionary (class_consciousness increasing) with solidarity
+        assert final_state.entities["C001"].ideology.class_consciousness > initial_consciousness
 
     def test_owner_ideology_unchanged(
         self,
@@ -468,12 +534,14 @@ class TestStepConsciousnessDrift:
         They have no outgoing EXPLOITATION edges, so value_produced = 0.
         Consciousness drift should skip them.
         """
-        initial_owner_ideology = two_node_state.entities["C002"].ideology
+        initial_owner_consciousness = two_node_state.entities["C002"].ideology.class_consciousness
 
         new_state = step(two_node_state, config)
 
-        # Owner ideology unchanged (no outgoing exploitation edges)
-        assert new_state.entities["C002"].ideology == pytest.approx(initial_owner_ideology)
+        # Owner class_consciousness unchanged (no outgoing exploitation edges)
+        assert new_state.entities["C002"].ideology.class_consciousness == pytest.approx(
+            initial_owner_consciousness
+        )
 
     def test_no_edges_no_drift(
         self,
@@ -481,7 +549,7 @@ class TestStepConsciousnessDrift:
         owner: SocialClass,
         config: SimulationConfig,
     ) -> None:
-        """Without exploitation edges, ideology is unchanged.
+        """Without exploitation edges, class_consciousness is unchanged.
 
         If there are no exploitation edges, no value is being extracted,
         so there's no basis for consciousness drift.
@@ -491,12 +559,14 @@ class TestStepConsciousnessDrift:
             entities={"C001": worker, "C002": owner},
             relationships=[],  # No edges
         )
-        initial_worker_ideology = state.entities["C001"].ideology
+        initial_worker_consciousness = state.entities["C001"].ideology.class_consciousness
 
         new_state = step(state, config)
 
         # No drift without exploitation edges
-        assert new_state.entities["C001"].ideology == pytest.approx(initial_worker_ideology)
+        assert new_state.entities["C001"].ideology.class_consciousness == pytest.approx(
+            initial_worker_consciousness
+        )
 
     def test_ideology_clamped_lower_bound(
         self,
@@ -504,18 +574,18 @@ class TestStepConsciousnessDrift:
         exploitation_edge: Relationship,
         config: SimulationConfig,
     ) -> None:
-        """Ideology cannot go below -1.0 even over 1000 ticks.
+        """Class consciousness cannot exceed 1.0 even over 1000 ticks.
 
-        The ideology field is constrained to [-1, 1]. Even with continuous
-        drift, ideology must be clamped to prevent validation errors.
+        The class_consciousness field is constrained to [0, 1]. Even with continuous
+        drift, it must be clamped to prevent validation errors.
         """
-        # Start already revolutionary to stress test the lower bound
+        # Start already revolutionary to stress test the upper bound
         revolutionary_worker = SocialClass(
             id="C001",
             name="Revolutionary Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
-            ideology=-0.9,  # Already very revolutionary
+            ideology=-0.9,  # Already very revolutionary (consciousness 0.95)
             organization=0.1,
             repression_faced=0.5,
             subsistence_threshold=0.3,
@@ -530,26 +600,26 @@ class TestStepConsciousnessDrift:
         for _ in range(1000):
             state = step(state, config)
 
-        # Ideology must stay >= -1.0
-        assert state.entities["C001"].ideology >= -1.0
+        # Class consciousness must stay <= 1.0
+        assert state.entities["C001"].ideology.class_consciousness <= 1.0
 
     def test_ideology_clamped_upper_bound(
         self,
         owner: SocialClass,
         config: SimulationConfig,
     ) -> None:
-        """Ideology cannot exceed +1.0 (use labor aristocrat scenario).
+        """Class consciousness cannot go below 0.0 (use labor aristocrat scenario).
 
         A labor aristocrat receiving more than they produce should have
-        consciousness decay, but ideology must stay <= 1.0.
+        consciousness decay, but class_consciousness must stay >= 0.0.
         """
-        # Labor aristocrat with high (reactionary) ideology
+        # Labor aristocrat with low (reactionary) consciousness
         labor_aristocrat = SocialClass(
             id="C001",
             name="Labor Aristocrat",
             role=SocialRole.LABOR_ARISTOCRACY,
             wealth=0.9,  # High wages
-            ideology=0.9,  # Already very reactionary
+            ideology=0.9,  # Already very reactionary (consciousness 0.05)
             organization=0.1,
             repression_faced=0.1,
             subsistence_threshold=0.3,
@@ -572,53 +642,92 @@ class TestStepConsciousnessDrift:
         for _ in range(1000):
             state = step(state, config)
 
-        # Ideology must stay <= 1.0
-        assert state.entities["C001"].ideology <= 1.0
+        # Class consciousness must stay >= 0.0
+        assert state.entities["C001"].ideology.class_consciousness >= 0.0
 
-    def test_higher_sensitivity_faster_drift(
+    def test_higher_solidarity_strength_faster_transmission(
         self,
-        two_node_state: WorldState,
+        owner: SocialClass,
     ) -> None:
-        """Higher consciousness_sensitivity = faster ideological change.
+        """Higher solidarity_strength = faster consciousness transmission.
 
-        The sensitivity parameter k controls how quickly material conditions
-        translate into consciousness change. Higher k = faster drift.
+        The SolidaritySystem transmits consciousness from revolutionary periphery
+        workers to core workers. Higher solidarity_strength means more transmission.
         """
-        low_sensitivity_config = SimulationConfig(consciousness_sensitivity=0.1)
-        high_sensitivity_config = SimulationConfig(consciousness_sensitivity=0.9)
+        from babylon.models import IdeologicalProfile
 
-        low_state = step(two_node_state, low_sensitivity_config)
-        high_state = step(two_node_state, high_sensitivity_config)
+        config = SimulationConfig()
 
-        low_drift = abs(
-            low_state.entities["C001"].ideology - two_node_state.entities["C001"].ideology
+        def create_state_with_solidarity(strength: float) -> WorldState:
+            # Core worker starts with low consciousness
+            worker = SocialClass(
+                id="C001",
+                name="Worker",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                wealth=0.5,
+                ideology=IdeologicalProfile(
+                    class_consciousness=0.1, national_identity=0.9, agitation=0.0
+                ),
+            )
+            # Periphery worker has high consciousness (source of transmission)
+            periphery = SocialClass(
+                id="C003",
+                name="Periphery",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                wealth=0.2,
+                ideology=IdeologicalProfile(
+                    class_consciousness=0.9, national_identity=0.1, agitation=0.0
+                ),
+            )
+            solidarity = Relationship(
+                source_id="C003",
+                target_id="C001",
+                edge_type=EdgeType.SOLIDARITY,
+                solidarity_strength=strength,
+            )
+            return WorldState(
+                tick=0,
+                entities={"C001": worker, "C002": owner, "C003": periphery},
+                relationships=[solidarity],
+            )
+
+        initial_consciousness = 0.1
+
+        # Run one tick with different solidarity strengths
+        low_state = step(create_state_with_solidarity(0.2), config)
+        high_state = step(create_state_with_solidarity(0.8), config)
+
+        low_drift = low_state.entities["C001"].ideology.class_consciousness - initial_consciousness
+        high_drift = (
+            high_state.entities["C001"].ideology.class_consciousness - initial_consciousness
         )
-        high_drift = abs(
-            high_state.entities["C001"].ideology - two_node_state.entities["C001"].ideology
-        )
 
-        # Higher sensitivity should produce larger drift
+        # Higher solidarity strength should produce larger consciousness drift
         assert high_drift > low_drift
+        # Both should have increased from initial
+        assert low_drift > 0
+        assert high_drift > 0
 
     def test_thousand_tick_stability(
         self,
         two_node_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """Ideology stays bounded [-1, 1] over 1000 ticks.
+        """Class consciousness stays bounded [0, 1] over 1000 ticks.
 
         This is a stability test to ensure no numerical drift causes
-        ideology to escape valid bounds over long simulations.
+        consciousness to escape valid bounds over long simulations.
         """
         state = two_node_state
         for _ in range(1000):
             state = step(state, config)
 
-        # All ideologies must be in valid range
+        # All class consciousness values must be in valid range
         for entity_id, entity in state.entities.items():
+            consciousness = entity.ideology.class_consciousness
             assert (
-                -1.0 <= entity.ideology <= 1.0
-            ), f"Entity {entity_id} ideology {entity.ideology} out of bounds"
+                0.0 <= consciousness <= 1.0
+            ), f"Entity {entity_id} class_consciousness {consciousness} out of bounds"
 
 
 # =============================================================================

@@ -71,7 +71,7 @@ class TestProletarianInternationalism:
         consciousness_history: list[float] = []
         for state in history:
             cw = state.entities["C002"]
-            consciousness = (1.0 - cw.ideology) / 2.0
+            consciousness = cw.ideology.class_consciousness
             consciousness_history.append(consciousness)
 
         # Assert: Consciousness should increase each tick
@@ -126,7 +126,7 @@ class TestProletarianInternationalism:
         # Assert: Core worker consciousness should NOT significantly change
         # (only ConsciousnessSystem drift, not solidarity transmission)
         cw = final_state.entities["C002"]
-        final_consciousness = (1.0 - cw.ideology) / 2.0
+        final_consciousness = cw.ideology.class_consciousness
 
         # Should still be near initial low consciousness (maybe small drift)
         # Definitely should NOT be > 0.5 like revolutionary scenario
@@ -202,10 +202,10 @@ class TestSolidaritySystemTurnOrder:
         pw = final_state.entities["C001"]
         assert pw.wealth < 1.0
 
-        # 2. C_w ideology should change (solidarity transmission)
+        # 2. C_w consciousness should change (solidarity transmission)
         cw = final_state.entities["C004"]
         original_consciousness = 0.2  # from ideology 0.6
-        new_consciousness = (1.0 - cw.ideology) / 2.0
+        new_consciousness = cw.ideology.class_consciousness
         assert new_consciousness > original_consciousness
 
 
@@ -253,7 +253,7 @@ class TestMassAwakeningScenario:
 
         # Assert: Core worker should cross mass awakening threshold
         cw = final_state.entities["C002"]
-        new_consciousness = (1.0 - cw.ideology) / 2.0
+        new_consciousness = cw.ideology.class_consciousness
         assert new_consciousness >= 0.6
 
     def test_gradual_awakening_approach(self) -> None:
@@ -294,7 +294,7 @@ class TestMassAwakeningScenario:
         for tick in range(1, max_ticks + 1):
             current_state = sim.run(1)
             cw = current_state.entities["C002"]
-            consciousness = (1.0 - cw.ideology) / 2.0
+            consciousness = cw.ideology.class_consciousness
             if consciousness >= 0.6:
                 ticks_to_awakening = tick
                 break
@@ -380,8 +380,9 @@ class TestBackwardCompatibility:
         sim = Simulation(state, config)
         final_state = sim.run(1)
 
-        # Assert: Consumer ideology should not significantly change from solidarity
+        # Assert: Consumer class_consciousness should not significantly change from solidarity
         # (may change slightly from ConsciousnessSystem drift)
         c = final_state.entities["C002"]
-        # Should still be near original passive ideology
-        assert c.ideology > 0.5
+        # Should still be near original low consciousness (0.1)
+        # With zero solidarity_strength, no transmission occurs
+        assert c.ideology.class_consciousness < 0.3

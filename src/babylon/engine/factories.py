@@ -16,14 +16,14 @@ from __future__ import annotations
 
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.enums import SocialRole
-from babylon.models.types import Currency, Ideology, Probability
+from babylon.models.types import Currency, Probability
 
 
 def create_proletariat(
     id: str = "C001",
     name: str = "Proletariat",
     wealth: Currency = 0.5,
-    ideology: Ideology | IdeologicalProfile = -0.3,
+    ideology: float | IdeologicalProfile = -0.3,
     organization: Probability = 0.1,
     repression_faced: Probability = 0.5,
     subsistence_threshold: Currency = 0.3,
@@ -69,7 +69,7 @@ def create_proletariat(
         name=name,
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=wealth,
-        ideology=ideology,
+        ideology=ideology,  # type: ignore[arg-type]  # Validator converts float to IdeologicalProfile
         organization=organization,
         repression_faced=repression_faced,
         subsistence_threshold=subsistence_threshold,
@@ -84,7 +84,7 @@ def create_bourgeoisie(
     id: str = "C002",
     name: str = "Bourgeoisie",
     wealth: Currency = 10.0,
-    ideology: Ideology | IdeologicalProfile = 0.8,
+    ideology: float | IdeologicalProfile = 0.8,
     organization: Probability = 0.7,
     repression_faced: Probability = 0.1,
     subsistence_threshold: Currency = 0.1,
@@ -130,7 +130,7 @@ def create_bourgeoisie(
         name=name,
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=wealth,
-        ideology=ideology,
+        ideology=ideology,  # type: ignore[arg-type]  # Validator converts float to IdeologicalProfile
         organization=organization,
         repression_faced=repression_faced,
         subsistence_threshold=subsistence_threshold,

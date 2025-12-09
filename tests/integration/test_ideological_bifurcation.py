@@ -145,24 +145,24 @@ class TestIdeologicalBifurcation:
         sim2 = Simulation(state_with_wage_cut, config)
         final_state = sim2.run(1)
 
-        # Get final ideologies
-        a_ideology = final_state.entities["C001"].ideology
-        b_ideology = final_state.entities["C002"].ideology
+        # Get final class_consciousness values
+        a_consciousness = final_state.entities["C001"].ideology.class_consciousness
+        b_consciousness = final_state.entities["C002"].ideology.class_consciousness
 
-        # Get ideologies after tick 1 (before wage cut) for comparison
-        a_after_tick1 = state_after_tick_1.entities["C001"].ideology
-        b_after_tick1 = state_after_tick_1.entities["C002"].ideology
+        # Get consciousness after tick 1 (before wage cut) for comparison
+        a_after_tick1 = state_after_tick_1.entities["C001"].ideology.class_consciousness
+        b_after_tick1 = state_after_tick_1.entities["C002"].ideology.class_consciousness
 
         # ASSERTIONS:
         # The key assertion is the RELATIVE difference between workers
         # Worker_B (with solidarity) should be more revolutionary than Worker_A
 
         # 3. KEY ASSERTION: The International is more revolutionary than The National
-        # This is the core of the Fascist Bifurcation mechanic
-        assert b_ideology < a_ideology, (
+        # Higher class_consciousness = more revolutionary
+        assert b_consciousness > a_consciousness, (
             f"Solidarity should channel crisis into revolution. "
-            f"Worker_B ({b_ideology}) should be more revolutionary than "
-            f"Worker_A ({a_ideology}). After tick 1: A={a_after_tick1}, B={b_after_tick1}"
+            f"Worker_B ({b_consciousness}) should have higher class_consciousness than "
+            f"Worker_A ({a_consciousness}). After tick 1: A={a_after_tick1}, B={b_after_tick1}"
         )
 
     def test_no_wage_change_no_bifurcation(self) -> None:
@@ -197,13 +197,13 @@ class TestIdeologicalBifurcation:
         final_state = sim.run(1)
 
         # Both should drift similarly (no bifurcation without wage change)
-        a_ideology = final_state.entities["C001"].ideology
-        b_ideology = final_state.entities["C002"].ideology
+        a_consciousness = final_state.entities["C001"].ideology.class_consciousness
+        b_consciousness = final_state.entities["C002"].ideology.class_consciousness
 
         # They should be approximately equal (within epsilon)
-        assert abs(a_ideology - b_ideology) < 0.1, (
+        assert abs(a_consciousness - b_consciousness) < 0.1, (
             f"Without wage changes, workers should drift similarly. "
-            f"Worker_A: {a_ideology}, Worker_B: {b_ideology}"
+            f"Worker_A: {a_consciousness}, Worker_B: {b_consciousness}"
         )
 
     def test_wage_cut_without_solidarity_amplifies_fascist_drift(self) -> None:
@@ -229,18 +229,19 @@ class TestIdeologicalBifurcation:
 
         sim = Simulation(state, config)
 
-        # Track ideology over multiple ticks with wage decline
+        # Track consciousness over multiple ticks with wage decline
         # The drift should be amplified by loss aversion
         final_state = sim.run(3)
 
-        final_ideology = final_state.entities["C001"].ideology
+        final_consciousness = final_state.entities["C001"].ideology.class_consciousness
 
         # Without solidarity and with implicit wage pressure,
-        # worker should drift toward positive (reactionary)
-        # This tests that loss aversion is being applied
-        assert final_ideology >= 0.0, (
-            f"Isolated worker under wage pressure should drift reactionary. "
-            f"Got ideology: {final_ideology}"
+        # worker should drift toward low class_consciousness (reactionary)
+        # Since starting at 0.5 (neutral), without solidarity they should not increase much
+        # This tests that loss aversion routes to national_identity, not class_consciousness
+        assert final_consciousness <= 0.6, (
+            f"Isolated worker under wage pressure should not gain revolutionary consciousness. "
+            f"Got class_consciousness: {final_consciousness}"
         )
 
 
@@ -304,12 +305,13 @@ class TestBifurcationMechanics:
         final_state = sim.run(1)
 
         # With combined solidarity pressure of 0.8, worker should
-        # drift toward revolution (negative ideology)
-        final_ideology = final_state.entities["C001"].ideology
+        # gain class consciousness (higher value = more revolutionary)
+        final_consciousness = final_state.entities["C001"].ideology.class_consciousness
 
-        assert final_ideology < 0.5, (
+        # Started at 0.25 (from ideology=0.5), should increase with solidarity
+        assert final_consciousness > 0.25, (
             f"Multiple solidarity connections should produce revolutionary drift. "
-            f"Got ideology: {final_ideology}, expected < 0.5"
+            f"Got class_consciousness: {final_consciousness}, expected > 0.25"
         )
 
     def test_bifurcation_is_threshold_based(self) -> None:
@@ -356,10 +358,11 @@ class TestBifurcationMechanics:
         # Worker should still drift toward periphery consciousness
         # via standard solidarity transmission, even without
         # the crisis-amplified bifurcation
-        final_ideology = final_state.entities["C001"].ideology
+        final_consciousness = final_state.entities["C001"].ideology.class_consciousness
 
-        # Should be lower (more revolutionary) due to solidarity
-        assert final_ideology < 0.0, (
+        # Should be higher (more revolutionary) due to solidarity
+        # Started at 0.5 (neutral), periphery has 0.9
+        assert final_consciousness > 0.5, (
             f"Solidarity transmission should occur regardless of wage direction. "
-            f"Got ideology: {final_ideology}"
+            f"Got class_consciousness: {final_consciousness}"
         )

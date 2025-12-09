@@ -53,14 +53,16 @@ class TestCreateProletariat:
         from babylon.engine.factories import create_proletariat
 
         result = create_proletariat()
-        assert result.ideology == pytest.approx(-0.3)
+        # IdeologicalProfile with class_consciousness=0.65 converts to legacy -0.3
+        assert result.ideology.to_legacy_ideology() == pytest.approx(-0.3)
 
     def test_custom_ideology_override(self) -> None:
         """create_proletariat() accepts custom ideology parameter."""
         from babylon.engine.factories import create_proletariat
 
         result = create_proletariat(ideology=-0.8)
-        assert result.ideology == pytest.approx(-0.8)
+        # Legacy float -0.8 converts to IdeologicalProfile, then back
+        assert result.ideology.to_legacy_ideology() == pytest.approx(-0.8)
 
     def test_default_organization_low(self) -> None:
         """create_proletariat() has default organization of 0.1 (10%)."""
@@ -164,14 +166,16 @@ class TestCreateBourgeoisie:
         from babylon.engine.factories import create_bourgeoisie
 
         result = create_bourgeoisie()
-        assert result.ideology == pytest.approx(0.8)
+        # IdeologicalProfile with class_consciousness=0.1 converts to legacy 0.8
+        assert result.ideology.to_legacy_ideology() == pytest.approx(0.8)
 
     def test_custom_ideology_override(self) -> None:
         """create_bourgeoisie() accepts custom ideology parameter."""
         from babylon.engine.factories import create_bourgeoisie
 
         result = create_bourgeoisie(ideology=0.5)
-        assert result.ideology == pytest.approx(0.5)
+        # Legacy float 0.5 converts to IdeologicalProfile, then back
+        assert result.ideology.to_legacy_ideology() == pytest.approx(0.5)
 
     def test_default_organization_high(self) -> None:
         """create_bourgeoisie() has default organization of 0.7 (70% - well-organized)."""

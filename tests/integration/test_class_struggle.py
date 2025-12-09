@@ -127,10 +127,10 @@ class TestHistoryOfClassStruggle:
                     entity.wealth >= 0.0
                 ), f"Tick {state.tick}: {entity_id} wealth < 0: {entity.wealth}"
 
-                # Ideology must be in [-1, 1]
+                # Class consciousness must be in [0, 1]
                 assert (
-                    -1.0 <= entity.ideology <= 1.0
-                ), f"Tick {state.tick}: {entity_id} ideology out of range: {entity.ideology}"
+                    0.0 <= entity.ideology.class_consciousness <= 1.0
+                ), f"Tick {state.tick}: {entity_id} class_consciousness out of range: {entity.ideology.class_consciousness}"
 
                 # Organization must be in [0, 1]
                 assert (
@@ -156,17 +156,24 @@ class TestHistoryOfClassStruggle:
                 ), f"Tick {state.tick}: tension out of range: {rel.tension}"
 
     def test_worker_ideology_drifts_revolutionary(self) -> None:
-        """Worker ideology drifts toward -1 (revolutionary) over 100 ticks.
+        """Worker class_consciousness increases over 100 ticks via solidarity.
 
-        As the worker is exploited, consciousness increases (ideology decreases).
-        This is the consciousness drift formula in action.
+        Sprint 3.4.3: Consciousness drift now happens through SOLIDARITY edges.
+        A core worker with solidarity connection to a revolutionary periphery worker
+        will gain class consciousness over time.
         """
         from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.simulation import Simulation
         from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
 
+        # Core worker starts at neutral consciousness (0.5)
         worker = create_proletariat(id="C001", wealth=0.5, ideology=0.0)
         owner = create_bourgeoisie(id="C002", wealth=0.5)
+
+        # Add a revolutionary periphery worker to transmit consciousness
+        periphery_worker = create_proletariat(
+            id="C003", wealth=0.3, ideology=-0.8
+        )  # consciousness 0.9
 
         exploitation = Relationship(
             source_id="C001",
@@ -176,20 +183,28 @@ class TestHistoryOfClassStruggle:
             tension=0.0,
         )
 
+        # Solidarity edge from periphery to worker for consciousness transmission
+        solidarity = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.3,
+        )
+
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            entities={"C001": worker, "C002": owner, "C003": periphery_worker},
+            relationships=[exploitation, solidarity],
         )
 
         config = SimulationConfig()
         sim = Simulation(initial_state, config)
         final_state = sim.run(100)
 
-        # Worker should have drifted revolutionary
-        assert final_state.entities["C001"].ideology < 0.0, (
-            f"Worker ideology should be negative (revolutionary): "
-            f"{final_state.entities['C001'].ideology}"
+        # Worker should have gained consciousness via solidarity transmission
+        assert final_state.entities["C001"].ideology.class_consciousness > 0.5, (
+            f"Worker class_consciousness should be above neutral (revolutionary): "
+            f"{final_state.entities['C001'].ideology.class_consciousness}"
         )
 
     def test_tension_accumulates_on_exploitation_edge(self) -> None:

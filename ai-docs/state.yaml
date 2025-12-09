@@ -216,10 +216,10 @@ implemented:
         status: "not_implemented"
         details: "No LLM provider integration yet"
         priority: "CRITICAL - Sprint 3.3"
-        options:
-          - "Anthropic SDK (Claude)"
+        primary_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
+        fallback_options:
           - "Ollama HTTP API (local models)"
-          - "DeepSeek API (cost-effective alternative)"
+          - "Anthropic SDK (Claude)"
 
   tooling:
     status: "functional"
@@ -270,19 +270,51 @@ not_implemented:
     description: "Marxist theory documents for RAG retrieval"
     blockers: "None"
     phase: 3
-    sprint: "3.3 (minimal) or Phase 4 (full)"
-    options:
-      - "Static quotes in DialecticalPromptBuilder (MVP)"
-      - "Minimal seed corpus (5-10 documents)"
-      - "Full ingestion pipeline (Phase 4)"
+    sprint: "3.3"
+    source: "Marxists.org archive (user has full corpus available)"
+    mvp_selection:
+      description: "Curated minimal corpus for vertical slice"
+      recommended_texts:
+        - title: "Wage Labour and Capital"
+          author: "Karl Marx (1847)"
+          relevance: "Core explanation of surplus value extraction - directly maps to Imperial Rent"
+          url: "https://www.marxists.org/archive/marx/works/1847/wage-labour/"
+        - title: "Value, Price and Profit"
+          author: "Karl Marx (1865)"
+          relevance: "Accessible explanation of exploitation mechanics"
+          url: "https://www.marxists.org/archive/marx/works/1865/value-price-profit/"
+        - title: "Erta Klas - Principles of Communism"
+          author: "Frederick Engels (1847)"
+          relevance: "Q&A format, good for chunking, covers class relations"
+          url: "https://www.marxists.org/archive/marx/works/1847/11/prin-com.htm"
+        - title: "Imperialism, the Highest Stage of Capitalism (Chapters 1-4)"
+          author: "V.I. Lenin (1917)"
+          relevance: "Core theory for Imperial Rent and core-periphery dynamics"
+          url: "https://www.marxists.org/archive/lenin/works/1916/imp-hsc/"
+        - title: "The Wretched of the Earth (Chapter 1)"
+          author: "Frantz Fanon (1961)"
+          relevance: "Third Worldist perspective on colonial extraction"
+          url: "https://www.marxists.org/subject/africa/fanon/"
+      estimated_chunks: "~200-500 chunks from 5 texts"
+      ingestion_approach: "Simple script to fetch, chunk, embed, store in ChromaDB"
 
-  vertical_slice_cli:
-    priority: "medium"
-    description: "Simple CLI runner to demonstrate vertical slice"
+  vertical_slice_testing:
+    priority: "high"
+    description: "Integration tests proving full narrative pipeline"
     blockers: "LLM provider"
     phase: 3
     sprint: "3.3"
-    estimated_lines: 50
+    approach: "Pytest integration tests instead of CLI runner"
+    rationale:
+      - "Programmatic verification of data flow"
+      - "Reproducible in CI/CD"
+      - "Assertions on narrative generation"
+      - "No manual interaction required"
+    test_scenarios:
+      - "test_narrative_generated_on_exploitation_event"
+      - "test_rag_context_included_in_prompt"
+      - "test_deepseek_api_called_with_correct_format"
+      - "test_full_vertical_slice_10_ticks"
 
   ui:
     priority: "low"
@@ -652,10 +684,13 @@ current_focus:
       name: "LLM Integration (Vertical Slice)"
       status: "NOT STARTED"
       planned_deliverables:
-        - "src/babylon/ai/llm_provider.py (protocol + implementations)"
+        - "src/babylon/ai/llm_provider.py (protocol + DeepSeek implementation)"
         - "Modified ImperialRentSystem (event generation)"
-        - "Vertical slice CLI runner"
-        - "Static theoretical quotes in DialecticalPromptBuilder"
+        - "RAG corpus ingestion script (5 texts from Marxists.org)"
+        - "Integration tests proving full narrative pipeline"
+      llm_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
+      testing_approach: "Integration tests instead of CLI runner"
+      rag_corpus: "5 curated texts from Marxists.org (~200-500 chunks)"
       estimated_tests: 20
       scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
 
@@ -666,13 +701,13 @@ current_focus:
     phase_4: "Control Room - NiceGUI dashboard"
 
   next_steps:
-    - "Sprint 3.3: LLM Provider protocol (Claude/Ollama/DeepSeek)"
+    - "Sprint 3.3: LLM Provider protocol + DeepSeek implementation"
     - "Sprint 3.3: Add event generation to ImperialRentSystem"
     - "Sprint 3.3: Wire NarrativeDirector.on_tick() to call LLM"
-    - "Sprint 3.3: Add static theoretical quotes as RAG fallback"
-    - "Sprint 3.3: Create vertical slice CLI runner"
+    - "Sprint 3.3: Ingest MVP corpus (5 texts from Marxists.org)"
+    - "Sprint 3.3: Integration tests for full vertical slice"
     - "Phase 4: NiceGUI Control Room - dashboard for simulation"
-    - "Optional: Full RAG corpus ingestion pipeline"
+    - "Optional: Expand RAG corpus with more Marxists.org texts"
     - "Optional: Timeline branching for history stack"
     - "Optional: Additional entity types and relationship types"
 

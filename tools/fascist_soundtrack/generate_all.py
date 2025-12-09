@@ -11,28 +11,30 @@ Generates the complete ~63 minute soundtrack for the National Revival Movement.
                      The Juggling Act, The Mirror, The Void Beneath, Desperate Return
 
 Usage:
-    cd babylon/tools/fascist_soundtrack
-    poetry run python generate_all.py
+    cd babylon
+    poetry run python -m tools.fascist_soundtrack.generate_all
+
+Or:
+    poetry run python tools/fascist_soundtrack/generate_all.py
 """
 
-import sys
-from pathlib import Path
+from collections.abc import Callable
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-from generate_01_apparatus import main as gen_01
-from generate_02_viktors_march import main as gen_02
-from generate_03_nationalist_guard import main as gen_03
-from generate_04_repression_protocol import main as gen_04
-from generate_05_national_revival import main as gen_05
-from generate_06_economic_crisis import main as gen_06
-from generate_07_corporate_state import main as gen_07
-from generate_08_propaganda_broadcast import main as gen_08
-from generate_09_juggling_act import main as gen_09
-from generate_10_the_mirror import main as gen_10
-from generate_11_the_void_beneath import main as gen_11
-from generate_12_desperate_return import main as gen_12
+# Import all track generators as modules
+from . import (
+    generate_01_apparatus,
+    generate_02_viktors_march,
+    generate_03_nationalist_guard,
+    generate_04_repression_protocol,
+    generate_05_national_revival,
+    generate_06_economic_crisis,
+    generate_07_corporate_state,
+    generate_08_propaganda_broadcast,
+    generate_09_juggling_act,
+    generate_10_the_mirror,
+    generate_11_the_void_beneath,
+    generate_12_desperate_return,
+)
 
 
 def print_header() -> None:
@@ -86,6 +88,26 @@ def print_footer() -> None:
     print("=" * 60)
 
 
+# Track generator mapping for cleaner iteration
+MENACING_TRACKS: list[tuple[str, Callable[[], None]]] = [
+    ("Track 01: The Apparatus", generate_01_apparatus.main),
+    ("Track 02: Viktor's March", generate_02_viktors_march.main),
+    ("Track 03: The Nationalist Guard", generate_03_nationalist_guard.main),
+    ("Track 04: Repression Protocol", generate_04_repression_protocol.main),
+    ("Track 05: National Revival", generate_05_national_revival.main),
+]
+
+ANXIOUS_TRACKS: list[tuple[str, Callable[[], None]]] = [
+    ("Track 06: Economic Crisis", generate_06_economic_crisis.main),
+    ("Track 07: The Corporate State", generate_07_corporate_state.main),
+    ("Track 08: Propaganda Broadcast", generate_08_propaganda_broadcast.main),
+    ("Track 09: The Juggling Act", generate_09_juggling_act.main),
+    ("Track 10: The Mirror", generate_10_the_mirror.main),
+    ("Track 11: The Void Beneath", generate_11_the_void_beneath.main),
+    ("Track 12: Desperate Return", generate_12_desperate_return.main),
+]
+
+
 def generate_all() -> None:
     """Generate all 12 tracks of the fascist soundtrack."""
     print_header()
@@ -94,57 +116,19 @@ def generate_all() -> None:
     print_section("MENACING TRACKS (Public Face)")
     print()
 
-    print("Track 01: The Apparatus")
-    gen_01()
-    print()
-
-    print("Track 02: Viktor's March")
-    gen_02()
-    print()
-
-    print("Track 03: The Nationalist Guard")
-    gen_03()
-    print()
-
-    print("Track 04: Repression Protocol")
-    gen_04()
-    print()
-
-    print("Track 05: National Revival")
-    gen_05()
-    print()
+    for name, generator in MENACING_TRACKS:
+        print(name)
+        generator()
+        print()
 
     # Anxious tracks (Private Reality)
     print_section("ANXIOUS TRACKS (Private Reality)")
     print()
 
-    print("Track 06: Economic Crisis")
-    gen_06()
-    print()
-
-    print("Track 07: The Corporate State")
-    gen_07()
-    print()
-
-    print("Track 08: Propaganda Broadcast")
-    gen_08()
-    print()
-
-    print("Track 09: The Juggling Act")
-    gen_09()
-    print()
-
-    print("Track 10: The Mirror")
-    gen_10()
-    print()
-
-    print("Track 11: The Void Beneath")
-    gen_11()
-    print()
-
-    print("Track 12: Desperate Return")
-    gen_12()
-    print()
+    for name, generator in ANXIOUS_TRACKS:
+        print(name)
+        generator()
+        print()
 
     print_footer()
 

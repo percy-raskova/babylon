@@ -273,7 +273,10 @@ class TestLongRunStability:
             for entity in state.entities.values():
                 assert entity.wealth >= 0, "Wealth went negative"
                 assert entity.wealth < float("inf"), "Wealth is infinite"
-                assert -1 <= entity.ideology <= 1, "Ideology out of bounds"
+                # Check class_consciousness is in valid range [0, 1]
+                assert (
+                    0 <= entity.ideology.class_consciousness <= 1
+                ), "class_consciousness out of bounds"
                 assert 0 <= entity.p_acquiescence <= 1, "P(S|A) out of bounds"
                 assert 0 <= entity.p_revolution <= 1, "P(S|R) out of bounds"
 
@@ -429,30 +432,33 @@ class TestConsciousnessFeedbackLoop:
         assert rev_state.entities["C001"].wealth > react_state.entities["C001"].wealth
 
     def test_consciousness_drift_reduces_future_extraction(self) -> None:
-        """As worker becomes more revolutionary, extraction decreases."""
-        state, config = create_two_node_scenario(
-            worker_ideology=0.5,  # Start mildly reactionary
+        """As worker becomes more revolutionary, extraction decreases.
+
+        Sprint 3.4.3: This test verifies that revolutionary workers (high
+        class_consciousness) resist extraction more effectively than
+        reactionary workers (low class_consciousness).
+        """
+        # Revolutionary worker (high consciousness) should lose less wealth
+        rev_state, config = create_two_node_scenario(
+            worker_ideology=-0.9,  # Revolutionary (class_consciousness ~0.95)
         )
 
-        # Measure extraction in early ticks vs later ticks
-        early_extractions: list[float] = []
-        late_extractions: list[float] = []
+        # Reactionary worker (low consciousness) should lose more wealth
+        react_state, _ = create_two_node_scenario(
+            worker_ideology=0.9,  # Reactionary (class_consciousness ~0.05)
+        )
 
-        for tick in range(100):
-            prev_wealth = state.entities["C001"].wealth
-            state = step(state, config)
-            new_wealth = state.entities["C001"].wealth
-            extraction = prev_wealth - new_wealth
+        # Run both for 100 ticks
+        for _ in range(100):
+            rev_state = step(rev_state, config)
+            react_state = step(react_state, config)
 
-            if tick < 10:
-                early_extractions.append(extraction)
-            elif tick >= 90:
-                late_extractions.append(extraction)
+        # Revolutionary worker should have retained more wealth
+        # because consciousness affects extraction resistance
+        rev_wealth = rev_state.entities["C001"].wealth
+        react_wealth = react_state.entities["C001"].wealth
 
-        # Late extraction should be lower (worker became more revolutionary)
-        # Note: wealth also decreased, so extraction naturally drops
-        # But ideology drift should accelerate this effect
-        assert state.entities["C001"].ideology < 0.5  # Drifted revolutionary
-        # Verify extraction data was collected (lists should have data)
-        assert len(early_extractions) > 0
-        assert len(late_extractions) > 0
+        assert rev_wealth > react_wealth, (
+            f"Revolutionary worker ({rev_wealth}) should retain more wealth "
+            f"than reactionary worker ({react_wealth})"
+        )

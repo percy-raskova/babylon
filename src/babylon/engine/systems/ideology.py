@@ -27,10 +27,6 @@ PREVIOUS_WAGES_KEY = "previous_wages"
 def _get_ideology_profile_from_node(node_data: dict[str, Any]) -> dict[str, float]:
     """Extract IdeologicalProfile values from graph node data.
 
-    Handles both:
-    - New IdeologicalProfile format (dict with class_consciousness, national_identity, agitation)
-    - Legacy scalar ideology format (float in [-1, 1])
-
     Args:
         node_data: Graph node data dictionary
 
@@ -48,23 +44,11 @@ def _get_ideology_profile_from_node(node_data: dict[str, Any]) -> dict[str, floa
         }
 
     if isinstance(ideology, dict):
-        # New IdeologicalProfile format
+        # IdeologicalProfile format
         return {
             "class_consciousness": ideology.get("class_consciousness", 0.0),
             "national_identity": ideology.get("national_identity", 0.5),
             "agitation": ideology.get("agitation", 0.0),
-        }
-
-    if isinstance(ideology, int | float) and not isinstance(ideology, bool):
-        # Legacy scalar ideology format - convert
-        # Legacy formula: consciousness = (1 - ideology) / 2
-        class_consciousness = (1.0 - float(ideology)) / 2.0
-        # National identity inversely related in legacy model
-        national_identity = (1.0 + float(ideology)) / 2.0
-        return {
-            "class_consciousness": class_consciousness,
-            "national_identity": national_identity,
-            "agitation": 0.0,
         }
 
     # Unknown format - return defaults

@@ -93,3 +93,16 @@ class ResolutionType(StrEnum):
     SYNTHESIS = "synthesis"
     RUPTURE = "rupture"
     SUPPRESSION = "suppression"
+
+
+class EventType(StrEnum):
+    """Types of simulation events for the narrative layer.
+
+    These event types are published to the EventBus when significant
+    state changes occur, enabling the AI Observer to generate narrative.
+
+    Values:
+        SURPLUS_EXTRACTION: Imperial rent extracted from worker to owner
+    """
+
+    SURPLUS_EXTRACTION = "surplus_extraction"

@@ -187,11 +187,13 @@ class VectorStore:
             )
 
             # Unpack results (ChromaDB returns lists of lists)
-            ids = results["ids"][0] if "ids" in results else []
-            documents = results["documents"][0] if "documents" in results else []
-            embeddings = results.get("embeddings", [[]])[0]
-            metadatas = results["metadatas"][0] if "metadatas" in results else []
-            distances = results["distances"][0] if "distances" in results else []
+            # Note: ChromaDB may return None for keys not in include list
+            ids = results["ids"][0] if results.get("ids") else []
+            documents = results["documents"][0] if results.get("documents") else []
+            embeddings_result = results.get("embeddings")
+            embeddings = embeddings_result[0] if embeddings_result else []
+            metadatas = results["metadatas"][0] if results.get("metadatas") else []
+            distances = results["distances"][0] if results.get("distances") else []
 
             return ids, documents, embeddings, metadatas, distances
 

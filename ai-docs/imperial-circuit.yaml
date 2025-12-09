@@ -6,9 +6,11 @@
 # "Happy to work at the bomb factory because it pays well."
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   created: "2025-12-09"
+  updated: "2025-12-09"
   purpose: "Define the minimum viable model for imperial dynamics"
+  status: "Sprint 3.4.1 COMPLETE, Sprint 3.4.2 COMPLETE"
   problem_statement: |
     Current 2-node model has single dynamic: exploitation → consciousness → revolution.
     This is LINEAR and BORING because it ignores:
@@ -242,6 +244,119 @@ consciousness_model:
       - Crisis reduces atomization temporarily (people seek community)
 
 # =============================================================================
+# IDEOLOGICAL MECHANICS (The Fascist Bifurcation)
+# =============================================================================
+
+ideological_mechanics:
+
+  overview: |
+    The Fascist Bifurcation mechanic encodes a key historical insight:
+    Economic crisis does NOT automatically produce revolutionary consciousness.
+    Material disruption creates "agitation energy" with NO INHERENT DIRECTION.
+
+    The direction is determined by PRE-EXISTING solidarity infrastructure:
+    - If solidarity infrastructure exists: agitation → class awakening → revolution
+    - If solidarity infrastructure absent: agitation → scapegoating → fascism
+
+    This is why accelerationism (crash the economy to trigger revolution)
+    consistently produces fascism, not socialism. Germany 1933, Italy 1922.
+
+  the_fascist_trap:
+    description: |
+      The Fascist Trap is the scenario where material conditions for revolution
+      exist (wages declining, consciousness of disruption) BUT solidarity
+      infrastructure was never built.
+
+      Without class-based explanation of their suffering, workers turn to:
+      - National chauvinism ("foreigners took our jobs")
+      - Racial scapegoating ("immigrants driving down wages")
+      - Reactionary nostalgia ("make America great again")
+
+      This is not false consciousness - it's a RATIONAL response to material
+      conditions when no internationalist alternative is available.
+
+    formula: |
+      Agitation_Energy = |ΔW| × loss_aversion  (magnitude of wage disruption)
+
+      if solidarity_strength > 0:
+          Agitation_Direction = class_consciousness  (revolutionary)
+      else:
+          Agitation_Direction = national_identity  (fascist)
+
+      Net_Effect = Agitation_Energy × Agitation_Direction
+
+    historical_examples:
+      weimar_germany: |
+        1929-1933: Economic collapse, mass unemployment, declining wages
+        KPD (Communist Party) had organization but weak international solidarity
+        NSDAP offered national explanation: Versailles betrayal, Jewish conspiracy
+        Agitation energy flowed toward fascism, not revolution
+
+      october_revolution: |
+        1917: Economic collapse, war exhaustion, declining living standards
+        Bolsheviks had BUILT international solidarity (Zimmerwald movement)
+        Workers' councils (soviets) provided class-based organization
+        Agitation energy flowed toward revolution
+
+  implementation:
+    status: "COMPLETE (Sprint 3.4.2)"
+    key_components:
+      solidarity_strength:
+        location: "Relationship.solidarity_strength field"
+        type: "Coefficient [0, 1]"
+        semantics: |
+          - Default = 0.0 (no solidarity infrastructure)
+          - Must be BUILT through player/system actions
+          - Persists on edge - not auto-calculated
+        file: "src/babylon/models/entities/relationship.py:46"
+
+      solidarity_transmission:
+        formula: "dΨ_target = σ_edge × (Ψ_source - Ψ_target)"
+        file: "src/babylon/systems/formulas.py:calculate_solidarity_transmission()"
+        semantics: |
+          - σ_edge READ FROM EDGE DATA, not calculated
+          - If σ_edge = 0: no transmission even if source is revolutionary
+          - Creates the Fascist Bifurcation branch point
+
+      solidarity_system:
+        location: "src/babylon/engine/systems/solidarity.py"
+        turn_order: "After ImperialRentSystem, before ConsciousnessSystem"
+        events_emitted:
+          - "SOLIDARITY_AWAKENING (source enters active struggle)"
+          - "CONSCIOUSNESS_TRANSMISSION (delta transfer occurs)"
+          - "MASS_AWAKENING (target crosses threshold)"
+
+  test_scenarios:
+    revolutionary_outcome:
+      setup: |
+        P_w: Ψ=0.9 (revolutionary), organization=0.8
+        C_w: Ψ=0.1 (bribed), receives super-wages
+        SOLIDARITY edge: solidarity_strength=0.8 (BUILT INFRASTRUCTURE)
+      calculation: |
+        delta = 0.8 × (0.9 - 0.1) = 0.64
+        Material drift = -0.11 (from super-wages)
+        Net change = +0.53 → SOLIDARITY WINS
+      result: "C_w awakens, revolutionary consciousness spreads"
+
+    fascist_outcome:
+      setup: |
+        P_w: Ψ=0.9 (revolutionary), organization=0.8  ← SAME!
+        C_w: Ψ=0.1, loses wages as imperial system collapses
+        SOLIDARITY edge: solidarity_strength=0.0 (NO INFRASTRUCTURE)
+      calculation: |
+        delta = 0.0 × (0.9 - 0.1) = 0.0  ← NO TRANSMISSION
+        C_w experiences wage loss without class explanation
+        Scapegoating fills the void
+      result: "Fascist turn - wage loss blamed on periphery, not capital"
+
+    key_insight: |
+      Organization alone is not enough. The 3rd International had to be BUILT.
+      Union solidarity had to be ORGANIZED. Without that infrastructure, even
+      a revolutionary periphery cannot awaken the core.
+
+      "Agitation without solidarity produces fascism, not revolution."
+
+# =============================================================================
 # GAME DYNAMICS (What Makes It Interesting)
 # =============================================================================
 
@@ -287,32 +402,44 @@ implementation:
 
   phase_3_4:
     name: "Imperial Circuit"
-    goal: "4-node model with wage flow"
+    goal: "4-node model with wage flow and Fascist Bifurcation"
     sprints:
 
       sprint_3_4_1:
-        name: "WAGES Edge Type"
+        name: "Economic Infrastructure"
+        status: "COMPLETE"
+        commit: "5c5dbc9"
+        tests_passing: 829
         deliverables:
-          - "EdgeType.WAGES in enums.py"
-          - "WagePaymentSystem in systems/wages.py"
-          - "ConsciousnessSystem reads from WAGES edges"
-        tests:
-          - "test_wages_edge_transfers_wealth"
-          - "test_consciousness_decays_when_W_gt_V"
-          - "test_core_worker_develops_false_consciousness"
+          - "EdgeType.TRIBUTE in enums.py (P_c → C_b)"
+          - "EdgeType.WAGES in enums.py (C_b → C_w)"
+          - "EdgeType.CLIENT_STATE in enums.py (C_b → P_c subsidy)"
+          - "EventType.IMPERIAL_SUBSIDY in enums.py"
+          - "4-phase ImperialRentSystem (extraction, tribute, wages, subsidy)"
+          - "Relationship.subsidy_cap field for CLIENT_STATE edges"
+          - "SimulationConfig params: comprador_cut, super_wage_rate, subsidy_*"
 
       sprint_3_4_2:
-        name: "4-Node Scenario"
+        name: "Proletarian Internationalism"
+        status: "COMPLETE"
+        commit: "61fe9c1"
+        tests_passing: 886
         deliverables:
-          - "create_imperial_circuit_scenario() in scenarios.py"
-          - "P_w, P_c, C_b, C_w nodes with proper edges"
-          - "TRIBUTE edge type"
-        tests:
-          - "test_imperial_rent_flows_to_core"
-          - "test_super_wages_funded_by_tribute"
+          - "SolidaritySystem - consciousness transmission via SOLIDARITY edges"
+          - "Relationship.solidarity_strength field (STORED ON EDGE)"
+          - "EventType.SOLIDARITY_AWAKENING"
+          - "EventType.CONSCIOUSNESS_TRANSMISSION"
+          - "EventType.MASS_AWAKENING"
+          - "calculate_solidarity_transmission() formula"
+          - "SimulationConfig: solidarity_activation_threshold, mass_awakening_threshold"
+        key_insight: |
+          solidarity_strength is STORED ON EDGE, not auto-calculated.
+          This enables Fascist Bifurcation mechanic (ADR016).
+          "Agitation without solidarity produces fascism, not revolution."
 
       sprint_3_4_3:
         name: "Multi-Dimensional Consciousness"
+        status: "PLANNED"
         deliverables:
           - "Split ideology into class_consciousness + national_identity"
           - "Add atomization variable"
@@ -323,6 +450,7 @@ implementation:
 
       sprint_3_4_4:
         name: "Dynamic Balance"
+        status: "PLANNED"
         deliverables:
           - "Imperial rent pool as emergent property"
           - "Bourgeoisie choice system"

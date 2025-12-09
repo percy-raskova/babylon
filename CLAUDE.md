@@ -17,7 +17,7 @@ poetry install
 poetry run pre-commit install
 
 # Testing (strict separation)
-poetry run pytest -m "not ai"                              # Fast math/logic tests (704 total)
+poetry run pytest -m "not ai"                              # Fast math/logic tests (983 total)
 poetry run pytest -m "ai"                                   # Slow AI/narrative evals
 poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
 poetry run pytest -k "test_name_pattern"                   # Pattern matching
@@ -41,13 +41,14 @@ Three-layer local system (no external servers):
 
 2. **The Topology** (NetworkX) - `src/babylon/models/world_state.py`
    - Fluid relational state via `to_graph()`/`from_graph()`
-   - Entities as nodes, relationships as edges
+   - Two node types: `SocialClass` (entities) and `Territory` (spatial)
+   - Edges: EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE, TENANCY, ADJACENCY, etc.
 
 3. **The Archive** (ChromaDB) - `src/babylon/rag/`
    - Semantic history for AI narrative generation
    - AI observes state changes, never controls mechanics
 
-## Engine Architecture (Phase 2 Complete)
+## Engine Architecture (Phase 3.5 Complete)
 
 The simulation engine uses modular Systems with dependency injection:
 
@@ -57,10 +58,12 @@ step(WorldState, SimulationConfig) → WorldState
      ▼
 SimulationEngine.run_tick(graph, services, context)
      │
-     ├── 1. ImperialRentSystem   (economic.py)    - Wealth extraction
-     ├── 2. ConsciousnessSystem  (ideology.py)    - Ideology drift
-     ├── 3. SurvivalSystem       (survival.py)    - P(S|A), P(S|R)
-     └── 4. ContradictionSystem  (contradiction.py) - Tension/rupture
+     ├── 1. ImperialRentSystem   (economic.py)    - Wealth extraction via imperial rent
+     ├── 2. SolidaritySystem     (solidarity.py)  - Consciousness transmission
+     ├── 3. ConsciousnessSystem  (ideology.py)    - Ideology drift & bifurcation
+     ├── 4. SurvivalSystem       (survival.py)    - P(S|A), P(S|R) calculations
+     ├── 5. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
+     └── 6. TerritorySystem      (territory.py)   - Heat, eviction, spillover
 ```
 
 **Key Components**:
@@ -76,9 +79,15 @@ SimulationEngine.run_tick(graph, services, context)
 All game entities use Pydantic models with constrained types:
 
 ```python
+# Constrained numeric types
 from babylon.models import Probability, Currency, Intensity, Ideology, Coefficient
+
+# Enums
 from babylon.models import SocialRole, EdgeType, IntensityLevel, ResolutionType
-from babylon.models import SocialClass, Relationship, WorldState, SimulationConfig
+from babylon.models import OperationalProfile, SectorType  # Territory system
+
+# Core entities
+from babylon.models import SocialClass, Territory, Relationship, WorldState, SimulationConfig
 ```
 
 ## Formula System
@@ -99,6 +108,7 @@ from babylon.models import SocialClass, Relationship, WorldState, SimulationConf
 @pytest.mark.topology    # Graph/network operations
 @pytest.mark.integration # Database/ChromaDB (I/O bound)
 @pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic)
+@pytest.mark.unit        # Unit tests (default)
 ```
 
 ## Coding Standards
@@ -119,11 +129,17 @@ from babylon.models import SocialClass, Relationship, WorldState, SimulationConf
 - P(S|R) = Organization / Repression — survival by revolution
 - Rupture occurs when P(S|R) > P(S|A)
 
+**Bifurcation Formula** (Sprint 3.4.2b): When wages fall, agitation energy routes to either Fascism (+1 ideology) or Revolution (-1 ideology) based on SOLIDARITY edge presence.
+
+**Ideological Routing** (Sprint 3.4.3): Wage falls create Agitation. Agitation + Solidarity -> Class Consciousness. Agitation + No Solidarity -> National Identity. This replaces the scalar ideology with a multi-dimensional IdeologicalProfile.
+
+**Heat Dynamics** (Sprint 3.5): HIGH_PROFILE territories gain heat (state attention), LOW_PROFILE decays heat. Heat >=0.8 triggers eviction pipeline.
+
 ## Current State
 
-**Phase 2: COMPLETE** - 704 tests passing, modular System architecture with proven feedback loops.
+**Phase 3.5: COMPLETE** - 983 tests passing. Territorial substrate (Layer 0) with heat/eviction/spillover mechanics.
 
-**Next: Phase 3 - Observer Pattern** - AI narrates state changes (read-only). Prerequisites complete: EventBus, ServiceContainer, History system.
+**Next: Sprint 3.4.3 - Multi-Dimensional Consciousness (The George Jackson Refactor)** - Replace scalar ideology with IdeologicalProfile (class_consciousness, national_identity, agitation). Implement ideological routing formula.
 
 ## Documentation
 
@@ -133,6 +149,9 @@ Machine-readable docs for AI assistants in `ai-docs/`:
 - `formulas-spec.yaml` - All 12 formulas with signatures
 - `decisions.yaml` - Architecture Decision Records (ADR001-ADR013)
 - `ontology.yaml` - Domain term definitions
+
+Design specs in `brainstorm/mechanics/`:
+- `layer0_territory.md` - Territorial substrate design (Host/Parasite, Profile stance)
 
 ## Idea Management
 

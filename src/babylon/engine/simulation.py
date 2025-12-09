@@ -85,6 +85,9 @@ class Simulation:
         self._history: list[WorldState] = [initial_state]
         self._observers: list[SimulationObserver] = list(observers or [])
         self._started = False
+        # Persistent context that spans across ticks (Sprint 3.4.3)
+        # Used for tracking state between ticks like previous_wages
+        self._persistent_context: dict[str, object] = {}
 
     @property
     def config(self) -> SimulationConfig:
@@ -196,6 +199,9 @@ class Simulation:
 
         On first step, observers receive on_simulation_start before on_tick.
 
+        The persistent context is passed to step() to maintain state
+        across ticks (e.g., previous_wages for bifurcation mechanic).
+
         Returns:
             The new WorldState after one tick of simulation.
         """
@@ -205,7 +211,8 @@ class Simulation:
             self._started = True
 
         previous_state = self._current_state
-        new_state = step(previous_state, self._config)
+        # Pass persistent context to preserve state across ticks (Sprint 3.4.3)
+        new_state = step(previous_state, self._config, self._persistent_context)
         self._current_state = new_state
         self._history.append(new_state)
 
@@ -246,6 +253,23 @@ class Simulation:
             List of WorldState snapshots in chronological order.
         """
         return list(self._history)
+
+    def update_state(self, new_state: WorldState) -> None:
+        """Update the current state mid-simulation.
+
+        This allows modifying the simulation state (e.g., changing relationships)
+        while preserving the persistent context across ticks. Useful for testing
+        scenarios like wage cuts where the previous_wages context must be preserved.
+
+        Args:
+            new_state: New WorldState to use as current state.
+                       The tick should match the expected continuation tick.
+
+        Note:
+            This does NOT add the new state to history - history reflects
+            actual simulation progression, not manual state updates.
+        """
+        self._current_state = new_state
 
     def end(self) -> None:
         """Signal simulation end and notify observers.

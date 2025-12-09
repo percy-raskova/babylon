@@ -1,6 +1,7 @@
 """Solidarity system for the Babylon simulation - Proletarian Internationalism.
 
 Sprint 3.4.2: The Counterforce to Imperial Rent Bribery.
+Sprint 3.4.3: Updated for IdeologicalProfile (multi-dimensional consciousness).
 
 When periphery workers are in revolutionary struggle (consciousness >= threshold),
 their consciousness transmits through SOLIDARITY edges to core workers, awakening
@@ -25,6 +26,69 @@ if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
 
+def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
+    """Extract class_consciousness from graph node data.
+
+    Handles both:
+    - New IdeologicalProfile format (dict with class_consciousness)
+    - Legacy scalar ideology format (float in [-1, 1])
+
+    Args:
+        node_data: Graph node data dictionary
+
+    Returns:
+        Class consciousness value in [0, 1]
+    """
+    ideology = node_data.get("ideology")
+
+    if ideology is None:
+        return 0.0
+
+    if isinstance(ideology, dict):
+        # New IdeologicalProfile format
+        return float(ideology.get("class_consciousness", 0.0))
+
+    if isinstance(ideology, int | float) and not isinstance(ideology, bool):
+        # Legacy scalar ideology format - convert
+        # Legacy formula: consciousness = (1 - ideology) / 2
+        return (1.0 - float(ideology)) / 2.0
+
+    return 0.0
+
+
+def _update_ideology_class_consciousness(
+    node_data: dict[str, Any],
+    new_class_consciousness: float,
+) -> dict[str, float]:
+    """Update class_consciousness in ideology profile.
+
+    Returns a new IdeologicalProfile dict with updated class_consciousness.
+
+    Args:
+        node_data: Current graph node data
+        new_class_consciousness: New class consciousness value
+
+    Returns:
+        Updated IdeologicalProfile as dict
+    """
+    ideology = node_data.get("ideology")
+
+    if isinstance(ideology, dict):
+        # Already IdeologicalProfile format - update class_consciousness
+        return {
+            "class_consciousness": new_class_consciousness,
+            "national_identity": ideology.get("national_identity", 0.5),
+            "agitation": ideology.get("agitation", 0.0),
+        }
+
+    # Legacy or missing - create new profile
+    return {
+        "class_consciousness": new_class_consciousness,
+        "national_identity": 0.5,
+        "agitation": 0.0,
+    }
+
+
 class SolidaritySystem:
     """Proletarian Internationalism - Consciousness Transmission System.
 
@@ -32,6 +96,9 @@ class SolidaritySystem:
     - Unidirectional flow (Periphery -> Core)
     - solidarity_strength stored on edge (key for Fascist Bifurcation)
     - Emits CONSCIOUSNESS_TRANSMISSION and MASS_AWAKENING events
+
+    Sprint 3.4.3: Updated to work with IdeologicalProfile, affecting
+    only the class_consciousness dimension.
     """
 
     name = "Solidarity"
@@ -48,7 +115,7 @@ class SolidaritySystem:
         1. Check if source consciousness > activation_threshold
         2. Check if solidarity_strength > 0
         3. Calculate transmission delta
-        4. Apply delta to target consciousness
+        4. Apply delta to target class_consciousness
         5. Emit events for narrative layer
         """
         # Get formula from registry
@@ -73,17 +140,15 @@ class SolidaritySystem:
             if solidarity_strength <= 0:
                 continue  # Fascist Bifurcation: no infrastructure, no transmission
 
-            # Get source consciousness (convert from ideology)
-            source_ideology = graph.nodes[source_id].get("ideology", 0.0)
-            source_consciousness = (1.0 - source_ideology) / 2.0
+            # Get source consciousness (from IdeologicalProfile)
+            source_consciousness = _get_class_consciousness_from_node(graph.nodes[source_id])
 
             # Check activation threshold
             if source_consciousness <= activation_threshold:
                 continue  # Source not in active struggle
 
             # Get target consciousness
-            target_ideology = graph.nodes[target_id].get("ideology", 0.0)
-            target_consciousness = (1.0 - target_ideology) / 2.0
+            target_consciousness = _get_class_consciousness_from_node(graph.nodes[target_id])
             old_consciousness = target_consciousness
 
             # Calculate transmission delta
@@ -98,15 +163,15 @@ class SolidaritySystem:
             if abs(delta) < 0.01:
                 continue
 
-            # Apply delta to target
+            # Apply delta to target class_consciousness
             new_consciousness = target_consciousness + delta
             new_consciousness = max(0.0, min(1.0, new_consciousness))
 
-            # Convert back to ideology
-            new_ideology = 1.0 - 2.0 * new_consciousness
-            new_ideology = max(-1.0, min(1.0, new_ideology))
-
-            graph.nodes[target_id]["ideology"] = new_ideology
+            # Update ideology profile with new class_consciousness
+            graph.nodes[target_id]["ideology"] = _update_ideology_class_consciousness(
+                graph.nodes[target_id],
+                new_consciousness,
+            )
 
             # Emit CONSCIOUSNESS_TRANSMISSION event
             tick = context.get("tick", 0)

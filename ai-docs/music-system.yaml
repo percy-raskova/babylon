@@ -3,8 +3,156 @@
 
 metadata:
   updated: 2025-12-09
-  status: experimental
+  status: active
   phase: 3
+
+# =============================================================================
+# LESSONS LEARNED (December 2025)
+# =============================================================================
+#
+# These are critical pitfalls discovered during fascist soundtrack generation.
+# ALWAYS reference this section before writing new MIDI generators.
+
+lessons_learned:
+
+  # ---------------------------------------------------------------------------
+  # MIDIUTIL API GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  track_vs_channel:
+    severity: critical
+    error: "IndexError: list index out of range"
+    cause: |
+      midiutil.addNote(track, channel, pitch, time, duration, velocity)
+      The FIRST parameter is TRACK NUMBER (0-indexed into MIDIFile's track list).
+      The SECOND parameter is MIDI CHANNEL (0-15).
+      These are DIFFERENT concepts that are often confused!
+    solution: |
+      # WRONG - using channel 9 as track number
+      midi = MIDIFile(5)  # Only 5 tracks (0-4)
+      midi.addNote(9, 9, 36, 0, 1, 80)  # ERROR: track 9 doesn't exist!
+
+      # CORRECT - separate track and channel constants
+      TRACK_DRUMS = 5           # Track index in our MIDIFile
+      MIDI_DRUM_CHANNEL = 9     # Standard GM percussion channel
+      midi = MIDIFile(6)        # Create 6 tracks (0-5)
+      midi.addNote(TRACK_DRUMS, MIDI_DRUM_CHANNEL, 36, 0, 1, 80)  # Works!
+
+  deinterleave_false:
+    severity: high
+    issue: "Notes not playing correctly or overlapping strangely"
+    solution: |
+      Always create MIDIFile with deinterleave=False:
+      midi = MIDIFile(num_tracks, deinterleave=False)
+      This prevents midiutil from reordering note events.
+
+  # ---------------------------------------------------------------------------
+  # MODULE STRUCTURE GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  relative_imports:
+    severity: critical
+    error: "ImportError: attempted relative import with no known parent package"
+    cause: |
+      Python relative imports (from . import X) only work when:
+      1. The file is part of a proper package (has __init__.py)
+      2. The file is imported as a module, not run directly
+      Running `python tools/fascist_soundtrack/generate_01.py` directly FAILS.
+    solutions:
+      option_1_module: |
+        # Run as module from project root
+        cd babylon
+        poetry run python -m tools.fascist_soundtrack.generate_01
+
+      option_2_standalone: |
+        # Create standalone script with all code inline
+        # No imports from sibling modules
+        # Put shared constants directly in the file
+
+      option_3_path_hack: |
+        # Add parent to path (less clean but works)
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent))
+        from __init__ import *  # Now works as absolute import
+
+    recommendation: |
+      For tools that users run directly, use standalone scripts.
+      Modular structure is cleaner but harder to execute.
+      The fascist soundtrack uses a single generate_fascist_soundtrack.py
+      with all code inline to avoid import issues.
+
+  __file__in_exec:
+    severity: medium
+    error: "NameError: name '__file__' is not defined"
+    cause: |
+      Using exec(open('file.py').read()) loses __file__ context.
+      Any code using __file__ for path resolution will fail.
+    solution: |
+      Don't use exec() for testing. Run the file directly:
+      poetry run python tools/generate_fascist_soundtrack.py
+
+  # ---------------------------------------------------------------------------
+  # NOTE DEFINITION GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  missing_notes:
+    severity: high
+    error: "NameError: name 'Eb5' is not defined"
+    cause: |
+      When defining chromatic notes, easy to miss octaves.
+      Defined Eb3, Eb4 but forgot Eb5.
+    solution: |
+      Define ALL chromatic notes across ALL octaves you'll use:
+
+      # Chromatic notes - BE EXHAUSTIVE
+      Bb1, Bb2, Bb3, Bb4, Bb5 = 34, 46, 58, 70, 82
+      Db2, Db3, Db4, Db5 = 37, 49, 61, 73
+      Eb2, Eb3, Eb4, Eb5 = 39, 51, 63, 75
+      # etc.
+
+      Or use a helper function:
+      def note(name, octave):
+          base = {'C':0,'Db':1,'D':2,'Eb':3,'E':4,'F':5,'Gb':6,'G':7,'Ab':8,'A':9,'Bb':10,'B':11}
+          return base[name] + (octave + 1) * 12
+
+  # ---------------------------------------------------------------------------
+  # FILE SIZE / CONTENT GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  sparse_tracks:
+    severity: medium
+    symptom: "MIDI file suspiciously small (< 1KB for a 5-minute track)"
+    causes:
+      - "Ambient/sparse tracks ARE legitimately small"
+      - "Notes outside valid time range (beat > total_bars * 4)"
+      - "Velocity = 0 (silent notes)"
+      - "Duration = 0 (no sound)"
+    diagnosis: |
+      # Quick note count check
+      poetry run python -c "
+      import struct
+      with open('track.mid', 'rb') as f:
+          data = f.read()
+      note_ons = sum(1 for i in range(len(data)-2) if 0x90 <= data[i] <= 0x9F)
+      print(f'Note-on events: {note_ons}')
+      "
+    reference: |
+      Dense tracks (mechanical patterns): 2000+ notes, 15-30KB
+      Moderate tracks: 500-1500 notes, 8-15KB
+      Sparse/ambient tracks: 50-200 notes, 1-3KB (INTENTIONAL)
+
+  # ---------------------------------------------------------------------------
+  # GENERAL BEST PRACTICES
+  # ---------------------------------------------------------------------------
+
+  best_practices:
+    - "Always verify track count matches highest track index + 1"
+    - "Use named constants for both tracks AND channels"
+    - "Test each track generator individually before batch run"
+    - "Check file sizes after generation - sparse isn't always wrong"
+    - "Run from project root with poetry run python path/to/script.py"
+    - "For standalone scripts, inline all dependencies"
 
 # =============================================================================
 # OVERVIEW
@@ -202,6 +350,125 @@ themes:
         description: "Near-collapse, then desperate reassertion"
         musical_idea: "Silence threatens, machine restarts frantically"
 
+  fascist_soundtrack:
+    location: "assets/music/fascist/"
+    generator: "tools/generate_fascist_soundtrack.py"
+    concept: "~63 minutes exploring two faces of fascism"
+    total_duration: "~63:00"
+    track_count: 12
+
+    musical_dna:
+      key: "E Phrygian (flat 2nd = dread)"
+      tempo_range: "66-120 BPM"
+      tritone: "E to Bb (devil's interval) - unresolved contradiction"
+      instruments:
+        harpsichord: "The Machine / Surveillance (program 6)"
+        tremolo_strings: "Anxiety - never rests (program 44)"
+        brass: "State Violence - sudden overwhelming force (program 61)"
+        timpani: "The Clock / The Jackboot (program 47)"
+        organ: "False Grandeur / Propaganda (program 19)"
+
+    tracks:
+      menacing_public_face:
+        description: "The strongman image - power, control, threat"
+        tracks:
+          - number: 1
+            title: "The Apparatus"
+            duration: "5:00"
+            tempo: 108
+            concept: "Cold surveillance state at peak operation"
+            file: "01_the_apparatus.mid"
+
+          - number: 2
+            title: "Viktor's March"
+            duration: "4:30"
+            tempo: 100
+            concept: "The leader's theme - military precision"
+            file: "02_viktors_march.mid"
+
+          - number: 3
+            title: "The Nationalist Guard"
+            duration: "6:00"
+            tempo: 112
+            concept: "Paramilitary violence, street-level intimidation"
+            file: "03_nationalist_guard.mid"
+
+          - number: 4
+            title: "Repression Protocol"
+            duration: "6:00"
+            tempo: 116
+            concept: "State violence crushing dissent"
+            file: "04_repression_protocol.mid"
+
+          - number: 5
+            title: "National Revival"
+            duration: "6:00"
+            tempo: 104
+            concept: "The hollow anthem - almost beautiful, almost heroic"
+            file: "05_national_revival.mid"
+
+      anxious_private_reality:
+        description: "The exhausted truth - desperation, dread, emptiness"
+        tracks:
+          - number: 6
+            title: "Economic Crisis"
+            duration: "5:30"
+            tempo: 110
+            concept: "The chaos that birthed fascism"
+            file: "06_economic_crisis.mid"
+
+          - number: 7
+            title: "The Corporate State"
+            duration: "4:00"
+            tempo: 96
+            concept: "Cold bureaucratic evil - capitalism's marriage to authoritarianism"
+            file: "07_corporate_state.mid"
+
+          - number: 8
+            title: "Propaganda Broadcast"
+            duration: "7:00"
+            tempo: 100
+            concept: "The beautiful lie - seductive then disturbing"
+            file: "08_propaganda_broadcast.mid"
+
+          - number: 9
+            title: "The Juggling Act"
+            duration: "5:30"
+            tempo: 120
+            concept: "Spinning plates - the regime barely holding together"
+            file: "09_juggling_act.mid"
+
+          - number: 10
+            title: "The Mirror"
+            duration: "4:30"
+            tempo: 72
+            concept: "Self-awareness - staring at what they've become"
+            file: "10_the_mirror.mid"
+            note: "Intentionally sparse/ambient"
+
+          - number: 11
+            title: "The Void Beneath"
+            duration: "5:00"
+            tempo: 66
+            concept: "The abyss under everything - Nietzschean horror"
+            file: "11_the_void_beneath.mid"
+            note: "Most ambient track - extended silences"
+
+          - number: 12
+            title: "Desperate Return"
+            duration: "4:00"
+            tempo: 116
+            concept: "The machine reasserts - they cannot stop"
+            file: "12_desperate_return.mid"
+            note: "Abrupt non-ending (machine continues forever)"
+
+    thematic_arc: |
+      The soundtrack tells a story:
+      1-5: Public displays of power and control
+      6-9: Private chaos and desperation
+      10-11: Existential dread and the void
+      12: The machine must continue - no escape
+
 # =============================================================================
 # PLANNED THEMES
 # =============================================================================
@@ -292,5 +559,52 @@ composition_rules:
 commands:
   generate_phi: "poetry run python tools/generate_theme.py"
   generate_panopticon: "poetry run python tools/generate_fascist_theme.py"
+  generate_fascist_soundtrack: "poetry run python tools/generate_fascist_soundtrack.py"
   play_with_fluidsynth: "fluidsynth -a alsa /usr/share/sounds/sf2/FluidR3_GM.sf2 assets/music/*.mid"
+  play_fascist_tracks: "fluidsynth -a alsa /usr/share/sounds/sf2/FluidR3_GM.sf2 assets/music/fascist/*.mid"
   convert_to_wav: "fluidsynth -F output.wav /path/to/soundfont.sf2 input.mid"
+
+# =============================================================================
+# QUICK REFERENCE: MIDIUTIL API
+# =============================================================================
+
+midiutil_api:
+  create_file: |
+    midi = MIDIFile(num_tracks, deinterleave=False)
+
+  add_track_info: |
+    midi.addTrackName(track, time, name)
+    midi.addTempo(track, time, bpm)
+    midi.addProgramChange(track, channel, time, program)
+
+  add_note: |
+    midi.addNote(track, channel, pitch, time, duration, velocity)
+    #           ^^^^^  ^^^^^^^
+    #           |      |
+    #           |      +-- MIDI channel (0-15), percussion = 9
+    #           +--------- Track INDEX in MIDIFile (0 to num_tracks-1)
+
+  write_file: |
+    with open(path, "wb") as f:
+        midi.writeFile(f)
+
+  common_programs:
+    piano: 0
+    harpsichord: 6
+    organ: 19
+    cello: 42
+    tremolo_strings: 44
+    strings: 48
+    trombone: 57
+    tuba: 58
+    french_horn: 60
+    brass: 61
+    timpani: 47
+
+  midi_note_numbers: |
+    C4 (middle C) = 60
+    Each semitone = +1
+    Each octave = +12
+    E2=40, E3=52, E4=64, E5=76
+    F2=41, F3=53, F4=65, F5=77 (Phrygian flat 2)
+    Bb2=46, Bb3=58, Bb4=70 (tritone from E)

@@ -417,8 +417,9 @@ future_concepts:
 # =============================================================================
 
 current_focus:
-  primary: "PHASE 3 IN PROGRESS - Sprint 3.4.3: The George Jackson Refactor (Multi-Dimensional Consciousness)"
-  roadmap: "brainstorm/plans/four-phase-engine-blueprint.md"
+  primary: "Transitioning from Phase III (Material Base) to Phase IV (Superstructure)"
+  roadmap: "ai-docs/roadmap.md"
+  legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
   phase2_design: "brainstorm/plans/phase2-game-loop-design.md"
   architecture_spec: "ai-docs/game-loop-architecture.yaml"
   verification_framework: "brainstorm/babylon-protocol-verification.md"

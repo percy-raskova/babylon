@@ -18,6 +18,7 @@ from babylon.models.entities.contradiction import (
     ContradictionState,
     ResolutionOutcome,
 )
+from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.effect import Effect
 from babylon.models.entities.relationship import FlowComponent, Relationship
 from babylon.models.entities.social_class import (
@@ -36,6 +37,8 @@ __all__ = [
     "SocialClass",
     # Phase 3.5 Nodes (Layer 0 - Territory)
     "Territory",
+    # Sprint 3.4.4 - Dynamic Balance
+    "GlobalEconomy",
     # Phase 1 Edges
     "Relationship",
     # Effect

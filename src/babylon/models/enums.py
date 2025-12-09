@@ -46,12 +46,18 @@ class EdgeType(StrEnum):
         SOLIDARITY: Mutual support and class consciousness
         REPRESSION: State violence directed at a class
         COMPETITION: Market rivalry between entities
+        TRIBUTE: Value flow from periphery comprador to core (comprador keeps cut)
+        WAGES: Core bourgeoisie paying core workers (super-wages from imperial rent)
+        CLIENT_STATE: Imperial subsidy to maintain client state stability
     """
 
     EXPLOITATION = "exploitation"
     SOLIDARITY = "solidarity"
     REPRESSION = "repression"
     COMPETITION = "competition"
+    TRIBUTE = "tribute"
+    WAGES = "wages"
+    CLIENT_STATE = "client_state"
 
 
 class IntensityLevel(StrEnum):
@@ -103,6 +109,8 @@ class EventType(StrEnum):
 
     Values:
         SURPLUS_EXTRACTION: Imperial rent extracted from worker to owner
+        IMPERIAL_SUBSIDY: Wealth converted to suppression to stabilize client state
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
+    IMPERIAL_SUBSIDY = "imperial_subsidy"

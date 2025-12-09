@@ -14,7 +14,9 @@ from babylon.models.enums import (
     EdgeType,
     EventType,
     IntensityLevel,
+    OperationalProfile,
     ResolutionType,
+    SectorType,
     SocialRole,
 )
 
@@ -128,8 +130,27 @@ class TestEdgeType:
             EdgeType("friendship")  # Not a structural relationship
 
     def test_edge_type_count(self) -> None:
-        """Exactly 7 edge types defined (4 original + 3 imperial circuit)."""
-        assert len(EdgeType) == 7
+        """Exactly 9 edge types defined (4 original + 3 imperial circuit + 2 territory)."""
+        assert len(EdgeType) == 9
+
+    def test_territory_edge_types_exist(self) -> None:
+        """Territory edge types for Layer 0 (Sprint 3.5.1).
+
+        TENANCY: Occupant -> Territory (who uses the space)
+        ADJACENCY: Territory -> Territory (spatial connectivity)
+        """
+        assert hasattr(EdgeType, "TENANCY")
+        assert hasattr(EdgeType, "ADJACENCY")
+
+    def test_territory_edge_types_serialize(self) -> None:
+        """Territory edge types serialize to snake_case for JSON."""
+        assert EdgeType.TENANCY.value == "tenancy"
+        assert EdgeType.ADJACENCY.value == "adjacency"
+
+    def test_territory_edge_types_constructible(self) -> None:
+        """Territory edge types can be constructed from strings."""
+        assert EdgeType("tenancy") == EdgeType.TENANCY
+        assert EdgeType("adjacency") == EdgeType.ADJACENCY
 
 
 @pytest.mark.math
@@ -290,3 +311,112 @@ class TestEventType:
     def test_event_type_count(self) -> None:
         """Exactly 5 event types defined (2 original + 3 solidarity)."""
         assert len(EventType) == 5
+
+
+# =============================================================================
+# LAYER 0 TERRITORY ENUMS (Sprint 3.5.1)
+# =============================================================================
+
+
+@pytest.mark.math
+class TestOperationalProfile:
+    """OperationalProfile: The stance system for territory visibility.
+
+    Sprint 3.5.1: Layer 0 - The Territorial Substrate.
+    Profile determines the trade-off between safety and recruitment:
+    - low_profile: Safe from eviction, low recruitment (opaque)
+    - high_profile: High recruitment, high heat (transparent)
+    """
+
+    def test_all_profiles_exist(self) -> None:
+        """All operational profiles are defined."""
+        assert hasattr(OperationalProfile, "LOW_PROFILE")
+        assert hasattr(OperationalProfile, "HIGH_PROFILE")
+
+    def test_profiles_serialize_to_lowercase(self) -> None:
+        """Profiles serialize to snake_case for JSON."""
+        assert OperationalProfile.LOW_PROFILE.value == "low_profile"
+        assert OperationalProfile.HIGH_PROFILE.value == "high_profile"
+
+    def test_profile_constructible_from_string(self) -> None:
+        """Can construct from string value."""
+        assert OperationalProfile("low_profile") == OperationalProfile.LOW_PROFILE
+        assert OperationalProfile("high_profile") == OperationalProfile.HIGH_PROFILE
+
+    def test_invalid_profile_raises(self) -> None:
+        """Unknown profiles are rejected."""
+        with pytest.raises(ValueError):
+            OperationalProfile("stealth")  # Not a valid profile
+
+        with pytest.raises(ValueError):
+            OperationalProfile("hidden")  # Not a valid profile
+
+    def test_profile_is_string_subclass(self) -> None:
+        """OperationalProfile values can be used as strings."""
+        profile = OperationalProfile.LOW_PROFILE
+        assert isinstance(profile, str)
+        assert profile == "low_profile"
+
+    def test_profile_count(self) -> None:
+        """Exactly 2 operational profiles defined."""
+        assert len(OperationalProfile) == 2
+
+
+@pytest.mark.math
+class TestSectorType:
+    """SectorType: Strategic sector categories for territories.
+
+    Sprint 3.5.1: Layer 0 - The Territorial Substrate.
+    Sector types determine the economic and social character of territories:
+    - industrial: Factories, warehouses, production
+    - residential: Housing, neighborhoods
+    - commercial: Shops, markets, services
+    - university: Educational institutions, intellectuals
+    - docks: Ports, logistics, trade
+    - government: State buildings, bureaucracy
+    """
+
+    def test_all_sector_types_exist(self) -> None:
+        """All sector types are defined."""
+        assert hasattr(SectorType, "INDUSTRIAL")
+        assert hasattr(SectorType, "RESIDENTIAL")
+        assert hasattr(SectorType, "COMMERCIAL")
+        assert hasattr(SectorType, "UNIVERSITY")
+        assert hasattr(SectorType, "DOCKS")
+        assert hasattr(SectorType, "GOVERNMENT")
+
+    def test_sector_types_serialize_to_lowercase(self) -> None:
+        """Sector types serialize to snake_case for JSON."""
+        assert SectorType.INDUSTRIAL.value == "industrial"
+        assert SectorType.RESIDENTIAL.value == "residential"
+        assert SectorType.COMMERCIAL.value == "commercial"
+        assert SectorType.UNIVERSITY.value == "university"
+        assert SectorType.DOCKS.value == "docks"
+        assert SectorType.GOVERNMENT.value == "government"
+
+    def test_sector_type_constructible_from_string(self) -> None:
+        """Can construct from string value."""
+        assert SectorType("industrial") == SectorType.INDUSTRIAL
+        assert SectorType("residential") == SectorType.RESIDENTIAL
+        assert SectorType("commercial") == SectorType.COMMERCIAL
+        assert SectorType("university") == SectorType.UNIVERSITY
+        assert SectorType("docks") == SectorType.DOCKS
+        assert SectorType("government") == SectorType.GOVERNMENT
+
+    def test_invalid_sector_type_raises(self) -> None:
+        """Unknown sector types are rejected."""
+        with pytest.raises(ValueError):
+            SectorType("suburb")  # Not a valid sector type
+
+        with pytest.raises(ValueError):
+            SectorType("rural")  # Not a valid sector type
+
+    def test_sector_type_is_string_subclass(self) -> None:
+        """SectorType values can be used as strings."""
+        sector = SectorType.UNIVERSITY
+        assert isinstance(sector, str)
+        assert sector == "university"
+
+    def test_sector_type_count(self) -> None:
+        """Exactly 6 sector types defined."""
+        assert len(SectorType) == 6

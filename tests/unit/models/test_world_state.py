@@ -5,6 +5,7 @@ WorldState is an immutable snapshot of the simulation at a specific tick.
 It wraps NetworkX for graph operations while maintaining Pydantic validation.
 
 Sprint 4: WorldState with NetworkX integration for Phase 2 game loop.
+Sprint 3.5.3: Territory integration for Layer 0.
 """
 
 import networkx as nx
@@ -12,6 +13,8 @@ import pytest
 from pydantic import ValidationError
 
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import OperationalProfile, SectorType
 from babylon.models.world_state import WorldState
 
 # =============================================================================
@@ -414,3 +417,252 @@ class TestWorldStateEventLog:
         new_state = two_node_state.add_event("Test event")
         assert len(two_node_state.event_log) == 0
         assert len(new_state.event_log) == 1
+
+
+# =============================================================================
+# TERRITORY TESTS (Sprint 3.5.3)
+# =============================================================================
+
+
+@pytest.fixture
+def university_territory() -> Territory:
+    """Create a university district territory."""
+    return Territory(
+        id="T001",
+        name="University District",
+        sector_type=SectorType.UNIVERSITY,
+        profile=OperationalProfile.HIGH_PROFILE,
+        heat=0.3,
+        population=5000,
+    )
+
+
+@pytest.fixture
+def docks_territory() -> Territory:
+    """Create a docks territory."""
+    return Territory(
+        id="T002",
+        name="Docks",
+        sector_type=SectorType.DOCKS,
+        profile=OperationalProfile.LOW_PROFILE,
+        heat=0.1,
+        population=2000,
+    )
+
+
+@pytest.mark.topology
+class TestWorldStateTerritoriesField:
+    """WorldState should support a territories dict field."""
+
+    def test_empty_state_has_empty_territories(self) -> None:
+        """Empty WorldState has empty territories dict."""
+        state = WorldState(tick=0)
+        assert len(state.territories) == 0
+
+    def test_state_with_territories(
+        self,
+        university_territory: Territory,
+        docks_territory: Territory,
+    ) -> None:
+        """Can create WorldState with territories."""
+        state = WorldState(
+            tick=0,
+            territories={
+                "T001": university_territory,
+                "T002": docks_territory,
+            },
+        )
+        assert len(state.territories) == 2
+        assert "T001" in state.territories
+        assert "T002" in state.territories
+
+    def test_territories_and_entities_coexist(
+        self,
+        worker: SocialClass,
+        university_territory: Territory,
+    ) -> None:
+        """Territories and entities can coexist in WorldState."""
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            territories={"T001": university_territory},
+        )
+        assert len(state.entities) == 1
+        assert len(state.territories) == 1
+        assert "C001" in state.entities
+        assert "T001" in state.territories
+
+
+@pytest.mark.topology
+class TestWorldStateAddTerritory:
+    """WorldState.add_territory() should return new state with territory added."""
+
+    def test_add_territory_returns_new_state(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """add_territory() returns a new WorldState instance."""
+        state = WorldState(tick=0)
+        new_state = state.add_territory(university_territory)
+        assert new_state is not state
+
+    def test_add_territory_preserves_original(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """add_territory() does not modify the original state."""
+        state = WorldState(tick=0)
+        new_state = state.add_territory(university_territory)
+        assert len(state.territories) == 0
+        assert len(new_state.territories) == 1
+
+    def test_add_territory_includes_new_territory(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """add_territory() includes the new territory."""
+        state = WorldState(tick=0)
+        new_state = state.add_territory(university_territory)
+        assert "T001" in new_state.territories
+        assert new_state.territories["T001"].name == "University District"
+
+    def test_add_territory_preserves_tick(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """add_territory() preserves the tick."""
+        state = WorldState(tick=10)
+        new_state = state.add_territory(university_territory)
+        assert new_state.tick == 10
+
+    def test_add_territory_preserves_existing_territories(
+        self,
+        university_territory: Territory,
+        docks_territory: Territory,
+    ) -> None:
+        """add_territory() preserves existing territories."""
+        state = WorldState(tick=0, territories={"T001": university_territory})
+        new_state = state.add_territory(docks_territory)
+        assert "T001" in new_state.territories
+        assert "T002" in new_state.territories
+
+
+@pytest.mark.topology
+class TestWorldStateToGraphWithTerritories:
+    """WorldState.to_graph() should include territories with _node_type marker."""
+
+    def test_to_graph_includes_territories(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """to_graph() includes territory nodes."""
+        state = WorldState(tick=0, territories={"T001": university_territory})
+        G = state.to_graph()
+        assert "T001" in G.nodes
+
+    def test_to_graph_marks_territory_node_type(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """Territory nodes have _node_type='territory' marker."""
+        state = WorldState(tick=0, territories={"T001": university_territory})
+        G = state.to_graph()
+        assert G.nodes["T001"]["_node_type"] == "territory"
+
+    def test_to_graph_marks_entity_node_type(
+        self,
+        worker: SocialClass,
+    ) -> None:
+        """Entity nodes have _node_type='social_class' marker."""
+        state = WorldState(tick=0, entities={"C001": worker})
+        G = state.to_graph()
+        assert G.nodes["C001"]["_node_type"] == "social_class"
+
+    def test_to_graph_preserves_territory_data(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """Territory nodes have all territory data as attributes."""
+        state = WorldState(tick=0, territories={"T001": university_territory})
+        G = state.to_graph()
+        assert G.nodes["T001"]["name"] == "University District"
+        assert G.nodes["T001"]["sector_type"] == SectorType.UNIVERSITY
+        assert G.nodes["T001"]["heat"] == 0.3
+        assert G.nodes["T001"]["population"] == 5000
+
+    def test_to_graph_mixed_nodes(
+        self,
+        worker: SocialClass,
+        university_territory: Territory,
+    ) -> None:
+        """to_graph() handles mixed entity and territory nodes."""
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            territories={"T001": university_territory},
+        )
+        G = state.to_graph()
+        assert G.number_of_nodes() == 2
+        assert G.nodes["C001"]["_node_type"] == "social_class"
+        assert G.nodes["T001"]["_node_type"] == "territory"
+
+
+@pytest.mark.topology
+class TestWorldStateFromGraphWithTerritories:
+    """WorldState.from_graph() should reconstruct territories based on _node_type."""
+
+    def test_from_graph_reconstructs_territories(
+        self,
+        university_territory: Territory,
+    ) -> None:
+        """from_graph() reconstructs territories correctly."""
+        state = WorldState(tick=0, territories={"T001": university_territory})
+        G = state.to_graph()
+        restored = WorldState.from_graph(G, tick=1)
+        assert len(restored.territories) == 1
+        assert "T001" in restored.territories
+        assert restored.territories["T001"].name == "University District"
+
+    def test_from_graph_reconstructs_mixed_nodes(
+        self,
+        worker: SocialClass,
+        university_territory: Territory,
+    ) -> None:
+        """from_graph() reconstructs both entities and territories."""
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            territories={"T001": university_territory},
+        )
+        G = state.to_graph()
+        restored = WorldState.from_graph(G, tick=1)
+        assert len(restored.entities) == 1
+        assert len(restored.territories) == 1
+        assert "C001" in restored.entities
+        assert "T001" in restored.territories
+
+    def test_round_trip_preserves_territories(
+        self,
+        university_territory: Territory,
+        docks_territory: Territory,
+    ) -> None:
+        """to_graph() -> from_graph() round trip preserves territories."""
+        state = WorldState(
+            tick=0,
+            territories={
+                "T001": university_territory,
+                "T002": docks_territory,
+            },
+        )
+        G = state.to_graph()
+        restored = WorldState.from_graph(G, tick=state.tick)
+
+        assert len(restored.territories) == 2
+        for territory_id in state.territories:
+            assert territory_id in restored.territories
+            original = state.territories[territory_id]
+            restored_territory = restored.territories[territory_id]
+            assert restored_territory.name == original.name
+            assert restored_territory.sector_type == original.sector_type
+            assert restored_territory.heat == pytest.approx(original.heat)
+            assert restored_territory.population == original.population

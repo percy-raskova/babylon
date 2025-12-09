@@ -39,3 +39,10 @@ chromadb/
 
 
 .coverage
+
+# Compiled Audio (generated from MIDI via FluidSynth)
+# Commit MIDI source files, not compiled audio
+assets/audio/
+*.wav
+*.mp3
+*.ogg

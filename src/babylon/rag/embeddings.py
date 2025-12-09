@@ -106,16 +106,18 @@ class EmbeddingManager:
 
         # Use OrderedDict for LRU cache implementation
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
-        self._cache_lock = threading.Lock()
+        # Use RLock (re-entrant) because cache_size property is called inside locked blocks
+        self._cache_lock = threading.RLock()
 
         # Thread pool for concurrent operations
         self._thread_pool = ThreadPoolExecutor(max_workers=max_concurrent_requests)
 
-        # Semaphore for limiting concurrent requests
-        self._request_semaphore = asyncio.Semaphore(max_concurrent_requests)
+        # Semaphores per event loop (lazy creation to avoid asyncio.run() deadlock)
+        # Each asyncio.run() creates a new event loop, so we cache semaphores per loop
+        self._semaphores: dict[asyncio.AbstractEventLoop, asyncio.Semaphore] = {}
 
-        # HTTP session for API requests
-        self._session: aiohttp.ClientSession | None = None
+        # HTTP sessions per event loop (aiohttp.ClientSession is also loop-bound)
+        self._sessions: dict[asyncio.AbstractEventLoop, aiohttp.ClientSession] = {}
 
         # Initialize metrics collector
         self.metrics = MetricsCollector()
@@ -132,13 +134,57 @@ class EmbeddingManager:
         )
 
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create HTTP session for API requests."""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                headers=LLMConfig.get_embedding_headers(),
-                timeout=aiohttp.ClientTimeout(total=LLMConfig.REQUEST_TIMEOUT),
-            )
-        return self._session
+        """Get or create HTTP session for the current event loop.
+
+        Each asyncio.run() call creates a new event loop. aiohttp.ClientSession
+        is bound to the loop where it was created, so we must create one per loop
+        to avoid 'attached to a different loop' errors.
+
+        Returns:
+            ClientSession for the currently running event loop
+        """
+        loop = asyncio.get_running_loop()
+
+        # Check if we have a valid session for this loop
+        if loop in self._sessions and not self._sessions[loop].closed:
+            return self._sessions[loop]
+
+        # Clean up any closed loop entries
+        closed_loops = [k for k in self._sessions if k.is_closed()]
+        for closed_loop in closed_loops:
+            del self._sessions[closed_loop]
+
+        # Create new session for this loop
+        session = aiohttp.ClientSession(
+            headers=LLMConfig.get_embedding_headers(),
+            timeout=aiohttp.ClientTimeout(total=LLMConfig.REQUEST_TIMEOUT),
+        )
+        self._sessions[loop] = session
+        return session
+
+    def _get_semaphore(self) -> asyncio.Semaphore:
+        """Get or create semaphore for the current event loop.
+
+        Each asyncio.run() call creates a new event loop. Semaphores are
+        bound to the loop where they're created, so we must lazily create
+        one per loop to avoid deadlocks when sync wrappers use asyncio.run().
+
+        Returns:
+            Semaphore for the currently running event loop
+        """
+        loop = asyncio.get_running_loop()
+
+        # Check if we have a semaphore for this loop
+        if loop not in self._semaphores or loop.is_closed():
+            # Clean up any closed loop entries
+            closed_loops = [k for k in self._semaphores if k.is_closed()]
+            for closed_loop in closed_loops:
+                del self._semaphores[closed_loop]
+
+            # Create new semaphore for this loop
+            self._semaphores[loop] = asyncio.Semaphore(self.max_concurrent_requests)
+
+        return self._semaphores[loop]
 
     @property
     def cache_size(self) -> int:
@@ -252,7 +298,7 @@ class EmbeddingManager:
 
         try:
             # Acquire semaphore to limit concurrent requests
-            async with self._request_semaphore:
+            async with self._get_semaphore():
                 # Generate new embedding
                 embedding_start = time.time()
                 embedding = await self._generate_embedding_api(obj.content)
@@ -437,6 +483,10 @@ class EmbeddingManager:
 
     async def close(self) -> None:
         """Close resources used by the embedding manager."""
-        if self._session is not None and not self._session.closed:
-            await self._session.close()
+        # Close all sessions across all event loops
+        for session in self._sessions.values():
+            if not session.closed:
+                await session.close()
+        self._sessions.clear()
+        self._semaphores.clear()
         self._thread_pool.shutdown(wait=True)

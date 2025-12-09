@@ -620,70 +620,88 @@ decisions:
       - Entities: Factory worker (proletariat) vs Capitalist (bourgeoisie) - 2 nodes
       - Location: One city (implicit, not modeled as separate entity)
       - Phenomenon: Wealth transfer via Imperial Rent - single economic mechanism
-      - Output: Terminal/CLI narrative display
+      - LLM: DeepSeek API (OpenAI-compatible, cost-effective)
+      - RAG: MVP corpus from Marxists.org (5 curated texts)
+      - Verification: Integration tests (not CLI runner)
 
       Explicitly deferred:
-      - Full RAG corpus ingestion (use static quotes instead)
+      - Full RAG corpus ingestion (MVP uses 5 texts only)
       - NiceGUI frontend (Phase 4)
       - Multiple scenarios/entity types
       - Save/load game state with narrative
       - Multiple cities or geographic hierarchy
+      - Alternative LLM providers (Ollama, Claude)
 
     rationale:
       - "Proves complete data flow with minimal complexity"
       - "Two-node scenario already proven in Phase 2 integration tests"
       - "Imperial Rent is the core MLM-TW mechanic - wealth extraction"
-      - "Static quotes sufficient to demonstrate RAG integration pattern"
-      - "CLI output enables rapid iteration without UI complexity"
+      - "DeepSeek is cost-effective and OpenAI-compatible (easy integration)"
+      - "Marxists.org corpus provides authentic theoretical grounding"
+      - "Integration tests enable CI/CD and programmatic verification"
       - "Deferred features can be added after vertical slice validates approach"
 
     implementation:
       sprint_3_3_deliverables:
-        - "LLM Provider protocol with Claude/Ollama/DeepSeek implementations"
+        - "LLM Provider protocol + DeepSeek implementation"
         - "Event generation in ImperialRentSystem (exploitation events)"
-        - "Static theoretical quotes in DialecticalPromptBuilder as RAG fallback"
-        - "Vertical slice CLI runner demonstrating full flow"
-      estimated_code: "~300-400 lines"
+        - "RAG corpus ingestion script (5 texts from Marxists.org)"
+        - "Integration tests proving full narrative pipeline"
+      estimated_code: "~400-500 lines"
       estimated_tests: "~20 tests"
+      rag_corpus:
+        source: "Marxists.org archive"
+        texts:
+          - "Wage Labour and Capital (Marx, 1847)"
+          - "Value, Price and Profit (Marx, 1865)"
+          - "Principles of Communism (Engels, 1847)"
+          - "Imperialism, the Highest Stage of Capitalism Ch.1-4 (Lenin, 1917)"
+          - "The Wretched of the Earth Ch.1 (Fanon, 1961)"
+        estimated_chunks: "200-500"
 
     gaps_addressed:
-      gap_1: "No LLM client → LLM Provider abstraction"
+      gap_1: "No LLM client → DeepSeek Provider implementation"
       gap_2: "No events until rupture → ImperialRentSystem event generation"
-      gap_3: "Empty RAG corpus → Static quotes fallback"
-      gap_4: "No user-visible output → CLI runner"
+      gap_3: "Empty RAG corpus → 5 texts from Marxists.org"
+      gap_4: "No verification → Integration tests with assertions"
 
     consequences:
       positive:
         - "Clear, achievable scope for Sprint 3.3"
         - "Validates architecture before horizontal expansion"
+        - "Real theoretical content in RAG (not just static quotes)"
+        - "Programmatic testing enables CI/CD"
         - "Deferred features remain possible without rework"
       negative:
         - "Not a 'complete game' - just proves the tech stack"
-        - "RAG value not fully demonstrated (static quotes)"
+        - "DeepSeek API requires internet and API key"
+        - "Limited corpus may not cover all narrative scenarios"
 
     success_criteria: |
-      Run vertical slice CLI, observe:
+      Run integration tests, verify:
       1. Simulation advances (tick increases)
       2. Wealth transfers (worker impoverished)
-      3. Events generated and logged
-      4. LLM called with proper context
-      5. Narrative text output to terminal
+      3. Exploitation events generated and logged
+      4. RAG retrieves relevant Marxist theory
+      5. DeepSeek API called with proper context
+      6. Narrative text generated and captured
+      7. All assertions pass in pytest
 
   ADR015_llm_provider_abstraction:
     status: "accepted"
     date: "2025-12-08"
-    title: "LLM Provider Protocol for Multiple Backends"
+    title: "LLM Provider Protocol with DeepSeek as Primary"
     context: |
       The NarrativeDirector needs to call an LLM to generate narrative. Multiple
       LLM options exist with different tradeoffs:
-      - Claude (Anthropic): High quality, API costs
-      - Ollama: Local, free, variable quality
-      - DeepSeek: Cost-effective API alternative
+      - DeepSeek: Cost-effective, OpenAI-compatible API, good quality
+      - Ollama: Local, free, variable quality, no API key needed
+      - Claude (Anthropic): Highest quality, higher API costs
 
       Need abstraction to support all without coupling Director to specific provider.
 
     decision: |
-      Create LLMProvider protocol with implementations:
+      Create LLMProvider protocol with DeepSeek as primary implementation:
 
       @runtime_checkable
       class LLMProvider(Protocol):
@@ -691,15 +709,19 @@ decisions:
               '''Generate text from prompt.'''
               ...
 
-      Implementations:
-      - ClaudeProvider (Anthropic SDK)
-      - OllamaProvider (HTTP API)
+      Primary implementation (Sprint 3.3):
       - DeepSeekProvider (OpenAI-compatible API)
+
+      Future implementations (as needed):
+      - OllamaProvider (HTTP API)
+      - ClaudeProvider (Anthropic SDK)
 
       NarrativeDirector accepts optional LLMProvider in constructor.
       If None, narrative is logged but not generated (backward compat).
 
     rationale:
+      - "DeepSeek is cost-effective for development/testing"
+      - "OpenAI-compatible API means we can use openai Python package"
       - "Protocol pattern matches existing SimulationObserver design"
       - "Optional injection maintains backward compatibility with tests"
       - "Easy to add new providers without modifying Director"
@@ -707,14 +729,23 @@ decisions:
 
     location: "src/babylon/ai/llm_provider.py"
 
+    deepseek_integration:
+      api_base: "https://api.deepseek.com"
+      model: "deepseek-chat"
+      package: "openai (with custom base_url)"
+      env_var: "DEEPSEEK_API_KEY"
+
     consequences:
       positive:
-        - "Flexible provider selection"
+        - "Cost-effective development and testing"
+        - "Flexible provider selection for future"
         - "Easy testing with mock providers"
         - "No vendor lock-in"
+        - "OpenAI SDK provides robust client implementation"
       negative:
+        - "Requires API key and internet connection"
         - "One more abstraction layer"
-        - "Must maintain multiple provider implementations"
+        - "Rate limits and API costs (though minimal with DeepSeek)"
 
 # =============================================================================
 # PENDING DECISIONS

@@ -2155,6 +2155,17 @@ files = [
 ]
 
 [[package]]
+name = "midiutil"
+version = "1.2.1"
+description = "A pure python library for creating multi-track MIDI files"
+optional = false
+python-versions = "*"
+groups = ["dev"]
+files = [
+    {file = "MIDIUtil-1.2.1.tar.gz", hash = "sha256:79fa983bd1efc60785f68a8fe78fa8f45b8d7ec5898bf7cb7f3f7f3336d6a90a"},
+]
+
+[[package]]
 name = "mmh3"
 version = "5.2.0"
 description = "Python extension for MurmurHash (MurmurHash3), a set of fast and robust hash functions."
@@ -5371,4 +5382,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "358d5b1dd3503497ed9ec50f4d4ee88a25e13f4f60a7a346911069c5366bb479"
+content-hash = "8a25aa81922c4b37b0058f00b870bd9ab2cf82c24b8109dc113a56ead1580d59"

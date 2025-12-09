@@ -72,6 +72,7 @@ types-pyyaml = "^6.0.12.20250915"
 types-networkx = "^3.6.0.20251127"
 types-ratelimit = "^2.2.0.20250501"
 midiutil = "^1.2.1"
+markdownify = "^1.2.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -86,6 +87,7 @@ testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 markers = [
+    "unit: Fast unit tests for isolated components (no I/O, no AI)",
     "math: Deterministic mathematical formulas (fast, pure functions)",
     "ledger: Economic/Political state tests (fast, deterministic)",
     "topology: Graph/Network operations (fast, deterministic)",

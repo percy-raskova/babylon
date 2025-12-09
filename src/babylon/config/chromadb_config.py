@@ -35,13 +35,10 @@ class ChromaDBConfig:
     def get_settings(cls) -> Settings:
         """Get ChromaDB Settings object for client initialization.
 
-        Uses the new ChromaDB 1.x API with local persistence.
+        Uses the new ChromaDB 1.x API. Note: persist_directory is no longer
+        passed here - it's passed directly to PersistentClient(path=...).
         """
-        # Ensure persistence directory exists
-        cls.BASE_DIR.mkdir(parents=True, exist_ok=True)
-
         return Settings(
-            persist_directory=str(cls.BASE_DIR),
             anonymized_telemetry=False,
             allow_reset=True,
         )

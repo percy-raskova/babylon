@@ -108,11 +108,21 @@ def calculate_consciousness_drift(
     current_consciousness: float,
     sensitivity_k: float,
     decay_lambda: float,
+    solidarity_pressure: float = 0.0,
+    wage_change: float = 0.0,
 ) -> float:
-    """Calculate consciousness drift: dΨc/dt = k(1 - Wc/Vc) - λΨc.
+    """Calculate consciousness drift with Fascist Bifurcation mechanic.
 
-    Core consciousness drifts based on the material relationship
-    between wages and value produced.
+    Base formula: dΨc/dt = k(1 - Wc/Vc) - λΨc
+
+    Extended with Fascist Bifurcation (Sprint 3.4.2b):
+    When wages are FALLING (wage_change < 0), crisis creates "agitation energy"
+    that channels into either:
+    - Revolution (if solidarity_pressure > 0) - negative drift
+    - Fascism (if solidarity_pressure = 0) - positive drift via loss aversion
+
+    This encodes the historical insight: "Agitation without solidarity
+    produces fascism, not revolution." (Germany 1933 vs Russia 1917)
 
     Args:
         core_wages: Wages received by core worker
@@ -120,9 +130,12 @@ def calculate_consciousness_drift(
         current_consciousness: Current consciousness level (0 to 1)
         sensitivity_k: Sensitivity coefficient for material conditions
         decay_lambda: Decay coefficient (consciousness fades without basis)
+        solidarity_pressure: Sum of incoming SOLIDARITY edge strengths [0, 1+]
+        wage_change: Change in wages since last tick (negative = falling)
 
     Returns:
-        Rate of change of consciousness (positive = revolutionary drift)
+        Rate of change of consciousness (positive = revolutionary drift,
+        negative = reactionary/fascist drift when wages fall without solidarity)
 
     Raises:
         ValueError: If value_produced is zero or negative
@@ -134,7 +147,27 @@ def calculate_consciousness_drift(
     material_term = sensitivity_k * (1 - wage_ratio)
     decay_term = decay_lambda * current_consciousness
 
-    return material_term - decay_term
+    base_drift = material_term - decay_term
+
+    # Fascist Bifurcation mechanic
+    # Only triggers when wages are FALLING (crisis conditions)
+    if wage_change < 0:
+        # Agitation energy = magnitude of wage loss × loss aversion
+        agitation_energy = abs(wage_change) * LOSS_AVERSION_COEFFICIENT
+
+        if solidarity_pressure > 0:
+            # Solidarity channels crisis into revolutionary consciousness
+            # The more solidarity, the more effective the channeling
+            crisis_modifier = agitation_energy * min(1.0, solidarity_pressure)
+            # Positive modifier = revolutionary drift (consciousness increases)
+            base_drift += crisis_modifier
+        else:
+            # No solidarity - crisis channels into fascism via loss aversion
+            # Workers blame foreigners/immigrants instead of capital
+            # Negative modifier = reactionary drift (consciousness decreases)
+            base_drift -= agitation_energy
+
+    return base_drift
 
 
 # =============================================================================

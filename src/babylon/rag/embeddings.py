@@ -1,4 +1,8 @@
-"""Embedding management for the RAG system."""
+"""Embedding management for the RAG system.
+
+Supports both local (Ollama) and cloud (OpenAI) embedding providers.
+Default: Ollama with embeddinggemma for fully offline operation.
+"""
 
 import asyncio
 import hashlib
@@ -14,7 +18,7 @@ import aiohttp
 import backoff
 from ratelimit import limits, sleep_and_retry
 
-from babylon.config.llm_config import OpenAIConfig
+from babylon.config.llm_config import LLMConfig
 from babylon.metrics.collector import MetricsCollector
 
 logger = logging.getLogger(__name__)
@@ -26,10 +30,14 @@ class EmbeddingError(Exception):
     pass
 
 
-class OpenAIError(EmbeddingError):
-    """Exception raised for OpenAI API-specific errors."""
+class EmbeddingAPIError(EmbeddingError):
+    """Exception raised for embedding API-specific errors."""
 
     pass
+
+
+# Backward compatibility alias
+OpenAIError = EmbeddingAPIError
 
 
 class Embeddable(Protocol):
@@ -48,13 +56,15 @@ class EmbeddingManager:
     """Manages embeddings for RAG objects.
 
     The EmbeddingManager handles:
-    - Generating embeddings via OpenAI API
+    - Generating embeddings via Ollama (local) or OpenAI (cloud) API
     - Caching embeddings for reuse with LRU eviction
     - Rate limiting and retry logic
     - Batch operations for efficiency
     - Error handling and recovery
     - Performance metrics collection
     - Concurrent operations
+
+    Default: Ollama with embeddinggemma for fully offline operation.
     """
 
     def __init__(
@@ -67,31 +77,32 @@ class EmbeddingManager:
         """Initialize the embedding manager.
 
         Args:
-            embedding_dimension: Size of embedding vectors (default: from OpenAIConfig)
-            batch_size: Number of objects to embed in each batch (default: from OpenAIConfig)
+            embedding_dimension: Size of embedding vectors (default: from LLMConfig)
+            batch_size: Number of objects to embed in each batch (default: from LLMConfig)
             max_cache_size: Maximum number of embeddings to keep in cache (default: 1000)
             max_concurrent_requests: Maximum number of concurrent embedding requests (default: 4)
 
         Raises:
-            ValueError: If a custom embedding dimension is provided (not supported with OpenAI API)
+            ValueError: If embedding configuration is invalid
         """
-        # Validate OpenAI configuration
-        OpenAIConfig.validate()
+        # Validate embedding configuration
+        LLMConfig.validate_embeddings()
 
-        # Custom dimensions are not supported with OpenAI API
+        # Custom dimensions must match the model's output
         if (
             embedding_dimension is not None
-            and embedding_dimension != OpenAIConfig.get_model_dimensions()
+            and embedding_dimension != LLMConfig.get_model_dimensions()
         ):
             raise ValueError(
-                f"Custom embedding dimensions are not supported. The OpenAI API returns fixed-size embeddings "
-                f"({OpenAIConfig.get_model_dimensions()} dimensions for {OpenAIConfig.EMBEDDING_MODEL})"
+                f"Custom embedding dimensions not supported. "
+                f"Model {LLMConfig.EMBEDDING_MODEL} outputs {LLMConfig.get_model_dimensions()} dimensions."
             )
 
-        self.embedding_dimension = OpenAIConfig.get_model_dimensions()
-        self.batch_size = batch_size or OpenAIConfig.BATCH_SIZE
+        self.embedding_dimension = LLMConfig.get_model_dimensions()
+        self.batch_size = batch_size or LLMConfig.BATCH_SIZE
         self.max_cache_size = max_cache_size
         self.max_concurrent_requests = max_concurrent_requests
+        self._is_ollama = LLMConfig.is_ollama_embeddings()
 
         # Use OrderedDict for LRU cache implementation
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
@@ -110,18 +121,22 @@ class EmbeddingManager:
         self.metrics = MetricsCollector()
 
         # Record initialization metrics
+        provider = "ollama" if self._is_ollama else "openai"
         self.metrics.record_metric(
             name="embedding_manager_init",
             value=1.0,
-            context=f"dim={self.embedding_dimension},batch={self.batch_size},cache={max_cache_size},concurrent={max_concurrent_requests}",
+            context=f"provider={provider},model={LLMConfig.EMBEDDING_MODEL},dim={self.embedding_dimension}",
+        )
+        logger.info(
+            f"EmbeddingManager initialized: provider={provider}, model={LLMConfig.EMBEDDING_MODEL}"
         )
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create HTTP session for API requests."""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                headers=OpenAIConfig.get_headers(),
-                timeout=aiohttp.ClientTimeout(total=OpenAIConfig.REQUEST_TIMEOUT),
+                headers=LLMConfig.get_embedding_headers(),
+                timeout=aiohttp.ClientTimeout(total=LLMConfig.REQUEST_TIMEOUT),
             )
         return self._session
 
@@ -134,13 +149,13 @@ class EmbeddingManager:
     @backoff.on_exception(
         backoff.expo,
         (aiohttp.ClientError, asyncio.TimeoutError),
-        max_tries=OpenAIConfig.MAX_RETRIES,
+        max_tries=LLMConfig.MAX_RETRIES,
         max_time=30,
     )
     @sleep_and_retry
-    @limits(calls=OpenAIConfig.RATE_LIMIT_RPM, period=60)
+    @limits(calls=LLMConfig.RATE_LIMIT_RPM, period=60)
     async def _generate_embedding_api(self, content: str) -> list[float]:
-        """Generate embedding using OpenAI API with retry and rate limiting.
+        """Generate embedding using configured provider (Ollama or OpenAI).
 
         Args:
             content: Text content to embed
@@ -149,31 +164,51 @@ class EmbeddingManager:
             List[float]: Embedding vector
 
         Raises:
-            OpenAIError: If the API request fails
+            EmbeddingAPIError: If the API request fails
         """
         session = await self._get_session()
 
+        # Build request payload based on provider
+        if self._is_ollama:
+            # Ollama embedding API format
+            payload = {"model": LLMConfig.EMBEDDING_MODEL, "prompt": content}
+        else:
+            # OpenAI embedding API format
+            payload = {"input": content, "model": LLMConfig.EMBEDDING_MODEL}
+
         try:
             async with session.post(
-                "https://api.openai.com/v1/embeddings",
-                json={"input": content, "model": OpenAIConfig.EMBEDDING_MODEL},
+                LLMConfig.get_embedding_url(),
+                json=payload,
             ) as response:
                 if response.status != 200:
-                    error_data = await response.json()
-                    raise OpenAIError(
-                        f"OpenAI API error: {error_data.get('error', {}).get('message', 'Unknown error')}"
+                    error_text = await response.text()
+                    raise EmbeddingAPIError(
+                        f"Embedding API error (status {response.status}): {error_text}"
                     )
 
                 data = await response.json()
-                embedding: list[float] = data["data"][0]["embedding"]
+
+                # Parse response based on provider
+                if self._is_ollama:
+                    # Ollama returns: {"embedding": [...]}
+                    embedding: list[float] = data["embedding"]
+                else:
+                    # OpenAI returns: {"data": [{"embedding": [...]}]}
+                    embedding = data["data"][0]["embedding"]
+
                 return embedding
 
         except aiohttp.ClientError as e:
-            raise OpenAIError(f"API request failed: {str(e)}") from e
+            raise EmbeddingAPIError(f"API request failed: {str(e)}") from e
         except TimeoutError as e:
-            raise OpenAIError("API request timed out") from e
+            raise EmbeddingAPIError("API request timed out") from e
+        except KeyError as e:
+            raise EmbeddingAPIError(f"Unexpected API response format: {str(e)}") from e
+        except EmbeddingAPIError:
+            raise
         except Exception as e:
-            raise OpenAIError(f"Unexpected error: {str(e)}") from e
+            raise EmbeddingAPIError(f"Unexpected error: {str(e)}") from e
 
     async def aembed(self, obj: E) -> E:
         """Asynchronously generate and attach embedding for a single object.

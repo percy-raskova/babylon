@@ -27,6 +27,7 @@ Ideas, designs, and plans for Babylon development.
 
 ```
 brainstorm/
+├── mechanics/          # Implemented mechanics design documents
 ├── plans/              # Approved roadmaps and blueprints
 ├── deferred-ideas.md   # THE PARKING LOT - ideas tagged by phase
 ├── *.md                # Ideas not yet ready for implementation
@@ -81,6 +82,12 @@ brainstorm/
 | File | Purpose |
 |------|---------|
 | [deferred-ideas.md](deferred-ideas.md) | **THE PARKING LOT** - Good ideas waiting for their phase |
+
+## Mechanics Design Documents
+
+| File | Status | One-liner |
+|------|--------|-----------|
+| [mechanics/fascist_bifurcation.md](mechanics/fascist_bifurcation.md) | **IMPLEMENTED** | Sprint 3.4.3 - George Jackson Refactor: 2D ideological topology |
 
 ## Current Brainstorms
 

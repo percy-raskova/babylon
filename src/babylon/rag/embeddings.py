@@ -14,7 +14,7 @@ import aiohttp
 import backoff
 from ratelimit import limits, sleep_and_retry
 
-from babylon.config.openai_config import OpenAIConfig
+from babylon.config.llm_config import OpenAIConfig
 from babylon.metrics.collector import MetricsCollector
 
 logger = logging.getLogger(__name__)

@@ -9,14 +9,15 @@ All configs are immutable after initialization.
 
 from babylon.config.base import BaseConfig
 from babylon.config.chromadb_config import ChromaDBConfig
+from babylon.config.llm_config import LLMConfig, OpenAIConfig
 from babylon.config.logging_config import setup_logging
-from babylon.config.openai_config import OpenAIConfig
 from babylon.config.testing import TestingConfig
 
 __all__ = [
     "BaseConfig",
     "ChromaDBConfig",
-    "OpenAIConfig",
+    "LLMConfig",
+    "OpenAIConfig",  # Backward compatibility alias
     "TestingConfig",
     "setup_logging",
 ]

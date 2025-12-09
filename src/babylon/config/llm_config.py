@@ -1,4 +1,6 @@
-"""OpenAI API configuration for embedding generation.
+"""LLM API configuration for text generation and embeddings.
+
+Supports DeepSeek (primary) and OpenAI (fallback) APIs.
 
 Note: In production Babylon, we aim for full offline operation using
 local models (Ollama). This config exists for development and testing
@@ -9,32 +11,37 @@ import os
 from typing import Final
 
 
-class OpenAIConfig:
-    """Configuration for OpenAI API integration.
+class LLMConfig:
+    """Configuration for LLM API integration.
 
+    Supports DeepSeek (primary) and OpenAI (fallback).
     The bourgeois cloud API is a transitional tool until local
     compute infrastructure is established.
     """
 
-    # === API Credentials ===
-    API_KEY: Final[str] = os.getenv("OPENAI_API_KEY", "")
+    # === API Credentials (DeepSeek priority, OpenAI fallback) ===
+    API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+    API_BASE: Final[str] = os.getenv("LLM_API_BASE", "https://api.deepseek.com")
+
+    # OpenAI-specific (for embeddings and legacy)
     ORGANIZATION_ID: Final[str] = os.getenv("OPENAI_ORGANIZATION_ID", "")
 
     # === Model Selection ===
-    EMBEDDING_MODEL: Final[str] = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-ada-002")
+    CHAT_MODEL: Final[str] = os.getenv("LLM_CHAT_MODEL", "deepseek-chat")
+    EMBEDDING_MODEL: Final[str] = os.getenv("LLM_EMBEDDING_MODEL", "text-embedding-ada-002")
 
     # === Rate Limiting ===
-    MAX_RETRIES: Final[int] = int(os.getenv("OPENAI_MAX_RETRIES", "3"))
-    RETRY_DELAY: Final[float] = float(os.getenv("OPENAI_RETRY_DELAY", "1.0"))
-    RATE_LIMIT_RPM: Final[int] = int(os.getenv("OPENAI_RATE_LIMIT_RPM", "60"))
+    MAX_RETRIES: Final[int] = int(os.getenv("LLM_MAX_RETRIES", "3"))
+    RETRY_DELAY: Final[float] = float(os.getenv("LLM_RETRY_DELAY", "1.0"))
+    RATE_LIMIT_RPM: Final[int] = int(os.getenv("LLM_RATE_LIMIT_RPM", "60"))
 
     # === Batch Processing ===
-    BATCH_SIZE: Final[int] = int(os.getenv("OPENAI_BATCH_SIZE", "8"))
-    REQUEST_TIMEOUT: Final[float] = float(os.getenv("OPENAI_REQUEST_TIMEOUT", "10.0"))
+    BATCH_SIZE: Final[int] = int(os.getenv("LLM_BATCH_SIZE", "8"))
+    REQUEST_TIMEOUT: Final[float] = float(os.getenv("LLM_REQUEST_TIMEOUT", "30.0"))
 
     @classmethod
     def is_configured(cls) -> bool:
-        """Check if OpenAI API is properly configured."""
+        """Check if LLM API is properly configured."""
         return bool(cls.API_KEY and cls.API_KEY != "your-api-key-here")
 
     @classmethod
@@ -50,14 +57,14 @@ class OpenAIConfig:
 
     @classmethod
     def validate(cls) -> None:
-        """Validate the OpenAI configuration.
+        """Validate the LLM configuration.
 
         Raises:
             ValueError: If required configuration is missing
         """
         if not cls.is_configured():
             raise ValueError(
-                "OpenAI API key not configured. Set OPENAI_API_KEY environment variable."
+                "LLM API key not configured. Set DEEPSEEK_API_KEY or OPENAI_API_KEY environment variable."
             )
 
     @classmethod
@@ -74,3 +81,7 @@ class OpenAIConfig:
             "text-embedding-3-large": 3072,
         }
         return model_dimensions.get(cls.EMBEDDING_MODEL, 1536)
+
+
+# Backward compatibility alias
+OpenAIConfig = LLMConfig

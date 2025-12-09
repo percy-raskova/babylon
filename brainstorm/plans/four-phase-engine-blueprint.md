@@ -1,6 +1,8 @@
 # Four-Phase Engine Blueprint
 
-**Status:** Approved Roadmap
+> **DEPRECATED:** Superseded by Six-Phase Fractal Evolution (2025-12-09). See `ai-docs/roadmap.md`.
+
+**Status:** ~~Approved Roadmap~~ DEPRECATED
 **Created:** 2024-12-07
 **Principle:** Gall's Law - "A complex system that works is invariably found to have evolved from a simple system that worked."
 

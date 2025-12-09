@@ -57,7 +57,7 @@ TOTAL_BARS = 168  # ~6:00 at 112 BPM
 
 def create_nationalist_guard():
     """Generate The Nationalist Guard - paramilitary violence."""
-    midi = create_midi(6)  # Extra track for percussion
+    midi = create_midi(10)  # Need 10 tracks to support drum channel (9)
     setup_standard_tracks(midi, TEMPO)
 
     # === SECTION A: Gathering (bars 1-32) ===

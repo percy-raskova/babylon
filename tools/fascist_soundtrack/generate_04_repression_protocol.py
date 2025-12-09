@@ -54,7 +54,7 @@ TOTAL_BARS = 174  # ~6:00 at 116 BPM
 
 def create_repression_protocol():
     """Generate Repression Protocol - state violence crushing dissent."""
-    midi = create_midi(6)
+    midi = create_midi(10)  # Need 10 tracks to support drum channel (9)
     setup_standard_tracks(midi, TEMPO)
 
     # === SECTION A: Protocol Initiates (bars 1-36) ===

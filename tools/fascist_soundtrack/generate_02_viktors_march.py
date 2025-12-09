@@ -49,7 +49,7 @@ TOTAL_BARS = 113  # ~4:30 at 100 BPM
 
 def create_viktors_march():
     """Generate Viktor's March - the strongman's theme."""
-    midi = create_midi(7)  # Extra tracks for drums and horns
+    midi = create_midi(10)  # Need 10 tracks to support drum channel (9)
     setup_standard_tracks(midi, TEMPO)
 
     # Additional track setup for French horn

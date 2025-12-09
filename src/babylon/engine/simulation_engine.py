@@ -29,6 +29,7 @@ from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.protocol import System
+from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
@@ -80,8 +81,12 @@ class SimulationEngine:
 
 
 # Initialize the machine with Historical Materialist order
+# SolidaritySystem runs AFTER ImperialRentSystem, BEFORE ConsciousnessSystem
+# This ensures consciousness transmission from solidarity edges
+# modifies ideology BEFORE the general consciousness drift calculation
 _DEFAULT_SYSTEMS: list[System] = [
     ImperialRentSystem(),
+    SolidaritySystem(),  # Sprint 3.4.2: Proletarian Internationalism
     ConsciousnessSystem(),
     SurvivalSystem(),
     ContradictionSystem(),

@@ -109,9 +109,10 @@ class TestServiceContainer:
 
         try:
             formulas = container.formulas.list_formulas()
-            assert len(formulas) == 12
+            assert len(formulas) == 13  # 12 original + solidarity_transmission
             assert "imperial_rent" in formulas
             assert "revolution_probability" in formulas
+            assert "solidarity_transmission" in formulas  # Sprint 3.4.2
         finally:
             container.database.close()
 

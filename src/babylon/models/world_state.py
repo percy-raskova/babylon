@@ -146,6 +146,10 @@ class WorldState(BaseModel):
                     value_flow=data.get("value_flow", 0.0),
                     tension=data.get("tension", 0.0),
                     description=data.get("description", ""),
+                    # Imperial Circuit parameters (Sprint 3.4.1)
+                    subsidy_cap=data.get("subsidy_cap", 0.0),
+                    # Solidarity parameters (Sprint 3.4.2)
+                    solidarity_strength=data.get("solidarity_strength", 0.0),
                 )
             )
 

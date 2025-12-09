@@ -97,6 +97,17 @@ These ideas require the engine to be running and generating events.
 **Implementation:** Flag in SimulationConfig that disables Stage 2 (Semantic Gate) validation
 **Why wait:** Requires validation pipeline to exist first (Phase 3), then we can add the bypass
 
+### Procedural MIDI Soundtrack
+**Source:** Good Idea Fairy 2025-12-08
+**What it does:** Programmatically generate music based on game state using `midiutil` or `pretty_midi`
+**Concepts:**
+- Tension-driven composition: high contradiction = minor keys, dissonance, faster tempo
+- Era-appropriate instrumentation: 1920s jazz, industrial drones, revolutionary marches
+- Leitmotifs for factions/classes (bourgeoisie brass vs proletariat strings)
+- Dynamic intensity matching P(S|R) vs P(S|A) balance
+**Why it matters:** Emotional engagement, atmosphere, unique procedural art
+**Why wait:** Pure polish, requires working game loop and UI first
+
 ### Gramscian Wiki Engine
 **Source:** `brainstorm/gramscian-wiki-engine.md`
 **What it does:** Hegemony as factional control over in-game encyclopedia

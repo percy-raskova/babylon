@@ -27,6 +27,7 @@ Ideas, designs, and plans for Babylon development.
 
 ```
 brainstorm/
+├── architecture/       # Architectural decision documents (ADR-style)
 ├── mechanics/          # Implemented mechanics design documents
 ├── plans/              # Approved roadmaps and blueprints
 ├── deferred-ideas.md   # THE PARKING LOT - ideas tagged by phase
@@ -82,6 +83,12 @@ brainstorm/
 | File | Purpose |
 |------|---------|
 | [deferred-ideas.md](deferred-ideas.md) | **THE PARKING LOT** - Good ideas waiting for their phase |
+
+## Architecture Documents
+
+| File | Status | One-liner |
+|------|--------|-----------|
+| [architecture/graph_persistence_strategy.md](architecture/graph_persistence_strategy.md) | **DEFERRED (Phase VI)** | KuzuDB evaluation: Databases for retrieval, simulations for mutation |
 
 ## Mechanics Design Documents
 

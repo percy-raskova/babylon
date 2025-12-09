@@ -120,6 +120,7 @@ class EventType(StrEnum):
         SOLIDARITY_AWAKENING: Periphery worker enters active struggle (consciousness >= threshold)
         CONSCIOUSNESS_TRANSMISSION: Consciousness flows via SOLIDARITY edge from periphery to core
         MASS_AWAKENING: Target consciousness crosses mass awakening threshold
+        ECONOMIC_CRISIS: Imperial rent pool depleted below critical threshold (Sprint 3.4.4)
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -127,6 +128,7 @@ class EventType(StrEnum):
     SOLIDARITY_AWAKENING = "solidarity_awakening"
     CONSCIOUSNESS_TRANSMISSION = "consciousness_transmission"
     MASS_AWAKENING = "mass_awakening"
+    ECONOMIC_CRISIS = "economic_crisis"  # Sprint 3.4.4 - Dynamic Balance
 
 
 class OperationalProfile(StrEnum):

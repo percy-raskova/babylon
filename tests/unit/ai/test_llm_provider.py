@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -329,14 +329,14 @@ class TestDeepSeekClientErrorHandling:
 
             client = DeepSeekClient()
 
-            # Mock the internal async client
+            # Mock the sync client's create method
             mock_request = MagicMock()
-            client._client.chat.completions.create = AsyncMock(
+            client._client.chat.completions.create = MagicMock(
                 side_effect=APITimeoutError(request=mock_request)
             )
 
             with pytest.raises(LLMGenerationError) as exc:
-                client.generate("prompt")  # Sync call
+                client.generate("prompt")
 
             assert exc.value.error_code == "LLM_002"
         finally:
@@ -359,7 +359,7 @@ class TestDeepSeekClientErrorHandling:
 
             mock_response = MagicMock()
             mock_response.status_code = 429
-            client._client.chat.completions.create = AsyncMock(
+            client._client.chat.completions.create = MagicMock(
                 side_effect=RateLimitError(
                     message="Rate limit",
                     response=mock_response,
@@ -368,7 +368,7 @@ class TestDeepSeekClientErrorHandling:
             )
 
             with pytest.raises(LLMGenerationError) as exc:
-                client.generate("prompt")  # Sync call
+                client.generate("prompt")
 
             assert exc.value.error_code == "LLM_003"
         finally:
@@ -390,7 +390,7 @@ class TestDeepSeekClientErrorHandling:
             client = DeepSeekClient()
 
             mock_request = MagicMock()
-            client._client.chat.completions.create = AsyncMock(
+            client._client.chat.completions.create = MagicMock(
                 side_effect=APIError(
                     message="Server error",
                     request=mock_request,
@@ -399,7 +399,7 @@ class TestDeepSeekClientErrorHandling:
             )
 
             with pytest.raises(LLMGenerationError) as exc:
-                client.generate("prompt")  # Sync call
+                client.generate("prompt")
 
             assert exc.value.error_code == "LLM_001"
         finally:
@@ -423,7 +423,7 @@ class TestDeepSeekClientErrorHandling:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = None
 
-            client._client.chat.completions.create = AsyncMock(return_value=mock_response)
+            client._client.chat.completions.create = MagicMock(return_value=mock_response)
 
             with pytest.raises(LLMGenerationError) as exc:
                 client.generate("prompt")
@@ -455,7 +455,7 @@ class TestDeepSeekClientGeneration:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "Generated narrative text"
 
-            client._client.chat.completions.create = AsyncMock(return_value=mock_response)
+            client._client.chat.completions.create = MagicMock(return_value=mock_response)
 
             result = client.generate("Describe the revolution")
             assert result == "Generated narrative text"
@@ -478,7 +478,7 @@ class TestDeepSeekClientGeneration:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "Response"
 
-            mock_create = AsyncMock(return_value=mock_response)
+            mock_create = MagicMock(return_value=mock_response)
             client._client.chat.completions.create = mock_create
 
             client.generate("User prompt", system_prompt="You are a narrator")
@@ -510,7 +510,7 @@ class TestDeepSeekClientGeneration:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "Response"
 
-            mock_create = AsyncMock(return_value=mock_response)
+            mock_create = MagicMock(return_value=mock_response)
             client._client.chat.completions.create = mock_create
 
             client.generate("Prompt", temperature=0.3)
@@ -547,3 +547,158 @@ class TestModuleExports:
         from babylon.ai import DeepSeekClient
 
         assert DeepSeekClient is not None
+
+
+# =============================================================================
+# SPRINT 7: SYNC CLIENT BEHAVIOR TESTS (Event Loop Compatibility)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestDeepSeekClientSyncBehavior:
+    """Tests that DeepSeekClient uses sync OpenAI client (not async).
+
+    This avoids event loop conflicts when interleaved with RAG queries
+    which also use asyncio.run(). The key insight:
+
+    - AsyncOpenAI creates httpx connection pools bound to event loops
+    - asyncio.run() creates/destroys event loops on each call
+    - When RAG calls asyncio.run(), the LLM client's connections become stale
+    - Using sync OpenAI avoids this by not requiring event loops
+
+    These tests verify the fix for: RuntimeError('Event loop is closed')
+    """
+
+    def test_client_is_sync_not_async(self) -> None:
+        """DeepSeekClient should use sync OpenAI, not AsyncOpenAI."""
+        from openai import AsyncOpenAI, OpenAI
+
+        from babylon.config import llm_config
+
+        original_key = llm_config.LLMConfig.API_KEY
+        try:
+            llm_config.LLMConfig.API_KEY = "sk-test-key"
+
+            from babylon.ai.llm_provider import DeepSeekClient
+
+            client = DeepSeekClient()
+
+            # Verify the internal client is sync OpenAI, not AsyncOpenAI
+            assert isinstance(
+                client._client, OpenAI
+            ), f"Expected OpenAI but got {type(client._client).__name__}"
+            assert not isinstance(client._client, AsyncOpenAI), "Client should NOT be AsyncOpenAI"
+        finally:
+            llm_config.LLMConfig.API_KEY = original_key
+
+    def test_generate_does_not_use_asyncio_run(self) -> None:
+        """generate() should be fully synchronous, not wrapping async with asyncio.run()."""
+
+        from babylon.config import llm_config
+
+        original_key = llm_config.LLMConfig.API_KEY
+        try:
+            llm_config.LLMConfig.API_KEY = "sk-test-key"
+
+            from babylon.ai.llm_provider import DeepSeekClient
+
+            client = DeepSeekClient()
+
+            # Mock successful response with SYNC MagicMock (not AsyncMock)
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Sync response"
+
+            # Use MagicMock for sync client, NOT AsyncMock
+            client._client.chat.completions.create = MagicMock(return_value=mock_response)
+
+            # This should work without needing asyncio.run()
+            result = client.generate("Test prompt")
+            assert result == "Sync response"
+
+            # Verify the mock was called (sync behavior)
+            client._client.chat.completions.create.assert_called_once()
+        finally:
+            llm_config.LLMConfig.API_KEY = original_key
+
+    def test_generate_after_asyncio_run_still_works(self) -> None:
+        """LLM generate() should work after code that uses asyncio.run().
+
+        This simulates the RAG query pattern where asyncio.run() is called
+        for embedding queries, then LLM generate() is called for narrative.
+        With AsyncOpenAI, this fails because the event loop is closed.
+        With sync OpenAI, this works because no event loop is needed.
+        """
+        import asyncio
+
+        from babylon.config import llm_config
+
+        original_key = llm_config.LLMConfig.API_KEY
+        try:
+            llm_config.LLMConfig.API_KEY = "sk-test-key"
+
+            from babylon.ai.llm_provider import DeepSeekClient
+
+            client = DeepSeekClient()
+
+            # Mock the sync client's create method
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Response after asyncio.run"
+
+            client._client.chat.completions.create = MagicMock(return_value=mock_response)
+
+            # Simulate what RAG does: call asyncio.run() for some async operation
+            async def simulate_rag_query() -> str:
+                return "RAG result"
+
+            rag_result = asyncio.run(simulate_rag_query())
+            assert rag_result == "RAG result"
+
+            # Now the LLM generate() should still work (this fails with AsyncOpenAI)
+            result = client.generate("Generate after RAG")
+            assert result == "Response after asyncio.run"
+
+        finally:
+            llm_config.LLMConfig.API_KEY = original_key
+
+    def test_multiple_generate_calls_work_sequentially(self) -> None:
+        """Multiple sequential generate() calls should work without event loop issues."""
+        from babylon.config import llm_config
+
+        original_key = llm_config.LLMConfig.API_KEY
+        try:
+            llm_config.LLMConfig.API_KEY = "sk-test-key"
+
+            from babylon.ai.llm_provider import DeepSeekClient
+
+            client = DeepSeekClient()
+
+            # Set up mock to return different responses
+            mock_response1 = MagicMock()
+            mock_response1.choices = [MagicMock()]
+            mock_response1.choices[0].message.content = "First response"
+
+            mock_response2 = MagicMock()
+            mock_response2.choices = [MagicMock()]
+            mock_response2.choices[0].message.content = "Second response"
+
+            mock_response3 = MagicMock()
+            mock_response3.choices = [MagicMock()]
+            mock_response3.choices[0].message.content = "Third response"
+
+            client._client.chat.completions.create = MagicMock(
+                side_effect=[mock_response1, mock_response2, mock_response3]
+            )
+
+            # Multiple calls should all work
+            result1 = client.generate("Prompt 1")
+            result2 = client.generate("Prompt 2")
+            result3 = client.generate("Prompt 3")
+
+            assert result1 == "First response"
+            assert result2 == "Second response"
+            assert result3 == "Third response"
+
+        finally:
+            llm_config.LLMConfig.API_KEY = original_key

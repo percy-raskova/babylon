@@ -2,8 +2,8 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.1.0"
-  updated: "2025-12-08"
+  version: "1.2.0"
+  updated: "2025-12-09"
   principle: "Be honest about what's implemented vs aspirational"
 
 # =============================================================================
@@ -469,6 +469,29 @@ current_focus:
     architecture: "Graph + Math = History"
 
   next_phase:
+    name: "Phase 3.4: The Imperial Circuit"
+    goal: "Expand 2-node model to 4-node model with true MLM-TW dynamics"
+    tech: "WAGES edge type + Multi-dimensional consciousness"
+    spec: "ai-docs/imperial-circuit.yaml"
+    rationale: |
+      The 2-node model is "orthodox book-worship Marxism" - too simple.
+      It correctly models periphery dynamics (exploitation → consciousness → revolution)
+      but fails to capture WHY core workers support imperialism: they benefit from it.
+      "The bomb factory pays well. That's the problem."
+    key_components:
+      - "4 nodes: P_w (periphery worker), P_c (comprador), C_b (core bourgeoisie), C_w (core worker)"
+      - "WAGES edge: C_b → C_w (super-wages funded by imperial rent)"
+      - "TRIBUTE edge: P_c → C_b (imperial rent transfer)"
+      - "Multi-dimensional consciousness: class_consciousness + national_identity + atomization"
+      - "W/V ratio determining consciousness direction (up for periphery, down for core)"
+    sprints:
+      3_4_1: "WAGES Edge Type - enable super-wage flow"
+      3_4_2: "4-Node Scenario - create_imperial_circuit_scenario()"
+      3_4_3: "Multi-Dimensional Consciousness - split ideology variable"
+      3_4_4: "Dynamic Balance - shrinking pool, bourgeoisie choices"
+    blockers: "None - Phase 3.3 vertical slice provides foundation"
+
+  future_phase:
     name: "Phase 4: The Control Room"
     goal: "NiceGUI dashboard for simulation control and visualization"
     tech: "NiceGUI + State visualizations + User controls"
@@ -477,7 +500,7 @@ current_focus:
       - "Narrative display - LLM-generated prose"
       - "Control panel - start/stop/step simulation"
       - "History browser - timeline with undo/redo"
-    blockers: "Phase 3 vertical slice must be complete"
+    blockers: "Phase 3.4 imperial circuit must be complete"
 
   sprint_status:
     sprint_1:
@@ -701,20 +724,33 @@ current_focus:
     phase_4: "Control Room - NiceGUI dashboard"
 
   next_steps:
-    - "Sprint 3.3: LLM Provider protocol + DeepSeek implementation"
-    - "Sprint 3.3: Add event generation to ImperialRentSystem"
-    - "Sprint 3.3: Wire NarrativeDirector.on_tick() to call LLM"
-    - "Sprint 3.3: Ingest MVP corpus (5 texts from Marxists.org)"
-    - "Sprint 3.3: Integration tests for full vertical slice"
+    - "Sprint 3.3: LLM Provider protocol + DeepSeek implementation (COMPLETE)"
+    - "Sprint 3.3: Add event generation to ImperialRentSystem (COMPLETE)"
+    - "Sprint 3.3: Wire NarrativeDirector.on_tick() to call LLM (COMPLETE)"
+    - "Sprint 3.3: Ingest MVP corpus (5 texts from Marxists.org) (COMPLETE)"
+    - "Sprint 3.3: Integration tests for full vertical slice (COMPLETE)"
+    - "Sprint 3.4.1: WAGES Edge Type - enable super-wage flow"
+    - "Sprint 3.4.2: 4-Node Scenario - create_imperial_circuit_scenario()"
+    - "Sprint 3.4.3: Multi-Dimensional Consciousness - split ideology variable"
+    - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
     - "Phase 4: NiceGUI Control Room - dashboard for simulation"
     - "Optional: Expand RAG corpus with more Marxists.org texts"
     - "Optional: Timeline branching for history stack"
-    - "Optional: Additional entity types and relationship types"
 
   mantra: "Graph + Math = History"
+  new_mantra: "The bomb factory pays well. That's the problem."
   old_mantra: "State is data. Engine is logic. They never mix."
-  milestone: "PHASE 3 IN PROGRESS: 763 tests, Observer + RAG complete, LLM next"
-  next_milestone: "VERTICAL SLICE: Simulation → Events → LLM → Narrative output"
+  milestone: "PHASE 3.3 COMPLETE: Vertical slice working, LLM + RAG integrated"
+  next_milestone: "PHASE 3.4: Imperial Circuit - 4-node model with super-wages"
+  analysis_insight: |
+    2025-12-09: Identified why vertical slice stalls after tick 2.
+    Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
+    This is CORRECT for periphery dynamics, but model is too simple.
+    Current model is "orthodox book-worship Marxism" - missing:
+    - Super-wages (W > V) for core workers
+    - Imperial rent pool dynamics
+    - False consciousness from material benefit
+    - Multi-dimensional consciousness (class vs national vs atomization)
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.

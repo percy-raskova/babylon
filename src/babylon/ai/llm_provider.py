@@ -15,11 +15,10 @@ the SimulationObserver pattern. Async implementations wrap internally.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Final, Protocol, runtime_checkable
 
-from openai import APIError, APITimeoutError, AsyncOpenAI, RateLimitError
+from openai import APIError, APITimeoutError, OpenAI, RateLimitError
 from openai.types.chat import ChatCompletionMessageParam
 
 from babylon.config import LLMConfig
@@ -35,8 +34,8 @@ class LLMProvider(Protocol):
     Follows the same pattern as SimulationObserver - loose coupling
     via Protocol enables easy testing and provider swapping.
 
-    SYNC API: Matches SimulationObserver pattern. Implementations
-    wrap async calls internally with asyncio.run().
+    SYNC API: All implementations use synchronous interfaces to avoid
+    event loop conflicts with other asyncio.run() callers (e.g., RAG).
     """
 
     @property
@@ -147,8 +146,8 @@ class DeepSeekClient:
     Primary LLM provider for Babylon narrative generation.
     Uses the openai Python package with custom base_url.
 
-    SYNC API: Wraps async OpenAI client with asyncio.run() internally
-    to match the synchronous SimulationObserver pattern.
+    SYNC API: Uses synchronous OpenAI client to avoid event loop
+    conflicts with RAG queries that use asyncio.run().
     """
 
     def __init__(self, config: type[LLMConfig] | None = None) -> None:
@@ -169,7 +168,7 @@ class DeepSeekClient:
                 error_code="LLM_001",
             )
 
-        self._client = AsyncOpenAI(
+        self._client = OpenAI(
             api_key=self._config.API_KEY,
             base_url=self._config.API_BASE,
             timeout=self._config.REQUEST_TIMEOUT,
@@ -187,28 +186,10 @@ class DeepSeekClient:
         system_prompt: str | None = None,
         temperature: float = 0.7,
     ) -> str:
-        """Generate text synchronously (wraps async client).
+        """Generate text synchronously.
 
-        Args:
-            prompt: User prompt / context
-            system_prompt: Optional system instructions
-            temperature: Sampling temperature (0.0-1.0)
-
-        Returns:
-            Generated text response
-
-        Raises:
-            LLMGenerationError: On API or generation failure
-        """
-        return asyncio.run(self._agenerate(prompt, system_prompt, temperature))
-
-    async def _agenerate(
-        self,
-        prompt: str,
-        system_prompt: str | None = None,
-        temperature: float = 0.7,
-    ) -> str:
-        """Internal async implementation.
+        Uses the sync OpenAI client directly, avoiding event loop
+        conflicts with other code that uses asyncio.run().
 
         Args:
             prompt: User prompt / context
@@ -227,7 +208,7 @@ class DeepSeekClient:
         messages.append({"role": "user", "content": prompt})
 
         try:
-            response = await self._client.chat.completions.create(
+            response = self._client.chat.completions.create(
                 model=self._config.CHAT_MODEL,
                 messages=messages,
                 temperature=temperature,

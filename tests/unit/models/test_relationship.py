@@ -579,3 +579,118 @@ class TestRelationshipComponentAccess:
             edge_type=EdgeType.EXPLOITATION,
         )
         assert isinstance(rel.flow, FlowComponent)
+
+
+# =============================================================================
+# SOLIDARITY STRENGTH TESTS (Sprint 3.4.2)
+# =============================================================================
+
+
+@pytest.mark.math
+class TestSolidarityStrength:
+    """Test solidarity_strength field for SOLIDARITY edges.
+
+    Sprint 3.4.2: Proletarian Internationalism - The Counterforce.
+
+    CRITICAL DESIGN DECISION: solidarity_strength is a PERSISTENT ATTRIBUTE
+    ON THE EDGE, not auto-calculated from source organization.
+
+    This enables the Fascist Bifurcation scenario:
+    - Periphery revolts BUT solidarity_strength=0 -> NO transmission -> Fascist turn
+    - Periphery revolts AND solidarity_strength>0 -> Transmission -> Revolutionary turn
+    """
+
+    def test_solidarity_strength_default_zero(self) -> None:
+        """solidarity_strength defaults to 0.0 (no built infrastructure)."""
+        edge = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.SOLIDARITY,
+        )
+        assert edge.solidarity_strength == 0.0
+
+    def test_solidarity_strength_can_be_set(self) -> None:
+        """solidarity_strength can be set explicitly."""
+        edge = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.8,
+        )
+        assert edge.solidarity_strength == 0.8
+
+    def test_solidarity_strength_accepts_zero(self) -> None:
+        """Zero solidarity_strength is valid (Fascist scenario)."""
+        edge = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.0,
+        )
+        assert edge.solidarity_strength == 0.0
+
+    def test_solidarity_strength_accepts_one(self) -> None:
+        """Maximum solidarity_strength (1.0) is valid."""
+        edge = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=1.0,
+        )
+        assert edge.solidarity_strength == 1.0
+
+    def test_solidarity_strength_rejects_negative(self) -> None:
+        """Negative solidarity_strength is invalid."""
+        with pytest.raises(ValidationError):
+            Relationship(
+                source_id="C001",
+                target_id="C002",
+                edge_type=EdgeType.SOLIDARITY,
+                solidarity_strength=-0.1,
+            )
+
+    def test_solidarity_strength_rejects_greater_than_one(self) -> None:
+        """solidarity_strength > 1.0 is invalid."""
+        with pytest.raises(ValidationError):
+            Relationship(
+                source_id="C001",
+                target_id="C002",
+                edge_type=EdgeType.SOLIDARITY,
+                solidarity_strength=1.5,
+            )
+
+    def test_solidarity_strength_in_edge_data(self) -> None:
+        """solidarity_strength is included in edge_data for NetworkX."""
+        edge = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.7,
+        )
+        data = edge.edge_data
+        assert "solidarity_strength" in data
+        assert data["solidarity_strength"] == 0.7
+
+    def test_solidarity_strength_on_non_solidarity_edge(self) -> None:
+        """solidarity_strength can be set on any edge type for flexibility."""
+        # While typically used on SOLIDARITY edges, we allow it on any edge
+        # for modeling flexibility (e.g., potential solidarity in exploitation)
+        edge = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.EXPLOITATION,
+            solidarity_strength=0.3,
+        )
+        assert edge.solidarity_strength == 0.3
+
+    def test_solidarity_strength_json_round_trip(self) -> None:
+        """solidarity_strength survives JSON round-trip."""
+        original = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.SOLIDARITY,
+            solidarity_strength=0.65,
+        )
+        json_str = original.model_dump_json()
+        restored = Relationship.model_validate_json(json_str)
+        assert restored.solidarity_strength == pytest.approx(0.65)

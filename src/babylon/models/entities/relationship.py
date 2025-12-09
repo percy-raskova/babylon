@@ -16,7 +16,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.models.enums import EdgeType
-from babylon.models.types import Currency, Intensity
+from babylon.models.types import Coefficient, Currency, Intensity
 
 
 class FlowComponent(BaseModel):
@@ -110,6 +110,12 @@ class Relationship(BaseModel):
     subsidy_cap: Currency = Field(
         default=0.0,
         description="Maximum subsidy amount for CLIENT_STATE edges",
+    )
+
+    # Solidarity transmission parameters (Sprint 3.4.2)
+    solidarity_strength: Coefficient = Field(
+        default=0.0,
+        description="Built solidarity infrastructure strength for SOLIDARITY edges",
     )
 
     @model_validator(mode="after")

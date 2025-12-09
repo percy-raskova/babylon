@@ -107,4 +107,7 @@ class FormulaRegistry:
         registry.register("value_transfer", formulas.calculate_value_transfer)
         registry.register("prebisch_singer", formulas.prebisch_singer_effect)
 
+        # Solidarity Transmission formulas (Sprint 3.4.2)
+        registry.register("solidarity_transmission", formulas.calculate_solidarity_transmission)
+
         return registry

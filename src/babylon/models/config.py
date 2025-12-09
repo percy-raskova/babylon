@@ -140,3 +140,14 @@ class SimulationConfig(BaseModel):
         default=0.8,
         description="P(S|R) / P(S|A) ratio threshold for subsidy trigger (80%)",
     )
+
+    # Solidarity transmission parameters (Sprint 3.4.2)
+    solidarity_activation_threshold: Coefficient = Field(
+        default=0.3,
+        description="Minimum source consciousness for solidarity transmission (30%)",
+    )
+
+    mass_awakening_threshold: Coefficient = Field(
+        default=0.6,
+        description="Target consciousness threshold for MASS_AWAKENING event (60%)",
+    )

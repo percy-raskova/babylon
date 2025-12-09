@@ -23,6 +23,9 @@
 data/babylon.db
 data/*.db
 
+# ChromaDB local storage
+chromadb/
+
 # Tool Configuration
 .continue*
 .continuerules

@@ -119,16 +119,24 @@ class ChromaManager:
         correlation_id = str(uuid.uuid4())
 
         try:
+            # Ensure persistence directory exists
+            persist_path = ChromaDBConfig.BASE_DIR
+            persist_path.mkdir(parents=True, exist_ok=True)
+
             logger.debug(
                 "Initializing ChromaDB client",
                 extra={
                     "correlation_id": correlation_id,
-                    "persist_dir": ChromaDBConfig.BASE_DIR,
+                    "persist_dir": persist_path,
                 },
             )
 
-            # Create client with local persistence configuration
-            self._client = chromadb.Client(ChromaDBConfig.get_settings())
+            # Create client with local persistence using ChromaDB 1.x API
+            # PersistentClient replaces deprecated Client(Settings(persist_directory=...))
+            self._client = chromadb.PersistentClient(
+                path=str(persist_path),
+                settings=ChromaDBConfig.get_settings(),
+            )
 
             # Test connection
             if self._client is not None:
@@ -208,17 +216,15 @@ class ChromaManager:
         return self.client.get_or_create_collection(name=name)
 
     def cleanup(self) -> None:
-        """Cleanup ChromaDB resources and ensure data persistence.
+        """Cleanup ChromaDB resources.
 
         This method performs a graceful shutdown of the ChromaDB client:
-        1. Persists any pending changes to disk
-        2. Resets the client connection
-        3. Clears the client reference
+        1. Resets the client connection (if allow_reset=True in settings)
+        2. Clears the client reference
 
-        The cleanup process ensures:
-        - No data loss during shutdown
-        - Proper resource release
-        - Clean application shutdown
+        Note:
+            In ChromaDB 1.x with PersistentClient, data is automatically
+            persisted - no explicit persist() call needed.
 
         Note:
             This method should be called during application shutdown or when
@@ -226,16 +232,9 @@ class ChromaManager:
         """
         if self._client:
             try:
-                # Ensure all changes are written to disk
-                # Note: persist() may not be available in newer chromadb versions
-                if hasattr(self._client, "persist"):
-                    self._client.persist()
-
                 # Reset the client to close connections
-                if hasattr(self._client, "reset"):
-                    self._client.reset()
-
-                # Clear the client reference
+                # Note: reset() clears all data if allow_reset=True in settings
+                # For cleanup without data loss, just clear the reference
                 self._client = None
             except Exception as e:
                 # Log cleanup errors but don't raise to allow shutdown to continue

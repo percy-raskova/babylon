@@ -6,7 +6,6 @@ import sys
 from datetime import datetime
 from typing import Any
 
-import chromadb
 from sentence_transformers import SentenceTransformer
 
 from babylon.config.base import BaseConfig as Config
@@ -53,15 +52,18 @@ def handle_event(event: Event, game_state: dict[str, Any]) -> None:
         game_state["event_queue"].extend(event.consequences)
 
 
-def cleanup_chroma(client: chromadb.Client) -> None:
+def cleanup_chroma(manager: ChromaManager) -> None:
     """Cleanup ChromaDB resources gracefully.
 
     Args:
-        client: The ChromaDB client instance to cleanup
+        manager: The ChromaManager instance to cleanup
+
+    Note:
+        In ChromaDB 1.x with PersistentClient, data is automatically
+        persisted - no explicit persist() call needed.
     """
     try:
-        client.persist()
-        client.reset()
+        manager.cleanup()
     except Exception as e:
         print(f"Error during ChromaDB cleanup: {e}")
 
@@ -91,7 +93,7 @@ def main() -> None:
     chroma_client = chroma_manager.client
 
     # Register cleanup handlers
-    atexit.register(cleanup_chroma, chroma_client)
+    atexit.register(cleanup_chroma, chroma_manager)
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 

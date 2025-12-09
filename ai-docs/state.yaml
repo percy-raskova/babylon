@@ -2,9 +2,10 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.2.0"
+  version: "1.3.0"
   updated: "2025-12-09"
   principle: "Be honest about what's implemented vs aspirational"
+  architecture_epoch: "Six-Phase Fractal Evolution"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -416,12 +417,15 @@ current_focus:
     - "Tech debt: Migrated ChromaDB API from deprecated Client to PersistentClient"
 
   current_phase:
-    name: "Phase 3: The Observer Pattern"
-    status: "IN PROGRESS - Sprint 3.3 next"
-    goal: "AI narrates state changes without controlling simulation"
-    tech: "Observer Protocol + LLM abstraction + Context Builder"
-    result_so_far: "763 tests passing, Observer Pattern complete, RAG integration complete"
-    key_insight: "AI observes and narrates, never controls mechanics (ADR003)"
+    name: "Phase 3.4: The Imperial Circuit"
+    status: "IN PROGRESS - Sprint 3.4.3 next"
+    goal: "Expand 2-node model to 4-node with true MLM-TW dynamics"
+    tech: "SolidaritySystem + Multi-dimensional consciousness + Fascist Bifurcation"
+    result_so_far: "886 tests passing, Imperial Circuit operational, Proletarian Internationalism complete"
+    key_insight: "solidarity_strength stored on edge, not auto-calculated - enables Fascist Bifurcation"
+    mantras:
+      - "The bomb factory pays well. That's the problem."
+      - "Agitation without solidarity produces fascism, not revolution."
     completed_sprints:
       sprint_3_1:
         name: "The Dialectical Interface"
@@ -705,8 +709,8 @@ current_focus:
 
     sprint_3_3:
       name: "LLM Integration (Vertical Slice)"
-      status: "NOT STARTED"
-      planned_deliverables:
+      status: "COMPLETE"
+      deliverables:
         - "src/babylon/ai/llm_provider.py (protocol + DeepSeek implementation)"
         - "Modified ImperialRentSystem (event generation)"
         - "RAG corpus ingestion script (5 texts from Marxists.org)"
@@ -714,34 +718,137 @@ current_focus:
       llm_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
       testing_approach: "Integration tests instead of CLI runner"
       rag_corpus: "5 curated texts from Marxists.org (~200-500 chunks)"
-      estimated_tests: 20
+      tests_passing: 800
       scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
 
+    sprint_3_4_1:
+      name: "Economic Infrastructure (Imperial Circuit)"
+      status: "COMPLETE"
+      deliverables:
+        - "EdgeType.TRIBUTE (P_c → C_b tribute transfer)"
+        - "EdgeType.WAGES (C_b → C_w super-wages)"
+        - "EdgeType.CLIENT_STATE (C_b → P_c imperial subsidy)"
+        - "EventType.IMPERIAL_SUBSIDY (narrative event)"
+        - "4-phase ImperialRentSystem (extraction, tribute, wages, subsidy)"
+        - "Relationship.subsidy_cap field for CLIENT_STATE edges"
+        - "SimulationConfig: comprador_cut, super_wage_rate, subsidy_* params"
+      tests_passing: 829
+      commit: "5c5dbc9"
+      key_insight: "Wealth converts to repression (not conserved) for imperial subsidy"
+
+    sprint_3_4_2:
+      name: "Proletarian Internationalism"
+      status: "COMPLETE"
+      deliverables:
+        - "SolidaritySystem - consciousness transmission via SOLIDARITY edges"
+        - "Relationship.solidarity_strength field (STORED ON EDGE)"
+        - "EventType.SOLIDARITY_AWAKENING (source enters active struggle)"
+        - "EventType.CONSCIOUSNESS_TRANSMISSION (delta transfer)"
+        - "EventType.MASS_AWAKENING (target crosses threshold)"
+        - "calculate_solidarity_transmission() formula"
+        - "SimulationConfig: solidarity_activation_threshold, mass_awakening_threshold"
+      tests_passing: 886
+      commit: "61fe9c1"
+      key_insight: |
+        solidarity_strength is STORED ON EDGE, not auto-calculated from organization.
+        This enables Fascist Bifurcation: same material conditions → different outcomes
+        based on whether solidarity infrastructure was BUILT beforehand.
+        "Agitation without solidarity produces fascism, not revolution."
+
   phase_roadmap:
-    phase_1: "Minimum Viable Dialectic - prove the equations"
-    phase_2: "Topological Engine - the physics/update loop"
-    phase_3: "Observer Pattern - AI narrates, never controls"
-    phase_4: "Control Room - NiceGUI dashboard"
+    superseded_note: "Four-Phase Blueprint → Six-Phase Fractal Evolution (2025-12-09)"
+    phase_1:
+      name: "Minimum Viable Dialectic"
+      summary: "Prove the equations work"
+      status: "COMPLETE"
+    phase_2:
+      name: "Topological Engine"
+      summary: "The physics/update loop"
+      status: "COMPLETE"
+    phase_3:
+      name: "Observer Pattern"
+      summary: "AI narrates, never controls"
+      status: "COMPLETE (Sprint 3.3 - Vertical Slice)"
+    phase_3_4:
+      name: "Imperial Circuit"
+      summary: "4-node model with WAGES edges"
+      status: "IN PROGRESS"
+      sprints:
+        3_4_1:
+          name: "Economic Infrastructure"
+          status: "COMPLETE"
+          deliverables:
+            - "TRIBUTE edge type (P_c → C_b)"
+            - "WAGES edge type (C_b → C_w)"
+            - "CLIENT_STATE edge type (C_b → P_c subsidy)"
+            - "IMPERIAL_SUBSIDY event type"
+            - "4-phase ImperialRentSystem"
+          tests: "829 tests passing"
+          commit: "5c5dbc9"
+        3_4_2:
+          name: "Proletarian Internationalism"
+          status: "COMPLETE"
+          deliverables:
+            - "SolidaritySystem (consciousness transmission)"
+            - "solidarity_strength edge attribute (stored infrastructure)"
+            - "SOLIDARITY_AWAKENING event type"
+            - "CONSCIOUSNESS_TRANSMISSION event type"
+            - "MASS_AWAKENING event type"
+            - "Fascist Bifurcation mechanic enabled"
+          tests: "886 tests passing"
+          commit: "61fe9c1"
+          key_insight: "solidarity_strength is STORED ON EDGE, not auto-calculated - enables Fascist Bifurcation"
+        3_4_3:
+          name: "Multi-Dimensional Consciousness"
+          status: "PLANNED"
+          deliverables:
+            - "Split ideology into class_consciousness + national_identity"
+            - "Add atomization variable"
+            - "Update consciousness drift formula"
+        3_4_4:
+          name: "Dynamic Balance"
+          status: "PLANNED"
+          deliverables:
+            - "Imperial rent pool as emergent property"
+            - "Bourgeoisie choice system"
+            - "Crisis events as phase transitions"
+    phase_4:
+      name: "Control Room"
+      summary: "NiceGUI dashboard"
+      status: "PLANNED"
+    phase_5:
+      name: "Internal Colonies"
+      summary: "Fractal topology - race/gender/geographic stratification"
+      status: "FUTURE"
+      key_insight: "Composite/Graph pattern enables modeling stratification within Core"
+    phase_6:
+      name: "Full Simulation"
+      summary: "Multi-country, multi-faction, full complexity"
+      status: "FUTURE"
 
   next_steps:
-    - "Sprint 3.3: LLM Provider protocol + DeepSeek implementation (COMPLETE)"
-    - "Sprint 3.3: Add event generation to ImperialRentSystem (COMPLETE)"
-    - "Sprint 3.3: Wire NarrativeDirector.on_tick() to call LLM (COMPLETE)"
-    - "Sprint 3.3: Ingest MVP corpus (5 texts from Marxists.org) (COMPLETE)"
-    - "Sprint 3.3: Integration tests for full vertical slice (COMPLETE)"
-    - "Sprint 3.4.1: WAGES Edge Type - enable super-wage flow"
-    - "Sprint 3.4.2: 4-Node Scenario - create_imperial_circuit_scenario()"
-    - "Sprint 3.4.3: Multi-Dimensional Consciousness - split ideology variable"
-    - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
-    - "Phase 4: NiceGUI Control Room - dashboard for simulation"
-    - "Optional: Expand RAG corpus with more Marxists.org texts"
-    - "Optional: Timeline branching for history stack"
+    current_sprint: "Sprint 3.4.3: Multi-Dimensional Consciousness"
+    completed:
+      - "Sprint 3.3: Vertical Slice (COMPLETE)"
+      - "Sprint 3.4.1: Economic Infrastructure - TRIBUTE, WAGES, CLIENT_STATE edges (COMPLETE)"
+      - "Sprint 3.4.2: Proletarian Internationalism - SolidaritySystem (COMPLETE)"
+    in_progress:
+      - "Sprint 3.4.3: Multi-Dimensional Consciousness - split ideology variable"
+    planned:
+      - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
+      - "Phase 4: NiceGUI Control Room - dashboard for simulation"
+      - "Phase 5: Internal Colonies - fractal topology within Core"
+    optional:
+      - "Expand RAG corpus with more Marxists.org texts"
+      - "Timeline branching for history stack"
 
   mantra: "Graph + Math = History"
   new_mantra: "The bomb factory pays well. That's the problem."
   old_mantra: "State is data. Engine is logic. They never mix."
-  milestone: "PHASE 3.3 COMPLETE: Vertical slice working, LLM + RAG integrated"
-  next_milestone: "PHASE 3.4: Imperial Circuit - 4-node model with super-wages"
+  fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
+  milestone: "SPRINT 3.4.2 COMPLETE: Proletarian Internationalism - SolidaritySystem operational"
+  next_milestone: "SPRINT 3.4.3: Multi-Dimensional Consciousness - split ideology"
+  test_count: 886
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.

@@ -519,15 +519,19 @@ def ingest_corpus(corpus_dir: Path, reset: bool = False) -> int:
 
     # Initialize ChromaDB
     manager = ChromaManager()
-    collection = manager.get_or_create_collection(ChromaDBConfig.THEORY_COLLECTION)
 
     if reset:
-        logger.info("Resetting collection...")
-        # Delete all documents in collection
-        existing = collection.get()
-        if existing["ids"]:
-            collection.delete(ids=existing["ids"])
-            logger.info(f"Deleted {len(existing['ids'])} existing chunks")
+        logger.info("Resetting collection (deleting and recreating)...")
+        # Delete the ENTIRE collection to reset embedding dimension
+        # This is necessary because ChromaDB locks the embedding dimension at collection creation
+        try:
+            manager.client.delete_collection(ChromaDBConfig.THEORY_COLLECTION)
+            logger.info(f"Deleted collection '{ChromaDBConfig.THEORY_COLLECTION}'")
+        except Exception as e:
+            logger.warning(f"Could not delete collection (may not exist): {e}")
+
+    # Now get or create the collection (will be fresh if reset was used)
+    collection = manager.get_or_create_collection(ChromaDBConfig.THEORY_COLLECTION)
 
     # Initialize chunker with recommended settings
     chunker = TextChunker(
@@ -587,17 +591,64 @@ def ingest_corpus(corpus_dir: Path, reset: bool = False) -> int:
             logger.error(f"Failed to process {file_path}: {e}")
             continue
 
-    # Batch upsert to ChromaDB
+    # Batch upsert to ChromaDB with proper embeddings
     if all_ids:
         logger.info(f"Upserting {len(all_ids)} chunks to ChromaDB...")
 
-        # ChromaDB has batch size limits, process in batches
+        # Initialize embedding manager to use the same model as query path
+        # Use single-threaded sequential processing to avoid async session issues
+        import requests
+
+        from babylon.config.llm_config import LLMConfig
+
+        logger.info(
+            f"Using embedding model: {LLMConfig.EMBEDDING_MODEL} "
+            f"(dimension: {LLMConfig.get_model_dimensions()})"
+        )
+
+        # Generate embeddings directly using requests (bypass EmbeddingManager async issues)
+        embedding_url = LLMConfig.get_embedding_url()
+        all_embeddings: list[list[float]] = []
+
+        logger.info("Generating embeddings (this may take a while)...")
+        for i, doc in enumerate(tqdm(all_documents, desc="Embedding")):
+            try:
+                if LLMConfig.is_ollama_embeddings():
+                    # Ollama API format
+                    payload = {"model": LLMConfig.EMBEDDING_MODEL, "prompt": doc}
+                else:
+                    # OpenAI API format
+                    payload = {"model": LLMConfig.EMBEDDING_MODEL, "input": doc}
+
+                response = requests.post(
+                    embedding_url,
+                    json=payload,
+                    timeout=120,  # 2 minute timeout per embedding
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if LLMConfig.is_ollama_embeddings():
+                    embedding = result.get("embedding", [])
+                else:
+                    embedding = result["data"][0]["embedding"]
+
+                all_embeddings.append(embedding)
+
+            except Exception as e:
+                logger.error(f"Failed to embed chunk {i}: {e}")
+                # Create a zero vector as placeholder to maintain alignment
+                all_embeddings.append([0.0] * LLMConfig.get_model_dimensions())
+
+        # Now batch upsert to ChromaDB (can use larger batches)
         batch_size = ChromaDBConfig.BATCH_SIZE
         for i in tqdm(range(0, len(all_ids), batch_size), desc="Upserting"):
             batch_end = min(i + batch_size, len(all_ids))
+
             collection.upsert(
                 ids=all_ids[i:batch_end],
                 documents=all_documents[i:batch_end],
+                embeddings=all_embeddings[i:batch_end],
                 metadatas=all_metadatas[i:batch_end],  # type: ignore[arg-type]
             )
 

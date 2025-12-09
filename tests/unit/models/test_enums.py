@@ -12,6 +12,7 @@ import pytest
 
 from babylon.models.enums import (
     EdgeType,
+    EventType,
     IntensityLevel,
     ResolutionType,
     SocialRole,
@@ -79,6 +80,9 @@ class TestEdgeType:
     - solidarity: Mutual support (class consciousness)
     - repression: State violence against class
     - competition: Market rivalry
+    - tribute: Value flow from periphery comprador to core (15% cut)
+    - wages: Core bourgeoisie paying core workers (super-wages)
+    - client_state: Imperial subsidy to maintain client state stability
     """
 
     def test_all_expected_edge_types_exist(self) -> None:
@@ -88,6 +92,12 @@ class TestEdgeType:
         assert hasattr(EdgeType, "REPRESSION")
         assert hasattr(EdgeType, "COMPETITION")
 
+    def test_imperial_circuit_edge_types_exist(self) -> None:
+        """Imperial circuit edge types for 4-node model (Sprint 3.4.1)."""
+        assert hasattr(EdgeType, "TRIBUTE")
+        assert hasattr(EdgeType, "WAGES")
+        assert hasattr(EdgeType, "CLIENT_STATE")
+
     def test_edge_types_serialize_to_lowercase(self) -> None:
         """Edge types serialize to snake_case for JSON."""
         assert EdgeType.EXPLOITATION.value == "exploitation"
@@ -95,10 +105,22 @@ class TestEdgeType:
         assert EdgeType.REPRESSION.value == "repression"
         assert EdgeType.COMPETITION.value == "competition"
 
+    def test_imperial_circuit_edge_types_serialize(self) -> None:
+        """Imperial circuit edge types serialize to snake_case for JSON."""
+        assert EdgeType.TRIBUTE.value == "tribute"
+        assert EdgeType.WAGES.value == "wages"
+        assert EdgeType.CLIENT_STATE.value == "client_state"
+
     def test_edge_type_constructible_from_string(self) -> None:
         """Can construct from string value."""
         edge = EdgeType("exploitation")
         assert edge == EdgeType.EXPLOITATION
+
+    def test_imperial_circuit_edge_types_constructible(self) -> None:
+        """Imperial circuit edge types can be constructed from strings."""
+        assert EdgeType("tribute") == EdgeType.TRIBUTE
+        assert EdgeType("wages") == EdgeType.WAGES
+        assert EdgeType("client_state") == EdgeType.CLIENT_STATE
 
     def test_invalid_edge_type_raises(self) -> None:
         """Unknown edge types are rejected."""
@@ -106,8 +128,8 @@ class TestEdgeType:
             EdgeType("friendship")  # Not a structural relationship
 
     def test_edge_type_count(self) -> None:
-        """Exactly 4 edge types defined."""
-        assert len(EdgeType) == 4
+        """Exactly 7 edge types defined (4 original + 3 imperial circuit)."""
+        assert len(EdgeType) == 7
 
 
 @pytest.mark.math
@@ -201,3 +223,37 @@ class TestResolutionType:
     def test_resolution_type_count(self) -> None:
         """Exactly 3 resolution types defined."""
         assert len(ResolutionType) == 3
+
+
+@pytest.mark.math
+class TestEventType:
+    """EventType: Types of simulation events for the narrative layer.
+
+    Event types published to EventBus on significant state changes:
+    - surplus_extraction: Imperial rent extracted (Phase 1)
+    - imperial_subsidy: Wealth converted to suppression to stabilize client state (Phase 4)
+    """
+
+    def test_surplus_extraction_exists(self) -> None:
+        """SURPLUS_EXTRACTION event type exists (Phase 1)."""
+        assert hasattr(EventType, "SURPLUS_EXTRACTION")
+        assert EventType.SURPLUS_EXTRACTION.value == "surplus_extraction"
+
+    def test_imperial_subsidy_exists(self) -> None:
+        """IMPERIAL_SUBSIDY event type exists (Sprint 3.4.1 Phase 4)."""
+        assert hasattr(EventType, "IMPERIAL_SUBSIDY")
+        assert EventType.IMPERIAL_SUBSIDY.value == "imperial_subsidy"
+
+    def test_event_type_constructible_from_string(self) -> None:
+        """Can construct EventType from string value."""
+        assert EventType("surplus_extraction") == EventType.SURPLUS_EXTRACTION
+        assert EventType("imperial_subsidy") == EventType.IMPERIAL_SUBSIDY
+
+    def test_invalid_event_type_raises(self) -> None:
+        """Unknown event types are rejected."""
+        with pytest.raises(ValueError):
+            EventType("random_event")
+
+    def test_event_type_count(self) -> None:
+        """Exactly 2 event types defined (1 original + 1 imperial circuit)."""
+        assert len(EventType) == 2

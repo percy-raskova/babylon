@@ -119,3 +119,24 @@ class SimulationConfig(BaseModel):
         default=0.05,
         description="Rate at which tension accumulates from wealth gaps",
     )
+
+    # Imperial Circuit parameters (Sprint 3.4.1)
+    comprador_cut: Coefficient = Field(
+        default=0.15,
+        description="Fraction of tribute kept by comprador class (15%)",
+    )
+
+    super_wage_rate: Coefficient = Field(
+        default=0.20,
+        description="Fraction of core bourgeoisie wealth paid as super-wages (20%)",
+    )
+
+    subsidy_conversion_rate: Coefficient = Field(
+        default=0.1,
+        description="Rate at which wealth converts to suppression capacity (10%)",
+    )
+
+    subsidy_trigger_threshold: Coefficient = Field(
+        default=0.8,
+        description="P(S|R) / P(S|A) ratio threshold for subsidy trigger (80%)",
+    )

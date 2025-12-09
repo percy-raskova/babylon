@@ -106,6 +106,12 @@ class Relationship(BaseModel):
         description="Description of this relationship",
     )
 
+    # Imperial Circuit parameters (Sprint 3.4.1)
+    subsidy_cap: Currency = Field(
+        default=0.0,
+        description="Maximum subsidy amount for CLIENT_STATE edges",
+    )
+
     @model_validator(mode="after")
     def validate_no_self_loop(self) -> "Relationship":
         """Ensure entities cannot have a relationship with themselves."""

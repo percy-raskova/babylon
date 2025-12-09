@@ -1,0 +1,44 @@
+#!/bin/bash
+# Convert MIDI to MP3 using FluidSynth + ffmpeg
+# Usage: midi-to-mp3.sh <input.mid> [output.mp3]
+
+set -e
+
+SOUNDFONT="${SOUNDFONT:-/usr/share/sounds/sf2/FluidR3_GM.sf2}"
+AUDIO_OUTPUT_DIR="${AUDIO_OUTPUT_DIR:-assets/audio}"
+
+INPUT="$1"
+if [ -z "$INPUT" ]; then
+    echo "Usage: midi-to-mp3 <input.mid> [output.mp3]"
+    exit 1
+fi
+
+# Check for ffmpeg
+if ! command -v ffmpeg &> /dev/null; then
+    echo "Error: ffmpeg is required for MP3 conversion"
+    echo "Install with: sudo apt install ffmpeg"
+    exit 1
+fi
+
+BASENAME=$(basename "$INPUT" .mid)
+mkdir -p "$AUDIO_OUTPUT_DIR"
+
+# Default output: same name with .mp3 extension
+if [ -z "$2" ]; then
+    OUTPUT="$AUDIO_OUTPUT_DIR/$BASENAME.mp3"
+else
+    OUTPUT="$2"
+fi
+
+# First convert to WAV, then to MP3
+TEMP_WAV=$(mktemp --suffix=.wav)
+trap "rm -f $TEMP_WAV" EXIT
+
+echo "Converting: $INPUT -> WAV (temp)"
+# -g 1.0 = gain boost (default 0.2 is too quiet)
+fluidsynth -ni -g 1.0 "$SOUNDFONT" "$INPUT" -F "$TEMP_WAV" -r 44100
+
+echo "Converting: WAV -> $OUTPUT"
+ffmpeg -y -i "$TEMP_WAV" -acodec libmp3lame -ab 192k "$OUTPUT" 2>/dev/null
+
+echo "Done: $OUTPUT"

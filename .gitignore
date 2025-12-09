@@ -18,6 +18,7 @@
 
 # Logs and Databases
 *.log
+logs/
 *.sqlite3
 *.db
 data/babylon.db

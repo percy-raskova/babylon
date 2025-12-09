@@ -151,3 +151,39 @@ class SimulationConfig(BaseModel):
         default=0.6,
         description="Target consciousness threshold for MASS_AWAKENING event (60%)",
     )
+
+    # Territory dynamics parameters (Sprint 3.5.4)
+    heat_decay_rate: Coefficient = Field(
+        default=0.1,
+        description="Rate at which heat decays for LOW_PROFILE territories (10%)",
+    )
+
+    high_profile_heat_gain: Coefficient = Field(
+        default=0.15,
+        description="Heat gain per tick for HIGH_PROFILE territories (15%)",
+    )
+
+    eviction_heat_threshold: Coefficient = Field(
+        default=0.8,
+        description="Heat threshold for triggering eviction pipeline (80%)",
+    )
+
+    rent_spike_multiplier: PositiveFloat = Field(
+        default=1.5,
+        description="Rent multiplier during eviction (1.5x)",
+    )
+
+    displacement_rate: Coefficient = Field(
+        default=0.1,
+        description="Population displacement rate during eviction (10%)",
+    )
+
+    heat_spillover_rate: Coefficient = Field(
+        default=0.05,
+        description="Rate of heat spillover via ADJACENCY edges (5%)",
+    )
+
+    clarity_profile_coefficient: Coefficient = Field(
+        default=0.3,
+        description="Clarity bonus for HIGH_PROFILE territories (30%)",
+    )

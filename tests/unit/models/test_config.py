@@ -375,3 +375,112 @@ class TestSolidarityTransmissionConfig:
         """Mass awakening threshold > 1.0 is invalid."""
         with pytest.raises(ValidationError):
             SimulationConfig(mass_awakening_threshold=1.1)
+
+
+# =============================================================================
+# TERRITORY DYNAMICS PARAMETERS (Sprint 3.5.4)
+# =============================================================================
+
+
+@pytest.mark.ledger
+class TestTerritoryDynamicsConfig:
+    """SimulationConfig should have territory dynamics parameters.
+
+    Sprint 3.5.4: Layer 0 - The Territorial Substrate.
+    These parameters control heat dynamics, eviction, and spillover.
+    """
+
+    def test_heat_decay_rate_default(self) -> None:
+        """heat_decay_rate defaults to 0.1.
+
+        Rate at which heat decays for LOW_PROFILE territories.
+        """
+        config = SimulationConfig()
+        assert config.heat_decay_rate == 0.1
+
+    def test_high_profile_heat_gain_default(self) -> None:
+        """high_profile_heat_gain defaults to 0.15.
+
+        Heat gain per tick for HIGH_PROFILE territories.
+        """
+        config = SimulationConfig()
+        assert config.high_profile_heat_gain == 0.15
+
+    def test_eviction_heat_threshold_default(self) -> None:
+        """eviction_heat_threshold defaults to 0.8.
+
+        Heat level at which eviction pipeline is triggered.
+        """
+        config = SimulationConfig()
+        assert config.eviction_heat_threshold == 0.8
+
+    def test_rent_spike_multiplier_default(self) -> None:
+        """rent_spike_multiplier defaults to 1.5.
+
+        Rent multiplier during eviction.
+        """
+        config = SimulationConfig()
+        assert config.rent_spike_multiplier == 1.5
+
+    def test_displacement_rate_default(self) -> None:
+        """displacement_rate defaults to 0.1.
+
+        Population displacement rate during eviction.
+        """
+        config = SimulationConfig()
+        assert config.displacement_rate == 0.1
+
+    def test_heat_spillover_rate_default(self) -> None:
+        """heat_spillover_rate defaults to 0.05.
+
+        Rate of heat spillover via ADJACENCY edges.
+        """
+        config = SimulationConfig()
+        assert config.heat_spillover_rate == 0.05
+
+    def test_clarity_profile_coefficient_default(self) -> None:
+        """clarity_profile_coefficient defaults to 0.3.
+
+        Clarity bonus for HIGH_PROFILE territories.
+        """
+        config = SimulationConfig()
+        assert config.clarity_profile_coefficient == 0.3
+
+    def test_territory_params_accept_custom_values(self) -> None:
+        """Can set custom territory dynamics parameters."""
+        config = SimulationConfig(
+            heat_decay_rate=0.2,
+            high_profile_heat_gain=0.25,
+            eviction_heat_threshold=0.7,
+            rent_spike_multiplier=2.0,
+            displacement_rate=0.15,
+            heat_spillover_rate=0.1,
+            clarity_profile_coefficient=0.4,
+        )
+        assert config.heat_decay_rate == 0.2
+        assert config.high_profile_heat_gain == 0.25
+        assert config.eviction_heat_threshold == 0.7
+        assert config.rent_spike_multiplier == 2.0
+        assert config.displacement_rate == 0.15
+        assert config.heat_spillover_rate == 0.1
+        assert config.clarity_profile_coefficient == 0.4
+
+    def test_heat_decay_rate_rejects_negative(self) -> None:
+        """Negative heat decay rate is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(heat_decay_rate=-0.1)
+
+    def test_heat_decay_rate_rejects_greater_than_one(self) -> None:
+        """Heat decay rate > 1.0 is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(heat_decay_rate=1.1)
+
+    def test_rent_spike_multiplier_rejects_zero(self) -> None:
+        """Zero rent spike multiplier is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(rent_spike_multiplier=0.0)
+
+    def test_rent_spike_multiplier_rejects_negative(self) -> None:
+        """Negative rent spike multiplier is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(rent_spike_multiplier=-1.0)

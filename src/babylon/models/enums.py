@@ -8,6 +8,9 @@ Enums defined:
 - EdgeType: Nature of relationships between entities
 - IntensityLevel: Contradiction/tension intensity scale
 - ResolutionType: How contradictions can resolve
+- EventType: Types of simulation events for the narrative layer
+- OperationalProfile: Territory visibility stance (Sprint 3.5.1)
+- SectorType: Strategic sector categories (Sprint 3.5.1)
 """
 
 from enum import StrEnum
@@ -49,6 +52,8 @@ class EdgeType(StrEnum):
         TRIBUTE: Value flow from periphery comprador to core (comprador keeps cut)
         WAGES: Core bourgeoisie paying core workers (super-wages from imperial rent)
         CLIENT_STATE: Imperial subsidy to maintain client state stability
+        TENANCY: Occupant -> Territory relationship (Sprint 3.5.1)
+        ADJACENCY: Territory -> Territory spatial connectivity (Sprint 3.5.1)
     """
 
     EXPLOITATION = "exploitation"
@@ -58,6 +63,8 @@ class EdgeType(StrEnum):
     TRIBUTE = "tribute"
     WAGES = "wages"
     CLIENT_STATE = "client_state"
+    TENANCY = "tenancy"
+    ADJACENCY = "adjacency"
 
 
 class IntensityLevel(StrEnum):
@@ -120,3 +127,47 @@ class EventType(StrEnum):
     SOLIDARITY_AWAKENING = "solidarity_awakening"
     CONSCIOUSNESS_TRANSMISSION = "consciousness_transmission"
     MASS_AWAKENING = "mass_awakening"
+
+
+class OperationalProfile(StrEnum):
+    """Operational profile for territory visibility.
+
+    Sprint 3.5.1: Layer 0 - The Territorial Substrate.
+    The stance system trades visibility for recruitment:
+    - LOW_PROFILE: Safe from eviction, low recruitment (opaque)
+    - HIGH_PROFILE: High recruitment, high heat (transparent)
+
+    "Legibility over Stealth" - The State knows where you are.
+    The game is about staying below the repression threshold.
+
+    Values:
+        LOW_PROFILE: "We are just a reading group/community center."
+        HIGH_PROFILE: "We are a Revolutionary Cell."
+    """
+
+    LOW_PROFILE = "low_profile"
+    HIGH_PROFILE = "high_profile"
+
+
+class SectorType(StrEnum):
+    """Strategic sector categories for territories.
+
+    Sprint 3.5.1: Layer 0 - The Territorial Substrate.
+    Sector types determine the economic and social character of territories
+    and affect the dynamics of recruitment, eviction, and spillover.
+
+    Values:
+        INDUSTRIAL: Factories, warehouses, production centers
+        RESIDENTIAL: Housing, neighborhoods, population centers
+        COMMERCIAL: Shops, markets, service industries
+        UNIVERSITY: Educational institutions, intellectuals
+        DOCKS: Ports, logistics hubs, trade nodes
+        GOVERNMENT: State buildings, bureaucracy, military
+    """
+
+    INDUSTRIAL = "industrial"
+    RESIDENTIAL = "residential"
+    COMMERCIAL = "commercial"
+    UNIVERSITY = "university"
+    DOCKS = "docks"
+    GOVERNMENT = "government"

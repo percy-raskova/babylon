@@ -2,9 +2,9 @@
 # How the pieces fit together
 
 meta:
-  version: "3.0.0"
+  version: "3.1.0"
   updated: "2025-12-08"
-  status: "Phase 2 complete (704 tests, modular System architecture)"
+  status: "Phase 3 in progress (763 tests, Observer + RAG complete, LLM next)"
 
 # =============================================================================
 # THE EMBEDDED TRINITY
@@ -46,10 +46,23 @@ core_architecture:
       location: "src/babylon/rag/"
       contains:
         - "Historical events"
-        - "Theoretical texts (MLM-TW corpus)"
+        - "Theoretical texts (MLM-TW corpus) - NOT YET POPULATED"
         - "Past game states for narrative"
       data_flow: "AI queries for context, generates narrative from state changes"
       key_insight: "AI observes and narrates, never controls mechanics"
+      current_status: "Infrastructure complete, ChromaDB empty (no corpus ingested)"
+
+    superstructure:
+      purpose: "AI narrative layer (Phase 3)"
+      technology: "Observer Pattern + LLM Provider"
+      location: "src/babylon/ai/"
+      contains:
+        - "NarrativeDirector - SimulationObserver implementation"
+        - "DialecticalPromptBuilder - context hierarchy assembly"
+        - "LLM Provider (planned) - Claude/Ollama/DeepSeek abstraction"
+      data_flow: "Observes state → Queries RAG → Builds prompt → Calls LLM → Outputs narrative"
+      key_insight: "Read-only access to simulation state (ADR003)"
+      current_status: "Observer + RAG complete, LLM integration pending (Sprint 3.3)"
 
 # =============================================================================
 # DIRECTORY STRUCTURE
@@ -137,11 +150,32 @@ directory_map:
         - "core/base.schema.json: Metadata envelope"
         - "entities/*.schema.json: 17 entity schemas"
         - "collections/*.schema.json: 17 collection schemas"
+    ai/:
+      purpose: "Superstructure layer - AI narrative generation (Phase 3)"
+      key_files:
+        - "director.py: NarrativeDirector (SimulationObserver)"
+        - "prompt_builder.py: DialecticalPromptBuilder (context hierarchy)"
+        - "llm_provider.py: LLM abstraction (PLANNED - Sprint 3.3)"
+      status: "IMPLEMENTED (59 tests)"
+      data_flow: |
+        1. NarrativeDirector.on_tick(prev, new) called by Simulation
+        2. Detect new events in WorldState.event_log
+        3. Query RagPipeline for historical/theoretical context
+        4. Build context block via DialecticalPromptBuilder
+        5. Call LLM provider (NOT YET IMPLEMENTED)
+        6. Output narrative text
+
     rag/:
       purpose: "Archive layer - semantic memory"
       key_files:
-        - "Chunking and embedding logic"
-        - "ChromaDB integration"
+        - "rag_pipeline.py: RagPipeline (query interface)"
+        - "retrieval.py: QueryResponse, QueryResult models"
+        - "embeddings.py: Embedding generation"
+        - "chunker.py: Document chunking"
+        - "chroma_manager.py: ChromaDB client management"
+      status: "Infrastructure complete, NO DATA POPULATED"
+      note: "ChromaDB collections are empty - no corpus ingested yet"
+
     systems/:
       purpose: "Game systems implementation"
       key_files:
@@ -212,12 +246,26 @@ data_flows:
       - "More event types (wealth_transfer, ideology_drift, etc.)"
 
   ai_narrative:
-    principle: "AI is observer, not controller"
+    principle: "AI is observer, not controller (ADR003)"
+    status: "Partially implemented - LLM call missing"
+    implementation:
+      observer: "NarrativeDirector implements SimulationObserver"
+      context: "DialecticalPromptBuilder assembles context hierarchy"
+      retrieval: "RagPipeline queries ChromaDB (currently empty)"
+      llm: "NOT YET IMPLEMENTED - Sprint 3.3"
     steps:
-      - "Receive state delta (what changed)"
-      - "Query Archive for relevant history/theory"
-      - "Generate narrative text"
+      - "Simulation.step() calls observer.on_tick(prev_state, new_state)"
+      - "NarrativeDirector detects new events in event_log"
+      - "Query RagPipeline for relevant history/theory"
+      - "Build context block: Material Conditions → RAG Context → Events"
+      - "Call LLM provider (MISSING)"
+      - "Output narrative text"
       - "Never modify game mechanics"
+    gaps_identified:
+      - "ChromaDB has no corpus data (RAG returns empty)"
+      - "Only ContradictionSystem emits events (rupture only)"
+      - "No LLM client implementation"
+      - "No CLI runner for vertical slice demo"
 
 # =============================================================================
 # KEY INTERFACES

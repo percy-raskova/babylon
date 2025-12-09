@@ -155,18 +155,71 @@ implemented:
         note: "Legacy - tension now tracked on Relationship edges"
 
   ai_layer:
-    status: "scaffolded"
+    status: "partial"
     components:
+      observer_protocol:
+        status: "complete"
+        details: "SimulationObserver protocol with lifecycle hooks"
+        location: "src/babylon/engine/observer.py"
+        tests: "tests/unit/engine/test_observer_pattern.py (32 tests)"
+        provides:
+          - "SimulationObserver protocol (@runtime_checkable)"
+          - "on_simulation_start(initial_state, config)"
+          - "on_tick(previous_state, new_state)"
+          - "on_simulation_end(final_state)"
+
+      narrative_director:
+        status: "complete"
+        details: "AI Game Master that observes simulation and generates narrative"
+        location: "src/babylon/ai/director.py"
+        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py (27 tests)"
+        provides:
+          - "NarrativeDirector class implementing SimulationObserver"
+          - "RAG pipeline injection (optional)"
+          - "Prompt builder injection (optional)"
+          - "Error handling per ADR003"
+        missing: "LLM client integration (Sprint 3.3)"
+
+      prompt_builder:
+        status: "complete"
+        details: "Builds prompts following Marxist dialectical materialism"
+        location: "src/babylon/ai/prompt_builder.py"
+        tests: "tests/unit/ai/test_prompt_builder.py"
+        provides:
+          - "DialecticalPromptBuilder class"
+          - "build_system_prompt() - AI identity"
+          - "build_context_block(state, rag_context, events)"
+          - "_calculate_tension() - aggregate tension level"
+
+      rag_pipeline:
+        status: "infrastructure_complete"
+        details: "RAG query pipeline implemented, but NO DATA populated"
+        location: "src/babylon/rag/rag_pipeline.py"
+        tests: "RAG module tests"
+        provides:
+          - "RagPipeline.query(text, top_k) → QueryResponse"
+          - "Sync wrapper for async operations"
+        missing: "Corpus data - ChromaDB is empty, no documents to retrieve"
+
       chromadb:
         status: "configured"
-        details: "Connection setup exists"
-        location: "src/babylon/rag/"
-        missing: "Populated embeddings, query interface"
+        details: "ChromaDB 1.x API with PersistentClient"
+        location: "src/babylon/data/chroma_manager.py"
+        api_version: "1.3.5 (modern PersistentClient API)"
+        collections_defined:
+          - "THEORY_COLLECTION: marxist_theory (EMPTY)"
+          - "HISTORY_COLLECTION: game_history (EMPTY)"
+          - "ENTITIES_COLLECTION: entity_embeddings (EMPTY)"
+        missing: "Document ingestion pipeline, corpus data"
 
-      embeddings:
-        status: "partial"
-        details: "entity_embedding_service.py exists"
-        missing: "Full corpus embedded"
+      llm_client:
+        status: "not_implemented"
+        details: "No LLM provider integration yet"
+        priority: "CRITICAL - Sprint 3.3"
+        options:
+          - "Anthropic SDK (Claude)"
+          - "Ollama HTTP API (local models)"
+          - "DeepSeek API (cost-effective alternative)"
 
   tooling:
     status: "functional"
@@ -193,28 +246,48 @@ implemented:
 
 not_implemented:
 
-  observer_protocol:
-    priority: "high"
-    description: "Interface for LLM to observe state changes"
+  llm_provider:
+    priority: "critical"
+    description: "LLM client abstraction for Claude/Ollama"
     blockers: "None - ready to implement"
     phase: 3
+    sprint: "3.3"
+    estimated_lines: 200
 
-  context_builder:
+  event_generation:
     priority: "high"
-    description: "Token-aware function to build LLM context from state"
-    blockers: "None - ready to implement"
+    description: "Systems emit events for wealth transfer, ideology drift"
+    blockers: "None - architecture supports it"
     phase: 3
+    sprint: "3.3"
+    details: |
+      Currently only ContradictionSystem emits events (rupture).
+      ImperialRentSystem needs to emit exploitation events for narrative.
+    estimated_lines: 30
 
-  ai_narrative:
-    priority: "high"
-    description: "LLM generates prose from state changes (Observer Pattern)"
-    blockers: "Event bus needed"
+  rag_corpus:
+    priority: "medium"
+    description: "Marxist theory documents for RAG retrieval"
+    blockers: "None"
     phase: 3
+    sprint: "3.3 (minimal) or Phase 4 (full)"
+    options:
+      - "Static quotes in DialecticalPromptBuilder (MVP)"
+      - "Minimal seed corpus (5-10 documents)"
+      - "Full ingestion pipeline (Phase 4)"
+
+  vertical_slice_cli:
+    priority: "medium"
+    description: "Simple CLI runner to demonstrate vertical slice"
+    blockers: "LLM provider"
+    phase: 3
+    sprint: "3.3"
+    estimated_lines: 50
 
   ui:
-    priority: "medium"
+    priority: "low"
     description: "Player interface (NiceGUI planned)"
-    blockers: "Phase 3 narrative layer"
+    blockers: "Phase 3 vertical slice complete"
     phase: 4
 
   branching_history:
@@ -251,11 +324,18 @@ planned:
 # =============================================================================
 
 current_focus:
-  primary: "PHASE 2 COMPLETE - Ready for Phase 3: Observer Pattern"
+  primary: "PHASE 3 IN PROGRESS - Sprint 3.3: LLM Integration for Vertical Slice"
   roadmap: "brainstorm/plans/four-phase-engine-blueprint.md"
   phase2_design: "brainstorm/plans/phase2-game-loop-design.md"
   architecture_spec: "ai-docs/game-loop-architecture.yaml"
   verification_framework: "brainstorm/babylon-protocol-verification.md"
+
+  vertical_slice_scope:
+    description: "Minimal complete gameplay experience"
+    entities: "Factory worker (proletariat) vs Capitalist (bourgeoisie)"
+    location: "One city (implicit)"
+    phenomenon: "Wealth transfer via Imperial Rent"
+    flow: "Simulation tick → Events → RAG context → LLM prompt → Narrative output"
 
   recently_completed:
     - "XML to JSON migration"
@@ -298,8 +378,47 @@ current_focus:
     - "Sprint 11: System Protocol and 4 System implementations"
     - "Sprint 12: Simulation facade and entity factories (57 tests, 704 total)"
     - "Integration Proof: 100-tick simulation proves wealth transfer dynamics"
+    - "Sprint 3.1: Observer Pattern - SimulationObserver protocol (32 tests, 736 total)"
+    - "Sprint 3.2: RAG Integration - RagPipeline injection into NarrativeDirector (27 tests, 763 total)"
+    - "Tech debt: Fixed 90 mypy errors in RAG module (Mikado refactor)"
+    - "Tech debt: Migrated ChromaDB API from deprecated Client to PersistentClient"
 
   current_phase:
+    name: "Phase 3: The Observer Pattern"
+    status: "IN PROGRESS - Sprint 3.3 next"
+    goal: "AI narrates state changes without controlling simulation"
+    tech: "Observer Protocol + LLM abstraction + Context Builder"
+    result_so_far: "763 tests passing, Observer Pattern complete, RAG integration complete"
+    key_insight: "AI observes and narrates, never controls mechanics (ADR003)"
+    completed_sprints:
+      sprint_3_1:
+        name: "The Dialectical Interface"
+        status: "COMPLETE"
+        deliverables:
+          - "SimulationObserver protocol"
+          - "NarrativeDirector implementation"
+          - "Observer lifecycle hooks"
+        tests_added: 32
+      sprint_3_2:
+        name: "The Materialist Retrieval"
+        status: "COMPLETE"
+        deliverables:
+          - "DialecticalPromptBuilder"
+          - "RAG pipeline injection"
+          - "Context hierarchy assembly"
+        tests_added: 27
+    remaining_work:
+      sprint_3_3:
+        name: "LLM Integration (Vertical Slice)"
+        status: "NOT STARTED"
+        deliverables:
+          - "LLM Provider protocol + implementations"
+          - "Event generation in ImperialRentSystem"
+          - "Static theoretical quotes fallback"
+          - "Vertical slice CLI runner"
+    architecture: "Observer reads state, builds context, calls LLM, outputs narrative"
+
+  previous_phase:
     name: "Phase 2: The Topological Engine"
     status: "COMPLETE"
     goal: "Game loop that runs equations forward in time"
@@ -318,21 +437,15 @@ current_focus:
     architecture: "Graph + Math = History"
 
   next_phase:
-    name: "Phase 3: The Observer Pattern"
-    goal: "AI narrates state changes without controlling simulation"
-    tech: "Observer Protocol + LLM abstraction + Context Builder"
+    name: "Phase 4: The Control Room"
+    goal: "NiceGUI dashboard for simulation control and visualization"
+    tech: "NiceGUI + State visualizations + User controls"
     key_components:
-      - "Observer Protocol - interface for LLM to observe state"
-      - "Context Builder - token-aware state serialization"
-      - "LLM Abstraction - Ollama/Claude provider"
-      - "More Event Types - wealth_transfer, ideology_drift, etc."
-      - "AI Observer - generate narrative from events (read-only)"
-    blockers: "None - ready to begin"
-    prerequisites_complete:
-      - "EventBus implemented (src/babylon/engine/event_bus.py)"
-      - "ServiceContainer implemented (src/babylon/engine/services.py)"
-      - "History system complete (undo/redo, persistence)"
-      - "100-tick simulation proven working"
+      - "State dashboard - entity status, tension gauges"
+      - "Narrative display - LLM-generated prose"
+      - "Control panel - start/stop/step simulation"
+      - "History browser - timeline with undo/redo"
+    blockers: "Phase 3 vertical slice must be complete"
 
   sprint_status:
     sprint_1:
@@ -509,6 +622,43 @@ current_focus:
       tests_passing: 704
       notes: "Integration proof: 100-tick wealth transfer verified"
 
+    sprint_3_1:
+      name: "The Dialectical Interface (Observer Pattern)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/engine/observer.py (SimulationObserver protocol)"
+        - "src/babylon/ai/director.py (NarrativeDirector)"
+        - "Modified src/babylon/engine/simulation.py (observer support)"
+        - "tests/unit/engine/test_observer_pattern.py (32 tests)"
+        - "tests/unit/ai/test_narrative_director.py"
+      tests_passing: 736
+      notes: "Observer Pattern for AI narrative integration"
+
+    sprint_3_2:
+      name: "The Materialist Retrieval (RAG Integration)"
+      status: "COMPLETE"
+      deliverables:
+        - "src/babylon/ai/prompt_builder.py (DialecticalPromptBuilder)"
+        - "Modified src/babylon/ai/director.py (RAG injection)"
+        - "tests/unit/ai/test_prompt_builder.py"
+        - "tests/unit/ai/test_director_rag.py (27 tests)"
+      tests_passing: 763
+      notes: "RAG pipeline integrated, context hierarchy implemented"
+      tech_debt_resolved:
+        - "90 mypy errors in RAG module (Mikado refactor)"
+        - "ChromaDB API migration to PersistentClient"
+
+    sprint_3_3:
+      name: "LLM Integration (Vertical Slice)"
+      status: "NOT STARTED"
+      planned_deliverables:
+        - "src/babylon/ai/llm_provider.py (protocol + implementations)"
+        - "Modified ImperialRentSystem (event generation)"
+        - "Vertical slice CLI runner"
+        - "Static theoretical quotes in DialecticalPromptBuilder"
+      estimated_tests: 20
+      scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
+
   phase_roadmap:
     phase_1: "Minimum Viable Dialectic - prove the equations"
     phase_2: "Topological Engine - the physics/update loop"
@@ -516,20 +666,20 @@ current_focus:
     phase_4: "Control Room - NiceGUI dashboard"
 
   next_steps:
-    - "PHASE 2 COMPLETE - 704 tests passing, modular System architecture proven"
-    - "Phase 3: Observer Protocol - interface for LLM to observe state"
-    - "Phase 3: Context Builder - token-aware state serialization"
-    - "Phase 3: LLM Abstraction - Ollama/Claude provider"
-    - "Phase 3: More Event Types - wealth_transfer, ideology_drift, tension_change"
-    - "Phase 3: AI Observer - LLM narrates events (read-only access)"
+    - "Sprint 3.3: LLM Provider protocol (Claude/Ollama/DeepSeek)"
+    - "Sprint 3.3: Add event generation to ImperialRentSystem"
+    - "Sprint 3.3: Wire NarrativeDirector.on_tick() to call LLM"
+    - "Sprint 3.3: Add static theoretical quotes as RAG fallback"
+    - "Sprint 3.3: Create vertical slice CLI runner"
     - "Phase 4: NiceGUI Control Room - dashboard for simulation"
+    - "Optional: Full RAG corpus ingestion pipeline"
     - "Optional: Timeline branching for history stack"
     - "Optional: Additional entity types and relationship types"
 
   mantra: "Graph + Math = History"
   old_mantra: "State is data. Engine is logic. They never mix."
-  milestone: "PHASE 2 ACHIEVED: 704 tests passing, modular System architecture"
-  next_milestone: "PHASE 3: AI Observer generates narrative from state changes"
+  milestone: "PHASE 3 IN PROGRESS: 763 tests, Observer + RAG complete, LLM next"
+  next_milestone: "VERTICAL SLICE: Simulation → Events → LLM → Narrative output"
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.

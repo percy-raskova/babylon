@@ -602,6 +602,120 @@ decisions:
 
     test_count_impact: "Added 17+ tests for System implementations (704 total)"
 
+  ADR014_vertical_slice_scope:
+    status: "accepted"
+    date: "2025-12-08"
+    title: "Vertical Slice Scope for Phase 3 Completion"
+    context: |
+      Phase 3 aims to add AI narrative generation to the simulation. Before
+      horizontal expansion (more entities, locations, phenomena), we need a
+      complete vertical slice proving the full data flow works:
+
+      Simulation → Events → RAG Context → LLM Prompt → Narrative Output
+
+      The question is: what is the minimum scope for this vertical slice?
+
+    decision: |
+      Vertical slice scope:
+      - Entities: Factory worker (proletariat) vs Capitalist (bourgeoisie) - 2 nodes
+      - Location: One city (implicit, not modeled as separate entity)
+      - Phenomenon: Wealth transfer via Imperial Rent - single economic mechanism
+      - Output: Terminal/CLI narrative display
+
+      Explicitly deferred:
+      - Full RAG corpus ingestion (use static quotes instead)
+      - NiceGUI frontend (Phase 4)
+      - Multiple scenarios/entity types
+      - Save/load game state with narrative
+      - Multiple cities or geographic hierarchy
+
+    rationale:
+      - "Proves complete data flow with minimal complexity"
+      - "Two-node scenario already proven in Phase 2 integration tests"
+      - "Imperial Rent is the core MLM-TW mechanic - wealth extraction"
+      - "Static quotes sufficient to demonstrate RAG integration pattern"
+      - "CLI output enables rapid iteration without UI complexity"
+      - "Deferred features can be added after vertical slice validates approach"
+
+    implementation:
+      sprint_3_3_deliverables:
+        - "LLM Provider protocol with Claude/Ollama/DeepSeek implementations"
+        - "Event generation in ImperialRentSystem (exploitation events)"
+        - "Static theoretical quotes in DialecticalPromptBuilder as RAG fallback"
+        - "Vertical slice CLI runner demonstrating full flow"
+      estimated_code: "~300-400 lines"
+      estimated_tests: "~20 tests"
+
+    gaps_addressed:
+      gap_1: "No LLM client → LLM Provider abstraction"
+      gap_2: "No events until rupture → ImperialRentSystem event generation"
+      gap_3: "Empty RAG corpus → Static quotes fallback"
+      gap_4: "No user-visible output → CLI runner"
+
+    consequences:
+      positive:
+        - "Clear, achievable scope for Sprint 3.3"
+        - "Validates architecture before horizontal expansion"
+        - "Deferred features remain possible without rework"
+      negative:
+        - "Not a 'complete game' - just proves the tech stack"
+        - "RAG value not fully demonstrated (static quotes)"
+
+    success_criteria: |
+      Run vertical slice CLI, observe:
+      1. Simulation advances (tick increases)
+      2. Wealth transfers (worker impoverished)
+      3. Events generated and logged
+      4. LLM called with proper context
+      5. Narrative text output to terminal
+
+  ADR015_llm_provider_abstraction:
+    status: "accepted"
+    date: "2025-12-08"
+    title: "LLM Provider Protocol for Multiple Backends"
+    context: |
+      The NarrativeDirector needs to call an LLM to generate narrative. Multiple
+      LLM options exist with different tradeoffs:
+      - Claude (Anthropic): High quality, API costs
+      - Ollama: Local, free, variable quality
+      - DeepSeek: Cost-effective API alternative
+
+      Need abstraction to support all without coupling Director to specific provider.
+
+    decision: |
+      Create LLMProvider protocol with implementations:
+
+      @runtime_checkable
+      class LLMProvider(Protocol):
+          def generate(self, prompt: str, system: str | None = None) -> str:
+              '''Generate text from prompt.'''
+              ...
+
+      Implementations:
+      - ClaudeProvider (Anthropic SDK)
+      - OllamaProvider (HTTP API)
+      - DeepSeekProvider (OpenAI-compatible API)
+
+      NarrativeDirector accepts optional LLMProvider in constructor.
+      If None, narrative is logged but not generated (backward compat).
+
+    rationale:
+      - "Protocol pattern matches existing SimulationObserver design"
+      - "Optional injection maintains backward compatibility with tests"
+      - "Easy to add new providers without modifying Director"
+      - "Sync API matches Observer pattern (not async)"
+
+    location: "src/babylon/ai/llm_provider.py"
+
+    consequences:
+      positive:
+        - "Flexible provider selection"
+        - "Easy testing with mock providers"
+        - "No vendor lock-in"
+      negative:
+        - "One more abstraction layer"
+        - "Must maintain multiple provider implementations"
+
 # =============================================================================
 # PENDING DECISIONS
 # =============================================================================

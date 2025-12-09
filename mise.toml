@@ -1,0 +1,84 @@
+# Mise Task Runner Configuration for Babylon
+# https://mise.jdx.dev/tasks/toml-tasks.html
+
+[env]
+# Default soundfont - FluidR3_GM is high quality General MIDI
+SOUNDFONT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
+MUSIC_DIR = "assets/music"
+AUDIO_OUTPUT_DIR = "assets/audio"
+
+# =============================================================================
+# DEVELOPMENT TASKS
+# =============================================================================
+
+[tasks.lint]
+description = "Run ruff linter with auto-fix"
+run = "poetry run ruff check . --fix"
+
+[tasks.format]
+description = "Run ruff formatter"
+run = "poetry run ruff format ."
+
+[tasks.typecheck]
+description = "Run mypy type checker"
+run = "poetry run mypy src"
+
+[tasks.test]
+description = "Run all tests except AI evals"
+run = "poetry run pytest -m 'not ai'"
+
+[tasks.test-fast]
+description = "Run fast math/logic tests only"
+run = "poetry run pytest -m 'math or ledger' -x"
+
+[tasks.test-all]
+description = "Run complete test suite including AI evals"
+run = "poetry run pytest"
+
+[tasks.check]
+description = "Run lint, format, typecheck in sequence"
+run = ["mise run lint", "mise run format", "mise run typecheck"]
+
+# =============================================================================
+# MUSIC GENERATION & CONVERSION TASKS
+# =============================================================================
+
+[tasks.midi-to-wav]
+description = "Convert a MIDI file to WAV using FluidSynth"
+run = "tools/scripts/midi-to-wav.sh"
+
+[tasks.midi-to-mp3]
+description = "Convert a MIDI file to MP3 (requires ffmpeg)"
+run = "tools/scripts/midi-to-mp3.sh"
+
+[tasks.midi-to-ogg]
+description = "Convert a MIDI file to OGG Vorbis (good for games)"
+run = "tools/scripts/midi-to-ogg.sh"
+
+[tasks.midi-convert-all]
+description = "Convert all MIDI files to specified format (wav|mp3|ogg)"
+run = "tools/scripts/midi-convert-all.sh"
+
+[tasks.midi-play]
+description = "Play a MIDI file through speakers using FluidSynth"
+run = "tools/scripts/midi-play.sh"
+
+[tasks.midi-list]
+description = "List all MIDI files in the music directory"
+run = "find $MUSIC_DIR -name '*.mid' -printf '  %P\\n' | sort && echo '' && echo \"Total: $(find $MUSIC_DIR -name '*.mid' | wc -l) files\""
+
+[tasks.midi-generate-fascist]
+description = "Generate all fascist faction MIDI tracks"
+run = "cd tools/fascist_soundtrack && for f in generate_*.py; do echo \"Generating: $f\"; poetry run python \"$f\"; done"
+
+# =============================================================================
+# SOUNDFONT TASKS
+# =============================================================================
+
+[tasks.soundfont-list]
+description = "List available soundfonts on the system"
+run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"
+
+[tasks.soundfont-info]
+description = "Show info about the current soundfont"
+run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""

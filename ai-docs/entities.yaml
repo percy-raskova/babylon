@@ -131,11 +131,28 @@ entities:
     key_fields:
       - "relation_to_production: Owner/seller/etc."
       - "interests: Material interests"
-      - "consciousness: Current awareness"
+      - "ideology: IdeologicalProfile (multi-dimensional consciousness)"
     relationships:
       - "exploits → Class"
       - "exploited_by → Class"
       - "comprises → Faction (class composition)"
+
+  ideological_profile:
+    id_pattern: "Embedded in SocialClass.ideology"
+    location: "src/babylon/models/entities/social_class.py"
+    description: "Multi-dimensional consciousness model (Sprint 3.4.3 George Jackson Refactor)"
+    key_fields:
+      - "class_consciousness: Float [0, 1] - Vertical Axis (Capital vs Labor)"
+      - "national_identity: Float [0, 1] - Horizontal Axis (Internationalist vs Nativist)"
+      - "agitation: Float [0, ∞) - Energy magnitude from crisis"
+    dynamics:
+      crisis_routing: |
+        When wages fall, agitation energy is generated.
+        Agitation + Solidarity → class_consciousness increases (Revolution path)
+        Agitation + No Solidarity → national_identity increases (Fascism path)
+    formula: "calculate_ideological_routing(wage_change, solidarity_pressure, current_profile)"
+    key_insight: "Fascism is the defensive form of capitalism."
+    note: "Replaced scalar ideology: float [-1, 1] in Sprint 3.4.3"
 
   crisis:
     id_pattern: "CRISIS_001, CRISIS_002, ..."

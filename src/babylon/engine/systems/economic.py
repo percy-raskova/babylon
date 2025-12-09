@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
-from babylon.models.enums import EdgeType
+from babylon.engine.event_bus import Event
+from babylon.models.enums import EdgeType, EventType
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
@@ -21,7 +22,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        _context: dict[str, Any],
+        context: dict[str, Any],
     ) -> None:
         """Apply imperial rent extraction to all exploitation edges."""
         # Get formula from registry
@@ -60,3 +61,19 @@ class ImperialRentSystem:
 
             # Record value flow
             graph.edges[source_id, target_id]["value_flow"] = rent
+
+            # Emit event for AI narrative layer (ignore floating point noise)
+            if rent > 0.01:
+                tick = context.get("tick", 0)
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.SURPLUS_EXTRACTION,
+                        tick=tick,
+                        payload={
+                            "source_id": source_id,
+                            "target_id": target_id,
+                            "amount": rent,
+                            "mechanism": "imperial_rent",
+                        },
+                    )
+                )

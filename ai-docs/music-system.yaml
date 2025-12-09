@@ -565,6 +565,274 @@ commands:
   convert_to_wav: "fluidsynth -F output.wav /path/to/soundfont.sf2 input.mid"
 
 # =============================================================================
+# MIDI 1.0 SPECIFICATION REFERENCE
+# Source: https://midi.org/summary-of-midi-1-0-messages
+# =============================================================================
+
+midi_1_0_spec:
+  description: |
+    MIDI 1.0 is a hardware and software specification enabling exchange of
+    musical information (notes, program changes, expression control) between
+    different instruments and devices. Established 1983, still foundational.
+
+  channels:
+    range: "0-15 (displayed as 1-16)"
+    percussion: "Channel 9 (displayed as 10) - reserved for drums in GM"
+    melodic: "Channels 0-8, 10-15 (displayed as 1-9, 11-16)"
+
+  message_types:
+    note_off:
+      status_byte: "0x80-0x8F (1000nnnn)"
+      data: "key (0-127), velocity (0-127)"
+
+    note_on:
+      status_byte: "0x90-0x9F (1001nnnn)"
+      data: "key (0-127), velocity (0-127)"
+      note: "velocity 0 = note off"
+
+    control_change:
+      status_byte: "0xB0-0xBF (1011nnnn)"
+      data: "controller (0-119), value (0-127)"
+      reserved: "120-127 are Channel Mode Messages"
+
+    program_change:
+      status_byte: "0xC0-0xCF (1100nnnn)"
+      data: "program number (0-127)"
+
+    pitch_bend:
+      status_byte: "0xE0-0xEF (1110nnnn)"
+      data: "LSB (0-127), MSB (0-127)"
+      center: "0x2000 (8192)"
+      range: "0-16383 (14-bit resolution)"
+
+  timing:
+    clock: "24 MIDI clocks per quarter note"
+    active_sensing: "300ms max between messages"
+
+  value_ranges:
+    velocity: "0-127 (0=note off, 1=softest, 127=loudest)"
+    note_number: "0-127 (C-1 to G9)"
+    program: "0-127 (GM assigns specific instruments)"
+    controller: "0-127 (0-119 for CC, 120-127 for mode)"
+
+# =============================================================================
+# GENERAL MIDI (GM) SPECIFICATION
+# Source: https://midi.org/general-midi-level-1
+# =============================================================================
+
+general_midi:
+  description: |
+    General MIDI defines a standard sound set so MIDI files are portable
+    across different synthesizers. Without GM, a file made on one device
+    might sound completely different on another.
+
+  requirements:
+    voices: "24 fully dynamic, OR 16 melodic + 8 percussion"
+    channels: "All 16 channels supported"
+    instruments: "128 presets conforming to GM Sound Set"
+    percussion: "47 preset sounds on Channel 10"
+
+  # Program numbers 0-127 (displayed as 1-128)
+  # Grouped into 16 families of 8 instruments each
+  instrument_families:
+    piano:        "0-7:   Acoustic Grand, Bright, Electric Grand, Honky-tonk, EP1, EP2, Harpsichord, Clavinet"
+    chromatic:    "8-15:  Celesta, Glockenspiel, Music Box, Vibraphone, Marimba, Xylophone, Tubular Bells, Dulcimer"
+    organ:        "16-23: Drawbar, Percussive, Rock, Church, Reed, Accordion, Harmonica, Tango Accordion"
+    guitar:       "24-31: Nylon, Steel, Jazz, Clean, Muted, Overdriven, Distortion, Harmonics"
+    bass:         "32-39: Acoustic, Finger, Pick, Fretless, Slap1, Slap2, Synth1, Synth2"
+    strings:      "40-47: Violin, Viola, Cello, Contrabass, Tremolo, Pizzicato, Orchestral, Timpani"
+    ensemble:     "48-55: Strings1, Strings2, SynthStrings1, SynthStrings2, Choir Aahs, Voice Oohs, Synth Voice, Orchestra Hit"
+    brass:        "56-63: Trumpet, Trombone, Tuba, Muted Trumpet, French Horn, Brass Section, SynthBrass1, SynthBrass2"
+    reed:         "64-71: Soprano Sax, Alto Sax, Tenor Sax, Baritone Sax, Oboe, English Horn, Bassoon, Clarinet"
+    pipe:         "72-79: Piccolo, Flute, Recorder, Pan Flute, Blown Bottle, Shakuhachi, Whistle, Ocarina"
+    synth_lead:   "80-87: Square, Sawtooth, Calliope, Chiff, Charang, Voice, Fifths, Bass+Lead"
+    synth_pad:    "88-95: New Age, Warm, Polysynth, Choir, Bowed, Metallic, Halo, Sweep"
+    synth_fx:     "96-103: Rain, Soundtrack, Crystal, Atmosphere, Brightness, Goblins, Echoes, Sci-Fi"
+    ethnic:       "104-111: Sitar, Banjo, Shamisen, Koto, Kalimba, Bagpipe, Fiddle, Shanai"
+    percussive:   "112-119: Tinkle Bell, Agogo, Steel Drums, Woodblock, Taiko, Melodic Tom, Synth Drum, Reverse Cymbal"
+    sound_fx:     "120-127: Guitar Fret, Breath, Seashore, Bird, Telephone, Helicopter, Applause, Gunshot"
+
+  # Programs used in Babylon (0-indexed)
+  babylon_programs:
+    harpsichord: 6         # The Machine / Surveillance
+    rock_organ: 19         # False Grandeur (Church=20 for more majesty)
+    church_organ: 20       # Maximum grandeur
+    cello: 42              # Deep foreboding
+    tremolo_strings: 44    # Anxiety (never rests)
+    orchestral_strings: 47 # Rich ensemble
+    timpani: 47            # The Clock / Jackboot (NOTE: same as strings!)
+    string_ensemble: 48    # The Masses
+    trombone: 57           # Heavy brass
+    tuba: 58               # Deepest brass
+    french_horn: 60        # Military authority
+    brass_section: 61      # State Violence
+
+  # Percussion on Channel 9 (Channel 10 in 1-indexed)
+  # Note numbers 35-81 (GM1), 27-87 (GM2)
+  percussion_map:
+    # Kick drums
+    35: "Acoustic Bass Drum"
+    36: "Bass Drum 1 (standard kick)"
+
+    # Snares
+    37: "Side Stick (rim shot)"
+    38: "Acoustic Snare"
+    39: "Hand Clap"
+    40: "Electric Snare"
+
+    # Toms (low to high)
+    41: "Low Floor Tom"
+    43: "High Floor Tom"
+    45: "Low Tom"
+    47: "Low Mid Tom"
+    48: "High Mid Tom"
+    50: "High Tom"
+
+    # Hi-hats
+    42: "Closed Hi-hat"
+    44: "Pedal Hi-hat"
+    46: "Open Hi-hat"
+
+    # Cymbals
+    49: "Crash Cymbal 1"
+    51: "Ride Cymbal 1"
+    52: "Chinese Cymbal"
+    53: "Ride Bell"
+    55: "Splash Cymbal"
+    57: "Crash Cymbal 2"
+    59: "Ride Cymbal 2"
+
+    # Latin percussion
+    54: "Tambourine"
+    56: "Cowbell"
+    58: "Vibraslap"
+    60: "High Bongo"
+    61: "Low Bongo"
+    62: "Mute High Conga"
+    63: "Open High Conga"
+    64: "Low Conga"
+    65: "High Timbale"
+    66: "Low Timbale"
+    67: "High Agogo"
+    68: "Low Agogo"
+    69: "Cabasa"
+    70: "Maracas"
+    75: "Claves"
+    76: "High Wood Block"
+    77: "Low Wood Block"
+
+    # Other
+    71: "Short Whistle"
+    72: "Long Whistle"
+    73: "Short Guiro"
+    74: "Long Guiro"
+    78: "Mute Cuica"
+    79: "Open Cuica"
+    80: "Mute Triangle"
+    81: "Open Triangle"
+
+# =============================================================================
+# MIDI NOTE NUMBER REFERENCE
+# Source: https://newt.phys.unsw.edu.au/jw/notes.html
+# =============================================================================
+
+note_reference:
+  description: |
+    MIDI note numbers 0-127 span from C-1 (8.18 Hz) to G9 (12543.85 Hz).
+    A4 = note 69 = 440 Hz is the standard reference pitch.
+
+  formula:
+    note_to_freq: "f = 440 × 2^((n - 69) / 12)"
+    freq_to_note: "n = 69 + 12 × log2(f / 440)"
+
+  reference_points:
+    C_minus1: { note: 0, freq: 8.18 }
+    C0: { note: 12, freq: 16.35 }
+    C1: { note: 24, freq: 32.70 }
+    C2: { note: 36, freq: 65.41 }
+    C3: { note: 48, freq: 130.81, name: "Tenor C" }
+    C4: { note: 60, freq: 261.63, name: "Middle C" }
+    A4: { note: 69, freq: 440.00, name: "Concert A (tuning reference)" }
+    C5: { note: 72, freq: 523.25 }
+    C6: { note: 84, freq: 1046.50 }
+    C7: { note: 96, freq: 2093.00 }
+    C8: { note: 108, freq: 4186.01, name: "Top of piano" }
+
+  # Complete chromatic scale for octaves used in Babylon
+  babylon_notes:
+    octave_2:  # Bass register
+      C2: 36
+      Db2: 37
+      D2: 38
+      Eb2: 39
+      E2: 40    # Babylon root note
+      F2: 41    # Phrygian flat 2 (dread)
+      Gb2: 42
+      G2: 43
+      Ab2: 44
+      A2: 45
+      Bb2: 46   # Tritone from E (devil's interval)
+      B2: 47
+
+    octave_3:  # Tenor register
+      C3: 48
+      Db3: 49
+      D3: 50
+      Eb3: 51
+      E3: 52
+      F3: 53
+      Gb3: 54
+      G3: 55
+      Ab3: 56
+      A3: 57
+      Bb3: 58
+      B3: 59
+
+    octave_4:  # Alto register (contains middle C)
+      C4: 60    # Middle C
+      Db4: 61
+      D4: 62
+      Eb4: 63
+      E4: 64
+      F4: 65
+      Gb4: 66
+      G4: 67
+      Ab4: 68
+      A4: 69    # Concert A = 440 Hz
+      Bb4: 70
+      B4: 71
+
+    octave_5:  # Soprano register
+      C5: 72
+      Db5: 73
+      D5: 74
+      Eb5: 75
+      E5: 76
+      F5: 77
+      Gb5: 78
+      G5: 79
+      Ab5: 80
+      A5: 81
+      Bb5: 82
+      B5: 83
+
+  intervals:
+    description: "Semitone distances from root (E)"
+    unison: 0
+    minor_2nd: 1      # F in E Phrygian (the dread note)
+    major_2nd: 2
+    minor_3rd: 3      # G in E minor
+    major_3rd: 4
+    perfect_4th: 5    # A
+    tritone: 6        # Bb - the devil's interval, maximum tension
+    perfect_5th: 7    # B
+    minor_6th: 8
+    major_6th: 9
+    minor_7th: 10     # D
+    major_7th: 11
+    octave: 12
+
+# =============================================================================
 # QUICK REFERENCE: MIDIUTIL API
 # =============================================================================
 
@@ -588,23 +856,14 @@ midiutil_api:
     with open(path, "wb") as f:
         midi.writeFile(f)
 
-  common_programs:
-    piano: 0
-    harpsichord: 6
-    organ: 19
-    cello: 42
-    tremolo_strings: 44
-    strings: 48
-    trombone: 57
-    tuba: 58
-    french_horn: 60
-    brass: 61
-    timpani: 47
-
-  midi_note_numbers: |
-    C4 (middle C) = 60
-    Each semitone = +1
-    Each octave = +12
-    E2=40, E3=52, E4=64, E5=76
-    F2=41, F3=53, F4=65, F5=77 (Phrygian flat 2)
-    Bb2=46, Bb3=58, Bb4=70 (tritone from E)
+  # Common Control Change numbers
+  control_changes:
+    modulation: 1
+    breath: 2
+    volume: 7
+    pan: 10
+    expression: 11
+    sustain: 64
+    soft_pedal: 67
+    all_sound_off: 120
+    all_notes_off: 123

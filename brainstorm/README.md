@@ -88,3 +88,4 @@ brainstorm/
 |------|--------|-----------|
 | [minimum-playable-slice.md](minimum-playable-slice.md) | Superseded | Refined by four-phase blueprint |
 | [gramscian-wiki-engine.md](gramscian-wiki-engine.md) | Deferred (Phase 4+) | Hegemony as wiki control |
+| [rag-input-validation.md](rag-input-validation.md) | Ready (Phase 3) | RAG as semantic firewall for player input |

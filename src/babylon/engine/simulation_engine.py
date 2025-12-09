@@ -98,7 +98,11 @@ _DEFAULT_SYSTEMS: list[System] = [
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
 
 
-def step(state: WorldState, config: SimulationConfig) -> WorldState:
+def step(
+    state: WorldState,
+    config: SimulationConfig,
+    persistent_context: dict[str, Any] | None = None,
+) -> WorldState:
     """Advance simulation by one tick using the modular engine.
 
     This is the heart of Phase 2. It transforms a WorldState through
@@ -107,6 +111,9 @@ def step(state: WorldState, config: SimulationConfig) -> WorldState:
     Args:
         state: Current world state (immutable)
         config: Simulation configuration with formula coefficients
+        persistent_context: Optional context dict that persists across ticks.
+            Used by systems that need to track state between ticks (e.g.,
+            ConsciousnessSystem's previous_wages for bifurcation mechanic).
 
     Returns:
         New WorldState at tick + 1
@@ -130,12 +137,24 @@ def step(state: WorldState, config: SimulationConfig) -> WorldState:
     services = ServiceContainer.create(config)
 
     # The Context acts as the shared bus for the tick
+    # Merge persistent_context into per-tick context
     context: dict[str, Any] = {
         "tick": state.tick,
     }
+    if persistent_context is not None:
+        # Preserve keys from persistent context (e.g., previous_wages)
+        for key, value in persistent_context.items():
+            if key != "tick":  # Don't override tick
+                context[key] = value
 
     # Run all systems through the engine
     _DEFAULT_ENGINE.run_tick(G, services, context)
+
+    # Update persistent context with any changes made by systems
+    if persistent_context is not None:
+        for key, value in context.items():
+            if key != "tick":
+                persistent_context[key] = value
 
     # Convert EventBus history to string log for backward compatibility
     for event in services.event_bus.get_history():

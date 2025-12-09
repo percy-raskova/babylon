@@ -9,13 +9,17 @@ The tests verify:
 2. Validation of ID patterns and field constraints
 3. Integration with Sprint 1 types (Currency, Ideology, Probability)
 4. Serialization for Ledger (SQLite) storage
+
+Sprint 3.4.3 (George Jackson Refactor): ideology is now an IdeologicalProfile
+with class_consciousness, national_identity, and agitation fields.
+Tests updated to work with the multi-dimensional consciousness model.
 """
 
 import pytest
 from pydantic import ValidationError
 
 # These imports should fail until the model is implemented
-from babylon.models import SocialClass
+from babylon.models import IdeologicalProfile, SocialClass
 from babylon.models.enums import SocialRole
 
 # =============================================================================
@@ -39,7 +43,9 @@ class TestSocialClassCreation:
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
         # Check defaults are applied
         assert worker.wealth == 10.0
-        assert worker.ideology == 0.0
+        # ideology is now IdeologicalProfile (Sprint 3.4.3)
+        assert isinstance(worker.ideology, IdeologicalProfile)
+        assert worker.ideology.class_consciousness == 0.0
 
     def test_phase1_blueprint_worker(self) -> None:
         """Create the Phase 1 Worker node from the blueprint."""
@@ -48,11 +54,13 @@ class TestSocialClassCreation:
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=20.0,
-            ideology=-0.3,  # Leaning revolutionary
+            ideology=-0.3,  # Leaning revolutionary (legacy conversion)
         )
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
         assert worker.wealth == 20.0
-        assert worker.ideology == -0.3
+        # Legacy ideology=-0.3 converts to class_consciousness=0.65
+        assert isinstance(worker.ideology, IdeologicalProfile)
+        assert worker.ideology.to_legacy_ideology() == pytest.approx(-0.3, abs=0.01)
 
     def test_phase1_blueprint_owner(self) -> None:
         """Create the Phase 1 Owner node from the blueprint."""
@@ -61,11 +69,13 @@ class TestSocialClassCreation:
             name="Core Factory Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=1000.0,
-            ideology=0.7,  # Leaning reactionary
+            ideology=0.7,  # Leaning reactionary (legacy conversion)
         )
         assert owner.role == SocialRole.CORE_BOURGEOISIE
         assert owner.wealth == 1000.0
-        assert owner.ideology == 0.7
+        # Legacy ideology=0.7 converts to class_consciousness=0.15
+        assert isinstance(owner.ideology, IdeologicalProfile)
+        assert owner.ideology.to_legacy_ideology() == pytest.approx(0.7, abs=0.01)
 
     def test_all_social_roles_valid(self) -> None:
         """All SocialRole enum values are valid for creating a SocialClass."""
@@ -164,21 +174,31 @@ class TestSocialClassValidation:
             )
 
     def test_rejects_ideology_out_of_range(self) -> None:
-        """Ideology must be [-1.0, 1.0]."""
-        with pytest.raises(ValidationError):
-            SocialClass(
-                id="C001",
-                name="Test",
-                role=SocialRole.PERIPHERY_PROLETARIAT,
-                ideology=-1.5,
-            )
-        with pytest.raises(ValidationError):
-            SocialClass(
-                id="C001",
-                name="Test",
-                role=SocialRole.PERIPHERY_PROLETARIAT,
-                ideology=1.5,
-            )
+        """Legacy ideology must be [-1.0, 1.0] for conversion to work correctly.
+
+        Note: Sprint 3.4.3 changed ideology to IdeologicalProfile. Legacy floats
+        outside [-1, 1] are now clamped by the from_legacy_ideology() converter,
+        so no ValidationError is raised. We test that clamping works correctly.
+        """
+        # Extreme negative value gets clamped to -1.0
+        worker = SocialClass(
+            id="C001",
+            name="Test",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            ideology=-1.5,  # Clamped to -1.0 by from_legacy_ideology
+        )
+        assert worker.ideology.class_consciousness == 1.0  # -1.0 -> 1.0
+        assert worker.ideology.national_identity == 0.0  # -1.0 -> 0.0
+
+        # Extreme positive value gets clamped to +1.0
+        worker2 = SocialClass(
+            id="C002",
+            name="Test",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            ideology=1.5,  # Clamped to +1.0 by from_legacy_ideology
+        )
+        assert worker2.ideology.class_consciousness == 0.0  # +1.0 -> 0.0
+        assert worker2.ideology.national_identity == 1.0  # +1.0 -> 1.0
 
     def test_rejects_invalid_probability(self) -> None:
         """Probabilities must be [0.0, 1.0]."""
@@ -261,13 +281,17 @@ class TestSocialClassDefaults:
         assert worker.wealth == 10.0
 
     def test_default_ideology(self) -> None:
-        """Default ideology is 0.0 (neutral)."""
+        """Default ideology is IdeologicalProfile with neutral defaults."""
         worker = SocialClass(
             id="C001",
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.ideology == 0.0
+        # Sprint 3.4.3: ideology is now IdeologicalProfile
+        assert isinstance(worker.ideology, IdeologicalProfile)
+        assert worker.ideology.class_consciousness == 0.0
+        assert worker.ideology.national_identity == 0.5
+        assert worker.ideology.agitation == 0.0
 
     def test_default_probabilities(self) -> None:
         """Default survival probabilities are 0.0 (not yet calculated)."""
@@ -340,7 +364,7 @@ class TestSocialClassSerialization:
         assert "periphery_proletariat" in json_str
 
     def test_deserialize_from_json(self) -> None:
-        """SocialClass can be restored from JSON."""
+        """SocialClass can be restored from JSON with legacy ideology."""
         json_str = """
         {
             "id": "C001",
@@ -361,7 +385,9 @@ class TestSocialClassSerialization:
         assert worker.name == "Mine Worker"
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
         assert worker.wealth == 50.0
-        assert worker.ideology == -0.5
+        # Legacy ideology=-0.5 converts to IdeologicalProfile
+        assert isinstance(worker.ideology, IdeologicalProfile)
+        assert worker.ideology.to_legacy_ideology() == pytest.approx(-0.5, abs=0.01)
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
@@ -371,7 +397,7 @@ class TestSocialClassSerialization:
             role=SocialRole.PERIPHERY_PROLETARIAT,
             description="A test class",
             wealth=100.0,
-            ideology=-0.7,
+            ideology=-0.7,  # Legacy conversion
             p_acquiescence=0.6,
             p_revolution=0.3,
             subsistence_threshold=8.0,
@@ -386,7 +412,10 @@ class TestSocialClassSerialization:
         assert restored.role == original.role
         assert restored.description == original.description
         assert restored.wealth == pytest.approx(original.wealth)
-        assert restored.ideology == pytest.approx(original.ideology)
+        # ideology is now IdeologicalProfile - compare class_consciousness
+        assert restored.ideology.class_consciousness == pytest.approx(
+            original.ideology.class_consciousness
+        )
         assert restored.p_acquiescence == pytest.approx(original.p_acquiescence)
         assert restored.p_revolution == pytest.approx(original.p_revolution)
         assert restored.subsistence_threshold == pytest.approx(original.subsistence_threshold)
@@ -510,8 +539,10 @@ class TestComponentModels:
         """Can create IdeologicalComponent with valid data."""
         from babylon.models.entities.social_class import IdeologicalComponent
 
-        ideo = IdeologicalComponent(ideology=-0.5, organization=0.3)
-        assert ideo.ideology == -0.5
+        # Sprint 3.4.3: ideology in IdeologicalComponent is now IdeologicalProfile
+        profile = IdeologicalProfile(class_consciousness=0.75, national_identity=0.3)
+        ideo = IdeologicalComponent(ideology=profile, organization=0.3)
+        assert ideo.ideology.class_consciousness == 0.75
         assert ideo.organization == 0.3
 
     def test_survival_component_creation(self) -> None:
@@ -564,33 +595,37 @@ class TestSocialClassComponentConstruction:
             SurvivalComponent,
         )
 
+        # Sprint 3.4.3: ideology in IdeologicalComponent is now IdeologicalProfile
+        profile = IdeologicalProfile(class_consciousness=0.75, national_identity=0.25)
         worker = SocialClass(
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             economic=EconomicComponent(wealth=50.0),
-            ideological=IdeologicalComponent(ideology=-0.5, organization=0.3),
+            ideological=IdeologicalComponent(ideology=profile, organization=0.3),
             survival=SurvivalComponent(p_acquiescence=0.6, p_revolution=0.4),
             material_conditions=MaterialConditionsComponent(repression_faced=0.7),
         )
         assert worker.wealth == 50.0
-        assert worker.ideology == -0.5
+        assert worker.ideology.class_consciousness == 0.75
         assert worker.organization == 0.3
         assert worker.p_acquiescence == 0.6
         assert worker.p_revolution == 0.4
         assert worker.repression_faced == 0.7
 
     def test_flat_construction_still_works(self) -> None:
-        """Flat field construction is unchanged."""
+        """Flat field construction with legacy ideology is unchanged."""
         worker = SocialClass(
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
-            ideology=-0.3,
+            ideology=-0.3,  # Legacy float converted to IdeologicalProfile
         )
         assert worker.wealth == 50.0
-        assert worker.ideology == -0.3
+        # Legacy ideology=-0.3 converts to class_consciousness=0.65
+        assert isinstance(worker.ideology, IdeologicalProfile)
+        assert worker.ideology.to_legacy_ideology() == pytest.approx(-0.3, abs=0.01)
 
     def test_serialization_remains_flat(self) -> None:
         """model_dump() produces flat output."""
@@ -631,10 +666,12 @@ class TestSocialClassComponentAccess:
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
-            ideology=-0.5,
+            ideology=-0.5,  # Legacy conversion to IdeologicalProfile
             organization=0.3,
         )
-        assert worker.ideological.ideology == -0.5
+        # Sprint 3.4.3: ideology is now IdeologicalProfile
+        assert isinstance(worker.ideological.ideology, IdeologicalProfile)
+        assert worker.ideological.ideology.to_legacy_ideology() == pytest.approx(-0.5, abs=0.01)
         assert worker.ideological.organization == 0.3
 
     def test_access_survival_component(self) -> None:

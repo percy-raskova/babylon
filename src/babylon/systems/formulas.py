@@ -432,3 +432,91 @@ def calculate_solidarity_transmission(
     delta = solidarity_strength * (source_consciousness - target_consciousness)
 
     return delta
+
+
+# =============================================================================
+# IDEOLOGICAL ROUTING FUNCTIONS (Sprint 3.4.3 - George Jackson Refactor)
+# =============================================================================
+
+
+def calculate_ideological_routing(
+    wage_change: float,
+    solidarity_pressure: float,
+    current_class_consciousness: float,
+    current_national_identity: float,
+    current_agitation: float,
+    agitation_decay: float = 0.1,
+) -> tuple[float, float, float]:
+    """Calculate ideological routing from crisis conditions.
+
+    Sprint 3.4.3 (George Jackson Refactor): This formula implements the
+    multi-dimensional consciousness routing mechanic.
+
+    Key insight: "Fascism is the defensive form of capitalism."
+    - Agitation (from wage fall) + Solidarity -> Class Consciousness
+    - Agitation (from wage fall) + No Solidarity -> National Identity
+
+    Args:
+        wage_change: Change in wages since last tick (negative = crisis)
+        solidarity_pressure: Sum of incoming SOLIDARITY edge strengths [0, inf)
+        current_class_consciousness: Current class consciousness [0, 1]
+        current_national_identity: Current national identity [0, 1]
+        current_agitation: Current accumulated agitation [0, inf)
+        agitation_decay: Rate at which agitation decays per tick (default 0.1)
+
+    Returns:
+        Tuple of (new_class_consciousness, new_national_identity, new_agitation)
+
+    Example:
+        # Worker with falling wages and high solidarity -> revolutionary
+        cc, ni, ag = calculate_ideological_routing(
+            wage_change=-20.0,
+            solidarity_pressure=0.9,
+            current_class_consciousness=0.5,
+            current_national_identity=0.5,
+            current_agitation=0.0,
+        )
+        # cc will increase, ni will stay flat
+
+        # Worker with falling wages and no solidarity -> fascist
+        cc, ni, ag = calculate_ideological_routing(
+            wage_change=-20.0,
+            solidarity_pressure=0.0,
+            current_class_consciousness=0.5,
+            current_national_identity=0.5,
+            current_agitation=0.0,
+        )
+        # ni will increase, cc will stay flat
+    """
+    # Start with current values
+    new_class = current_class_consciousness
+    new_nation = current_national_identity
+    new_agitation = current_agitation
+
+    # Calculate agitation from wage crisis
+    # Only negative wage changes create agitation (crisis conditions)
+    if wage_change < 0:
+        # Agitation energy = magnitude of wage loss * loss aversion coefficient
+        agitation_generated = abs(wage_change) * LOSS_AVERSION_COEFFICIENT
+        new_agitation += agitation_generated
+
+    # Route accumulated agitation based on solidarity
+    if new_agitation > 0:
+        # Solidarity factor determines routing split [0, 1]
+        solidarity_factor = min(1.0, solidarity_pressure)
+
+        # Calculate how much agitation routes to each axis
+        # High solidarity -> more to class consciousness
+        # Low solidarity -> more to national identity
+        class_delta = new_agitation * solidarity_factor * 0.1  # Scaling factor
+        nation_delta = new_agitation * (1.0 - solidarity_factor) * 0.1
+
+        # Apply deltas with clamping
+        new_class = min(1.0, new_class + class_delta)
+        new_nation = min(1.0, new_nation + nation_delta)
+
+        # Agitation is consumed as it routes
+        # Some agitation decays naturally each tick
+        new_agitation = max(0.0, new_agitation * (1.0 - agitation_decay))
+
+    return (new_class, new_nation, new_agitation)

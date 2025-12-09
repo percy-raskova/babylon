@@ -55,7 +55,7 @@ def create_two_node_scenario(
         role=SocialRole.PERIPHERY_PROLETARIAT,
         description="Exploited worker in the global periphery",
         wealth=worker_wealth,
-        ideology=worker_ideology,
+        ideology=worker_ideology,  # type: ignore[arg-type]  # Validator converts float to IdeologicalProfile
         organization=worker_organization,
         repression_faced=repression_level,
         subsistence_threshold=0.3,
@@ -70,7 +70,7 @@ def create_two_node_scenario(
         role=SocialRole.CORE_BOURGEOISIE,
         description="Capital owner in the imperial core",
         wealth=owner_wealth,
-        ideology=0.5,  # Leaning reactionary
+        ideology=0.5,  # type: ignore[arg-type]  # Leaning reactionary; Validator converts
         organization=0.8,  # Capitalists are well-organized
         repression_faced=0.1,  # Protected by the state
         subsistence_threshold=0.1,  # Low survival needs

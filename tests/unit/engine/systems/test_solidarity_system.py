@@ -44,10 +44,14 @@ class TestSolidaritySystemBasic:
         """
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        # P_w: Periphery worker in revolutionary struggle
-        graph.add_node("P_w", ideology=-0.8)  # ideology -0.8 -> consciousness 0.9
-        # C_w: Core worker (passive consumer)
-        graph.add_node("C_w", ideology=0.8)  # ideology 0.8 -> consciousness 0.1
+        # P_w: Periphery worker in revolutionary struggle (consciousness 0.9)
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # C_w: Core worker (passive consumer, consciousness 0.1)
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         # SOLIDARITY edge with strong infrastructure
         graph.add_edge(
@@ -66,18 +70,21 @@ class TestSolidaritySystemBasic:
 
         # Assert
         # New consciousness = 0.1 + 0.64 = 0.74
-        # New ideology = 1 - 2*0.74 = -0.48
         new_ideology = graph.nodes["C_w"]["ideology"]
-        assert new_ideology == pytest.approx(-0.48, abs=0.01)
+        assert new_ideology["class_consciousness"] == pytest.approx(0.74, abs=0.01)
 
     def test_no_transmission_below_activation_threshold(self) -> None:
         """No transmission if source consciousness below activation threshold."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         # P_w: consciousness = 0.2 (below 0.3 threshold)
-        # ideology = 1 - 2*0.2 = 0.6
-        graph.add_node("P_w", ideology=0.6)
-        graph.add_node("C_w", ideology=0.8)  # consciousness 0.1
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.2, "national_identity": 0.8, "agitation": 0.0}
+        )
+        # C_w: consciousness 0.1
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         graph.add_edge(
             "P_w",
@@ -94,7 +101,7 @@ class TestSolidaritySystemBasic:
         system.step(graph, services, context)
 
         # Assert: No change (below activation threshold)
-        assert graph.nodes["C_w"]["ideology"] == pytest.approx(0.8, abs=0.01)
+        assert graph.nodes["C_w"]["ideology"]["class_consciousness"] == pytest.approx(0.1, abs=0.01)
 
 
 @pytest.mark.unit
@@ -116,8 +123,14 @@ class TestSolidaritySystemFascistBifurcation:
         """
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)  # consciousness 0.9 (revolutionary)
-        graph.add_node("C_w", ideology=0.8)  # consciousness 0.1 (passive)
+        # consciousness 0.9 (revolutionary)
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # consciousness 0.1 (passive)
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         # SOLIDARITY edge but NO infrastructure (fascist scenario)
         graph.add_edge(
@@ -135,7 +148,7 @@ class TestSolidaritySystemFascistBifurcation:
         system.step(graph, services, context)
 
         # Assert: No change despite revolutionary periphery
-        assert graph.nodes["C_w"]["ideology"] == pytest.approx(0.8, abs=0.01)
+        assert graph.nodes["C_w"]["ideology"]["class_consciousness"] == pytest.approx(0.1, abs=0.01)
 
     def test_solidarity_strength_scales_transmission(self) -> None:
         """Higher solidarity_strength = stronger transmission."""
@@ -144,8 +157,16 @@ class TestSolidaritySystemFascistBifurcation:
         for sigma in [0.2, 0.5, 0.8]:
             # Arrange
             graph: nx.DiGraph[str] = nx.DiGraph()
-            graph.add_node("P_w", ideology=-0.8)  # consciousness 0.9
-            graph.add_node("C_w", ideology=0.8)  # consciousness 0.1
+            # consciousness 0.9
+            graph.add_node(
+                "P_w",
+                ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0},
+            )
+            # consciousness 0.1
+            graph.add_node(
+                "C_w",
+                ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0},
+            )
 
             graph.add_edge(
                 "P_w",
@@ -161,11 +182,11 @@ class TestSolidaritySystemFascistBifurcation:
             # Act
             system.step(graph, services, context)
 
-            # Store result
-            results[sigma] = graph.nodes["C_w"]["ideology"]
+            # Store result - higher class_consciousness means more revolutionary
+            results[sigma] = graph.nodes["C_w"]["ideology"]["class_consciousness"]
 
-        # Assert: Higher sigma = lower (more revolutionary) ideology
-        assert results[0.8] < results[0.5] < results[0.2]
+        # Assert: Higher sigma = higher class_consciousness (more revolutionary)
+        assert results[0.8] > results[0.5] > results[0.2]
 
 
 @pytest.mark.unit
@@ -176,8 +197,14 @@ class TestSolidaritySystemEvents:
         """CONSCIOUSNESS_TRANSMISSION event emitted when delta > 0.01."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)  # consciousness 0.9
-        graph.add_node("C_w", ideology=0.8)  # consciousness 0.1
+        # consciousness 0.9
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # consciousness 0.1
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         graph.add_edge(
             "P_w",
@@ -209,10 +236,16 @@ class TestSolidaritySystemEvents:
     def test_mass_awakening_event_when_threshold_crossed(self) -> None:
         """MASS_AWAKENING event when target crosses mass awakening threshold."""
         # Arrange: Start C_w just below mass_awakening_threshold (0.6)
-        # consciousness 0.5 -> ideology = 1 - 2*0.5 = 0.0
+        # consciousness 0.5 (below 0.6 threshold)
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)  # consciousness 0.9
-        graph.add_node("C_w", ideology=0.0)  # consciousness 0.5 (below 0.6 threshold)
+        # consciousness 0.9
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # consciousness 0.5 (below 0.6 threshold)
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.5, "national_identity": 0.5, "agitation": 0.0}
+        )
 
         # delta = 0.8 * (0.9 - 0.5) = 0.32
         # new_consciousness = 0.5 + 0.32 = 0.82 (crosses 0.6 threshold!)
@@ -244,8 +277,15 @@ class TestSolidaritySystemEvents:
         """No event when delta is negligible (< 0.01)."""
         # Arrange: Almost equal consciousness
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)  # consciousness 0.9
-        graph.add_node("C_w", ideology=-0.79)  # consciousness ~0.895 (very close)
+        # consciousness 0.9
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # consciousness ~0.895 (very close)
+        graph.add_node(
+            "C_w",
+            ideology={"class_consciousness": 0.895, "national_identity": 0.105, "agitation": 0.0},
+        )
 
         # delta = 0.1 * (0.9 - 0.895) = 0.0005 (negligible)
         graph.add_edge(
@@ -276,8 +316,14 @@ class TestSolidaritySystemEdgeCases:
         """Only SOLIDARITY edge type triggers transmission."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)
-        graph.add_node("C_w", ideology=0.8)
+        # consciousness 0.9
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # consciousness 0.1
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         # Non-SOLIDARITY edge with solidarity_strength set
         graph.add_edge(
@@ -295,15 +341,26 @@ class TestSolidaritySystemEdgeCases:
         system.step(graph, services, context)
 
         # Assert: No change (wrong edge type)
-        assert graph.nodes["C_w"]["ideology"] == pytest.approx(0.8, abs=0.01)
+        assert graph.nodes["C_w"]["ideology"]["class_consciousness"] == pytest.approx(0.1, abs=0.01)
 
     def test_multiple_solidarity_edges(self) -> None:
         """Multiple solidarity edges accumulate transmissions."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w1", ideology=-0.8)  # consciousness 0.9
-        graph.add_node("P_w2", ideology=-0.6)  # consciousness 0.8
-        graph.add_node("C_w", ideology=0.8)  # consciousness 0.1
+        # consciousness 0.9
+        graph.add_node(
+            "P_w1",
+            ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0},
+        )
+        # consciousness 0.8
+        graph.add_node(
+            "P_w2",
+            ideology={"class_consciousness": 0.8, "national_identity": 0.2, "agitation": 0.0},
+        )
+        # consciousness 0.1
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         # Two solidarity edges pointing to same target
         graph.add_edge(
@@ -332,18 +389,24 @@ class TestSolidaritySystemEdgeCases:
         # After first: consciousness = 0.1 + 0.24 = 0.34
         # delta2 = 0.3 * (0.8 - 0.34) = 0.138
         # After second: consciousness = 0.34 + 0.138 = 0.478
-        # ideology = 1 - 2*0.478 = 0.044
 
-        new_ideology = graph.nodes["C_w"]["ideology"]
-        assert new_ideology < 0.8  # More revolutionary than start
-        assert new_ideology == pytest.approx(0.044, abs=0.05)
+        new_consciousness = graph.nodes["C_w"]["ideology"]["class_consciousness"]
+        assert new_consciousness > 0.1  # More revolutionary than start
+        assert new_consciousness == pytest.approx(0.478, abs=0.05)
 
     def test_consciousness_clamped_to_bounds(self) -> None:
         """Consciousness stays in [0, 1] range after transmission."""
         # Arrange: Extreme case that would exceed bounds
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-1.0)  # consciousness 1.0
-        graph.add_node("C_w", ideology=-0.9)  # consciousness 0.95
+        # consciousness 1.0
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 1.0, "national_identity": 0.0, "agitation": 0.0}
+        )
+        # consciousness 0.95
+        graph.add_node(
+            "C_w",
+            ideology={"class_consciousness": 0.95, "national_identity": 0.05, "agitation": 0.0},
+        )
 
         # delta = 1.0 * (1.0 - 0.95) = 0.05
         # new_consciousness = 0.95 + 0.05 = 1.0 (clamped)
@@ -361,16 +424,19 @@ class TestSolidaritySystemEdgeCases:
         # Act
         system.step(graph, services, context)
 
-        # Assert: Ideology clamped to valid range
-        new_ideology = graph.nodes["C_w"]["ideology"]
-        assert -1.0 <= new_ideology <= 1.0
+        # Assert: class_consciousness clamped to valid range [0, 1]
+        new_consciousness = graph.nodes["C_w"]["ideology"]["class_consciousness"]
+        assert 0.0 <= new_consciousness <= 1.0
 
     def test_missing_ideology_defaults_to_zero(self) -> None:
-        """Nodes without ideology attribute default to 0 (neutral)."""
+        """Nodes without ideology attribute default to 0 consciousness (neutral)."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)  # Has ideology
-        graph.add_node("C_w")  # No ideology attribute
+        # consciousness 0.9
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        graph.add_node("C_w")  # No ideology attribute - defaults to consciousness 0.0
 
         graph.add_edge(
             "P_w",
@@ -387,12 +453,13 @@ class TestSolidaritySystemEdgeCases:
         system.step(graph, services, context)
 
         # Assert: C_w should have ideology set now
-        # Default consciousness = 0.5 (from ideology 0)
-        # delta = 0.5 * (0.9 - 0.5) = 0.2
-        # new_consciousness = 0.5 + 0.2 = 0.7
-        # new_ideology = 1 - 2*0.7 = -0.4
+        # Default consciousness = 0.0 (from missing ideology)
+        # delta = 0.5 * (0.9 - 0.0) = 0.45
+        # new_consciousness = 0.0 + 0.45 = 0.45
         assert "ideology" in graph.nodes["C_w"]
-        assert graph.nodes["C_w"]["ideology"] == pytest.approx(-0.4, abs=0.01)
+        assert graph.nodes["C_w"]["ideology"]["class_consciousness"] == pytest.approx(
+            0.45, abs=0.01
+        )
 
 
 @pytest.mark.unit
@@ -404,9 +471,14 @@ class TestSolidaritySystemConfig:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         # consciousness = 0.35 (above default 0.3, below custom 0.4)
-        # ideology = 1 - 2*0.35 = 0.3
-        graph.add_node("P_w", ideology=0.3)
-        graph.add_node("C_w", ideology=0.8)
+        graph.add_node(
+            "P_w",
+            ideology={"class_consciousness": 0.35, "national_identity": 0.65, "agitation": 0.0},
+        )
+        # consciousness 0.1
+        graph.add_node(
+            "C_w", ideology={"class_consciousness": 0.1, "national_identity": 0.9, "agitation": 0.0}
+        )
 
         graph.add_edge(
             "P_w",
@@ -425,15 +497,21 @@ class TestSolidaritySystemConfig:
         system.step(graph, services, context)
 
         # Assert: No transmission (below custom threshold)
-        assert graph.nodes["C_w"]["ideology"] == pytest.approx(0.8, abs=0.01)
+        assert graph.nodes["C_w"]["ideology"]["class_consciousness"] == pytest.approx(0.1, abs=0.01)
 
     def test_custom_mass_awakening_threshold(self) -> None:
         """System uses config's mass_awakening_threshold for events."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("P_w", ideology=-0.8)  # consciousness 0.9
-        # consciousness = 0.45, ideology = 0.1
-        graph.add_node("C_w", ideology=0.1)
+        # consciousness 0.9
+        graph.add_node(
+            "P_w", ideology={"class_consciousness": 0.9, "national_identity": 0.1, "agitation": 0.0}
+        )
+        # consciousness = 0.45
+        graph.add_node(
+            "C_w",
+            ideology={"class_consciousness": 0.45, "national_identity": 0.55, "agitation": 0.0},
+        )
 
         # delta = 0.5 * (0.9 - 0.45) = 0.225
         # new_consciousness = 0.45 + 0.225 = 0.675 (above default 0.6)

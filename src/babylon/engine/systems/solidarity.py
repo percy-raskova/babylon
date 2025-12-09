@@ -29,10 +29,6 @@ if TYPE_CHECKING:
 def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
     """Extract class_consciousness from graph node data.
 
-    Handles both:
-    - New IdeologicalProfile format (dict with class_consciousness)
-    - Legacy scalar ideology format (float in [-1, 1])
-
     Args:
         node_data: Graph node data dictionary
 
@@ -45,13 +41,8 @@ def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
         return 0.0
 
     if isinstance(ideology, dict):
-        # New IdeologicalProfile format
+        # IdeologicalProfile format
         return float(ideology.get("class_consciousness", 0.0))
-
-    if isinstance(ideology, int | float) and not isinstance(ideology, bool):
-        # Legacy scalar ideology format - convert
-        # Legacy formula: consciousness = (1 - ideology) / 2
-        return (1.0 - float(ideology)) / 2.0
 
     return 0.0
 

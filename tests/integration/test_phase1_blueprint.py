@@ -201,14 +201,15 @@ class TestFormulaIntegration:
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
-            ideology=-0.2,  # Slightly revolutionary
+            ideology=-0.2,  # Slightly revolutionary -> class_consciousness 0.6
         )
 
         # Calculate imperial rent using formula
         # Φ = α × Wp × (1 - Ψp)
         alpha = 0.8  # Extraction efficiency
         periphery_wages = 0.3  # Wage share
-        consciousness = (worker.ideology + 1) / 2  # Map [-1,1] to [0,1]
+        # Get consciousness from IdeologicalProfile
+        consciousness = worker.ideology.class_consciousness
 
         rent = calculate_imperial_rent(
             alpha=alpha,
@@ -238,18 +239,18 @@ class TestFormulaIntegration:
             id="C001",
             name="Core Worker",
             role=SocialRole.LABOR_ARISTOCRACY,
-            ideology=0.5,  # Currently reactionary
+            ideology=0.5,  # Currently reactionary -> class_consciousness 0.25
         )
 
         # Material conditions favor complacency
         core_wages = 60.0
         value_produced = 40.0
 
-        # Calculate drift
+        # Calculate drift using class_consciousness from IdeologicalProfile
         drift = calculate_consciousness_drift(
             core_wages=core_wages,
             value_produced=value_produced,
-            current_consciousness=(worker.ideology + 1) / 2,
+            current_consciousness=worker.ideology.class_consciousness,
             sensitivity_k=0.5,
             decay_lambda=0.1,
         )

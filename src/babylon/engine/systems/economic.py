@@ -22,6 +22,27 @@ if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
 
+def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
+    """Extract class_consciousness from graph node data.
+
+    Args:
+        node_data: Graph node data dictionary
+
+    Returns:
+        Class consciousness value in [0, 1]
+    """
+    ideology = node_data.get("ideology")
+
+    if ideology is None:
+        return 0.0
+
+    if isinstance(ideology, dict):
+        # IdeologicalProfile format
+        return float(ideology.get("class_consciousness", 0.0))
+
+    return 0.0
+
+
 class ImperialRentSystem:
     """Imperial Circuit Economic System - 4-phase value extraction.
 
@@ -74,10 +95,9 @@ class ImperialRentSystem:
             # Get source (worker) data
             worker_data = graph.nodes[source_id]
             worker_wealth = worker_data.get("wealth", 0.0)
-            worker_ideology = worker_data.get("ideology", 0.0)
 
-            # Map ideology [-1, 1] to consciousness [0, 1]
-            consciousness = (1.0 - worker_ideology) / 2.0
+            # Extract class consciousness (handles both IdeologicalProfile and legacy)
+            consciousness = _get_class_consciousness_from_node(worker_data)
 
             # Calculate imperial rent
             rent = calculate_imperial_rent(

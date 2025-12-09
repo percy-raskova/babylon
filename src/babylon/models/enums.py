@@ -110,7 +110,13 @@ class EventType(StrEnum):
     Values:
         SURPLUS_EXTRACTION: Imperial rent extracted from worker to owner
         IMPERIAL_SUBSIDY: Wealth converted to suppression to stabilize client state
+        SOLIDARITY_AWAKENING: Periphery worker enters active struggle (consciousness >= threshold)
+        CONSCIOUSNESS_TRANSMISSION: Consciousness flows via SOLIDARITY edge from periphery to core
+        MASS_AWAKENING: Target consciousness crosses mass awakening threshold
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
     IMPERIAL_SUBSIDY = "imperial_subsidy"
+    SOLIDARITY_AWAKENING = "solidarity_awakening"
+    CONSCIOUSNESS_TRANSMISSION = "consciousness_transmission"
+    MASS_AWAKENING = "mass_awakening"

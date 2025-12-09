@@ -305,3 +305,73 @@ class TestSimulationConfigImmutability:
         config = SimulationConfig()
         with pytest.raises(ValidationError):
             config.extraction_efficiency = 0.5  # type: ignore[misc]
+
+
+# =============================================================================
+# SOLIDARITY TRANSMISSION PARAMETERS (Sprint 3.4.2)
+# =============================================================================
+
+
+@pytest.mark.ledger
+class TestSolidarityTransmissionConfig:
+    """SimulationConfig should have solidarity transmission parameters.
+
+    Sprint 3.4.2: Proletarian Internationalism - The Counterforce.
+    These parameters control when consciousness transmission occurs.
+    """
+
+    def test_solidarity_activation_threshold_default(self) -> None:
+        """solidarity_activation_threshold defaults to 0.3.
+
+        Source consciousness must be > this threshold for transmission.
+        """
+        config = SimulationConfig()
+        assert config.solidarity_activation_threshold == 0.3
+
+    def test_mass_awakening_threshold_default(self) -> None:
+        """mass_awakening_threshold defaults to 0.6.
+
+        When target consciousness crosses this threshold, MASS_AWAKENING event fires.
+        """
+        config = SimulationConfig()
+        assert config.mass_awakening_threshold == 0.6
+
+    def test_solidarity_activation_threshold_accepts_zero(self) -> None:
+        """Zero threshold means any consciousness transmits."""
+        config = SimulationConfig(solidarity_activation_threshold=0.0)
+        assert config.solidarity_activation_threshold == 0.0
+
+    def test_solidarity_activation_threshold_accepts_one(self) -> None:
+        """Threshold of 1.0 means transmission requires full consciousness."""
+        config = SimulationConfig(solidarity_activation_threshold=1.0)
+        assert config.solidarity_activation_threshold == 1.0
+
+    def test_solidarity_activation_threshold_rejects_negative(self) -> None:
+        """Negative threshold is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(solidarity_activation_threshold=-0.1)
+
+    def test_solidarity_activation_threshold_rejects_greater_than_one(self) -> None:
+        """Threshold > 1.0 is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(solidarity_activation_threshold=1.1)
+
+    def test_mass_awakening_threshold_accepts_zero(self) -> None:
+        """Zero mass awakening threshold is valid."""
+        config = SimulationConfig(mass_awakening_threshold=0.0)
+        assert config.mass_awakening_threshold == 0.0
+
+    def test_mass_awakening_threshold_accepts_one(self) -> None:
+        """Mass awakening at full consciousness is valid."""
+        config = SimulationConfig(mass_awakening_threshold=1.0)
+        assert config.mass_awakening_threshold == 1.0
+
+    def test_mass_awakening_threshold_rejects_negative(self) -> None:
+        """Negative mass awakening threshold is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(mass_awakening_threshold=-0.1)
+
+    def test_mass_awakening_threshold_rejects_greater_than_one(self) -> None:
+        """Mass awakening threshold > 1.0 is invalid."""
+        with pytest.raises(ValidationError):
+            SimulationConfig(mass_awakening_threshold=1.1)

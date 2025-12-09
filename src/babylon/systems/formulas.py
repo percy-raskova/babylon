@@ -346,3 +346,56 @@ def prebisch_singer_effect(
     new_price = initial_price * (1 + price_change_fraction)
 
     return max(0.0, new_price)
+
+
+# =============================================================================
+# SOLIDARITY TRANSMISSION FUNCTIONS (Sprint 3.4.2)
+# =============================================================================
+
+
+def calculate_solidarity_transmission(
+    source_consciousness: float,
+    target_consciousness: float,
+    solidarity_strength: float,
+    activation_threshold: float = 0.3,
+) -> float:
+    """Calculate consciousness transmission via solidarity edges.
+
+    Formula: dPsi_target = sigma * (Psi_source - Psi_target)
+
+    Where:
+    - sigma = solidarity_strength (STORED ON EDGE, not auto-calculated)
+    - Psi_source = source_consciousness (periphery worker)
+    - Psi_target = target_consciousness (core worker)
+
+    Transmission only occurs if:
+    1. source_consciousness > activation_threshold (strictly greater)
+    2. solidarity_strength > 0
+
+    This implements the Fascist Bifurcation scenario:
+    - Periphery revolts BUT solidarity_strength=0 -> NO transmission (Fascist turn)
+    - Periphery revolts AND solidarity_strength>0 -> Transmission (Revolutionary turn)
+
+    Args:
+        source_consciousness: Consciousness level of source (periphery worker) [0, 1]
+        target_consciousness: Consciousness level of target (core worker) [0, 1]
+        solidarity_strength: Strength of solidarity infrastructure on edge [0, 1]
+        activation_threshold: Minimum source consciousness for transmission (default 0.3)
+
+    Returns:
+        Change in target consciousness (delta). Can be negative if target has
+        higher consciousness than source.
+    """
+    # No transmission if source is not in active struggle
+    # Threshold is exclusive (>) - must be strictly above to transmit
+    if source_consciousness <= activation_threshold:
+        return 0.0
+
+    # No transmission if no solidarity infrastructure exists
+    if solidarity_strength <= 0:
+        return 0.0
+
+    # Calculate transmission delta
+    delta = solidarity_strength * (source_consciousness - target_consciousness)
+
+    return delta

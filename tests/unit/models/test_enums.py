@@ -232,6 +232,9 @@ class TestEventType:
     Event types published to EventBus on significant state changes:
     - surplus_extraction: Imperial rent extracted (Phase 1)
     - imperial_subsidy: Wealth converted to suppression to stabilize client state (Phase 4)
+    - solidarity_awakening: Periphery worker enters active struggle (Sprint 3.4.2)
+    - consciousness_transmission: Consciousness transmitted via solidarity edge (Sprint 3.4.2)
+    - mass_awakening: Target crosses mass awakening threshold (Sprint 3.4.2)
     """
 
     def test_surplus_extraction_exists(self) -> None:
@@ -244,10 +247,40 @@ class TestEventType:
         assert hasattr(EventType, "IMPERIAL_SUBSIDY")
         assert EventType.IMPERIAL_SUBSIDY.value == "imperial_subsidy"
 
+    def test_solidarity_awakening_exists(self) -> None:
+        """SOLIDARITY_AWAKENING event type exists (Sprint 3.4.2).
+
+        Emitted when a periphery worker's consciousness crosses the
+        activation threshold (0.3), entering active struggle.
+        """
+        assert hasattr(EventType, "SOLIDARITY_AWAKENING")
+        assert EventType.SOLIDARITY_AWAKENING.value == "solidarity_awakening"
+
+    def test_consciousness_transmission_exists(self) -> None:
+        """CONSCIOUSNESS_TRANSMISSION event type exists (Sprint 3.4.2).
+
+        Emitted when consciousness flows from active struggle (periphery)
+        to passive consumer (core) via a SOLIDARITY edge.
+        """
+        assert hasattr(EventType, "CONSCIOUSNESS_TRANSMISSION")
+        assert EventType.CONSCIOUSNESS_TRANSMISSION.value == "consciousness_transmission"
+
+    def test_mass_awakening_exists(self) -> None:
+        """MASS_AWAKENING event type exists (Sprint 3.4.2).
+
+        Emitted when a target's consciousness crosses the mass awakening
+        threshold (0.6), indicating revolutionary potential in the core.
+        """
+        assert hasattr(EventType, "MASS_AWAKENING")
+        assert EventType.MASS_AWAKENING.value == "mass_awakening"
+
     def test_event_type_constructible_from_string(self) -> None:
         """Can construct EventType from string value."""
         assert EventType("surplus_extraction") == EventType.SURPLUS_EXTRACTION
         assert EventType("imperial_subsidy") == EventType.IMPERIAL_SUBSIDY
+        assert EventType("solidarity_awakening") == EventType.SOLIDARITY_AWAKENING
+        assert EventType("consciousness_transmission") == EventType.CONSCIOUSNESS_TRANSMISSION
+        assert EventType("mass_awakening") == EventType.MASS_AWAKENING
 
     def test_invalid_event_type_raises(self) -> None:
         """Unknown event types are rejected."""
@@ -255,5 +288,5 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """Exactly 2 event types defined (1 original + 1 imperial circuit)."""
-        assert len(EventType) == 2
+        """Exactly 5 event types defined (2 original + 3 solidarity)."""
+        assert len(EventType) == 5

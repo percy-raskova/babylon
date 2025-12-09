@@ -32,6 +32,24 @@ These ideas require the Phase 1 foundation to be complete first.
 
 These ideas require the engine to be running and generating events.
 
+### RAG as Semantic Firewall (Input Validation)
+**Source:** `brainstorm/rag-input-validation.md`, `ai-docs/rag-architecture.yaml`
+**What it does:** Uses RAG collections as permission system - semantic distance determines if player action is valid
+**Key insight:** If input has no semantic neighbors in corpus, it doesn't exist in this material world
+**Components:**
+- `actions` collection: ~200-500 canonical game verbs
+- `entities` collection: ~1000+ game nouns
+- `anti_patterns` collection: injection patterns, fantasy terms
+- 6-stage validation pipeline: structural → semantic gate → action mapper → context builder → LLM → output validator
+**Why it matters:** Prevents prompt injection AND thematic violations with single architecture
+**Status:** Brainstorm complete, ready for Phase 3 implementation
+
+### RAG Collections Population
+**Source:** `ai-docs/rag-architecture.yaml`
+**What it does:** Extract actions from game mechanics, entities from JSON data, curate anti_patterns
+**Dependencies:** Needs Observer Pattern infrastructure first
+**Why wait:** Phase 3 work, requires semantic validation architecture
+
 ### Sanity Spies (The Babylon Protocol)
 **Source:** `brainstorm/babylon-protocol-verification.md`
 **What it does:** Runtime observers that validate invariants (conservation laws, P(S) calculus, topology integrity, determinism)
@@ -67,6 +85,17 @@ These ideas require the engine to be running and generating events.
 ---
 
 ## Phase 4+: Control Room & Beyond
+
+### God Mode (Chaos Testing)
+**Source:** Good Idea Fairy 2025-12-08
+**What it does:** Bypasses semantic validation - anything goes. Sorcery, aliens, prompt injection experiments.
+**Use cases:**
+- Chaos testing the LLM integration
+- Exploring edge cases without restrictions
+- Just for shits and giggles
+- Testing what happens when validation is OFF
+**Implementation:** Flag in SimulationConfig that disables Stage 2 (Semantic Gate) validation
+**Why wait:** Requires validation pipeline to exist first (Phase 3), then we can add the bypass
 
 ### Gramscian Wiki Engine
 **Source:** `brainstorm/gramscian-wiki-engine.md`

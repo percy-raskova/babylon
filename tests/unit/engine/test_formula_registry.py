@@ -103,9 +103,10 @@ class TestFormulaRegistry:
             "value_transfer",
             "prebisch_singer",
             "solidarity_transmission",  # Sprint 3.4.2
+            "bourgeoisie_decision",  # Sprint 3.4.4
         ]
 
-        assert len(formulas) == 13
+        assert len(formulas) == 14
         for name in expected_formulas:
             assert name in formulas, f"Missing formula: {name}"
 

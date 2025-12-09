@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
@@ -50,6 +51,7 @@ class WorldState(BaseModel):
         territories: Map of territory ID to Territory (Layer 0 nodes)
         relationships: List of Relationship edges (the edges)
         event_log: Recent events for narrative/debugging
+        economy: Global economic state for dynamic balance (Sprint 3.4.4)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -80,6 +82,11 @@ class WorldState(BaseModel):
         description="Recent events for narrative/debugging",
     )
 
+    economy: GlobalEconomy = Field(
+        default_factory=GlobalEconomy,
+        description="Global economic state for dynamic balance (Sprint 3.4.4)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -94,6 +101,9 @@ class WorldState(BaseModel):
 
         Edges are relationships with all Relationship fields as attributes.
 
+        Graph metadata (G.graph) contains:
+        - economy: GlobalEconomy state (Sprint 3.4.4)
+
         Returns:
             NetworkX DiGraph with nodes and edges from this state.
 
@@ -105,6 +115,9 @@ class WorldState(BaseModel):
             new_state = WorldState.from_graph(G, tick=state.tick + 1)
         """
         G: nx.DiGraph[str] = nx.DiGraph()
+
+        # Store economy in graph metadata (Sprint 3.4.4)
+        G.graph["economy"] = self.economy.model_dump()
 
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
@@ -143,6 +156,11 @@ class WorldState(BaseModel):
             # ... modify graph ...
             new_state = WorldState.from_graph(G, tick=state.tick + 1)
         """
+        # Reconstruct economy from graph metadata (Sprint 3.4.4)
+        # Falls back to default GlobalEconomy if not present (backward compatibility)
+        economy_data = G.graph.get("economy")
+        economy = GlobalEconomy(**economy_data) if economy_data is not None else GlobalEconomy()
+
         # Reconstruct entities and territories from nodes based on _node_type
         entities: dict[str, SocialClass] = {}
         territories: dict[str, Territory] = {}
@@ -195,6 +213,7 @@ class WorldState(BaseModel):
             territories=territories,
             relationships=relationships,
             event_log=event_log or [],
+            economy=economy,
         )
 
     # =========================================================================

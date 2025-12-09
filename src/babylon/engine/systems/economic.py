@@ -1,12 +1,14 @@
 """Economic systems for the Babylon simulation - The Base.
 
 Sprint 3.4.1: Imperial Circuit - 4-node value flow model.
+Sprint 3.4.4: Dynamic Balance - Pool tracking and decision heuristics.
 
-The Imperial Circuit has four phases:
+The Imperial Circuit has five phases:
 1. EXPLOITATION: P_w -> P_c (imperial rent extraction)
-2. TRIBUTE: P_c -> C_b (comprador keeps 15% cut)
-3. WAGES: C_b -> C_w (20% as super-wages to labor aristocracy)
-4. CLIENT_STATE: C_b -> P_c (subsidy when unstable, converts to repression)
+2. TRIBUTE: P_c -> C_b (comprador keeps 15% cut) -> FEEDS POOL
+3. WAGES: C_b -> C_w (dynamic rate super-wages to labor aristocracy) -> DRAINS POOL
+4. CLIENT_STATE: C_b -> P_c (subsidy when unstable, converts to repression) -> DRAINS POOL
+5. DECISION: Bourgeoisie heuristics update wage_rate/repression based on pool/tension
 """
 
 from __future__ import annotations
@@ -16,7 +18,9 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 
 from babylon.engine.event_bus import Event
-from babylon.models.enums import EdgeType, EventType
+from babylon.models.entities.economy import GlobalEconomy
+from babylon.models.enums import EdgeType, EventType, SocialRole
+from babylon.systems.formulas import BourgeoisieDecision
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
@@ -44,13 +48,21 @@ def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
 
 
 class ImperialRentSystem:
-    """Imperial Circuit Economic System - 4-phase value extraction.
+    """Imperial Circuit Economic System - 5-phase value extraction with pool tracking.
 
-    Implements the MLM-TW model of value flow:
+    Sprint 3.4.4: Dynamic Balance - The Gas Tank and Driver.
+
+    Implements the MLM-TW model of value flow with finite resources:
     - Phase 1: Extraction (P_w -> P_c via EXPLOITATION)
-    - Phase 2: Tribute (P_c -> C_b via TRIBUTE, minus comprador cut)
-    - Phase 3: Wages (C_b -> C_w via WAGES, super-wages to labor aristocracy)
-    - Phase 4: Subsidy (C_b -> P_c via CLIENT_STATE, stabilization subsidy)
+    - Phase 2: Tribute (P_c -> C_b via TRIBUTE, minus comprador cut) -> FEEDS POOL
+    - Phase 3: Wages (C_b -> C_w via WAGES, dynamic rate) -> DRAINS POOL
+    - Phase 4: Subsidy (C_b -> P_c via CLIENT_STATE, stabilization) -> DRAINS POOL
+    - Phase 5: Decision (Bourgeoisie heuristics adjust wage_rate/repression)
+
+    The imperial_rent_pool in GlobalEconomy tracks available resources:
+    - Inflow: Tribute received by Core Bourgeoisie (post-comprador cut)
+    - Outflow: Wages paid + Subsidies paid
+    - When pool depletes, bourgeoisie must choose between austerity or repression
     """
 
     name = "Imperial Rent"
@@ -61,18 +73,41 @@ class ImperialRentSystem:
         services: ServiceContainer,
         context: dict[str, Any],
     ) -> None:
-        """Apply the 4-phase Imperial Circuit to the graph.
+        """Apply the 5-phase Imperial Circuit to the graph.
 
         Phases execute in sequence, as each depends on the previous:
         1. Extraction must happen before tribute (P_c needs wealth to send)
-        2. Tribute must happen before wages (C_b needs wealth to pay)
-        3. Wages must happen before subsidy (determines C_b available funds)
-        4. Subsidy is the "Iron Lung" that stabilizes client states
+        2. Tribute must happen before wages (C_b needs wealth to pay) - FEEDS POOL
+        3. Wages capped at available pool - DRAINS POOL
+        4. Subsidy capped at available pool after wages - DRAINS POOL
+        5. Decision phase: Bourgeoisie heuristics update economy for next tick
+
+        The economy state is read from graph.graph["economy"] and written back
+        after all phases complete.
         """
+        # Load economy from graph metadata (or create default)
+        economy = self._load_economy(graph, services)
+        initial_pool = services.config.initial_rent_pool
+
+        # Track inflow/outflow for this tick
+        tick_context = {
+            "tribute_inflow": 0.0,
+            "wages_outflow": 0.0,
+            "subsidy_outflow": 0.0,
+            "current_pool": economy.imperial_rent_pool,
+            "wage_rate": economy.current_super_wage_rate,
+            "repression_level": economy.current_repression_level,
+        }
+
+        # Execute phases with pool tracking
         self._process_extraction_phase(graph, services, context)
-        self._process_tribute_phase(graph, services, context)
-        self._process_wages_phase(graph, services, context)
-        self._process_subsidy_phase(graph, services, context)
+        self._process_tribute_phase(graph, services, context, tick_context)
+        self._process_wages_phase(graph, services, context, tick_context)
+        self._process_subsidy_phase(graph, services, context, tick_context)
+        self._process_decision_phase(graph, services, context, tick_context, initial_pool)
+
+        # Save updated economy back to graph
+        self._save_economy(graph, tick_context)
 
     def _process_extraction_phase(
         self,
@@ -135,13 +170,17 @@ class ImperialRentSystem:
     def _process_tribute_phase(
         self,
         graph: nx.DiGraph[str],
-        services: ServiceContainer,
+        services: ServiceContainer,  # noqa: ARG002 - Used for config.comprador_cut
         context: dict[str, Any],  # noqa: ARG002 - API consistency with other phases
+        tick_context: dict[str, Any],  # noqa: ARG002 - Used for pool tracking
     ) -> None:
-        """Phase 2: Comprador tribute via TRIBUTE edges.
+        """Phase 2: Comprador tribute via TRIBUTE edges -> FEEDS POOL.
 
         The comprador class keeps a cut (default 15%) and sends the rest
         as tribute to the core bourgeoisie.
+
+        Sprint 3.4.4: Tribute to Core Bourgeoisie feeds the imperial_rent_pool.
+        Only tribute reaching CORE_BOURGEOISIE nodes contributes to the pool.
         """
         _ = context  # Unused but kept for API consistency
         comprador_cut = services.config.comprador_cut
@@ -173,20 +212,33 @@ class ImperialRentSystem:
             # Record value flow
             graph.edges[source_id, target_id]["value_flow"] = tribute_amount
 
+            # Sprint 3.4.4: Track tribute to Core Bourgeoisie as pool inflow
+            target_role = graph.nodes[target_id].get("role")
+            if isinstance(target_role, str):
+                target_role = SocialRole(target_role)
+            if target_role == SocialRole.CORE_BOURGEOISIE:
+                tick_context["tribute_inflow"] += tribute_amount
+                tick_context["current_pool"] += tribute_amount
+
     def _process_wages_phase(
         self,
         graph: nx.DiGraph[str],
-        services: ServiceContainer,
+        services: ServiceContainer,  # noqa: ARG002 - API consistency with other phases
         context: dict[str, Any],  # noqa: ARG002 - API consistency with other phases
+        tick_context: dict[str, Any],
     ) -> None:
-        """Phase 3: Super-wages via WAGES edges.
+        """Phase 3: Super-wages via WAGES edges -> DRAINS POOL.
 
         The core bourgeoisie pays a fraction of their wealth as super-wages
         to the labor aristocracy (core workers). This is the bribe that
         prevents revolution in the core.
+
+        Sprint 3.4.4: Uses dynamic wage_rate from economy, not static config.
+        Wages are capped at available pool to enforce scarcity.
         """
         _ = context  # Unused but kept for API consistency
-        super_wage_rate = services.config.super_wage_rate
+        # Use dynamic wage rate from economy, not static config
+        super_wage_rate = tick_context["wage_rate"]
 
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
@@ -203,7 +255,14 @@ class ImperialRentSystem:
                 continue
 
             # Calculate super-wages
-            wages = bourgeoisie_wealth * super_wage_rate
+            desired_wages = bourgeoisie_wealth * super_wage_rate
+
+            # Sprint 3.4.4: Cap wages at available pool
+            available_pool = tick_context["current_pool"]
+            wages = min(desired_wages, available_pool)
+
+            if wages <= 0:
+                continue
 
             # Transfer wages
             graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - wages
@@ -212,13 +271,18 @@ class ImperialRentSystem:
             # Record value flow
             graph.edges[source_id, target_id]["value_flow"] = wages
 
+            # Sprint 3.4.4: Track wages as pool outflow
+            tick_context["wages_outflow"] += wages
+            tick_context["current_pool"] -= wages
+
     def _process_subsidy_phase(
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
         context: dict[str, Any],
+        tick_context: dict[str, Any],
     ) -> None:
-        """Phase 4: Imperial subsidy via CLIENT_STATE edges (The Iron Lung).
+        """Phase 4: Imperial subsidy via CLIENT_STATE edges (The Iron Lung) -> DRAINS POOL.
 
         When a client state becomes unstable (P(S|R) >= threshold * P(S|A)),
         the core provides a subsidy that converts to repression capacity.
@@ -226,6 +290,8 @@ class ImperialRentSystem:
         This is the mechanism by which imperial wealth is used to suppress
         revolution in the periphery. Wealth is NOT conserved - it converts
         to suppression (military aid, police training, etc.).
+
+        Sprint 3.4.4: Subsidy is capped at available pool after wages.
         """
         subsidy_trigger_threshold = services.config.subsidy_trigger_threshold
         subsidy_conversion_rate = services.config.subsidy_conversion_rate
@@ -280,8 +346,12 @@ class ImperialRentSystem:
                 continue
 
             # Calculate subsidy amount
-            # Limited by: subsidy_cap, source wealth, and conversion rate
+            # Limited by: subsidy_cap, source wealth, conversion rate, and POOL
             max_subsidy = min(subsidy_cap, source_wealth * subsidy_conversion_rate)
+
+            # Sprint 3.4.4: Also cap at available pool
+            available_pool = tick_context["current_pool"]
+            max_subsidy = min(max_subsidy, available_pool)
 
             if max_subsidy <= 0.01:
                 # Negligible subsidy
@@ -300,6 +370,10 @@ class ImperialRentSystem:
             # Record subsidy in edge
             graph.edges[source_id, target_id]["value_flow"] = max_subsidy
 
+            # Sprint 3.4.4: Track subsidy as pool outflow
+            tick_context["subsidy_outflow"] += max_subsidy
+            tick_context["current_pool"] -= max_subsidy
+
             # Emit event for AI narrative layer
             tick = context.get("tick", 0)
             services.event_bus.publish(
@@ -316,3 +390,146 @@ class ImperialRentSystem:
                     },
                 )
             )
+
+    def _process_decision_phase(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        context: dict[str, Any],
+        tick_context: dict[str, Any],
+        initial_pool: float,
+    ) -> None:
+        """Phase 5: Bourgeoisie decision heuristics (Sprint 3.4.4).
+
+        Based on pool_ratio and aggregate_tension, the bourgeoisie chooses:
+        - BRIBERY: Increase wages (when prosperous and tension low)
+        - AUSTERITY: Decrease wages (when pool low and tension manageable)
+        - IRON_FIST: Increase repression (when pool low and tension high)
+        - CRISIS: Both wage cuts and repression spike (when pool critical)
+        - NO_CHANGE: Maintain status quo (neutral zone)
+
+        This phase updates tick_context with new wage_rate and repression_level
+        for the NEXT tick. It also emits ECONOMIC_CRISIS event if triggered.
+        """
+        # Get decision formula
+        calculate_decision = services.formulas.get("bourgeoisie_decision")
+
+        # Calculate pool ratio
+        current_pool = tick_context["current_pool"]
+        pool_ratio = current_pool / initial_pool if initial_pool > 0 else 0.0
+
+        # Calculate aggregate tension from class relationships
+        aggregate_tension = self._calculate_aggregate_tension(graph)
+
+        # Get thresholds from config
+        high_threshold = services.config.pool_high_threshold
+        low_threshold = services.config.pool_low_threshold
+        critical_threshold = services.config.pool_critical_threshold
+
+        # Call decision formula
+        decision, wage_delta, repression_delta = calculate_decision(
+            pool_ratio=pool_ratio,
+            aggregate_tension=aggregate_tension,
+            high_threshold=high_threshold,
+            low_threshold=low_threshold,
+            critical_threshold=critical_threshold,
+        )
+
+        # Apply deltas to tick_context (will be saved to economy)
+        current_wage_rate = tick_context["wage_rate"]
+        current_repression = tick_context["repression_level"]
+
+        # Clamp new values within bounds
+        min_wage = services.config.min_wage_rate
+        max_wage = services.config.max_wage_rate
+        new_wage_rate = max(min_wage, min(max_wage, current_wage_rate + wage_delta))
+        new_repression = max(0.0, min(1.0, current_repression + repression_delta))
+
+        tick_context["wage_rate"] = new_wage_rate
+        tick_context["repression_level"] = new_repression
+
+        # Emit ECONOMIC_CRISIS event if decision is CRISIS
+        if decision == BourgeoisieDecision.CRISIS:
+            tick = context.get("tick", 0)
+            services.event_bus.publish(
+                Event(
+                    type=EventType.ECONOMIC_CRISIS,
+                    tick=tick,
+                    payload={
+                        "pool_ratio": pool_ratio,
+                        "aggregate_tension": aggregate_tension,
+                        "decision": decision,
+                        "wage_delta": wage_delta,
+                        "repression_delta": repression_delta,
+                        "new_wage_rate": new_wage_rate,
+                        "new_repression_level": new_repression,
+                        "current_pool": current_pool,
+                    },
+                )
+            )
+
+    def _calculate_aggregate_tension(self, graph: nx.DiGraph[str]) -> float:
+        """Calculate aggregate tension across class relationships.
+
+        Returns the average tension value across all edges in the graph.
+        Tension ranges from 0 (peaceful) to 1 (revolutionary).
+
+        Args:
+            graph: The simulation graph
+
+        Returns:
+            Average tension, or 0.0 if no edges have tension values
+        """
+        tensions = []
+        for _, _, data in graph.edges(data=True):
+            tension = data.get("tension", 0.0)
+            if isinstance(tension, int | float):
+                tensions.append(float(tension))
+
+        if not tensions:
+            return 0.0
+
+        return sum(tensions) / len(tensions)
+
+    def _load_economy(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+    ) -> GlobalEconomy:
+        """Load GlobalEconomy from graph metadata, or create default.
+
+        Args:
+            graph: The simulation graph
+            services: ServiceContainer for config access
+
+        Returns:
+            GlobalEconomy instance
+        """
+        economy_data = graph.graph.get("economy")
+        if economy_data is not None:
+            return GlobalEconomy.model_validate(economy_data)
+
+        # Create default economy from config
+        return GlobalEconomy(
+            imperial_rent_pool=services.config.initial_rent_pool,
+            current_super_wage_rate=services.config.super_wage_rate,
+            current_repression_level=services.config.repression_level,
+        )
+
+    def _save_economy(
+        self,
+        graph: nx.DiGraph[str],
+        tick_context: dict[str, Any],
+    ) -> None:
+        """Save updated GlobalEconomy back to graph metadata.
+
+        Args:
+            graph: The simulation graph
+            tick_context: Dictionary with current_pool, wage_rate, repression_level
+        """
+        economy = GlobalEconomy(
+            imperial_rent_pool=max(0.0, tick_context["current_pool"]),
+            current_super_wage_rate=tick_context["wage_rate"],
+            current_repression_level=tick_context["repression_level"],
+        )
+        graph.graph["economy"] = economy.model_dump()

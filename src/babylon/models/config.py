@@ -187,3 +187,34 @@ class SimulationConfig(BaseModel):
         default=0.3,
         description="Clarity bonus for HIGH_PROFILE territories (30%)",
     )
+
+    # Dynamic Balance parameters (Sprint 3.4.4)
+    initial_rent_pool: Currency = Field(
+        default=100.0,
+        description="Starting imperial rent pool for GlobalEconomy",
+    )
+
+    pool_high_threshold: Coefficient = Field(
+        default=0.7,
+        description="Pool ratio above which bourgeoisie considers prosperity (70%)",
+    )
+
+    pool_low_threshold: Coefficient = Field(
+        default=0.3,
+        description="Pool ratio below which bourgeoisie enters austerity (30%)",
+    )
+
+    pool_critical_threshold: Coefficient = Field(
+        default=0.1,
+        description="Pool ratio below which ECONOMIC_CRISIS fires (10%)",
+    )
+
+    min_wage_rate: Coefficient = Field(
+        default=0.05,
+        description="Minimum super-wage rate during crisis (5%)",
+    )
+
+    max_wage_rate: Coefficient = Field(
+        default=0.35,
+        description="Maximum super-wage rate during prosperity (35%)",
+    )

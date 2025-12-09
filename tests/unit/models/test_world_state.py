@@ -666,3 +666,143 @@ class TestWorldStateFromGraphWithTerritories:
             assert restored_territory.sector_type == original.sector_type
             assert restored_territory.heat == pytest.approx(original.heat)
             assert restored_territory.population == original.population
+
+
+# =============================================================================
+# SPRINT 3.4.4 - GLOBAL ECONOMY INTEGRATION (Dynamic Balance)
+# =============================================================================
+
+
+@pytest.mark.topology
+class TestWorldStateEconomyIntegration:
+    """Tests for GlobalEconomy integration with WorldState.
+
+    Sprint 3.4.4: Dynamic Balance - economy state flows through graph metadata.
+    """
+
+    def test_world_state_has_default_economy(self) -> None:
+        """WorldState has default GlobalEconomy."""
+        from babylon.models.entities.economy import GlobalEconomy
+
+        state = WorldState()
+        assert hasattr(state, "economy")
+        assert isinstance(state.economy, GlobalEconomy)
+        assert state.economy.imperial_rent_pool == 100.0
+
+    def test_world_state_with_custom_economy(
+        self,
+        worker: SocialClass,
+    ) -> None:
+        """WorldState can be created with custom GlobalEconomy."""
+        from babylon.models.entities.economy import GlobalEconomy
+
+        custom_economy = GlobalEconomy(
+            imperial_rent_pool=50.0,
+            current_super_wage_rate=0.15,
+            current_repression_level=0.7,
+        )
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            economy=custom_economy,
+        )
+        assert state.economy.imperial_rent_pool == 50.0
+        assert state.economy.current_super_wage_rate == 0.15
+        assert state.economy.current_repression_level == 0.7
+
+    def test_to_graph_stores_economy_in_metadata(
+        self,
+        worker: SocialClass,
+    ) -> None:
+        """to_graph() stores economy in G.graph['economy']."""
+        from babylon.models.entities.economy import GlobalEconomy
+
+        custom_economy = GlobalEconomy(
+            imperial_rent_pool=75.0,
+            current_super_wage_rate=0.25,
+            current_repression_level=0.6,
+        )
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            economy=custom_economy,
+        )
+        G = state.to_graph()
+
+        assert "economy" in G.graph
+        economy_data = G.graph["economy"]
+        assert economy_data["imperial_rent_pool"] == 75.0
+        assert economy_data["current_super_wage_rate"] == 0.25
+        assert economy_data["current_repression_level"] == 0.6
+
+    def test_from_graph_reconstructs_economy(
+        self,
+        worker: SocialClass,
+    ) -> None:
+        """from_graph() reconstructs GlobalEconomy from metadata."""
+        from babylon.models.entities.economy import GlobalEconomy
+
+        custom_economy = GlobalEconomy(
+            imperial_rent_pool=60.0,
+            current_super_wage_rate=0.30,
+            current_repression_level=0.4,
+        )
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            economy=custom_economy,
+        )
+        G = state.to_graph()
+        restored = WorldState.from_graph(G, tick=1)
+
+        assert restored.economy.imperial_rent_pool == 60.0
+        assert restored.economy.current_super_wage_rate == 0.30
+        assert restored.economy.current_repression_level == 0.4
+
+    def test_from_graph_default_economy_when_missing(self) -> None:
+        """from_graph() uses default economy when metadata missing (backward compat)."""
+        import networkx as nx
+
+        G: nx.DiGraph[str] = nx.DiGraph()
+        # No economy in G.graph - simulates old graph without economy support
+        restored = WorldState.from_graph(G, tick=0)
+
+        assert restored.economy.imperial_rent_pool == 100.0
+        assert restored.economy.current_super_wage_rate == 0.20
+        assert restored.economy.current_repression_level == 0.5
+
+    def test_economy_round_trip(
+        self,
+        worker: SocialClass,
+        owner: SocialClass,
+    ) -> None:
+        """Economy survives to_graph() -> from_graph() round trip."""
+        from babylon.models.entities.economy import GlobalEconomy
+        from babylon.models.entities.relationship import Relationship
+        from babylon.models.enums import EdgeType
+
+        custom_economy = GlobalEconomy(
+            imperial_rent_pool=125.0,
+            current_super_wage_rate=0.10,
+            current_repression_level=0.8,
+        )
+        relationship = Relationship(
+            source_id="C001",
+            target_id="C002",
+            edge_type=EdgeType.EXPLOITATION,
+        )
+        state = WorldState(
+            tick=5,
+            entities={"C001": worker, "C002": owner},
+            relationships=[relationship],
+            economy=custom_economy,
+        )
+        G = state.to_graph()
+        restored = WorldState.from_graph(G, tick=6)
+
+        # Verify full state preservation
+        assert len(restored.entities) == 2
+        assert len(restored.relationships) == 1
+        assert restored.economy.imperial_rent_pool == 125.0
+        assert restored.economy.current_super_wage_rate == 0.10
+        assert restored.economy.current_repression_level == 0.8

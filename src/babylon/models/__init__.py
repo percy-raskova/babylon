@@ -27,6 +27,7 @@ from babylon.models.entities import (
     Contradiction,
     ContradictionState,
     Effect,
+    GlobalEconomy,
     IdeologicalProfile,
     Relationship,
     ResolutionOutcome,
@@ -73,6 +74,7 @@ __all__ = [
     "SocialClass",
     "Relationship",
     "IdeologicalProfile",  # Sprint 3.4.3 - George Jackson Refactor
+    "GlobalEconomy",  # Sprint 3.4.4 - Dynamic Balance
     # Other Entities
     "Effect",
     "ContradictionState",

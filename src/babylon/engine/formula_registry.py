@@ -110,4 +110,7 @@ class FormulaRegistry:
         # Solidarity Transmission formulas (Sprint 3.4.2)
         registry.register("solidarity_transmission", formulas.calculate_solidarity_transmission)
 
+        # Dynamic Balance formulas (Sprint 3.4.4)
+        registry.register("bourgeoisie_decision", formulas.calculate_bourgeoisie_decision)
+
         return registry

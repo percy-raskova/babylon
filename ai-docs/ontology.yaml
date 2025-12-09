@@ -69,6 +69,66 @@ theoretical_terms:
       Destruction of organic social bonds, replacing them with market relations.
       Workers isolated from each other, unable to organize collectively.
     in_game: "Reduces organization capacity, increases acquiescence"
+    range: "[0, 1] - 0 is strong community, 1 is total isolation"
+    drivers:
+      - "Consumer culture and individualism"
+      - "Gig economy and precarious work"
+      - "Social media replacing physical community"
+      - "Geographic mobility breaking local ties"
+    effect: "Blocks collective action regardless of consciousness level"
+
+  super_wages:
+    definition: >
+      Wages exceeding the value produced by the worker (W > V).
+      Funded by imperial rent extracted from periphery.
+      The material basis for false consciousness in the core.
+    formula: "W_core = V_core + Φ (imperial rent share)"
+    in_game: "Core workers receive super-wages, breeding loyalty to imperialism"
+    key_insight: "The bomb factory pays well. That's the problem."
+
+  comprador:
+    definition: >
+      Local bourgeoisie in periphery who facilitate imperial extraction.
+      Intermediaries between core capital and peripheral labor.
+      "Native informants" who enable neo-colonial exploitation.
+    synonyms: ["comprador bourgeoisie", "national bourgeoisie (dependent faction)"]
+    in_game: "Extracts from periphery workers, pays tribute to core"
+    role: "Bridge enabling global value transfer"
+
+  false_consciousness:
+    definition: >
+      Ideological state where class interests are obscured.
+      Workers support systems that exploit them due to material benefits,
+      nationalist ideology, or failure to perceive global class dynamics.
+    causes:
+      material: "Super-wages (W > V) breed satisfaction"
+      ideological: "Nationalism competes with class identity"
+      structural: "Atomization prevents collective awareness"
+    in_game: "Core workers drift toward false consciousness when W > V"
+    note: "Not 'stupidity' - has material basis in imperial rent"
+
+  imperial_circuit:
+    definition: >
+      The global flow of value from periphery to core.
+      Periphery workers create value → Comprador extracts →
+      Core bourgeoisie receives tribute → Super-wages to core workers.
+    components:
+      - "Periphery exploitation (local extraction)"
+      - "Tribute transfer (imperial rent flow)"
+      - "Super-wage distribution (core worker bribery)"
+    in_game: "4-node model: P_w → P_c → C_b → C_w"
+    reference: "ai-docs/imperial-circuit.yaml"
+
+  national_identity:
+    definition: >
+      Identification with nation over class.
+      "American worker" vs "worker who happens to be American."
+      Competes with class consciousness for allegiance.
+    in_game: "Variable [0,1] competing with class_consciousness"
+    dynamics:
+      crisis: "Tends to spike during economic crisis (scapegoating)"
+      prosperity: "Can coexist with mild class awareness"
+    danger: "High class_consciousness + high national_identity = fascism"
 
 # =============================================================================
 # ARCHITECTURAL TERMS

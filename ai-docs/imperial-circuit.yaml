@@ -1,0 +1,360 @@
+# Imperial Circuit Model
+# Expanded 4-node model for true MLM-TW dynamics
+#
+# Context: The 2-node model (worker → owner) is "orthodox book-worship Marxism"
+# It fails to capture WHY core workers support imperialism: they benefit from it.
+# "Happy to work at the bomb factory because it pays well."
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-09"
+  purpose: "Define the minimum viable model for imperial dynamics"
+  problem_statement: |
+    Current 2-node model has single dynamic: exploitation → consciousness → revolution.
+    This is LINEAR and BORING because it ignores:
+    - Global value chains (periphery → core)
+    - Super-wages (labor aristocracy)
+    - False consciousness from material benefit
+    - The reason revolution happens in periphery FIRST
+
+# =============================================================================
+# THE CURRENT (INSUFFICIENT) MODEL
+# =============================================================================
+
+current_model:
+  nodes: 2
+  structure:
+    - name: "Periphery Worker (P_w)"
+      role: PERIPHERY_PROLETARIAT
+      description: "Exploited worker, produces value, receives subsistence"
+    - name: "Core Owner (C_b)"
+      role: CORE_BOURGEOISIE
+      description: "Capital owner, extracts surplus"
+
+  edges: 1
+  edge_types:
+    - EXPLOITATION: "P_w → C_b (value flows from worker to owner)"
+
+  problem: |
+    Workers correctly develop revolutionary consciousness because wages = 0.
+    By tick 2-3, consciousness hits 1.0, rent drops to 0, simulation stalls.
+    This is correct for PERIPHERY dynamics but wrong for CORE.
+
+    Missing: The mechanism by which core workers are BRIBED into supporting imperialism.
+
+# =============================================================================
+# THE IMPERIAL CIRCUIT (MVP)
+# =============================================================================
+
+imperial_circuit:
+
+  overview: |
+    The imperial circuit captures the global flow of value:
+    1. Periphery workers create value
+    2. Comprador elites extract and transfer to core
+    3. Core bourgeoisie receives imperial rent
+    4. Core workers receive super-wages (bribery) from imperial rent
+
+    This creates TWO DYNAMICS:
+    - Periphery: consciousness rises (material basis for revolution)
+    - Core: consciousness decays (material basis for false consciousness)
+
+  nodes:
+    minimum: 4
+    structure:
+      - id: P_w
+        name: "Periphery Worker"
+        role: PERIPHERY_PROLETARIAT
+        description: "Global South worker - exploited, revolutionary potential"
+        variables:
+          wealth: "Decreases via extraction"
+          wages_received: "Subsistence or less (from P_c)"
+          value_produced: "High - creates commodities"
+          consciousness: "Can rise - W < V"
+          organization: "Can increase with consciousness"
+          atomization: "Low baseline (strong community ties)"
+        dynamics: |
+          W/V ratio < 1 → consciousness rises
+          High consciousness + organization → revolution potential
+
+      - id: P_c
+        name: "Periphery Comprador"
+        role: COMPRADOR_BOURGEOISIE
+        description: "Local elite facilitating extraction - 'native informant'"
+        variables:
+          wealth: "Takes cut of extraction"
+          tribute_paid: "Imperial rent sent to C_b"
+          repression_capacity: "Local violence to suppress P_w"
+        dynamics: |
+          Extracts from P_w
+          Pays tribute to C_b
+          Uses repression to maintain extraction
+
+      - id: C_b
+        name: "Core Bourgeoisie"
+        role: CORE_BOURGEOISIE
+        description: "Imperial center capital - bomb factory owner"
+        variables:
+          wealth: "Receives tribute from P_c"
+          imperial_rent_pool: "Accumulated from global extraction"
+          wages_paid: "Super-wages to C_w (funded by pool)"
+          repression_capacity: "Soft power + hard power"
+        dynamics: |
+          Receives tribute
+          Decides: how much to share with C_w vs accumulate
+          Trade-off: more super-wages = more docile workers but smaller pool
+
+      - id: C_w
+        name: "Core Worker"
+        role: LABOR_ARISTOCRACY
+        description: "First World worker - exploited locally, benefits globally"
+        variables:
+          wealth: "Relatively high (super-wages)"
+          wages_received: "Super-wages from C_b (W > V)"
+          value_produced: "Local production"
+          consciousness: "Decays - W > V"
+          national_identity: "Competes with class consciousness"
+          atomization: "High (consumer isolation)"
+          consumption_level: "High - iPhones, Netflix"
+        dynamics: |
+          W/V ratio > 1 → consciousness decays (false consciousness)
+          High atomization → hard to organize even if conscious
+          High national_identity → loyalty to empire over class
+          "Happy at the bomb factory because it pays well"
+
+  edges:
+    minimum: 5
+    types:
+      - type: EXPLOITATION
+        direction: "P_w → P_c"
+        description: "Local surplus extraction in periphery"
+        value_flow: "Surplus value created by P_w"
+
+      - type: TRIBUTE
+        direction: "P_c → C_b"
+        description: "Imperial rent transfer to core"
+        value_flow: "Imperial rent (net of comprador cut)"
+        mechanism: "Repatriated profits, interest payments, unequal exchange"
+
+      - type: WAGES
+        direction: "C_b → C_w"
+        description: "Super-wages to core workers"
+        value_flow: "W > V (funded by imperial rent)"
+        purpose: "Buy loyalty, prevent revolution in core"
+
+      - type: LOCAL_EXPLOITATION
+        direction: "C_w → C_b"
+        description: "Core workers still exploited locally"
+        value_flow: "Local surplus extraction"
+        key_insight: "C_w is exploited but NET BENEFICIARY globally"
+
+      - type: SOLIDARITY
+        direction: "P_w ↔ C_w"
+        description: "Cross-border worker connection"
+        value_flow: "None - ideological/organizational"
+        dynamics: |
+          Optional edge - can be built/destroyed
+          High solidarity enables joint action
+          Nationalism opposes solidarity
+          Key player choice: build solidarity or exploit nationalism
+
+  diagram: |
+
+    P_w (Periphery Worker)  ←─── SOLIDARITY (optional) ──→  C_w (Core Worker)
+     │                                                        ↑
+     │ EXPLOITATION                                           │ WAGES (super-wages)
+     ↓                                                        │
+    P_c (Comprador)  ─────────── TRIBUTE ─────────────→  C_b (Core Bourgeoisie)
+                                                              ↑
+                                                              │ LOCAL_EXPLOITATION
+                                                              │
+                                                            C_w
+
+# =============================================================================
+# KEY FORMULAS
+# =============================================================================
+
+formulas:
+
+  consciousness_drift:
+    current: "dΨ/dt = k(1 - W/V) - λΨ"
+    problem: "W always 0 (no WAGES edge exists)"
+    fix: "Read W from incoming WAGES edges"
+    dynamics:
+      when_W_lt_V: "drift positive → revolutionary consciousness"
+      when_W_gt_V: "drift negative → false consciousness"
+      when_W_eq_V: "unstable equilibrium → crisis potential"
+
+  imperial_rent_pool:
+    definition: "Net flow available for super-wage bribery"
+    formula: "Pool = Σ(TRIBUTE) - Σ(WAGES) - Σ(REPRESSION_COSTS)"
+    dynamics:
+      shrinking_pool: "Must cut super-wages → core consciousness rises"
+      growing_pool: "Can increase super-wages → core consciousness falls"
+
+  false_consciousness:
+    mechanisms:
+      material: "W > V breeds satisfaction with system"
+      ideological: "nationalism competes with class identity"
+      atomization: "consumer culture fragments solidarity"
+    formula: |
+      effective_consciousness = class_consciousness × (1 - national_identity) × (1 - atomization)
+
+  revolution_threshold:
+    current: "P(S|R) > P(S|A)"
+    expanded: "P(S|R) > P(S|A) AND organization > atomization × repression"
+    insight: "Consciousness alone insufficient - need organization against atomization"
+
+# =============================================================================
+# MULTI-DIMENSIONAL CONSCIOUSNESS
+# =============================================================================
+
+consciousness_model:
+
+  current_problem: |
+    Single dimension: ideology [-1, +1]
+    Maps to consciousness [0, 1]
+    Can only go up or down
+
+  expanded_model:
+    dimensions:
+      class_consciousness:
+        range: [0, 1]
+        meaning: "Awareness of class position and exploitation"
+        driver: "W/V ratio - material conditions"
+
+      national_identity:
+        range: [0, 1]
+        meaning: "'American worker' vs 'worker who happens to be American'"
+        driver: "Ideological apparatus, crisis scapegoating"
+        competes_with: class_consciousness
+
+      atomization:
+        range: [0, 1]
+        meaning: "Social fragmentation, individualism"
+        driver: "Consumer culture, media, gig economy"
+        effect: "Blocks organization regardless of consciousness"
+
+    interactions: |
+      - High class_consciousness + low national_identity = revolutionary
+      - High class_consciousness + high national_identity = fascist potential
+      - High anything + high atomization = impotent (can't organize)
+      - Crisis reduces atomization temporarily (people seek community)
+
+# =============================================================================
+# GAME DYNAMICS (What Makes It Interesting)
+# =============================================================================
+
+game_dynamics:
+
+  the_core_tension: |
+    The imperial rent pool is FINITE.
+    Periphery consciousness rises → resistance → extraction harder.
+    Extraction costs rise → pool shrinks → hard choices.
+
+  bourgeoisie_choices:
+    option_1: "Maintain super-wages (keep core docile, shrink pool faster)"
+    option_2: "Increase extraction (more repression in periphery)"
+    option_3: "Austerity in core (risk core awakening)"
+    option_4: "Fascism (redirect core anger at immigrants/foreigners)"
+
+  falling_rate_of_bribery: |
+    Structural tendency: harder to maintain labor aristocracy over time.
+    Periphery resistance increases.
+    Extraction costs rise.
+    Eventually can't pay super-wages.
+    Then: race between class consciousness and national chauvinism.
+
+  crisis_as_phase_transition: |
+    When super-wages drop:
+    - Atomization cracks (people seek solidarity)
+    - Class consciousness can rise
+    - BUT national identity can also spike (scapegoating)
+    - Fascism vs socialism as competing resolutions
+
+  the_solidarity_question: |
+    Can C_w and P_w build solidarity?
+    This is the game's central choice.
+    Material interests differ (C_w benefits from imperialism).
+    But long-term: imperial rent pool will shrink.
+    Strategic choice: build solidarity before crisis or be divided and conquered.
+
+# =============================================================================
+# IMPLEMENTATION PATH
+# =============================================================================
+
+implementation:
+
+  phase_3_4:
+    name: "Imperial Circuit"
+    goal: "4-node model with wage flow"
+    sprints:
+
+      sprint_3_4_1:
+        name: "WAGES Edge Type"
+        deliverables:
+          - "EdgeType.WAGES in enums.py"
+          - "WagePaymentSystem in systems/wages.py"
+          - "ConsciousnessSystem reads from WAGES edges"
+        tests:
+          - "test_wages_edge_transfers_wealth"
+          - "test_consciousness_decays_when_W_gt_V"
+          - "test_core_worker_develops_false_consciousness"
+
+      sprint_3_4_2:
+        name: "4-Node Scenario"
+        deliverables:
+          - "create_imperial_circuit_scenario() in scenarios.py"
+          - "P_w, P_c, C_b, C_w nodes with proper edges"
+          - "TRIBUTE edge type"
+        tests:
+          - "test_imperial_rent_flows_to_core"
+          - "test_super_wages_funded_by_tribute"
+
+      sprint_3_4_3:
+        name: "Multi-Dimensional Consciousness"
+        deliverables:
+          - "Split ideology into class_consciousness + national_identity"
+          - "Add atomization variable"
+          - "Update consciousness drift formula"
+        tests:
+          - "test_class_and_national_consciousness_compete"
+          - "test_atomization_blocks_organization"
+
+      sprint_3_4_4:
+        name: "Dynamic Balance"
+        deliverables:
+          - "Imperial rent pool as emergent property"
+          - "Bourgeoisie choice system"
+          - "Crisis events as phase transitions"
+        tests:
+          - "test_shrinking_pool_forces_austerity"
+          - "test_crisis_reduces_atomization"
+
+# =============================================================================
+# THEORETICAL GROUNDING
+# =============================================================================
+
+theoretical_basis:
+
+  sources:
+    - "Lenin: Imperialism, the Highest Stage of Capitalism"
+    - "Arghiri Emmanuel: Unequal Exchange"
+    - "Samir Amin: Unequal Development, Accumulation on a World Scale"
+    - "Cope: Divided World Divided Class"
+    - "Fanon: The Wretched of the Earth"
+
+  key_quotes:
+    lenin: |
+      "The receipt of high monopoly profits by the capitalists... makes it
+      economically possible for them to bribe certain sections of the workers."
+
+    amin: |
+      "The fundamental mechanism of accumulation on a world scale is the
+      transfer of value from periphery to center."
+
+    fanon: |
+      "For a colonized people the most essential value... is first and foremost
+      the land: the land which will bring them bread and, above all, dignity."
+
+  mantra: "The bomb factory pays well. That's the problem."

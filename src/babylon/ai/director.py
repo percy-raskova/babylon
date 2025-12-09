@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from babylon.ai.llm_provider import LLMProvider
 from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
 if TYPE_CHECKING:
@@ -61,6 +62,7 @@ class NarrativeDirector:
         use_llm: bool = False,
         rag_pipeline: RagPipeline | None = None,
         prompt_builder: DialecticalPromptBuilder | None = None,
+        llm: LLMProvider | None = None,
     ) -> None:
         """Initialize the NarrativeDirector.
 
@@ -71,10 +73,14 @@ class NarrativeDirector:
                          If None, RAG features are disabled (backward compat).
             prompt_builder: Optional custom DialecticalPromptBuilder.
                            If None, creates default builder.
+            llm: Optional LLMProvider for text generation.
+                 If None, no LLM generation occurs (backward compat).
         """
         self._use_llm = use_llm
         self._rag = rag_pipeline
         self._prompt_builder = prompt_builder or DialecticalPromptBuilder()
+        self._llm = llm
+        self._narrative_log: list[str] = []
         self._config: SimulationConfig | None = None
 
     @property
@@ -103,6 +109,17 @@ class NarrativeDirector:
             RagPipeline instance or None if not configured.
         """
         return self._rag
+
+    @property
+    def narrative_log(self) -> list[str]:
+        """Return generated narrative entries.
+
+        Returns a copy of the internal list to prevent external modification.
+
+        Returns:
+            List of generated narrative strings.
+        """
+        return list(self._narrative_log)
 
     def on_simulation_start(
         self,
@@ -158,10 +175,31 @@ class NarrativeDirector:
             events=new_events,
         )
 
-        # Log context (future: pass to LLM in Sprint 3.3)
+        # Log context
         logger.info("[%s] Context prepared for tick %d", self.name, new_state.tick)
         if self._use_llm:
             logger.debug("[%s] Full context:\n%s", self.name, context_block)
+
+        # Generate narrative for SURPLUS_EXTRACTION events (Sprint 3.3)
+        if self._use_llm and self._llm is not None and new_events:
+            surplus_events = [
+                e for e in new_events if "SURPLUS_EXTRACTION" in e or "surplus_extraction" in e
+            ]
+            if surplus_events:
+                system_prompt = self._prompt_builder.build_system_prompt()
+                try:
+                    narrative = self._llm.generate(
+                        prompt=context_block,
+                        system_prompt=system_prompt,
+                    )
+                    self._narrative_log.append(narrative)
+                    logger.info(
+                        "[%s] Generated narrative: %s...",
+                        self.name,
+                        narrative[:100] if len(narrative) > 100 else narrative,
+                    )
+                except Exception as e:
+                    logger.warning("[%s] LLM generation failed: %s", self.name, e)
 
         # Process events for logging
         self._process_events(new_events, new_state.tick)

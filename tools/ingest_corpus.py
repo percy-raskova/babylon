@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import logging
 import re
-import shutil
 import sys
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -60,6 +59,8 @@ class CorpusText:
     author: str
     keywords: tuple[str, ...]  # For fuzzy filename matching
     year: int | None = None
+    # Subdirectories to search in (relative to source root) for targeted scanning
+    search_paths: tuple[str, ...] = ()
 
 
 MVP_CORPUS: Final[tuple[CorpusText, ...]] = (
@@ -68,42 +69,52 @@ MVP_CORPUS: Final[tuple[CorpusText, ...]] = (
         author="Marx",
         keywords=("wage", "labour", "capital", "wage-labour"),
         year=1849,
+        # Multi-chapter work: use directory path with ch*.htm pattern
+        search_paths=("archive/marx/works/1847/wage-labour",),
     ),
     CorpusText(
         title="Value, Price and Profit",
         author="Marx",
-        keywords=("value", "price", "profit"),
+        keywords=("value", "price", "profit", "value-price-profit"),
         year=1865,
+        # Multi-chapter work: use directory path with ch*.htm pattern
+        search_paths=("archive/marx/works/1865/value-price-profit",),
     ),
     CorpusText(
         title="Principles of Communism",
         author="Engels",
-        keywords=("principles", "communism"),
+        keywords=("principles", "communism", "prin-com"),
         year=1847,
+        search_paths=("archive/marx/works/1847/11",),  # Engels works under Marx archive
     ),
     CorpusText(
         title="Imperialism, the Highest Stage of Capitalism",
         author="Lenin",
         keywords=("imperialism", "highest", "stage", "capitalism", "imp-hsc"),
         year=1916,
+        # Multi-chapter work: use directory path with ch*.htm pattern
+        search_paths=("archive/lenin/works/1916/imp-hsc",),
     ),
     CorpusText(
-        title="The Wretched of the Earth",
+        title="On National Culture",
         author="Fanon",
-        keywords=("wretched", "earth", "damnes", "terre"),
+        keywords=("national", "culture", "national-culture"),
         year=1961,
+        search_paths=("subject/africa/fanon",),  # Wretched not available, using excerpt
     ),
     CorpusText(
         title="On Contradiction",
         author="Mao",
         keywords=("contradiction", "mswv1_17"),
         year=1937,
+        search_paths=("reference/archive/mao/selected-works/volume-1",),
     ),
     CorpusText(
         title="Analysis of the Classes in Chinese Society",
         author="Mao",
         keywords=("analysis", "classes", "chinese", "society", "mswv1_1"),
         year=1926,
+        search_paths=("reference/archive/mao/selected-works/volume-1",),
     ),
 )
 
@@ -147,57 +158,161 @@ def find_matching_files(
     source_dir: Path,
     extensions: tuple[str, ...] = (".txt", ".md", ".htm", ".html"),
 ) -> dict[CorpusText, list[Path]]:
-    """Recursively scan directory for files matching MVP corpus texts.
+    """Search targeted directories for files matching MVP corpus texts.
+
+    Uses targeted search paths defined in each CorpusText to avoid scanning
+    the entire archive (which can be 100GB+). Falls back to broader search
+    only if targeted paths don't exist.
 
     Args:
-        source_dir: Directory to scan
+        source_dir: Root directory of the archive
         extensions: File extensions to consider
 
     Returns:
         Dict mapping each corpus text to list of matching file paths
     """
-    matches: dict[CorpusText, list[Path]] = {text: [] for text in MVP_CORPUS}
+    result: dict[CorpusText, list[Path]] = {}
 
     if not source_dir.exists():
         logger.error(f"Source directory does not exist: {source_dir}")
-        return matches
+        return {text: [] for text in MVP_CORPUS}
 
-    # Scan all files with matching extensions
-    all_files: list[Path] = []
-    for ext in extensions:
-        all_files.extend(source_dir.rglob(f"*{ext}"))
+    # Search each text in its targeted directories only
+    for text in MVP_CORPUS:
+        scored_matches: list[tuple[Path, float]] = []
 
-    logger.info(f"Scanning {len(all_files)} files in {source_dir}...")
+        # Determine which directories to search
+        search_dirs: list[Path] = []
+        if text.search_paths:
+            for subpath in text.search_paths:
+                target_dir = source_dir / subpath
+                if target_dir.exists():
+                    search_dirs.append(target_dir)
+                else:
+                    logger.debug(f"Search path not found: {target_dir}")
 
-    # Score each file against each corpus text
-    for file_path in tqdm(all_files, desc="Matching files", disable=len(all_files) < 100):
-        filename = file_path.stem  # filename without extension
+        # If no targeted paths found, skip (don't fall back to full scan)
+        if not search_dirs:
+            logger.warning(f"No valid search paths for: {text.title}")
+            result[text] = []
+            continue
 
-        for text in MVP_CORPUS:
-            score = fuzzy_match_score(filename, text)
-            if score > 0.5:  # Threshold for considering a match
-                matches[text].append((file_path, score))  # type: ignore[arg-type]
+        # Scan only the targeted directories
+        for search_dir in search_dirs:
+            logger.info(f"Searching for '{text.title}' in {search_dir.name}/...")
+            for ext in extensions:
+                for file_path in search_dir.rglob(f"*{ext}"):
+                    filename = file_path.stem
+                    score = fuzzy_match_score(filename, text)
+                    if score > 0.5:
+                        scored_matches.append((file_path, score))
 
-    # Sort matches by score and keep only paths
-    result: dict[CorpusText, list[Path]] = {}
-    for text, file_scores in matches.items():
-        # file_scores is list of (Path, float) tuples
-        scored_list: list[tuple[Path, float]] = file_scores  # type: ignore[assignment]
-        if scored_list:
-            # Sort by score descending, then by path length ascending (prefer shorter)
+        # Sort by score descending, path length ascending
+        if scored_matches:
             sorted_matches = sorted(
-                scored_list,
+                scored_matches,
                 key=lambda x: (-x[1], len(str(x[0]))),
             )
             result[text] = [path for path, _ in sorted_matches]
+            logger.info(f"  Found {len(sorted_matches)} matches for '{text.title}'")
         else:
             result[text] = []
+            logger.warning(f"  No matches found for '{text.title}'")
 
     return result
 
 
+def convert_html_to_markdown(html_content: str) -> str:
+    """Convert HTML content to Markdown format.
+
+    Args:
+        html_content: Raw HTML content
+
+    Returns:
+        Converted Markdown content
+    """
+    from markdownify import markdownify
+
+    # Convert HTML to Markdown
+    markdown = markdownify(
+        html_content,
+        heading_style="atx",  # Use # for headings
+        bullets="-",  # Use - for lists
+        strip=["script", "style", "nav", "footer", "header"],
+    )
+
+    # Clean up excessive whitespace
+    markdown = re.sub(r"\n{3,}", "\n\n", markdown)
+    markdown = re.sub(r" +", " ", markdown)
+
+    return markdown.strip()
+
+
+def import_multi_chapter_work(
+    search_dir: Path,
+    text: CorpusText,
+    dest_path: Path,
+) -> bool:
+    """Import a multi-chapter work by concatenating all chapter files.
+
+    Args:
+        search_dir: Directory containing chapter files (ch01.htm, ch02.htm, etc.)
+        text: The corpus text metadata
+        dest_path: Destination path for the combined Markdown file
+
+    Returns:
+        True if successful, False otherwise
+    """
+    # Find all chapter files in order
+    chapter_files = sorted(search_dir.glob("ch*.htm"))
+    if not chapter_files:
+        chapter_files = sorted(search_dir.glob("ch*.html"))
+
+    if not chapter_files:
+        return False
+
+    logger.info(f"Found {len(chapter_files)} chapters for '{text.title}'")
+
+    # Also look for intro/preface files
+    intro_files: list[Path] = []
+    for name in ["intro.htm", "introduction.htm", "pref01.htm", "pref02.htm", "preface.htm"]:
+        intro_path = search_dir / name
+        if intro_path.exists():
+            intro_files.append(intro_path)
+
+    # Combine all files: intro + chapters
+    all_files = sorted(intro_files) + chapter_files
+    combined_content: list[str] = []
+
+    for file_path in all_files:
+        try:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
+                raw_html = f.read()
+            chapter_md = convert_html_to_markdown(raw_html)
+            if chapter_md.strip():
+                combined_content.append(chapter_md)
+        except Exception as e:
+            logger.warning(f"Failed to read chapter {file_path.name}: {e}")
+
+    if not combined_content:
+        return False
+
+    # Add title header and combine
+    full_content = f"# {text.title}\n\n**Author:** {text.author}\n\n---\n\n"
+    full_content += "\n\n---\n\n".join(combined_content)
+
+    with open(dest_path, "w", encoding="utf-8") as f:
+        f.write(full_content)
+
+    logger.info(f"Combined {len(all_files)} files -> {dest_path.name}")
+    return True
+
+
 def import_corpus_files(source_dir: Path, corpus_dir: Path) -> tuple[int, list[str]]:
     """Import matching files from external library to corpus directory.
+
+    Converts HTML files to Markdown for better text processing.
+    Handles both single-file works and multi-chapter works.
 
     Args:
         source_dir: External library path to import from
@@ -208,32 +323,60 @@ def import_corpus_files(source_dir: Path, corpus_dir: Path) -> tuple[int, list[s
     """
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
-    matches = find_matching_files(source_dir)
-
     imported = 0
     missing: list[str] = []
 
-    for text, paths in matches.items():
-        if not paths:
-            missing.append(f"{text.title} ({text.author})")
-            continue
-
-        # Take the best match (first after sorting)
-        source_path = paths[0]
-
-        # Create destination filename: author_title.ext
+    for text in MVP_CORPUS:
+        # Create destination filename
         safe_title = re.sub(r"[^\w\s-]", "", text.title).replace(" ", "_").lower()
         safe_author = text.author.lower()
-        ext = source_path.suffix
-        dest_filename = f"{safe_author}_{safe_title}{ext}"
+        dest_filename = f"{safe_author}_{safe_title}.md"
         dest_path = corpus_dir / dest_filename
 
-        try:
-            shutil.copy2(source_path, dest_path)
-            logger.info(f"Imported: {text.title} -> {dest_filename}")
+        success = False
+
+        # Try each search path
+        for subpath in text.search_paths:
+            search_dir = source_dir / subpath
+            if not search_dir.exists():
+                continue
+
+            # Check if this is a multi-chapter directory
+            chapter_files = list(search_dir.glob("ch*.htm")) + list(search_dir.glob("ch*.html"))
+            if chapter_files:
+                # Multi-chapter work
+                success = import_multi_chapter_work(search_dir, text, dest_path)
+                if success:
+                    logger.info(f"Imported multi-chapter: {text.title}")
+                    break
+            else:
+                # Try to find a single matching file
+                for ext in (".htm", ".html", ".txt", ".md"):
+                    for file_path in search_dir.glob(f"*{ext}"):
+                        filename = file_path.stem
+                        score = fuzzy_match_score(filename, text)
+                        if score > 0.5:
+                            try:
+                                with open(file_path, encoding="utf-8", errors="replace") as f:
+                                    raw_html = f.read()
+                                content = convert_html_to_markdown(raw_html)
+
+                                with open(dest_path, "w", encoding="utf-8") as f:
+                                    f.write(content)
+
+                                logger.info(f"Imported: {text.title} -> {dest_filename}")
+                                success = True
+                                break
+                            except Exception as e:
+                                logger.error(f"Failed to import {file_path}: {e}")
+                    if success:
+                        break
+            if success:
+                break
+
+        if success:
             imported += 1
-        except Exception as e:
-            logger.error(f"Failed to copy {source_path}: {e}")
+        else:
             missing.append(f"{text.title} ({text.author})")
 
     return imported, missing
@@ -393,7 +536,11 @@ def ingest_corpus(corpus_dir: Path, reset: bool = False) -> int:
         preserve_paragraphs=True,
         preserve_sentences=True,
     )
-    processor = DocumentProcessor(chunker=chunker)
+    # Allow larger documents for full-text theoretical works (up to 500KB)
+    from babylon.rag.chunker import Preprocessor
+
+    preprocessor = Preprocessor(max_content_length=500000)
+    processor = DocumentProcessor(preprocessor=preprocessor, chunker=chunker)
 
     total_chunks = 0
     all_chunks: list[DocumentChunk] = []

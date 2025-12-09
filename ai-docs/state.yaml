@@ -353,11 +353,71 @@ planned:
     description: "AI as dual-use technology in game mechanics"
 
 # =============================================================================
+# FUTURE CONCEPTS (QUARANTINED IDEAS)
+# =============================================================================
+
+future_concepts:
+
+  layer_0_pivot:
+    phase: 3.5
+    status: "brainstorm"
+    description: |
+      Layer 0 Pivot: Future refactor to ground all Social Graph (Topology) nodes
+      onto a Spatial Graph (Territory). Moves from abstract 'Factions' to
+      'Territory-bound Factions' with Host/Parasite tenure systems.
+
+      Key insight: Political power has material basis in territorial control.
+      The question "who controls this neighborhood?" precedes "who has ideology?"
+    key_components:
+      - "Strategic Sectors: territorial units (Slums, Financial District, Factory Zone)"
+      - "Subversive Tenancy: De Facto control while enemy holds Legal control"
+      - "Suspicion metric: probability of Eviction Event triggering"
+      - "Enclosure: converting communal tenure to private (primitive accumulation)"
+    dependencies: ["Phase 3.4 Imperial Circuit stable"]
+
+  vanguard_economy:
+    phase: 4
+    status: "brainstorm"
+    location: "brainstorm/mechanics/vanguard_economy.md"
+    description: |
+      Implementation of Cadre/Sympathizer distinction and Coherence mechanics.
+      Moves away from generic "mana" to materialist simulation of Organization vs Movement.
+      Key mechanic: Coherence Factor derived from Cadre:Sympathizer ratio.
+      Player trap: "Influencer Trap" - farming Reputation faster than training Cadre
+      leads to massive but uncontrollable mob during historical rupture.
+    resources:
+      - "Cadre Labor (CL): Deterministic, high-value, structural actions"
+      - "Sympathizer Labor (SL): Stochastic, mass volume, mass actions"
+      - "Reputation: Multiplier for SL volume (not quality)"
+    formula: "Effective Output = (SL * Reputation) * Coherence Factor"
+    dependencies: ["Phase 3.4 Imperial Circuit complete"]
+
+  kinetic_warfare:
+    phase: 5
+    status: "brainstorm"
+    location: "brainstorm/mechanics/kinetic_warfare.md"
+    description: |
+      Asymmetric combat focusing on infrastructure sabotage, supply chain interdiction,
+      and risk/blowback calculation (Civilian harm vs. State damage).
+      Not modeling frontlines (Hearts of Iron) but System Disruption and Insurgency.
+      Combat occurs on Layer 0 Spatial Graph (Nodes and Edges).
+    target_triad:
+      - "Nodes of Extraction: Industrial farms, mines, logistics hubs (starve State of resources)"
+      - "Edges of Circulation: Power lines, fiber cables, highways (Social Blowback mechanic)"
+      - "Nodes of Realization: Data centers, arms factories, command bunkers (QRF threat)"
+    gameplay_loop:
+      - "Reconnaissance: Reveal hidden attributes (Defense, Connectivity, Collateral Risk)"
+      - "Preparation: Cultivate local sympathy (Human Shield effect)"
+      - "Strike: Auto-resolved tactical resolution based on Force correlations"
+      - "Fallout: Calculate Consciousness shift and State Repression"
+    dependencies: ["Layer 0 Spatial Graph", "Consciousness Vector"]
+
+# =============================================================================
 # CURRENT FOCUS
 # =============================================================================
 
 current_focus:
-  primary: "PHASE 3 IN PROGRESS - Sprint 3.3: LLM Integration for Vertical Slice"
+  primary: "PHASE 3 IN PROGRESS - Sprint 3.4.3: The George Jackson Refactor (Multi-Dimensional Consciousness)"
   roadmap: "brainstorm/plans/four-phase-engine-blueprint.md"
   phase2_design: "brainstorm/plans/phase2-game-loop-design.md"
   architecture_spec: "ai-docs/game-loop-architecture.yaml"
@@ -495,6 +555,24 @@ current_focus:
       3_4_4: "Dynamic Balance - shrinking pool, bourgeoisie choices"
     blockers: "None - Phase 3.3 vertical slice provides foundation"
 
+  phase_3_5:
+    name: "Phase 3.5: The Territorial Foundation (Layer 0)"
+    status: "COMPLETE"
+    goal: "Ground all Social Graph nodes onto a Spatial Graph (Territory)"
+    tech: "Spatial Graph + Host/Parasite tenure + Enclosure mechanics"
+    key_components:
+      - "Strategic Sectors - territorial units (Slums, Financial District, etc.)"
+      - "Subversive Tenancy - De Facto control while enemy holds Legal control"
+      - "Suspicion metric - likelihood of Eviction Event"
+      - "Enclosure mechanics - converting communal to private tenure"
+    architectural_insight: |
+      Layer 0 Pivot: Refactor to ground all Social Graph (Topology) nodes onto
+      a Spatial Graph (Territory). Moves from abstract 'Factions' to
+      'Territory-bound Factions' with Host/Parasite tenure systems.
+      This enables modeling geographic class struggle, gentrification,
+      and the material basis of political power (who controls what land).
+    blockers: "Phase 3.4 Imperial Circuit should be stable first"
+
   future_phase:
     name: "Phase 4: The Control Room"
     goal: "NiceGUI dashboard for simulation control and visualization"
@@ -504,7 +582,7 @@ current_focus:
       - "Narrative display - LLM-generated prose"
       - "Control panel - start/stop/step simulation"
       - "History browser - timeline with undo/redo"
-    blockers: "Phase 3.4 imperial circuit must be complete"
+    blockers: "Phase 3.5 territorial foundation should be complete"
 
   sprint_status:
     sprint_1:
@@ -799,12 +877,16 @@ current_focus:
           commit: "61fe9c1"
           key_insight: "solidarity_strength is STORED ON EDGE, not auto-calculated - enables Fascist Bifurcation"
         3_4_3:
-          name: "Multi-Dimensional Consciousness"
-          status: "PLANNED"
+          name: "Multi-Dimensional Consciousness (The George Jackson Refactor)"
+          status: "COMPLETE"
           deliverables:
-            - "Split ideology into class_consciousness + national_identity"
-            - "Add atomization variable"
-            - "Update consciousness drift formula"
+            - "IdeologicalProfile model (class_consciousness, national_identity, agitation)"
+            - "calculate_ideological_routing() formula"
+            - "Fascist Bifurcation mechanic: agitation + solidarity → revolution, agitation alone → fascism"
+            - "Removed legacy scalar ideology - clean migration to multi-dimensional model"
+          tests: "987 tests passing"
+          commits: ["73d991d", "51c4de6"]
+          key_insight: "Fascism is the defensive form of capitalism."
         3_4_4:
           name: "Dynamic Balance"
           status: "PLANNED"
@@ -812,6 +894,15 @@ current_focus:
             - "Imperial rent pool as emergent property"
             - "Bourgeoisie choice system"
             - "Crisis events as phase transitions"
+    phase_3_5:
+      name: "Territorial Foundation (Layer 0)"
+      summary: "Spatial Graph grounding Social Graph"
+      status: "PLANNED"
+      key_components:
+        - "Strategic Sectors (territorial units)"
+        - "Subversive Tenancy (Host/Parasite logic)"
+        - "Suspicion metric (Eviction risk)"
+        - "Enclosure mechanics"
     phase_4:
       name: "Control Room"
       summary: "NiceGUI dashboard"
@@ -827,13 +918,15 @@ current_focus:
       status: "FUTURE"
 
   next_steps:
-    current_sprint: "Sprint 3.4.3: Multi-Dimensional Consciousness"
+    current_sprint: "Sprint 3.4.4: Dynamic Balance"
     completed:
       - "Sprint 3.3: Vertical Slice (COMPLETE)"
       - "Sprint 3.4.1: Economic Infrastructure - TRIBUTE, WAGES, CLIENT_STATE edges (COMPLETE)"
       - "Sprint 3.4.2: Proletarian Internationalism - SolidaritySystem (COMPLETE)"
+      - "Sprint 3.4.3: Multi-Dimensional Consciousness - IdeologicalProfile (COMPLETE)"
+      - "Sprint 3.5: Layer 0 Territorial Substrate (COMPLETE)"
     in_progress:
-      - "Sprint 3.4.3: Multi-Dimensional Consciousness - split ideology variable"
+      - "Verify Agitation Router mechanics in integration tests"
     planned:
       - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
       - "Phase 4: NiceGUI Control Room - dashboard for simulation"
@@ -846,9 +939,10 @@ current_focus:
   new_mantra: "The bomb factory pays well. That's the problem."
   old_mantra: "State is data. Engine is logic. They never mix."
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
-  milestone: "SPRINT 3.4.2 COMPLETE: Proletarian Internationalism - SolidaritySystem operational"
-  next_milestone: "SPRINT 3.4.3: Multi-Dimensional Consciousness - split ideology"
-  test_count: 886
+  george_jackson_mantra: "Fascism is the defensive form of capitalism."
+  milestone: "SPRINT 3.4.3 COMPLETE: George Jackson Refactor - IdeologicalProfile replaces scalar ideology"
+  next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
+  test_count: 987
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.

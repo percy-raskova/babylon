@@ -3,6 +3,7 @@
 WorldState is an immutable snapshot of the entire simulation at a specific tick.
 It encapsulates:
 - All entities (social classes) as nodes
+- All territories (strategic sectors) as nodes
 - All relationships (value flows, tensions) as edges
 - A tick counter for temporal tracking
 - An event log for narrative/debugging
@@ -11,6 +12,7 @@ The state is designed for functional transformation:
     new_state = step(old_state, config)
 
 Sprint 4: Phase 2 game loop state container with NetworkX integration.
+Sprint 3.5.3: Territory integration for Layer 0.
 """
 
 from __future__ import annotations
@@ -22,7 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
-from babylon.models.enums import EdgeType
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import EdgeType, OperationalProfile, SectorType
 
 if TYPE_CHECKING:
     pass
@@ -44,6 +47,7 @@ class WorldState(BaseModel):
     Attributes:
         tick: Current turn number (0-indexed)
         entities: Map of entity ID to SocialClass (the nodes)
+        territories: Map of territory ID to Territory (Layer 0 nodes)
         relationships: List of Relationship edges (the edges)
         event_log: Recent events for narrative/debugging
     """
@@ -59,6 +63,11 @@ class WorldState(BaseModel):
     entities: dict[str, SocialClass] = Field(
         default_factory=dict,
         description="Map of entity ID to SocialClass (graph nodes)",
+    )
+
+    territories: dict[str, Territory] = Field(
+        default_factory=dict,
+        description="Map of territory ID to Territory (Layer 0 nodes)",
     )
 
     relationships: list[Relationship] = Field(
@@ -78,7 +87,11 @@ class WorldState(BaseModel):
     def to_graph(self) -> nx.DiGraph[str]:
         """Convert state to NetworkX DiGraph for formula application.
 
-        Nodes are entity IDs with all SocialClass fields as attributes.
+        Nodes are entity/territory IDs with all fields as attributes.
+        A _node_type marker distinguishes between node types:
+        - _node_type='social_class' for SocialClass nodes
+        - _node_type='territory' for Territory nodes
+
         Edges are relationships with all Relationship fields as attributes.
 
         Returns:
@@ -87,14 +100,19 @@ class WorldState(BaseModel):
         Example:
             G = state.to_graph()
             for node_id, data in G.nodes(data=True):
-                data["wealth"] += 10  # Modify in graph
+                if data["_node_type"] == "social_class":
+                    data["wealth"] += 10  # Modify entity
             new_state = WorldState.from_graph(G, tick=state.tick + 1)
         """
         G: nx.DiGraph[str] = nx.DiGraph()
 
-        # Add nodes with entity data
+        # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
-            G.add_node(entity_id, **entity.model_dump())
+            G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
+
+        # Add territory nodes with _node_type marker
+        for territory_id, territory in self.territories.items():
+            G.add_node(territory_id, _node_type="territory", **territory.model_dump())
 
         # Add edges with relationship data
         for rel in self.relationships:
@@ -118,17 +136,35 @@ class WorldState(BaseModel):
             event_log: Optional event log to preserve
 
         Returns:
-            New WorldState with entities and relationships from graph.
+            New WorldState with entities, territories, and relationships from graph.
 
         Example:
             G = state.to_graph()
             # ... modify graph ...
             new_state = WorldState.from_graph(G, tick=state.tick + 1)
         """
-        # Reconstruct entities from nodes
+        # Reconstruct entities and territories from nodes based on _node_type
         entities: dict[str, SocialClass] = {}
+        territories: dict[str, Territory] = {}
+
         for node_id, data in G.nodes(data=True):
-            entities[node_id] = SocialClass(**data)
+            node_type = data.get("_node_type", "social_class")
+            # Create a copy without _node_type for model construction
+            node_data = {k: v for k, v in data.items() if k != "_node_type"}
+
+            if node_type == "territory":
+                # Reconstruct Territory
+                # Convert enum strings back to enums if needed
+                sector_type = node_data.get("sector_type")
+                if isinstance(sector_type, str):
+                    node_data["sector_type"] = SectorType(sector_type)
+                profile = node_data.get("profile")
+                if isinstance(profile, str):
+                    node_data["profile"] = OperationalProfile(profile)
+                territories[node_id] = Territory(**node_data)
+            else:
+                # Reconstruct SocialClass (default for backward compatibility)
+                entities[node_id] = SocialClass(**node_data)
 
         # Reconstruct relationships from edges
         relationships: list[Relationship] = []
@@ -156,6 +192,7 @@ class WorldState(BaseModel):
         return cls(
             tick=tick,
             entities=entities,
+            territories=territories,
             relationships=relationships,
             event_log=event_log or [],
         )
@@ -178,6 +215,21 @@ class WorldState(BaseModel):
         """
         new_entities = {**self.entities, entity.id: entity}
         return self.model_copy(update={"entities": new_entities})
+
+    def add_territory(self, territory: Territory) -> WorldState:
+        """Return new state with territory added.
+
+        Args:
+            territory: Territory to add (Layer 0 node)
+
+        Returns:
+            New WorldState with the territory included.
+
+        Example:
+            new_state = state.add_territory(university_district)
+        """
+        new_territories = {**self.territories, territory.id: territory}
+        return self.model_copy(update={"territories": new_territories})
 
     def add_relationship(self, relationship: Relationship) -> WorldState:
         """Return new state with relationship added.

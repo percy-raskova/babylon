@@ -36,6 +36,7 @@ repos:
           - aiohttp>=3.0
           - backoff>=2.0
           - ratelimit>=2.0
+          - openai>=2.0
         args: [--config-file=pyproject.toml]
         exclude: ^tests/|^examples/|^src/babylon/rag/|^src/babylon/__main__.py|^src/babylon/metrics/|^tools/
 

@@ -9,6 +9,7 @@ Error Code Schema:
 - EMB_XXX: Embedding/vector errors
 - VAL_XXX: Validation errors
 - SYS_XXX: System-level errors
+- LLM_XXX: LLM generation errors
 """
 
 
@@ -141,3 +142,23 @@ class SimulationError(BabylonError):
         details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "SIM_001", details=details)
+
+
+class LLMGenerationError(BabylonError):
+    """Raised when LLM generation fails.
+
+    The ideological superstructure cannot produce narrative.
+
+    Error codes:
+    - LLM_001: General API error
+    - LLM_002: Timeout error
+    - LLM_003: Rate limit exceeded
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, error_code=error_code or "LLM_001", details=details)

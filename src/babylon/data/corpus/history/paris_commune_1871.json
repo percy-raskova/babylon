@@ -1,0 +1,24 @@
+{
+  "text": "The Paris Commune of 1871 represents the archetypal suppressed revolution, a moment when the working class seized power only to be crushed by the combined forces of domestic reaction and foreign occupation. The material conditions that produced this outcome illuminate both the possibilities and limitations of proletarian revolution in the absence of favorable strategic circumstances. As Marx analyzed, the working class cannot simply lay hold of the ready-made state machinery and wield it for its own purposes. The Commune demonstrated this truth through tragic experience.\n\nThe vacuum of state power following French defeat in the Franco-Prussian War created the immediate conditions for revolutionary seizure. Paris could resist only because, in consequence of the siege, it had got rid of the army and replaced it by a National Guard, the bulk of which consisted of working men. This armed proletariat became the physical basis of Commune power. The first decree of the Commune was the suppression of the standing army and the substitution for it of the armed people.\n\nThe Commune constituted itself as a working, not a parliamentary body, executive and legislative at the same time. Its true secret was this: it was essentially a working class government, the product of the struggle of the producing against the appropriating class, the political form at last discovered under which to work out the economical emancipation of labor. The great social measure of the Commune was its own working existence, demonstrating that workers could organize society without bourgeois direction.\n\nYet isolation proved fatal to the Commune. Facing both the Prussian army at the gates and the Versailles government mobilizing counter-revolutionary forces, the Commune could not extend its base beyond Paris. The failure to seize the Bank of France left critical financial leverage in enemy hands. The provinces remained largely passive, the peasantry unmobilized, and the international working class unable to provide material support. The contradiction between revolutionary Paris and conservative France could not be overcome.\n\nThe suppression of the Commune in the Bloody Week demonstrated the ruthlessness of bourgeois reaction when its class power is threatened. Thirty thousand Communards were massacred. The lesson encoded in this defeat reveals that even successful seizure of power in one locality cannot survive without expansion, without neutralizing enemy military force, and without securing the material resources necessary to defend revolutionary gains. Revolutionary organization without strategic depth invites suppression.",
+  "metadata": {
+    "year": 1871,
+    "location": "France",
+    "event_name": "Paris Commune",
+    "period": "March-May 1871",
+    "outcome_type": "suppression",
+    "tags": [
+      "commune",
+      "state_failure",
+      "repression",
+      "isolation",
+      "armed_proletariat",
+      "financial_leverage"
+    ],
+    "resonance_tags": [
+      "high_organization",
+      "state_legitimacy_crisis",
+      "military_defeat",
+      "geographic_isolation"
+    ]
+  }
+}

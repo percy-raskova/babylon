@@ -1148,6 +1148,32 @@ pending:
         repression: "Heat Signature warning"
         resources: "Power Draw meter"
         ai: "The Gardener"
+      widgets:
+        doomsday_clock:
+          system: "Time"
+          concept: "Clock showing tick count, hand approaches midnight"
+          visual: "Bulletin of Atomic Scientists aesthetic, glows red near 12:00"
+          thematic: "The revolution is inevitable. The only question is when."
+        sankey_diagram:
+          system: "Imperial Rent"
+          concept: "Wealth flow visualization Periphery → Core"
+          visual: "Thick flowing lines, gradient color, animated particles"
+          thematic: "Make the invisible visible. Show where wealth actually goes."
+        tension_gauge:
+          system: "Contradiction"
+          concept: "Analog needle gauge, glass cracks at 1.0"
+          visual: "Retro industrial gauge, green→yellow→red zones"
+          thematic: "Pressure builds. The system shatters."
+        political_compass:
+          system: "Consciousness"
+          concept: "Scatter plot of population ideological drift"
+          visual: "X=Class Consciousness, Y=Internationalism, dots drift over time"
+          thematic: "Watch the masses awaken. Or fall to fascism."
+        dossier_modal:
+          system: "Inspection"
+          concept: "Click node → detailed Ledger data modal"
+          visual: "Tabbed interface: Overview | Raw JSON | History | Relationships"
+          thematic: "Intelligence gathering. Know your enemy. Know your comrades."
 
   PDR002_wiki_implementation:
     status: "brainstorm"

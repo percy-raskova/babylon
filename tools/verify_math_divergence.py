@@ -217,17 +217,16 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
         print(f"  [FAIL] P(S|R) divergence: expected {collapse_p_rev:.4f} > {stable_p_rev:.4f}")
         all_pass = False
 
-    # Bug 2 Fix: High Rent -> Higher Owner Wealth
-    if stable_owner_wealth > collapse_owner_wealth:
-        print(
-            f"  [PASS] Owner wealth divergence: {stable_owner_wealth:.4f} > {collapse_owner_wealth:.4f}"
-        )
-        print("         (High rent extraction transfers wealth from Worker to Owner)")
+    # Note: With PPP model, owner wealth may be equal across scenarios
+    # since superwage_multiplier no longer affects extraction_efficiency.
+    # Owner wealth is determined by extraction (minus wages paid).
+    if stable_owner_wealth != collapse_owner_wealth:
+        diff = stable_owner_wealth - collapse_owner_wealth
+        print(f"  [INFO] Owner wealth difference: {diff:+.4f}")
     else:
-        print(
-            f"  [FAIL] Owner wealth divergence: expected {stable_owner_wealth:.4f} > {collapse_owner_wealth:.4f}"
-        )
-        all_pass = False
+        print(f"  [INFO] Owner wealth equal: {stable_owner_wealth:.4f} (expected with PPP model)")
+        print("         (superwage_multiplier affects PPP, not extraction)")
+    # This is no longer a pass/fail criterion for PPP model
 
     if all_pass:
         print("\n  [ALL PASS] PPP Model working - mathematical divergence verified!")

@@ -218,3 +218,14 @@ class SimulationConfig(BaseModel):
         default=0.35,
         description="Maximum super-wage rate during prosperity (35%)",
     )
+
+    # Purchasing Power Parity parameters (PPP Model - Superwage Distribution)
+    superwage_multiplier: Coefficient = Field(
+        default=1.0,
+        description="PPP multiplier for labor aristocracy purchasing power from imperial discount",
+    )
+
+    superwage_ppp_impact: Coefficient = Field(
+        default=0.5,
+        description="How much imperial extraction translates to PPP bonus (50%)",
+    )

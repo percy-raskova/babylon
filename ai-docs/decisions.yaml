@@ -1175,16 +1175,42 @@ pending:
           visual: "Tabbed interface: Overview | Raw JSON | History | Relationships"
           thematic: "Intelligence gathering. Know your enemy. Know your comrades."
 
-  PDR002_wiki_implementation:
+  PDR002_narrative_delivery:
     status: "brainstorm"
-    reference: "brainstorm/gramscian-wiki-engine.md"
-    options:
-      - "Jinja templates + Markdown + Obsidian"
-      - "Structured JSON + custom renderer"
-    considerations:
-      - "Hegemony mechanic integration"
-      - "Factional control model"
-      - "Player interaction model"
+    title: "The Gramscian Wire - Narrative Delivery System"
+    reference: "brainstorm/narrative/gramscian-wire.md"
+    supersedes: "brainstorm/gramscian-wiki-engine.md (original wiki concept)"
+    pivot: |
+      From "standalone wiki engine" to "Victoria-style newspaper announcements"
+      with Gramscian hegemony mechanics. The wiki IS the narrative delivery.
+      You're not reading newspapers - you're intercepting information streams.
+    concept:
+      name: "The Wire"
+      channels:
+        corporate_feed: "Hegemonic perspective, 'neutral' bourgeois framing"
+        liberated_signal: "Counter-hegemonic, revolutionary perspective"
+        intel_briefing: "Player faction analysis, actionable data"
+      key_insight: "Same event, different framings - ideology made visible"
+    new_mechanics:
+      hegemony_stat:
+        description: "Faction attribute for cultural/narrative control"
+        effect: "Determines which perspective is 'mainstream'"
+      propaganda_actions:
+        - "Underground press"
+        - "Radio broadcast"
+        - "Viral campaign"
+      reader_effect: "What player reads affects consciousness (optional)"
+    implementation_phases:
+      phase_1: "Single perspective (current NarrativeDirector)"
+      phase_2: "Dual perspective (Bourgeois + Revolutionary)"
+      phase_3: "Full N-faction with hegemony mechanics"
+    theoretical_basis: |
+      Gramsci's cultural hegemony: Ruling class maintains power through
+      consent, not just coercion. Media naturalizes capitalist worldview.
+      Counter-hegemony provides alternative framing.
+    integration:
+      extends: "src/babylon/ai/director.py (NarrativeDirector)"
+      ui: "brainstorm/ui/digital-grow-room.md (The Wire panel)"
 
 # =============================================================================
 # REJECTED DECISIONS

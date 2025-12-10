@@ -36,7 +36,7 @@ tokenizers = ">=0.19.1"
 # Utils
 backoff = ">=2.2.1"
 requests = ">=2.32.3"
-certifi = "==2024.8.30"
+certifi = "==2025.11.12"
 ratelimit = ">=2.2.1"
 psutil = "==6.1.0"
 gputil = "==1.4.0"

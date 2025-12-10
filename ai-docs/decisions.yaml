@@ -901,6 +901,117 @@ decisions:
         compensates for economic exploitation. This is the "internal
         stratification" that fractal topology must model.
 
+  ADR018_logging_strategy:
+    status: "accepted"
+    date: "2025-12-09"
+    title: "Python stdlib logging with custom enhancements"
+    context: |
+      Babylon needs a logging strategy that supports:
+      - Developer debugging (human-readable console)
+      - Post-mortem analysis (machine-parseable files)
+      - Exception integration (structured error context)
+      - Performance awareness (conditional logging for hot paths)
+      - Layer-specific concerns (Ledger, Topology, Archive, Observer)
+
+      Options evaluated:
+      - Python stdlib logging: Zero deps, universal knowledge, full control
+      - loguru: Beautiful output, zero config, but adds dependency
+      - structlog: Best structured logging, but overkill for game
+
+      Current state had several issues:
+      - logging.yaml references pythonjsonlogger (not in dependencies)
+      - __main__.py has basicConfig conflicting with setup_logging()
+      - context_window/manager.py logs every add/remove (performance)
+      - No log rotation, correlation IDs, or TRACE level
+
+    decision: |
+      Stay with Python stdlib logging, add custom enhancements:
+
+      1. Custom JSONFormatter (no dependencies)
+         - JSON Lines format for file output
+         - ~30 lines of code, no pythonjsonlogger needed
+
+      2. Custom TRACE level (value=5)
+         - Ultra-verbose debugging below DEBUG
+         - Never enabled in production
+
+      3. Rotating file handlers
+         - babylon.log: 10MB x 5 = 50MB max
+         - errors.log: ERROR+ only, 5MB x 10 = 50MB
+
+      4. Exception integration
+         - BabylonError.log() helper method
+         - Log at handling boundary, not raise site
+         - Use exception.to_dict() for structured context
+
+      5. Per-simulation logs (future)
+         - sim_{timestamp}_{seed}.jsonl for replay/analysis
+
+    rationale:
+      - "User preference: minimal dependencies"
+      - "User preference: loves custom loggers"
+      - "Exception hierarchy already has to_dict() - leverage it"
+      - "stdlib is universal - any Python dev can work with it"
+      - "Self-contained project - no library interop concerns"
+      - "Custom enhancements are simple (~100 lines total)"
+
+    log_levels:
+      CRITICAL: "System unusable, data loss imminent"
+      ERROR: "Operation failed, system continues"
+      WARNING: "Unexpected but handled"
+      INFO: "Normal operation milestones"
+      DEBUG: "Detailed diagnostics"
+      TRACE: "Ultra-verbose (custom, value=5)"
+
+    output_formats:
+      console:
+        format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+        level: "INFO (default)"
+      file:
+        format: "JSON Lines"
+        level: "DEBUG"
+        rotation: "10MB x 5 backups"
+
+    exception_logging_principle: |
+      "Log at the handling boundary"
+      - Don't log at raise site (causes duplicates on re-raise)
+      - Log at final handler (where exception is resolved)
+      - Use exception.to_dict() for structured context
+      - Caller decides importance (retry? fallback? fatal?)
+
+    implementation:
+      files_to_create:
+        - "src/babylon/utils/log.py (JSONFormatter, TRACE, helpers)"
+      files_to_modify:
+        - "src/babylon/config/logging_config.py (rotation, handlers)"
+        - "src/babylon/__main__.py (remove basicConfig)"
+        - "src/babylon/utils/exceptions.py (add log() method)"
+        - "logging.yaml (fix pythonjsonlogger reference)"
+        - "src/babylon/rag/context_window/manager.py (add guards)"
+
+    detailed_spec: "ai-docs/logging-architecture.yaml"
+
+    consequences:
+      positive:
+        - "Zero new dependencies"
+        - "Custom formatters exactly fit our needs"
+        - "Exception error_code in all log entries"
+        - "Machine-parseable JSONL for analysis"
+        - "Rotation prevents disk bloat"
+        - "TRACE available for deep debugging"
+      negative:
+        - "Must maintain custom code (~100 lines)"
+        - "No fancy log aggregation features out of box"
+        - "Correlation ID propagation is manual"
+
+    alternatives_rejected:
+      loguru:
+        reason: "Adds dependency; different API requires learning curve"
+      structlog:
+        reason: "Overkill complexity for game project; steep learning curve"
+      pythonjsonlogger:
+        reason: "Can write equivalent in 30 lines; avoids dependency"
+
 # =============================================================================
 # PENDING DECISIONS
 # =============================================================================

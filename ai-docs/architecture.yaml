@@ -2,9 +2,9 @@
 # How the pieces fit together
 
 meta:
-  version: "3.1.0"
-  updated: "2025-12-08"
-  status: "Phase 3 in progress (763 tests, Observer + RAG complete, LLM next)"
+  version: "3.2.0"
+  updated: "2025-12-09"
+  status: "Phase 3 in progress (983+ tests, Observer + RAG complete, LLM next)"
 
 # =============================================================================
 # THE EMBEDDED TRINITY
@@ -312,3 +312,43 @@ extension_points:
       - "Add to rag/ layer only"
       - "Query existing state, never modify directly"
       - "Add @pytest.mark.ai tests (separate from logic tests)"
+
+# =============================================================================
+# CROSS-CUTTING INFRASTRUCTURE
+# =============================================================================
+
+infrastructure:
+
+  logging:
+    summary: "Python stdlib logging with custom enhancements (no dependencies)"
+    related_docs:
+      - "ai-docs/logging-architecture.yaml (comprehensive spec)"
+      - "ADR018_logging_strategy in decisions.yaml"
+    principle: "Dual output: human console + machine JSON files"
+    key_components:
+      custom_formatter: "JSONFormatter in src/babylon/utils/log.py (planned)"
+      custom_level: "TRACE (value=5) for ultra-verbose debugging"
+      rotation: "RotatingFileHandler (10MB main, 5MB errors)"
+    layer_loggers:
+      ledger: "babylon.data.* - Database/persistence events"
+      topology: "babylon.engine.* - Graph/tick events"
+      archive: "babylon.rag.* - Embedding/query events"
+      superstructure: "babylon.ai.* - Narrative/LLM events"
+
+  exceptions:
+    summary: "Unified exception hierarchy (10 classes)"
+    related_docs:
+      - "ADR002_exception_codes in decisions.yaml"
+    location: "src/babylon/utils/exceptions.py"
+    hierarchy: |
+      BabylonError (base)
+      ├── InfrastructureError (retryable I/O)
+      │   ├── DatabaseError
+      │   └── StorageError
+      ├── ValidationError (bad input)
+      │   └── ConfigurationError
+      ├── SimulationError (fatal engine)
+      │   └── TopologyError
+      └── ObserverError (non-fatal AI)
+          └── LLMError
+    principle: "Log at handling boundary, not at raise site"

@@ -1,0 +1,556 @@
+# Babylon Logging Architecture
+# Comprehensive logging strategy for the simulation engine
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-09"
+  updated: "2025-12-09"
+  related_adr: "ADR018_logging_strategy"
+  status: "accepted"
+
+# =============================================================================
+# OVERVIEW
+# =============================================================================
+
+overview:
+  summary: |
+    Babylon uses Python's standard logging module with custom enhancements.
+    No external logging dependencies. Dual-format output: human-readable
+    console, machine-parseable JSON Lines files.
+
+  design_principles:
+    - "Zero dependencies: stdlib logging only"
+    - "Dual output: human console + machine files"
+    - "Structured data: exceptions have to_dict()"
+    - "Layer-aware: different concerns at different levels"
+    - "Performance-conscious: conditional logging for hot paths"
+
+  current_issues:
+    pythonjsonlogger_missing:
+      severity: "P0"
+      description: "logging.yaml references pythonjsonlogger but not in dependencies"
+      fix: "Remove reference or use custom JSONFormatter"
+
+    duplicate_setup:
+      severity: "P0"
+      description: "__main__.py has basicConfig, conflicts with setup_logging()"
+      fix: "Remove basicConfig, single entry point"
+
+    high_frequency_logging:
+      severity: "P1"
+      description: "context_window/manager.py logs every add/remove"
+      fix: "Add conditional guards: if logger.isEnabledFor()"
+
+# =============================================================================
+# LOG LEVELS
+# =============================================================================
+
+log_levels:
+  description: |
+    Standard Python levels plus custom TRACE for ultra-verbose debugging.
+    Level semantics are defined in terms of Babylon's theoretical framework.
+
+  levels:
+    CRITICAL:
+      value: 50
+      meaning: "System unusable, data loss imminent"
+      babylon_meaning: "The dialectical process has collapsed"
+      examples:
+        - "Checkpoint file corrupted beyond recovery"
+        - "Database integrity violation"
+        - "Unrecoverable simulation state"
+
+    ERROR:
+      value: 40
+      meaning: "Operation failed, system continues"
+      babylon_meaning: "A contradiction manifests"
+      examples:
+        - "LLM API returned 500, using fallback narrative"
+        - "Embedding generation failed for chunk"
+        - "Formula calculation produced NaN"
+
+    WARNING:
+      value: 30
+      meaning: "Something unexpected but handled"
+      babylon_meaning: "Material conditions are suboptimal"
+      examples:
+        - "Embedding cache miss, regenerating"
+        - "Observer failed on_tick (ADR003: non-fatal)"
+        - "Retry attempt 2/3 for API call"
+        - "Rate limited, backing off"
+
+    INFO:
+      value: 20
+      meaning: "Normal operation milestones"
+      babylon_meaning: "The wheels of history turn"
+      examples:
+        - "Tick 42 complete: 3 rupture events"
+        - "Simulation started with seed=12345"
+        - "RAG query returned 5 chunks"
+        - "Narrative generated: 450 chars"
+
+    DEBUG:
+      value: 10
+      meaning: "Detailed diagnostic information"
+      babylon_meaning: "For the historians"
+      examples:
+        - "Imperial rent calculation: Φ = 0.3"
+        - "Edge traversal: proletariat -> bourgeoisie"
+        - "Cache hit for embedding: sha256=abc123"
+
+    TRACE:
+      value: 5
+      meaning: "Ultra-verbose tracing"
+      babylon_meaning: "The materialist's microscope"
+      custom: true
+      implementation: |
+        TRACE = 5
+        logging.addLevelName(TRACE, "TRACE")
+
+        def trace(self, message, *args, **kwargs):
+            if self.isEnabledFor(TRACE):
+                self._log(TRACE, message, args, **kwargs)
+
+        logging.Logger.trace = trace
+      examples:
+        - "Entering calculate_solidarity_transmission()"
+        - "Graph node iteration: 42/1000"
+        - "Formula coefficient lookup: α=0.15"
+      notes:
+        - "NEVER enable in production"
+        - "For deep debugging only"
+        - "High performance impact"
+
+# =============================================================================
+# OUTPUT FORMATS
+# =============================================================================
+
+output_formats:
+  console:
+    purpose: "Human-readable for developers watching live"
+    handler: "logging.StreamHandler(sys.stdout)"
+    default_level: "INFO"
+    format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    example: |
+      2025-01-09 14:23:45 [ERROR] babylon.rag.embeddings: [RAG_201] Embedding failed
+
+  file:
+    purpose: "Machine-parseable for log aggregation and analysis"
+    handler: "logging.handlers.RotatingFileHandler"
+    default_level: "DEBUG"
+    format: "JSON Lines (JSONL)"
+    example: |
+      {"ts":"2025-01-09T14:23:45.123Z","level":"ERROR","logger":"babylon.rag.embeddings","msg":"Embedding failed","error_code":"RAG_201","tick":42}
+
+    custom_formatter:
+      description: "Custom JSONFormatter (no dependencies)"
+      implementation: |
+        import json
+        import logging
+        from datetime import datetime, UTC
+
+        class JSONFormatter(logging.Formatter):
+            """JSON Lines formatter - no external dependencies."""
+
+            STANDARD_FIELDS = {"name", "msg", "args", "created", "filename",
+                               "funcName", "levelname", "levelno", "lineno",
+                               "module", "msecs", "pathname", "process",
+                               "processName", "relativeCreated", "stack_info",
+                               "thread", "threadName", "exc_info", "exc_text",
+                               "message", "taskName"}
+
+            def format(self, record: logging.LogRecord) -> str:
+                log_dict = {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "msg": record.getMessage(),
+                    "func": record.funcName,
+                    "line": record.lineno,
+                }
+
+                # Add extra fields (tick, correlation_id, exception, etc.)
+                for key, value in record.__dict__.items():
+                    if key not in self.STANDARD_FIELDS:
+                        log_dict[key] = value
+
+                return json.dumps(log_dict, default=str)
+
+# =============================================================================
+# LOG STORAGE
+# =============================================================================
+
+log_storage:
+  directory: "logs/"
+
+  files:
+    main_log:
+      filename: "babylon.log"
+      handler: "RotatingFileHandler"
+      max_bytes: 10_000_000  # 10MB
+      backup_count: 5        # 50MB total
+      level: "DEBUG"
+      format: "JSONFormatter"
+      purpose: "Complete application log with rotation"
+
+    error_log:
+      filename: "errors.log"
+      handler: "RotatingFileHandler"
+      max_bytes: 5_000_000   # 5MB
+      backup_count: 10       # 50MB total
+      level: "ERROR"
+      format: "JSONFormatter"
+      purpose: "Error-only log for post-mortem analysis"
+
+    simulation_logs:
+      directory: "logs/simulation/"
+      filename_pattern: "sim_{timestamp}_{seed}.jsonl"
+      handler: "FileHandler (dynamic)"
+      level: "INFO"
+      format: "JSONFormatter"
+      purpose: "Per-simulation detailed logs for replay/analysis"
+      notes:
+        - "Created on simulation start"
+        - "Includes seed, config hash, tick-by-tick data"
+        - "Enables forensic analysis of specific runs"
+
+  rotation:
+    description: |
+      Use stdlib RotatingFileHandler for automatic log rotation.
+      No external dependencies required.
+    implementation: |
+      from logging.handlers import RotatingFileHandler
+
+      main_handler = RotatingFileHandler(
+          "logs/babylon.log",
+          maxBytes=10_000_000,
+          backupCount=5,
+      )
+      main_handler.setFormatter(JSONFormatter())
+
+      error_handler = RotatingFileHandler(
+          "logs/errors.log",
+          maxBytes=5_000_000,
+          backupCount=10,
+      )
+      error_handler.setLevel(logging.ERROR)
+      error_handler.setFormatter(JSONFormatter())
+
+# =============================================================================
+# EXCEPTION LOGGING INTEGRATION
+# =============================================================================
+
+exception_logging:
+  principle: "Log at the handling boundary, not at raise site"
+
+  rationale: |
+    - Exceptions ARE structured data (error_code, message, details)
+    - Raising logs would cause duplicates if re-raised
+    - Caller knows if exception is worth logging (retry? fallback?)
+    - Use exception.to_dict() for structured logging
+
+  patterns:
+    at_final_handler:
+      description: "Log when exception is finally handled"
+      code: |
+        try:
+            risky_operation()
+        except BabylonError as e:
+            logger.error(str(e), extra={"exception": e.to_dict()})
+            # handle or re-raise with context
+
+    with_helper_method:
+      description: "Use BabylonError.log() convenience method"
+      proposed_method: |
+        # Add to BabylonError class
+        def log(
+            self,
+            logger: logging.Logger,
+            level: int = logging.ERROR,
+            exc_info: bool = True,
+        ) -> None:
+            """Log this exception with full structured context."""
+            logger.log(
+                level,
+                str(self),
+                extra={"exception": self.to_dict()},
+                exc_info=exc_info,
+            )
+      usage: |
+        except BabylonError as e:
+            e.log(logger)  # Logs with ERROR level and full context
+
+  level_mapping:
+    InfrastructureError: "ERROR (retryable)"
+    StorageError: "ERROR"
+    DatabaseError: "ERROR"
+    ValidationError: "WARNING (bad input)"
+    ConfigurationError: "ERROR (startup)"
+    SimulationError: "CRITICAL (fatal)"
+    TopologyError: "CRITICAL (graph corrupted)"
+    ObserverError: "WARNING (non-fatal per ADR003)"
+    LLMError: "WARNING (degraded)"
+    RagError: "WARNING (degraded)"
+
+# =============================================================================
+# LAYER-SPECIFIC LOGGING
+# =============================================================================
+
+layer_logging:
+  description: |
+    The Embedded Trinity (ADR001) has different logging needs per layer.
+    Each layer logs what matters for its domain.
+
+  ledger:
+    description: "SQLite/Pydantic - Material State"
+    logger_name: "babylon.data.*"
+    typical_events:
+      INFO:
+        - "Database connected: {path}"
+        - "Schema migration: v{old} -> v{new}"
+      DEBUG:
+        - "Transaction committed: {changes} rows"
+        - "Query executed: {sql}"
+      WARNING:
+        - "Slow query ({ms}ms): {sql}"
+      ERROR:
+        - "Integrity violation: {details}"
+
+  topology:
+    description: "NetworkX - Relational State"
+    logger_name: "babylon.engine.*"
+    typical_events:
+      INFO:
+        - "Graph hydrated: {nodes} nodes, {edges} edges"
+        - "Tick {n} complete: {duration}ms"
+        - "RUPTURE at tick {n}: {faction}"
+      DEBUG:
+        - "Edge added: {from} -> {to} ({type})"
+        - "Node state: {old} -> {new}"
+        - "System executed: {name}"
+      WARNING:
+        - "Observer failed: {name}"
+      ERROR:
+        - "Orphan node detected: {id}"
+      TRACE:
+        - "Entering {system}.step()"
+        - "Formula result: {name}={value}"
+
+  archive:
+    description: "ChromaDB - Semantic Memory"
+    logger_name: "babylon.rag.*"
+    typical_events:
+      INFO:
+        - "Collection '{name}' created"
+        - "RAG query: {results} results in {ms}ms"
+        - "Ingested {chunks} chunks from {source}"
+      DEBUG:
+        - "Embedded {id}: {tokens} tokens, {ms}ms"
+        - "Cache {'hit'|'miss'}: {key}"
+      WARNING:
+        - "Embedding retry: attempt {n}/{max}"
+      ERROR:
+        - "Embedding API failed: {error_code}"
+
+  observer:
+    description: "AI/LLM - Narrative Layer"
+    logger_name: "babylon.ai.*"
+    typical_events:
+      INFO:
+        - "Narrative generated: {chars} chars"
+        - "LLM request: {model}, {tokens} tokens"
+      DEBUG:
+        - "Context retrieved: {chunks} chunks"
+        - "LLM response: {tokens} tokens, {ms}ms"
+      WARNING:
+        - "Rate limited, retrying in {s}s"
+        - "LLM generation failed, using fallback"
+      ERROR:
+        - "LLM timeout after {s}s"
+
+# =============================================================================
+# PERFORMANCE CONSIDERATIONS
+# =============================================================================
+
+performance:
+  conditional_logging:
+    description: |
+      Use isEnabledFor() guards for expensive log preparation.
+      Prevents string formatting when log level is disabled.
+    pattern: |
+      if logger.isEnabledFor(logging.DEBUG):
+          expensive_data = compute_debug_info()
+          logger.debug("Details: %s", expensive_data)
+    apply_to:
+      - "context_window/manager.py (every add/remove)"
+      - "Formula calculations in tight loops"
+      - "Graph traversal logging"
+
+  lazy_formatting:
+    description: "Use % formatting, not f-strings, for log messages"
+    good: 'logger.info("Tick %d complete", tick)'
+    bad: 'logger.info(f"Tick {tick} complete")'
+    rationale: "% formatting is only evaluated if level is enabled"
+
+  high_frequency_warnings:
+    description: "Locations that log too frequently"
+    files:
+      - path: "src/babylon/rag/context_window/manager.py"
+        issue: "Logs every add_content() and _remove_content()"
+        fix: "Add DEBUG level or conditional guards"
+      - path: "src/babylon/ai/director.py"
+        issue: "DEBUG logs full context on every tick"
+        fix: "Move to TRACE level or truncate"
+
+# =============================================================================
+# CORRELATION AND CONTEXT
+# =============================================================================
+
+context_propagation:
+  description: |
+    Propagate context (tick, simulation_id, correlation_id) across
+    log entries for tracing related operations.
+
+  context_fields:
+    tick:
+      description: "Current simulation tick"
+      propagation: "Set in Engine, available to all Systems"
+
+    simulation_id:
+      description: "Unique ID for simulation run"
+      propagation: "Set on simulation start"
+
+    correlation_id:
+      description: "UUID for tracing async operations"
+      propagation: "Set per request, passed through call chain"
+      current_usage: "ChromaDB manager only"
+      future: "Propagate across RAG pipeline"
+
+  implementation:
+    current: |
+      # Extra dict pattern (current)
+      logger.info("Operation", extra={"tick": tick, "correlation_id": cid})
+
+    future_context_manager: |
+      # Future: LogContext context manager
+      from contextvars import ContextVar
+
+      log_context: ContextVar[dict] = ContextVar("log_context", default={})
+
+      @contextmanager
+      def log_context_scope(**kwargs):
+          token = log_context.set({**log_context.get(), **kwargs})
+          try:
+              yield
+          finally:
+              log_context.reset(token)
+
+      # Usage
+      with log_context_scope(tick=42, simulation_id="abc"):
+          logger.info("Tick complete")  # Automatically includes context
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+configuration:
+  entry_point: "src/babylon/config/logging_config.py"
+
+  yaml_config:
+    path: "logging.yaml"
+    status: "needs_fix"
+    issue: "References pythonjsonlogger which is not in dependencies"
+    action: "Replace with custom JSONFormatter"
+
+  programmatic_setup:
+    function: "setup_logging()"
+    parameters:
+      config_path: "Optional path to YAML config"
+      default_level: "Default log level (INFO)"
+
+    implementation_notes:
+      - "Single entry point for all logging setup"
+      - "Remove basicConfig from __main__.py"
+      - "Suppress noisy third-party loggers (chromadb, httpx)"
+
+  third_party_suppression:
+    loggers:
+      chromadb: "WARNING"
+      httpx: "WARNING"
+      httpcore: "WARNING"
+    implementation: |
+      logging.getLogger("chromadb").setLevel(logging.WARNING)
+      logging.getLogger("httpx").setLevel(logging.WARNING)
+      logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+# =============================================================================
+# IMPLEMENTATION ROADMAP
+# =============================================================================
+
+roadmap:
+  phase_1_immediate:
+    title: "Fix Bugs"
+    priority: "P0"
+    tasks:
+      - "Remove pythonjsonlogger reference from logging.yaml"
+      - "Remove basicConfig from __main__.py"
+      - "Add RotatingFileHandler with size limits"
+      - "Create custom JSONFormatter (no deps)"
+
+  phase_2_enhancements:
+    title: "Structured Logging"
+    priority: "P1"
+    tasks:
+      - "Add TRACE level (value=5)"
+      - "Add BabylonError.log() helper method"
+      - "Add per-simulation log files"
+      - "Add error-only log handler"
+
+  phase_3_optimization:
+    title: "Performance"
+    priority: "P2"
+    tasks:
+      - "Add conditional logging guards to hot paths"
+      - "Add LogContext context manager for propagation"
+      - "Lazy string formatting audit"
+
+# =============================================================================
+# FILES TO MODIFY
+# =============================================================================
+
+files:
+  create:
+    - path: "src/babylon/utils/log.py"
+      purpose: "Custom formatters, TRACE level, helpers"
+      contents:
+        - "JSONFormatter class"
+        - "TRACE level definition"
+        - "LogContext context manager"
+        - "BabylonError.log() helper (or in exceptions.py)"
+
+  modify:
+    - path: "src/babylon/config/logging_config.py"
+      changes:
+        - "Use custom JSONFormatter"
+        - "Add RotatingFileHandler"
+        - "Add error-only handler"
+        - "Add per-simulation handler factory"
+
+    - path: "src/babylon/__main__.py"
+      changes:
+        - "Remove basicConfig call"
+        - "Use setup_logging() only"
+
+    - path: "src/babylon/utils/exceptions.py"
+      changes:
+        - "Add log() method to BabylonError"
+
+    - path: "logging.yaml"
+      changes:
+        - "Remove pythonjsonlogger reference"
+        - "Use custom formatter class"
+
+    - path: "src/babylon/rag/context_window/manager.py"
+      changes:
+        - "Add isEnabledFor() guards"
+        - "Reduce log frequency"

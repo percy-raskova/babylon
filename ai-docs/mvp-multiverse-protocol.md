@@ -50,9 +50,57 @@ The system runs a **10-tick simulation** where deterministic material conditions
 
 | Variable | Symbol | High State | Low State |
 |----------|--------|------------|-----------|
-| **Imperial Rent** | `Φ` | State can buy loyalty (bribes, welfare) | State is broke (austerity, desperation) |
+| **Imperial Rent** | `Φ` | State can buy loyalty (bribes, welfare) + **Superwages** flow to workers | State is broke (austerity, desperation) |
 | **Class Solidarity** | `σ` | Middle class aligns with proletariat | Middle class aligns with bourgeoisie |
 | **Repression** | `ρ` | State can force compliance (police, military) | State apparatus is weak or fractured |
+
+#### 2.1.1 Understanding Imperial Rent and Superwages
+
+**Imperial Rent (Φ)** is the total value extracted from the periphery via Unequal Exchange.
+This rent is then **split** between two recipients in the core:
+
+1. **Bourgeoisie** → Profit (capital accumulation)
+2. **Proletariat** → **Superwages** (real wage boost via cheap commodities)
+
+**Superwages** are the value transfer via cheap imported commodities (Unequal Exchange),
+effectively increasing the Real Wages of the Labor Aristocracy. When a core worker buys a
+$20 t-shirt made in Bangladesh, the low price reflects the super-exploitation of peripheral
+labor. The "savings" constitute a hidden wage subsidy—the worker's purchasing power is
+inflated beyond what domestic production would allow.
+
+```text
+                     IMPERIAL RENT (Φ)
+                     (from periphery)
+                            │
+              ┌─────────────┴─────────────┐
+              │                           │
+              ▼                           ▼
+        BOURGEOISIE                  PROLETARIAT
+        (Profit %)                   (Superwages %)
+              │                           │
+              │                           ▼
+              │                    ┌──────────────┐
+              │                    │ CHEAP GOODS  │
+              │                    │ = High       │
+              │                    │   Purchasing │
+              │                    │   Power      │
+              │                    └──────────────┘
+              │                           │
+              │                           ▼
+              │                    ┌──────────────┐
+              │                    │ CONSUMERISM  │
+              │                    │ = Class      │
+              │                    │   Loyalty    │
+              │                    └──────────────┘
+              ▼
+        CAPITAL ACCUMULATION
+```
+
+**Why This Matters:** The Labor Aristocracy is not loyal because they are "brainwashed" or
+lack consciousness—they are loyal because **their material conditions are genuinely improved**
+by imperial extraction. Consumerism is the *mechanism* by which Superwages purchase loyalty.
+This is why revolution in the core is structurally impossible while Imperial Rent flows:
+the workers have a material stake in the empire.
 
 ### 2.2 The 8 Scenarios
 
@@ -66,6 +114,22 @@ The system runs a **10-tick simulation** where deterministic material conditions
 | 5 | High | Low | High | **POLICE STATE** - Velvet glove over iron fist |
 | 6 | High | High | Low | **REFORM** - Concessions to organized labor |
 | 7 | High | High | High | **STALEMATE** - Neither side can move |
+
+#### 2.2.1 Scenario Matrix: Economic Interpretation
+
+| Φ State | Material Meaning | Worker Experience |
+|---------|------------------|-------------------|
+| **High Φ** | Cheap Imports / High Purchasing Power | Consumerism thrives. "Why revolt? I have a mortgage." |
+| **Low Φ** | Expensive Imports / Low Purchasing Power | Austerity bites. Material basis for loyalty evaporates. |
+
+**Key Insight:** Scenarios 0-3 (Low Φ) share one critical feature: **the end of Superwages**.
+When cheap imports dry up—due to peripheral resistance, supply chain collapse, or currency
+crisis—core workers suddenly experience the *actual* value of their labor. This shock is
+what creates revolutionary potential.
+
+Scenarios 4-7 (High Φ) demonstrate why revolution is impossible while imperial extraction
+continues: even atomized workers (Scenario 4) remain passive because their material needs
+are met through consumerism.
 
 ### 2.3 Scenario Configuration Schema
 
@@ -98,11 +162,13 @@ class ScenarioConfig:
 A script that executes the full permutation matrix and generates artifacts.
 
 **Usage:**
+
 ```bash
 poetry run python tools/run_multiverse.py
 ```
 
 **Output Structure:**
+
 ```
 outputs/
 └── run_2025-12-09T14-30-00/
@@ -189,6 +255,7 @@ class SimulationEngine:
 ```
 
 **Files to Modify:**
+
 - `src/babylon/engine/engine.py`
 - `src/babylon/engine/models/config.py`
 
@@ -222,6 +289,7 @@ class NarrativeDirector:
 ```
 
 **Files to Modify:**
+
 - `src/babylon/ai/director.py`
 
 ### 4.3 Corpus Tag Distinctiveness
@@ -229,12 +297,14 @@ class NarrativeDirector:
 **Requirement:** ChromaDB must distinguish between ideological outcome types for narrative flavor.
 
 **Tags Required:**
+
 - `fascism` - Counter-revolutionary nationalism
 - `communism` - Revolutionary proletarian victory
 - `liberalism` - Reform within capitalist framework
 - `collapse` - State failure, power vacuum
 
 **Verification Query:**
+
 ```python
 # These should return DISTINCT, non-overlapping chunks
 canon.query("fascist victory", filter={"tags": "fascism"})
@@ -242,6 +312,7 @@ canon.query("communist revolution", filter={"tags": "communism"})
 ```
 
 **Files to Verify:**
+
 - `src/babylon/data/corpus/history/*.json` (THE_CHRONICLE)
 - `src/babylon/rag/rag_pipeline.py`
 
@@ -261,6 +332,7 @@ canon.query("communist revolution", filter={"tags": "communism"})
 | 1.4 | Write scenario divergence tests | `tests/unit/engine/test_scenario_divergence.py` |
 
 **Acceptance Criteria:**
+
 - [ ] Running Scenario 0 and Scenario 7 produces different `WorldState` at tick 10
 - [ ] Mathematical trace shows variable impact (e.g., high repression → more REPRESSION_DEPLOYED events)
 
@@ -276,6 +348,7 @@ canon.query("communist revolution", filter={"tags": "communism"})
 | 2.4 | Add ideological tag filtering to RAG queries | `src/babylon/rag/rag_pipeline.py` |
 
 **Acceptance Criteria:**
+
 - [ ] "High Repression" scenario narrative mentions police/military action
 - [ ] "Revolution" scenario narrative mentions worker seizure of power
 - [ ] No cross-contamination (fascist narrative doesn't describe communist victory)
@@ -293,6 +366,7 @@ canon.query("communist revolution", filter={"tags": "communism"})
 | 3.5 | Add narrative coherence spot-check | `tools/run_multiverse.py` |
 
 **Acceptance Criteria:**
+
 - [ ] Single command produces 8 complete scenario folders
 - [ ] Each folder contains valid `config.json`, `log.json`, `narrative.md`
 - [ ] Total runtime < 5 minutes (with async narrative generation)
@@ -325,6 +399,7 @@ The following are explicitly OUT OF SCOPE for this MVP:
 **Test:** Human review of 8 narratives for scenario-appropriate content.
 
 **Pass Criteria:**
+
 - 8/8 narratives correctly reflect their scenario's mathematical outcome
 - 0/8 narratives contain contradictory elements (e.g., "peaceful revolution under martial law")
 

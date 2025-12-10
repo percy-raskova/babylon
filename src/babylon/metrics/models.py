@@ -6,11 +6,14 @@ performance and state metrics in the Ledger (SQLite).
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text
-from sqlalchemy.orm import declarative_base
+from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-# Create a separate Base for metrics to avoid circular imports
-MetricsBase = declarative_base()
+
+class MetricsBase(DeclarativeBase):
+    """Base class for metrics models. Separate from main app to avoid circular imports."""
+
+    pass
 
 
 class Metric(MetricsBase):
@@ -22,12 +25,16 @@ class Metric(MetricsBase):
 
     __tablename__ = "metrics"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False, index=True)
-    value = Column(Float, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    tags = Column(Text, nullable=True)  # JSON-serialized dict
-    extra_data = Column(Text, nullable=True)  # JSON-serialized dict (renamed from metadata)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False, index=True
+    )
+    tags: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON-serialized dict
+    extra_data: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # JSON-serialized dict (renamed from metadata)
 
     def __repr__(self) -> str:
         return f"<Metric(name={self.name!r}, value={self.value}, timestamp={self.timestamp})>"
@@ -42,10 +49,12 @@ class Counter(MetricsBase):
 
     __tablename__ = "counters"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False, unique=True, index=True)
-    value = Column(Integer, default=0, nullable=False)
-    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    value: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_updated: Mapped[datetime | None] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     def __repr__(self) -> str:
         return f"<Counter(name={self.name!r}, value={self.value})>"
@@ -60,12 +69,12 @@ class TimeSeries(MetricsBase):
 
     __tablename__ = "time_series"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    tick = Column(Integer, nullable=False, index=True)  # Game turn
-    metric = Column(String(255), nullable=False, index=True)
-    value = Column(Float, nullable=False)
-    region = Column(String(100), nullable=True)  # "core", "periphery", etc.
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tick: Mapped[int] = mapped_column(Integer, nullable=False, index=True)  # Game turn
+    metric: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    region: Mapped[str | None] = mapped_column(String(100), nullable=True)  # "core", "periphery"
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     def __repr__(self) -> str:
         return f"<TimeSeries(tick={self.tick}, metric={self.metric!r}, value={self.value})>"

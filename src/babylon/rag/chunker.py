@@ -76,7 +76,7 @@ class Preprocessor:
             raise PreprocessingError(
                 message="Content is empty or contains only whitespace",
                 error_code="RAG_401",
-                content_id=content_id,
+                details={"content_id": content_id} if content_id else None,
             )
 
         # Normalize unicode if requested
@@ -101,14 +101,14 @@ class Preprocessor:
             raise PreprocessingError(
                 message=f"Content too short: {len(content)} < {self.min_content_length} characters",
                 error_code="RAG_401",
-                content_id=content_id,
+                details={"content_id": content_id} if content_id else None,
             )
 
         if len(content) > self.max_content_length:
             raise PreprocessingError(
                 message=f"Content too long: {len(content)} > {self.max_content_length} characters",
                 error_code="RAG_402",
-                content_id=content_id,
+                details={"content_id": content_id} if content_id else None,
             )
 
         return content
@@ -164,7 +164,7 @@ class TextChunker:
             raise ChunkingError(
                 message="Cannot chunk empty content",
                 error_code="RAG_421",
-                content_id=source_file,
+                details={"content_id": source_file} if source_file else None,
             )
 
         try:
@@ -208,7 +208,7 @@ class TextChunker:
             raise ChunkingError(
                 message=f"Failed to chunk content: {str(e)}",
                 error_code="RAG_424",
-                content_id=source_file,
+                details={"content_id": source_file} if source_file else None,
             ) from e
 
     def _find_break_point(self, content: str, start_pos: int, end_pos: int) -> int:
@@ -341,7 +341,7 @@ class DocumentProcessor:
             raise PreprocessingError(
                 message=f"Failed to decode file with encoding {encoding}: {str(e)}",
                 error_code="RAG_403",
-                content_id=file_path,
+                details={"content_id": file_path},
             ) from e
 
         metadata = {

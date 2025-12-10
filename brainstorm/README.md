@@ -94,6 +94,7 @@ brainstorm/
 
 | File | Status | One-liner |
 |------|--------|-----------|
+| [mechanics/mathematical-foundations.md](mechanics/mathematical-foundations.md) | **REFERENCE** | Complete formal treatment of all 14 formulas with LaTeX |
 | [mechanics/fascist_bifurcation.md](mechanics/fascist_bifurcation.md) | **IMPLEMENTED** | Sprint 3.4.3 - George Jackson Refactor: 2D ideological topology |
 
 ## Current Brainstorms

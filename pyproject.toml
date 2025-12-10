@@ -85,6 +85,8 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
+# Doctest options for formulas module
+doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
 markers = [
     "unit: Fast unit tests for isolated components (no I/O, no AI)",
     "math: Deterministic mathematical formulas (fast, pure functions)",

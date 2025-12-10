@@ -104,11 +104,23 @@ def create_two_node_scenario(
         solidarity_strength=0.0,  # Will be set by apply_scenario()
     )
 
+    # PPP Model: Add WAGES edge from owner to worker
+    # In MLM-TW theory, super-wages flow from the core bourgeoisie to workers.
+    # This enables the PPP calculation to provide purchasing power bonus.
+    wages = Relationship(
+        source_id="C002",  # Owner pays
+        target_id="C001",  # Worker receives
+        edge_type=EdgeType.WAGES,
+        description="Super-wages from imperial rent",
+        value_flow=0.0,  # Calculated by step()
+        tension=0.0,
+    )
+
     # Create world state
     state = WorldState(
         tick=0,
         entities={"C001": worker, "C002": owner},
-        relationships=[exploitation, solidarity],
+        relationships=[exploitation, solidarity, wages],
         event_log=[],
     )
 

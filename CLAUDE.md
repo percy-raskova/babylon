@@ -16,19 +16,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 poetry install
 poetry run pre-commit install
 
-# Testing (strict separation)
-poetry run pytest -m "not ai"                              # Fast math/logic tests (983 total)
-poetry run pytest -m "ai"                                   # Slow AI/narrative evals
+# Task Runner (preferred - use mise for all tasks)
+mise tasks                                        # List all 37 available tasks
+mise run ci                                       # Quick CI: lint + format + typecheck + test-fast
+mise run test                                     # Run all non-AI tests (1272 tests)
+mise run test-fast                                # Fast math/engine tests only (393 tests)
+mise run typecheck                                # MyPy strict mode
+mise run docs-live                                # Live-reload documentation server
+
+# Testing (direct pytest)
+poetry run pytest -m "not ai"                     # All non-AI tests
+poetry run pytest -m "ai"                         # Slow AI/narrative evals
 poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
-poetry run pytest -k "test_name_pattern"                   # Pattern matching
+poetry run pytest -k "test_name_pattern"          # Pattern matching
 
 # Linting & Type Checking
-poetry run ruff check . --fix
-poetry run ruff format .
-poetry run mypy src
+poetry run ruff check src tests --fix
+poetry run ruff format src tests
+poetry run mypy src                               # Strict mode, 97 source files
 
-# Data Validation
-poetry run python tools/validate_schemas.py
+# Data/RAG Operations
+mise run ingest-corpus                            # Ingest Marxist corpus into ChromaDB
+mise run validate-schemas                         # Validate JSON schemas
+mise run vertical-slice                           # Run integration test
 ```
 
 ## Architecture: The Embedded Trinity
@@ -48,22 +58,22 @@ Three-layer local system (no external servers):
    - Semantic history for AI narrative generation
    - AI observes state changes, never controls mechanics
 
-## Engine Architecture (Phase 3.5 Complete)
+## Engine Architecture
 
 The simulation engine uses modular Systems with dependency injection:
 
 ```
-step(WorldState, SimulationConfig) → WorldState
-     │
-     ▼
+step(WorldState, SimulationConfig) -> WorldState
+     |
+     v
 SimulationEngine.run_tick(graph, services, context)
-     │
-     ├── 1. ImperialRentSystem   (economic.py)    - Wealth extraction via imperial rent
-     ├── 2. SolidaritySystem     (solidarity.py)  - Consciousness transmission
-     ├── 3. ConsciousnessSystem  (ideology.py)    - Ideology drift & bifurcation
-     ├── 4. SurvivalSystem       (survival.py)    - P(S|A), P(S|R) calculations
-     ├── 5. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
-     └── 6. TerritorySystem      (territory.py)   - Heat, eviction, spillover
+     |
+     +-- 1. ImperialRentSystem   (economic.py)    - Wealth extraction via imperial rent
+     +-- 2. SolidaritySystem     (solidarity.py)  - Consciousness transmission
+     +-- 3. ConsciousnessSystem  (ideology.py)    - Ideology drift & bifurcation
+     +-- 4. SurvivalSystem       (survival.py)    - P(S|A), P(S|R) calculations
+     +-- 5. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
+     +-- 6. TerritorySystem      (territory.py)   - Heat, eviction, spillover
 ```
 
 **Key Components**:
@@ -119,42 +129,25 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 - **Strict Typing**: MyPy strict mode, explicit return types
 - **TDD**: Red-Green-Refactor cycle mandatory
 - **Conventional Commits**: Use `feat:`, `fix:`, `docs:`, `refactor:` prefixes
+- **SQLAlchemy 2.0**: Use `DeclarativeBase` with `Mapped` types for ORM models
 
 ## Mathematical Core
 
-**Fundamental Theorem**: Revolution in Core impossible if W_c > V_c (wages > value produced). The difference is Imperial Rent (Φ).
+**Fundamental Theorem**: Revolution in Core impossible if W_c > V_c (wages > value produced). The difference is Imperial Rent (Phi).
 
 **Survival Calculus**:
-- P(S|A) = Sigmoid(Wealth - Subsistence) — survival by acquiescence
-- P(S|R) = Organization / Repression — survival by revolution
+- P(S|A) = Sigmoid(Wealth - Subsistence) - survival by acquiescence
+- P(S|R) = Organization / Repression - survival by revolution
 - Rupture occurs when P(S|R) > P(S|A)
 
-**Bifurcation Formula** (Sprint 3.4.2b): When wages fall, agitation energy routes to either Fascism (+1 ideology) or Revolution (-1 ideology) based on SOLIDARITY edge presence.
+**Bifurcation Formula**: When wages fall, agitation energy routes to either Fascism (+1 ideology) or Revolution (-1 ideology) based on SOLIDARITY edge presence.
 
-**Ideological Routing** (Sprint 3.4.3): Wage falls create Agitation. Agitation + Solidarity -> Class Consciousness. Agitation + No Solidarity -> National Identity. This replaces the scalar ideology with a multi-dimensional IdeologicalProfile.
-
-**Heat Dynamics** (Sprint 3.5): HIGH_PROFILE territories gain heat (state attention), LOW_PROFILE decays heat. Heat >=0.8 triggers eviction pipeline.
-
-## Current State
-
-**Phase 3.5: COMPLETE** - 983 tests passing. Territorial substrate (Layer 0) with heat/eviction/spillover mechanics.
-
-**Next: Sprint 3.4.3 - Multi-Dimensional Consciousness (The George Jackson Refactor)** - Replace scalar ideology with IdeologicalProfile (class_consciousness, national_identity, agitation). Implement ideological routing formula.
+**Heat Dynamics**: HIGH_PROFILE territories gain heat (state attention), LOW_PROFILE decays heat. Heat >=0.8 triggers eviction pipeline.
 
 ## Documentation
 
-Machine-readable docs for AI assistants in `ai-docs/`:
-- `state.yaml` - Current implementation status and sprint history
-- `architecture.yaml` - System structure and data flow
-- `formulas-spec.yaml` - All 12 formulas with signatures
-- `decisions.yaml` - Architecture Decision Records (ADR001-ADR013)
-- `ontology.yaml` - Domain term definitions
-
-Design specs in `brainstorm/mechanics/`:
-- `layer0_territory.md` - Territorial substrate design (Host/Parasite, Profile stance)
-
-## Idea Management
-
-Deferred ideas go to `brainstorm/deferred-ideas.md` tagged by phase. If it's not in `ai-docs/state.yaml:next_steps`, it's quarantine.
+- Sphinx docs: `mise run docs-live` for development, `mise run docs` to build
+- Design specs in `brainstorm/mechanics/`
+- Deferred ideas go to `brainstorm/deferred-ideas.md`
 
 **Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.

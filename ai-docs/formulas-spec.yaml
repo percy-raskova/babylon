@@ -8,10 +8,10 @@ meta:
   updated: "2025-12-09"
   purpose: "Document the implemented mathematical formulas that transform types into behavior"
   principle: "Types are nouns, formulas are verbs"
-  status: "IMPLEMENTED (ALL 13 FORMULAS)"
+  status: "IMPLEMENTED (13 formulas) + CONCEPTUAL (1 distribution pattern)"
   location: "src/babylon/systems/formulas.py"
   tests: "tests/unit/formulas/ (40+ tests, ALL PASSING)"
-  formula_count: 13
+  formula_count: 14
   note: "This spec documents the complete formula inventory driving the simulation."
   sprint_3_4_3_update: "Added calculate_ideological_routing() for George Jackson Refactor"
 
@@ -255,6 +255,127 @@ formulas:
 
     location: "src/babylon/systems/formulas.py"
     added_in: "Sprint 3.4.3"
+
+  # ---------------------------------------------------------------------------
+  # ECONOMIC FLOW / SUPERWAGES (The Distribution of Imperial Rent)
+  # ---------------------------------------------------------------------------
+  economic_flow:
+    function: "calculate_economic_flow"
+    symbol: "Flow(Φ, β)"
+    status: "CONCEPTUAL (distribution pattern, not single function)"
+    equation: |
+      Profit_b = Φ × β           (bourgeoisie share)
+      Superwages_p = Φ × (1 - β) (proletariat share via cheap commodities)
+      Where β = bourgeoisie_share coefficient [0, 1]
+    description: |
+      Imperial Rent (Φ) extracted from the periphery does not go solely to the
+      bourgeoisie. A portion flows to core workers as "Superwages"—real wage
+      boosts via artificially cheap imported commodities (Unequal Exchange).
+
+      **Superwages Defined:** Value transfer via cheap commodities (Unequal Exchange),
+      effectively increasing the Real Wages of the Labor Aristocracy. When a
+      core worker buys a $20 t-shirt made in Bangladesh, the "savings" vs.
+      domestic production constitute a hidden wage subsidy.
+
+      This split explains WHY core workers are loyal to imperialism:
+      - They are not "brainwashed" or lacking consciousness
+      - They have a MATERIAL STAKE in peripheral exploitation
+      - Consumerism is the MECHANISM by which Superwages purchase loyalty
+
+    inputs:
+      imperial_rent:
+        symbol: "Φ"
+        type: "Currency"
+        description: "Total value extracted from periphery (from calculate_imperial_rent)"
+
+      bourgeoisie_share:
+        symbol: "β"
+        type: "Coefficient [0, 1]"
+        description: "Fraction of rent retained as profit (vs. passed to workers as cheap goods)"
+
+    outputs:
+      bourgeoisie_profit:
+        type: "Currency"
+        description: "Rent retained by capital for accumulation"
+
+      proletariat_superwages:
+        type: "Currency"
+        description: "Rent passed to workers via cheap imported commodities"
+
+    flow_diagram: |
+      PERIPHERY (Global South)
+            |
+            | Unequal Exchange (Lp hours --> Lc hours worth of goods)
+            | (More labor in, less value out)
+            v
+      +-------------------------------------------------------------+
+      |               IMPERIAL RENT (Phi)                           |
+      |         (Total value transfer to core)                      |
+      +-------------------------------------------------------------+
+            |
+            | Split by beta coefficient
+            |
+      +-----+-----+
+      |           |
+      v           v
+      beta*Phi   (1-beta)*Phi
+      |           |
+      v           v
+      BOURGEOISIE  PROLETARIAT
+      (Profit)     (Superwages)
+      |           |
+      |           v
+      |     +----------------------------+
+      |     | CHEAP IMPORTED GOODS       |
+      |     | - Electronics              |
+      |     | - Clothing                 |
+      |     | - Consumer goods           |
+      |     | = HIGH PURCHASING POWER    |
+      |     +----------------------------+
+      |           |
+      v           v
+      CAPITAL     CONSUMERISM
+      ACCUMULATION  |
+      |             v
+      |       CLASS LOYALTY
+      |       (Material basis for
+      |        Labor Aristocracy)
+      |           |
+      +-----+-----+
+            |
+            v
+      IMPERIAL STABILITY
+      (Core revolution impossible
+       while Phi flows)
+
+    key_insight: |
+      The "bribe" to the Labor Aristocracy is not a conspiracy or false
+      consciousness—it is a material reality. Core workers genuinely benefit
+      from cheap consumer goods made possible by peripheral super-exploitation.
+
+      When Superwages collapse (due to peripheral resistance, supply chain
+      disruption, or currency crisis), the material basis for loyalty vanishes.
+      Only THEN does revolutionary potential emerge in the core.
+
+      "High Imperial Rent" in the scenario matrix means:
+      - Cheap imports / High purchasing power
+      - Consumerism flourishes
+      - Workers have material stake in system
+
+      "Low Imperial Rent" means:
+      - Expensive imports / Low purchasing power
+      - Austerity conditions
+      - Material basis for loyalty evaporates
+
+    tests:
+      - "Given Φ=100, β=0.6: bourgeoisie gets 60, proletariat gets 40 as superwages"
+      - "Given Φ=100, β=0.3: bourgeoisie gets 30, proletariat gets 70 (high consumer economy)"
+      - "Given Φ=0, any β: both get 0 (imperial rent collapsed, crisis conditions)"
+
+    related_formulas:
+      - "calculate_imperial_rent (provides Φ input)"
+      - "is_labor_aristocracy (determines if worker receives superwages)"
+      - "calculate_consciousness_drift (superwages suppress revolutionary consciousness)"
 
   # ---------------------------------------------------------------------------
   # SECTION 2: SURVIVAL CALCULUS FUNCTIONS (4 formulas)
@@ -633,6 +754,10 @@ formula_summary:
     - { name: "is_labor_aristocracy", symbol: "-", purpose: "Boolean bribery check" }
     - { name: "calculate_consciousness_drift", symbol: "dΨ/dt", purpose: "Ideology change" }
     - { name: "calculate_ideological_routing", symbol: "Route", purpose: "Fascist Bifurcation" }
+    - name: "calculate_economic_flow"
+      symbol: "Flow(Φ,β)"
+      purpose: "Imperial Rent split (Profit vs Superwages)"
+      status: "CONCEPTUAL"
 
   survival_calculus:
     - { name: "calculate_acquiescence_probability", symbol: "P(S|A)", purpose: "Survival by compliance" }

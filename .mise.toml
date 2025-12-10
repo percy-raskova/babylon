@@ -7,6 +7,10 @@ python = "3.12"
 [env]
 PYTHONPATH = "src"
 BABYLON_ENV = "development"
+# Soundfont for MIDI conversion
+SOUNDFONT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
+MUSIC_DIR = "assets/music"
+AUDIO_OUTPUT_DIR = "assets/audio"
 
 # =============================================================================
 # INSTALLATION
@@ -32,6 +36,14 @@ run = "poetry run ruff format src tests"
 description = "Run mypy type checker"
 run = "poetry run mypy src"
 
+[tasks.lint-yaml]
+description = "Lint YAML files"
+run = "poetry run yamllint -c .yamllint.yaml ."
+
+[tasks.lint-md]
+description = "Lint Markdown files"
+run = "npx markdownlint --config .markdownlint.yaml '**/*.md' --ignore 'CHANGELOG.md' --ignore 'brainstorm/**' --ignore '.venv/**'"
+
 [tasks.check]
 description = "Run all quality checks (lint, format, typecheck, test-fast)"
 depends = ["lint", "format", "typecheck", "test-fast"]
@@ -56,6 +68,62 @@ run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing
 description = "Run all tests including AI evals"
 run = "poetry run pytest --tb=short"
 
+[tasks.doctest]
+description = "Run doctest examples in formulas module"
+run = "poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v"
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+
+[tasks.docs]
+description = "Build Sphinx documentation"
+run = "cd docs && poetry run sphinx-build -b html . _build/html"
+
+[tasks.docs-strict]
+description = "Build docs with warnings as errors (CI mode)"
+run = "cd docs && poetry run sphinx-build -W -b html . _build/html"
+
+[tasks.docs-live]
+description = "Live-reload documentation server"
+run = "cd docs && poetry run sphinx-autobuild . _build/html --open-browser"
+
+[tasks.docs-clean]
+description = "Clean documentation build artifacts"
+run = "rm -rf docs/_build docs/_autosummary"
+
+# =============================================================================
+# DATA / RAG
+# =============================================================================
+
+[tasks.ingest-corpus]
+description = "Ingest Marxist corpus into ChromaDB"
+run = "poetry run python tools/ingest_corpus.py"
+
+[tasks.ingest-corpus-reset]
+description = "Reset and re-ingest corpus"
+run = "poetry run python tools/ingest_corpus.py --reset"
+
+[tasks.validate-schemas]
+description = "Validate JSON schemas against data files"
+run = "poetry run python tools/validate_schemas.py"
+
+[tasks.db-init]
+description = "Initialize SQLite database"
+run = "poetry run python tools/init_db.py"
+
+# =============================================================================
+# INTEGRATION / VERIFICATION
+# =============================================================================
+
+[tasks.vertical-slice]
+description = "Run vertical slice integration test"
+run = "poetry run python tools/vertical_slice.py"
+
+[tasks.verify-formulas]
+description = "Verify math formula divergence"
+run = "poetry run python tools/verify_math_divergence.py"
+
 # =============================================================================
 # VERSIONING
 # =============================================================================
@@ -67,6 +135,22 @@ run = "poetry run cz bump --changelog"
 [tasks.bump-dry]
 description = "Preview version bump without changes"
 run = "poetry run cz bump --dry-run"
+
+# =============================================================================
+# CI / HOOKS
+# =============================================================================
+
+[tasks.ci]
+description = "Quick CI check (lint, typecheck, fast tests)"
+depends = ["lint", "format", "typecheck", "test-fast"]
+
+[tasks.hooks]
+description = "Install pre-commit hooks"
+run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit"
+
+[tasks.hooks-run]
+description = "Run all pre-commit hooks on all files"
+run = "poetry run pre-commit run --all-files"
 
 # =============================================================================
 # UTILITIES
@@ -82,6 +166,46 @@ find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 echo "Cleaned!"
 """
 
-[tasks.hooks]
-description = "Install pre-commit hooks"
-run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit"
+# =============================================================================
+# MUSIC GENERATION & CONVERSION
+# =============================================================================
+
+[tasks.midi-to-wav]
+description = "Convert a MIDI file to WAV using FluidSynth"
+run = "tools/scripts/midi-to-wav.sh"
+
+[tasks.midi-to-mp3]
+description = "Convert a MIDI file to MP3 (requires ffmpeg)"
+run = "tools/scripts/midi-to-mp3.sh"
+
+[tasks.midi-to-ogg]
+description = "Convert a MIDI file to OGG Vorbis (good for games)"
+run = "tools/scripts/midi-to-ogg.sh"
+
+[tasks.midi-convert-all]
+description = "Convert all MIDI files to specified format (wav|mp3|ogg)"
+run = "tools/scripts/midi-convert-all.sh"
+
+[tasks.midi-play]
+description = "Play a MIDI file through speakers using FluidSynth"
+run = "tools/scripts/midi-play.sh"
+
+[tasks.midi-list]
+description = "List all MIDI files in the music directory"
+run = "find $MUSIC_DIR -name '*.mid' -printf '  %P\\n' | sort && echo '' && echo \"Total: $(find $MUSIC_DIR -name '*.mid' | wc -l) files\""
+
+[tasks.midi-generate-fascist]
+description = "Generate all fascist faction MIDI tracks"
+run = "cd tools/fascist_soundtrack && for f in generate_*.py; do echo \"Generating: $f\"; poetry run python \"$f\"; done"
+
+# =============================================================================
+# SOUNDFONT
+# =============================================================================
+
+[tasks.soundfont-list]
+description = "List available soundfonts on the system"
+run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"
+
+[tasks.soundfont-info]
+description = "Show info about the current soundfont"
+run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""

@@ -193,6 +193,94 @@ The player's task: build enough solidarity that when crisis hits, the energy rou
 
 ---
 
+## Editorial Stance: Fascists Are the Villains
+
+**This is non-negotiable. There is no "both sides." Fascism is the enemy.**
+
+### Design Imperatives
+
+1. **The Ideology Is the Enemy, Not Every Person** - Fascist *leadership* is irredeemable - they know what they're doing. But rank-and-file workers who got pulled into fascism due to failed solidarity? They can defect. They can join the revolution. This is historically accurate and mechanically important.
+
+2. **No "Cool" Factor** - The aesthetic should be unsettling, not aspirational. Players should feel dread, not admiration. The eagle is predatory, not majestic.
+
+3. **Show the Victims** - Every fascist "triumph" must show who suffers. The rally music plays while people are beaten. The productivity stats hide the labor camps.
+
+4. **Mechanical Consequences** - Fascist victory states are BAD ENDINGS. Not alternative paths, not morally gray outcomes. The game state degrades: liberty decreases, violence increases, the machine grinds everyone down.
+
+5. **No False Equivalence** - Revolutionary violence in self-defense ≠ fascist violence for domination. The game mechanics must reflect this asymmetry.
+
+6. **Historical Grounding** - Reference real fascist atrocities. The Holocaust, Pinochet's stadium, Mussolini's Ethiopia. This isn't abstract evil - it's documented history.
+
+### Defection Mechanics
+
+**Workers in fascist movements can be organized.**
+
+This is essential gameplay - and essential theory:
+
+- A factory worker who joined the nationalist guard because they were atomized and scared? Organizable.
+- A small business owner who funds the fascist party? Enemy.
+- A soldier following orders? Can be turned. Can refuse.
+- The party leadership? Irredeemable - they built this.
+
+**How defection works:**
+
+1. **Build SOLIDARITY edges** to individuals within fascist-aligned populations
+2. **Material conditions** must show them the fascist promise is hollow
+3. **Offer real alternative** - class solidarity, not just "fascism bad"
+4. **Risk**: Defectors may be executed by their former faction
+
+This creates meaningful gameplay: you're not just fighting fascism, you're *converting* the workers who got trapped in it. Every defector is a victory for class consciousness over national identity.
+
+**What you CANNOT do:**
+- Convert fascist leadership (they chose this)
+- "Both sides" the fascist faction as a whole
+- Present fascist victory as anything but catastrophe
+
+### Visual Tells That Signal "Villain"
+
+- **Lighting**: Fascist scenes lit from above (oppressive) vs revolutionary scenes lit from within (emergent)
+- **Color**: Blood and bone (death) vs purple and green (life, growth)
+- **Motion**: Pressing down, crushing vs rising up, expanding
+- **Sound**: Grinding, mechanical vs breathing, organic
+- **Faces**: Obscured, uniform vs visible, diverse
+- **Space**: Cramped, controlled vs open, liberated
+
+### Narrative Framing
+
+The Gramscian Wire system should make this explicit:
+
+**CORPORATE FEED** (hegemonic):
+> "Order restored in industrial district. Agitators detained."
+
+**LIBERATED SIGNAL** (counter-hegemonic):
+> "MASSACRE IN INDUSTRIAL DISTRICT. 47 workers executed. Names follow..."
+
+**INTEL BRIEFING** (player analysis):
+> "Fascist faction consolidated control. Projection: mass detention within 3 turns."
+
+The player should never be confused about who to root for.
+
+### The Ludic Contract
+
+Players engaging with this game accept:
+1. Capitalism produces fascism as a defense mechanism
+2. Fascism is always a catastrophe, never a solution
+3. The only alternative to fascism is organized class solidarity
+4. "Neutrality" enables fascism - there is no apolitical position
+5. Workers deceived by fascism can be won back through solidarity
+
+This is not a game where you can "play as the fascists." The fascist faction exists as an **antagonist force** that emerges from failed solidarity. But the *people* trapped in that faction? They're potential comrades. Organize them.
+
+### Why This Matters
+
+Games that present fascism as "just another faction" or "morally complex" contribute to normalization. Babylon refuses this.
+
+The game's thesis: **Fascism is what happens when capitalism decays and the working class lacks solidarity.** It's a systemic failure, not a valid political choice. The aesthetics, mechanics, and narrative must all reinforce this.
+
+---
+
 *"Fascism is capitalism in decay." - Vladimir Lenin*
 
 *"When fascism comes to America, it will be wrapped in the flag and carrying a cross." - Apocryphal, but accurate*
+
+*"The only thing necessary for the triumph of evil is for good men to do nothing." - Also apocryphal, also accurate*

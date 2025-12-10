@@ -30,7 +30,9 @@ def create_proletariat(
     p_acquiescence: Probability = 0.0,
     p_revolution: Probability = 0.0,
     description: str = "Exploited working class",
-    **kwargs: object,
+    effective_wealth: Currency = 0.0,
+    unearned_increment: Currency = 0.0,
+    ppp_multiplier: float = 1.0,
 ) -> SocialClass:
     """Create a proletariat (exploited class) social class.
 
@@ -52,7 +54,9 @@ def create_proletariat(
         p_acquiescence: P(S|A) - survival through acquiescence (default: 0.0, calculated by engine)
         p_revolution: P(S|R) - survival through revolution (default: 0.0, calculated by engine)
         description: Optional description (default: "Exploited working class")
-        **kwargs: Additional fields passed to SocialClass
+        effective_wealth: PPP-adjusted wealth (default: 0.0, calculated by engine)
+        unearned_increment: PPP bonus (default: 0.0, calculated by engine)
+        ppp_multiplier: PPP multiplier applied to wages (default: 1.0)
 
     Returns:
         SocialClass configured as proletariat
@@ -76,7 +80,9 @@ def create_proletariat(
         p_acquiescence=p_acquiescence,
         p_revolution=p_revolution,
         description=description,
-        **kwargs,
+        effective_wealth=effective_wealth,
+        unearned_increment=unearned_increment,
+        ppp_multiplier=ppp_multiplier,
     )
 
 
@@ -91,7 +97,9 @@ def create_bourgeoisie(
     p_acquiescence: Probability = 0.0,
     p_revolution: Probability = 0.0,
     description: str = "Capital-owning exploiter class",
-    **kwargs: object,
+    effective_wealth: Currency = 0.0,
+    unearned_increment: Currency = 0.0,
+    ppp_multiplier: float = 1.0,
 ) -> SocialClass:
     """Create a bourgeoisie (exploiter class) social class.
 
@@ -113,7 +121,9 @@ def create_bourgeoisie(
         p_acquiescence: P(S|A) - survival through acquiescence (default: 0.0, calculated by engine)
         p_revolution: P(S|R) - survival through revolution (default: 0.0, calculated by engine)
         description: Optional description (default: "Capital-owning exploiter class")
-        **kwargs: Additional fields passed to SocialClass
+        effective_wealth: PPP-adjusted wealth (default: 0.0, calculated by engine)
+        unearned_increment: PPP bonus (default: 0.0, calculated by engine)
+        ppp_multiplier: PPP multiplier applied to wages (default: 1.0)
 
     Returns:
         SocialClass configured as bourgeoisie
@@ -137,5 +147,7 @@ def create_bourgeoisie(
         p_acquiescence=p_acquiescence,
         p_revolution=p_revolution,
         description=description,
-        **kwargs,
+        effective_wealth=effective_wealth,
+        unearned_increment=unearned_increment,
+        ppp_multiplier=ppp_multiplier,
     )

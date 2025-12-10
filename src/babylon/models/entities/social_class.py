@@ -305,6 +305,21 @@ class SocialClass(BaseModel):
         description="State violence directed at this class (0.5 = moderate)",
     )
 
+    # PPP Model fields (Purchasing Power Parity - Sprint PPP)
+    effective_wealth: Currency = Field(
+        default=0.0,
+        description="Wealth adjusted for PPP (what wages can actually buy)",
+    )
+    unearned_increment: Currency = Field(
+        default=0.0,
+        description="PPP bonus (effective_wealth - nominal_wealth) - material basis of labor aristocracy loyalty",
+    )
+    ppp_multiplier: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="PPP multiplier applied to wages (1.0 = no bonus)",
+    )
+
     @property
     def economic(self) -> EconomicComponent:
         """Return economic component view (computed, not live)."""

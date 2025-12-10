@@ -3,7 +3,7 @@ name = "babylon"
 version = "0.2.0"
 description = "A Marxist text-based role playing game powered by Claude. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
 readme = "README.md"
-license = "Apache-2.0"
+license = "AGPL-3.0-or-later"
 authors = ["Persephone Raskova <percy@babylonrpg.com>"]
 keywords = ["ai", "llm", "marxism", "rpg", "dystopian"]
 packages = [{include = "babylon", from = "src"}]

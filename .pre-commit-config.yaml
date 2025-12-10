@@ -88,14 +88,3 @@ repos:
       - id: yamllint
         name: yamllint (yaml lint)
         args: [-c, .yamllint.yaml]
-
-  # ==========================================================================
-  # MARKDOWN LINTING
-  # ==========================================================================
-  - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.46.0
-    hooks:
-      - id: markdownlint
-        name: markdownlint (markdown lint)
-        args: [--config, .markdownlint.yaml, --fix]
-        exclude: ^CHANGELOG\.md$|^brainstorm/

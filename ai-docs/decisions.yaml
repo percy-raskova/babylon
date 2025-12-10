@@ -1123,6 +1123,31 @@ pending:
       - "Terminal-only (Rich)"
     leaning: "NiceGUI for game, Obsidian-like for wiki"
     blockers: "Game loop needs to exist first"
+    aesthetic_direction:
+      name: "The Digital Grow Room"
+      status: "approved"
+      spec: "brainstorm/ui/digital-grow-room.md"
+      summary: |
+        Hydroponic Cyber-Insurgency aesthetic. You are the virus in the machine,
+        the internal contradiction growing revolution in the basement of empire.
+        Jury-rigged high-tech: GPUs cooling in a damp basement, purple LED grow
+        lights reflecting off CRT monitors, terminal green data streams.
+      palette:
+        void: "#050505 (dark basement)"
+        grow_light: "#9D00FF (life of revolution)"
+        data: "#39FF14 (terminal green)"
+        heat: "#FF3333 (rupture/danger)"
+      typography:
+        - "JetBrains Mono (code/data)"
+        - "VCR OSD Mono (glitch headers)"
+      metaphors:
+        topology: "Attack Surface / Network Scanner"
+        narrative: "Root Shell / Terminal stdout"
+        controls: "Environmental Controls (fan speed, voltage)"
+        tension: "GPU Temperature gauge"
+        repression: "Heat Signature warning"
+        resources: "Power Draw meter"
+        ai: "The Gardener"
 
   PDR002_wiki_implementation:
     status: "brainstorm"

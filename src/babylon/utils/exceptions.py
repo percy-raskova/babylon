@@ -54,10 +54,18 @@ class BabylonError(Exception):
         }
 
 
-class ConfigurationError(BabylonError):
-    """Raised when configuration is invalid or missing.
+# =============================================================================
+# LAYER 1: Infrastructure Errors (retryable I/O, network, DB)
+# =============================================================================
 
-    The material conditions for operation have not been established.
+
+class InfrastructureError(BabylonError):
+    """Base class for infrastructure-related errors.
+
+    These errors are typically retryable and represent external system failures
+    (database, network, filesystem). The simulation can often recover from these.
+
+    Error codes: INFRA_XXX
     """
 
     def __init__(
@@ -66,10 +74,55 @@ class ConfigurationError(BabylonError):
         error_code: str | None = None,
         details: dict[str, object] | None = None,
     ) -> None:
-        super().__init__(message, error_code=error_code or "CFG_001", details=details)
+        super().__init__(message, error_code=error_code or "INFRA_001", details=details)
 
 
-class DatabaseError(BabylonError):
+class StorageError(InfrastructureError):
+    """Raised when file/storage operations fail.
+
+    Covers checkpoints, backups, and file I/O.
+
+    Error codes:
+    - STOR_001: File not found
+    - STOR_002: File corrupted
+    - STOR_003: Schema validation failed
+    - STOR_004: Write failed
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, error_code=error_code or "STOR_001", details=details)
+
+
+# =============================================================================
+# LAYER 4: Observer Errors (non-fatal AI/RAG layer)
+# =============================================================================
+
+
+class ObserverError(BabylonError):
+    """Base class for AI/RAG observer layer errors.
+
+    These errors are non-fatal and represent failures in the narrative/observation
+    layer. The simulation can and should continue without the observer.
+
+    Error codes: OBS_XXX
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, error_code=error_code or "OBS_001", details=details)
+
+
+# DatabaseError is now under InfrastructureError
+class DatabaseError(InfrastructureError):
     """Raised when database operations fail.
 
     The Ledger cannot record the material reality.
@@ -84,19 +137,9 @@ class DatabaseError(BabylonError):
         super().__init__(message, error_code=error_code or "DB_001", details=details)
 
 
-class EmbeddingError(BabylonError):
-    """Raised when embedding operations fail.
-
-    The Archive cannot encode semantic meaning.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        error_code: str | None = None,
-        details: dict[str, object] | None = None,
-    ) -> None:
-        super().__init__(message, error_code=error_code or "EMB_001", details=details)
+# =============================================================================
+# LAYER 2: Validation Errors (bad input, schema violations)
+# =============================================================================
 
 
 class ValidationError(BabylonError):
@@ -114,10 +157,10 @@ class ValidationError(BabylonError):
         super().__init__(message, error_code=error_code or "VAL_001", details=details)
 
 
-class TopologyError(BabylonError):
-    """Raised when graph/topology operations fail.
+class ConfigurationError(ValidationError):
+    """Raised when configuration is invalid or missing.
 
-    The relations of production cannot be computed.
+    The material conditions for operation have not been established.
     """
 
     def __init__(
@@ -126,7 +169,12 @@ class TopologyError(BabylonError):
         error_code: str | None = None,
         details: dict[str, object] | None = None,
     ) -> None:
-        super().__init__(message, error_code=error_code or "TOP_001", details=details)
+        super().__init__(message, error_code=error_code or "CFG_001", details=details)
+
+
+# =============================================================================
+# LAYER 3: Simulation Errors (fatal engine/math failures)
+# =============================================================================
 
 
 class SimulationError(BabylonError):
@@ -144,7 +192,27 @@ class SimulationError(BabylonError):
         super().__init__(message, error_code=error_code or "SIM_001", details=details)
 
 
-class LLMGenerationError(BabylonError):
+class TopologyError(SimulationError):
+    """Raised when graph/topology operations fail.
+
+    The relations of production cannot be computed.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, error_code=error_code or "TOP_001", details=details)
+
+
+# =============================================================================
+# Observer Layer Errors (under ObserverError, defined above)
+# =============================================================================
+
+
+class LLMError(ObserverError):
     """Raised when LLM generation fails.
 
     The ideological superstructure cannot produce narrative.
@@ -162,3 +230,28 @@ class LLMGenerationError(BabylonError):
         details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "LLM_001", details=details)
+
+
+# Backwards compatibility alias
+LLMGenerationError = LLMError
+
+
+# =============================================================================
+# DEPRECATED: Will be removed in future versions
+# =============================================================================
+
+
+class EmbeddingError(BabylonError):
+    """DEPRECATED: Use RagError instead.
+
+    Raised when embedding operations fail.
+    The Archive cannot encode semantic meaning.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, error_code=error_code or "EMB_001", details=details)

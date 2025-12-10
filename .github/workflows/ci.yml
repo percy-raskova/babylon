@@ -51,6 +51,19 @@ jobs:
       - name: Type check with MyPy
         run: poetry run mypy src
 
+      - name: Lint YAML files
+        run: |
+          pip install yamllint
+          yamllint -c .yamllint.yaml .
+
+      - name: Lint Markdown files
+        run: |
+          npm install -g markdownlint-cli
+          markdownlint --config .markdownlint.yaml '**/*.md' \
+            --ignore 'CHANGELOG.md' \
+            --ignore 'brainstorm/**' \
+            --ignore '.venv/**' || true
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

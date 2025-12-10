@@ -7,7 +7,7 @@ repos:
   # RUFF - Linting and Formatting
   # ==========================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
+    rev: v0.14.8
     hooks:
       - id: ruff
         name: ruff (lint)
@@ -19,7 +19,7 @@ repos:
   # MYPY - Type Checking
   # ==========================================================================
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v1.19.0
     hooks:
       - id: mypy
         name: mypy (typecheck)
@@ -57,7 +57,7 @@ repos:
   # COMMITIZEN - Conventional Commits
   # ==========================================================================
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.1.0
+    rev: v4.10.0
     hooks:
       - id: commitizen
         name: commitizen (commit message)
@@ -67,11 +67,35 @@ repos:
   # GENERAL HYGIENE
   # ==========================================================================
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        args: [--unsafe]  # Allow custom tags in GitHub Actions
+      - id: check-json
+      - id: check-toml
       - id: check-added-large-files
         args: ['--maxkb=500']
       - id: check-merge-conflict
+
+  # ==========================================================================
+  # YAML LINTING - Advanced YAML validation
+  # ==========================================================================
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        name: yamllint (yaml lint)
+        args: [-c, .yamllint.yaml]
+
+  # ==========================================================================
+  # MARKDOWN LINTING
+  # ==========================================================================
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.46.0
+    hooks:
+      - id: markdownlint
+        name: markdownlint (markdown lint)
+        args: [--config, .markdownlint.yaml, --fix]
+        exclude: ^CHANGELOG\.md$|^brainstorm/

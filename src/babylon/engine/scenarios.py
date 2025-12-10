@@ -4,6 +4,7 @@ These functions create pre-configured WorldState and SimulationConfig
 pairs for testing and exploration.
 
 Sprint 6: Phase 2 integration testing support.
+Multiverse Protocol: Scenario injection for counterfactual simulation.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.enums import EdgeType, SocialRole
+from babylon.models.scenario import ScenarioConfig
 from babylon.models.world_state import WorldState
 
 
@@ -162,3 +164,156 @@ def create_labor_aristocracy_scenario() -> tuple[WorldState, SimulationConfig]:
         worker_organization=0.05,  # Very low organization
         worker_ideology=0.5,  # Leaning reactionary
     )
+
+
+# =============================================================================
+# MULTIVERSE PROTOCOL: Scenario Injection
+# =============================================================================
+
+
+def get_multiverse_scenarios() -> list[ScenarioConfig]:
+    """Generate 2^3 = 8 permutations of High/Low scenario values.
+
+    This implements the Multiverse Protocol: running deterministic simulations
+    across parameter space to prove mathematical divergence.
+
+    Parameter ranges:
+        - rent_level: 0.3 (Low) or 1.5 (High)
+        - solidarity_index: 0.2 (Low) or 0.8 (High)
+        - repression_capacity: 0.2 (Low) or 0.8 (High)
+
+    Expected outcomes:
+        - High Rent + Low Solidarity + High Repression -> Low P(S|R) (Stable for Capital)
+        - Low Rent + High Solidarity + Low Repression -> High P(S|R) (Revolution likely)
+
+    Returns:
+        List of 8 ScenarioConfig objects covering all permutations.
+
+    Example:
+        >>> scenarios = get_multiverse_scenarios()
+        >>> for s in scenarios:
+        ...     print(f"{s.name}: rent={s.rent_level}, sol={s.solidarity_index}")
+    """
+    scenarios: list[ScenarioConfig] = []
+
+    rent_values = [0.3, 1.5]  # Low, High
+    solidarity_values = [0.2, 0.8]  # Low, High
+    repression_values = [0.2, 0.8]  # Low, High
+
+    for rent in rent_values:
+        for solidarity in solidarity_values:
+            for repression in repression_values:
+                # Generate descriptive name
+                rent_label = "HighRent" if rent > 1.0 else "LowRent"
+                sol_label = "HighSol" if solidarity > 0.5 else "LowSol"
+                rep_label = "HighRep" if repression > 0.5 else "LowRep"
+                name = f"{rent_label}_{sol_label}_{rep_label}"
+
+                scenarios.append(
+                    ScenarioConfig(
+                        name=name,
+                        rent_level=rent,
+                        solidarity_index=solidarity,
+                        repression_capacity=repression,
+                    )
+                )
+
+    return scenarios
+
+
+def apply_scenario(
+    state: WorldState,
+    config: SimulationConfig,
+    scenario: ScenarioConfig,
+) -> tuple[WorldState, SimulationConfig]:
+    """Apply scenario modifiers to WorldState and SimulationConfig.
+
+    This function transforms a base (state, config) pair into a counterfactual
+    scenario by applying the three modifiers:
+
+    1. rent_level: Multiplies extraction_efficiency in SimulationConfig.
+       - Clamped to [0, 1] since extraction_efficiency is a Coefficient.
+
+    2. solidarity_index: Sets solidarity_strength on all SOLIDARITY edges.
+       - Does not affect EXPLOITATION or other edge types.
+
+    3. repression_capacity: Updates repression_faced on all SocialClass entities
+       AND repression_level in SimulationConfig.
+
+    Args:
+        state: Base WorldState to modify (not mutated)
+        config: Base SimulationConfig to modify (not mutated)
+        scenario: ScenarioConfig with modifier values
+
+    Returns:
+        Tuple of (new_state, new_config) with scenario modifiers applied.
+
+    Example:
+        >>> state, config = create_two_node_scenario()
+        >>> scenario = ScenarioConfig(name="test", rent_level=1.5)
+        >>> new_state, new_config = apply_scenario(state, config, scenario)
+        >>> new_config.extraction_efficiency  # Will be 1.0 (clamped from 0.8 * 1.5)
+    """
+    # 1. Apply rent_level to extraction_efficiency
+    # Clamp to [0, 1] since extraction_efficiency is a Coefficient
+    new_extraction = min(1.0, config.extraction_efficiency * scenario.rent_level)
+
+    # 2. Apply repression_capacity to repression_level
+    new_repression_level = scenario.repression_capacity
+
+    # Create new config with modified values
+    new_config = config.model_copy(
+        update={
+            "extraction_efficiency": new_extraction,
+            "repression_level": new_repression_level,
+        }
+    )
+
+    # 3. Apply solidarity_index to SOLIDARITY edges
+    # and repression_capacity to all SocialClass entities
+    new_relationships: list[Relationship] = []
+    for rel in state.relationships:
+        if rel.edge_type == EdgeType.SOLIDARITY:
+            # Update solidarity_strength on SOLIDARITY edges
+            new_rel = Relationship(
+                source_id=rel.source_id,
+                target_id=rel.target_id,
+                edge_type=rel.edge_type,
+                value_flow=rel.value_flow,
+                tension=rel.tension,
+                description=rel.description,
+                subsidy_cap=rel.subsidy_cap,
+                solidarity_strength=scenario.solidarity_index,
+            )
+            new_relationships.append(new_rel)
+        else:
+            # Keep other edges unchanged
+            new_relationships.append(rel)
+
+    # 4. Apply repression_capacity to all SocialClass entities
+    new_entities: dict[str, SocialClass] = {}
+    for entity_id, entity in state.entities.items():
+        new_entity = SocialClass(
+            id=entity.id,
+            name=entity.name,
+            role=entity.role,
+            description=entity.description,
+            wealth=entity.wealth,
+            ideology=entity.ideology,
+            p_acquiescence=entity.p_acquiescence,
+            p_revolution=entity.p_revolution,
+            subsistence_threshold=entity.subsistence_threshold,
+            organization=entity.organization,
+            repression_faced=scenario.repression_capacity,  # Modified
+        )
+        new_entities[entity_id] = new_entity
+
+    # Create new state with modified entities and relationships
+    new_state = state.model_copy(
+        update={
+            "entities": new_entities,
+            "relationships": new_relationships,
+        }
+    )
+
+    return new_state, new_config

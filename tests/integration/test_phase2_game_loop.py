@@ -14,6 +14,7 @@ from babylon.engine.scenarios import (
     create_two_node_scenario,
 )
 from babylon.engine.simulation_engine import step
+from babylon.models.enums import EdgeType
 
 # =============================================================================
 # FACTORY FUNCTION TESTS
@@ -37,12 +38,18 @@ class TestCreateTwoNodeScenario:
         assert "C001" in state.entities  # Worker
         assert "C002" in state.entities  # Owner
 
-    def test_state_has_one_relationship(self) -> None:
-        """State has exactly one relationship (exploitation edge)."""
+    def test_state_has_two_relationships(self) -> None:
+        """State has two relationships: exploitation and solidarity edges."""
         state, _ = create_two_node_scenario()
-        assert len(state.relationships) == 1
+        assert len(state.relationships) == 2
+        # First relationship is exploitation (worker -> owner)
         assert state.relationships[0].source_id == "C001"
         assert state.relationships[0].target_id == "C002"
+        assert state.relationships[0].edge_type == EdgeType.EXPLOITATION
+        # Second relationship is solidarity (owner -> worker for class solidarity)
+        assert state.relationships[1].source_id == "C002"
+        assert state.relationships[1].target_id == "C001"
+        assert state.relationships[1].edge_type == EdgeType.SOLIDARITY
 
     def test_custom_parameters_applied(self) -> None:
         """Custom parameters are applied correctly."""

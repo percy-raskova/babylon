@@ -41,6 +41,9 @@ from babylon.models.enums import (
     ResolutionType,
     SocialRole,
 )
+
+# Scenario configuration for multiverse simulation
+from babylon.models.scenario import ScenarioConfig
 from babylon.models.types import (
     Coefficient,
     Currency,
@@ -68,6 +71,8 @@ __all__ = [
     "Ratio",
     # Sprint 3: Configuration
     "SimulationConfig",
+    # Multiverse Protocol: Scenario Configuration
+    "ScenarioConfig",
     # Sprint 4: World State
     "WorldState",
     # Phase 1 Entities

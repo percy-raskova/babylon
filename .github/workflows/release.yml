@@ -1,0 +1,93 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Bump Version & Release
+    runs-on: ubuntu-latest
+    # Only run on main branch, skip if commit is from this workflow
+    if: |
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !startsWith(github.event.head_commit.message, 'bump:')
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Commitizen
+        run: pip install commitizen
+
+      - name: Configure Git
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+      - name: Determine bump type
+        id: bump-type
+        run: |
+          if [ "${{ github.event.inputs.bump }}" != "" ] && [ "${{ github.event.inputs.bump }}" != "auto" ]; then
+            echo "bump=${{ github.event.inputs.bump }}" >> $GITHUB_OUTPUT
+          else
+            # Let commitizen determine from commit messages
+            echo "bump=auto" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Bump version with Commitizen
+        id: cz
+        run: |
+          if [ "${{ steps.bump-type.outputs.bump }}" = "auto" ]; then
+            # Commitizen determines version from conventional commits
+            cz bump --yes --changelog || echo "no_bump=true" >> $GITHUB_OUTPUT
+          else
+            cz bump --yes --changelog --increment ${{ steps.bump-type.outputs.bump }}
+          fi
+
+          # Get the new version
+          if [ -f "pyproject.toml" ]; then
+            VERSION=$(grep -m1 'version = ' pyproject.toml | cut -d'"' -f2)
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push changes
+        if: steps.cz.outputs.no_bump != 'true'
+        run: |
+          git push --follow-tags
+
+      - name: Create GitHub Release
+        if: steps.cz.outputs.no_bump != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.cz.outputs.version }}
+          name: v${{ steps.cz.outputs.version }}
+          body_path: CHANGELOG.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

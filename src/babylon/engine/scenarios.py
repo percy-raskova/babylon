@@ -245,8 +245,9 @@ def apply_scenario(
     This function transforms a base (state, config) pair into a counterfactual
     scenario by applying the three modifiers:
 
-    1. superwage_multiplier: Multiplies extraction_efficiency in SimulationConfig.
-       - Clamped to [0, 1] since extraction_efficiency is a Coefficient.
+    1. superwage_multiplier: Passed to config.superwage_multiplier for PPP calculation.
+       - PPP Model: Affects worker effective wealth, NOT extraction_efficiency.
+       - The wages phase uses this to calculate Purchasing Power Parity bonus.
 
     2. solidarity_index: Sets solidarity_strength on all SOLIDARITY edges.
        - Does not affect EXPLOITATION or other edge types.
@@ -266,19 +267,21 @@ def apply_scenario(
         >>> state, config = create_two_node_scenario()
         >>> scenario = ScenarioConfig(name="test", superwage_multiplier=1.5)
         >>> new_state, new_config = apply_scenario(state, config, scenario)
-        >>> new_config.extraction_efficiency  # Will be 1.0 (clamped from 0.8 * 1.5)
+        >>> new_config.superwage_multiplier  # Will be 1.5 (for PPP calculation)
     """
-    # 1. Apply superwage_multiplier to extraction_efficiency
-    # Clamp to [0, 1] since extraction_efficiency is a Coefficient
-    new_extraction = min(1.0, config.extraction_efficiency * scenario.superwage_multiplier)
+    # 1. Apply superwage_multiplier to config for PPP model
+    # PPP Fix: Do NOT multiply extraction_efficiency. Pass superwage_multiplier
+    # directly to config where it will be used in the wages phase.
+    new_superwage_multiplier = scenario.superwage_multiplier
 
     # 2. Apply repression_capacity to repression_level
     new_repression_level = scenario.repression_capacity
 
     # Create new config with modified values
+    # Note: extraction_efficiency is NOT modified - it's independent of superwages
     new_config = config.model_copy(
         update={
-            "extraction_efficiency": new_extraction,
+            "superwage_multiplier": new_superwage_multiplier,
             "repression_level": new_repression_level,
         }
     )

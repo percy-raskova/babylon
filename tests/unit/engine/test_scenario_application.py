@@ -65,7 +65,12 @@ class TestApplyScenarioBasics:
 
 
 class TestApplyScenarioSuperwageMultiplier:
-    """Test superwage_multiplier application in apply_scenario()."""
+    """Test superwage_multiplier application in apply_scenario().
+
+    PPP Model Fix: superwage_multiplier now affects worker purchasing power
+    through the PPP model, NOT extraction_efficiency. The multiplier is
+    passed directly to config.superwage_multiplier for use in wages phase.
+    """
 
     @pytest.fixture
     def base_scenario(self) -> tuple[WorldState, SimulationConfig]:
@@ -73,47 +78,62 @@ class TestApplyScenarioSuperwageMultiplier:
         return create_two_node_scenario(extraction_efficiency=0.8)
 
     @pytest.mark.unit
-    def test_superwage_multiplier_modifies_extraction_efficiency(
+    def test_superwage_multiplier_sets_config_superwage_multiplier(
         self, base_scenario: tuple[WorldState, SimulationConfig]
     ) -> None:
-        """Test that superwage_multiplier multiplies extraction_efficiency in config."""
+        """Test that superwage_multiplier is passed to config.superwage_multiplier."""
         state, config = base_scenario
-        original_extraction = config.extraction_efficiency
 
         # Apply 1.5x superwage multiplier
         scenario = ScenarioConfig(name="high_sw", superwage_multiplier=1.5)
         _, new_config = apply_scenario(state, config, scenario)
 
-        # Note: We need to clamp to [0, 1] since extraction_efficiency is a Coefficient
-        expected = min(1.0, original_extraction * 1.5)
-        assert new_config.extraction_efficiency == expected
+        # PPP Fix: superwage_multiplier should be set in config, not multiply extraction
+        assert new_config.superwage_multiplier == 1.5
 
     @pytest.mark.unit
-    def test_superwage_multiplier_one_no_change(
+    def test_superwage_multiplier_does_not_affect_extraction_efficiency(
         self, base_scenario: tuple[WorldState, SimulationConfig]
     ) -> None:
-        """Test that superwage_multiplier=1.0 (default) leaves extraction unchanged."""
+        """Test that superwage_multiplier does NOT modify extraction_efficiency.
+
+        PPP Model Fix: extraction_efficiency represents imperial rent extraction.
+        superwage_multiplier affects worker purchasing power (PPP), not extraction.
+        """
         state, config = base_scenario
         original_extraction = config.extraction_efficiency
+
+        # Apply various superwage multipliers
+        for sw_mult in [0.3, 1.0, 1.5, 2.0]:
+            scenario = ScenarioConfig(name=f"sw_{sw_mult}", superwage_multiplier=sw_mult)
+            _, new_config = apply_scenario(state, config, scenario)
+
+            # Extraction efficiency should remain unchanged
+            assert new_config.extraction_efficiency == original_extraction
+
+    @pytest.mark.unit
+    def test_superwage_multiplier_one_is_default(
+        self, base_scenario: tuple[WorldState, SimulationConfig]
+    ) -> None:
+        """Test that superwage_multiplier=1.0 (default) is preserved."""
+        state, config = base_scenario
 
         scenario = ScenarioConfig(name="default")
         _, new_config = apply_scenario(state, config, scenario)
 
-        assert new_config.extraction_efficiency == original_extraction
+        assert new_config.superwage_multiplier == 1.0
 
     @pytest.mark.unit
-    def test_low_superwage_multiplier_reduces_extraction(
+    def test_low_superwage_multiplier_sets_config(
         self, base_scenario: tuple[WorldState, SimulationConfig]
     ) -> None:
-        """Test that superwage_multiplier=0.3 reduces extraction efficiency."""
+        """Test that superwage_multiplier=0.3 is passed to config."""
         state, config = base_scenario
-        original_extraction = config.extraction_efficiency
 
         scenario = ScenarioConfig(name="low_sw", superwage_multiplier=0.3)
         _, new_config = apply_scenario(state, config, scenario)
 
-        expected = original_extraction * 0.3
-        assert new_config.extraction_efficiency == pytest.approx(expected, rel=1e-6)
+        assert new_config.superwage_multiplier == pytest.approx(0.3, rel=1e-6)
 
 
 class TestApplyScenarioSolidarityIndex:
@@ -273,9 +293,10 @@ class TestApplyScenarioCombined:
         )
         new_state, new_config = apply_scenario(state, config, scenario)
 
-        # Check superwage multiplier effect on extraction
-        expected_extraction = min(1.0, 0.8 * 1.5)  # Clamped
-        assert new_config.extraction_efficiency == expected_extraction
+        # PPP Fix: superwage_multiplier goes to config, not extraction_efficiency
+        assert new_config.superwage_multiplier == 1.5
+        # extraction_efficiency should remain unchanged (0.8)
+        assert new_config.extraction_efficiency == 0.8
 
         # Check solidarity effect on edges
         solidarity_edges = [
@@ -293,7 +314,11 @@ class TestApplyScenarioCombined:
 
     @pytest.mark.unit
     def test_extreme_stable_scenario(self) -> None:
-        """Test 'stable' scenario: High SW + Low Solidarity + High Repression."""
+        """Test 'stable' scenario: High SW + Low Solidarity + High Repression.
+
+        PPP Model: High superwage_multiplier means workers get more effective
+        purchasing power, making revolution less attractive (stability for capital).
+        """
         state, config = create_two_node_scenario()
 
         scenario = ScenarioConfig(
@@ -304,17 +329,20 @@ class TestApplyScenarioCombined:
         )
         new_state, new_config = apply_scenario(state, config, scenario)
 
-        # High extraction, low solidarity, high repression = stable for capital
-        assert (
-            new_config.extraction_efficiency >= 0.8 * 1.5 or new_config.extraction_efficiency == 1.0
-        )
+        # PPP Fix: superwage_multiplier in config, extraction unchanged
+        assert new_config.superwage_multiplier == 1.5
+        assert new_config.extraction_efficiency == 0.8  # Unchanged
         assert new_config.repression_level == 0.8
         for entity in new_state.entities.values():
             assert entity.repression_faced == 0.8
 
     @pytest.mark.unit
     def test_extreme_collapse_scenario(self) -> None:
-        """Test 'collapse' scenario: Low SW + High Solidarity + Low Repression."""
+        """Test 'collapse' scenario: Low SW + High Solidarity + Low Repression.
+
+        PPP Model: Low superwage_multiplier means workers get less effective
+        purchasing power, making revolution more attractive.
+        """
         state, config = create_two_node_scenario()
 
         scenario = ScenarioConfig(
@@ -325,8 +353,9 @@ class TestApplyScenarioCombined:
         )
         new_state, new_config = apply_scenario(state, config, scenario)
 
-        # Low extraction, high solidarity, low repression = favorable for revolution
-        assert new_config.extraction_efficiency == pytest.approx(0.8 * 0.3, rel=1e-6)
+        # PPP Fix: superwage_multiplier in config, extraction unchanged
+        assert new_config.superwage_multiplier == pytest.approx(0.3, rel=1e-6)
+        assert new_config.extraction_efficiency == 0.8  # Unchanged
         assert new_config.repression_level == 0.2
         for entity in new_state.entities.values():
             assert entity.repression_faced == 0.2

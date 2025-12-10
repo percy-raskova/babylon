@@ -338,7 +338,8 @@ infrastructure:
   exceptions:
     summary: "Unified exception hierarchy (10 classes)"
     related_docs:
-      - "ADR002_exception_codes in decisions.yaml"
+      - "ai-docs/exceptions-architecture.yaml (comprehensive spec)"
+      - "ADR019_exception_hierarchy in decisions.yaml"
     location: "src/babylon/utils/exceptions.py"
     hierarchy: |
       BabylonError (base)

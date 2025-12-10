@@ -1,0 +1,532 @@
+# Babylon Exception Architecture
+# Comprehensive exception handling strategy for the simulation engine
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-09"
+  updated: "2025-12-09"
+  related_adr: "ADR019_exception_hierarchy"
+  status: "accepted"
+
+# =============================================================================
+# OVERVIEW
+# =============================================================================
+
+overview:
+  summary: |
+    Babylon uses a unified exception hierarchy with 10 core classes, consolidated
+    from 33 original exception types via Mikado Method refactoring. All exceptions
+    inherit from BabylonError and use structured error codes for machine parsing.
+
+  design_principles:
+    - "Single inheritance tree: Everything from BabylonError"
+    - "Semantic error codes: PREFIX_NNN format"
+    - "Structured serialization: to_dict() on all exceptions"
+    - "Layer alignment: Exception categories match Embedded Trinity"
+    - "Backwards compatibility: Aliases preserve old names"
+    - "Non-fatal observers: AI/RAG errors never crash simulation"
+
+  refactoring_history:
+    original_count: 33
+    final_count: 10
+    method: "Mikado Method"
+    date: "2025-12-09"
+    commit: "0197764"
+    rationale: |
+      Original codebase had proliferating exception classes with unclear
+      relationships. Refactored to semantic hierarchy aligned with
+      architectural layers (Infrastructure, Validation, Simulation, Observer).
+
+# =============================================================================
+# EXCEPTION HIERARCHY
+# =============================================================================
+
+hierarchy:
+  description: |
+    Four-layer hierarchy matching the Embedded Trinity architecture plus
+    a cross-cutting Infrastructure layer for I/O concerns.
+
+  diagram: |
+    BabylonError (base) ─────────────────────────────────────────────────
+    │
+    ├── InfrastructureError ─── Layer 1: Retryable I/O, Network, DB ────
+    │   ├── DatabaseError        (DB_XXX)
+    │   └── StorageError         (STOR_XXX)
+    │       └── CheckpointIOError    (STOR_1XX) ← engine/history/io.py
+    │           ├── CheckpointNotFoundError  (STOR_101)
+    │           ├── CheckpointCorruptedError (STOR_102)
+    │           └── CheckpointSchemaError    (STOR_103)
+    │
+    ├── ValidationError ─────── Layer 2: Bad Input, Schema Violations ──
+    │   └── ConfigurationError   (CFG_XXX)
+    │
+    ├── SimulationError ─────── Layer 3: Fatal Engine/Math Failures ────
+    │   └── TopologyError        (TOP_XXX)
+    │
+    └── ObserverError ───────── Layer 4: Non-Fatal AI/RAG Layer ────────
+        ├── LLMError             (LLM_XXX)
+        │   └── LLMGenerationError (alias)
+        └── RagError             (RAG_XXX) ← rag/exceptions.py
+            └── [15 aliases for backwards compatibility]
+
+  classes:
+    BabylonError:
+      module: "babylon.utils.exceptions"
+      default_code: "SYS_000"
+      docstring: "Base exception for all Babylon errors"
+      babylon_meaning: "The system's failure to reproduce itself"
+      attributes:
+        message: "str - Human-readable error description"
+        error_code: "str - Machine-readable identifier (PREFIX_NNN)"
+        details: "dict[str, object] - Additional context for debugging"
+      methods:
+        __str__: "Returns '[ERROR_CODE] message'"
+        __repr__: "Returns 'ClassName(message=..., error_code=...)'"
+        to_dict: "Returns serializable dict with error_type, code, message, details"
+
+    InfrastructureError:
+      module: "babylon.utils.exceptions"
+      parent: "BabylonError"
+      default_code: "INFRA_001"
+      docstring: "Base class for infrastructure-related errors"
+      babylon_meaning: "External reality resists the dialectical process"
+      use_case: "Database failures, network errors, file I/O - typically retryable"
+      retryable: true
+
+    StorageError:
+      module: "babylon.utils.exceptions"
+      parent: "InfrastructureError"
+      default_code: "STOR_001"
+      docstring: "Raised when file/storage operations fail"
+      babylon_meaning: "The material record cannot be written"
+      error_codes:
+        STOR_001: "File not found"
+        STOR_002: "File corrupted"
+        STOR_003: "Schema validation failed"
+        STOR_004: "Write failed"
+        STOR_100: "Checkpoint I/O base error"
+        STOR_101: "Checkpoint not found"
+        STOR_102: "Checkpoint corrupted (invalid JSON)"
+        STOR_103: "Checkpoint schema error"
+
+    DatabaseError:
+      module: "babylon.utils.exceptions"
+      parent: "InfrastructureError"
+      default_code: "DB_001"
+      docstring: "Raised when database operations fail"
+      babylon_meaning: "The Ledger cannot record material reality"
+
+    ValidationError:
+      module: "babylon.utils.exceptions"
+      parent: "BabylonError"
+      default_code: "VAL_001"
+      docstring: "Raised when data validation fails"
+      babylon_meaning: "Input does not conform to the schema of material reality"
+
+    ConfigurationError:
+      module: "babylon.utils.exceptions"
+      parent: "ValidationError"
+      default_code: "CFG_001"
+      docstring: "Raised when configuration is invalid or missing"
+      babylon_meaning: "Material conditions for operation not established"
+
+    SimulationError:
+      module: "babylon.utils.exceptions"
+      parent: "BabylonError"
+      default_code: "SIM_001"
+      docstring: "Raised when simulation logic fails"
+      babylon_meaning: "The dialectical process has encountered a fatal contradiction"
+      fatal: true
+
+    TopologyError:
+      module: "babylon.utils.exceptions"
+      parent: "SimulationError"
+      default_code: "TOP_001"
+      docstring: "Raised when graph/topology operations fail"
+      babylon_meaning: "The relations of production cannot be computed"
+      fatal: true
+
+    ObserverError:
+      module: "babylon.utils.exceptions"
+      parent: "BabylonError"
+      default_code: "OBS_001"
+      docstring: "Base class for AI/RAG observer layer errors"
+      babylon_meaning: "The superstructure falters but the base endures"
+      fatal: false
+      note: "Simulation MUST continue if observer fails (ADR003)"
+
+    LLMError:
+      module: "babylon.utils.exceptions"
+      parent: "ObserverError"
+      default_code: "LLM_001"
+      docstring: "Raised when LLM generation fails"
+      babylon_meaning: "The ideological superstructure cannot produce narrative"
+      error_codes:
+        LLM_001: "General API error"
+        LLM_002: "Timeout error"
+        LLM_003: "Rate limit exceeded"
+
+    RagError:
+      module: "babylon.rag.exceptions"
+      parent: "ObserverError"
+      default_code: "RAG_001"
+      docstring: "Unified exception class for all RAG system errors"
+      babylon_meaning: "The Archive cannot retrieve semantic memory"
+      error_code_ranges:
+        RAG_001-099: "General RAG system errors"
+        RAG_100-199: "Lifecycle management errors"
+        RAG_200-299: "Embedding errors"
+        RAG_300-399: "Query/retrieval errors"
+        RAG_400-499: "Pre-embeddings errors"
+        RAG_500-599: "Context window errors"
+
+# =============================================================================
+# ERROR CODE SCHEMA
+# =============================================================================
+
+error_codes:
+  description: |
+    All error codes follow PREFIX_NNN format where PREFIX identifies the
+    subsystem and NNN is a numeric identifier within that subsystem.
+
+  prefixes:
+    SYS: "System-level / base errors"
+    INFRA: "Infrastructure errors"
+    STOR: "Storage/file errors"
+    DB: "Database errors"
+    VAL: "Validation errors"
+    CFG: "Configuration errors"
+    SIM: "Simulation errors"
+    TOP: "Topology/graph errors"
+    OBS: "Observer layer errors"
+    LLM: "LLM generation errors"
+    RAG: "RAG system errors"
+    EMB: "Embedding errors (deprecated, use RAG_2XX)"
+
+  reserved_ranges:
+    description: "Reserved code ranges for specific subsystems"
+    ranges:
+      STOR_100-199: "Checkpoint I/O errors (engine/history/io.py)"
+      RAG_100-199: "Lifecycle management errors"
+      RAG_200-299: "Embedding errors"
+      RAG_300-399: "Query/retrieval errors"
+      RAG_400-499: "Pre-embedding/chunking errors"
+      RAG_500-599: "Context window errors"
+
+# =============================================================================
+# BACKWARDS COMPATIBILITY
+# =============================================================================
+
+backwards_compatibility:
+  description: |
+    Original 33 exception classes consolidated to 10 with aliases preserving
+    old names. New code should use the canonical class with appropriate error_code.
+
+  aliases:
+    LLMGenerationError:
+      target: "LLMError"
+      module: "babylon.utils.exceptions"
+      note: "Legacy name, use LLMError directly"
+
+    rag_exceptions:
+      module: "babylon.rag.exceptions"
+      all_point_to: "RagError"
+      aliases:
+        - "LifecycleError"
+        - "InvalidObjectError"
+        - "StateTransitionError"
+        - "CorruptStateError"
+        - "PreEmbeddingError"
+        - "PreprocessingError"
+        - "ChunkingError"
+        - "CacheError"
+
+    context_window_aliases:
+      module: "babylon.rag.context_window"
+      all_point_to: "RagError"
+      aliases:
+        - "ContextWindowError"
+        - "TokenCountError"
+        - "CapacityExceededError"
+        - "OptimizationFailedError"
+        - "ContentPriorityError"
+        - "ContentRemovalError"
+        - "ContentInsertionError"
+
+  migration_pattern: |
+    # Old code (still works via alias):
+    from babylon.rag.exceptions import ChunkingError
+    raise ChunkingError("Failed to chunk document")
+
+    # New code (preferred):
+    from babylon.rag.exceptions import RagError
+    raise RagError("Failed to chunk document", error_code="RAG_401")
+
+# =============================================================================
+# EXCEPTION HANDLING PATTERNS
+# =============================================================================
+
+handling_patterns:
+  description: |
+    Standard patterns for catching and handling exceptions at different
+    levels of the application.
+
+  boundary_principle: |
+    Log exceptions at the HANDLING boundary, not at the raise site.
+    The caller knows if an exception is worth logging (retry? fallback?).
+    Raising and logging creates duplicates if the exception is re-raised.
+
+  layer_handling:
+    infrastructure_layer:
+      description: "Database, file I/O, network - often retryable"
+      pattern: |
+        try:
+            result = database.query(sql)
+        except DatabaseError as e:
+            if e.error_code == "DB_TIMEOUT":
+                # Retry logic
+                result = retry_with_backoff(database.query, sql)
+            else:
+                logger.error(str(e), extra={"exception": e.to_dict()})
+                raise
+
+    validation_layer:
+      description: "Input validation - fail fast, inform caller"
+      pattern: |
+        try:
+            config = SimulationConfig.model_validate(data)
+        except ValidationError as e:
+            # Validation errors should bubble up immediately
+            # Let the entry point handle user feedback
+            raise ConfigurationError(
+                "Invalid configuration",
+                error_code="CFG_002",
+                details={"validation_errors": e.errors()}
+            ) from e
+
+    simulation_layer:
+      description: "Engine/math failures - typically fatal"
+      pattern: |
+        try:
+            new_state = step(world_state, config)
+        except SimulationError as e:
+            logger.critical(str(e), extra={"exception": e.to_dict()})
+            # Fatal - cannot continue simulation
+            raise
+
+    observer_layer:
+      description: "AI/RAG failures - non-fatal per ADR003"
+      pattern: |
+        try:
+            narrative = director.generate_narrative(events)
+        except ObserverError as e:
+            logger.warning(str(e), extra={"exception": e.to_dict()})
+            # Simulation continues without narrative
+            narrative = "[Narrative generation failed]"
+
+  catch_hierarchy:
+    description: "Catch parent to handle all children"
+    examples:
+      - catch: "BabylonError"
+        catches: "All Babylon exceptions"
+      - catch: "InfrastructureError"
+        catches: "DatabaseError, StorageError, CheckpointIOError, etc."
+      - catch: "ObserverError"
+        catches: "LLMError, RagError (and all RAG aliases)"
+      - catch: "StorageError"
+        catches: "CheckpointIOError, CheckpointNotFoundError, etc."
+
+# =============================================================================
+# SERIALIZATION
+# =============================================================================
+
+serialization:
+  description: |
+    All exceptions support structured serialization for logging, API responses,
+    and debugging.
+
+  to_dict_schema:
+    error_type: "str - Class name (e.g., 'LLMError')"
+    error_code: "str - Machine-readable code (e.g., 'LLM_002')"
+    message: "str - Human-readable description"
+    details: "dict[str, object] - Additional context"
+
+  example: |
+    error = LLMError(
+        "API timeout after 30s",
+        error_code="LLM_002",
+        details={"endpoint": "claude.ai", "timeout_seconds": 30}
+    )
+
+    error.to_dict()
+    # Returns:
+    # {
+    #     "error_type": "LLMError",
+    #     "error_code": "LLM_002",
+    #     "message": "API timeout after 30s",
+    #     "details": {"endpoint": "claude.ai", "timeout_seconds": 30}
+    # }
+
+  str_format: "[ERROR_CODE] message"
+  str_example: "[LLM_002] API timeout after 30s"
+
+  repr_format: "ClassName(message='...', error_code='...')"
+  repr_example: "LLMError(message='API timeout after 30s', error_code='LLM_002')"
+
+  json_serializable: true
+  pickle_serializable: true
+
+# =============================================================================
+# IMPORT PATHS
+# =============================================================================
+
+import_paths:
+  description: |
+    Exceptions can be imported from multiple paths for convenience.
+    All paths resolve to the same class instances.
+
+  primary_path: "babylon.utils.exceptions"
+  convenience_path: "babylon.exceptions"
+
+  core_exceptions:
+    - module: "babylon.utils.exceptions"
+      exports:
+        - "BabylonError"
+        - "InfrastructureError"
+        - "StorageError"
+        - "DatabaseError"
+        - "ValidationError"
+        - "ConfigurationError"
+        - "SimulationError"
+        - "TopologyError"
+        - "ObserverError"
+        - "LLMError"
+        - "LLMGenerationError"  # alias
+        - "EmbeddingError"      # deprecated
+
+    - module: "babylon.exceptions"
+      note: "Top-level re-exports for convenience"
+      exports:
+        - "BabylonError"
+        - "InfrastructureError"
+        - "StorageError"
+        - "DatabaseError"
+        - "ValidationError"
+        - "ConfigurationError"
+        - "SimulationError"
+        - "TopologyError"
+        - "ObserverError"
+        - "LLMError"
+        - "LLMGenerationError"
+
+    - module: "babylon.rag.exceptions"
+      exports:
+        - "RagError"
+        - "LifecycleError"        # alias
+        - "InvalidObjectError"    # alias
+        - "StateTransitionError"  # alias
+        - "CorruptStateError"     # alias
+        - "PreEmbeddingError"     # alias
+        - "PreprocessingError"    # alias
+        - "ChunkingError"         # alias
+        - "CacheError"            # alias
+
+    - module: "babylon.rag.context_window"
+      exports:
+        - "ContextWindowError"      # alias → RagError
+        - "TokenCountError"         # alias → RagError
+        - "CapacityExceededError"   # alias → RagError
+        - "OptimizationFailedError" # alias → RagError
+        - "ContentPriorityError"    # alias → RagError
+        - "ContentRemovalError"     # alias → RagError
+        - "ContentInsertionError"   # alias → RagError
+
+    - module: "babylon.engine.history.io"
+      note: "Checkpoint-specific exceptions"
+      exports:
+        - "CheckpointIOError"
+        - "CheckpointNotFoundError"
+        - "CheckpointCorruptedError"
+        - "CheckpointSchemaError"
+
+# =============================================================================
+# TEST COVERAGE
+# =============================================================================
+
+test_coverage:
+  location: "tests/unit/utils/test_exceptions.py"
+  test_count: 93
+  commit: "ed19651"
+
+  test_categories:
+    hierarchy_tests:
+      description: "Verify inheritance relationships"
+      count: 14
+
+    error_code_tests:
+      description: "Verify default and custom error codes"
+      count: 16
+
+    constructor_tests:
+      description: "Verify constructor behavior and defaults"
+      count: 7
+
+    serialization_tests:
+      description: "Verify to_dict, __str__, __repr__"
+      count: 7
+
+    backwards_compatibility_tests:
+      description: "Verify all aliases work correctly"
+      count: 17
+
+    propagation_tests:
+      description: "Verify catch parent catches children"
+      count: 7
+
+    import_tests:
+      description: "Verify all import paths work"
+      count: 5
+
+    edge_case_tests:
+      description: "Unicode, pickle, chaining, etc."
+      count: 8
+
+# =============================================================================
+# DEPRECATIONS
+# =============================================================================
+
+deprecations:
+  EmbeddingError:
+    status: "deprecated"
+    replacement: "RagError with error_code RAG_2XX"
+    removal_version: "4.0.0"
+    note: "Still exists in utils/exceptions.py for backwards compatibility"
+
+# =============================================================================
+# FILES
+# =============================================================================
+
+files:
+  source:
+    - path: "src/babylon/utils/exceptions.py"
+      purpose: "Core exception hierarchy (10 classes)"
+
+    - path: "src/babylon/exceptions.py"
+      purpose: "Top-level re-exports for convenience"
+
+    - path: "src/babylon/rag/exceptions.py"
+      purpose: "RagError + 8 backwards compatibility aliases"
+
+    - path: "src/babylon/rag/context_window/__init__.py"
+      purpose: "7 context window exception aliases"
+
+    - path: "src/babylon/engine/history/io.py"
+      purpose: "4 checkpoint-specific exceptions"
+
+  tests:
+    - path: "tests/unit/utils/test_exceptions.py"
+      purpose: "Comprehensive test suite (93 tests)"
+
+  documentation:
+    - path: "ai-docs/exceptions-architecture.yaml"
+      purpose: "This file - comprehensive exception spec"

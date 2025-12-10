@@ -12,6 +12,14 @@ Error Code Schema:
 - LLM_XXX: LLM generation errors
 """
 
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    pass
+
 
 class BabylonError(Exception):
     """Base exception for all Babylon/Babylon errors.
@@ -52,6 +60,35 @@ class BabylonError(Exception):
             "message": self.message,
             "details": self.details,
         }
+
+    def log(
+        self,
+        logger: logging.Logger,
+        level: int = logging.ERROR,
+        exc_info: bool = True,
+    ) -> None:
+        """Log this exception with full structured context.
+
+        Convenience method for logging exceptions with their structured
+        data included in the log record's extra fields.
+
+        Args:
+            logger: The logger instance to use.
+            level: Log level (default: ERROR).
+            exc_info: Whether to include exception info (default: True).
+
+        Example:
+            try:
+                risky_operation()
+            except BabylonError as e:
+                e.log(logger)  # Logs with ERROR level and full context
+        """
+        logger.log(
+            level,
+            str(self),
+            extra={"exception": self.to_dict()},
+            exc_info=exc_info,
+        )
 
 
 # =============================================================================

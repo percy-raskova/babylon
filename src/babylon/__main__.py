@@ -4,13 +4,19 @@ Entry point for the Babylon simulation engine.
 Uses the Phase 2 Engine Facade for simulation execution.
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 
+from babylon.config.logging_config import setup_logging
 from babylon.engine.scenarios import create_two_node_scenario
 from babylon.engine.simulation import Simulation
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+# Initialize logging using the centralized configuration
+# This is the single entry point for all logging setup
+setup_logging()
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,23 +39,23 @@ def main() -> None:
     # Initialize simulation facade
     sim = Simulation(initial_state=initial_state, config=config)
 
-    logger.info(f"Initial state: tick={sim.current_state.tick}")
-    logger.info(f"Initial tension: {get_tension(sim):.4f}")
+    logger.info("Initial state: tick=%d", sim.current_state.tick)
+    logger.info("Initial tension: %.4f", get_tension(sim))
 
     # Display initial entity states
     for entity_id, entity in sim.current_state.entities.items():
-        logger.info(f"  {entity.name} ({entity_id}): wealth={entity.wealth:.2f}")
+        logger.info("  %s (%s): wealth=%.2f", entity.name, entity_id, entity.wealth)
 
     # Run one simulation step
     logger.info("Running simulation step...")
     sim.step()
 
-    logger.info(f"After step: tick={sim.current_state.tick}")
-    logger.info(f"Tension: {get_tension(sim):.4f}")
+    logger.info("After step: tick=%d", sim.current_state.tick)
+    logger.info("Tension: %.4f", get_tension(sim))
 
     # Display updated entity states
     for entity_id, entity in sim.current_state.entities.items():
-        logger.info(f"  {entity.name} ({entity_id}): wealth={entity.wealth:.2f}")
+        logger.info("  %s (%s): wealth=%.2f", entity.name, entity_id, entity.wealth)
 
     logger.info("Simulation step complete.")
 

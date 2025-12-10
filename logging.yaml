@@ -4,8 +4,8 @@ formatters:
   standard:
     format: '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
   json:
-    class: pythonjsonlogger.jsonlogger.JsonFormatter
-    format: '%(asctime)s %(levelname)s %(name)s %(message)s'
+    # Use custom JSONFormatter - no external dependencies
+    class: babylon.utils.log.JSONFormatter
 
 handlers:
   console:
@@ -14,12 +14,28 @@ handlers:
     formatter: standard
     stream: ext://sys.stdout
   file:
-    class: logging.FileHandler
+    class: logging.handlers.RotatingFileHandler
     level: DEBUG
     formatter: json
-    filename: 'logs/gameplay.log'
+    filename: 'logs/babylon.log'
+    maxBytes: 10000000  # 10MB
+    backupCount: 5
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: json
+    filename: 'logs/errors.log'
+    maxBytes: 5000000  # 5MB
+    backupCount: 10
 
 loggers:
   '':
     level: DEBUG
-    handlers: [console, file]
+    handlers: [console, file, error_file]
+  # Suppress noisy third-party loggers
+  chromadb:
+    level: WARNING
+  httpx:
+    level: WARNING
+  httpcore:
+    level: WARNING

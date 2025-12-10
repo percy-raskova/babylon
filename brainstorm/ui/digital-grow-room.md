@@ -154,6 +154,181 @@ Custom `style.css` to give everything that "glow" effect:
 
 ---
 
+## Widget Specifications
+
+### Time: The Doomsday Clock
+
+**Concept:** A "Doomsday Clock" showing the Tick count.
+
+**Visual:** Classic Bulletin of Atomic Scientists aesthetic - midnight = system collapse/revolution.
+- Clock face with hour hand approaching midnight
+- Each tick advances the hand
+- Glowing red as it approaches 12:00
+- Optional: Minutes to midnight display (based on aggregate tension)
+
+**Implementation:**
+```python
+ui.circular_progress(value=tick/max_ticks, show_value=True)
+# Or custom SVG clock face with ui.html
+```
+
+**Thematic Fit:** The revolution is inevitable. The only question is when.
+
+---
+
+### Imperial Rent: The Sankey Diagram
+
+**Concept:** A Sankey Diagram overlay showing wealth flow from Periphery → Core.
+
+**Visual:**
+- Thick flowing lines representing value extraction
+- Color gradient: Periphery nodes (green/life) → Core nodes (purple/extraction)
+- Line thickness = magnitude of imperial rent (Φ)
+- Animated flow particles showing direction
+
+**Implementation:**
+```python
+# ECharts Sankey
+ui.echart({
+    'series': [{
+        'type': 'sankey',
+        'data': nodes,
+        'links': flows,
+        'lineStyle': {'color': 'gradient'}
+    }]
+})
+```
+
+**Thematic Fit:** Make the invisible visible. Show where the wealth *actually* goes.
+
+---
+
+### Contradiction: The Tension Gauge
+
+**Concept:** An analog needle-style "Tension Gauge" with glass-crack effect at 1.0.
+
+**Visual:**
+- Retro analog gauge (steampunk industrial aesthetic)
+- Needle sweeps from 0.0 (green) → 0.5 (yellow) → 1.0 (red)
+- Red Zone clearly marked
+- **At 1.0:** Glass cracks overlay (CSS animation), sparks, rupture event
+
+**Implementation:**
+```python
+ui.echart({
+    'series': [{
+        'type': 'gauge',
+        'min': 0, 'max': 1,
+        'axisLine': {'lineStyle': {'color': [[0.5, '#39FF14'], [0.8, '#FFFF00'], [1, '#FF3333']]}},
+        'pointer': {'itemStyle': {'color': '#9D00FF'}},
+        'data': [{'value': tension}]
+    }]
+})
+```
+
+**Glass Crack CSS:**
+```css
+.glass-crack {
+    background-image: url('crack-overlay.png');
+    animation: shake 0.5s infinite;
+}
+```
+
+**Thematic Fit:** Pressure builds. The system can only take so much before it shatters.
+
+---
+
+### Consciousness: The Political Compass
+
+**Concept:** A scatter plot showing population drift from "Reactionary" to "Revolutionary".
+
+**Visual:**
+- X-axis: Class Consciousness (0 = false consciousness, 1 = class conscious)
+- Y-axis: National Identity vs Internationalism
+- Each dot = a population segment or social class
+- Dots drift over time based on agitation, solidarity, material conditions
+- Color by faction affiliation
+
+**Quadrants:**
+```
+                 Internationalist
+                       │
+    Revolutionary ─────┼───── Reactionary
+    Proletarian        │      Nationalist
+                       │
+                 Chauvinist
+```
+
+**Implementation:**
+```python
+ui.echart({
+    'xAxis': {'name': 'Class Consciousness', 'min': 0, 'max': 1},
+    'yAxis': {'name': 'Internationalism', 'min': -1, 'max': 1},
+    'series': [{
+        'type': 'scatter',
+        'data': [[class_consciousness, internationalism, population_size]],
+        'symbolSize': lambda x: x[2] / 1000  # Size by population
+    }]
+})
+```
+
+**Thematic Fit:** Watch the masses awaken. Or watch them fall to fascism.
+
+---
+
+### Inspection: The Dossier Modal
+
+**Concept:** Click any node → Opens a "Dossier" modal showing raw Ledger data.
+
+**Visual:**
+- Manila folder aesthetic (or digital file aesthetic matching grow room)
+- Tabs: Overview | Raw Data | History | Relationships
+- Shows Pydantic model fields in readable format
+- JSON toggle for developers
+
+**Content:**
+```
+╔══════════════════════════════════════════════════╗
+║  DOSSIER: Proletariat [Node 0x7F3A]              ║
+╠══════════════════════════════════════════════════╣
+║  CLASS: SocialClass                              ║
+║  ROLE: PROLETARIAT                               ║
+║  ─────────────────────────────────────────────── ║
+║  MATERIAL CONDITIONS:                            ║
+║    wealth: 1200.00                               ║
+║    wages: 800.00                                 ║
+║    subsistence: 500.00                           ║
+║  ─────────────────────────────────────────────── ║
+║  CONSCIOUSNESS:                                  ║
+║    ideology: -0.3 (Left-leaning)                 ║
+║    organization: 0.45                            ║
+║    agitation: 0.2                                ║
+║  ─────────────────────────────────────────────── ║
+║  SURVIVAL CALCULUS:                              ║
+║    P(S|A): 0.72                                  ║
+║    P(S|R): 0.28                                  ║
+║    Status: Acquiescent (but watching)            ║
+╚══════════════════════════════════════════════════╝
+```
+
+**Implementation:**
+```python
+with ui.dialog() as dossier:
+    with ui.card().classes('w-96'):
+        ui.label(f'DOSSIER: {node.name}').classes('text-xl')
+        ui.separator()
+        with ui.tabs() as tabs:
+            ui.tab('Overview')
+            ui.tab('Raw JSON')
+            ui.tab('History')
+        with ui.tab_panels(tabs):
+            # ... panel content
+```
+
+**Thematic Fit:** Intelligence gathering. Know your enemy. Know your comrades.
+
+---
+
 ## Related Documents
 
 - `brainstorm/mechanics/layer0_territory.md` - Territorial substrate (Heat mechanics)

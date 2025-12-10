@@ -2,9 +2,152 @@
 # Procedural MIDI soundtrack generation
 
 metadata:
-  updated: 2025-12-09
+  updated: 2025-12-10
   status: active
   phase: 3
+  libraries:
+    midiutil: "1.2.1"  # Current - file generation
+    mido: "1.3.3"      # Added - more expressive control
+
+# =============================================================================
+# MIDO LIBRARY REFERENCE (NEW)
+# Sources:
+#   - https://mido.readthedocs.io/en/latest/
+#   - https://mido.readthedocs.io/en/latest/message_types.html
+#   - https://mido.readthedocs.io/en/latest/meta_message_types.html
+#   - https://anotherproducer.com/online-tools-for-musicians/midi-cc-list/
+# =============================================================================
+
+mido_reference:
+  description: |
+    Mido provides more granular control than midiutil, especially for:
+    - Real-time message creation and manipulation
+    - Control change (CC) messages for expression
+    - Pitch bend for tension effects
+    - Meta messages for tempo/key changes mid-track
+
+  channel_messages:
+    note_on: { params: [channel, note, velocity], note: "velocity 0-127, 64=default" }
+    note_off: { params: [channel, note, velocity] }
+    control_change: { params: [channel, control, value], note: "CC for expression - see cc_numbers" }
+    program_change: { params: [channel, program], note: "GM instrument 0-127" }
+    pitchwheel: { params: [channel, pitch], range: [-8192, 8191], note: "Tension/instability" }
+    aftertouch: { params: [channel, value], note: "Channel pressure for swells" }
+    polytouch: { params: [channel, note, value], note: "Per-note pressure (rare)" }
+
+  # CRITICAL FOR EXPRESSIVE COMPOSITION
+  cc_numbers:
+    expression_essential:
+      CC1:
+        name: "Modulation Wheel"
+        babylon_use: "Vibrato, consciousness oscillation, ideological instability"
+      CC7:
+        name: "Volume"
+        babylon_use: "Track level - set once, use CC11 for dynamics"
+      CC10:
+        name: "Pan"
+        range_note: "64=center, 0=left, 127=right"
+        babylon_use: "Core vs periphery spatial positioning"
+      CC11:
+        name: "Expression"
+        babylon_use: "PRIMARY dynamics control - crescendo/diminuendo for tension"
+        critical: true
+
+    pedals:
+      CC64: { name: "Sustain", babylon_use: "Legato, sustained struggle" }
+      CC65: { name: "Portamento", babylon_use: "Glide - phase transitions" }
+      CC67: { name: "Soft Pedal", babylon_use: "Underground, subversive tenancy" }
+
+    timbre:
+      CC71: { name: "Resonance", babylon_use: "Repression intensity (harsh at high)" }
+      CC73: { name: "Attack Time", babylon_use: "Rupture speed - fast=sudden revolution" }
+      CC74: { name: "Brightness", babylon_use: "Clarity of class consciousness" }
+
+    effects:
+      CC91: { name: "Reverb", babylon_use: "Historical resonance, echoes of past" }
+      CC93: { name: "Chorus", babylon_use: "Solidarity strength - more=more unity" }
+      CC94: { name: "Detune", babylon_use: "Atomization - detuned=fragmented" }
+
+  meta_messages:
+    set_tempo:
+      param: "tempo (microseconds per beat)"
+      conversion: "BPM = 60,000,000 / tempo"
+      babylon_use:
+        slow: "Grinding exploitation"
+        fast: "Rupture, crisis peak"
+        accelerando: "Tension building toward bifurcation"
+
+    time_signature:
+      params: [numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat]
+      babylon_use:
+        "4/4": "Stability, grinding routine"
+        "3/4": "Bourgeois decadence, instability"
+        "5/4": "Revolutionary irregularity"
+        "7/8": "Crisis asymmetry"
+
+    key_signature:
+      params: [key, mode]
+      babylon_use:
+        minor: "Crisis, oppression, struggle"
+        major: "Resolution, victory, solidarity"
+        no_resolution: "Fascist outcome - stays minor"
+
+    track_name:
+      convention: "Instrument - Thematic Role"
+      examples: ["Cello - The Masses", "Brass - State Violence", "Piano - Observer"]
+
+    marker:
+      babylon_use: ["Crisis Onset", "Bifurcation Point", "Resolution"]
+
+  # Expression techniques for capturing Babylon vibes
+  expression_techniques:
+    crescendo:
+      method: "Gradual CC11 increase"
+      babylon_use: "Building tension, approaching bifurcation"
+      code: |
+        for i in range(64):
+            track.append(Message('control_change', control=11, value=64+i, time=ticks))
+
+    pitch_bend_tension:
+      method: "Pitchwheel sweeps"
+      babylon_use: "Instability, ideological drift"
+      code: |
+        for i in range(0, 4096, 128):
+            track.append(Message('pitchwheel', pitch=i, time=10))
+
+    modulation_anxiety:
+      method: "CC1 for vibrato/tremolo"
+      babylon_use: "Uncertainty, consciousness oscillation"
+
+    accelerando:
+      method: "set_tempo meta messages"
+      babylon_use: "Crisis intensifying, revolution approaching"
+      code: |
+        for i in range(16):
+            new_bpm = 90 + (i * 3)  # 90 -> 135 BPM
+            track.append(MetaMessage('set_tempo', tempo=mido.bpm2tempo(new_bpm), time=ticks))
+
+  harmonic_techniques:
+    minor_to_major:
+      description: "Resolution from struggle to victory"
+      babylon_use: "Revolutionary outcome"
+      example: "E minor -> G major (relative major)"
+
+    staying_minor:
+      description: "No resolution"
+      babylon_use: "Fascist outcome - crisis without class resolution"
+
+    tritone:
+      notes: "6 semitones apart (e.g., E and Bb)"
+      babylon_use: "Maximum instability, the devil's interval"
+
+    call_and_response:
+      description: "One instrument states, another answers"
+      babylon_use: "Solidarity forming, dialogue between classes"
+
+    unison_vs_harmony:
+      unison: "Conformity, fascist mob, false unity"
+      harmony: "True solidarity, diversity within unity"
 
 # =============================================================================
 # LESSONS LEARNED (December 2025)
@@ -470,7 +613,222 @@ themes:
       12: The machine must continue - no escape
 
 # =============================================================================
-# PLANNED THEMES
+# BIFURCATION SUITE ARCHITECTURE (NEW - December 2025)
+# =============================================================================
+#
+# The music system mirrors the Fascist Bifurcation mechanic:
+# Same crisis energy → different routing based on solidarity infrastructure
+#
+#                     MATERIAL CRISIS
+#                          │
+#                     Agitation Energy
+#                          │
+#               ┌──────────┴──────────┐
+#               │                     │
+#         WITH SOLIDARITY       WITHOUT SOLIDARITY
+#               │                     │
+#               ▼                     ▼
+#       REVOLUTIONARY SUITE     FASCIST SUITE
+#       (class consciousness)   (national identity)
+#
+# Mantra: "Same crisis, different music - based on solidarity infrastructure."
+
+bifurcation_suites:
+
+  crisis_suite:
+    purpose: "Neutral agitation energy BEFORE bifurcation routing"
+    location: "assets/music/crisis/"
+    tracks:
+      - file: "01_wages_falling.mid"
+        title: "Wages Falling"
+        concept: "Descending motifs, loss aversion tension"
+        tempo: 75
+        key: "F# minor"
+        instruments:
+          - "Piano - Descent"
+          - "Low Strings - The Base Crumbling"
+          - "Synth Pad - Uncertainty"
+          - "Timpani - Distant Thunder"
+      - file: "02_the_squeeze.mid"
+        title: "The Squeeze"
+        concept: "Compression, breathing harder - imperial rent intensifying"
+        tempo: 80
+        key: "Bb minor"
+      - file: "03_material_disruption.mid"
+        title: "Material Disruption"
+        concept: "Instability, ground shifting"
+        tempo: 85
+        key: "Ambiguous"
+    musical_character:
+      tempo_range: [75, 100]
+      keys: ["minor", "ambiguous"]
+      dynamics: "building"
+      resolution: "NONE - bifurcation pending"
+    trigger: "wage_change < 0 AND tension > 0.3"
+
+  revolutionary_suite:
+    purpose: "When solidarity_pressure > 0, agitation → class consciousness"
+    location: "assets/music/revolutionary/"
+    tracks:
+      - file: "01_the_spark.mid"
+        title: "The Spark"
+        concept: "First recognition of shared class condition"
+        tempo: 90
+        key: "E minor → G major"
+        instruments:
+          - "Cello - The Masses"
+          - "Piano - Individual Awakening"
+          - "Strings - Rising Tide"
+          - "Timpani - The Heartbeat"
+        arc: "Isolation → Recognition → First connection"
+
+      - file: "02_solidarity_rising.mid"
+        title: "Solidarity Rising"
+        concept: "Connections forming, strength in numbers"
+        tempo: 105
+        key: "A minor → C major"
+        instruments:
+          - "Cello - Call melody"
+          - "Violin - Response (call and response!)"
+          - "French Horn - Collective Power"
+          - "Strings - Unity"
+          - "Timpani - March"
+        arc: "Individual voices → Dialogue → Unified chorus"
+
+      - file: "03_class_awakening.mid"
+        title: "Class Awakening"
+        concept: "Full consciousness - seeing through ideology"
+        tempo: 120
+        key: "D minor → D major (Picardy third)"
+        instruments:
+          - "Choir Aahs - The Awakened"
+          - "Brass Section - Clarity"
+          - "Piano - Individual Transformed"
+          - "Strings - The Collective"
+          - "Timpani - Determination"
+        arc: "Revelation → Understanding → Determination"
+
+      - file: "04_the_internationale.mid"
+        title: "The Internationale"
+        concept: "Peak organization, international unity"
+        tempo: 130
+        key: "F major"
+        instruments:
+          - "Brass Section - Victory"
+          - "Choir Aahs - United Voices"
+          - "Strings - The March"
+          - "French Horn - Solidarity Forever"
+          - "Timpani - The People's March"
+          - "Snare - Organization"
+        arc: "Assembly → March → Victory"
+
+      - file: "05_rupture.mid"
+        title: "Rupture"
+        concept: "P(S|R) > P(S|A) - the breakthrough"
+        tempo: "140 → 160"
+        key: "C minor → C major"
+        instruments:
+          - "Full Orchestra Strings"
+          - "Brass - The Break"
+          - "Timpani - Rupture"
+          - "Choir - Liberation"
+          - "Piano - New Dawn"
+        arc: "Tension Peak → Breaking Point → Liberation → New Dawn"
+
+    musical_character:
+      tempo_range: [90, 160]  # Accelerating through suite
+      keys: ["minor → major"]  # RESOLUTION
+      dynamics: "crescendo toward rupture"
+      key_techniques:
+        - "Call and response (solidarity forming)"
+        - "Harmony, not unison (diversity in unity)"
+        - "Accelerando (building momentum)"
+        - "Minor to major resolution"
+    trigger: "solidarity_pressure > 0 AND agitation > 0.3"
+
+  fascist_suite_redesign:
+    purpose: "When solidarity_pressure = 0, agitation → national identity"
+    location: "assets/music/fascist/"
+    design_principle: |
+      DARK MIRROR of Revolutionary Suite:
+      - Same crisis energy, same tempo ranges
+      - Different DIRECTION of musical motion
+      - Revolutionary: Ascending, opening, breathing
+      - Fascist: Descending, closing, suffocating
+      - NO MAJOR KEY RESOLUTION (stays minor)
+    tracks:
+      - file: "01_the_void.mid"
+        title: "The Void"
+        concept: "Atomization - alone in the crowd"
+        tempo: 85
+        key: "B minor (NO resolution)"
+        instruments:
+          - "Solo Violin - The Atomized"
+          - "Low Strings - The Abyss"
+          - "Piano - Isolation"
+          - "Timpani - Hollow"
+        arc: "Isolation → Searching → Still alone"
+        mirrors: "revolutionary_01_the_spark.mid"
+
+      - file: "02_scapegoat.mid"
+        title: "The Scapegoat"
+        concept: "Anger seeking a target - blaming 'the other'"
+        tempo: 95
+        key: "G minor"
+        instruments:
+          - "Strings - Hunting"
+          - "Low Brass - Accusation"
+          - "Snare - Mob Heartbeat"
+          - "Piano - Paranoia"
+        arc: "Searching → Finding target → Accusation"
+
+      - file: "03_the_rally.mid"
+        title: "The Rally"
+        concept: "False solidarity - mob energy, national identity"
+        tempo: 115
+        key: "E minor (stays minor!)"
+        instruments:
+          - "Brass - False Triumph"
+          - "Snare - The March (regimented)"
+          - "Timpani - Blood and Soil"
+          - "Strings - The Mob (UNISON, not harmony)"
+          - "Organ - Twisted Grandeur"
+        arc: "Assembly → Chanting → False unity"
+        mirrors: "revolutionary_04_the_internationale.mid"
+        key_difference: "UNISON (conformity) not HARMONY (solidarity)"
+
+      - file: "04_blood_and_soil.mid"
+        title: "Blood and Soil"
+        concept: "National identity triumphant"
+        tempo: 120
+        key: "D minor"
+
+      - file: "05_the_purge.mid"
+        title: "The Purge"
+        concept: "Violence against the 'other'"
+        tempo: 130
+        key: "C minor"
+
+      - file: "06_false_order.mid"
+        title: "False Order"
+        concept: "Stability through oppression - the grinding continues"
+        tempo: 100
+        key: "E minor → E minor (NO RESOLUTION)"
+        arc: "Order established → Cracks show → Order reasserts"
+
+    musical_character:
+      tempo_range: [85, 130]  # Similar to Revolutionary
+      keys: ["minor"]  # NO MAJOR RESOLUTION
+      dynamics: "building but hollow"
+      key_techniques:
+        - "Unison (conformity, mob)"
+        - "Military snare (regimented)"
+        - "Tritones (instability persists)"
+        - "No major resolution (false victory)"
+    trigger: "solidarity_pressure = 0 AND agitation > 0.3"
+
+# =============================================================================
+# PLANNED THEMES (LEGACY)
 # =============================================================================
 
 planned:
@@ -479,6 +837,7 @@ planned:
     key: "C major → G major (circle of fifths = building)"
     instruments: ["Accordion", "Brass ensemble", "Snare drum"]
     structure: "Fragmented → unison → polyphony → triumphant"
+    status: "SUPERSEDED by revolutionary_suite"
 
   bourgeois_waltz:
     concept: "Elegant decay - Viennese sophistication hiding rot"
@@ -491,6 +850,7 @@ planned:
     key: "Polytonal / Atonal"
     instruments: ["Full orchestra", "Prepared piano"]
     structure: "Chaos → silence → single voice emerges"
+    status: "SUPERSEDED by revolutionary_05_rupture.mid"
 
   periphery_lament:
     concept: "The global south - exploitation made musical"
@@ -635,22 +995,22 @@ general_midi:
   # Program numbers 0-127 (displayed as 1-128)
   # Grouped into 16 families of 8 instruments each
   instrument_families:
-    piano:        "0-7:   Acoustic Grand, Bright, Electric Grand, Honky-tonk, EP1, EP2, Harpsichord, Clavinet"
-    chromatic:    "8-15:  Celesta, Glockenspiel, Music Box, Vibraphone, Marimba, Xylophone, Tubular Bells, Dulcimer"
-    organ:        "16-23: Drawbar, Percussive, Rock, Church, Reed, Accordion, Harmonica, Tango Accordion"
-    guitar:       "24-31: Nylon, Steel, Jazz, Clean, Muted, Overdriven, Distortion, Harmonics"
-    bass:         "32-39: Acoustic, Finger, Pick, Fretless, Slap1, Slap2, Synth1, Synth2"
-    strings:      "40-47: Violin, Viola, Cello, Contrabass, Tremolo, Pizzicato, Orchestral, Timpani"
-    ensemble:     "48-55: Strings1, Strings2, SynthStrings1, SynthStrings2, Choir Aahs, Voice Oohs, Synth Voice, Orchestra Hit"
-    brass:        "56-63: Trumpet, Trombone, Tuba, Muted Trumpet, French Horn, Brass Section, SynthBrass1, SynthBrass2"
-    reed:         "64-71: Soprano Sax, Alto Sax, Tenor Sax, Baritone Sax, Oboe, English Horn, Bassoon, Clarinet"
-    pipe:         "72-79: Piccolo, Flute, Recorder, Pan Flute, Blown Bottle, Shakuhachi, Whistle, Ocarina"
-    synth_lead:   "80-87: Square, Sawtooth, Calliope, Chiff, Charang, Voice, Fifths, Bass+Lead"
-    synth_pad:    "88-95: New Age, Warm, Polysynth, Choir, Bowed, Metallic, Halo, Sweep"
-    synth_fx:     "96-103: Rain, Soundtrack, Crystal, Atmosphere, Brightness, Goblins, Echoes, Sci-Fi"
-    ethnic:       "104-111: Sitar, Banjo, Shamisen, Koto, Kalimba, Bagpipe, Fiddle, Shanai"
-    percussive:   "112-119: Tinkle Bell, Agogo, Steel Drums, Woodblock, Taiko, Melodic Tom, Synth Drum, Reverse Cymbal"
-    sound_fx:     "120-127: Guitar Fret, Breath, Seashore, Bird, Telephone, Helicopter, Applause, Gunshot"
+    piano: "0-7: Acoustic Grand, Bright, Electric Grand, Honky-tonk, EP1, EP2, Harpsichord, Clavinet"
+    chromatic: "8-15: Celesta, Glockenspiel, Music Box, Vibraphone, Marimba, Xylophone, Tubular Bells, Dulcimer"
+    organ: "16-23: Drawbar, Percussive, Rock, Church, Reed, Accordion, Harmonica, Tango Accordion"
+    guitar: "24-31: Nylon, Steel, Jazz, Clean, Muted, Overdriven, Distortion, Harmonics"
+    bass: "32-39: Acoustic, Finger, Pick, Fretless, Slap1, Slap2, Synth1, Synth2"
+    strings: "40-47: Violin, Viola, Cello, Contrabass, Tremolo, Pizzicato, Orchestral, Timpani"
+    ensemble: "48-55: Strings1, Strings2, SynthStrings1, SynthStrings2, Choir Aahs, Voice Oohs, Synth Voice"
+    brass: "56-63: Trumpet, Trombone, Tuba, Muted Trumpet, French Horn, Brass Section, SynthBrass1, SynthBrass2"
+    reed: "64-71: Soprano Sax, Alto Sax, Tenor Sax, Baritone Sax, Oboe, English Horn, Bassoon, Clarinet"
+    pipe: "72-79: Piccolo, Flute, Recorder, Pan Flute, Blown Bottle, Shakuhachi, Whistle, Ocarina"
+    synth_lead: "80-87: Square, Sawtooth, Calliope, Chiff, Charang, Voice, Fifths, Bass+Lead"
+    synth_pad: "88-95: New Age, Warm, Polysynth, Choir, Bowed, Metallic, Halo, Sweep"
+    synth_fx: "96-103: Rain, Soundtrack, Crystal, Atmosphere, Brightness, Goblins, Echoes, Sci-Fi"
+    ethnic: "104-111: Sitar, Banjo, Shamisen, Koto, Kalimba, Bagpipe, Fiddle, Shanai"
+    percussive: "112-119: Tinkle Bell, Agogo, Steel Drums, Woodblock, Taiko, Tom, Synth Drum, Reverse Cymbal"
+    sound_fx: "120-127: Guitar Fret, Breath, Seashore, Bird, Telephone, Helicopter, Applause, Gunshot"
 
   # Programs used in Babylon (0-indexed)
   babylon_programs:

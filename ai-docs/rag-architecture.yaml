@@ -2,10 +2,15 @@
 # Machine-readable specification for the semantic validation and retrieval system
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   created: "2025-12-08"
-  purpose: "Define RAG as permission system, not just retrieval"
+  updated: "2025-12-09"
+  purpose: "Define RAG as permission system and physics engine, not just retrieval"
   core_insight: "Semantic similarity is deterministic validation BEFORE LLM sees input"
+  related_docs:
+    - "ai-docs/database-spec.yaml - Ledger (SQLite) data dictionary"
+    - "ai-docs/architecture.yaml - Embedded Trinity overview"
+    - "src/babylon/rag/ - Implementation code"
 
 # =============================================================================
 # ARCHITECTURAL PRINCIPLE
@@ -76,7 +81,342 @@ threat_taxonomy:
     severity: "low"
 
 # =============================================================================
-# COLLECTION ARCHITECTURE
+# COLLECTIONS DICTIONARY (The Three Gravitational Poles)
+# =============================================================================
+
+collections_dictionary:
+  description: |
+    The Vector Database is not just storage; it is a Physics Engine.
+    These three collections are gravitational poles that influence simulation
+    trajectories. Every entity, action, and event is measured against these
+    vectors to determine its place in Babylon's material reality.
+
+  # ---------------------------------------------------------------------------
+  # THE CANON (Theory)
+  # ---------------------------------------------------------------------------
+  THE_CANON:
+    concept: "The Laws of Physics"
+    role: "Static theoretical knowledge that defines what IS POSSIBLE"
+    mutability: "Immutable (loaded at startup, never changes during game)"
+
+    content:
+      description: |
+        The foundational texts of revolutionary theory. These are the
+        invariant laws against which all entities and actions are measured.
+      sources:
+        marx:
+          texts:
+            - "Capital Vol. I, II, III"
+            - "Grundrisse"
+            - "The German Ideology"
+            - "Critique of the Gotha Programme"
+          key_concepts:
+            - "Surplus value extraction"
+            - "Labor theory of value"
+            - "Base/superstructure"
+            - "Historical materialism"
+
+        lenin:
+          texts:
+            - "Imperialism: The Highest Stage of Capitalism"
+            - "State and Revolution"
+            - "What Is To Be Done?"
+          key_concepts:
+            - "Unequal exchange"
+            - "Labor aristocracy thesis"
+            - "Vanguard party"
+            - "Revolutionary defeatism"
+
+        fanon:
+          texts:
+            - "The Wretched of the Earth"
+            - "Black Skin, White Masks"
+          key_concepts:
+            - "Colonial violence"
+            - "National consciousness vs class consciousness"
+            - "Decolonization as praxis"
+
+        mao:
+          texts:
+            - "On Contradiction"
+            - "On Practice"
+            - "Combat Liberalism"
+          key_concepts:
+            - "Principal and secondary contradictions"
+            - "Unity of opposites"
+            - "Mass line"
+
+        additional:
+          texts:
+            - "Settlers (J. Sakai)"
+            - "Divided World, Divided Class (Zak Cope)"
+          key_concepts:
+            - "Third Worldism"
+            - "Imperial rent distribution"
+
+    mechanics_usage:
+      trait_derivation: |
+        Entities are measured against THE_CANON vectors to derive traits:
+        - Similarity to "vanguard party" concepts -> VANGUARD trait
+        - Similarity to "labor aristocracy" concepts -> BRIBED trait
+        - Similarity to "lumpenproletariat" concepts -> PRECARIOUS trait
+      formula_grounding: |
+        Mathematical formulas (imperial rent, consciousness drift) reference
+        canonical passages for narrative justification.
+      action_validation: |
+        Player actions must have semantic neighbors in THE_CANON to be
+        considered theoretically coherent in Babylon's world.
+
+    collection_config:
+      name: "the_canon"
+      embedding_model: "text-embedding-3-small"
+      chunk_size: 512
+      chunk_overlap: 50
+      metadata_fields:
+        - "author"
+        - "work"
+        - "chapter"
+        - "concept_tags"
+
+  # ---------------------------------------------------------------------------
+  # THE CHRONICLE (History)
+  # ---------------------------------------------------------------------------
+  THE_CHRONICLE:
+    concept: "The Precedents"
+    role: "Historical rhyming - when conditions match, history echoes"
+    mutability: "Immutable (loaded at startup, never changes during game)"
+
+    content:
+      description: |
+        Structured historical events that provide precedent for simulation
+        outcomes. History doesn't repeat, but it rhymes. THE_CHRONICLE
+        provides the rhyme scheme.
+      structure: |
+        Each historical event is stored with:
+        - Material conditions at time of event
+        - Actors involved (class positions)
+        - Trigger conditions
+        - Outcome
+        - Aftermath
+
+      example_events:
+        weimar_1933:
+          name: "Weimar Republic Collapse"
+          period: "1919-1933"
+          conditions:
+            economic_crisis: 0.95
+            labor_aristocracy_ratio: 0.4
+            solidarity_infrastructure: 0.2
+            national_identity_pressure: 0.8
+          actors:
+            - "German Proletariat (divided)"
+            - "Petty Bourgeoisie (radicalized)"
+            - "Industrial Bourgeoisie (funding fascism)"
+            - "NSDAP (fascist crystallization)"
+          trigger: "Economic collapse + weak solidarity = fascist capture"
+          outcome: "Agitation routed to national identity, not class consciousness"
+          relevance: "The Fascist Switch - what happens when solidarity fails"
+
+        paris_commune_1871:
+          name: "Paris Commune"
+          period: "March-May 1871"
+          conditions:
+            economic_crisis: 0.7
+            military_defeat: true
+            state_legitimacy: 0.3
+            organization_level: 0.6
+          actors:
+            - "Parisian Proletariat"
+            - "National Guard"
+            - "Versailles Government"
+          trigger: "State vacuum + armed workers"
+          outcome: "72 days of worker governance, then suppression"
+          relevance: "What's possible when the State vacillates"
+
+        russian_revolution_1917:
+          name: "October Revolution"
+          period: "1917"
+          conditions:
+            war_weariness: 0.95
+            dual_power: true
+            vanguard_organization: 0.85
+            solidarity_infrastructure: 0.75
+          actors:
+            - "Bolshevik Party"
+            - "Soviets"
+            - "Provisional Government"
+          trigger: "P(S|R) > P(S|A) for sufficient mass"
+          outcome: "Revolutionary rupture successful"
+          relevance: "The survival calculus at work"
+
+        chilean_coup_1973:
+          name: "Pinochet Coup"
+          period: "1973"
+          conditions:
+            reformist_path: true
+            imperial_intervention: 0.9
+            military_loyalty: 0.2
+            organization_level: 0.5
+          actors:
+            - "Popular Unity Government"
+            - "Chilean Military"
+            - "CIA"
+            - "ITT Corporation"
+          trigger: "Reformism + intact state apparatus + imperial backing"
+          outcome: "Counter-revolutionary suppression"
+          relevance: "Why you can't vote your way to socialism"
+
+    mechanics_usage:
+      historical_resonance: |
+        When current simulation state is semantically similar to a historical
+        event's conditions, apply "Historical Resonance" modifiers:
+        - If current state ~= Weimar conditions: +fascism_probability
+        - If current state ~= October conditions: +rupture_probability
+      narrative_parallels: |
+        LLM retrieves relevant historical parallels for narrative generation:
+        "The streets echo with the same cries heard in Paris, 1871..."
+      plausibility_check: |
+        Proposed player actions checked against historical precedent:
+        "Has anything like this ever succeeded/failed before?"
+
+    collection_config:
+      name: "the_chronicle"
+      embedding_model: "text-embedding-3-small"
+      chunk_size: 256
+      chunk_overlap: 25
+      metadata_fields:
+        - "event_name"
+        - "period"
+        - "region"
+        - "outcome_type"
+        - "resonance_tags"
+
+  # ---------------------------------------------------------------------------
+  # THE ZEITGEIST (Simulation Memory)
+  # ---------------------------------------------------------------------------
+  THE_ZEITGEIST:
+    concept: "The Mirror"
+    role: "Dynamic state memory - ensures narrative consistency"
+    mutability: "Mutable (grows every tick, cleared on new game)"
+
+    content:
+      description: |
+        Turn-by-turn narrative logs from THIS simulation run.
+        THE_ZEITGEIST is the game's memory of itself, enabling
+        narrative continuity and "Shock" calculations.
+      structure: |
+        Each tick generates a state snapshot:
+        - Tick number
+        - Key events that occurred
+        - State changes (wealth flows, consciousness shifts)
+        - Narrative summary generated
+        - Entity positions in vector space
+
+      example_entries:
+        tick_001:
+          tick: 1
+          events:
+            - type: "SURPLUS_EXTRACTION"
+              source: "C002"
+              target: "C001"
+              value: 5.0
+            - type: "CONSCIOUSNESS_TRANSMISSION"
+              source: "C003"
+              target: "C004"
+              delta: 0.05
+          narrative: |
+            The factories hum with extraction. Somewhere in the
+            imperial periphery, a spark of consciousness ignites.
+          state_vector: [0.2, 0.3, 0.1, ...]  # Compressed state embedding
+
+        tick_042:
+          tick: 42
+          events:
+            - type: "RUPTURE"
+              location: "T005"
+              intensity: "CRITICAL"
+          narrative: |
+            The contradiction could no longer be contained. In Sector 5,
+            the old world burned.
+          state_vector: [0.8, 0.9, 0.7, ...]  # Crisis state embedding
+
+    mechanics_usage:
+      narrative_continuity: |
+        LLM retrieves recent ZEITGEIST entries to maintain consistency:
+        - "Remember when faction X did Y?"
+        - "This echoes the events of tick N"
+        - "Unlike last turn's calm, today..."
+      shock_calculation: |
+        "Shock" = Vector distance from previous turn's state.
+        High shock indicates dramatic state change, triggering
+        more dramatic narrative language.
+        Formula: shock = ||state_vector[t] - state_vector[t-1]||
+      drift_detection: |
+        Compare current state to historical trajectory.
+        Detect when simulation is "drifting" toward known outcomes
+        (e.g., approaching Weimar-like conditions).
+
+    collection_config:
+      name: "the_zeitgeist"
+      embedding_model: "text-embedding-3-small"
+      chunk_size: 128
+      chunk_overlap: 0
+      metadata_fields:
+        - "tick"
+        - "event_types"
+        - "shock_value"
+        - "session_id"
+      lifecycle:
+        on_new_game: "Clear collection"
+        on_tick: "Append new entry"
+        on_save: "Persist with save file"
+        on_load: "Restore from save file"
+
+  # ---------------------------------------------------------------------------
+  # GRAVITATIONAL MECHANICS
+  # ---------------------------------------------------------------------------
+  gravitational_mechanics:
+    description: |
+      The three collections form a gravitational field that shapes
+      all semantic operations in Babylon. Every query, every validation,
+      every narrative generation is influenced by these poles.
+
+    query_routing:
+      theory_questions: "Route to THE_CANON first"
+      historical_parallels: "Route to THE_CHRONICLE first"
+      recent_events: "Route to THE_ZEITGEIST first"
+      mixed_queries: "Weighted retrieval from all three"
+
+    trait_derivation:
+      process: |
+        1. Embed entity description
+        2. Calculate similarity to CANON vectors
+        3. Assign traits based on nearest concepts
+      example: |
+        Entity "American Auto Workers" embedded.
+        Highest similarity: "labor aristocracy" (0.82)
+        Assigned trait: BRIBED_LABOR
+
+    resonance_calculation:
+      process: |
+        1. Embed current WorldState summary
+        2. Query THE_CHRONICLE for similar conditions
+        3. Extract historical resonance modifiers
+      example: |
+        Current state: high economic crisis, low solidarity, rising agitation
+        Nearest historical match: "Weimar 1929" (0.78 similarity)
+        Applied modifier: +15% fascism routing probability
+
+    shock_formula:
+      definition: "shock = ||zeitgeist[t] - zeitgeist[t-1]||"
+      interpretation:
+        low_shock: "< 0.2 - Gradual change, measured narrative"
+        medium_shock: "0.2-0.5 - Notable events, dramatic language"
+        high_shock: "> 0.5 - Crisis/rupture, urgent narrative"
+      usage: "Passed to LLM as narrative intensity parameter"
+
+# =============================================================================
+# OPERATIONAL COLLECTION ARCHITECTURE
 # =============================================================================
 
 collections:

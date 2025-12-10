@@ -220,8 +220,9 @@ class SimulationConfig(BaseModel):
     )
 
     # Purchasing Power Parity parameters (PPP Model - Superwage Distribution)
-    superwage_multiplier: Coefficient = Field(
+    superwage_multiplier: float = Field(
         default=1.0,
+        ge=0.0,
         description="PPP multiplier for labor aristocracy purchasing power from imperial discount",
     )
 

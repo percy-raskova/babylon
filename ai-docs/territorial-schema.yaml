@@ -371,8 +371,16 @@ game_timeline:
     - Stage 2: Strategic Stalemate (equilibrium, we build strength)
     - Stage 3: Strategic Counter-Offensive (we attack, victory)
 
-    The Purge marks the transition from Stage 1 to Stage 2.
-    Victory is achieved in Stage 3.
+    CRITICAL: The phases are FLUID, not linear. Transitions are BIDIRECTIONAL:
+
+    DEFENSIVE <------> EQUILIBRIUM <------> OFFENSIVE
+        |                   ^                   |
+        +-------------------+-------------------+
+
+    - A successful enemy counteroffensive pushes you back
+    - A premature offensive that fails drops you to equilibrium
+    - The Long March was a retreat from failed offensive to defensive
+    - Conditions determine phase, not time
 
   theoretical_basis:
     source: "On Protracted War (May 1938)"
@@ -382,6 +390,62 @@ game_timeline:
       colony will be determined not by the retention or loss of the big
       cities in the first stage but by the extent to which the whole
       nation exerts itself in the second."
+    fluidity_principle: |
+      The phases are dialectical, not mechanical. The struggle ebbs and
+      flows. Victory is not guaranteed by reaching Stage 3—you can still
+      be pushed back. Defeat is not final until total destruction.
+
+  historical_inflection_point:
+    event: "Prussian Coup (Preußenschlag)"
+    date: "July 20, 1932"
+    source: "Dimitrov, Seventh World Congress of the Comintern (1935)"
+    description: |
+      The moment when the German left was materially capable of stopping
+      fascism and chose not to. The SPD—not the KPD—bears responsibility.
+
+      The SPD controlled Prussia:
+      - 2/3 of German territory
+      - The police apparatus
+      - The Reichsbanner (~1 million armed workers)
+      - Legal authority
+
+      Papen launched an unconstitutional coup. The SPD could have:
+      - Called a general strike
+      - Mobilized the Reichsbanner
+      - Used Prussian police against the coup
+      - Arrested the conspirators
+
+      What did they do? Surrendered without a fight. Filed a lawsuit.
+
+    dimitrov_assessment: |
+      "Fascism was able to come to power primarily because the working
+      class, owing to the policy of class collaboration with the bourgeoisie
+      pursued by the Social-Democratic leaders, proved to be split,
+      politically and organizationally disarmed."
+
+      "This is the way in which the Social-Democrats, by disorganizing
+      and splitting the ranks of the working class, cleared the path
+      to power for fascism."
+
+    spd_betrayals:
+      - "1919: Murdered Rosa Luxemburg, Karl Liebknecht, Spartacists"
+      - "1919-1933: Consistent class collaboration with bourgeoisie"
+      - "1929: Banned Red Front Fighters while SA remained legal"
+      - "July 20, 1932: Surrendered Prussia without a fight"
+      - "May 1933: SPD deputies voted FOR Hitler's foreign policy"
+
+    lesson_for_game: |
+      The inflection point is when those with power to resist CHOOSE not to.
+      Material capability + political will = resistance.
+      Material capability - political will = betrayal.
+
+      The SPD had the guns, the organization, the legal authority.
+      They lacked the will because class collaboration was their ideology.
+
+      For the game: The Purge tests whether the player's movement has
+      BOTH capability AND will. The SPD had capability but no will.
+      The KPD had will but insufficient capability (banned, repressed).
+      Victory requires building BOTH before the test comes.
 
   pre_stage:
     name: "Coalescence"
@@ -560,6 +624,7 @@ game_timeline:
       description: "Organization survives but never grows. Eventually destroyed."
 
   phase_transitions:
+    # FORWARD TRANSITIONS
     coalescence_to_stage_1:
       trigger: "The Purge (automatic at Year 4)"
       requirement: "Sufficient coalescence (solidarity edges + organization)"
@@ -585,36 +650,90 @@ game_timeline:
         - "Solidarity edge density above threshold"
         - "Enemy contradictions sharpened (super-wages falling)"
         - "International conditions favorable (optional bonus)"
-      failure_if_premature: "Offensive crushed, back to Stage 2 (weakened)"
+      failure_if_premature: "Offensive crushed, regress to Stage 2 (weakened)"
       failure_if_too_late: "Slow Death (enemy consolidates too strongly)"
+
+    # BACKWARD TRANSITIONS (Fluidity - phases are dialectical)
+    stage_3_to_2:
+      trigger: "Failed offensive / Enemy rallies"
+      causes:
+        - "Premature offensive without sufficient preparation"
+        - "International intervention against revolution"
+        - "Enemy receives external support"
+        - "Internal contradictions in revolutionary forces"
+      result: "Regress to Equilibrium, rebuild for next attempt"
+      historical_example: "Long March (1934-35) - retreat after failed offensive"
+
+    stage_2_to_1:
+      trigger: "Successful enemy counteroffensive"
+      causes:
+        - "Enemy receives reinforcements or new resources"
+        - "Betrayal or intelligence breach"
+        - "Loss of key base areas"
+        - "International isolation"
+      result: "Back to Defensive, survive renewed enemy offensive"
+      note: "This is NOT game over—you can still recover"
+
+    stage_1_to_destruction:
+      trigger: "Total collapse under enemy offensive"
+      causes:
+        - "Base areas overrun"
+        - "Leadership captured or killed"
+        - "Mass defection or demoralization"
+      result: "GAME OVER - resistance destroyed"
+
+  phase_fluidity:
+    principle: |
+      The phases are states in a dialectical process, not steps on a ladder.
+      Conditions determine phase. Time does not guarantee progress.
+      The enemy is also acting. The struggle ebbs and flows.
+
+    diagram: |
+      DEFENSIVE <------> EQUILIBRIUM <------> OFFENSIVE
+          |                   ^                   |
+          |                   |                   |
+          +-------------------+-------------------+
+                              |
+                              v
+                         DESTRUCTION
+                         (Game Over)
+
+    examples:
+      - period: "Chinese Revolution 1927-1949"
+        note: "Multiple advances and retreats, Long March was strategic retreat"
+      - period: "Vietnamese Resistance 1945-1975"
+        note: "30 years of ebb and flow against French then Americans"
+      - period: "Cuban Revolution 1953-1959"
+        note: "Failed first offensive (Moncada), retreat, rebuild, victory"
 
   full_arc:
     description: |
-      The complete game arc:
+      The IDEAL arc (but phases can regress!):
 
       PRE-STAGE: Coalescence (Years 0-4)
-        - Scattered groups → coherent movement
-        - Building solidarity edges
-        - Establishing base areas
-              ↓
+        - Scattered groups -> coherent movement
+              |
+              v
       THE PURGE (Year 4) - Test of Coalescence
-              ↓
-      STAGE 1: Strategic Defensive (Post-Purge)
-        - Coherent movement resists enemy offensive
-        - Guerrilla warfare from base areas
-        - Absorb attacks, counterattack locally
-              ↓
+              | (survive) or -> GAME OVER (crushed)
+              v
+      STAGE 1: Strategic Defensive
+              ^ (can regress from Stage 2)
+              v
       STAGE 2: Strategic Stalemate
-        - "Most trying but pivotal"
-        - Build strength from weakness
-        - Wait for contradictions to sharpen
-              ↓
+              ^ (can regress from Stage 3)
+              v
       STAGE 3: Strategic Counter-Offensive
-        - Go on the attack
-        - Recover lost territory
-        - Final confrontation
-              ↓
+              | (victory) or ^ (regress) or -> GAME OVER (destroyed)
+              v
       VICTORY: Revolution
+
+    key_insight: |
+      The arrows go BOTH WAYS between stages. You are never "safe"
+      in a higher stage. The enemy can push you back. You can
+      overreach and fail. Victory requires not just reaching Stage 3,
+      but successfully completing it while the enemy tries to
+      push you back.
 
 # =============================================================================
 # LIBERALISM: THE DECAYING ORDER

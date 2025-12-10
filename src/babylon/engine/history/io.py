@@ -20,34 +20,43 @@ from pydantic import ValidationError
 from babylon.engine.history.models import Checkpoint, CheckpointMetadata
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
+from babylon.utils.exceptions import StorageError
 
 # =============================================================================
-# EXCEPTIONS
+# EXCEPTIONS (inherit from StorageError for unified hierarchy)
 # =============================================================================
 
 
-class CheckpointIOError(Exception):
-    """Base exception for checkpoint I/O errors."""
+class CheckpointIOError(StorageError):
+    """Base exception for checkpoint I/O errors.
 
-    pass
+    Now inherits from StorageError to be part of unified BabylonError hierarchy.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="STOR_100")
 
 
 class CheckpointNotFoundError(CheckpointIOError):
     """Raised when a checkpoint file is not found."""
 
-    pass
+    def __init__(self, message: str) -> None:
+        # Call StorageError.__init__ directly to set correct error_code
+        StorageError.__init__(self, message, error_code="STOR_101")
 
 
 class CheckpointCorruptedError(CheckpointIOError):
     """Raised when a checkpoint file contains invalid JSON."""
 
-    pass
+    def __init__(self, message: str) -> None:
+        StorageError.__init__(self, message, error_code="STOR_102")
 
 
 class CheckpointSchemaError(CheckpointIOError):
     """Raised when a checkpoint file has invalid schema."""
 
-    pass
+    def __init__(self, message: str) -> None:
+        StorageError.__init__(self, message, error_code="STOR_103")
 
 
 # =============================================================================

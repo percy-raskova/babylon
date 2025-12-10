@@ -20,24 +20,15 @@ from ratelimit import limits, sleep_and_retry
 
 from babylon.config.llm_config import LLMConfig
 from babylon.metrics.collector import MetricsCollector
+from babylon.rag.exceptions import RagError
 
 logger = logging.getLogger(__name__)
 
 
-class EmbeddingError(Exception):
-    """Exception raised for embedding service failures."""
-
-    pass
-
-
-class EmbeddingAPIError(EmbeddingError):
-    """Exception raised for embedding API-specific errors."""
-
-    pass
-
-
-# Backward compatibility alias
-OpenAIError = EmbeddingAPIError
+# Backward compatibility aliases - these now map to RagError
+EmbeddingError = RagError
+EmbeddingAPIError = RagError
+OpenAIError = RagError
 
 
 class Embeddable(Protocol):

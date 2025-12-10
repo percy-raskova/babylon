@@ -6,13 +6,14 @@ from typing import Any
 
 from babylon.metrics.collector import MetricsCollector
 from babylon.rag.context_window.config import ContextWindowConfig
-from babylon.rag.context_window.errors import (
-    CapacityExceededError,
-    ContentInsertionError,
-    ContentRemovalError,
-    OptimizationFailedError,
-    TokenCountError,
-)
+from babylon.rag.exceptions import RagError
+
+# Backward compatibility aliases for context window errors
+CapacityExceededError = RagError
+ContentInsertionError = RagError
+ContentRemovalError = RagError
+OptimizationFailedError = RagError
+TokenCountError = RagError
 
 
 class ContextWindowManager:

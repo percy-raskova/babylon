@@ -2,11 +2,16 @@
 # Machine-readable specification for the semantic validation and retrieval system
 
 meta:
-  version: "1.1.0"
+  version: "1.2.0"
   created: "2025-12-08"
   updated: "2025-12-09"
   purpose: "Define RAG as permission system and physics engine, not just retrieval"
   core_insight: "Semantic similarity is deterministic validation BEFORE LLM sees input"
+  contents:
+    - "Collections Dictionary - Three gravitational poles (CANON, CHRONICLE, ZEITGEIST)"
+    - "Configuration Spec - ChromaDB settings and metadata schemas"
+    - "Validation Pipeline - Six-stage input filtering"
+    - "Safety Architecture - Observer pattern separation"
   related_docs:
     - "ai-docs/database-spec.yaml - Ledger (SQLite) data dictionary"
     - "ai-docs/architecture.yaml - Embedded Trinity overview"
@@ -703,6 +708,283 @@ implementation:
     - "Observer Protocol (being implemented)"
     - "NarrativeDirector (being implemented)"
     - "EventBus integration (complete)"
+
+# =============================================================================
+# CHROMADB CONFIGURATION SPECIFICATION
+# =============================================================================
+
+configuration_spec:
+  description: |
+    The "Type System" for vectors. This configuration ensures ChromaDB acts
+    as a Physics Engine with proper filtering capabilities, not just a search bar.
+    Metadata schemas enable queries like "Find resonance in 1930s Germany".
+
+  # ---------------------------------------------------------------------------
+  # Global Settings
+  # ---------------------------------------------------------------------------
+  global_settings:
+    distance_function: "cosine"
+    distance_rationale: |
+      Cosine distance measures semantic ANGLE between vectors, not magnitude.
+      This is crucial because:
+      - Documents of different lengths should compare fairly
+      - Semantic similarity is about direction in embedding space
+      - Magnitude differences (document length) shouldn't skew results
+      Formula: 1 - (A·B / ||A|| ||B||)
+      Range: [0, 2] where 0 = identical direction, 2 = opposite
+
+    persistence_path: "data/chroma"
+    persistence_rationale: |
+      Local SQLite + parquet storage within project directory.
+      Benefits:
+      - No external server required (Embedded Trinity principle)
+      - Portable with save games
+      - Can be backed up with git-lfs if needed
+
+    embedding_model: "text-embedding-3-small"
+    embedding_dimensions: 1536
+    embedding_rationale: |
+      OpenAI's small model balances quality and cost.
+      For offline/local mode, can swap to sentence-transformers.
+
+  # ---------------------------------------------------------------------------
+  # Collection Metadata Schemas
+  # ---------------------------------------------------------------------------
+  collection_schemas:
+
+    THE_CANON:
+      name: "the_canon"
+      description: "Theoretical texts - the Laws of Physics"
+      hnsw_space: "cosine"
+
+      required_metadata:
+        author:
+          type: "string"
+          description: "Author of the text (Marx, Lenin, Fanon, Mao, etc.)"
+          examples: ["Marx", "Lenin", "Fanon", "Mao", "Sakai", "Cope"]
+          filter_use: "where={'author': 'Lenin'}"
+
+        work:
+          type: "string"
+          description: "Source work title"
+          examples:
+            - "Capital Vol. I"
+            - "Imperialism: The Highest Stage of Capitalism"
+            - "The Wretched of the Earth"
+            - "On Contradiction"
+          filter_use: "where={'work': 'Capital Vol. I'}"
+
+        topic:
+          type: "string"
+          description: "Primary concept/topic tag"
+          examples:
+            - "surplus_value"
+            - "labor_aristocracy"
+            - "colonial_violence"
+            - "principal_contradiction"
+            - "unequal_exchange"
+          filter_use: "where={'topic': 'labor_aristocracy'}"
+
+      optional_metadata:
+        chapter:
+          type: "string"
+          description: "Chapter or section reference"
+
+        concept_tags:
+          type: "list[string]"
+          description: "Additional concept tags for multi-topic passages"
+
+      example_document:
+        text: "The essential difference between the various economic forms..."
+        metadata:
+          author: "Marx"
+          work: "Capital Vol. I"
+          topic: "surplus_value"
+          chapter: "Chapter 7: The Labour Process"
+          concept_tags: ["exploitation", "wage_labor", "value"]
+
+    THE_CHRONICLE:
+      name: "the_chronicle"
+      description: "Historical events - the Precedents"
+      hnsw_space: "cosine"
+
+      required_metadata:
+        year:
+          type: "integer"
+          description: "Year of the event (for temporal filtering)"
+          examples: [1871, 1917, 1933, 1973]
+          filter_use: "where={'year': {'$gte': 1920, '$lte': 1940}}"
+          range_queries: true
+
+        location:
+          type: "string"
+          description: "Geographic location (country or region)"
+          examples: ["France", "Russia", "Germany", "Chile", "China"]
+          filter_use: "where={'location': 'Germany'}"
+
+        tags:
+          type: "list[string]"
+          description: "Event classification tags"
+          examples:
+            - ["revolution", "success", "urban"]
+            - ["fascism", "failure", "economic_crisis"]
+            - ["coup", "imperial_intervention", "reformism"]
+          filter_use: "where={'tags': {'$contains': 'fascism'}}"
+
+      optional_metadata:
+        event_name:
+          type: "string"
+          description: "Canonical name of the historical event"
+
+        period:
+          type: "string"
+          description: "Date range if spans multiple years"
+
+        outcome_type:
+          type: "enum"
+          values: ["revolutionary_success", "revolutionary_failure", "counter_revolution", "reform", "suppression"]
+
+        resonance_tags:
+          type: "list[string]"
+          description: "Tags for matching to simulation conditions"
+
+      example_document:
+        text: "In January 1933, Hitler was appointed Chancellor..."
+        metadata:
+          year: 1933
+          location: "Germany"
+          tags: ["fascism", "economic_crisis", "weak_solidarity"]
+          event_name: "Nazi Seizure of Power"
+          period: "1933-1945"
+          outcome_type: "counter_revolution"
+          resonance_tags: ["high_agitation", "low_class_consciousness", "atomization"]
+
+    THE_ZEITGEIST:
+      name: "the_zeitgeist"
+      description: "Simulation memory - the Mirror"
+      hnsw_space: "cosine"
+
+      required_metadata:
+        turn:
+          type: "integer"
+          description: "Simulation tick number"
+          examples: [1, 42, 100]
+          filter_use: "where={'turn': {'$gte': 40, '$lte': 50}}"
+          range_queries: true
+
+        entity_id:
+          type: "string"
+          description: "Primary entity involved (class or territory ID)"
+          examples: ["C001", "C002", "T005"]
+          filter_use: "where={'entity_id': 'C001'}"
+
+        event_type:
+          type: "enum"
+          description: "Type of simulation event"
+          values:
+            - "SURPLUS_EXTRACTION"
+            - "IMPERIAL_SUBSIDY"
+            - "SOLIDARITY_AWAKENING"
+            - "CONSCIOUSNESS_TRANSMISSION"
+            - "MASS_AWAKENING"
+            - "ECONOMIC_CRISIS"
+            - "RUPTURE"
+            - "EVICTION"
+            - "HEAT_SPIKE"
+          filter_use: "where={'event_type': 'RUPTURE'}"
+
+      optional_metadata:
+        session_id:
+          type: "string"
+          description: "Game session identifier for multi-save support"
+
+        shock_value:
+          type: "float"
+          description: "State change magnitude from previous turn"
+
+        secondary_entities:
+          type: "list[string]"
+          description: "Other entities involved in the event"
+
+        state_summary:
+          type: "string"
+          description: "Brief text summary of state at this tick"
+
+      example_document:
+        text: "Turn 42: The contradiction in Sector 5 reached critical intensity..."
+        metadata:
+          turn: 42
+          entity_id: "T005"
+          event_type: "RUPTURE"
+          session_id: "game_2025_001"
+          shock_value: 0.73
+          secondary_entities: ["C002", "C003"]
+          state_summary: "Revolutionary rupture in industrial sector"
+
+  # ---------------------------------------------------------------------------
+  # Query Examples
+  # ---------------------------------------------------------------------------
+  query_examples:
+    description: "Common query patterns using metadata filters"
+
+    find_theory_by_author:
+      purpose: "Get all Lenin's writings on imperialism"
+      query: "imperial rent extraction"
+      filter: "where={'author': 'Lenin', 'topic': 'unequal_exchange'}"
+      n_results: 5
+
+    find_historical_parallels:
+      purpose: "Find resonance in 1930s Germany"
+      query: "economic crisis leading to fascism"
+      filter: "where={'year': {'$gte': 1929, '$lte': 1939}, 'location': 'Germany'}"
+      n_results: 3
+
+    find_similar_crises:
+      purpose: "Find all historical economic crises"
+      query: "economic collapse unemployment"
+      filter: "where={'tags': {'$contains': 'economic_crisis'}}"
+      n_results: 10
+
+    find_recent_game_events:
+      purpose: "What happened in the last 10 turns?"
+      query: "class consciousness awakening"
+      filter: "where={'turn': {'$gte': current_turn - 10}}"
+      n_results: 20
+
+    find_ruptures:
+      purpose: "Find all revolutionary ruptures in this game"
+      query: "revolutionary rupture"
+      filter: "where={'event_type': 'RUPTURE', 'session_id': current_session}"
+      n_results: 50
+
+    trait_derivation:
+      purpose: "Measure entity against theoretical concepts"
+      query: "labor aristocracy bribed workers imperial wages"
+      filter: "where={'topic': 'labor_aristocracy'}"
+      n_results: 3
+      use: "Calculate similarity score for BRIBED_LABOR trait"
+
+  # ---------------------------------------------------------------------------
+  # Collection Lifecycle
+  # ---------------------------------------------------------------------------
+  lifecycle:
+    THE_CANON:
+      on_init: "Load from corpus files (data/corpus/theory/)"
+      on_game_start: "No change (immutable)"
+      on_tick: "No change (immutable)"
+      on_save: "No change (immutable)"
+
+    THE_CHRONICLE:
+      on_init: "Load from corpus files (data/corpus/history/)"
+      on_game_start: "No change (immutable)"
+      on_tick: "No change (immutable)"
+      on_save: "No change (immutable)"
+
+    THE_ZEITGEIST:
+      on_init: "Create empty collection"
+      on_game_start: "Clear collection (fresh game) or load from save"
+      on_tick: "Append new event documents"
+      on_save: "Persist with save file (export to JSON)"
 
 # =============================================================================
 # PHILOSOPHICAL ALIGNMENT

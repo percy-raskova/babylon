@@ -311,9 +311,15 @@ class ImperialRentSystem:
             # Get target (client state) data
             target_data = graph.nodes[target_id]
             target_wealth = target_data.get("wealth", 0.0)
-            target_organization = target_data.get("organization", 0.1)
-            target_repression = target_data.get("repression_faced", 0.5)
-            target_subsistence = target_data.get("subsistence_threshold", 0.3)
+            target_organization = target_data.get(
+                "organization", services.defines.DEFAULT_ORGANIZATION
+            )
+            target_repression = target_data.get(
+                "repression_faced", services.defines.DEFAULT_REPRESSION_FACED
+            )
+            target_subsistence = target_data.get(
+                "subsistence_threshold", services.defines.DEFAULT_SUBSISTENCE
+            )
 
             # Get source (core bourgeoisie) wealth
             source_wealth = graph.nodes[source_id].get("wealth", 0.0)

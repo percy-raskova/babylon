@@ -21,7 +21,7 @@ class TestScenarioConfigValidation:
         scenario = ScenarioConfig(name="default_scenario")
 
         assert scenario.name == "default_scenario"
-        assert scenario.rent_level == 1.0  # Default multiplier
+        assert scenario.superwage_multiplier == 1.0  # Default multiplier
         assert scenario.solidarity_index == 0.5  # Default coefficient
         assert scenario.repression_capacity == 0.5  # Default coefficient
 
@@ -30,13 +30,13 @@ class TestScenarioConfigValidation:
         """Test that ScenarioConfig accepts all specified values."""
         scenario = ScenarioConfig(
             name="high_tension",
-            rent_level=1.5,
+            superwage_multiplier=1.5,
             solidarity_index=0.8,
             repression_capacity=0.2,
         )
 
         assert scenario.name == "high_tension"
-        assert scenario.rent_level == 1.5
+        assert scenario.superwage_multiplier == 1.5
         assert scenario.solidarity_index == 0.8
         assert scenario.repression_capacity == 0.2
 
@@ -98,22 +98,22 @@ class TestScenarioConfigValidation:
         assert any("repression_capacity" in str(e["loc"]) for e in errors)
 
     @pytest.mark.unit
-    def test_rent_level_must_be_non_negative(self) -> None:
-        """Test that rent_level must be >= 0 (multiplier cannot be negative)."""
-        # Valid: zero rent (no extraction)
-        scenario_zero = ScenarioConfig(name="test", rent_level=0.0)
-        assert scenario_zero.rent_level == 0.0
+    def test_superwage_multiplier_must_be_non_negative(self) -> None:
+        """Test that superwage_multiplier must be >= 0 (multiplier cannot be negative)."""
+        # Valid: zero superwage (no extraction)
+        scenario_zero = ScenarioConfig(name="test", superwage_multiplier=0.0)
+        assert scenario_zero.superwage_multiplier == 0.0
 
-        # Valid: high rent (aggressive extraction)
-        scenario_high = ScenarioConfig(name="test", rent_level=2.5)
-        assert scenario_high.rent_level == 2.5
+        # Valid: high superwage (aggressive extraction)
+        scenario_high = ScenarioConfig(name="test", superwage_multiplier=2.5)
+        assert scenario_high.superwage_multiplier == 2.5
 
-        # Invalid: negative rent
+        # Invalid: negative superwage
         with pytest.raises(ValidationError) as exc_info:
-            ScenarioConfig(name="test", rent_level=-0.5)
+            ScenarioConfig(name="test", superwage_multiplier=-0.5)
 
         errors = exc_info.value.errors()
-        assert any("rent_level" in str(e["loc"]) for e in errors)
+        assert any("superwage_multiplier" in str(e["loc"]) for e in errors)
 
 
 class TestScenarioConfigSerialization:
@@ -124,7 +124,7 @@ class TestScenarioConfigSerialization:
         """Test that ScenarioConfig can be serialized to dict."""
         scenario = ScenarioConfig(
             name="test_scenario",
-            rent_level=1.2,
+            superwage_multiplier=1.2,
             solidarity_index=0.3,
             repression_capacity=0.7,
         )
@@ -132,7 +132,7 @@ class TestScenarioConfigSerialization:
         data = scenario.model_dump()
 
         assert data["name"] == "test_scenario"
-        assert data["rent_level"] == 1.2
+        assert data["superwage_multiplier"] == 1.2
         assert data["solidarity_index"] == 0.3
         assert data["repression_capacity"] == 0.7
 
@@ -141,7 +141,7 @@ class TestScenarioConfigSerialization:
         """Test that ScenarioConfig can be deserialized from dict."""
         data = {
             "name": "from_dict_scenario",
-            "rent_level": 0.5,
+            "superwage_multiplier": 0.5,
             "solidarity_index": 0.9,
             "repression_capacity": 0.1,
         }
@@ -149,7 +149,7 @@ class TestScenarioConfigSerialization:
         scenario = ScenarioConfig.model_validate(data)
 
         assert scenario.name == "from_dict_scenario"
-        assert scenario.rent_level == 0.5
+        assert scenario.superwage_multiplier == 0.5
         assert scenario.solidarity_index == 0.9
         assert scenario.repression_capacity == 0.1
 
@@ -158,7 +158,7 @@ class TestScenarioConfigSerialization:
         """Test that ScenarioConfig survives round-trip serialization."""
         original = ScenarioConfig(
             name="round_trip",
-            rent_level=1.3,
+            superwage_multiplier=1.3,
             solidarity_index=0.4,
             repression_capacity=0.6,
         )
@@ -168,7 +168,7 @@ class TestScenarioConfigSerialization:
         restored = ScenarioConfig.model_validate(data)
 
         assert restored.name == original.name
-        assert restored.rent_level == original.rent_level
+        assert restored.superwage_multiplier == original.superwage_multiplier
         assert restored.solidarity_index == original.solidarity_index
         assert restored.repression_capacity == original.repression_capacity
 

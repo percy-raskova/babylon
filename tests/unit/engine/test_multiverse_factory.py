@@ -40,12 +40,12 @@ class TestMultiverseFactory:
         assert len(names) == len(set(names)), "Scenario names must be unique"
 
     @pytest.mark.unit
-    def test_rent_level_values(self) -> None:
-        """Test that rent_level has exactly two values: 0.3 (Low) and 1.5 (High)."""
+    def test_superwage_multiplier_values(self) -> None:
+        """Test that superwage_multiplier has exactly two values: 0.3 (Low) and 1.5 (High)."""
         scenarios = get_multiverse_scenarios()
-        rent_levels = {s.rent_level for s in scenarios}
+        superwage_multipliers = {s.superwage_multiplier for s in scenarios}
 
-        assert rent_levels == {0.3, 1.5}
+        assert superwage_multipliers == {0.3, 1.5}
 
     @pytest.mark.unit
     def test_solidarity_index_values(self) -> None:
@@ -68,37 +68,37 @@ class TestMultiverseFactory:
         """Test that all 8 permutations of High/Low values are present."""
         scenarios = get_multiverse_scenarios()
 
-        # Create set of (rent, solidarity, repression) tuples
+        # Create set of (superwage, solidarity, repression) tuples
         combinations = {
-            (s.rent_level, s.solidarity_index, s.repression_capacity) for s in scenarios
+            (s.superwage_multiplier, s.solidarity_index, s.repression_capacity) for s in scenarios
         }
 
         # Expected: all 8 combinations of {0.3, 1.5} x {0.2, 0.8} x {0.2, 0.8}
         expected = set()
-        for rent in [0.3, 1.5]:
+        for sw in [0.3, 1.5]:
             for sol in [0.2, 0.8]:
                 for rep in [0.2, 0.8]:
-                    expected.add((rent, sol, rep))
+                    expected.add((sw, sol, rep))
 
         assert combinations == expected
 
     @pytest.mark.unit
-    def test_naming_convention_high_rent(self) -> None:
-        """Test that scenarios with rent_level=1.5 have 'HighRent' in name."""
+    def test_naming_convention_high_sw(self) -> None:
+        """Test that scenarios with superwage_multiplier=1.5 have 'HighSW' in name."""
         scenarios = get_multiverse_scenarios()
-        high_rent = [s for s in scenarios if s.rent_level == 1.5]
+        high_sw = [s for s in scenarios if s.superwage_multiplier == 1.5]
 
-        for scenario in high_rent:
-            assert "HighRent" in scenario.name or "High" in scenario.name
+        for scenario in high_sw:
+            assert "HighSW" in scenario.name or "High" in scenario.name
 
     @pytest.mark.unit
-    def test_naming_convention_low_rent(self) -> None:
-        """Test that scenarios with rent_level=0.3 have 'LowRent' in name."""
+    def test_naming_convention_low_sw(self) -> None:
+        """Test that scenarios with superwage_multiplier=0.3 have 'LowSW' in name."""
         scenarios = get_multiverse_scenarios()
-        low_rent = [s for s in scenarios if s.rent_level == 0.3]
+        low_sw = [s for s in scenarios if s.superwage_multiplier == 0.3]
 
-        for scenario in low_rent:
-            assert "LowRent" in scenario.name or "Low" in scenario.name
+        for scenario in low_sw:
+            assert "LowSW" in scenario.name or "Low" in scenario.name
 
     @pytest.mark.unit
     def test_deterministic_output(self) -> None:
@@ -118,18 +118,22 @@ class TestMultiverseFactory:
         """Test that both extreme scenarios are present."""
         scenarios = get_multiverse_scenarios()
 
-        # Find the "stable" scenario: High Rent + Low Solidarity + High Repression
+        # Find the "stable" scenario: High SW + Low Solidarity + High Repression
         stable = [
             s
             for s in scenarios
-            if s.rent_level == 1.5 and s.solidarity_index == 0.2 and s.repression_capacity == 0.8
+            if s.superwage_multiplier == 1.5
+            and s.solidarity_index == 0.2
+            and s.repression_capacity == 0.8
         ]
         assert len(stable) == 1, "Should have exactly one stable scenario"
 
-        # Find the "collapse" scenario: Low Rent + High Solidarity + Low Repression
+        # Find the "collapse" scenario: Low SW + High Solidarity + Low Repression
         collapse = [
             s
             for s in scenarios
-            if s.rent_level == 0.3 and s.solidarity_index == 0.8 and s.repression_capacity == 0.2
+            if s.superwage_multiplier == 0.3
+            and s.solidarity_index == 0.8
+            and s.repression_capacity == 0.2
         ]
         assert len(collapse) == 1, "Should have exactly one collapse scenario"

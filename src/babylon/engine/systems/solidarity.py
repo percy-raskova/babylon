@@ -151,7 +151,7 @@ class SolidaritySystem:
             )
 
             # Skip negligible transmissions
-            if abs(delta) < 0.01:
+            if abs(delta) < services.defines.NEGLIGIBLE_TRANSMISSION:
                 continue
 
             # Apply delta to target class_consciousness

@@ -4,11 +4,16 @@
 This tool runs all 8 multiverse scenarios through 10 ticks of simulation
 and produces a markdown table showing the P(S|R) divergence across scenarios.
 
-Expected Results:
-- High SW + Low Solidarity + High Repression -> Low P(S|R) (Stable for Capital)
-- Low SW + High Solidarity + Low Repression -> High P(S|R) (Revolution likely)
+Expected Results (PPP Model):
+- High SW -> High PPP -> High Effective Wealth -> P(S|A) high (Stable for Capital)
+- Low SW -> Low PPP -> Low Effective Wealth -> P(S|A) crashes (Revolution likely)
 
-Paradox Refactor: Updated to use superwage_multiplier (SW) terminology.
+The PPP (Purchasing Power Parity) model implements Unequal Exchange theory:
+- Bourgeoisie captures SURPLUS VALUE (Money/Profit)
+- Labor Aristocracy captures USE VALUE (Cheap Commodities via PPP)
+
+The "unearned increment" = Effective Wealth - Nominal Wage = material basis
+of labor aristocracy loyalty.
 
 Usage:
     poetry run python tools/verify_math_divergence.py
@@ -42,7 +47,7 @@ OWNER_ID: Final[str] = "C002"  # Core owner (exploiter, receives rent)
 def run_scenario_simulation(
     scenario: ScenarioConfig,
     num_ticks: int = NUM_TICKS,
-) -> tuple[float, float, float, float, float]:
+) -> tuple[float, float, float, float, float, float, float]:
     """Run a scenario through simulation and return final metrics.
 
     Args:
@@ -51,7 +56,7 @@ def run_scenario_simulation(
 
     Returns:
         Tuple of (worker_p_revolution, worker_p_acquiescence, worker_wealth,
-                  owner_wealth, worker_organization)
+                  owner_wealth, worker_organization, effective_wealth, unearned_increment)
     """
     # Create base scenario
     base_state, base_config = create_two_node_scenario()
@@ -82,32 +87,35 @@ def run_scenario_simulation(
         worker.wealth,
         owner.wealth,
         worker.organization,
+        worker.effective_wealth,
+        worker.unearned_increment,
     )
 
 
-# Result tuple type: (scenario, p_rev, p_acq, worker_wealth, owner_wealth, organization)
-ResultTuple = tuple[ScenarioConfig, float, float, float, float, float]
+# Result tuple type: (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org, eff_wealth, unearned)
+ResultTuple = tuple[ScenarioConfig, float, float, float, float, float, float, float]
 
 
 def format_markdown_table(results: list[ResultTuple]) -> str:
     """Format results as a markdown table.
 
     Args:
-        results: List of (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org) tuples
+        results: List of (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org, eff_wealth, unearned) tuples
 
     Returns:
         Markdown formatted table string
     """
     lines = [
-        "| Scenario | SW | Sol | Rep | P(S|R) | P(S|A) | W.Wealth | O.Wealth | Org |",
-        "|----------|-----|-----|-----|--------|--------|----------|----------|-----|",
+        "| Scenario | SW | Sol | Rep | P(S|R) | P(S|A) | W.Nom | W.Eff | Unearned | O.Wealth |",
+        "|----------|-----|-----|-----|--------|--------|-------|-------|----------|----------|",
     ]
 
-    for scenario, p_rev, p_acq, w_wealth, o_wealth, org in results:
+    for scenario, p_rev, p_acq, w_wealth, o_wealth, _org, eff_wealth, unearned in results:
         lines.append(
             f"| {scenario.name} | {scenario.superwage_multiplier} | "
             f"{scenario.solidarity_index} | {scenario.repression_capacity} | "
-            f"{p_rev:.4f} | {p_acq:.4f} | {w_wealth:.4f} | {o_wealth:.4f} | {org:.2f} |"
+            f"{p_rev:.4f} | {p_acq:.4f} | {w_wealth:.4f} | {eff_wealth:.4f} | "
+            f"{unearned:.4f} | {o_wealth:.4f} |"
         )
 
     return "\n".join(lines)
@@ -116,12 +124,13 @@ def format_markdown_table(results: list[ResultTuple]) -> str:
 def verify_expected_divergence(results: list[ResultTuple]) -> bool:
     """Verify that extreme scenarios produce expected divergence.
 
-    Expected:
-    - High SW + Low Solidarity + High Repression -> Low P(S|R), Low Worker Wealth, High Owner Wealth
-    - Low SW + High Solidarity + Low Repression -> High P(S|R), High Worker Wealth, Low Owner Wealth
+    Expected (PPP Model):
+    - High SW -> High PPP -> High Effective Wealth -> Higher P(S|A) (stable for capital)
+    - Low SW -> Low PPP -> Low Effective Wealth -> Lower P(S|A) (revolution likely)
+    - High SW should produce higher unearned_increment (material basis of loyalty)
 
     Args:
-        results: List of (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org) tuples
+        results: List of (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org, eff_wealth, unearned) tuples
 
     Returns:
         True if divergence is verified, False otherwise
@@ -148,30 +157,59 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
         print("ERROR: Could not find extreme scenarios in results")
         return False
 
-    # Extract values: (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org)
+    # Extract values: (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org, eff_wealth, unearned)
     stable_p_rev = stable_scenario[1]
+    stable_p_acq = stable_scenario[2]
     stable_owner_wealth = stable_scenario[4]
-    stable_org = stable_scenario[5]
+    stable_eff_wealth = stable_scenario[6]
+    stable_unearned = stable_scenario[7]
 
     collapse_p_rev = collapse_scenario[1]
+    collapse_p_acq = collapse_scenario[2]
     collapse_owner_wealth = collapse_scenario[4]
-    collapse_org = collapse_scenario[5]
+    collapse_eff_wealth = collapse_scenario[6]
+    collapse_unearned = collapse_scenario[7]
 
-    print("\nDivergence Verification:")
+    print("\nDivergence Verification (PPP Model):")
     print("  Stable scenario (HighSW_LowSol_HighRep):")
     print(
-        f"    P(S|R) = {stable_p_rev:.4f}, Owner Wealth = {stable_owner_wealth:.4f}, Org = {stable_org:.2f}"
+        f"    P(S|R)={stable_p_rev:.4f}, P(S|A)={stable_p_acq:.4f}, "
+        f"Eff.Wealth={stable_eff_wealth:.4f}, Unearned={stable_unearned:.4f}"
     )
     print("  Collapse scenario (LowSW_HighSol_LowRep):")
     print(
-        f"    P(S|R) = {collapse_p_rev:.4f}, Owner Wealth = {collapse_owner_wealth:.4f}, Org = {collapse_org:.2f}"
+        f"    P(S|R)={collapse_p_rev:.4f}, P(S|A)={collapse_p_acq:.4f}, "
+        f"Eff.Wealth={collapse_eff_wealth:.4f}, Unearned={collapse_unearned:.4f}"
     )
 
     # Check all success criteria
     all_pass = True
 
-    # Bug 1 Fix: High Solidarity -> Higher P(S|R) (via solidarity multiplier on organization)
-    # P(S|R) = effective_org / repression, where effective_org = base_org * solidarity_multiplier
+    # PPP Model Check 1: High SW -> Higher Effective Wealth
+    if stable_eff_wealth > collapse_eff_wealth:
+        print(
+            f"\n  [PASS] PPP Effective Wealth: {stable_eff_wealth:.4f} > {collapse_eff_wealth:.4f}"
+        )
+        print("         (High superwage_multiplier -> Higher purchasing power via PPP)")
+    else:
+        print(
+            f"\n  [FAIL] PPP Effective Wealth: expected {stable_eff_wealth:.4f} > {collapse_eff_wealth:.4f}"
+        )
+        all_pass = False
+
+    # PPP Model Check 2: High SW -> Higher Unearned Increment
+    if stable_unearned > collapse_unearned:
+        print(f"  [PASS] Unearned Increment: {stable_unearned:.4f} > {collapse_unearned:.4f}")
+        print(
+            "         (High SW -> Higher PPP bonus -> Material basis of labor aristocracy loyalty)"
+        )
+    else:
+        print(
+            f"  [FAIL] Unearned Increment: expected {stable_unearned:.4f} > {collapse_unearned:.4f}"
+        )
+        all_pass = False
+
+    # Bug 1 Fix: High Solidarity -> Higher P(S|R)
     if collapse_p_rev > stable_p_rev:
         print(f"  [PASS] P(S|R) divergence: {collapse_p_rev:.4f} > {stable_p_rev:.4f}")
         print("         (Solidarity affects P(S|R) through multiplicative organization bonus)")
@@ -179,7 +217,7 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
         print(f"  [FAIL] P(S|R) divergence: expected {collapse_p_rev:.4f} > {stable_p_rev:.4f}")
         all_pass = False
 
-    # Bug 2 Fix: High Rent -> Higher Owner Wealth (rent accumulates in Core)
+    # Bug 2 Fix: High Rent -> Higher Owner Wealth
     if stable_owner_wealth > collapse_owner_wealth:
         print(
             f"  [PASS] Owner wealth divergence: {stable_owner_wealth:.4f} > {collapse_owner_wealth:.4f}"
@@ -192,7 +230,7 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
         all_pass = False
 
     if all_pass:
-        print("\n  [ALL PASS] Both bugs fixed - mathematical model works correctly!")
+        print("\n  [ALL PASS] PPP Model working - mathematical divergence verified!")
     else:
         print("\n  [SOME FAILED] Review the failing criteria above")
 
@@ -205,9 +243,9 @@ def main() -> int:
     Returns:
         Exit code: 0 for success, 1 for failure
     """
-    print("=" * 70)
-    print("MULTIVERSE PROTOCOL: Mathematical Divergence Verification")
-    print("=" * 70)
+    print("=" * 80)
+    print("MULTIVERSE PROTOCOL: PPP Model Mathematical Divergence Verification")
+    print("=" * 80)
     print(f"\nRunning {NUM_TICKS} ticks for each of 8 scenarios...\n")
 
     # Get all multiverse scenarios
@@ -218,27 +256,32 @@ def main() -> int:
     results: list[ResultTuple] = []
 
     for scenario in scenarios:
-        p_rev, p_acq, w_wealth, o_wealth, org = run_scenario_simulation(scenario)
-        results.append((scenario, p_rev, p_acq, w_wealth, o_wealth, org))
-        print(f"  {scenario.name}: P(S|R)={p_rev:.4f}, Org={org:.2f}, OwnerWealth={o_wealth:.4f}")
+        p_rev, p_acq, w_wealth, o_wealth, org, eff_wealth, unearned = run_scenario_simulation(
+            scenario
+        )
+        results.append((scenario, p_rev, p_acq, w_wealth, o_wealth, org, eff_wealth, unearned))
+        print(
+            f"  {scenario.name}: P(S|R)={p_rev:.4f}, P(S|A)={p_acq:.4f}, "
+            f"EffWealth={eff_wealth:.4f}, Unearned={unearned:.4f}"
+        )
 
-    # Sort by P(S|R) for better visualization
-    results_sorted = sorted(results, key=lambda x: x[1], reverse=True)
+    # Sort by effective wealth for better visualization of PPP impact
+    results_sorted = sorted(results, key=lambda x: x[6], reverse=True)  # Sort by effective_wealth
 
-    print("\n" + "=" * 70)
-    print("RESULTS TABLE (sorted by P(S|R) descending)")
-    print("=" * 70 + "\n")
+    print("\n" + "=" * 80)
+    print("RESULTS TABLE (sorted by Effective Wealth descending)")
+    print("=" * 80 + "\n")
 
     # Output markdown table
     table = format_markdown_table(results_sorted)
     print(table)
 
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
 
     # Verify expected divergence
     success = verify_expected_divergence(results)
 
-    print("=" * 70)
+    print("=" * 80)
 
     return 0 if success else 1
 

@@ -2,9 +2,13 @@
 # How the pieces fit together
 
 meta:
-  version: "3.2.0"
+  version: "3.3.0"
   updated: "2025-12-09"
   status: "Phase 3 in progress (983+ tests, Observer + RAG complete, LLM next)"
+  related_docs:
+    - "ai-docs/database-spec.yaml - SQLite schema and DDL"
+    - "ai-docs/rag-architecture.yaml - ChromaDB collections"
+    - "ai-docs/formulas-spec.yaml - Mathematical formulas"
 
 # =============================================================================
 # THE EMBEDDED TRINITY
@@ -16,17 +20,23 @@ core_architecture:
 
   layers:
     ledger:
-      purpose: "Rigid, material state"
+      purpose: "Rigid, material state (persistent storage)"
       technology: "SQLite + Pydantic"
       location: "src/babylon/data/"
+      schema_spec: "ai-docs/database-spec.yaml"
       contains:
-        - "JSON data files (17 entity collections)"
-        - "database.py (SQLAlchemy session)"
+        - "babylon.db: SQLite database (social_classes, territories, relationships)"
+        - "persistence.py: PersistenceService (hydration/dehydration)"
         - "Pydantic models for validation"
-      data_flow: "Read at startup, modified by game events, persisted on save"
+      tables:
+        social_classes: "SocialClass entities with IdeologicalProfile columns"
+        territories: "Territory entities (Layer 0 spatial substrate)"
+        relationships: "Directed edges (exploitation, solidarity, etc.)"
+      data_flow: "Hydration Pattern - load at startup, persist on save, NO DB I/O during tick"
+      key_insight: "Database is cold storage; simulation runs in RAM"
 
     topology:
-      purpose: "Fluid, relational state"
+      purpose: "Fluid, relational state (hot computation environment)"
       technology: "NetworkX (in-memory graph)"
       locations:
         primary: "src/babylon/models/world_state.py (to_graph/from_graph)"
@@ -36,9 +46,10 @@ core_architecture:
         - "WorldState.to_graph() - DiGraph of entities and relationships"
         - "Relationship edges (EXPLOITATION, SOLIDARITY, REPRESSION)"
         - "Node attributes (wealth, ideology, organization, p_*)"
-        - "Edge attributes (value_flow, tension)"
-      data_flow: "WorldState converted to graph for step(), then back"
+        - "Edge attributes (value_flow, tension, solidarity_strength)"
+      data_flow: "Hydrated from Ledger → mutated during tick → dehydrated back"
       key_insight: "Graph + Math = History (ADR011)"
+      runtime_constraint: "No database queries during tick - pure RAM operations"
 
     archive:
       purpose: "Semantic history and theory"
@@ -206,45 +217,184 @@ directory_map:
   ai-docs/: "Machine-readable docs for AI assistants"
 
 # =============================================================================
-# DATA FLOW
+# DATA FLOW: THE HYDRATION CYCLE
 # =============================================================================
 
 data_flows:
+  overview: |
+    The Embedded Trinity uses a "Hydration Pattern" for data flow.
+    The Engine does NOT query SQL during simulation - it loads SQL into
+    NetworkX (RAM), mutates it, and dumps it back. This ensures:
+    1. Deterministic simulation (no I/O latency or race conditions)
+    2. Fast tick execution (pure RAM operations)
+    3. Clean separation between storage and computation
 
-  startup:
-    steps:
-      - "Load JSON data files from src/babylon/data/"
-      - "Validate against schemas"
-      - "Build Pydantic models"
-      - "Construct NetworkX graph (Topology)"
-      - "Initialize ChromaDB connection (Archive)"
+  # ---------------------------------------------------------------------------
+  # PHASE 1: HYDRATION (Wake)
+  # ---------------------------------------------------------------------------
+  hydration:
+    name: "Wake"
+    when: "Game startup, load save, new game"
+    input: "SQLite tables (social_classes, territories, relationships)"
+    output: "WorldState (Pydantic) → NetworkX DiGraph"
 
-  game_turn:
-    implementation: "step(WorldState, SimulationConfig) → WorldState"
-    location: "src/babylon/engine/simulation_engine.py"
-    architecture:
-      engine: "SimulationEngine.run_tick(graph, services, context)"
+    process:
+      service: "PersistenceService.load_state()"
+      steps:
+        - "1. Query SQLite tables (SELECT * FROM social_classes, territories, relationships)"
+        - "2. Validate rows against Pydantic models (SocialClass, Territory, Relationship)"
+        - "3. Construct WorldState from validated entities"
+        - "4. Convert WorldState.to_graph() → NetworkX DiGraph"
+        - "5. Initialize ChromaDB connection for Archive layer"
+
+    sql_operations:
+      social_classes: "SELECT * FROM social_classes"
+      territories: "SELECT * FROM territories"
+      relationships: "SELECT * FROM relationships"
+
+    pydantic_validation: |
+      Each row is validated through the corresponding Pydantic model:
+      - SocialClass: Validates IdeologicalProfile (class_consciousness, national_identity, agitation)
+      - Territory: Validates profile enum, heat bounds, foreign key references
+      - Relationship: Validates edge_type enum, solidarity_strength bounds
+
+    output_structure:
+      worldstate: "Immutable Pydantic model with all entities"
+      graph: "NetworkX DiGraph with nodes and edges"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 2: SIMULATION (Work)
+  # ---------------------------------------------------------------------------
+  simulation:
+    name: "Work"
+    when: "Each tick of the game loop"
+    environment: "Pure RAM (NetworkX DiGraph)"
+    constraint: "NO DATABASE I/O DURING TICK"
+
+    process:
+      implementation: "step(WorldState, SimulationConfig) → WorldState"
+      location: "src/babylon/engine/simulation_engine.py"
+      steps:
+        - "1. WorldState already in RAM (from hydration or previous tick)"
+        - "2. Convert to NetworkX DiGraph if not already"
+        - "3. Create ServiceContainer with config (no DB reference)"
+        - "4. Run Systems in historical materialist order"
+        - "5. Convert graph back to new WorldState"
+        - "6. Return new immutable WorldState (old state unchanged)"
+
+    systems_execution:
+      order: "Historical materialist causality"
       systems:
-        - "1. ImperialRentSystem - Extract imperial rent from exploitation edges"
-        - "2. ConsciousnessSystem - Apply consciousness drift (dΨ/dt)"
-        - "3. SurvivalSystem - Update P(S|A) and P(S|R)"
-        - "4. ContradictionSystem - Accumulate tension, publish rupture events"
-      services:
-        container: "ServiceContainer aggregates all dependencies"
-        config: "SimulationConfig with all formula coefficients"
-        formulas: "FormulaRegistry with 12 hot-swappable formulas"
-        event_bus: "EventBus for event publishing"
-        database: "DatabaseConnection for persistence"
-    steps:
-      - "1. Convert WorldState to NetworkX DiGraph"
-      - "2. Create ServiceContainer with config"
-      - "3. Run all 4 Systems in historical materialist order"
-      - "4. Convert graph back to new WorldState"
-      - "5. Increment tick and return new state"
-    phase_3_additions:
-      - "AI generates narrative from changes (Observer Pattern)"
-      - "More event types (wealth_transfer, ideology_drift, etc.)"
+        - "1. ImperialRentSystem: Extract surplus value along EXPLOITATION edges"
+        - "2. SolidaritySystem: Transmit consciousness along SOLIDARITY edges"
+        - "3. ConsciousnessSystem: Apply ideological routing (agitation → consciousness/identity)"
+        - "4. SurvivalSystem: Calculate P(S|A) and P(S|R)"
+        - "5. ContradictionSystem: Accumulate tension, check rupture thresholds"
+        - "6. TerritorySystem: Update heat, check eviction thresholds"
 
+    physics_calculations:
+      pure_math: |
+        All calculations are pure functions on graph state:
+        - Wealth transfers along edges
+        - Consciousness drift via formulas
+        - Heat accumulation/decay
+        - Probability updates
+      no_side_effects: |
+        Systems mutate the graph in place but never:
+        - Query the database
+        - Write to disk
+        - Make network calls
+        - Access external state
+
+    services:
+      container: "ServiceContainer aggregates dependencies (no DatabaseConnection during tick)"
+      config: "SimulationConfig (frozen, 11 parameters)"
+      formulas: "FormulaRegistry (12 hot-swappable formulas)"
+      event_bus: "EventBus for event publishing (in-memory)"
+
+  # ---------------------------------------------------------------------------
+  # PHASE 3: DEHYDRATION (Sleep)
+  # ---------------------------------------------------------------------------
+  dehydration:
+    name: "Sleep"
+    when: "Save game, auto-checkpoint, session end"
+    input: "WorldState (post-tick Pydantic model)"
+    output: "SQLite tables updated via INSERT OR REPLACE"
+
+    process:
+      service: "PersistenceService.save_state()"
+      steps:
+        - "1. Extract entities from WorldState (classes, territories, relationships)"
+        - "2. Convert Pydantic models to row dicts"
+        - "3. Execute INSERT OR REPLACE for each table"
+        - "4. Commit transaction (atomic write)"
+        - "5. Optionally update ZEITGEIST collection in ChromaDB"
+
+    sql_operations:
+      social_classes: |
+        INSERT OR REPLACE INTO social_classes
+        (id, name, role, wealth, class_consciousness, national_identity, agitation, ...)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ...)
+      territories: |
+        INSERT OR REPLACE INTO territories
+        (id, name, sector_type, host_id, occupant_id, profile, heat, rent_level, ...)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ...)
+      relationships: |
+        INSERT OR REPLACE INTO relationships
+        (source_id, target_id, edge_type, value_flow, tension, solidarity_strength, ...)
+        VALUES (?, ?, ?, ?, ?, ?, ...)
+
+    transaction_safety: |
+      All writes are wrapped in a transaction:
+      - BEGIN TRANSACTION
+      - [all INSERT OR REPLACE statements]
+      - COMMIT
+      On failure: ROLLBACK (database unchanged)
+
+    zeitgeist_update: |
+      Optionally append tick summary to THE_ZEITGEIST collection:
+      - Tick number
+      - Key events
+      - State vector embedding
+      - Shock value (distance from previous tick)
+
+  # ---------------------------------------------------------------------------
+  # HYDRATION CYCLE DIAGRAM
+  # ---------------------------------------------------------------------------
+  cycle_diagram: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                         THE HYDRATION CYCLE                             │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────┐     HYDRATE      ┌──────────────┐     SIMULATE     ┌──────────────┐
+    │   SQLite     │ ───────────────► │  WorldState  │ ───────────────► │  NetworkX    │
+    │   (Cold)     │  load_state()    │  (Pydantic)  │   to_graph()     │   (Hot)      │
+    │              │                  │              │                  │              │
+    │ social_      │                  │ classes: []  │                  │  Nodes:      │
+    │   classes    │                  │ territories: │                  │   C001, C002 │
+    │ territories  │                  │   []         │                  │   T001, T002 │
+    │ relationships│                  │ relations: []│                  │  Edges:      │
+    └──────────────┘                  └──────────────┘                  │   C001→C002  │
+           ▲                                                            │   (exploit)  │
+           │                                                            └──────────────┘
+           │                                                                   │
+           │                                                                   │
+           │                           PHYSICS                                 │
+           │                         (Pure RAM)                                │
+           │                      No DB I/O here!                              │
+           │                                                                   │
+           │                                                                   ▼
+    ┌──────────────┐     DEHYDRATE    ┌──────────────┐     EXTRACT      ┌──────────────┐
+    │   SQLite     │ ◄─────────────── │  WorldState  │ ◄─────────────── │  NetworkX    │
+    │   (Cold)     │  save_state()    │  (Pydantic)  │   from_graph()   │   (Hot)      │
+    │              │                  │              │                  │              │
+    │ INSERT OR    │                  │ New state    │                  │  Mutated     │
+    │ REPLACE      │                  │ (immutable)  │                  │  graph       │
+    └──────────────┘                  └──────────────┘                  └──────────────┘
+
+  # ---------------------------------------------------------------------------
+  # AI NARRATIVE FLOW (Observer Pattern)
+  # ---------------------------------------------------------------------------
   ai_narrative:
     principle: "AI is observer, not controller (ADR003)"
     status: "Partially implemented - LLM call missing"

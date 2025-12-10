@@ -223,7 +223,7 @@ class ImperialRentSystem:
     def _process_wages_phase(
         self,
         graph: nx.DiGraph[str],
-        services: ServiceContainer,  # noqa: ARG002 - API consistency with other phases
+        services: ServiceContainer,
         context: dict[str, Any],  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
     ) -> None:
@@ -233,12 +233,33 @@ class ImperialRentSystem:
         to the labor aristocracy (core workers). This is the bribe that
         prevents revolution in the core.
 
+        PPP Model (Purchasing Power Parity):
+        Super-wages don't manifest as direct cash transfers. Instead, the
+        labor aristocracy receives nominal wages but enjoys enhanced purchasing
+        power due to cheap commodities from the periphery.
+
+        Formula:
+            PPP Multiplier = 1 + (extraction_efficiency * superwage_multiplier * ppp_impact)
+            Effective Wealth = Nominal Wealth + (Nominal Wage * (PPP Multiplier - 1))
+            Unearned Increment = Effective Wealth - Nominal Wealth
+
+        The "unearned increment" is the material basis of labor aristocracy loyalty.
+
         Sprint 3.4.4: Uses dynamic wage_rate from economy, not static config.
         Wages are capped at available pool to enforce scarcity.
         """
         _ = context  # Unused but kept for API consistency
         # Use dynamic wage rate from economy, not static config
         super_wage_rate = tick_context["wage_rate"]
+
+        # PPP Model parameters
+        superwage_multiplier = services.config.superwage_multiplier
+        superwage_ppp_impact = services.config.superwage_ppp_impact
+        extraction_efficiency = services.config.extraction_efficiency
+
+        # Calculate PPP multiplier: how much purchasing power boost workers get
+        # PPP_mult = 1 + (extraction_efficiency * superwage_multiplier * ppp_impact)
+        ppp_multiplier = 1.0 + (extraction_efficiency * superwage_multiplier * superwage_ppp_impact)
 
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
@@ -254,26 +275,39 @@ class ImperialRentSystem:
             if bourgeoisie_wealth <= 0:
                 continue
 
-            # Calculate super-wages
+            # Calculate super-wages (nominal)
             desired_wages = bourgeoisie_wealth * super_wage_rate
 
             # Sprint 3.4.4: Cap wages at available pool
             available_pool = tick_context["current_pool"]
-            wages = min(desired_wages, available_pool)
+            nominal_wages = min(desired_wages, available_pool)
 
-            if wages <= 0:
+            if nominal_wages <= 0:
                 continue
 
-            # Transfer wages
-            graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - wages
-            graph.nodes[target_id]["wealth"] = graph.nodes[target_id].get("wealth", 0.0) + wages
+            # Transfer nominal wages (actual cash transfer)
+            graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - nominal_wages
+            current_wealth = graph.nodes[target_id].get("wealth", 0.0)
+            new_nominal_wealth = current_wealth + nominal_wages
+            graph.nodes[target_id]["wealth"] = new_nominal_wealth
 
-            # Record value flow
-            graph.edges[source_id, target_id]["value_flow"] = wages
+            # PPP Model: Calculate effective wealth (what the wages can actually buy)
+            # The PPP bonus represents cheap commodities from periphery exploitation
+            ppp_bonus = nominal_wages * (ppp_multiplier - 1.0)
+            effective_wealth = new_nominal_wealth + ppp_bonus
+            unearned_increment = ppp_bonus
+
+            # Store PPP values on the worker node
+            graph.nodes[target_id]["effective_wealth"] = effective_wealth
+            graph.nodes[target_id]["unearned_increment"] = unearned_increment
+            graph.nodes[target_id]["ppp_multiplier"] = ppp_multiplier
+
+            # Record value flow (nominal)
+            graph.edges[source_id, target_id]["value_flow"] = nominal_wages
 
             # Sprint 3.4.4: Track wages as pool outflow
-            tick_context["wages_outflow"] += wages
-            tick_context["current_pool"] -= wages
+            tick_context["wages_outflow"] += nominal_wages
+            tick_context["current_pool"] -= nominal_wages
 
     def _process_subsidy_phase(
         self,

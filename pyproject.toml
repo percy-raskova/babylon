@@ -64,6 +64,14 @@ types-networkx = "^3.6.0.20251127"
 types-ratelimit = "^2.2.0.20250501"
 midiutil = "^1.2.1"
 markdownify = "^1.2.2"
+yamllint = "^1.37.1"
+
+
+[tool.poetry.group.docs.dependencies]
+sphinx = ">=7,<9"
+sphinx-rtd-theme = "^3.0.2"
+sphinx-autodoc-typehints = "<3.6"
+myst-parser = "^4.0.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -61,18 +61,20 @@ for midi in "${MIDI_FILES[@]}"; do
 
     echo "  $RELPATH -> $OUTPUT"
 
-    # -g 1.0 = gain boost (default 0.2 is too quiet)
+    # -g 2.0 = gain boost (default 0.2 is too quiet, max ~5.0)
+    # loudnorm normalizes to -14 LUFS (streaming standard) with -1.5dB true peak ceiling
     case "$FORMAT" in
         wav)
-            fluidsynth -ni -g 1.0 "$SOUNDFONT" "$midi" -F "$OUTPUT" -r 44100
+            fluidsynth -ni -g 2.0 "$SOUNDFONT" "$midi" -F "$TEMP_WAV" -r 44100
+            ffmpeg -y -i "$TEMP_WAV" -af loudnorm=I=-14:TP=-1.5:LRA=11 "$OUTPUT" 2>/dev/null
             ;;
         mp3)
-            fluidsynth -ni -g 1.0 "$SOUNDFONT" "$midi" -F "$TEMP_WAV" -r 44100
-            ffmpeg -y -i "$TEMP_WAV" -acodec libmp3lame -ab 192k "$OUTPUT" 2>/dev/null
+            fluidsynth -ni -g 2.0 "$SOUNDFONT" "$midi" -F "$TEMP_WAV" -r 44100
+            ffmpeg -y -i "$TEMP_WAV" -af loudnorm=I=-14:TP=-1.5:LRA=11 -acodec libmp3lame -ab 192k "$OUTPUT" 2>/dev/null
             ;;
         ogg)
-            fluidsynth -ni -g 1.0 "$SOUNDFONT" "$midi" -F "$TEMP_WAV" -r 44100
-            ffmpeg -y -i "$TEMP_WAV" -acodec libvorbis -aq 6 "$OUTPUT" 2>/dev/null
+            fluidsynth -ni -g 2.0 "$SOUNDFONT" "$midi" -F "$TEMP_WAV" -r 44100
+            ffmpeg -y -i "$TEMP_WAV" -af loudnorm=I=-14:TP=-1.5:LRA=11 -acodec libvorbis -aq 6 "$OUTPUT" 2>/dev/null
             ;;
     esac
 

@@ -1,0 +1,57 @@
+# markdownlint configuration for Babylon
+# https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+
+# Default state for all rules
+default: true
+
+# Line length - be generous for documentation
+MD013:
+  line_length: 120
+  heading_line_length: 80
+  code_block_line_length: 120
+  code_blocks: false
+  tables: false
+
+# Allow duplicate headings in different sections
+MD024:
+  siblings_only: true
+
+# Allow trailing punctuation in headings (for questions)
+MD026:
+  punctuation: ".,;:!"
+
+# Allow inline HTML (useful for special formatting)
+MD033: false
+
+# Allow bare URLs (common in docs)
+MD034: false
+
+# Allow emphasis as heading (used in some docs)
+MD036: false
+
+# First line should be a heading (not needed for all files)
+MD041: false
+
+# Code block style
+MD046:
+  style: fenced
+
+# Code fence style - use backticks
+MD048:
+  style: backtick
+
+# Allow multiple blank lines (can be useful for readability)
+MD012:
+  maximum: 2
+
+# Heading style - ATX preferred
+MD003:
+  style: atx
+
+# Unordered list style - consistent dashes
+MD004:
+  style: dash
+
+# List indentation
+MD007:
+  indent: 2

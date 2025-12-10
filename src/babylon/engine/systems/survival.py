@@ -90,8 +90,8 @@ class SurvivalSystem:
 
         for node_id, data in graph.nodes(data=True):
             wealth = data.get("wealth", 0.0)
-            base_organization = data.get("organization", 0.1)
-            repression = data.get("repression_faced", 0.5)
+            base_organization = data.get("organization", services.defines.DEFAULT_ORGANIZATION)
+            repression = data.get("repression_faced", services.defines.DEFAULT_REPRESSION_FACED)
             subsistence = data.get("subsistence_threshold", default_subsistence)
 
             # Bug Fix: Calculate solidarity MULTIPLIER from incoming SOLIDARITY edges

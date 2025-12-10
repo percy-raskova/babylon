@@ -306,6 +306,22 @@ The game follows **Mao Zedong's Protracted People's War** framework from "On Pro
 | **2** | Strategic Stalemate | Resistance (Pivotal) | Indefinite |
 | **3** | Strategic Counter-Offensive | The Offensive | Until victory |
 
+**CRITICAL: The phases are FLUID, not linear.** Transitions are bidirectional:
+
+```
+DEFENSIVE <------> EQUILIBRIUM <------> OFFENSIVE
+    |                   ^                   |
+    +-------------------+-------------------+
+                        |
+                        v
+                   DESTRUCTION
+```
+
+- A successful enemy counteroffensive pushes you back
+- A premature offensive that fails drops you to equilibrium
+- The Long March (1934-35) was a retreat from failed offensive to defensive
+- Conditions determine phase, not time
+
 ### Key Insight from Mao
 
 > "Whether China becomes an independent country or is reduced to a colony will be determined not by the retention or loss of the big cities in the first stage but by the extent to which the whole nation exerts itself in the second."
@@ -617,6 +633,53 @@ These events can be:
 
 ---
 
+## Historical Inflection Point: July 20, 1932
+
+The Prussian Coup (Preussenschlag) is the moment when the German left was materially capable of stopping fascism and chose not to. **The SPD—not the KPD—bears responsibility.**
+
+### What the SPD Controlled
+
+- **Prussia**: 2/3 of German territory
+- **The police apparatus**
+- **The Reichsbanner**: ~1 million armed workers
+- **Legal authority**
+
+### What Happened
+
+Papen launched an unconstitutional coup. The SPD could have:
+- Called a general strike
+- Mobilized the Reichsbanner
+- Used Prussian police against the coup
+- Arrested the conspirators
+
+**What did they do?** Surrendered without a fight. Filed a lawsuit.
+
+### Dimitrov's Assessment (1935)
+
+> "Fascism was able to come to power primarily because the working class, owing to the policy of class collaboration with the bourgeoisie pursued by the Social-Democratic leaders, proved to be split, politically and organizationally disarmed."
+
+> "This is the way in which the Social-Democrats, by disorganizing and splitting the ranks of the working class, cleared the path to power for fascism."
+
+### SPD Betrayals
+
+| Date | Event |
+|------|-------|
+| 1919 | Murdered Rosa Luxemburg, Karl Liebknecht, Spartacists |
+| 1919-1933 | Consistent class collaboration with bourgeoisie |
+| 1929 | Banned Red Front Fighters while SA remained legal |
+| **July 20, 1932** | **Surrendered Prussia without a fight** |
+| May 1933 | SPD deputies voted FOR Hitler's foreign policy |
+
+### Lesson for the Game
+
+**Material capability + political will = resistance**
+**Material capability - political will = betrayal** (SPD)
+**Political will - material capability = martyrdom** (KPD)
+
+The Purge tests whether the player's movement has BOTH capability AND will.
+
+---
+
 ## References
 
 - **Settlers: Mythology of the White Proletariat** - J. Sakai
@@ -627,3 +690,5 @@ These events can be:
 - **Black Reconstruction** - W.E.B. Du Bois
 - **Wretched of the Earth** - Frantz Fanon
 - **Internal Colonies** - Robert Allen
+- **On Protracted War** - Mao Zedong
+- **The Fascist Offensive and the Tasks of the Communist International** - Georgi Dimitrov (1935)

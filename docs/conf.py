@@ -24,6 +24,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
+    "sphinx.ext.coverage",  # Track documentation coverage
+    "sphinx.ext.doctest",  # Run doctest examples
     "sphinx_autodoc_typehints",
     "myst_parser",
 ]
@@ -57,6 +59,10 @@ html_theme_options = {
     "logo_only": False,
 }
 
+# HTML titles for search and breadcrumbs
+html_title = "Babylon Documentation"
+html_short_title = "Babylon"
+
 # -- Extension configuration -------------------------------------------------
 
 # Autodoc settings
@@ -67,7 +73,11 @@ autodoc_default_options = {
     "undoc-members": True,
     "exclude-members": "__weakref__",
     "show-inheritance": True,
+    "inherited-members": True,  # Show inherited members from parent classes
 }
+
+# Preserve default argument values in signatures
+autodoc_preserve_defaults = True
 
 autodoc_typehints = "description"
 autodoc_typehints_format = "short"
@@ -85,6 +95,7 @@ napoleon_use_ivar = False
 napoleon_use_param = True
 napoleon_use_rtype = True
 napoleon_attr_annotations = True
+napoleon_preprocess_types = True  # Enable type cross-references
 
 # Intersphinx mapping
 intersphinx_mapping = {
@@ -106,6 +117,7 @@ myst_enable_extensions = [
     "substitution",
     "tasklist",
 ]
+myst_heading_anchors = 3  # Generate anchors for h1-h3 headings
 
 # Todo extension
 todo_include_todos = True

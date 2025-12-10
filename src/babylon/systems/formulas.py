@@ -52,6 +52,16 @@ def calculate_imperial_rent(
 
     Returns:
         Imperial rent value (always >= 0)
+
+    Examples:
+        >>> calculate_imperial_rent(0.5, 0.3, 0.2)
+        0.12
+        >>> calculate_imperial_rent(1.0, 0.5, 0.0)
+        0.5
+        >>> calculate_imperial_rent(0.0, 0.5, 0.5)
+        0.0
+        >>> calculate_imperial_rent(0.8, 0.6, 1.0)  # Full consciousness = no extraction
+        0.0
     """
     rent = alpha * periphery_wages * (1 - periphery_consciousness)
     return max(0.0, rent)
@@ -75,6 +85,14 @@ def calculate_labor_aristocracy_ratio(
 
     Raises:
         ValueError: If value_produced is zero or negative
+
+    Examples:
+        >>> calculate_labor_aristocracy_ratio(120.0, 100.0)  # Labor aristocracy
+        1.2
+        >>> calculate_labor_aristocracy_ratio(80.0, 100.0)   # Exploited worker
+        0.8
+        >>> calculate_labor_aristocracy_ratio(100.0, 100.0)  # Fair exchange
+        1.0
     """
     if value_produced <= 0:
         raise ValueError("value_produced must be > 0")
@@ -96,6 +114,17 @@ def is_labor_aristocracy(
 
     Returns:
         True if worker is labor aristocracy
+
+    Raises:
+        ValueError: If value_produced is zero or negative
+
+    Examples:
+        >>> is_labor_aristocracy(120.0, 100.0)
+        True
+        >>> is_labor_aristocracy(80.0, 100.0)
+        False
+        >>> is_labor_aristocracy(100.0, 100.0)  # Exact equality = not aristocracy
+        False
     """
     if value_produced <= 0:
         raise ValueError("value_produced must be > 0")
@@ -192,6 +221,16 @@ def calculate_acquiescence_probability(
 
     Returns:
         Probability of survival through acquiescence [0, 1]
+
+    Examples:
+        >>> calculate_acquiescence_probability(100.0, 100.0, 0.1)  # At threshold
+        0.5
+        >>> p = calculate_acquiescence_probability(150.0, 100.0, 0.1)  # Above threshold
+        >>> p > 0.99
+        True
+        >>> p = calculate_acquiescence_probability(50.0, 100.0, 0.1)  # Below threshold
+        >>> p < 0.01
+        True
     """
     exponent = -steepness_k * (wealth - subsistence_threshold)
     # Clamp exponent to prevent overflow
@@ -214,6 +253,17 @@ def calculate_revolution_probability(
 
     Returns:
         Probability of survival through revolution [0, 1]
+
+    Examples:
+        >>> calculate_revolution_probability(0.8, 0.2)  # Strong org, weak state
+        1.0
+        >>> round(calculate_revolution_probability(0.2, 0.8), 2)  # Weak org, strong state
+        0.25
+        >>> calculate_revolution_probability(0.0, 0.5)  # No organization
+        0.0
+        >>> p = calculate_revolution_probability(0.5, 0.5)  # Balanced
+        >>> p > 0.99
+        True
     """
     if cohesion <= 0:
         return 0.0
@@ -273,6 +323,14 @@ def apply_loss_aversion(value: float) -> float:
 
     Returns:
         Perceived value after loss aversion
+
+    Examples:
+        >>> apply_loss_aversion(100.0)  # Gains unchanged
+        100.0
+        >>> apply_loss_aversion(-100.0)  # Losses amplified
+        -225.0
+        >>> apply_loss_aversion(0.0)  # Zero unchanged
+        0.0
     """
     if value < 0:
         return value * LOSS_AVERSION_COEFFICIENT
@@ -306,6 +364,14 @@ def calculate_exchange_ratio(
 
     Raises:
         ValueError: If any denominator value is zero or negative
+
+    Examples:
+        >>> calculate_exchange_ratio(100.0, 100.0, 20.0, 5.0)  # Equal labor, 4x wage gap
+        4.0
+        >>> calculate_exchange_ratio(200.0, 100.0, 20.0, 10.0)  # 2x labor, 2x wage
+        4.0
+        >>> calculate_exchange_ratio(100.0, 100.0, 10.0, 10.0)  # Fair exchange
+        1.0
     """
     if core_labor_hours <= 0:
         raise ValueError("core_labor_hours must be > 0")
@@ -418,6 +484,16 @@ def calculate_solidarity_transmission(
     Returns:
         Change in target consciousness (delta). Can be negative if target has
         higher consciousness than source.
+
+    Examples:
+        >>> round(calculate_solidarity_transmission(0.8, 0.2, 0.5), 2)  # High source, low target
+        0.3
+        >>> calculate_solidarity_transmission(0.2, 0.5, 0.5)  # Below threshold
+        0.0
+        >>> calculate_solidarity_transmission(0.8, 0.2, 0.0)  # No solidarity
+        0.0
+        >>> round(calculate_solidarity_transmission(0.5, 0.8, 0.5), 2)  # Target > source
+        -0.15
     """
     # No transmission if source is not in active struggle
     # Threshold is exclusive (>) - must be strictly above to transmit

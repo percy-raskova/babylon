@@ -5,16 +5,20 @@ to explore different counterfactual paths. This enables the "Multiverse Protocol
 where we run 2^N permutations of High/Low values to prove mathematical divergence.
 
 Sprint 1 (Multiverse Protocol): Initial implementation with three parameters:
-- rent_level: Multiplier for imperial rent extraction efficiency
+- superwage_multiplier: Multiplier for imperial superwage extraction efficiency
 - solidarity_index: Base strength for SOLIDARITY edges
 - repression_capacity: State violence capacity modifier
+
+Paradox Refactor: Renamed rent_level -> superwage_multiplier for theory alignment.
+The term "superwage" (from MLM-TW theory) more accurately describes the mechanism
+where core workers receive wages above value produced, subsidized by imperial rent.
 
 Usage:
     from babylon.models.scenario import ScenarioConfig
 
     scenario = ScenarioConfig(
-        name="HighRent_LowSol_HighRep",
-        rent_level=1.5,
+        name="HighSW_LowSol_HighRep",
+        superwage_multiplier=1.5,
         solidarity_index=0.2,
         repression_capacity=0.8,
     )
@@ -39,11 +43,13 @@ class ScenarioConfig(BaseModel):
 
     Attributes:
         name: Human-readable scenario identifier, must be unique within
-              a multiverse run. Format: "{RentLevel}_{SolidarityLevel}_{RepressionLevel}"
-        rent_level: Multiplier for extraction_efficiency in SimulationConfig.
-                   Default 1.0 (no change). Range: [0, inf).
-                   - 0.3 = Low rent (periphery retains more value)
-                   - 1.5 = High rent (aggressive extraction)
+              a multiverse run. Format: "{SWLevel}_{SolidarityLevel}_{RepressionLevel}"
+        superwage_multiplier: Multiplier for extraction_efficiency in SimulationConfig.
+                             Default 1.0 (no change). Range: [0, inf).
+                             - 0.3 = Low superwage (periphery retains more value)
+                             - 1.5 = High superwage (aggressive extraction)
+                             Theory: "Superwage" refers to core worker wages above
+                             value produced, subsidized by imperial rent extraction.
         solidarity_index: Base strength for SOLIDARITY edges in topology.
                          Default 0.5. Constrained to [0, 1] via Coefficient type.
                          - 0.2 = Low solidarity (atomized workers)
@@ -63,10 +69,10 @@ class ScenarioConfig(BaseModel):
         description="Human-readable scenario name (must be unique in multiverse)",
     )
 
-    rent_level: float = Field(
+    superwage_multiplier: float = Field(
         default=1.0,
         ge=0.0,
-        description="Multiplier for imperial rent extraction efficiency [0, inf)",
+        description="Multiplier for imperial superwage extraction efficiency [0, inf)",
     )
 
     solidarity_index: Coefficient = Field(

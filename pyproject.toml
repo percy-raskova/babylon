@@ -26,9 +26,6 @@ typer = ">=0.15.1"
 rich = ">=13.9.4"
 coloredlogs = ">=15.0.1"
 # API
-fastapi = ">=0.115.6"
-uvicorn = ">=0.32.1"
-python-multipart = ">=0.0.19"
 # Data
 pandas = ">=2.2.3"
 pyyaml = ">=6.0.2"

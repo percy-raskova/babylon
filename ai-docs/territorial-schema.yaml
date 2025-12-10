@@ -1,0 +1,656 @@
+# Territorial Schema: Settler-Colonial Geography
+# ================================================
+#
+# The United States is not a post-colonial nation but an ONGOING
+# settler-colonial project. This schema encodes that reality into
+# geographic mechanics.
+#
+# Three territory types, three extraction logics:
+# - OGV: Control of ADMINISTRATION (settler citadels)
+# - OPC: Control of LABOR (human beings)
+# - Frontier: Control of LAND (resources)
+
+meta:
+  version: "0.1.0"
+  status: design
+  theoretical_basis:
+    - "Internal Colonies thesis (Black Panther Party, Robert Allen)"
+    - "Settlers: Mythology of the White Proletariat (J. Sakai)"
+    - "Labor Aristocracy theory (Lenin, Zak Cope)"
+    - "Wages of Whiteness (David Roediger, W.E.B. Du Bois)"
+  core_insight: |
+    The Volksgemeinschaft (White Settler Nation) is not an identity—
+    it's a material relationship to land, labor, and imperial rent.
+    Territory types encode WHO extracts WHAT from WHOM.
+
+# =============================================================================
+# THE VOLKSGEMEINSCHAFT
+# =============================================================================
+
+volksgemeinschaft:
+  definition: |
+    The "people's community" of the white settler nation. Not all white
+    people—specifically those whose material interests are tied to the
+    settler-colonial project and who receive imperial rent (super-wages,
+    land access, state protection).
+
+    The Volksgemeinschaft is both:
+    - A material category (who benefits from settler-colonialism)
+    - An ideological project (who is interpellated as "real American")
+
+  membership:
+    automatic:
+      - "White property owners"
+      - "White professionals in OGV"
+      - "White military/police"
+    conditional:
+      - "Poor whites (offered 'whiteness wage' but materially in OPC)"
+      - "Model minorities (conditional, revocable)"
+    excluded:
+      - "Black Americans (internal colony)"
+      - "Indigenous peoples (ongoing colonization)"
+      - "Undocumented immigrants (exploitable labor)"
+      - "Incarcerated people (penal labor)"
+
+  ideology:
+    explicit: "America First, Christian nationalism, MAGA"
+    implicit: "Meritocracy, colorblindness, law and order"
+    # The implicit form IS liberalism in decay
+
+# =============================================================================
+# TERRITORY TYPE 1: OGV (Occupation Garrisons of Volksgemeinschaft)
+# =============================================================================
+
+ogv:
+  full_name: "Occupation Garrisons of the Volksgemeinschaft"
+  shorthand: OGV
+
+  definition: |
+    The citadels of the white settler nation. "Home territory that's a colony."
+    Administrative enclaves where the bureaucracy of empire operates.
+    These are settler outposts on stolen land that function as "home" for
+    the Volksgemeinschaft.
+
+  purpose: ADMINISTRATION
+  what_is_controlled: "The machinery of settler-colonial governance"
+
+  characteristics:
+    population:
+      primary: "Labor aristocrats (W > V)"
+      secondary: "Settler petit-bourgeoisie"
+      workers_are: "Hitlerites—complicit in the settler project"
+
+    economy:
+      wage_relation: "Super-wages (receive imperial rent)"
+      formula: "W_ogv > V_ogv"
+      sources: "Extraction from OPC (labor) and Frontier (resources)"
+
+    stability:
+      level: high
+      mechanism: "Social conformity, not overt violence"
+      policing: "Low visibility (police protect, not occupy)"
+
+    ideology:
+      default: "Liberal consensus (decaying)"
+      crisis_tendency: "→ Fascism (double down on Volksgemeinschaft)"
+      solidarity_potential: "Low (bribed, atomized)"
+
+  examples:
+    - name: "Manhattan, Kansas"
+      type: "Military base town"
+      notes: "Fort Riley adjacent, quintessential OGV"
+    - name: "Suburban developments"
+      type: "Residential"
+      notes: "White flight destinations, HOA governance"
+    - name: "Small-town Main Street"
+      type: "Commercial"
+      notes: "Nostalgic 'real America' imagery"
+    - name: "Corporate campus towns"
+      type: "Tech/professional"
+      notes: "Cupertino, Research Triangle"
+
+  mechanics:
+    heat_baseline: 0.1  # Low—stability is the norm
+    repression_style: "soft"  # Social pressure, not violence
+    solidarity_resistance: 0.8  # Hard to build edges here
+    bifurcation_default: "fascism"  # Where crisis energy routes
+    imperial_rent_flow: "recipient"  # Receives from OPC/Frontier
+
+    special_rules:
+      - "OGV workers can be 'awakened' but requires massive crisis"
+      - "Solidarity edges to OGV decay faster than other types"
+      - "OGV territories provide stability bonus to adjacent OGV"
+
+# =============================================================================
+# TERRITORY TYPE 2: OPC (Occupied Penal Colonies)
+# =============================================================================
+
+opc:
+  full_name: "Occupied Penal Colonies"
+  shorthand: OPC
+
+  definition: |
+    Internal colonies for the administration and control of LABOR POWER.
+    Human beings as the resource being managed. These territories exist
+    to extract surplus value from colonized and marginalized populations
+    while containing their revolutionary potential.
+
+  purpose: LABOR_CONTROL
+  what_is_controlled: "Human beings—labor power"
+
+  characteristics:
+    population:
+      primary: "Colonized workers (Black, Indigenous, immigrant)"
+      secondary: "Poor whites (materially colonized, ideologically contested)"
+      workers_are: "Exploited, potentially revolutionary"
+
+    economy:
+      wage_relation: "Sub-wages (W < V)"
+      formula: "W_opc < V_opc (surplus extracted)"
+      extraction_methods:
+        - "Low-wage labor"
+        - "Rent extraction"
+        - "Predatory lending"
+        - "Fines and fees"
+        - "Prison labor (13th Amendment)"
+
+    stability:
+      level: low
+      mechanism: "Overt violence, carceral control"
+      policing: "Occupying army (police as colonial force)"
+
+    ideology:
+      colonized_default: "Survival, resistance"
+      poor_white_contested: "Bifurcation battleground"
+      crisis_tendency: "→ Revolution OR → Fascism (poor whites recruited)"
+      solidarity_potential: "High (shared exploitation)"
+
+  examples:
+    - name: "Southside Chicago"
+      type: "Black internal colony"
+      notes: "Deindustrialized, hyper-policed"
+    - name: "East LA"
+      type: "Chicano barrio"
+      notes: "Immigrant labor reserve"
+    - name: "Appalachian hollows"
+      type: "Poor white extraction zone"
+      notes: "Coal country, opioid crisis"
+    - name: "Trailer parks"
+      type: "Poor white margin"
+      notes: "Materially OPC, ideologically contested"
+    - name: "ICE detention centers"
+      type: "Explicit penal"
+      notes: "Immigration enforcement as colonial control"
+
+  mechanics:
+    heat_baseline: 0.5  # Always simmering
+    repression_style: "hard"  # Police violence, mass incarceration
+    solidarity_resistance: 0.2  # Easy to build edges here
+    bifurcation_default: "contested"  # Could go either way
+    imperial_rent_flow: "source"  # Extracted from here
+
+    special_rules:
+      - "OPC territories generate revolutionary potential passively"
+      - "Poor white OPC populations can be recruited by either side"
+      - "Solidarity edges between OPC territories strengthen both"
+      - "High repression increases both heat AND solidarity potential"
+
+    penal_mechanics:
+      incarceration_rate: "Affects labor supply"
+      prison_labor: "Extracts value directly"
+      probation_control: "Limits organizing capacity"
+      police_presence: "Increases heat, decreases stability"
+
+# =============================================================================
+# TERRITORY TYPE 3: FRONTIER
+# =============================================================================
+
+frontier:
+  full_name: "The Frontier"
+  shorthand: Frontier
+
+  definition: |
+    Extractive territories for control of LAND AND RESOURCES.
+    The ongoing settler-colonial project in its most visible form.
+    These are the spaces between—vast, sparse, treated as empty
+    (though they are Indigenous land).
+
+  purpose: RESOURCE_EXTRACTION
+  what_is_controlled: "Land—as dead matter to be extracted"
+
+  characteristics:
+    population:
+      primary: "Indigenous nations (colonized, resisting)"
+      secondary: "Extraction workers (oil, mining, agriculture)"
+      tertiary: "Sparse settlers"
+
+    economy:
+      resource_types:
+        - "Oil and gas"
+        - "Minerals and mining"
+        - "Timber"
+        - "Industrial agriculture"
+        - "Water rights"
+      extraction_logic: "Land as commodity, not relation"
+
+    stability:
+      level: variable
+      mechanism: "Depends on extraction intensity"
+      policing: "Private security, National Guard, federal agencies"
+
+    ideology:
+      indigenous_default: "Sovereignty, resistance, land back"
+      settlers_default: "Frontier mythology, rugged individualism"
+      crisis_tendency: "→ Indigenous resistance (potential ally)"
+      solidarity_potential: "Medium (geographic isolation limits organizing)"
+
+  examples:
+    - name: "Standing Rock"
+      type: "Reservation (resistance site)"
+      notes: "DAPL, water protectors"
+    - name: "Bakken oil fields"
+      type: "Extraction zone"
+      notes: "Man camps, environmental destruction"
+    - name: "Great Plains agricultural"
+      type: "Industrial farming"
+      notes: "Aquifer depletion, monoculture"
+    - name: "Navajo Nation"
+      type: "Reservation (extraction)"
+      notes: "Uranium mining legacy, coal"
+    - name: "National forests"
+      type: "Federal land"
+      notes: "Timber, grazing, recreation"
+
+  subtypes:
+    reservation:
+      description: |
+        Indigenous reservations are a special Frontier subtype.
+        Land belongs to Indigenous peoples (treaty rights, sovereignty).
+        But practically, Volksgemeinschaft administers and extracts.
+      mechanics:
+        sovereignty_level: "Nominal—limited self-governance"
+        extraction_resistance: "Higher than other Frontier"
+        solidarity_potential: "High with OPC (shared colonization)"
+        special_events:
+          - "Land Back actions"
+          - "Water protector camps"
+          - "Treaty rights assertions"
+
+  mechanics:
+    heat_baseline: 0.2  # Low population, less friction
+    repression_style: "colonial"  # Military/federal, not local police
+    solidarity_resistance: 0.5  # Geographic isolation limits organizing
+    bifurcation_default: "resistance"  # Indigenous resistance
+    imperial_rent_flow: "source"  # Resources extracted from here
+
+    special_rules:
+      - "Frontier territories generate resources, not labor"
+      - "Extraction events increase heat dramatically"
+      - "Indigenous resistance can ally with OPC revolutionaries"
+      - "Environmental destruction has long-term consequences"
+      - "Frontier heat triggers federal/military response, not local police"
+
+# =============================================================================
+# EXTRACTION FLOWS
+# =============================================================================
+
+extraction_flows:
+  description: |
+    The three territory types exist in a relationship of extraction.
+    Value flows FROM OPC and Frontier TO OGV.
+    This is the geographic expression of imperial rent.
+
+  flows:
+    - from: OPC
+      to: OGV
+      what: "Labor surplus value"
+      mechanism: "Low wages, rent extraction, prison labor"
+
+    - from: Frontier
+      to: OGV
+      what: "Resources (land value)"
+      mechanism: "Extraction industries, water rights, agriculture"
+
+    - from: OPC
+      to: OGV
+      what: "Social reproduction"
+      mechanism: "Care work, domestic labor, service economy"
+
+  imperial_rent_formula: |
+    Φ = (V_opc - W_opc) + (V_frontier - W_frontier)
+
+    Where:
+    - Φ = Imperial rent received by OGV
+    - V = Value produced
+    - W = Wages paid
+
+    OGV workers receive W_ogv = V_ogv + Φ
+    (Their wages exceed local value production because of extraction)
+
+# =============================================================================
+# BIFURCATION BY TERRITORY
+# =============================================================================
+
+bifurcation:
+  description: |
+    When crisis hits (wage_change < 0), energy must route somewhere.
+    Territory type affects which direction is more likely.
+
+  by_territory:
+    ogv:
+      default_route: fascism
+      why: |
+        OGV populations have no solidarity edges to colonized peoples.
+        When their super-wages are threatened, they blame the "other"
+        rather than recognize shared class interest.
+      revolution_requires: "Massive crisis + prebuilt solidarity edges"
+
+    opc:
+      default_route: contested
+      why: |
+        OPC is the battleground. Colonized populations route to revolution.
+        Poor whites can go either way—depends on organizing.
+      revolution_requires: "Solidarity organizing before crisis"
+      fascism_path: "Volksgemeinschaft recruits poor whites"
+
+    frontier:
+      default_route: indigenous_resistance
+      why: |
+        Indigenous peoples experience colonization directly and continuously.
+        Revolutionary consciousness is not about "awakening"—it's survival.
+      alliance_potential: "Can ally with OPC revolutionary movements"
+
+# =============================================================================
+# GAME TIMELINE
+# =============================================================================
+
+game_timeline:
+  description: |
+    The game follows Mao Zedong's Protracted People's War framework:
+    - Stage 1: Strategic Defensive (enemy offensive, we resist)
+    - Stage 2: Strategic Stalemate (equilibrium, we build strength)
+    - Stage 3: Strategic Counter-Offensive (we attack, victory)
+
+    The Purge marks the transition from Stage 1 to Stage 2.
+    Victory is achieved in Stage 3.
+
+  theoretical_basis:
+    source: "On Protracted War (May 1938)"
+    author: "Mao Zedong"
+    key_insight: |
+      "Whether China becomes an independent country or is reduced to a
+      colony will be determined not by the retention or loss of the big
+      cities in the first stage but by the extent to which the whole
+      nation exerts itself in the second."
+
+  pre_stage:
+    name: "Coalescence"
+    game_name: "Decaying Liberalism"
+    duration: "4 in-game years (~48 ticks)"
+    description: |
+      Before we can fight a protracted war, we must BECOME a movement.
+
+      The player begins with scattered, disparate entities—local organizers,
+      affinity groups, community organizations, study circles. These are
+      not yet a coherent revolutionary force.
+
+      The 4-year period is about COALESCENCE:
+      - Building solidarity edges between isolated groups
+      - Developing shared analysis and strategy
+      - Creating infrastructure (safe houses, communication, resources)
+      - Establishing base areas in OPC and Frontier territories
+
+      The enemy (fascism) is rising. Liberal institutions crumble.
+      But we are not yet in the war—we are preparing for it.
+    characteristics:
+      - "OGV: Liberal consensus fraying, fascism implicit"
+      - "OPC: Already under occupation (mass incarceration, police violence)"
+      - "Frontier: Extraction intensifying (climate crisis, resource wars)"
+      - "Player: Scattered groups, building toward coherence"
+    player_goal: "Coalesce into a movement. Survive The Purge."
+
+  the_purge:
+    name: "The Purge"
+    timing: "End of Year 4 (transition from Coalescence to Stage 1)"
+    description: |
+      The Sword of Damocles drops. The Volksgemeinschaft consolidates.
+      Explicit fascism replaces decaying liberalism.
+
+      The Purge is the TEST OF COALESCENCE:
+      "Have we progressed from a scattered amalgamation of disparate
+      entities into a coherent enough movement to begin the Defensive phase?"
+
+      If YES: The movement survives. It enters Stage 1 (Strategic Defensive)
+      as a coherent revolutionary force capable of fighting a protracted war.
+
+      If NO: The scattered groups are destroyed individually. GAME OVER.
+
+      The Purge targets:
+      - Revolutionary organizers (arrests, disappearances)
+      - Solidarity networks (edges attacked)
+      - OPC resistance infrastructure (raids, destruction)
+      - Frontier resistance camps (military assault)
+
+      What determines survival (coherence):
+      - Solidarity edge density (are groups connected?)
+      - Organization strength (can they coordinate?)
+      - Infrastructure (can they survive underground?)
+      - Geographic dispersion (not all eggs in one basket)
+    outcomes:
+      survive: "Enter Stage 1 (Strategic Defensive) as a coherent movement"
+      crushed: "GAME OVER - scattered groups destroyed individually"
+
+  stage_1:
+    name: "Strategic Defensive"
+    mao_term: "Enemy's Strategic Offensive / Our Strategic Defensive"
+    game_name: "Resistance Under Fascism (Early)"
+    duration: "Indefinite (until stalemate emerges)"
+    description: |
+      We survived The Purge. We are now a COHERENT MOVEMENT.
+
+      From Mao: "In this stage, in spite of considerable losses, China
+      will make considerable progress, which will become the main basis
+      for her continued resistance in the second stage."
+
+      The enemy (fascism) is on the offensive. They control the state.
+      We are on the strategic defensive—but we are a real force now.
+
+      Guerrilla warfare. Base areas defended. Underground resistance.
+      The enemy attacks; we absorb and counterattack locally.
+    characteristics:
+      - "OGV: Fully mobilized Volksgemeinschaft (explicit fascism)"
+      - "OPC: Under occupation, but resistance organized"
+      - "Frontier: Extraction + repression, but Indigenous resistance"
+      - "Player: Coherent movement, fighting defensively"
+    warfare_form: "Guerrilla warfare, supplemented by mobile warfare"
+    player_goal: "Survive enemy offensives. Build base areas. Reach stalemate."
+    transition_to_stage_2: |
+      When the enemy's offensive capacity is exhausted and neither side
+      can decisively defeat the other, the war enters Stage 2 (Stalemate).
+
+  stage_2:
+    name: "Strategic Stalemate"
+    mao_term: "Strategic Consolidation / Our Preparation for Counter-Offensive"
+    game_name: "Resistance Under Fascism"
+    duration: "Indefinite (until conditions allow Stage 3)"
+    description: |
+      The enemy has consolidated but cannot destroy us. We survived.
+      Now we build strength from weakness.
+
+      From Mao: "This second stage will be the transitional stage of
+      the entire war; it will be the most trying period but also the
+      pivotal one... If we can persevere... China will in that stage
+      gain the power to change from weakness to strength."
+
+      The enemy attempts to safeguard occupied areas while we conduct
+      guerrilla warfare from our surviving base areas.
+    characteristics:
+      - "OGV: Fully mobilized Volksgemeinschaft (explicit fascism)"
+      - "OPC: Escalated repression, camps, deportation"
+      - "Frontier: Total extraction, Indigenous elimination accelerated"
+      - "Resistance: Underground, hunted, but ALIVE and growing"
+    warfare_form: "Primarily guerrilla warfare, supplemented by mobile warfare"
+    player_goal: "Persevere. Build strength. Wait for contradictions to sharpen."
+    key_dynamics:
+      - "Enemy's internal contradictions deepen (can't maintain super-wages)"
+      - "Resistance networks grow despite repression"
+      - "International solidarity strengthens"
+      - "War-weariness in enemy ranks"
+    transition_to_stage_3: |
+      When player has built sufficient strength AND enemy contradictions
+      have sufficiently sharpened, the game offers the option to
+      transition to Stage 3 (Counter-Offensive).
+
+  stage_3:
+    name: "Strategic Counter-Offensive"
+    mao_term: "Our Strategic Counter-Offensive / Enemy's Strategic Retreat"
+    game_name: "The Offensive"
+    duration: "Until victory or defeat"
+    description: |
+      From Mao: "The third stage will be the stage of the counter-offensive
+      to recover our lost territories... Our war will no longer be one of
+      strategic defensive, but will turn into a strategic counter-offensive."
+
+      The resistance goes on the attack. The settler-colonial project
+      is challenged directly.
+    characteristics:
+      - "OGV: Cracking, mass defection possible"
+      - "OPC: Liberated zones established"
+      - "Frontier: Land Back movements succeed"
+      - "Resistance: Open organization, armed struggle"
+    warfare_form: "Mobile warfare primary, positional warfare rises to importance"
+    player_goal: "Recover lost territory. Destroy the enemy. Victory."
+    key_dynamics:
+      - "Mass defection from Volksgemeinschaft (rats leaving ship)"
+      - "Dual power structures emerge"
+      - "International intervention (for or against)"
+      - "Final confrontation"
+
+  victory_state:
+    name: "Revolution"
+    description: |
+      Achieved at the end of Stage 3.
+      The settler-colonial project is overthrown.
+      The Volksgemeinschaft is dissolved.
+      A new society begins.
+
+      From Mao: "Not until we fight our way to the Yalu River can this
+      war be considered over."
+
+      Victory requires completing the full arc:
+      - Stage 1: Build base areas, survive The Purge
+      - Stage 2: Persevere in stalemate, build strength from weakness
+      - Stage 3: Go on the offensive, recover lost territory
+
+  failure_states:
+    - name: "Crushed in The Purge"
+      when: "End of Stage 1"
+      description: "Base areas insufficient. Movement destroyed. GAME OVER."
+
+    - name: "Destroyed in Stalemate"
+      when: "During Stage 2"
+      description: "Resistance hunted to extinction. GAME OVER."
+
+    - name: "Defeated in Counter-Offensive"
+      when: "During Stage 3"
+      description: "Offensive fails. Enemy rallies. GAME OVER."
+
+    - name: "Slow Death"
+      when: "Stage 2 (stagnation)"
+      description: "Organization survives but never grows. Eventually destroyed."
+
+  phase_transitions:
+    coalescence_to_stage_1:
+      trigger: "The Purge (automatic at Year 4)"
+      requirement: "Sufficient coalescence (solidarity edges + organization)"
+      success: "Enter Stage 1 as coherent movement"
+      failure: "Game Over (scattered groups destroyed)"
+
+    stage_1_to_2:
+      trigger: "Stalemate emerges (neither side can win decisively)"
+      indicators:
+        - "Enemy offensive capacity exhausted"
+        - "Movement has defended base areas"
+        - "Neither side gaining ground"
+      description: |
+        The transition from Stage 1 to Stage 2 is not a single event
+        but an emergent condition. The war shifts from enemy offensive
+        to stalemate when the fascist state can no longer destroy the
+        resistance but the resistance cannot yet challenge state power.
+
+    stage_2_to_3:
+      trigger: "Player choice (when conditions met)"
+      requirements:
+        - "Organization strength above threshold"
+        - "Solidarity edge density above threshold"
+        - "Enemy contradictions sharpened (super-wages falling)"
+        - "International conditions favorable (optional bonus)"
+      failure_if_premature: "Offensive crushed, back to Stage 2 (weakened)"
+      failure_if_too_late: "Slow Death (enemy consolidates too strongly)"
+
+  full_arc:
+    description: |
+      The complete game arc:
+
+      PRE-STAGE: Coalescence (Years 0-4)
+        - Scattered groups → coherent movement
+        - Building solidarity edges
+        - Establishing base areas
+              ↓
+      THE PURGE (Year 4) - Test of Coalescence
+              ↓
+      STAGE 1: Strategic Defensive (Post-Purge)
+        - Coherent movement resists enemy offensive
+        - Guerrilla warfare from base areas
+        - Absorb attacks, counterattack locally
+              ↓
+      STAGE 2: Strategic Stalemate
+        - "Most trying but pivotal"
+        - Build strength from weakness
+        - Wait for contradictions to sharpen
+              ↓
+      STAGE 3: Strategic Counter-Offensive
+        - Go on the attack
+        - Recover lost territory
+        - Final confrontation
+              ↓
+      VICTORY: Revolution
+
+# =============================================================================
+# LIBERALISM: THE DECAYING ORDER
+# =============================================================================
+
+liberalism:
+  status: "design_pending"
+  notes: |
+    Liberalism is not a faction—it's the STARTING CONDITION.
+    It's the ideology that enables both outcomes while claiming neutrality.
+
+    Key insight: Liberalism IS implicit fascism.
+    - "Law and order" = police occupation of OPC
+    - "Meritocracy" = justification of extraction
+    - "Colorblindness" = denial of settler-colonialism
+    - "Property rights" = defense of stolen land
+
+    The game doesn't have a "liberal faction" because liberalism is the
+    water everyone is swimming in at game start. It's what's DECAYING.
+
+    Future enhancement: Model liberal institutions (courts, media, elections)
+    as terrain that both sides fight over during the transition.
+
+# =============================================================================
+# DESIGN NOTES
+# =============================================================================
+
+design_notes:
+  future_enhancements:
+    - "OGV internal contradictions (gender, sexuality, disability within Volksgemeinschaft)"
+    - "Global periphery as expansion content"
+    - "Liberal institutions as contested terrain"
+    - "Environmental collapse mechanics (Frontier degradation affects all)"
+
+  mantras:
+    - "Territory is not just geography—it's a relationship to extraction"
+    - "The Volksgemeinschaft is a material category, not just identity"
+    - "Liberalism is the cocoon from which fascism emerges"
+    - "The colonized are already revolutionary—the question is organization"

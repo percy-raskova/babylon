@@ -192,13 +192,13 @@ def get_multiverse_scenarios() -> list[ScenarioConfig]:
     across parameter space to prove mathematical divergence.
 
     Parameter ranges:
-        - rent_level: 0.3 (Low) or 1.5 (High)
+        - superwage_multiplier: 0.3 (Low) or 1.5 (High)
         - solidarity_index: 0.2 (Low) or 0.8 (High)
         - repression_capacity: 0.2 (Low) or 0.8 (High)
 
     Expected outcomes:
-        - High Rent + Low Solidarity + High Repression -> Low P(S|R) (Stable for Capital)
-        - Low Rent + High Solidarity + Low Repression -> High P(S|R) (Revolution likely)
+        - High SW + Low Solidarity + High Repression -> Low P(S|R) (Stable for Capital)
+        - Low SW + High Solidarity + Low Repression -> High P(S|R) (Revolution likely)
 
     Returns:
         List of 8 ScenarioConfig objects covering all permutations.
@@ -206,27 +206,27 @@ def get_multiverse_scenarios() -> list[ScenarioConfig]:
     Example:
         >>> scenarios = get_multiverse_scenarios()
         >>> for s in scenarios:
-        ...     print(f"{s.name}: rent={s.rent_level}, sol={s.solidarity_index}")
+        ...     print(f"{s.name}: sw={s.superwage_multiplier}, sol={s.solidarity_index}")
     """
     scenarios: list[ScenarioConfig] = []
 
-    rent_values = [0.3, 1.5]  # Low, High
+    superwage_values = [0.3, 1.5]  # Low, High
     solidarity_values = [0.2, 0.8]  # Low, High
     repression_values = [0.2, 0.8]  # Low, High
 
-    for rent in rent_values:
+    for superwage in superwage_values:
         for solidarity in solidarity_values:
             for repression in repression_values:
                 # Generate descriptive name
-                rent_label = "HighRent" if rent > 1.0 else "LowRent"
+                sw_label = "HighSW" if superwage > 1.0 else "LowSW"
                 sol_label = "HighSol" if solidarity > 0.5 else "LowSol"
                 rep_label = "HighRep" if repression > 0.5 else "LowRep"
-                name = f"{rent_label}_{sol_label}_{rep_label}"
+                name = f"{sw_label}_{sol_label}_{rep_label}"
 
                 scenarios.append(
                     ScenarioConfig(
                         name=name,
-                        rent_level=rent,
+                        superwage_multiplier=superwage,
                         solidarity_index=solidarity,
                         repression_capacity=repression,
                     )
@@ -245,7 +245,7 @@ def apply_scenario(
     This function transforms a base (state, config) pair into a counterfactual
     scenario by applying the three modifiers:
 
-    1. rent_level: Multiplies extraction_efficiency in SimulationConfig.
+    1. superwage_multiplier: Multiplies extraction_efficiency in SimulationConfig.
        - Clamped to [0, 1] since extraction_efficiency is a Coefficient.
 
     2. solidarity_index: Sets solidarity_strength on all SOLIDARITY edges.
@@ -264,13 +264,13 @@ def apply_scenario(
 
     Example:
         >>> state, config = create_two_node_scenario()
-        >>> scenario = ScenarioConfig(name="test", rent_level=1.5)
+        >>> scenario = ScenarioConfig(name="test", superwage_multiplier=1.5)
         >>> new_state, new_config = apply_scenario(state, config, scenario)
         >>> new_config.extraction_efficiency  # Will be 1.0 (clamped from 0.8 * 1.5)
     """
-    # 1. Apply rent_level to extraction_efficiency
+    # 1. Apply superwage_multiplier to extraction_efficiency
     # Clamp to [0, 1] since extraction_efficiency is a Coefficient
-    new_extraction = min(1.0, config.extraction_efficiency * scenario.rent_level)
+    new_extraction = min(1.0, config.extraction_efficiency * scenario.superwage_multiplier)
 
     # 2. Apply repression_capacity to repression_level
     new_repression_level = scenario.repression_capacity

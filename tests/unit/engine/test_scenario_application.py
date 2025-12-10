@@ -43,7 +43,7 @@ class TestApplyScenarioBasics:
         state, config = base_scenario
         original_state_dump = state.model_dump()
 
-        scenario = ScenarioConfig(name="test", rent_level=2.0)
+        scenario = ScenarioConfig(name="test", superwage_multiplier=2.0)
         apply_scenario(state, config, scenario)
 
         # Original should be unchanged
@@ -57,15 +57,15 @@ class TestApplyScenarioBasics:
         state, config = base_scenario
         original_config_dump = config.model_dump()
 
-        scenario = ScenarioConfig(name="test", rent_level=2.0)
+        scenario = ScenarioConfig(name="test", superwage_multiplier=2.0)
         apply_scenario(state, config, scenario)
 
         # Original should be unchanged
         assert config.model_dump() == original_config_dump
 
 
-class TestApplyScenarioRentLevel:
-    """Test rent_level application in apply_scenario()."""
+class TestApplyScenarioSuperwageMultiplier:
+    """Test superwage_multiplier application in apply_scenario()."""
 
     @pytest.fixture
     def base_scenario(self) -> tuple[WorldState, SimulationConfig]:
@@ -73,15 +73,15 @@ class TestApplyScenarioRentLevel:
         return create_two_node_scenario(extraction_efficiency=0.8)
 
     @pytest.mark.unit
-    def test_rent_level_modifies_extraction_efficiency(
+    def test_superwage_multiplier_modifies_extraction_efficiency(
         self, base_scenario: tuple[WorldState, SimulationConfig]
     ) -> None:
-        """Test that rent_level multiplies extraction_efficiency in config."""
+        """Test that superwage_multiplier multiplies extraction_efficiency in config."""
         state, config = base_scenario
         original_extraction = config.extraction_efficiency
 
-        # Apply 1.5x rent multiplier
-        scenario = ScenarioConfig(name="high_rent", rent_level=1.5)
+        # Apply 1.5x superwage multiplier
+        scenario = ScenarioConfig(name="high_sw", superwage_multiplier=1.5)
         _, new_config = apply_scenario(state, config, scenario)
 
         # Note: We need to clamp to [0, 1] since extraction_efficiency is a Coefficient
@@ -89,10 +89,10 @@ class TestApplyScenarioRentLevel:
         assert new_config.extraction_efficiency == expected
 
     @pytest.mark.unit
-    def test_rent_level_one_no_change(
+    def test_superwage_multiplier_one_no_change(
         self, base_scenario: tuple[WorldState, SimulationConfig]
     ) -> None:
-        """Test that rent_level=1.0 (default) leaves extraction unchanged."""
+        """Test that superwage_multiplier=1.0 (default) leaves extraction unchanged."""
         state, config = base_scenario
         original_extraction = config.extraction_efficiency
 
@@ -102,14 +102,14 @@ class TestApplyScenarioRentLevel:
         assert new_config.extraction_efficiency == original_extraction
 
     @pytest.mark.unit
-    def test_low_rent_level_reduces_extraction(
+    def test_low_superwage_multiplier_reduces_extraction(
         self, base_scenario: tuple[WorldState, SimulationConfig]
     ) -> None:
-        """Test that rent_level=0.3 reduces extraction efficiency."""
+        """Test that superwage_multiplier=0.3 reduces extraction efficiency."""
         state, config = base_scenario
         original_extraction = config.extraction_efficiency
 
-        scenario = ScenarioConfig(name="low_rent", rent_level=0.3)
+        scenario = ScenarioConfig(name="low_sw", superwage_multiplier=0.3)
         _, new_config = apply_scenario(state, config, scenario)
 
         expected = original_extraction * 0.3
@@ -267,13 +267,13 @@ class TestApplyScenarioCombined:
 
         scenario = ScenarioConfig(
             name="all_modifiers",
-            rent_level=1.5,
+            superwage_multiplier=1.5,
             solidarity_index=0.8,
             repression_capacity=0.3,
         )
         new_state, new_config = apply_scenario(state, config, scenario)
 
-        # Check rent level effect on extraction
+        # Check superwage multiplier effect on extraction
         expected_extraction = min(1.0, 0.8 * 1.5)  # Clamped
         assert new_config.extraction_efficiency == expected_extraction
 
@@ -293,12 +293,12 @@ class TestApplyScenarioCombined:
 
     @pytest.mark.unit
     def test_extreme_stable_scenario(self) -> None:
-        """Test 'stable' scenario: High Rent + Low Solidarity + High Repression."""
+        """Test 'stable' scenario: High SW + Low Solidarity + High Repression."""
         state, config = create_two_node_scenario()
 
         scenario = ScenarioConfig(
-            name="HighRent_LowSol_HighRep",
-            rent_level=1.5,
+            name="HighSW_LowSol_HighRep",
+            superwage_multiplier=1.5,
             solidarity_index=0.2,
             repression_capacity=0.8,
         )
@@ -314,12 +314,12 @@ class TestApplyScenarioCombined:
 
     @pytest.mark.unit
     def test_extreme_collapse_scenario(self) -> None:
-        """Test 'collapse' scenario: Low Rent + High Solidarity + Low Repression."""
+        """Test 'collapse' scenario: Low SW + High Solidarity + Low Repression."""
         state, config = create_two_node_scenario()
 
         scenario = ScenarioConfig(
-            name="LowRent_HighSol_LowRep",
-            rent_level=0.3,
+            name="LowSW_HighSol_LowRep",
+            superwage_multiplier=0.3,
             solidarity_index=0.8,
             repression_capacity=0.2,
         )

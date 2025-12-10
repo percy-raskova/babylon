@@ -5,8 +5,10 @@ This tool runs all 8 multiverse scenarios through 10 ticks of simulation
 and produces a markdown table showing the P(S|R) divergence across scenarios.
 
 Expected Results:
-- High Rent + Low Solidarity + High Repression -> Low P(S|R) (Stable for Capital)
-- Low Rent + High Solidarity + Low Repression -> High P(S|R) (Revolution likely)
+- High SW + Low Solidarity + High Repression -> Low P(S|R) (Stable for Capital)
+- Low SW + High Solidarity + Low Repression -> High P(S|R) (Revolution likely)
+
+Paradox Refactor: Updated to use superwage_multiplier (SW) terminology.
 
 Usage:
     poetry run python tools/verify_math_divergence.py
@@ -97,13 +99,13 @@ def format_markdown_table(results: list[ResultTuple]) -> str:
         Markdown formatted table string
     """
     lines = [
-        "| Scenario | Rent | Sol | Rep | P(S|R) | P(S|A) | W.Wealth | O.Wealth | Org |",
-        "|----------|------|-----|-----|--------|--------|----------|----------|-----|",
+        "| Scenario | SW | Sol | Rep | P(S|R) | P(S|A) | W.Wealth | O.Wealth | Org |",
+        "|----------|-----|-----|-----|--------|--------|----------|----------|-----|",
     ]
 
     for scenario, p_rev, p_acq, w_wealth, o_wealth, org in results:
         lines.append(
-            f"| {scenario.name} | {scenario.rent_level} | "
+            f"| {scenario.name} | {scenario.superwage_multiplier} | "
             f"{scenario.solidarity_index} | {scenario.repression_capacity} | "
             f"{p_rev:.4f} | {p_acq:.4f} | {w_wealth:.4f} | {o_wealth:.4f} | {org:.2f} |"
         )
@@ -115,8 +117,8 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
     """Verify that extreme scenarios produce expected divergence.
 
     Expected:
-    - High Rent + Low Solidarity + High Repression -> Low P(S|R), Low Worker Wealth, High Owner Wealth
-    - Low Rent + High Solidarity + Low Repression -> High P(S|R), High Worker Wealth, Low Owner Wealth
+    - High SW + Low Solidarity + High Repression -> Low P(S|R), Low Worker Wealth, High Owner Wealth
+    - Low SW + High Solidarity + Low Repression -> High P(S|R), High Worker Wealth, Low Owner Wealth
 
     Args:
         results: List of (scenario, p_rev, p_acq, worker_wealth, owner_wealth, org) tuples
@@ -130,13 +132,13 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
     for result in results:
         scenario = result[0]
         if (
-            scenario.rent_level == 1.5
+            scenario.superwage_multiplier == 1.5
             and scenario.solidarity_index == 0.2
             and scenario.repression_capacity == 0.8
         ):
             stable_scenario = result
         elif (
-            scenario.rent_level == 0.3
+            scenario.superwage_multiplier == 0.3
             and scenario.solidarity_index == 0.8
             and scenario.repression_capacity == 0.2
         ):
@@ -156,11 +158,11 @@ def verify_expected_divergence(results: list[ResultTuple]) -> bool:
     collapse_org = collapse_scenario[5]
 
     print("\nDivergence Verification:")
-    print("  Stable scenario (HighRent_LowSol_HighRep):")
+    print("  Stable scenario (HighSW_LowSol_HighRep):")
     print(
         f"    P(S|R) = {stable_p_rev:.4f}, Owner Wealth = {stable_owner_wealth:.4f}, Org = {stable_org:.2f}"
     )
-    print("  Collapse scenario (LowRent_HighSol_LowRep):")
+    print("  Collapse scenario (LowSW_HighSol_LowRep):")
     print(
         f"    P(S|R) = {collapse_p_rev:.4f}, Owner Wealth = {collapse_owner_wealth:.4f}, Org = {collapse_org:.2f}"
     )

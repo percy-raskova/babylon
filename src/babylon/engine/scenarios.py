@@ -90,11 +90,25 @@ def create_two_node_scenario(
         tension=0.0,  # Will accumulate over time
     )
 
+    # Bug Fix: Add SOLIDARITY edge so solidarity_index affects P(S|R)
+    # This represents potential class solidarity infrastructure between workers.
+    # The solidarity_strength will be set by apply_scenario() based on solidarity_index.
+    # Self-solidarity edge: worker supports worker (internal class cohesion)
+    solidarity = Relationship(
+        source_id="C002",  # External support flows TO worker
+        target_id="C001",  # Worker receives solidarity
+        edge_type=EdgeType.SOLIDARITY,
+        description="Class solidarity infrastructure",
+        value_flow=0.0,
+        tension=0.0,
+        solidarity_strength=0.0,  # Will be set by apply_scenario()
+    )
+
     # Create world state
     state = WorldState(
         tick=0,
         entities={"C001": worker, "C002": owner},
-        relationships=[exploitation],
+        relationships=[exploitation, solidarity],
         event_log=[],
     )
 

@@ -567,13 +567,20 @@ class TestFindSinkNode:
     Priority order: CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
     """
 
-    def test_find_sink_node_returns_concentration_camp_priority(self) -> None:
-        """CONCENTRATION_CAMP takes priority over other sink types.
+    def test_find_sink_node_returns_concentration_camp_priority_in_elimination_mode(
+        self,
+    ) -> None:
+        """CONCENTRATION_CAMP takes priority in ELIMINATION mode.
 
-        When multiple sink nodes are adjacent, the most severe
-        (elimination > extraction > containment) takes priority.
-        This models the escalation logic of carceral geography.
+        When multiple sink nodes are adjacent and ELIMINATION mode is active,
+        the most severe (camp > prison > reservation) takes priority.
+        This models the late fascism logic of carceral geography.
+
+        Note: Sprint 3.7.1 changed default to EXTRACTION mode (prison first).
+        This test explicitly uses ELIMINATION mode to verify camp priority.
         """
+        from babylon.models.enums import DisplacementPriorityMode
+
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         # Source territory (under eviction)
@@ -588,7 +595,7 @@ class TestFindSinkNode:
             population=1000,
             under_eviction=True,
         )
-        # Reservation (lowest priority)
+        # Reservation (lowest priority in ELIMINATION)
         graph.add_node(
             "T002",
             _node_type="territory",
@@ -598,7 +605,7 @@ class TestFindSinkNode:
             territory_type=TerritoryType.RESERVATION,
             population=500,
         )
-        # Penal Colony (medium priority)
+        # Penal Colony (medium priority in ELIMINATION)
         graph.add_node(
             "T003",
             _node_type="territory",
@@ -608,7 +615,7 @@ class TestFindSinkNode:
             territory_type=TerritoryType.PENAL_COLONY,
             population=200,
         )
-        # Concentration Camp (highest priority)
+        # Concentration Camp (highest priority in ELIMINATION)
         graph.add_node(
             "T004",
             _node_type="territory",
@@ -626,13 +633,21 @@ class TestFindSinkNode:
         system = TerritorySystem()
 
         # Act
-        result = system._find_sink_node("T001", graph)
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.ELIMINATION)
 
-        # Assert: concentration camp has highest priority
+        # Assert: concentration camp has highest priority in ELIMINATION mode
         assert result == "T004"
 
-    def test_find_sink_node_returns_penal_colony_when_no_camp(self) -> None:
-        """PENAL_COLONY is chosen when no CONCENTRATION_CAMP is adjacent."""
+    def test_find_sink_node_returns_penal_colony_in_extraction_mode(self) -> None:
+        """PENAL_COLONY is chosen first in EXTRACTION mode (default).
+
+        In EXTRACTION mode (prison > reservation > camp), prison is
+        first priority when available.
+
+        Note: Sprint 3.7.1 changed default to EXTRACTION mode.
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
@@ -670,13 +685,19 @@ class TestFindSinkNode:
         system = TerritorySystem()
 
         # Act
-        result = system._find_sink_node("T001", graph)
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.EXTRACTION)
 
-        # Assert: penal colony is chosen (no camp available)
+        # Assert: penal colony is chosen (first priority in EXTRACTION)
         assert result == "T003"
 
-    def test_find_sink_node_returns_reservation_when_no_higher_priority(self) -> None:
-        """RESERVATION is chosen when no PENAL_COLONY or CONCENTRATION_CAMP."""
+    def test_find_sink_node_returns_reservation_when_only_sink(self) -> None:
+        """RESERVATION is chosen when it's the only sink available.
+
+        This test verifies the fallback behavior when higher-priority
+        sinks are not adjacent.
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
@@ -701,17 +722,20 @@ class TestFindSinkNode:
 
         system = TerritorySystem()
 
-        # Act
-        result = system._find_sink_node("T001", graph)
+        # Act - works for any mode since reservation is only option
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.EXTRACTION)
 
-        # Assert: reservation is chosen
+        # Assert: reservation is chosen (only sink available)
         assert result == "T002"
 
     def test_find_sink_node_returns_none_when_no_sinks(self) -> None:
         """Returns None when no sink nodes are adjacent.
 
         This triggers fallback to the original "disappear" behavior.
+        Mode-independent test - no sinks means None regardless of mode.
         """
+        from babylon.models.enums import DisplacementPriorityMode
+
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
@@ -737,8 +761,8 @@ class TestFindSinkNode:
 
         system = TerritorySystem()
 
-        # Act
-        result = system._find_sink_node("T001", graph)
+        # Act - any mode works since no sinks available
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.EXTRACTION)
 
         # Assert: no sink found
         assert result is None
@@ -948,3 +972,283 @@ class TestNecropolitics:
 
         # Assert: organization suppressed to 0.0
         assert graph.nodes["C001"]["organization"] == pytest.approx(0.0, abs=0.01)
+
+
+# =============================================================================
+# DISPLACEMENT PRIORITY MODES TESTS (Sprint 3.7.1)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestDisplacementPriorityModes:
+    """Tests for dynamic displacement routing based on political-economic mode.
+
+    Sprint 3.7.1: Dynamic Displacement Priority Modes.
+
+    The settler-colonial state routes displaced populations differently
+    based on current conditions:
+    - EXTRACTION: Labor valuable -> Prison > Reservation > Camp
+    - CONTAINMENT: Crisis/transition -> Reservation > Prison > Camp
+    - ELIMINATION: Late fascism -> Camp > Prison > Reservation
+
+    Test Intent:
+    These tests verify that the sink node routing respects the configured
+    mode rather than using a hardcoded priority. This enables the simulation
+    to model different historical phases of carceral capitalism.
+    """
+
+    def _create_graph_with_all_sink_types(self) -> "nx.DiGraph[str]":
+        """Create a test graph with source connected to all sink types."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        # Source territory (under eviction)
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            id="T001",
+            name="Ghetto",
+            sector_type=SectorType.RESIDENTIAL,
+            territory_type=TerritoryType.PERIPHERY,
+            profile=OperationalProfile.HIGH_PROFILE,
+            heat=0.9,
+            population=1000,
+            under_eviction=True,
+            rent_level=1.0,
+        )
+        # Reservation
+        graph.add_node(
+            "T002",
+            _node_type="territory",
+            id="T002",
+            name="Pine Ridge",
+            sector_type=SectorType.RESIDENTIAL,
+            territory_type=TerritoryType.RESERVATION,
+            population=500,
+        )
+        # Penal Colony
+        graph.add_node(
+            "T003",
+            _node_type="territory",
+            id="T003",
+            name="Angola",
+            sector_type=SectorType.INDUSTRIAL,
+            territory_type=TerritoryType.PENAL_COLONY,
+            population=200,
+        )
+        # Concentration Camp
+        graph.add_node(
+            "T004",
+            _node_type="territory",
+            id="T004",
+            name="Internment Zone",
+            sector_type=SectorType.GOVERNMENT,
+            territory_type=TerritoryType.CONCENTRATION_CAMP,
+            population=100,
+        )
+        # Add adjacency edges to all sinks
+        graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
+        graph.add_edge("T001", "T003", edge_type=EdgeType.ADJACENCY)
+        graph.add_edge("T001", "T004", edge_type=EdgeType.ADJACENCY)
+        return graph
+
+    def test_extraction_mode_prioritizes_prison(self) -> None:
+        """EXTRACTION mode routes to PENAL_COLONY first.
+
+        When labor is valuable, the state prefers prison (forced labor)
+        over mere containment (reservation) or elimination (camp).
+
+        Priority: PENAL_COLONY > RESERVATION > CONCENTRATION_CAMP
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
+        # Arrange
+        graph = self._create_graph_with_all_sink_types()
+        system = TerritorySystem()
+
+        # Act
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.EXTRACTION)
+
+        # Assert: prison (PENAL_COLONY) has highest priority in EXTRACTION mode
+        assert result == "T003"
+
+    def test_containment_mode_prioritizes_reservation(self) -> None:
+        """CONTAINMENT mode routes to RESERVATION first.
+
+        During crisis or transition periods, the state prefers
+        warehousing (reservation) over extraction (prison) or elimination (camp).
+
+        Priority: RESERVATION > PENAL_COLONY > CONCENTRATION_CAMP
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
+        # Arrange
+        graph = self._create_graph_with_all_sink_types()
+        system = TerritorySystem()
+
+        # Act
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.CONTAINMENT)
+
+        # Assert: reservation has highest priority in CONTAINMENT mode
+        assert result == "T002"
+
+    def test_elimination_mode_prioritizes_camp(self) -> None:
+        """ELIMINATION mode routes to CONCENTRATION_CAMP first.
+
+        In late fascism, the state prioritizes elimination over
+        extraction or containment. Labor is no longer valuable.
+
+        Priority: CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
+        # Arrange
+        graph = self._create_graph_with_all_sink_types()
+        system = TerritorySystem()
+
+        # Act
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.ELIMINATION)
+
+        # Assert: camp has highest priority in ELIMINATION mode
+        assert result == "T004"
+
+    def test_default_mode_is_extraction(self) -> None:
+        """When no mode is provided, EXTRACTION is the default.
+
+        This maintains backward compatibility while establishing
+        prison-industrial complex as the baseline carceral logic.
+        """
+
+        # Arrange
+        graph = self._create_graph_with_all_sink_types()
+        services = ServiceContainer.create()
+        context: dict[str, object] = {"tick": 1}  # No displacement_mode set
+        system = TerritorySystem()
+
+        # Act
+        system.step(graph, services, context)
+
+        # Assert: population flowed to prison (EXTRACTION default)
+        # Displaced = 1000 * 0.1 = 100
+        # T003 (prison) should receive the displaced population
+        assert graph.nodes["T003"]["population"] == 300  # 200 + 100
+
+    def test_context_displacement_mode_is_respected(self) -> None:
+        """Displacement mode in context overrides default.
+
+        The context dict allows per-tick mode configuration,
+        enabling dynamic shifts in carceral policy.
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
+        # Arrange
+        graph = self._create_graph_with_all_sink_types()
+        services = ServiceContainer.create()
+        context: dict[str, object] = {
+            "tick": 1,
+            "displacement_mode": DisplacementPriorityMode.ELIMINATION,
+        }
+        system = TerritorySystem()
+
+        # Act
+        system.step(graph, services, context)
+
+        # Assert: population flowed to camp (ELIMINATION mode from context)
+        # Displaced = 1000 * 0.1 = 100
+        # T004 (camp) should receive the displaced population
+        # Note: camp also decays population by 20%, so: (100 + 100) * 0.8 = 160
+        # Actually, the order is: eviction transfers to camp, THEN necropolitics decays
+        # So: 100 (initial) + 100 (transfer) = 200, then 200 * 0.8 = 160
+        assert graph.nodes["T004"]["population"] == 160  # (100 + 100) * 0.8
+
+    def test_extraction_fallback_when_prison_unavailable(self) -> None:
+        """EXTRACTION mode falls back to reservation when no prison.
+
+        Priority chain: PENAL_COLONY > RESERVATION > CONCENTRATION_CAMP
+        If prison not adjacent, reservation is next choice.
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
+        # Arrange
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            id="T001",
+            name="Ghetto",
+            sector_type=SectorType.RESIDENTIAL,
+            territory_type=TerritoryType.PERIPHERY,
+            population=1000,
+        )
+        # Only reservation and camp (no prison)
+        graph.add_node(
+            "T002",
+            _node_type="territory",
+            id="T002",
+            name="Pine Ridge",
+            territory_type=TerritoryType.RESERVATION,
+            population=500,
+        )
+        graph.add_node(
+            "T003",
+            _node_type="territory",
+            id="T003",
+            name="Internment Zone",
+            territory_type=TerritoryType.CONCENTRATION_CAMP,
+            population=100,
+        )
+        graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
+        graph.add_edge("T001", "T003", edge_type=EdgeType.ADJACENCY)
+
+        system = TerritorySystem()
+
+        # Act
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.EXTRACTION)
+
+        # Assert: reservation (next in EXTRACTION priority)
+        assert result == "T002"
+
+    def test_containment_fallback_when_reservation_unavailable(self) -> None:
+        """CONTAINMENT mode falls back to prison when no reservation.
+
+        Priority chain: RESERVATION > PENAL_COLONY > CONCENTRATION_CAMP
+        If reservation not adjacent, prison is next choice.
+        """
+        from babylon.models.enums import DisplacementPriorityMode
+
+        # Arrange
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            id="T001",
+            name="Ghetto",
+            sector_type=SectorType.RESIDENTIAL,
+            territory_type=TerritoryType.PERIPHERY,
+            population=1000,
+        )
+        # Only prison and camp (no reservation)
+        graph.add_node(
+            "T002",
+            _node_type="territory",
+            id="T002",
+            name="Angola",
+            territory_type=TerritoryType.PENAL_COLONY,
+            population=200,
+        )
+        graph.add_node(
+            "T003",
+            _node_type="territory",
+            id="T003",
+            name="Internment Zone",
+            territory_type=TerritoryType.CONCENTRATION_CAMP,
+            population=100,
+        )
+        graph.add_edge("T001", "T002", edge_type=EdgeType.ADJACENCY)
+        graph.add_edge("T001", "T003", edge_type=EdgeType.ADJACENCY)
+
+        system = TerritorySystem()
+
+        # Act
+        result = system._find_sink_node("T001", graph, mode=DisplacementPriorityMode.CONTAINMENT)
+
+        # Assert: prison (next in CONTAINMENT priority)
+        assert result == "T002"

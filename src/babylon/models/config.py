@@ -14,6 +14,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from babylon.models.enums import DisplacementPriorityMode
 from babylon.models.types import Coefficient, Currency, Probability
 
 # Positive float constraint for steepness and lambda parameters
@@ -235,4 +236,29 @@ class SimulationConfig(BaseModel):
     concentration_camp_decay_rate: Coefficient = Field(
         default=0.2,
         description="Population decay rate in CONCENTRATION_CAMP territories (20%)",
+    )
+
+    # Displacement Priority Mode (Sprint 3.7.1: Dynamic Displacement Routing)
+    displacement_priority_mode: DisplacementPriorityMode = Field(
+        default=DisplacementPriorityMode.EXTRACTION,
+        description="Sink routing mode for displaced populations (EXTRACTION default)",
+    )
+
+    # AUTO mode thresholds (Sprint 3.7.1 - reserved for future use)
+    # These parameters are not used when mode is set explicitly
+    elimination_rent_threshold: Coefficient = Field(
+        default=0.1,
+        description="Imperial rent ratio below which ELIMINATION mode activates",
+    )
+    elimination_tension_threshold: Coefficient = Field(
+        default=0.8,
+        description="Tension threshold above which ELIMINATION mode activates",
+    )
+    containment_rent_threshold: Coefficient = Field(
+        default=0.3,
+        description="Imperial rent ratio below which CONTAINMENT mode activates",
+    )
+    containment_tension_threshold: Coefficient = Field(
+        default=0.5,
+        description="Tension threshold above which CONTAINMENT mode activates",
     )

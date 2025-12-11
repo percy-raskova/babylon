@@ -2,21 +2,32 @@
 
 Sprint 3.5.4: The Territorial Substrate.
 Sprint 3.7: The Carceral Geography - Necropolitical Triad.
+Sprint 3.7.1: Dynamic Displacement Priority Modes.
 
 TerritorySystem manages:
 1. Heat dynamics: HIGH_PROFILE gains heat, LOW_PROFILE decays heat
 2. Eviction pipeline: triggered when heat >= threshold, routes to sink nodes
 3. Heat spillover: via ADJACENCY edges
 4. Necropolitics: CONCENTRATION_CAMP elimination, PENAL_COLONY suppression
+
+Displacement Priority Modes (Sprint 3.7.1):
+- EXTRACTION: Prison > Reservation > Camp (labor valuable, default)
+- CONTAINMENT: Reservation > Prison > Camp (crisis/transition)
+- ELIMINATION: Camp > Prison > Reservation (late fascism)
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import networkx as nx
 
-from babylon.models.enums import EdgeType, OperationalProfile, TerritoryType
+from babylon.models.enums import (
+    DisplacementPriorityMode,
+    EdgeType,
+    OperationalProfile,
+    TerritoryType,
+)
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
@@ -42,12 +53,25 @@ class TerritorySystem:
 
     name = "Territory"
 
-    # Priority order for sink node selection (highest to lowest)
-    _SINK_PRIORITY: list[TerritoryType] = [
-        TerritoryType.CONCENTRATION_CAMP,
-        TerritoryType.PENAL_COLONY,
-        TerritoryType.RESERVATION,
-    ]
+    # Priority order for sink node selection by displacement mode
+    # Sprint 3.7.1: Dynamic Displacement Priority Modes
+    _PRIORITY_BY_MODE: ClassVar[dict[DisplacementPriorityMode, list[TerritoryType]]] = {
+        DisplacementPriorityMode.EXTRACTION: [
+            TerritoryType.PENAL_COLONY,
+            TerritoryType.RESERVATION,
+            TerritoryType.CONCENTRATION_CAMP,
+        ],
+        DisplacementPriorityMode.CONTAINMENT: [
+            TerritoryType.RESERVATION,
+            TerritoryType.PENAL_COLONY,
+            TerritoryType.CONCENTRATION_CAMP,
+        ],
+        DisplacementPriorityMode.ELIMINATION: [
+            TerritoryType.CONCENTRATION_CAMP,
+            TerritoryType.PENAL_COLONY,
+            TerritoryType.RESERVATION,
+        ],
+    }
 
     def step(
         self,
@@ -62,10 +86,12 @@ class TerritorySystem:
         2. Eviction pipeline (triggered at threshold, routes to sinks)
         3. Heat spillover (via adjacency edges)
         4. Necropolitics (sink node effects)
+
+        Sprint 3.7.1: Context can contain 'displacement_mode' to override
+        the default EXTRACTION mode for sink node routing.
         """
-        _ = context  # Unused but kept for API consistency
         self._process_heat_dynamics(graph, services)
-        self._process_eviction_pipeline(graph, services)
+        self._process_eviction_pipeline(graph, services, context)
         self._process_spillover(graph, services)
         self._process_necropolitics(graph, services)
 
@@ -108,20 +134,32 @@ class TerritorySystem:
         self,
         source_node_id: str,
         graph: nx.DiGraph[str],
+        mode: DisplacementPriorityMode,
     ) -> str | None:
         """Find a sink node connected to the source via ADJACENCY edge.
 
         Sprint 3.7: The Carceral Geography.
+        Sprint 3.7.1: Dynamic Displacement Priority Modes.
+
         Sink nodes are territories where displaced populations flow.
-        Priority: CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
+        Priority depends on mode:
+        - EXTRACTION: PENAL_COLONY > RESERVATION > CONCENTRATION_CAMP
+        - CONTAINMENT: RESERVATION > PENAL_COLONY > CONCENTRATION_CAMP
+        - ELIMINATION: CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
 
         Args:
             source_node_id: The territory being evicted from
             graph: The simulation graph
+            mode: The displacement priority mode determining sink selection
 
         Returns:
             The node ID of the highest-priority adjacent sink, or None
         """
+        # Get priority order for the given mode
+        priority_order = self._PRIORITY_BY_MODE.get(
+            mode, self._PRIORITY_BY_MODE[DisplacementPriorityMode.EXTRACTION]
+        )
+
         # Collect all adjacent sink nodes
         adjacent_sinks: dict[TerritoryType, str] = {}
 
@@ -142,11 +180,11 @@ class TerritorySystem:
                 territory_type = TerritoryType(territory_type)
 
             # Check if it's a sink node type
-            if territory_type in self._SINK_PRIORITY:
+            if territory_type in priority_order:
                 adjacent_sinks[territory_type] = target_id
 
-        # Return highest priority sink
-        for sink_type in self._SINK_PRIORITY:
+        # Return highest priority sink based on mode
+        for sink_type in priority_order:
             if sink_type in adjacent_sinks:
                 return adjacent_sinks[sink_type]
 
@@ -156,20 +194,31 @@ class TerritorySystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
+        context: dict[str, Any],
     ) -> None:
         """Process eviction pipeline for territories.
 
         Sprint 3.7: The Carceral Geography.
+        Sprint 3.7.1: Dynamic Displacement Priority Modes.
+
         If heat >= eviction_heat_threshold:
         - Set under_eviction = True
         - If already under_eviction: rent spikes, population displaced
 
         Displaced population is transferred to connected sink nodes.
         If no sink node is connected, population "disappears" (original behavior).
+
+        Args:
+            graph: The simulation graph
+            services: Service container with config
+            context: Context dict, may contain 'displacement_mode' override
         """
         eviction_threshold = services.config.eviction_heat_threshold
         rent_spike_multiplier = services.config.rent_spike_multiplier
         displacement_rate = services.config.displacement_rate
+
+        # Get displacement mode from context or default to EXTRACTION
+        mode = context.get("displacement_mode", DisplacementPriorityMode.EXTRACTION)
 
         # Collect population transfers (to avoid order-dependent updates)
         transfers: dict[str, int] = {}
@@ -201,7 +250,7 @@ class TerritorySystem:
 
                 # Find sink node for population transfer
                 if displaced_pop > 0:
-                    sink_id = self._find_sink_node(node_id, graph)
+                    sink_id = self._find_sink_node(node_id, graph, mode)
                     if sink_id is not None:
                         if sink_id not in transfers:
                             transfers[sink_id] = 0

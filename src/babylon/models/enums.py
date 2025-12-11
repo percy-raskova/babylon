@@ -123,6 +123,9 @@ class EventType(StrEnum):
         CONSCIOUSNESS_TRANSMISSION: Consciousness flows via SOLIDARITY edge from periphery to core
         MASS_AWAKENING: Target consciousness crosses mass awakening threshold
         ECONOMIC_CRISIS: Imperial rent pool depleted below critical threshold (Sprint 3.4.4)
+        EXCESSIVE_FORCE: State violence "spark" - police brutality event (Agency Layer)
+        UPRISING: Mass insurrection triggered by spark + accumulated agitation (Agency Layer)
+        SOLIDARITY_SPIKE: Solidarity infrastructure built through shared struggle (Agency Layer)
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -131,6 +134,9 @@ class EventType(StrEnum):
     CONSCIOUSNESS_TRANSMISSION = "consciousness_transmission"
     MASS_AWAKENING = "mass_awakening"
     ECONOMIC_CRISIS = "economic_crisis"  # Sprint 3.4.4 - Dynamic Balance
+    EXCESSIVE_FORCE = "excessive_force"  # Agency Layer - The Spark (Police Brutality)
+    UPRISING = "uprising"  # Agency Layer - The Explosion (Riot/Insurrection)
+    SOLIDARITY_SPIKE = "solidarity_spike"  # Agency Layer - The Bridge Building
 
 
 class OperationalProfile(StrEnum):

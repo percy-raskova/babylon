@@ -280,6 +280,43 @@ class TerritoryDefines(BaseModel):
     )
 
 
+class StruggleDefines(BaseModel):
+    """Struggle dynamics coefficients (Agency Layer - "George Floyd" Dynamic).
+
+    The Struggle System gives political agency to oppressed classes by modeling:
+    - The Spark: State violence (EXCESSIVE_FORCE) triggers insurrection
+    - The Combustion: Spark + High Agitation + Low P(S|A) = UPRISING
+    - The Result: Uprisings destroy wealth but build solidarity infrastructure
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    spark_probability_scale: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Base 10% chance scaled by repression_faced for EXCESSIVE_FORCE",
+    )
+    resistance_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum agitation level for uprising to trigger",
+    )
+    wealth_destruction_rate: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of wealth destroyed during uprising (riot damage)",
+    )
+    solidarity_gain_per_uprising: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Solidarity strength increase on edges per uprising",
+    )
+
+
 class InitialDefines(BaseModel):
     """Initial condition coefficients."""
 
@@ -317,6 +354,7 @@ class GameDefines(BaseModel):
     - tension: Tension dynamics
     - consciousness: Consciousness drift
     - territory: Territory dynamics
+    - struggle: Struggle dynamics (Agency Layer)
     - initial: Initial conditions
     """
 
@@ -329,6 +367,7 @@ class GameDefines(BaseModel):
     tension: TensionDefines = Field(default_factory=TensionDefines)
     consciousness: ConsciousnessDefines = Field(default_factory=ConsciousnessDefines)
     territory: TerritoryDefines = Field(default_factory=TerritoryDefines)
+    struggle: StruggleDefines = Field(default_factory=StruggleDefines)
     initial: InitialDefines = Field(default_factory=InitialDefines)
 
     # Legacy flat attributes for backward compatibility
@@ -416,6 +455,7 @@ class GameDefines(BaseModel):
             tension=TensionDefines(**data.get("tension", {})),
             consciousness=ConsciousnessDefines(**data.get("consciousness", {})),
             territory=TerritoryDefines(**data.get("territory", {})),
+            struggle=StruggleDefines(**data.get("struggle", {})),
             initial=InitialDefines(**data.get("initial", {})),
         )
 

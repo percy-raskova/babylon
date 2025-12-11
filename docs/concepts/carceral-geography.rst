@@ -23,17 +23,18 @@ The Detention Pipeline
 
 When state repression targets a class, it enters a three-stage pipeline:
 
-.. code-block:: text
+.. mermaid::
 
-   ┌─────────────┐    ┌─────────────────┐    ┌─────────────────┐
-   │  DETENTION  │───►│  INCARCERATION  │───►│   ELIMINATION   │
-   │  (intake)   │    │   (holding)     │    │   (permanent)   │
-   └─────────────┘    └─────────────────┘    └─────────────────┘
-         │                    │                      │
-         │                    │                      │
-         ▼                    ▼                      ▼
-   Short-term hold      Long-term hold         Removed from
-   Can be released      Reduced capacity        simulation
+   stateDiagram-v2
+       [*] --> DETENTION: Arrest
+       DETENTION --> INCARCERATION: After detention_duration
+       INCARCERATION --> ELIMINATION: displacement_priority
+       DETENTION --> [*]: Release
+       INCARCERATION --> [*]: Labor scarce mode
+
+       note right of DETENTION: Short-term hold<br/>Can be released
+       note right of INCARCERATION: Long-term hold<br/>Reduced capacity
+       note right of ELIMINATION: Removed from<br/>simulation
 
 **Stage Transitions:**
 

@@ -87,12 +87,11 @@ class TestEmbeddingManagerEventLoop:
         )
 
         # Check that _semaphores dict exists and is empty (lazy creation)
-        assert hasattr(
-            manager, "_semaphores"
-        ), "Missing _semaphores dict for lazy semaphore creation."
+        assert hasattr(manager, "_semaphores"), (
+            "Missing _semaphores dict for lazy semaphore creation."
+        )
         assert len(manager._semaphores) == 0, (
-            "Semaphores should not be created in __init__. "
-            "Must be lazy to work with asyncio.run()."
+            "Semaphores should not be created in __init__. Must be lazy to work with asyncio.run()."
         )
 
     def test_sync_embed_completes_within_timeout(self) -> None:
@@ -240,8 +239,7 @@ class TestEmbeddingManagerSessionLifecycle:
         # Sessions dict should be empty before any async call
         assert hasattr(manager, "_sessions"), "Missing _sessions dict for lazy session creation."
         assert len(manager._sessions) == 0, (
-            "Sessions should not be created in __init__. "
-            "Must be lazy to work with asyncio.run()."
+            "Sessions should not be created in __init__. Must be lazy to work with asyncio.run()."
         )
 
     def test_session_works_across_multiple_asyncio_run_calls(self) -> None:

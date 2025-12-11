@@ -66,21 +66,21 @@ class TestHistoryOfClassStruggle:
         final_owner_wealth = final_state.entities["C002"].wealth
 
         # Worker should have lost wealth (extracted by owner)
-        assert (
-            final_worker_wealth < initial_worker_wealth
-        ), f"Worker wealth should decrease: {initial_worker_wealth} -> {final_worker_wealth}"
+        assert final_worker_wealth < initial_worker_wealth, (
+            f"Worker wealth should decrease: {initial_worker_wealth} -> {final_worker_wealth}"
+        )
 
         # Owner should have gained wealth (from extraction)
-        assert (
-            final_owner_wealth > initial_owner_wealth
-        ), f"Owner wealth should increase: {initial_owner_wealth} -> {final_owner_wealth}"
+        assert final_owner_wealth > initial_owner_wealth, (
+            f"Owner wealth should increase: {initial_owner_wealth} -> {final_owner_wealth}"
+        )
 
         # Total wealth should be conserved (zero-sum extraction)
         initial_total = initial_worker_wealth + initial_owner_wealth
         final_total = final_worker_wealth + final_owner_wealth
-        assert final_total == pytest.approx(
-            initial_total, rel=0.01
-        ), f"Total wealth not conserved: {initial_total} -> {final_total}"
+        assert final_total == pytest.approx(initial_total, rel=0.01), (
+            f"Total wealth not conserved: {initial_total} -> {final_total}"
+        )
 
     def test_component_values_stay_in_valid_ranges(self) -> None:
         """All component values stay within their valid ranges over 100 ticks.
@@ -123,27 +123,27 @@ class TestHistoryOfClassStruggle:
             # Check all entities
             for entity_id, entity in state.entities.items():
                 # Wealth must be non-negative
-                assert (
-                    entity.wealth >= 0.0
-                ), f"Tick {state.tick}: {entity_id} wealth < 0: {entity.wealth}"
+                assert entity.wealth >= 0.0, (
+                    f"Tick {state.tick}: {entity_id} wealth < 0: {entity.wealth}"
+                )
 
                 # Class consciousness must be in [0, 1]
-                assert (
-                    0.0 <= entity.ideology.class_consciousness <= 1.0
-                ), f"Tick {state.tick}: {entity_id} class_consciousness out of range: {entity.ideology.class_consciousness}"
+                assert 0.0 <= entity.ideology.class_consciousness <= 1.0, (
+                    f"Tick {state.tick}: {entity_id} class_consciousness out of range: {entity.ideology.class_consciousness}"
+                )
 
                 # Organization must be in [0, 1]
-                assert (
-                    0.0 <= entity.organization <= 1.0
-                ), f"Tick {state.tick}: {entity_id} organization out of range: {entity.organization}"
+                assert 0.0 <= entity.organization <= 1.0, (
+                    f"Tick {state.tick}: {entity_id} organization out of range: {entity.organization}"
+                )
 
                 # Probabilities must be in [0, 1]
-                assert (
-                    0.0 <= entity.p_acquiescence <= 1.0
-                ), f"Tick {state.tick}: {entity_id} p_acquiescence out of range: {entity.p_acquiescence}"
-                assert (
-                    0.0 <= entity.p_revolution <= 1.0
-                ), f"Tick {state.tick}: {entity_id} p_revolution out of range: {entity.p_revolution}"
+                assert 0.0 <= entity.p_acquiescence <= 1.0, (
+                    f"Tick {state.tick}: {entity_id} p_acquiescence out of range: {entity.p_acquiescence}"
+                )
+                assert 0.0 <= entity.p_revolution <= 1.0, (
+                    f"Tick {state.tick}: {entity_id} p_revolution out of range: {entity.p_revolution}"
+                )
 
             # Check all relationships
             for rel in state.relationships:
@@ -151,9 +151,9 @@ class TestHistoryOfClassStruggle:
                 assert rel.value_flow >= 0.0, f"Tick {state.tick}: value_flow < 0: {rel.value_flow}"
 
                 # Tension must be in [0, 1]
-                assert (
-                    0.0 <= rel.tension <= 1.0
-                ), f"Tick {state.tick}: tension out of range: {rel.tension}"
+                assert 0.0 <= rel.tension <= 1.0, (
+                    f"Tick {state.tick}: tension out of range: {rel.tension}"
+                )
 
     def test_worker_ideology_drifts_revolutionary(self) -> None:
         """Worker class_consciousness increases over 100 ticks via solidarity.
@@ -238,9 +238,9 @@ class TestHistoryOfClassStruggle:
         final_state = sim.run(100)
 
         # Tension should have accumulated
-        assert (
-            final_state.relationships[0].tension > 0.0
-        ), f"Tension should be positive: {final_state.relationships[0].tension}"
+        assert final_state.relationships[0].tension > 0.0, (
+            f"Tension should be positive: {final_state.relationships[0].tension}"
+        )
 
     def test_simulation_is_deterministic(self) -> None:
         """Same initial state and config produces identical results."""
@@ -398,6 +398,6 @@ class TestHistoryFormatter:
 
         # Should mention ticks or turns
         lower_narrative = narrative.lower()
-        assert any(
-            term in lower_narrative for term in ["tick", "turn", "year", "period"]
-        ), f"Narrative should mention time progression: {narrative}"
+        assert any(term in lower_narrative for term in ["tick", "turn", "year", "period"]), (
+            f"Narrative should mention time progression: {narrative}"
+        )

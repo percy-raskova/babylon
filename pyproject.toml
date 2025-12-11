@@ -54,7 +54,7 @@ pytest-asyncio = "^1.0.0"
 pytest-cov = "^7.0.0"
 # Code Quality
 mypy = "^1.13.0"
-ruff = "^0.8.0"
+ruff = "^0.14.0"
 pre-commit = "^4.0.0"
 # Versioning
 commitizen = "^4.1.0"

@@ -1,0 +1,255 @@
+# Babylon Tooling Configuration
+# How tools are configured and why
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-11"
+  purpose: "Document tooling decisions to avoid re-investigation"
+
+# =============================================================================
+# CI/CD TOOLING
+# =============================================================================
+
+cicd:
+  philosophy: "Block on correctness, not style"
+
+  github_actions:
+    ci_yml:
+      file: ".github/workflows/ci.yml"
+      jobs:
+        ci:
+          name: "Lint, Type Check & Test"
+          blocks_merge: true
+          steps:
+            - "poetry run ruff check ."
+            - "poetry run mypy src"
+            - "poetry run pytest -m 'not ai' --tb=short -q"
+        docs:
+          name: "Documentation Build"
+          blocks_merge: true
+          steps:
+            - "poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v"
+            - "cd docs && poetry run sphinx-build -W -b html . _build/html"
+        style:
+          name: "Style Check (Informational)"
+          blocks_merge: false
+          continue_on_error: true
+          steps:
+            - "poetry run ruff format --check ."
+
+    extended_analysis_yml:
+      file: ".github/workflows/extended-analysis.yml"
+      triggers:
+        - "release (published)"
+        - "schedule (weekly Sunday midnight)"
+        - "workflow_dispatch (manual)"
+      jobs:
+        extended_tests:
+          matrix: ["3.12", "3.13"]
+          purpose: "Python version compatibility"
+        parameter_analysis:
+          commands:
+            - "mise run analyze-trace"
+            - "mise run analyze-sweep"
+          artifacts: "results/"
+        ai_evaluation:
+          condition: "release only"
+          command: "poetry run pytest -m 'ai' --tb=short -q"
+
+  pre_commit:
+    file: ".pre-commit-config.yaml"
+    purpose: "Local style enforcement (not CI)"
+    hooks:
+      - "ruff (lint)"
+      - "ruff (format)"
+      - "mypy (typecheck)"
+      - "pytest (fast tests)"
+      - "yamllint"
+      - "commitizen (commit message)"
+
+# =============================================================================
+# DOCUMENTATION TOOLING
+# =============================================================================
+
+documentation:
+
+  sphinx:
+    config_file: "docs/conf.py"
+    key_settings:
+      autosummary_imported_members: false
+      reason: "Prevents duplicate documentation of re-exported classes"
+
+      html_static_path: "[]"
+      reason: "No custom static files, avoids missing directory warning"
+
+      autodoc_default_options:
+        members: true
+        undoc_members: true
+        show_inheritance: true
+
+    extensions:
+      - "sphinx.ext.autodoc"
+      - "sphinx.ext.autosummary"
+      - "sphinx.ext.viewcode"
+      - "sphinx.ext.intersphinx"
+      - "sphinx.ext.doctest"
+      - "sphinx_autodoc_typehints"
+      - "myst_parser"
+
+    ci_flags:
+      W: "Warnings as errors"
+      b_html: "HTML builder"
+
+  docstring_format:
+    style: "RST (reStructuredText)"
+    reason: "Sphinx autodoc native format"
+    rules:
+      - "Use :: for code blocks, not markdown ```"
+      - "Use *italic* and **bold** with proper spacing"
+      - "Use :class:`ClassName` for cross-references"
+      - "Blank line before and after code blocks"
+      - "Examples should pass doctest"
+
+    examples:
+      good: |
+        """Calculate imperial rent.
+
+        The formula applies Marxist value theory to compute
+        the surplus extracted via unequal exchange.
+
+        Args:
+            wages: Currency amount paid to workers
+            value: Currency amount of value produced
+
+        Returns:
+            Imperial rent (Phi) extracted
+
+        Example:
+            >>> calculate_imperial_rent(wages=100.0, value=80.0)
+            20.0
+
+        See Also:
+            :func:`calculate_exploitation_rate`
+        """
+      bad: |
+        """
+        Calculate imperial rent.
+        Uses `code` markdown style - WRONG for RST
+        Returns the **bold without spaces**error
+        """
+
+# =============================================================================
+# LINTING TOOLING
+# =============================================================================
+
+linting:
+
+  ruff:
+    config_file: "pyproject.toml"
+    version: "^0.14.0"
+    important: "Must match pre-commit version exactly"
+    settings:
+      line_length: 100
+      target_version: "py312"
+      select:
+        - "E"   # pycodestyle errors
+        - "W"   # pycodestyle warnings
+        - "F"   # pyflakes
+        - "I"   # isort
+        - "B"   # bugbear
+        - "C4"  # comprehensions
+        - "UP"  # pyupgrade
+        - "ARG" # unused arguments
+        - "SIM" # simplify
+      ignore:
+        - "E501"  # line length (handled by formatter)
+
+  mypy:
+    config_file: "pyproject.toml"
+    mode: "strict"
+    settings:
+      python_version: "3.12"
+      strict: true
+      disallow_untyped_defs: true
+      warn_return_any: true
+      show_error_codes: true
+      exclude: ["tests/", "build/", "dist/", "assets/music/"]
+
+  yamllint:
+    config_file: ".yamllint.yaml"
+    settings:
+      line_length: 120
+      indentation: 2
+      truthy_allowed: ["true", "false", "on", "off", "yes", "no"]
+    ignore:
+      - ".venv/"
+      - ".git/"
+      - "node_modules/"
+      - "brainstorm/"
+      - "docs/character_sheets/"
+      - "ai-docs/"
+    reason_for_ai_docs_ignore: "Prose with long lines, not infrastructure config"
+
+# =============================================================================
+# PYTHON TOOLING
+# =============================================================================
+
+python:
+
+  poetry:
+    config_file: "pyproject.toml"
+    version: "1.8.4"
+    dependency_groups:
+      main: "Core runtime dependencies"
+      dev: "Testing, linting, type checking"
+      docs: "Sphinx and documentation tools"
+
+  pytest:
+    config_file: "pyproject.toml"
+    markers:
+      unit: "Fast unit tests for isolated components"
+      math: "Deterministic mathematical formulas"
+      ledger: "Economic/Political state tests"
+      topology: "Graph/Network operations"
+      integration: "Database/ChromaDB tests"
+      ai: "AI/RAG evaluation tests (slow, non-deterministic)"
+    asyncio_mode: "strict"
+
+  mise:
+    config_file: "mise.toml"
+    purpose: "Task runner"
+    key_tasks:
+      ci: "Quick CI: lint + format + typecheck + test-fast"
+      test: "Run all non-AI tests"
+      test_fast: "Fast math/engine tests only"
+      typecheck: "MyPy strict mode"
+      docs_live: "Live-reload documentation server"
+      analyze_trace: "Single sim with full time-series CSV"
+      analyze_sweep: "Parameter sweep with summary metrics"
+
+# =============================================================================
+# KNOWN ISSUES AND WORKAROUNDS
+# =============================================================================
+
+known_issues:
+
+  sphinx_duplicate_warnings:
+    problem: "Classes re-exported in __init__.py documented twice"
+    solution: "autosummary_imported_members = False"
+    reference: "ADR022_sphinx_autosummary_config"
+
+  ruff_version_mismatch:
+    problem: "Different ruff versions in Poetry vs pre-commit cause format differences"
+    solution: "Always keep versions in sync: pyproject.toml and .pre-commit-config.yaml"
+    ci_impact: "Style job fails if versions drift"
+
+  yamllint_prose:
+    problem: "Prose files in ai-docs/ exceed line length limits"
+    solution: "Add ai-docs/ to yamllint ignore in .yamllint.yaml"
+    rationale: "Prose is not infrastructure config, line limits don't apply"
+
+  python_313_test_flakiness:
+    problem: "Some tests fail on Python 3.13 due to timing differences"
+    example: "timestamp collision in checkpoint tests"
+    solution: "Add time.sleep(0.01) between time-sensitive operations"
+    note: "Python 3.13 tests run in extended-analysis, not main CI"

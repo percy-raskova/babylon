@@ -2,7 +2,7 @@
 # Key decisions and their rationale (ADR-style)
 
 meta:
-  version: "1.4.0"
+  version: "1.5.0"
   updated: "2025-12-11"
   format: "decision_id: {status, date, context, decision, rationale, consequences}"
 
@@ -1282,6 +1282,290 @@ pending:
     integration:
       extends: "src/babylon/ai/director.py (NarrativeDirector)"
       ui: "brainstorm/ui/digital-grow-room.md (The Wire panel)"
+
+  ADR021_cicd_philosophy:
+    status: "accepted"
+    date: "2025-12-11"
+    title: "CI/CD Philosophy: Block on Correctness, Not Style"
+    context: |
+      Initial CI pipeline had 6+ jobs including yamllint, markdownlint, and
+      Python 3.13 matrix testing. This created friction:
+      - Prose in ai-docs/ failed yamllint line length checks
+      - Style differences blocked merges when pre-commit wasn't run locally
+      - Python 3.13 tests were informational noise (not production target)
+
+      Question: What should CI actually block on for a game project?
+
+    decision: |
+      Simplified CI to 3 jobs with clear philosophy:
+
+      1. **ci** (blocks merge): Lint, Type Check, Test
+         - Ruff check (likely bugs)
+         - MyPy strict (type errors)
+         - Pytest -m "not ai" (functionality)
+
+      2. **docs** (blocks merge): Documentation Build
+         - Sphinx -W (warnings as errors)
+         - Doctest modules (example code works)
+
+      3. **style** (informational): Style Check
+         - Ruff format --check
+         - continue-on-error: true (never blocks)
+
+      Extended analysis (releases/weekly) in separate workflow:
+      - Python version matrix (3.12, 3.13)
+      - Parameter sweep analysis
+      - AI/RAG evaluation tests
+
+    rationale:
+      - "This is a game, not enterprise banking software"
+      - "Style is local concern (pre-commit hooks)"
+      - "CI should catch bugs, not formatting"
+      - "Reduce friction = more commits = faster iteration"
+      - "Extended tests run when useful, not on every PR"
+
+    files:
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/extended-analysis.yml"
+
+    consequences:
+      positive:
+        - "Faster CI runs (~2 min vs ~5 min)"
+        - "Less false-positive blocking"
+        - "Clear separation of concerns"
+        - "ai-docs/ can have prose-length lines"
+      negative:
+        - "Style issues may slip through if pre-commit skipped"
+        - "Python 3.13 compatibility not continuously tested"
+
+    related_mantras:
+      - "block_on_correctness"
+      - "test_logic_not_ai"
+
+  ADR022_sphinx_autosummary_config:
+    status: "accepted"
+    date: "2025-12-11"
+    title: "Configure Sphinx to Handle Python Re-Exports"
+    context: |
+      Sphinx documentation build produced 2016 warnings, primarily:
+      "duplicate object description of babylon.engine.Event"
+
+      Investigation revealed the root cause:
+
+      Python's __init__.py re-exports classes for convenient imports:
+      ```python
+      # babylon/engine/__init__.py
+      from babylon.engine.event_bus import Event
+      __all__ = ["Event", ...]
+      ```
+
+      This is STANDARD Python API design (used by pandas, requests, pydantic).
+      Users import `from babylon.engine import Event` instead of the full path.
+
+      Sphinx's autosummary with `autosummary_generate = True` documents
+      classes in BOTH locations:
+      1. babylon.engine.Event (from re-export)
+      2. babylon.engine.event_bus.Event (from original)
+
+      This creates duplicate cross-reference warnings.
+
+    decision: |
+      Configure Sphinx, don't restructure Python code.
+
+      Key configuration in docs/conf.py:
+      ```python
+      # Only document members where they're DEFINED, not IMPORTED
+      autosummary_imported_members = False
+      ```
+
+      This tells Sphinx: when Event is imported into __init__.py,
+      don't document it again there. Document it only in event_bus.py.
+
+    rationale:
+      - "Re-exports are intentional API design, not a mistake"
+      - "Same object in memory: Event1 is Event2 → True"
+      - "Users expect `from babylon.engine import Event`"
+      - "Flattening __init__.py would break imports across codebase"
+      - "Tool should conform to codebase, not vice versa"
+
+    implementation:
+      config_changes:
+        - "autosummary_imported_members = False"
+        - "html_static_path = [] (no custom static files)"
+      docstring_fixes:
+        - "factories.py: **kwargs RST markup"
+        - "scenarios.py: topology diagram formatting"
+        - "struggle.py: docstring emphasis"
+        - "relationship.py: code block fencing"
+        - "formulas.py: block quote formatting"
+      module_path_fixes:
+        - "docs/api/systems.rst: 6 incorrect module paths"
+      exports_added:
+        - "SolidaritySystem to __init__.py"
+        - "TerritorySystem to __init__.py"
+
+    consequences:
+      positive:
+        - "Zero Sphinx warnings"
+        - "Python API surface unchanged"
+        - "Import patterns preserved"
+        - "CI now fails on doc warnings (-W flag)"
+      negative:
+        - "Must understand autosummary behavior for future docs"
+        - "Some classes only documented in submodule docs"
+
+    related_mantras:
+      - "codebase_is_truth"
+      - "differentiate_structural_issues"
+      - "docstrings_enable_sphinx"
+
+  ADR023_python_reexport_pattern:
+    status: "accepted"
+    date: "2025-12-11"
+    title: "Python Re-Export Pattern in __init__.py is Intentional"
+    context: |
+      During Sphinx warning investigation, question arose:
+      "Is the re-export pattern a ticking time bomb or just a Sphinx issue?"
+
+      Re-export pattern in question:
+      ```python
+      # babylon/engine/__init__.py
+      from babylon.engine.event_bus import Event
+      from babylon.engine.simulation_engine import SimulationEngine
+      __all__ = ["Event", "SimulationEngine", ...]
+      ```
+
+      Verified with Python runtime:
+      ```python
+      from babylon.engine import Event as Event1
+      from babylon.engine.event_bus import Event as Event2
+
+      Event1 is Event2  # True
+      id(Event1) == id(Event2)  # True
+      Event1.__module__  # 'babylon.engine.event_bus'
+      ```
+
+    decision: |
+      KEEP the re-export pattern. This is standard Python API design.
+
+      The re-export does NOT create copies. Python's import system
+      ensures there is exactly ONE object in memory. The __init__.py
+      re-export simply provides an alternative import path.
+
+      Benefits:
+      1. Cleaner imports: `from babylon.engine import Event`
+      2. API stability: internal reorganization doesn't break imports
+      3. Intentional public surface: __all__ declares what's "public"
+      4. Industry standard: pandas, requests, pydantic all do this
+
+    rationale:
+      - "This is not duplication - it's aliasing"
+      - "Same id(), same __module__, same object"
+      - "Standard Python practice for public APIs"
+      - "Removing re-exports would break existing imports"
+      - "Sphinx issue is tooling, not architecture"
+
+    verification_performed:
+      - "Runtime object identity check (is operator)"
+      - "Memory address check (id function)"
+      - "Module attribute verification (__module__)"
+      - "Major library pattern analysis"
+
+    consequences:
+      positive:
+        - "Clean public API surface"
+        - "Internal refactoring flexibility"
+        - "Industry-standard pattern"
+      negative:
+        - "Sphinx needs configuration (ADR022)"
+        - "Two import paths exist (may confuse new devs)"
+
+    related_mantras:
+      - "codebase_is_truth"
+      - "differentiate_structural_issues"
+
+  ADR024_documentation_system:
+    status: "accepted"
+    date: "2025-12-11"
+    title: "Sphinx Documentation with RST and Autodoc"
+    context: |
+      Babylon needs documentation for:
+      1. Human developers (API reference, guides)
+      2. AI assistants (machine-readable context)
+      3. Theoretical reference (MLM-TW concepts)
+
+      Multiple documentation approaches evaluated.
+
+    decision: |
+      Tiered documentation system:
+
+      **Tier 1: Sphinx (Human-Readable)**
+      - Location: docs/
+      - Format: RST with MyST for Markdown
+      - Generation: Autodoc from docstrings
+      - Output: HTML (local), potentially ReadTheDocs
+      - CI: Build with -W (warnings fatal)
+
+      **Tier 2: AI Docs (Machine-Readable)**
+      - Location: ai-docs/
+      - Format: YAML
+      - Purpose: Context for AI assistants
+      - Files: architecture, decisions, ontology, patterns, anti-patterns
+      - Tokens: Optimized for context windows
+
+      **Tier 3: Brainstorm (Ideas)**
+      - Location: brainstorm/
+      - Format: Markdown
+      - Purpose: Design exploration, deferred ideas
+      - Status: Not documentation, working notes
+
+      **Docstring Standards**:
+      - All public classes/functions: docstrings required
+      - Format: RST-compatible (Sphinx autodoc)
+      - Examples: Should pass doctest
+      - Cross-references: :class:`Name`, :func:`name`
+
+    rationale:
+      - "Sphinx is Python standard, well-maintained"
+      - "Autodoc keeps docs in sync with code"
+      - "AI docs are token-efficient for context windows"
+      - "Separation prevents docs from becoming stale"
+      - "CI enforcement ensures docs build correctly"
+
+    files:
+      sphinx:
+        - "docs/conf.py"
+        - "docs/index.rst"
+        - "docs/api/*.rst"
+        - "docs/concepts/*.rst"
+      ai_docs:
+        - "ai-docs/*.yaml"
+        - "ai-docs/README.md"
+      brainstorm:
+        - "brainstorm/mechanics/*.md"
+        - "brainstorm/deferred-ideas.md"
+
+    ci_integration:
+      job: "docs"
+      commands:
+        - "poetry run pytest --doctest-modules src/babylon/systems/formulas.py"
+        - "cd docs && poetry run sphinx-build -W -b html . _build/html"
+      failure_mode: "Blocks merge"
+
+    consequences:
+      positive:
+        - "Single source of truth (docstrings)"
+        - "CI catches documentation issues"
+        - "AI docs optimized for AI context"
+        - "Clear separation of concerns"
+      negative:
+        - "Three documentation locations to maintain"
+        - "RST formatting has learning curve"
+        - "Docstrings must be kept Sphinx-compatible"
+
+    related_mantras:
+      - "docstrings_enable_sphinx"
+      - "explain_why_not_what"
 
 # =============================================================================
 # REJECTED DECISIONS

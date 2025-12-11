@@ -170,46 +170,17 @@ myst_fence_as_directive = ["mermaid"]
 
 # -- Options for LaTeX/PDF output --------------------------------------------
 
-# 6 PDF books: comprehensive + 4 quadrants + commentary
+# 2 PDF books: main documentation + commentary
 latex_documents = [
-    # 1. Complete comprehensive book (all docs combined)
+    # 1. Main documentation (tutorials, how-to, concepts, reference, API)
     (
-        "index",
-        "babylon-complete.tex",
+        "docs-pdf-index",
+        "babylon-docs.tex",
         "Babylon: The Fall of America",
         "Babylon Development Team",
         "manual",
     ),
-    # 2-5. Per-quadrant books
-    (
-        "tutorials/index",
-        "babylon-tutorials.tex",
-        "Babylon Tutorials",
-        "Babylon Development Team",
-        "howto",
-    ),
-    (
-        "how-to/index",
-        "babylon-how-to.tex",
-        "Babylon How-To Guides",
-        "Babylon Development Team",
-        "howto",
-    ),
-    (
-        "concepts/index",
-        "babylon-concepts.tex",
-        "Babylon Concepts",
-        "Babylon Development Team",
-        "manual",
-    ),
-    (
-        "reference/index",
-        "babylon-reference.tex",
-        "Babylon Reference",
-        "Babylon Development Team",
-        "manual",
-    ),
-    # 6. Meta-commentary book
+    # 2. Meta-commentary book (design philosophy, theoretical foundations)
     (
         "commentary/index",
         "babylon-commentary.tex",

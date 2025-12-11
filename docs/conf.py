@@ -28,6 +28,7 @@ extensions = [
     "sphinx.ext.doctest",  # Run doctest examples
     "sphinx_autodoc_typehints",
     "myst_parser",
+    "sphinxcontrib.mermaid",  # Mermaid diagram support
 ]
 
 # Templates path
@@ -148,3 +149,14 @@ autosummary_imported_members = False  # Prevent documenting re-exported members 
 # Duplicate object description warnings are expected behavior with Pydantic models
 # being re-exported in __init__.py files. These don't affect documentation quality.
 # The warnings cannot be suppressed with suppress_warnings but don't block the build.
+
+# Mermaid configuration (sphinxcontrib-mermaid v1.2.3)
+# See: https://github.com/mgaitan/sphinxcontrib-mermaid
+mermaid_version = "11.4.1"  # Latest stable from jsdelivr CDN
+mermaid_init_config = {
+    "startOnLoad": True,
+    "theme": "neutral",  # Options: default, forest, dark, neutral
+}
+
+# Enable mermaid fences in MyST markdown files
+myst_fence_as_directive = ["mermaid"]

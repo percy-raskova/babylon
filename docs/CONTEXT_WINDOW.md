@@ -103,17 +103,18 @@ When the context window approaches the capacity threshold (default 75%):
 - **2122** - Configuration Error
 
 ### Exception Hierarchy
-```python
-ContextWindowError (2100)
-├── TokenCountError (2101)
-├── CapacityExceededError (2102)
-├── OptimizationFailedError (2103)
-├── ContentPriorityError (2110)
-├── ContentRemovalError (2111)
-├── ContentInsertionError (2112)
-├── LifecycleIntegrationError (2120)
-├── MetricsCollectionError (2121)
-└── ConfigurationError (2122)
+
+```{mermaid}
+flowchart TB
+    CWE["ContextWindowError (2100)"] --> TCE["TokenCountError (2101)"]
+    CWE --> CEE["CapacityExceededError (2102)"]
+    CWE --> OFE["OptimizationFailedError (2103)"]
+    CWE --> CPE["ContentPriorityError (2110)"]
+    CWE --> CRE["ContentRemovalError (2111)"]
+    CWE --> CIE["ContentInsertionError (2112)"]
+    CWE --> LIE["LifecycleIntegrationError (2120)"]
+    CWE --> MCE["MetricsCollectionError (2121)"]
+    CWE --> CFE["ConfigurationError (2122)"]
 ```
 
 ## Current Status

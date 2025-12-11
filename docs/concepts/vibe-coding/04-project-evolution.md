@@ -84,13 +84,12 @@ The refactor touched 15+ files, changed 987 tests, and produced a more theoretic
 
 The project evolved from a simple two-node model (worker vs capitalist) to a four-node Imperial Circuit:
 
-```
-P_w (Periphery Worker) ←──EXPLOITATION──→ P_c (Comprador)
-         │                                      │
-         │                                      │TRIBUTE
-         │                                      ↓
-         └──────SOLIDARITY────────→ C_w ←──WAGES── C_b (Core Bourgeoisie)
-                                (Core Worker)
+```{mermaid}
+graph LR
+    Pw["P_w (Periphery Worker)"] <-->|EXPLOITATION| Pc["P_c (Comprador)"]
+    Pc -->|TRIBUTE| Cb["C_b (Core Bourgeoisie)"]
+    Cb -->|WAGES| Cw["C_w (Core Worker)"]
+    Pw -.->|SOLIDARITY| Cw
 ```
 
 This evolution required:

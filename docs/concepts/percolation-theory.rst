@@ -55,21 +55,16 @@ Where:
 
 When the percolation ratio crosses 0.5, a **phase transition** occurs.
 
-.. code-block:: text
+.. mermaid::
 
-   Percolation Ratio
-        │
-      1.0├────────────────────────────────
-        │                    ●●●●●  LIQUID
-        │                  ●●
-      0.5├─────────────────●─────────────  ← Phase Transition
-        │              ●●●
-        │           ●●●
-        │        ●●●
-      0.1├─────●●●────────────────────────
-        │   ●●●                    GASEOUS
-      0.0├●●─────────────────────────────
-        └──────────────────────────────── Time (ticks)
+   xychart-beta
+       title "Percolation Ratio Over Time"
+       x-axis "Time (ticks)" [0, 10, 20, 30, 40, 50]
+       y-axis "p(t)" 0 --> 1
+       line [0.05, 0.15, 0.25, 0.40, 0.52, 0.75, 0.95]
+
+The chart shows the phase transition: below 0.5 is GASEOUS (atomized),
+above 0.5 is LIQUID (connected solidarity network).
 
 Key Metrics
 -----------
@@ -144,18 +139,26 @@ The **Sword of Damocles** test simulates state repression:
 
 **Network Topology Matters:**
 
-.. code-block:: text
+.. mermaid::
 
-   STAR TOPOLOGY (Fragile)        MESH TOPOLOGY (Resilient)
+   flowchart TB
+       subgraph STAR["STAR TOPOLOGY (Fragile)"]
+           S0((Hub)) --- S1((●))
+           S0 --- S2((●))
+           S0 --- S3((●))
+           S0 --- S4((●))
+       end
+       subgraph MESH["MESH TOPOLOGY (Resilient)"]
+           M1((●)) --- M2((●)) --- M3((●))
+           M4((●)) --- M5((●)) --- M6((●))
+           M7((●)) --- M8((●)) --- M9((●))
+           M1 --- M4 --- M7
+           M2 --- M5 --- M8
+           M3 --- M6 --- M9
+       end
 
-        ●                             ●───●───●
-       /│\                            │ ╲ │ ╱ │
-      ● ● ●  ← Remove center         ●───●───●
-       \│/      = Total collapse      │ ╱ │ ╲ │
-        ●                             ●───●───●
-
-                                  ← Remove any node
-                                    = Network survives
+**Star**: Remove center = Total collapse.
+**Mesh**: Remove any node = Network survives.
 
 Narrative Events
 ----------------

@@ -221,15 +221,16 @@ def create_imperial_circuit_scenario(
     super-wages incorrectly flow to periphery workers. In MLM-TW theory, super-wages
     should only go to the Labor Aristocracy (core workers), NOT periphery workers.
 
-    Topology::
+    Topology:
 
-        P_w (P001) --EXPLOITATION--> P_c (P002) --TRIBUTE--> C_b (C001) --WAGES--> C_w (C002)
-                                          |                         |
-                                     (keeps 15% cut)          CLIENT_STATE
-                                          ^-----------------------+
-                                          |
-                                    SOLIDARITY (strength=0.0)
-                                          +<------------------------- P_w
+    .. mermaid::
+
+       graph LR
+           Pw["P_w (Periphery Workers)"] -->|EXPLOITATION| Pc["P_c (Comprador)"]
+           Pc -->|TRIBUTE| Cb["C_b (Core Bourgeoisie)"]
+           Cb -->|WAGES| Cw["C_w (Labor Aristocracy)"]
+           Cb -->|CLIENT_STATE| Pc
+           Pw -.->|"SOLIDARITY (0.0)"| Cw
 
     Value Flow:
 

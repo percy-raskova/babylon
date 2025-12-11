@@ -60,3 +60,5 @@ ignore: |
   .git/
   node_modules/
   brainstorm/
+  docs/character_sheets/
+  ai-docs/

@@ -85,8 +85,8 @@ class SurvivalSystem:
         # Get formulas from registry
         calculate_acquiescence_probability = services.formulas.get("acquiescence_probability")
         calculate_revolution_probability = services.formulas.get("revolution_probability")
-        survival_steepness = services.config.survival_steepness
-        default_subsistence = services.config.subsistence_threshold
+        survival_steepness = services.defines.survival.steepness_k
+        default_subsistence = services.defines.survival.default_subsistence
 
         for node_id, data in graph.nodes(data=True):
             wealth = data.get("wealth", 0.0)

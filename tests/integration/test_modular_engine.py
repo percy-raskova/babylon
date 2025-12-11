@@ -62,10 +62,10 @@ class TestRefactorDeterminism:
 
     def test_100_tick_determinism(self) -> None:
         """100 ticks produce consistent final state."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         for _ in range(100):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         # With PPP model, worker receives super-wages that offset extraction losses.
         # The net effect depends on extraction_efficiency vs wage_rate.
@@ -83,10 +83,10 @@ class TestRefactorDeterminism:
 
     def test_step_function_unchanged(self) -> None:
         """step() function signature and behavior unchanged."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         # Single step works
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
         assert new_state.tick == 1
         assert new_state is not state
 

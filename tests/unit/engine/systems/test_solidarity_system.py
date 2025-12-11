@@ -16,9 +16,9 @@ Test Intent:
 import networkx as nx
 import pytest
 
+from babylon.config.defines import GameDefines, SolidarityDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.solidarity import SolidaritySystem
-from babylon.models.config import SimulationConfig
 from babylon.models.enums import EdgeType, EventType
 
 
@@ -487,9 +487,10 @@ class TestSolidaritySystemConfig:
             solidarity_strength=0.8,
         )
 
-        # Custom config with higher threshold
-        config = SimulationConfig(solidarity_activation_threshold=0.4)
-        services = ServiceContainer.create(config)
+        # Custom defines with higher threshold (now in GameDefines, not SimulationConfig)
+        custom_solidarity = SolidarityDefines(activation_threshold=0.4)
+        defines = GameDefines(solidarity=custom_solidarity)
+        services = ServiceContainer.create(defines=defines)
         context: dict[str, int] = {"tick": 1}
         system = SolidaritySystem()
 
@@ -500,7 +501,7 @@ class TestSolidaritySystemConfig:
         assert graph.nodes["C_w"]["ideology"]["class_consciousness"] == pytest.approx(0.1, abs=0.01)
 
     def test_custom_mass_awakening_threshold(self) -> None:
-        """System uses config's mass_awakening_threshold for events."""
+        """System uses defines' mass_awakening_threshold for events."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         # consciousness 0.9
@@ -523,8 +524,10 @@ class TestSolidaritySystemConfig:
             solidarity_strength=0.5,
         )
 
-        config = SimulationConfig(mass_awakening_threshold=0.8)
-        services = ServiceContainer.create(config)
+        # Custom defines with higher threshold (now in GameDefines, not SimulationConfig)
+        custom_solidarity = SolidarityDefines(mass_awakening_threshold=0.8)
+        defines = GameDefines(solidarity=custom_solidarity)
+        services = ServiceContainer.create(defines=defines)
         context: dict[str, int] = {"tick": 1}
         system = SolidaritySystem()
 

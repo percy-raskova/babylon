@@ -9,6 +9,7 @@ Multiverse Protocol: Scenario injection for counterfactual simulation.
 
 from __future__ import annotations
 
+from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
@@ -24,7 +25,7 @@ def create_two_node_scenario(
     repression_level: float = 0.5,
     worker_organization: float = 0.1,
     worker_ideology: float = 0.0,
-) -> tuple[WorldState, SimulationConfig]:
+) -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create the minimal viable dialectic: one worker, one owner, one exploitation edge.
 
     This is the two-node scenario from the Phase 1 blueprint, now ready for
@@ -42,10 +43,10 @@ def create_two_node_scenario(
         worker_ideology: Worker ideology, -1=revolutionary to +1=reactionary (default 0.0)
 
     Returns:
-        Tuple of (WorldState, SimulationConfig) ready for step() function.
+        Tuple of (WorldState, SimulationConfig, GameDefines) ready for step() function.
 
     Example:
-        >>> state, config = create_two_node_scenario()
+        >>> state, config, defines = create_two_node_scenario()
         >>> for _ in range(100):
         ...     state = step(state, config)
         >>> print(f"Worker wealth after 100 ticks: {state.entities['C001'].wealth}")
@@ -124,30 +125,43 @@ def create_two_node_scenario(
         event_log=[],
     )
 
-    # Create configuration
-    config = SimulationConfig(
+    # Create configuration (IT-level settings only)
+    config = SimulationConfig()
+
+    # Create GameDefines with scenario-specific game balance parameters
+    # (Paradox Refactor: game math now lives in GameDefines, not SimulationConfig)
+    economy_defines = EconomyDefines(
         extraction_efficiency=extraction_efficiency,
-        repression_level=repression_level,
-        subsistence_threshold=0.3,
-        survival_steepness=10.0,
-        consciousness_sensitivity=0.5,
-        initial_worker_wealth=worker_wealth,
-        initial_owner_wealth=owner_wealth,
+    )
+    survival_defines = SurvivalDefines(
+        default_repression=repression_level,
+        default_subsistence=0.3,
+        steepness_k=10.0,
+    )
+    defines = GameDefines(
+        economy=economy_defines,
+        survival=survival_defines,
+        initial=GameDefines().initial.model_copy(
+            update={
+                "worker_wealth": worker_wealth,
+                "owner_wealth": owner_wealth,
+            }
+        ),
     )
 
-    return state, config
+    return state, config, defines
 
 
-def create_high_tension_scenario() -> tuple[WorldState, SimulationConfig]:
+def create_high_tension_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create a scenario with high initial tension.
 
     Worker is poor, owner is rich, tension is already elevated.
     Useful for testing phase transitions and rupture conditions.
 
     Returns:
-        Tuple of (WorldState, SimulationConfig) near rupture point.
+        Tuple of (WorldState, SimulationConfig, GameDefines) near rupture point.
     """
-    state, config = create_two_node_scenario(
+    state, config, defines = create_two_node_scenario(
         worker_wealth=0.1,  # Near poverty
         owner_wealth=0.9,  # Very wealthy
         extraction_efficiency=0.9,  # High exploitation
@@ -170,17 +184,17 @@ def create_high_tension_scenario() -> tuple[WorldState, SimulationConfig]:
         )
         state = state.model_copy(update={"relationships": [tensioned_rel]})
 
-    return state, config
+    return state, config, defines
 
 
-def create_labor_aristocracy_scenario() -> tuple[WorldState, SimulationConfig]:
+def create_labor_aristocracy_scenario() -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create a scenario with a labor aristocracy (Wc > Vc).
 
     Worker receives more than they produce, enabled by imperial rent
     from elsewhere. Tests consciousness decay mechanics.
 
     Returns:
-        Tuple of (WorldState, SimulationConfig) with labor aristocracy.
+        Tuple of (WorldState, SimulationConfig, GameDefines) with labor aristocracy.
     """
     return create_two_node_scenario(
         worker_wealth=0.8,  # Well-off worker
@@ -199,7 +213,7 @@ def create_imperial_circuit_scenario(
     imperial_rent_pool: float = 100.0,
     extraction_efficiency: float = 0.8,
     repression_level: float = 0.5,
-) -> tuple[WorldState, SimulationConfig]:
+) -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create the 4-node Imperial Circuit scenario.
 
     This scenario fixes the "Robin Hood" bug in create_two_node_scenario() where
@@ -231,10 +245,10 @@ def create_imperial_circuit_scenario(
         repression_level: Base repression level (default 0.5)
 
     Returns:
-        Tuple of (WorldState, SimulationConfig) ready for step() function.
+        Tuple of (WorldState, SimulationConfig, GameDefines) ready for step() function.
 
     Example:
-        >>> state, config = create_imperial_circuit_scenario()
+        >>> state, config, defines = create_imperial_circuit_scenario()
         >>> # Verify wages go to labor aristocracy, not periphery
         >>> wages_edges = [r for r in state.relationships if r.edge_type == EdgeType.WAGES]
         >>> assert state.entities[wages_edges[0].target_id].role == SocialRole.LABOR_ARISTOCRACY
@@ -364,21 +378,28 @@ def create_imperial_circuit_scenario(
         event_log=[],
     )
 
-    # Create configuration with high PPP multiplier for labor aristocracy
-    config = SimulationConfig(
+    # Create configuration (IT-level settings only)
+    config = SimulationConfig()
+
+    # Create GameDefines with scenario-specific game balance parameters
+    # (Paradox Refactor: game math now lives in GameDefines, not SimulationConfig)
+    economy_defines = EconomyDefines(
         extraction_efficiency=extraction_efficiency,
-        repression_level=repression_level,
-        subsistence_threshold=0.3,
-        survival_steepness=10.0,
-        consciousness_sensitivity=0.5,
-        initial_worker_wealth=periphery_wealth,
-        initial_owner_wealth=core_wealth,
         comprador_cut=comprador_cut,
         superwage_multiplier=1.5,  # High PPP for labor aristocracy
         initial_rent_pool=imperial_rent_pool,
     )
+    survival_defines = SurvivalDefines(
+        default_repression=repression_level,
+        default_subsistence=0.3,
+        steepness_k=10.0,
+    )
+    defines = GameDefines(
+        economy=economy_defines,
+        survival=survival_defines,
+    )
 
-    return state, config
+    return state, config, defines
 
 
 # =============================================================================

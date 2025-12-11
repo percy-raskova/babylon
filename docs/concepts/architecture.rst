@@ -11,11 +11,8 @@ Overview
 The simulation runs locally without external servers, using what we call
 the **Embedded Trinity**:
 
-.. figure:: /_static/architecture.png
-   :alt: Embedded Trinity Architecture
-   :align: center
-
-   The three pillars of Babylon's architecture (diagram placeholder)
+.. note::
+   Architecture diagram (The Embedded Trinity) planned for future addition.
 
 1. **The Ledger** - Rigid material state (Pydantic/SQLite)
 2. **The Topology** - Fluid relational state (NetworkX)

@@ -124,13 +124,15 @@ class StruggleSystem:
     ContradictionSystem. It gives agency to oppressed classes through
     the Stochastic Riot mechanic:
 
-    1. Calculate EXCESSIVE_FORCE probability: spark_prob = repression * spark_scale
+    1. Calculate EXCESSIVE_FORCE probability: ``spark_prob = repression * spark_scale``
     2. Roll for spark occurrence
-    3. Check uprising condition: (Spark OR P(S|R) > P(S|A)) AND agitation > threshold
+    3. Check uprising condition: ``(Spark OR P(S|R) > P(S|A)) AND agitation > threshold``
     4. Execute uprising:
-       - Economic damage: wealth *= (1 - destruction_rate)
+
+       - Economic damage: ``wealth *= (1 - destruction_rate)``
        - Solidarity gain: Increase solidarity_strength on incoming SOLIDARITY edges
        - Class consciousness gain: All nodes in uprising gain consciousness
+
     5. Emit events for narrative layer
 
     The solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1.

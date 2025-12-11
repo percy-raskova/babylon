@@ -5,6 +5,7 @@ to explore different counterfactual paths. This enables the "Multiverse Protocol
 where we run 2^N permutations of High/Low values to prove mathematical divergence.
 
 Sprint 1 (Multiverse Protocol): Initial implementation with three parameters:
+
 - superwage_multiplier: Multiplier for imperial superwage extraction efficiency
 - solidarity_index: Base strength for SOLIDARITY edges
 - repression_capacity: State violence capacity modifier
@@ -13,7 +14,8 @@ Paradox Refactor: Renamed rent_level -> superwage_multiplier for theory alignmen
 The term "superwage" (from MLM-TW theory) more accurately describes the mechanism
 where core workers receive wages above value produced, subsidized by imperial rent.
 
-Usage:
+Usage::
+
     from babylon.models.scenario import ScenarioConfig
 
     scenario = ScenarioConfig(

@@ -20,7 +20,8 @@ class TestApplyScenarioBasics:
     @pytest.fixture
     def base_scenario(self) -> tuple[WorldState, SimulationConfig]:
         """Create a base two-node scenario for testing."""
-        return create_two_node_scenario()
+        state, config, _ = create_two_node_scenario()
+        return state, config
 
     @pytest.mark.unit
     def test_returns_tuple(self, base_scenario: tuple[WorldState, SimulationConfig]) -> None:
@@ -75,7 +76,8 @@ class TestApplyScenarioSuperwageMultiplier:
     @pytest.fixture
     def base_scenario(self) -> tuple[WorldState, SimulationConfig]:
         """Create a base two-node scenario for testing."""
-        return create_two_node_scenario(extraction_efficiency=0.8)
+        state, config, _ = create_two_node_scenario(extraction_efficiency=0.8)
+        return state, config
 
     @pytest.mark.unit
     def test_superwage_multiplier_sets_config_superwage_multiplier(
@@ -142,7 +144,7 @@ class TestApplyScenarioSolidarityIndex:
     @pytest.fixture
     def base_scenario_with_solidarity(self) -> tuple[WorldState, SimulationConfig]:
         """Create a scenario with a SOLIDARITY edge for testing."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         # Add a SOLIDARITY edge from C001 to C002
         from babylon.models.entities.relationship import Relationship
@@ -209,7 +211,8 @@ class TestApplyScenarioRepressionCapacity:
     @pytest.fixture
     def base_scenario(self) -> tuple[WorldState, SimulationConfig]:
         """Create a base two-node scenario for testing."""
-        return create_two_node_scenario(repression_level=0.5)
+        state, config, _ = create_two_node_scenario(repression_level=0.5)
+        return state, config
 
     @pytest.mark.unit
     def test_repression_capacity_updates_social_class_repression(
@@ -257,7 +260,7 @@ class TestApplyScenarioCombined:
     @pytest.fixture
     def base_scenario_with_solidarity(self) -> tuple[WorldState, SimulationConfig]:
         """Create a scenario with a SOLIDARITY edge for testing."""
-        state, config = create_two_node_scenario(
+        state, config, _ = create_two_node_scenario(
             extraction_efficiency=0.8,
             repression_level=0.5,
         )
@@ -319,7 +322,7 @@ class TestApplyScenarioCombined:
         PPP Model: High superwage_multiplier means workers get more effective
         purchasing power, making revolution less attractive (stability for capital).
         """
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         scenario = ScenarioConfig(
             name="HighSW_LowSol_HighRep",
@@ -343,7 +346,7 @@ class TestApplyScenarioCombined:
         PPP Model: Low superwage_multiplier means workers get less effective
         purchasing power, making revolution more attractive.
         """
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         scenario = ScenarioConfig(
             name="LowSW_HighSol_LowRep",
@@ -369,7 +372,7 @@ class TestApplyScenarioIntegration:
         """Test that apply_scenario output can be passed to step()."""
         from babylon.engine.simulation_engine import step
 
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
         scenario = ScenarioConfig(
             name="integration_test",
             rent_level=1.2,
@@ -380,6 +383,6 @@ class TestApplyScenarioIntegration:
         new_state, new_config = apply_scenario(state, config, scenario)
 
         # Should not raise any errors
-        result = step(new_state, new_config)
+        result = step(new_state, new_config, defines=defines)
 
         assert result.tick == new_state.tick + 1

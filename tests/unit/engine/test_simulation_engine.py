@@ -9,6 +9,7 @@ Sprint 5: SimulationEngine for Phase 2 game loop.
 
 import pytest
 
+from babylon.config.defines import EconomyDefines, GameDefines
 from babylon.engine.simulation_engine import step
 from babylon.models import (
     EdgeType,
@@ -186,11 +187,13 @@ class TestStepImperialRent:
         two_node_state: WorldState,
     ) -> None:
         """Higher extraction efficiency extracts more rent."""
-        low_config = SimulationConfig(extraction_efficiency=0.3)
-        high_config = SimulationConfig(extraction_efficiency=0.9)
+        config = SimulationConfig()
+        # Paradox Refactor: extraction_efficiency now in GameDefines, not SimulationConfig
+        low_defines = GameDefines(economy=EconomyDefines(extraction_efficiency=0.3))
+        high_defines = GameDefines(economy=EconomyDefines(extraction_efficiency=0.9))
 
-        low_state = step(two_node_state, low_config)
-        high_state = step(two_node_state, high_config)
+        low_state = step(two_node_state, config, defines=low_defines)
+        high_state = step(two_node_state, config, defines=high_defines)
 
         low_rent = low_state.relationships[0].value_flow
         high_rent = high_state.relationships[0].value_flow
@@ -725,9 +728,9 @@ class TestStepConsciousnessDrift:
         # All class consciousness values must be in valid range
         for entity_id, entity in state.entities.items():
             consciousness = entity.ideology.class_consciousness
-            assert (
-                0.0 <= consciousness <= 1.0
-            ), f"Entity {entity_id} class_consciousness {consciousness} out of bounds"
+            assert 0.0 <= consciousness <= 1.0, (
+                f"Entity {entity_id} class_consciousness {consciousness} out of bounds"
+            )
 
 
 # =============================================================================

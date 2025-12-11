@@ -87,7 +87,7 @@ class ImperialRentSystem:
         """
         # Load economy from graph metadata (or create default)
         economy = self._load_economy(graph, services)
-        initial_pool = services.config.initial_rent_pool
+        initial_pool = services.defines.economy.initial_rent_pool
 
         # Track inflow/outflow for this tick
         tick_context = {
@@ -123,7 +123,7 @@ class ImperialRentSystem:
         tribute_inflow to enable wage calculations.
         """
         calculate_imperial_rent = services.formulas.get("imperial_rent")
-        extraction_efficiency = services.config.extraction_efficiency
+        extraction_efficiency = services.defines.economy.extraction_efficiency
 
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
@@ -198,7 +198,7 @@ class ImperialRentSystem:
         Only tribute reaching CORE_BOURGEOISIE nodes contributes to the pool.
         """
         _ = context  # Unused but kept for API consistency
-        comprador_cut = services.config.comprador_cut
+        comprador_cut = services.defines.economy.comprador_cut
 
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
@@ -272,9 +272,9 @@ class ImperialRentSystem:
         super_wage_rate = tick_context["wage_rate"]
 
         # PPP Model parameters
-        superwage_multiplier = services.config.superwage_multiplier
-        superwage_ppp_impact = services.config.superwage_ppp_impact
-        extraction_efficiency = services.config.extraction_efficiency
+        superwage_multiplier = services.defines.economy.superwage_multiplier
+        superwage_ppp_impact = services.defines.economy.superwage_ppp_impact
+        extraction_efficiency = services.defines.economy.extraction_efficiency
 
         # Calculate PPP multiplier: how much purchasing power boost workers get
         # PPP_mult = 1 + (extraction_efficiency * superwage_multiplier * ppp_impact)
@@ -350,8 +350,8 @@ class ImperialRentSystem:
 
         Sprint 3.4.4: Subsidy is capped at available pool after wages.
         """
-        subsidy_trigger_threshold = services.config.subsidy_trigger_threshold
-        subsidy_conversion_rate = services.config.subsidy_conversion_rate
+        subsidy_trigger_threshold = services.defines.economy.subsidy_trigger_threshold
+        subsidy_conversion_rate = services.defines.economy.subsidy_conversion_rate
 
         # Get survival probability formulas
         calculate_acquiescence = services.formulas.get("acquiescence_probability")
@@ -388,7 +388,7 @@ class ImperialRentSystem:
             p_acquiescence = calculate_acquiescence(
                 wealth=target_wealth,
                 subsistence_threshold=target_subsistence,
-                steepness_k=services.config.survival_steepness,
+                steepness_k=services.defines.survival.steepness_k,
             )
             p_revolution = calculate_revolution(
                 cohesion=target_organization,
@@ -487,10 +487,10 @@ class ImperialRentSystem:
         # Calculate aggregate tension from class relationships
         aggregate_tension = self._calculate_aggregate_tension(graph)
 
-        # Get thresholds from config
-        high_threshold = services.config.pool_high_threshold
-        low_threshold = services.config.pool_low_threshold
-        critical_threshold = services.config.pool_critical_threshold
+        # Get thresholds from defines
+        high_threshold = services.defines.economy.pool_high_threshold
+        low_threshold = services.defines.economy.pool_low_threshold
+        critical_threshold = services.defines.economy.pool_critical_threshold
 
         # Call decision formula
         decision, wage_delta, repression_delta = calculate_decision(
@@ -506,8 +506,8 @@ class ImperialRentSystem:
         current_repression = tick_context["repression_level"]
 
         # Clamp new values within bounds
-        min_wage = services.config.min_wage_rate
-        max_wage = services.config.max_wage_rate
+        min_wage = services.defines.economy.min_wage_rate
+        max_wage = services.defines.economy.max_wage_rate
         new_wage_rate = max(min_wage, min(max_wage, current_wage_rate + wage_delta))
         new_repression = max(0.0, min(1.0, current_repression + repression_delta))
 
@@ -575,11 +575,11 @@ class ImperialRentSystem:
         if economy_data is not None:
             return GlobalEconomy.model_validate(economy_data)
 
-        # Create default economy from config
+        # Create default economy from defines
         return GlobalEconomy(
-            imperial_rent_pool=services.config.initial_rent_pool,
-            current_super_wage_rate=services.config.super_wage_rate,
-            current_repression_level=services.config.repression_level,
+            imperial_rent_pool=services.defines.economy.initial_rent_pool,
+            current_super_wage_rate=services.defines.economy.super_wage_rate,
+            current_repression_level=services.defines.survival.default_repression,
         )
 
     def _save_economy(

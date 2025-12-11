@@ -98,12 +98,6 @@ Contents
 
    api/index
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Legacy Guides
-
-   guides/index
-
 Current Systems
 ---------------
 

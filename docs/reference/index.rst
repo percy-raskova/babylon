@@ -3,15 +3,16 @@ Reference
 
 Technical reference documentation for the Babylon simulation engine.
 
-Error Handling
---------------
+Simulation Systems
+------------------
 
 .. toctree::
    :maxdepth: 1
 
-   error-codes
+   systems
 
-Error code taxonomy and error handling conventions.
+API reference for the seven core simulation systems (ImperialRent, Solidarity,
+Consciousness, Survival, Contradiction, Territory, Struggle).
 
 Configuration
 -------------
@@ -21,7 +22,8 @@ Configuration
 
    configuration
 
-Configuration system documentation and environment variables.
+Configuration system documentation, environment variables, and GameDefines
+parameter tables.
 
 Topology System
 ---------------
@@ -32,3 +34,13 @@ Topology System
    topology
 
 Percolation theory metrics, TopologyMonitor observer, and resilience testing.
+
+Error Handling
+--------------
+
+.. toctree::
+   :maxdepth: 1
+
+   error-codes
+
+Error code taxonomy and error handling conventions.

@@ -39,10 +39,14 @@ class NarrativeDirector:
     The Director can now query the Archive (ChromaDB) for historical
     and theoretical context to inform narrative generation.
 
+    Sprint 3.4: Added Semantic Bridge to translate simulation event keywords
+    into theoretical query strings for better RAG retrieval.
+
     Attributes:
         name: Observer identifier ("NarrativeDirector").
         use_llm: Whether to use LLM for narrative (False = template-based).
         rag_pipeline: Optional RAG pipeline for context retrieval.
+        SEMANTIC_MAP: Class constant mapping event keywords to theory queries.
 
     Example:
         >>> from babylon.ai import NarrativeDirector
@@ -56,6 +60,22 @@ class NarrativeDirector:
         >>> sim.run(10)  # Director queries RAG for context
         >>> sim.end()
     """
+
+    # Semantic Bridge: Maps simulation event keywords to theoretical query strings.
+    # The RAG database contains Marxist theoretical texts, not simulation logs.
+    # This mapping allows effective retrieval of relevant theory.
+    SEMANTIC_MAP: dict[str, str] = {
+        "SURPLUS_EXTRACTION": "marxist theory of surplus value extraction and exploitation",
+        "IMPERIAL_SUBSIDY": "role of repression in maintaining imperialist client states",
+        "ECONOMIC_CRISIS": "tendency of the rate of profit to fall and capitalist crisis",
+        "SOLIDARITY_AWAKENING": "development of class consciousness and proletariat solidarity",
+        "MASS_AWAKENING": "leninist theory of revolutionary situation and mass strike",
+        "BRIBERY": "labor aristocracy and imperialist super-wages",
+        "WAGES": "labor aristocracy and imperialist super-wages",
+    }
+
+    # Fallback query when no event keywords are recognized
+    FALLBACK_QUERY: str = "dialectical materialism class struggle"
 
     def __init__(
         self,
@@ -219,15 +239,41 @@ class NarrativeDirector:
             len(final_state.event_log),
         )
 
+    def _translate_events_to_query(self, events: list[str]) -> str:
+        """Translate simulation events to theoretical query using Semantic Bridge.
+
+        Scans each event for keywords from SEMANTIC_MAP and collects the
+        corresponding theoretical query strings. Deduplicates using a set
+        since multiple events may contain the same keyword.
+
+        Args:
+            events: List of simulation event strings.
+
+        Returns:
+            Theoretical query string for RAG, or FALLBACK_QUERY if no
+            keywords were recognized.
+        """
+        semantic_queries: set[str] = set()
+        for event in events:
+            for keyword, theoretical_query in self.SEMANTIC_MAP.items():
+                if keyword in event:
+                    semantic_queries.add(theoretical_query)
+
+        if not semantic_queries:
+            return self.FALLBACK_QUERY
+        return " ".join(semantic_queries)
+
     def _retrieve_context(self, events: list[str]) -> list[str]:
         """Query RAG pipeline for relevant historical/theoretical context.
 
-        Uses event text as semantic query to retrieve relevant documents
-        from the Archive (ChromaDB). Implements ADR003: errors are caught
-        and logged, not propagated to simulation.
+        Uses the Semantic Bridge to translate event keywords into theoretical
+        query strings. The RAG database contains Marxist theoretical texts,
+        not simulation logs, so direct event queries return poor results.
+
+        Implements ADR003: errors are caught and logged, not propagated.
 
         Args:
-            events: New events to use as query text.
+            events: New events to translate and query.
 
         Returns:
             List of retrieved document content strings.
@@ -236,7 +282,8 @@ class NarrativeDirector:
         if not self._rag:
             return []
 
-        query_text = " ".join(events)
+        query_text = self._translate_events_to_query(events)
+
         try:
             response = self._rag.query(query_text, top_k=3)
             # Extract document content from QueryResults

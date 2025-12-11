@@ -6,13 +6,15 @@ It represents a strategic sector in the world system, defined by:
 2. Its ownership stack (host/parasite relationship)
 3. Its operational profile (visibility stance)
 4. Its heat level (state attention)
+5. Its territory type (settler-colonial hierarchy classification)
 
 Sprint 3.5.2: Layer 0 - The Territorial Substrate.
+Sprint 3.7: The Carceral Geography - Necropolitical Triad.
 """
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.models.enums import OperationalProfile, SectorType
+from babylon.models.enums import OperationalProfile, SectorType, TerritoryType
 from babylon.models.types import Currency, Intensity
 
 
@@ -35,6 +37,7 @@ class Territory(BaseModel):
         id: Unique identifier matching pattern ^T[0-9]{3}$
         name: Human-readable sector name
         sector_type: Economic/social character of the territory
+        territory_type: Classification in settler-colonial hierarchy (Sprint 3.7)
         host_id: Optional ID of the Legal Sovereign (collects rent)
         occupant_id: Optional ID of the De Facto Occupant (uses space)
         profile: Operational profile (visibility stance)
@@ -64,6 +67,12 @@ class Territory(BaseModel):
     sector_type: SectorType = Field(
         ...,
         description="Economic/social character of the territory",
+    )
+
+    # Settler-colonial hierarchy classification (Sprint 3.7)
+    territory_type: TerritoryType = Field(
+        default=TerritoryType.CORE,
+        description="Classification in settler-colonial hierarchy",
     )
 
     # Ownership stack (host/parasite)
@@ -133,3 +142,27 @@ class Territory(BaseModel):
             True if occupant exists and host does not
         """
         return self.occupant_id is not None and self.host_id is None
+
+    @property
+    def is_sink_node(self) -> bool:
+        """Whether territory is a sink node in the displacement graph.
+
+        Sprint 3.7: The Carceral Geography - Necropolitical Triad.
+
+        Sink nodes are territories where displaced populations are routed.
+        They have no economic value - only containment/elimination function.
+        Population flows INTO these territories but does not flow OUT easily.
+
+        The three sink node types form the Necropolitical Triad:
+        - RESERVATION: Containment (warehousing surplus population)
+        - PENAL_COLONY: Extraction (forced labor, suppresses organization)
+        - CONCENTRATION_CAMP: Elimination (population decay, generates terror)
+
+        Returns:
+            True if territory_type is RESERVATION, PENAL_COLONY, or CONCENTRATION_CAMP
+        """
+        return self.territory_type in (
+            TerritoryType.RESERVATION,
+            TerritoryType.PENAL_COLONY,
+            TerritoryType.CONCENTRATION_CAMP,
+        )

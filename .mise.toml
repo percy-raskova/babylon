@@ -124,6 +124,14 @@ run = "poetry run python tools/vertical_slice.py"
 description = "Verify math formula divergence"
 run = "poetry run python tools/verify_math_divergence.py"
 
+[tasks.tune-params]
+description = "Run parameter sensitivity analysis (sweep extraction_efficiency)"
+run = "poetry run python tools/tune_parameters.py"
+
+[tasks.tune-params-custom]
+description = "Run parameter sweep with custom range (usage: mise run tune-params-custom 0.1 0.5 0.05)"
+run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-0.50} --step ${3:-0.05}"
+
 # =============================================================================
 # VERSIONING
 # =============================================================================

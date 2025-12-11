@@ -14,9 +14,11 @@ Architecture
    :maxdepth: 1
 
    architecture
+   simulation-systems
 
-Understanding the Embedded Trinity architecture (Ledger, Topology, Archive)
-and how data flows through the simulation engine.
+Understanding the Embedded Trinity architecture (Ledger, Topology, Archive),
+how the seven simulation systems work together, and how data flows through
+the simulation engine.
 
 Economic Theory
 ---------------

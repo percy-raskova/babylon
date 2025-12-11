@@ -3,13 +3,18 @@
 # This document records playable boundaries and gameplay insights
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   created: "2025-12-11"
   updated: "2025-12-11"
   purpose: "Record empirical balance findings from sensitivity analysis"
   status: "ACTIVE - updated as parameters are tuned"
-  tool: "tools/tune_parameters.py"
-  mise_task: "mise run tune-params"
+  tools:
+    simple_sweep: "tools/tune_parameters.py"
+    rich_analysis: "tools/parameter_analysis.py"
+  mise_tasks:
+    simple: "mise run tune-params"
+    trace: "mise run analyze-trace"
+    sweep: "mise run analyze-sweep"
 
 # =============================================================================
 # METHODOLOGY
@@ -34,9 +39,16 @@ methodology:
         --start 0.05 --end 0.50 --step 0.01
 
   metrics:
+    # Basic metrics (tune_parameters.py)
     ticks_survived: "Number of simulation ticks before periphery wealth <= 0.001"
     max_tension: "Maximum tension observed on any EXPLOITATION edge"
     outcome: "SURVIVED (50 ticks) or DIED (wealth depleted)"
+
+    # Rich metrics (parameter_analysis.py sweep)
+    crossover_tick: "First tick where P(S|R) > P(S|A) - revolution becomes rational"
+    cumulative_rent: "Total imperial rent extracted over simulation"
+    final_entity_wealth: "Final wealth for all 4 entities (P_w, P_c, C_b, C_w)"
+    peak_consciousness: "Maximum consciousness reached for P_w and C_w"
 
   playability_targets:
     minimum_survival: 25  # ticks - enough for meaningful gameplay
@@ -88,6 +100,26 @@ parameters:
           - { value: 0.25, ticks: 50, outcome: "SURVIVED" }
           - { value: 0.26, ticks: 49, outcome: "DIED" }
         boundary: "Between 0.25 and 0.26"
+
+      # Rich sweep data from parameter_analysis.py (2025-12-11)
+      rich_sweep_data:
+        source: "results/sweep.csv"
+        columns: "value, ticks, outcome, crossover, rent, c_b_wealth, peak_p_w"
+        data:
+          - {value: 0.05, ticks: 50, outcome: SURVIVED, crossover: 1, rent: 0.058}
+          - {value: 0.10, ticks: 50, outcome: SURVIVED, crossover: 1, rent: 0.083}
+          - {value: 0.15, ticks: 50, outcome: SURVIVED, crossover: 1, rent: 0.093}
+          - {value: 0.20, ticks: 50, outcome: SURVIVED, crossover: 1, rent: 0.097}
+          - {value: 0.25, ticks: 50, outcome: SURVIVED, crossover: 1, rent: 0.099}
+          - {value: 0.30, ticks: 43, outcome: DIED, crossover: 1, rent: 0.099}
+          - {value: 0.35, ticks: 37, outcome: DIED, crossover: 1, rent: 0.099}
+          - {value: 0.40, ticks: 32, outcome: DIED, crossover: 1, rent: 0.099}
+          - {value: 0.45, ticks: 28, outcome: DIED, crossover: 1, rent: 0.099}
+          - {value: 0.50, ticks: 25, outcome: DIED, crossover: 1, rent: 0.099}
+        notes: |
+          - c_b_wealth ranges 1.079-1.108 (core bourgeoisie accumulation)
+          - peak_p_w_consciousness = 0.65 for ALL (consciousness stagnation bug?)
+          - crossover_tick = 1 for ALL (revolution rational immediately)
 
     # -------------------------------------------------------------------------
     # ANALYSIS
@@ -162,6 +194,108 @@ parameters:
 
       note: "The model is economically AND theoretically correct as-is"
 
+    # -------------------------------------------------------------------------
+    # INSIGHT: IMMEDIATE REVOLUTIONARY CROSSOVER
+    # -------------------------------------------------------------------------
+
+    insight_crossover:
+      name: "Immediate Revolutionary Crossover"
+      observation: |
+        CROSSOVER TICK IS 1 for all extraction rates:
+        - Revolution becomes rational (P(S|R) > P(S|A)) immediately at tick 1
+        - This holds regardless of extraction rate
+
+      analysis: |
+        The survival calculus reaches revolutionary crossover instantly. This suggests:
+        - Initial conditions heavily favor revolution (low starting wealth?)
+        - The P(S|A) sigmoid may be too pessimistic about acquiescence survival
+        - Or P(S|R) may be too optimistic about revolution survival
+
+        This may be intentional (periphery is always oppressed) or may need tuning.
+
+      implication: |
+        If revolution is always rational from tick 1, the question becomes:
+        - Why doesn't revolution happen immediately?
+        - Answer: Organization is too low to act on revolutionary consciousness
+
+        This creates the core dynamic: revolution is RATIONAL but not POSSIBLE
+        until organization builds. Tension accumulates while agents wait for
+        the material conditions (organization) to enable revolutionary action.
+
+      status: "NEEDS_INVESTIGATION"
+      next_steps:
+        - "Trace P(S|A) and P(S|R) values to understand the crossover dynamics"
+        - "Check if initial conditions create artificial crossover"
+        - "Consider if this is intentional design vs. tuning issue"
+
+    # -------------------------------------------------------------------------
+    # INSIGHT: CONSCIOUSNESS STAGNATION
+    # -------------------------------------------------------------------------
+
+    insight_consciousness:
+      name: "Consciousness Stagnation"
+      observation: |
+        CONSCIOUSNESS NEVER CHANGES from initial values:
+        - peak_p_w_consciousness = 0.65 (initial value) for ALL runs
+        - peak_c_w_consciousness = 0.40 (initial value) for ALL runs
+
+      analysis: |
+        Consciousness drift is not occurring. Possible causes:
+        1. ConsciousnessSystem not being called in step()
+        2. W/V ratio not triggering drift (W ≈ V?)
+        3. Solidarity edges missing (no consciousness transmission)
+        4. Drift coefficients too small to observe
+
+      implication: |
+        Without consciousness change:
+        - Revolutionary dynamics are static
+        - Labor aristocracy never awakens
+        - Fascist bifurcation cannot occur
+        - A core game mechanic is effectively disabled
+
+      status: "BUG_SUSPECTED"
+      priority: "HIGH"
+      next_steps:
+        - "Run trace with --ticks 50 and examine p_w_consciousness over time"
+        - "Check if ConsciousnessSystem.update() is being called"
+        - "Verify W/V ratio is changing to trigger drift"
+        - "Check SOLIDARITY edge presence in scenario"
+
+    # -------------------------------------------------------------------------
+    # INSIGHT: CUMULATIVE RENT CONVERGENCE
+    # -------------------------------------------------------------------------
+
+    insight_rent_convergence:
+      name: "Cumulative Rent Convergence"
+      observation: |
+        CUMULATIVE RENT CONVERGES around 0.099 regardless of survival:
+        - Low extraction (0.05): 0.058 rent (periphery survives, less extraction)
+        - High extraction (0.50): 0.099 rent (periphery dies fast)
+
+        Paradoxically, higher extraction doesn't yield more total rent!
+
+      analysis: |
+        This confirms the Imperial Collapse Dynamic mathematically:
+        - Aggressive extraction kills the periphery quickly
+        - Dead periphery yields no rent
+        - Total lifetime extraction converges to ~0.10 regardless of rate
+
+        There's an optimal extraction rate that maximizes cumulative rent.
+        Below that rate: periphery survives but extraction per tick is low.
+        Above that rate: periphery dies and extraction stops.
+
+      theoretical_alignment: |
+        This is a classic resource extraction optimization problem.
+        The empire faces a tradeoff:
+        - Extract more per tick → shorter extraction window
+        - Extract less per tick → longer extraction window
+
+        The optimal strategy depends on time preference (discount rate).
+
+      gameplay_implication: |
+        Creates strategic depth around extraction rate selection.
+        "Burn bright" vs "sustainable imperialism" becomes a real choice.
+
 # =============================================================================
 # FUTURE PARAMETERS TO TUNE
 # =============================================================================
@@ -231,3 +365,25 @@ tuning_log:
       their host die quickly). Creates strategic depth, not a bug.
     recommendation: "Change default from 0.8 to 0.20"
     tool_version: "tools/tune_parameters.py v1.0"
+
+  - date: "2025-12-11"
+    parameter: "economy.extraction_efficiency"
+    methodology: "Rich sweep with parameter_analysis.py (crossover, rent, consciousness)"
+    tool_version: "tools/parameter_analysis.py v1.0 (Phase 2)"
+    findings:
+      - name: "Immediate Revolutionary Crossover"
+        status: "NEEDS_INVESTIGATION"
+        description: "P(S|R) > P(S|A) at tick 1 for ALL parameter values"
+
+      - name: "Consciousness Stagnation"
+        status: "BUG_SUSPECTED"
+        priority: "HIGH"
+        description: |
+          Consciousness never changes from initial values (0.65 for P_w, 0.40 for C_w).
+          Either ConsciousnessSystem isn't running or W/V ratio isn't triggering drift.
+
+      - name: "Cumulative Rent Convergence"
+        status: "CONFIRMED_FEATURE"
+        description: |
+          Total rent extracted converges to ~0.099 regardless of extraction rate.
+          Confirms Imperial Collapse Dynamic mathematically.

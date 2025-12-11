@@ -360,4 +360,5 @@ See Also
 --------
 
 - :doc:`/how-to/gui-development` - GUI implementation roadmap
+- :doc:`/reference/design-system` - Complete design tokens and constants
 - :doc:`/concepts/architecture` - System architecture

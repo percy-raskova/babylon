@@ -98,6 +98,12 @@ Contents
 
    api/index
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Commentary
+
+   commentary/index
+
 Current Systems
 ---------------
 

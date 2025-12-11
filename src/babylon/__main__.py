@@ -34,7 +34,7 @@ def main() -> None:
     logger.info("Initializing simulation...")
 
     # Create the two-node scenario (Worker vs Owner)
-    initial_state, config = create_two_node_scenario()
+    initial_state, config, _defines = create_two_node_scenario()
 
     # Initialize simulation facade
     sim = Simulation(initial_state=initial_state, config=config)

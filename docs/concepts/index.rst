@@ -54,6 +54,17 @@ State Repression
 The spatial dimensions of class management: detention, displacement,
 and elimination pipelines.
 
+Development Methodology
+-----------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   vibe-coding/index
+
+The Vibe Coding Manifesto: an ideological and technical defense of
+AI-assisted development, based on empirical evidence from this project.
+
 Key Principles
 --------------
 

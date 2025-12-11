@@ -69,8 +69,8 @@ class TestSocialRole:
         assert role == "core_bourgeoisie"
 
     def test_role_count(self) -> None:
-        """Exactly 5 social roles defined."""
-        assert len(SocialRole) == 5
+        """Exactly 6 social roles defined (includes COMPRADOR_BOURGEOISIE)."""
+        assert len(SocialRole) == 6
 
 
 @pytest.mark.math

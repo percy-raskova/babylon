@@ -112,6 +112,51 @@ Errors specific to the Context Window Management system.
    * - 2122
      - Configuration Error
 
+**Error Hierarchy:**
+
+.. mermaid::
+
+   flowchart TB
+       CWE["ContextWindowError (2100)"] --> TCE["TokenCountError (2101)"]
+       CWE --> CEE["CapacityExceededError (2102)"]
+       CWE --> OFE["OptimizationFailedError (2103)"]
+       CWE --> CPE["ContentPriorityError (2110)"]
+       CWE --> CRE["ContentRemovalError (2111)"]
+       CWE --> CIE["ContentInsertionError (2112)"]
+       CWE --> LIE["LifecycleIntegrationError (2120)"]
+       CWE --> MCE["MetricsCollectionError (2121)"]
+       CWE --> CFE["ConfigurationError (2122)"]
+
+Context Window Error Categories
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- **Token counting issues** (2101): Invalid token count or counting failure
+- **Capacity management** (2102, 2103): Context window full or optimization failed
+- **Content operations** (2110-2112): Priority, removal, or insertion failures
+- **Integration issues** (2120-2122): Lifecycle, metrics, or config problems
+
+Recovery Patterns
+^^^^^^^^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 85
+
+   * - Code
+     - Recovery Strategy
+   * - 2102
+     - Trigger manual optimization with ``context_window.optimize(target_tokens)``
+   * - 2103
+     - Reduce ``min_content_importance`` or increase ``capacity_threshold``
+   * - 2110
+     - Verify importance scores are in range [0.0, 1.0]
+   * - 2111
+     - Check content_id exists before removal
+   * - 2112
+     - Verify content format and token count before insertion
+   * - 2122
+     - Validate ``ContextWindowConfig`` parameters against defaults
+
 Gameplay Metrics (3000-3999)
 ----------------------------
 

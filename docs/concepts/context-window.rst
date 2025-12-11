@@ -247,5 +247,6 @@ See Also
 
 - :doc:`object-tracking` - Object lifecycle and RAG optimization
 - :doc:`ai-integration` - AI communications guide
+- :doc:`/reference/context-window-api` - Complete API reference
 - :doc:`/reference/error-codes` - Error code reference
 - :doc:`/reference/configuration` - Configuration system

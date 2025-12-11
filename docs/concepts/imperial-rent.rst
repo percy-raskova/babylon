@@ -46,3 +46,10 @@ Implementation
 
 See the :py:func:`babylon.systems.formulas.calculate_imperial_rent` function
 for the implementation details.
+
+See Also
+--------
+
+- :doc:`/concepts/survival-calculus` - How imperial rent affects survival
+- :doc:`/concepts/george-jackson-model` - Consciousness effects
+- :doc:`/reference/formulas` - Complete formula reference with examples

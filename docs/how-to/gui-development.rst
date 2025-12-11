@@ -243,6 +243,7 @@ Future Enhancements
 See Also
 --------
 
-- :doc:`/concepts/aesthetics` - Visual design guidelines
+- :doc:`/concepts/aesthetics` - Visual design philosophy (Bunker Constructivism)
+- :doc:`/reference/design-system` - Complete design tokens reference
 - :doc:`/concepts/architecture` - System architecture
 - :doc:`/reference/configuration` - Configuration system

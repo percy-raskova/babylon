@@ -286,5 +286,7 @@ See Also
 
 - :doc:`context-window` - Context window management
 - :doc:`object-tracking` - Object tracking and RAG optimization
+- :doc:`/reference/ai-prompting` - Prompt templates and API reference
+- :doc:`/reference/context-window-api` - Context window API reference
 - :doc:`/reference/configuration` - Configuration system
 - :doc:`architecture` - System architecture

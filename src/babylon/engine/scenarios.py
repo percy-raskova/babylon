@@ -213,6 +213,7 @@ def create_imperial_circuit_scenario(
     imperial_rent_pool: float = 100.0,
     extraction_efficiency: float = 0.8,
     repression_level: float = 0.5,
+    solidarity_strength: float = 0.0,
 ) -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create the 4-node Imperial Circuit scenario.
 
@@ -243,6 +244,9 @@ def create_imperial_circuit_scenario(
         imperial_rent_pool: Initial imperial rent pool (default 100.0)
         extraction_efficiency: Alpha in imperial rent formula (default 0.8)
         repression_level: Base repression level (default 0.5)
+        solidarity_strength: Initial solidarity between P_w and C_w (default 0.0).
+            When > 0, wage crisis routes to class consciousness (revolutionary).
+            When = 0, wage crisis routes to national identity (fascist).
 
     Returns:
         Tuple of (WorldState, SimulationConfig, GameDefines) ready for step() function.
@@ -362,7 +366,7 @@ def create_imperial_circuit_scenario(
         description="Potential internationalism",
         value_flow=0.0,
         tension=0.0,
-        solidarity_strength=0.0,  # Starts separated - must be built
+        solidarity_strength=solidarity_strength,  # Configurable (default 0.0)
     )
 
     # Create world state with 4 nodes and 5 edges

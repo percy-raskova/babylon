@@ -263,7 +263,7 @@ implementation:
 
   phase_1:
     name: "Trace Command"
-    status: "PLANNED"
+    status: "COMPLETE"
     deliverables:
       - "trace subcommand with full time-series CSV"
       - "Track all 4 entities"
@@ -276,7 +276,7 @@ implementation:
 
   phase_2:
     name: "Sweep Command Enhancement"
-    status: "PLANNED"
+    status: "COMPLETE"
     deliverables:
       - "sweep subcommand with rich summary CSV"
       - "More metrics than current tune_parameters.py"

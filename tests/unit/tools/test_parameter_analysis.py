@@ -404,3 +404,275 @@ class TestIntegration:
         # Just verify we captured numeric values
         assert isinstance(first_wealth, int | float), "First wealth should be numeric"
         assert isinstance(last_wealth, int | float), "Last wealth should be numeric"
+
+
+# =============================================================================
+# SWEEP COMMAND TESTS
+# =============================================================================
+
+
+class TestExtractSweepSummary:
+    """Tests for extract_sweep_summary function."""
+
+    def test_extract_sweep_summary_exists(self) -> None:
+        """extract_sweep_summary function should exist."""
+        module = load_parameter_analysis_module()
+        assert hasattr(module, "extract_sweep_summary"), "Module missing 'extract_sweep_summary'"
+        assert callable(module.extract_sweep_summary)
+
+    def test_extract_sweep_summary_empty_trace(self) -> None:
+        """Should handle empty trace data gracefully."""
+        module = load_parameter_analysis_module()
+        result = module.extract_sweep_summary([], 0.1)
+        assert result["value"] == 0.1
+        assert result["ticks_survived"] == 0
+        assert result["outcome"] == "ERROR"
+
+    def test_extract_sweep_summary_basic_fields(self) -> None:
+        """Should extract basic summary fields."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {
+                "tick": 0,
+                "p_w_wealth": 0.5,
+                "p_c_wealth": 0.2,
+                "c_b_wealth": 0.9,
+                "c_w_wealth": 0.3,
+            },
+            {
+                "tick": 1,
+                "p_w_wealth": 0.4,
+                "p_c_wealth": 0.15,
+                "c_b_wealth": 0.95,
+                "c_w_wealth": 0.28,
+            },
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.2)
+        assert result["value"] == 0.2
+        assert result["ticks_survived"] == 2
+        assert result["outcome"] == "SURVIVED"
+        assert result["final_p_w_wealth"] == 0.4
+
+    def test_extract_sweep_summary_detects_death(self) -> None:
+        """Should detect DIED outcome when wealth <= 0.001."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {"tick": 0, "p_w_wealth": 0.1},
+            {"tick": 1, "p_w_wealth": 0.0005},  # Dead
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.3)
+        assert result["outcome"] == "DIED"
+
+    def test_extract_sweep_summary_calculates_crossover(self) -> None:
+        """Should detect crossover tick when P(S|R) > P(S|A)."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {"tick": 0, "p_w_psr": 0.1, "p_w_psa": 0.5, "p_w_wealth": 0.5},
+            {"tick": 1, "p_w_psr": 0.3, "p_w_psa": 0.4, "p_w_wealth": 0.4},
+            {"tick": 2, "p_w_psr": 0.6, "p_w_psa": 0.3, "p_w_wealth": 0.3},  # Crossover!
+            {"tick": 3, "p_w_psr": 0.7, "p_w_psa": 0.2, "p_w_wealth": 0.2},
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.2)
+        assert result["crossover_tick"] == 2
+
+    def test_extract_sweep_summary_no_crossover(self) -> None:
+        """Should return None for crossover_tick if no crossover."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {"tick": 0, "p_w_psr": 0.1, "p_w_psa": 0.5, "p_w_wealth": 0.5},
+            {"tick": 1, "p_w_psr": 0.2, "p_w_psa": 0.6, "p_w_wealth": 0.5},
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.2)
+        assert result["crossover_tick"] is None
+
+    def test_extract_sweep_summary_cumulative_rent(self) -> None:
+        """Should calculate cumulative rent extracted."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {"tick": 0, "exploitation_rent": 0.1, "p_w_wealth": 0.5},
+            {"tick": 1, "exploitation_rent": 0.15, "p_w_wealth": 0.4},
+            {"tick": 2, "exploitation_rent": 0.12, "p_w_wealth": 0.3},
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.2)
+        assert abs(result["cumulative_rent"] - 0.37) < 0.001
+
+    def test_extract_sweep_summary_peak_consciousness(self) -> None:
+        """Should track peak consciousness values."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {"tick": 0, "p_w_consciousness": 0.4, "c_w_consciousness": 0.3, "p_w_wealth": 0.5},
+            {"tick": 1, "p_w_consciousness": 0.6, "c_w_consciousness": 0.5, "p_w_wealth": 0.4},
+            {"tick": 2, "p_w_consciousness": 0.5, "c_w_consciousness": 0.4, "p_w_wealth": 0.3},
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.2)
+        assert result["peak_p_w_consciousness"] == 0.6
+        assert result["peak_c_w_consciousness"] == 0.5
+
+    def test_extract_sweep_summary_max_tension(self) -> None:
+        """Should track max tension."""
+        module = load_parameter_analysis_module()
+        trace_data = [
+            {"tick": 0, "exploitation_tension": 0.01, "p_w_wealth": 0.5},
+            {"tick": 1, "exploitation_tension": 0.05, "p_w_wealth": 0.4},
+            {"tick": 2, "exploitation_tension": 0.03, "p_w_wealth": 0.3},
+        ]
+        result = module.extract_sweep_summary(trace_data, 0.2)
+        assert result["max_tension"] == 0.05
+
+
+class TestRunSweep:
+    """Tests for run_sweep function."""
+
+    def test_run_sweep_function_exists(self) -> None:
+        """run_sweep() function should exist."""
+        module = load_parameter_analysis_module()
+        assert hasattr(module, "run_sweep"), "Module missing 'run_sweep'"
+        assert callable(module.run_sweep)
+
+    def test_run_sweep_returns_list(self) -> None:
+        """run_sweep should return a list."""
+        module = load_parameter_analysis_module()
+        result = module.run_sweep(
+            param_path="economy.extraction_efficiency",
+            start=0.1,
+            end=0.2,
+            step=0.1,
+            max_ticks=5,
+        )
+        assert isinstance(result, list)
+
+    def test_run_sweep_list_has_correct_length(self) -> None:
+        """run_sweep should return one result per parameter value."""
+        module = load_parameter_analysis_module()
+        result = module.run_sweep(
+            param_path="economy.extraction_efficiency",
+            start=0.1,
+            end=0.3,
+            step=0.1,
+            max_ticks=5,
+        )
+        # 0.1, 0.2, 0.3 = 3 values
+        assert len(result) == 3
+
+    def test_run_sweep_result_has_value_key(self) -> None:
+        """Each result dict should have 'value' key."""
+        module = load_parameter_analysis_module()
+        result = module.run_sweep(
+            param_path="economy.extraction_efficiency",
+            start=0.1,
+            end=0.1,
+            step=0.1,
+            max_ticks=5,
+        )
+        assert "value" in result[0]
+        assert result[0]["value"] == 0.1
+
+    def test_run_sweep_result_has_ticks_survived(self) -> None:
+        """Each result dict should have 'ticks_survived' key."""
+        module = load_parameter_analysis_module()
+        result = module.run_sweep(
+            param_path="economy.extraction_efficiency",
+            start=0.1,
+            end=0.1,
+            step=0.1,
+            max_ticks=5,
+        )
+        assert "ticks_survived" in result[0]
+        assert isinstance(result[0]["ticks_survived"], int)
+
+    def test_run_sweep_result_has_outcome(self) -> None:
+        """Each result should have 'outcome' (SURVIVED or DIED)."""
+        module = load_parameter_analysis_module()
+        result = module.run_sweep(
+            param_path="economy.extraction_efficiency",
+            start=0.1,
+            end=0.1,
+            step=0.1,
+            max_ticks=5,
+        )
+        assert "outcome" in result[0]
+        assert result[0]["outcome"] in ("SURVIVED", "DIED", "ERROR")
+
+    def test_run_sweep_result_has_entity_final_states(self) -> None:
+        """Each result should have final wealth for all entities."""
+        module = load_parameter_analysis_module()
+        result = module.run_sweep(
+            param_path="economy.extraction_efficiency",
+            start=0.1,
+            end=0.1,
+            step=0.1,
+            max_ticks=5,
+        )
+        assert "final_p_w_wealth" in result[0]
+        assert "final_p_c_wealth" in result[0]
+        assert "final_c_b_wealth" in result[0]
+        assert "final_c_w_wealth" in result[0]
+
+
+class TestSweepCLI:
+    """Tests for sweep CLI subcommand."""
+
+    def test_sweep_subcommand_exists(self) -> None:
+        """sweep subcommand should be recognized."""
+        import subprocess
+
+        result = subprocess.run(
+            ["poetry", "run", "python", "tools/parameter_analysis.py", "sweep", "--help"],
+            capture_output=True,
+            text=True,
+            cwd="/home/user/projects/game/babylon",
+        )
+        assert result.returncode == 0
+        assert "--param" in result.stdout
+
+    def test_sweep_requires_param(self) -> None:
+        """sweep should require --param argument."""
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "poetry",
+                "run",
+                "python",
+                "tools/parameter_analysis.py",
+                "sweep",
+                "--start",
+                "0.1",
+                "--end",
+                "0.2",
+                "--step",
+                "0.1",
+                "--csv",
+                "/tmp/test.csv",
+            ],
+            capture_output=True,
+            text=True,
+            cwd="/home/user/projects/game/babylon",
+        )
+        assert result.returncode != 0
+
+    def test_sweep_requires_csv(self) -> None:
+        """sweep should require --csv argument."""
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "poetry",
+                "run",
+                "python",
+                "tools/parameter_analysis.py",
+                "sweep",
+                "--param",
+                "economy.extraction_efficiency",
+                "--start",
+                "0.1",
+                "--end",
+                "0.2",
+                "--step",
+                "0.1",
+            ],
+            capture_output=True,
+            text=True,
+            cwd="/home/user/projects/game/babylon",
+        )
+        assert result.returncode != 0

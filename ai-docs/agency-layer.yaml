@@ -306,3 +306,45 @@ tests:
 
     - name: "test_resistance_threshold_affects_uprising"
       asserts: "Higher resistance_threshold reduces uprising frequency"
+
+# =============================================================================
+# EMPIRICAL VALIDATION (December 2025)
+# =============================================================================
+
+validation:
+  date: "2025-12-11"
+  method: "Parameter sweep and trace analysis via tools/parameter_analysis.py"
+
+  bifurcation_confirmed:
+    description: |
+      The George Jackson bifurcation model was empirically validated.
+      Same material crisis (falling wages) produces opposite outcomes
+      based solely on solidarity_strength.
+
+    fascist_path:
+      conditions: "solidarity_strength = 0.0 (default)"
+      result: "national_identity: 0.60 → 0.66 (+10% fascist drift)"
+      class_consciousness: "frozen at 0.40"
+      diagnosis: "All agitation routes to fascism axis"
+
+    revolutionary_path:
+      conditions: "solidarity_strength = 0.8"
+      result: "class_consciousness: 0.40 → 0.66 (+65% revolutionary drift)"
+      national_identity: "barely moves (0.60 → 0.61)"
+      diagnosis: "Agitation routes to revolution axis"
+
+  strategic_insight: |
+    Crisis + Solidarity → Revolution
+    Crisis + Atomization → Fascism
+
+    The player must build solidarity infrastructure BEFORE crisis hits.
+    The default scenario (solidarity=0) models the fascist path by design.
+
+  trace_tool_updates:
+    fields_added:
+      - "c_w_national_identity"
+      - "c_w_agitation"
+      - "p_w_national_identity"
+      - "p_w_agitation"
+    scenario_updates:
+      - "create_imperial_circuit_scenario() now accepts solidarity_strength parameter"

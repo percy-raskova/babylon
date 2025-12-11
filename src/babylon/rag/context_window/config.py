@@ -1,3 +1,23 @@
+"""Configuration model for the context window management system.
+
+This module defines :class:`ContextWindowConfig`, a Pydantic model that
+controls how the context window manager operates. Configuration includes:
+
+- Maximum token limits (model-specific)
+- Capacity thresholds for triggering optimization
+- Prioritization strategies (relevance, recency, hybrid)
+- Minimum importance scores for content retention
+
+The config can be instantiated with defaults or loaded from BaseConfig
+for integration with the broader Babylon configuration system.
+
+See Also:
+    :class:`~babylon.rag.context_window.manager.ContextWindowManager`:
+        The manager that uses this configuration.
+    :class:`~babylon.config.base.BaseConfig`:
+        Source of default values when using :meth:`from_base_config`.
+"""
+
 from pydantic import BaseModel, ConfigDict
 
 from babylon.config.base import BaseConfig

@@ -15,7 +15,7 @@ class LogEntry(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     level: Mapped[str | None] = mapped_column(String, default=None)
-    timestamp: Mapped[datetime] = mapped_column(default_factory=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     message: Mapped[str | None] = mapped_column(String, default=None)
     module: Mapped[str | None] = mapped_column(String, default=None)
     correlation_id: Mapped[str | None] = mapped_column(String, default=None)

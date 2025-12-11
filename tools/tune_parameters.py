@@ -10,6 +10,8 @@ longer than a target number of ticks.
 
 Usage:
     poetry run python tools/tune_parameters.py
+    poetry run python tools/tune_parameters.py --start 0.1 --end 0.5 --step 0.05
+    poetry run python tools/tune_parameters.py --param economy.base_subsistence --start 1.0 --end 5.0 --step 0.5
 
 Example:
     # Sweep extraction_efficiency from 0.05 to 0.50 by 0.05
@@ -18,6 +20,7 @@ Example:
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -260,32 +263,97 @@ def run_sweep(
     return results
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Returns:
+        Parsed arguments namespace
+    """
+    parser = argparse.ArgumentParser(
+        description="Parameter tuning tool for sensitivity analysis",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Default sweep of extraction_efficiency
+  python tools/tune_parameters.py
+
+  # Custom range
+  python tools/tune_parameters.py --start 0.1 --end 0.5 --step 0.05
+
+  # Different parameter
+  python tools/tune_parameters.py --param economy.base_subsistence --start 1.0 --end 5.0 --step 0.5
+        """,
+    )
+    parser.add_argument(
+        "--param",
+        type=str,
+        default="economy.extraction_efficiency",
+        help="Parameter path to sweep (default: economy.extraction_efficiency)",
+    )
+    parser.add_argument(
+        "--start",
+        type=float,
+        default=0.05,
+        help="Starting value for sweep (default: 0.05)",
+    )
+    parser.add_argument(
+        "--end",
+        type=float,
+        default=0.50,
+        help="Ending value for sweep (default: 0.50)",
+    )
+    parser.add_argument(
+        "--step",
+        type=float,
+        default=0.05,
+        help="Step size between values (default: 0.05)",
+    )
+    parser.add_argument(
+        "--ticks",
+        type=int,
+        default=MAX_TICKS,
+        help=f"Maximum ticks per simulation (default: {MAX_TICKS})",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
-    """Run parameter sweep for economy.extraction_efficiency.
+    """Run parameter sweep with configurable parameters.
 
     Returns:
         Exit code: 0 for success
     """
-    # Silence verbose simulation logging
-    logging.getLogger("babylon").setLevel(logging.WARNING)
+    args = parse_args()
+
+    # Configure logging
+    if args.verbose:
+        logging.getLogger("babylon").setLevel(logging.INFO)
+    else:
+        logging.getLogger("babylon").setLevel(logging.WARNING)
 
     print("=" * 70)
-    print("PARAMETER TUNING: Sensitivity Analysis for extraction_efficiency")
+    print(f"PARAMETER TUNING: Sensitivity Analysis for {args.param}")
     print("=" * 70)
     print()
-    print("Sweeping economy.extraction_efficiency from 0.05 to 0.50 by 0.05")
-    print(f"Running {MAX_TICKS} ticks per simulation")
+    print(f"Sweeping {args.param} from {args.start} to {args.end} by {args.step}")
+    print(f"Running {args.ticks} ticks per simulation")
     print(f"Death threshold: wealth <= {DEATH_THRESHOLD}")
     print()
     print("Running simulations...")
     print()
 
-    # Run sweep for extraction_efficiency
+    # Run sweep
     results = run_sweep(
-        param_path="economy.extraction_efficiency",
-        start=0.05,
-        end=0.50,
-        step=0.05,
+        param_path=args.param,
+        start=args.start,
+        end=args.end,
+        step=args.step,
     )
 
     # Format and print results

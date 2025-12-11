@@ -11,8 +11,15 @@
 # - Frontier: Control of LAND (resources)
 
 meta:
-  version: "0.1.0"
-  status: design
+  version: "0.2.0"
+  status: partially_implemented
+  implementation_notes: |
+    Sprint 3.7 implemented the Necropolitical Triad (sink nodes):
+    - TerritoryType enum with CORE, PERIPHERY, RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP
+    - is_sink_node property on Territory model
+    - Displacement routing to sink nodes via ADJACENCY edges
+    - Necropolitics phase: elimination (camps), atomization (prisons), containment (reservations)
+    See: ai-docs/carceral-geography.yaml for full technical spec
   theoretical_basis:
     - "Internal Colonies thesis (Black Panther Party, Robert Allen)"
     - "Settlers: Mythology of the White Proletariat (J. Sakai)"
@@ -773,3 +780,81 @@ design_notes:
     - "The Volksgemeinschaft is a material category, not just identity"
     - "Liberalism is the cocoon from which fascism emerges"
     - "The colonized are already revolutionary—the question is organization"
+
+# =============================================================================
+# IMPLEMENTATION STATUS (Sprint 3.7)
+# =============================================================================
+
+implementation_status:
+  sprint: "3.7"
+  name: "The Carceral Geography"
+
+  mapping:
+    design_concept: "OGV / OPC / Frontier"
+    implementation: "TerritoryType enum"
+    notes: |
+      The design schema uses OGV/OPC/Frontier terminology.
+      Implementation uses CORE/PERIPHERY + sink nodes.
+
+      Mapping:
+      - OGV -> CORE (partially - receives imperial rent)
+      - OPC -> PERIPHERY + PENAL_COLONY (extraction zones)
+      - Frontier -> PERIPHERY (source of resources)
+      - New: RESERVATION, CONCENTRATION_CAMP (sink nodes)
+
+  implemented:
+    territory_type_enum:
+      status: done
+      values: [CORE, PERIPHERY, RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP]
+
+    is_sink_node_property:
+      status: done
+      description: "Returns True for RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP"
+
+    displacement_routing:
+      status: done
+      description: "Population transfers to sink nodes during eviction"
+      priority: [CONCENTRATION_CAMP, PENAL_COLONY, RESERVATION]
+
+    necropolitics_phase:
+      status: done
+      effects:
+        CONCENTRATION_CAMP: "20% population decay per tick"
+        PENAL_COLONY: "organization = 0.0 for connected classes"
+        RESERVATION: "containment only (no active effect)"
+
+  not_yet_implemented:
+    ogv_mechanics:
+      status: pending
+      description: |
+        Full OGV mechanics (solidarity resistance 0.8, fascism default,
+        imperial rent recipient) not yet implemented.
+
+    opc_mechanics:
+      status: pending
+      description: |
+        Full OPC mechanics (heat baseline 0.5, hard repression,
+        bifurcation battleground) not yet implemented.
+
+    frontier_mechanics:
+      status: pending
+      description: |
+        Frontier resource extraction, Indigenous resistance,
+        environmental degradation not yet implemented.
+
+    liberation_mechanics:
+      status: pending
+      description: |
+        Converting sink nodes to liberated zones,
+        extraction operations, counter-infrastructure.
+
+    bifurcation_by_territory:
+      status: pending
+      description: |
+        Territory type affecting fascism/revolution routing
+        during consciousness drift.
+
+  test_coverage:
+    new_tests: 14
+    total_territory_tests: 63
+    all_passing: true

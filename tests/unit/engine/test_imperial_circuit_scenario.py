@@ -29,21 +29,21 @@ class TestImperialCircuitScenarioStructure:
     """Test that create_imperial_circuit_scenario creates correct structure."""
 
     def test_returns_worldstate_and_config_tuple(self) -> None:
-        """Returns (WorldState, SimulationConfig) tuple."""
+        """Returns (WorldState, SimulationConfig, GameDefines) tuple."""
         result = create_imperial_circuit_scenario()
         assert isinstance(result, tuple)
-        assert len(result) == 2
+        assert len(result) == 3
         assert isinstance(result[0], WorldState)
         assert isinstance(result[1], SimulationConfig)
 
     def test_creates_four_entities(self) -> None:
         """Scenario must have exactly 4 social class entities."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert len(state.entities) == 4
 
     def test_entity_ids_follow_pattern(self) -> None:
         """Entity IDs: C001-C004 (matches ^C[0-9]{3}$ pattern)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         expected_ids = {"C001", "C002", "C003", "C004"}
         actual_ids = set(state.entities.keys())
         assert actual_ids == expected_ids
@@ -55,22 +55,22 @@ class TestImperialCircuitEntityRoles:
 
     def test_periphery_worker_is_periphery_proletariat(self) -> None:
         """C001 (P_w) must have role=PERIPHERY_PROLETARIAT."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C001"].role == SocialRole.PERIPHERY_PROLETARIAT
 
     def test_comprador_is_comprador_bourgeoisie(self) -> None:
         """C002 (P_c) must have role=COMPRADOR_BOURGEOISIE."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C002"].role == SocialRole.COMPRADOR_BOURGEOISIE
 
     def test_core_bourgeoisie_has_correct_role(self) -> None:
         """C003 (C_b) must have role=CORE_BOURGEOISIE."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C003"].role == SocialRole.CORE_BOURGEOISIE
 
     def test_labor_aristocracy_has_correct_role(self) -> None:
         """C004 (C_w) must have role=LABOR_ARISTOCRACY."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C004"].role == SocialRole.LABOR_ARISTOCRACY
 
 
@@ -83,7 +83,7 @@ class TestImperialCircuitEdgeTopology:
 
     def test_exploitation_edge_from_pw_to_pc(self) -> None:
         """EXPLOITATION must flow FROM P_w (C001) TO P_c (C002)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         exploitation_edges = [
             r for r in state.relationships if r.edge_type == EdgeType.EXPLOITATION
         ]
@@ -94,7 +94,7 @@ class TestImperialCircuitEdgeTopology:
 
     def test_tribute_edge_from_pc_to_cb(self) -> None:
         """TRIBUTE must flow FROM P_c (C002) TO C_b (C003)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         tribute_edges = [r for r in state.relationships if r.edge_type == EdgeType.TRIBUTE]
         assert len(tribute_edges) == 1
         edge = tribute_edges[0]
@@ -103,7 +103,7 @@ class TestImperialCircuitEdgeTopology:
 
     def test_wages_edge_from_cb_to_cw(self) -> None:
         """WAGES must flow FROM C_b (C003) TO C_w (C004)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         wages_edges = [r for r in state.relationships if r.edge_type == EdgeType.WAGES]
         assert len(wages_edges) == 1
         edge = wages_edges[0]
@@ -116,7 +116,7 @@ class TestImperialCircuitEdgeTopology:
         THIS IS THE KEY TEST: The bug we're fixing is that wages were
         going to periphery workers instead of labor aristocracy.
         """
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         wages_edges = [r for r in state.relationships if r.edge_type == EdgeType.WAGES]
         for edge in wages_edges:
             target_role = state.entities[edge.target_id].role
@@ -125,7 +125,7 @@ class TestImperialCircuitEdgeTopology:
 
     def test_client_state_edge_from_cb_to_pc(self) -> None:
         """CLIENT_STATE must flow FROM C_b (C003) TO P_c (C002)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         client_state_edges = [
             r for r in state.relationships if r.edge_type == EdgeType.CLIENT_STATE
         ]
@@ -136,7 +136,7 @@ class TestImperialCircuitEdgeTopology:
 
     def test_solidarity_edge_from_pw_to_cw(self) -> None:
         """SOLIDARITY must flow FROM P_w (C001) TO C_w (C004)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         solidarity_edges = [r for r in state.relationships if r.edge_type == EdgeType.SOLIDARITY]
         assert len(solidarity_edges) == 1
         edge = solidarity_edges[0]
@@ -145,7 +145,7 @@ class TestImperialCircuitEdgeTopology:
 
     def test_solidarity_starts_at_zero(self) -> None:
         """SOLIDARITY edge strength starts at 0.0 (workers separated)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         solidarity_edges = [r for r in state.relationships if r.edge_type == EdgeType.SOLIDARITY]
         assert len(solidarity_edges) == 1
         edge = solidarity_edges[0]
@@ -158,33 +158,33 @@ class TestImperialCircuitWealthCalculations:
 
     def test_default_periphery_worker_wealth(self) -> None:
         """C001 (P_w) wealth = periphery_wealth (default 0.1)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C001"].wealth == pytest.approx(0.1)
 
     def test_default_comprador_wealth(self) -> None:
         """C002 (P_c) wealth = periphery_wealth * 2 (default 0.2)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C002"].wealth == pytest.approx(0.2)
 
     def test_default_core_bourgeoisie_wealth(self) -> None:
         """C003 (C_b) wealth = core_wealth (default 0.9)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C003"].wealth == pytest.approx(0.9)
 
     def test_default_labor_aristocracy_wealth(self) -> None:
         """C004 (C_w) wealth = core_wealth * 0.2 (default 0.18)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C004"].wealth == pytest.approx(0.18)
 
     def test_custom_periphery_wealth(self) -> None:
         """Custom periphery_wealth affects C001 and C002."""
-        state, _ = create_imperial_circuit_scenario(periphery_wealth=0.5)
+        state, _, _ = create_imperial_circuit_scenario(periphery_wealth=0.5)
         assert state.entities["C001"].wealth == pytest.approx(0.5)
         assert state.entities["C002"].wealth == pytest.approx(1.0)
 
     def test_custom_core_wealth(self) -> None:
         """Custom core_wealth affects C003 and C004."""
-        state, _ = create_imperial_circuit_scenario(core_wealth=1.0)
+        state, _, _ = create_imperial_circuit_scenario(core_wealth=1.0)
         assert state.entities["C003"].wealth == pytest.approx(1.0)
         assert state.entities["C004"].wealth == pytest.approx(0.2)
 
@@ -195,12 +195,12 @@ class TestImperialCircuitSubsistenceThresholds:
 
     def test_periphery_worker_high_vulnerability(self) -> None:
         """C001 (P_w) subsistence = 0.3 (high vulnerability)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C001"].subsistence_threshold == pytest.approx(0.3)
 
     def test_labor_aristocracy_low_vulnerability(self) -> None:
         """C004 (C_w) subsistence = 0.1 (low vulnerability due to super-wages)."""
-        state, _ = create_imperial_circuit_scenario()
+        state, _, _ = create_imperial_circuit_scenario()
         assert state.entities["C004"].subsistence_threshold == pytest.approx(0.1)
 
 
@@ -209,39 +209,46 @@ class TestImperialCircuitConfiguration:
     """Test that SimulationConfig is correctly populated."""
 
     def test_default_superwage_multiplier(self) -> None:
-        """superwage_multiplier = 1.5 (high PPP)."""
-        _, config = create_imperial_circuit_scenario()
-        assert config.superwage_multiplier == pytest.approx(1.5)
+        """superwage_multiplier = 1.5 (high PPP) in GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario()
+        # Paradox Refactor: superwage_multiplier moved from config to defines.economy
+        assert defines.economy.superwage_multiplier == pytest.approx(1.5)
 
     def test_default_comprador_cut(self) -> None:
-        """comprador_cut = 0.15 (15%)."""
-        _, config = create_imperial_circuit_scenario()
-        assert config.comprador_cut == pytest.approx(0.15)
+        """comprador_cut = 0.15 (15%) in GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario()
+        # Paradox Refactor: comprador_cut moved from config to defines.economy
+        assert defines.economy.comprador_cut == pytest.approx(0.15)
 
     def test_custom_comprador_cut(self) -> None:
-        """Custom comprador_cut is applied."""
-        _, config = create_imperial_circuit_scenario(comprador_cut=0.20)
-        assert config.comprador_cut == pytest.approx(0.20)
+        """Custom comprador_cut is applied to GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario(comprador_cut=0.20)
+        # Paradox Refactor: comprador_cut moved from config to defines.economy
+        assert defines.economy.comprador_cut == pytest.approx(0.20)
 
     def test_default_extraction_efficiency(self) -> None:
-        """extraction_efficiency = 0.8 (default alpha)."""
-        _, config = create_imperial_circuit_scenario()
-        assert config.extraction_efficiency == pytest.approx(0.8)
+        """extraction_efficiency = 0.8 (default alpha) in GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario()
+        # Paradox Refactor: extraction_efficiency moved from config to defines.economy
+        assert defines.economy.extraction_efficiency == pytest.approx(0.8)
 
     def test_custom_extraction_efficiency(self) -> None:
-        """Custom extraction_efficiency is applied."""
-        _, config = create_imperial_circuit_scenario(extraction_efficiency=0.5)
-        assert config.extraction_efficiency == pytest.approx(0.5)
+        """Custom extraction_efficiency is applied to GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario(extraction_efficiency=0.5)
+        # Paradox Refactor: extraction_efficiency moved from config to defines.economy
+        assert defines.economy.extraction_efficiency == pytest.approx(0.5)
 
     def test_default_repression_level(self) -> None:
-        """repression_level = 0.5 (default)."""
-        _, config = create_imperial_circuit_scenario()
-        assert config.repression_level == pytest.approx(0.5)
+        """repression_level = 0.5 (default) in GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario()
+        # Paradox Refactor: repression_level moved from config to defines.survival
+        assert defines.survival.default_repression == pytest.approx(0.5)
 
     def test_custom_repression_level(self) -> None:
-        """Custom repression_level is applied."""
-        _, config = create_imperial_circuit_scenario(repression_level=0.8)
-        assert config.repression_level == pytest.approx(0.8)
+        """Custom repression_level is applied to GameDefines."""
+        _, _, defines = create_imperial_circuit_scenario(repression_level=0.8)
+        # Paradox Refactor: repression_level moved from config to defines.survival
+        assert defines.survival.default_repression == pytest.approx(0.8)
 
 
 @pytest.mark.unit
@@ -268,7 +275,7 @@ class TestWageCalculationCorrectness:
         """
         from babylon.engine.simulation_engine import step
 
-        state, config = create_imperial_circuit_scenario(
+        state, config, defines = create_imperial_circuit_scenario(
             periphery_wealth=0.1,
             core_wealth=0.9,
         )
@@ -277,7 +284,7 @@ class TestWageCalculationCorrectness:
         assert initial_cb == pytest.approx(0.9), "C_b should start at 0.9"
 
         # Run one tick
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
         final_cb = new_state.entities["C003"].wealth
 
         # Core Bourgeoisie should NOT lose wealth to wages
@@ -295,11 +302,11 @@ class TestWageCalculationCorrectness:
         """
         from babylon.engine.simulation_engine import step
 
-        state, config = create_imperial_circuit_scenario()
+        state, config, defines = create_imperial_circuit_scenario()
         initial_cb = state.entities["C003"].wealth
 
         for _ in range(10):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         final_cb = state.entities["C003"].wealth
         assert final_cb > initial_cb, (
@@ -314,13 +321,13 @@ class TestWageCalculationCorrectness:
         """
         from babylon.engine.simulation_engine import step
 
-        state, config = create_imperial_circuit_scenario()
+        state, config, defines = create_imperial_circuit_scenario()
         initial_cw = state.entities["C004"].wealth
         initial_cb = state.entities["C003"].wealth
 
         # Run 10 ticks
         for _ in range(10):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         final_cw = state.entities["C004"].wealth
         final_cb = state.entities["C003"].wealth

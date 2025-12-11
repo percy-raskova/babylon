@@ -1,0 +1,85 @@
+# Game Defines - Single Source of Truth for Simulation Coefficients
+#
+# This file externalizes all "magic numbers" from Python code, enabling:
+# 1. Game designers to balance the simulation without touching code
+# 2. Scenario-specific coefficient overrides
+# 3. Clear documentation of what each number means
+#
+# Categories:
+# - economy: Imperial rent extraction and value flow
+# - survival: P(S|A) and P(S|R) survival calculus
+# - solidarity: Consciousness transmission
+# - defaults: Fallback values for entity attributes
+
+economy:
+  # Imperial rent extraction
+  extraction_efficiency: 0.8        # Alpha - how efficiently core extracts value from periphery [0,1]
+  comprador_cut: 0.15               # Fraction of tribute kept by comprador class (15%)
+
+  # Super-wages (PPP Model)
+  super_wage_rate: 0.20             # Fraction of tribute paid as super-wages (20%)
+  superwage_multiplier: 1.0         # PPP multiplier for labor aristocracy purchasing power
+  superwage_ppp_impact: 0.5         # How much extraction translates to PPP bonus (50%)
+
+  # Imperial rent pool (Dynamic Balance)
+  initial_rent_pool: 100.0          # Starting imperial rent pool
+  pool_high_threshold: 0.7          # Pool ratio for prosperity mode (70%)
+  pool_low_threshold: 0.3           # Pool ratio for austerity mode (30%)
+  pool_critical_threshold: 0.1      # Pool ratio for ECONOMIC_CRISIS (10%)
+
+  # Wage bounds
+  min_wage_rate: 0.05               # Minimum super-wage rate during crisis (5%)
+  max_wage_rate: 0.35               # Maximum super-wage rate during prosperity (35%)
+
+  # Client state subsidy (The Iron Lung)
+  subsidy_conversion_rate: 0.1      # Rate at which wealth converts to repression (10%)
+  subsidy_trigger_threshold: 0.8    # P(S|R)/P(S|A) ratio threshold for subsidy (80%)
+
+survival:
+  # Acquiescence probability P(S|A)
+  steepness_k: 10.0                 # Sigmoid sharpness in acquiescence probability
+  default_subsistence: 0.3          # Minimum wealth for survival through compliance
+
+  # Revolution probability P(S|R)
+  default_organization: 0.1         # Fallback organization value [0,1]
+  default_repression: 0.5           # Fallback repression value [0,1]
+  revolution_threshold: 1.0         # Tipping point for P(S|R) formula
+  repression_base: 0.5              # Base resistance to revolution in denominator
+
+solidarity:
+  # Consciousness transmission
+  scaling_factor: 0.5               # Multiplier for graph edge weights affecting organization [0,2]
+  activation_threshold: 0.3         # Minimum source consciousness for transmission (30%)
+  mass_awakening_threshold: 0.6     # Target consciousness for MASS_AWAKENING event (60%)
+  negligible_transmission: 0.01     # Threshold below which transmissions are skipped
+
+  # Superwage impact on consciousness
+  superwage_impact: 1.0             # How much imperial extraction affects Core wealth
+
+# Behavioral economics
+behavioral:
+  loss_aversion_lambda: 2.25        # Kahneman-Tversky loss aversion coefficient
+
+# Tension dynamics
+tension:
+  accumulation_rate: 0.05           # Rate at which tension accumulates from wealth gaps
+
+# Consciousness drift
+consciousness:
+  sensitivity: 0.5                  # How quickly consciousness responds to material conditions
+  decay_lambda: 0.1                 # Decay rate for consciousness without material basis
+
+# Territory dynamics
+territory:
+  heat_decay_rate: 0.1              # Heat decay for LOW_PROFILE territories (10%)
+  high_profile_heat_gain: 0.15      # Heat gain for HIGH_PROFILE territories (15%)
+  eviction_heat_threshold: 0.8      # Heat threshold for eviction pipeline (80%)
+  rent_spike_multiplier: 1.5        # Rent multiplier during eviction (1.5x)
+  displacement_rate: 0.1            # Population displacement during eviction (10%)
+  heat_spillover_rate: 0.05         # Heat spillover via ADJACENCY edges (5%)
+  clarity_profile_coefficient: 0.3  # Clarity bonus for HIGH_PROFILE territories (30%)
+
+# Initial conditions
+initial:
+  worker_wealth: 0.5                # Starting wealth for periphery worker
+  owner_wealth: 0.5                 # Starting wealth for core owner

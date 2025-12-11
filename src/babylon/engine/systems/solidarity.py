@@ -112,9 +112,9 @@ class SolidaritySystem:
         # Get formula from registry
         calculate_solidarity_transmission = services.formulas.get("solidarity_transmission")
 
-        # Get config thresholds
-        activation_threshold = services.config.solidarity_activation_threshold
-        mass_awakening_threshold = services.config.mass_awakening_threshold
+        # Get defines thresholds
+        activation_threshold = services.defines.solidarity.activation_threshold
+        mass_awakening_threshold = services.defines.solidarity.mass_awakening_threshold
 
         # Process all SOLIDARITY edges
         for source_id, target_id, data in graph.edges(data=True):

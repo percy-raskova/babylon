@@ -17,6 +17,7 @@ Test Scenario Values:
 
 import pytest
 
+from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
@@ -37,7 +38,7 @@ def create_imperial_circuit_scenario(
     subsidy_conversion_rate: float = 0.1,
     subsidy_trigger_threshold: float = 0.8,
     subsidy_cap: float = 10.0,
-) -> tuple[WorldState, SimulationConfig]:
+) -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create the 4-node Imperial Circuit scenario.
 
     Nodes:
@@ -168,20 +169,29 @@ def create_imperial_circuit_scenario(
         event_log=[],
     )
 
-    # Create configuration with Imperial Circuit parameters
-    config = SimulationConfig(
+    # Create configuration (IT-level settings only)
+    config = SimulationConfig()
+
+    # Create GameDefines with scenario-specific game balance parameters
+    # (Paradox Refactor: game math now lives in GameDefines, not SimulationConfig)
+    economy_defines = EconomyDefines(
         extraction_efficiency=extraction_efficiency,
         comprador_cut=comprador_cut,
         super_wage_rate=super_wage_rate,
         subsidy_conversion_rate=subsidy_conversion_rate,
         subsidy_trigger_threshold=subsidy_trigger_threshold,
-        repression_level=0.5,
-        subsistence_threshold=0.3,
-        survival_steepness=10.0,
-        consciousness_sensitivity=0.5,
+    )
+    survival_defines = SurvivalDefines(
+        default_repression=0.5,
+        default_subsistence=0.3,
+        steepness_k=10.0,
+    )
+    defines = GameDefines(
+        economy=economy_defines,
+        survival=survival_defines,
     )
 
-    return state, config
+    return state, config, defines
 
 
 @pytest.mark.integration
@@ -205,8 +215,8 @@ class TestImperialCircuitFlow:
         Note: C002 final wealth depends on all 4 phases completing.
         After full circuit: C002 has 6 (kept 15% cut from 40).
         """
-        state, config = create_imperial_circuit_scenario()
-        new_state = step(state, config)
+        state, config, defines = create_imperial_circuit_scenario()
+        new_state = step(state, config, defines=defines)
 
         # C001 (P_w) should have lost 40 to extraction
         assert new_state.entities["C001"].wealth == pytest.approx(60.0, rel=0.01)
@@ -225,8 +235,8 @@ class TestImperialCircuitFlow:
         - C003 -> 84 (received tribute) -> pays wages from tribute -> pays subsidy from tribute
         - C003 accumulates more now because wages/subsidies are smaller (from income, not capital)
         """
-        state, config = create_imperial_circuit_scenario()
-        new_state = step(state, config)
+        state, config, defines = create_imperial_circuit_scenario()
+        new_state = step(state, config, defines=defines)
 
         # C002 (P_c) should have kept 15% cut
         assert new_state.entities["C002"].wealth == pytest.approx(6.0, rel=0.01)
@@ -244,8 +254,8 @@ class TestImperialCircuitFlow:
 
         This is CORRECT per MLM-TW theory - super-wages come from extracted surplus.
         """
-        state, config = create_imperial_circuit_scenario()
-        new_state = step(state, config)
+        state, config, defines = create_imperial_circuit_scenario()
+        new_state = step(state, config, defines=defines)
 
         # C003 (C_b) accumulates wealth (doesn't drain)
         assert new_state.entities["C003"].wealth > 70.0
@@ -261,11 +271,11 @@ class TestImperialCircuitFlow:
         the core provides a subsidy to increase repression capacity.
         """
         # Create scenario with unstable client state
-        state, config = create_imperial_circuit_scenario(
+        state, config, defines = create_imperial_circuit_scenario(
             p_c_repression=0.1,  # Low repression -> high P(S|R)
             p_c_wealth=0.1,  # Low wealth -> low P(S|A)
         )
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Subsidy should have been applied (exact values depend on stability calc)
         # The test verifies the mechanism exists and functions
@@ -281,12 +291,12 @@ class TestImperialCircuitFlow:
         Total wealth before = Total wealth after (in stable conditions).
         """
         # Create scenario where subsidy won't trigger
-        state, config = create_imperial_circuit_scenario(
+        state, config, defines = create_imperial_circuit_scenario(
             p_c_repression=0.9,  # High repression -> stable client state
         )
 
         initial_total = sum(e.wealth for e in state.entities.values())
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
         final_total = sum(e.wealth for e in new_state.entities.values())
 
         # Wealth should be conserved in the extraction loop
@@ -304,7 +314,7 @@ class TestImperialCircuitFlow:
         The test verifies subsidy mechanism works by checking repression increased.
         """
         # Create scenario where subsidy will trigger
-        state, config = create_imperial_circuit_scenario(
+        state, config, defines = create_imperial_circuit_scenario(
             p_c_repression=0.1,  # Low repression
             p_c_wealth=0.05,  # Near subsistence
             subsidy_trigger_threshold=0.5,  # Lower threshold to ensure trigger
@@ -312,7 +322,7 @@ class TestImperialCircuitFlow:
 
         initial_c_b_wealth = state.entities["C003"].wealth
         initial_p_c_repression = state.entities["C002"].repression_faced
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Verify subsidy triggered by checking repression increased
         final_p_c_repression = new_state.entities["C002"].repression_faced
@@ -340,11 +350,11 @@ class TestImperialCircuitFlow:
         """
         from babylon.engine.scenarios import create_two_node_scenario
 
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
         initial_worker_wealth = state.entities["C001"].wealth
         initial_owner_wealth = state.entities["C002"].wealth
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Worker should have lost wealth to extraction
         assert new_state.entities["C001"].wealth < initial_worker_wealth
@@ -359,13 +369,13 @@ class TestImperialSubsidyEvent:
     def test_imperial_subsidy_event_emitted_when_triggered(self) -> None:
         """IMPERIAL_SUBSIDY event is emitted when subsidy is applied."""
         # Create scenario where subsidy will trigger
-        state, config = create_imperial_circuit_scenario(
+        state, config, defines = create_imperial_circuit_scenario(
             p_c_repression=0.1,
             p_c_wealth=0.05,
             subsidy_trigger_threshold=0.5,
         )
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Check if IMPERIAL_SUBSIDY event was logged
         subsidy_events = [e for e in new_state.event_log if "IMPERIAL_SUBSIDY" in e.upper()]
@@ -377,11 +387,11 @@ class TestImperialSubsidyEvent:
     def test_no_subsidy_event_when_client_stable(self) -> None:
         """No IMPERIAL_SUBSIDY event when client state is stable."""
         # Create scenario where subsidy won't trigger
-        state, config = create_imperial_circuit_scenario(
+        state, config, defines = create_imperial_circuit_scenario(
             p_c_repression=0.9,  # Very high repression -> stable
         )
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # No IMPERIAL_SUBSIDY events should be present
         subsidy_events = [e for e in new_state.event_log if "IMPERIAL_SUBSIDY" in e.upper()]

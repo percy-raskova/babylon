@@ -27,20 +27,20 @@ class TestCreateTwoNodeScenario:
 
     def test_creates_state_and_config(self) -> None:
         """Factory returns both state and config."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
         assert state is not None
         assert config is not None
 
     def test_state_has_two_entities(self) -> None:
         """State has exactly two entities."""
-        state, _ = create_two_node_scenario()
+        state, _, _ = create_two_node_scenario()
         assert len(state.entities) == 2
         assert "C001" in state.entities  # Worker
         assert "C002" in state.entities  # Owner
 
     def test_state_has_three_relationships(self) -> None:
         """State has three relationships: exploitation, solidarity, and wages edges."""
-        state, _ = create_two_node_scenario()
+        state, _, _ = create_two_node_scenario()
         assert len(state.relationships) == 3
         # First relationship is exploitation (worker -> owner)
         assert state.relationships[0].source_id == "C001"
@@ -57,18 +57,19 @@ class TestCreateTwoNodeScenario:
 
     def test_custom_parameters_applied(self) -> None:
         """Custom parameters are applied correctly."""
-        state, config = create_two_node_scenario(
+        state, config, defines = create_two_node_scenario(
             worker_wealth=0.3,
             owner_wealth=0.7,
             extraction_efficiency=0.6,
         )
         assert state.entities["C001"].wealth == 0.3
         assert state.entities["C002"].wealth == 0.7
-        assert config.extraction_efficiency == 0.6
+        # Paradox Refactor: extraction_efficiency now in GameDefines, not SimulationConfig
+        assert defines.economy.extraction_efficiency == 0.6
 
     def test_state_starts_at_tick_zero(self) -> None:
         """State starts at tick 0."""
-        state, _ = create_two_node_scenario()
+        state, _, _ = create_two_node_scenario()
         assert state.tick == 0
 
 
@@ -93,10 +94,10 @@ class TestRentSpiralFeedbackLoop:
         that offset or exceed extraction losses. The net effect depends on
         extraction_efficiency vs wage_rate. Key verification: PPP model is active.
         """
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         for _ in range(50):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         # PPP Model: Worker receives wages that may offset extraction
         # Key verification: effective_wealth shows PPP bonus is applied
@@ -113,11 +114,11 @@ class TestRentSpiralFeedbackLoop:
         wealth. The owner still receives extraction from workers, but the net
         effect depends on extraction rates vs wage rates.
         """
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
         initial_wealth = state.entities["C002"].wealth
 
         for _ in range(50):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         # PPP Model: Owner's wealth changes due to wages payment and extraction
         # Key verification: economic activity occurred (wages paid)
@@ -128,11 +129,11 @@ class TestRentSpiralFeedbackLoop:
 
     def test_acquiescence_reflects_effective_wealth(self) -> None:
         """P(S|A) is determined by effective wealth including PPP bonus."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         # Run to allow PPP model to take effect
         for _ in range(50):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         # With PPP model, acquiescence depends on effective wealth
         # which includes the purchasing power bonus
@@ -144,10 +145,10 @@ class TestRentSpiralFeedbackLoop:
 
     def test_tension_increases_with_wealth_gap(self) -> None:
         """Tension on exploitation edge increases as wealth gap grows."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         for _ in range(50):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         # Tension should have accumulated
         assert state.relationships[0].tension > 0.1
@@ -169,19 +170,19 @@ class TestRepressionTrapFeedbackLoop:
 
     def test_high_repression_keeps_p_revolution_low(self) -> None:
         """High repression keeps P(S|R) low."""
-        state, config = create_two_node_scenario(repression_level=0.9)
-        state = step(state, config)
+        state, config, defines = create_two_node_scenario(repression_level=0.9)
+        state = step(state, config, defines=defines)
 
         # P(S|R) should be low with high repression
         assert state.entities["C001"].p_revolution < 0.3
 
     def test_low_repression_allows_higher_p_revolution(self) -> None:
         """Low repression allows higher P(S|R)."""
-        state, config = create_two_node_scenario(
+        state, config, defines = create_two_node_scenario(
             repression_level=0.1,
             worker_organization=0.5,  # Better organized
         )
-        state = step(state, config)
+        state = step(state, config, defines=defines)
 
         # P(S|R) should be higher with low repression
         assert state.entities["C001"].p_revolution > 0.5
@@ -189,13 +190,13 @@ class TestRepressionTrapFeedbackLoop:
     def test_repression_delays_crossover(self) -> None:
         """High repression delays the crossover point (P(S|R) > P(S|A))."""
         # Low repression scenario
-        state_low, config_low = create_two_node_scenario(
+        state_low, config_low, defines_low = create_two_node_scenario(
             repression_level=0.2,
             worker_organization=0.3,
         )
 
         # High repression scenario
-        state_high, config_high = create_two_node_scenario(
+        state_high, config_high, defines_high = create_two_node_scenario(
             repression_level=0.8,
             worker_organization=0.3,
         )
@@ -204,8 +205,8 @@ class TestRepressionTrapFeedbackLoop:
         crossover_tick_high = None
 
         for tick in range(200):
-            state_low = step(state_low, config_low)
-            state_high = step(state_high, config_high)
+            state_low = step(state_low, config_low, defines=defines_low)
+            state_high = step(state_high, config_high, defines=defines_high)
 
             worker_low = state_low.entities["C001"]
             worker_high = state_high.entities["C001"]
@@ -238,13 +239,13 @@ class TestGameLoopDeterminism:
 
     def test_identical_trajectories(self) -> None:
         """Two runs with same initial state produce identical results."""
-        state1, config = create_two_node_scenario()
+        state1, config, defines = create_two_node_scenario()
         state2 = state1  # Same starting point
 
         # Run both for 100 ticks
         for _ in range(100):
-            state1 = step(state1, config)
-            state2 = step(state2, config)
+            state1 = step(state1, config, defines=defines)
+            state2 = step(state2, config, defines=defines)
 
         # Should be identical
         assert state1.tick == state2.tick == 100
@@ -254,13 +255,13 @@ class TestGameLoopDeterminism:
 
     def test_parameter_changes_cause_different_trajectories(self) -> None:
         """Different parameters produce different outcomes."""
-        state_base, config_base = create_two_node_scenario(extraction_efficiency=0.3)
-        state_high, config_high = create_two_node_scenario(extraction_efficiency=0.9)
+        state_base, config_base, defines_base = create_two_node_scenario(extraction_efficiency=0.3)
+        state_high, config_high, defines_high = create_two_node_scenario(extraction_efficiency=0.9)
 
         # Run 5 ticks to see differences in PPP effective wealth
         for _ in range(5):
-            state_base = step(state_base, config_base)
-            state_high = step(state_high, config_high)
+            state_base = step(state_base, config_base, defines=defines_base)
+            state_high = step(state_high, config_high, defines=defines_high)
 
         # With PPP model, different extraction rates affect PPP multiplier
         # Higher extraction -> higher PPP multiplier -> higher effective wealth bonus
@@ -269,9 +270,9 @@ class TestGameLoopDeterminism:
 
         # PPP multipliers should differ based on extraction efficiency
         # High extraction scenario should have higher PPP bonus
-        assert (
-            worker_high.ppp_multiplier > worker_base.ppp_multiplier
-        ), f"High extraction PPP ({worker_high.ppp_multiplier}) should > low extraction PPP ({worker_base.ppp_multiplier})"
+        assert worker_high.ppp_multiplier > worker_base.ppp_multiplier, (
+            f"High extraction PPP ({worker_high.ppp_multiplier}) should > low extraction PPP ({worker_base.ppp_multiplier})"
+        )
 
 
 # =============================================================================
@@ -285,19 +286,19 @@ class TestLongRunStability:
 
     def test_no_nan_or_inf_after_1000_ticks(self) -> None:
         """No NaN or Inf values appear after 1000 ticks."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
 
         for _ in range(1000):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
             # Check for NaN/Inf in all numeric fields
             for entity in state.entities.values():
                 assert entity.wealth >= 0, "Wealth went negative"
                 assert entity.wealth < float("inf"), "Wealth is infinite"
                 # Check class_consciousness is in valid range [0, 1]
-                assert (
-                    0 <= entity.ideology.class_consciousness <= 1
-                ), "class_consciousness out of bounds"
+                assert 0 <= entity.ideology.class_consciousness <= 1, (
+                    "class_consciousness out of bounds"
+                )
                 assert 0 <= entity.p_acquiescence <= 1, "P(S|A) out of bounds"
                 assert 0 <= entity.p_revolution <= 1, "P(S|R) out of bounds"
 
@@ -307,11 +308,11 @@ class TestLongRunStability:
 
     def test_wealth_conserved_over_1000_ticks(self) -> None:
         """Total wealth is conserved over 1000 ticks."""
-        state, config = create_two_node_scenario()
+        state, config, defines = create_two_node_scenario()
         initial_total = sum(e.wealth for e in state.entities.values())
 
         for _ in range(1000):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         final_total = sum(e.wealth for e in state.entities.values())
         assert final_total == pytest.approx(initial_total, rel=0.001)
@@ -328,15 +329,15 @@ class TestScenarioVariants:
 
     def test_high_tension_scenario_starts_tensioned(self) -> None:
         """High tension scenario starts with elevated tension."""
-        state, _ = create_high_tension_scenario()
+        state, _, _ = create_high_tension_scenario()
         assert state.relationships[0].tension >= 0.7
 
     def test_high_tension_scenario_near_rupture(self) -> None:
         """High tension scenario can reach rupture quickly."""
-        state, config = create_high_tension_scenario()
+        state, config, defines = create_high_tension_scenario()
 
         for _ in range(100):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
             if state.relationships[0].tension >= 1.0:
                 break
 
@@ -345,7 +346,7 @@ class TestScenarioVariants:
 
     def test_labor_aristocracy_scenario_worker_wealthy(self) -> None:
         """Labor aristocracy scenario has wealthy worker."""
-        state, _ = create_labor_aristocracy_scenario()
+        state, _, _ = create_labor_aristocracy_scenario()
         assert state.entities["C001"].wealth >= 0.7
 
 
@@ -367,7 +368,7 @@ class TestPhase2SuccessCriteria:
     def test_phase2_success_criteria(self) -> None:
         """THE CORE TEST: Run 100 turns, verify deterministic outcomes."""
         # Setup scenario
-        state, config = create_two_node_scenario(
+        state, config, defines = create_two_node_scenario(
             worker_wealth=0.5,
             owner_wealth=0.5,
             extraction_efficiency=0.8,
@@ -376,17 +377,17 @@ class TestPhase2SuccessCriteria:
 
         # Run 100 turns
         for _ in range(100):
-            state = step(state, config)
+            state = step(state, config, defines=defines)
 
         # Verify determinism (can re-run from same state)
-        state2, _ = create_two_node_scenario(
+        state2, _, defines2 = create_two_node_scenario(
             worker_wealth=0.5,
             owner_wealth=0.5,
             extraction_efficiency=0.8,
             repression_level=0.5,
         )
         for _ in range(100):
-            state2 = step(state2, config)
+            state2 = step(state2, config, defines=defines2)
 
         # Same inputs -> Same outputs
         assert state.tick == state2.tick == 100
@@ -436,21 +437,21 @@ class TestConsciousnessFeedbackLoop:
     def test_revolutionary_worker_resists_extraction(self) -> None:
         """Revolutionary worker (-1 ideology) loses less wealth than reactionary."""
         # Revolutionary worker scenario
-        rev_state, config = create_two_node_scenario(
+        rev_state, config, defines = create_two_node_scenario(
             worker_wealth=0.5,
             worker_ideology=-0.9,  # Near revolutionary
         )
 
-        # Reactionary worker scenario
-        react_state, _ = create_two_node_scenario(
+        # Reactionary worker scenario (uses same config/defines for fair comparison)
+        react_state, _, react_defines = create_two_node_scenario(
             worker_wealth=0.5,
             worker_ideology=0.9,  # Near reactionary
         )
 
         # Run both for same number of ticks
         for _ in range(10):
-            rev_state = step(rev_state, config)
-            react_state = step(react_state, config)
+            rev_state = step(rev_state, config, defines=defines)
+            react_state = step(react_state, config, defines=react_defines)
 
         # Revolutionary worker should have MORE wealth remaining
         # (they resisted extraction via consciousness)
@@ -464,19 +465,19 @@ class TestConsciousnessFeedbackLoop:
         reactionary workers (low class_consciousness).
         """
         # Revolutionary worker (high consciousness) should lose less wealth
-        rev_state, config = create_two_node_scenario(
+        rev_state, config, defines = create_two_node_scenario(
             worker_ideology=-0.9,  # Revolutionary (class_consciousness ~0.95)
         )
 
         # Reactionary worker (low consciousness) should lose more wealth
-        react_state, _ = create_two_node_scenario(
+        react_state, _, react_defines = create_two_node_scenario(
             worker_ideology=0.9,  # Reactionary (class_consciousness ~0.05)
         )
 
         # Run both for 100 ticks
         for _ in range(100):
-            rev_state = step(rev_state, config)
-            react_state = step(react_state, config)
+            rev_state = step(rev_state, config, defines=defines)
+            react_state = step(react_state, config, defines=react_defines)
 
         # Revolutionary worker should have retained more wealth
         # because consciousness affects extraction resistance

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from babylon.config.defines import GameDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -102,6 +103,7 @@ def step(
     state: WorldState,
     config: SimulationConfig,
     persistent_context: dict[str, Any] | None = None,
+    defines: GameDefines | None = None,
 ) -> WorldState:
     """Advance simulation by one tick using the modular engine.
 
@@ -114,6 +116,8 @@ def step(
         persistent_context: Optional context dict that persists across ticks.
             Used by systems that need to track state between ticks (e.g.,
             ConsciousnessSystem's previous_wages for bifurcation mechanic).
+        defines: Optional custom GameDefines. If None, loads from default
+            defines.yaml location. Use this for scenario-specific calibration.
 
     Returns:
         New WorldState at tick + 1
@@ -134,7 +138,9 @@ def step(
     events: list[str] = list(state.event_log)
 
     # Create ServiceContainer for this tick
-    services = ServiceContainer.create(config)
+    # Use provided defines, or load from default YAML
+    effective_defines = defines if defines is not None else GameDefines.load_default()
+    services = ServiceContainer.create(config, effective_defines)
 
     # The Context acts as the shared bus for the tick
     # Merge persistent_context into per-tick context

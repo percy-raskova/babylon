@@ -11,6 +11,7 @@ Test Scenarios:
 
 import pytest
 
+from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.economy import GlobalEconomy
@@ -30,7 +31,7 @@ def create_dynamic_balance_scenario(
     comprador_cut: float = 0.15,
     super_wage_rate: float = 0.40,  # High wages = faster drain
     tension: float = 0.3,
-) -> tuple[WorldState, SimulationConfig]:
+) -> tuple[WorldState, SimulationConfig, GameDefines]:
     """Create a scenario designed to test pool dynamics.
 
     Default parameters create a drain scenario where wages outpace tribute.
@@ -47,7 +48,7 @@ def create_dynamic_balance_scenario(
         tension: Initial edge tension (affects policy decisions)
 
     Returns:
-        Tuple of (WorldState, SimulationConfig)
+        Tuple of (WorldState, SimulationConfig, GameDefines)
     """
     # Create the 4-node Imperial Circuit
     periphery_worker = SocialClass(
@@ -170,18 +171,17 @@ def create_dynamic_balance_scenario(
         economy=economy,
     )
 
-    # Create config with Dynamic Balance parameters
-    config = SimulationConfig(
+    # Create config (now only holds IT-level settings)
+    config = SimulationConfig()
+
+    # Create GameDefines with scenario-specific game balance parameters
+    # (Paradox Refactor: game math now lives in GameDefines, not SimulationConfig)
+    economy_defines = EconomyDefines(
         extraction_efficiency=extraction_efficiency,
         comprador_cut=comprador_cut,
         super_wage_rate=super_wage_rate,
         subsidy_conversion_rate=0.1,
         subsidy_trigger_threshold=0.8,
-        repression_level=0.5,
-        subsistence_threshold=0.3,
-        survival_steepness=10.0,
-        consciousness_sensitivity=0.5,
-        # Dynamic Balance parameters (Sprint 3.4.4)
         initial_rent_pool=initial_pool,
         pool_high_threshold=0.7,
         pool_low_threshold=0.3,
@@ -189,8 +189,17 @@ def create_dynamic_balance_scenario(
         min_wage_rate=0.05,
         max_wage_rate=0.35,
     )
+    survival_defines = SurvivalDefines(
+        default_repression=0.5,
+        default_subsistence=0.3,
+        steepness_k=10.0,
+    )
+    defines = GameDefines(
+        economy=economy_defines,
+        survival=survival_defines,
+    )
 
-    return state, config
+    return state, config, defines
 
 
 @pytest.mark.integration
@@ -208,7 +217,7 @@ class TestDynamicBalanceDrain:
         BUG FIX: With wages calculated from tribute (not wealth), the pool
         accumulates over time. wages = tribute * rate < tribute always.
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             extraction_efficiency=0.3,  # Extraction rate
             super_wage_rate=0.40,  # Wages as fraction of tribute
@@ -221,7 +230,7 @@ class TestDynamicBalanceDrain:
         pool_history = [initial_pool]
 
         for _ in range(5):
-            current_state = step(current_state, config)
+            current_state = step(current_state, config, defines=defines)
             pool_history.append(current_state.economy.imperial_rent_pool)
 
         # With the bug fix, pool should grow (or at least not drain)
@@ -237,9 +246,9 @@ class TestDynamicBalanceDrain:
 
     def test_pool_tracked_in_world_state(self) -> None:
         """GlobalEconomy should persist through WorldState."""
-        state, config = create_dynamic_balance_scenario(initial_pool=100.0)
+        state, config, defines = create_dynamic_balance_scenario(initial_pool=100.0)
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Economy should be present and have expected fields
         assert new_state.economy is not None
@@ -259,7 +268,7 @@ class TestDynamicBalanceCrash:
         The pool_ratio = current_pool / initial_pool, and CRISIS fires when
         pool_ratio < critical_threshold (default 0.1).
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             extraction_efficiency=0.1,  # Very low extraction
             super_wage_rate=0.35,  # Max wage rate
@@ -275,7 +284,7 @@ class TestDynamicBalanceCrash:
         )
         state = state.model_copy(update={"economy": critical_economy})
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Check for ECONOMIC_CRISIS event
         # With pool starting at 0 and low extraction (0.1), tribute inflow will be
@@ -290,7 +299,7 @@ class TestDynamicBalanceCrash:
 
         When pool is critical, bourgeoisie should slash wages.
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             super_wage_rate=0.35,  # Max wage rate
         )
@@ -303,7 +312,7 @@ class TestDynamicBalanceCrash:
         )
         state = state.model_copy(update={"economy": critical_economy})
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Wage rate should have decreased
         assert new_state.economy.current_super_wage_rate < state.economy.current_super_wage_rate, (
@@ -316,7 +325,7 @@ class TestDynamicBalanceCrash:
 
         When pool is critical, bourgeoisie should increase repression.
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             super_wage_rate=0.35,
         )
@@ -329,7 +338,7 @@ class TestDynamicBalanceCrash:
         )
         state = state.model_copy(update={"economy": critical_economy})
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Repression should have increased
         assert (
@@ -349,7 +358,7 @@ class TestDynamicBalancePolicySwitch:
 
         Pool < 30% + tension > 50% = IRON_FIST decision
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             tension=0.7,  # High tension
         )
@@ -362,7 +371,7 @@ class TestDynamicBalancePolicySwitch:
         )
         state = state.model_copy(update={"economy": austerity_economy})
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Repression should increase
         assert (
@@ -377,7 +386,7 @@ class TestDynamicBalancePolicySwitch:
 
         Pool < 30% + tension <= 50% = AUSTERITY decision
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             tension=0.3,  # Low tension
         )
@@ -390,7 +399,7 @@ class TestDynamicBalancePolicySwitch:
         )
         state = state.model_copy(update={"economy": austerity_economy})
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Wages should decrease
         assert new_state.economy.current_super_wage_rate < state.economy.current_super_wage_rate, (
@@ -403,7 +412,7 @@ class TestDynamicBalancePolicySwitch:
 
         Pool >= 70% + tension < 30% = BRIBERY decision
         """
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
             tension=0.2,  # Low tension
         )
@@ -416,7 +425,7 @@ class TestDynamicBalancePolicySwitch:
         )
         state = state.model_copy(update={"economy": prosperity_economy})
 
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Wages should increase (up to max)
         assert new_state.economy.current_super_wage_rate > state.economy.current_super_wage_rate, (
@@ -431,13 +440,13 @@ class TestDynamicBalanceGraphSerialization:
 
     def test_economy_persists_through_graph_conversion(self) -> None:
         """GlobalEconomy should serialize to graph and back."""
-        state, config = create_dynamic_balance_scenario(
+        state, config, defines = create_dynamic_balance_scenario(
             initial_pool=75.0,
             super_wage_rate=0.25,
         )
 
         # Run a tick to get updated economy
-        new_state = step(state, config)
+        new_state = step(state, config, defines=defines)
 
         # Convert to graph and back
         graph = new_state.to_graph()
@@ -456,7 +465,7 @@ class TestDynamicBalanceGraphSerialization:
 
     def test_economy_in_graph_metadata(self) -> None:
         """Economy should be stored in graph.graph['economy']."""
-        state, _ = create_dynamic_balance_scenario()
+        state, _, _ = create_dynamic_balance_scenario()
 
         graph = state.to_graph()
 

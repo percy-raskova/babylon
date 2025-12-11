@@ -1,0 +1,322 @@
+# Parameter Analysis Specification
+# Comprehensive simulation analysis for balance tuning and theory validation
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-11"
+  updated: "2025-12-11"
+  purpose: "Define methodology for deep parameter analysis and observation recording"
+  status: "PLANNED"
+  tool: "tools/parameter_analysis.py (to be implemented)"
+  related:
+    - "ai-docs/balance-tuning.yaml (findings registry)"
+    - "ai-docs/formulas-spec.yaml (formula definitions)"
+    - "brainstorm/plans/parameter-analysis-plan.md (implementation plan)"
+
+# =============================================================================
+# MOTIVATION
+# =============================================================================
+
+motivation:
+  problem: |
+    Current tune_parameters.py only tells us "periphery died at tick 27".
+    We need to see the FULL STORY:
+    - How wealth flows between all 4 entities over time
+    - When consciousness rises/falls and WHY
+    - The exact moment P(S|R) crosses P(S|A)
+    - How the imperial rent pool grows or shrinks
+
+  insight: |
+    The Imperial Collapse Dynamic discovery shows emergent behavior exists.
+    But we can only find it by watching trajectories, not endpoints.
+    "Greedy empires collapse" required seeing wealth drain RATE, not just death tick.
+
+  goal: |
+    Enable rich observational data collection for:
+    1. Parameter tuning (find playable boundaries)
+    2. Theory validation (does model match MLM-TW predictions?)
+    3. Emergent behavior discovery (what dynamics arise?)
+
+# =============================================================================
+# TOOL SPECIFICATION
+# =============================================================================
+
+tool_specification:
+
+  name: "parameter_analysis.py"
+  location: "tools/parameter_analysis.py"
+
+  commands:
+
+    trace:
+      description: "Single simulation with full time-series output"
+      purpose: "Deep dive into one parameter configuration"
+      usage: |
+        python tools/parameter_analysis.py trace \
+          --param economy.extraction_efficiency=0.2 \
+          --ticks 50 \
+          --csv results/trace_0.2.csv
+      output: "CSV with one row per tick, all entity/edge states"
+
+    sweep:
+      description: "Parameter sweep with summary statistics"
+      purpose: "Find boundaries and transitions"
+      usage: |
+        python tools/parameter_analysis.py sweep \
+          --param economy.extraction_efficiency \
+          --start 0.1 --end 0.5 --step 0.05 \
+          --csv results/extraction_sweep.csv
+      output: "CSV with one row per parameter value, summary metrics"
+
+    grid:
+      description: "2D parameter grid search"
+      purpose: "Find interaction effects between parameters"
+      usage: |
+        python tools/parameter_analysis.py grid \
+          --param1 economy.extraction_efficiency --range1 0.1,0.4,0.1 \
+          --param2 economy.super_wage_rate --range2 0.1,0.5,0.1 \
+          --csv results/grid_search.csv
+      output: "CSV with param1, param2, and outcome metrics"
+
+# =============================================================================
+# DATA SCHEMA
+# =============================================================================
+
+data_schema:
+
+  entities_tracked:
+    P_w:
+      id: "C001"
+      name: "Periphery Worker"
+      metrics:
+        - wealth
+        - consciousness
+        - organization
+        - p_acquiescence    # P(S|A)
+        - p_revolution      # P(S|R)
+        - is_dead           # wealth <= 0.001
+
+    P_c:
+      id: "C002"
+      name: "Comprador"
+      metrics:
+        - wealth
+
+    C_b:
+      id: "C003"
+      name: "Core Bourgeoisie"
+      metrics:
+        - wealth
+        - tribute_inflow    # imperial rent received this tick
+
+    C_w:
+      id: "C004"
+      name: "Labor Aristocracy"
+      metrics:
+        - wealth
+        - consciousness
+        - wages_received
+        - is_labor_aristocrat  # W > V check
+
+  edges_tracked:
+    exploitation:
+      type: "EXPLOITATION"
+      direction: "P_w → P_c"
+      metrics:
+        - tension
+        - rent_extracted
+
+    tribute:
+      type: "TRIBUTE"
+      direction: "P_c → C_b"
+      metrics:
+        - value_transferred
+
+    wages:
+      type: "WAGES"
+      direction: "C_b → C_w"
+      metrics:
+        - wages_paid
+
+    solidarity:
+      type: "SOLIDARITY"
+      direction: "P_w ↔ C_w"
+      metrics:
+        - solidarity_strength
+        - transmission_delta
+      note: "May not exist in all scenarios"
+
+  derived_metrics:
+    - crossover_tick: "First tick where P(S|R) > P(S|A)"
+    - imperial_rent_cumulative: "Total extraction over simulation"
+    - system_wealth_total: "Sum of all entity wealth (conservation check)"
+    - labor_aristocracy_ratio: "C_w wages / C_w value produced"
+
+  csv_schema_trace: |
+    tick,p_w_wealth,p_w_consciousness,p_w_psa,p_w_psr,p_w_dead,
+    p_c_wealth,c_b_wealth,c_b_tribute_inflow,
+    c_w_wealth,c_w_consciousness,c_w_wages,c_w_is_aristocrat,
+    exploitation_tension,exploitation_rent,tribute_flow,wages_paid,
+    solidarity_strength,solidarity_delta
+
+  csv_schema_sweep: |
+    param_value,ticks_survived,max_tension,outcome,
+    final_p_w_wealth,final_c_b_wealth,final_c_w_wealth,
+    crossover_tick,cumulative_rent,peak_consciousness
+
+  csv_schema_grid: |
+    param1_value,param2_value,ticks_survived,outcome,
+    final_p_w_wealth,final_c_b_wealth,crossover_tick
+
+# =============================================================================
+# KEY QUESTIONS TO ANSWER
+# =============================================================================
+
+research_questions:
+
+  imperial_dynamics:
+    - question: "At what extraction rate does C_b start LOSING wealth?"
+      hypothesis: "High extraction kills periphery before rent accumulates"
+      metric: "c_b_wealth trajectory over time"
+
+    - question: "Is there a 'Goldilocks zone' for sustainable empire?"
+      hypothesis: "Some extraction rate keeps periphery barely alive indefinitely"
+      metric: "p_w_wealth stable above death threshold"
+
+    - question: "How does super_wage_rate affect imperial stability?"
+      hypothesis: "Higher super-wages drain C_b faster but keep C_w loyal"
+      metric: "Grid search extraction × super_wage"
+
+  consciousness_dynamics:
+    - question: "When does Labor Aristocracy consciousness start rising?"
+      hypothesis: "Only when super-wages drop below value produced"
+      metric: "c_w_consciousness trajectory vs c_w_wages"
+
+    - question: "What triggers revolutionary crossover in periphery?"
+      hypothesis: "P(S|R) > P(S|A) when wealth drops AND organization rises"
+      metric: "crossover_tick vs organization level"
+
+  fascist_bifurcation:
+    - question: "Without solidarity edges, does agitation produce fascism?"
+      hypothesis: "Same material conditions, different outcomes based on solidarity"
+      metric: "Compare scenarios with solidarity=0 vs solidarity>0"
+      reference: "ADR016_fascist_bifurcation"
+
+  system_behavior:
+    - question: "Is total system wealth conserved?"
+      hypothesis: "Wealth transfers, doesn't create/destroy (closed system)"
+      metric: "system_wealth_total should be constant"
+
+    - question: "What feedback loops exist?"
+      hypothesis: |
+        - Extraction → wealth loss → consciousness rise → resistance → less extraction
+        - Super-wages → false consciousness → less resistance → more extraction
+      metric: "Correlation analysis in time-series data"
+
+# =============================================================================
+# PARAMETERS TO ANALYZE
+# =============================================================================
+
+parameters_to_analyze:
+
+  high_priority:
+    - path: "economy.extraction_efficiency"
+      description: "Alpha in Φ = α × W × (1-Ψ)"
+      current_default: 0.8
+      recommended_range: [0.05, 0.50]
+      known_findings: "Boundary at 0.25, Imperial Collapse Dynamic"
+
+    - path: "economy.super_wage_rate"
+      description: "Fraction of tribute paid as super-wages"
+      current_default: "unknown - check GameDefines"
+      hypothesis: "Higher = more C_w loyalty but faster C_b drain"
+
+    - path: "economy.base_subsistence"
+      description: "S in P(S|A) sigmoid"
+      hypothesis: "Higher = earlier death, faster collapse"
+
+  medium_priority:
+    - path: "consciousness.drift_sensitivity_k"
+      description: "k in dΨ/dt = k(1-W/V) - λΨ"
+      hypothesis: "Higher = faster consciousness change"
+
+    - path: "consciousness.decay_lambda"
+      description: "λ in consciousness drift formula"
+      hypothesis: "Higher = consciousness fades faster without material basis"
+
+    - path: "solidarity.transmission_coefficient"
+      description: "σ in solidarity transmission"
+      hypothesis: "Critical for Fascist Bifurcation mechanic"
+
+  interaction_effects:
+    - pair: ["extraction_efficiency", "super_wage_rate"]
+      hypothesis: "High extraction + high super-wages = unsustainable"
+
+    - pair: ["extraction_efficiency", "base_subsistence"]
+      hypothesis: "Both affect time-to-death, may compound"
+
+# =============================================================================
+# IMPLEMENTATION PHASES
+# =============================================================================
+
+implementation:
+
+  phase_1:
+    name: "Trace Command"
+    status: "PLANNED"
+    deliverables:
+      - "trace subcommand with full time-series CSV"
+      - "Track all 4 entities"
+      - "Track key edges"
+      - "Derived metrics calculation"
+    tests:
+      - "test_trace_produces_csv"
+      - "test_trace_tracks_all_entities"
+      - "test_trace_calculates_derived_metrics"
+
+  phase_2:
+    name: "Sweep Command Enhancement"
+    status: "PLANNED"
+    deliverables:
+      - "sweep subcommand with rich summary CSV"
+      - "More metrics than current tune_parameters.py"
+      - "Crossover tick detection"
+    tests:
+      - "test_sweep_detects_crossover"
+      - "test_sweep_tracks_all_entities"
+
+  phase_3:
+    name: "Grid Search"
+    status: "PLANNED"
+    deliverables:
+      - "grid subcommand for 2D parameter space"
+      - "Heatmap-ready CSV output"
+    tests:
+      - "test_grid_iterates_all_combinations"
+      - "test_grid_output_format"
+
+  phase_4:
+    name: "Analysis and Documentation"
+    status: "PLANNED"
+    deliverables:
+      - "Run comprehensive sweeps"
+      - "Document findings in balance-tuning.yaml"
+      - "Identify parameter interactions"
+      - "Validate theoretical predictions"
+
+# =============================================================================
+# MISE TASKS (to be added)
+# =============================================================================
+
+mise_tasks:
+  - name: "analyze-trace"
+    command: "poetry run python tools/parameter_analysis.py trace"
+    description: "Run single simulation with full time-series output"
+
+  - name: "analyze-sweep"
+    command: "poetry run python tools/parameter_analysis.py sweep"
+    description: "Run parameter sweep with rich metrics"
+
+  - name: "analyze-grid"
+    command: "poetry run python tools/parameter_analysis.py grid"
+    description: "Run 2D parameter grid search"

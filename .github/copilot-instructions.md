@@ -1,46 +1,82 @@
-#
-This is a Python-based repository for Babylon, a text-based RPG simulating the interplay of political, economic, and social forces. Contributions should adhere to the following workflow and standards:
+# Copilot Instructions
+
+This is a Python-based repository for Babylon, a geopolitical simulation engine modeling class struggle through MLM-TW (Marxist-Leninist-Maoist Third Worldist) theory.
 
 ## Core Principles
 
-- **Use Chroma, Memory, and GitHub MCPs** as necessary for feature development and maintenance.
-- **Log to Memory at the end of every job:** After each significant task or job, record observations, notes, and positive developments to Memory for future reference and reproducibility.
-- **Adhere to Test-Driven Development (TDD):** All new features and bug fixes should be covered by corresponding unit or integration tests.
-- **Follow good Python coding standards:** Code should be idiomatic, clear, and maintainable. Use type hints where appropriate.
+- **Adhere to Test-Driven Development (TDD):** All new features and bug fixes should be covered by corresponding unit or integration tests. Red-Green-Refactor cycle mandatory.
+- **Pydantic First:** All game objects as `pydantic.BaseModel`, no raw dicts. Use constrained types (`Probability`, `Currency`, `Intensity`).
+- **Strict Typing:** MyPy strict mode enforced. Explicit return types on all functions.
+- **Data-Driven:** Game logic in JSON data files, not hardcoded conditionals.
 
 ## Development Workflow
 
-- **Dependency Management:** Use Poetry for dependency management and packaging.
-    - Install dependencies: `poetry install`
-    - Add a dependency: `poetry add <package>`
-    - Run a shell: `poetry shell`
-- **Testing:** Use the Pytest suite for all tests.
-    - Run all tests: `poetry run pytest`
-    - Add tests for each new feature or bugfix before or as you implement changes.
-- **Formatting & Linting:**
-    - Format code with [black](https://black.readthedocs.io/) and organize imports with [isort](https://pycqa.github.io/isort/).
-    - Lint with [flake8](https://flake8.pycqa.org/) or [ruff](https://docs.astral.sh/ruff/).
-    - Typical commands:
-        - `poetry run black .`
-        - `poetry run isort .`
-        - `poetry run flake8 .`
-- **Documentation:** Document all public APIs, classes, and complex logic. Update the docs/ directory as needed.
-- **Separation of Concerns:** Keep game logic, data, and I/O well separated. Use dependency injection for components where feasible to improve testability.
+### Dependency Management
 
-## Logging and Observability
+Use Poetry for dependency management and packaging:
+- Install dependencies: `poetry install`
+- Add a dependency: `poetry add <package>`
 
-- At the end of every significant job (feature, bugfix, or refactor), log to Memory:
-    - What was done
-    - Key design decisions
-    - Any issues or surprises encountered
-    - Notable improvements or successes
-- Also make sure to maintain a TODO.md file that you update with your progress, suggestions for new tasks, etc
+### Task Runner (Preferred)
+
+Use mise for all tasks:
+```bash
+mise tasks                    # List all available tasks
+mise run ci                   # Quick CI: lint + format + typecheck + test-fast
+mise run test                 # Run all non-AI tests (~1500 tests)
+mise run test-fast            # Fast math/engine tests only
+mise run typecheck            # MyPy strict mode
+mise run docs-live            # Live-reload documentation server
+```
+
+### Testing
+
+Use the Pytest suite for all tests:
+```bash
+poetry run pytest -m "not ai"                     # All non-AI tests
+poetry run pytest -m "ai"                         # Slow AI/narrative evals
+poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
+poetry run pytest -k "test_name_pattern"          # Pattern matching
+```
+
+**Pytest Markers:**
+- `@pytest.mark.math` - Deterministic formulas (fast, pure)
+- `@pytest.mark.ledger` - Economic/political state
+- `@pytest.mark.topology` - Graph/network operations
+- `@pytest.mark.integration` - Database/ChromaDB (I/O bound)
+- `@pytest.mark.ai` - AI/RAG evaluation (slow, non-deterministic)
+
+### Formatting & Linting
+
+Ruff handles all linting and formatting (replaces black/isort/flake8):
+```bash
+poetry run ruff check src tests --fix    # Lint with auto-fix
+poetry run ruff format src tests         # Format code
+poetry run mypy src                      # Type checking (strict mode)
+```
+
+### Documentation
+
+- Document all public APIs with Sphinx-compatible RST docstrings
+- Use `mise run docs-live` for live-reload documentation server
+- Design specs in `brainstorm/mechanics/`
+- AI-readable specs in `ai-docs/` (YAML format)
+
+## Architecture
+
+**The Embedded Trinity** (three-layer local system, no external servers):
+
+1. **The Ledger** (SQLite/Pydantic) - Rigid material state
+2. **The Topology** (NetworkX) - Fluid relational state via graphs
+3. **The Archive** (ChromaDB) - Semantic history for AI narrative
+
+**Key Principle:** State is pure data. Engine is pure transformation. They never mix.
+
 ## Key Guidelines
 
-1. Use Chroma, Memory, and GitHub MCPs thoughtfully—refer to project documentation for integration patterns.
-2. Use Poetry for all dependency and environment management.
-3. Write or update Pytest-based tests for every new feature or bugfix (TDD preferred).
-4. Format, lint, and type-check before submitting code.
-5. Document your code and update docs/ as needed.
-6. Log observations, notes, and positive outcomes to Memory after each job.
-7. Conventional commit messages
+1. Use Poetry for all dependency and environment management
+2. Write or update Pytest-based tests for every new feature or bugfix (TDD preferred)
+3. Format, lint, and type-check before submitting code
+4. Document your code with Sphinx-compatible RST docstrings
+5. Use conventional commit messages (`feat:`, `fix:`, `docs:`, `refactor:`)
+6. See `CLAUDE.md` for comprehensive development guidelines

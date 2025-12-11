@@ -19,10 +19,12 @@ poetry run pre-commit install
 # Task Runner (preferred - use mise for all tasks)
 mise tasks                                        # List all available tasks
 mise run ci                                       # Quick CI: lint + format + typecheck + test-fast
-mise run test                                     # Run all non-AI tests
+mise run test                                     # Run all non-AI tests (~1500 tests)
 mise run test-fast                                # Fast math/engine tests only
 mise run typecheck                                # MyPy strict mode
 mise run docs-live                                # Live-reload documentation server
+mise run doctest                                  # Run doctest examples in formulas
+mise run clean                                    # Clean build artifacts and caches
 
 # Parameter Analysis
 mise run analyze-trace                            # Single sim with full time-series CSV
@@ -34,7 +36,7 @@ poetry run pytest -m "ai"                         # Slow AI/narrative evals
 poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
 poetry run pytest -k "test_name_pattern"          # Pattern matching
 
-# Linting & Type Checking
+# Linting & Type Checking (ruff replaces black/isort/flake8)
 poetry run ruff check src tests --fix
 poetry run ruff format src tests
 poetry run mypy src                               # Strict mode
@@ -87,6 +89,8 @@ SimulationEngine.run_tick(graph, services, context)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`
+- `src/babylon/engine/observer.py` - `SimulationObserver` protocol for state change notifications
+- `src/babylon/engine/topology_monitor.py` - Phase transition detection via percolation theory
 - `src/babylon/config/defines.py` - GameDefines (all tunable game coefficients)
 
 ## Type System
@@ -214,7 +218,8 @@ Categories: `economy`, `consciousness`, `solidarity`, `survival`, `territory`
 
 - Sphinx docs: `mise run docs-live` for development, `mise run docs` to build
 - Design specs in `brainstorm/mechanics/`
-- AI-readable specs in `ai-docs/` (YAML format)
+- AI-readable specs in `ai-docs/` (YAML format) - **read `ai-docs/README.md` for catalog**
 - Deferred ideas go to `brainstorm/deferred-ideas.md`
+- Anti-patterns documented in `ai-docs/anti-patterns.yaml`
 
 **Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.

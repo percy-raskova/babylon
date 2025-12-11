@@ -124,6 +124,10 @@ run = "poetry run python tools/vertical_slice.py"
 description = "Verify math formula divergence"
 run = "poetry run python tools/verify_math_divergence.py"
 
+[tasks.analyze-trace]
+description = "Run single simulation with full time-series CSV output"
+run = "poetry run python tools/parameter_analysis.py trace --csv results/trace.csv"
+
 [tasks.tune-params]
 description = "Run parameter sensitivity analysis (sweep extraction_efficiency)"
 run = "poetry run python tools/tune_parameters.py"

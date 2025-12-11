@@ -3,9 +3,9 @@
 # Source: ~/projects/game/notes/manifesto.md
 
 meta:
-  version: "2.1.0"
+  version: "2.2.0"
   created: "2024-12-07"
-  updated: "2025-12-09"
+  updated: "2025-12-10"
   purpose: "Document the implemented mathematical formulas that transform types into behavior"
   principle: "Types are nouns, formulas are verbs"
   status: "IMPLEMENTED (13 formulas) + CONCEPTUAL (1 distribution pattern)"
@@ -259,6 +259,15 @@ formulas:
   # ---------------------------------------------------------------------------
   # ECONOMIC FLOW / SUPERWAGES (The Distribution of Imperial Rent)
   # ---------------------------------------------------------------------------
+  # BUG FIX (2025-12-10): Wages must be calculated from tribute_inflow (income),
+  # NOT from accumulated wealth (capital). See imperial-circuit.yaml for details.
+  #
+  # CORRECT formula: desired_wages = tribute_inflow × super_wage_rate
+  # BUGGY formula:   desired_wages = bourgeoisie_wealth × super_wage_rate
+  #
+  # The buggy formula treated super-wages as a wealth tax instead of income
+  # distribution, causing Core Bourgeoisie to hemorrhage wealth to Labor Aristocracy.
+  # ---------------------------------------------------------------------------
   economic_flow:
     function: "calculate_economic_flow"
     symbol: "Flow(Φ, β)"
@@ -267,6 +276,13 @@ formulas:
       Profit_b = Φ × β           (bourgeoisie share)
       Superwages_p = Φ × (1 - β) (proletariat share via cheap commodities)
       Where β = bourgeoisie_share coefficient [0, 1]
+
+      IMPLEMENTATION (src/babylon/engine/systems/economic.py):
+        Phase 3 (Wages): desired_wages = tribute_inflow × super_wage_rate
+        Phase 4 (Subsidy): desired_subsidy = tribute_inflow × subsidy_conversion_rate
+
+        NOTE: Both wages and subsidies come from INCOME FLOW (tribute_inflow),
+        not from ACCUMULATED WEALTH (bourgeoisie_wealth). This prevents C_b drain.
     description: |
       Imperial Rent (Φ) extracted from the periphery does not go solely to the
       bourgeoisie. A portion flows to core workers as "Superwages"—real wage

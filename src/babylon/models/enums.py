@@ -211,3 +211,35 @@ class TerritoryType(StrEnum):
     RESERVATION = "reservation"
     PENAL_COLONY = "penal_colony"
     CONCENTRATION_CAMP = "concentration_camp"
+
+
+class DisplacementPriorityMode(StrEnum):
+    """Mode for displacement routing priority.
+
+    Sprint 3.7.1: Dynamic Displacement Priority Modes.
+
+    The settler-colonial state routes displaced populations to sink nodes
+    (RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP) differently based on
+    current political-economic conditions.
+
+    Values:
+        EXTRACTION: Labor is valuable. Prison-industrial complex logic.
+            Priority: PENAL_COLONY > RESERVATION > CONCENTRATION_CAMP
+            "We need their labor." (Default mode)
+
+        CONTAINMENT: Crisis or transition period. Warehousing logic.
+            Priority: RESERVATION > PENAL_COLONY > CONCENTRATION_CAMP
+            "We need them out of the way but not dead yet."
+
+        ELIMINATION: Late fascism. Necropolitical logic.
+            Priority: CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
+            "We don't need them at all."
+
+        AUTO: Compute mode dynamically from economic/political conditions.
+            (Not implemented in Sprint 3.7.1 - reserved for future use)
+    """
+
+    EXTRACTION = "extraction"
+    CONTAINMENT = "containment"
+    ELIMINATION = "elimination"
+    AUTO = "auto"

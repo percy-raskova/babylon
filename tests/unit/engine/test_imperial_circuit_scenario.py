@@ -242,3 +242,93 @@ class TestImperialCircuitConfiguration:
         """Custom repression_level is applied."""
         _, config = create_imperial_circuit_scenario(repression_level=0.8)
         assert config.repression_level == pytest.approx(0.8)
+
+
+@pytest.mark.unit
+@pytest.mark.math
+class TestWageCalculationCorrectness:
+    """Verify wages are calculated from income flow, not accumulated wealth.
+
+    BUG FIX: The wage calculation was treating super-wages as a wealth tax
+    on bourgeoisie accumulated capital instead of a distribution from current
+    income flow (tribute). This caused C_b to hemorrhage wealth to C_w.
+
+    Theory: In MLM-TW, super-wages come from extracted imperial rent surplus,
+    not from bourgeoisie capital. Wages should be capped at tribute_inflow.
+    """
+
+    def test_wages_based_on_tribute_not_wealth(self) -> None:
+        """Wages should be percentage of tribute, not percentage of total wealth.
+
+        With correct formula: desired_wages = tribute_inflow * wage_rate
+        Core Bourgeoisie keeps (1-rate) of incoming tribute, always positive.
+
+        With buggy formula: desired_wages = bourgeoisie_wealth * wage_rate
+        If wealth >> tribute, wages >> tribute, causing net loss.
+        """
+        from babylon.engine.simulation_engine import step
+
+        state, config = create_imperial_circuit_scenario(
+            periphery_wealth=0.1,
+            core_wealth=0.9,
+        )
+
+        initial_cb = state.entities["C003"].wealth
+        assert initial_cb == pytest.approx(0.9), "C_b should start at 0.9"
+
+        # Run one tick
+        new_state = step(state, config)
+        final_cb = new_state.entities["C003"].wealth
+
+        # Core Bourgeoisie should NOT lose wealth to wages
+        # They should accumulate from tribute (even after paying wages)
+        assert final_cb >= initial_cb, (
+            f"C_b should accumulate or hold steady, not drain: {initial_cb:.4f} -> {final_cb:.4f}"
+        )
+
+    def test_core_bourgeoisie_accumulates_over_time(self) -> None:
+        """After 10 ticks, C_b should have more wealth than at start.
+
+        This is the fundamental test for MLM-TW correctness: the Core
+        Bourgeoisie extracts value from the periphery and accumulates
+        capital, even after paying super-wages to labor aristocracy.
+        """
+        from babylon.engine.simulation_engine import step
+
+        state, config = create_imperial_circuit_scenario()
+        initial_cb = state.entities["C003"].wealth
+
+        for _ in range(10):
+            state = step(state, config)
+
+        final_cb = state.entities["C003"].wealth
+        assert final_cb > initial_cb, (
+            f"C_b should accumulate over 10 ticks: {initial_cb:.4f} -> {final_cb:.4f}"
+        )
+
+    def test_labor_aristocracy_receives_modest_wages(self) -> None:
+        """C_w should receive wages, but not drain C_b's wealth.
+
+        The labor aristocracy should receive super-wages proportional
+        to extracted surplus, not proportional to bourgeoisie capital.
+        """
+        from babylon.engine.simulation_engine import step
+
+        state, config = create_imperial_circuit_scenario()
+        initial_cw = state.entities["C004"].wealth
+        initial_cb = state.entities["C003"].wealth
+
+        # Run 10 ticks
+        for _ in range(10):
+            state = step(state, config)
+
+        final_cw = state.entities["C004"].wealth
+        final_cb = state.entities["C003"].wealth
+
+        # C_w should gain some wages
+        assert final_cw > initial_cw, "Labor aristocracy should receive wages"
+
+        # But C_b should NOT be drained
+        assert final_cb > initial_cb * 0.5, (
+            f"C_b should not be drained below 50% of initial: {initial_cb:.4f} -> {final_cb:.4f}"
+        )

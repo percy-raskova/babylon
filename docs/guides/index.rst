@@ -27,6 +27,17 @@ Understanding the Engine
 Learn how the simulation engine works: the modular system architecture,
 how to configure parameters, and how to extend the engine.
 
+Visual Design
+-------------
+
+.. toctree::
+   :maxdepth: 1
+
+   aesthetics
+   gui-development
+
+Design guidelines and UI development roadmap for the game interface.
+
 For Developers
 --------------
 

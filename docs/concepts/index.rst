@@ -54,6 +54,18 @@ State Repression
 The spatial dimensions of class management: detention, displacement,
 and elimination pipelines.
 
+AI & RAG Systems
+----------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ai-integration
+   context-window
+   object-tracking
+
+AI integration, context window management, and RAG optimization strategies.
+
 Development Methodology
 -----------------------
 

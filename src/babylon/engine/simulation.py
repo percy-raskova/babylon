@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from babylon.config.defines import GameDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
@@ -71,6 +72,7 @@ class Simulation:
         initial_state: WorldState,
         config: SimulationConfig,
         observers: list[SimulationObserver] | None = None,
+        defines: GameDefines | None = None,
     ) -> None:
         """Initialize simulation with initial state and configuration.
 
@@ -78,9 +80,12 @@ class Simulation:
             initial_state: Starting WorldState at tick 0
             config: Simulation configuration with formula coefficients
             observers: Optional list of SimulationObserver instances to notify
+            defines: Optional custom GameDefines for scenario-specific coefficients.
+                     If None, loads from default defines.yaml location.
         """
         self._config = config
-        self._services = ServiceContainer.create(config)
+        self._defines = defines if defines is not None else GameDefines.load_default()
+        self._services = ServiceContainer.create(config, self._defines)
         self._current_state = initial_state
         self._history: list[WorldState] = [initial_state]
         self._observers: list[SimulationObserver] = list(observers or [])
@@ -93,6 +98,11 @@ class Simulation:
     def config(self) -> SimulationConfig:
         """Return the simulation configuration."""
         return self._config
+
+    @property
+    def defines(self) -> GameDefines:
+        """Return the game defines."""
+        return self._defines
 
     @property
     def services(self) -> ServiceContainer:
@@ -212,7 +222,8 @@ class Simulation:
 
         previous_state = self._current_state
         # Pass persistent context to preserve state across ticks (Sprint 3.4.3)
-        new_state = step(previous_state, self._config, self._persistent_context)
+        # Pass custom defines for scenario-specific coefficients
+        new_state = step(previous_state, self._config, self._persistent_context, self._defines)
         self._current_state = new_state
         self._history.append(new_state)
 

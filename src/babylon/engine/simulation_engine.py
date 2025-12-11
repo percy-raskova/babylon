@@ -31,6 +31,7 @@ from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.protocol import System
 from babylon.engine.systems.solidarity import SolidaritySystem
+from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.models.config import SimulationConfig
@@ -86,12 +87,15 @@ class SimulationEngine:
 # SolidaritySystem runs AFTER ImperialRentSystem, BEFORE ConsciousnessSystem
 # This ensures consciousness transmission from solidarity edges
 # modifies ideology BEFORE the general consciousness drift calculation
+# StruggleSystem runs AFTER SurvivalSystem (needs P values), BEFORE ContradictionSystem
+# The solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1
 # TerritorySystem runs LAST - spatial dynamics are superstructure effects
 _DEFAULT_SYSTEMS: list[System] = [
     ImperialRentSystem(),
     SolidaritySystem(),  # Sprint 3.4.2: Proletarian Internationalism
     ConsciousnessSystem(),
     SurvivalSystem(),
+    StruggleSystem(),  # Agency Layer: George Floyd Dynamic
     ContradictionSystem(),
     TerritorySystem(),  # Sprint 3.5.4: Layer 0 - Territorial Substrate
 ]

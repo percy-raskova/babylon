@@ -79,6 +79,13 @@ territory:
   heat_spillover_rate: 0.05         # Heat spillover via ADJACENCY edges (5%)
   clarity_profile_coefficient: 0.3  # Clarity bonus for HIGH_PROFILE territories (30%)
 
+# Struggle dynamics (Agency Layer - "George Floyd" Dynamic)
+struggle:
+  spark_probability_scale: 0.1      # Base 10% chance scaled by repression_faced
+  resistance_threshold: 0.1         # Minimum agitation for uprising (10%)
+  wealth_destruction_rate: 0.05     # Economic damage from uprising (5% wealth loss)
+  solidarity_gain_per_uprising: 0.2 # Solidarity strength increase per uprising
+
 # Initial conditions
 initial:
   worker_wealth: 0.5                # Starting wealth for periphery worker

@@ -232,6 +232,108 @@ class TestVectorStoreQueryNoneHandling:
 
 
 # =============================================================================
+# REGRESSION: Retriever Zip Bug (embeddings must be included)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestRetrieverZipBug:
+    """Tests for the Retriever zip bug where empty embeddings caused 0 results.
+
+    Bug: When VectorStore.query_similar() returned empty embeddings list,
+    the zip() in Retriever.aquery() would produce zero iterations because
+    zip stops at the shortest list.
+
+    Fix: VectorStore must include 'embeddings' in the default include list.
+    """
+
+    def test_vector_store_default_include_has_embeddings(
+        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
+    ) -> None:
+        """VectorStore.query_similar includes embeddings by default.
+
+        This is critical: if embeddings are not included, the returned
+        embeddings list is empty, and zip() in Retriever produces 0 results.
+        """
+        from babylon.rag.retrieval import VectorStore
+
+        mock_collection.query.return_value = {
+            "ids": [["id1", "id2"]],
+            "documents": [["doc1", "doc2"]],
+            "embeddings": [[[0.1] * 768, [0.2] * 768]],
+            "metadatas": [[{}, {}]],
+            "distances": [[0.1, 0.2]],
+        }
+        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
+
+        vector_store = VectorStore(
+            collection_name="test",
+            chroma_manager=mock_chroma_manager,
+        )
+
+        # Query with default include (no explicit include param)
+        vector_store.query_similar(query_embedding=[0.1] * 768, k=5)
+
+        # Verify that 'embeddings' was in the include list
+        call_args = mock_collection.query.call_args
+        include_list = call_args.kwargs.get("include", [])
+        assert "embeddings" in include_list, (
+            f"'embeddings' must be in default include list to prevent zip bug. Got: {include_list}"
+        )
+
+    def test_retriever_returns_results_when_embeddings_present(
+        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
+    ) -> None:
+        """Retriever.aquery returns results when VectorStore returns embeddings.
+
+        This tests the full path: VectorStore -> Retriever -> results.
+        If embeddings are empty, zip() would produce 0 iterations.
+        """
+        from unittest.mock import AsyncMock
+
+        from babylon.rag.chunker import DocumentChunk
+        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.rag.retrieval import Retriever, VectorStore
+
+        # Setup mock VectorStore to return results with embeddings
+        mock_collection.query.return_value = {
+            "ids": [["id1", "id2"]],
+            "documents": [["doc content 1", "doc content 2"]],
+            "embeddings": [[[0.1] * 768, [0.2] * 768]],  # Non-empty!
+            "metadatas": [[{"source": "test1"}, {"source": "test2"}]],
+            "distances": [[0.3, 0.4]],  # Low distance = high similarity
+        }
+        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
+
+        vector_store = VectorStore(
+            collection_name="test",
+            chroma_manager=mock_chroma_manager,
+        )
+
+        # Setup mock EmbeddingManager
+        mock_embedding_manager = MagicMock(spec=EmbeddingManager)
+        embedded_query = DocumentChunk(id="query", content="test query")
+        embedded_query.embedding = [0.1] * 768
+        mock_embedding_manager.aembed = AsyncMock(return_value=embedded_query)
+
+        retriever = Retriever(
+            vector_store=vector_store,
+            embedding_manager=mock_embedding_manager,
+        )
+
+        # Run async query
+        import asyncio
+
+        response = asyncio.run(retriever.aquery("test query", k=5))
+
+        # Should return 2 results (not 0!)
+        assert len(response.results) == 2, (
+            f"Retriever should return 2 results, not {len(response.results)}. "
+            "This may indicate the zip bug where empty embeddings caused 0 iterations."
+        )
+
+
+# =============================================================================
 # REGRESSION: Query Result Processing
 # =============================================================================
 

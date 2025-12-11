@@ -359,5 +359,5 @@ Accessibility
 See Also
 --------
 
-- :doc:`gui-development` - GUI implementation roadmap
+- :doc:`/how-to/gui-development` - GUI implementation roadmap
 - :doc:`/concepts/architecture` - System architecture

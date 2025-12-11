@@ -1,19 +1,16 @@
 Guides
 ======
 
-Step-by-step tutorials and how-to guides for working with Babylon.
+.. note::
 
-Getting Started
----------------
+   **Documentation Reorganization**
 
-.. toctree::
-   :maxdepth: 1
+   This section is being reorganized into Diataxis-compliant quadrants:
 
-   installation
-   quickstart
+   - **Tutorials** moved to :doc:`/tutorials/index` (learning-oriented)
+   - **How-To Guides** moved to :doc:`/how-to/index` (task-oriented)
 
-New to Babylon? Start here to install dependencies and run your
-first simulation.
+   The remaining guides below will be split into proper quadrants in Phase 2.
 
 Understanding the Engine
 ------------------------
@@ -24,24 +21,9 @@ Understanding the Engine
    simulation-systems
    configuration
 
-Learn how the simulation engine works: the modular system architecture,
-how to configure parameters, and how to extend the engine.
-
-Visual Design
--------------
-
-.. toctree::
-   :maxdepth: 1
-
-   aesthetics
-   gui-development
-
-Design guidelines and UI development roadmap for the game interface.
-
-For Developers
---------------
-
-These guides assume familiarity with Python, Pydantic, and NetworkX.
+These comprehensive guides cover both how the engine works and how to
+configure it. They will be split into separate tutorial, how-to, and
+explanation documents in a future update.
 
 **Simulation Systems**
    Understand how the seven core systems (ImperialRent, Solidarity,
@@ -75,9 +57,10 @@ Quick Reference
    mise run analyze-trace           # Single run with CSV output
    mise run analyze-sweep           # Multi-parameter sweep
 
-**Build documentation:**
+See Also
+--------
 
-.. code-block:: bash
-
-   mise run docs                    # Build HTML docs
-   mise run docs-live               # Live-reload server
+- :doc:`/tutorials/index` - Learning-oriented guides for newcomers
+- :doc:`/how-to/index` - Task-oriented guides for specific goals
+- :doc:`/concepts/index` - Deep explanations of why things work
+- :doc:`/reference/index` - Quick lookup for APIs and settings

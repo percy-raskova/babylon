@@ -3,7 +3,7 @@ GUI Development Plan
 
 Development roadmap for The Fall of Babylon's graphical user interface,
 based on the constructivist/brutalist design principles defined in
-:doc:`aesthetics`.
+:doc:`/concepts/aesthetics`.
 
 Design Philosophy
 -----------------
@@ -243,6 +243,6 @@ Future Enhancements
 See Also
 --------
 
-- :doc:`aesthetics` - Visual design guidelines
+- :doc:`/concepts/aesthetics` - Visual design guidelines
 - :doc:`/concepts/architecture` - System architecture
-- :doc:`configuration` - Configuration system
+- :doc:`/reference/configuration` - Configuration system

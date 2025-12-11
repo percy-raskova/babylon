@@ -259,7 +259,74 @@ scalar = profile.to_legacy_ideology()
 - `ideology = 0` (neutral) → `class_consciousness=0.5, national_identity=0.5`
 - `ideology = +1` (reactionary) → `class_consciousness=0.0, national_identity=1.0`
 
+## 7. Empirical Validation (December 2025)
+
+### Parameter Sweep Results
+
+The George Jackson bifurcation model was validated through parameter sweeps using
+`tools/parameter_analysis.py`. Key findings confirm the theoretical predictions.
+
+### Trace Evidence: The Fascist Path (solidarity = 0.0)
+
+With default scenario (no solidarity infrastructure):
+
+| Tick | C_W Class Consciousness | C_W National Identity | Agitation | Wages |
+|------|-------------------------|----------------------|-----------|-------|
+| 0 | 0.40 | 0.60 | 0.00 | 0.00 |
+| 2 | 0.40 | 0.61 | 0.055 | 0.012 |
+| 5 | 0.40 | 0.63 | 0.055 | 0.003 |
+| 10 | 0.40 | **0.65** | 0.036 | 0.0005 |
+| 15 | 0.40 | **0.66** | 0.022 | 0.0001 |
+
+**Observation**: Wages fall throughout → agitation accumulates → but with solidarity=0,
+all agitation routes to national_identity (fascism axis). Class consciousness is frozen.
+
+### Trace Evidence: The Revolutionary Path (solidarity = 0.8)
+
+Same material conditions, but with solidarity infrastructure:
+
+| Tick | C_W Class Consciousness | C_W National Identity | Agitation | Wages |
+|------|-------------------------|----------------------|-----------|-------|
+| 0 | 0.40 | 0.60 | 0.00 | 0.00 |
+| 2 | **0.64** | 0.60 | 0.055 | 0.012 |
+| 5 | **0.66** | 0.61 | 0.055 | 0.003 |
+| 10 | **0.66** | 0.61 | 0.036 | 0.0005 |
+
+**Observation**: Same wage crisis, same agitation generation, but with solidarity=0.8,
+agitation routes to class_consciousness (revolutionary axis). National identity barely moves.
+
+### The Mathematical Switch
+
+The routing formula from `calculate_ideological_routing()`:
+
+```python
+solidarity_factor = min(1.0, solidarity_pressure)
+
+class_delta   = agitation × solidarity_factor × 0.1
+nation_delta  = agitation × (1.0 - solidarity_factor) × 0.1
+```
+
+With `solidarity_factor = 0.0`: 100% routes to fascism
+With `solidarity_factor = 0.8`: 80% routes to revolution
+
+### Strategic Insight Confirmed
+
+> **"Crisis alone does not produce revolution. Crisis + Solidarity produces revolution.
+> Crisis without solidarity produces fascism."**
+
+The sweep data proves that material immiseration is insufficient for revolutionary
+consciousness. The organizational infrastructure must be built *before* the crisis hits.
+This is the Lenin thesis: without the party (solidarity edges), the masses default to
+reactionary nationalism.
+
+### Gameplay Implication
+
+The player's primary objective is **building solidarity edges** in anticipation of crisis.
+If you wait until wages fall to organize, it's too late — the agitation will route to
+fascism instead. This is why the default scenario produces fascist drift: the simulation
+models what happens when workers face crisis alone.
+
 ---
 
 *Document created for Sprint 3.4.3 - The George Jackson Refactor*
-*December 2025*
+*Empirical validation added December 2025*

@@ -434,3 +434,119 @@ class TestTerritorySerialization:
 
         assert data["sector_type"] == "government"
         assert data["profile"] == "low_profile"
+
+
+# =============================================================================
+# TERRITORY TYPE TESTS (Sprint 3.7: The Carceral Geography)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestTerritoryTypeDefault:
+    """Territory type defaults and validation tests."""
+
+    def test_territory_type_defaults_to_core(self) -> None:
+        """Territory type defaults to CORE (high value, low heat destination).
+
+        Sprint 3.7: The Carceral Geography - Necropolitical Triad.
+        Most territories are CORE by default - they are destinations for
+        labor aristocracy, not containment zones.
+        """
+        territory = Territory(
+            id="T001",
+            name="Suburbs",
+            sector_type=SectorType.RESIDENTIAL,
+        )
+        from babylon.models.enums import TerritoryType
+
+        assert territory.territory_type == TerritoryType.CORE
+
+
+@pytest.mark.unit
+class TestTerritorySinkNode:
+    """Tests for is_sink_node property.
+
+    Sprint 3.7: The Carceral Geography - Necropolitical Triad.
+    Sink nodes are territories where displaced populations are routed.
+    They have no economic value - only containment/elimination function.
+    """
+
+    def test_is_sink_node_true_for_reservation(self) -> None:
+        """RESERVATION territories are sink nodes (containment).
+
+        Reservations are containment zones with high subsistence cost
+        but no labor value. Population can enter but cannot leave easily.
+        """
+        from babylon.models.enums import TerritoryType
+
+        territory = Territory(
+            id="T001",
+            name="Pine Ridge",
+            sector_type=SectorType.RESIDENTIAL,
+            territory_type=TerritoryType.RESERVATION,
+        )
+        assert territory.is_sink_node is True
+
+    def test_is_sink_node_true_for_penal_colony(self) -> None:
+        """PENAL_COLONY territories are sink nodes (extraction).
+
+        Penal colonies extract forced labor and suppress organization.
+        The prison-industrial complex as carceral geography.
+        """
+        from babylon.models.enums import TerritoryType
+
+        territory = Territory(
+            id="T002",
+            name="Angola Prison Farm",
+            sector_type=SectorType.INDUSTRIAL,
+            territory_type=TerritoryType.PENAL_COLONY,
+        )
+        assert territory.is_sink_node is True
+
+    def test_is_sink_node_true_for_concentration_camp(self) -> None:
+        """CONCENTRATION_CAMP territories are sink nodes (elimination).
+
+        Concentration camps are elimination zones with high population decay.
+        They generate Terror as a byproduct.
+        """
+        from babylon.models.enums import TerritoryType
+
+        territory = Territory(
+            id="T003",
+            name="Internment Zone",
+            sector_type=SectorType.GOVERNMENT,
+            territory_type=TerritoryType.CONCENTRATION_CAMP,
+        )
+        assert territory.is_sink_node is True
+
+    def test_is_sink_node_false_for_core(self) -> None:
+        """CORE territories are NOT sink nodes.
+
+        Core territories are destinations for labor aristocracy.
+        High value, low heat - not containment zones.
+        """
+        from babylon.models.enums import TerritoryType
+
+        territory = Territory(
+            id="T004",
+            name="Downtown Financial District",
+            sector_type=SectorType.COMMERCIAL,
+            territory_type=TerritoryType.CORE,
+        )
+        assert territory.is_sink_node is False
+
+    def test_is_sink_node_false_for_periphery(self) -> None:
+        """PERIPHERY territories are NOT sink nodes.
+
+        Periphery territories are sources of cheap labor.
+        High heat, low value - but not containment zones.
+        """
+        from babylon.models.enums import TerritoryType
+
+        territory = Territory(
+            id="T005",
+            name="Favela",
+            sector_type=SectorType.RESIDENTIAL,
+            territory_type=TerritoryType.PERIPHERY,
+        )
+        assert territory.is_sink_node is False

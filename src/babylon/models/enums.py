@@ -11,6 +11,7 @@ Enums defined:
 - EventType: Types of simulation events for the narrative layer
 - OperationalProfile: Territory visibility stance (Sprint 3.5.1)
 - SectorType: Strategic sector categories (Sprint 3.5.1)
+- TerritoryType: Settler-colonial hierarchy classification (Sprint 3.7)
 """
 
 from enum import StrEnum
@@ -181,3 +182,32 @@ class SectorType(StrEnum):
     UNIVERSITY = "university"
     DOCKS = "docks"
     GOVERNMENT = "government"
+
+
+class TerritoryType(StrEnum):
+    """Territory classification in the settler-colonial hierarchy.
+
+    Sprint 3.7: The Carceral Geography - Necropolitical Triad.
+
+    The settler-colonial state manages population through territorial
+    classification. Displaced populations flow from productive zones
+    to containment/elimination zones following the logic of capital.
+
+    Values:
+        CORE: High value, low heat. Labor aristocracy destination.
+            The suburbs, gated communities, gentrified zones.
+        PERIPHERY: Low value, high heat. Source of cheap labor.
+            The ghetto, favela, global south production zones.
+        RESERVATION: Containment. High subsistence, no labor value.
+            The reservation system - warehousing surplus population.
+        PENAL_COLONY: Extraction. Forced labor, suppresses Organization.
+            The prison-industrial complex - carceral extraction.
+        CONCENTRATION_CAMP: Elimination. High population decay, generates Terror.
+            The final solution - necropolitical endpoint.
+    """
+
+    CORE = "core"
+    PERIPHERY = "periphery"
+    RESERVATION = "reservation"
+    PENAL_COLONY = "penal_colony"
+    CONCENTRATION_CAMP = "concentration_camp"

@@ -2,12 +2,12 @@
 # Comprehensive simulation analysis for balance tuning and theory validation
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   created: "2025-12-11"
   updated: "2025-12-11"
   purpose: "Define methodology for deep parameter analysis and observation recording"
-  status: "PLANNED"
-  tool: "tools/parameter_analysis.py (to be implemented)"
+  status: "ACTIVE"
+  tool: "tools/parameter_analysis.py"
   related:
     - "ai-docs/balance-tuning.yaml (findings registry)"
     - "ai-docs/formulas-spec.yaml (formula definitions)"
@@ -264,6 +264,7 @@ implementation:
   phase_1:
     name: "Trace Command"
     status: "COMPLETE"
+    completed: "2025-12-11"
     deliverables:
       - "trace subcommand with full time-series CSV"
       - "Track all 4 entities"
@@ -273,10 +274,16 @@ implementation:
       - "test_trace_produces_csv"
       - "test_trace_tracks_all_entities"
       - "test_trace_calculates_derived_metrics"
+    validation:
+      command: "mise run analyze-trace"
+      output: "results/trace.csv"
+      last_run: "2025-12-11"
+      result: "16 ticks recorded (early termination due to wealth depletion)"
 
   phase_2:
     name: "Sweep Command Enhancement"
     status: "COMPLETE"
+    completed: "2025-12-11"
     deliverables:
       - "sweep subcommand with rich summary CSV"
       - "More metrics than current tune_parameters.py"
@@ -284,6 +291,11 @@ implementation:
     tests:
       - "test_sweep_detects_crossover"
       - "test_sweep_tracks_all_entities"
+    validation:
+      command: "mise run analyze-sweep"
+      output: "results/sweep.csv"
+      last_run: "2025-12-11"
+      result: "10 parameter values tested (0.05-0.50 step 0.05)"
 
   phase_3:
     name: "Grid Search"

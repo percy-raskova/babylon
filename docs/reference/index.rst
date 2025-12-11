@@ -22,3 +22,13 @@ Configuration
    configuration
 
 Configuration system documentation and environment variables.
+
+Topology System
+---------------
+
+.. toctree::
+   :maxdepth: 1
+
+   topology
+
+Percolation theory metrics, TopologyMonitor observer, and resilience testing.

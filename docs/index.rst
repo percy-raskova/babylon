@@ -8,7 +8,7 @@ through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory.
 
 .. note::
 
-   This project is under active development. See the :doc:`/guides/quickstart`
+   This project is under active development. See the :doc:`/tutorials/first-simulation`
    to get started.
 
 What is Babylon?
@@ -70,9 +70,15 @@ Contents
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guides
+   :caption: Tutorials
 
-   guides/index
+   tutorials/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: How-To Guides
+
+   how-to/index
 
 .. toctree::
    :maxdepth: 2
@@ -82,15 +88,21 @@ Contents
 
 .. toctree::
    :maxdepth: 2
+   :caption: Reference
+
+   reference/index
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    api/index
 
 .. toctree::
    :maxdepth: 2
-   :caption: Reference
+   :caption: Legacy Guides
 
-   reference/index
+   guides/index
 
 Current Systems
 ---------------

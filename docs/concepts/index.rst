@@ -66,6 +66,17 @@ AI & RAG Systems
 
 AI integration, context window management, and RAG optimization strategies.
 
+Visual Identity
+---------------
+
+.. toctree::
+   :maxdepth: 1
+
+   aesthetics
+
+The Bunker Constructivism aesthetic: industrial brutalism meets
+revolutionary propaganda art. Design guidelines for the game's visual language.
+
 Development Methodology
 -----------------------
 

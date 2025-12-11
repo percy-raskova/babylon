@@ -1,0 +1,375 @@
+# Topology System Specification
+# Machine-readable reference for percolation theory implementation
+#
+# This document specifies the graph structure, metrics, and formulas
+# used to model revolutionary organization via percolation theory.
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-11"
+  status: "IMPLEMENTED"
+  tests: 55  # 34 unit + 21 integration
+
+overview:
+  purpose: |
+    Model revolutionary organization as a percolation problem on solidarity graphs.
+    Detect phase transitions from atomized (gaseous) to organized (liquid) states.
+    Track network resilience to targeted repression (purge simulation).
+
+  core_insight: |
+    Revolution requires not just radicalized workers, but radicalized workers
+    who can coordinate. The graph structure determines which equilibrium
+    (revolution vs fascism) the system reaches during crisis.
+
+# =============================================================================
+# GRAPH STRUCTURE
+# =============================================================================
+
+graph_structure:
+  type: "NetworkX DiGraph"
+
+  node_types:
+    social_class:
+      marker: "_node_type: social_class"
+      model: "babylon.models.entities.SocialClass"
+      key_attributes:
+        - "id: str (pattern C[0-9]{3})"
+        - "role: SocialRole enum"
+        - "wealth: Currency [0, ∞)"
+        - "ideology: IdeologicalProfile"
+        - "organization: Probability [0, 1]"
+        - "repression_faced: Probability [0, 1]"
+
+    territory:
+      marker: "_node_type: territory"
+      model: "babylon.models.entities.Territory"
+      note: "Excluded from percolation analysis"
+
+  edge_types:
+    SOLIDARITY:
+      direction: "Periphery → Core"
+      weight: "solidarity_strength: Coefficient [0, 1]"
+      purpose: "Consciousness transmission infrastructure"
+
+    EXPLOITATION:
+      direction: "Worker → Owner"
+      weight: "value_flow: Currency"
+      purpose: "Imperial rent extraction"
+
+    WAGES:
+      direction: "Bourgeoisie → Worker"
+      weight: "value_flow: Currency"
+      purpose: "Super-wage payments from imperial rent"
+
+    REPRESSION:
+      direction: "State → Class"
+      weight: "tension: Intensity [0, 1]"
+      purpose: "State violence accumulation"
+
+    TRIBUTE:
+      direction: "Comprador → Core Bourgeoisie"
+      weight: "value_flow: Currency"
+      purpose: "Periphery → Core via intermediary"
+
+    CLIENT_STATE:
+      direction: "Core → Peripheral State"
+      weight: "value_flow: Currency, subsidy_cap: Currency"
+      purpose: "Imperial subsidy for stability"
+
+    COMPETITION:
+      direction: "Bidirectional"
+      weight: "tension: Intensity"
+      purpose: "Market rivalry"
+
+    TENANCY:
+      direction: "SocialClass → Territory"
+      purpose: "Occupancy relationship"
+
+    ADJACENCY:
+      direction: "Territory ↔ Territory"
+      purpose: "Spatial connectivity"
+
+  solidarity_subgraph:
+    description: |
+      For percolation analysis, extract undirected graph containing only:
+      - social_class nodes (territories excluded)
+      - SOLIDARITY edges above strength threshold
+    function: "extract_solidarity_subgraph(G, min_strength)"
+    returns: "nx.Graph[str] (undirected)"
+
+# =============================================================================
+# PERCOLATION METRICS
+# =============================================================================
+
+metrics:
+  percolation_ratio:
+    symbol: "p"
+    formula: "L_max / N"
+    range: "[0, 1]"
+    description: "Fraction of network in giant component"
+    interpretation:
+      - "p < 0.1: Gaseous (atomized)"
+      - "p >= 0.5: Liquid (condensed, vanguard formed)"
+
+  num_components:
+    description: "Number of disconnected subgraphs (solidarity cells)"
+    interpretation: "Higher = more atomized"
+
+  max_component_size:
+    symbol: "L_max"
+    description: "Size of largest connected component"
+    interpretation: "The 'giant component' in percolation theory"
+
+  potential_liquidity:
+    threshold: 0.1
+    description: "Count of SOLIDARITY edges with strength > 0.1"
+    interpretation: "Sympathizer network (broad reach)"
+
+  actual_liquidity:
+    threshold: 0.5
+    description: "Count of SOLIDARITY edges with strength > 0.5"
+    interpretation: "Cadre network (committed activists)"
+
+  brittleness:
+    condition: "potential > actual * 2"
+    description: "Movement is broad but lacks disciplined core"
+
+# =============================================================================
+# THRESHOLDS & CONSTANTS
+# =============================================================================
+
+thresholds:
+  # Phase detection
+  GASEOUS_THRESHOLD:
+    value: 0.1
+    file: "topology_monitor.py:48"
+    description: "percolation_ratio below this = atomized movement"
+
+  CONDENSATION_THRESHOLD:
+    value: 0.5
+    file: "topology_monitor.py:49"
+    description: "percolation_ratio crossing this = phase shift detected"
+
+  BRITTLE_MULTIPLIER:
+    value: 2
+    file: "topology_monitor.py:50"
+    description: "potential > actual * this = brittle warning"
+
+  # Liquidity classification
+  POTENTIAL_MIN_STRENGTH:
+    value: 0.1
+    file: "topology_monitor.py:53"
+    description: "Minimum solidarity_strength for sympathizer"
+
+  ACTUAL_MIN_STRENGTH:
+    value: 0.5
+    file: "topology_monitor.py:54"
+    description: "Minimum solidarity_strength for cadre"
+
+  # Resilience testing
+  DEFAULT_REMOVAL_RATE:
+    value: 0.2
+    file: "topology_monitor.py:57"
+    description: "Fraction of nodes removed in purge simulation"
+
+  DEFAULT_SURVIVAL_THRESHOLD:
+    value: 0.4
+    file: "topology_monitor.py:58"
+    description: "Required fraction of L_max to survive purge"
+
+  # Consciousness dynamics
+  LOSS_AVERSION_COEFFICIENT:
+    value: 2.25
+    file: "formulas.py:27"
+    description: "Kahneman-Tversky loss aversion (kappa)"
+
+  ACTIVATION_THRESHOLD:
+    value: 0.3
+    file: "GameDefines.solidarity.activation_threshold"
+    description: "Minimum source consciousness for transmission"
+
+# =============================================================================
+# FORMULAS
+# =============================================================================
+
+formulas:
+  consciousness_drift:
+    location: "formulas.py:134-199"
+    signature: |
+      calculate_consciousness_drift(
+        core_wages, value_produced, current_consciousness,
+        sensitivity_k, decay_lambda, solidarity_pressure, wage_change
+      ) -> float
+    formula: "dΨ/dt = k(1 - W/V) - λΨ + B(ẇ, σ)"
+    components:
+      material_term: "k(1 - W/V)"
+      decay_term: "λΨ"
+      bifurcation_term: "B(ẇ, σ)"
+    bifurcation_logic: |
+      if wage_change < 0:
+        agitation_energy = |wage_change| * 2.25
+        if solidarity_pressure > 0:
+          return +agitation_energy * min(1, solidarity_pressure)  # Revolution
+        else:
+          return -agitation_energy  # Fascism
+
+  solidarity_transmission:
+    location: "formulas.py:455-511"
+    signature: |
+      calculate_solidarity_transmission(
+        source_consciousness, target_consciousness,
+        solidarity_strength, activation_threshold
+      ) -> float
+    formula: "Δ = σ(Ψ_source - Ψ_target)"
+    conditions:
+      - "source_consciousness > activation_threshold (strictly >)"
+      - "solidarity_strength > 0"
+    note: "Transmission blocked if either condition fails (Fascist Bifurcation)"
+
+  ideological_routing:
+    location: "formulas.py:518-601"
+    signature: |
+      calculate_ideological_routing(
+        wage_change, solidarity_pressure,
+        current_class_consciousness, current_national_identity,
+        current_agitation, agitation_decay
+      ) -> tuple[float, float, float]
+    returns: "(new_class_consciousness, new_national_identity, new_agitation)"
+    routing_logic: |
+      agitation_energy routes based on solidarity_factor:
+      - High solidarity → class_consciousness increases
+      - Low solidarity → national_identity increases (fascism)
+
+# =============================================================================
+# DATA MODELS
+# =============================================================================
+
+models:
+  TopologySnapshot:
+    location: "models/topology_metrics.py:23-59"
+    type: "Pydantic BaseModel (frozen)"
+    fields:
+      tick: "int"
+      num_components: "int"
+      max_component_size: "int"
+      total_nodes: "int"
+      percolation_ratio: "Probability [0, 1]"
+      potential_liquidity: "int"
+      actual_liquidity: "int"
+      is_resilient: "bool | None"
+
+  ResilienceResult:
+    location: "models/topology_metrics.py:62-92"
+    type: "Pydantic BaseModel (frozen)"
+    fields:
+      is_resilient: "bool"
+      original_max_component: "int"
+      post_purge_max_component: "int"
+      removal_rate: "float"
+      survival_threshold: "float"
+      seed: "int | None"
+
+# =============================================================================
+# OBSERVER PATTERN
+# =============================================================================
+
+observer:
+  class: "TopologyMonitor"
+  location: "engine/topology_monitor.py:243-452"
+  protocol: "SimulationObserver"
+
+  lifecycle_hooks:
+    on_simulation_start: "Initialize history, record initial snapshot"
+    on_tick: "Record snapshot, detect phase transitions"
+    on_simulation_end: "Log summary statistics"
+
+  configuration:
+    resilience_test_interval:
+      type: "int"
+      default: 5
+      description: "Run resilience test every N ticks (0 = disabled)"
+    resilience_removal_rate:
+      type: "float"
+      default: 0.2
+      description: "Fraction of nodes to remove in test"
+
+  narrative_states:
+    gaseous:
+      condition: "percolation_ratio < 0.1"
+      message: "STATE: Gaseous. Movement is atomized."
+    condensation:
+      condition: "percolation_ratio crosses 0.5"
+      message: "PHASE SHIFT: Condensation detected. A Vanguard Party has formed."
+    brittle:
+      condition: "potential > actual * 2"
+      message: "WARNING: Movement is broad but brittle. Lacks cadre discipline."
+    sword_of_damocles:
+      condition: "is_resilient == False"
+      message: "ALERT: Sword of Damocles active. A purge would destroy the movement."
+
+# =============================================================================
+# FILE REFERENCE
+# =============================================================================
+
+files:
+  implementation:
+    - path: "src/babylon/engine/topology_monitor.py"
+      lines: 452
+      purpose: "TopologyMonitor observer and helper functions"
+
+    - path: "src/babylon/systems/formulas.py"
+      lines: 707
+      purpose: "Mathematical formulas (consciousness, bifurcation, survival)"
+
+    - path: "src/babylon/models/topology_metrics.py"
+      lines: 92
+      purpose: "TopologySnapshot and ResilienceResult models"
+
+    - path: "src/babylon/engine/systems/solidarity.py"
+      lines: 199
+      purpose: "SolidaritySystem consciousness transmission"
+
+    - path: "src/babylon/models/world_state.py"
+      lines: 283
+      purpose: "WorldState.to_graph() and from_graph()"
+
+  tests:
+    - path: "tests/unit/topology/test_topology_monitor.py"
+      tests: 34
+      purpose: "Unit tests for percolation functions"
+
+    - path: "tests/integration/test_topology_integration.py"
+      tests: 21
+      purpose: "Integration tests with Simulation lifecycle"
+
+# =============================================================================
+# COMMON QUERIES
+# =============================================================================
+
+common_queries:
+  check_phase_state:
+    pattern: |
+      from babylon.engine.topology_monitor import TopologyMonitor
+      monitor = TopologyMonitor()
+      # After simulation runs...
+      latest = monitor.history[-1]
+      if latest.percolation_ratio < 0.1:
+          print("Gaseous")
+      elif latest.percolation_ratio >= 0.5:
+          print("Liquid - Vanguard formed")
+
+  test_network_resilience:
+    pattern: |
+      from babylon.engine.topology_monitor import test_resilience
+      graph = state.to_graph()
+      result = test_resilience(graph, removal_rate=0.2, seed=42)
+      if not result.is_resilient:
+          print("Sword of Damocles: Network is fragile!")
+
+  get_liquidity_metrics:
+    pattern: |
+      from babylon.engine.topology_monitor import calculate_liquidity
+      graph = state.to_graph()
+      potential, actual = calculate_liquidity(graph)
+      if potential > actual * 2:
+          print("Movement is broad but brittle")

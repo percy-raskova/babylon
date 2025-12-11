@@ -80,7 +80,7 @@ def restore_chroma(
     if target_dir.exists():
         if not force:
             raise FileExistsError(
-                f"ChromaDB directory already exists: {target_dir}. " "Use force=True to overwrite."
+                f"ChromaDB directory already exists: {target_dir}. Use force=True to overwrite."
             )
         logger.warning("Removing existing ChromaDB directory: %s", target_dir)
         shutil.rmtree(target_dir)

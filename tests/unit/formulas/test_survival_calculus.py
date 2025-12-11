@@ -50,9 +50,9 @@ class TestAcquiescenceProbability:
                 subsistence_threshold=threshold,
                 steepness_k=steepness,
             )
-            assert (
-                0.0 <= prob <= 1.0
-            ), f"P(S|A) out of bounds for x={wealth}, x_c={threshold}, k={steepness}"
+            assert 0.0 <= prob <= 1.0, (
+                f"P(S|A) out of bounds for x={wealth}, x_c={threshold}, k={steepness}"
+            )
 
     def test_crosses_50_at_threshold(self) -> None:
         """P(S|A) = 0.5 when x = x_critical (at subsistence threshold)."""

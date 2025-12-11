@@ -58,9 +58,9 @@ class TestExceptionHierarchy:
         module = importlib.import_module(module_path)
         exception_class = getattr(module, class_name)
 
-        assert issubclass(
-            exception_class, BabylonError
-        ), f"{class_name} should inherit from BabylonError"
+        assert issubclass(exception_class, BabylonError), (
+            f"{class_name} should inherit from BabylonError"
+        )
 
     def test_database_error_inherits_from_infrastructure_error(self) -> None:
         """DatabaseError is a child of InfrastructureError."""
@@ -168,9 +168,9 @@ class TestDefaultErrorCodes:
         exception_class = getattr(module, class_name)
 
         error = exception_class("Test message")
-        assert (
-            error.error_code == expected_code
-        ), f"{class_name} should have default code {expected_code}"
+        assert error.error_code == expected_code, (
+            f"{class_name} should have default code {expected_code}"
+        )
 
     def test_checkpoint_io_error_default_code(self) -> None:
         """CheckpointIOError has default error code STOR_100."""

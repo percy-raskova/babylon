@@ -163,13 +163,13 @@ class TestMetadataSchema:
         data = load_json_file(filepath)
         year = data.get("metadata", {}).get("year")
 
-        assert isinstance(
-            year, int
-        ), f"{filename} metadata.year must be an integer, got {type(year).__name__}"
+        assert isinstance(year, int), (
+            f"{filename} metadata.year must be an integer, got {type(year).__name__}"
+        )
         # Sanity check: year should be historical
-        assert (
-            1789 <= year <= 2000
-        ), f"{filename} metadata.year={year} is outside expected range [1789, 2000]"
+        assert 1789 <= year <= 2000, (
+            f"{filename} metadata.year={year} is outside expected range [1789, 2000]"
+        )
 
     @pytest.mark.parametrize("filename", CHRONICLE_FILES)
     def test_metadata_strings_are_non_empty(self, filename: str) -> None:
@@ -228,17 +228,17 @@ class TestMetadataSchema:
         data = load_json_file(filepath)
         resonance_tags = data.get("metadata", {}).get("resonance_tags")
 
-        assert isinstance(
-            resonance_tags, list
-        ), f"{filename} metadata.resonance_tags must be a list"
+        assert isinstance(resonance_tags, list), (
+            f"{filename} metadata.resonance_tags must be a list"
+        )
         assert len(resonance_tags) > 0, f"{filename} metadata.resonance_tags must not be empty"
         for idx, tag in enumerate(resonance_tags):
-            assert isinstance(
-                tag, str
-            ), f"{filename} metadata.resonance_tags[{idx}] must be a string"
-            assert (
-                len(tag.strip()) > 0
-            ), f"{filename} metadata.resonance_tags[{idx}] must not be empty"
+            assert isinstance(tag, str), (
+                f"{filename} metadata.resonance_tags[{idx}] must be a string"
+            )
+            assert len(tag.strip()) > 0, (
+                f"{filename} metadata.resonance_tags[{idx}] must not be empty"
+            )
 
 
 @pytest.mark.ledger
@@ -257,7 +257,7 @@ class TestTextContent:
         word_count = count_words(text)
 
         assert MIN_WORDS <= word_count <= MAX_WORDS, (
-            f"{filename} text has {word_count} words, " f"must be between {MIN_WORDS}-{MAX_WORDS}"
+            f"{filename} text has {word_count} words, must be between {MIN_WORDS}-{MAX_WORDS}"
         )
 
     @pytest.mark.parametrize("filename", CHRONICLE_FILES)
@@ -301,9 +301,9 @@ class TestWeimarSpecificContent:
 
         data = load_json_file(filepath)
         outcome = data.get("metadata", {}).get("outcome_type")
-        assert (
-            outcome == "counter_revolution"
-        ), f"weimar_1933.json outcome_type must be 'counter_revolution', got '{outcome}'"
+        assert outcome == "counter_revolution", (
+            f"weimar_1933.json outcome_type must be 'counter_revolution', got '{outcome}'"
+        )
 
     def test_weimar_location_is_germany(self) -> None:
         """Weimar file must have location='Germany'."""
@@ -313,9 +313,9 @@ class TestWeimarSpecificContent:
 
         data = load_json_file(filepath)
         location = data.get("metadata", {}).get("location")
-        assert (
-            location == "Germany"
-        ), f"weimar_1933.json location must be 'Germany', got '{location}'"
+        assert location == "Germany", (
+            f"weimar_1933.json location must be 'Germany', got '{location}'"
+        )
 
     def test_weimar_contains_key_concepts(self) -> None:
         """Weimar text must reference key Trotsky analysis concepts."""
@@ -327,9 +327,9 @@ class TestWeimarSpecificContent:
         text = data.get("text", "").lower()
 
         # Must contain references to petty bourgeoisie, fascism, and finance capital
-        assert (
-            "petty bourgeois" in text or "petty-bourgeois" in text
-        ), "weimar_1933.json must reference the petty bourgeoisie (Trotsky analysis)"
+        assert "petty bourgeois" in text or "petty-bourgeois" in text, (
+            "weimar_1933.json must reference the petty bourgeoisie (Trotsky analysis)"
+        )
 
 
 @pytest.mark.ledger
@@ -354,9 +354,9 @@ class TestRussianRevSpecificContent:
 
         data = load_json_file(filepath)
         outcome = data.get("metadata", {}).get("outcome_type")
-        assert (
-            outcome == "revolutionary_success"
-        ), f"russian_rev_1917.json outcome_type must be 'revolutionary_success', got '{outcome}'"
+        assert outcome == "revolutionary_success", (
+            f"russian_rev_1917.json outcome_type must be 'revolutionary_success', got '{outcome}'"
+        )
 
     def test_russian_location_is_russia(self) -> None:
         """Russian revolution file must have location='Russia'."""
@@ -366,9 +366,9 @@ class TestRussianRevSpecificContent:
 
         data = load_json_file(filepath)
         location = data.get("metadata", {}).get("location")
-        assert (
-            location == "Russia"
-        ), f"russian_rev_1917.json location must be 'Russia', got '{location}'"
+        assert location == "Russia", (
+            f"russian_rev_1917.json location must be 'Russia', got '{location}'"
+        )
 
     def test_russian_contains_key_concepts(self) -> None:
         """Russian revolution text must reference key Reed analysis concepts."""
@@ -383,9 +383,9 @@ class TestRussianRevSpecificContent:
         has_soviets = "soviet" in text
         has_dual_power = "dual power" in text
 
-        assert (
-            has_soviets or has_dual_power
-        ), "russian_rev_1917.json must reference Soviets or dual power (Reed analysis)"
+        assert has_soviets or has_dual_power, (
+            "russian_rev_1917.json must reference Soviets or dual power (Reed analysis)"
+        )
 
 
 @pytest.mark.ledger
@@ -410,9 +410,9 @@ class TestParisSpecificContent:
 
         data = load_json_file(filepath)
         outcome = data.get("metadata", {}).get("outcome_type")
-        assert (
-            outcome == "suppression"
-        ), f"paris_commune_1871.json outcome_type must be 'suppression', got '{outcome}'"
+        assert outcome == "suppression", (
+            f"paris_commune_1871.json outcome_type must be 'suppression', got '{outcome}'"
+        )
 
     def test_paris_location_is_france(self) -> None:
         """Paris Commune file must have location='France'."""
@@ -422,9 +422,9 @@ class TestParisSpecificContent:
 
         data = load_json_file(filepath)
         location = data.get("metadata", {}).get("location")
-        assert (
-            location == "France"
-        ), f"paris_commune_1871.json location must be 'France', got '{location}'"
+        assert location == "France", (
+            f"paris_commune_1871.json location must be 'France', got '{location}'"
+        )
 
     def test_paris_contains_key_concepts(self) -> None:
         """Paris Commune text must reference key Marx analysis concepts."""
@@ -439,6 +439,6 @@ class TestParisSpecificContent:
         has_state_machinery = "state machinery" in text
         has_commune = "commune" in text
 
-        assert (
-            has_state_machinery or has_commune
-        ), "paris_commune_1871.json must reference state machinery or commune (Marx analysis)"
+        assert has_state_machinery or has_commune, (
+            "paris_commune_1871.json must reference state machinery or commune (Marx analysis)"
+        )

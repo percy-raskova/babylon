@@ -584,9 +584,9 @@ class TestDeepSeekClientSyncBehavior:
             client = DeepSeekClient()
 
             # Verify the internal client is sync OpenAI, not AsyncOpenAI
-            assert isinstance(
-                client._client, OpenAI
-            ), f"Expected OpenAI but got {type(client._client).__name__}"
+            assert isinstance(client._client, OpenAI), (
+                f"Expected OpenAI but got {type(client._client).__name__}"
+            )
             assert not isinstance(client._client, AsyncOpenAI), "Client should NOT be AsyncOpenAI"
         finally:
             llm_config.LLMConfig.API_KEY = original_key

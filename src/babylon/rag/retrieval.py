@@ -177,7 +177,7 @@ class VectorStore:
             RagError: If query fails
         """
         try:
-            include = include or ["documents", "metadatas", "distances"]
+            include = include or ["documents", "metadatas", "distances", "embeddings"]
 
             results = self.collection.query(
                 query_embeddings=[query_embedding],

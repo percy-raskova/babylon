@@ -5,13 +5,17 @@
 # The State is "what the dice land on." The Engine is "the physics of the throw."
 
 meta:
-  version: "3.0.0"
+  version: "3.1.0"
   created: "2024-12-07"
-  updated: "2025-12-08"
+  updated: "2025-12-11"
   status: "implemented"
   phase: 2
   principle: "State is pure data. Engine is pure transformation. They never mix."
-  implementation_status: "704 tests passing, modular System architecture proven"
+  implementation_status: "1445 tests passing, 7 Systems in modular architecture"
+  recent_additions:
+    - "StruggleSystem (Agency Layer - George Floyd Dynamic)"
+    - "SolidaritySystem (Proletarian Internationalism)"
+    - "TerritorySystem (Layer 0 - Territorial Substrate)"
 
 # =============================================================================
 # THE FUNDAMENTAL SEPARATION
@@ -149,26 +153,41 @@ simulation_engine:
   systems:
     note: "Systems implement the System protocol and run in historical materialist order"
     location: "src/babylon/engine/systems/"
+    count: 7
 
     1_imperial_rent:
       class: "ImperialRentSystem"
       file: "economic.py"
-      purpose: "Extract imperial rent from exploitation edges"
+      purpose: "Extract imperial rent from exploitation edges (economic base)"
       formula: "calculate_imperial_rent(alpha, periphery_wages, periphery_consciousness)"
       effects:
         - "Worker.wealth -= rent"
         - "Owner.wealth += rent"
         - "Relationship.value_flow = rent"
 
-    2_consciousness:
+    2_solidarity:
+      class: "SolidaritySystem"
+      file: "solidarity.py"
+      sprint: "3.4.2 - Proletarian Internationalism"
+      purpose: "Transmit class consciousness via SOLIDARITY edges"
+      formula: "calculate_solidarity_transmission(source, target, strength, threshold)"
+      effects:
+        - "Target class_consciousness += delta"
+        - "Emit CONSCIOUSNESS_TRANSMISSION events"
+        - "Emit MASS_AWAKENING events when threshold crossed"
+
+    3_consciousness:
       class: "ConsciousnessSystem"
       file: "ideology.py"
-      purpose: "Apply consciousness drift based on material conditions"
-      formula: "calculate_consciousness_drift(core_wages, value_produced, current_consciousness, k, lambda)"
+      sprint: "3.4.3 - George Jackson Refactor"
+      purpose: "Route agitation to class consciousness or national identity (bifurcation)"
+      formula: "calculate_ideological_routing(wage_change, solidarity_pressure, ...)"
       effects:
-        - "SocialClass.ideology += delta (clamped to [-1, 1])"
+        - "If solidarity: class_consciousness += agitation"
+        - "If no solidarity: national_identity += agitation"
+        - "Agitation decays over time"
 
-    3_survival:
+    4_survival:
       class: "SurvivalSystem"
       file: "survival.py"
       purpose: "Update survival probabilities for all entities"
@@ -179,7 +198,24 @@ simulation_engine:
         - "SocialClass.p_acquiescence = P(S|A)"
         - "SocialClass.p_revolution = P(S|R)"
 
-    4_contradiction:
+    5_struggle:
+      class: "StruggleSystem"
+      file: "struggle.py"
+      sprint: "Agency Layer - George Floyd Dynamic"
+      purpose: "Give political agency to oppressed classes through uprisings"
+      algorithm: |
+        1. Roll for EXCESSIVE_FORCE spark (repression * spark_scale)
+        2. Check uprising condition: (spark OR P(S|R)>P(S|A)) AND agitation>threshold
+        3. Execute uprising: destroy wealth, build solidarity, boost consciousness
+      effects:
+        - "Emit EXCESSIVE_FORCE events (the spark)"
+        - "Emit UPRISING events (the explosion)"
+        - "Emit SOLIDARITY_SPIKE events (bridge building)"
+        - "wealth *= (1 - destruction_rate)"
+        - "solidarity_strength += gain on SOLIDARITY edges"
+        - "class_consciousness += boost"
+
+    6_contradiction:
       class: "ContradictionSystem"
       file: "contradiction.py"
       purpose: "Accumulate tension and publish rupture events"
@@ -187,16 +223,35 @@ simulation_engine:
         - "Relationship.tension += delta (clamped to [0, 1])"
         - "Publish 'rupture' event when tension reaches 1.0"
 
+    7_territory:
+      class: "TerritorySystem"
+      file: "territory.py"
+      sprint: "3.5.4 - Layer 0 Territorial Substrate"
+      purpose: "Handle spatial dynamics, heat, eviction, spillover"
+      effects:
+        - "Heat accumulation for HIGH_PROFILE territories"
+        - "Heat decay for LOW_PROFILE territories"
+        - "Eviction pipeline when heat >= threshold"
+        - "Heat spillover via ADJACENCY edges"
+
   event_bus:
     class: "EventBus"
     location: "src/babylon/engine/event_bus.py"
     purpose: "Publish/subscribe system for simulation events"
     events_published:
+      # Economic events
+      surplus_extraction: "Imperial rent extracted from worker to owner"
+      economic_crisis: "Imperial rent pool depleted below critical threshold"
+      # Consciousness events
+      solidarity_awakening: "Periphery worker enters active struggle"
+      consciousness_transmission: "Consciousness flows via SOLIDARITY edge"
+      mass_awakening: "Target consciousness crosses awakening threshold"
+      # Agency Layer events (Sprint: George Floyd Dynamic)
+      excessive_force: "The Spark - Police brutality event"
+      uprising: "The Explosion - Mass insurrection triggered"
+      solidarity_spike: "The Bridge Building - Solidarity infrastructure created"
+      # Contradiction events
       rupture: "When tension on an edge reaches 1.0"
-    future_events:
-      - "wealth_transfer - when rent is extracted"
-      - "ideology_drift - when consciousness changes significantly"
-      - "survival_crisis - when P(S|A) drops below threshold"
 
   formula_registry:
     class: "FormulaRegistry"

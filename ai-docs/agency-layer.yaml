@@ -1,0 +1,308 @@
+# Babylon Agency Layer Specification
+# Machine-readable spec for the Struggle System
+# Implements the "George Floyd Dynamic" for political agency of oppressed classes
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-11"
+  purpose: "Document the Struggle System that gives political agency to oppressed classes"
+  principle: "State Violence (Spark) + Accumulated Agitation (Fuel) = Insurrection (Explosion)"
+  status: "IMPLEMENTED"
+  location: "src/babylon/engine/systems/struggle.py"
+  tests: "tests/integration/test_george_floyd_dynamic.py (8 tests, ALL PASSING)"
+  sprint: "Agency Layer - The George Floyd Dynamic"
+
+# =============================================================================
+# THEORETICAL FOUNDATION
+# =============================================================================
+
+theory:
+  name: "The George Floyd Dynamic"
+  insight: |
+    The "Spectator Problem" in many simulations is that entities suffer material
+    conditions but don't react. They are passive observers of their own oppression.
+
+    In reality, state violence creates political moments. The murder of George Floyd
+    triggered nationwide uprisings not because it was unique, but because accumulated
+    grievances (agitation) met a visible spark (police brutality).
+
+  mechanism:
+    spark: |
+      Police brutality (EXCESSIVE_FORCE) is not an anomaly but a stochastic
+      function of Repression. Higher repression = more frequent sparks.
+
+    combustion: |
+      A spark only becomes an UPRISING if the population is both:
+      1. Agitated (accumulated grievances from material deprivation)
+      2. Hopeless (P(S|A) low - acquiescence doesn't ensure survival)
+
+    result: |
+      Uprisings destroy wealth (riot damage) but permanently increase solidarity
+      infrastructure. Shared struggle creates class consciousness and builds the
+      organizational bridges that enable future revolutionary coordination.
+
+  strategic_implication: |
+    Revolution is built through shared struggle, not spontaneous awakening.
+    The explosion is what builds the solidarity bridges that enable consciousness
+    transmission in subsequent ticks.
+
+# =============================================================================
+# EVENT TYPES
+# =============================================================================
+
+events:
+  excessive_force:
+    type: "EXCESSIVE_FORCE"
+    description: "The Spark - Police brutality event"
+    trigger: "Random roll < (repression_faced * spark_probability_scale)"
+    frequency: "~8% per tick at default settings with repression=0.8"
+    payload:
+      node_id: "Entity experiencing the violence"
+      repression: "Current repression_faced value"
+      spark_probability: "Calculated probability for this tick"
+
+  uprising:
+    type: "UPRISING"
+    description: "The Explosion - Mass insurrection event"
+    trigger: "(Spark OR P(S|R) > P(S|A)) AND agitation > resistance_threshold"
+    effects:
+      - "Wealth destruction: wealth *= (1 - wealth_destruction_rate)"
+      - "Solidarity gain: solidarity_strength += solidarity_gain_per_uprising on edges"
+      - "Consciousness boost: class_consciousness += solidarity_gain * 0.5"
+    payload:
+      node_id: "Entity participating in uprising"
+      trigger: "'spark' or 'revolutionary_pressure'"
+      agitation: "Current agitation level"
+      repression: "Current repression_faced"
+      p_acquiescence: "P(S|A) value"
+      p_revolution: "P(S|R) value"
+      wealth_before: "Wealth before destruction"
+      wealth_after: "Wealth after destruction"
+      solidarity_gained: "Total solidarity strength added"
+      edges_updated: "Number of solidarity edges strengthened"
+      consciousness_before: "Class consciousness before boost"
+      consciousness_after: "Class consciousness after boost"
+
+  solidarity_spike:
+    type: "SOLIDARITY_SPIKE"
+    description: "The Bridge Building - Solidarity infrastructure created"
+    trigger: "Uprising occurs with existing SOLIDARITY edges"
+    payload:
+      node_id: "Entity whose edges were strengthened"
+      solidarity_gained: "Total solidarity strength increase"
+      edges_affected: "Number of edges updated"
+      triggered_by: "'uprising'"
+
+# =============================================================================
+# SYSTEM SPECIFICATION
+# =============================================================================
+
+system:
+  name: "StruggleSystem"
+  class: "babylon.engine.systems.struggle.StruggleSystem"
+
+  position_in_loop:
+    after: "SurvivalSystem"
+    before: "ContradictionSystem"
+    rationale: |
+      Must run AFTER SurvivalSystem because it needs P(S|A) and P(S|R) values
+      to determine if revolutionary pressure exists.
+      Must run BEFORE ContradictionSystem so solidarity built in this tick
+      can affect tension calculations.
+      Effect: Solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1.
+
+  eligible_roles:
+    roles:
+      - "PERIPHERY_PROLETARIAT"
+      - "LUMPENPROLETARIAT"
+    rationale: |
+      These classes face the highest repression and have the most agency in
+      creating revolutionary conditions through collective action. Core workers
+      are typically too comfortable (high P(S|A)) to participate in uprisings.
+
+  algorithm:
+    step_1:
+      name: "Iterate Eligible Entities"
+      action: "Filter nodes by social role, skip territories"
+
+    step_2:
+      name: "Calculate Spark Probability"
+      formula: "spark_prob = repression_faced * spark_probability_scale"
+      action: "Roll random(), emit EXCESSIVE_FORCE if hit"
+
+    step_3:
+      name: "Check Uprising Condition"
+      condition: "(spark_occurred OR (p_revolution > p_acquiescence)) AND (agitation > resistance_threshold)"
+      action: "Trigger uprising if condition met"
+
+    step_4:
+      name: "Execute Uprising"
+      substeps:
+        - "Economic damage: wealth *= (1 - wealth_destruction_rate)"
+        - "Solidarity gain: Increase solidarity_strength on incoming SOLIDARITY edges"
+        - "Consciousness boost: class_consciousness += solidarity_gain * 0.5"
+        - "Emit UPRISING event"
+        - "Emit SOLIDARITY_SPIKE event if edges updated"
+
+# =============================================================================
+# CONFIGURABLE PARAMETERS
+# =============================================================================
+
+parameters:
+  location: "src/babylon/config/defines.py (StruggleDefines class)"
+  yaml_path: "src/babylon/data/defines.yaml (struggle: section)"
+
+  spark_probability_scale:
+    default: 0.1
+    range: "[0.0, 1.0]"
+    description: "Base probability multiplier for EXCESSIVE_FORCE generation"
+    formula: "spark_prob = repression_faced * spark_probability_scale"
+    example: "With repression=0.8 and scale=0.1, spark probability is 8% per tick"
+
+  resistance_threshold:
+    default: 0.1
+    range: "[0.0, 1.0]"
+    description: "Minimum agitation level required for uprising to trigger"
+    rationale: |
+      Prevents uprisings when population is not sufficiently agitated.
+      Even with a spark, if people aren't angry enough, they won't rise up.
+
+  wealth_destruction_rate:
+    default: 0.05
+    range: "[0.0, 1.0]"
+    description: "Fraction of wealth destroyed during uprising (riot damage)"
+    effect: "wealth *= (1 - wealth_destruction_rate)"
+    rationale: |
+      Uprisings have economic costs. Businesses burned, production disrupted.
+      This models the material sacrifice of revolutionary action.
+
+  solidarity_gain_per_uprising:
+    default: 0.2
+    range: "[0.0, 1.0]"
+    description: "Amount added to solidarity_strength on SOLIDARITY edges"
+    effect: "solidarity_strength += solidarity_gain_per_uprising"
+    rationale: |
+      Shared struggle builds bonds. People who fight together develop
+      organizational infrastructure and mutual trust.
+
+# =============================================================================
+# DATA FLOW
+# =============================================================================
+
+data_flow:
+  inputs:
+    from_node:
+      - "repression_faced: float - State violence level"
+      - "ideology.agitation: float - Accumulated political energy"
+      - "p_acquiescence: float - P(S|A) from SurvivalSystem"
+      - "p_revolution: float - P(S|R) from SurvivalSystem"
+      - "wealth: float - Economic resources"
+    from_edges:
+      - "SOLIDARITY edges: incoming edges with solidarity_strength"
+
+  outputs:
+    to_node:
+      - "wealth: Updated after destruction"
+      - "ideology.class_consciousness: Boosted from shared struggle"
+    to_edges:
+      - "solidarity_strength: Increased on SOLIDARITY edges"
+    to_event_bus:
+      - "EXCESSIVE_FORCE events"
+      - "UPRISING events"
+      - "SOLIDARITY_SPIKE events"
+
+# =============================================================================
+# INTEGRATION WITH OTHER SYSTEMS
+# =============================================================================
+
+system_interactions:
+  SurvivalSystem:
+    direction: "receives from"
+    data: "p_acquiescence, p_revolution"
+    rationale: "Uprising condition uses P values to detect revolutionary pressure"
+
+  SolidaritySystem:
+    direction: "feeds into (next tick)"
+    data: "solidarity_strength on edges"
+    rationale: "Solidarity built by uprisings enables consciousness transmission next tick"
+
+  ConsciousnessSystem:
+    direction: "receives from / feeds into"
+    data: "agitation (consumed), class_consciousness (modified)"
+    rationale: "Uses agitation as trigger, modifies consciousness directly"
+
+  ContradictionSystem:
+    direction: "feeds into"
+    data: "Modified solidarity affects tension calculations"
+    rationale: "Higher solidarity may reduce contradictions between entities"
+
+# =============================================================================
+# EMERGENT DYNAMICS
+# =============================================================================
+
+emergent_dynamics:
+  virtuous_cycle:
+    name: "The Revolutionary Spiral"
+    description: |
+      1. High repression creates sparks
+      2. Sparks trigger uprisings (if agitation exists)
+      3. Uprisings build solidarity infrastructure
+      4. Solidarity enables consciousness transmission
+      5. Higher consciousness increases P(S|R)
+      6. Higher P(S|R) makes future uprisings more likely
+      7. Return to step 1
+
+    conditions_for_activation:
+      - "High repression_faced (> 0.5)"
+      - "Existing agitation (> resistance_threshold)"
+      - "Existing SOLIDARITY edges (for infrastructure building)"
+
+  atomization_trap:
+    name: "The Fascist Path"
+    description: |
+      Without SOLIDARITY edges, uprisings cannot build organizational infrastructure.
+      The StruggleSystem only increases solidarity_strength on EXISTING edges.
+      Isolated workers will experience sparks but cannot translate them into
+      lasting revolutionary organization. Their agitation routes to national_identity
+      via the ConsciousnessSystem's bifurcation mechanic instead.
+
+    connection_to_bifurcation: |
+      The Agency Layer (StruggleSystem) and the Bifurcation Layer (ConsciousnessSystem)
+      work together:
+      - StruggleSystem builds solidarity infrastructure through shared struggle
+      - ConsciousnessSystem routes agitation based on solidarity_pressure
+      - Without StruggleSystem, solidarity edges stay at 0.0
+      - With solidarity=0.0, agitation routes to fascism, not revolution
+
+# =============================================================================
+# TEST COVERAGE
+# =============================================================================
+
+tests:
+  location: "tests/integration/test_george_floyd_dynamic.py"
+  count: 8
+
+  test_cases:
+    - name: "test_excessive_force_events_occur_with_high_repression"
+      asserts: "EXCESSIVE_FORCE events generated with high repression"
+
+    - name: "test_uprising_triggers_with_agitation_and_spark"
+      asserts: "UPRISING triggers when spark + agitation condition met"
+
+    - name: "test_solidarity_increases_after_uprising"
+      asserts: "solidarity_strength on edges increases after uprising"
+
+    - name: "test_class_consciousness_rises_after_solidarity_built"
+      asserts: "Full dynamic produces EXCESSIVE_FORCE or UPRISING events"
+
+    - name: "test_wealth_destroyed_during_uprising"
+      asserts: "wealth decreases after uprising events"
+
+    - name: "test_solidarity_spike_event_emitted"
+      asserts: "SOLIDARITY_SPIKE events emitted when solidarity gains occur"
+
+    - name: "test_custom_spark_probability_scale"
+      asserts: "Higher spark_probability_scale produces more EXCESSIVE_FORCE events"
+
+    - name: "test_resistance_threshold_affects_uprising"
+      asserts: "Higher resistance_threshold reduces uprising frequency"

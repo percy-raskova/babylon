@@ -4,7 +4,7 @@ These functions provide convenient ways to create SocialClass entities
 with sensible defaults for class simulation. Each factory encapsulates
 the defaults appropriate for a specific social class.
 
-Factories support the **kwargs pattern for extensibility while
+Factories support the ``**kwargs`` pattern for extensibility while
 maintaining type safety through Pydantic validation.
 
 Sprint 3.4.3 (George Jackson Refactor): ideology parameter accepts both

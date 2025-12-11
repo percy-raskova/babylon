@@ -107,7 +107,8 @@ class WorldState(BaseModel):
         Returns:
             NetworkX DiGraph with nodes and edges from this state.
 
-        Example:
+        Example::
+
             G = state.to_graph()
             for node_id, data in G.nodes(data=True):
                 if data["_node_type"] == "social_class":

@@ -1,237 +1,99 @@
-# The Fall of Babylon
+# Babylon - The Fall of America
 
-*The Fall of Babylon* is a text-based role-playing game (RPG) that simulates complex social, political, and economic systems using XML data structures and AI components. The game incorporates Marxist theory and dialectical materialism to model contradictions and societal changes.
+A geopolitical simulation engine modeling the collapse of American hegemony through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory.
 
-## Table of Contents
+**Mantra:** *Graph + Math = History*
 
-- [The Fall of Babylon](#the-fall-of-babylon)
-  - [Table of Contents](#table-of-contents)
-  - [Introduction](#introduction)
-  - [Project Structure](#project-structure)
-  - [Setup and Installation](#setup-and-installation)
-    - [Prerequisites](#prerequisites)
-    - [Installation Steps](#installation-steps)
-  - [Usage Instructions](#usage-instructions)
-  - [Game Mechanics](#game-mechanics)
-  - [AI Integration](#ai-integration)
-    - [ChromaDB Vector Database](#chromadb-vector-database)
-    - [Metrics Collection](#metrics-collection)
-    - [Current Features](#current-features)
-    - [Planned Features](#planned-features)
-  - [Error Handling \& Logging](#error-handling--logging)
-    - [Error Management](#error-management)
-    - [Logging System](#logging-system)
-  - [Contributing](#contributing)
-  - [License](#license)
+## What Is This?
 
-## Introduction
+Babylon models class struggle as a deterministic output of material conditions within a compact topological phase space. It simulates imperial rent extraction, consciousness drift, solidarity transmission, and revolutionary rupture using NetworkX graphs and Pydantic-validated state.
 
-*The Fall of Babylon* aims to provide an immersive experience where players navigate a dynamically changing world shaped by their decisions and underlying societal contradictions. The game leverages AI for non-player character (NPC) behaviors and incorporates real-time metrics collection and analysis to enhance gameplay dynamics.
+The simulation runs locally without external servers, using the "Embedded Trinity" architecture:
+- **The Ledger** (SQLite/Pydantic): Rigid material state
+- **The Topology** (NetworkX): Fluid relational state
+- **The Archive** (ChromaDB): Semantic history for AI narrative
+
+## Quick Start
+
+```bash
+# Install dependencies
+poetry install
+poetry run pre-commit install
+
+# Run tests (1500 tests)
+poetry run pytest -m "not ai"
+
+# Run simulation
+poetry run python -m babylon
+```
+
+**Requirements:** Python 3.12+, Poetry
 
 ## Project Structure
 
-- `docs/`: Documentation including:
-  - [CHANGELOG](docs/CHANGELOG.md): Version history and updates
-  - [TODO](docs/TODO.md): Planned features and improvements
-  - [MECHANICS](docs/MECHANICS.md): Game mechanics documentation
-  - [CHROMA](docs/CHROMA.md): ChromaDB integration details
-  - [ERROR_CODES](docs/ERROR_CODES.md): Error handling system
-  - [LOGGING](docs/LOGGING.md): Logging system documentation
-  - [CONFIGURATION](docs/CONFIGURATION.md): Configuration guide
-  - [ECONOMY](docs/ECONOMY.md): Economic system documentation
-- `src/babylon/`: Main source code
-  - `ai/`: AI components and ChromaDB integration
-  - `census/`: Census data integration and API
-  - `config/`: Configuration management
-  - `core/`: Core game systems (contradictions, economy, politics)
-  - `data/`: Data management and persistence
-    - `xml/`: Game entity and mechanics definitions
-    - `models/`: Data models and schemas
-    - `chromadb/`: Vector database storage
-  - `metrics/`: Performance and gameplay metrics collection
-  - `utils/`: Utility functions and helpers
-- `tests/`: Comprehensive test suite
-  - `unit/`: Unit tests
-  - `integration/`: Integration tests
-  - `fixtures/`: Test data and fixtures
-- `website/`: Game website and documentation
-- `pyproject.toml`: Project configuration
-- `logging.yaml`: Logging configuration
+```
+src/babylon/
+├── engine/          # Simulation engine (step function, systems, observers)
+├── models/          # Pydantic entities (SocialClass, Territory, Relationship)
+├── systems/         # Modular systems (survival, solidarity, contradiction)
+├── rag/             # ChromaDB integration for semantic history
+├── config/          # GameDefines, logging configuration
+└── data/game/       # JSON entity definitions
 
-## Setup and Installation
+tests/
+├── unit/            # Fast deterministic tests
+└── integration/     # Full simulation tests
 
-### Prerequisites
-
-- Python 3.8 or higher
-- PostgreSQL 13 or higher
-- Virtual environment tool (recommended)
-- Rust toolchain (for ChromaDB optimizations)
-
-### Installation Steps
-
-1. **Clone the Repository**
-
-   ```shell
-   git clone https://github.com/yourusername/fall-of-babylon.git
-   cd fall-of-babylon
-   ```
-
-2. **Set Up Directory Structure**
-
-   ```shell
-   mkdir -p data/metrics
-   mkdir -p logs/metrics
-   mkdir -p backups
-   mkdir -p chroma
-   ```
-
-3. **Create and Activate Virtual Environment**
-
-   ```shell
-   python -m venv venv
-   source venv/bin/activate  # On Windows use venv\Scripts\activate
-   ```
-
-4. **Install Dependencies**
-
-   ```shell
-   pip install -r requirements.txt
-   ```
-
-5. **Configure Environment**
-
-   Copy `.env.example` to `.env`:
-
-   ```shell
-   cp .env.example .env
-   ```
-
-   Update the values in `.env` with your configuration.
-
-6. **Initialize Databases**
-
-   - Set up PostgreSQL database
-   - Initialize ChromaDB storage
-   - Configure metrics collection
-
-   Refer to [CONFIGURATION.md](docs/CONFIGURATION.md) for detailed setup instructions.
-
-## Usage Instructions
-
-Start the game:
-
-```shell
-python src/babylon/__main__.py
+ai-docs/             # Machine-readable YAML specifications
+brainstorm/          # Design documents and mechanics specs
 ```
 
-The game features:
-- Terminal-based interface
-- Real-time metrics collection
-- Automatic state persistence
-- Configurable logging levels
+## Development
 
-## Game Mechanics
+See [`CLAUDE.md`](CLAUDE.md) for comprehensive development guidelines including:
+- Available commands (mise tasks, pytest markers)
+- Architecture details
+- Coding standards
+- Mathematical core (Fundamental Theorem, Survival Calculus)
 
-- **Contradiction Analysis System**:
-  - Advanced engine modeling societal contradictions
-  - Network visualization of relationships
-  - Real-time intensity tracking
-  - Historical data analysis
-- **Event Generation System**:
-  - Procedural event generation
-  - Dynamic consequence chains
-  - Contradiction-based escalation
-- **Economic System**:
-  - Dynamic resource management
-  - Market simulation
-  - Supply chain modeling
-- **Political Systems**:
-  - Electoral processes
-  - Policy implementation
-  - Governance structures
+### Key Commands
 
-For details, see [MECHANICS.md](docs/MECHANICS.md).
+```bash
+mise run ci              # Quick CI: lint + typecheck + test-fast
+mise run test            # All non-AI tests
+mise run analyze-trace   # Single simulation with CSV output
+mise run analyze-sweep   # Parameter sweep analysis
+```
 
-## AI Integration
+## Documentation
 
-### ChromaDB Vector Database
+| Location | Content |
+|----------|---------|
+| [`ai-docs/`](ai-docs/) | YAML specs for engine systems, formulas, architecture |
+| [`brainstorm/`](brainstorm/) | Design documents, mechanics specifications |
+| [`docs/`](docs/) | Sphinx documentation (API reference) |
 
-- **Entity Storage**: Efficient vector representations
-- **Similarity Search**: Fast kNN queries
-- **Persistence**: DuckDB+Parquet backend
-- **Performance**:
-  - Query response < 100ms
-  - Memory optimization
-  - Cache management
-  - Automatic backups
+## Current State
 
-### Metrics Collection
+**Phase 3: Narrative Layer** - Observer system implemented
 
-- Real-time performance monitoring
-- Gameplay pattern analysis
-- System resource tracking
-- Cache performance optimization
-
-### Current Features
-
-- Entity embeddings via SentenceTransformer
-- Contradiction relationship analysis
-- Dynamic event generation
-- Performance metrics collection
-- Pre-embeddings system with:
-  - Content preprocessing and normalization
-  - Intelligent content chunking
-  - Embedding cache management
-  - Integration with lifecycle management
-
-### Planned Features
-
-- Enhanced NPC behaviors
-- Advanced decision systems
-- Natural language processing
-- Dynamic world generation
-- Context window management
-- Priority queuing for object lifecycle
-
-For implementation details, see [CHROMA.md](docs/CHROMA.md).
-
-## Error Handling & Logging
-
-### Error Management
-
-- Structured error codes by subsystem
-- Comprehensive error tracking
-- Automatic error recovery
-- Detailed error context
-
-### Logging System
-
-- JSON-structured logging
-- Multiple log streams
-- Automatic rotation
-- Performance metrics
-- Error context capture
-
-For complete documentation:
-- [ERROR_CODES.md](docs/ERROR_CODES.md)
-- [LOGGING.md](docs/LOGGING.md)
-
-## Contributing
-
-Contributions welcome! Guidelines coming soon in CONTRIBUTING.md.
+Completed systems:
+- Imperial Rent extraction (EXPLOITATION edges)
+- Consciousness drift and bifurcation (George Jackson model)
+- Solidarity transmission (SOLIDARITY edges)
+- Survival calculus (P(S|A), P(S|R))
+- Territory dynamics (heat, eviction, displacement)
+- Agency layer (EXCESSIVE_FORCE → UPRISING)
+- Topology monitoring (percolation, resilience testing)
 
 ## License
 
 MIT License - see [LICENSE](LICENSE).
 
-For detailed progress and updates, see [CHANGELOG.md](docs/CHANGELOG.md).
-
 ---
 
-## Built With
+**Built With**
 
 ```
 Claude Opus 4.5 🤝 Autistic Trans Woman = Coherent MLM-TW Simulation
 ```
-
-*Graph + Math = History*

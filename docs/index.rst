@@ -8,61 +8,126 @@ through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory.
 
 .. note::
 
-   This project is under active development.
+   This project is under active development. See the :doc:`/guides/quickstart`
+   to get started.
 
-Overview
---------
+What is Babylon?
+----------------
 
-Babylon models class struggle not as random events, but as a deterministic
-output of material conditions within a compact topological phase space.
-The simulation uses:
+Babylon models class struggle not as random events, but as a **deterministic
+output of material conditions** within a compact topological phase space.
 
-- **Imperial Rent** (Φ): The difference between core wages and value produced
-- **Unequal Exchange**: Value transfer from periphery to core
-- **Survival Calculus**: Agent behavior driven by P(S|A) vs P(S|R)
+The simulation implements:
 
-Quick Links
+- **Imperial Rent** (Φ): Value extraction from periphery to core
+- **Survival Calculus**: Agents maximize P(S|A) vs P(S|R)
+- **George Jackson Model**: Consciousness bifurcation (revolution vs fascism)
+- **Percolation Theory**: Phase transitions in solidarity networks
+- **Carceral Geography**: Detention, displacement, elimination pipelines
+
+Architecture Overview
+---------------------
+
+The system runs locally without external servers, using the **Embedded Trinity**:
+
+.. list-table::
+   :widths: 20 40 40
+   :header-rows: 1
+
+   * - Layer
+     - Technology
+     - Purpose
+   * - **The Ledger**
+     - SQLite / Pydantic
+     - Rigid material state (wealth, organization)
+   * - **The Topology**
+     - NetworkX
+     - Fluid relational state (solidarity, exploitation)
+   * - **The Archive**
+     - ChromaDB
+     - Semantic history for AI narrative
+
+See :doc:`/concepts/architecture` for detailed architecture documentation.
+
+Quick Start
 -----------
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-   guides/index
-   concepts/index
-   api/index
-
-Getting Started
----------------
-
-Installation
-^^^^^^^^^^^^
 
 .. code-block:: bash
 
-   # Clone the repository
+   # Install dependencies
    git clone https://github.com/percy-raskova/babylon.git
    cd babylon
-
-   # Install dependencies with Poetry
    poetry install
 
-   # Run the test suite
+   # Run tests
    poetry run pytest -m "not ai"
 
-Project Architecture
---------------------
+   # Run simulation
+   poetry run python -m babylon
 
-The system runs locally without external servers, composed of three pillars:
+Contents
+--------
 
-**The Ledger** (SQLite/Pydantic)
-   Stores rigid, material state (Economics, Resources, Turn History)
+.. toctree::
+   :maxdepth: 2
+   :caption: Guides
 
-**The Topology** (NetworkX)
-   Stores fluid, relational state (Class Solidarity, Tension, Supply Chains)
+   guides/index
 
-**The Archive** (ChromaDB)
-   Stores semantic history and theory (RAG for AI narrative generation)
+.. toctree::
+   :maxdepth: 2
+   :caption: Concepts
+
+   concepts/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
+   api/index
+
+Current Systems
+---------------
+
+**Implemented:**
+
+- Imperial Rent extraction (EXPLOITATION edges)
+- Consciousness drift and bifurcation (George Jackson model)
+- Solidarity transmission (SOLIDARITY edges)
+- Survival calculus (P(S|A), P(S|R))
+- Territory dynamics (heat, eviction, displacement)
+- Agency layer (EXCESSIVE_FORCE → UPRISING)
+- Topology monitoring (percolation, resilience testing)
+
+**In Development:**
+
+- Narrative generation (AI observer)
+- Full game UI (NiceGUI)
+
+Mathematical Core
+-----------------
+
+**Fundamental Theorem of MLM-TW:**
+
+.. math::
+
+   \text{Revolution in Core impossible when } W_c > V_c
+
+Where :math:`W_c` is core wages and :math:`V_c` is value produced.
+The difference is Imperial Rent (Φ).
+
+**Survival Calculus:**
+
+.. math::
+
+   P(S|A) = \text{Sigmoid}(W - S_{min})
+
+   P(S|R) = \frac{O}{R}
+
+Rupture occurs when :math:`P(S|R) > P(S|A)`.
+
+See :doc:`/concepts/imperial-rent` and :doc:`/concepts/survival-calculus`
+for detailed explanations.
 
 Indices and tables
 ==================

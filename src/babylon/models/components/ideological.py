@@ -1,8 +1,15 @@
-"""IdeologicalComponent - Political alignment and adherence of an entity.
+"""IdeologicalComponent - Multi-dimensional ideological state (George Jackson Model).
 
 IdeologicalComponent represents the ideological state of an entity in the
-Babylon simulation. It tracks political alignment on the revolutionary-
-reactionary spectrum and the strength of ideological commitment.
+Babylon simulation using the George Jackson Model of consciousness:
+
+- class_consciousness: Relationship to Capital [0=False, 1=Revolutionary]
+- national_identity: Relationship to State [0=Internationalist, 1=Fascist]
+- agitation: Raw political energy accumulated from wage crises [0, inf)
+
+The key insight: "Fascism is the defensive form of capitalism."
+- Agitation + Solidarity -> Class Consciousness (Revolutionary Path)
+- Agitation + No Solidarity -> National Identity (Fascist Path)
 
 This component is essential for modeling consciousness drift and
 political transformation in the simulation.
@@ -10,36 +17,51 @@ political transformation in the simulation.
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.models.types import Ideology, Probability
-
 
 class IdeologicalComponent(BaseModel):
-    """Political alignment and adherence of an entity.
+    """Multi-dimensional ideological state (George Jackson Model).
 
-    Tracks the ideological state of an entity:
-    - Position on revolutionary-reactionary spectrum (Ideology)
-    - Strength of ideological commitment (Probability)
+    Tracks the ideological state of an entity using three axes:
+    - Relationship to Capital (class consciousness)
+    - Relationship to State/Tribe (national identity)
+    - Accumulated political energy (agitation)
 
-    All values use constrained types for automatic validation:
-    - alignment: Ideology [-1, 1]
-    - adherence: Probability [0, 1]
+    The bifurcation mechanism:
+    - When wages fall, agitation accumulates
+    - If solidarity edges exist: agitation routes to class_consciousness
+    - If no solidarity edges: agitation routes to national_identity
+
+    All values use constrained floats for automatic validation:
+    - class_consciousness: [0, 1] (0=False Consciousness, 1=Revolutionary)
+    - national_identity: [0, 1] (0=Internationalist, 1=Fascist)
+    - agitation: [0, inf) (no upper bound - accumulates during crises)
 
     This component is immutable (frozen) to ensure state integrity.
 
     Attributes:
-        alignment: Position on spectrum [-1=revolutionary, 1=reactionary] (default: 0.0)
-        adherence: Strength of ideological commitment [0=none, 1=full] (default: 0.5)
+        class_consciousness: Relationship to Capital [0=False, 1=Revolutionary] (default: 0.0)
+        national_identity: Relationship to State [0=Internationalist, 1=Fascist] (default: 0.5)
+        agitation: Raw political energy from wage crises [0, inf) (default: 0.0)
     """
 
     model_config = ConfigDict(frozen=True)
 
-    alignment: Ideology = Field(
+    class_consciousness: float = Field(
         default=0.0,
-        description="Position on spectrum [-1=revolutionary, 1=reactionary]",
+        ge=0.0,
+        le=1.0,
+        description="Relationship to Capital (0=False Consciousness, 1=Revolutionary)",
     )
-    adherence: Probability = Field(
+    national_identity: float = Field(
         default=0.5,
-        description="Strength of ideological commitment [0=none, 1=full]",
+        ge=0.0,
+        le=1.0,
+        description="Relationship to State (0=Internationalist, 1=Fascist)",
+    )
+    agitation: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Raw political energy accumulated from wage crises",
     )
 
     @property

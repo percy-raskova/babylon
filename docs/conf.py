@@ -194,11 +194,12 @@ latex_documents = [
 latex_elements = {
     "papersize": "letterpaper",
     "pointsize": "11pt",
-    # Custom preamble for typography
+    # Custom preamble for typography (xelatex uses fontspec instead of pdflatex packages)
     "preamble": r"""
-\usepackage{charter}
-\usepackage[defaultsans]{lato}
-\usepackage{inconsolata}
+\usepackage{fontspec}
+\setmainfont{TeX Gyre Termes}
+\setsansfont{TeX Gyre Heros}
+\setmonofont{TeX Gyre Cursor}
 """,
     # Chapter heading style
     "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
@@ -206,5 +207,5 @@ latex_elements = {
     "printindex": r"\footnotesize\raggedright\printindex",
 }
 
-# LaTeX engine (xelatex supports more fonts, pdflatex is more compatible)
-latex_engine = "pdflatex"
+# LaTeX engine (xelatex has native Unicode support for Greek letters, arrows, etc.)
+latex_engine = "xelatex"

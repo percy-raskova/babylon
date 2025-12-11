@@ -17,12 +17,16 @@ poetry install
 poetry run pre-commit install
 
 # Task Runner (preferred - use mise for all tasks)
-mise tasks                                        # List all 37 available tasks
+mise tasks                                        # List all available tasks
 mise run ci                                       # Quick CI: lint + format + typecheck + test-fast
-mise run test                                     # Run all non-AI tests (1272 tests)
-mise run test-fast                                # Fast math/engine tests only (393 tests)
+mise run test                                     # Run all non-AI tests
+mise run test-fast                                # Fast math/engine tests only
 mise run typecheck                                # MyPy strict mode
 mise run docs-live                                # Live-reload documentation server
+
+# Parameter Analysis
+mise run analyze-trace                            # Single sim with full time-series CSV
+mise run analyze-sweep                            # Parameter sweep with summary metrics
 
 # Testing (direct pytest)
 poetry run pytest -m "not ai"                     # All non-AI tests
@@ -33,7 +37,7 @@ poetry run pytest -k "test_name_pattern"          # Pattern matching
 # Linting & Type Checking
 poetry run ruff check src tests --fix
 poetry run ruff format src tests
-poetry run mypy src                               # Strict mode, 97 source files
+poetry run mypy src                               # Strict mode
 
 # Data/RAG Operations
 mise run ingest-corpus                            # Ingest Marxist corpus into ChromaDB
@@ -83,6 +87,7 @@ SimulationEngine.run_tick(graph, services, context)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`
+- `src/babylon/config/defines.py` - GameDefines (all tunable game coefficients)
 
 ## Type System
 
@@ -144,10 +149,25 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 **Heat Dynamics**: HIGH_PROFILE territories gain heat (state attention), LOW_PROFILE decays heat. Heat >=0.8 triggers eviction pipeline.
 
+## Configuration: GameDefines
+
+All tunable game coefficients are centralized in `GameDefines` (Pydantic model):
+
+```python
+from babylon.config.defines import GameDefines
+
+defines = GameDefines()  # Load defaults from pyproject.toml [tool.babylon]
+defines.economy.extraction_efficiency  # 0.8 default
+defines.consciousness.drift_sensitivity_k  # Consciousness drift rate
+```
+
+Categories: `economy`, `consciousness`, `solidarity`, `survival`, `territory`
+
 ## Documentation
 
 - Sphinx docs: `mise run docs-live` for development, `mise run docs` to build
 - Design specs in `brainstorm/mechanics/`
+- AI-readable specs in `ai-docs/` (YAML format)
 - Deferred ideas go to `brainstorm/deferred-ideas.md`
 
 **Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.

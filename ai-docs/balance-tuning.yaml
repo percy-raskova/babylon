@@ -1,0 +1,210 @@
+# Balance Tuning Registry
+# Empirical findings from parameter sensitivity analysis
+# This document records playable boundaries and gameplay insights
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-11"
+  updated: "2025-12-11"
+  purpose: "Record empirical balance findings from sensitivity analysis"
+  status: "ACTIVE - updated as parameters are tuned"
+  tool: "tools/tune_parameters.py"
+  mise_task: "mise run tune-params"
+
+# =============================================================================
+# METHODOLOGY
+# =============================================================================
+
+methodology:
+  approach: "Sensitivity Analysis via Parameter Sweep"
+  description: |
+    We systematically sweep through parameter ranges to find the "Playable Boundary" -
+    the threshold where the game transitions from survivable to fatal for the periphery.
+
+    The goal is not to make the game easy, but to ensure meaningful gameplay:
+    - Periphery should survive long enough for dynamics to play out
+    - Tension should have time to build and create player choices
+    - Economic flows should remain interesting over many ticks
+
+  tool_usage:
+    default_sweep: "mise run tune-params"
+    custom_sweep: |
+      poetry run python tools/tune_parameters.py \
+        --param economy.extraction_efficiency \
+        --start 0.05 --end 0.50 --step 0.01
+
+  metrics:
+    ticks_survived: "Number of simulation ticks before periphery wealth <= 0.001"
+    max_tension: "Maximum tension observed on any EXPLOITATION edge"
+    outcome: "SURVIVED (50 ticks) or DIED (wealth depleted)"
+
+  playability_targets:
+    minimum_survival: 25  # ticks - enough for meaningful gameplay
+    ideal_survival: 50    # ticks - full simulation window
+    tension_buildup: "Should increase over time to create crisis dynamics"
+
+# =============================================================================
+# PARAMETER: extraction_efficiency
+# =============================================================================
+
+parameters:
+
+  economy.extraction_efficiency:
+    location: "src/babylon/config/defines.py:27-28"
+    description: |
+      The extraction efficiency coefficient (alpha) in the Imperial Rent formula.
+      Higher values mean more aggressive value extraction from periphery.
+
+      Formula: Phi = alpha × W_periphery × (1 - Psi_periphery)
+
+    current_default: 0.8
+    default_source: "GameDefines.economy.extraction_efficiency"
+
+    # -------------------------------------------------------------------------
+    # SWEEP RESULTS (2025-12-11)
+    # -------------------------------------------------------------------------
+
+    sweep_results:
+      date: "2025-12-11"
+      range: "0.05 to 0.50 by 0.05"
+      max_ticks: 50
+      death_threshold: 0.001
+
+      data:
+        - { value: 0.05, ticks: 50, max_tension: 0.1623, outcome: "SURVIVED" }
+        - { value: 0.10, ticks: 50, max_tension: 0.1121, outcome: "SURVIVED" }
+        - { value: 0.15, ticks: 50, max_tension: 0.0816, outcome: "SURVIVED" }
+        - { value: 0.20, ticks: 50, max_tension: 0.0620, outcome: "SURVIVED" }
+        - { value: 0.25, ticks: 50, max_tension: 0.0490, outcome: "SURVIVED" }
+        - { value: 0.30, ticks: 42, max_tension: 0.0396, outcome: "DIED" }
+        - { value: 0.35, ticks: 36, max_tension: 0.0329, outcome: "DIED" }
+        - { value: 0.40, ticks: 31, max_tension: 0.0278, outcome: "DIED" }
+        - { value: 0.45, ticks: 27, max_tension: 0.0238, outcome: "DIED" }
+        - { value: 0.50, ticks: 24, max_tension: 0.0207, outcome: "DIED" }
+
+      fine_grained_boundary:
+        range: "0.20 to 0.35 by 0.01"
+        critical_values:
+          - { value: 0.25, ticks: 50, outcome: "SURVIVED" }
+          - { value: 0.26, ticks: 49, outcome: "DIED" }
+        boundary: "Between 0.25 and 0.26"
+
+    # -------------------------------------------------------------------------
+    # ANALYSIS
+    # -------------------------------------------------------------------------
+
+    analysis:
+      playable_boundary: 0.25
+      exact_boundary: "0.25 survives, 0.26 dies at tick 49"
+
+      current_default_assessment: |
+        CRITICAL ISSUE: Current default (0.8) kills periphery in ~9 ticks.
+        This is FAR above the playable boundary (0.25).
+        At 0.8 extraction, the game ends before any meaningful dynamics occur.
+
+      recommended_range:
+        min: 0.15
+        max: 0.25
+        optimal: 0.20
+        rationale: |
+          - 0.20 provides comfortable survival margin (50 ticks)
+          - Leaves room for other systems to stress the periphery
+          - Low enough to see tension dynamics play out
+
+    # -------------------------------------------------------------------------
+    # ANOMALY: TENSION INVERSION
+    # -------------------------------------------------------------------------
+
+    anomaly:
+      name: "Tension Inversion"
+      observation: |
+        Counter-intuitively, MAX TENSION DECREASES as extraction increases:
+        - At 0.05 extraction: max_tension = 0.1623
+        - At 0.50 extraction: max_tension = 0.0207
+
+        Expected: Higher exploitation → Higher tension
+        Actual: Higher exploitation → Lower tension
+
+      hypothesis: |
+        The periphery dies from wealth depletion BEFORE tension can accumulate.
+
+        Timeline at high extraction:
+        1. Tick 1-5: Rapid wealth drain
+        2. Tick 6-9: Wealth hits zero, simulation ends
+        3. Tension never has time to build
+
+        Timeline at low extraction:
+        1. Tick 1-20: Gradual wealth drain
+        2. Tick 20-50: Extended survival period
+        3. Tension accumulates during extended play
+
+      implication: |
+        This reveals a potential design issue:
+        - Wealth depletion outpaces tension accumulation
+        - At realistic extraction rates, tension dynamics are invisible
+        - May need to adjust: tension accumulation rate OR wealth decay rate
+
+      action_items:
+        - "Consider increasing tension_base_rate in GameDefines"
+        - "Consider adding wealth regeneration for periphery (wages from production)"
+        - "Consider capping wealth drain per tick to ensure longer survival"
+        - "The current model may be economically correct but gameplaly-incomplete"
+
+# =============================================================================
+# FUTURE PARAMETERS TO TUNE
+# =============================================================================
+
+future_tuning:
+
+  high_priority:
+    - parameter: "economy.base_subsistence"
+      description: "Minimum wealth for survival - affects P(S|A) curve"
+      hypothesis: "Higher subsistence makes death come sooner"
+
+    - parameter: "economy.super_wage_rate"
+      description: "What fraction of tribute goes to labor aristocracy"
+      hypothesis: "Affects core worker false consciousness"
+
+    - parameter: "consciousness.drift_sensitivity_k"
+      description: "How fast consciousness changes with W/V ratio"
+      hypothesis: "Higher k = faster revolutionary awakening"
+
+  medium_priority:
+    - parameter: "consciousness.decay_lambda"
+      description: "Consciousness decay without material basis"
+      hypothesis: "Higher decay = harder to sustain revolution"
+
+    - parameter: "solidarity.transmission_coefficient"
+      description: "How fast consciousness spreads via SOLIDARITY edges"
+      hypothesis: "Critical for Fascist Bifurcation mechanic"
+
+# =============================================================================
+# RECOMMENDED GAMEDEFINES CHANGES
+# =============================================================================
+
+recommendations:
+
+  immediate:
+    - field: "economy.extraction_efficiency"
+      current: 0.8
+      recommended: 0.20
+      rationale: "Current value kills periphery in 9 ticks; 0.20 allows 50+ ticks"
+      priority: "CRITICAL"
+
+  investigate:
+    - issue: "Tension Inversion Anomaly"
+      action: "Add tension_base_rate parameter or adjust accumulation formula"
+      rationale: "Current model doesn't show meaningful tension dynamics"
+
+# =============================================================================
+# TUNING LOG (Chronological Record)
+# =============================================================================
+
+tuning_log:
+  - date: "2025-12-11"
+    parameter: "economy.extraction_efficiency"
+    methodology: "Full sweep 0.05-0.50, fine sweep 0.20-0.35"
+    finding: "Boundary at 0.25-0.26"
+    anomaly: "Tension Inversion - higher extraction, lower tension"
+    recommendation: "Change default from 0.8 to 0.20"
+    tool_version: "tools/tune_parameters.py v1.0"

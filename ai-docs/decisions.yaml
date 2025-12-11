@@ -2,8 +2,8 @@
 # Key decisions and their rationale (ADR-style)
 
 meta:
-  version: "1.3.0"
-  updated: "2025-12-09"
+  version: "1.4.0"
+  updated: "2025-12-11"
   format: "decision_id: {status, date, context, decision, rationale, consequences}"
 
 # =============================================================================
@@ -1108,6 +1108,77 @@ decisions:
         - "Some module-specific exceptions still exist (CheckpointIOError)"
 
     detailed_spec: "ai-docs/exceptions-architecture.yaml"
+
+  ADR020_parameter_tuning_methodology:
+    status: "accepted"
+    date: "2025-12-11"
+    title: "Sensitivity Analysis for GameDefines Tuning"
+    context: |
+      GameDefines contains all simulation coefficients externalized via the Paradox Refactor.
+      However, initial values were educated guesses, not empirically validated.
+
+      Problem discovered: extraction_efficiency = 0.8 (default) kills the periphery in
+      ~9 ticks, making the game unplayable. No dynamics have time to develop.
+
+      Need systematic approach to find "Playable Boundaries" - parameter values where
+      the simulation is challenging but allows meaningful gameplay.
+
+    decision: |
+      Create tools/tune_parameters.py for automated sensitivity analysis:
+
+      1. Parameter Sweep: Iterate through value ranges (start, end, step)
+      2. Simulation Run: Execute 50 ticks per parameter value
+      3. Death Detection: Track when periphery wealth <= 0.001
+      4. Metrics Collection: ticks_survived, max_tension, outcome
+      5. Boundary Analysis: Find value where survival crosses threshold
+
+      Mise tasks:
+      - mise run tune-params (default extraction_efficiency sweep)
+      - mise run tune-params-custom (custom parameter sweeps)
+
+      Findings recorded in ai-docs/balance-tuning.yaml.
+
+    rationale:
+      - "Empirical validation beats theoretical guessing"
+      - "Reproducible: same sweep produces same results (deterministic sim)"
+      - "Automated: can re-run after any formula changes"
+      - "Documented: balance-tuning.yaml captures findings for future reference"
+      - "Reveals design issues: Tension Inversion anomaly discovered this way"
+
+    tool_location: "tools/tune_parameters.py"
+    findings_location: "ai-docs/balance-tuning.yaml"
+    mise_tasks:
+      - "tune-params"
+      - "tune-params-custom"
+
+    key_findings:
+      extraction_efficiency:
+        default: 0.8
+        playable_boundary: 0.25
+        recommended: 0.20
+        issue: "Default kills periphery in 9 ticks - unplayable"
+
+      tension_inversion_anomaly:
+        observation: "Higher extraction → LOWER max tension"
+        cause: "Death occurs before tension accumulates"
+        implication: "Current model may need tension rate adjustment"
+
+    consequences:
+      positive:
+        - "Data-driven balance decisions"
+        - "Reproducible methodology"
+        - "Catches unplayable configurations before release"
+        - "Documents rationale for parameter values"
+        - "Reveals formula design issues early"
+      negative:
+        - "Each sweep takes ~30 seconds (50 ticks × 10 values)"
+        - "Only tests one parameter at a time (no interaction effects)"
+        - "Requires manual analysis of anomalies"
+
+    future_enhancements:
+      - "Multi-parameter grid search"
+      - "Automated anomaly detection"
+      - "Visualization of parameter landscapes"
 
 # =============================================================================
 # PENDING DECISIONS

@@ -127,6 +127,8 @@ def collect_tick_data(state: WorldState, tick: int) -> dict[str, Any]:
     if p_w is not None:
         row["p_w_wealth"] = float(p_w.wealth)
         row["p_w_consciousness"] = float(p_w.ideology.class_consciousness)
+        row["p_w_national_identity"] = float(p_w.ideology.national_identity)
+        row["p_w_agitation"] = float(p_w.ideology.agitation)
         row["p_w_psa"] = float(p_w.p_acquiescence)
         row["p_w_psr"] = float(p_w.p_revolution)
         row["p_w_organization"] = float(p_w.organization)
@@ -146,6 +148,8 @@ def collect_tick_data(state: WorldState, tick: int) -> dict[str, Any]:
     if c_w is not None:
         row["c_w_wealth"] = float(c_w.wealth)
         row["c_w_consciousness"] = float(c_w.ideology.class_consciousness)
+        row["c_w_national_identity"] = float(c_w.ideology.national_identity)
+        row["c_w_agitation"] = float(c_w.ideology.agitation)
 
     # Collect edge data
     # Initialize edge columns with defaults

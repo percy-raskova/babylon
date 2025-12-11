@@ -84,19 +84,94 @@ _process_necropolitics()
 End of tick
 ```
 
-## Why Priority Matters
+## Dynamic Priority Modes (Sprint 3.7.1)
 
-The priority order isn't arbitrary—it reflects the **logic of elimination**:
+The priority order isn't static—it **emerges from material conditions**. The
+state's routing logic evolves based on economic crisis and political tension:
 
-1. **CONCENTRATION_CAMP first:** The state prefers to eliminate entirely when
-   possible. Total destruction removes future threats permanently.
+### The Three Modes
 
-2. **PENAL_COLONY second:** If elimination isn't available, extraction through
-   forced labor. The state profits while neutralizing resistance capacity.
+| Mode | Priority Order | When | Historical Parallel |
+|------|----------------|------|---------------------|
+| **EXTRACTION** | Prison > Reservation > Camp | Labor is valuable | Mass incarceration, gulag |
+| **CONTAINMENT** | Reservation > Prison > Camp | Crisis/transition | Ghettoization, internment |
+| **ELIMINATION** | Camp > Prison > Reservation | Late fascism | Holocaust, Khmer Rouge |
 
-3. **RESERVATION third:** The fallback. Containment without profit. Better
-   than letting populations remain in productive territory but worse than
-   extracting value from them.
+### Mode Selection Logic
+
+**EXTRACTION (Default):** "We need their labor."
+- The prison-industrial complex logic
+- Forced labor is profitable; elimination is wasteful
+- Historical: American mass incarceration, Soviet gulag system
+
+**CONTAINMENT:** "We need them out of the way but not dead yet."
+- Activated when EITHER economic OR political crisis emerges
+- Warehousing is cheaper than extraction during uncertainty
+- Historical: Japanese internment, ghettoization before Holocaust
+
+**ELIMINATION:** "We don't need them at all."
+- Activated when BOTH economic collapse AND political crisis converge
+- Neither condition alone triggers elimination logic
+- Historical: Nazi death camps emerged only when war + ideology converged
+
+### Threshold-Based Mode Switching (AUTO mode)
+
+When `displacement_priority_mode: auto`, mode is computed dynamically:
+
+```
+rent_ratio = current_rent_pool / initial_rent_pool
+avg_tension = mean(tensions across EXPLOITATION edges)
+
+ELIMINATION requires: (rent_ratio < 0.1 AND avg_tension > 0.8)  # BOTH
+CONTAINMENT requires: (rent_ratio < 0.3 OR avg_tension > 0.5)   # EITHER
+EXTRACTION is: default when neither crisis active
+```
+
+### Why AND for Elimination, OR for Containment?
+
+**ELIMINATION (AND logic):**
+- Requires BOTH economic collapse AND political crisis
+- Neither alone triggers elimination:
+  - Economic crisis alone → reform, adjustment, NOT genocide
+  - Political fascism alone → profitable extraction continues
+- The state needs ideological justification AND material desperation
+
+**CONTAINMENT (OR logic):**
+- Either condition triggers intermediate measures
+- Economic stress → concentrate populations (cheaper than extraction)
+- Political tension → prepare for potential escalation
+- Historical: Ghettoization preceded both reform AND elimination
+
+### Configuration
+
+```python
+# Mode selection
+displacement_priority_mode: DisplacementPriorityMode = EXTRACTION  # Default
+
+# Thresholds for AUTO mode
+elimination_rent_threshold: Coefficient = 0.1    # 10% of initial rent
+elimination_tension_threshold: Coefficient = 0.8  # Near-rupture
+containment_rent_threshold: Coefficient = 0.3    # 30% of initial rent
+containment_tension_threshold: Coefficient = 0.5  # Moderate crisis
+```
+
+### Why EXTRACTION is Default
+
+The current hardcoded ELIMINATION priority assumed late-stage fascism, but
+**most gameplay occurs before that**. EXTRACTION as default reflects:
+
+1. The normal operation of the carceral state (mass incarceration for profit)
+2. Allows escalation through gameplay (EXTRACTION → CONTAINMENT → ELIMINATION)
+3. More historically accurate for most of American history
+
+## Legacy: Static Priority Logic
+
+The original Sprint 3.7 implementation used static priority (ELIMINATION mode).
+Sprint 3.7.1 makes this dynamic. If you want the original behavior:
+
+```python
+displacement_priority_mode: elimination  # Force ELIMINATION mode
+```
 
 4. **No sink (fallback):** Populations "disappear"—homelessness, exile, death
    outside the system's accounting.
@@ -189,13 +264,25 @@ Sprint 3.8+ should implement:
 
 ## Test Coverage
 
-14 new tests verify the implementation:
+### Sprint 3.7 Tests (14)
 - 6 model tests (TerritoryType, is_sink_node)
 - 8 system tests (routing, transfer, necropolitics)
 
-All tests pass. The carceral geography is operational.
+### Sprint 3.7.1 Tests (8 new)
+- test_extraction_mode_prioritizes_penal_colony
+- test_containment_mode_prioritizes_reservation
+- test_elimination_mode_prioritizes_concentration_camp
+- test_find_sink_node_with_extraction_mode
+- test_find_sink_node_with_containment_mode
+- test_find_sink_node_with_elimination_mode
+- test_find_sink_node_defaults_to_extraction_priority
+- test_invalid_mode_falls_back_to_extraction
+
+All tests pass. Total: 440 project tests.
 
 ## Commits
 
 - `321a765` feat(engine): add Carceral Geography to TerritorySystem (Sprint 3.7)
 - `36f8647` fix(__main__): update unpacking for create_two_node_scenario
+- `2d66ff5` docs: add Carceral Geography documentation (Sprint 3.7)
+- `a92fca7` feat(engine): add dynamic displacement priority modes (Sprint 3.7.1)

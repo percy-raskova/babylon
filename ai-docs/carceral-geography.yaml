@@ -9,14 +9,18 @@
 # Theoretical basis: Mbembe's Necropolitics + Prison Abolition literature
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   status: implemented
-  sprint: "3.7"
+  sprint: "3.7.1"
   commits:
     - hash: "321a765"
       message: "feat(engine): add Carceral Geography to TerritorySystem"
     - hash: "36f8647"
       message: "fix(__main__): update unpacking for create_two_node_scenario"
+    - hash: "2d66ff5"
+      message: "docs: add Carceral Geography documentation (Sprint 3.7)"
+    - hash: "a92fca7"
+      message: "feat(engine): add dynamic displacement priority modes (Sprint 3.7.1)"
 
 # =============================================================================
 # TERRITORY TYPE ENUM
@@ -65,6 +69,42 @@ territory_type:
       organization_effect: none
 
 # =============================================================================
+# DISPLACEMENT PRIORITY MODE ENUM (Sprint 3.7.1)
+# =============================================================================
+
+displacement_priority_mode:
+  location: "src/babylon/models/enums.py"
+  class: "DisplacementPriorityMode"
+  base: "StrEnum"
+  description: |
+    Mode for displacement routing priority. Determines sink node selection
+    order during eviction based on material conditions.
+
+  values:
+    EXTRACTION:
+      value: "extraction"
+      description: "Labor is valuable. Prison-industrial complex logic."
+      priority_order: [PENAL_COLONY, RESERVATION, CONCENTRATION_CAMP]
+      quote: "We need their labor."
+
+    CONTAINMENT:
+      value: "containment"
+      description: "Crisis or transition period. Warehousing logic."
+      priority_order: [RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP]
+      quote: "We need them out of the way but not dead yet."
+
+    ELIMINATION:
+      value: "elimination"
+      description: "Late fascism. Necropolitical logic."
+      priority_order: [CONCENTRATION_CAMP, PENAL_COLONY, RESERVATION]
+      quote: "We don't need them at all."
+
+    AUTO:
+      value: "auto"
+      description: "Compute mode dynamically from economic/political conditions."
+      note: "Reserved for future implementation"
+
+# =============================================================================
 # TERRITORY MODEL UPDATES
 # =============================================================================
 
@@ -97,24 +137,24 @@ territory_model:
 territory_system:
   location: "src/babylon/engine/systems/territory.py"
 
-  new_class_variable:
-    name: "_SINK_PRIORITY"
-    type: "dict[TerritoryType, int]"
-    value:
-      CONCENTRATION_CAMP: 0  # Highest priority
-      PENAL_COLONY: 1
-      RESERVATION: 2
+  class_variables:
+    _PRIORITY_BY_MODE:
+      type: "ClassVar[dict[DisplacementPriorityMode, list[TerritoryType]]]"
+      description: "Maps displacement mode to sink node priority order"
+      value:
+        EXTRACTION: [PENAL_COLONY, RESERVATION, CONCENTRATION_CAMP]
+        CONTAINMENT: [RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP]
+        ELIMINATION: [CONCENTRATION_CAMP, PENAL_COLONY, RESERVATION]
+      note: "Sprint 3.7.1 replaced static _SINK_PRIORITY dict"
 
   new_methods:
     _find_sink_node:
-      signature: "(self, source_node_id: str, graph: nx.DiGraph[str]) -> str | None"
+      signature: "(self, source_node_id: str, graph: nx.DiGraph[str], mode: DisplacementPriorityMode) -> str | None"
       description: |
         Find a sink node adjacent to source for displaced population routing.
-        Uses ADJACENCY edges. Returns highest priority sink or None.
-      priority_order:
-        - CONCENTRATION_CAMP  # "The Final Solution"
-        - PENAL_COLONY        # Extraction
-        - RESERVATION         # Containment
+        Uses ADJACENCY edges. Returns highest priority sink based on mode.
+      mode_parameter: "Sprint 3.7.1 added mode parameter for dynamic priority"
+      fallback: "Defaults to EXTRACTION priority if mode not found"
 
     _process_necropolitics:
       signature: "(self, graph: nx.DiGraph[str], services: ServiceContainer) -> None"
@@ -163,13 +203,46 @@ territory_system:
 config:
   location: "src/babylon/models/config.py"
 
-  new_parameter:
-    name: "concentration_camp_decay_rate"
-    type: "Coefficient"  # [0.0, 1.0]
-    default: 0.2
-    description: |
-      Population decay rate in CONCENTRATION_CAMP territories.
-      Default 0.2 = 20% population loss per tick (elimination).
+  parameters:
+    concentration_camp_decay_rate:
+      type: "Coefficient"  # [0.0, 1.0]
+      default: 0.2
+      sprint: "3.7"
+      description: |
+        Population decay rate in CONCENTRATION_CAMP territories.
+        Default 0.2 = 20% population loss per tick (elimination).
+
+    displacement_priority_mode:
+      type: "DisplacementPriorityMode"
+      default: "EXTRACTION"
+      sprint: "3.7.1"
+      description: |
+        Mode for sink node routing priority during eviction.
+        EXTRACTION (default), CONTAINMENT, ELIMINATION, or AUTO.
+
+    elimination_rent_threshold:
+      type: "Coefficient"
+      default: 0.1
+      sprint: "3.7.1"
+      description: "Rent ratio below which elimination MAY activate (requires tension too)"
+
+    elimination_tension_threshold:
+      type: "Coefficient"
+      default: 0.8
+      sprint: "3.7.1"
+      description: "Average tension above which elimination MAY activate (requires rent too)"
+
+    containment_rent_threshold:
+      type: "Coefficient"
+      default: 0.3
+      sprint: "3.7.1"
+      description: "Rent ratio below which containment activates"
+
+    containment_tension_threshold:
+      type: "Coefficient"
+      default: 0.5
+      sprint: "3.7.1"
+      description: "Average tension above which containment activates"
 
 # =============================================================================
 # DISPLACEMENT PIPELINE
@@ -186,18 +259,19 @@ displacement_pipeline:
 
   routing:
     step_1: "Calculate displaced_pop = population * displacement_rate"
-    step_2: "Find adjacent sink via ADJACENCY edges"
-    step_3: "Route to highest-priority sink available"
+    step_2: "Get current displacement mode from config"
+    step_3: "Find adjacent sink via ADJACENCY edges using mode priority"
     step_4: "Transfer population (source - displaced, target + displaced)"
     fallback: "If no sink, population disappears (original behavior)"
 
-  priority_logic: |
-    CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
-
-    The state prefers:
-    1. Elimination (camps) - permanent solution
-    2. Extraction (prisons) - profit from forced labor
-    3. Containment (reservations) - warehousing without value
+  priority_logic:
+    description: "Priority order depends on displacement_priority_mode (Sprint 3.7.1)"
+    modes:
+      EXTRACTION: "PENAL_COLONY > RESERVATION > CONCENTRATION_CAMP"
+      CONTAINMENT: "RESERVATION > PENAL_COLONY > CONCENTRATION_CAMP"
+      ELIMINATION: "CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION"
+    default: "EXTRACTION (labor has value)"
+    note: "Sprint 3.7 used static ELIMINATION priority"
 
 # =============================================================================
 # NECROPOLITICS PHASE
@@ -240,7 +314,8 @@ necropolitics_phase:
 tests:
   model_tests:
     location: "tests/unit/models/test_territory.py"
-    new_tests:
+    sprint: "3.7"
+    tests:
       - test_territory_type_defaults_to_core
       - test_is_sink_node_true_for_reservation
       - test_is_sink_node_true_for_penal_colony
@@ -249,9 +324,11 @@ tests:
       - test_is_sink_node_false_for_periphery
     count: 6
 
-  system_tests:
+  system_tests_sprint_3_7:
     location: "tests/unit/engine/systems/test_territory_system.py"
-    new_tests:
+    sprint: "3.7"
+    class: "TestCarceralGeography"
+    tests:
       - test_find_sink_node_returns_concentration_camp_priority
       - test_find_sink_node_returns_penal_colony_when_no_camp
       - test_find_sink_node_returns_reservation_when_no_higher_priority
@@ -262,10 +339,27 @@ tests:
       - test_penal_colony_suppresses_connected_class_organization
     count: 8
 
-  total_new_tests: 14
-  total_territory_tests: 63
-  total_project_tests: 1459
-  status: "all passing"
+  system_tests_sprint_3_7_1:
+    location: "tests/unit/engine/systems/test_territory_system.py"
+    sprint: "3.7.1"
+    class: "TestDisplacementPriorityModes"
+    tests:
+      - test_extraction_mode_prioritizes_penal_colony
+      - test_containment_mode_prioritizes_reservation
+      - test_elimination_mode_prioritizes_concentration_camp
+      - test_find_sink_node_with_extraction_mode
+      - test_find_sink_node_with_containment_mode
+      - test_find_sink_node_with_elimination_mode
+      - test_find_sink_node_defaults_to_extraction_priority
+      - test_invalid_mode_falls_back_to_extraction
+    count: 8
+
+  summary:
+    sprint_3_7_tests: 14
+    sprint_3_7_1_tests: 8
+    total_carceral_tests: 22
+    total_project_tests: 440
+    status: "all passing"
 
 # =============================================================================
 # INTEGRATION POINTS
@@ -285,10 +379,14 @@ integration:
     description: "Sink populations may have altered consciousness dynamics"
 
   future_work:
+    - "AUTO mode computation in SimulationEngine (threshold-based mode switching)"
     - "Liberation mechanics (converting sinks to liberated zones)"
     - "Extraction operations (rescuing populations)"
     - "Counter-infrastructure (solidarity edges INTO sinks)"
     - "Terror generation (camps generate repression bonus)"
+    - "Hysteresis (require sustained condition for mode change)"
+    - "Per-territory mode overrides"
+    - "Mode transition events for narrative layer"
 
 # =============================================================================
 # THEORETICAL FRAMEWORK

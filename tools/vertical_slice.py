@@ -40,7 +40,7 @@ from babylon.ai.llm_provider import DeepSeekClient, MockLLM
 from babylon.ai.prompt_builder import DialecticalPromptBuilder
 from babylon.config.chromadb_config import ChromaDBConfig
 from babylon.config.llm_config import LLMConfig
-from babylon.engine.scenarios import create_two_node_scenario
+from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.rag.rag_pipeline import RagConfig, RagPipeline
 
@@ -223,19 +223,34 @@ class StructuredLogger:
     def log_tick(
         self,
         tick: int,
-        worker_wealth: float,
-        owner_wealth: float,
+        # 4-entity wealth tracking
+        p_w_wealth: float,  # C001 - Periphery Worker
+        p_c_wealth: float,  # C002 - Comprador
+        c_b_wealth: float,  # C003 - Core Bourgeoisie
+        c_w_wealth: float,  # C004 - Labor Aristocracy
+        # Global economy metrics
+        imperial_rent_pool: float,
+        super_wage_rate: float,
+        # Dialectical metrics
         tension: float,
         value_flow: float,
         events: list[str],
     ) -> None:
-        """Log simulation tick state."""
+        """Log simulation tick state for Imperial Circuit."""
         self._log_event(
             "simulation_tick",
             {
                 "tick": tick,
-                "worker_wealth": worker_wealth,
-                "owner_wealth": owner_wealth,
+                "entities": {
+                    "C001_periphery_worker": p_w_wealth,
+                    "C002_comprador": p_c_wealth,
+                    "C003_core_bourgeoisie": c_b_wealth,
+                    "C004_labor_aristocracy": c_w_wealth,
+                },
+                "economy": {
+                    "imperial_rent_pool": imperial_rent_pool,
+                    "super_wage_rate": super_wage_rate,
+                },
                 "tension": tension,
                 "value_flow": value_flow,
                 "events": events,
@@ -338,7 +353,7 @@ class VerboseNarrativeDirector(NarrativeDirector):
                     self._console.print(
                         Panel(
                             f"[dim]{doc_preview}...[/dim]",
-                            title=f"[cyan]RAG Result {i+1}: {title} ({author})[/cyan]",
+                            title=f"[cyan]RAG Result {i + 1}: {title} ({author})[/cyan]",
                             border_style="cyan",
                         )
                     )
@@ -429,7 +444,7 @@ class VerboseNarrativeDirector(NarrativeDirector):
                 success=True,
             )
 
-            self._console.print(f"[dim]Response time: {duration_ms/1000:.2f}s[/dim]")
+            self._console.print(f"[dim]Response time: {duration_ms / 1000:.2f}s[/dim]")
             self._console.print(
                 Panel(
                     Text(narrative, style="bold green"),
@@ -567,42 +582,59 @@ def display_banner(console: Console) -> None:
 def display_tick_state(
     console: Console,
     tick: int,
-    worker_wealth: float,
-    owner_wealth: float,
-    worker_p_acquiescence: float,
-    worker_p_revolution: float,
+    # 4 entities
+    p_w_wealth: float,  # C001
+    p_c_wealth: float,  # C002
+    c_b_wealth: float,  # C003
+    c_w_wealth: float,  # C004
+    # Survival probabilities (for P_w only - others are protected)
+    p_w_p_acquiescence: float,
+    p_w_p_revolution: float,
+    # Global economy
+    imperial_rent_pool: float,
+    super_wage_rate: float,
+    # Dialectical
     tension: float,
     value_flow: float,
 ) -> None:
-    """Display the state at a given tick."""
+    """Display the state at a given tick (Imperial Circuit)."""
     console.rule(f"[bold cyan]══════════ TICK {tick} ══════════[/bold cyan]")
 
-    table = Table(show_header=True, header_style="bold", title="Economic State")
+    # Entity Table (4 rows)
+    table = Table(show_header=True, header_style="bold", title="Imperial Circuit State")
     table.add_column("Entity", style="cyan")
+    table.add_column("ID", style="dim")
     table.add_column("Wealth", justify="right")
     table.add_column("P(S|A)", justify="right")
     table.add_column("P(S|R)", justify="right")
 
     table.add_row(
-        "Worker (Periphery)",
-        f"{worker_wealth:.4f}",
-        f"{worker_p_acquiescence:.4f}",
-        f"{worker_p_revolution:.4f}",
+        "Periphery Worker",
+        "C001",
+        f"{p_w_wealth:.4f}",
+        f"{p_w_p_acquiescence:.4f}",
+        f"{p_w_p_revolution:.4f}",
     )
-    table.add_row(
-        "Owner (Core)",
-        f"{owner_wealth:.4f}",
-        "—",
-        "—",
-    )
+    table.add_row("Comprador", "C002", f"{p_c_wealth:.4f}", "-", "-")
+    table.add_row("Core Bourgeoisie", "C003", f"{c_b_wealth:.4f}", "-", "-")
+    table.add_row("Labor Aristocracy", "C004", f"{c_w_wealth:.4f}", "-", "-")
     console.print(table)
+
+    # Global Economy Panel (NEW)
+    console.print(
+        Panel(
+            f"Imperial Rent Pool: [bold]{imperial_rent_pool:.2f}[/bold]\n"
+            f"Super-Wage Rate: [bold]{super_wage_rate:.4f}[/bold]",
+            title="[yellow]Global Economy[/yellow]",
+            border_style="yellow",
+        )
+    )
 
     # Dialectical metrics
     console.print(
         f"\n[bold]Dialectical Metrics:[/bold]\n"
         f"  Tension (τ): {tension:.4f}\n"
-        f"  Value Flow (Φ): {value_flow:.4f}\n"
-        f"  Imperial Rent extracted this tick"
+        f"  Value Flow (Φ): {value_flow:.4f}"
     )
 
 
@@ -615,49 +647,85 @@ def display_events(console: Console, events: list[str]) -> None:
 
 def display_final_summary(
     console: Console,
-    initial_worker: float,
-    initial_owner: float,
-    final_worker: float,
-    final_owner: float,
+    # Initial values
+    initial_p_w: float,
+    initial_p_c: float,
+    initial_c_b: float,
+    initial_c_w: float,
+    initial_rent_pool: float,
+    # Final values
+    final_p_w: float,
+    final_p_c: float,
+    final_c_b: float,
+    final_c_w: float,
+    final_rent_pool: float,
     narrative_count: int,
 ) -> None:
-    """Display final summary after simulation ends."""
+    """Display final summary for Imperial Circuit."""
     console.print("\n")
     console.rule("[bold red]═══════════ SIMULATION COMPLETE ═══════════[/bold red]")
 
     # Calculate changes
-    worker_delta = final_worker - initial_worker
-    owner_delta = final_owner - initial_owner
+    p_w_delta = final_p_w - initial_p_w
+    p_c_delta = final_p_c - initial_p_c
+    c_b_delta = final_c_b - initial_c_b
+    c_w_delta = final_c_w - initial_c_w
+    pool_delta = final_rent_pool - initial_rent_pool
 
-    table = Table(title="Wealth Transfer Summary", show_header=True, header_style="bold")
-    table.add_column("Metric", style="cyan")
+    table = Table(title="Imperial Circuit - Wealth Transfer", show_header=True, header_style="bold")
+    table.add_column("Entity", style="cyan")
     table.add_column("Initial", justify="right")
     table.add_column("Final", justify="right")
     table.add_column("Change", justify="right")
 
-    worker_change_style = "red" if worker_delta < 0 else "green"
-    owner_change_style = "green" if owner_delta > 0 else "red"
+    def style(delta: float) -> str:
+        if delta < 0:
+            return "red"
+        if delta > 0:
+            return "green"
+        return "dim"
 
     table.add_row(
-        "Worker Wealth",
-        f"{initial_worker:.4f}",
-        f"{final_worker:.4f}",
-        f"[{worker_change_style}]{worker_delta:+.4f}[/{worker_change_style}]",
+        "P_w (Periphery Worker)",
+        f"{initial_p_w:.4f}",
+        f"{final_p_w:.4f}",
+        f"[{style(p_w_delta)}]{p_w_delta:+.4f}[/{style(p_w_delta)}]",
     )
     table.add_row(
-        "Owner Wealth",
-        f"{initial_owner:.4f}",
-        f"{final_owner:.4f}",
-        f"[{owner_change_style}]{owner_delta:+.4f}[/{owner_change_style}]",
+        "P_c (Comprador)",
+        f"{initial_p_c:.4f}",
+        f"{final_p_c:.4f}",
+        f"[{style(p_c_delta)}]{p_c_delta:+.4f}[/{style(p_c_delta)}]",
+    )
+    table.add_row(
+        "C_b (Core Bourgeoisie)",
+        f"{initial_c_b:.4f}",
+        f"{final_c_b:.4f}",
+        f"[{style(c_b_delta)}]{c_b_delta:+.4f}[/{style(c_b_delta)}]",
+    )
+    table.add_row(
+        "C_w (Labor Aristocracy)",
+        f"{initial_c_w:.4f}",
+        f"{final_c_w:.4f}",
+        f"[{style(c_w_delta)}]{c_w_delta:+.4f}[/{style(c_w_delta)}]",
+    )
+    table.add_row("-" * 22, "-" * 8, "-" * 8, "-" * 10)
+    table.add_row(
+        "Imperial Rent Pool",
+        f"{initial_rent_pool:.2f}",
+        f"{final_rent_pool:.2f}",
+        f"[{style(pool_delta)}]{pool_delta:+.2f}[/{style(pool_delta)}]",
     )
 
     console.print(table)
-
     console.print(f"\n[bold]Total Narratives Generated:[/bold] {narrative_count}")
-    console.print(
-        f"\n[dim]The extraction of surplus value demonstrates the fundamental\n"
-        f"contradiction: {abs(worker_delta):.4f} units transferred from worker to owner.[/dim]"
-    )
+
+    # Analysis message
+    if p_w_delta < 0 and c_w_delta > 0:
+        console.print(
+            f"\n[dim]Imperial Circuit confirmed: Periphery Worker lost {abs(p_w_delta):.4f} "
+            f"while Labor Aristocracy gained {c_w_delta:.4f} via super-wages.[/dim]"
+        )
 
 
 def main() -> int:
@@ -708,30 +776,36 @@ def main() -> int:
 
         # === SETUP SCENARIO ===
         console.print("[bold]Setting up Scenario...[/bold]")
-        initial_state, config = create_two_node_scenario(
-            worker_wealth=0.5,
-            owner_wealth=0.5,
+        initial_state, config = create_imperial_circuit_scenario(
+            periphery_wealth=0.1,
+            core_wealth=0.9,
             extraction_efficiency=0.8,
         )
-        console.print("[green]✓[/green] Two-node scenario loaded")
-        console.print("[dim]  Worker: Periphery Proletariat (wealth=0.5)[/dim]")
-        console.print("[dim]  Owner: Core Bourgeoisie (wealth=0.5)[/dim]")
+        console.print("[green]✓[/green] Imperial Circuit scenario loaded")
+        console.print("[dim]  P_w (C001): Periphery Worker (wealth=0.1)[/dim]")
+        console.print("[dim]  P_c (C002): Comprador (wealth=0.2)[/dim]")
+        console.print("[dim]  C_b (C003): Core Bourgeoisie (wealth=0.9)[/dim]")
+        console.print("[dim]  C_w (C004): Labor Aristocracy (wealth=0.18)[/dim]")
         console.print("[dim]  Extraction efficiency (α): 0.8[/dim]")
         console.print()
 
         logger.log_config(
             "scenario",
             {
-                "type": "two_node",
-                "worker_wealth": 0.5,
-                "owner_wealth": 0.5,
+                "type": "imperial_circuit",
+                "periphery_wealth": 0.1,
+                "core_wealth": 0.9,
                 "extraction_efficiency": 0.8,
+                "imperial_rent_pool": float(initial_state.economy.imperial_rent_pool),
             },
         )
 
-        # Store initial values for summary
-        initial_worker_wealth = float(initial_state.entities["C001"].wealth)
-        initial_owner_wealth = float(initial_state.entities["C002"].wealth)
+        # Store initial values for summary (4 entities + rent pool)
+        initial_p_w_wealth = float(initial_state.entities["C001"].wealth)
+        initial_p_c_wealth = float(initial_state.entities["C002"].wealth)
+        initial_c_b_wealth = float(initial_state.entities["C003"].wealth)
+        initial_c_w_wealth = float(initial_state.entities["C004"].wealth)
+        initial_rent_pool = float(initial_state.economy.imperial_rent_pool)
 
         # === SETUP DIRECTOR (VERBOSE VERSION) ===
         console.print("[bold]Setting up Narrative Director...[/bold]")
@@ -773,22 +847,31 @@ def main() -> int:
             # Step simulation
             state = sim.step()
 
-            # Get entities
-            worker = state.entities["C001"]
-            owner = state.entities["C002"]
+            # Get all 4 entities
+            p_w = state.entities["C001"]  # Periphery Worker
+            p_c = state.entities["C002"]  # Comprador
+            c_b = state.entities["C003"]  # Core Bourgeoisie
+            c_w = state.entities["C004"]  # Labor Aristocracy
 
-            # Get relationship
+            # Get economy metrics
+            economy = state.economy
+
+            # Get relationship (first EXPLOITATION edge)
             rel = state.relationships[0] if state.relationships else None
 
             # Get NEW events from this tick only (not historical accumulator)
             post_step_event_count = len(state.event_log)
             tick_events = state.event_log[pre_step_event_count:post_step_event_count]
 
-            # Log tick state
+            # Log tick state (updated signature)
             logger.log_tick(
                 tick=state.tick,
-                worker_wealth=float(worker.wealth),
-                owner_wealth=float(owner.wealth),
+                p_w_wealth=float(p_w.wealth),
+                p_c_wealth=float(p_c.wealth),
+                c_b_wealth=float(c_b.wealth),
+                c_w_wealth=float(c_w.wealth),
+                imperial_rent_pool=float(economy.imperial_rent_pool),
+                super_wage_rate=float(economy.current_super_wage_rate),
                 tension=float(rel.tension) if rel else 0.0,
                 value_flow=float(rel.value_flow) if rel else 0.0,
                 events=tick_events,
@@ -798,10 +881,14 @@ def main() -> int:
             display_tick_state(
                 console=console,
                 tick=state.tick,
-                worker_wealth=float(worker.wealth),
-                owner_wealth=float(owner.wealth),
-                worker_p_acquiescence=float(worker.p_acquiescence),
-                worker_p_revolution=float(worker.p_revolution),
+                p_w_wealth=float(p_w.wealth),
+                p_c_wealth=float(p_c.wealth),
+                c_b_wealth=float(c_b.wealth),
+                c_w_wealth=float(c_w.wealth),
+                p_w_p_acquiescence=float(p_w.p_acquiescence),
+                p_w_p_revolution=float(p_w.p_revolution),
+                imperial_rent_pool=float(economy.imperial_rent_pool),
+                super_wage_rate=float(economy.current_super_wage_rate),
                 tension=float(rel.tension) if rel else 0.0,
                 value_flow=float(rel.value_flow) if rel else 0.0,
             )
@@ -822,15 +909,24 @@ def main() -> int:
 
         # === FINAL SUMMARY ===
         final_state = sim.current_state
-        worker_final = final_state.entities["C001"]
-        owner_final = final_state.entities["C002"]
+        final_p_w = final_state.entities["C001"]
+        final_p_c = final_state.entities["C002"]
+        final_c_b = final_state.entities["C003"]
+        final_c_w = final_state.entities["C004"]
+        final_rent_pool = float(final_state.economy.imperial_rent_pool)
 
         display_final_summary(
             console=console,
-            initial_worker=initial_worker_wealth,
-            initial_owner=initial_owner_wealth,
-            final_worker=float(worker_final.wealth),
-            final_owner=float(owner_final.wealth),
+            initial_p_w=initial_p_w_wealth,
+            initial_p_c=initial_p_c_wealth,
+            initial_c_b=initial_c_b_wealth,
+            initial_c_w=initial_c_w_wealth,
+            initial_rent_pool=initial_rent_pool,
+            final_p_w=float(final_p_w.wealth),
+            final_p_c=float(final_p_c.wealth),
+            final_c_b=float(final_c_b.wealth),
+            final_c_w=float(final_c_w.wealth),
+            final_rent_pool=final_rent_pool,
             narrative_count=len(director.narrative_log),
         )
 

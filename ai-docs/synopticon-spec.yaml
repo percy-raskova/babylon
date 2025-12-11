@@ -1,0 +1,611 @@
+# Synopticon: Phase 3 Observer System - Technical Specification
+# =============================================================
+#
+# "We use the masses as our eyes and ears.
+#  The camera lens does not judge; it only records the contradictions."
+#
+# This specification defines the technical architecture for the Synopticon
+# observer system, which implements the Mass Line + Kino-Eye approach to
+# simulation observation.
+
+synopticon_phase3:
+  version: "0.1.0"
+  status: "design"
+  phase: 3
+  codename: "The Prism"
+
+  # ---------------------------------------------------------------------------
+  # CONCEPTUAL FRAMEWORK
+  # ---------------------------------------------------------------------------
+
+  concepts:
+    the_inversion:
+      panopticon: "The Few watch the Many (surveillance, discipline)"
+      synopticon: "The Many watch the Few (accountability, exposure)"
+      implication: "Player decodes reality; does not control it"
+
+    the_prism:
+      input: "White light of liberal narrative (PR events, surface metrics)"
+      process: "Refraction through Historical Materialism lens"
+      output: "Red-and-black spectrum of class contradiction"
+
+    the_gloom:
+      definition: "Unobserved simulation space"
+      mechanic: "Player attention as scarce resource"
+      implication: "History unfolds whether observed or not"
+
+  # ---------------------------------------------------------------------------
+  # OBSERVER ARCHITECTURE
+  # ---------------------------------------------------------------------------
+
+  observer_architecture:
+    protocol: "SimulationObserver"
+    location: "src/babylon/engine/synopticon.py"  # Future implementation
+
+    interface:
+      on_simulation_start:
+        signature: "(config: SimulationConfig) -> None"
+        purpose: "Initialize Prism state, calibrate Lens"
+        actions:
+          - "Initialize SynopticView history"
+          - "Set baseline noise floor from config"
+          - "Register with EventBus for selective subscription"
+
+      on_tick:
+        signature: "(previous: WorldState, new: WorldState, events: list[Event]) -> None"
+        purpose: "Process tick through Lens, generate SynopticView"
+        actions:
+          - "Collect raw events from EventBus"
+          - "Apply Lens filter (signal vs noise)"
+          - "Calculate degradation metrics"
+          - "Generate prism output"
+          - "Update Gloom state"
+          - "Write to Archive (ChromaDB)"
+
+      on_simulation_end:
+        signature: "(final_state: WorldState) -> None"
+        purpose: "Generate final analysis, close Archive session"
+        actions:
+          - "Synthesize contradiction arc"
+          - "Calculate historical signal-to-noise ratio"
+          - "Write summary to Archive"
+
+    integration_points:
+      event_bus:
+        module: "src/babylon/engine/event_bus.py"
+        pattern: "Subscribe to all event types"
+        note: "Raw event stream before Lens filtering"
+
+      topology_monitor:
+        module: "src/babylon/engine/topology_monitor.py"
+        pattern: "Read TopologySnapshot history"
+        note: "Network state for solidarity/percolation metrics"
+
+      service_container:
+        module: "src/babylon/engine/services.py"
+        pattern: "Inject ChromaDB, FormulaRegistry"
+        note: "Dependency injection for Archive access"
+
+  # ---------------------------------------------------------------------------
+  # THE LENS FILTER
+  # ---------------------------------------------------------------------------
+
+  the_lens_filter:
+    purpose: "Separate Signal (systemic contradictions) from Noise (surface events)"
+
+    signal_classification:
+      # Events that reveal structural dynamics
+      signal_events:
+        - event_type: "SURPLUS_EXTRACTION"
+          signal_strength: 0.9
+          category: "exploitation"
+          prism_output: "Imperial rent flows from {source} to {target}"
+
+        - event_type: "IMPERIAL_SUBSIDY"
+          signal_strength: 0.8
+          category: "repression"
+          prism_output: "Surplus converted to suppression apparatus"
+
+        - event_type: "SOLIDARITY_AWAKENING"
+          signal_strength: 1.0
+          category: "consciousness"
+          prism_output: "Class consciousness threshold crossed at {node}"
+
+        - event_type: "CONSCIOUSNESS_TRANSMISSION"
+          signal_strength: 0.85
+          category: "solidarity"
+          prism_output: "Revolutionary consciousness propagates via {edge}"
+
+        - event_type: "ECONOMIC_CRISIS"
+          signal_strength: 1.0
+          category: "rupture"
+          prism_output: "Imperial rent pool depleted - system instability"
+
+        - event_type: "EXCESSIVE_FORCE"
+          signal_strength: 0.95
+          category: "agency"
+          prism_output: "State violence triggers potential uprising"
+
+        - event_type: "UPRISING"
+          signal_strength: 1.0
+          category: "rupture"
+          prism_output: "Mass insurrection - rupture event"
+
+        - event_type: "SOLIDARITY_SPIKE"
+          signal_strength: 0.9
+          category: "infrastructure"
+          prism_output: "Organizational infrastructure constructed"
+
+      # Events that obscure structural dynamics
+      noise_events:
+        - type: "PR_NARRATIVE"
+          description: "Liberal media framing"
+          examples:
+            - "GDP growth reported"
+            - "Consumer confidence high"
+            - "Unemployment stable"
+          treatment: "Strip to reveal underlying extraction"
+
+        - type: "SURFACE_METRICS"
+          description: "Bourgeois economic indicators"
+          examples:
+            - "Stock market indices"
+            - "Corporate earnings"
+            - "Trade balances"
+          treatment: "Reframe as distribution of extracted value"
+
+    filter_logic:
+      # Pseudocode for Lens filtering
+      algorithm: |
+        def apply_lens(raw_events: list[Event], state: WorldState) -> FilteredSignal:
+            signal = []
+            noise = []
+
+            for event in raw_events:
+                classification = classify_event(event)
+
+                if classification.is_signal:
+                    signal.append(SignalEvent(
+                        event=event,
+                        strength=classification.strength,
+                        prism_output=generate_prism_text(event, state)
+                    ))
+                else:
+                    noise.append(NoiseEvent(
+                        event=event,
+                        liberal_narrative=generate_pr_text(event),
+                        underlying_mechanic=expose_mechanic(event, state)
+                    ))
+
+            return FilteredSignal(signal=signal, noise=noise)
+
+  # ---------------------------------------------------------------------------
+  # DEGRADATION MODEL
+  # ---------------------------------------------------------------------------
+
+  degradation_model:
+    purpose: "Model state interference with revolutionary observation"
+    concept: "Higher repression = higher noise floor = degraded signal"
+
+    metrics:
+      signal_strength:
+        type: "float"
+        range: [0.0, 1.0]
+        description: "Clarity of decoded truth"
+        calculation: |
+          base_strength = 1.0
+          repression_penalty = state.total_repression * 0.5
+          solidarity_bonus = topology.actual_liquidity * 0.3
+          signal_strength = clamp(base_strength - repression_penalty + solidarity_bonus, 0.1, 1.0)
+
+      noise_floor:
+        type: "float"
+        range: [0.0, 1.0]
+        description: "Ambient interference level"
+        calculation: |
+          base_noise = 0.05  # Minimum noise
+          state_jamming = state.cointelpro_active * 0.4
+          atomization_noise = (1.0 - topology.percolation_ratio) * 0.3
+          noise_floor = clamp(base_noise + state_jamming + atomization_noise, 0.0, 0.9)
+
+      clarity:
+        type: "float"
+        range: [0.0, 1.0]
+        description: "Overall signal quality"
+        calculation: |
+          clarity = signal_strength * (1.0 - noise_floor)
+
+    degradation_effects:
+      high_clarity:  # clarity > 0.7
+        display: "Full prism output visible"
+        data_quality: "All fields populated"
+        visual: "Sharp text, no artifacts"
+
+      medium_clarity:  # 0.4 < clarity <= 0.7
+        display: "Partial obscuration"
+        data_quality: "Some fields show ranges (e.g., '0.4█ ± 0.1█')"
+        visual: "Occasional glitches, static bursts"
+
+      low_clarity:  # clarity <= 0.4
+        display: "Heavy degradation"
+        data_quality: "Many fields redacted (e.g., '████ █████')"
+        visual: "Constant interference, flickering"
+
+  # ---------------------------------------------------------------------------
+  # SYNOPTIC VIEW SCHEMA
+  # ---------------------------------------------------------------------------
+
+  synoptic_view_schema:
+    description: "Primary data structure for processed observation"
+    location: "src/babylon/models/synoptic_view.py"  # Future implementation
+
+    fields:
+      # Metadata
+      tick:
+        type: "int"
+        description: "Simulation tick this view represents"
+
+      timestamp:
+        type: "datetime"
+        description: "Real-world time of observation"
+
+      # Raw Input
+      raw_events:
+        type: "list[Event]"
+        description: "Unprocessed events from EventBus"
+
+      # Filtered Signal
+      filtered_signal:
+        type: "FilteredSignal"
+        fields:
+          contradictions:
+            type: "list[ContradictionSignal]"
+            description: "Detected systemic tensions"
+            item_schema:
+              contradiction_id: "str"
+              intensity: "float"
+              delta: "float"  # Change from previous tick
+              involved_nodes: "list[str]"
+              prism_narrative: "str"
+
+          solidarity_state:
+            type: "SolidaritySignal"
+            fields:
+              percolation_ratio: "float"
+              phase: "Gaseous | Liquid"
+              actual_liquidity: "int"
+              potential_liquidity: "int"
+              resilience: "bool | None"
+
+          consciousness_map:
+            type: "dict[str, ConsciousnessSignal]"
+            description: "Per-node consciousness state"
+            value_schema:
+              class_consciousness: "float"
+              ideology: "float"
+              agitation: "float"
+              drift_direction: "Revolution | Fascism | Stable"
+
+          extraction_flows:
+            type: "list[ExtractionSignal]"
+            description: "Active exploitation edges"
+            item_schema:
+              source: "str"
+              target: "str"
+              rate: "float"
+              imperial_rent: "float"
+
+      # Noise Layer
+      noise_layer:
+        type: "NoiseLayer"
+        fields:
+          pr_narrative:
+            type: "str"
+            description: "Generated liberal media framing"
+            example: "Economic indicators show continued recovery..."
+
+          surface_metrics:
+            type: "dict[str, float]"
+            description: "Bourgeois statistics"
+            example:
+              gdp_growth: 2.3
+              unemployment: 4.1
+              consumer_confidence: 98.5
+
+          exposed_mechanics:
+            type: "list[str]"
+            description: "What PR obscures"
+            example:
+              - "GDP growth = increased extraction rate"
+              - "Low unemployment = wage suppression"
+
+      # Degradation State
+      degradation:
+        type: "DegradationState"
+        fields:
+          signal_strength: "float"
+          noise_floor: "float"
+          clarity: "float"
+          jamming_source: "str | None"  # e.g., "COINTELPRO", "Media Blackout"
+
+      # Prism Output
+      prism_output:
+        type: "PrismOutput"
+        fields:
+          refracted_truth:
+            type: "str"
+            description: "Synthesized materialist analysis"
+            example: "Behind 'prosperity': extraction rate +12%, real wages -3%"
+
+          exposed_mechanics:
+            type: "list[MechanicExposure]"
+            description: "Specific mechanics revealed"
+            item_schema:
+              mechanic_type: "str"  # e.g., "EXPLOITATION", "IMPERIAL_RENT"
+              liberal_framing: "str"
+              materialist_reality: "str"
+              quantified_extraction: "float | None"
+
+          alert_level:
+            type: "AlertLevel"
+            enum: ["NOMINAL", "ELEVATED", "CRITICAL", "RUPTURE"]
+
+      # Gloom State
+      gloom_state:
+        type: "GloomState"
+        fields:
+          focus_point:
+            type: "tuple[float, float] | None"
+            description: "Current observation focus (UI coordinates)"
+
+          illuminated_nodes:
+            type: "list[str]"
+            description: "Nodes within flashlight radius"
+
+          gloom_nodes:
+            type: "list[str]"
+            description: "Nodes in darkness (unobserved)"
+
+          peripheral_alerts:
+            type: "list[PeripheralAlert]"
+            description: "Critical events outside focus"
+            item_schema:
+              node_id: "str"
+              event_type: "str"
+              urgency: "float"
+
+  # ---------------------------------------------------------------------------
+  # ARCHIVE INTEGRATION (CHROMADB)
+  # ---------------------------------------------------------------------------
+
+  archive_integration:
+    target: "ChromaDB"
+    manager: "src/babylon/data/chroma_manager.py"
+
+    collections:
+      synoptic_snapshots:
+        name: "synoptic_snapshots"
+        description: "Processed SynopticView at each tick"
+        embedding_source: "prism_output.refracted_truth"
+        metadata:
+          - tick
+          - clarity
+          - alert_level
+          - phase  # Gaseous/Liquid
+        retention: "Full simulation history"
+
+      contradiction_history:
+        name: "contradiction_history"
+        description: "Evolution of specific contradictions"
+        embedding_source: "contradiction narrative"
+        metadata:
+          - contradiction_id
+          - intensity
+          - involved_nodes
+          - tick_range
+        retention: "Full simulation history"
+
+      narrative_fragments:
+        name: "narrative_fragments"
+        description: "Decoded truths for AI synthesis"
+        embedding_source: "Fragment text"
+        metadata:
+          - fragment_type  # "extraction", "solidarity", "rupture"
+          - tick
+          - confidence  # Based on clarity
+        retention: "Pruned by relevance"
+
+    write_strategy:
+      on_tick:
+        - "Write SynopticView to synoptic_snapshots"
+        - "Update contradiction_history for changed contradictions"
+        - "Generate narrative fragments for high-clarity signals"
+
+      on_simulation_end:
+        - "Write summary document"
+        - "Mark session as complete"
+
+    query_patterns:
+      historical_comparison:
+        purpose: "Compare current state to past observations"
+        query: "Similar contradiction configurations"
+
+      trajectory_analysis:
+        purpose: "Project contradiction evolution"
+        query: "Historical sequences with similar starting conditions"
+
+      context_retrieval:
+        purpose: "Provide AI with relevant decoded history"
+        query: "Narrative fragments related to current focus"
+
+  # ---------------------------------------------------------------------------
+  # BUNKER AESTHETIC SUPPORT
+  # ---------------------------------------------------------------------------
+
+  bunker_aesthetic_support:
+    purpose: "Data structures supporting 'Damp Basement Cyberinsurgency' visual style"
+
+    gloom_metrics:
+      description: "Parameters for flashlight effect"
+      fields:
+        focus_point:
+          type: "tuple[float, float]"
+          description: "Center of illumination (normalized 0-1)"
+          default: [0.5, 0.5]
+
+        illumination_radius:
+          type: "float"
+          range: [0.1, 0.5]
+          description: "Radius of full visibility"
+          default: 0.25
+
+        decay_rate:
+          type: "float"
+          range: [0.5, 2.0]
+          description: "How quickly light falls off"
+          default: 1.0
+
+        ambient_light:
+          type: "float"
+          range: [0.0, 0.2]
+          description: "Minimum visibility in Gloom"
+          default: 0.05
+
+    texture_hints:
+      description: "Rendering hints for UI layer"
+      fields:
+        scanline_intensity:
+          type: "float"
+          range: [0.0, 0.15]
+          description: "Opacity of CRT scanline overlay"
+          default: 0.05
+
+        flicker_probability:
+          type: "float"
+          range: [0.0, 0.1]
+          description: "Chance of border flicker per frame"
+          default: 0.02
+
+        flicker_amplitude:
+          type: "float"
+          range: [0.0, 0.1]
+          description: "Opacity variation during flicker"
+          default: 0.05
+
+        grain_intensity:
+          type: "float"
+          range: [0.0, 0.1]
+          description: "Film grain noise level"
+          default: 0.03
+
+        vignette_strength:
+          type: "float"
+          range: [0.0, 0.5]
+          description: "Edge darkening intensity"
+          default: 0.2
+
+    color_palette:
+      description: "Colors as light sources, not paint"
+      colors:
+        wet_concrete:
+          hex: "#1A1A1A"
+          role: "The Room - primary background"
+          treatment: "Apply grain texture"
+
+        phosphor_burn:
+          hex: "#D40000"
+          role: "The Laser - alerts, ruptures, critical"
+          treatment: "Apply bloom/glow, use sparingly"
+
+        dark_metal:
+          hex: "#404040"
+          role: "The Chassis - inactive panels, borders"
+          treatment: "Subtle metallic reflection"
+
+        silver_dust:
+          hex: "#C0C0C0"
+          role: "The Dust - secondary text, prompts"
+          treatment: "Slight transparency"
+
+        exposed_copper:
+          hex: "#FFD700"
+          role: "The Circuit - truth data, connections"
+          treatment: "Warm glow, hardware aesthetic"
+
+    interference_patterns:
+      description: "Visual representation of signal degradation"
+      patterns:
+        static_burst:
+          trigger: "noise_floor > 0.5"
+          visual: "Random pixel noise overlay"
+          duration: "50-200ms"
+
+        horizontal_tear:
+          trigger: "state_jamming active"
+          visual: "Horizontal displacement of scan lines"
+          frequency: "Every 2-5 seconds"
+
+        phosphor_bleed:
+          trigger: "high_intensity_alert"
+          visual: "Red channel bleeds beyond boundaries"
+          decay: "200ms fade"
+
+        text_corruption:
+          trigger: "clarity < 0.4"
+          visual: "Random character substitution"
+          characters: "█▓▒░"
+
+  # ---------------------------------------------------------------------------
+  # FUTURE CONSIDERATIONS
+  # ---------------------------------------------------------------------------
+
+  future_considerations:
+    phase_4_integration:
+      - "AI narrative synthesis using SynopticView history"
+      - "Natural language queries against contradiction_history"
+      - "Automated insight generation from patterns"
+
+    multiplayer_synopticon:
+      - "Multiple observers with different focus points"
+      - "Collaborative attention allocation"
+      - "Shared Gloom state"
+
+    performance_optimization:
+      - "Incremental SynopticView updates"
+      - "Lazy evaluation of Prism output"
+      - "Archive write batching"
+
+  # ---------------------------------------------------------------------------
+  # REFERENCES
+  # ---------------------------------------------------------------------------
+
+  references:
+    conceptual:
+      - document: "brainstorm/synopticon-concept.md"
+        description: "High-level conceptual design"
+
+    existing_systems:
+      - module: "src/babylon/engine/observer.py"
+        description: "SimulationObserver protocol"
+
+      - module: "src/babylon/engine/topology_monitor.py"
+        description: "Reference observer implementation"
+
+      - module: "src/babylon/engine/event_bus.py"
+        description: "Event emission and subscription"
+
+      - module: "src/babylon/ai/director.py"
+        description: "NarrativeDirector observer (AI integration)"
+
+    theory:
+      - source: "Mao Zedong"
+        work: "Some Questions Concerning Methods of Leadership (1943)"
+        concept: "The Mass Line"
+
+      - source: "Dziga Vertov"
+        work: "Kino-Eye manifesto (1924)"
+        concept: "Machine vision as truth-revealing apparatus"
+
+      - source: "Michel Foucault"
+        work: "Discipline and Punish (1975)"
+        concept: "Panopticon as surveillance architecture"

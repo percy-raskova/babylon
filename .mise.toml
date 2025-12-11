@@ -90,7 +90,11 @@ run = "cd docs && poetry run sphinx-autobuild . _build/html --open-browser"
 
 [tasks.docs-clean]
 description = "Clean documentation build artifacts"
-run = "rm -rf docs/_build docs/_autosummary"
+run = "rm -rf docs/_build docs/api/_autosummary"
+
+[tasks.docs-build]
+description = "Clean and build Sphinx documentation"
+depends = ["docs-clean", "docs"]
 
 # =============================================================================
 # DATA / RAG

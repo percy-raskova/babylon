@@ -11,26 +11,17 @@ Each simulation tick, the engine runs a sequence of **Systems** that
 transform the world state. Systems are modular, testable, and follow
 a strict protocol.
 
-.. code-block:: text
+.. mermaid::
 
-   WorldState (tick N)
-        │
-        ▼
-   ┌─────────────────────────────────────────────────────┐
-   │  SimulationEngine.run_tick()                        │
-   │                                                     │
-   │  1. ImperialRentSystem   - Extract tribute          │
-   │  2. SolidaritySystem     - Transmit consciousness   │
-   │  3. ConsciousnessSystem  - Drift ideology           │
-   │  4. SurvivalSystem       - Calculate probabilities  │
-   │  5. ContradictionSystem  - Accumulate tension       │
-   │  6. TerritorySystem      - Process heat/eviction    │
-   │  7. StruggleSystem       - Agency responses         │
-   │                                                     │
-   └─────────────────────────────────────────────────────┘
-        │
-        ▼
-   WorldState (tick N+1)
+   flowchart TB
+       A["WorldState (tick N)"] --> B["1. ImperialRentSystem<br/>Extract tribute"]
+       B --> C["2. SolidaritySystem<br/>Transmit consciousness"]
+       C --> D["3. ConsciousnessSystem<br/>Drift ideology"]
+       D --> E["4. SurvivalSystem<br/>Calculate probabilities"]
+       E --> F["5. ContradictionSystem<br/>Accumulate tension"]
+       F --> G["6. TerritorySystem<br/>Process heat/eviction"]
+       G --> H["7. StruggleSystem<br/>Agency responses"]
+       H --> I["WorldState (tick N+1)"]
 
 The System Protocol
 -------------------

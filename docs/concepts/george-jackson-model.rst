@@ -23,21 +23,14 @@ increases. But where does this energy go?
 
 This creates a **bifurcation** in ideological space:
 
-.. code-block:: text
+.. mermaid::
 
-                     Agitation Energy
-                           │
-                           ▼
-              ┌────────────┴────────────┐
-              │                         │
-         No SOLIDARITY            Has SOLIDARITY
-              │                         │
-              ▼                         ▼
-        ┌───────────┐            ┌───────────┐
-        │  FASCISM  │            │ REVOLUTION│
-        │ +ideology │            │ -ideology │
-        └───────────┘            └───────────┘
-           (+1.0)                   (-1.0)
+   flowchart TB
+       A[Agitation Energy] --> B{SOLIDARITY<br/>Edge Present?}
+       B -->|No| C[FASCISM<br/>+ideology +1.0]
+       B -->|Yes| D[REVOLUTION<br/>-ideology -1.0]
+       C --> E[National/Racial<br/>Identity]
+       D --> F[Class<br/>Consciousness]
 
 The Ideology Axis
 -----------------

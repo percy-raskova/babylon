@@ -200,24 +200,27 @@ Engine Architecture
 
 The simulation engine orchestrates the three layers:
 
-.. code-block:: text
+.. mermaid::
 
-   step(WorldState, SimulationConfig) → WorldState
-        │
-        ├── 1. Convert to graph: state.to_graph()
-        │
-        ├── 2. Run systems on graph:
-        │      ├── ImperialRentSystem
-        │      ├── SolidaritySystem
-        │      ├── ConsciousnessSystem
-        │      ├── SurvivalSystem
-        │      ├── ContradictionSystem
-        │      ├── TerritorySystem
-        │      └── StruggleSystem
-        │
-        ├── 3. Notify observers: TopologyMonitor
-        │
-        └── 4. Convert back: WorldState.from_graph()
+   flowchart TB
+       subgraph Input
+           WS[WorldState]
+           SC[SimulationConfig]
+       end
+       WS --> step["step()"]
+       SC --> step
+       step -->|"to_graph()"| G[NetworkX DiGraph]
+       subgraph Engine["SimulationEngine.run_tick()"]
+           G --> S1[1. ImperialRentSystem]
+           S1 --> S2[2. SolidaritySystem]
+           S2 --> S3[3. ConsciousnessSystem]
+           S3 --> S4[4. SurvivalSystem]
+           S4 --> S5[5. ContradictionSystem]
+           S5 --> S6[6. TerritorySystem]
+           S6 --> S7[7. StruggleSystem]
+       end
+       S7 --> OBS[TopologyMonitor]
+       OBS -->|"from_graph()"| WS2[New WorldState]
 
 Dependency Injection
 ^^^^^^^^^^^^^^^^^^^^
@@ -260,33 +263,25 @@ Current observers:
 Data Flow Summary
 -----------------
 
-.. code-block:: text
+.. mermaid::
 
-   ┌─────────────────────────────────────────────────────────────┐
-   │                    SIMULATION TICK                          │
-   ├─────────────────────────────────────────────────────────────┤
-   │                                                             │
-   │   LEDGER (Pydantic)                                         │
-   │   ┌─────────────┐                                           │
-   │   │ WorldState  │──────┐                                    │
-   │   │ - classes   │      │ to_graph()                         │
-   │   │ - territories      │                                    │
-   │   │ - relationships    │                                    │
-   │   └─────────────┘      ▼                                    │
-   │                   ┌─────────────┐                           │
-   │   TOPOLOGY        │  nx.DiGraph │                           │
-   │                   │  - nodes    │◄── Systems mutate graph   │
-   │                   │  - edges    │                           │
-   │                   └─────────────┘                           │
-   │                        │                                    │
-   │                        │ from_graph()                       │
-   │                        ▼                                    │
-   │   ┌─────────────┐ ┌─────────────┐                           │
-   │   │ New State   │ │  ARCHIVE    │                           │
-   │   │ (validated) │ │  (ChromaDB) │◄── Store event narratives │
-   │   └─────────────┘ └─────────────┘                           │
-   │                                                             │
-   └─────────────────────────────────────────────────────────────┘
+   flowchart TB
+       subgraph TICK["SIMULATION TICK"]
+           subgraph LEDGER["LEDGER (Pydantic)"]
+               WS[WorldState<br/>- classes<br/>- territories<br/>- relationships]
+           end
+           subgraph TOPOLOGY["TOPOLOGY (NetworkX)"]
+               G[nx.DiGraph<br/>- nodes<br/>- edges]
+           end
+           subgraph OUTPUT["OUTPUT"]
+               NS[New State<br/>validated]
+               ARCHIVE[ARCHIVE<br/>ChromaDB]
+           end
+           WS -->|"to_graph()"| G
+           G -->|"Systems mutate graph"| G
+           G -->|"from_graph()"| NS
+           G -->|"Store event narratives"| ARCHIVE
+       end
 
 Key Design Principles
 ---------------------

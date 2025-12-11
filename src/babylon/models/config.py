@@ -230,3 +230,9 @@ class SimulationConfig(BaseModel):
         default=0.5,
         description="How much imperial extraction translates to PPP bonus (50%)",
     )
+
+    # Carceral Geography parameters (Sprint 3.7: The Necropolitical Triad)
+    concentration_camp_decay_rate: Coefficient = Field(
+        default=0.2,
+        description="Population decay rate in CONCENTRATION_CAMP territories (20%)",
+    )

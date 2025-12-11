@@ -6,6 +6,7 @@ AutoCheckpointer is a stateful class that manages periodic checkpoint creation.
 Sprint D: Auto-checkpointing with ~15 tests.
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -290,8 +291,9 @@ class TestAutoCheckpointerGetLatest:
         config = CheckpointConfig()
         checkpointer = AutoCheckpointer(config, base_dir=tmp_path)
 
-        # Create checkpoints
+        # Create checkpoints with small delay to ensure different mtime
         checkpointer.force_checkpoint(sample_world_state, sample_config)
+        time.sleep(0.01)  # Ensure different mtime on fast systems
         latest_path = checkpointer.force_checkpoint(
             sample_world_state.model_copy(update={"tick": 10}),
             sample_config,

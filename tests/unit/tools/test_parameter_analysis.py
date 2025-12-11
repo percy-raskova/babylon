@@ -21,10 +21,11 @@ from typing import Any
 
 import pytest
 
+# Path to the project root (babylon/)
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+
 # Path to the parameter_analysis tool
-PARAMETER_ANALYSIS_PATH = (
-    Path(__file__).parent.parent.parent.parent / "tools" / "parameter_analysis.py"
-)
+PARAMETER_ANALYSIS_PATH = PROJECT_ROOT / "tools" / "parameter_analysis.py"
 
 
 def load_parameter_analysis_module() -> Any:
@@ -620,7 +621,7 @@ class TestSweepCLI:
             ["poetry", "run", "python", "tools/parameter_analysis.py", "sweep", "--help"],
             capture_output=True,
             text=True,
-            cwd="/home/user/projects/game/babylon",
+            cwd=str(PROJECT_ROOT),
         )
         assert result.returncode == 0
         assert "--param" in result.stdout
@@ -647,7 +648,7 @@ class TestSweepCLI:
             ],
             capture_output=True,
             text=True,
-            cwd="/home/user/projects/game/babylon",
+            cwd=str(PROJECT_ROOT),
         )
         assert result.returncode != 0
 
@@ -673,6 +674,6 @@ class TestSweepCLI:
             ],
             capture_output=True,
             text=True,
-            cwd="/home/user/projects/game/babylon",
+            cwd=str(PROJECT_ROOT),
         )
         assert result.returncode != 0

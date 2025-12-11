@@ -100,7 +100,7 @@ class ImperialRentSystem:
         }
 
         # Execute phases with pool tracking
-        self._process_extraction_phase(graph, services, context)
+        self._process_extraction_phase(graph, services, context, tick_context)
         self._process_tribute_phase(graph, services, context, tick_context)
         self._process_wages_phase(graph, services, context, tick_context)
         self._process_subsidy_phase(graph, services, context, tick_context)
@@ -114,8 +114,14 @@ class ImperialRentSystem:
         graph: nx.DiGraph[str],
         services: ServiceContainer,
         context: dict[str, Any],
+        tick_context: dict[str, Any],
     ) -> None:
-        """Phase 1: Imperial rent extraction via EXPLOITATION edges."""
+        """Phase 1: Imperial rent extraction via EXPLOITATION edges.
+
+        When extraction targets CORE_BOURGEOISIE directly (2-node scenario
+        without comprador intermediary), the extracted rent is tracked as
+        tribute_inflow to enable wage calculations.
+        """
         calculate_imperial_rent = services.formulas.get("imperial_rent")
         extraction_efficiency = services.config.extraction_efficiency
 
@@ -150,6 +156,15 @@ class ImperialRentSystem:
 
             # Record value flow
             graph.edges[source_id, target_id]["value_flow"] = rent
+
+            # Track direct extraction to CORE_BOURGEOISIE as tribute_inflow
+            # This handles 2-node scenarios where extraction skips comprador
+            target_role = graph.nodes[target_id].get("role")
+            if isinstance(target_role, str):
+                target_role = SocialRole(target_role)
+            if target_role == SocialRole.CORE_BOURGEOISIE:
+                tick_context["tribute_inflow"] += rent
+                tick_context["current_pool"] += rent
 
             # Emit event for AI narrative layer (ignore floating point noise)
             if rent > 0.01:
@@ -229,9 +244,13 @@ class ImperialRentSystem:
     ) -> None:
         """Phase 3: Super-wages via WAGES edges -> DRAINS POOL.
 
-        The core bourgeoisie pays a fraction of their wealth as super-wages
+        The core bourgeoisie pays a fraction of their INCOMING TRIBUTE as super-wages
         to the labor aristocracy (core workers). This is the bribe that
         prevents revolution in the core.
+
+        BUG FIX: Wages are calculated from tribute_inflow (income flow), not
+        from bourgeoisie_wealth (accumulated capital). This ensures C_b
+        accumulates wealth over time, matching MLM-TW theory.
 
         PPP Model (Purchasing Power Parity):
         Super-wages don't manifest as direct cash transfers. Instead, the
@@ -275,8 +294,12 @@ class ImperialRentSystem:
             if bourgeoisie_wealth <= 0:
                 continue
 
-            # Calculate super-wages (nominal)
-            desired_wages = bourgeoisie_wealth * super_wage_rate
+            # Calculate super-wages from INCOME FLOW (tribute), not accumulated capital
+            # BUG FIX: This ensures C_b accumulates wealth over time
+            tribute_inflow = tick_context.get("tribute_inflow", 0.0)
+            desired_wages = tribute_inflow * super_wage_rate
+            # Also cap at what bourgeoisie can actually afford to pay
+            desired_wages = min(desired_wages, bourgeoisie_wealth)
 
             # Sprint 3.4.4: Cap wages at available pool
             available_pool = tick_context["current_pool"]
@@ -385,9 +408,12 @@ class ImperialRentSystem:
                 # Client state is stable, no subsidy needed
                 continue
 
-            # Calculate subsidy amount
-            # Limited by: subsidy_cap, source wealth, conversion rate, and POOL
-            max_subsidy = min(subsidy_cap, source_wealth * subsidy_conversion_rate)
+            # Calculate subsidy amount from POOL INCOME, not accumulated wealth
+            # BUG FIX: Like wages, subsidies should come from extracted surplus
+            tribute_inflow = tick_context.get("tribute_inflow", 0.0)
+            max_subsidy = min(subsidy_cap, tribute_inflow * subsidy_conversion_rate)
+            # Also cap at what bourgeoisie can actually afford
+            max_subsidy = min(max_subsidy, source_wealth)
 
             # Sprint 3.4.4: Also cap at available pool
             available_pool = tick_context["current_pool"]

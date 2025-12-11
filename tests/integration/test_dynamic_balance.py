@@ -195,18 +195,23 @@ def create_dynamic_balance_scenario(
 
 @pytest.mark.integration
 class TestDynamicBalanceDrain:
-    """Test: The Drain - Pool decreases when expenditure exceeds extraction."""
+    """Test: Dynamic Balance - Pool behavior with wages from tribute.
 
-    def test_pool_decreases_over_multiple_ticks(self) -> None:
-        """Pool should decrease when wages outpace tribute inflow.
+    BUG FIX: Wages now come from tribute_inflow (income), not accumulated wealth.
+    This means pool grows when tribute_inflow > wages_outflow + subsidy_outflow.
+    Since wages = tribute * rate (rate < 1), pool naturally grows over time.
+    """
 
-        Scenario: Low extraction (0.3) + high wages (0.4) = drain
-        Over 5 ticks, pool should visibly decrease.
+    def test_pool_grows_with_extraction(self) -> None:
+        """Pool should grow when extraction feeds tribute.
+
+        BUG FIX: With wages calculated from tribute (not wealth), the pool
+        accumulates over time. wages = tribute * rate < tribute always.
         """
         state, config = create_dynamic_balance_scenario(
             initial_pool=100.0,
-            extraction_efficiency=0.3,  # Low extraction
-            super_wage_rate=0.40,  # High wages
+            extraction_efficiency=0.3,  # Extraction rate
+            super_wage_rate=0.40,  # Wages as fraction of tribute
         )
 
         initial_pool = state.economy.imperial_rent_pool
@@ -219,12 +224,16 @@ class TestDynamicBalanceDrain:
             current_state = step(current_state, config)
             pool_history.append(current_state.economy.imperial_rent_pool)
 
-        # Pool should have decreased
+        # With the bug fix, pool should grow (or at least not drain)
+        # wages_out = tribute_in * wage_rate
+        # net = tribute_in - wages_out = tribute_in * (1 - wage_rate) > 0
         final_pool = current_state.economy.imperial_rent_pool
-        assert final_pool < initial_pool, f"Pool should decrease: {initial_pool} -> {final_pool}"
+        assert final_pool >= initial_pool, (
+            f"Pool should grow or hold: {initial_pool} -> {final_pool}"
+        )
 
-        # Pool should trend downward (not all values need to decrease due to inflow)
-        assert pool_history[-1] < pool_history[0], f"Pool should trend down: {pool_history}"
+        # Pool should trend upward with continuous extraction
+        assert pool_history[-1] >= pool_history[0], f"Pool should trend up: {pool_history}"
 
     def test_pool_tracked_in_world_state(self) -> None:
         """GlobalEconomy should persist through WorldState."""
@@ -246,16 +255,21 @@ class TestDynamicBalanceCrash:
     def test_crisis_event_fires_when_pool_critical(self) -> None:
         """ECONOMIC_CRISIS event should fire when pool < 10% of initial.
 
-        Scenario: Start with very low pool (5) + high wages = immediate crisis
+        Scenario: Start with zero pool - single tick's tribute won't reach 10%.
+        The pool_ratio = current_pool / initial_pool, and CRISIS fires when
+        pool_ratio < critical_threshold (default 0.1).
         """
         state, config = create_dynamic_balance_scenario(
             initial_pool=100.0,
+            extraction_efficiency=0.1,  # Very low extraction
             super_wage_rate=0.35,  # Max wage rate
         )
 
-        # Manually set pool near critical
+        # Manually set pool to 0 so tribute inflow won't reach 10% in one tick
+        # Even with extraction, one tick won't produce enough tribute to exceed
+        # critical_threshold * initial_pool = 0.1 * 100 = 10
         critical_economy = GlobalEconomy(
-            imperial_rent_pool=8.0,  # Below 10% of initial 100
+            imperial_rent_pool=0.0,  # Empty pool
             current_super_wage_rate=0.35,
             current_repression_level=0.5,
         )
@@ -264,10 +278,12 @@ class TestDynamicBalanceCrash:
         new_state = step(state, config)
 
         # Check for ECONOMIC_CRISIS event
+        # With pool starting at 0 and low extraction (0.1), tribute inflow will be
+        # small enough that pool_ratio stays below critical_threshold
         crisis_events = [e for e in new_state.event_log if "ECONOMIC_CRISIS" in e.upper()]
-        assert (
-            len(crisis_events) >= 1
-        ), f"ECONOMIC_CRISIS event should fire. Events: {new_state.event_log}"
+        assert len(crisis_events) >= 1, (
+            f"ECONOMIC_CRISIS event should fire. Events: {new_state.event_log}"
+        )
 
     def test_crisis_sets_wage_rate_to_minimum(self) -> None:
         """Crisis decision should reduce wage rate toward minimum.

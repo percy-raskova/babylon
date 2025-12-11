@@ -119,8 +119,9 @@ class TestPPPWagesModel:
         system = ImperialRentSystem()
 
         # Initialize tick_context with economy defaults
+        # BUG FIX: Wages come from tribute_inflow, not accumulated wealth
         tick_context = {
-            "tribute_inflow": 0.0,
+            "tribute_inflow": 1.0,  # Provides basis for wage calculation
             "wages_outflow": 0.0,
             "subsidy_outflow": 0.0,
             "current_pool": 100.0,
@@ -135,7 +136,7 @@ class TestPPPWagesModel:
         worker_data = graph.nodes["worker"]
         assert "effective_wealth" in worker_data
         # PPP_mult = 1 + (0.8 * 1.5 * 0.5) = 1.6
-        # Nominal wage = 1.0 * 0.2 = 0.2
+        # Nominal wage = tribute_inflow * wage_rate = 1.0 * 0.2 = 0.2
         # effective_wealth_gain = 0.2 * (1.6 - 1) = 0.12
         # Total effective = 0.5 + 0.2 + 0.12 = 0.82
         # Or: effective = (initial_wealth + nominal_wage) + ppp_bonus
@@ -169,8 +170,9 @@ class TestPPPWagesModel:
         context: dict[str, int] = {"tick": 1}
         system = ImperialRentSystem()
 
+        # BUG FIX: Wages come from tribute_inflow, not accumulated wealth
         tick_context = {
-            "tribute_inflow": 0.0,
+            "tribute_inflow": 1.0,  # Provides basis for wage calculation
             "wages_outflow": 0.0,
             "subsidy_outflow": 0.0,
             "current_pool": 100.0,
@@ -212,7 +214,7 @@ class TestPPPWagesModel:
         system = ImperialRentSystem()
 
         tick_context = {
-            "tribute_inflow": 0.0,
+            "tribute_inflow": 1.0,  # BUG FIX: Wages come from tribute, not wealth
             "wages_outflow": 0.0,
             "subsidy_outflow": 0.0,
             "current_pool": 100.0,
@@ -225,7 +227,7 @@ class TestPPPWagesModel:
 
         # Assert
         # PPP_mult = 1 + (0.8 * 1.0 * 0.5) = 1.4
-        # Nominal wage = 1.0 * 0.5 = 0.5
+        # Nominal wage = tribute_inflow * wage_rate = 1.0 * 0.5 = 0.5
         # PPP bonus = 0.5 * (1.4 - 1) = 0.2
         # effective_wealth = 0.0 + 0.5 + 0.2 = 0.7
         worker_data = graph.nodes["worker"]
@@ -251,7 +253,7 @@ class TestPPPWagesModel:
         system = ImperialRentSystem()
 
         tick_context = {
-            "tribute_inflow": 0.0,
+            "tribute_inflow": 1.0,  # BUG FIX: Wages come from tribute, not wealth
             "wages_outflow": 0.0,
             "subsidy_outflow": 0.0,
             "current_pool": 100.0,
@@ -262,7 +264,7 @@ class TestPPPWagesModel:
         system._process_wages_phase(graph, services, {}, tick_context)
 
         worker_data = graph.nodes["worker"]
-        # unearned_increment should be set
+        # unearned_increment should be set (wages = 1.0 * 0.2 = 0.2)
         assert "unearned_increment" in worker_data
         # It should equal effective_wealth - wealth
         expected_increment = worker_data["effective_wealth"] - worker_data["wealth"]

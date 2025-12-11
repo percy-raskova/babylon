@@ -96,7 +96,7 @@ jobs:
       - name: Build documentation
         run: |
           cd docs
-          poetry run sphinx-build -b html . _build/html
+          poetry run sphinx-build -W -b html . _build/html
 
   # Style check - informational only, doesn't block merges
   # Pre-commit hooks handle formatting locally

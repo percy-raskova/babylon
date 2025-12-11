@@ -86,6 +86,44 @@ The TopologyMonitor tracks several metrics:
 **actual_liquidity**
    Count of SOLIDARITY edges > 0.5 strength (cadre).
 
+The Fascist Bifurcation
+-----------------------
+
+The most important insight encoded in the topology system:
+
+   *Agitation without solidarity produces fascism, not revolution.*
+
+When wages fall (crisis conditions), the system generates "agitation energy"
+that must route somewhere. The solidarity graph determines where:
+
+**With solidarity infrastructure** (σ > 0)
+   Agitation channels into class consciousness. Workers correctly identify
+   capital as the enemy. Revolutionary drift.
+
+**Without solidarity infrastructure** (σ = 0)
+   Agitation channels into national identity. Workers blame foreigners,
+   immigrants, the "other." Fascist drift.
+
+.. math::
+
+   B(\dot{W}, \sigma) = \begin{cases}
+   +\kappa|\dot{W}| \cdot \sigma & \text{if } \sigma > 0 \text{ (revolution)} \\
+   -\kappa|\dot{W}| & \text{if } \sigma = 0 \text{ (fascism)}
+   \end{cases}
+
+Where κ = 2.25 (Kahneman-Tversky loss aversion coefficient).
+
+**Historical Comparison:**
+
+- **Russia 1917**: Solidarity infrastructure existed (Bolshevik party, soviets)
+  → Revolution succeeded
+- **Germany 1933**: Working class atomized (SPD/KPD split, no united front)
+  → Fascism won
+
+This is a **cusp catastrophe** in Thom's classification—two stable equilibria
+separated by a bifurcation surface in the (wage_change, solidarity) parameter
+space.
+
 The Liquidity Gap
 -----------------
 
@@ -279,7 +317,7 @@ For revolutionary strategy in the simulation:
 See Also
 --------
 
-- :doc:`/concepts/topology` - SOLIDARITY edge mechanics
-- :doc:`/concepts/george-jackson-model` - Consciousness routing
-- :doc:`/api/engine` - TopologyMonitor API reference
-- :py:class:`babylon.engine.TopologyMonitor` - Implementation
+- :doc:`/reference/topology` - API reference for topology functions
+- :doc:`/concepts/imperial-rent` - Economic foundation (why consciousness emerges)
+- :py:mod:`babylon.engine.topology_monitor` - Implementation details
+- :py:mod:`babylon.systems.formulas` - Mathematical formulas

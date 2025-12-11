@@ -217,6 +217,118 @@ def run_trace(
     return trace_data
 
 
+def extract_sweep_summary(
+    trace_data: list[dict[str, Any]],
+    param_value: float,
+) -> dict[str, Any]:
+    """Extract summary metrics from trace data.
+
+    Args:
+        trace_data: Full time-series from run_trace
+        param_value: The parameter value used
+
+    Returns:
+        Summary dict with aggregated metrics
+    """
+    if not trace_data:
+        return {"value": param_value, "ticks_survived": 0, "outcome": "ERROR"}
+
+    last_tick = trace_data[-1]
+    ticks_survived = len(trace_data)
+
+    # Determine outcome
+    p_w_wealth = last_tick.get("p_w_wealth", 0.0)
+    outcome = "DIED" if p_w_wealth <= DEATH_THRESHOLD else "SURVIVED"
+
+    # Final entity states
+    summary: dict[str, Any] = {
+        "value": param_value,
+        "ticks_survived": ticks_survived,
+        "outcome": outcome,
+        "final_p_w_wealth": last_tick.get("p_w_wealth", 0.0),
+        "final_p_c_wealth": last_tick.get("p_c_wealth", 0.0),
+        "final_c_b_wealth": last_tick.get("c_b_wealth", 0.0),
+        "final_c_w_wealth": last_tick.get("c_w_wealth", 0.0),
+    }
+
+    # Max tension
+    summary["max_tension"] = max(
+        (row.get("exploitation_tension", 0.0) for row in trace_data),
+        default=0.0,
+    )
+
+    # Crossover detection (when P(S|R) > P(S|A))
+    crossover_tick: int | None = None
+    for row in trace_data:
+        psr = row.get("p_w_psr", 0.0)
+        psa = row.get("p_w_psa", 1.0)
+        if psr > psa:
+            crossover_tick = row["tick"]
+            break
+    summary["crossover_tick"] = crossover_tick
+
+    # Cumulative rent
+    summary["cumulative_rent"] = sum(row.get("exploitation_rent", 0.0) for row in trace_data)
+
+    # Peak consciousness
+    summary["peak_p_w_consciousness"] = max(
+        (row.get("p_w_consciousness", 0.0) for row in trace_data),
+        default=0.0,
+    )
+    summary["peak_c_w_consciousness"] = max(
+        (row.get("c_w_consciousness", 0.0) for row in trace_data),
+        default=0.0,
+    )
+
+    return summary
+
+
+def run_sweep(
+    param_path: str,
+    start: float,
+    end: float,
+    step: float,
+    max_ticks: int = DEFAULT_TICKS,
+) -> list[dict[str, Any]]:
+    """Run parameter sweep, return summary per value.
+
+    For each parameter value in the range [start, end] with given step,
+    runs a full simulation and collects summary metrics.
+
+    Args:
+        param_path: Dot-separated parameter path (e.g., 'economy.extraction_efficiency')
+        start: Starting value for the parameter
+        end: Ending value for the parameter
+        step: Step size between values
+        max_ticks: Maximum ticks per simulation
+
+    Returns:
+        List of summary dicts, one per parameter value
+    """
+    results: list[dict[str, Any]] = []
+
+    # Calculate number of steps
+    num_steps = int(round((end - start) / step)) + 1
+
+    for i in range(num_steps):
+        value = round(start + (i * step), 6)
+        if value > end + (step / 10):
+            break
+
+        # Run trace for this value
+        trace_data = run_trace(
+            param_path=param_path,
+            param_value=value,
+            max_ticks=max_ticks,
+        )
+
+        # Extract summary metrics
+        summary = extract_sweep_summary(trace_data, value)
+        results.append(summary)
+
+    return results
+
+
 def write_csv(data: list[dict[str, Any]], output_path: Path) -> None:
     """Write trace data to CSV file.
 
@@ -321,6 +433,48 @@ Examples:
         help="Output CSV file path (required)",
     )
 
+    # sweep subcommand
+    sweep_parser = subparsers.add_parser(
+        "sweep",
+        help="Run parameter sweep and output summary statistics to CSV",
+    )
+    sweep_parser.add_argument(
+        "--param",
+        type=str,
+        required=True,
+        help="Parameter path to sweep (e.g., economy.extraction_efficiency)",
+    )
+    sweep_parser.add_argument(
+        "--start",
+        type=float,
+        required=True,
+        help="Starting value for sweep",
+    )
+    sweep_parser.add_argument(
+        "--end",
+        type=float,
+        required=True,
+        help="Ending value for sweep",
+    )
+    sweep_parser.add_argument(
+        "--step",
+        type=float,
+        required=True,
+        help="Step size between values",
+    )
+    sweep_parser.add_argument(
+        "--ticks",
+        type=int,
+        default=DEFAULT_TICKS,
+        help=f"Maximum ticks per simulation (default: {DEFAULT_TICKS})",
+    )
+    sweep_parser.add_argument(
+        "--csv",
+        type=Path,
+        required=True,
+        help="Output CSV file path (required)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -347,6 +501,35 @@ Examples:
             write_csv(trace_data, args.csv)
 
             print(f"Trace complete: {len(trace_data)} ticks recorded")
+            print(f"Output written to: {args.csv}")
+
+            return 0
+
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+        except FileNotFoundError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+    if args.command == "sweep":
+        try:
+            print(f"Running sweep: {args.param} from {args.start} to {args.end} step {args.step}")
+            print(f"  Max ticks per simulation: {args.ticks}")
+
+            # Run sweep
+            sweep_data = run_sweep(
+                param_path=args.param,
+                start=args.start,
+                end=args.end,
+                step=args.step,
+                max_ticks=args.ticks,
+            )
+
+            # Write CSV
+            write_csv(sweep_data, args.csv)
+
+            print(f"Sweep complete: {len(sweep_data)} parameter values tested")
             print(f"Output written to: {args.csv}")
 
             return 0

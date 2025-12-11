@@ -242,12 +242,17 @@ class TestDirectorRAGQueryBehavior:
         # RAG should NOT be queried (optimization)
         mock_rag_pipeline.query.assert_not_called()
 
-    def test_rag_query_uses_event_text(
+    def test_rag_query_uses_semantic_bridge(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """RAG query uses event text as query string."""
+        """RAG query uses semantic bridge to translate events to theory queries.
+
+        Sprint 3.4: The semantic bridge translates simulation keywords like
+        SURPLUS_EXTRACTION into theoretical queries like 'surplus value'.
+        Unrecognized events use the fallback 'dialectical materialism' query.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
@@ -256,19 +261,20 @@ class TestDirectorRAGQueryBehavior:
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Strike in the mines", "Police mobilized"],
+                "event_log": ["SURPLUS_EXTRACTION from Worker to Owner"],
             }
         )
 
         director.on_tick(previous_state, new_state)
 
-        # Check the query text contains event content
+        # Check the query text contains semantic translation, not raw event
         call_args = mock_rag_pipeline.query.call_args
         query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
 
-        # Events should be joined in query
-        assert "strike" in query_text.lower() or "Strike" in query_text
-        assert "police" in query_text.lower() or "Police" in query_text
+        # Should contain theoretical query, not raw event text
+        assert "surplus value" in query_text.lower()
+        # Should NOT contain raw event format
+        assert "Tick" not in query_text
 
     def test_rag_query_uses_top_k_3(
         self,

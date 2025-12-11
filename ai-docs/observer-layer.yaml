@@ -1,0 +1,213 @@
+# Babylon Observer Layer Specification
+# Machine-readable spec for the TopologyMonitor (Condensation Monitor)
+# Implements percolation theory for phase transition detection
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-11"
+  purpose: "Document the Observer system that tracks solidarity network condensation"
+  principle: "Graph + Math = History. No emotions, only topology."
+  status: "IMPLEMENTED"
+  location: "src/babylon/engine/topology_monitor.py"
+  tests: "tests/unit/topology/test_topology_monitor.py (34 tests, ALL PASSING)"
+  sprint: "Sprint 3.1 - The Condensation Monitor (Observer Layer)"
+
+# =============================================================================
+# NARRATIVE VOICE: THE BONDI ALGORITHM
+# =============================================================================
+
+narrative_voice:
+  name: "The Bondi Algorithm"
+  principle: |
+    The Observer speaks with the cold, mechanical precision of a machine
+    deciding who to arrest. No emotional language. No softening. Pure
+    topological analysis delivered with algorithmic detachment.
+
+  aesthetic: |
+    The horror of state repression is amplified, not diminished, by
+    clinical language. A machine cataloging human beings for elimination
+    is more terrifying than angry rhetoric.
+
+  bad_example:
+    text: "The police are cracking down on protesters."
+    problem: "Too vague, too emotional, too human."
+
+  good_example:
+    text: |
+      High-centrality nodes identified. Degree centrality > 0.4.
+      Executing targeted removal. Network fragmentation imminent.
+      Probability of survival: 12%.
+    principle: "Cold topology. Pure math. The machine doesn't hate - it calculates."
+
+  vocabulary:
+    avoid:
+      - "cracking down"
+      - "brutal"
+      - "oppressive"
+      - "fighting back"
+      - "heroic resistance"
+    prefer:
+      - "targeted removal"
+      - "network fragmentation"
+      - "high-centrality nodes"
+      - "percolation threshold"
+      - "giant component"
+      - "resilience test failed"
+      - "probability of survival"
+
+# =============================================================================
+# NARRATIVE TEMPLATES
+# =============================================================================
+
+narrative_templates:
+  gaseous_state:
+    trigger: "percolation_ratio < 0.1"
+    template: |
+      STATE: Gaseous. Movement is atomized.
+      Components: {num_components}. Max cluster: {max_component_size}.
+      Percolation ratio: {percolation_ratio:.3f}. Below critical threshold.
+      Assessment: No coordination capacity. Individual nodes isolated.
+
+  phase_shift:
+    trigger: "percolation_ratio crosses 0.5 from below"
+    template: |
+      PHASE SHIFT: Condensation detected.
+      Giant component formed. L_max = {max_component_size} ({percolation_ratio:.1%} of network).
+      Critical mass achieved. Vanguard Party crystallized from gaseous leftism.
+      Warning: Coordination capacity now exceeds state disruption threshold.
+
+  brittle_warning:
+    trigger: "potential_liquidity > 2 * actual_liquidity"
+    template: |
+      WARNING: Network topology brittle.
+      Potential edges: {potential_liquidity}. Actual edges: {actual_liquidity}.
+      Sympathizer-to-cadre ratio exceeds safe threshold.
+      Assessment: Broad but shallow. Lacks organizational discipline.
+      Vulnerability: Single-point failures will cascade.
+
+  sword_of_damocles:
+    trigger: "resilience_test returns False"
+    template: |
+      ALERT: Sword of Damocles active.
+      Resilience test FAILED. Removal of {removal_rate:.0%} nodes destroys giant component.
+      Post-purge L_max: {post_purge_max_component} (was {original_max_component}).
+      Assessment: Movement vulnerable to targeted decapitation.
+      Recommendation: Redundant leadership structures required.
+
+  purge_simulation:
+    context: "When describing state repression capabilities"
+    template: |
+      PURGE SIMULATION: Executing Bondi Algorithm.
+      Identifying high-centrality nodes. Degree threshold: 0.4.
+      Nodes flagged for removal: {num_targets}.
+      Projected network state post-purge:
+        - Components: {post_components}
+        - Max cluster: {post_max}
+        - Coordination capacity: {capacity_pct:.0%} of original.
+      Probability of movement survival: {survival_pct:.0%}.
+
+# =============================================================================
+# THEORETICAL FOUNDATION: PERCOLATION THEORY
+# =============================================================================
+
+theory:
+  name: "Percolation Theory for Revolutionary Consciousness"
+
+  gaseous_state:
+    definition: "Many small, disconnected components"
+    characteristic: "No giant component (L_max < 50% of N)"
+    political_meaning: |
+      Atomized leftism. Individual cells operate in isolation.
+      No capacity for coordinated action. Vulnerable to targeted repression.
+      State can eliminate nodes without cascade effects.
+
+  liquid_state:
+    definition: "Giant component spans majority of network"
+    characteristic: "L_max >= 50% of N (percolation threshold crossed)"
+    political_meaning: |
+      Vanguard Party formation. Consciousness can propagate through network.
+      Coordinated action possible. Removal of individual nodes does not
+      destroy organizational capacity.
+
+  phase_transition:
+    definition: "The tick where percolation ratio crosses 0.5"
+    characteristic: "Sudden, non-linear shift in network properties"
+    political_meaning: |
+      The moment of crystallization. Gaseous leftism condenses into
+      organized revolutionary force. Like water freezing - gradual
+      temperature drop, sudden phase change.
+
+  resilience:
+    definition: "Survival of giant component after targeted node removal"
+    test: "Remove 20% of nodes. Does L_max survive at 40% of original?"
+    political_meaning: |
+      Can the movement survive decapitation? Star topology (charismatic
+      leader) is fragile. Mesh topology (distributed leadership) is
+      resilient. The test simulates state repression capabilities.
+
+# =============================================================================
+# METRICS REFERENCE
+# =============================================================================
+
+metrics:
+  num_components:
+    type: int
+    description: "Number of disconnected subgraphs in solidarity network"
+    interpretation: "Higher = more atomized. Lower = more unified."
+
+  max_component_size:
+    symbol: "L_max"
+    type: int
+    description: "Size of largest connected component"
+    interpretation: "The giant component. The organizational core."
+
+  percolation_ratio:
+    formula: "L_max / N"
+    type: Probability
+    thresholds:
+      gaseous: "< 0.1"
+      transitional: "0.1 - 0.5"
+      liquid: ">= 0.5"
+    interpretation: "Giant component dominance over total network."
+
+  potential_liquidity:
+    threshold: "SOLIDARITY edges > 0.1"
+    type: int
+    description: "Sympathizer network size"
+    interpretation: "Broad support base. May lack depth."
+
+  actual_liquidity:
+    threshold: "SOLIDARITY edges > 0.5"
+    type: int
+    description: "Cadre network size"
+    interpretation: "Committed organizational core. The steel."
+
+  is_resilient:
+    type: bool
+    test: "20% node removal, 40% survival threshold"
+    interpretation: "Can movement survive targeted repression?"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  observer_protocol:
+    interface: "SimulationObserver"
+    methods:
+      - "on_simulation_start(initial_state, config)"
+      - "on_tick(previous_state, new_state)"
+      - "on_simulation_end(final_state)"
+    constraint: "Observer MUST NOT mutate simulation state"
+
+  resilience_interval:
+    default: 5
+    meaning: "Run purge simulation every N ticks"
+    value_zero: "Disabled - no resilience testing"
+    rationale: "Expensive operation, not needed every tick"
+
+  graph_extraction:
+    input: "WorldState.to_graph() -> nx.DiGraph"
+    output: "nx.Graph (undirected) for component analysis"
+    filter: "Only SOLIDARITY edges, only social_class nodes"
+    rationale: "Territory nodes are spatial substrate, not solidarity network"

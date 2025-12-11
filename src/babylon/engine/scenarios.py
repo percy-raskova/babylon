@@ -192,6 +192,195 @@ def create_labor_aristocracy_scenario() -> tuple[WorldState, SimulationConfig]:
     )
 
 
+def create_imperial_circuit_scenario(
+    periphery_wealth: float = 0.1,
+    core_wealth: float = 0.9,
+    comprador_cut: float = 0.15,
+    imperial_rent_pool: float = 100.0,
+    extraction_efficiency: float = 0.8,
+    repression_level: float = 0.5,
+) -> tuple[WorldState, SimulationConfig]:
+    """Create the 4-node Imperial Circuit scenario.
+
+    This scenario fixes the "Robin Hood" bug in create_two_node_scenario() where
+    super-wages incorrectly flow to periphery workers. In MLM-TW theory, super-wages
+    should only go to the Labor Aristocracy (core workers), NOT periphery workers.
+
+    Topology:
+        P_w (P001) --EXPLOITATION--> P_c (P002) --TRIBUTE--> C_b (C001) --WAGES--> C_w (C002)
+                                          |                         |
+                                     (keeps 15% cut)          CLIENT_STATE
+                                          ^-----------------------+
+                                          |
+                                    SOLIDARITY (strength=0.0)
+                                          +<------------------------- P_w
+
+    Value Flow:
+        1. EXPLOITATION: P_w -> P_c (imperial rent extraction from workers)
+        2. TRIBUTE: P_c -> C_b (comprador sends tribute, keeps comprador_cut)
+        3. WAGES: C_b -> C_w (super-wages to labor aristocracy, NOT periphery!)
+        4. CLIENT_STATE: C_b -> P_c (subsidy to stabilize client state)
+        5. SOLIDARITY: P_w -> C_w (potential internationalism, starts at 0)
+
+    Args:
+        periphery_wealth: Initial wealth for periphery worker P001 (default 0.1)
+        core_wealth: Initial wealth for core bourgeoisie C001 (default 0.9)
+        comprador_cut: Fraction comprador keeps from extracted value (default 0.15)
+        imperial_rent_pool: Initial imperial rent pool (default 100.0)
+        extraction_efficiency: Alpha in imperial rent formula (default 0.8)
+        repression_level: Base repression level (default 0.5)
+
+    Returns:
+        Tuple of (WorldState, SimulationConfig) ready for step() function.
+
+    Example:
+        >>> state, config = create_imperial_circuit_scenario()
+        >>> # Verify wages go to labor aristocracy, not periphery
+        >>> wages_edges = [r for r in state.relationships if r.edge_type == EdgeType.WAGES]
+        >>> assert state.entities[wages_edges[0].target_id].role == SocialRole.LABOR_ARISTOCRACY
+    """
+    # C001: Periphery Worker (P_w) - source of extracted value
+    periphery_worker = SocialClass(
+        id="C001",
+        name="Periphery Worker",
+        role=SocialRole.PERIPHERY_PROLETARIAT,
+        description="Exploited worker in the global periphery",
+        wealth=periphery_wealth,
+        ideology=-0.3,  # type: ignore[arg-type]  # Validator converts
+        organization=0.1,
+        repression_faced=repression_level,
+        subsistence_threshold=0.3,  # High vulnerability
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+    )
+
+    # C002: Comprador (P_c) - intermediary class, keeps a cut
+    comprador = SocialClass(
+        id="C002",
+        name="Comprador",
+        role=SocialRole.COMPRADOR_BOURGEOISIE,
+        description="Intermediary extracting value for imperial core",
+        wealth=periphery_wealth * 2,
+        ideology=0.3,  # type: ignore[arg-type]  # Validator converts
+        organization=0.5,
+        repression_faced=repression_level * 0.6,  # Somewhat protected
+        subsistence_threshold=0.2,
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+    )
+
+    # C003: Core Bourgeoisie (C_b) - receives tribute, pays wages
+    core_bourgeoisie = SocialClass(
+        id="C003",
+        name="Core Bourgeoisie",
+        role=SocialRole.CORE_BOURGEOISIE,
+        description="Capital owner in the imperial core",
+        wealth=core_wealth,
+        ideology=0.8,  # type: ignore[arg-type]  # Reactionary
+        organization=0.8,
+        repression_faced=0.1,  # Protected by the state
+        subsistence_threshold=0.1,
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+    )
+
+    # C004: Labor Aristocracy (C_w) - receives super-wages (THE FIX)
+    labor_aristocracy = SocialClass(
+        id="C004",
+        name="Labor Aristocracy",
+        role=SocialRole.LABOR_ARISTOCRACY,
+        description="Core workers benefiting from imperial rent",
+        wealth=core_wealth * 0.2,
+        ideology=0.2,  # type: ignore[arg-type]  # Conservative but not reactionary
+        organization=0.4,
+        repression_faced=0.2,  # Low repression due to privilege
+        subsistence_threshold=0.1,  # Low vulnerability due to super-wages
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+    )
+
+    # Edge 1: EXPLOITATION - P_w (C001) -> P_c (C002)
+    exploitation = Relationship(
+        source_id="C001",
+        target_id="C002",
+        edge_type=EdgeType.EXPLOITATION,
+        description="Value flows from periphery to comprador",
+        value_flow=0.0,
+        tension=0.0,
+    )
+
+    # Edge 2: TRIBUTE - P_c (C002) -> C_b (C003)
+    tribute = Relationship(
+        source_id="C002",
+        target_id="C003",
+        edge_type=EdgeType.TRIBUTE,
+        description="Imperial rent transfer (minus comprador cut)",
+        value_flow=0.0,
+        tension=0.0,
+    )
+
+    # Edge 3: WAGES - C_b (C003) -> C_w (C004) - THE FIX: targets labor aristocracy, NOT periphery
+    wages = Relationship(
+        source_id="C003",
+        target_id="C004",
+        edge_type=EdgeType.WAGES,
+        description="Super-wages buying loyalty",
+        value_flow=0.0,
+        tension=0.0,
+    )
+
+    # Edge 4: CLIENT_STATE - C_b (C003) -> P_c (C002)
+    client_state = Relationship(
+        source_id="C003",
+        target_id="C002",
+        edge_type=EdgeType.CLIENT_STATE,
+        description="Subsidy for client state stabilization",
+        value_flow=0.0,
+        tension=0.0,
+        subsidy_cap=10.0,
+    )
+
+    # Edge 5: SOLIDARITY - P_w (C001) -> C_w (C004)
+    solidarity = Relationship(
+        source_id="C001",
+        target_id="C004",
+        edge_type=EdgeType.SOLIDARITY,
+        description="Potential internationalism",
+        value_flow=0.0,
+        tension=0.0,
+        solidarity_strength=0.0,  # Starts separated - must be built
+    )
+
+    # Create world state with 4 nodes and 5 edges
+    state = WorldState(
+        tick=0,
+        entities={
+            "C001": periphery_worker,
+            "C002": comprador,
+            "C003": core_bourgeoisie,
+            "C004": labor_aristocracy,
+        },
+        relationships=[exploitation, tribute, wages, client_state, solidarity],
+        event_log=[],
+    )
+
+    # Create configuration with high PPP multiplier for labor aristocracy
+    config = SimulationConfig(
+        extraction_efficiency=extraction_efficiency,
+        repression_level=repression_level,
+        subsistence_threshold=0.3,
+        survival_steepness=10.0,
+        consciousness_sensitivity=0.5,
+        initial_worker_wealth=periphery_wealth,
+        initial_owner_wealth=core_wealth,
+        comprador_cut=comprador_cut,
+        superwage_multiplier=1.5,  # High PPP for labor aristocracy
+        initial_rent_pool=imperial_rent_pool,
+    )
+
+    return state, config
+
+
 # =============================================================================
 # MULTIVERSE PROTOCOL: Scenario Injection
 # =============================================================================

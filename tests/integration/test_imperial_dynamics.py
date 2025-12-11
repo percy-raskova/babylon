@@ -70,7 +70,7 @@ def create_imperial_circuit_scenario(
     periphery_comprador = SocialClass(
         id="C002",  # P_c
         name="Periphery Comprador",
-        role=SocialRole.PETTY_BOURGEOISIE,
+        role=SocialRole.COMPRADOR_BOURGEOISIE,
         description="Local collaborator class in the periphery",
         wealth=p_c_wealth,
         ideology=0.5,  # Reactionary

@@ -29,6 +29,7 @@ class SocialRole(StrEnum):
         LABOR_ARISTOCRACY: Core workers benefiting from imperial rent
         PETTY_BOURGEOISIE: Small owners, professionals, shopkeepers
         LUMPENPROLETARIAT: Outside formal economy, precarious existence
+        COMPRADOR_BOURGEOISIE: Intermediary class in periphery, collaborates with imperial core
     """
 
     CORE_BOURGEOISIE = "core_bourgeoisie"
@@ -36,6 +37,7 @@ class SocialRole(StrEnum):
     LABOR_ARISTOCRACY = "labor_aristocracy"
     PETTY_BOURGEOISIE = "petty_bourgeoisie"
     LUMPENPROLETARIAT = "lumpenproletariat"
+    COMPRADOR_BOURGEOISIE = "comprador_bourgeoisie"
 
 
 class EdgeType(StrEnum):

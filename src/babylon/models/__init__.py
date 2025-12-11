@@ -44,6 +44,9 @@ from babylon.models.enums import (
 
 # Scenario configuration for multiverse simulation
 from babylon.models.scenario import ScenarioConfig
+
+# Sprint 3.1: Topology Metrics
+from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 from babylon.models.types import (
     Coefficient,
     Currency,
@@ -94,4 +97,7 @@ __all__ = [
     "SpatialComponent",
     "IdeologicalComponent",
     "OrganizationComponent",
+    # Sprint 3.1: Topology Metrics
+    "TopologySnapshot",
+    "ResilienceResult",
 ]

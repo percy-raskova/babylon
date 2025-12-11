@@ -27,6 +27,7 @@ from babylon.engine.scenarios import (
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation import Simulation
 from babylon.engine.simulation_engine import SimulationEngine, step
+from babylon.engine.topology_monitor import TopologyMonitor
 
 __all__ = [
     # Core engine
@@ -50,4 +51,5 @@ __all__ = [
     "ServiceContainer",
     # Observer Pattern (Sprint 3.1)
     "SimulationObserver",
+    "TopologyMonitor",
 ]

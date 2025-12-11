@@ -3,7 +3,7 @@
 # This document records playable boundaries and gameplay insights
 
 meta:
-  version: "1.1.0"
+  version: "1.2.0"
   created: "2025-12-11"
   updated: "2025-12-11"
   purpose: "Record empirical balance findings from sensitivity analysis"
@@ -387,3 +387,61 @@ tuning_log:
         description: |
           Total rent extracted converges to ~0.099 regardless of extraction rate.
           Confirms Imperial Collapse Dynamic mathematically.
+
+  - date: "2025-12-11"
+    session: "Post-Agency Layer Implementation"
+    methodology: "Validation sweep after StruggleSystem integration"
+    tool_version: "tools/parameter_analysis.py v1.0"
+    commands_run:
+      - "mise run analyze-trace (16 ticks, early termination)"
+      - "mise run analyze-sweep (10 values: 0.05-0.50)"
+    trace_observations:
+      ticks_recorded: 16
+      termination_reason: "Peripheral wealth depletion"
+      core_bourgeoisie:
+        initial: 0.9
+        final: 1.10
+        change: "+22% accumulation"
+      peripheral_workers:
+        initial_wealth: 0.1
+        final_wealth: 0.0007
+        consciousness: "Fixed at 0.65 (unchanged)"
+        psa_trend: "0.093 → 0.048 (declining acquiescence)"
+        psr_trend: "~0.2 (constant)"
+      edge_dynamics:
+        exploitation_rent: "0.028 → 0.0003 (decays as wealth depletes)"
+        exploitation_tension: "0 → 0.01 (rising contradiction)"
+        tribute_flow: "Active throughout simulation"
+
+    sweep_observations:
+      critical_threshold: 0.30
+      threshold_meaning: "Extraction >= 0.30 causes DIED outcome before 50 ticks"
+      survival_decay:
+        - {extraction: 0.30, ticks: 43}
+        - {extraction: 0.35, ticks: 37}
+        - {extraction: 0.40, ticks: 32}
+        - {extraction: 0.45, ticks: 28}
+        - {extraction: 0.50, ticks: 25}
+      rent_saturation: |
+        Cumulative rent plateaus at ~0.099 for extraction >= 0.25.
+        Higher extraction doesn't yield more total rent - it just kills faster.
+      tension_paradox: |
+        LOWER extraction produces HIGHER max tension:
+        - extraction=0.05: max_tension=0.160
+        - extraction=0.50: max_tension=0.021
+        This confirms Imperial Collapse Dynamic: slower extraction allows
+        contradiction to accumulate longer before system collapse.
+
+    validated_findings:
+      - "Imperial Collapse Dynamic confirmed with post-Agency Layer code"
+      - "Rent saturation around 0.099 regardless of extraction rate"
+      - "Critical threshold remains at ~0.30 (boundary 0.25-0.26)"
+      - "Core bourgeoisie accumulates ~1.10 wealth regardless of extraction"
+
+    outstanding_issues:
+      - name: "Consciousness Stagnation"
+        status: "STILL_PRESENT"
+        description: "p_w_consciousness and c_w_consciousness unchanged from initial"
+      - name: "Immediate Crossover"
+        status: "STILL_PRESENT"
+        description: "crossover_tick=1 for all parameter values"

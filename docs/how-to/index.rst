@@ -28,6 +28,23 @@ Guides for extending and customizing the simulation mechanics.
    Load, modify, and analyze ``GameDefines`` parameters. Includes parameter
    sweeps and sensitivity analysis workflows.
 
+Debugging & Analysis
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   debug-simulation-outcomes
+   analyze-parameter-sensitivity
+
+**Debug Simulation Outcomes**
+   Diagnose unexpected results systematically. Use structured logging,
+   trace analysis, and formula verification to identify issues.
+
+**Analyze Parameter Sensitivity**
+   Explore how parameter changes affect simulation outcomes. Run sweeps,
+   identify thresholds, and validate theoretical predictions.
+
 GUI Development
 ---------------
 
@@ -46,7 +63,7 @@ Coming Soon
 These guides are planned for future development:
 
 - **Optimize RAG** - Improve AI narrative generation performance
-- **Debug Simulation** - Troubleshoot unexpected behavior
+- **Build PDF Documentation** - Generate PDF books from Sphinx docs
 
 See Also
 --------

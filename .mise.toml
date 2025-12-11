@@ -96,6 +96,24 @@ run = "rm -rf docs/_build docs/api/_autosummary"
 description = "Clean and build Sphinx documentation"
 depends = ["docs-clean", "docs"]
 
+[tasks.docs-pdf]
+description = "Build PDF documentation (all 6 books)"
+run = """
+cd docs && \
+poetry run sphinx-build -b latex . _build/latex && \
+cd _build/latex && \
+make all-pdf
+"""
+
+[tasks.docs-pdf-single]
+description = "Build a single PDF book (usage: mise run docs-pdf-single babylon-concepts)"
+run = """
+cd docs && \
+poetry run sphinx-build -b latex . _build/latex && \
+cd _build/latex && \
+latexmk -pdf -interaction=nonstopmode ${1:-babylon-complete}.tex
+"""
+
 # =============================================================================
 # DATA / RAG
 # =============================================================================

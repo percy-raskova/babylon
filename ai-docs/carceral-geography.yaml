@@ -1,0 +1,318 @@
+# Carceral Geography: The Necropolitical Triad
+# =============================================
+#
+# Sprint 3.7 Implementation
+#
+# Transforms the TerritorySystem from a heat map into a
+# Settler-Colonial Displacement Engine.
+#
+# Theoretical basis: Mbembe's Necropolitics + Prison Abolition literature
+
+meta:
+  version: "1.0.0"
+  status: implemented
+  sprint: "3.7"
+  commits:
+    - hash: "321a765"
+      message: "feat(engine): add Carceral Geography to TerritorySystem"
+    - hash: "36f8647"
+      message: "fix(__main__): update unpacking for create_two_node_scenario"
+
+# =============================================================================
+# TERRITORY TYPE ENUM
+# =============================================================================
+
+territory_type:
+  location: "src/babylon/models/enums.py"
+  class: "TerritoryType"
+  base: "StrEnum"
+
+  values:
+    CORE:
+      value: "core"
+      description: "High value, low heat. Labor aristocracy destination."
+      is_sink: false
+      imperial_rent_flow: recipient
+
+    PERIPHERY:
+      value: "periphery"
+      description: "Low value, high heat. Source of cheap labor."
+      is_sink: false
+      imperial_rent_flow: source
+
+    RESERVATION:
+      value: "reservation"
+      description: "Containment. High subsistence cost, no labor value."
+      is_sink: true
+      necropolitical_function: containment
+      population_effect: none
+      organization_effect: none
+
+    PENAL_COLONY:
+      value: "penal_colony"
+      description: "Extraction. Forced labor zone, suppresses Organization."
+      is_sink: true
+      necropolitical_function: extraction
+      population_effect: none
+      organization_effect: "set to 0.0 for connected SocialClass nodes"
+
+    CONCENTRATION_CAMP:
+      value: "concentration_camp"
+      description: "Elimination. High population decay, generates Terror."
+      is_sink: true
+      necropolitical_function: elimination
+      population_effect: "decay by concentration_camp_decay_rate per tick"
+      organization_effect: none
+
+# =============================================================================
+# TERRITORY MODEL UPDATES
+# =============================================================================
+
+territory_model:
+  location: "src/babylon/models/entities/territory.py"
+
+  new_field:
+    name: "territory_type"
+    type: "TerritoryType"
+    default: "TerritoryType.CORE"
+    description: "Classification in settler-colonial hierarchy"
+
+  new_property:
+    name: "is_sink_node"
+    returns: bool
+    description: |
+      Whether territory is a sink node in the displacement pipeline.
+      Returns True for RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP.
+    implementation: |
+      return self.territory_type in {
+          TerritoryType.RESERVATION,
+          TerritoryType.PENAL_COLONY,
+          TerritoryType.CONCENTRATION_CAMP,
+      }
+
+# =============================================================================
+# TERRITORY SYSTEM UPDATES
+# =============================================================================
+
+territory_system:
+  location: "src/babylon/engine/systems/territory.py"
+
+  new_class_variable:
+    name: "_SINK_PRIORITY"
+    type: "dict[TerritoryType, int]"
+    value:
+      CONCENTRATION_CAMP: 0  # Highest priority
+      PENAL_COLONY: 1
+      RESERVATION: 2
+
+  new_methods:
+    _find_sink_node:
+      signature: "(self, source_node_id: str, graph: nx.DiGraph[str]) -> str | None"
+      description: |
+        Find a sink node adjacent to source for displaced population routing.
+        Uses ADJACENCY edges. Returns highest priority sink or None.
+      priority_order:
+        - CONCENTRATION_CAMP  # "The Final Solution"
+        - PENAL_COLONY        # Extraction
+        - RESERVATION         # Containment
+
+    _process_necropolitics:
+      signature: "(self, graph: nx.DiGraph[str], services: ServiceContainer) -> None"
+      description: |
+        Process necropolitical effects on sink territories.
+        Called after eviction pipeline, before spillover.
+      effects:
+        CONCENTRATION_CAMP:
+          action: "population *= (1.0 - concentration_camp_decay_rate)"
+          meaning: "Elimination - accelerated death"
+        PENAL_COLONY:
+          action: "Find TENANCY edges, set source organization = 0.0"
+          meaning: "Atomization - breaking the strike"
+        RESERVATION:
+          action: "none"
+          meaning: "Containment - population warehoused"
+
+    _suppress_organization:
+      signature: "(self, territory_id: str, graph: nx.DiGraph[str]) -> None"
+      description: |
+        Suppress organization for all SocialClass nodes connected to a
+        penal colony via TENANCY edges.
+
+  modified_methods:
+    step:
+      change: "Added call to _process_necropolitics after eviction"
+      new_order:
+        - _process_heat_dynamics
+        - _process_eviction_pipeline
+        - _process_necropolitics  # NEW
+        - _process_spillover
+
+    _process_eviction_pipeline:
+      change: "Population transfer instead of deletion"
+      old_behavior: "population = int(population * (1 - displacement_rate))"
+      new_behavior: |
+        1. Calculate displaced_pop = current_pop * displacement_rate
+        2. Find target via _find_sink_node()
+        3. If target: transfer population (decrement source, increment target)
+        4. If no target: keep deletion as fallback (exile/death)
+
+# =============================================================================
+# CONFIGURATION
+# =============================================================================
+
+config:
+  location: "src/babylon/models/config.py"
+
+  new_parameter:
+    name: "concentration_camp_decay_rate"
+    type: "Coefficient"  # [0.0, 1.0]
+    default: 0.2
+    description: |
+      Population decay rate in CONCENTRATION_CAMP territories.
+      Default 0.2 = 20% population loss per tick (elimination).
+
+# =============================================================================
+# DISPLACEMENT PIPELINE
+# =============================================================================
+
+displacement_pipeline:
+  description: |
+    The flow of population through the carceral geography.
+    Eviction triggers displacement; sinks absorb displaced populations.
+
+  trigger:
+    condition: "heat >= eviction_heat_threshold AND under_eviction"
+    default_threshold: 0.8
+
+  routing:
+    step_1: "Calculate displaced_pop = population * displacement_rate"
+    step_2: "Find adjacent sink via ADJACENCY edges"
+    step_3: "Route to highest-priority sink available"
+    step_4: "Transfer population (source - displaced, target + displaced)"
+    fallback: "If no sink, population disappears (original behavior)"
+
+  priority_logic: |
+    CONCENTRATION_CAMP > PENAL_COLONY > RESERVATION
+
+    The state prefers:
+    1. Elimination (camps) - permanent solution
+    2. Extraction (prisons) - profit from forced labor
+    3. Containment (reservations) - warehousing without value
+
+# =============================================================================
+# NECROPOLITICS PHASE
+# =============================================================================
+
+necropolitics_phase:
+  description: |
+    New phase added to TerritorySystem.step().
+    Processes effects specific to sink territories.
+
+  timing: "After eviction pipeline, before spillover"
+
+  effects:
+    concentration_camp:
+      mechanic: "population *= (1.0 - decay_rate)"
+      default_decay: 0.2
+      meaning: |
+        Elimination. The state actively kills populations.
+        Not through single events but through sustained attrition.
+        Historical parallels: death camps, medical neglect, exposure.
+
+    penal_colony:
+      mechanic: "Connected SocialClass.organization = 0.0"
+      edge_type: "TENANCY"
+      meaning: |
+        Atomization. The prison breaks solidarity.
+        Historical parallels: prison gangs, solitary confinement,
+        COINTELPRO-style disruption of organizing.
+
+    reservation:
+      mechanic: "none (containment only)"
+      meaning: |
+        Warehousing. Population neither grows nor organizes.
+        Historical parallels: reservations, public housing, refugee camps.
+
+# =============================================================================
+# TEST COVERAGE
+# =============================================================================
+
+tests:
+  model_tests:
+    location: "tests/unit/models/test_territory.py"
+    new_tests:
+      - test_territory_type_defaults_to_core
+      - test_is_sink_node_true_for_reservation
+      - test_is_sink_node_true_for_penal_colony
+      - test_is_sink_node_true_for_concentration_camp
+      - test_is_sink_node_false_for_core
+      - test_is_sink_node_false_for_periphery
+    count: 6
+
+  system_tests:
+    location: "tests/unit/engine/systems/test_territory_system.py"
+    new_tests:
+      - test_find_sink_node_returns_concentration_camp_priority
+      - test_find_sink_node_returns_penal_colony_when_no_camp
+      - test_find_sink_node_returns_reservation_when_no_higher_priority
+      - test_find_sink_node_returns_none_when_no_sinks
+      - test_eviction_transfers_population_to_sink
+      - test_eviction_deletes_population_when_no_sink
+      - test_concentration_camp_eliminates_population
+      - test_penal_colony_suppresses_connected_class_organization
+    count: 8
+
+  total_new_tests: 14
+  total_territory_tests: 63
+  total_project_tests: 1459
+  status: "all passing"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  eviction_pipeline:
+    relation: "extended"
+    description: "Displacement now routes to sinks instead of deletion"
+
+  solidarity_system:
+    relation: "attacked by"
+    description: "PENAL_COLONY suppresses organization, breaking solidarity"
+
+  consciousness_system:
+    relation: "future integration"
+    description: "Sink populations may have altered consciousness dynamics"
+
+  future_work:
+    - "Liberation mechanics (converting sinks to liberated zones)"
+    - "Extraction operations (rescuing populations)"
+    - "Counter-infrastructure (solidarity edges INTO sinks)"
+    - "Terror generation (camps generate repression bonus)"
+
+# =============================================================================
+# THEORETICAL FRAMEWORK
+# =============================================================================
+
+theory:
+  necropolitics:
+    source: "Achille Mbembe, 'Necropolitics' (2003)"
+    key_concept: |
+      Sovereignty as the power to dictate who may live and who must die.
+      Not just the right to kill but the differential allocation of death.
+
+  prison_industrial_complex:
+    sources:
+      - "Angela Davis, 'Are Prisons Obsolete?'"
+      - "Ruth Wilson Gilmore, 'Golden Gulag'"
+    key_concept: |
+      Mass incarceration as population management, not crime control.
+      Warehousing surplus labor, extracting value, breaking solidarity.
+
+  settler_colonialism:
+    sources:
+      - "Patrick Wolfe, 'Settler Colonialism and the Elimination of the Native'"
+      - "J. Sakai, 'Settlers: The Mythology of the White Proletariat'"
+    key_concept: |
+      Elimination is the organizing principle of settler-colonial society.
+      The logic of elimination structures land, labor, and state violence.

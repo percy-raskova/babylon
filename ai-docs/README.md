@@ -21,9 +21,11 @@ This directory helps AI assistants:
 | `formulas-spec.yaml` | All 12 mathematical formulas with signatures | YAML |
 | `entities.yaml` | 17 game entity types and relationships | YAML |
 | `ontology.yaml` | Domain terms (MLM-TW, architecture, game) | YAML |
-| `decisions.yaml` | Architecture Decision Records (ADR001-ADR013) | YAML |
+| `decisions.yaml` | Architecture Decision Records (ADR001-ADR024) | YAML |
 | `patterns.yaml` | How to do things here | YAML |
 | `anti-patterns.yaml` | What NOT to do | YAML |
+| `mantras.yaml` | Guiding principles as memorable phrases | YAML |
+| `tooling.yaml` | CI/CD, Sphinx, linting configuration | YAML |
 | `game-data.yaml` | External data sources and CI/CD pipeline | YAML |
 | `theory.md` | MLM-TW theoretical foundation | Markdown |
 | `rag-architecture.yaml` | RAG as permission system, validation pipeline | YAML |

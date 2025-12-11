@@ -150,15 +150,135 @@ model:
    defines.economy.extraction_efficiency  # 0.8 default
    defines.consciousness.drift_sensitivity_k  # Consciousness drift rate
 
-Categories include:
+Economy Parameters
+~~~~~~~~~~~~~~~~~~
 
-- ``economy`` - Economic parameters (extraction, wages, rent)
-- ``consciousness`` - Ideology drift parameters
-- ``solidarity`` - SOLIDARITY edge decay and transmission
-- ``survival`` - P(S|A), P(S|R) calculation parameters
-- ``territory`` - Heat, eviction, displacement parameters
+Control imperial rent extraction and wealth flows:
 
-See :doc:`/guides/configuration` for detailed usage examples.
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``extraction_efficiency``
+     - 0.8
+     - Fraction of surplus captured as imperial rent
+   * - ``tribute_rate``
+     - 0.1
+     - Base rate of tribute extraction per tick
+   * - ``wage_floor``
+     - 0.05
+     - Minimum wage (prevents zero-wealth)
+   * - ``wealth_transfer_rate``
+     - 0.15
+     - Rate of wealth movement along edges
+
+Consciousness Parameters
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Control ideology drift and bifurcation:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``drift_sensitivity_k``
+     - 0.1
+     - How fast ideology changes per tick
+   * - ``agitation_threshold``
+     - 0.3
+     - Minimum agitation to trigger drift
+   * - ``consciousness_cap``
+     - 1.0
+     - Maximum consciousness value
+   * - ``bifurcation_enabled``
+     - True
+     - Enable George Jackson model
+
+Solidarity Parameters
+~~~~~~~~~~~~~~~~~~~~~
+
+Control SOLIDARITY edge dynamics:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``decay_base``
+     - 0.95
+     - Solidarity decay per tick (0.95 = 5% decay)
+   * - ``transmission_rate``
+     - 0.1
+     - Consciousness spread along edges
+   * - ``formation_threshold``
+     - 0.3
+     - Consciousness needed to form new edges
+   * - ``min_strength``
+     - 0.05
+     - Edges below this are pruned
+
+Survival Parameters
+~~~~~~~~~~~~~~~~~~~
+
+Control survival calculus:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``subsistence_threshold``
+     - 0.2
+     - Wealth level for basic survival
+   * - ``sigmoid_steepness``
+     - 10.0
+     - Steepness of P(S|A) sigmoid curve
+   * - ``loss_aversion``
+     - 2.0
+     - Kahneman-Tversky loss aversion factor
+   * - ``revolution_damping``
+     - 0.5
+     - Reduces P(S|R) (revolution is risky)
+
+Territory Parameters
+~~~~~~~~~~~~~~~~~~~~
+
+Control carceral geography:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 15 50
+
+   * - Parameter
+     - Default
+     - Description
+   * - ``heat_threshold``
+     - 0.8
+     - Heat level triggering eviction
+   * - ``heat_decay``
+     - 0.1
+     - Heat reduction per tick
+   * - ``spillover_coefficient``
+     - 0.2
+     - Heat transferred on displacement
+   * - ``detention_duration``
+     - 5
+     - Ticks in detention before incarceration
+   * - ``displacement_priority``
+     - BALANCED
+     - Default mode (LABOR_SCARCE/BALANCED/ELIMINATION)
+
+See :doc:`/how-to/parameter-tuning` for usage examples and tuning workflows.
 
 Best Practices
 --------------
@@ -172,6 +292,6 @@ Best Practices
 See Also
 --------
 
-- :doc:`/guides/configuration` - Configuration how-to guide
+- :doc:`/how-to/parameter-tuning` - Parameter tuning workflow guide
 - :py:mod:`babylon.config` - Configuration module API
 - :doc:`error-codes` - Error code reference

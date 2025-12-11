@@ -9,20 +9,34 @@ you already understand the basics and need to solve a particular problem.
    **Looking for tutorials?** See :doc:`/tutorials/index` for learning-oriented
    guides that build foundational knowledge.
 
-Development
------------
+Extending the Simulation
+------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   add-custom-system
+   parameter-tuning
+
+Guides for extending and customizing the simulation mechanics.
+
+**Add a Custom System**
+   Create, register, and test custom simulation systems to model new
+   mechanics like propaganda, sanctions, or environmental effects.
+
+**Tune Simulation Parameters**
+   Load, modify, and analyze ``GameDefines`` parameters. Includes parameter
+   sweeps and sensitivity analysis workflows.
+
+GUI Development
+---------------
 
 .. toctree::
    :maxdepth: 1
 
    gui-development
 
-Guides for extending and customizing the simulation.
-
-Available Guides
-----------------
-
-**GUI Development**
+**GUI Development Plan**
    Build visualization and user interface features using NiceGUI.
    Covers the phased approach from basic displays to full interactivity.
 
@@ -31,8 +45,6 @@ Coming Soon
 
 These guides are planned for future development:
 
-- **Parameter Tuning** - Adjust GameDefines for different scenarios
-- **Add Custom System** - Create a new simulation system
 - **Optimize RAG** - Improve AI narrative generation performance
 - **Debug Simulation** - Troubleshoot unexpected behavior
 

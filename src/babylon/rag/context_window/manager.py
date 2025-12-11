@@ -1,3 +1,25 @@
+"""Context window manager for token-aware content prioritization.
+
+This module implements dynamic context window management for RAG systems,
+ensuring AI model context limits are respected while maximizing information
+density. Key features:
+
+- Token counting and capacity tracking
+- Priority-based content eviction (relevance, recency, hybrid strategies)
+- Automatic optimization at configurable thresholds
+- Metrics integration for monitoring and tuning
+
+The manager is designed for high-throughput scenarios where context must
+be continuously optimized as new content arrives and old content ages.
+
+Example:
+    >>> from babylon.rag.context_window import ContextWindowManager
+    >>> manager = ContextWindowManager()
+    >>> manager.add_content("key1", "Some text content", importance=0.8)
+    >>> manager.current_usage
+    4  # tokens
+"""
+
 import logging
 from collections import Counter
 from datetime import datetime

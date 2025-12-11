@@ -437,6 +437,33 @@ implementation:
           This enables Fascist Bifurcation mechanic (ADR016).
           "Agitation without solidarity produces fascism, not revolution."
 
+      sprint_3_4_2_hotfix:
+        name: "Wage Calculation Bug Fix"
+        status: "COMPLETE"
+        commit: "a2e8f89"
+        tests_passing: 1341
+        bug_fixed: |
+          CRITICAL: Wages/subsidies were calculated from bourgeoisie accumulated wealth
+          instead of tribute_inflow (income). This caused Core Bourgeoisie to hemorrhage
+          wealth to Labor Aristocracy at an unsustainable rate.
+
+          Before fix: C_b drained 0.9 → 0.02 over 10 ticks (98% loss!)
+          After fix: C_b accumulates 0.9 → 1.11 over 10 ticks (23% gain)
+
+          Root cause: economic.py:279
+            BUGGY:  desired_wages = bourgeoisie_wealth * super_wage_rate
+            FIXED:  desired_wages = tribute_inflow * super_wage_rate
+
+          Theory: In MLM-TW, super-wages come from extracted imperial rent surplus
+          (current income flow), not from bourgeoisie capital (accumulated wealth).
+
+        deliverables:
+          - "Fixed wage formula to use tribute_inflow (income) not wealth (capital)"
+          - "Fixed subsidy formula with same pattern"
+          - "Track direct extraction to CORE_BOURGEOISIE as tribute_inflow (2-node compatibility)"
+          - "Added 3 regression tests in TestWageCalculationCorrectness"
+          - "Updated integration tests to reflect correct behavior"
+
       sprint_3_4_3:
         name: "Multi-Dimensional Consciousness"
         status: "PLANNED"

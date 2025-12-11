@@ -2,9 +2,9 @@
 # Machine-readable specification for the semantic validation and retrieval system
 
 meta:
-  version: "1.3.0"
+  version: "1.4.0"
   created: "2025-12-08"
-  updated: "2025-12-09"
+  updated: "2025-12-10"
   purpose: "Define RAG as permission system and physics engine, not just retrieval"
   core_insight: "Semantic similarity is deterministic validation BEFORE LLM sees input"
   contents:
@@ -1022,8 +1022,27 @@ implementation:
 
   existing_infrastructure:
     chromadb: "src/babylon/rag/ - Already implemented, functional"
-    embedding_manager: "OpenAI API with caching and rate limiting"
+    embedding_manager: "Ollama API with embeddinggemma:latest (768 dimensions)"
     retriever: "High-level query interface with similarity scoring"
+
+  bugs_fixed:
+    zip_bug:
+      date: "2025-12-10"
+      commit: "086c72a"
+      description: |
+        RAG queries returned 0 results even when matches existed in ChromaDB.
+
+        Root cause: VectorStore.query_similar() was not including 'embeddings'
+        in the ChromaDB include list by default. The returned embeddings list
+        was empty [], which made zip() in Retriever.aquery() produce zero
+        iterations (since zip stops at the shortest list).
+
+        Fix: Add 'embeddings' to the default include list in retrieval.py:180
+          include = include or ["documents", "metadatas", "distances", "embeddings"]
+
+        Regression tests added:
+          - test_vector_store_default_include_has_embeddings
+          - test_retriever_returns_results_when_embeddings_present
 
   required_additions:
     - "Create actions collection (populate from game data)"

@@ -131,7 +131,8 @@ class Relationship(BaseModel):
     def edge_tuple(self) -> tuple[str, str]:
         """Return (source_id, target_id) tuple for NetworkX edge creation.
 
-        Usage:
+        Usage::
+
             G.add_edge(*relationship.edge_tuple, **relationship.edge_data)
         """
         return (self.source_id, self.target_id)
@@ -140,7 +141,8 @@ class Relationship(BaseModel):
     def edge_data(self) -> dict[str, object]:
         """Return edge attributes dict for NetworkX, excluding IDs.
 
-        Usage:
+        Usage::
+
             G.add_edge(*relationship.edge_tuple, **relationship.edge_data)
         """
         return self.model_dump(exclude={"source_id", "target_id"})

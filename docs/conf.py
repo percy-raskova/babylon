@@ -34,7 +34,27 @@ extensions = [
 templates_path = ["_templates"]
 
 # Patterns to exclude
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
+# Exclude legacy/orphan markdown files that aren't in any toctree
+exclude_patterns = [
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    # Legacy markdown files not in toctree
+    "AESTHETICS.md",
+    "AI_COMMS.md",
+    "CHANGELOG.md",
+    "CHROMA.md",
+    "CONFIGURATION.md",
+    "CONTEXT_WINDOW.md",
+    "ERROR_CODES.md",
+    "GUI_PLAN.md",
+    "LOGGING.md",
+    "OBJECT_TRACKING.md",
+    "SEMANTIC_VERSIONING_SPECIFICATION.md",
+    "census/census_tool_blueprint.md",
+    "census/census_tool_blueprint_v2.md",
+    "chroma-troubleshooting.md",
+]
 
 # Source file suffixes
 source_suffix = {
@@ -47,7 +67,7 @@ master_doc = "index"
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = "sphinx_rtd_theme"
-html_static_path = ["_static"]
+html_static_path: list[str] = []  # No static files needed
 
 html_theme_options = {
     "navigation_depth": 4,
@@ -55,7 +75,6 @@ html_theme_options = {
     "sticky_navigation": True,
     "includehidden": True,
     "titles_only": False,
-    "display_version": True,
     "logo_only": False,
 }
 
@@ -73,7 +92,7 @@ autodoc_default_options = {
     "undoc-members": True,
     "exclude-members": "__weakref__",
     "show-inheritance": True,
-    "inherited-members": True,  # Show inherited members from parent classes
+    # Note: inherited-members disabled to prevent Pydantic field duplication warnings
 }
 
 # Preserve default argument values in signatures
@@ -124,3 +143,8 @@ todo_include_todos = True
 
 # Autosummary
 autosummary_generate = True
+autosummary_imported_members = False  # Prevent documenting re-exported members twice
+
+# Duplicate object description warnings are expected behavior with Pydantic models
+# being re-exported in __init__.py files. These don't affect documentation quality.
+# The warnings cannot be suppressed with suppress_warnings but don't block the build.

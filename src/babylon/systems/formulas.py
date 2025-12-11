@@ -544,25 +544,27 @@ def calculate_ideological_routing(
         Tuple of (new_class_consciousness, new_national_identity, new_agitation)
 
     Example:
-        # Worker with falling wages and high solidarity -> revolutionary
-        cc, ni, ag = calculate_ideological_routing(
-            wage_change=-20.0,
-            solidarity_pressure=0.9,
-            current_class_consciousness=0.5,
-            current_national_identity=0.5,
-            current_agitation=0.0,
-        )
-        # cc will increase, ni will stay flat
+        Worker with falling wages and high solidarity routes to revolutionary::
 
-        # Worker with falling wages and no solidarity -> fascist
-        cc, ni, ag = calculate_ideological_routing(
-            wage_change=-20.0,
-            solidarity_pressure=0.0,
-            current_class_consciousness=0.5,
-            current_national_identity=0.5,
-            current_agitation=0.0,
-        )
-        # ni will increase, cc will stay flat
+            cc, ni, ag = calculate_ideological_routing(
+                wage_change=-20.0,
+                solidarity_pressure=0.9,
+                current_class_consciousness=0.5,
+                current_national_identity=0.5,
+                current_agitation=0.0,
+            )
+            # cc will increase, ni will stay flat
+
+        Worker with falling wages and no solidarity routes to fascism::
+
+            cc, ni, ag = calculate_ideological_routing(
+                wage_change=-20.0,
+                solidarity_pressure=0.0,
+                current_class_consciousness=0.5,
+                current_national_identity=0.5,
+                current_agitation=0.0,
+            )
+            # ni will increase, cc will stay flat
     """
     # Start with current values
     new_class = current_class_consciousness

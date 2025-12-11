@@ -155,3 +155,45 @@ version = "0.2.0"
 tag_format = "v$version"
 version_files = ["pyproject.toml:version"]
 update_changelog_on_bump = true
+
+# =============================================================================
+# BABYLON LOGGING CONFIGURATION
+# =============================================================================
+# Centralized log level control. Override with LOG_LEVEL env var for global,
+# or set per-module levels below for granular control.
+#
+# Levels: TRACE (5), DEBUG (10), INFO (20), WARNING (30), ERROR (40), CRITICAL (50)
+# =============================================================================
+[tool.babylon.logging]
+# Global default level (can be overridden by LOG_LEVEL env var)
+default_level = "INFO"
+
+# Console output level (usually INFO for clean output)
+console_level = "INFO"
+
+# File output level (usually DEBUG for detailed logs)
+file_level = "DEBUG"
+
+# Per-module log levels (override default for specific modules)
+[tool.babylon.logging.modules]
+# Engine systems - set to DEBUG when debugging simulation
+"babylon.engine" = "INFO"
+"babylon.engine.systems" = "INFO"
+"babylon.engine.simulation" = "INFO"
+
+# RAG system - set to DEBUG when debugging retrieval
+"babylon.rag" = "INFO"
+"babylon.rag.retrieval" = "INFO"
+"babylon.rag.embeddings" = "INFO"
+"babylon.rag.chunker" = "INFO"
+
+# Data layer
+"babylon.data" = "INFO"
+"babylon.data.chroma_manager" = "INFO"
+
+# Third-party suppressions (keep at WARNING to reduce noise)
+"chromadb" = "WARNING"
+"httpx" = "WARNING"
+"httpcore" = "WARNING"
+"urllib3" = "WARNING"
+"asyncio" = "WARNING"

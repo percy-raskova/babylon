@@ -135,6 +135,53 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 - **TDD**: Red-Green-Refactor cycle mandatory
 - **Conventional Commits**: Use `feat:`, `fix:`, `docs:`, `refactor:` prefixes
 - **SQLAlchemy 2.0**: Use `DeclarativeBase` with `Mapped` types for ORM models
+- **Sphinx-Compatible Docstrings**: All public classes/functions require RST-formatted docstrings
+
+## Docstring Standards
+
+**IMPORTANT**: All public classes, functions, and modules MUST have Sphinx-compatible docstrings.
+
+**Format**: RST (reStructuredText) - Sphinx's native format
+
+```python
+def calculate_imperial_rent(wages: Currency, value: Currency) -> Currency:
+    """Calculate imperial rent extracted via unequal exchange.
+
+    The fundamental theorem of MLM-TW: when wages exceed value produced,
+    the difference represents imperial rent transferred from periphery.
+
+    Args:
+        wages: Currency amount paid to workers in core.
+        value: Currency amount of value actually produced.
+
+    Returns:
+        Imperial rent (Phi) extracted from periphery workers.
+
+    Raises:
+        ValueError: If wages or value are negative.
+
+    Example:
+        >>> calculate_imperial_rent(wages=Currency(100.0), value=Currency(80.0))
+        Currency(20.0)
+
+    See Also:
+        :func:`calculate_exploitation_rate`: Related exploitation metric.
+        :class:`ImperialRentSystem`: System that applies this formula.
+    """
+```
+
+**RST Rules**:
+- Use `::` for code blocks (not markdown triple backticks)
+- Use `:param name:` or `Args:` section for parameters
+- Use `:returns:` or `Returns:` section for return values
+- Use `:raises ExceptionType:` or `Raises:` section for exceptions
+- Use `:class:`ClassName`` for cross-references to classes
+- Use `:func:`function_name`` for cross-references to functions
+- Use `:mod:`module.path`` for cross-references to modules
+- Blank line required before and after code blocks
+- Examples should pass `pytest --doctest-modules`
+
+**Why This Matters**: Sphinx autodoc generates API documentation from docstrings. Malformed docstrings produce warnings that block CI (we use `-W` flag). See `ai-docs/tooling.yaml` for configuration details.
 
 ## Mathematical Core
 

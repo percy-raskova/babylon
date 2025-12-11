@@ -115,13 +115,13 @@ class TestNarrativePipeline:
         director.on_tick(state_t0, state_t1)
 
         # Assert
-        assert (
-            len(director.narrative_log) == 1
-        ), "Expected one narrative entry after SURPLUS_EXTRACTION event"
+        assert len(director.narrative_log) == 1, (
+            "Expected one narrative entry after SURPLUS_EXTRACTION event"
+        )
         assert director.narrative_log[0] == "The capitalist class is extracting value."
-        assert (
-            mock_llm.call_count == 1
-        ), "MockLLM should be called exactly once for SURPLUS_EXTRACTION"
+        assert mock_llm.call_count == 1, (
+            "MockLLM should be called exactly once for SURPLUS_EXTRACTION"
+        )
 
     @pytest.mark.integration
     def test_no_narrative_without_surplus_extraction_event(
@@ -156,12 +156,12 @@ class TestNarrativePipeline:
         director.on_tick(state_t0, state_t1)
 
         # Assert
-        assert (
-            len(director.narrative_log) == 0
-        ), "No narrative should be generated for non-SURPLUS_EXTRACTION events"
-        assert (
-            mock_llm.call_count == 0
-        ), "MockLLM should not be called for non-SURPLUS_EXTRACTION events"
+        assert len(director.narrative_log) == 0, (
+            "No narrative should be generated for non-SURPLUS_EXTRACTION events"
+        )
+        assert mock_llm.call_count == 0, (
+            "MockLLM should not be called for non-SURPLUS_EXTRACTION events"
+        )
 
     @pytest.mark.integration
     def test_narrative_with_rag_context(
@@ -211,9 +211,9 @@ class TestNarrativePipeline:
 
         # Verify the prompt includes RAG context
         call_args = mock_llm.call_history[0]
-        assert (
-            "Marx wrote about surplus value" in call_args["prompt"]
-        ), "RAG context should be included in the prompt sent to LLM"
+        assert "Marx wrote about surplus value" in call_args["prompt"], (
+            "RAG context should be included in the prompt sent to LLM"
+        )
 
     @pytest.mark.integration
     def test_llm_error_does_not_crash_observer(
@@ -283,9 +283,9 @@ class TestNarrativePipeline:
         director.on_tick(state_t0, state_t1)
 
         # Assert
-        assert (
-            len(director.narrative_log) == 1
-        ), "lowercase surplus_extraction should trigger narrative generation"
+        assert len(director.narrative_log) == 1, (
+            "lowercase surplus_extraction should trigger narrative generation"
+        )
         assert mock_llm.call_count == 1
 
     @pytest.mark.integration
@@ -323,9 +323,9 @@ class TestNarrativePipeline:
         director.on_tick(state_t0, state_t1)
 
         # Assert
-        assert (
-            len(director.narrative_log) == 1
-        ), "Only one narrative per tick, regardless of event count"
+        assert len(director.narrative_log) == 1, (
+            "Only one narrative per tick, regardless of event count"
+        )
         assert mock_llm.call_count == 1
 
     @pytest.mark.integration
@@ -358,9 +358,9 @@ class TestNarrativePipeline:
         log_copy.clear()
 
         # Assert - internal state unchanged
-        assert (
-            len(director.narrative_log) == 1
-        ), "narrative_log should return a copy, not the internal list"
+        assert len(director.narrative_log) == 1, (
+            "narrative_log should return a copy, not the internal list"
+        )
 
     @pytest.mark.integration
     def test_no_llm_generation_when_use_llm_false(

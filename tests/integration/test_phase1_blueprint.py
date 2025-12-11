@@ -406,9 +406,9 @@ class TestEndToEndScenario:
             repression=worker.repression_faced,
         )
 
-        assert (
-            p_revolt_2 > p_acquiesce_2
-        ), "After exploitation and organization, revolt should be rational"
+        assert p_revolt_2 > p_acquiesce_2, (
+            "After exploitation and organization, revolt should be rational"
+        )
 
         # Verify the transition occurred
         assert worker.wealth < worker.subsistence_threshold

@@ -950,7 +950,7 @@ class TestMainModuleLogging:
                         )
                 elif isinstance(func, ast.Name) and func.id == "basicConfig":
                     pytest.fail(
-                        "Found basicConfig() call in __main__.py. " "Use setup_logging() instead."
+                        "Found basicConfig() call in __main__.py. Use setup_logging() instead."
                     )
 
 

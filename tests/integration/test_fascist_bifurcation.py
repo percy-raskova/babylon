@@ -93,15 +93,15 @@ class TestFascistBifurcationMultiDimensional:
         # The ideology should be an IdeologicalProfile with the new fields
         ideology_profile = worker_tick1.ideology
 
-        assert hasattr(
-            ideology_profile, "class_consciousness"
-        ), "IdeologicalProfile should have class_consciousness field"
-        assert hasattr(
-            ideology_profile, "national_identity"
-        ), "IdeologicalProfile should have national_identity field"
-        assert hasattr(
-            ideology_profile, "agitation"
-        ), "IdeologicalProfile should have agitation field"
+        assert hasattr(ideology_profile, "class_consciousness"), (
+            "IdeologicalProfile should have class_consciousness field"
+        )
+        assert hasattr(ideology_profile, "national_identity"), (
+            "IdeologicalProfile should have national_identity field"
+        )
+        assert hasattr(ideology_profile, "agitation"), (
+            "IdeologicalProfile should have agitation field"
+        )
 
         # Record initial values (after first tick establishes baseline)
         initial_class_consciousness = ideology_profile.class_consciousness
@@ -407,9 +407,9 @@ class TestFascistBifurcationMultiDimensional:
 
         # The key bifurcation: opposite routing of the same crisis energy
         # Worker A became more class conscious, Worker B became more nationalist
-        assert (
-            profile_a_final.class_consciousness > profile_b_final.class_consciousness
-        ), "Worker A should be more class conscious than Worker B after identical wage cuts"
-        assert (
-            profile_b_final.national_identity > profile_a_final.national_identity
-        ), "Worker B should be more nationalist than Worker A after identical wage cuts"
+        assert profile_a_final.class_consciousness > profile_b_final.class_consciousness, (
+            "Worker A should be more class conscious than Worker B after identical wage cuts"
+        )
+        assert profile_b_final.national_identity > profile_a_final.national_identity, (
+            "Worker B should be more nationalist than Worker A after identical wage cuts"
+        )

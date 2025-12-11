@@ -216,4 +216,6 @@ See Also
 - :doc:`/concepts/survival-calculus` - How agents choose acquiescence vs revolution
 - :doc:`/concepts/topology` - SOLIDARITY edge dynamics
 - :doc:`/concepts/percolation-theory` - Network condensation and resilience
+- :doc:`/reference/formulas` - Complete formula reference
+- :doc:`/reference/configuration` - GameDefines parameters
 - :py:mod:`babylon.engine.systems.ideology` - Implementation details

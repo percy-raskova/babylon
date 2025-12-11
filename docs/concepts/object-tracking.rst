@@ -326,5 +326,6 @@ See Also
 
 - :doc:`context-window` - Context window management details
 - :doc:`ai-integration` - AI communications guide
+- :doc:`/reference/context-window-api` - Complete API reference
 - :doc:`/reference/error-codes` - Error code reference
 - :doc:`/reference/configuration` - Configuration system

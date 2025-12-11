@@ -3,6 +3,28 @@ Reference
 
 Technical reference documentation for the Babylon simulation engine.
 
+Data Models
+-----------
+
+.. toctree::
+   :maxdepth: 1
+
+   data-models
+
+Complete specification of data structures, entity collections, constrained
+types, and graph structure.
+
+Mathematical Formulas
+---------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   formulas
+
+All simulation formulas: imperial rent, survival calculus, consciousness
+drift, solidarity transmission, and dynamic balance.
+
 Simulation Systems
 ------------------
 
@@ -34,6 +56,28 @@ Topology System
    topology
 
 Percolation theory metrics, TopologyMonitor observer, and resilience testing.
+
+Design System
+-------------
+
+.. toctree::
+   :maxdepth: 1
+
+   design-system
+
+Visual design tokens: color palette, typography, styling constants, and
+texture specifications for Bunker Constructivism aesthetic.
+
+AI & RAG
+--------
+
+.. toctree::
+   :maxdepth: 1
+
+   ai-prompting
+   context-window-api
+
+Prompt templates, API usage patterns, and context window management API.
 
 Error Handling
 --------------

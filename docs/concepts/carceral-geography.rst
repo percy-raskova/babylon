@@ -256,4 +256,6 @@ See Also
 - :doc:`/concepts/topology` - Territory nodes and ADJACENCY edges
 - :doc:`/concepts/survival-calculus` - How detention affects survival
 - :doc:`/concepts/george-jackson-model` - Prison as consciousness crucible
+- :doc:`/reference/formulas` - Heat and territory formulas
+- :doc:`/reference/configuration` - Territory GameDefines parameters
 - :py:mod:`babylon.engine.systems.territory` - Implementation details

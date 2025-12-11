@@ -71,3 +71,10 @@ See the survival formulas in :py:mod:`babylon.systems.formulas`:
 - :py:func:`~babylon.systems.formulas.calculate_acquiescence_probability`
 - :py:func:`~babylon.systems.formulas.calculate_revolution_probability`
 - :py:func:`~babylon.systems.formulas.calculate_crossover_threshold`
+
+See Also
+--------
+
+- :doc:`/concepts/george-jackson-model` - Consciousness bifurcation
+- :doc:`/concepts/imperial-rent` - Economic conditions affecting survival
+- :doc:`/reference/formulas` - Complete formula reference with examples

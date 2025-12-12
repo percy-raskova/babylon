@@ -12,7 +12,7 @@ Test Scenarios:
 Key Integration Points:
     - Simulation.run() triggers observer lifecycle hooks
     - TopologyMonitor.history captures snapshots each tick
-    - test_resilience() correctly identifies fragile vs. resilient networks
+    - check_resilience() correctly identifies fragile vs. resilient networks
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from babylon.engine.factories import create_proletariat
 from babylon.engine.simulation import Simulation
 from babylon.engine.topology_monitor import (
     TopologyMonitor,
-    test_resilience,
+    check_resilience,
 )
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
@@ -316,7 +316,7 @@ class TestFragileStarNetwork:
         # Seed that removes the hub (node C000) deterministically
         # We'll test with seed=0 and check if hub is removed
         # If not, we'll find a seed that does remove the hub
-        result = test_resilience(graph, removal_rate=0.2, seed=0)
+        result = check_resilience(graph, removal_rate=0.2, seed=0)
 
         # Original L_max = 11 (all connected via hub)
         assert result.original_max_component == 11
@@ -331,9 +331,9 @@ class TestFragileStarNetwork:
             assert result.is_resilient is False
         else:
             # Hub survived this seed - try another
-            result_seed_1 = test_resilience(graph, removal_rate=0.2, seed=1)
-            result_seed_2 = test_resilience(graph, removal_rate=0.2, seed=2)
-            result_seed_3 = test_resilience(graph, removal_rate=0.2, seed=3)
+            result_seed_1 = check_resilience(graph, removal_rate=0.2, seed=1)
+            result_seed_2 = check_resilience(graph, removal_rate=0.2, seed=2)
+            result_seed_3 = check_resilience(graph, removal_rate=0.2, seed=3)
 
             # At least one seed should remove the hub
             results = [result, result_seed_1, result_seed_2, result_seed_3]
@@ -354,7 +354,7 @@ class TestFragileStarNetwork:
         fragile_seed = None
 
         for seed in range(20):
-            result = test_resilience(graph, removal_rate=0.2, seed=seed)
+            result = check_resilience(graph, removal_rate=0.2, seed=seed)
             max_post_purge = max(max_post_purge, result.post_purge_max_component)
             min_post_purge = min(min_post_purge, result.post_purge_max_component)
             if not result.is_resilient:
@@ -397,7 +397,7 @@ class TestResilientMeshNetwork:
         graph = state.to_graph()
 
         # Test with fixed seed for reproducibility
-        result = test_resilience(graph, removal_rate=0.2, seed=42)
+        result = check_resilience(graph, removal_rate=0.2, seed=42)
 
         # Original L_max = 10 (all connected)
         assert result.original_max_component == 10
@@ -416,7 +416,7 @@ class TestResilientMeshNetwork:
         # Test multiple seeds - mesh should be resilient for all
         resilient_count = 0
         for seed in range(10):
-            result = test_resilience(graph, removal_rate=0.2, seed=seed)
+            result = check_resilience(graph, removal_rate=0.2, seed=seed)
             if result.is_resilient:
                 resilient_count += 1
 
@@ -502,7 +502,7 @@ class TestGaseousStateDetection:
         state = create_gaseous_state(num_nodes=10)
         graph = state.to_graph()
 
-        result = test_resilience(graph, removal_rate=0.2, seed=42)
+        result = check_resilience(graph, removal_rate=0.2, seed=42)
 
         # Original L_max = 1 (each node is its own component)
         assert result.original_max_component == 1

@@ -217,10 +217,10 @@ calculate_liquidity
    - ``actual``: Cadre network (edges > 0.5)
    - If ``potential > actual * 2``: Movement is broad but brittle
 
-test_resilience
+check_resilience
 ~~~~~~~~~~~~~~~
 
-.. py:function:: test_resilience(G, removal_rate=0.2, survival_threshold=0.4, seed=None)
+.. py:function:: check_resilience(G, removal_rate=0.2, survival_threshold=0.4, seed=None)
 
    Test if solidarity network survives targeted node removal.
 
@@ -242,9 +242,9 @@ test_resilience
 
    .. code-block:: python
 
-      from babylon.engine.topology_monitor import test_resilience
+      from babylon.engine.topology_monitor import check_resilience
 
-      result = test_resilience(graph, removal_rate=0.2, seed=42)
+      result = check_resilience(graph, removal_rate=0.2, seed=42)
       if not result.is_resilient:
           print("Sword of Damocles: Network is fragile!")
 

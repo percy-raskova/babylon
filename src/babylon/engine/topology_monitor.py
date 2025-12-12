@@ -166,7 +166,7 @@ def calculate_liquidity(G: nx.DiGraph[str]) -> tuple[int, int]:
     return (potential, actual)
 
 
-def test_resilience(
+def check_resilience(
     G: nx.DiGraph[str],
     removal_rate: float = DEFAULT_REMOVAL_RATE,
     survival_threshold: float = DEFAULT_SURVIVAL_THRESHOLD,
@@ -365,7 +365,7 @@ class TopologyMonitor:
         if self._resilience_interval > 0:
             tick = state.tick
             if is_start or (tick > 0 and tick % self._resilience_interval == 0):
-                result = test_resilience(graph, removal_rate=self._removal_rate)
+                result = check_resilience(graph, removal_rate=self._removal_rate)
                 is_resilient = result.is_resilient
 
         # Create snapshot

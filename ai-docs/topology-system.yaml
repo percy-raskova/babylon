@@ -360,9 +360,9 @@ common_queries:
 
   test_network_resilience:
     pattern: |
-      from babylon.engine.topology_monitor import test_resilience
+      from babylon.engine.topology_monitor import check_resilience
       graph = state.to_graph()
-      result = test_resilience(graph, removal_rate=0.2, seed=42)
+      result = check_resilience(graph, removal_rate=0.2, seed=42)
       if not result.is_resilient:
           print("Sword of Damocles: Network is fragile!")
 

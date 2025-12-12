@@ -2,11 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.4.1"
+  version: "1.5.0"
   updated: "2025-12-12"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "Sprint 3.1 Event Schema (2025-12-12)"
+  last_audit: "Sprint 3.3 Topology Events (2025-12-12)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -43,13 +43,15 @@ implemented:
     components:
       simulation_engine:
         status: "complete"
-        details: "Modular engine with 4 Systems, ServiceContainer DI"
+        details: "Modular engine with 7 Systems, ServiceContainer DI, typed events"
         location: "src/babylon/engine/simulation_engine.py"
         tests: "tests/unit/engine/test_simulation_engine.py (30+ tests)"
         architecture:
           - "SimulationEngine.run_tick(graph, services, context)"
-          - "4 Systems: ImperialRent, Consciousness, Survival, Contradiction"
-          - "ServiceContainer: config, database, event_bus, formulas"
+          - "7 Systems: ImperialRent, Solidarity, Consciousness, Survival, Struggle, Contradiction, Territory"
+          - "ServiceContainer: config, database, event_bus, formulas, defines"
+          - "_convert_bus_event_to_pydantic(): EventBus → typed SimulationEvent (13 event classes)"
+          - "Observer event injection via persistent_context['_observer_events']"
 
       service_container:
         status: "complete"
@@ -64,11 +66,21 @@ implemented:
 
       event_bus:
         status: "complete"
-        details: "Publish/subscribe event system"
+        details: "Publish/subscribe event system with 11 EventTypes"
         location: "src/babylon/engine/event_bus.py"
         tests: "tests/unit/engine/test_event_bus.py (20 tests)"
         events_published:
-          - "rupture - when tension reaches 1.0"
+          - "SURPLUS_EXTRACTION - imperial rent extracted"
+          - "IMPERIAL_SUBSIDY - subsidy paid to comprador"
+          - "ECONOMIC_CRISIS - crisis event triggered"
+          - "CONSCIOUSNESS_TRANSMISSION - ideology transmitted via solidarity"
+          - "MASS_AWAKENING - threshold crossed"
+          - "EXCESSIVE_FORCE - spark event (George Floyd Dynamic)"
+          - "UPRISING - revolt triggered"
+          - "SOLIDARITY_SPIKE - solidarity infrastructure built"
+          - "RUPTURE - tension reaches 1.0"
+          - "SOLIDARITY_AWAKENING - source enters struggle"
+          - "PHASE_TRANSITION - percolation state changes"
 
       formula_registry:
         status: "complete"
@@ -481,6 +493,17 @@ current_focus:
     - "Sprint 3.1 Event Schema: WorldState.events: list[SimulationEvent] field"
     - "Sprint 3.1 Event Schema: _convert_bus_event_to_pydantic() in SimulationEngine"
     - "Sprint 3.1 Event Schema: DomainFactory.create_extraction_event(), Assert.has_event()"
+    - "Sprint 3.1+ Event Expansion: Added RUPTURE to EventType enum"
+    - "Sprint 3.1+ Event Expansion: 3 base classes (ConsciousnessEvent, StruggleEvent, ContradictionEvent)"
+    - "Sprint 3.1+ Event Expansion: 8 concrete events (SubsidyEvent, CrisisEvent, TransmissionEvent, MassAwakeningEvent, SparkEvent, UprisingEvent, SolidaritySpikeEvent, RuptureEvent)"
+    - "Sprint 3.1+ Event Expansion: _convert_bus_event_to_pydantic() handles all 10 EventTypes"
+    - "Sprint 3.1+ Event Expansion: Factory methods for all event types in DomainFactory"
+    - "Sprint 3.3 Topology Events: Added PHASE_TRANSITION to EventType (now 11 types)"
+    - "Sprint 3.3 Topology Events: TopologyEvent and PhaseTransitionEvent models"
+    - "Sprint 3.3 Topology Events: TopologyMonitor phase state tracking (_classify_phase)"
+    - "Sprint 3.3 Topology Events: TopologyMonitor.get_pending_events() for event collection"
+    - "Sprint 3.3 Topology Events: Simulation facade _collect_observer_events()"
+    - "Sprint 3.3 Topology Events: Observer events injected into next tick via persistent_context"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -957,10 +980,10 @@ current_focus:
   old_mantra: "State is data. Engine is logic. They never mix."
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
-  milestone: "SPRINT 3.4.3 COMPLETE: George Jackson Refactor - IdeologicalProfile replaces scalar ideology"
+  milestone: "SPRINT 3.3 COMPLETE: Topology Events - PhaseTransitionEvent emitted on phase state changes"
   next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
-  test_count: 1672
-  test_count_note: "Updated 2025-12-12 (Sprint 3.1 Event Schema: +4 tests)"
+  test_count: 1785
+  test_count_note: "Updated 2025-12-12 (Sprint 3.1+ Event Expansion: +57 tests, Sprint 3.3 Topology Events: +25 tests)"
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
@@ -1008,13 +1031,16 @@ tech_debt:
 
   test_coverage:
     status: "EXCELLENT"
-    current: "1668 tests passing (2025-12-12)"
-    coverage: "Core engine + systems + persistence + components fully tested, TDD discipline maintained"
+    current: "1785 tests passing (2025-12-12)"
+    coverage: "Core engine + systems + persistence + components + events fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
     testing_infrastructure:
       - "DomainFactory (tests/factories/domain.py) - 31 tests"
       - "BabylonAssert (tests/assertions.py) - 55 tests"
       - "MockMetricsCollector (tests/mocks/metrics_collector.py) - 8 tests"
+      - "Event model tests (tests/unit/models/test_events.py) - 44 tests"
+      - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
+      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 25 tests"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

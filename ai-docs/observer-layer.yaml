@@ -3,16 +3,16 @@
 # Implements percolation theory for phase transition detection
 
 meta:
-  version: "1.0.1"
+  version: "1.1.0"
   created: "2025-12-11"
   updated: "2025-12-12"
-  purpose: "Document the Observer system that tracks solidarity network condensation"
+  purpose: "Document the Observer system that tracks solidarity network condensation and emits phase transition events"
   principle: "Graph + Math = History. No emotions, only topology."
-  status: "IMPLEMENTED"
+  status: "COMPLETE"
   location: "src/babylon/engine/topology_monitor.py"
-  tests: "tests/unit/topology/test_topology_monitor.py (32 tests, ALL PASSING)"
-  sprint: "Sprint 3.1 - The Condensation Monitor (Observer Layer)"
-  audit_note: "Test count corrected from 34 to 32 via Operation Truth Sync (2025-12-12)"
+  tests: "tests/unit/topology/ (57 tests: 32 monitor + 25 phase transition)"
+  sprint: "Sprint 3.3 - Phase Transition Events"
+  audit_note: "Updated for Sprint 3.3 - PhaseTransitionEvent emission (2025-12-12)"
 
 # =============================================================================
 # NARRATIVE VOICE: THE BONDI ALGORITHM
@@ -192,6 +192,65 @@ metrics:
     type: bool
     test: "20% node removal, 40% survival threshold"
     interpretation: "Can movement survive targeted repression?"
+
+# =============================================================================
+# EVENT EMISSION (Sprint 3.3)
+# =============================================================================
+
+event_emission:
+  status: "COMPLETE (Sprint 3.3)"
+  event_type: "PhaseTransitionEvent"
+  enum: "EventType.PHASE_TRANSITION"
+
+  phase_states:
+    gaseous:
+      threshold: "percolation_ratio < 0.1"
+      meaning: "Atomized leftism, no coordination capacity"
+    transitional:
+      threshold: "0.1 <= percolation_ratio < 0.5"
+      meaning: "Emerging structure, unstable"
+    liquid:
+      threshold: "percolation_ratio >= 0.5"
+      meaning: "Giant component, vanguard formation"
+
+  emission_mechanism:
+    description: |
+      TopologyMonitor tracks phase state across ticks. When percolation_ratio
+      crosses a threshold boundary (gaseous ↔ transitional ↔ liquid), a
+      PhaseTransitionEvent is created and stored in _pending_events.
+
+      The Simulation facade calls get_pending_events() after notify_observers_tick(),
+      collecting all observer events and storing them in persistent_context['_observer_events'].
+
+      On the NEXT tick, simulation_engine.step() reads these events from
+      persistent_context and appends them to the WorldState.events list.
+
+    key_insight: |
+      Observer events appear in the NEXT tick's WorldState because observers
+      run AFTER the WorldState is frozen for the current tick. This is correct
+      behavior - the phase transition is detected AFTER the tick that caused it.
+
+  internal_state:
+    _previous_phase: "str | None - tracks last known phase for transition detection"
+    _pending_events: "list[SimulationEvent] - events awaiting collection"
+
+  methods:
+    _classify_phase:
+      signature: "_classify_phase(percolation_ratio: float) -> str"
+      returns: "'gaseous' | 'transitional' | 'liquid'"
+    get_pending_events:
+      signature: "get_pending_events() -> list[SimulationEvent]"
+      behavior: "Returns and clears the pending events list"
+
+  integration_points:
+    simulation_facade:
+      method: "_collect_observer_events()"
+      location: "src/babylon/engine/simulation.py"
+      description: "Collects events from all observers with get_pending_events()"
+    simulation_engine:
+      method: "step()"
+      location: "src/babylon/engine/simulation_engine.py"
+      description: "Reads persistent_context['_observer_events'] and appends to WorldState.events"
 
 # =============================================================================
 # IMPLEMENTATION NOTES

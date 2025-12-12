@@ -5,10 +5,10 @@
 # used to model revolutionary organization via percolation theory.
 
 meta:
-  version: "1.0.0"
-  updated: "2025-12-11"
+  version: "1.1.0"
+  updated: "2025-12-12"
   status: "IMPLEMENTED"
-  tests: 55  # 34 unit + 21 integration
+  tests: 80  # 34 unit + 21 integration + 25 phase transition
 
 overview:
   purpose: |
@@ -269,6 +269,68 @@ models:
       survival_threshold: "float"
       seed: "int | None"
 
+  TopologyEvent:
+    location: "models/events.py"
+    type: "Pydantic BaseModel (frozen)"
+    parent: "SimulationEvent"
+    status: "IMPLEMENTED (Sprint 3.3)"
+    fields:
+      percolation_ratio: "Probability [0, 1]"
+      num_components: "int"
+    description: |
+      Base class for topology-related events. Contains percolation metrics
+      common to all topology events.
+
+  PhaseTransitionEvent:
+    location: "models/events.py"
+    type: "Pydantic BaseModel (frozen)"
+    parent: "TopologyEvent"
+    status: "IMPLEMENTED (Sprint 3.3)"
+    fields:
+      event_type: "EventType.PHASE_TRANSITION"
+      previous_state: "str (gaseous|transitional|liquid)"
+      new_state: "str (gaseous|transitional|liquid)"
+      largest_component_size: "int"
+      is_resilient: "bool | None"
+    description: |
+      Emitted when percolation_ratio crosses phase threshold boundaries.
+      Represents the crystallization of atomized leftism into organized
+      revolutionary force (or the reverse - fragmentation).
+
+# =============================================================================
+# PHASE STATES
+# =============================================================================
+
+phase_states:
+  gaseous:
+    threshold: "percolation_ratio < 0.1"
+    description: "Atomized movement. No coordination capacity."
+    political_meaning: |
+      Individual cells operate in isolation. No giant component.
+      State can eliminate nodes without cascade effects.
+      Consciousness transmission blocked.
+
+  transitional:
+    threshold: "0.1 <= percolation_ratio < 0.5"
+    description: "Emerging structure. Unstable coordination."
+    political_meaning: |
+      Some clusters forming but not yet a vanguard.
+      Vulnerable to targeted disruption.
+      Consciousness can propagate within clusters.
+
+  liquid:
+    threshold: "percolation_ratio >= 0.5"
+    description: "Giant component formed. Vanguard crystallized."
+    political_meaning: |
+      Coordinated action possible across network.
+      Removal of individual nodes doesn't destroy organization.
+      Consciousness propagates through solidarity infrastructure.
+
+  classification_function:
+    location: "engine/topology_monitor.py:_classify_phase()"
+    signature: "_classify_phase(percolation_ratio: float) -> str"
+    returns: "'gaseous' | 'transitional' | 'liquid'"
+
 # =============================================================================
 # OBSERVER PATTERN
 # =============================================================================
@@ -277,11 +339,25 @@ observer:
   class: "TopologyMonitor"
   location: "engine/topology_monitor.py:243-452"
   protocol: "SimulationObserver"
+  status: "COMPLETE (Sprint 3.3)"
 
   lifecycle_hooks:
-    on_simulation_start: "Initialize history, record initial snapshot"
-    on_tick: "Record snapshot, detect phase transitions"
+    on_simulation_start: "Initialize history, record initial snapshot, reset phase state"
+    on_tick: "Record snapshot, detect phase transitions, emit PhaseTransitionEvent"
     on_simulation_end: "Log summary statistics"
+
+  event_emission:
+    status: "IMPLEMENTED (Sprint 3.3)"
+    mechanism: |
+      TopologyMonitor tracks _previous_phase and _pending_events internally.
+      When percolation_ratio crosses a threshold boundary, a PhaseTransitionEvent
+      is appended to _pending_events. The Simulation facade calls
+      get_pending_events() after each tick, collecting events and injecting
+      them into the next tick's WorldState via persistent_context['_observer_events'].
+    methods:
+      _classify_phase: "Determine current phase state from percolation_ratio"
+      get_pending_events: "Return and clear pending events list"
+    injection_point: "simulation_engine.py: step() reads persistent_context['_observer_events']"
 
   configuration:
     resilience_test_interval:
@@ -341,6 +417,10 @@ files:
     - path: "tests/integration/test_topology_integration.py"
       tests: 21
       purpose: "Integration tests with Simulation lifecycle"
+
+    - path: "tests/unit/topology/test_phase_transition.py"
+      tests: 25
+      purpose: "Phase transition event emission and injection (Sprint 3.3)"
 
 # =============================================================================
 # COMMON QUERIES

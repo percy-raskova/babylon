@@ -6,7 +6,7 @@
 
 ## 0. The Bedrock (COMPLETE)
 
-**Status:** VERIFIED (1,668+ Tests)
+**Status:** VERIFIED (1,785 Tests)
 **Objective:** A deterministic, mathematically consistent simulation kernel.
 
 ### The Kernel (Phase I)
@@ -55,29 +55,41 @@
 
 ---
 
-## 2. The Observer - Logos (IN PROGRESS)
+## 2. The Observer - Logos (COMPLETE)
 
-**Status:** CURRENT FOCUS (Sprint 3.1)
+**Status:** COMPLETE (Sprint 3.3)
 **Objective:** Give the engine "eyes." Transition from implicit state changes to explicit, typed Events.
 
 ### Implemented Infrastructure
 - [x] `SimulationObserver` Protocol (`engine/observer.py`)
 - [x] `EventBus`: Pub/sub architecture (`engine/event_bus.py`)
-- [x] `EventType` enum: 9 typed events (`models/enums.py`)
-  - SURPLUS_EXTRACTION, IMPERIAL_SUBSIDY, ECONOMIC_CRISIS
-  - SOLIDARITY_AWAKENING, CONSCIOUSNESS_TRANSMISSION, MASS_AWAKENING
-  - EXCESSIVE_FORCE, UPRISING, SOLIDARITY_SPIKE
+- [x] `EventType` enum: 11 typed events (`models/enums.py`)
+  - Economic: SURPLUS_EXTRACTION, IMPERIAL_SUBSIDY, ECONOMIC_CRISIS
+  - Consciousness: SOLIDARITY_AWAKENING, CONSCIOUSNESS_TRANSMISSION, MASS_AWAKENING
+  - Struggle: EXCESSIVE_FORCE, UPRISING, SOLIDARITY_SPIKE
+  - Contradiction: RUPTURE
+  - Topology: PHASE_TRANSITION
 - [x] `TopologyMonitor`: Phase transition detection via percolation theory (`engine/topology_monitor.py`)
 - [x] `TopologySnapshot` models: Frozen metrics per tick (`models/topology_metrics.py`)
 
-### Remaining Work
+### Completed Sprints
 - [x] **Sprint 3.1:** `SimulationEvent` Pydantic Schema (COMPLETE)
   - *Delivered:* `src/babylon/models/events.py` with `SimulationEvent`, `EconomicEvent`, `ExtractionEvent`
   - *Delivered:* `WorldState.events: list[SimulationEvent]` field for typed event persistence
   - *Delivered:* `_convert_bus_event_to_pydantic()` in SimulationEngine for EventBus → Pydantic conversion
   - *Delivered:* Test infrastructure updates (`DomainFactory.create_extraction_event()`, `Assert.has_event()`)
-- [ ] **Sprint 3.2:** System Instrumentation Refinement
-  - *Goal:* Extend event conversion to all 9 EventTypes (currently only SURPLUS_EXTRACTION)
+- [x] **Sprint 3.1+:** Event Type Expansion (COMPLETE)
+  - *Delivered:* 3 base classes: `ConsciousnessEvent`, `StruggleEvent`, `ContradictionEvent`
+  - *Delivered:* 8 concrete events: `SubsidyEvent`, `CrisisEvent`, `TransmissionEvent`, `MassAwakeningEvent`, `SparkEvent`, `UprisingEvent`, `SolidaritySpikeEvent`, `RuptureEvent`
+  - *Delivered:* `_convert_bus_event_to_pydantic()` handles all 10 EventTypes
+  - *Delivered:* Factory methods for all event types in `DomainFactory`
+- [x] **Sprint 3.3:** Topology Events (COMPLETE)
+  - *Delivered:* `PHASE_TRANSITION` EventType (11 total)
+  - *Delivered:* `TopologyEvent` and `PhaseTransitionEvent` models
+  - *Delivered:* `TopologyMonitor._classify_phase()` for gaseous/transitional/liquid states
+  - *Delivered:* `TopologyMonitor.get_pending_events()` for event collection
+  - *Delivered:* `Simulation._collect_observer_events()` for observer event injection
+  - *Delivered:* Observer events injected into next tick via `persistent_context['_observer_events']`
 
 **Key Insight:** ADR003 - "AI failures don't break game mechanics."
 
@@ -218,8 +230,8 @@ SimulationEngine.run_tick(graph, services, context)
             +---------------------------------------------+
             |     OBSERVER (Phase 2: Logos)               |
             |  - SimulationObserver Protocol              |
-            |  - EventBus (9 EventTypes)                  |
-            |  - TopologyMonitor                          |
+            |  - EventBus (11 EventTypes)                 |
+            |  - TopologyMonitor (Phase Transitions)      |
             +---------------------------------------------+
                            |
                            | Watches
@@ -238,7 +250,7 @@ SimulationEngine.run_tick(graph, services, context)
             |  - Pure math formulas                       |
             |  - Pydantic type constraints                |
             |  - NetworkX graph structure                 |
-            |  - TDD proven equations (1,668+ tests)      |
+            |  - TDD proven equations (1,785 tests)       |
             +---------------------------------------------+
 ```
 
@@ -270,5 +282,5 @@ SimulationEngine.run_tick(graph, services, context)
 ---
 
 *Document created: 2025-12-09*
-*Last updated: 2025-12-12 (Roadmap Restructure: Path to MVP)*
+*Last updated: 2025-12-12 (Sprint 3.3 Topology Events Complete)*
 *Epoch: MVP & Horizontal Scaling*

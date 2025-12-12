@@ -68,6 +68,17 @@ Design System
 Visual design tokens: color palette, typography, styling constants, and
 texture specifications for Bunker Constructivism aesthetic.
 
+Documentation System
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   documentation
+
+Build commands, Sphinx extensions, LaTeX configuration, and PDF theme
+specifications. Meta-reference for the documentation engine itself.
+
 AI & RAG
 --------
 

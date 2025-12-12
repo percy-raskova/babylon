@@ -17,11 +17,17 @@ PPP Model Tests (Sprint PPP):
 
 import networkx as nx
 import pytest
+from tests.assertions import Assert
+from tests.factories.domain import DomainFactory
 
 from babylon.engine.services import ServiceContainer
+from babylon.engine.simulation_engine import step
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EdgeType, EventType, SocialRole
+
+# RED Phase imports - these don't exist yet and will cause import errors
+from babylon.models.events import ExtractionEvent
 
 
 class TestImperialRentSystemEvents:
@@ -269,3 +275,161 @@ class TestPPPWagesModel:
         # It should equal effective_wealth - wealth
         expected_increment = worker_data["effective_wealth"] - worker_data["wealth"]
         assert worker_data["unearned_increment"] == pytest.approx(expected_increment, rel=1e-6)
+
+
+class TestStructuredEventsInWorldState:
+    """Sprint 3.1: Test that structured Pydantic events persist in WorldState.
+
+    RED Phase: These tests define the contract for typed events in WorldState.
+
+    Current State:
+    - EventBus publishes Event dataclass with type, tick, payload
+    - WorldState only has event_log: list[str] for backward compatibility
+    - Events are lost after step() completes (only string summary preserved)
+
+    Goal:
+    - WorldState.events: list[SimulationEvent] - typed Pydantic events
+    - ExtractionEvent, SolidarityEvent, etc. - domain-specific event types
+    - Events persist across the simulation for analysis/replay
+
+    Test Intent:
+    - After step(), WorldState.events should contain typed event objects
+    - ExtractionEvent should have source_id, target_id, amount fields
+    - DomainFactory should accept events parameter
+    - Backward compatibility: event_log should still be populated
+    """
+
+    @pytest.mark.unit
+    def test_extraction_event_in_world_state(self) -> None:
+        """After step(), an ExtractionEvent should appear in new_state.events.
+
+        This test verifies that when imperial rent is extracted during a tick,
+        the resulting WorldState contains a structured ExtractionEvent in its
+        events list, not just a string in event_log.
+
+        The event should be a Pydantic model enabling downstream analysis.
+        """
+        # Arrange
+        factory = DomainFactory()
+        worker = factory.create_worker(wealth=0.5)
+        owner = factory.create_owner(wealth=0.5)
+        relationship = factory.create_relationship(
+            source_id=worker.id,
+            target_id=owner.id,
+            edge_type=EdgeType.EXPLOITATION,
+        )
+        state = factory.create_world_state(
+            entities={worker.id: worker, owner.id: owner},
+            relationships=[relationship],
+        )
+
+        # Act
+        new_state = step(state, SimulationConfig())
+
+        # Assert - These methods don't exist yet (RED phase)
+        Assert(new_state).has_events_count(1)
+        Assert(new_state).has_event(ExtractionEvent)
+
+    @pytest.mark.unit
+    def test_extraction_event_has_correct_payload(self) -> None:
+        """ExtractionEvent should have correct source_id, target_id, amount.
+
+        This test verifies that the ExtractionEvent contains the actual
+        economic data from the imperial rent extraction - who extracted
+        from whom, and how much was taken.
+
+        These fields enable:
+        - AI narrative generation ("Worker lost $X to Owner")
+        - Economic analysis (total extraction over time)
+        - Network flow visualization
+        """
+        # Arrange
+        factory = DomainFactory()
+        worker = factory.create_worker(id="W001", wealth=1.0)
+        owner = factory.create_owner(id="O001", wealth=5.0)
+        relationship = factory.create_relationship(
+            source_id=worker.id,
+            target_id=owner.id,
+            edge_type=EdgeType.EXPLOITATION,
+        )
+        state = factory.create_world_state(
+            entities={worker.id: worker, owner.id: owner},
+            relationships=[relationship],
+        )
+
+        # Act
+        new_state = step(state, SimulationConfig())
+
+        # Assert - Verify typed event with correct fields
+        Assert(new_state).has_event(
+            ExtractionEvent,
+            source_id="W001",
+            target_id="O001",
+        )
+        # Amount should be positive (wealth was extracted)
+        Assert(new_state).has_event(ExtractionEvent, amount_gt=0.0)
+
+    @pytest.mark.unit
+    def test_domain_factory_creates_state_with_events(self) -> None:
+        """DomainFactory.create_world_state(events=[...]) should work.
+
+        This test verifies that the DomainFactory can accept a list of
+        pre-existing events when creating a WorldState. This enables:
+        - Testing event-dependent logic with known events
+        - Replaying simulations from a known event history
+        - Creating counterfactual scenarios
+        """
+        # Arrange
+        factory = DomainFactory()
+        worker = factory.create_worker()
+
+        # Create a pre-existing event (these types don't exist yet)
+        event = ExtractionEvent(
+            tick=5,
+            source_id="W001",
+            target_id="O001",
+            amount=0.1,
+        )
+
+        # Act - events parameter doesn't exist yet
+        state = factory.create_world_state(
+            entities={worker.id: worker},
+            events=[event],
+        )
+
+        # Assert
+        Assert(state).has_events_count(1)
+        Assert(state).has_event(ExtractionEvent, tick=5)
+
+    @pytest.mark.unit
+    def test_event_log_still_works_for_backward_compatibility(self) -> None:
+        """Both events and event_log should be populated after step().
+
+        This test ensures backward compatibility: the existing event_log
+        (list[str]) should still be populated alongside the new typed
+        events list. This allows gradual migration and ensures existing
+        code that reads event_log continues to work.
+        """
+        # Arrange
+        factory = DomainFactory()
+        worker = factory.create_worker(wealth=0.5)
+        owner = factory.create_owner(wealth=0.5)
+        relationship = factory.create_relationship(
+            source_id=worker.id,
+            target_id=owner.id,
+            edge_type=EdgeType.EXPLOITATION,
+        )
+        state = factory.create_world_state(
+            entities={worker.id: worker, owner.id: owner},
+            relationships=[relationship],
+        )
+
+        # Act
+        new_state = step(state, SimulationConfig())
+
+        # Assert - Both should be populated
+        # Typed events list
+        Assert(new_state).has_events_count(1)
+        # Legacy string log (backward compatibility)
+        assert len(new_state.event_log) > 0
+        assert any("SURPLUS_EXTRACTION" in log for log in new_state.event_log)

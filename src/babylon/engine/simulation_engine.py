@@ -247,6 +247,7 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
             percolation_ratio=payload.get("percolation_ratio", 0.0),
             num_components=payload.get("num_components", 0),
             largest_component_size=payload.get("largest_component_size", 0),
+            cadre_density=payload.get("cadre_density", 0.0),
             is_resilient=payload.get("is_resilient"),
         )
 

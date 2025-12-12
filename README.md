@@ -86,6 +86,23 @@ Completed systems:
 - Agency layer (EXCESSIVE_FORCE → UPRISING)
 - Topology monitoring (percolation, resilience testing)
 
+## Contributing
+
+We welcome contributions! This project uses the [Benevolent Dictator](https://producingoss.com/en/benevolent-dictator.html) governance model.
+
+| Resource | Description |
+|----------|-------------|
+| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Step-by-step setup for new contributors |
+| [CONTRIBUTORS.md](CONTRIBUTORS.md) | Governance model and git workflow |
+| [CLAUDE.md](CLAUDE.md) | Coding standards and architecture |
+
+**Quick Start for Contributors:**
+```bash
+git checkout dev
+git checkout -b feature/your-feature
+# Make changes, then PR to dev
+```
+
 ## License
 
 MIT License - see [LICENSE](LICENSE).

@@ -42,9 +42,59 @@ AI-assisted commits are co-authored and reviewed by human contributors before me
 ## How to Contribute
 
 1. **Open an Issue** - Discuss proposed changes before implementation
-2. **Fork & Branch** - Create a feature branch from `main`
-3. **Follow Standards** - See `CLAUDE.md` for coding standards
-4. **Submit PR** - Reference the related issue
-5. **Review** - All PRs require BD approval before merge
+2. **Fork & Branch** - Create a feature branch from `dev`
+3. **Follow Standards** - See [CLAUDE.md](CLAUDE.md) for coding standards
+4. **Submit PR** - Open PR to `dev`, reference any related issues
+5. **Review** - Wait for CI + approval, then squash merge
 
-For questions, open a GitHub Discussion or contact the BD directly.
+**New to contributing?** See [SETUP_GUIDE.md](SETUP_GUIDE.md) for step-by-step instructions.
+
+---
+
+## Git Workflow
+
+### Branch Structure
+
+```
+main ─────────────────────────────────────────► stable releases
+  │                                    ▲
+  │                                    │ BD merges when ready
+  ▼                                    │
+dev ──────────────────────────────────────────► integration branch
+  │         ▲         ▲         ▲
+  │         │         │         │ PRs from contributors
+  ▼         │         │         │
+feature/*  fix/*   docs/*   refactor/*
+```
+
+### Quick Reference
+
+| Action | Command |
+|--------|---------|
+| Start work | `git checkout dev && git pull upstream dev && git checkout -b feature/name` |
+| Submit work | Push branch, open PR to `dev` |
+| Commit format | `type(scope): description` (e.g., `feat(engine): add system`) |
+
+### Branch Naming
+
+| Prefix | Use For |
+|--------|---------|
+| `feature/` | New functionality |
+| `fix/` | Bug fixes |
+| `docs/` | Documentation |
+| `refactor/` | Code improvements |
+| `test/` | Test changes |
+
+### For Maintainers
+
+- Only the BD merges `dev` → `main`
+- Releases are tagged from `main` using Commitizen
+- Hotfixes: `fix/*` → `main` (BD only), then backport to `dev`
+
+---
+
+## Questions?
+
+- **GitHub Issues:** Bug reports and feature requests
+- **GitHub Discussions:** General questions
+- **PR Comments:** Code-specific questions

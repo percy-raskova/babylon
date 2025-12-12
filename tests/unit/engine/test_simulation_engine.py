@@ -8,6 +8,7 @@ Sprint 5: SimulationEngine for Phase 2 game loop.
 """
 
 import pytest
+from tests.factories import DomainFactory
 
 from babylon.config.defines import EconomyDefines, GameDefines
 from babylon.engine.simulation_engine import step
@@ -21,50 +22,39 @@ from babylon.models import (
 )
 
 # =============================================================================
-# FIXTURES
+# FIXTURES (using DomainFactory)
 # =============================================================================
+
+_factory = DomainFactory()
 
 
 @pytest.fixture
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
-    return SocialClass(
-        id="C001",
-        name="Periphery Worker",
-        role=SocialRole.PERIPHERY_PROLETARIAT,
-        wealth=0.5,
-        ideology=0.0,  # Neutral
-        organization=0.1,
-        repression_faced=0.5,
-        subsistence_threshold=0.3,
-    )
+    return _factory.create_worker(name="Periphery Worker")
 
 
 @pytest.fixture
 def owner() -> SocialClass:
-    """Create a core owner social class."""
-    return SocialClass(
-        id="C002",
+    """Create a core owner social class.
+
+    CRITICAL: This fixture uses non-standard values from the original test:
+    - wealth=0.5 (DomainFactory default is 10.0)
+    - ideology=0.0 (DomainFactory default is 0.5)
+    - organization=0.8 (DomainFactory default is 0.7)
+    """
+    return _factory.create_owner(
         name="Core Owner",
-        role=SocialRole.CORE_BOURGEOISIE,
         wealth=0.5,
         ideology=0.0,
         organization=0.8,
-        repression_faced=0.1,
-        subsistence_threshold=0.1,
     )
 
 
 @pytest.fixture
 def exploitation_edge() -> Relationship:
     """Create an exploitation relationship from worker to owner."""
-    return Relationship(
-        source_id="C001",
-        target_id="C002",
-        edge_type=EdgeType.EXPLOITATION,
-        value_flow=0.0,
-        tension=0.0,
-    )
+    return _factory.create_relationship()
 
 
 @pytest.fixture
@@ -74,8 +64,7 @@ def two_node_state(
     exploitation_edge: Relationship,
 ) -> WorldState:
     """Create a minimal WorldState with two nodes and one edge."""
-    return WorldState(
-        tick=0,
+    return _factory.create_world_state(
         entities={"C001": worker, "C002": owner},
         relationships=[exploitation_edge],
     )

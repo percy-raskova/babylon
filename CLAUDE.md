@@ -140,6 +140,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 - **Conventional Commits**: Use `feat:`, `fix:`, `docs:`, `refactor:` prefixes
 - **SQLAlchemy 2.0**: Use `DeclarativeBase` with `Mapped` types for ORM models
 - **Sphinx-Compatible Docstrings**: All public classes/functions require RST-formatted docstrings
+- **No `test_` Prefix in Production Code**: Pytest auto-collects functions starting with `test_`. Use `check_`, `verify_`, or `validate_` instead for production functions that "test" something (e.g., `check_resilience`, not `test_resilience`).
 
 ## Docstring Standards
 

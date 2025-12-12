@@ -86,9 +86,11 @@ Development Methodology
    :maxdepth: 2
 
    vibe-coding/index
+   documentation-engine
 
 The Vibe Coding Manifesto: an ideological and technical defense of
 AI-assisted development, based on empirical evidence from this project.
+Also: meta-documentation for the documentation engine itself.
 
 Key Principles
 --------------

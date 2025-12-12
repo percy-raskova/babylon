@@ -82,10 +82,18 @@ class ConsciousnessSystem:
         context: dict[str, Any],
     ) -> None:
         """Apply consciousness drift to all entities with bifurcation routing."""
-        # Initialize or retrieve previous wages tracking from context
-        if PREVIOUS_WAGES_KEY not in context:
-            context[PREVIOUS_WAGES_KEY] = {}
-        previous_wages: dict[str, float] = context[PREVIOUS_WAGES_KEY]
+        # Handle both TickContext (with persistent_data) and raw dict
+        # TickContext stores persistent data in .persistent_data attribute
+        # Raw dict stores persistent data directly
+        if hasattr(context, "persistent_data"):
+            persistent: dict[str, Any] = context.persistent_data
+        else:
+            persistent = context
+
+        # Initialize or retrieve previous wages tracking from persistent storage
+        if PREVIOUS_WAGES_KEY not in persistent:
+            persistent[PREVIOUS_WAGES_KEY] = {}
+        previous_wages: dict[str, float] = persistent[PREVIOUS_WAGES_KEY]
 
         # Track current wages for next tick comparison
         current_wages: dict[str, float] = {}
@@ -151,5 +159,5 @@ class ConsciousnessSystem:
                 "agitation": new_agitation,
             }
 
-        # Update previous wages for next tick
-        context[PREVIOUS_WAGES_KEY] = current_wages
+        # Update previous wages for next tick in persistent storage
+        persistent[PREVIOUS_WAGES_KEY] = current_wages

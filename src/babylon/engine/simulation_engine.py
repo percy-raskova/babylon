@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import GameDefines
+from babylon.engine.context import TickContext
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
@@ -192,25 +193,20 @@ def step(
     effective_defines = defines if defines is not None else GameDefines.load_default()
     services = ServiceContainer.create(config, effective_defines)
 
-    # The Context acts as the shared bus for the tick
-    # Merge persistent_context into per-tick context
-    context: dict[str, Any] = {
-        "tick": state.tick,
-    }
-    if persistent_context is not None:
-        # Preserve keys from persistent context (e.g., previous_wages)
-        for key, value in persistent_context.items():
-            if key != "tick":  # Don't override tick
-                context[key] = value
+    # Create typed TickContext for this tick
+    # persistent_data is initialized from caller's persistent_context if provided
+    context = TickContext(
+        tick=state.tick,
+        persistent_data=dict(persistent_context) if persistent_context else {},
+    )
 
     # Run all systems through the engine
-    _DEFAULT_ENGINE.run_tick(G, services, context)
+    _DEFAULT_ENGINE.run_tick(G, services, context)  # type: ignore[arg-type]
 
-    # Update persistent context with any changes made by systems
+    # Sync any changes from context.persistent_data back to caller's dict
     if persistent_context is not None:
-        for key, value in context.items():
-            if key != "tick":
-                persistent_context[key] = value
+        for key, value in context.persistent_data.items():
+            persistent_context[key] = value
 
     # Convert EventBus history to both string log and typed events
     structured_events: list[SimulationEvent] = []

@@ -2,11 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.4.0"
+  version: "1.4.1"
   updated: "2025-12-12"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "Operation Truth Sync (2025-12-12)"
+  last_audit: "Sprint 3.1 Event Schema (2025-12-12)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -477,6 +477,10 @@ current_focus:
     - "Sprint 3.2: RAG Integration - RagPipeline injection into NarrativeDirector (27 tests, 763 total)"
     - "Tech debt: Fixed 90 mypy errors in RAG module (Mikado refactor)"
     - "Tech debt: Migrated ChromaDB API from deprecated Client to PersistentClient"
+    - "Sprint 3.1 Event Schema: src/babylon/models/events.py (SimulationEvent, ExtractionEvent)"
+    - "Sprint 3.1 Event Schema: WorldState.events: list[SimulationEvent] field"
+    - "Sprint 3.1 Event Schema: _convert_bus_event_to_pydantic() in SimulationEngine"
+    - "Sprint 3.1 Event Schema: DomainFactory.create_extraction_event(), Assert.has_event()"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -855,7 +859,7 @@ current_focus:
       summary: "Decoupled observation - SimulationObserver, TopologyMonitor"
       status: "COMPLETE"
       added: "2025-12-12 (Truth Sync)"
-      note: "models/events.py (Pydantic event schema) is PLANNED, not implemented"
+      note: "models/events.py (Pydantic event schema) COMPLETE - Sprint 3.1 Event Schema"
     phase_3:
       name: "Observer Pattern"
       summary: "AI narrates, never controls"
@@ -955,8 +959,8 @@ current_focus:
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
   milestone: "SPRINT 3.4.3 COMPLETE: George Jackson Refactor - IdeologicalProfile replaces scalar ideology"
   next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
-  test_count: 1668
-  test_count_note: "Updated 2025-12-12 via Operation Truth Sync audit"
+  test_count: 1672
+  test_count_note: "Updated 2025-12-12 (Sprint 3.1 Event Schema: +4 tests)"
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.

@@ -71,10 +71,13 @@
 - [x] `TopologySnapshot` models: Frozen metrics per tick (`models/topology_metrics.py`)
 
 ### Remaining Work
-- [ ] **Sprint 3.1:** `SimulationEvent` Pydantic Schema
-  - *Goal:* Replace `event_log` strings with structured `ExtractionEvent`, `UprisingEvent`
+- [x] **Sprint 3.1:** `SimulationEvent` Pydantic Schema (COMPLETE)
+  - *Delivered:* `src/babylon/models/events.py` with `SimulationEvent`, `EconomicEvent`, `ExtractionEvent`
+  - *Delivered:* `WorldState.events: list[SimulationEvent]` field for typed event persistence
+  - *Delivered:* `_convert_bus_event_to_pydantic()` in SimulationEngine for EventBus → Pydantic conversion
+  - *Delivered:* Test infrastructure updates (`DomainFactory.create_extraction_event()`, `Assert.has_event()`)
 - [ ] **Sprint 3.2:** System Instrumentation Refinement
-  - *Goal:* Ensure all Systems emit typed events with full payloads
+  - *Goal:* Extend event conversion to all 9 EventTypes (currently only SURPLUS_EXTRACTION)
 
 **Key Insight:** ADR003 - "AI failures don't break game mechanics."
 

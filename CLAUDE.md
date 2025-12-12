@@ -9,6 +9,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Objective**: Model class struggle as deterministic output of material conditions within a compact topological phase space
 **Mantra**: Graph + Math = History
 
+## Governance & Git Workflow
+
+This project uses the **Benevolent Dictator** model. Persephone Raskova ([@percy-raskova](https://github.com/percy-raskova)) has final authority on all merges to `main`.
+
+### Branch Structure
+
+```
+main ────► stable releases (BD merges only)
+  │              ▲
+  ▼              │
+dev ─────► integration (PRs welcome here)
+  │    ▲
+  ▼    │
+feature/*, fix/*, docs/*, refactor/*
+```
+
+### Key Rules
+
+- **Contributors** branch from `dev`, PR to `dev`
+- **BD only** merges `dev` → `main` for releases
+- **Hotfixes** go `fix/*` → `main` (BD only), then backport to `dev`
+- **Never** commit directly to `main` or `dev`
+
+### Branch Naming
+
+| Prefix | Purpose |
+|--------|---------|
+| `feature/` | New functionality |
+| `fix/` | Bug fixes |
+| `docs/` | Documentation |
+| `refactor/` | Code improvements |
+| `test/` | Test changes |
+
+### For Claude Instances
+
+When making commits:
+1. Use conventional commit format: `type(scope): description`
+2. After significant work, commit with the standard footer
+3. If working on a feature, ensure you're on a feature branch, not `main` or `dev`
+4. See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [SETUP_GUIDE.md](SETUP_GUIDE.md) for full workflow
+
 ## Commands
 
 ```bash

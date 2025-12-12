@@ -249,9 +249,9 @@ class TestPurgeSimulation:
 
     def test_removal_rate_percentage(self, mesh_topology: nx.DiGraph) -> None:
         """20% of nodes removed on removal_rate=0.2."""
-        from babylon.engine.topology_monitor import test_resilience
+        from babylon.engine.topology_monitor import check_resilience
 
-        result = test_resilience(mesh_topology, removal_rate=0.2, seed=42)
+        result = check_resilience(mesh_topology, removal_rate=0.2, seed=42)
 
         # 5 nodes * 0.2 = 1 node removed (at least conceptually)
         # The result contains the original and post-purge sizes
@@ -259,21 +259,21 @@ class TestPurgeSimulation:
 
     def test_resilient_network_survives(self, mesh_topology: nx.DiGraph) -> None:
         """Robust network maintains L_max > 40% after purge."""
-        from babylon.engine.topology_monitor import test_resilience
+        from babylon.engine.topology_monitor import check_resilience
 
-        result = test_resilience(mesh_topology, removal_rate=0.2, seed=42)
+        result = check_resilience(mesh_topology, removal_rate=0.2, seed=42)
 
         # Mesh topology should survive removal of any single node
         assert result.is_resilient is True
 
     def test_fragile_network_collapses(self, star_topology: nx.DiGraph) -> None:
         """Star topology collapses if hub removed."""
-        from babylon.engine.topology_monitor import test_resilience
+        from babylon.engine.topology_monitor import check_resilience
 
         # Use seed that removes the hub node
         # We'll try multiple seeds to find one that removes the hub
         # or we design the test to be deterministic
-        result = test_resilience(star_topology, removal_rate=0.2, seed=0)
+        result = check_resilience(star_topology, removal_rate=0.2, seed=0)
 
         # With hub removed, no giant component remains
         # Even if hub isn't removed, star is fragile
@@ -283,20 +283,20 @@ class TestPurgeSimulation:
 
     def test_seeded_rng_reproducibility(self, mesh_topology: nx.DiGraph) -> None:
         """Same seed produces same removal pattern."""
-        from babylon.engine.topology_monitor import test_resilience
+        from babylon.engine.topology_monitor import check_resilience
 
-        result1 = test_resilience(mesh_topology, removal_rate=0.2, seed=42)
-        result2 = test_resilience(mesh_topology, removal_rate=0.2, seed=42)
+        result1 = check_resilience(mesh_topology, removal_rate=0.2, seed=42)
+        result2 = check_resilience(mesh_topology, removal_rate=0.2, seed=42)
 
         assert result1.post_purge_max_component == result2.post_purge_max_component
         assert result1.is_resilient == result2.is_resilient
 
     def test_different_seeds_can_differ(self, star_topology: nx.DiGraph) -> None:
         """Different seeds can produce different outcomes."""
-        from babylon.engine.topology_monitor import test_resilience
+        from babylon.engine.topology_monitor import check_resilience
 
         # Try seeds until we find two with different results
-        results = [test_resilience(star_topology, removal_rate=0.2, seed=i) for i in range(10)]
+        results = [check_resilience(star_topology, removal_rate=0.2, seed=i) for i in range(10)]
 
         # At least some should differ (hub vs non-hub removal)
         is_resilient_values = [r.is_resilient for r in results]
@@ -305,17 +305,17 @@ class TestPurgeSimulation:
 
     def test_original_graph_unmodified(self, mesh_topology: nx.DiGraph) -> None:
         """Purge operates on copy, original unchanged."""
-        from babylon.engine.topology_monitor import test_resilience
+        from babylon.engine.topology_monitor import check_resilience
 
         original_nodes = set(mesh_topology.nodes())
         original_edges = set(mesh_topology.edges())
 
-        test_resilience(mesh_topology, removal_rate=0.2, seed=42)
+        check_resilience(mesh_topology, removal_rate=0.2, seed=42)
 
         assert set(mesh_topology.nodes()) == original_nodes
         assert set(mesh_topology.edges()) == original_edges
 
-    def test_resilience_interval_configuration(self) -> None:
+    def check_resilience_interval_configuration(self) -> None:
         """TopologyMonitor respects resilience_test_interval config."""
         from babylon.engine.topology_monitor import TopologyMonitor
 
@@ -323,7 +323,7 @@ class TestPurgeSimulation:
 
         assert monitor._resilience_interval == 5
 
-    def test_resilience_interval_zero_disables(self) -> None:
+    def check_resilience_interval_zero_disables(self) -> None:
         """resilience_test_interval=0 disables resilience testing."""
         from babylon.engine.topology_monitor import TopologyMonitor
 

@@ -32,6 +32,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.events import ExtractionEvent, SimulationEvent
 
 
 class DomainFactory:
@@ -183,6 +184,7 @@ class DomainFactory:
         entities: dict[str, SocialClass] | None = None,
         relationships: list[Relationship] | None = None,
         event_log: list[str] | None = None,
+        events: list[SimulationEvent] | None = None,
     ) -> WorldState:
         """Create a world state with test defaults.
 
@@ -190,7 +192,8 @@ class DomainFactory:
             tick: Current turn number (default: 0).
             entities: Map of entity ID to SocialClass (default: empty dict).
             relationships: List of relationships (default: empty list).
-            event_log: List of events (default: empty list).
+            event_log: List of string events (default: empty list).
+            events: List of structured SimulationEvent objects (default: empty list).
 
         Returns:
             WorldState configured with given parameters.
@@ -200,4 +203,34 @@ class DomainFactory:
             entities=entities if entities is not None else {},
             relationships=relationships if relationships is not None else [],
             event_log=event_log if event_log is not None else [],
+            events=events if events is not None else [],
+        )
+
+    def create_extraction_event(
+        self,
+        *,
+        tick: int = 0,
+        source_id: str = "C001",
+        target_id: str = "C002",
+        amount: float = 1.0,
+        mechanism: str = "imperial_rent",
+    ) -> ExtractionEvent:
+        """Create an extraction event with test defaults.
+
+        Args:
+            tick: Simulation tick when event occurred (default: 0).
+            source_id: Entity ID of the worker being extracted from (default: "C001").
+            target_id: Entity ID of the bourgeoisie receiving rent (default: "C002").
+            amount: Currency amount extracted (default: 1.0).
+            mechanism: Extraction mechanism description (default: "imperial_rent").
+
+        Returns:
+            ExtractionEvent configured with given parameters.
+        """
+        return ExtractionEvent(
+            tick=tick,
+            source_id=source_id,
+            target_id=target_id,
+            amount=amount,
+            mechanism=mechanism,
         )

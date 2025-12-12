@@ -343,10 +343,10 @@ class TestStructuredEventsInWorldState:
         - Economic analysis (total extraction over time)
         - Network flow visualization
         """
-        # Arrange
+        # Arrange - Use valid C-prefixed IDs per SocialClass id pattern
         factory = DomainFactory()
-        worker = factory.create_worker(id="W001", wealth=1.0)
-        owner = factory.create_owner(id="O001", wealth=5.0)
+        worker = factory.create_worker(id="C001", wealth=1.0)
+        owner = factory.create_owner(id="C002", wealth=5.0)
         relationship = factory.create_relationship(
             source_id=worker.id,
             target_id=owner.id,
@@ -363,8 +363,8 @@ class TestStructuredEventsInWorldState:
         # Assert - Verify typed event with correct fields
         Assert(new_state).has_event(
             ExtractionEvent,
-            source_id="W001",
-            target_id="O001",
+            source_id="C001",
+            target_id="C002",
         )
         # Amount should be positive (wealth was extracted)
         Assert(new_state).has_event(ExtractionEvent, amount_gt=0.0)
@@ -383,15 +383,15 @@ class TestStructuredEventsInWorldState:
         factory = DomainFactory()
         worker = factory.create_worker()
 
-        # Create a pre-existing event (these types don't exist yet)
+        # Create a pre-existing event with valid IDs
         event = ExtractionEvent(
             tick=5,
-            source_id="W001",
-            target_id="O001",
+            source_id="C001",
+            target_id="C002",
             amount=0.1,
         )
 
-        # Act - events parameter doesn't exist yet
+        # Act - events parameter now exists (GREEN phase)
         state = factory.create_world_state(
             entities={worker.id: worker},
             events=[event],

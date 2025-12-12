@@ -8,6 +8,7 @@ Sprint 5: SimulationEngine for Phase 2 game loop.
 """
 
 import pytest
+from tests.assertions import Assert
 from tests.factories import DomainFactory
 
 from babylon.config.defines import EconomyDefines, GameDefines
@@ -136,9 +137,8 @@ class TestStepImperialRent:
         config: SimulationConfig,
     ) -> None:
         """Worker loses wealth through imperial rent extraction."""
-        initial_worker_wealth = two_node_state.entities["C001"].wealth
         new_state = step(two_node_state, config)
-        assert new_state.entities["C001"].wealth < initial_worker_wealth
+        Assert(new_state).entity("C001").is_poorer_than(two_node_state)
 
     def test_step_transfers_rent_to_owner(
         self,
@@ -146,9 +146,8 @@ class TestStepImperialRent:
         config: SimulationConfig,
     ) -> None:
         """Owner gains wealth from imperial rent extraction."""
-        initial_owner_wealth = two_node_state.entities["C002"].wealth
         new_state = step(two_node_state, config)
-        assert new_state.entities["C002"].wealth > initial_owner_wealth
+        Assert(new_state).entity("C002").is_richer_than(two_node_state)
 
     def test_step_rent_is_zero_sum(
         self,
@@ -169,7 +168,7 @@ class TestStepImperialRent:
         """step() records value_flow on the exploitation edge."""
         new_state = step(two_node_state, config)
         assert len(new_state.relationships) == 1
-        assert new_state.relationships[0].value_flow > 0
+        Assert(new_state).relationship("C001", "C002").has_value_flow()
 
     def test_step_higher_extraction_means_more_rent(
         self,
@@ -207,7 +206,7 @@ class TestStepSurvivalProbabilities:
         """step() calculates P(S|A) for each entity."""
         new_state = step(two_node_state, config)
         # Worker should have some acquiescence probability
-        assert new_state.entities["C001"].p_acquiescence > 0
+        Assert(new_state).entity("C001").has_p_acquiescence(0.0)
 
     def test_step_updates_p_revolution(
         self,
@@ -217,7 +216,7 @@ class TestStepSurvivalProbabilities:
         """step() calculates P(S|R) for each entity."""
         new_state = step(two_node_state, config)
         # Worker should have some revolution probability
-        assert new_state.entities["C001"].p_revolution > 0
+        Assert(new_state).entity("C001").has_p_revolution(0.0)
 
     def test_step_wealthy_has_high_acquiescence(
         self,
@@ -242,7 +241,7 @@ class TestStepSurvivalProbabilities:
         )
         new_state = step(state, config)
         # High wealth -> high acquiescence probability
-        assert new_state.entities["C001"].p_acquiescence > 0.7
+        Assert(new_state).entity("C001").has_p_acquiescence(0.7)
 
 
 # =============================================================================
@@ -261,7 +260,7 @@ class TestStepContradictionTension:
     ) -> None:
         """Extraction increases tension on the exploitation edge."""
         new_state = step(two_node_state, config)
-        assert new_state.relationships[0].tension > 0
+        Assert(new_state).relationship("C001", "C002").has_tension_increased(two_node_state)
 
     def test_step_tension_accumulates(
         self,
@@ -273,7 +272,7 @@ class TestStepContradictionTension:
         for _ in range(10):
             state = step(state, config)
 
-        assert state.relationships[0].tension > 0
+        Assert(state).relationship("C001", "C002").has_tension_increased(two_node_state)
 
 
 # =============================================================================
@@ -380,9 +379,9 @@ class TestStepEdgeCases:
             relationships=[],
         )
         new_state = step(state, config)
-        assert new_state.tick == 1
+        Assert(new_state).tick_is(1)
         # Wealth unchanged without extraction edges
-        assert new_state.entities["C001"].wealth == worker.wealth
+        Assert(new_state).entity("C001").wealth_unchanged_from(state)
 
     def test_step_wealth_cannot_go_negative(
         self,
@@ -526,14 +525,10 @@ class TestStepConsciousnessDrift:
         They have no outgoing EXPLOITATION edges, so value_produced = 0.
         Consciousness drift should skip them.
         """
-        initial_owner_consciousness = two_node_state.entities["C002"].ideology.class_consciousness
-
         new_state = step(two_node_state, config)
 
         # Owner class_consciousness unchanged (no outgoing exploitation edges)
-        assert new_state.entities["C002"].ideology.class_consciousness == pytest.approx(
-            initial_owner_consciousness
-        )
+        Assert(new_state).entity("C002").consciousness_unchanged_from(two_node_state)
 
     def test_no_edges_no_drift(
         self,
@@ -551,14 +546,11 @@ class TestStepConsciousnessDrift:
             entities={"C001": worker, "C002": owner},
             relationships=[],  # No edges
         )
-        initial_worker_consciousness = state.entities["C001"].ideology.class_consciousness
 
         new_state = step(state, config)
 
         # No drift without exploitation edges
-        assert new_state.entities["C001"].ideology.class_consciousness == pytest.approx(
-            initial_worker_consciousness
-        )
+        Assert(new_state).entity("C001").consciousness_unchanged_from(state)
 
     def test_ideology_clamped_lower_bound(
         self,

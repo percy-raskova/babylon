@@ -5,15 +5,20 @@ It is the Party's Central Statistical Bureau - recording material
 conditions for analysis by the planning committee.
 """
 
+from __future__ import annotations
+
 import logging
 import threading
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.config.base import BaseConfig
+
+if TYPE_CHECKING:
+    from babylon.metrics.interfaces import MetricsCollectorProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +53,10 @@ class MetricsCollector:
     - embedding: Generation times, batch sizes, errors
     """
 
-    _instance: Optional["MetricsCollector"] = None
+    _instance: MetricsCollector | None = None
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls) -> "MetricsCollector":
+    def __new__(cls) -> MetricsCollector:
         """Implement singleton pattern with thread safety."""
         if cls._instance is None:
             with cls._lock:
@@ -137,7 +142,7 @@ class MetricsCollector:
         with self._data_lock:
             self._gauges[name] = value
 
-    def time(self, name: str) -> "TimerContext":
+    def time(self, name: str) -> TimerContext:
         """Context manager for timing operations.
 
         Args:
@@ -300,10 +305,28 @@ class TimerContext:
         self.name = name
         self.start_time: float = 0.0
 
-    def __enter__(self) -> "TimerContext":
+    def __enter__(self) -> TimerContext:
         self.start_time = time.perf_counter()
         return self
 
     def __exit__(self, *args: Any) -> None:
         duration = time.perf_counter() - self.start_time
         self.collector.record_timing(self.name, duration)
+
+
+# Type check: verify MetricsCollector implements the protocol
+def _verify_protocol_conformance() -> MetricsCollectorProtocol:
+    """Verify MetricsCollector implements MetricsCollectorProtocol.
+
+    This function is never called at runtime - it exists purely for
+    static type checking to ensure the class conforms to the protocol.
+
+    Returns:
+        A MetricsCollector instance typed as the protocol.
+    """
+    from babylon.metrics.interfaces import (
+        MetricsCollectorProtocol as Protocol,
+    )
+
+    collector: Protocol = MetricsCollector()
+    return collector

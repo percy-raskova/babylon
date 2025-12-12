@@ -57,6 +57,23 @@ GUI Development
    Build visualization and user interface features using NiceGUI.
    Covers the phased approach from basic displays to full interactivity.
 
+Contributing
+------------
+
+.. toctree::
+   :maxdepth: 1
+
+   contribute
+   run-ci-locally
+
+**Submit a Pull Request**
+   Complete workflow from branching to merge. Includes branch naming,
+   commit conventions, and handling CI failures.
+
+**Run CI Locally**
+   Test CI checks before pushing using direct commands, mise tasks,
+   or ``gh act`` for full workflow simulation.
+
 Coming Soon
 -----------
 

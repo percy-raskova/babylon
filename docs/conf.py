@@ -222,24 +222,39 @@ latex_elements = {
 \setlength{\headheight}{24pt}
 \addtolength{\topmargin}{-12pt}
 
-% Color definitions from aesthetics.rst
-% (xcolor already loaded by Sphinx with svgnames via passoptionstopackages)
-\definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, active elements
-\definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - backgrounds
-\definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text
-\definecolor{ExposedCircuitry}{HTML}{FFD700} % The Circuit - edges, truth data
-\definecolor{ThermalWarning}{HTML}{8B0000}  % Deep shadows, stress indicators
-\definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks
-\definecolor{TheDust}{HTML}{C0C0C0}         % Secondary text, prompts
+% ============================================================================
+% COLOR DEFINITIONS - Bunker Constructivism Palette
+% Colors are LIGHT EMISSIONS in a dark room, not paint on surfaces.
+% The UI is a CRT monitor in a concrete bunker. See docs/concepts/aesthetics.rst
+% ============================================================================
+
+% PRIMARY COLORS (Light Emissions)
+\definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, critical thresholds, rupture
+                                            % "When red appears, it burns" - chapters, titles
+\definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - the Room itself, darkness is information
+\definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text (60-80% opacity in UI)
+\definecolor{ExposedCircuitry}{HTML}{FFD700} % The Circuit - truth data, verified connections,
+                                            % SOLIDARITY EDGES - the real infrastructure
+
+% SECONDARY COLORS
+\definecolor{ThermalWarning}{HTML}{8B0000}  % Overheating indicators, system stress, hot paths
+\definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks, cold metal
+\definecolor{TheDust}{HTML}{C0C0C0}         % Terminal prompts, secondary text, the dust that settles
 
 % Enhanced PDF bookmarks (better than hyperref alone)
 \usepackage{bookmark}
 
-% Hyperlink styling with full bookmark support
+% ============================================================================
+% HYPERLINK STYLING - Thematic Color Assignment
+% ============================================================================
 \hypersetup{
     colorlinks=true,
+    % Internal links (linkcolor): ThermalWarning - "hot paths" through the document
     linkcolor=ThermalWarning,
-    urlcolor=PhosphorBurn,
+    % External URLs (urlcolor): ExposedCircuitry - "solidarity edges to external truth"
+    % Gold represents verified connections to outside knowledge infrastructure
+    urlcolor=ExposedCircuitry,
+    % Citations: TheChassis - supporting material, inactive reference
     citecolor=TheChassis,
     % PDF bookmarks and metadata
     bookmarks=true,
@@ -249,13 +264,18 @@ latex_elements = {
     pdfstartview=FitH,
 }
 
-% Chapter and section heading colors
+% ============================================================================
+% HEADING COLORS - Hierarchy through light intensity
+% PhosphorBurn (chapters) → ThermalWarning (sections) → TheChassis (subsections)
+% ============================================================================
 \usepackage{sectsty}
-\chapterfont{\color{PhosphorBurn}}
-\sectionfont{\color{ThermalWarning}}
-\subsectionfont{\color{TheChassis}}
+\chapterfont{\color{PhosphorBurn}}      % Critical thresholds - burns into attention
+\sectionfont{\color{ThermalWarning}}    % System stress - navigating deeper
+\subsectionfont{\color{TheChassis}}     % Inactive panels - lower intensity
 
-% Professional ToC formatting with colors
+% ============================================================================
+% TABLE OF CONTENTS - Same color hierarchy
+% ============================================================================
 \usepackage[titles]{tocloft}
 \renewcommand{\cftchapfont}{\bfseries\color{PhosphorBurn}}
 \renewcommand{\cftsecfont}{\color{ThermalWarning}}
@@ -287,11 +307,14 @@ latex_elements = {
 """,
     # Chapter heading style - Bjornstrup is professional book-like
     "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
-    # Sphinx-specific styling
+    # Sphinx-specific styling (matches preamble colors)
+    # TitleColor: PhosphorBurn (212,0,0) - critical thresholds
+    # InnerLinkColor: ThermalWarning (139,0,0) - hot paths
+    # OuterLinkColor: ExposedCircuitry (255,215,0) - solidarity edges to external truth
     "sphinxsetup": r"""
         TitleColor={RGB}{212,0,0},
         InnerLinkColor={RGB}{139,0,0},
-        OuterLinkColor={RGB}{212,0,0},
+        OuterLinkColor={RGB}{255,215,0},
     """,
     # Index formatting
     "printindex": r"\footnotesize\raggedright\printindex",

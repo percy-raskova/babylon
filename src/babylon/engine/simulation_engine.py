@@ -42,6 +42,7 @@ from babylon.models.events import (
     CrisisEvent,
     ExtractionEvent,
     MassAwakeningEvent,
+    PhaseTransitionEvent,
     RuptureEvent,
     SimulationEvent,
     SolidaritySpikeEvent,
@@ -236,6 +237,19 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
             edge=payload.get("edge", ""),
         )
 
+    # Topology Events (Sprint 3.3)
+    if event_type == EventType.PHASE_TRANSITION:
+        return PhaseTransitionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            previous_state=payload.get("previous_state", ""),
+            new_state=payload.get("new_state", ""),
+            percolation_ratio=payload.get("percolation_ratio", 0.0),
+            num_components=payload.get("num_components", 0),
+            largest_component_size=payload.get("largest_component_size", 0),
+            is_resilient=payload.get("is_resilient"),
+        )
+
     # Unsupported event type (e.g., SOLIDARITY_AWAKENING) - graceful degradation
     return None
 
@@ -307,6 +321,19 @@ def step(
         pydantic_event = _convert_bus_event_to_pydantic(event)
         if pydantic_event is not None:
             structured_events.append(pydantic_event)
+
+    # Include observer events from previous tick (Sprint 3.3)
+    # Observer events are emitted AFTER WorldState is frozen, so they
+    # appear in the NEXT tick's events via persistent_context
+    if persistent_context is not None:
+        observer_events = persistent_context.get("_observer_events", [])
+        if observer_events:
+            # Type assertion: observer_events is list[SimulationEvent]
+            for obs_event in observer_events:
+                if isinstance(obs_event, SimulationEvent):
+                    structured_events.append(obs_event)
+            # Clear the observer events after injection
+            del persistent_context["_observer_events"]
 
     # Reconstruct state from modified graph
     return WorldState.from_graph(

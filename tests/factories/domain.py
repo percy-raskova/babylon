@@ -36,6 +36,7 @@ from babylon.models.events import (
     CrisisEvent,
     ExtractionEvent,
     MassAwakeningEvent,
+    PhaseTransitionEvent,
     RuptureEvent,
     SimulationEvent,
     SolidaritySpikeEvent,
@@ -167,6 +168,7 @@ class DomainFactory:
         edge_type: EdgeType = EdgeType.EXPLOITATION,
         value_flow: float = 0.0,
         tension: float = 0.0,
+        solidarity_strength: float = 0.0,
     ) -> Relationship:
         """Create a relationship edge with test defaults.
 
@@ -176,6 +178,9 @@ class DomainFactory:
             edge_type: Nature of relationship (default: EXPLOITATION).
             value_flow: Imperial rent amount (default: 0.0).
             tension: Dialectical tension (default: 0.0).
+            solidarity_strength: Strength of solidarity edge (default: 0.0).
+                For SOLIDARITY edges, set > 0.1 to count as potential,
+                > 0.5 to count as actual in topology metrics.
 
         Returns:
             Relationship configured with given parameters.
@@ -186,6 +191,7 @@ class DomainFactory:
             edge_type=edge_type,
             value_flow=value_flow,
             tension=tension,
+            solidarity_strength=solidarity_strength,
         )
 
     def create_world_state(
@@ -464,4 +470,39 @@ class DomainFactory:
         return RuptureEvent(
             tick=tick,
             edge=edge,
+        )
+
+    def create_phase_transition_event(
+        self,
+        *,
+        tick: int = 0,
+        previous_state: str = "gaseous",
+        new_state: str = "liquid",
+        percolation_ratio: float = 0.5,
+        num_components: int = 1,
+        largest_component_size: int = 5,
+        is_resilient: bool | None = None,
+    ) -> PhaseTransitionEvent:
+        """Create a phase transition event with test defaults.
+
+        Args:
+            tick: Simulation tick when event occurred (default: 0).
+            previous_state: Phase before transition (default: "gaseous").
+            new_state: Phase after transition (default: "liquid").
+            percolation_ratio: L_max / N ratio (default: 0.5).
+            num_components: Number of components (default: 1).
+            largest_component_size: Size of L_max (default: 5).
+            is_resilient: Whether network survives purge (default: None).
+
+        Returns:
+            PhaseTransitionEvent configured with given parameters.
+        """
+        return PhaseTransitionEvent(
+            tick=tick,
+            previous_state=previous_state,
+            new_state=new_state,
+            percolation_ratio=percolation_ratio,
+            num_components=num_components,
+            largest_component_size=largest_component_size,
+            is_resilient=is_resilient,
         )

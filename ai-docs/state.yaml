@@ -2,10 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.3.0"
-  updated: "2025-12-09"
+  version: "1.4.0"
+  updated: "2025-12-12"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
+  last_audit: "Operation Truth Sync (2025-12-12)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -844,6 +845,17 @@ current_focus:
       name: "Topological Engine"
       summary: "The physics/update loop"
       status: "COMPLETE"
+    phase_2_5:
+      name: "Test Refactor (Operation Clean Slate)"
+      summary: "Testing infrastructure - DomainFactory, BabylonAssert, MetricsSpy"
+      status: "COMPLETE"
+      added: "2025-12-12 (Truth Sync)"
+    phase_2_6:
+      name: "Observer Protocol"
+      summary: "Decoupled observation - SimulationObserver, TopologyMonitor"
+      status: "COMPLETE"
+      added: "2025-12-12 (Truth Sync)"
+      note: "models/events.py (Pydantic event schema) is PLANNED, not implemented"
     phase_3:
       name: "Observer Pattern"
       summary: "AI narrates, never controls"
@@ -943,7 +955,8 @@ current_focus:
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
   milestone: "SPRINT 3.4.3 COMPLETE: George Jackson Refactor - IdeologicalProfile replaces scalar ideology"
   next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
-  test_count: 987
+  test_count: 1668
+  test_count_note: "Updated 2025-12-12 via Operation Truth Sync audit"
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
@@ -991,9 +1004,13 @@ tech_debt:
 
   test_coverage:
     status: "EXCELLENT"
-    current: "704 tests passing"
+    current: "1668 tests passing (2025-12-12)"
     coverage: "Core engine + systems + persistence + components fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
+    testing_infrastructure:
+      - "DomainFactory (tests/factories/domain.py) - 31 tests"
+      - "BabylonAssert (tests/assertions.py) - 55 tests"
+      - "MockMetricsCollector (tests/mocks/metrics_collector.py) - 8 tests"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

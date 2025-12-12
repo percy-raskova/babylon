@@ -41,6 +41,41 @@ the formulas encode dynamics.
 
 ---
 
+## Phase 2.5: Test Refactor (Operation Clean Slate)
+
+**Focus:** Testing Infrastructure.
+
+**Deliverables:**
+- `DomainFactory` - Entity creation with sensible defaults (`tests/factories/domain.py`)
+- `BabylonAssert` - Fluent domain-specific assertions (`tests/assertions.py`)
+- `MockMetricsCollector` - Pure spy pattern for metrics (`tests/mocks/metrics_collector.py`)
+
+**Status:** COMPLETE
+
+**Key Insight:** Good tests are a form of executable documentation.
+
+---
+
+## Phase 2.6: Observer Protocol (Phase 3 Foundation)
+
+**Focus:** Decoupled observation of simulation state.
+
+**Deliverables:**
+- `SimulationObserver` protocol - Lifecycle hooks for external observers (`src/babylon/engine/observer.py`)
+- `TopologyMonitor` - Phase transition detection via percolation theory (`src/babylon/engine/topology_monitor.py`)
+- `TopologySnapshot` models - Frozen metrics per tick (`src/babylon/models/topology_metrics.py`)
+- Simulation integration - Observers notified on start/tick/end (`src/babylon/engine/simulation.py`)
+
+**Status:** COMPLETE
+
+**Planned (Not Yet Implemented):**
+- `src/babylon/models/events.py` - Structured event schema (PLANNED)
+- Condensation Monitor - Advanced phase detection (PLANNED)
+
+**Key Insight:** ADR003 - "AI failures don't break game mechanics."
+
+---
+
 ## Phase III: The Material Base (Physics)
 
 **Focus:** The "Body" of the world.
@@ -200,4 +235,5 @@ the formulas encode dynamics.
 ---
 
 *Document created: 2025-12-09*
+*Last updated: 2025-12-12 (Operation Truth Sync)*
 *Epoch: Six-Phase Fractal Evolution*

@@ -383,3 +383,59 @@ class TestThresholdConstants:
         from babylon.engine.observers.causal import CausalChainObserver
 
         assert CausalChainObserver.BUFFER_SIZE == 5
+
+
+# =============================================================================
+# TEST JSON SCHEMA VALIDATION
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestJsonSchemaValidation:
+    """Tests for NarrativeFrame JSON schema compliance."""
+
+    def test_shock_doctrine_output_validates_against_schema(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """CausalChainObserver output validates against NarrativeFrame schema."""
+        from babylon.engine.observers.causal import CausalChainObserver
+        from babylon.engine.observers.schema_validator import validate_narrative_frame
+
+        observer = CausalChainObserver()
+
+        state_0 = create_state(tick=0, pool=100.0, wage=0.20, p_rev=0.30)
+        state_1 = create_state(tick=1, pool=70.0, wage=0.20, p_rev=0.30)
+        state_2 = create_state(tick=2, pool=70.0, wage=0.15, p_rev=0.45)
+
+        observer.on_simulation_start(state_0, SimulationConfig())
+        observer.on_tick(state_0, state_1)
+
+        with caplog.at_level(logging.WARNING):
+            observer.on_tick(state_1, state_2)
+
+        # Extract and validate against schema
+        json_str = caplog.text.split("[NARRATIVE_JSON]")[1].strip()
+        frame = json.loads(json_str)
+
+        errors = validate_narrative_frame(frame)
+        assert errors == [], f"Schema validation errors: {errors}"
+
+    def test_build_frame_output_validates_against_schema(self) -> None:
+        """_build_frame output validates against NarrativeFrame schema."""
+        from babylon.engine.observers.causal import CausalChainObserver, TickSnapshot
+        from babylon.engine.observers.schema_validator import (
+            is_valid_narrative_frame,
+            validate_narrative_frame,
+        )
+
+        observer = CausalChainObserver()
+        crash = TickSnapshot(tick=0, pool=100.0, wage=0.20, p_rev=0.30)
+        austerity = TickSnapshot(tick=1, pool=70.0, wage=0.20, p_rev=0.30)
+        radical = TickSnapshot(tick=2, pool=70.0, wage=0.15, p_rev=0.45)
+
+        frame = observer._build_frame(crash, austerity, radical)
+
+        # Use both validation methods
+        assert is_valid_narrative_frame(frame) is True
+        errors = validate_narrative_frame(frame)
+        assert errors == [], f"Schema validation errors: {errors}"

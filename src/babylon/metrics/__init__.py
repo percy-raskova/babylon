@@ -5,5 +5,6 @@ They provide feedback on the health of all subsystems.
 """
 
 from babylon.metrics.collector import MetricsCollector
+from babylon.metrics.interfaces import MetricsCollectorProtocol
 
-__all__ = ["MetricsCollector"]
+__all__ = ["MetricsCollector", "MetricsCollectorProtocol"]

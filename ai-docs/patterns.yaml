@@ -136,6 +136,36 @@ testing_patterns:
   single_test:
     command: "poetry run pytest tests/unit/path/test_file.py::test_name -v"
 
+  the_harvest:
+    rule: "Consolidate fixture creation into DomainFactory"
+    when: "Creating test entities (SocialClass, Relationship, WorldState)"
+    good: |
+      factory = DomainFactory()
+      worker = factory.create_worker(wealth=0.1)  # Only override what matters
+      state = factory.create_world_state(entities={"C001": worker})
+    bad: |
+      worker = SocialClass(id="C001", wealth=0.1, role=SocialRole.PERIPHERY_PROLETARIAT,
+                           ideology=0.0, organization=0.1, ...)  # NO! 8+ params
+
+  the_narrative_assertion:
+    rule: "Use BabylonAssert for domain-semantic verification"
+    when: "Asserting simulation state changes"
+    good: |
+      Assert(new_state).entity("C001").is_poorer_than(previous_state)
+      Assert(state).relationship("C001", "C002").has_tension_increased(previous_state)
+    bad: |
+      assert new_state.entities["C001"].wealth < previous_state.entities["C001"].wealth  # NO!
+
+  the_humble_mock:
+    rule: "Mocks are 'Dumb Spies' - record calls, never calculate"
+    when: "Creating test doubles for MetricsCollector or similar services"
+    good: |
+      class MockCollector(MetricsCollectorProtocol):
+          def __init__(self): self.records = []
+          def record(self, name, value, **kw): self.records.append((name, value))
+    bad: |
+      def record(self, name, value): self.stats[name] = sum(...) / len(...)  # NO!
+
 # =============================================================================
 # AI INTEGRATION PATTERNS
 # =============================================================================

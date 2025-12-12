@@ -160,8 +160,8 @@ The **Sword of Damocles** test simulates state repression:
 
 .. code-block:: python
 
-   def test_resilience(graph, removal_rate=0.2, survival_threshold=0.4):
-       """Test if movement survives targeted purge."""
+   def check_resilience(graph, removal_rate=0.2, survival_threshold=0.4):
+       """Check if movement survives targeted purge."""
        original_L_max = get_max_component_size(graph)
 
        # Simulate purge

@@ -131,6 +131,13 @@ workflows:
           - "poetry run pytest -m 'not ai' --tb=short -q"
         failure_meaning: "Likely bugs, type errors, or broken functionality"
 
+      security:
+        name: "Security Audit"
+        blocks_merge: true
+        steps:
+          - "poetry run pip-audit"
+        failure_meaning: "Known vulnerabilities in dependencies"
+
       docs:
         name: "Documentation Build"
         blocks_merge: true
@@ -302,6 +309,8 @@ local_testing:
     run_ci_job: "gh act -j ci"
     run_pull_request: "gh act pull_request"
     run_push: "gh act push"
+    run_security: "mise run security"
+    run_coverage: "mise run coverage"
 
   custom_events:
     location: ".github/test-events/"

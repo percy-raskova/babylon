@@ -241,8 +241,67 @@ latex_elements = {
 \definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks, cold metal
 \definecolor{TheDust}{HTML}{C0C0C0}         % Terminal prompts, secondary text, the dust that settles
 
+% ============================================================================
+% COVER PAGE COLORS - Royal purple void with phosphor green CRT text
+% ============================================================================
+\definecolor{RoyalVoid}{HTML}{1E1033}       % Deep royal purple - the command bunker
+\definecolor{PhosphorGreen}{HTML}{39FF14}   % Neon CRT green - terminal awakening
+\definecolor{PhosphorGreenDim}{HTML}{2AAE0F} % Dimmer green for subtitles
+
+% ============================================================================
+% PAGE COLORS - Quasi-dark mode for eye comfort
+% Not harsh white, not full dark - the amber glow of aged paper in bunker light
+% ============================================================================
+\definecolor{BunkerPaper}{HTML}{F5F0E8}     % Warm cream - aged paper under dim light
+\definecolor{BunkerInk}{HTML}{2D2A26}       % Warm dark gray - softer than pure black
+
+% ============================================================================
+% PAGE STYLING - Quasi-dark mode for comfortable reading
+% ============================================================================
+\pagecolor{BunkerPaper}                     % Warm cream background on all pages
+\color{BunkerInk}                           % Warm dark gray body text
+
 % Enhanced PDF bookmarks (better than hyperref alone)
 \usepackage{bookmark}
+
+% TikZ for cover page graphics (must be loaded BEFORE sphinxmaketitle definition)
+\usepackage{tikz}
+
+% ============================================================================
+% CUSTOM COVER PAGE - Royal purple void with phosphor green terminal text
+% Overrides Sphinx's default maketitle
+% ============================================================================
+\makeatletter
+\renewcommand{\sphinxmaketitle}{%
+  % Set purple background for title page
+  \pagecolor{RoyalVoid}%
+  \begin{titlepage}%
+    % Title content on purple background
+    \vspace*{4cm}%
+    \begin{center}%
+      % Main title in phosphor green
+      {\fontsize{48}{56}\selectfont\bfseries\color{PhosphorGreen}\@title\par}%
+      \vspace{2cm}%
+      % Subtitle/tagline
+      {\Large\color{PhosphorGreenDim}A Geopolitical Simulation Engine\par}%
+      \vspace{0.8cm}%
+      {\large\color{PhosphorGreenDim}Modeling Imperial Collapse Through Material Conditions\par}%
+      \vspace{4cm}%
+      % Decorative line
+      {\color{PhosphorGreen}\rule{0.5\textwidth}{2pt}\par}%
+      \vspace{3cm}%
+      % Author
+      {\Large\color{PhosphorGreenDim}\@author\par}%
+      \vspace{1.5cm}%
+      % Version/date
+      {\normalsize\color{TheDust}Version \py@release\par}%
+    \end{center}%
+  \end{titlepage}%
+  % Reset to cream background for all content pages
+  \pagecolor{BunkerPaper}%
+  \clearpage%
+}
+\makeatother
 
 % ============================================================================
 % HYPERLINK STYLING - Thematic Color Assignment
@@ -284,16 +343,18 @@ latex_elements = {
 \renewcommand{\cftsecpagefont}{\color{TheChassis}}
 \renewcommand{\cftsubsecpagefont}{\color{TheDust}}
 
-% Fancy headers for book feel
+% ============================================================================
+% FANCY HEADERS - Book feel with softer colors
+% ============================================================================
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[LE,RO]{\thepage}
-\fancyhead[RE]{\nouppercase{\leftmark}}
-\fancyhead[LO]{\nouppercase{\rightmark}}
+\fancyhead[LE,RO]{\color{TheChassis}\thepage}
+\fancyhead[RE]{\color{TheChassis}\nouppercase{\leftmark}}
+\fancyhead[LO]{\color{TheChassis}\nouppercase{\rightmark}}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\headrule}{\hbox to\headwidth{%
-    \color{TheChassis}\leaders\hrule height \headrulewidth\hfill}}
+    \color{TheChassis!50}\leaders\hrule height \headrulewidth\hfill}}
 
 % Admonition styling
 \usepackage{tcolorbox}

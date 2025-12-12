@@ -15,53 +15,28 @@ explores *why we built it this way*.
 
    -- Karl Marx, *Theses on Feuerbach* (1845)
 
-Contents
---------
-
 .. toctree::
    :maxdepth: 2
 
    design-philosophy
    theoretical-foundations
 
-Design Philosophy
------------------
+**Design Philosophy** (:doc:`design-philosophy`) documents the architectural
+principles and coding standards that shape the codebase: the Embedded Trinity,
+data-driven design via the Paradox Pattern, why AI observes but never controls,
+and test-driven development.
 
-:doc:`design-philosophy` documents the architectural principles and coding
-standards that shape the codebase. Topics include:
-
-- The Embedded Trinity (Ledger, Topology, Archive)
-- Data-driven design via the Paradox Pattern
-- Why AI observes but never controls
-- Test-driven development and type safety
-
-Theoretical Foundations
------------------------
-
-:doc:`theoretical-foundations` explains the Marxist-Leninist-Maoist Third
-Worldist (MLM-TW) theory encoded in the simulation. Topics include:
-
-- The fundamental theorem of imperialism
-- Consciousness dynamics as differential equations
-- Survival calculus and rational choice
-- The George Jackson bifurcation
-
-For Developers
---------------
+**Theoretical Foundations** (:doc:`theoretical-foundations`) explains the
+Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory encoded in the
+simulation: the fundamental theorem of imperialism, consciousness dynamics,
+survival calculus, and the George Jackson bifurcation.
 
 This commentary provides context that doesn't fit in how-to guides or
-reference documentation:
+reference documentation—the *why* behind architectural decisions, historical
+context behind mechanics, and theoretical justifications for formula choices.
 
-- **Why** certain architectural decisions were made
-- **Historical context** behind game mechanics
-- **Theoretical justifications** for formula choices
+.. seealso::
 
-Use this section when you need to understand the reasoning behind the
-code, not just how to use it.
-
-See Also
---------
-
-- :doc:`/concepts/architecture` - Technical architecture overview
-- :doc:`/reference/formulas` - Complete formula specifications
-- :doc:`/concepts/george-jackson-model` - Bifurcation mechanics
+   - :doc:`/concepts/architecture` - Technical architecture overview
+   - :doc:`/reference/formulas` - Complete formula specifications
+   - :doc:`/concepts/george-jackson-model` - Bifurcation mechanics

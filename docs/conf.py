@@ -177,32 +177,86 @@ latex_documents = [
         "docs-pdf-index",
         "babylon-docs.tex",
         "Babylon: The Fall of America",
-        "Babylon Development Team",
+        "Persephone Raskova",
         "manual",
     ),
     # 2. Meta-commentary book (design philosophy, theoretical foundations)
     (
         "commentary/index",
         "babylon-commentary.tex",
-        "Babylon: Design Philosophy \\& Theoretical Foundations",
-        "Babylon Development Team",
+        "Babylon: The Fall of America\\\\{\\large Design Philosophy \\& Theoretical Foundations}",
+        "Persephone Raskova",
         "manual",
     ),
 ]
 
 # LaTeX styling for professional output
+# "Bunker Constructivism" aesthetic from docs/concepts/aesthetics.rst
 latex_elements = {
     "papersize": "letterpaper",
     "pointsize": "11pt",
-    # Custom preamble for typography (xelatex uses fontspec instead of pdflatex packages)
+    # Allow chapters to start on any page (eliminates blank pages)
+    "extraclassoptions": "openany",
+    # Custom preamble: Bunker Constructivism color scheme + typography
     "preamble": r"""
+% ============================================================================
+% BUNKER CONSTRUCTIVISM THEME
+% "Damp Basement Cyberinsurgency" - CRT aesthetic for PDF output
+% ============================================================================
+
+% Typography (xelatex fontspec)
 \usepackage{fontspec}
 \setmainfont{TeX Gyre Termes}
 \setsansfont{TeX Gyre Heros}
 \setmonofont{TeX Gyre Cursor}
+
+% Color definitions from aesthetics.rst
+\usepackage{xcolor}
+\definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, active elements
+\definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - backgrounds
+\definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text
+\definecolor{ExposedCircuitry}{HTML}{FFD700} % The Circuit - edges, truth data
+\definecolor{ThermalWarning}{HTML}{8B0000}  % Deep shadows, stress indicators
+\definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks
+\definecolor{TheDust}{HTML}{C0C0C0}         % Secondary text, prompts
+
+% Hyperlink styling - gold circuit traces
+\hypersetup{
+    colorlinks=true,
+    linkcolor=ThermalWarning,
+    urlcolor=PhosphorBurn,
+    citecolor=TheChassis,
+}
+
+% Chapter and section heading colors
+\usepackage{sectsty}
+\chapterfont{\color{PhosphorBurn}}
+\sectionfont{\color{ThermalWarning}}
+\subsectionfont{\color{TheChassis}}
+
+% Code block styling - dark terminal aesthetic
+\usepackage{mdframed}
+\surroundwithmdframed[
+    backgroundcolor=WetConcrete,
+    fontcolor=TerminalGlare,
+    linecolor=TheChassis,
+    linewidth=1pt,
+    innertopmargin=8pt,
+    innerbottommargin=8pt,
+]{Verbatim}
+
+% Admonition styling
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+
+% Custom title page elements
+\newcommand{\babylonsubtitle}[1]{%
+    \vspace{0.5em}%
+    {\Large\color{TheDust}#1}%
+}
 """,
-    # Chapter heading style
-    "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
+    # Chapter heading style - Sonny provides bold industrial look
+    "fncychap": r"\usepackage[Sonny]{fncychap}",
     # Index formatting
     "printindex": r"\footnotesize\raggedright\printindex",
 }

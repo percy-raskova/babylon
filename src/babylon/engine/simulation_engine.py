@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import GameDefines
+from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
@@ -35,6 +36,8 @@ from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.models.config import SimulationConfig
+from babylon.models.enums import EventType
+from babylon.models.events import ExtractionEvent, SimulationEvent
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
@@ -103,6 +106,49 @@ _DEFAULT_SYSTEMS: list[System] = [
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
 
 
+def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
+    """Convert EventBus Event to typed Pydantic SimulationEvent.
+
+    Args:
+        event: The EventBus Event dataclass with type, tick, payload.
+
+    Returns:
+        A typed SimulationEvent subclass, or None if unsupported event type.
+
+    Note:
+        This function handles graceful degradation - unsupported event types
+        return None rather than raising an error. The caller should filter
+        out None values.
+
+    Sprint 3.1: Currently only supports ExtractionEvent.
+    Future sprints will add support for other event types.
+    """
+    # Normalize event type (may be string or EventType enum)
+    event_type = event.type
+    if isinstance(event_type, str):
+        try:
+            event_type = EventType(event_type)
+        except ValueError:
+            return None
+
+    tick = event.tick
+    timestamp = event.timestamp
+    payload = event.payload
+
+    if event_type == EventType.SURPLUS_EXTRACTION:
+        return ExtractionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            source_id=payload.get("source_id", ""),
+            target_id=payload.get("target_id", ""),
+            amount=payload.get("amount", 0.0),
+            mechanism=payload.get("mechanism", "imperial_rent"),
+        )
+
+    # Unsupported event type - graceful degradation
+    return None
+
+
 def step(
     state: WorldState,
     config: SimulationConfig,
@@ -166,9 +212,20 @@ def step(
             if key != "tick":
                 persistent_context[key] = value
 
-    # Convert EventBus history to string log for backward compatibility
+    # Convert EventBus history to both string log and typed events
+    structured_events: list[SimulationEvent] = []
     for event in services.event_bus.get_history():
+        # String log for backward compatibility
         events.append(f"Tick {event.tick + 1}: {event.type.upper()}")
+        # Typed Pydantic event (Sprint 3.1)
+        pydantic_event = _convert_bus_event_to_pydantic(event)
+        if pydantic_event is not None:
+            structured_events.append(pydantic_event)
 
     # Reconstruct state from modified graph
-    return WorldState.from_graph(G, tick=state.tick + 1, event_log=events)
+    return WorldState.from_graph(
+        G,
+        tick=state.tick + 1,
+        event_log=events,
+        events=structured_events,
+    )

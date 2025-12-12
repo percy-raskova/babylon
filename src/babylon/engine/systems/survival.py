@@ -9,7 +9,7 @@ This makes organization a function of class solidarity infrastructure, not just 
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import networkx as nx
 
@@ -17,6 +17,8 @@ from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
+
+from babylon.engine.systems.protocol import ContextType
 
 
 def _calculate_solidarity_multiplier(
@@ -73,7 +75,7 @@ class SurvivalSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        _context: dict[str, Any],
+        _context: ContextType,
     ) -> None:
         """Update P(S|A) and P(S|R) for all entities.
 

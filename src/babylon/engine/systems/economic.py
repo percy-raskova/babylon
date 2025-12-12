@@ -25,6 +25,8 @@ from babylon.systems.formulas import BourgeoisieDecision
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.protocol import ContextType
+
 
 def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
     """Extract class_consciousness from graph node data.
@@ -71,7 +73,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Apply the 5-phase Imperial Circuit to the graph.
 
@@ -113,7 +115,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
         tick_context: dict[str, Any],
     ) -> None:
         """Phase 1: Imperial rent extraction via EXPLOITATION edges.
@@ -186,7 +188,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,  # noqa: ARG002 - Used for config.comprador_cut
-        context: dict[str, Any],  # noqa: ARG002 - API consistency with other phases
+        context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],  # noqa: ARG002 - Used for pool tracking
     ) -> None:
         """Phase 2: Comprador tribute via TRIBUTE edges -> FEEDS POOL.
@@ -239,7 +241,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],  # noqa: ARG002 - API consistency with other phases
+        context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
     ) -> None:
         """Phase 3: Super-wages via WAGES edges -> DRAINS POOL.
@@ -336,7 +338,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
         tick_context: dict[str, Any],
     ) -> None:
         """Phase 4: Imperial subsidy via CLIENT_STATE edges (The Iron Lung) -> DRAINS POOL.
@@ -461,7 +463,7 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
         tick_context: dict[str, Any],
         initial_pool: float,
     ) -> None:

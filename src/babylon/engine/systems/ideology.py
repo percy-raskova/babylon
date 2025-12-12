@@ -20,6 +20,8 @@ from babylon.systems.formulas import calculate_ideological_routing
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.protocol import ContextType
+
 # Context key for storing previous wages between ticks
 PREVIOUS_WAGES_KEY = "previous_wages"
 
@@ -79,7 +81,7 @@ class ConsciousnessSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Apply consciousness drift to all entities with bifurcation routing."""
         # Handle both TickContext (with persistent_data) and raw dict

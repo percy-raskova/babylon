@@ -31,7 +31,7 @@ from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
-from babylon.engine.systems.protocol import System
+from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.survival import SurvivalSystem
@@ -74,14 +74,14 @@ class SimulationEngine:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Execute all systems in order for one tick.
 
         Args:
             graph: NetworkX graph (mutated in place by systems)
             services: ServiceContainer with config, formulas, event_bus, database
-            context: Mutable context dict passed to all systems
+            context: TickContext or dict passed to all systems
         """
         for system in self._systems:
             system.step(graph, services, context)
@@ -201,7 +201,7 @@ def step(
     )
 
     # Run all systems through the engine
-    _DEFAULT_ENGINE.run_tick(G, services, context)  # type: ignore[arg-type]
+    _DEFAULT_ENGINE.run_tick(G, services, context)
 
     # Sync any changes from context.persistent_data back to caller's dict
     if persistent_context is not None:

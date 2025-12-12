@@ -11,9 +11,23 @@ Observers follow the Observer Pattern: they receive state change
 notifications but cannot modify simulation state. This separation
 allows AI components to generate narrative from state changes without
 affecting the deterministic mechanics.
+
+Schema validation is provided for observer JSON outputs:
+
+- validate_narrative_frame: Validate NarrativeFrame against JSON schema
+- is_valid_narrative_frame: Boolean check for NarrativeFrame validity
 """
 
 from babylon.engine.observers.causal import CausalChainObserver
 from babylon.engine.observers.economic import EconomyMonitor
+from babylon.engine.observers.schema_validator import (
+    is_valid_narrative_frame,
+    validate_narrative_frame,
+)
 
-__all__ = ["CausalChainObserver", "EconomyMonitor"]
+__all__ = [
+    "CausalChainObserver",
+    "EconomyMonitor",
+    "is_valid_narrative_frame",
+    "validate_narrative_frame",
+]

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/narrative/narrative_frame.schema.json",
+  "title": "NarrativeFrame",
+  "description": "Causal graph structure output by observers for AI narrative generation",
+
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "description": "Pattern name identifier (e.g., SHOCK_DOCTRINE)",
+      "minLength": 1
+    },
+    "detected_at_tick": {
+      "type": "integer",
+      "description": "Tick number when pattern was detected",
+      "minimum": 0
+    },
+    "causal_graph": {
+      "$ref": "#/$defs/CausalGraph"
+    }
+  },
+  "required": ["pattern", "causal_graph"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "CausalGraph": {
+      "type": "object",
+      "description": "Graph structure of causally linked events",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "description": "Event nodes in the causal chain",
+          "items": {
+            "$ref": "#/$defs/CausalNode"
+          },
+          "minItems": 1
+        },
+        "edges": {
+          "type": "array",
+          "description": "Causal relationships between nodes",
+          "items": {
+            "$ref": "#/$defs/CausalEdge"
+          }
+        }
+      },
+      "required": ["nodes", "edges"],
+      "additionalProperties": false
+    },
+
+    "CausalNode": {
+      "type": "object",
+      "description": "An event node in the causal graph",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique node identifier",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "description": "Event type classification",
+          "enum": [
+            "ECONOMIC_SHOCK",
+            "AUSTERITY_RESPONSE",
+            "RADICALIZATION",
+            "REPRESSION",
+            "SOLIDARITY_SURGE",
+            "RUPTURE"
+          ]
+        },
+        "tick": {
+          "type": "integer",
+          "description": "Tick when this event occurred",
+          "minimum": 0
+        },
+        "data": {
+          "type": "object",
+          "description": "Event-specific payload data",
+          "additionalProperties": true
+        }
+      },
+      "required": ["id", "type", "tick"],
+      "additionalProperties": false
+    },
+
+    "CausalEdge": {
+      "type": "object",
+      "description": "A causal relationship between two nodes",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "Source node ID",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "description": "Target node ID",
+          "minLength": 1
+        },
+        "relation": {
+          "type": "string",
+          "description": "Type of causal relationship",
+          "enum": [
+            "TRIGGERS_REACTION",
+            "CAUSES_RADICALIZATION",
+            "PROVOKES_RESPONSE",
+            "LEADS_TO",
+            "ENABLES"
+          ]
+        }
+      },
+      "required": ["source", "target", "relation"],
+      "additionalProperties": false
+    }
+  }
+}

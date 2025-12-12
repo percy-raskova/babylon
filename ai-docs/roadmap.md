@@ -1,223 +1,243 @@
-# The Six-Phase Fractal Evolution
+# Babylon Master Roadmap: The Path to MVP & Horizontal Scaling
 
-**Principle:** The simulation is built like a civilization: Base first, then Superstructure.
-
-> "The mode of production of material life conditions the general process of social,
-> political and intellectual life. It is not the consciousness of men that determines
-> their existence, but their social existence that determines their consciousness."
->
-> — Karl Marx, *A Contribution to the Critique of Political Economy* (1859)
+> "We build the skeleton first. Then we add the muscles. Finally, we teach it to speak."
 
 ---
 
-## Phase I: The Kernel (Logic)
+## 0. The Bedrock (COMPLETE)
 
-**Focus:** Pure Math.
+**Status:** VERIFIED (1,668+ Tests)
+**Objective:** A deterministic, mathematically consistent simulation kernel.
 
-**Deliverables:**
-- `formulas.py` - 12 MLM-TW formulas (imperial rent, survival calculus, unequal exchange)
-- Pydantic Models - Constrained types (Probability, Currency, Ideology)
-- Unit tests proving the equations work in isolation
+### The Kernel (Phase I)
+- [x] `SocialClass` & `WorldState` Pydantic models
+- [x] `formulas.py`: MLM-TW equations (Unequal Exchange, Survival Calculus)
+- [x] Constrained types: `Probability`, `Currency`, `Ideology`
 
-**Status:** COMPLETE
+### The Mesh (Phase II)
+- [x] `SimulationEngine`: System-based architecture
+- [x] `NetworkX` integration: Graph topology state
+- [x] `ServiceContainer`: Dependency injection pattern
 
-**Key Insight:** Before you can model history, you must model the laws of motion.
+### Testing Infrastructure (Phase 2.5)
+- [x] `DomainFactory`: Centralized fixture generation (`tests/factories/domain.py`)
+- [x] `BabylonAssert`: Semantic assertions (`tests/assertions.py`)
+- [x] `MockMetricsCollector`: Spy pattern (`tests/mocks/metrics_collector.py`)
 
----
-
-## Phase II: The Mesh (Topology)
-
-**Focus:** Graph Theory.
-
-**Deliverables:**
-- `WorldState` - Immutable state with NetworkX graph conversion
-- Systems Architecture - Modular engine with dependency injection
-- Feedback loops - Rent spiral, consciousness drift, repression trap
-
-**Status:** COMPLETE
-
-**Key Insight:** "Graph + Math = History" - The topology encodes relationships,
-the formulas encode dynamics.
+**Key Insight:** "Graph + Math = History" - The topology encodes relationships, the formulas encode dynamics.
 
 ---
 
-## Phase 2.5: Test Refactor (Operation Clean Slate)
+## 1. The Material Base - Physics (COMPLETE)
 
-**Focus:** Testing Infrastructure.
+**Status:** IMPLEMENTED
+**Objective:** A physically consistent world where material conditions drive events.
 
-**Deliverables:**
-- `DomainFactory` - Entity creation with sensible defaults (`tests/factories/domain.py`)
-- `BabylonAssert` - Fluent domain-specific assertions (`tests/assertions.py`)
-- `MockMetricsCollector` - Pure spy pattern for metrics (`tests/mocks/metrics_collector.py`)
+### Layer 0: The Territorial Substrate
+- [x] `TerritorySystem`: Heat dynamics, eviction pipeline (`systems/territory.py`, 378 lines)
+- [x] **Carceral Geography:** Necropolitical Triad (RESERVATION, PENAL_COLONY, CONCENTRATION_CAMP)
+- [x] **Dynamic Necropolitics:** `DisplacementPriorityMode` (EXTRACTION vs CONTAINMENT vs ELIMINATION)
+- [x] Heat spillover via ADJACENCY edges
 
-**Status:** COMPLETE
+### Layer 1: The Imperial Circuit
+- [x] `ImperialRentSystem`: Value extraction via TRIBUTE edges
+- [x] `SolidaritySystem`: Consciousness transmission via SOLIDARITY edges
+- [x] WAGES edge: Super-wages from bourgeoisie to core workers
+- [x] CLIENT_STATE edge: Imperial subsidy to comprador
 
-**Key Insight:** Good tests are a form of executable documentation.
+### Agency Layer: The Spark
+- [x] `StruggleSystem`: The George Floyd Dynamic (`systems/struggle.py`, 282 lines)
+- [x] **The Spark:** EXCESSIVE_FORCE events (stochastic police brutality)
+- [x] **The Combustion:** UPRISING when (spark OR p_rev > p_acq) AND agitation > threshold
+- [x] **The Result:** SOLIDARITY_SPIKE builds infrastructure for consciousness transmission
+
+**Key Insight:** "State Violence (The Spark) + Accumulated Agitation (The Fuel) = Insurrection (The Explosion)"
 
 ---
 
-## Phase 2.6: Observer Protocol (Phase 3 Foundation)
+## 2. The Observer - Logos (IN PROGRESS)
 
-**Focus:** Decoupled observation of simulation state.
+**Status:** CURRENT FOCUS (Sprint 3.1)
+**Objective:** Give the engine "eyes." Transition from implicit state changes to explicit, typed Events.
 
-**Deliverables:**
-- `SimulationObserver` protocol - Lifecycle hooks for external observers (`src/babylon/engine/observer.py`)
-- `TopologyMonitor` - Phase transition detection via percolation theory (`src/babylon/engine/topology_monitor.py`)
-- `TopologySnapshot` models - Frozen metrics per tick (`src/babylon/models/topology_metrics.py`)
-- Simulation integration - Observers notified on start/tick/end (`src/babylon/engine/simulation.py`)
+### Implemented Infrastructure
+- [x] `SimulationObserver` Protocol (`engine/observer.py`)
+- [x] `EventBus`: Pub/sub architecture (`engine/event_bus.py`)
+- [x] `EventType` enum: 9 typed events (`models/enums.py`)
+  - SURPLUS_EXTRACTION, IMPERIAL_SUBSIDY, ECONOMIC_CRISIS
+  - SOLIDARITY_AWAKENING, CONSCIOUSNESS_TRANSMISSION, MASS_AWAKENING
+  - EXCESSIVE_FORCE, UPRISING, SOLIDARITY_SPIKE
+- [x] `TopologyMonitor`: Phase transition detection via percolation theory (`engine/topology_monitor.py`)
+- [x] `TopologySnapshot` models: Frozen metrics per tick (`models/topology_metrics.py`)
 
-**Status:** COMPLETE
-
-**Planned (Not Yet Implemented):**
-- `src/babylon/models/events.py` - Structured event schema (PLANNED)
-- Condensation Monitor - Advanced phase detection (PLANNED)
+### Remaining Work
+- [ ] **Sprint 3.1:** `SimulationEvent` Pydantic Schema
+  - *Goal:* Replace `event_log` strings with structured `ExtractionEvent`, `UprisingEvent`
+- [ ] **Sprint 3.2:** System Instrumentation Refinement
+  - *Goal:* Ensure all Systems emit typed events with full payloads
 
 **Key Insight:** ADR003 - "AI failures don't break game mechanics."
 
 ---
 
-## Phase III: The Material Base (Physics)
+## 3. The Narrator - Mythos (PLANNED)
 
-**Focus:** The "Body" of the world.
+**Status:** DESIGNED
+**Objective:** Give the engine a "voice."
 
-**Components:**
+### The Bridge
+- [ ] `NarrativeDirector`: Interface between Engine and LLM
+- [ ] `PromptBuilder`: Context assembly using `WorldState` + `SimulationEvent`
 
-### Layer 0: Territory, Heat, Eviction (Sprint 3.5)
-- Strategic Sectors - territorial units with operational profiles
-- Subversive Tenancy - De Facto vs Legal control
-- Heat mechanics - state attention accumulation
-- Eviction pipeline - when heat >= 0.8
-
-**Status:** COMPLETE
-
-### Layer 1: Imperial Circuit, Rent, Wages (Sprint 3.4)
-- WAGES edge - super-wages from bourgeoisie to core workers
-- TRIBUTE edge - imperial rent transfer
-- CLIENT_STATE edge - imperial subsidy to comprador
-- 4-node model - periphery worker, comprador, core bourgeoisie, core worker
-
-**Status:** IN PROGRESS (Sprints 3.4.1-3.4.3 COMPLETE, 3.4.4 remaining)
-
-**Goal:** A physically consistent world where material conditions drive events.
-
-**Key Insight:** "The bomb factory pays well. That's the problem."
-
----
-
-## Phase IV: The Superstructure (Semantics)
-
-**Focus:** The "Soul" of the world.
-
-**Components:**
-
-### Vector Ideology: Multi-dimensional consciousness
-- `IdeologicalProfile` model - class_consciousness, national_identity, agitation
-- The George Jackson Refactor - "Fascism is the defensive form of capitalism"
-- Agitation Router - crisis energy flows to revolution OR fascism based on solidarity
-
-**Status:** COMPLETE (Sprint 3.4.3)
-
-### Semantic Physics: ChromaDB as a physics engine
-- Canon - foundational theoretical texts (Marx, Lenin, Fanon)
-- Chronicle - game history (events, state snapshots)
-- Zeitgeist - emergent patterns detected by embedding similarity
-
-**Status:** PLANNED
-
-### Resonance: Historical events triggering based on vector similarity
-- When current conditions approach historical precedent, trigger narrative
-- "The Weimar Resonance" - economic crisis + atomization + agitation = fascism risk
-
-**Status:** PLANNED
-
-**Goal:** A world that "remembers" history and forms complex beliefs.
+### The Voice
+- [ ] **Sprint 4.1:** Character Sheet Integration (Percy Raskova)
+- [ ] **Sprint 4.2:** Historical RAG (ChromaDB) to ground events in precedent
+  - "The Weimar Resonance" - economic crisis + atomization + agitation = fascism risk
 
 **Key Insight:** "Agitation without solidarity produces fascism, not revolution."
 
 ---
 
-## Phase V: The Interface (Control)
+## 4. The Interface - MVP (PLANNED)
 
-**Focus:** Visualization.
+**Status:** DESIGNED
+**Objective:** The "Digital Grow Room" aesthetic.
 
-**Components:**
-- NiceGUI Dashboard - real-time simulation control
-- Map rendering - territorial display with heat overlay
-- Graph visualization - relationship network with tension indicators
-- History browser - timeline navigation with undo/redo
+### The Monitor Station
+- [ ] **NiceGUI** implementation
+- [ ] **Topology Scanner:** ECharts graph visualization (Cyber-insurgency style)
+- [ ] **Tension Gauge:** Analog visual for `ContradictionSystem` accumulation
 
-**Status:** PLANNED
+### Controls
+- [ ] "Agitation" Fan Speed Slider
+- [ ] "Rent Extraction" Voltage Dial
 
-**Goal:** Players can see and interact with the simulation state.
+### MVP Definition
+
+> A stable loop where a player can tweak "Repression", watch the `StruggleSystem` trigger a spark, see the `TerritorySystem` evict populations to a Penal Colony, and read a Narrative Log explaining the resulting riot.
+
+**Key Insight:** "The bomb factory pays well. That's the problem."
 
 ---
 
-## Phase VI: The Fractal (Scale)
+## 5. Horizontal Expansion (FUTURE)
 
-**Focus:** Expansion.
+**Status:** SPECIFIED (Brainstorming)
+**Objective:** Once MVP is stable, we "plug in" these new Systems. The Engine architecture supports this via `systems: list[System]`.
 
-**Components:**
-- Procedural generation - automatic world creation from parameters
-- Multi-region trade - inter-territorial economic flows
-- Internal colonies - fractal topology within core (race/gender/geographic stratification)
-- Full faction system - multiple competing organizations
+### System A: Kinetic Warfare (Asymmetric Logistics)
 
-**Status:** FUTURE
+*Based on: `brainstorm/mechanics/kinetic_warfare.md`*
 
-**Goal:** The simulation scales from 4-node model to full world complexity.
+**Concept:** Not frontlines, but system disruption.
 
-**Key Insight:** "Composite/Graph pattern enables modeling stratification within Core"
+**The Target Triad:**
+1. **Nodes of Extraction:** Mines/Farms (Vulnerable to strikes)
+2. **Edges of Circulation:** Logistics/Power lines (Sabotage cuts value flow)
+3. **Nodes of Realization:** Data Centers/Bunkers (High security)
+
+**Mechanic:** Player spends `LaborPower` to target specific graph nodes. Success checks against `State.security_level`.
+
+### System B: The Metabolism (Resource System)
+
+*Based on: `brainstorm/mechanics/resource-system.md`*
+
+**Concept:** Every movement needs Mana (Action) and HP (Coherence).
+
+**Resource 1: Labor-Power (LP):**
+- Generated by: Organized Workers + Base Areas
+- Spent on: Agitation, Attacks, Building Edges
+
+**Resource 2: Coherence (Entropy):**
+- Natural decay over time (Entropy)
+- Maintained by: Rituals, Theory, Victories
+- *Failure State:* High LP + Low Coherence = Ultra-leftism (action without effect)
+
+### System C: Liberation Mechanics
+
+*Extension of: `src/babylon/engine/systems/territory.py`*
+
+**Concept:** Reversing the Carceral Geography.
+
+**Mechanic:** Converting a `PENAL_COLONY` or `CONCENTRATION_CAMP` back into a `PERIPHERY` node.
+
+**Requirements:**
+- `StruggleSystem` Uprising event *inside* the sink node
+- External `KineticWarfare` breach of the node's defenses
+
+---
+
+## The Horizontal Guarantee
+
+We can add **System A**, **System B**, and **System C** without breaking the existing MVP because:
+
+1. **Shared State:** They read/write to the same `WorldState` graph
+2. **Event Coupling:** They communicate via the `EventBus` (e.g., `SabotageEvent` triggers `EconomicSystem` recalc)
+3. **No Monolith:** `SimulationEngine` simply iterates through `[Territory, Economy, Struggle, Warfare, Metabolism]`
+
+```
+SimulationEngine.run_tick(graph, services, context)
+     |
+     +-- 1. ImperialRentSystem      (economic base)
+     +-- 2. SolidaritySystem        (consciousness transmission)
+     +-- 3. ConsciousnessSystem     (ideology drift)
+     +-- 4. SurvivalSystem          (P(S|A), P(S|R) calculations)
+     +-- 5. StruggleSystem          (Agency Layer)
+     +-- 6. ContradictionSystem     (tension/rupture dynamics)
+     +-- 7. TerritorySystem         (spatial superstructure)
+     +-- 8. WarfareSystem           (FUTURE: kinetic logistics)
+     +-- 9. MetabolismSystem        (FUTURE: LP/Coherence)
+```
 
 ---
 
 ## Development Model: Base and Superstructure
 
 ```
-            ┌─────────────────────────────────────┐
-            │     SUPERSTRUCTURE                  │
-            │  (Phase IV: Semantics)              │
-            │  - Ideology Vector Space            │
-            │  - Semantic Memory (RAG)            │
-            │  - Narrative Generation             │
-            └─────────────────────────────────────┘
-                           ↑
-                           │ Determines consciousness
-                           │
-            ┌─────────────────────────────────────┐
-            │     MATERIAL BASE                   │
-            │  (Phase III: Physics)               │
-            │  - Economic flows (rent, wages)     │
-            │  - Territorial control              │
-            │  - Crisis conditions                │
-            └─────────────────────────────────────┘
-                           ↑
-                           │ Built on
-                           │
-            ┌─────────────────────────────────────┐
-            │     TOPOLOGY                        │
-            │  (Phase II: Mesh)                   │
-            │  - NetworkX graph structure         │
-            │  - Entity relationships             │
-            │  - System execution order           │
-            └─────────────────────────────────────┘
-                           ↑
-                           │ Implements
-                           │
-            ┌─────────────────────────────────────┐
-            │     KERNEL                          │
-            │  (Phase I: Logic)                   │
-            │  - Pure math formulas               │
-            │  - Pydantic type constraints        │
-            │  - TDD proven equations             │
-            └─────────────────────────────────────┘
+            +---------------------------------------------+
+            |     INTERFACE (Phase 4: MVP)                |
+            |  - NiceGUI Dashboard                        |
+            |  - Topology Scanner                         |
+            |  - Tension Gauge                            |
+            +---------------------------------------------+
+                           |
+                           | Renders
+                           v
+            +---------------------------------------------+
+            |     NARRATOR (Phase 3: Mythos)              |
+            |  - NarrativeDirector                        |
+            |  - Historical RAG                           |
+            |  - Character Sheets                         |
+            +---------------------------------------------+
+                           |
+                           | Observes
+                           v
+            +---------------------------------------------+
+            |     OBSERVER (Phase 2: Logos)               |
+            |  - SimulationObserver Protocol              |
+            |  - EventBus (9 EventTypes)                  |
+            |  - TopologyMonitor                          |
+            +---------------------------------------------+
+                           |
+                           | Watches
+                           v
+            +---------------------------------------------+
+            |     MATERIAL BASE (Phase 1: Physics)        |
+            |  - TerritorySystem (Carceral Geography)     |
+            |  - ImperialRentSystem (Value Extraction)    |
+            |  - StruggleSystem (Agency Layer)            |
+            +---------------------------------------------+
+                           |
+                           | Built on
+                           v
+            +---------------------------------------------+
+            |     BEDROCK (Phase 0: Kernel + Mesh)        |
+            |  - Pure math formulas                       |
+            |  - Pydantic type constraints                |
+            |  - NetworkX graph structure                 |
+            |  - TDD proven equations (1,668+ tests)      |
+            +---------------------------------------------+
 ```
-
----
-
-## Superseded Documents
-
-- `brainstorm/plans/four-phase-engine-blueprint.md` - DEPRECATED (2025-12-09)
-- `brainstorm/plans/phase2-game-loop-design.md` - Still valid for Phase II details
 
 ---
 
@@ -228,12 +248,24 @@ the formulas encode dynamics.
 | Current status | `ai-docs/state.yaml` |
 | Architecture | `ai-docs/architecture.yaml` |
 | Formulas | `ai-docs/formulas-spec.yaml` |
+| Observer Layer | `ai-docs/observer-layer.yaml` |
 | Decisions | `ai-docs/decisions.yaml` |
 | George Jackson Refactor | `brainstorm/mechanics/fascist_bifurcation.md` |
 | Territory System | `brainstorm/mechanics/layer0_territory.md` |
+| Carceral Geography | `brainstorm/mechanics/carceral_geography.md` |
+| Agency Layer | `brainstorm/mechanics/agency_layer.md` |
+| Kinetic Warfare | `brainstorm/mechanics/kinetic_warfare.md` |
+| Resource System | `brainstorm/mechanics/resource-system.md` |
+
+---
+
+## Superseded Documents
+
+- `brainstorm/plans/four-phase-engine-blueprint.md` - DEPRECATED (2025-12-09)
+- Previous "Six-Phase Fractal Evolution" structure - SUPERSEDED (2025-12-12)
 
 ---
 
 *Document created: 2025-12-09*
-*Last updated: 2025-12-12 (Operation Truth Sync)*
-*Epoch: Six-Phase Fractal Evolution*
+*Last updated: 2025-12-12 (Roadmap Restructure: Path to MVP)*
+*Epoch: MVP & Horizontal Scaling*

@@ -38,7 +38,18 @@ from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
-from babylon.models.events import ExtractionEvent, SimulationEvent
+from babylon.models.events import (
+    CrisisEvent,
+    ExtractionEvent,
+    MassAwakeningEvent,
+    RuptureEvent,
+    SimulationEvent,
+    SolidaritySpikeEvent,
+    SparkEvent,
+    SubsidyEvent,
+    TransmissionEvent,
+    UprisingEvent,
+)
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
@@ -121,8 +132,7 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
         return None rather than raising an error. The caller should filter
         out None values.
 
-    Sprint 3.1: Currently only supports ExtractionEvent.
-    Future sprints will add support for other event types.
+    Sprint 3.1+: Supports all 10 EventTypes except SOLIDARITY_AWAKENING.
     """
     # Normalize event type (may be string or EventType enum)
     event_type = event.type
@@ -136,6 +146,7 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
     timestamp = event.timestamp
     payload = event.payload
 
+    # Economic Events
     if event_type == EventType.SURPLUS_EXTRACTION:
         return ExtractionEvent(
             tick=tick,
@@ -146,7 +157,86 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
             mechanism=payload.get("mechanism", "imperial_rent"),
         )
 
-    # Unsupported event type - graceful degradation
+    if event_type == EventType.IMPERIAL_SUBSIDY:
+        return SubsidyEvent(
+            tick=tick,
+            timestamp=timestamp,
+            source_id=payload.get("source_id", ""),
+            target_id=payload.get("target_id", ""),
+            amount=payload.get("amount", 0.0),
+            repression_boost=payload.get("repression_boost", 0.0),
+        )
+
+    if event_type == EventType.ECONOMIC_CRISIS:
+        return CrisisEvent(
+            tick=tick,
+            timestamp=timestamp,
+            pool_ratio=payload.get("pool_ratio", 0.0),
+            aggregate_tension=payload.get("aggregate_tension", 0.0),
+            decision=payload.get("decision", "UNKNOWN"),
+            wage_delta=payload.get("wage_delta", 0.0),
+        )
+
+    # Consciousness Events
+    if event_type == EventType.CONSCIOUSNESS_TRANSMISSION:
+        return TransmissionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            source_id=payload.get("source_id", ""),
+            target_id=payload.get("target_id", ""),
+            delta=payload.get("delta", 0.0),
+            solidarity_strength=payload.get("solidarity_strength", 0.0),
+        )
+
+    if event_type == EventType.MASS_AWAKENING:
+        return MassAwakeningEvent(
+            tick=tick,
+            timestamp=timestamp,
+            target_id=payload.get("target_id", ""),
+            old_consciousness=payload.get("old_consciousness", 0.0),
+            new_consciousness=payload.get("new_consciousness", 0.0),
+            triggering_source=payload.get("triggering_source", ""),
+        )
+
+    # Struggle Events (Agency Layer - George Floyd Dynamic)
+    if event_type == EventType.EXCESSIVE_FORCE:
+        return SparkEvent(
+            tick=tick,
+            timestamp=timestamp,
+            node_id=payload.get("node_id", ""),
+            repression=payload.get("repression", 0.0),
+            spark_probability=payload.get("spark_probability", 0.0),
+        )
+
+    if event_type == EventType.UPRISING:
+        return UprisingEvent(
+            tick=tick,
+            timestamp=timestamp,
+            node_id=payload.get("node_id", ""),
+            trigger=payload.get("trigger", "unknown"),
+            agitation=payload.get("agitation", 0.0),
+            repression=payload.get("repression", 0.0),
+        )
+
+    if event_type == EventType.SOLIDARITY_SPIKE:
+        return SolidaritySpikeEvent(
+            tick=tick,
+            timestamp=timestamp,
+            node_id=payload.get("node_id", ""),
+            solidarity_gained=payload.get("solidarity_gained", 0.0),
+            edges_affected=payload.get("edges_affected", 0),
+            triggered_by=payload.get("triggered_by", "unknown"),
+        )
+
+    # Contradiction Events
+    if event_type == EventType.RUPTURE:
+        return RuptureEvent(
+            tick=tick,
+            timestamp=timestamp,
+            edge=payload.get("edge", ""),
+        )
+
+    # Unsupported event type (e.g., SOLIDARITY_AWAKENING) - graceful degradation
     return None
 
 

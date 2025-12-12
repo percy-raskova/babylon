@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.engine.event_bus import Event
+from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
@@ -44,7 +45,7 @@ class ContradictionSystem:
             if new_tension >= 1.0 and current_tension < 1.0:
                 services.event_bus.publish(
                     Event(
-                        type="rupture",
+                        type=EventType.RUPTURE,
                         tick=tick,
                         payload={"edge": f"{source_id}->{target_id}"},
                     )

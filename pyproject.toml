@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "babylon"
-version = "0.2.0"
+version = "0.3.0"
 description = "A Marxist text-based role playing game powered by Claude. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
@@ -154,7 +154,7 @@ exclude = ["tests/", "build/", "dist/", "assets/music/"]
 # =============================================================================
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.0"
+version = "0.3.0"
 tag_format = "v$version"
 version_files = ["pyproject.toml:version"]
 update_changelog_on_bump = true

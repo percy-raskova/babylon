@@ -598,17 +598,20 @@ class TopologyEvent(SimulationEvent):
 class PhaseTransitionEvent(TopologyEvent):
     """Phase transition detected in solidarity network.
 
-    Emitted when percolation_ratio crosses threshold boundaries:
+    Emitted when percolation_ratio crosses threshold boundaries.
 
-    - Gaseous (ratio < 0.1): Atomized, no coordination
-    - Transitional (0.1 <= ratio < 0.5): Emerging structure
-    - Liquid (ratio >= 0.5): Giant component (vanguard formation)
+    4-Phase Model:
+        - Gaseous (ratio < 0.1): Atomized, no coordination
+        - Transitional (0.1 <= ratio < 0.5): Emerging structure
+        - Liquid (ratio >= 0.5, cadre_density < 0.5): Mass movement (weak ties)
+        - Solid (ratio >= 0.5, cadre_density >= 0.5): Vanguard party (strong ties)
 
     Attributes:
         event_type: Always PHASE_TRANSITION.
-        previous_state: Phase before transition ("gaseous", "transitional", "liquid").
+        previous_state: Phase before transition ("gaseous", "transitional", "liquid", "solid").
         new_state: Phase after transition.
         largest_component_size: Size of the giant component (L_max).
+        cadre_density: Ratio of cadre to sympathizers (actual/potential liquidity).
         is_resilient: Whether network survives 20% node removal (Sword of Damocles test).
 
     Example:
@@ -631,16 +634,22 @@ class PhaseTransitionEvent(TopologyEvent):
     previous_state: str = Field(
         ...,
         min_length=1,
-        description="Phase before transition (gaseous, transitional, liquid)",
+        description="Phase before transition (gaseous, transitional, liquid, solid)",
     )
     new_state: str = Field(
         ...,
         min_length=1,
-        description="Phase after transition (gaseous, transitional, liquid)",
+        description="Phase after transition (gaseous, transitional, liquid, solid)",
     )
     largest_component_size: int = Field(
         ge=0,
         description="Size of the largest connected component (L_max)",
+    )
+    cadre_density: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Ratio of cadre to sympathizers (actual/potential liquidity)",
     )
     is_resilient: bool | None = Field(
         default=None,

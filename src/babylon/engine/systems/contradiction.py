@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import networkx as nx
 
@@ -10,6 +10,8 @@ from babylon.engine.event_bus import Event
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
+
+from babylon.engine.systems.protocol import ContextType
 
 
 class ContradictionSystem:
@@ -21,7 +23,7 @@ class ContradictionSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Update tension on edges based on wealth gaps."""
         tick: int = context.get("tick", 0)

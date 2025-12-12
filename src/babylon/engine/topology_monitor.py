@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.models.enums import EdgeType
+from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 
 if TYPE_CHECKING:
@@ -283,6 +284,9 @@ class TopologyMonitor:
         self._resilience_interval: int = resilience_test_interval
         self._removal_rate: float = resilience_removal_rate
         self._logger: logging.Logger = logger or logging.getLogger(__name__)
+        # Sprint 3.3: Phase transition event emission
+        self._previous_phase: str | None = None
+        self._pending_events: list[SimulationEvent] = []
 
     @property
     def name(self) -> str:
@@ -293,6 +297,39 @@ class TopologyMonitor:
     def history(self) -> list[TopologySnapshot]:
         """Return copy of snapshot history."""
         return list(self._history)
+
+    def _classify_phase(self, percolation_ratio: float) -> str:
+        """Classify network state based on percolation ratio.
+
+        Uses the existing constants GASEOUS_THRESHOLD (0.1) and
+        CONDENSATION_THRESHOLD (0.5) to determine phase.
+
+        Args:
+            percolation_ratio: L_max / N ratio from topology analysis.
+
+        Returns:
+            Phase classification: "gaseous", "transitional", or "liquid".
+        """
+        if percolation_ratio < GASEOUS_THRESHOLD:
+            return "gaseous"
+        if percolation_ratio < CONDENSATION_THRESHOLD:
+            return "transitional"
+        return "liquid"
+
+    def get_pending_events(self) -> list[SimulationEvent]:
+        """Return and clear pending events for collection by Simulation facade.
+
+        Observer events cannot be emitted directly to WorldState because
+        observers run AFTER WorldState is frozen. Instead, pending events
+        are collected by the Simulation facade and injected into the
+        NEXT tick's WorldState.
+
+        Returns:
+            List of pending SimulationEvent objects (cleared after return).
+        """
+        events = list(self._pending_events)
+        self._pending_events.clear()
+        return events
 
     def on_simulation_start(
         self,
@@ -309,6 +346,8 @@ class TopologyMonitor:
         """
         self._history.clear()
         self._previous_percolation = 0.0
+        self._previous_phase = None  # Reset phase tracking
+        self._pending_events.clear()  # Clear any stale events
         self._record_snapshot(initial_state, is_start=True)
 
     def on_tick(
@@ -382,6 +421,24 @@ class TopologyMonitor:
 
         # Log narratives
         self._log_narratives(snapshot)
+
+        # Sprint 3.3: Phase transition detection and event emission
+        current_phase = self._classify_phase(percolation_ratio)
+
+        if self._previous_phase is not None and current_phase != self._previous_phase:
+            # Phase transition detected - emit event
+            event = PhaseTransitionEvent(
+                tick=state.tick,
+                previous_state=self._previous_phase,
+                new_state=current_phase,
+                percolation_ratio=percolation_ratio,
+                num_components=num_components,
+                largest_component_size=max_component_size,
+                is_resilient=is_resilient,
+            )
+            self._pending_events.append(event)
+
+        self._previous_phase = current_phase
 
         # Update state
         self._previous_percolation = percolation_ratio

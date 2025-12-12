@@ -566,3 +566,83 @@ class RuptureEvent(ContradictionEvent):
         default=EventType.RUPTURE,
         description="Event type (always RUPTURE)",
     )
+
+
+# =============================================================================
+# Topology Events (Sprint 3.3)
+# =============================================================================
+
+
+class TopologyEvent(SimulationEvent):
+    """Events related to network topology analysis.
+
+    Base class for percolation theory metrics and phase transition detection.
+    Tracks the state of the solidarity network structure.
+
+    Attributes:
+        percolation_ratio: Ratio of largest component to total nodes (L_max / N).
+        num_components: Number of disconnected solidarity components.
+    """
+
+    percolation_ratio: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Ratio of largest component to total nodes",
+    )
+    num_components: int = Field(
+        ge=0,
+        description="Number of disconnected solidarity components",
+    )
+
+
+class PhaseTransitionEvent(TopologyEvent):
+    """Phase transition detected in solidarity network.
+
+    Emitted when percolation_ratio crosses threshold boundaries:
+
+    - Gaseous (ratio < 0.1): Atomized, no coordination
+    - Transitional (0.1 <= ratio < 0.5): Emerging structure
+    - Liquid (ratio >= 0.5): Giant component (vanguard formation)
+
+    Attributes:
+        event_type: Always PHASE_TRANSITION.
+        previous_state: Phase before transition ("gaseous", "transitional", "liquid").
+        new_state: Phase after transition.
+        largest_component_size: Size of the giant component (L_max).
+        is_resilient: Whether network survives 20% node removal (Sword of Damocles test).
+
+    Example:
+        >>> event = PhaseTransitionEvent(
+        ...     tick=10,
+        ...     previous_state="gaseous",
+        ...     new_state="liquid",
+        ...     percolation_ratio=0.6,
+        ...     num_components=2,
+        ...     largest_component_size=12,
+        ... )
+        >>> event.event_type
+        <EventType.PHASE_TRANSITION: 'phase_transition'>
+    """
+
+    event_type: EventType = Field(
+        default=EventType.PHASE_TRANSITION,
+        description="Event type (always PHASE_TRANSITION)",
+    )
+    previous_state: str = Field(
+        ...,
+        min_length=1,
+        description="Phase before transition (gaseous, transitional, liquid)",
+    )
+    new_state: str = Field(
+        ...,
+        min_length=1,
+        description="Phase after transition (gaseous, transitional, liquid)",
+    )
+    largest_component_size: int = Field(
+        ge=0,
+        description="Size of the largest connected component (L_max)",
+    )
+    is_resilient: bool | None = Field(
+        default=None,
+        description="Whether network survives purge (may be None if test not run)",
+    )

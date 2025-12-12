@@ -190,28 +190,40 @@ latex_documents = [
     ),
 ]
 
-# LaTeX styling for professional output
+# LaTeX styling for professional book output
 # "Bunker Constructivism" aesthetic from docs/concepts/aesthetics.rst
 latex_elements = {
     "papersize": "letterpaper",
     "pointsize": "11pt",
-    # Allow chapters to start on any page (eliminates blank pages)
-    "extraclassoptions": "openany",
-    # Custom preamble: Bunker Constructivism color scheme + typography
-    "preamble": r"""
-% ============================================================================
-% BUNKER CONSTRUCTIVISM THEME
-% "Damp Basement Cyberinsurgency" - CRT aesthetic for PDF output
-% ============================================================================
-
-% Typography (xelatex fontspec)
+    # Book-style layout
+    "extraclassoptions": "openany,twoside",
+    # CRITICAL: Pass options to xcolor BEFORE Sphinx loads it
+    # This fixes "Option clash for package xcolor" errors
+    "passoptionstopackages": r"\PassOptionsToPackage{svgnames,dvipsnames,table}{xcolor}",
+    # Professional fonts via fontspec (requires xelatex)
+    # DejaVu Sans Mono has better Unicode coverage (box-drawing chars, etc.)
+    "fontpkg": r"""
 \usepackage{fontspec}
 \setmainfont{TeX Gyre Termes}
 \setsansfont{TeX Gyre Heros}
-\setmonofont{TeX Gyre Cursor}
+\setmonofont{DejaVu Sans Mono}
+""",
+    # Custom preamble: Bunker Constructivism Professional Book Edition
+    "preamble": r"""
+% ============================================================================
+% BUNKER CONSTRUCTIVISM THEME - Professional Book Edition
+% "Damp Basement Cyberinsurgency" - CRT aesthetic for PDF output
+% ============================================================================
+
+% Better typography - subtle kerning and spacing improvements
+\usepackage{microtype}
+
+% Fix fancyhdr headheight warning
+\setlength{\headheight}{24pt}
+\addtolength{\topmargin}{-12pt}
 
 % Color definitions from aesthetics.rst
-\usepackage{xcolor}
+% (xcolor already loaded by Sphinx with svgnames via passoptionstopackages)
 \definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, active elements
 \definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - backgrounds
 \definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text
@@ -220,12 +232,21 @@ latex_elements = {
 \definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks
 \definecolor{TheDust}{HTML}{C0C0C0}         % Secondary text, prompts
 
-% Hyperlink styling - gold circuit traces
+% Enhanced PDF bookmarks (better than hyperref alone)
+\usepackage{bookmark}
+
+% Hyperlink styling with full bookmark support
 \hypersetup{
     colorlinks=true,
     linkcolor=ThermalWarning,
     urlcolor=PhosphorBurn,
     citecolor=TheChassis,
+    % PDF bookmarks and metadata
+    bookmarks=true,
+    bookmarksnumbered=true,
+    bookmarksopen=true,
+    bookmarksopenlevel=2,
+    pdfstartview=FitH,
 }
 
 % Chapter and section heading colors
@@ -234,16 +255,25 @@ latex_elements = {
 \sectionfont{\color{ThermalWarning}}
 \subsectionfont{\color{TheChassis}}
 
-% Code block styling - dark terminal aesthetic
-\usepackage{mdframed}
-\surroundwithmdframed[
-    backgroundcolor=WetConcrete,
-    fontcolor=TerminalGlare,
-    linecolor=TheChassis,
-    linewidth=1pt,
-    innertopmargin=8pt,
-    innerbottommargin=8pt,
-]{Verbatim}
+% Professional ToC formatting with colors
+\usepackage[titles]{tocloft}
+\renewcommand{\cftchapfont}{\bfseries\color{PhosphorBurn}}
+\renewcommand{\cftsecfont}{\color{ThermalWarning}}
+\renewcommand{\cftsubsecfont}{\color{TheChassis}}
+\renewcommand{\cftchappagefont}{\bfseries\color{TheChassis}}
+\renewcommand{\cftsecpagefont}{\color{TheChassis}}
+\renewcommand{\cftsubsecpagefont}{\color{TheDust}}
+
+% Fancy headers for book feel
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\thepage}
+\fancyhead[RE]{\nouppercase{\leftmark}}
+\fancyhead[LO]{\nouppercase{\rightmark}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{%
+    \color{TheChassis}\leaders\hrule height \headrulewidth\hfill}}
 
 % Admonition styling
 \usepackage{tcolorbox}
@@ -255,11 +285,20 @@ latex_elements = {
     {\Large\color{TheDust}#1}%
 }
 """,
-    # Chapter heading style - Sonny provides bold industrial look
-    "fncychap": r"\usepackage[Sonny]{fncychap}",
+    # Chapter heading style - Bjornstrup is professional book-like
+    "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
+    # Sphinx-specific styling
+    "sphinxsetup": r"""
+        TitleColor={RGB}{212,0,0},
+        InnerLinkColor={RGB}{139,0,0},
+        OuterLinkColor={RGB}{212,0,0},
+    """,
     # Index formatting
     "printindex": r"\footnotesize\raggedright\printindex",
 }
 
 # LaTeX engine (xelatex has native Unicode support for Greek letters, arrows, etc.)
 latex_engine = "xelatex"
+
+# Use makeindex instead of xindy to avoid encoding issues
+latex_use_xindy = False

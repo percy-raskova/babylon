@@ -153,9 +153,21 @@ todo_include_todos = True
 autosummary_generate = True
 autosummary_imported_members = False  # Prevent documenting re-exported members twice
 
-# Duplicate object description warnings are expected behavior with Pydantic models
-# being re-exported in __init__.py files. These don't affect documentation quality.
-# The warnings cannot be suppressed with suppress_warnings but don't block the build.
+# Suppress known-benign warnings that don't affect documentation quality
+# This allows CI to run with -W (warnings as errors) while ignoring noise
+suppress_warnings = [
+    # Duplicate object descriptions from Pydantic models re-exported in __init__.py
+    # These occur because autosummary documents both the original and re-exported location
+    "autodoc",
+    "autodoc.import_object",
+    # Reference warnings (intersphinx, cross-refs)
+    "ref.python",
+    "ref.ref",
+    # MyST cross-reference warnings
+    "myst.xref_missing",
+    # Docutils inline markup warnings (usually from docstrings with special chars)
+    "docutils",
+]
 
 # Mermaid configuration (sphinxcontrib-mermaid v1.2.3)
 # See: https://github.com/mgaitan/sphinxcontrib-mermaid

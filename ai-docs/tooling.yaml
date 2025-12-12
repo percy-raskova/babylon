@@ -228,6 +228,51 @@ python:
       analyze_sweep: "Parameter sweep with summary metrics"
 
 # =============================================================================
+# TESTING INFRASTRUCTURE
+# =============================================================================
+
+testing_infrastructure:
+  description: "Consolidated testing tools from Operation Clean Slate refactor"
+
+  domain_factory:
+    location: "tests/factories/domain.py"
+    purpose: "Single source of truth for creating test entities"
+    key_methods:
+      - "create_worker(): SocialClass with periphery proletariat defaults"
+      - "create_owner(): SocialClass with core bourgeoisie defaults"
+      - "create_relationship(): Relationship edge with exploitation defaults"
+      - "create_world_state(): Complete WorldState for simulation tests"
+    usage: |
+      factory = DomainFactory()
+      worker = factory.create_worker(wealth=100.0)  # Override only what matters
+      state = factory.create_world_state(entities={"C001": worker})
+    replaces: "Manual dictionary creation, scattered fixture definitions"
+
+  babylon_assert:
+    location: "tests/assertions.py"
+    purpose: "Fluent assertion library for domain-expressive test verification"
+    key_classes:
+      - "Assert: Entry point for WorldState assertions"
+      - "EntityAssert: SocialClass assertions (wealth, ideology, survival)"
+      - "RelationshipAssert: Relationship assertions (tension, value_flow)"
+    usage: |
+      Assert(new_state).entity("C001").is_poorer_than(previous_state)
+      Assert(state).relationship("C001", "C002").has_tension_increased(previous_state)
+    replaces: "Raw assert statements with manual calculations"
+
+  metrics_collector_protocol:
+    location: "src/babylon/metrics/interfaces.py"
+    purpose: "Protocol ensuring mocks and real collectors share identical interface"
+    key_methods:
+      - "record(name, value, tags, metadata): Record metric value"
+      - "increment(name, value): Increment counter"
+      - "gauge(name, value): Set gauge value"
+      - "time(name) -> ContextManager: Time operations"
+      - "summary() -> dict: Get aggregated metrics"
+      - "clear(): Reset all metrics"
+    pattern: "Dumb Spy - mocks record calls, don't calculate statistics"
+
+# =============================================================================
 # KNOWN ISSUES AND WORKAROUNDS
 # =============================================================================
 

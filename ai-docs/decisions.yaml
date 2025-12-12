@@ -1567,6 +1567,61 @@ pending:
       - "docstrings_enable_sphinx"
       - "explain_why_not_what"
 
+  ADR025_operation_clean_slate:
+    status: "accepted"
+    date: "2025-12-12"
+    title: "Test Suite Refactor (Operation Clean Slate)"
+    context: |
+      The test suite grew to 1,500+ tests with increasing brittleness:
+      - Fixture fragmentation: Same entities defined differently across test files
+      - Assertion verbosity: Math-heavy assertions obscured test intent
+      - Mock complexity: Smart mocks with calculation logic caused false positives
+
+    decision: |
+      Centralize test infrastructure via three tools:
+
+      **1. DomainFactory** (tests/factories/domain.py)
+      - Single source for entity creation
+      - Sensible defaults, override only what matters
+      - Methods: create_worker(), create_owner(), create_relationship(), create_world_state()
+
+      **2. BabylonAssert** (tests/assertions.py)
+      - Fluent domain-specific assertions
+      - Classes: Assert, EntityAssert, RelationshipAssert
+      - Transform assertions into political/economic narrative
+
+      **3. MetricsCollectorProtocol** (src/babylon/metrics/interfaces.py)
+      - Protocol for dependency injection
+      - Dumb spy pattern: mocks record, don't calculate
+      - Ensures mock/real implementation parity
+
+    rationale:
+      - "DomainFactory enables 'express only what differs' pattern"
+      - "BabylonAssert transforms assertions into readable political narrative"
+      - "Protocol pattern ensures mock/real implementation parity"
+
+    consequences:
+      positive:
+        - "Tests are more readable and maintainable"
+        - "Fixture changes propagate from single source"
+        - "Rich error messages accelerate debugging"
+        - "Mocks cannot diverge from production interface"
+      negative:
+        - "Learning curve for new testing patterns"
+        - "Existing tests need gradual migration"
+
+    implementation:
+      files:
+        - "tests/factories/domain.py"
+        - "tests/assertions.py"
+        - "src/babylon/metrics/interfaces.py"
+      deprecates: "Raw dictionary creation for test entities"
+
+    related_patterns:
+      - "the_harvest"
+      - "the_narrative_assertion"
+      - "the_humble_mock"
+
 # =============================================================================
 # REJECTED DECISIONS
 # =============================================================================

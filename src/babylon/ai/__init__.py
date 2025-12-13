@@ -16,10 +16,17 @@ Components:
 
 Sprint 3.2: Added RAG integration for historical/theoretical context.
 Sprint 3.3: Added LLM Provider strategy pattern for text generation.
+Sprint 4.2: Added Persona system for customizable narrative voices.
 """
 
 from babylon.ai.director import NarrativeDirector
 from babylon.ai.llm_provider import DeepSeekClient, LLMProvider, MockLLM
+from babylon.ai.persona import Persona, VoiceConfig
+from babylon.ai.persona_loader import (
+    PersonaLoadError,
+    load_default_persona,
+    load_persona,
+)
 from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
 __all__ = [
@@ -28,4 +35,10 @@ __all__ = [
     "LLMProvider",
     "MockLLM",
     "DeepSeekClient",
+    # Sprint 4.2: Persona system
+    "Persona",
+    "VoiceConfig",
+    "PersonaLoadError",
+    "load_persona",
+    "load_default_persona",
 ]

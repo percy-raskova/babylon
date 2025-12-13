@@ -14,6 +14,8 @@ The Materialist Retrieval bridges Engine with the Archive (ChromaDB).
 
 Sprint 4.1: Updated to consume typed SimulationEvent objects from
 state.events instead of string-based event_log.
+
+Sprint 4.2: Added Persona support for customizable narrative voices.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
+    from babylon.ai.persona import Persona
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
     from babylon.rag.rag_pipeline import RagPipeline
@@ -106,6 +109,7 @@ class NarrativeDirector:
         rag_pipeline: RagPipeline | None = None,
         prompt_builder: DialecticalPromptBuilder | None = None,
         llm: LLMProvider | None = None,
+        persona: Persona | None = None,
     ) -> None:
         """Initialize the NarrativeDirector.
 
@@ -118,10 +122,24 @@ class NarrativeDirector:
                            If None, creates default builder.
             llm: Optional LLMProvider for text generation.
                  If None, no LLM generation occurs (backward compat).
+            persona: Optional Persona for customizing narrative voice.
+                    If provided (and no custom prompt_builder), creates
+                    a DialecticalPromptBuilder with this persona.
         """
         self._use_llm = use_llm
         self._rag = rag_pipeline
-        self._prompt_builder = prompt_builder or DialecticalPromptBuilder()
+
+        # Handle persona + prompt_builder priority (Sprint 4.2)
+        # If custom prompt_builder provided, use it (backward compat)
+        # If persona provided and no custom builder, create builder with persona
+        # Otherwise, use default builder
+        if prompt_builder is not None:
+            self._prompt_builder = prompt_builder
+        elif persona is not None:
+            self._prompt_builder = DialecticalPromptBuilder(persona=persona)
+        else:
+            self._prompt_builder = DialecticalPromptBuilder()
+
         self._llm = llm
         self._narrative_log: list[str] = []
         self._config: SimulationConfig | None = None

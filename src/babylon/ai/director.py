@@ -11,6 +11,9 @@ Design Philosophy:
 
 Sprint 3.2: Added RAG integration for historical/theoretical context.
 The Materialist Retrieval bridges Engine with the Archive (ChromaDB).
+
+Sprint 4.1: Updated to consume typed SimulationEvent objects from
+state.events instead of string-based event_log.
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from typing import TYPE_CHECKING
 
 from babylon.ai.llm_provider import LLMProvider
 from babylon.ai.prompt_builder import DialecticalPromptBuilder
+from babylon.models.enums import EventType
+from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
     from babylon.models.config import SimulationConfig
@@ -61,21 +66,39 @@ class NarrativeDirector:
         >>> sim.end()
     """
 
-    # Semantic Bridge: Maps simulation event keywords to theoretical query strings.
+    # Semantic Bridge: Maps EventType enum values to theoretical query strings.
     # The RAG database contains Marxist theoretical texts, not simulation logs.
     # This mapping allows effective retrieval of relevant theory.
-    SEMANTIC_MAP: dict[str, str] = {
-        "SURPLUS_EXTRACTION": "marxist theory of surplus value extraction and exploitation",
-        "IMPERIAL_SUBSIDY": "role of repression in maintaining imperialist client states",
-        "ECONOMIC_CRISIS": "tendency of the rate of profit to fall and capitalist crisis",
-        "SOLIDARITY_AWAKENING": "development of class consciousness and proletariat solidarity",
-        "MASS_AWAKENING": "leninist theory of revolutionary situation and mass strike",
-        "BRIBERY": "labor aristocracy and imperialist super-wages",
-        "WAGES": "labor aristocracy and imperialist super-wages",
+    # Sprint 4.1: Updated to use EventType enum keys instead of string keywords.
+    SEMANTIC_MAP: dict[EventType, str] = {
+        EventType.SURPLUS_EXTRACTION: "marxist theory of surplus value extraction and exploitation",
+        EventType.IMPERIAL_SUBSIDY: "role of repression in maintaining imperialist client states",
+        EventType.ECONOMIC_CRISIS: "tendency of the rate of profit to fall and capitalist crisis",
+        EventType.CONSCIOUSNESS_TRANSMISSION: "development of class consciousness and proletariat solidarity",
+        EventType.MASS_AWAKENING: "leninist theory of revolutionary situation and mass strike",
+        EventType.EXCESSIVE_FORCE: "state violence police brutality and repression",
+        EventType.UPRISING: "mass uprising revolutionary insurrection george floyd protests",
+        EventType.SOLIDARITY_SPIKE: "solidarity networks mutual aid class organization",
+        EventType.RUPTURE: "dialectical contradiction rupture revolutionary crisis",
+        EventType.PHASE_TRANSITION: "phase transition revolutionary organization vanguard party",
     }
 
     # Fallback query when no event keywords are recognized
     FALLBACK_QUERY: str = "dialectical materialism class struggle"
+
+    # Event types that should trigger narrative generation (significant events)
+    # Sprint 4.1: Expanded to include all dramatic narrative-worthy events
+    SIGNIFICANT_EVENT_TYPES: frozenset[EventType] = frozenset(
+        {
+            EventType.SURPLUS_EXTRACTION,
+            EventType.ECONOMIC_CRISIS,
+            EventType.PHASE_TRANSITION,
+            EventType.UPRISING,
+            EventType.EXCESSIVE_FORCE,
+            EventType.RUPTURE,
+            EventType.MASS_AWAKENING,
+        }
+    )
 
     def __init__(
         self,
@@ -170,25 +193,28 @@ class NarrativeDirector:
     ) -> None:
         """Analyze state change and log narrative.
 
-        Detects new events added during this tick, retrieves RAG context,
+        Detects new typed events added during this tick, retrieves RAG context,
         and builds the full context hierarchy for narrative generation.
+
+        Sprint 4.1: Now processes typed SimulationEvent objects from state.events
+        instead of string-based event_log.
 
         Args:
             previous_state: WorldState before the tick.
             new_state: WorldState after the tick.
         """
-        # Detect new events added this tick
-        num_new_events = len(new_state.event_log) - len(previous_state.event_log)
+        # Detect new typed events added this tick (Sprint 4.1)
+        num_new_events = len(new_state.events) - len(previous_state.events)
 
         if num_new_events == 0:
             return  # Optimization: skip if no events
 
-        new_events = new_state.event_log[-num_new_events:]
+        new_events: list[SimulationEvent] = list(new_state.events[-num_new_events:])
 
         # Retrieve historical context (The Materialist Retrieval)
-        rag_context = self._retrieve_context(new_events)
+        rag_context = self._retrieve_context_from_typed_events(new_events)
 
-        # Build full context block
+        # Build full context block (now with typed events)
         context_block = self._prompt_builder.build_context_block(
             state=new_state,
             rag_context=rag_context,
@@ -200,12 +226,12 @@ class NarrativeDirector:
         if self._use_llm:
             logger.debug("[%s] Full context:\n%s", self.name, context_block)
 
-        # Generate narrative for SURPLUS_EXTRACTION events (Sprint 3.3)
+        # Generate narrative for significant events (Sprint 4.1)
         if self._use_llm and self._llm is not None and new_events:
-            surplus_events = [
-                e for e in new_events if "SURPLUS_EXTRACTION" in e or "surplus_extraction" in e
+            significant_events = [
+                e for e in new_events if e.event_type in self.SIGNIFICANT_EVENT_TYPES
             ]
-            if surplus_events:
+            if significant_events:
                 system_prompt = self._prompt_builder.build_system_prompt()
                 try:
                     narrative = self._llm.generate(
@@ -221,8 +247,9 @@ class NarrativeDirector:
                 except Exception as e:
                     logger.warning("[%s] LLM generation failed: %s", self.name, e)
 
-        # Process events for logging
-        self._process_events(new_events, new_state.tick)
+        # Process events for logging (use formatted string for compatibility)
+        formatted_events = [self._prompt_builder._format_event(e) for e in new_events]
+        self._process_events(formatted_events, new_state.tick)
 
     def on_simulation_end(self, final_state: WorldState) -> None:
         """Generate summary at simulation end.
@@ -239,41 +266,43 @@ class NarrativeDirector:
             len(final_state.event_log),
         )
 
-    def _translate_events_to_query(self, events: list[str]) -> str:
-        """Translate simulation events to theoretical query using Semantic Bridge.
+    def _translate_typed_events_to_query(self, events: list[SimulationEvent]) -> str:
+        """Translate typed events to theoretical query using Semantic Bridge.
 
-        Scans each event for keywords from SEMANTIC_MAP and collects the
-        corresponding theoretical query strings. Deduplicates using a set
-        since multiple events may contain the same keyword.
+        Sprint 4.1: Uses EventType enum keys instead of string scanning.
+        Collects theoretical query strings for each event type.
+        Deduplicates using a set since multiple events may have the same type.
 
         Args:
-            events: List of simulation event strings.
+            events: List of typed SimulationEvent objects.
 
         Returns:
             Theoretical query string for RAG, or FALLBACK_QUERY if no
-            keywords were recognized.
+            event types are mapped.
         """
         semantic_queries: set[str] = set()
         for event in events:
-            for keyword, theoretical_query in self.SEMANTIC_MAP.items():
-                if keyword in event:
-                    semantic_queries.add(theoretical_query)
+            theoretical_query = self.SEMANTIC_MAP.get(event.event_type)
+            if theoretical_query:
+                semantic_queries.add(theoretical_query)
 
         if not semantic_queries:
             return self.FALLBACK_QUERY
         return " ".join(semantic_queries)
 
-    def _retrieve_context(self, events: list[str]) -> list[str]:
+    def _retrieve_context_from_typed_events(self, events: list[SimulationEvent]) -> list[str]:
         """Query RAG pipeline for relevant historical/theoretical context.
 
-        Uses the Semantic Bridge to translate event keywords into theoretical
+        Sprint 4.1: Uses typed events with EventType enum for cleaner mapping.
+
+        Uses the Semantic Bridge to translate event types into theoretical
         query strings. The RAG database contains Marxist theoretical texts,
         not simulation logs, so direct event queries return poor results.
 
         Implements ADR003: errors are caught and logged, not propagated.
 
         Args:
-            events: New events to translate and query.
+            events: New typed events to translate and query.
 
         Returns:
             List of retrieved document content strings.
@@ -282,7 +311,7 @@ class NarrativeDirector:
         if not self._rag:
             return []
 
-        query_text = self._translate_events_to_query(events)
+        query_text = self._translate_typed_events_to_query(events)
 
         try:
             response = self._rag.query(query_text, top_k=3)

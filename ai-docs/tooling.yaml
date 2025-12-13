@@ -2,8 +2,8 @@
 # How tools are configured and why
 
 meta:
-  version: "1.0.0"
-  updated: "2025-12-11"
+  version: "1.0.1"
+  updated: "2025-12-12"
   purpose: "Document tooling decisions to avoid re-investigation"
 
 # =============================================================================
@@ -256,10 +256,13 @@ python:
 # =============================================================================
 
 testing_infrastructure:
-  description: "Consolidated testing tools from Operation Clean Slate refactor"
+  description: "Consolidated testing tools from Operation Clean Slate refactor (Phase 2.5)"
+  added: "2025-12-12"
 
   domain_factory:
     location: "tests/factories/domain.py"
+    status: ACTIVE
+    test_count: 31
     purpose: "Single source of truth for creating test entities"
     key_methods:
       - "create_worker(): SocialClass with periphery proletariat defaults"
@@ -267,6 +270,7 @@ testing_infrastructure:
       - "create_relationship(): Relationship edge with exploitation defaults"
       - "create_world_state(): Complete WorldState for simulation tests"
     usage: |
+      from tests.factories import DomainFactory
       factory = DomainFactory()
       worker = factory.create_worker(wealth=100.0)  # Override only what matters
       state = factory.create_world_state(entities={"C001": worker})
@@ -274,19 +278,43 @@ testing_infrastructure:
 
   babylon_assert:
     location: "tests/assertions.py"
+    status: ACTIVE
+    test_count: 55
     purpose: "Fluent assertion library for domain-expressive test verification"
     key_classes:
       - "Assert: Entry point for WorldState assertions"
       - "EntityAssert: SocialClass assertions (wealth, ideology, survival)"
       - "RelationshipAssert: Relationship assertions (tension, value_flow)"
     usage: |
+      from tests.assertions import Assert
       Assert(new_state).entity("C001").is_poorer_than(previous_state)
       Assert(state).relationship("C001", "C002").has_tension_increased(previous_state)
     replaces: "Raw assert statements with manual calculations"
 
+  mock_metrics_collector:
+    location: "tests/mocks/metrics_collector.py"
+    status: ACTIVE
+    test_count: 8
+    purpose: "Pure spy pattern for metrics recording (no calculations)"
+    pattern: "Dumb Spy - records calls without computing statistics"
+    key_methods:
+      - "record_cache_event(level, hit): Track cache hits/misses"
+      - "record_metric(name, value, context): Generic metric recording"
+      - "get_recorded_data(): Return raw recorded values"
+      - "get_protocol_calls(): List all protocol method calls"
+      - "clear(): Reset all metrics"
+    usage: |
+      from tests.mocks import MockMetricsCollector
+      collector = MockMetricsCollector()
+      collector.record_cache_event("L1", hit=True)
+      data = collector.get_recorded_data()
+      assert data["cache_hits"]["L1"] == 1
+    note: "Self-contained tests embedded in module (lines 328-456)"
+
   metrics_collector_protocol:
     location: "src/babylon/metrics/interfaces.py"
-    purpose: "Protocol ensuring mocks and real collectors share identical interface"
+    status: ACTIVE
+    purpose: "Protocol interface ensuring mocks and real collectors share identical API"
     key_methods:
       - "record(name, value, tags, metadata): Record metric value"
       - "increment(name, value): Increment counter"
@@ -294,7 +322,6 @@ testing_infrastructure:
       - "time(name) -> ContextManager: Time operations"
       - "summary() -> dict: Get aggregated metrics"
       - "clear(): Reset all metrics"
-    pattern: "Dumb Spy - mocks record calls, don't calculate statistics"
 
 # =============================================================================
 # KNOWN ISSUES AND WORKAROUNDS

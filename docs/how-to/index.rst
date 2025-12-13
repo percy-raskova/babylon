@@ -57,6 +57,18 @@ GUI Development
    Build visualization and user interface features using NiceGUI.
    Covers the phased approach from basic displays to full interactivity.
 
+Getting Started
+---------------
+
+.. toctree::
+   :maxdepth: 1
+
+   setup-dev-environment
+
+**Set Up a Development Environment**
+   Complete setup guide for Linux, macOS, and Windows. Windows users get
+   step-by-step WSL 2 installation and VSCode Remote integration.
+
 Contributing
 ------------
 

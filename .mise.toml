@@ -154,6 +154,10 @@ run = "poetry run python tools/init_db.py"
 description = "Run vertical slice integration test"
 run = "poetry run python tools/vertical_slice.py"
 
+[tasks.interview-persona]
+description = "Test Persephone's narrative voice with Hard Case scenarios"
+run = "poetry run python tools/interview_persona.py"
+
 [tasks.verify-formulas]
 description = "Verify math formula divergence"
 run = "poetry run python tools/verify_math_divergence.py"

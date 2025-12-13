@@ -88,11 +88,53 @@ Represents a spatial location with state attention dynamics.
    class Territory(BaseModel):
        id: str = Field(pattern=r"^T[0-9]{3}$")
        name: str
-       heat: Intensity
-       operational_profile: OperationalProfile
-       displacement_priority: DisplacementPriority
+       sector_type: SectorType
+       territory_type: TerritoryType = "core"
+       host_id: str | None = None
+       occupant_id: str | None = None
+       profile: OperationalProfile = "low_profile"
+       heat: Intensity = 0.0
+       rent_level: Currency = 1.0
+       population: int = 0
+       under_eviction: bool = False
 
 **Enums:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - SectorType
+     - Values
+   * - ``INDUSTRIAL``
+     - Factory/manufacturing sector
+   * - ``RESIDENTIAL``
+     - Housing/living areas
+   * - ``COMMERCIAL``
+     - Business/retail sector
+   * - ``UNIVERSITY``
+     - Educational institutions
+   * - ``DOCKS``
+     - Port/shipping sector
+   * - ``GOVERNMENT``
+     - State administrative sector
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - TerritoryType
+     - Values
+   * - ``CORE``
+     - Imperial core territory
+   * - ``PERIPHERY``
+     - Exploited peripheral territory
+   * - ``RESERVATION``
+     - Indigenous containment zone
+   * - ``PENAL_COLONY``
+     - Carceral territory
+   * - ``CONCENTRATION_CAMP``
+     - Extreme detention territory
 
 .. list-table::
    :header-rows: 1
@@ -103,22 +145,7 @@ Represents a spatial location with state attention dynamics.
    * - ``HIGH_PROFILE``
      - Visible activity, generates heat
    * - ``LOW_PROFILE``
-     - Covert activity, minimal heat
-   * - ``UNDERGROUND``
-     - Hidden activity, heat decays faster
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - DisplacementPriority
-     - Values
-   * - ``LABOR_SCARCE``
-     - Minimize detention (need workers)
-   * - ``BALANCED``
-     - Standard processing
-   * - ``ELIMINATION``
-     - Aggressive displacement
+     - Covert activity, heat decays naturally
 
 Relationship
 ~~~~~~~~~~~~
@@ -151,7 +178,7 @@ Node Types
      - wealth, organization, ideology, consciousness
    * - ``territory``
      - T001, T002, ...
-     - heat, operational_profile, displacement_priority
+     - heat, profile, sector_type, territory_type
 
 Edge Types
 ~~~~~~~~~~
@@ -185,7 +212,7 @@ Edge Types
 Entity Collections
 ------------------
 
-The Ledger stores 17 JSON entity collections in ``src/babylon/data/game/``:
+The Ledger stores 16 JSON entity collections in ``src/babylon/data/game/``:
 
 .. list-table::
    :header-rows: 1
@@ -193,40 +220,38 @@ The Ledger stores 17 JSON entity collections in ``src/babylon/data/game/``:
 
    * - Collection
      - Purpose
-   * - ``social_classes.json``
+   * - ``classes.json``
      - Class definitions (proletariat, bourgeoisie, etc.)
-   * - ``territories.json``
+   * - ``locations.json``
      - Spatial locations with operational profiles
    * - ``relationships.json``
      - Initial edge definitions (solidarity, exploitation)
    * - ``contradictions.json``
      - Tension templates and resolution types
-   * - ``events.json``
-     - Trigger-effect definitions
-   * - ``triggers.json``
-     - Condition specifications for events
-   * - ``effects.json``
-     - Result specifications for events
+   * - ``crises.json``
+     - Economic and political crisis definitions
+   * - ``cultures.json``
+     - Cultural identity definitions
    * - ``factions.json``
      - Political groupings with agendas
    * - ``ideologies.json``
      - Ideological positions with drift modifiers
+   * - ``institutions.json``
+     - State and civil society institutions
+   * - ``laws.json``
+     - Legal framework definitions
+   * - ``movements.json``
+     - Social movement definitions
    * - ``policies.json``
      - Government policy definitions
-   * - ``commodities.json``
-     - Economic goods for exchange
    * - ``resources.json``
      - Raw materials for production
-   * - ``sectors.json``
-     - Industry sector definitions
-   * - ``modifiers.json``
-     - Stat modification templates
-   * - ``traits.json``
-     - Permanent class characteristics
-   * - ``conditions.json``
-     - Temporary state effects
-   * - ``narratives.json``
-     - Text templates for events
+   * - ``revolts.json``
+     - Uprising condition definitions
+   * - ``sentiments.json``
+     - Public sentiment data
+   * - ``technologies.json``
+     - Technology definitions
 
 State Transformation API
 ------------------------

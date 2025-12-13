@@ -26,6 +26,8 @@ This directory helps AI assistants:
 | `anti-patterns.yaml` | What NOT to do | YAML |
 | `mantras.yaml` | Guiding principles as memorable phrases | YAML |
 | `tooling.yaml` | CI/CD, Sphinx, linting configuration | YAML |
+| `ci-workflow.yaml` | GitHub Actions, branch protection, contributor workflow | YAML |
+| `documentation-standards.yaml` | Diataxis, RST format, docstrings, accuracy rules | YAML |
 | `game-data.yaml` | External data sources and CI/CD pipeline | YAML |
 | `theory.md` | MLM-TW theoretical foundation | Markdown |
 | `rag-architecture.yaml` | RAG as permission system, validation pipeline | YAML |

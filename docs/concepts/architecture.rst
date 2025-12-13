@@ -61,7 +61,7 @@ The Ledger uses two complementary systems:
 Entity Collections
 ^^^^^^^^^^^^^^^^^^
 
-The Ledger contains 17 JSON entity collections in ``src/babylon/data/game/``:
+The Ledger contains 16 JSON entity collections in ``src/babylon/data/game/``:
 
 .. list-table:: Entity Collections
    :header-rows: 1
@@ -69,18 +69,28 @@ The Ledger contains 17 JSON entity collections in ``src/babylon/data/game/``:
 
    * - Collection
      - Purpose
-   * - ``social_classes.json``
+   * - ``classes.json``
      - Class definitions (proletariat, bourgeoisie, etc.)
-   * - ``territories.json``
+   * - ``locations.json``
      - Spatial locations with operational profiles
    * - ``relationships.json``
-     - Initial edge definitions
+     - Initial edge definitions (solidarity, exploitation)
    * - ``contradictions.json``
      - Tension templates and resolution types
-   * - ``events.json``
-     - Trigger-effect definitions
-   * - ...
-     - (13 additional collections)
+   * - ``crises.json``
+     - Economic and political crisis definitions
+   * - ``factions.json``
+     - Political groupings with agendas
+   * - ``ideologies.json``
+     - Ideological positions with drift modifiers
+   * - ``institutions.json``
+     - State and civil society institutions
+   * - ``cultures.json``, ``laws.json``, ``movements.json``
+     - Cultural, legal, and social movement data
+   * - ``policies.json``, ``resources.json``, ``technologies.json``
+     - Economic policy, resource, and technology definitions
+   * - ``revolts.json``, ``sentiments.json``
+     - Uprising conditions and public sentiment data
 
 The Topology: Relational State
 ------------------------------
@@ -106,7 +116,7 @@ and multiple edge types:
    └── Attributes: wealth, organization, ideology, consciousness
 
    territory (T001, T002, ...)
-   └── Attributes: heat, operational_profile, displacement_priority
+   └── Attributes: heat, profile, sector_type, territory_type
 
 **Edge Types:**
 
@@ -174,20 +184,24 @@ Babylon uses ChromaDB as a vector database:
 
 .. code-block:: python
 
-   from babylon.rag import retrieval
+   from babylon.rag.retrieval import VectorStore, Retriever
+   from babylon.rag.chunking import DocumentChunk
 
-   # Store event narrative
-   retrieval.add_event_narrative(
-       event_id="E001",
-       narrative="The workers seized the factory...",
-       metadata={"tick": 42, "class": "C001"}
-   )
+   # Initialize store
+   store = VectorStore(collection_name="events")
 
-   # Retrieve similar events
-   similar = retrieval.query_similar_events(
-       query="factory occupation",
-       n_results=5
-   )
+   # Store document chunks
+   chunks = [
+       DocumentChunk(
+           content="The workers seized the factory...",
+           metadata={"tick": 42, "class_id": "C001"}
+       )
+   ]
+   store.add_chunks(chunks)
+
+   # Query similar content
+   retriever = Retriever(store)
+   results = retriever.query(query="factory occupation", k=5)
 
 The Archive enables:
 
@@ -215,11 +229,11 @@ The simulation engine orchestrates the three layers:
            S1 --> S2[2. SolidaritySystem]
            S2 --> S3[3. ConsciousnessSystem]
            S3 --> S4[4. SurvivalSystem]
-           S4 --> S5[5. ContradictionSystem]
-           S5 --> S6[6. TerritorySystem]
-           S6 --> S7[7. StruggleSystem]
+           S4 --> S5[5. StruggleSystem]
+           S5 --> S6[6. ContradictionSystem]
+           S6 --> S7[7. TerritorySystem]
        end
-       S7 --> OBS[TopologyMonitor]
+       S7 --> OBS[Observers]
        OBS -->|"from_graph()"| WS2[New WorldState]
 
 Dependency Injection
@@ -230,11 +244,17 @@ The engine uses dependency injection via ``ServiceContainer``:
 .. code-block:: python
 
    from babylon.engine import ServiceContainer, EventBus
+   from babylon.engine.formula_registry import FormulaRegistry
+   from babylon.engine.database import DatabaseConnection
+   from babylon.config.defines import GameDefines
+   from babylon.models import SimulationConfig
 
    services = ServiceContainer(
+       config=SimulationConfig(),
+       database=DatabaseConnection(":memory:"),
        event_bus=EventBus(),
-       formula_registry=FormulaRegistry(),
-       db_connection=DatabaseConnection(":memory:")
+       formulas=FormulaRegistry(),
+       defines=GameDefines(),
    )
 
 This enables:
@@ -246,19 +266,32 @@ This enables:
 Observer Pattern
 ^^^^^^^^^^^^^^^^
 
-Observers receive state change notifications without modifying state:
+Observers implement the ``SimulationObserver`` protocol to receive state
+change notifications without modifying state:
 
 .. code-block:: python
 
-   class TopologyMonitor:
-       def on_simulation_start(self, state, config): ...
-       def on_tick(self, prev_state, new_state): ...
+   from babylon.engine.observer import SimulationObserver
+
+   class MyObserver(SimulationObserver):
+       @property
+       def name(self) -> str:
+           return "MyObserver"
+
+       def on_simulation_start(self, initial_state, config): ...
+       def on_tick(self, previous_state, new_state): ...
        def on_simulation_end(self, final_state): ...
 
 Current observers:
 
-- **TopologyMonitor** - Tracks solidarity network condensation
-- (Future: NarrativeObserver, MetricsObserver)
+- **TopologyMonitor** - Tracks solidarity network condensation via percolation theory
+- **EconomyMonitor** - Detects economic crises (>20% imperial rent pool drops)
+- **CausalChainObserver** - Detects Shock Doctrine pattern (crash → austerity → radicalization)
+
+Validation utilities (in ``babylon.engine.observers``):
+
+- ``validate_narrative_frame()`` - Validate NarrativeFrame against JSON Schema
+- ``is_valid_narrative_frame()`` - Boolean validation check
 
 Data Flow Summary
 -----------------

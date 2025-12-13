@@ -11,6 +11,8 @@ dialectical materialism principles.
 
 Sprint 4.1: Updated to consume typed SimulationEvent objects
 instead of string-based event_log.
+
+Sprint 4.2: Added Persona support for customizable narrative voices.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from babylon.models.events import (
 )
 
 if TYPE_CHECKING:
+    from babylon.ai.persona import Persona
     from babylon.models.world_state import WorldState
 
 
@@ -42,21 +45,58 @@ class DialecticalPromptBuilder:
     in material conditions and class analysis. It follows the context
     hierarchy defined in AI_COMMS.md.
 
+    Sprint 4.2: Added persona support for customizable narrative voices.
+    When a persona is provided, build_system_prompt() returns the
+    persona's rendered prompt instead of the default.
+
+    Attributes:
+        persona: Optional Persona to use for system prompt generation.
+
     Example:
         >>> builder = DialecticalPromptBuilder()
         >>> system_prompt = builder.build_system_prompt()
         >>> context = builder.build_context_block(state, rag_docs, events)
+        >>>
+        >>> # With persona (Sprint 4.2)
+        >>> from babylon.ai.persona_loader import load_default_persona
+        >>> percy = load_default_persona()
+        >>> builder = DialecticalPromptBuilder(persona=percy)
+        >>> system_prompt = builder.build_system_prompt()
     """
+
+    def __init__(self, persona: Persona | None = None) -> None:
+        """Initialize the DialecticalPromptBuilder.
+
+        Args:
+            persona: Optional Persona to use for system prompt generation.
+                    If provided, build_system_prompt() will use the persona's
+                    render_system_prompt() method. If None, uses the default
+                    Marxist game master prompt.
+        """
+        self._persona = persona
+
+    @property
+    def persona(self) -> Persona | None:
+        """Return the persona if configured.
+
+        Returns:
+            The Persona instance or None if not configured.
+        """
+        return self._persona
 
     def build_system_prompt(self) -> str:
         """Return the immutable core identity of the Director.
 
-        The system prompt establishes the AI as a Marxist game master
-        that analyzes through dialectical materialism.
+        If a persona is configured (Sprint 4.2), returns the persona's
+        rendered system prompt. Otherwise, returns the default Marxist
+        game master prompt.
 
         Returns:
-            System prompt establishing Marxist game master role.
+            System prompt establishing the AI's identity and role.
         """
+        if self._persona is not None:
+            return self._persona.render_system_prompt()
+
         return """You are the game master for a Marxist political simulation. Your role is to:
 - Analyze player actions through dialectical materialism
 - Generate realistic consequences based on material conditions

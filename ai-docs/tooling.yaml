@@ -12,10 +12,14 @@ meta:
 
 cicd:
   philosophy: "Block on correctness, not style"
+  governance: "Benevolent Dictator model - see ci-workflow.yaml for full details"
 
   github_actions:
     ci_yml:
       file: ".github/workflows/ci.yml"
+      triggers:
+        push: ["main", "dev"]
+        pull_request: ["main", "dev"]
       jobs:
         ci:
           name: "Lint, Type Check & Test"
@@ -29,7 +33,8 @@ cicd:
           blocks_merge: true
           steps:
             - "poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v"
-            - "cd docs && poetry run sphinx-build -W -b html . _build/html"
+            - "cd docs && poetry run sphinx-build -b html . _build/html"
+          note: "No -W flag - warnings allowed in CI, strict mode available locally"
         style:
           name: "Style Check (Informational)"
           blocks_merge: false
@@ -55,6 +60,11 @@ cicd:
         ai_evaluation:
           condition: "release only"
           command: "poetry run pytest -m 'ai' --tb=short -q"
+
+  pr_template:
+    file: ".github/PULL_REQUEST_TEMPLATE.md"
+    tone: "Beginner-friendly, welcoming"
+    key_message: "Checklist is a guide, not a gate"
 
   pre_commit:
     file: ".pre-commit-config.yaml"
@@ -93,12 +103,26 @@ documentation:
       - "sphinx.ext.viewcode"
       - "sphinx.ext.intersphinx"
       - "sphinx.ext.doctest"
+      - "sphinx.ext.todo"
+      - "sphinx.ext.coverage"
       - "sphinx_autodoc_typehints"
       - "myst_parser"
+      - "sphinxcontrib.mermaid"  # Diagram support for flowcharts
 
     ci_flags:
-      W: "Warnings as errors"
       b_html: "HTML builder"
+      note: "-W (warnings as errors) removed from CI, available via mise run docs-strict"
+
+    suppress_warnings:
+      config_location: "docs/conf.py"
+      suppressed:
+        - "autodoc"
+        - "autodoc.import_object"
+        - "ref.python"
+        - "ref.ref"
+        - "myst.xref_missing"
+        - "docutils"
+      reason: "Pydantic model re-exports cause unavoidable duplicate object warnings"
 
   docstring_format:
     style: "RST (reStructuredText)"

@@ -99,3 +99,14 @@ Error Handling
    error-codes
 
 Error code taxonomy and error handling conventions.
+
+CI/CD Workflow
+--------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ci-workflow
+
+GitHub Actions workflows, branch protection rules, and the Benevolent
+Dictator governance model.

@@ -115,6 +115,18 @@ latexmk -pdf -interaction=nonstopmode ${1:-babylon-docs}.tex
 """
 
 # =============================================================================
+# SECURITY & COVERAGE
+# =============================================================================
+
+[tasks.security]
+description = "Run security audit on dependencies"
+run = "poetry run pip-audit"
+
+[tasks.coverage]
+description = "Run tests with coverage report"
+run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
+
+# =============================================================================
 # DATA / RAG
 # =============================================================================
 

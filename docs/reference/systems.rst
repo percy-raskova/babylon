@@ -11,11 +11,11 @@ All systems implement this protocol:
 .. code-block:: python
 
    class System(Protocol):
-       def process(
+       def step(
            self,
-           graph: nx.DiGraph,
+           graph: nx.DiGraph[str],
            services: ServiceContainer,
-           context: TickContext
+           context: dict[str, Any],
        ) -> None:
            """Mutate graph according to system logic."""
            ...
@@ -29,11 +29,11 @@ All systems implement this protocol:
    * - Parameter
      - Description
    * - ``graph``
-     - NetworkX DiGraph to mutate (nodes and edges)
+     - NetworkX DiGraph to mutate (nodes are string IDs)
    * - ``services``
-     - Dependency injection container (EventBus, FormulaRegistry)
+     - Dependency injection container (config, formulas, event_bus, database, defines)
    * - ``context``
-     - Tick metadata (tick number, config, delta_time)
+     - Mutable dict with ``"tick"`` key and any persistent state
 
 System Execution Order
 ----------------------
@@ -58,14 +58,14 @@ System Execution Order
      - SurvivalSystem
      - Calculate P(S|A) and P(S|R)
    * - 5
-     - ContradictionSystem
-     - Accumulate tension, flag ruptures
-   * - 6
-     - TerritorySystem
-     - Process heat, eviction, displacement
-   * - 7
      - StruggleSystem
      - Handle agency responses (EXCESSIVE_FORCE → UPRISING)
+   * - 6
+     - ContradictionSystem
+     - Accumulate tension, flag ruptures
+   * - 7
+     - TerritorySystem
+     - Process heat, eviction, displacement
 
 ImperialRentSystem
 ------------------
@@ -245,8 +245,7 @@ TerritorySystem
 **Operational profiles:**
 
 - ``HIGH_PROFILE``: Visible activity, generates heat
-- ``LOW_PROFILE``: Covert activity, minimal heat
-- ``UNDERGROUND``: Hidden activity, heat decays faster
+- ``LOW_PROFILE``: Covert activity, heat decays naturally
 
 StruggleSystem
 --------------

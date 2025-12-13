@@ -972,3 +972,433 @@ class TestTypedEventConsumption:
 
         # Assert - LLM should NOT be called for routine events
         assert mock_llm.call_count == 0, "TransmissionEvent should NOT trigger LLM generation"
+
+
+# =============================================================================
+# TEST PERSONA INTEGRATION (Sprint 4.2)
+# =============================================================================
+
+
+class TestPersonaIntegration:
+    """Integration tests for Persona system with NarrativeDirector.
+
+    Sprint 4.2: The Voice (JSON Edition)
+
+    These tests verify the complete persona pipeline:
+    1. Load persona from JSON file
+    2. Create NarrativeDirector with persona
+    3. Run simulation ticks with events
+    4. Verify persona voice is used in LLM prompts
+    """
+
+    @pytest.mark.integration
+    def test_persona_system_prompt_used_in_llm_call(
+        self,
+        initial_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Persona's system prompt is passed to LLM during narrative generation.
+
+        When a persona is provided, the NarrativeDirector should use
+        the persona's render_system_prompt() output as the LLM system prompt.
+        """
+        from babylon.ai import load_default_persona
+
+        # Arrange - load Percy Raskova persona
+        percy = load_default_persona()
+        mock_llm = MockLLM(responses=["The contradictions intensify, Architect."])
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=percy,  # Sprint 4.2: persona injection
+        )
+
+        # Create extraction event to trigger narrative
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=15.0,
+        )
+
+        state_t0 = initial_state
+        state_t1 = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [extraction_event],
+            }
+        )
+
+        director.on_simulation_start(state_t0, config)
+
+        # Act
+        director.on_tick(state_t0, state_t1)
+
+        # Assert - LLM was called with persona's system prompt
+        assert mock_llm.call_count == 1
+        call_args = mock_llm.call_history[0]
+        system_prompt = call_args.get("system_prompt", "")
+
+        # Persona-specific content should be in system prompt
+        assert "Persephone" in system_prompt or "Percy" in system_prompt, (
+            f"System prompt should contain persona name, got: {system_prompt[:200]}"
+        )
+        assert "Architect" in system_prompt, (
+            "System prompt should contain persona's address term 'Architect'"
+        )
+        assert "Marxist" in system_prompt or "Cybernetic" in system_prompt, (
+            "System prompt should contain persona's voice style"
+        )
+
+    @pytest.mark.integration
+    def test_persona_directives_in_system_prompt(
+        self,
+        initial_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Persona directives are included in LLM system prompt.
+
+        The persona's behavioral directives should be part of the
+        system prompt to guide LLM output style.
+        """
+        from babylon.ai import load_default_persona
+
+        # Arrange
+        percy = load_default_persona()
+        mock_llm = MockLLM(responses=["Extraction proceeds."])
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=percy,
+        )
+
+        # Create extraction event
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
+        state_t0 = initial_state
+        state_t1 = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [extraction_event],
+            }
+        )
+
+        director.on_simulation_start(state_t0, config)
+
+        # Act
+        director.on_tick(state_t0, state_t1)
+
+        # Assert - Directives should be in system prompt
+        assert mock_llm.call_count == 1
+        system_prompt = mock_llm.call_history[0].get("system_prompt", "")
+
+        # Check for directive keywords from Percy's character
+        assert "moralize" in system_prompt.lower() or "directive" in system_prompt.lower(), (
+            f"System prompt should contain directives, got: {system_prompt[:300]}"
+        )
+
+    @pytest.mark.integration
+    def test_persona_obsessions_in_system_prompt(
+        self,
+        initial_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Persona obsessions are included in LLM system prompt.
+
+        The persona's thematic obsessions should guide the narrative focus.
+        """
+        from babylon.ai import load_default_persona
+
+        # Arrange
+        percy = load_default_persona()
+        mock_llm = MockLLM(responses=["The hegemony collapses."])
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=percy,
+        )
+
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
+        state_t0 = initial_state
+        state_t1 = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [extraction_event],
+            }
+        )
+
+        director.on_simulation_start(state_t0, config)
+
+        # Act
+        director.on_tick(state_t0, state_t1)
+
+        # Assert - Obsessions should be in system prompt
+        system_prompt = mock_llm.call_history[0].get("system_prompt", "")
+
+        # Percy's obsessions include hegemony, material basis, historical parallels
+        assert (
+            "hegemonic" in system_prompt.lower()
+            or "collapse" in system_prompt.lower()
+            or "material" in system_prompt.lower()
+        ), f"System prompt should contain obsessions, got: {system_prompt[:300]}"
+
+    @pytest.mark.integration
+    def test_no_persona_uses_default_system_prompt(
+        self,
+        initial_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Without persona, NarrativeDirector uses default system prompt.
+
+        This ensures backward compatibility with existing code.
+        """
+        # Arrange - NO persona
+        mock_llm = MockLLM(responses=["Default narrative."])
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=None,  # Explicitly no persona
+        )
+
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
+        state_t0 = initial_state
+        state_t1 = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [extraction_event],
+            }
+        )
+
+        director.on_simulation_start(state_t0, config)
+
+        # Act
+        director.on_tick(state_t0, state_t1)
+
+        # Assert - Should use default (game master style)
+        system_prompt = mock_llm.call_history[0].get("system_prompt", "")
+
+        # Default prompt should mention game master or simulation
+        assert "game master" in system_prompt.lower() or "simulation" in system_prompt.lower(), (
+            f"Default system prompt expected, got: {system_prompt[:200]}"
+        )
+        # Should NOT contain Percy-specific content
+        assert "Persephone" not in system_prompt
+        assert "Architect" not in system_prompt
+
+    @pytest.mark.integration
+    def test_persona_with_crisis_event(
+        self,
+        initial_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Persona voice is maintained during crisis events.
+
+        Economic crisis events should still use the persona's voice
+        and analytical style.
+        """
+        from babylon.ai import load_default_persona
+        from babylon.models.events import CrisisEvent
+
+        # Arrange
+        percy = load_default_persona()
+        mock_llm = MockLLM(responses=["The mathematical inevitability unfolds."])
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=percy,
+        )
+
+        crisis_event = CrisisEvent(
+            tick=5,
+            pool_ratio=0.25,
+            aggregate_tension=0.75,
+            decision="AUSTERITY",
+            wage_delta=-0.08,
+        )
+
+        state_t0 = initial_state
+        state_t1 = initial_state.model_copy(
+            update={
+                "tick": 5,
+                "events": [crisis_event],
+            }
+        )
+
+        director.on_simulation_start(state_t0, config)
+
+        # Act
+        director.on_tick(state_t0, state_t1)
+
+        # Assert - Persona system prompt used for crisis narration
+        assert mock_llm.call_count == 1
+        system_prompt = mock_llm.call_history[0].get("system_prompt", "")
+        prompt = mock_llm.call_history[0]["prompt"]
+
+        # Persona should be in system prompt
+        assert "Persephone" in system_prompt or "Architect" in system_prompt
+        # Crisis data should be in user prompt
+        assert "crisis" in prompt.lower() or "austerity" in prompt.lower()
+
+    @pytest.mark.integration
+    def test_persona_with_phase_transition_event(
+        self,
+        initial_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Persona voice narrates phase transitions appropriately.
+
+        Phase transitions (gaseous -> liquid -> solid) are core to Percy's
+        analytical framework and should be narrated in her voice.
+        """
+        from babylon.ai import load_default_persona
+        from babylon.models.events import PhaseTransitionEvent
+
+        # Arrange
+        percy = load_default_persona()
+        mock_llm = MockLLM(responses=["The movement crystallizes into vanguard form."])
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=percy,
+        )
+
+        phase_event = PhaseTransitionEvent(
+            tick=10,
+            previous_state="liquid",
+            new_state="solid",
+            percolation_ratio=0.65,
+            num_components=2,
+            largest_component_size=15,
+            cadre_density=0.58,
+        )
+
+        state_t0 = initial_state
+        state_t1 = initial_state.model_copy(
+            update={
+                "tick": 10,
+                "events": [phase_event],
+            }
+        )
+
+        director.on_simulation_start(state_t0, config)
+
+        # Act
+        director.on_tick(state_t0, state_t1)
+
+        # Assert
+        assert mock_llm.call_count == 1
+        system_prompt = mock_llm.call_history[0].get("system_prompt", "")
+        prompt = mock_llm.call_history[0]["prompt"]
+
+        # Percy mentions Liquid/Solid phases in her obsessions
+        assert "Liquid" in system_prompt or "Solid" in system_prompt, (
+            "Percy's obsessions should mention phase states"
+        )
+        # Event data should be in prompt
+        assert "solid" in prompt.lower() or "phase" in prompt.lower()
+
+    @pytest.mark.integration
+    def test_full_simulation_loop_with_persona(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Complete simulation loop with Persona-driven narrative.
+
+        This end-to-end test runs multiple ticks with different events
+        and verifies the persona voice is consistent throughout.
+        """
+        from babylon.ai import load_default_persona
+        from babylon.models.events import CrisisEvent, UprisingEvent
+
+        # Arrange - Full simulation scenario
+        percy = load_default_persona()
+
+        mock_responses = [
+            "The extraction proceeds with imperial efficiency.",
+            "The masses rise in uprising.",
+            "The contradictions accumulate toward rupture.",
+        ]
+        mock_llm = MockLLM(responses=mock_responses)
+
+        director = NarrativeDirector(
+            use_llm=True,
+            llm=mock_llm,
+            persona=percy,
+        )
+
+        worker = SocialClass(
+            id="C001",
+            name="PeripheryWorker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=0.3,
+            ideology=-0.5,
+            organization=0.2,
+            repression_faced=0.6,
+            subsistence_threshold=0.25,
+        )
+
+        state = WorldState(tick=0, entities={"C001": worker})
+
+        # Events for each tick - all are SIGNIFICANT_EVENT_TYPES
+        # (SURPLUS_EXTRACTION, ECONOMIC_CRISIS, PHASE_TRANSITION, UPRISING)
+        events_per_tick = [
+            [ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=12.0)],
+            [
+                UprisingEvent(
+                    tick=2, node_id="C001", trigger="spark", agitation=0.85, repression=0.7
+                )
+            ],
+            [
+                CrisisEvent(
+                    tick=3,
+                    pool_ratio=0.3,
+                    aggregate_tension=0.65,
+                    decision="IRON_FIST",
+                    wage_delta=-0.05,
+                )
+            ],
+        ]
+
+        director.on_simulation_start(state, config)
+
+        # Act - Run 3 ticks (events accumulate like in real simulation)
+        accumulated_events: list = []
+        for tick_num, new_events in enumerate(events_per_tick, start=1):
+            prev_state = state
+            accumulated_events = accumulated_events + new_events  # Events accumulate
+            state = state.model_copy(update={"tick": tick_num, "events": accumulated_events})
+            director.on_tick(prev_state, state)
+
+        # Assert - 3 narratives generated with consistent persona
+        assert len(director.narrative_log) == 3, "One narrative per tick with significant events"
+        assert mock_llm.call_count == 3
+
+        # All calls should use Percy's system prompt
+        for call in mock_llm.call_history:
+            system_prompt = call.get("system_prompt", "")
+            assert "Persephone" in system_prompt or "Architect" in system_prompt, (
+                "All LLM calls should use Percy's persona"
+            )

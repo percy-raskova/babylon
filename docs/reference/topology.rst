@@ -110,6 +110,9 @@ The :class:`TopologySnapshot` model captures metrics at each tick:
    * - ``actual_liquidity``
      - ``int``
      - Count of SOLIDARITY edges > 0.5 strength
+   * - ``cadre_density``
+     - ``float``
+     - actual/potential liquidity ratio [0, 1] (Sprint 3.3)
    * - ``is_resilient``
      - ``bool | None``
      - Whether network survives purge test (None if not tested)
@@ -334,14 +337,16 @@ tick's WorldState.
 
 **Methods:**
 
-.. py:method:: _classify_phase(percolation_ratio)
+.. py:method:: _classify_phase(percolation_ratio, cadre_density=0.0)
 
-   Classify current phase state from percolation ratio.
+   Classify current phase state from percolation ratio and cadre density.
 
    :param percolation_ratio: Current L_max / N ratio
    :type percolation_ratio: float
+   :param cadre_density: Ratio of actual/potential liquidity (default 0.0)
+   :type cadre_density: float
    :returns: Phase state name
-   :rtype: str ("gaseous" | "transitional" | "liquid")
+   :rtype: str ("gaseous" | "transitional" | "liquid" | "solid")
 
 .. py:method:: get_pending_events()
 
@@ -350,11 +355,11 @@ tick's WorldState.
    :returns: List of events awaiting injection
    :rtype: list[SimulationEvent]
 
-**Phase States:**
+**Phase States (4-Phase Model - Sprint 3.3):**
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 25 55
+   :widths: 15 35 50
 
    * - State
      - Threshold
@@ -366,8 +371,11 @@ tick's WorldState.
      - ``0.1 <= ratio < 0.5``
      - Emerging structure, vulnerable to disruption
    * - Liquid
-     - ``ratio >= 0.5``
-     - Giant component formed, vanguard crystallized
+     - ``ratio >= 0.5 AND cadre < 0.5``
+     - Mass movement formed, broad but lacks discipline
+   * - Solid
+     - ``ratio >= 0.5 AND cadre >= 0.5``
+     - Vanguard party crystallized, iron discipline
 
 Narrative States
 ~~~~~~~~~~~~~~~~
@@ -384,9 +392,15 @@ The monitor logs these narrative states based on metrics:
    * - Gaseous
      - ``percolation_ratio < 0.1``
      - "Movement is atomized"
-   * - Condensation
-     - ``percolation_ratio`` crosses 0.5
-     - "Vanguard Party has formed"
+   * - Liquid
+     - ``ratio >= 0.5 AND cadre < 0.5``
+     - "Mass movement formed, lacks cadre discipline"
+   * - Solid
+     - ``ratio >= 0.5 AND cadre >= 0.5``
+     - "Vanguard Party crystallized, iron discipline"
+   * - Crystallization
+     - ``liquid -> solid`` transition
+     - "Mass movement hardened into disciplined vanguard"
    * - Brittle
      - ``potential > actual * 2``
      - "Movement is broad but brittle"

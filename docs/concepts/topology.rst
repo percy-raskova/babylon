@@ -65,7 +65,8 @@ Phase States & Percolation
 --------------------------
 
 The solidarity network undergoes **phase transitions** analogous to
-physical matter:
+physical matter. Babylon implements a **4-phase model** that distinguishes
+between broad mass movements and disciplined vanguard parties:
 
 **Gaseous State** (percolation ratio < 0.1)
    Atomized leftism. Individual cells operate in isolation. No giant
@@ -77,36 +78,49 @@ physical matter:
    The network is vulnerable to targeted disruption. Consciousness can
    propagate within clusters but not across the full network.
 
-**Liquid State** (ratio >= 0.5)
-   Giant component formed. The vanguard party has crystallized from
-   gaseous leftism. Coordinated action is possible across the network.
-   Removal of individual nodes doesn't destroy organizational capacity.
+**Liquid State** (ratio >= 0.5 AND cadre_density < 0.5)
+   Giant component formed but with weak ties. A **mass movement** has
+   emerged but lacks disciplined cadre. Many sympathizers (edges > 0.1)
+   but few committed activists (edges > 0.5). Vulnerable to ideological
+   drift and internal division. *Historical example: Occupy Wall Street.*
+
+**Solid State** (ratio >= 0.5 AND cadre_density >= 0.5)
+   Giant component with strong ties throughout. The **vanguard party**
+   has crystallized with iron discipline. Committed cadre dominate the
+   network. Can survive repression and maintain ideological coherence.
+   *Historical example: The Bolshevik Party (1917).*
 
 The **percolation ratio** is calculated as L_max / N, where L_max is
 the size of the largest connected component and N is the total number
 of social class nodes.
 
+The **cadre density** is calculated as actual_liquidity / potential_liquidity,
+measuring the ratio of committed activists (strong ties) to sympathizers
+(weak ties) in the network.
+
 **Phase Transition Events:**
 
-When the percolation ratio crosses a threshold boundary, the
-:class:`TopologyMonitor` emits a :class:`PhaseTransitionEvent`. This
+When the percolation ratio or cadre density crosses a threshold boundary,
+the :class:`TopologyMonitor` emits a :class:`PhaseTransitionEvent`. This
 enables the AI narrative layer to generate prose about organizational
 crystallization or fragmentation.
 
 .. code-block:: python
 
-   # Phase transition from atomized to organized
+   # Phase transition from mass movement to vanguard party
    event = PhaseTransitionEvent(
        tick=15,
-       previous_state="gaseous",
-       new_state="liquid",
+       previous_state="liquid",
+       new_state="solid",
        percolation_ratio=0.55,
+       cadre_density=0.65,  # Strong cadre discipline
        largest_component_size=11,
    )
 
-**Key Insight:** The moment of phase transition is critical. Like water
-freezing, there is gradual temperature drop (consciousness accumulation)
-followed by sudden phase change (organizational crystallization).
+**Key Insight:** The distinction between Liquid and Solid phases captures
+the tragedy of revolutions that had the numbers but lacked the discipline.
+A mass movement (Liquid) can be dispersed by ideological confusion; a
+vanguard party (Solid) maintains coherence through repression.
 
 Resilience Testing
 ------------------

@@ -22,21 +22,27 @@ the entire system—the movement achieves coordination capacity.
 Phase States
 ------------
 
-The solidarity network exists in one of two phase states:
+The solidarity network exists in one of **four phase states** (4-phase model):
 
 .. list-table:: Movement Phase States
    :header-rows: 1
-   :widths: 20 40 40
+   :widths: 15 30 55
 
    * - State
      - Network Property
      - Political Meaning
    * - **Gaseous**
-     - Many small, disconnected components
-     - Atomized leftism; no coordination
+     - Percolation < 0.1
+     - Atomized leftism; no coordination capacity
+   * - **Transitional**
+     - 0.1 <= percolation < 0.5
+     - Emerging clusters; vulnerable to disruption
    * - **Liquid**
-     - Giant component spans >50% of nodes
-     - Vanguard Party formed; coordination possible
+     - Percolation >= 0.5, cadre_density < 0.5
+     - Mass movement; broad but lacks cadre discipline
+   * - **Solid**
+     - Percolation >= 0.5, cadre_density >= 0.5
+     - Vanguard Party; iron discipline achieved
 
 The Percolation Threshold
 -------------------------
@@ -78,13 +84,18 @@ The TopologyMonitor tracks several metrics:
    Size of the largest connected component—the organizational core.
 
 **percolation_ratio**
-   L_max / N. Below 0.5 = gaseous; above 0.5 = liquid.
+   L_max / N. Below 0.5 = gaseous/transitional; above 0.5 = liquid/solid.
 
 **potential_liquidity**
    Count of SOLIDARITY edges > 0.1 strength (sympathizers).
 
 **actual_liquidity**
    Count of SOLIDARITY edges > 0.5 strength (cadre).
+
+**cadre_density** (Sprint 3.3)
+   Ratio of actual_liquidity / potential_liquidity.
+   Distinguishes **liquid** (< 0.5) from **solid** (>= 0.5).
+   Measures the discipline and commitment level of the movement.
 
 The Fascist Bifurcation
 -----------------------
@@ -205,14 +216,18 @@ The TopologyMonitor generates narrative events at key thresholds:
 
 .. list-table:: Narrative Triggers
    :header-rows: 1
-   :widths: 30 70
+   :widths: 35 65
 
    * - Condition
      - Narrative
    * - ``percolation < 0.1``
      - "STATE: Gaseous. Movement is atomized."
-   * - ``percolation crosses 0.5``
-     - "PHASE SHIFT: Condensation detected. A Vanguard Party has formed."
+   * - ``percolation >= 0.5, cadre < 0.5``
+     - "PHASE SHIFT: Liquid state. Mass movement formed but lacks discipline."
+   * - ``percolation >= 0.5, cadre >= 0.5``
+     - "PHASE SHIFT: Solid state. Vanguard Party crystallized."
+   * - ``liquid -> solid`` transition
+     - "CRYSTALLIZATION: Mass movement hardened into disciplined vanguard."
    * - ``potential > 2 × actual``
      - "WARNING: Movement is broad but brittle. Lacks cadre discipline."
    * - ``resilience = False``
@@ -279,6 +294,7 @@ Data Models
        percolation_ratio: Probability
        potential_liquidity: int
        actual_liquidity: int
+       cadre_density: float          # actual/potential (Sprint 3.3)
        is_resilient: bool | None     # None if not tested this tick
 
 **ResilienceResult**
@@ -302,9 +318,10 @@ For revolutionary strategy in the simulation:
    Below 0.5, the movement cannot coordinate. Above 0.5, collective
    action becomes possible.
 
-2. **Build actual liquidity**
+2. **Build actual liquidity (transition from Liquid to Solid)**
    Sympathizer networks (potential) are insufficient. Cadre networks
-   (actual) provide organizational depth.
+   (actual) provide organizational depth. A **Liquid** mass movement
+   can be dispersed; a **Solid** vanguard party maintains coherence.
 
 3. **Avoid star topology**
    Distributed leadership survives purges. Charismatic-leader
@@ -313,6 +330,11 @@ For revolutionary strategy in the simulation:
 4. **Time the phase transition**
    Strike when condensation occurs—the moment of maximum coordination
    capacity before state response.
+
+5. **Distinguish mass movement from vanguard (Sprint 3.3)**
+   A Liquid state (percolation >= 0.5, cadre < 0.5) has numbers but
+   lacks discipline. A Solid state (cadre >= 0.5) has both. The tragedy
+   of many revolutions: they reached Liquid but never achieved Solid.
 
 See Also
 --------

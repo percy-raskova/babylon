@@ -6,7 +6,7 @@
 
 ## 0. The Bedrock (COMPLETE)
 
-**Status:** VERIFIED (1,785 Tests)
+**Status:** VERIFIED (1,795 Tests)
 **Objective:** A deterministic, mathematically consistent simulation kernel.
 
 ### The Kernel (Phase I)
@@ -95,19 +95,32 @@
 
 ---
 
-## 3. The Narrator - Mythos (PLANNED)
+## 3. The Narrator - Mythos (IN PROGRESS)
 
-**Status:** DESIGNED
+**Status:** IN PROGRESS (Sprint 4.1 Complete)
 **Objective:** Give the engine a "voice."
 
-### The Bridge
-- [ ] `NarrativeDirector`: Interface between Engine and LLM
-- [ ] `PromptBuilder`: Context assembly using `WorldState` + `SimulationEvent`
+### The Bridge (COMPLETE)
+- [x] `NarrativeDirector`: Interface between Engine and LLM
+  - Now consumes typed `SimulationEvent` objects via `state.events`
+  - `SEMANTIC_MAP` uses `EventType` enum keys for theoretical context
+  - `SIGNIFICANT_EVENT_TYPES` filters narrative-worthy events
+- [x] `PromptBuilder`: Context assembly using `WorldState` + `SimulationEvent`
+  - `build_context_block()` accepts `list[SimulationEvent]`
+  - `_format_event()` method with match/case for all event types
+  - Rich formatting for PhaseTransitionEvent, CrisisEvent, SparkEvent, etc.
 
 ### The Voice
-- [ ] **Sprint 4.1:** Character Sheet Integration (Percy Raskova)
-- [ ] **Sprint 4.2:** Historical RAG (ChromaDB) to ground events in precedent
+- [ ] **Sprint 4.2:** Character Sheet Integration (Percy Raskova)
+- [ ] **Sprint 4.3:** Historical RAG (ChromaDB) to ground events in precedent
   - "The Weimar Resonance" - economic crisis + atomization + agitation = fascism risk
+
+### Completed Sprints
+- [x] **Sprint 4.1:** The Narrative Bridge (Typed Event Pipeline)
+  - `PromptBuilder` accepts typed events, formats per event type
+  - `NarrativeDirector` uses `state.events` instead of `event_log` strings
+  - 9 new integration tests in `test_narrative_pipeline.py`
+  - Commit: `d756498`
 
 **Key Insight:** "Agitation without solidarity produces fascism, not revolution."
 
@@ -282,5 +295,5 @@ SimulationEngine.run_tick(graph, services, context)
 ---
 
 *Document created: 2025-12-09*
-*Last updated: 2025-12-12 (Sprint 3.3 Topology Events Complete)*
+*Last updated: 2025-12-12 (Sprint 4.1 Narrative Bridge Complete)*
 *Epoch: MVP & Horizontal Scaling*

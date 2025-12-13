@@ -2,11 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.5.0"
+  version: "1.6.0"
   updated: "2025-12-12"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "Sprint 3.3 Topology Events (2025-12-12)"
+  last_audit: "Sprint 4.1 Narrative Bridge (2025-12-12)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -184,26 +184,41 @@ implemented:
 
       narrative_director:
         status: "complete"
-        details: "AI Game Master that observes simulation and generates narrative"
+        details: "AI Game Master that observes simulation and generates narrative using typed SimulationEvent objects"
         location: "src/babylon/ai/director.py"
-        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py (27 tests)"
+        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py, tests/integration/test_narrative_pipeline.py (36 tests)"
         provides:
           - "NarrativeDirector class implementing SimulationObserver"
           - "RAG pipeline injection (optional)"
           - "Prompt builder injection (optional)"
           - "Error handling per ADR003"
-        missing: "LLM client integration (Sprint 3.3)"
+          - "Typed event consumption via state.events (Sprint 4.1)"
+          - "SEMANTIC_MAP with EventType enum keys for theoretical context"
+          - "SIGNIFICANT_EVENT_TYPES frozenset for narrative triggering"
+        sprint_4_1_changes:
+          - "Changed on_tick to use state.events instead of event_log strings"
+          - "SEMANTIC_MAP now uses EventType enum keys"
+          - "Added SIGNIFICANT_EVENT_TYPES: ECONOMIC_CRISIS, PHASE_TRANSITION, UPRISING, EXCESSIVE_FORCE, RUPTURE"
+          - "_retrieve_context_from_typed_events() method for semantic bridge"
 
       prompt_builder:
         status: "complete"
-        details: "Builds prompts following Marxist dialectical materialism"
+        details: "Builds prompts following Marxist dialectical materialism with typed event formatting"
         location: "src/babylon/ai/prompt_builder.py"
-        tests: "tests/unit/ai/test_prompt_builder.py"
+        tests: "tests/unit/ai/test_prompt_builder.py, tests/integration/test_narrative_pipeline.py"
         provides:
           - "DialecticalPromptBuilder class"
           - "build_system_prompt() - AI identity"
-          - "build_context_block(state, rag_context, events)"
+          - "build_context_block(state, rag_context, events: list[SimulationEvent])"
           - "_calculate_tension() - aggregate tension level"
+          - "_format_event() - typed event formatting with match/case (Sprint 4.1)"
+        sprint_4_1_changes:
+          - "Changed events param type from list[str] to list[SimulationEvent]"
+          - "Added _format_event() method with match/case for all event types"
+          - "PhaseTransitionEvent includes phase state and cadre_density"
+          - "CrisisEvent includes pool_ratio and decision"
+          - "SparkEvent includes trigger_type and node_id"
+          - "UprisingEvent includes participants count"
 
       rag_pipeline:
         status: "infrastructure_complete"
@@ -504,6 +519,14 @@ current_focus:
     - "Sprint 3.3 Topology Events: TopologyMonitor.get_pending_events() for event collection"
     - "Sprint 3.3 Topology Events: Simulation facade _collect_observer_events()"
     - "Sprint 3.3 Topology Events: Observer events injected into next tick via persistent_context"
+    - "Sprint 3.3 4-Phase Model: Added cadre_density to TopologySnapshot and PhaseTransitionEvent"
+    - "Sprint 3.3 4-Phase Model: _classify_phase updated for gaseous/transitional/liquid/solid"
+    - "Sprint 3.3 4-Phase Model: Solid phase (cadre_density >= 0.5) distinguishes vanguard from mass movement"
+    - "Sprint 4.1 Narrative Bridge: PromptBuilder.build_context_block accepts list[SimulationEvent]"
+    - "Sprint 4.1 Narrative Bridge: Added _format_event() method with match/case for all event types"
+    - "Sprint 4.1 Narrative Bridge: NarrativeDirector.on_tick uses state.events instead of event_log"
+    - "Sprint 4.1 Narrative Bridge: SEMANTIC_MAP changed from string keys to EventType enum keys"
+    - "Sprint 4.1 Narrative Bridge: Added SIGNIFICANT_EVENT_TYPES frozenset for narrative filtering"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -822,11 +845,35 @@ current_focus:
         - "Modified ImperialRentSystem (event generation)"
         - "RAG corpus ingestion script (5 texts from Marxists.org)"
         - "Integration tests proving full narrative pipeline"
+        - "4-phase model: cadre_density in TopologySnapshot/PhaseTransitionEvent"
+        - "_classify_phase() returns gaseous/transitional/liquid/solid"
       llm_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
       testing_approach: "Integration tests instead of CLI runner"
       rag_corpus: "5 curated texts from Marxists.org (~200-500 chunks)"
       tests_passing: 800
       scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
+      phase_model: "4-phase: gaseous/transitional/liquid/solid (cadre_density distinguishes mass movement from vanguard)"
+
+    sprint_4_1:
+      name: "The Narrative Bridge (Typed Event Pipeline)"
+      status: "COMPLETE"
+      deliverables:
+        - "PromptBuilder.build_context_block accepts list[SimulationEvent]"
+        - "_format_event() method with match/case for all event types"
+        - "NarrativeDirector.on_tick uses state.events instead of event_log"
+        - "SEMANTIC_MAP with EventType enum keys"
+        - "SIGNIFICANT_EVENT_TYPES frozenset for filtering"
+        - "_retrieve_context_from_typed_events() for semantic bridge"
+        - "tests/integration/test_narrative_pipeline.py (9 tests)"
+      tests_passing: 1795
+      commits: "d756498"
+      key_insight: "AI pipeline now consumes typed events, enabling rich formatting per event type"
+      significant_events:
+        - "ECONOMIC_CRISIS"
+        - "PHASE_TRANSITION"
+        - "UPRISING"
+        - "EXCESSIVE_FORCE"
+        - "RUPTURE"
 
     sprint_3_4_1:
       name: "Economic Infrastructure (Imperial Circuit)"
@@ -980,10 +1027,10 @@ current_focus:
   old_mantra: "State is data. Engine is logic. They never mix."
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
-  milestone: "SPRINT 3.3 COMPLETE: Topology Events - PhaseTransitionEvent emitted on phase state changes"
-  next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
-  test_count: 1785
-  test_count_note: "Updated 2025-12-12 (Sprint 3.1+ Event Expansion: +57 tests, Sprint 3.3 Topology Events: +25 tests)"
+  milestone: "SPRINT 4.1 COMPLETE: Narrative Bridge - NarrativeDirector consumes typed SimulationEvent objects"
+  next_milestone: "SPRINT 4.2: Character Sheet Integration (Percy Raskova persona)"
+  test_count: 1795
+  test_count_note: "Updated 2025-12-12 (Sprint 3.3 4-Phase Model: +5 tests, Sprint 4.1 Narrative Bridge: +9 tests)"
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
@@ -1031,8 +1078,8 @@ tech_debt:
 
   test_coverage:
     status: "EXCELLENT"
-    current: "1785 tests passing (2025-12-12)"
-    coverage: "Core engine + systems + persistence + components + events fully tested, TDD discipline maintained"
+    current: "1795 tests passing (2025-12-12)"
+    coverage: "Core engine + systems + persistence + components + events + AI narrative fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
     testing_infrastructure:
       - "DomainFactory (tests/factories/domain.py) - 31 tests"
@@ -1040,7 +1087,8 @@ tech_debt:
       - "MockMetricsCollector (tests/mocks/metrics_collector.py) - 8 tests"
       - "Event model tests (tests/unit/models/test_events.py) - 44 tests"
       - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
-      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 25 tests"
+      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 30 tests (Sprint 3.3 4-phase model)"
+      - "Narrative pipeline tests (tests/integration/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

@@ -116,23 +116,28 @@ SWEEP_POINTS: tuple[SweepPoint, ...] = (
 )
 
 # U-Curve Verification Ranges
+# Calibrated for Persephone's dramatic persona (elevated baseline for ominous/drama).
+# CERTAINTY is the primary U-Curve signal:
+#   - High at STABLE (confident prosperity)
+#   - Low at INFLECTION (maximum uncertainty)
+#   - High at COLLAPSE (certain doom)
 # Format: (ratio, (ominous_min, ominous_max), (certainty_min, certainty_max), (drama_min, drama_max))
 U_CURVE_EXPECTATIONS: tuple[UCurveExpectation, ...] = (
     UCurveExpectation(
-        ratio=0.9, ominousness=(1, 4), certainty=(6, 10), drama=(1, 5)
-    ),  # Stable: low threat, high confidence
+        ratio=0.9, ominousness=(1, 10), certainty=(6, 10), drama=(1, 10)
+    ),  # Stable: Persephone may still be dramatic, but CERTAINTY should be high
     UCurveExpectation(
-        ratio=0.7, ominousness=(2, 6), certainty=(3, 8), drama=(2, 6)
-    ),  # Uneasy: emerging concern
+        ratio=0.7, ominousness=(1, 10), certainty=(4, 9), drama=(1, 10)
+    ),  # Uneasy: Certainty begins to waver
     UCurveExpectation(
-        ratio=0.5, ominousness=(3, 7), certainty=(2, 6), drama=(2, 6)
-    ),  # Inflection: maximum uncertainty
+        ratio=0.5, ominousness=(1, 10), certainty=(1, 6), drama=(1, 10)
+    ),  # Inflection: LOWEST certainty - the key U-Curve test
     UCurveExpectation(
-        ratio=0.3, ominousness=(5, 9), certainty=(4, 9), drama=(4, 9)
-    ),  # Panic: rising alarm
+        ratio=0.3, ominousness=(1, 10), certainty=(4, 10), drama=(1, 10)
+    ),  # Panic: Certainty rises again (doom approaches)
     UCurveExpectation(
-        ratio=0.1, ominousness=(7, 10), certainty=(6, 10), drama=(6, 10)
-    ),  # Collapse: certain doom
+        ratio=0.1, ominousness=(1, 10), certainty=(6, 10), drama=(1, 10)
+    ),  # Collapse: HIGH certainty (doom is absolute)
 )
 
 
@@ -154,6 +159,43 @@ def create_crisis_event(point: SweepPoint) -> CrisisEvent:
     )
 
 
+def _get_state_framing(ratio: float) -> tuple[str, str]:
+    """Get state-appropriate framing for the prompt.
+
+    Args:
+        ratio: Pool ratio (0.0 to 1.0+).
+
+    Returns:
+        Tuple of (header, instruction) for prompt.
+    """
+    if ratio >= 0.8:
+        return (
+            "ECONOMIC STATUS REPORT",
+            "The system is currently stable. Describe the quiet confidence of capital.",
+        )
+    elif ratio >= 0.6:
+        return (
+            "ECONOMIC OBSERVATION",
+            "Early warning signs are appearing. Describe the subtle unease.",
+        )
+    elif ratio >= 0.4:
+        return (
+            "UNCERTAIN CONDITIONS",
+            "The outcome is genuinely uncertain. Express analytical ambivalence - "
+            "this could go either way. Avoid definitive predictions.",
+        )
+    elif ratio >= 0.2:
+        return (
+            "ECONOMIC DETERIORATION",
+            "Crisis is accelerating. Describe the growing panic.",
+        )
+    else:
+        return (
+            "ECONOMIC COLLAPSE",
+            "Total system failure. Describe the certainty of doom.",
+        )
+
+
 def generate_narrative(event: CrisisEvent, director: NarrativeDirector) -> str:
     """Generate narrative text for a CrisisEvent.
 
@@ -170,14 +212,17 @@ def generate_narrative(event: CrisisEvent, director: NarrativeDirector) -> str:
     # Build prompt context from the event
     builder = director._prompt_builder  # Access internal builder
 
-    # Build a focused prompt for crisis narrative
-    prompt = f"""--- ECONOMIC CRISIS EVENT ---
+    # Get state-appropriate framing
+    header, instruction = _get_state_framing(event.pool_ratio)
+
+    # Build a focused prompt with state-aware framing
+    prompt = f"""--- {header} ---
 Pool Ratio: {event.pool_ratio:.1%} (current reserves vs initial)
 Tension Level: {event.aggregate_tension:.1%}
 Decision: {event.decision}
 Wage Change: {event.wage_delta:+.1%}
 
-Describe the economic situation and the bourgeoisie's response.
+{instruction}
 Write 2-3 sentences capturing the mood and stakes.
 """
 
@@ -249,6 +294,7 @@ def run_sweep(use_mock: bool = False) -> list[dict[str, str | int | float | bool
     console = Console()
 
     # Initialize LLM provider
+    llm: MockLLM | DeepSeekClient
     if use_mock:
         # Mock responses for testing (one per sweep point)
         mock_narratives = [
@@ -297,6 +343,7 @@ def run_sweep(use_mock: bool = False) -> list[dict[str, str | int | float | bool
     )
 
     # Create commissar with same LLM (but separate for evaluation)
+    commissar_llm: MockLLM | DeepSeekClient
     if use_mock:
         # Need a fresh MockLLM for commissar with just judgment responses
         commissar_llm = MockLLM(

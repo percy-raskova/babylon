@@ -227,3 +227,123 @@ class TestRefreshUIHelpers:
         result = _event_to_log_level(event)
 
         assert result == "WARN", f"Expected 'WARN' for EXCESSIVE_FORCE event, got '{result}'"
+
+
+class TestInitSimulation:
+    """Test simulation initialization creates valid state.
+
+    The init_simulation() function must create a simulation with:
+    - Entity "C001" (Periphery Worker) for StateInspector
+    - Entity "C002" (Core Owner) for class dynamics
+    - Valid tick=0 state for initial display
+    """
+
+    def test_init_simulation_creates_simulation(self) -> None:
+        """init_simulation() sets module-level simulation variable."""
+        import babylon.ui.main as main_module
+
+        main_module.init_simulation()
+
+        assert main_module.simulation is not None, (
+            "init_simulation() must set module-level simulation variable"
+        )
+
+    def test_init_simulation_has_c001_entity(self) -> None:
+        """init_simulation() creates state with C001 entity for StateInspector."""
+        import babylon.ui.main as main_module
+
+        main_module.init_simulation()
+        state = main_module.simulation.current_state
+
+        assert "C001" in state.entities, (
+            "Simulation must have C001 entity for StateInspector to display"
+        )
+
+    def test_init_simulation_has_c002_entity(self) -> None:
+        """init_simulation() creates state with C002 entity."""
+        import babylon.ui.main as main_module
+
+        main_module.init_simulation()
+        state = main_module.simulation.current_state
+
+        assert "C002" in state.entities, "Simulation must have C002 entity"
+
+    def test_init_simulation_starts_at_tick_zero(self) -> None:
+        """init_simulation() creates state at tick 0."""
+        import babylon.ui.main as main_module
+
+        main_module.init_simulation()
+        state = main_module.simulation.current_state
+
+        assert state.tick == 0, f"Expected tick 0, got {state.tick}"
+
+    def test_init_simulation_has_economy_with_rent_pool(self) -> None:
+        """init_simulation() creates state with economy for TrendPlotter."""
+        import babylon.ui.main as main_module
+
+        main_module.init_simulation()
+        state = main_module.simulation.current_state
+
+        assert hasattr(state, "economy"), "State must have economy for TrendPlotter"
+        assert hasattr(state.economy, "imperial_rent_pool"), (
+            "Economy must have imperial_rent_pool for TrendPlotter"
+        )
+
+
+class TestMainPageInitialDataLoad:
+    """Test that main_page() triggers initial data population.
+
+    RED PHASE: This test captures the bug where refresh_ui() is never
+    called on initial page load, leaving all components empty.
+
+    The fix requires adding a one-shot timer:
+        ui.timer(0.1, refresh_ui, once=True)
+    """
+
+    def test_main_page_has_oneshot_timer_for_initial_refresh(self) -> None:
+        """main_page() must have a one-shot timer to call refresh_ui on load.
+
+        Without this, the dashboard shows empty components at tick 0 because
+        refresh_ui() only runs on STEP/RESET button clicks or during PLAY.
+        """
+        import ast
+        from pathlib import Path
+
+        main_path = Path("src/babylon/ui/main.py")
+        source = main_path.read_text()
+        tree = ast.parse(source)
+
+        # Find the main_page function
+        main_page_func = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "main_page":
+                main_page_func = node
+                break
+
+        assert main_page_func is not None, "main_page function not found"
+
+        # Look for ui.timer call with once=True within main_page
+        has_oneshot_timer = False
+        for node in ast.walk(main_page_func):
+            is_timer_call = (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "timer"
+            )
+            if is_timer_call:
+                # Check for once=True keyword argument
+                for keyword in node.keywords:
+                    is_once_true = (
+                        keyword.arg == "once"
+                        and isinstance(keyword.value, ast.Constant)
+                        and keyword.value.value is True
+                    )
+                    if is_once_true:
+                        has_oneshot_timer = True
+                        break
+
+        assert has_oneshot_timer, (
+            "main_page() must include a one-shot timer to populate initial data:\n"
+            "    ui.timer(0.1, refresh_ui, once=True)\n"
+            "Without this, dashboard components are empty at tick 0."
+        )

@@ -280,6 +280,11 @@ def main_page() -> None:
     # Timer for play mode (1 tick per second) - MUST be inside root function
     ui.timer(interval=1.0, callback=run_loop)
 
+    # One-shot timer to populate initial data after UI renders
+    # Without this, dashboard shows empty components at tick 0
+    # See: tests/unit/ui/test_main.py::TestMainPageInitialDataLoad
+    ui.timer(interval=0.1, callback=refresh_ui, once=True)
+
 
 # Initialize simulation on module load
 init_simulation()

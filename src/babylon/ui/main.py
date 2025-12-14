@@ -1,7 +1,12 @@
 """Main Babylon UI application.
 
 This module provides the entry point for the Babylon simulation UI,
-wiring the ControlDeck and NarrativeTerminal to the Simulation engine.
+implementing the 4-panel Synopticon dashboard layout:
+
+- Left panel: TrendPlotter (Imperial Rent + Global Tension)
+- Center top: NarrativeTerminal (typewriter animation)
+- Center bottom: SystemLog (raw events, instant append)
+- Right panel: StateInspector (JSON viewer for C001 entity)
 
 Run with:
     python -m babylon.ui.main
@@ -19,6 +24,10 @@ from nicegui import ui
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.scenarios import create_two_node_scenario
 from babylon.engine.simulation import Simulation
+from babylon.models.enums import EventType
+from babylon.models.events import SimulationEvent
+from babylon.models.world_state import WorldState
+from babylon.ui.components import StateInspector, SystemLog, TrendPlotter
 from babylon.ui.controls import ControlDeck
 from babylon.ui.terminal import NarrativeTerminal, find_narrative_director, poll_narrative_director
 
@@ -28,6 +37,12 @@ is_playing: bool = False
 control_deck: ControlDeck | None = None
 terminal: NarrativeTerminal | None = None
 last_narrative_index: int = 0
+
+# New Synopticon panel state (Sprint 4)
+system_log: SystemLog | None = None
+trend_plotter: TrendPlotter | None = None
+state_inspector: StateInspector | None = None
+last_event_index: int = 0
 
 
 def init_simulation() -> None:
@@ -62,9 +77,10 @@ def on_pause() -> None:
 
 def on_reset() -> None:
     """Handle RESET button click."""
-    global is_playing, last_narrative_index
+    global is_playing, last_narrative_index, last_event_index
     is_playing = False
     last_narrative_index = 0  # Reset narrative polling index
+    last_event_index = 0  # Reset event tracking index
     init_simulation()
     refresh_ui()
 
@@ -80,18 +96,76 @@ def _get_narrative_director() -> SimulationObserver | None:
     return find_narrative_director(simulation.observers)
 
 
-def refresh_ui() -> None:
-    """Update UI to reflect current simulation state.
+def _calculate_global_tension(state: WorldState) -> float:
+    """Calculate average tension across all relationships.
 
-    Updates the tick counter and polls the NarrativeDirector for new
-    narrative entries, pushing them to the terminal for display.
+    This metric provides a single-number summary of system-wide tension,
+    useful for trend visualization and phase transition detection.
+
+    Args:
+        state: The current world state containing relationships.
+
+    Returns:
+        Average tension value (0.0 to 1.0), or 0.0 if no relationships.
     """
-    global last_narrative_index
+    if not state.relationships:
+        return 0.0
+    return sum(r.tension for r in state.relationships) / len(state.relationships)
 
-    if control_deck is not None and simulation is not None:
-        control_deck.update_tick(simulation.current_state.tick)
 
-    # Poll NarrativeDirector for new narrative entries
+def _event_to_log_level(event: SimulationEvent) -> str:
+    """Map event type to log level for SystemLog display.
+
+    Critical events (ECONOMIC_CRISIS, UPRISING, RUPTURE) map to ERROR.
+    Warning events (EXCESSIVE_FORCE, IMPERIAL_SUBSIDY) map to WARN.
+    All other events map to INFO.
+
+    Args:
+        event: The simulation event to classify.
+
+    Returns:
+        Log level string: "ERROR", "WARN", or "INFO".
+    """
+    critical_events = {
+        EventType.ECONOMIC_CRISIS,
+        EventType.UPRISING,
+        EventType.RUPTURE,
+    }
+    warning_events = {
+        EventType.EXCESSIVE_FORCE,
+        EventType.IMPERIAL_SUBSIDY,
+    }
+
+    if event.event_type in critical_events:
+        return "ERROR"
+    elif event.event_type in warning_events:
+        return "WARN"
+    return "INFO"
+
+
+def refresh_ui() -> None:
+    """Update all Synopticon panels with current simulation state.
+
+    This function pushes data to all four panels:
+
+    1. ControlDeck: Update tick counter
+    2. NarrativeTerminal: Poll NarrativeDirector for new narrative entries
+    3. TrendPlotter: Push Imperial Rent and Global Tension metrics
+    4. StateInspector: Update with C001 entity state
+    5. SystemLog: Log new simulation events with appropriate severity levels
+    """
+    global last_narrative_index, last_event_index
+
+    if simulation is None:
+        return
+
+    state = simulation.current_state
+
+    # 1. Update tick counter (existing)
+    if control_deck is not None:
+        control_deck.update_tick(state.tick)
+
+    # 2. Poll NarrativeDirector -> NarrativeTerminal (existing)
     if terminal is not None:
         director = _get_narrative_director()
         if director is not None:
@@ -100,6 +174,26 @@ def refresh_ui() -> None:
             )
             for entry in new_entries:
                 terminal.log(entry)
+
+    # 3. Push metrics -> TrendPlotter (NEW)
+    if trend_plotter is not None:
+        rent = float(state.economy.imperial_rent_pool)
+        tension = _calculate_global_tension(state)
+        trend_plotter.push_data(state.tick, rent, tension)
+
+    # 4. Update StateInspector with C001 entity (NEW)
+    if state_inspector is not None:
+        entity = state.entities.get("C001")
+        if entity is not None:
+            state_inspector.refresh(entity.model_dump())
+
+    # 5. Log new events -> SystemLog (NEW)
+    if system_log is not None:
+        new_events = state.events[last_event_index:]
+        for event in new_events:
+            level = _event_to_log_level(event)
+            system_log.log(f"[{event.event_type.value}] tick={event.tick}", level)
+        last_event_index = len(state.events)
 
 
 def run_loop() -> None:
@@ -110,21 +204,70 @@ def run_loop() -> None:
 
 
 def main_page() -> None:
-    """Render the main application page."""
-    global control_deck, terminal
+    """Render the Synopticon 4-panel dashboard.
+
+    Layout (from ai-docs/synopticon-spec.yaml):
+
+    .. code-block:: text
+
+        +---------------------------------------------------------------------+
+        |  BABYLON v0.3              [STEP] [PLAY] [PAUSE] [RESET] TICK:042   |
+        +---------------+-------------------------------+---------------------+
+        |               |    NarrativeTerminal (Top)    |                     |
+        |  TrendPlotter |   -------------------------   |   StateInspector    |
+        |  (25%)        |      SystemLog (Bottom)       |   (25%)             |
+        |  EChart:      |   Raw events, instant append  |   json_editor for   |
+        | -Imperial Rent|   Color-coded by level        |   C001 entity       |
+        | -Global Tension|                              |                     |
+        +---------------+-------------------------------+---------------------+
+
+    Design System Colors (from ai-docs/design-system.yaml):
+        - wet_concrete: #1A1A1A (header background)
+        - silver_dust: #C0C0C0 (section labels)
+        - grow_light_purple: #9D00FF (title, NARRATIVE label)
+        - data_green: #39FF14 (SYSTEM LOG label)
+    """
+    global control_deck, terminal, system_log, trend_plotter, state_inspector
     ui.dark_mode().enable()
 
-    with ui.column().classes("w-full items-center p-4"):
-        ui.label("BABYLON v0.3").classes("text-green-400 font-mono text-2xl mb-4")
+    # Header row: Title + ControlDeck (wet_concrete background)
+    with ui.row().classes("w-full items-center justify-between p-4 bg-[#1A1A1A]"):
+        ui.label("BABYLON v0.3").classes("text-[#9D00FF] font-mono text-2xl")
         control_deck = ControlDeck(
             on_step=on_step,
             on_play=on_play,
             on_pause=on_pause,
             on_reset=on_reset,
         )
-        # Narrative terminal with typewriter animation
-        with ui.row().classes("w-full max-w-2xl mt-8"):
-            terminal = NarrativeTerminal()
+
+    # 3-column grid: 25% - 50% - 25%
+    with ui.grid(columns="1fr 2fr 1fr").classes("w-full h-[calc(100vh-80px)] gap-2 p-2"):
+        # Left panel: TrendPlotter
+        with ui.column().classes("h-full"):
+            ui.label("METRICS").classes(
+                "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs mb-2"
+            )
+            trend_plotter = TrendPlotter()
+
+        # Center panel: NarrativeTerminal (top) + SystemLog (bottom)
+        with ui.column().classes("h-full gap-2"):
+            with ui.column().classes("flex-1"):
+                ui.label("NARRATIVE").classes(
+                    "text-[#9D00FF] font-mono uppercase tracking-wider text-xs mb-2"
+                )
+                terminal = NarrativeTerminal()
+            with ui.column().classes("flex-1"):
+                ui.label("SYSTEM LOG").classes(
+                    "text-[#39FF14] font-mono uppercase tracking-wider text-xs mb-2"
+                )
+                system_log = SystemLog()
+
+        # Right panel: StateInspector
+        with ui.column().classes("h-full"):
+            ui.label("STATE: C001").classes(
+                "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs mb-2"
+            )
+            state_inspector = StateInspector()
 
     # Timer for play mode (1 tick per second) - MUST be inside root function
     ui.timer(interval=1.0, callback=run_loop)

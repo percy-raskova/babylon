@@ -37,6 +37,7 @@ This directory helps AI assistants:
 | `tailwind-patterns.yaml` | Tailwind CSS patterns, arbitrary values, flexbox, sizing | YAML |
 | `echarts-patterns.yaml` | Apache ECharts chart configuration, dynamic updates, styling | YAML |
 | `quasar-patterns.yaml` | Quasar Framework components, props, dark mode | YAML |
+| `asyncio-patterns.yaml` | Python asyncio, to_thread, callback detection, timers | YAML |
 
 ## Usage
 

@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from nicegui import ui  # type: ignore[import-not-found]
+from nicegui import ui
 
 # Type alias for callbacks that can be sync or async
 # NiceGUI buttons accept both synchronous and async callbacks

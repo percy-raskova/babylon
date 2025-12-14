@@ -6,9 +6,10 @@ dashboard, following the "Bunker Constructivism" design system.
 Components:
     SystemLog: Raw event log with instant display (NO typewriter animation).
     TrendPlotter: Real-time EChart line graph for simulation metrics.
+    StateInspector: JSON viewer for raw entity state inspection.
 
 Example:
-    >>> from babylon.ui.components import SystemLog, TrendPlotter
+    >>> from babylon.ui.components import SystemLog, TrendPlotter, StateInspector
     >>> log = SystemLog()
     >>> log.log("Revolution begins", level="INFO")
     >>> log.log("Warning: tension rising", level="WARN")
@@ -16,6 +17,9 @@ Example:
 
     >>> plotter = TrendPlotter()
     >>> plotter.push_data(tick=1, rent=100.0, tension=0.5)
+
+    >>> inspector = StateInspector()
+    >>> inspector.refresh({"id": "C001", "wealth": 100.0})
 """
 
 from __future__ import annotations
@@ -217,3 +221,62 @@ class TrendPlotter:
         self.echart.options["series"][0]["data"] = self._rent_data
         self.echart.options["series"][1]["data"] = self._tension_data
         self.echart.update()
+
+
+class StateInspector:
+    """JSON viewer for raw entity state inspection.
+
+    Displays entity data in a read-only JSON editor format.
+    Used to inspect C001 (Periphery Worker) entity state.
+
+    The StateInspector provides:
+        - Read-only JSON display (no editing allowed)
+        - Full replacement on refresh (no merging)
+        - Support for nested dicts, lists, and numeric values
+        - Bunker Constructivism aesthetic styling
+
+    Styling (from ai-docs/design-system.yaml):
+        - Container: bg-[#050505] border border-[#404040] p-2 overflow-auto
+        - Background: void (#050505)
+        - Border: dark_metal (#404040)
+
+    Args:
+        None
+
+    Example:
+        >>> inspector = StateInspector()
+        >>> inspector.refresh({"id": "C001", "wealth": 100.0})
+        >>> inspector.refresh({"id": "C001", "wealth": 150.0})  # replaces previous
+    """
+
+    # Design System: Bunker Constructivism JSON viewer component
+    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-2 overflow-auto"
+
+    def __init__(self) -> None:
+        """Initialize the StateInspector with empty state."""
+        # Internal state: current entity data being displayed
+        self._current_data: dict[str, Any] = {}
+
+        # Build UI elements
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Construct the UI elements."""
+        with ui.element("div").classes(self.CONTAINER_CLASSES):
+            self.json_editor: Any = ui.json_editor(
+                {"content": {"json": self._current_data}},
+            ).classes("w-full h-full")
+            # Set read-only mode
+            self.json_editor.run_editor_method("updateProps", {"readOnly": True})
+
+    def refresh(self, entity_data: dict[str, Any]) -> None:
+        """Update displayed entity data.
+
+        Completely replaces the current data with the new entity_data.
+        No merging is performed - this is a full replacement.
+
+        Args:
+            entity_data: Dictionary containing entity state to display.
+        """
+        self._current_data = entity_data
+        self.json_editor.run_editor_method("set", {"json": entity_data})

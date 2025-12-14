@@ -62,7 +62,10 @@ class SystemLog:
     """
 
     # Design System: Bunker Constructivism terminal_output component
-    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-4 overflow-auto font-mono text-sm"
+    CONTAINER_CLASSES = (
+        "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto font-mono text-sm"
+    )
+    CONTAINER_STYLE = "flex: 1; min-height: 0"
 
     # Design System color palette (from ai-docs/design-system.yaml)
     LEVEL_COLORS: dict[str, str] = {
@@ -81,7 +84,11 @@ class SystemLog:
 
     def _build_ui(self) -> None:
         """Construct the UI elements."""
-        with ui.scroll_area().classes(self.CONTAINER_CLASSES) as scroll_area:
+        with (
+            ui.scroll_area()
+            .classes(self.CONTAINER_CLASSES)
+            .style(self.CONTAINER_STYLE) as scroll_area
+        ):
             self.scroll_area: Any = scroll_area
             self._content_column: Any = ui.column().classes("w-full gap-0")
 
@@ -103,7 +110,7 @@ class SystemLog:
 
         # Create label immediately in content column
         with self._content_column:
-            ui.label(text).classes(f"text-[{color}]")
+            ui.label(text).classes(f"text-[{color}] break-all")
 
         # Auto-scroll to bottom
         self.scroll_area.scroll_to(percent=1.0)
@@ -174,6 +181,15 @@ class TrendPlotter:
                 "legend": {
                     "data": ["Imperial Rent", "Global Tension"],
                     "textStyle": {"color": self.SILVER_DUST},
+                    "top": 0,
+                    "left": "center",
+                    "show": True,
+                },
+                "grid": {
+                    "top": 40,
+                    "bottom": 30,
+                    "left": 50,
+                    "right": 20,
                 },
                 "series": [
                     {
@@ -250,7 +266,8 @@ class StateInspector:
     """
 
     # Design System: Bunker Constructivism JSON viewer component
-    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-2 overflow-auto"
+    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-2 w-full overflow-auto"
+    CONTAINER_STYLE = "flex: 1; min-height: 0"
 
     def __init__(self) -> None:
         """Initialize the StateInspector with empty state."""
@@ -262,10 +279,14 @@ class StateInspector:
 
     def _build_ui(self) -> None:
         """Construct the UI elements."""
-        with ui.element("div").classes(self.CONTAINER_CLASSES):
-            self.json_editor: Any = ui.json_editor(
-                {"content": {"json": self._current_data}},
-            ).classes("w-full h-full")
+        with ui.element("div").classes(self.CONTAINER_CLASSES).style(self.CONTAINER_STYLE):
+            self.json_editor: Any = (
+                ui.json_editor(
+                    {"content": {"json": self._current_data}},
+                )
+                .classes("w-full")
+                .style("height: 100%")
+            )
             # Set read-only mode
             self.json_editor.run_editor_method("updateProps", {"readOnly": True})
 

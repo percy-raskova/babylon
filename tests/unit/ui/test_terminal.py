@@ -302,7 +302,7 @@ class TestDesignSystemConstants:
         """Container classes match Bunker Constructivism spec."""
         from babylon.ui.terminal import NarrativeTerminal
 
-        expected = "bg-[#050505] border border-[#404040] p-4 h-64 overflow-auto"
+        expected = "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto"
         assert expected == NarrativeTerminal.CONTAINER_CLASSES
 
     def test_text_classes(self) -> None:

@@ -241,33 +241,41 @@ def main_page() -> None:
         )
 
     # 3-column grid: 25% - 50% - 25%
-    with ui.grid(columns="1fr 2fr 1fr").classes("w-full h-[calc(100vh-80px)] gap-2 p-2"):
-        # Left panel: TrendPlotter
-        with ui.column().classes("h-full"):
-            ui.label("METRICS").classes(
-                "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs mb-2"
-            )
-            trend_plotter = TrendPlotter()
+    with (
+        ui.grid(columns="1fr 2fr 1fr")
+        .classes("w-full gap-4 p-4")
+        .style("height: calc(100vh - 80px)")
+    ):
+        # Left panel: TrendPlotter (full height)
+        with ui.column().classes("gap-2").style("height: 100%"):
+            ui.label("METRICS").classes("text-[#C0C0C0] font-mono uppercase tracking-wider text-xs")
+            with ui.element("div").style("flex: 1; min-height: 0"):
+                trend_plotter = TrendPlotter()
 
-        # Center panel: NarrativeTerminal (top) + SystemLog (bottom)
-        with ui.column().classes("h-full gap-2"):
-            with ui.column().classes("flex-1"):
+        # Center panel: NarrativeTerminal (top 50%) + SystemLog (bottom 50%)
+        with ui.column().classes("gap-4").style("height: 100%"):
+            # Narrative panel (top half)
+            with ui.column().classes("gap-2").style("flex: 1; min-height: 0"):
                 ui.label("NARRATIVE").classes(
-                    "text-[#9D00FF] font-mono uppercase tracking-wider text-xs mb-2"
+                    "text-[#9D00FF] font-mono uppercase tracking-wider text-xs"
                 )
-                terminal = NarrativeTerminal()
-            with ui.column().classes("flex-1"):
+                with ui.element("div").style("flex: 1; min-height: 0; display: flex"):
+                    terminal = NarrativeTerminal()
+            # System Log panel (bottom half)
+            with ui.column().classes("gap-2").style("flex: 1; min-height: 0"):
                 ui.label("SYSTEM LOG").classes(
-                    "text-[#39FF14] font-mono uppercase tracking-wider text-xs mb-2"
+                    "text-[#39FF14] font-mono uppercase tracking-wider text-xs"
                 )
-                system_log = SystemLog()
+                with ui.element("div").style("flex: 1; min-height: 0; display: flex"):
+                    system_log = SystemLog()
 
-        # Right panel: StateInspector
-        with ui.column().classes("h-full"):
+        # Right panel: StateInspector (full height)
+        with ui.column().classes("gap-2").style("height: 100%"):
             ui.label("STATE: C001").classes(
-                "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs mb-2"
+                "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs"
             )
-            state_inspector = StateInspector()
+            with ui.element("div").style("flex: 1; min-height: 0"):
+                state_inspector = StateInspector()
 
     # Timer for play mode (1 tick per second) - MUST be inside root function
     ui.timer(interval=1.0, callback=run_loop)

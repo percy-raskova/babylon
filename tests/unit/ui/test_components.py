@@ -159,7 +159,7 @@ class TestSystemLogContainerStyling:
         from babylon.ui.components import SystemLog
 
         # Based on design-system.yaml terminal_output component
-        expected = "bg-[#050505] border border-[#404040] p-4 overflow-auto font-mono text-sm"
+        expected = "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto font-mono text-sm"
 
         assert expected == SystemLog.CONTAINER_CLASSES
 
@@ -523,6 +523,6 @@ class TestStateInspectorStyling:
         from babylon.ui.components import StateInspector
 
         # Based on design-system.yaml: void background, dark_metal border
-        expected = "bg-[#050505] border border-[#404040] p-2 overflow-auto"
+        expected = "bg-[#050505] border border-[#404040] p-2 w-full overflow-auto"
 
         assert expected == StateInspector.CONTAINER_CLASSES

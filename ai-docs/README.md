@@ -34,6 +34,7 @@ This directory helps AI assistants:
 | `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism | YAML |
 | `synopticon-spec.yaml` | Observer system architecture, Lens filter, SynopticView | YAML |
 | `nicegui-patterns.yaml` | NiceGUI development patterns, gotchas, quick reference | YAML |
+| `tailwind-patterns.yaml` | Tailwind CSS patterns, arbitrary values, flexbox, sizing | YAML |
 
 ## Usage
 

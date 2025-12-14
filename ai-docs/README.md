@@ -39,6 +39,7 @@ This directory helps AI assistants:
 | `quasar-patterns.yaml` | Quasar Framework components, props, dark mode | YAML |
 | `asyncio-patterns.yaml` | Python asyncio, to_thread, callback detection, timers | YAML |
 | `jsoneditor-patterns.yaml` | JSON Editor (svelte-jsoneditor), run_editor_method API | YAML |
+| `pydantic-patterns.yaml` | Pydantic V2 models, validators, serialization, constrained types | YAML |
 
 ## Usage
 

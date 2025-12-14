@@ -16,10 +16,14 @@ Example:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 from nicegui import ui  # type: ignore[import-not-found]
+
+# Type alias for callbacks that can be sync or async
+# NiceGUI buttons accept both synchronous and async callbacks
+ButtonCallback = Callable[[], None] | Callable[[], Coroutine[Any, Any, None]]
 
 
 class ControlDeck:
@@ -55,18 +59,20 @@ class ControlDeck:
 
     def __init__(
         self,
-        on_step: Callable[[], None] | None = None,
-        on_play: Callable[[], None] | None = None,
-        on_pause: Callable[[], None] | None = None,
-        on_reset: Callable[[], None] | None = None,
+        on_step: ButtonCallback | None = None,
+        on_play: ButtonCallback | None = None,
+        on_pause: ButtonCallback | None = None,
+        on_reset: ButtonCallback | None = None,
     ) -> None:
         """Initialize the ControlDeck with optional callbacks.
 
+        Callbacks can be synchronous or async - NiceGUI handles both.
+
         Args:
-            on_step: Callback for STEP button.
-            on_play: Callback for PLAY button.
-            on_pause: Callback for PAUSE button.
-            on_reset: Callback for RESET button.
+            on_step: Callback for STEP button (sync or async).
+            on_play: Callback for PLAY button (sync or async).
+            on_pause: Callback for PAUSE button (sync or async).
+            on_reset: Callback for RESET button (sync or async).
         """
         # Store callbacks
         self._on_step = on_step

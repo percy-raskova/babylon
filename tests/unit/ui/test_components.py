@@ -368,3 +368,161 @@ class TestTrendPlotterStyling:
         from babylon.ui.components import TrendPlotter
 
         assert TrendPlotter.MAX_POINTS == 50
+
+
+# =============================================================================
+# StateInspector Tests
+# =============================================================================
+
+"""Tests for StateInspector UI component.
+
+RED Phase: These tests define the contract for the StateInspector component.
+StateInspector provides a read-only JSON viewer for raw entity state inspection,
+allowing inspection of the C001 (Periphery Worker) entity's current values.
+
+Test Intent:
+- StateInspector initializes with empty current_data dict
+- refresh() updates the displayed entity data
+- refresh() completely replaces previous data
+- Handles nested dicts, lists, and numeric values
+- Container styling matches Design System specification
+
+Aesthetic: "Bunker Constructivism" - JSON viewer style.
+
+Design System Colors (from ai-docs/design-system.yaml):
+- Container: bg-[#050505] border border-[#404040] p-2 overflow-auto
+- Background: void (#050505)
+- Border: dark_metal (#404040)
+- Text: silver_dust (#C0C0C0)
+"""
+
+
+class TestStateInspectorInitialization:
+    """Test StateInspector instantiation and initial state."""
+
+    def test_can_be_instantiated(self) -> None:
+        """StateInspector can be created without error."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+
+        assert inspector is not None
+
+    def test_starts_with_empty_current_data(self) -> None:
+        """StateInspector starts with an empty _current_data attribute."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+
+        assert hasattr(inspector, "_current_data")
+        assert len(inspector._current_data) == 0
+
+    def test_current_data_is_empty_dict(self) -> None:
+        """StateInspector _current_data is an empty dict."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+
+        assert inspector._current_data == {}
+        assert isinstance(inspector._current_data, dict)
+
+
+class TestStateInspectorRefresh:
+    """Test refresh() method for updating displayed entity data."""
+
+    def test_refresh_updates_current_data(self) -> None:
+        """refresh() updates _current_data attribute."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+
+        inspector.refresh({"id": "C001"})
+
+        assert inspector._current_data == {"id": "C001"}
+
+    def test_refresh_with_simple_dict(self) -> None:
+        """refresh() handles simple flat dictionary."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+        data = {"name": "Periphery Worker", "class": "proletariat"}
+
+        inspector.refresh(data)
+
+        assert inspector._current_data["name"] == "Periphery Worker"
+        assert inspector._current_data["class"] == "proletariat"
+
+    def test_refresh_with_nested_dict(self) -> None:
+        """refresh() handles nested dictionary structures."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+        data = {
+            "id": "C001",
+            "stats": {
+                "wealth": 100.0,
+                "consciousness": 0.5,
+            },
+        }
+
+        inspector.refresh(data)
+
+        assert inspector._current_data["stats"]["wealth"] == 100.0
+        assert inspector._current_data["stats"]["consciousness"] == 0.5
+
+    def test_refresh_replaces_previous_data(self) -> None:
+        """refresh() completely replaces previous data (no merge)."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+
+        inspector.refresh({"old_key": "old_value"})
+        inspector.refresh({"new_key": "new_value"})
+
+        assert "old_key" not in inspector._current_data
+        assert inspector._current_data == {"new_key": "new_value"}
+
+    def test_refresh_with_numeric_values(self) -> None:
+        """refresh() handles numeric values (int, float)."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+        data = {
+            "tick": 42,
+            "imperial_rent": 1500.75,
+            "tension": 0.85,
+        }
+
+        inspector.refresh(data)
+
+        assert inspector._current_data["tick"] == 42
+        assert inspector._current_data["imperial_rent"] == 1500.75
+        assert inspector._current_data["tension"] == 0.85
+
+    def test_refresh_with_list_values(self) -> None:
+        """refresh() handles list values."""
+        from babylon.ui.components import StateInspector
+
+        inspector = StateInspector()
+        data = {
+            "tags": ["core", "exploited", "conscious"],
+            "history": [0.1, 0.2, 0.3],
+        }
+
+        inspector.refresh(data)
+
+        assert inspector._current_data["tags"] == ["core", "exploited", "conscious"]
+        assert inspector._current_data["history"] == [0.1, 0.2, 0.3]
+
+
+class TestStateInspectorStyling:
+    """Test Design System color compliance."""
+
+    def test_container_classes_include_design_system(self) -> None:
+        """Container classes match Bunker Constructivism JSON viewer spec."""
+        from babylon.ui.components import StateInspector
+
+        # Based on design-system.yaml: void background, dark_metal border
+        expected = "bg-[#050505] border border-[#404040] p-2 overflow-auto"
+
+        assert expected == StateInspector.CONTAINER_CLASSES

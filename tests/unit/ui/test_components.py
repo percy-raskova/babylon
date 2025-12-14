@@ -162,3 +162,209 @@ class TestSystemLogContainerStyling:
         expected = "bg-[#050505] border border-[#404040] p-4 overflow-auto font-mono text-sm"
 
         assert expected == SystemLog.CONTAINER_CLASSES
+
+
+# =============================================================================
+# TrendPlotter Tests
+# =============================================================================
+
+"""Tests for TrendPlotter UI component.
+
+RED Phase: These tests define the contract for the TrendPlotter component.
+TrendPlotter provides real-time EChart line graphs for Imperial Rent and
+Global Tension metrics over the last 50 ticks.
+
+Test Intent:
+- TrendPlotter initializes with empty data lists
+- push_data() adds tick, rent, and tension values
+- Rolling window maintains max 50 data points
+- Colors match Design System specification
+
+Aesthetic: "Bunker Constructivism" - CRT-style charts.
+
+Design System Colors (from ai-docs/design-system.yaml):
+- Chart background: void (#050505)
+- Axis lines/grid: dark_metal (#404040)
+- Axis labels/legend: silver_dust (#C0C0C0)
+- Imperial Rent line: data_green (#39FF14)
+- Global Tension line: phosphor_burn_red (#D40000)
+"""
+
+
+class TestTrendPlotterInitialization:
+    """Test TrendPlotter instantiation and initial state."""
+
+    def test_can_be_instantiated(self) -> None:
+        """TrendPlotter can be created without error."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        assert plotter is not None
+
+    def test_initializes_with_empty_data(self) -> None:
+        """TrendPlotter starts with empty data lists."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        assert len(plotter._ticks) == 0
+        assert len(plotter._rent_data) == 0
+        assert len(plotter._tension_data) == 0
+
+    def test_ticks_list_starts_empty(self) -> None:
+        """TrendPlotter _ticks list starts empty."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        assert plotter._ticks == []
+
+    def test_rent_data_list_starts_empty(self) -> None:
+        """TrendPlotter _rent_data list starts empty."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        assert plotter._rent_data == []
+
+    def test_tension_data_list_starts_empty(self) -> None:
+        """TrendPlotter _tension_data list starts empty."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        assert plotter._tension_data == []
+
+
+class TestTrendPlotterDataManagement:
+    """Test data management and rolling window behavior."""
+
+    def test_push_data_adds_tick(self) -> None:
+        """push_data() adds tick to _ticks list."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        plotter.push_data(tick=1, rent=100.0, tension=0.5)
+
+        assert 1 in plotter._ticks
+
+    def test_push_data_adds_rent_value(self) -> None:
+        """push_data() adds rent value to _rent_data list."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        plotter.push_data(tick=1, rent=100.0, tension=0.5)
+
+        assert 100.0 in plotter._rent_data
+
+    def test_push_data_adds_tension_value(self) -> None:
+        """push_data() adds tension value to _tension_data list."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        plotter.push_data(tick=1, rent=100.0, tension=0.5)
+
+        assert 0.5 in plotter._tension_data
+
+    def test_push_data_maintains_max_50_points(self) -> None:
+        """push_data() caps data at MAX_POINTS (50)."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        # Add exactly 50 points
+        for i in range(50):
+            plotter.push_data(tick=i, rent=float(i), tension=float(i) / 100)
+
+        assert len(plotter._ticks) == 50
+        assert len(plotter._rent_data) == 50
+        assert len(plotter._tension_data) == 50
+
+    def test_push_data_with_51_points_removes_oldest_tick(self) -> None:
+        """push_data() removes oldest tick when exceeding MAX_POINTS."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        # Add 51 points
+        for i in range(51):
+            plotter.push_data(tick=i, rent=float(i), tension=float(i) / 100)
+
+        # Tick 0 should be gone, tick 1 should be first
+        assert 0 not in plotter._ticks
+        assert plotter._ticks[0] == 1
+        assert len(plotter._ticks) == 50
+
+    def test_push_data_with_51_points_removes_oldest_rent(self) -> None:
+        """push_data() removes oldest rent when exceeding MAX_POINTS."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        # Add 51 points with unique rent values
+        for i in range(51):
+            plotter.push_data(tick=i, rent=float(i * 10), tension=float(i) / 100)
+
+        # Rent 0.0 should be gone, rent 10.0 should be first
+        assert 0.0 not in plotter._rent_data
+        assert plotter._rent_data[0] == 10.0
+        assert len(plotter._rent_data) == 50
+
+    def test_push_data_with_51_points_removes_oldest_tension(self) -> None:
+        """push_data() removes oldest tension when exceeding MAX_POINTS."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        # Add 51 points with unique tension values
+        for i in range(51):
+            plotter.push_data(tick=i, rent=float(i), tension=float(i) / 1000)
+
+        # Tension 0.0 should be gone, tension 0.001 should be first
+        assert 0.0 not in plotter._tension_data
+        assert plotter._tension_data[0] == 0.001
+        assert len(plotter._tension_data) == 50
+
+    def test_multiple_push_maintains_order(self) -> None:
+        """Multiple push_data() calls maintain chronological order."""
+        from babylon.ui.components import TrendPlotter
+
+        plotter = TrendPlotter()
+
+        plotter.push_data(tick=1, rent=100.0, tension=0.1)
+        plotter.push_data(tick=2, rent=200.0, tension=0.2)
+        plotter.push_data(tick=3, rent=300.0, tension=0.3)
+
+        assert plotter._ticks == [1, 2, 3]
+        assert plotter._rent_data == [100.0, 200.0, 300.0]
+        assert plotter._tension_data == [0.1, 0.2, 0.3]
+
+
+class TestTrendPlotterStyling:
+    """Test Design System color compliance."""
+
+    def test_imperial_rent_color_is_data_green(self) -> None:
+        """Imperial Rent line color is data_green (#39FF14) from Design System."""
+        from babylon.ui.components import TrendPlotter
+
+        expected_color = "#39FF14"
+
+        assert expected_color == TrendPlotter.DATA_GREEN
+
+    def test_global_tension_color_is_phosphor_burn_red(self) -> None:
+        """Global Tension line color is phosphor_burn_red (#D40000) from Design System."""
+        from babylon.ui.components import TrendPlotter
+
+        expected_color = "#D40000"
+
+        assert expected_color == TrendPlotter.PHOSPHOR_BURN_RED
+
+    def test_max_points_constant_is_50(self) -> None:
+        """MAX_POINTS constant is 50 for rolling window."""
+        from babylon.ui.components import TrendPlotter
+
+        assert TrendPlotter.MAX_POINTS == 50

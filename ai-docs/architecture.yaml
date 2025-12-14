@@ -2,9 +2,9 @@
 # How the pieces fit together
 
 meta:
-  version: "3.3.0"
-  updated: "2025-12-09"
-  status: "Phase 3 in progress (983+ tests, Observer + RAG complete, LLM next)"
+  version: "3.4.0"
+  updated: "2025-12-14"
+  status: "Phase 3.4 in progress (1,926 tests, Narrative Bridge complete)"
   related_docs:
     - "ai-docs/database-spec.yaml - SQLite schema and DDL"
     - "ai-docs/rag-architecture.yaml - ChromaDB collections"

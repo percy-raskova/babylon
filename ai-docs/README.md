@@ -31,6 +31,9 @@ This directory helps AI assistants:
 | `game-data.yaml` | External data sources and CI/CD pipeline | YAML |
 | `theory.md` | MLM-TW theoretical foundation | Markdown |
 | `rag-architecture.yaml` | RAG as permission system, validation pipeline | YAML |
+| `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism | YAML |
+| `synopticon-spec.yaml` | Observer system architecture, Lens filter, SynopticView | YAML |
+| `nicegui-patterns.yaml` | NiceGUI development patterns, gotchas, quick reference | YAML |
 
 ## Usage
 

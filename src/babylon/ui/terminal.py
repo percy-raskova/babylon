@@ -46,7 +46,8 @@ class NarrativeTerminal:
     """
 
     # Styling constants for Bunker Constructivism aesthetic
-    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-4 h-64 overflow-auto"
+    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto"
+    CONTAINER_STYLE = "flex: 1; min-height: 0"
     TEXT_CLASSES = "text-[#39FF14] font-mono text-sm"
     TYPEWRITER_INTERVAL = 0.03  # 30ms per character
 
@@ -66,7 +67,11 @@ class NarrativeTerminal:
 
     def _build_ui(self) -> None:
         """Construct the UI elements."""
-        with ui.scroll_area().classes(self.CONTAINER_CLASSES) as scroll_area:
+        with (
+            ui.scroll_area()
+            .classes(self.CONTAINER_CLASSES)
+            .style(self.CONTAINER_STYLE) as scroll_area
+        ):
             self.scroll_area: Any = scroll_area
             with ui.column().classes("w-full"):
                 self._content_column: Any = ui.column().classes("w-full")

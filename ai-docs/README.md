@@ -35,6 +35,8 @@ This directory helps AI assistants:
 | `synopticon-spec.yaml` | Observer system architecture, Lens filter, SynopticView | YAML |
 | `nicegui-patterns.yaml` | NiceGUI development patterns, gotchas, quick reference | YAML |
 | `tailwind-patterns.yaml` | Tailwind CSS patterns, arbitrary values, flexbox, sizing | YAML |
+| `echarts-patterns.yaml` | Apache ECharts chart configuration, dynamic updates, styling | YAML |
+| `quasar-patterns.yaml` | Quasar Framework components, props, dark mode | YAML |
 
 ## Usage
 

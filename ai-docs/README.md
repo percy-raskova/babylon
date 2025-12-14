@@ -38,6 +38,7 @@ This directory helps AI assistants:
 | `echarts-patterns.yaml` | Apache ECharts chart configuration, dynamic updates, styling | YAML |
 | `quasar-patterns.yaml` | Quasar Framework components, props, dark mode | YAML |
 | `asyncio-patterns.yaml` | Python asyncio, to_thread, callback detection, timers | YAML |
+| `jsoneditor-patterns.yaml` | JSON Editor (svelte-jsoneditor), run_editor_method API | YAML |
 
 ## Usage
 

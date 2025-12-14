@@ -20,6 +20,18 @@ from babylon.models.entities.contradiction import (
 )
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.effect import Effect
+from babylon.models.entities.event_template import (
+    EdgeCondition,
+    EventEmission,
+    EventTemplate,
+    GraphCondition,
+    NarrativeHooks,
+    NodeCondition,
+    NodeFilter,
+    PreconditionSet,
+    Resolution,
+    TemplateEffect,
+)
 from babylon.models.entities.relationship import FlowComponent, Relationship
 from babylon.models.entities.social_class import (
     EconomicComponent,
@@ -50,6 +62,17 @@ __all__ = [
     # Trigger
     "Trigger",
     "TriggerCondition",
+    # Event Template
+    "EventTemplate",
+    "Resolution",
+    "PreconditionSet",
+    "NodeCondition",
+    "EdgeCondition",
+    "GraphCondition",
+    "NodeFilter",
+    "TemplateEffect",
+    "EventEmission",
+    "NarrativeHooks",
     # Component Models
     "EconomicComponent",
     "IdeologicalComponent",

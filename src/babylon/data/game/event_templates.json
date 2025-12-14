@@ -1,0 +1,224 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-13T00:00:00.000000+00:00",
+  "sourceFormat": "manual",
+  "event_templates": [
+    {
+      "id": "EVT_bifurcation_moment",
+      "name": "Bifurcation Moment",
+      "description": "When agitation energy reaches critical mass, ideology bifurcates based on solidarity infrastructure. Without solidarity networks, grievances channel into fascist nationalism; with solidarity, they channel into class consciousness.",
+      "category": "consciousness",
+      "preconditions": {
+        "node_conditions": [
+          {
+            "path": "ideology.agitation",
+            "operator": ">=",
+            "threshold": 0.6,
+            "node_filter": {
+              "node_type": "social_class"
+            },
+            "aggregation": "any"
+          }
+        ],
+        "logic": "all"
+      },
+      "resolutions": [
+        {
+          "id": "fascist_capture",
+          "name": "Fascist Capture",
+          "condition": {
+            "graph_conditions": [
+              {
+                "metric": "solidarity_density",
+                "operator": "<",
+                "threshold": 0.2
+              }
+            ],
+            "logic": "all"
+          },
+          "effects": [
+            {
+              "target_id": "${node_id}",
+              "attribute": "ideology.national_identity",
+              "operation": "increase",
+              "magnitude": 0.15,
+              "description": "Agitation channels to nativist sentiment without solidarity networks"
+            }
+          ],
+          "emit_event": {
+            "event_type": "PHASE_TRANSITION",
+            "payload_template": {
+              "previous_state": "crisis",
+              "new_state": "fascist_drift",
+              "mechanism": "bifurcation_without_solidarity"
+            }
+          },
+          "narrative": {
+            "motif": "fascist_capture",
+            "historical_echoes": ["weimar_1932", "chile_1973", "brazil_2018"],
+            "flavor_text_key": "narrative.bifurcation.fascist"
+          }
+        },
+        {
+          "id": "revolutionary_awakening",
+          "name": "Revolutionary Awakening",
+          "condition": {
+            "graph_conditions": [
+              {
+                "metric": "solidarity_density",
+                "operator": ">=",
+                "threshold": 0.2
+              }
+            ],
+            "logic": "all"
+          },
+          "effects": [
+            {
+              "target_id": "${node_id}",
+              "attribute": "ideology.class_consciousness",
+              "operation": "increase",
+              "magnitude": 0.15,
+              "description": "Agitation channels to class consciousness via solidarity networks"
+            }
+          ],
+          "emit_event": {
+            "event_type": "MASS_AWAKENING",
+            "payload_template": {
+              "trigger": "bifurcation_with_solidarity",
+              "consciousness_boost": 0.15
+            }
+          },
+          "narrative": {
+            "motif": "revolutionary_awakening",
+            "historical_echoes": ["petrograd_1917", "paris_1871", "barcelona_1936"],
+            "flavor_text_key": "narrative.bifurcation.revolutionary"
+          }
+        }
+      ],
+      "narrative": {
+        "motif": "bifurcation",
+        "historical_echoes": ["germany_1933", "spain_1936", "france_1968"],
+        "flavor_text_key": "narrative.bifurcation.general"
+      },
+      "cooldown_ticks": 5,
+      "priority": 100
+    },
+    {
+      "id": "EVT_wage_crisis",
+      "name": "Wage Crisis",
+      "description": "When wealth falls below subsistence threshold, workers face a choice between acquiescence (seeking individual survival) and resistance (collective action). The outcome depends on organization level.",
+      "category": "economic",
+      "preconditions": {
+        "node_conditions": [
+          {
+            "path": "wealth",
+            "operator": "<",
+            "threshold": 30.0,
+            "node_filter": {
+              "node_type": "social_class",
+              "role": ["periphery_proletariat", "lumpenproletariat"]
+            },
+            "aggregation": "any"
+          }
+        ],
+        "logic": "all"
+      },
+      "resolutions": [
+        {
+          "id": "desperation_acquiescence",
+          "name": "Desperation Acquiescence",
+          "condition": {
+            "node_conditions": [
+              {
+                "path": "organization",
+                "operator": "<",
+                "threshold": 0.3,
+                "node_filter": {
+                  "node_type": "social_class",
+                  "role": ["periphery_proletariat", "lumpenproletariat"]
+                },
+                "aggregation": "any"
+              }
+            ],
+            "logic": "all"
+          },
+          "effects": [
+            {
+              "target_id": "${node_id}",
+              "attribute": "ideology.agitation",
+              "operation": "decrease",
+              "magnitude": 0.1,
+              "description": "Without organization, desperation leads to individual survival strategies"
+            }
+          ],
+          "emit_event": {
+            "event_type": "ECONOMIC_CRISIS",
+            "payload_template": {
+              "response": "acquiescence",
+              "reason": "low_organization"
+            }
+          },
+          "narrative": {
+            "motif": "atomization",
+            "historical_echoes": ["great_depression_1930s", "rust_belt_2010s"],
+            "flavor_text_key": "narrative.wage_crisis.acquiescence"
+          }
+        },
+        {
+          "id": "organized_resistance",
+          "name": "Organized Resistance",
+          "condition": {
+            "node_conditions": [
+              {
+                "path": "organization",
+                "operator": ">=",
+                "threshold": 0.3,
+                "node_filter": {
+                  "node_type": "social_class",
+                  "role": ["periphery_proletariat", "lumpenproletariat"]
+                },
+                "aggregation": "any"
+              }
+            ],
+            "logic": "all"
+          },
+          "effects": [
+            {
+              "target_id": "${node_id}",
+              "attribute": "ideology.agitation",
+              "operation": "increase",
+              "magnitude": 0.2,
+              "description": "Organization enables collective response to wage crisis"
+            },
+            {
+              "target_id": "${node_id}",
+              "attribute": "ideology.class_consciousness",
+              "operation": "increase",
+              "magnitude": 0.1,
+              "description": "Shared struggle raises class consciousness"
+            }
+          ],
+          "emit_event": {
+            "event_type": "ECONOMIC_CRISIS",
+            "payload_template": {
+              "response": "resistance",
+              "reason": "sufficient_organization"
+            }
+          },
+          "narrative": {
+            "motif": "collective_action",
+            "historical_echoes": ["flint_1936", "memphis_1968", "west_virginia_2018"],
+            "flavor_text_key": "narrative.wage_crisis.resistance"
+          }
+        }
+      ],
+      "narrative": {
+        "motif": "material_crisis",
+        "historical_echoes": ["bread_riots", "general_strikes"],
+        "flavor_text_key": "narrative.wage_crisis.general"
+      },
+      "cooldown_ticks": 3,
+      "priority": 90
+    }
+  ]
+}

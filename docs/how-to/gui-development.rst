@@ -171,6 +171,71 @@ Phase 5: Polish and Optimization
 3. Add accessibility features
 4. Implement error handling
 
+NiceGUI Mode Selection
+----------------------
+
+NiceGUI has mutually exclusive modes. Choose ONE pattern and stick to it.
+
+.. warning::
+
+   Never mix ``@ui.page`` decorator with global-scope UI elements.
+   This causes ``RuntimeError`` at startup.
+
+Root Function Pattern (Recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For single-page applications like Babylon MVP:
+
+.. code-block:: python
+
+   from nicegui import ui
+
+   def main_page() -> None:
+       """Root function - all UI defined here."""
+       ui.dark_mode().enable()
+
+       with ui.column().classes("w-full items-center p-4"):
+           ui.label("BABYLON v0.3").classes("text-green-400 font-mono")
+           # ... more UI elements ...
+
+       # Timer MUST be inside root function
+       ui.timer(interval=1.0, callback=run_loop)
+
+   if __name__ == "__main__":
+       ui.run(main_page, title="Babylon v0.3", port=6969)
+
+Key rules:
+
+1. **No** ``@ui.page`` decorator for single-page apps
+2. **All** UI elements inside the root function
+3. ``ui.timer()`` **must** be inside root function, not global scope
+4. Pass root function as **first positional argument** to ``ui.run()``
+
+Page Decorator Pattern (Multi-page Only)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Only use this for multi-page applications:
+
+.. code-block:: python
+
+   from nicegui import ui
+
+   @ui.page("/")
+   def index():
+       ui.label("Home")
+
+   @ui.page("/settings")
+   def settings():
+       ui.label("Settings")
+
+   # NO global UI elements allowed!
+   ui.run()
+
+.. note::
+
+   See ``ai-docs/decisions.yaml:ADR026_nicegui_root_function_pattern`` for
+   the full architectural decision record.
+
 Technical Considerations
 ------------------------
 

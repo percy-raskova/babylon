@@ -346,10 +346,29 @@ not_implemented:
       - "test_full_vertical_slice_10_ticks"
 
   ui:
-    priority: "low"
-    description: "Player interface (NiceGUI planned)"
-    blockers: "Phase 3 vertical slice complete"
+    priority: "active"
+    description: "Control Deck MVP implemented"
+    status: "IN_PROGRESS"
     phase: 4
+    pattern: "root_function"  # Use ui.run(main_page), NOT @ui.page decorator
+    components:
+      control_deck:
+        status: "complete"
+        location: "src/babylon/ui/controls.py"
+        tests: "tests/unit/ui/test_controls.py (20 tests)"
+        features:
+          - "STEP button - advance 1 tick"
+          - "PLAY button - start continuous loop"
+          - "PAUSE button - stop loop"
+          - "RESET button - reload simulation"
+          - "Tick counter - TICK: 000 format"
+        styling: "Cybernetic Terminal - dark bg, green text, monospace"
+      main_app:
+        status: "complete"
+        location: "src/babylon/ui/main.py"
+        tests: "tests/unit/ui/test_main.py (2 tests)"
+        note: "Uses root function pattern to avoid NiceGUI mode conflict"
+    blockers: "None - Control Deck operational"
 
   branching_history:
     priority: "low"

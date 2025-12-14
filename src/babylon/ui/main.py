@@ -71,7 +71,6 @@ def run_loop() -> None:
         refresh_ui()
 
 
-@ui.page("/")  # type: ignore[untyped-decorator]
 def main_page() -> None:
     """Render the main application page."""
     global control_deck
@@ -88,12 +87,12 @@ def main_page() -> None:
         # Placeholder for narrative terminal
         ui.label("TERMINAL OFFLINE").classes("text-gray-500 font-mono mt-8")
 
+    # Timer for play mode (1 tick per second) - MUST be inside root function
+    ui.timer(interval=1.0, callback=run_loop)
+
 
 # Initialize simulation on module load
 init_simulation()
 
-# Timer for play mode (1 tick per second)
-ui.timer(interval=1.0, callback=run_loop)
-
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="Babylon v0.3", dark=True, reload=False)
+    ui.run(main_page, title="Babylon v0.3", dark=True, reload=False, port=6969)

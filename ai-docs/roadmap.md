@@ -126,25 +126,41 @@
 
 ---
 
-## 4. The Interface - MVP (PLANNED)
+## 4. The Interface - MVP (IN PROGRESS)
 
-**Status:** DESIGNED
-**Objective:** The "Digital Grow Room" aesthetic.
+**Status:** IN PROGRESS
+**Objective:** The "Digital Grow Room" aesthetic - Bunker Constructivism UI.
+**Design System:** `ai-docs/design-system.yaml` (Source of Truth)
 
-### The Monitor Station
-- [ ] **NiceGUI** implementation
-- [ ] **Topology Scanner:** ECharts graph visualization (Cyber-insurgency style)
-- [ ] **Tension Gauge:** Analog visual for `ContradictionSystem` accumulation
+### Sprint 4.1: The Panopticon Shell
+- [ ] Main Window Layout (NiceGUI root function pattern, ADR026)
+- [ ] Global CSS (Fonts, Scrollbars, CSS Variables from design-system.yaml)
+- [ ] CRT Overlay effect (scanlines, vignette via Tailwind pseudo-elements)
+- [ ] The Event Log (ReadOnly terminal at bottom, data_green text)
 
-### Controls
+### Sprint 4.2: The Prism Feed
+- [ ] NarrativeDirector integration with UI
+- [ ] "Propaganda Card" component implementation (purple signal stripe)
+- [ ] Purple grow_light styling for AI-generated content
+- [ ] Narrative streaming display
+
+### Sprint 4.3: The Scanner
+- [ ] NetworkX visualization (ECharts or D3)
+- [ ] Node styling by class type (SocialClass vs Territory)
+- [ ] Edge visualization (EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE)
+- [ ] Interactive zoom/pan controls
+
+### Controls (Future)
 - [ ] "Agitation" Fan Speed Slider
 - [ ] "Rent Extraction" Voltage Dial
+- [ ] "Repression" Dial
 
 ### MVP Definition
 
 > A stable loop where a player can tweak "Repression", watch the `StruggleSystem` trigger a spark, see the `TerritorySystem` evict populations to a Penal Colony, and read a Narrative Log explaining the resulting riot.
 
 **Key Insight:** "The bomb factory pays well. That's the problem."
+**Design Mantras:** "Red is Pain, not Decoration" | "Purple is Life, Green is Data" | "The Screen is a Physical Object"
 
 ---
 
@@ -295,5 +311,5 @@ SimulationEngine.run_tick(graph, services, context)
 ---
 
 *Document created: 2025-12-09*
-*Last updated: 2025-12-12 (Sprint 4.1 Narrative Bridge Complete)*
+*Last updated: 2025-12-14 (Phase 4 Sprint Definitions Added)*
 *Epoch: MVP & Horizontal Scaling*

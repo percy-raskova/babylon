@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from nicegui import ui  # type: ignore[import-not-found]
+from nicegui import ui
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 
-from nicegui import ui  # type: ignore[import-not-found]
+from nicegui import ui
 
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.scenarios import create_two_node_scenario

@@ -266,14 +266,14 @@ Styling Constants
 Layout Management
 ~~~~~~~~~~~~~~~~~
 
-- Use pack geometry manager for main panels
-- Grid for complex layouts within panels
-- Maintain consistent padding and spacing
+- Use ``ui.row()`` and ``ui.column()`` for flex layouts
+- Apply Tailwind CSS classes via ``.classes()`` method
+- Use ``with`` context managers for nested containers
+- Maintain consistent spacing via Tailwind utilities (``p-4``, ``gap-4``)
 
 Performance Optimization
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-- Implement double buffering for smooth updates
 - Lazy loading for complex visualizations
 - Efficient event handling
 - Memory management for large datasets

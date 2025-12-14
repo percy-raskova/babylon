@@ -17,11 +17,10 @@ Or:
 
 from __future__ import annotations
 
-import asyncio
-
 from nicegui import ui
 
 from babylon.engine.observer import SimulationObserver
+from babylon.engine.runner import AsyncSimulationRunner
 from babylon.engine.scenarios import create_two_node_scenario
 from babylon.engine.simulation import Simulation
 from babylon.models.enums import EventType
@@ -33,7 +32,7 @@ from babylon.ui.terminal import NarrativeTerminal, find_narrative_director, poll
 
 # Module-level state
 simulation: Simulation | None = None
-is_playing: bool = False
+runner: AsyncSimulationRunner | None = None  # Replaces is_playing flag
 control_deck: ControlDeck | None = None
 terminal: NarrativeTerminal | None = None
 last_narrative_index: int = 0
@@ -46,39 +45,50 @@ last_event_index: int = 0
 
 
 def init_simulation() -> None:
-    """Initialize or reset the simulation."""
-    global simulation
+    """Initialize or reset the simulation and runner."""
+    global simulation, runner
     state, config, defines = create_two_node_scenario()
     simulation = Simulation(state, config, defines=defines)
+    runner = AsyncSimulationRunner(simulation, tick_interval=1.0)
 
 
 async def on_step() -> None:
     """Handle STEP button click.
 
-    Uses asyncio.to_thread() to run simulation step in a background thread,
-    preventing GUI freeze during potentially slow operations (e.g., AI inference).
+    Uses AsyncSimulationRunner.step_once() which internally uses asyncio.to_thread()
+    to run simulation step in a background thread, preventing GUI freeze.
     """
-    if simulation is not None:
-        await asyncio.to_thread(simulation.step)
+    if runner is not None:
+        await runner.step_once()
         refresh_ui()
 
 
-def on_play() -> None:
-    """Handle PLAY button click."""
-    global is_playing
-    is_playing = True
+async def on_play() -> None:
+    """Handle PLAY button click.
+
+    Starts the AsyncSimulationRunner background loop.
+    """
+    if runner is not None:
+        await runner.start()
 
 
-def on_pause() -> None:
-    """Handle PAUSE button click."""
-    global is_playing
-    is_playing = False
+async def on_pause() -> None:
+    """Handle PAUSE button click.
+
+    Stops the AsyncSimulationRunner background loop.
+    """
+    if runner is not None:
+        await runner.stop()
 
 
-def on_reset() -> None:
-    """Handle RESET button click."""
-    global is_playing, last_narrative_index, last_event_index
-    is_playing = False
+async def on_reset() -> None:
+    """Handle RESET button click.
+
+    Stops the runner, resets state indices, reinitializes simulation and runner.
+    """
+    global last_narrative_index, last_event_index
+    if runner is not None:
+        await runner.stop()
     last_narrative_index = 0  # Reset narrative polling index
     last_event_index = 0  # Reset event tracking index
     init_simulation()
@@ -196,10 +206,22 @@ def refresh_ui() -> None:
         last_event_index = len(state.events)
 
 
-def run_loop() -> None:
-    """Timer callback for continuous play mode."""
-    if is_playing and simulation is not None:
-        simulation.step()
+async def poll_runner() -> None:
+    """Timer callback for consuming states from runner queue.
+
+    Replaces the old run_loop() - instead of directly stepping, we poll
+    the queue for states pushed by the background runner. This decouples
+    the UI update from the simulation step execution.
+    """
+    if runner is None:
+        return
+
+    # Drain all available states (usually 0 or 1)
+    # Each state triggers a UI refresh
+    while True:
+        state = await runner.get_state()
+        if state is None:
+            break
         refresh_ui()
 
 
@@ -277,8 +299,9 @@ def main_page() -> None:
             with ui.element("div").style("flex: 1; min-height: 0"):
                 state_inspector = StateInspector()
 
-    # Timer for play mode (1 tick per second) - MUST be inside root function
-    ui.timer(interval=1.0, callback=run_loop)
+    # Timer for polling runner queue - MUST be inside root function
+    # Poll at 100ms for responsive UI updates (runner controls tick rate)
+    ui.timer(interval=0.1, callback=poll_runner)
 
     # One-shot timer to populate initial data after UI renders
     # Without this, dashboard shows empty components at tick 0

@@ -16,6 +16,7 @@ Example:
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -133,25 +134,36 @@ class ControlDeck:
         """
         return f"TICK: {tick:03d}"
 
-    def _handle_step(self) -> None:
+    async def _invoke_callback(self, callback: ButtonCallback | None) -> None:
+        """Invoke a callback, awaiting if it's async.
+
+        This method provides async-safe callback invocation by detecting
+        whether the callback is a coroutine function and awaiting it if so.
+
+        Args:
+            callback: The callback to invoke, or None (no-op).
+        """
+        if callback is not None:
+            if inspect.iscoroutinefunction(callback):
+                await callback()
+            else:
+                callback()
+
+    async def _handle_step(self) -> None:
         """Handle STEP button click."""
-        if self._on_step is not None:
-            self._on_step()
+        await self._invoke_callback(self._on_step)
 
-    def _handle_play(self) -> None:
+    async def _handle_play(self) -> None:
         """Handle PLAY button click."""
-        if self._on_play is not None:
-            self._on_play()
+        await self._invoke_callback(self._on_play)
 
-    def _handle_pause(self) -> None:
+    async def _handle_pause(self) -> None:
         """Handle PAUSE button click."""
-        if self._on_pause is not None:
-            self._on_pause()
+        await self._invoke_callback(self._on_pause)
 
-    def _handle_reset(self) -> None:
+    async def _handle_reset(self) -> None:
         """Handle RESET button click."""
-        if self._on_reset is not None:
-            self._on_reset()
+        await self._invoke_callback(self._on_reset)
 
     def update_tick(self, tick: int) -> None:
         """Update the tick counter display.

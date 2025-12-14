@@ -45,6 +45,7 @@ jsonschema = "^4.25.1"
 referencing = "^0.37.0"
 aiohttp = "^3.13.2"
 openai = "^2.9.0"
+nicegui = "^3.4.0"
 
 [tool.poetry.group.dev.dependencies]
 # Testing

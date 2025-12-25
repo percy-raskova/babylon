@@ -6,8 +6,8 @@
 # C7 Library ID: /websites/nicegui_io (1944 snippets, High reputation)
 
 meta:
-  version: "1.0.0"
-  updated: "2025-12-14"
+  version: "1.1.0"
+  updated: "2025-12-25"
   purpose: |
     Token-efficient reference for NiceGUI patterns learned during
     Synopticon dashboard development. Consult when:
@@ -18,6 +18,8 @@ meta:
   cross_references:
     - "ai-docs/design-system.yaml (colors, aesthetic)"
     - "ai-docs/synopticon-spec.yaml (observer architecture)"
+  recent_additions:
+    - "grid_flex_width_trap: CSS Grid/Flexbox width propagation fix (2025-12-25)"
 
 # =============================================================================
 # LAYOUT PATTERNS (Most Critical Section)
@@ -45,6 +47,36 @@ layout:
               ui.scroll_area()  # Now scrolls properly!
     our_constants: |
       CONTAINER_STYLE = "flex: 1; min-height: 0"  # Use on wrapper divs
+
+  grid_flex_width_trap:
+    problem: |
+      Flex-1 children inside CSS Grid cells collapse to zero width.
+      This is the #2 NiceGUI layout gotcha (discovered 2025-12-25).
+    cause: |
+      CSS Grid cells have implicit width from grid-template-columns,
+      but flex-1 children don't automatically inherit that width.
+      The flex-1 element needs an explicit width context to expand into.
+    solution: |
+      Add `w-full` (width: 100%) to ALL intermediate containers between
+      grid cell and flex-1 element.
+    pattern: |
+      # BAD - flex-1 collapses to zero width
+      with ui.grid(columns="1fr 2fr 1fr"):
+          with ui.column():  # No width constraint
+              ui.element().classes("flex-1")  # Zero width!
+
+      # GOOD - explicit width propagation
+      with ui.grid(columns="1fr 2fr 1fr"):
+          with ui.column().classes("w-full"):  # Width from grid cell
+              with ui.element("div").classes("w-full flex-1"):  # Inherits width
+                  ui.echart({...})  # Now has proper width!
+    hierarchy: |
+      grid cell (456px from 1fr)
+        → column with w-full (456px inherited)
+        → element with w-full + flex-1 (456px, expands vertically)
+    lesson: |
+      "flex-1 distributes AVAILABLE space. If no explicit width exists,
+      there's no space to distribute."
 
   grid_columns:
     description: "Custom grid layouts with CSS grid-template-columns"
@@ -385,6 +417,12 @@ gotchas:
 
   - issue: "Height calc not working"
     fix: "Use style() not classes() for calc()"
+
+  - issue: "Flex-1 child in grid cell has zero width"
+    fix: "Add w-full to ALL containers between grid cell and flex-1 element"
+
+  - issue: "EChart/component invisible in grid layout"
+    fix: "Check hierarchy: grid → column(w-full) → element(w-full flex-1)"
 
 # =============================================================================
 # ENTRY POINTS

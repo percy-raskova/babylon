@@ -144,19 +144,45 @@
 - [x] Subcutaneous integration tests (mocked NiceGUI components)
 - [x] CSS Grid/Flexbox layout fix: w-full propagation for flex-1 children
 
-### Sprint 4.1: The Panopticon Shell
+### Phase 4.1: The Living Circuit (Vertical Integration) - IN PROGRESS
+
+**Diagnosis:** Dashboard exists but shows flat metrics. Root cause: using 2-node scenario instead of 4-node Imperial Circuit.
+
+**Mantra:** "A flat line on a fancy graph is still a flat line."
+
+#### Sprint 4.1A: Wire the Circuit
+- [ ] Switch `main.py` to use `create_imperial_circuit_scenario()`
+- [ ] Verify 4 nodes in StateInspector: P_w, P_c, C_b, C_w
+- [ ] Verify 5 edges: EXPLOITATION, TRIBUTE, WAGES, CLIENT_STATE, SOLIDARITY
+
+#### Sprint 4.1B: Expose Meaningful Metrics
+- [ ] TrendPlotter: 4 wealth lines (color-coded by SocialRole)
+- [ ] TrendPlotter: Consciousness differential (P_w - C_w)
+- [ ] TrendPlotter: Solidarity edge strength over time
+- [ ] TrendPlotter: Imperial rent pool level
+- [ ] SystemLog: Filter for SIGNIFICANT_EVENT_TYPES
+
+#### Sprint 4.1C: Tune for Crisis
+- [ ] GameDefines: faster consciousness drift
+- [ ] GameDefines: higher tension accumulation
+- [ ] Test Fascist Bifurcation (solidarity_strength = 0)
+- [ ] Test Revolutionary path (solidarity_strength > 0)
+- [ ] Verify George Floyd Dynamic spark mechanics
+- [ ] **Goal:** Crisis within 30-50 ticks
+
+### Sprint 4.2: The Panopticon Shell (Deferred)
 - [x] Main Window Layout (NiceGUI root function pattern, ADR026)
 - [ ] Global CSS (Fonts, Scrollbars, CSS Variables from design-system.yaml)
 - [ ] CRT Overlay effect (scanlines, vignette via Tailwind pseudo-elements)
 - [x] The Event Log (ReadOnly terminal at bottom, data_green text)
 
-### Sprint 4.2: The Prism Feed
+### Sprint 4.3: The Prism Feed
 - [ ] NarrativeDirector integration with UI
 - [ ] "Propaganda Card" component implementation (purple signal stripe)
 - [ ] Purple grow_light styling for AI-generated content
 - [ ] Narrative streaming display
 
-### Sprint 4.3: The Scanner
+### Sprint 4.4: The Scanner
 - [ ] NetworkX visualization (ECharts or D3)
 - [ ] Node styling by class type (SocialClass vs Territory)
 - [ ] Edge visualization (EXPLOITATION, SOLIDARITY, WAGES, TRIBUTE)

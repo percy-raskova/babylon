@@ -155,11 +155,14 @@ class TestSystemLogContainerStyling:
     """Test container styling constants."""
 
     def test_container_classes_match_design_system(self) -> None:
-        """Container classes match Bunker Constructivism terminal_output spec."""
+        """Container classes match Bunker Constructivism terminal_output spec.
+
+        Includes h-full and min-h-0 for proper flex container sizing.
+        """
         from babylon.ui.components import SystemLog
 
-        # Based on design-system.yaml terminal_output component
-        expected = "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto font-mono text-sm"
+        # Based on design-system.yaml terminal_output component + layout classes
+        expected = "bg-[#050505] border border-[#404040] p-4 w-full h-full min-h-0 overflow-auto font-mono text-sm"
 
         assert expected == SystemLog.CONTAINER_CLASSES
 
@@ -519,10 +522,13 @@ class TestStateInspectorStyling:
     """Test Design System color compliance."""
 
     def test_container_classes_include_design_system(self) -> None:
-        """Container classes match Bunker Constructivism JSON viewer spec."""
+        """Container classes match Bunker Constructivism JSON viewer spec.
+
+        Includes h-full and min-h-0 for proper flex container sizing.
+        """
         from babylon.ui.components import StateInspector
 
-        # Based on design-system.yaml: void background, dark_metal border
-        expected = "bg-[#050505] border border-[#404040] p-2 w-full overflow-auto"
+        # Based on design-system.yaml: void background, dark_metal border + layout classes
+        expected = "bg-[#050505] border border-[#404040] p-2 w-full h-full min-h-0 overflow-auto"
 
         assert expected == StateInspector.CONTAINER_CLASSES

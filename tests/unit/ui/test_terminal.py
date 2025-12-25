@@ -299,10 +299,13 @@ class TestDesignSystemConstants:
     """Test that design system constants are correctly defined."""
 
     def test_container_classes(self) -> None:
-        """Container classes match Bunker Constructivism spec."""
+        """Container classes match Bunker Constructivism spec.
+
+        Includes h-full and min-h-0 for proper flex container sizing.
+        """
         from babylon.ui.terminal import NarrativeTerminal
 
-        expected = "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto"
+        expected = "bg-[#050505] border border-[#404040] p-4 w-full h-full min-h-0 overflow-auto"
         assert expected == NarrativeTerminal.CONTAINER_CLASSES
 
     def test_text_classes(self) -> None:

@@ -62,10 +62,8 @@ class SystemLog:
     """
 
     # Design System: Bunker Constructivism terminal_output component
-    CONTAINER_CLASSES = (
-        "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto font-mono text-sm"
-    )
-    CONTAINER_STYLE = "height: 100%; width: 100%"
+    # h-full fills flex container; min-h-0 allows shrinking below content height
+    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-4 w-full h-full min-h-0 overflow-auto font-mono text-sm"
 
     # Design System color palette (from ai-docs/design-system.yaml)
     LEVEL_COLORS: dict[str, str] = {
@@ -84,11 +82,7 @@ class SystemLog:
 
     def _build_ui(self) -> None:
         """Construct the UI elements."""
-        with (
-            ui.scroll_area()
-            .classes(self.CONTAINER_CLASSES)
-            .style(self.CONTAINER_STYLE) as scroll_area
-        ):
+        with ui.scroll_area().classes(self.CONTAINER_CLASSES) as scroll_area:
             self.scroll_area: Any = scroll_area
             self._content_column: Any = ui.column().classes("w-full gap-0")
 
@@ -163,56 +157,53 @@ class TrendPlotter:
 
     def _build_ui(self) -> None:
         """Construct the EChart UI element."""
-        self.echart: Any = (
-            ui.echart(
-                {
-                    "backgroundColor": self.VOID,
-                    "xAxis": {
-                        "type": "category",
+        # h-full and min-h-0 ensure chart fills flex container properly
+        self.echart: Any = ui.echart(
+            {
+                "backgroundColor": self.VOID,
+                "xAxis": {
+                    "type": "category",
+                    "data": [],
+                    "axisLabel": {"color": self.SILVER_DUST},
+                    "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
+                },
+                "yAxis": {
+                    "type": "value",
+                    "axisLabel": {"color": self.SILVER_DUST},
+                    "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
+                    "splitLine": {"lineStyle": {"color": self.DARK_METAL}},
+                },
+                "legend": {
+                    "data": ["Imperial Rent", "Global Tension"],
+                    "textStyle": {"color": self.SILVER_DUST},
+                    "top": 0,
+                    "left": "center",
+                    "show": True,
+                },
+                "grid": {
+                    "top": 40,
+                    "bottom": 30,
+                    "left": 50,
+                    "right": 20,
+                },
+                "series": [
+                    {
+                        "name": "Imperial Rent",
+                        "type": "line",
                         "data": [],
-                        "axisLabel": {"color": self.SILVER_DUST},
-                        "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
+                        "lineStyle": {"color": self.DATA_GREEN},
+                        "itemStyle": {"color": self.DATA_GREEN},
                     },
-                    "yAxis": {
-                        "type": "value",
-                        "axisLabel": {"color": self.SILVER_DUST},
-                        "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
-                        "splitLine": {"lineStyle": {"color": self.DARK_METAL}},
+                    {
+                        "name": "Global Tension",
+                        "type": "line",
+                        "data": [],
+                        "lineStyle": {"color": self.PHOSPHOR_BURN_RED},
+                        "itemStyle": {"color": self.PHOSPHOR_BURN_RED},
                     },
-                    "legend": {
-                        "data": ["Imperial Rent", "Global Tension"],
-                        "textStyle": {"color": self.SILVER_DUST},
-                        "top": 0,
-                        "left": "center",
-                        "show": True,
-                    },
-                    "grid": {
-                        "top": 40,
-                        "bottom": 30,
-                        "left": 50,
-                        "right": 20,
-                    },
-                    "series": [
-                        {
-                            "name": "Imperial Rent",
-                            "type": "line",
-                            "data": [],
-                            "lineStyle": {"color": self.DATA_GREEN},
-                            "itemStyle": {"color": self.DATA_GREEN},
-                        },
-                        {
-                            "name": "Global Tension",
-                            "type": "line",
-                            "data": [],
-                            "lineStyle": {"color": self.PHOSPHOR_BURN_RED},
-                            "itemStyle": {"color": self.PHOSPHOR_BURN_RED},
-                        },
-                    ],
-                }
-            )
-            .classes("w-full")
-            .style("height: 100%")
-        )
+                ],
+            }
+        ).classes("w-full h-full min-h-0")
 
     def push_data(self, tick: int, rent: float, tension: float) -> None:
         """Add data point, maintaining rolling window of MAX_POINTS.
@@ -270,8 +261,10 @@ class StateInspector:
     """
 
     # Design System: Bunker Constructivism JSON viewer component
-    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-2 w-full overflow-auto"
-    CONTAINER_STYLE = "height: 100%; width: 100%"
+    # h-full fills flex container; min-h-0 allows shrinking below content height
+    CONTAINER_CLASSES = (
+        "bg-[#050505] border border-[#404040] p-2 w-full h-full min-h-0 overflow-auto"
+    )
 
     def __init__(self) -> None:
         """Initialize the StateInspector with empty state."""
@@ -283,14 +276,10 @@ class StateInspector:
 
     def _build_ui(self) -> None:
         """Construct the UI elements."""
-        with ui.element("div").classes(self.CONTAINER_CLASSES).style(self.CONTAINER_STYLE):
-            self.json_editor: Any = (
-                ui.json_editor(
-                    {"content": {"json": self._current_data}},
-                )
-                .classes("w-full")
-                .style("height: 100%")
-            )
+        with ui.element("div").classes(self.CONTAINER_CLASSES):
+            self.json_editor: Any = ui.json_editor(
+                {"content": {"json": self._current_data}},
+            ).classes("w-full h-full min-h-0")
             # Set read-only mode
             self.json_editor.run_editor_method("updateProps", {"readOnly": True})
 

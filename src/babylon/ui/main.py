@@ -263,40 +263,45 @@ def main_page() -> None:
         )
 
     # 3-column grid: 25% - 50% - 25%
+    # CRITICAL: grid-template-rows: 1fr ensures the single row fills the grid height
+    # Without this, rows default to 'auto' sizing which collapses to content height
     with (
         ui.grid(columns="1fr 2fr 1fr")
         .classes("w-full gap-4 p-4")
-        .style("height: calc(100vh - 80px)")
+        .style("height: calc(100vh - 80px); grid-template-rows: 1fr")
     ):
         # Left panel: TrendPlotter (full height)
-        with ui.column().classes("gap-2"):
+        # h-full stretches column to fill grid cell; w-full + flex-1 fills remaining space
+        with ui.column().classes("gap-2 h-full w-full"):
             ui.label("METRICS").classes("text-[#C0C0C0] font-mono uppercase tracking-wider text-xs")
-            with ui.element("div").style("height: calc(100vh - 140px)"):
+            with ui.element("div").classes("flex-1 min-h-0 w-full"):
                 trend_plotter = TrendPlotter()
 
         # Center panel: NarrativeTerminal (top 50%) + SystemLog (bottom 50%)
-        with ui.column().classes("gap-4"):
-            # Narrative panel (top half)
-            with ui.column().classes("gap-2"):
+        # h-full + w-full stretches to grid cell; children use flex-1 to split evenly
+        with ui.column().classes("gap-4 h-full w-full"):
+            # Narrative panel (top half) - flex-1 takes 50% of available space
+            with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):
                 ui.label("NARRATIVE").classes(
                     "text-[#9D00FF] font-mono uppercase tracking-wider text-xs"
                 )
-                with ui.element("div").style("height: calc(50vh - 100px)"):
+                with ui.element("div").classes("flex-1 min-h-0 w-full"):
                     terminal = NarrativeTerminal()
-            # System Log panel (bottom half)
-            with ui.column().classes("gap-2"):
+            # System Log panel (bottom half) - flex-1 takes other 50%
+            with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):
                 ui.label("SYSTEM LOG").classes(
                     "text-[#39FF14] font-mono uppercase tracking-wider text-xs"
                 )
-                with ui.element("div").style("height: calc(50vh - 100px)"):
+                with ui.element("div").classes("flex-1 min-h-0 w-full"):
                     system_log = SystemLog()
 
         # Right panel: StateInspector (full height)
-        with ui.column().classes("gap-2"):
+        # h-full + w-full stretches column to fill grid cell; flex-1 fills remaining space
+        with ui.column().classes("gap-2 h-full w-full"):
             ui.label("STATE: C001").classes(
                 "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs"
             )
-            with ui.element("div").style("height: calc(100vh - 140px)"):
+            with ui.element("div").classes("flex-1 min-h-0 w-full"):
                 state_inspector = StateInspector()
 
     # Timer for polling runner queue - MUST be inside root function

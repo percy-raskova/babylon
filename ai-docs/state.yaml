@@ -2,11 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.6.0"
-  updated: "2025-12-12"
+  version: "1.7.0"
+  updated: "2025-12-25"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "Sprint 4.1 Narrative Bridge (2025-12-12)"
+  last_audit: "Phase 4 UI Dashboard (2025-12-25)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -347,8 +347,8 @@ not_implemented:
 
   ui:
     priority: "active"
-    description: "Control Deck MVP implemented"
-    status: "IN_PROGRESS"
+    description: "Developer Dashboard MVP - 4-panel layout operational"
+    status: "FUNCTIONAL"
     phase: 4
     pattern: "root_function"  # Use ui.run(main_page), NOT @ui.page decorator
     components:
@@ -366,9 +366,39 @@ not_implemented:
       main_app:
         status: "complete"
         location: "src/babylon/ui/main.py"
-        tests: "tests/unit/ui/test_main.py (2 tests)"
+        tests: "tests/unit/ui/test_main.py"
         note: "Uses root function pattern to avoid NiceGUI mode conflict"
-    blockers: "None - Control Deck operational"
+        layout: "3-column CSS Grid (1fr 2fr 1fr) with flex children"
+      dashboard_components:
+        status: "complete"
+        location: "src/babylon/ui/components.py"
+        tests: "tests/unit/ui/test_components.py (100+ tests)"
+        components:
+          trend_plotter: "ECharts time-series metrics (left panel)"
+          narrative_terminal: "Typewriter narrative display (center top)"
+          system_log: "Event log with auto-scroll (center bottom)"
+          state_inspector: "JSON editor for WorldState (right panel)"
+      async_runner:
+        status: "complete"
+        location: "src/babylon/engine/async_runner.py"
+        tests: "tests/unit/engine/test_async_runner.py"
+        purpose: "Non-blocking simulation for responsive UI during PLAY mode"
+        pattern: "Background thread with queue for UI callbacks"
+      subcutaneous_tests:
+        status: "complete"
+        location: "tests/integration/test_dashboard_integration.py"
+        purpose: "Integration tests with mocked NiceGUI components"
+        pattern: "Mock UI, test component logic without browser"
+    layout_fix_2025_12_25:
+      issue: "CSS Grid/Flexbox interaction - grid cell widths not propagating to flex-1 children"
+      root_cause: "flex-1 elements inside grid cells collapse to zero width without explicit w-full"
+      solution: "Add w-full class to all column and element wrappers in grid cells"
+      pattern: "grid cell → column with w-full → element with w-full + flex-1"
+      files_changed:
+        - "src/babylon/ui/main.py (grid layout)"
+        - "src/babylon/ui/components.py (component containers)"
+        - "src/babylon/ui/terminal.py (terminal container)"
+    blockers: "None - Dashboard operational"
 
   branching_history:
     priority: "low"
@@ -546,6 +576,10 @@ current_focus:
     - "Sprint 4.1 Narrative Bridge: NarrativeDirector.on_tick uses state.events instead of event_log"
     - "Sprint 4.1 Narrative Bridge: SEMANTIC_MAP changed from string keys to EventType enum keys"
     - "Sprint 4.1 Narrative Bridge: Added SIGNIFICANT_EVENT_TYPES frozenset for narrative filtering"
+    - "Phase 4 UI: AsyncSimulationRunner for non-blocking UI during PLAY mode"
+    - "Phase 4 UI: Subcutaneous integration tests for dashboard components"
+    - "Phase 4 UI: 4-panel dashboard layout with TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+    - "Phase 4 UI: CSS Grid/Flexbox width propagation fix (w-full on flex-1 children in grid cells)"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -1046,10 +1080,10 @@ current_focus:
   old_mantra: "State is data. Engine is logic. They never mix."
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
-  milestone: "SPRINT 4.1 COMPLETE: Narrative Bridge - NarrativeDirector consumes typed SimulationEvent objects"
-  next_milestone: "SPRINT 4.2: Character Sheet Integration (Percy Raskova persona)"
+  milestone: "PHASE 4 UI: Developer Dashboard MVP - 4-panel layout operational with AsyncSimulationRunner"
+  next_milestone: "Complete UI polish and commit layout fixes"
   test_count: 1926
-  test_count_note: "Updated 2025-12-14 (verified via pytest --collect-only)"
+  test_count_note: "Updated 2025-12-25 - UI tests passing (161 UI tests)"
   analysis_insight: |
     2025-12-09: Identified why vertical slice stalls after tick 2.
     Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.

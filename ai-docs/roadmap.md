@@ -128,15 +128,27 @@
 
 ## 4. The Interface - MVP (IN PROGRESS)
 
-**Status:** IN PROGRESS
+**Status:** IN PROGRESS (Developer Dashboard Functional)
 **Objective:** The "Digital Grow Room" aesthetic - Bunker Constructivism UI.
 **Design System:** `ai-docs/design-system.yaml` (Source of Truth)
 
+### Developer Dashboard (COMPLETE)
+- [x] Main Window Layout (NiceGUI root function pattern, ADR026)
+- [x] 4-Panel Grid Layout: TrendPlotter (left), Narrative+Log (center), StateInspector (right)
+- [x] AsyncSimulationRunner for non-blocking UI during PLAY mode
+- [x] ControlDeck: STEP/PLAY/PAUSE/RESET buttons with tick counter
+- [x] TrendPlotter: ECharts time-series metrics visualization
+- [x] NarrativeTerminal: Typewriter effect for narrative display
+- [x] SystemLog: Event log with auto-scroll
+- [x] StateInspector: JSON editor for WorldState inspection
+- [x] Subcutaneous integration tests (mocked NiceGUI components)
+- [x] CSS Grid/Flexbox layout fix: w-full propagation for flex-1 children
+
 ### Sprint 4.1: The Panopticon Shell
-- [ ] Main Window Layout (NiceGUI root function pattern, ADR026)
+- [x] Main Window Layout (NiceGUI root function pattern, ADR026)
 - [ ] Global CSS (Fonts, Scrollbars, CSS Variables from design-system.yaml)
 - [ ] CRT Overlay effect (scanlines, vignette via Tailwind pseudo-elements)
-- [ ] The Event Log (ReadOnly terminal at bottom, data_green text)
+- [x] The Event Log (ReadOnly terminal at bottom, data_green text)
 
 ### Sprint 4.2: The Prism Feed
 - [ ] NarrativeDirector integration with UI
@@ -311,5 +323,5 @@ SimulationEngine.run_tick(graph, services, context)
 ---
 
 *Document created: 2025-12-09*
-*Last updated: 2025-12-14 (Phase 4 Sprint Definitions Added)*
+*Last updated: 2025-12-25 (Developer Dashboard Functional)*
 *Epoch: MVP & Horizontal Scaling*

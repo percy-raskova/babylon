@@ -269,50 +269,34 @@ def main_page() -> None:
         .style("height: calc(100vh - 80px)")
     ):
         # Left panel: TrendPlotter (full height)
-        with (
-            ui.column()
-            .classes("gap-2")
-            .style("height: 100%; display: flex; flex-direction: column")
-        ):
+        with ui.column().classes("gap-2"):
             ui.label("METRICS").classes("text-[#C0C0C0] font-mono uppercase tracking-wider text-xs")
-            with ui.element("div").style("flex: 1; min-height: 300px"):
+            with ui.element("div").style("height: calc(100vh - 140px)"):
                 trend_plotter = TrendPlotter()
 
         # Center panel: NarrativeTerminal (top 50%) + SystemLog (bottom 50%)
-        with ui.column().classes("gap-4").style("height: 100%"):
+        with ui.column().classes("gap-4"):
             # Narrative panel (top half)
-            with (
-                ui.column()
-                .classes("gap-2")
-                .style("flex: 1; min-height: 200px; display: flex; flex-direction: column")
-            ):
+            with ui.column().classes("gap-2"):
                 ui.label("NARRATIVE").classes(
                     "text-[#9D00FF] font-mono uppercase tracking-wider text-xs"
                 )
-                with ui.element("div").style("flex: 1; min-height: 200px; display: flex"):
+                with ui.element("div").style("height: calc(50vh - 100px)"):
                     terminal = NarrativeTerminal()
             # System Log panel (bottom half)
-            with (
-                ui.column()
-                .classes("gap-2")
-                .style("flex: 1; min-height: 200px; display: flex; flex-direction: column")
-            ):
+            with ui.column().classes("gap-2"):
                 ui.label("SYSTEM LOG").classes(
                     "text-[#39FF14] font-mono uppercase tracking-wider text-xs"
                 )
-                with ui.element("div").style("flex: 1; min-height: 200px; display: flex"):
+                with ui.element("div").style("height: calc(50vh - 100px)"):
                     system_log = SystemLog()
 
         # Right panel: StateInspector (full height)
-        with (
-            ui.column()
-            .classes("gap-2")
-            .style("height: 100%; display: flex; flex-direction: column")
-        ):
+        with ui.column().classes("gap-2"):
             ui.label("STATE: C001").classes(
                 "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs"
             )
-            with ui.element("div").style("flex: 1; min-height: 200px"):
+            with ui.element("div").style("height: calc(100vh - 140px)"):
                 state_inspector = StateInspector()
 
     # Timer for polling runner queue - MUST be inside root function

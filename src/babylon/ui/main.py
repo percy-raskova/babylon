@@ -20,6 +20,7 @@ from __future__ import annotations
 from nicegui import ui
 
 from babylon.engine.observer import SimulationObserver
+from babylon.engine.observers.metrics import MetricsCollector
 from babylon.engine.runner import AsyncSimulationRunner
 from babylon.engine.scenarios import create_two_node_scenario
 from babylon.engine.simulation import Simulation
@@ -43,12 +44,20 @@ trend_plotter: TrendPlotter | None = None
 state_inspector: StateInspector | None = None
 last_event_index: int = 0
 
+# Sprint 4.1: Unified metrics collection
+metrics_collector: MetricsCollector | None = None
+
 
 def init_simulation() -> None:
     """Initialize or reset the simulation and runner."""
-    global simulation, runner
+    global simulation, runner, metrics_collector
     state, config, defines = create_two_node_scenario()
-    simulation = Simulation(state, config, defines=defines)
+
+    # Sprint 4.1: Create MetricsCollector in interactive mode with rolling window
+    # matching TrendPlotter.MAX_POINTS for consistent visualization
+    metrics_collector = MetricsCollector(mode="interactive", rolling_window=50)
+
+    simulation = Simulation(state, config, observers=[metrics_collector], defines=defines)
     runner = AsyncSimulationRunner(simulation, tick_interval=1.0)
 
 
@@ -185,13 +194,21 @@ def refresh_ui() -> None:
             for entry in new_entries:
                 terminal.log(entry)
 
-    # 3. Push metrics -> TrendPlotter (NEW)
+    # 3. Push metrics -> TrendPlotter via MetricsCollector (Sprint 4.1)
+    # Uses unified metrics collection instead of hardcoded extraction
+    # Falls back to direct state access if collector hasn't received data yet
     if trend_plotter is not None:
-        rent = float(state.economy.imperial_rent_pool)
-        tension = _calculate_global_tension(state)
-        trend_plotter.push_data(state.tick, rent, tension)
+        if metrics_collector is not None and metrics_collector.latest is not None:
+            latest = metrics_collector.latest
+            trend_plotter.push_data(latest.tick, latest.imperial_rent_pool, latest.global_tension)
+        else:
+            # Fallback for initial render before first step
+            rent = float(state.economy.imperial_rent_pool)
+            tension = _calculate_global_tension(state)
+            trend_plotter.push_data(state.tick, rent, tension)
 
-    # 4. Update StateInspector with C001 entity (NEW)
+    # 4. Update StateInspector with C001 entity (full entity, not just metrics)
+    # StateInspector shows complete entity state including id, name, role etc.
     if state_inspector is not None:
         entity = state.entities.get("C001")
         if entity is not None:

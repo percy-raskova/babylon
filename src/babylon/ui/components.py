@@ -65,7 +65,7 @@ class SystemLog:
     CONTAINER_CLASSES = (
         "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto font-mono text-sm"
     )
-    CONTAINER_STYLE = "flex: 1; min-height: 200px; height: 100%"
+    CONTAINER_STYLE = "height: 100%; width: 100%"
 
     # Design System color palette (from ai-docs/design-system.yaml)
     LEVEL_COLORS: dict[str, str] = {
@@ -211,7 +211,7 @@ class TrendPlotter:
                 }
             )
             .classes("w-full")
-            .style("height: 100%; min-height: 300px")
+            .style("height: 100%")
         )
 
     def push_data(self, tick: int, rent: float, tension: float) -> None:
@@ -271,7 +271,7 @@ class StateInspector:
 
     # Design System: Bunker Constructivism JSON viewer component
     CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-2 w-full overflow-auto"
-    CONTAINER_STYLE = "flex: 1; min-height: 200px; height: 100%"
+    CONTAINER_STYLE = "height: 100%; width: 100%"
 
     def __init__(self) -> None:
         """Initialize the StateInspector with empty state."""

@@ -47,7 +47,7 @@ class NarrativeTerminal:
 
     # Styling constants for Bunker Constructivism aesthetic
     CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto"
-    CONTAINER_STYLE = "flex: 1; min-height: 0"
+    CONTAINER_STYLE = "flex: 1; min-height: 200px; height: 100%"
     TEXT_CLASSES = "text-[#39FF14] font-mono text-sm"
     TYPEWRITER_INTERVAL = 0.03  # 30ms per character
 

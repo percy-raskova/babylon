@@ -65,7 +65,7 @@ class SystemLog:
     CONTAINER_CLASSES = (
         "bg-[#050505] border border-[#404040] p-4 w-full overflow-auto font-mono text-sm"
     )
-    CONTAINER_STYLE = "flex: 1; min-height: 0"
+    CONTAINER_STYLE = "flex: 1; min-height: 200px; height: 100%"
 
     # Design System color palette (from ai-docs/design-system.yaml)
     LEVEL_COLORS: dict[str, str] = {
@@ -163,52 +163,56 @@ class TrendPlotter:
 
     def _build_ui(self) -> None:
         """Construct the EChart UI element."""
-        self.echart: Any = ui.echart(
-            {
-                "backgroundColor": self.VOID,
-                "xAxis": {
-                    "type": "category",
-                    "data": [],
-                    "axisLabel": {"color": self.SILVER_DUST},
-                    "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
-                },
-                "yAxis": {
-                    "type": "value",
-                    "axisLabel": {"color": self.SILVER_DUST},
-                    "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
-                    "splitLine": {"lineStyle": {"color": self.DARK_METAL}},
-                },
-                "legend": {
-                    "data": ["Imperial Rent", "Global Tension"],
-                    "textStyle": {"color": self.SILVER_DUST},
-                    "top": 0,
-                    "left": "center",
-                    "show": True,
-                },
-                "grid": {
-                    "top": 40,
-                    "bottom": 30,
-                    "left": 50,
-                    "right": 20,
-                },
-                "series": [
-                    {
-                        "name": "Imperial Rent",
-                        "type": "line",
+        self.echart: Any = (
+            ui.echart(
+                {
+                    "backgroundColor": self.VOID,
+                    "xAxis": {
+                        "type": "category",
                         "data": [],
-                        "lineStyle": {"color": self.DATA_GREEN},
-                        "itemStyle": {"color": self.DATA_GREEN},
+                        "axisLabel": {"color": self.SILVER_DUST},
+                        "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
                     },
-                    {
-                        "name": "Global Tension",
-                        "type": "line",
-                        "data": [],
-                        "lineStyle": {"color": self.PHOSPHOR_BURN_RED},
-                        "itemStyle": {"color": self.PHOSPHOR_BURN_RED},
+                    "yAxis": {
+                        "type": "value",
+                        "axisLabel": {"color": self.SILVER_DUST},
+                        "axisLine": {"lineStyle": {"color": self.DARK_METAL}},
+                        "splitLine": {"lineStyle": {"color": self.DARK_METAL}},
                     },
-                ],
-            }
-        ).classes("w-full h-full")
+                    "legend": {
+                        "data": ["Imperial Rent", "Global Tension"],
+                        "textStyle": {"color": self.SILVER_DUST},
+                        "top": 0,
+                        "left": "center",
+                        "show": True,
+                    },
+                    "grid": {
+                        "top": 40,
+                        "bottom": 30,
+                        "left": 50,
+                        "right": 20,
+                    },
+                    "series": [
+                        {
+                            "name": "Imperial Rent",
+                            "type": "line",
+                            "data": [],
+                            "lineStyle": {"color": self.DATA_GREEN},
+                            "itemStyle": {"color": self.DATA_GREEN},
+                        },
+                        {
+                            "name": "Global Tension",
+                            "type": "line",
+                            "data": [],
+                            "lineStyle": {"color": self.PHOSPHOR_BURN_RED},
+                            "itemStyle": {"color": self.PHOSPHOR_BURN_RED},
+                        },
+                    ],
+                }
+            )
+            .classes("w-full")
+            .style("height: 100%; min-height: 300px")
+        )
 
     def push_data(self, tick: int, rent: float, tension: float) -> None:
         """Add data point, maintaining rolling window of MAX_POINTS.
@@ -267,7 +271,7 @@ class StateInspector:
 
     # Design System: Bunker Constructivism JSON viewer component
     CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-2 w-full overflow-auto"
-    CONTAINER_STYLE = "flex: 1; min-height: 0"
+    CONTAINER_STYLE = "flex: 1; min-height: 200px; height: 100%"
 
     def __init__(self) -> None:
         """Initialize the StateInspector with empty state."""

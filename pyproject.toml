@@ -101,6 +101,7 @@ markers = [
     "topology: Graph/Network operations (fast, deterministic)",
     "integration: Database/ChromaDB tests (medium, I/O bound)",
     "ai: AI/RAG evaluation tests (slow, non-deterministic)",
+    "red_phase: TDD RED phase tests (intentionally failing until GREEN phase)",
 ]
 
 # =============================================================================

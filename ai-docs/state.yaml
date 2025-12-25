@@ -1058,41 +1058,136 @@ current_focus:
       status: "FUTURE"
 
   next_steps:
-    current_sprint: "Sprint 3.4.4: Dynamic Balance"
+    current_sprint: "Phase 4.1: The Living Circuit (Vertical Integration)"
     completed:
       - "Sprint 3.3: Vertical Slice (COMPLETE)"
       - "Sprint 3.4.1: Economic Infrastructure - TRIBUTE, WAGES, CLIENT_STATE edges (COMPLETE)"
       - "Sprint 3.4.2: Proletarian Internationalism - SolidaritySystem (COMPLETE)"
       - "Sprint 3.4.3: Multi-Dimensional Consciousness - IdeologicalProfile (COMPLETE)"
       - "Sprint 3.5: Layer 0 Territorial Substrate (COMPLETE)"
+      - "Phase 4.0: Developer Dashboard MVP - 4-panel layout operational (COMPLETE)"
     in_progress:
-      - "Verify Agitation Router mechanics in integration tests"
+      - "Phase 4.1: The Living Circuit - wire 4-node Imperial Circuit into dashboard"
     planned:
+      - "Phase 4.1A: Wire the Circuit - switch to create_imperial_circuit_scenario()"
+      - "Phase 4.1B: Expose Meaningful Metrics - multi-class TrendPlotter"
+      - "Phase 4.1C: Tune for Crisis - GameDefines adjustment for drama"
       - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
-      - "Phase 4: NiceGUI Control Room - dashboard for simulation"
       - "Phase 5: Internal Colonies - fractal topology within Core"
     optional:
       - "Expand RAG corpus with more Marxists.org texts"
       - "Timeline branching for history stack"
+
+  # ---------------------------------------------------------------------------
+  # VERTICAL INTEGRATION INITIATIVE: "The Living Circuit"
+  # ---------------------------------------------------------------------------
+  #
+  # Diagnosis (2025-12-25):
+  #   The dashboard EXISTS but doesn't REVEAL anything interesting.
+  #   Imperial rent hovers at 100, tension moves infinitesimally.
+  #   Root cause: Dashboard shows 2-node scenario, not the 4-node Imperial Circuit.
+  #
+  # Mantra: "A flat line on a fancy graph is still a flat line."
+  #
+  vertical_integration:
+    initiative_name: "The Living Circuit"
+    status: "IN PROGRESS"
+    diagnosis:
+      problem: "Dashboard is boring - flat metrics, single node visible"
+      root_causes:
+        - "Using create_two_node_scenario() instead of create_imperial_circuit_scenario()"
+        - "TrendPlotter only shows P_w (Periphery Worker), not all 4 classes"
+        - "Metrics show static wealth, not dynamic FLOWS between nodes"
+        - "Default GameDefines coefficients produce equilibrium, not crisis"
+      insight: "The dashboard is a LENS. It can't show interesting things if the simulation is static."
+
+    sprint_4_1_a:
+      name: "Wire the Circuit"
+      status: "PLANNED"
+      goal: "Switch dashboard to 4-node Imperial Circuit scenario"
+      deliverables:
+        - "main.py: import create_imperial_circuit_scenario"
+        - "main.py: replace create_two_node_scenario() call"
+        - "Verify 4 nodes appear in StateInspector: P_w, P_c, C_b, C_w"
+        - "Verify 5 edges: EXPLOITATION, TRIBUTE, WAGES, CLIENT_STATE, SOLIDARITY"
+      files:
+        - "src/babylon/ui/main.py (scenario import change)"
+      success_criteria: "StateInspector shows all 4 classes with their relationships"
+
+    sprint_4_1_b:
+      name: "Expose Meaningful Metrics"
+      status: "PLANNED"
+      goal: "TrendPlotter shows dynamics worth watching"
+      deliverables:
+        - "TrendPlotter: 4 wealth lines (color-coded by SocialRole)"
+        - "TrendPlotter: Consciousness differential (P_w - C_w)"
+        - "TrendPlotter: Solidarity edge strength over time"
+        - "TrendPlotter: Imperial rent pool level"
+        - "SystemLog: Filter for SIGNIFICANT_EVENT_TYPES only"
+      metrics_to_track:
+        wealth_by_class:
+          - "P_w (Periphery Worker) - red line"
+          - "P_c (Comprador) - orange line"
+          - "C_b (Core Bourgeoisie) - blue line"
+          - "C_w (Labor Aristocracy) - green line"
+        differentials:
+          - "consciousness_gap: P_w.consciousness - C_w.consciousness"
+          - "wealth_gap: C_b.wealth - P_w.wealth"
+        flows:
+          - "imperial_rent: total extraction per tick"
+          - "super_wages: WAGES edge value_flow"
+          - "solidarity_strength: SOLIDARITY edge attribute"
+      key_insight: |
+        The INTERESTING dynamics are in RELATIONSHIPS, not node attributes.
+        - EXPLOITATION rate (how fast value flows out of periphery)
+        - Consciousness DIFFERENTIAL (gap between P_w and C_w awareness)
+        - SOLIDARITY strength (infrastructure for revolution vs fascism)
+
+    sprint_4_1_c:
+      name: "Tune for Crisis"
+      status: "PLANNED"
+      goal: "Simulation produces crisis within 30-50 ticks"
+      deliverables:
+        - "GameDefines adjustment: faster consciousness drift"
+        - "GameDefines adjustment: higher tension accumulation"
+        - "Test Fascist Bifurcation path (solidarity_strength = 0)"
+        - "Test Revolutionary path (solidarity_strength > 0)"
+        - "Verify George Floyd Dynamic spark mechanics"
+      balance_targets:
+        - "Crisis event within 30-50 ticks of default scenario"
+        - "Visible consciousness divergence by tick 20"
+        - "Measurable wealth transfer by tick 10"
+        - "Fascist vs Revolutionary bifurcation clearly distinguishable"
+      formula_tuning:
+        - "consciousness_drift_k: increase for faster awakening"
+        - "tension_accumulation_rate: increase for faster crisis"
+        - "extraction_efficiency: balance for sustainable extraction"
+
+    philosophical_grounding: |
+      Horizontal expansion (more features) doesn't help if vertical integration
+      (making existing features work together) isn't complete.
+
+      The 4-node Imperial Circuit model exists. The dashboard exists.
+      But they're not connected. We're watching a 2-node toy model
+      on a 4-panel dashboard built for a 4-node system.
+
+      "A working 4-node simulation beats a broken 10-node simulation."
 
   mantra: "Graph + Math = History"
   new_mantra: "The bomb factory pays well. That's the problem."
   old_mantra: "State is data. Engine is logic. They never mix."
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
+  integration_mantra: "A flat line on a fancy graph is still a flat line."
   milestone: "PHASE 4 UI: Developer Dashboard MVP - 4-panel layout operational with AsyncSimulationRunner"
-  next_milestone: "Complete UI polish and commit layout fixes"
+  next_milestone: "Phase 4.1A: Wire the 4-node Imperial Circuit into dashboard"
   test_count: 1926
   test_count_note: "Updated 2025-12-25 - UI tests passing (161 UI tests)"
   analysis_insight: |
-    2025-12-09: Identified why vertical slice stalls after tick 2.
-    Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
-    This is CORRECT for periphery dynamics, but model is too simple.
-    Current model is "orthodox book-worship Marxism" - missing:
-    - Super-wages (W > V) for core workers
-    - Imperial rent pool dynamics
-    - False consciousness from material benefit
-    - Multi-dimensional consciousness (class vs national vs atomization)
+    2025-12-25: Diagnosed why dashboard is boring.
+    Using create_two_node_scenario() instead of create_imperial_circuit_scenario().
+    Dashboard shows 1 of 4 classes, misses the whole Imperial Circuit dynamic.
+    The dashboard is a LENS - it can't show interesting things if simulation is static.
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.

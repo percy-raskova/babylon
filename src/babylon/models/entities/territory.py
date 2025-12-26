@@ -116,6 +116,30 @@ class Territory(BaseModel):
         description="Whether eviction pipeline is active",
     )
 
+    # Metabolic Dynamics (Slice 1.4)
+    biocapacity: Currency = Field(
+        default=100.0,
+        ge=0.0,
+        description="Current stock of extractable resources/ecosystem services",
+    )
+    max_biocapacity: Currency = Field(
+        default=100.0,
+        ge=0.0,
+        description="Maximum biocapacity ceiling",
+    )
+    regeneration_rate: float = Field(
+        default=0.02,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of max_biocapacity restored per tick",
+    )
+    extraction_intensity: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Current extraction pressure applied by economy",
+    )
+
     @property
     def clarity_bonus(self) -> float:
         """Recruitment bonus from profile visibility.

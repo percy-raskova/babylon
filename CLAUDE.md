@@ -50,6 +50,39 @@ When making commits:
 3. If working on a feature, ensure you're on a feature branch, not `main` or `dev`
 4. See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [SETUP_GUIDE.md](SETUP_GUIDE.md) for full workflow
 
+### Documentation Maintenance (ai-docs/)
+
+**IMPORTANT**: After completing significant work, update `ai-docs/` to reflect the new state.
+
+**When to Update:**
+- After implementing a new System or feature
+- After fixing bugs that affect documented behavior
+- After refactoring that changes architecture
+- When discovering issues or edge cases worth noting
+- When completing a sprint or phase milestone
+
+**Files to Consider:**
+
+| File | Update When... |
+|------|----------------|
+| `state.yaml` | Test counts change, sprint status changes, new components added |
+| `roadmap.md` | Phase/sprint milestones reached, new planned work identified |
+| `tooling.yaml` | New tools added, configuration changes, testing infrastructure updates |
+| `observer-layer.yaml` | Observer system changes, event types added |
+| `architecture.yaml` | System architecture changes, new Systems added |
+| `decisions.yaml` | Architectural decisions made (ADRs) |
+
+**Update Guidelines:**
+1. Keep status markers accurate (COMPLETE, IN PROGRESS, PLANNED)
+2. Update test counts when they significantly change
+3. Add new issues/TODOs discovered during work
+4. Document any deferred work in `brainstorm/deferred-ideas.md`
+5. Break large changes into discrete, trackable items
+6. Reference file paths for implemented features
+7. Add cross-references between related documents
+
+**Anti-Pattern**: Do NOT mark features as implemented without verifying the code exists.
+
 ## Commands
 
 ```bash
@@ -115,23 +148,26 @@ step(WorldState, SimulationConfig) -> WorldState
      v
 SimulationEngine.run_tick(graph, services, context)
      |
-     +-- 1. ImperialRentSystem   (economic.py)    - Wealth extraction via imperial rent
-     +-- 2. SolidaritySystem     (solidarity.py)  - Consciousness transmission
-     +-- 3. ConsciousnessSystem  (ideology.py)    - Ideology drift & bifurcation
-     +-- 4. SurvivalSystem       (survival.py)    - P(S|A), P(S|R) calculations
-     +-- 5. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
-     +-- 6. TerritorySystem      (territory.py)   - Heat, eviction, spillover
+     +-- 1. ImperialRentSystem   (economic.py)      - Wealth extraction via imperial rent
+     +-- 2. SolidaritySystem     (solidarity.py)    - Consciousness transmission
+     +-- 3. ConsciousnessSystem  (ideology.py)      - Ideology drift & bifurcation
+     +-- 4. SurvivalSystem       (survival.py)      - P(S|A), P(S|R) calculations
+     +-- 5. StruggleSystem       (struggle.py)      - Agency Layer (George Floyd Dynamic)
+     +-- 6. ContradictionSystem  (contradiction.py) - Tension/rupture dynamics
+     +-- 7. TerritorySystem      (territory.py)     - Heat, eviction, carceral geography
 ```
 
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems
 - `src/babylon/engine/services.py` - ServiceContainer (DI container)
-- `src/babylon/engine/event_bus.py` - Publish/subscribe events
+- `src/babylon/engine/event_bus.py` - Publish/subscribe events (12 EventTypes)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`
 - `src/babylon/engine/observer.py` - `SimulationObserver` protocol for state change notifications
 - `src/babylon/engine/topology_monitor.py` - Phase transition detection via percolation theory
+- `src/babylon/engine/systems/struggle.py` - George Floyd Dynamic (EXCESSIVE_FORCE, UPRISING events)
+- `src/babylon/engine/systems/territory.py` - Carceral geography, heat dynamics, eviction pipeline
 - `src/babylon/config/defines.py` - GameDefines (all tunable game coefficients)
 
 ## Type System
@@ -152,13 +188,16 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 ## Formula System
 
-12 formulas in `src/babylon/systems/formulas.py`:
+17 formulas in `src/babylon/systems/formulas.py`:
 
 | Category | Formulas |
 |----------|----------|
 | Fundamental Theorem | `calculate_imperial_rent`, `calculate_labor_aristocracy_ratio`, `is_labor_aristocracy`, `calculate_consciousness_drift` |
 | Survival Calculus | `calculate_acquiescence_probability`, `calculate_revolution_probability`, `calculate_crossover_threshold`, `apply_loss_aversion` |
 | Unequal Exchange | `calculate_exchange_ratio`, `calculate_exploitation_rate`, `calculate_value_transfer`, `prebisch_singer_effect` |
+| Solidarity | `calculate_solidarity_transmission`, `calculate_ideological_routing` |
+| Dynamic Balance | `calculate_bourgeoisie_decision` |
+| Metabolic Rift | `calculate_biocapacity_delta`, `calculate_overshoot_ratio` |
 
 ## Pytest Markers
 
@@ -241,6 +280,10 @@ def calculate_imperial_rent(wages: Currency, value: Currency) -> Currency:
 **Bifurcation Formula**: When wages fall, agitation energy routes to either Fascism (+1 ideology) or Revolution (-1 ideology) based on SOLIDARITY edge presence.
 
 **Heat Dynamics**: HIGH_PROFILE territories gain heat (state attention), LOW_PROFILE decays heat. Heat >=0.8 triggers eviction pipeline.
+
+**Metabolic Rift**: Ecological limits on capital accumulation:
+- Biocapacity Delta: ΔB = R - (E × η) where R=regeneration, E=extraction, η=entropy
+- Overshoot Ratio: O = C / B where C=consumption, B=biocapacity (O>1 = ecological overshoot)
 
 ## Configuration: GameDefines
 

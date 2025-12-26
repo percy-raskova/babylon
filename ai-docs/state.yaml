@@ -2,10 +2,189 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.3.0"
-  updated: "2025-12-09"
+  version: "2.0.4"
+  updated: "2025-12-26"
+  last_sprint: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
   principle: "Be honest about what's implemented vs aspirational"
-  architecture_epoch: "Six-Phase Fractal Evolution"
+  architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
+  canonical_roadmap: "ai-docs/epochs-overview.md"
+  last_audit: "Documentation Accuracy Audit (2025-12-26)"
+
+# =============================================================================
+# EPOCH + SLICE STATUS
+# =============================================================================
+#
+# Epochs are playable checkpoints. Slices are complete vertical features.
+# See ai-docs/epochs-overview.md for full details.
+#
+epoch_status:
+  current_epoch: 1
+  epoch_name: "The Demonstration"
+  thesis: "The player watches the Imperial Circuit consume itself and sees the Fascist Bifurcation."
+
+  slices:
+    "1.1":
+      name: "The Circuit"
+      status: "COMPLETE"
+      deliverables:
+        - "ImperialRentSystem (4-phase extraction)"
+        - "SolidaritySystem (consciousness transmission)"
+        - "4-node Imperial Circuit scenario"
+      files:
+        - "src/babylon/engine/systems/economic.py"
+        - "src/babylon/engine/systems/solidarity.py"
+        - "src/babylon/engine/scenarios.py"
+
+    "1.2":
+      name: "The Struggle"
+      status: "COMPLETE"
+      deliverables:
+        - "StruggleSystem (George Floyd Dynamic)"
+        - "TerritorySystem (carceral geography)"
+        - "Agency Layer mechanics"
+      files:
+        - "src/babylon/engine/systems/struggle.py"
+        - "src/babylon/engine/systems/territory.py"
+
+    "1.3":
+      name: "The Observer"
+      status: "COMPLETE"
+      deliverables:
+        - "SimulationObserver protocol"
+        - "TopologyMonitor (phase transitions)"
+        - "MetricsCollector (unified metrics)"
+        - "11 EventTypes"
+      files:
+        - "src/babylon/engine/observer.py"
+        - "src/babylon/engine/topology_monitor.py"
+        - "src/babylon/engine/observers/metrics.py"
+
+    "1.4":
+      name: "The Rift"
+      status: "COMPLETE"  # Core + Integration complete, only dashboard remains
+      spec: "ai-docs/metabolic-slice.yaml"
+      deliverables_complete:
+        - "Territory metabolic fields (biocapacity, max_biocapacity, regeneration_rate, extraction_intensity)"
+        - "SocialClass consumption fields (s_bio, s_class, consumption_needs computed)"
+        - "WorldState computed properties (total_biocapacity, total_consumption, overshoot_ratio)"
+        - "calculate_biocapacity_delta() and calculate_overshoot_ratio() formulas"
+        - "ECOLOGICAL_OVERSHOOT EventType"
+        - "MetabolismSystem with 15 unit tests"
+        - "MetabolismSystem registered in DEFAULT_SYSTEMS (after TerritorySystem)"
+        - "Ecological metrics in TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
+        - "MetricsCollector extracts ecological state from WorldState"
+        - "Integration tests proving system runs in engine loop (15 tests)"
+        - "MetabolismDefines in GameDefines (entropy_factor, overshoot_threshold, max_overshoot_ratio)"
+        - "TopologyDefines in GameDefines (gaseous_threshold, condensation_threshold, vanguard_density_threshold)"
+        - "EconomyDefines additions (negligible_rent, negligible_subsidy)"
+        - "All magic numbers wired to GameDefines (no hardcoded thresholds in systems)"
+      deliverables_remaining:
+        - "Dashboard metabolic gauge (Slice 1.5)"
+        - "[DEFERRED] Wire ImperialRentSystem to set extraction_intensity (Epoch 2)"
+      formula: "ΔB = Regeneration - (Extraction × Entropy_Factor)"
+      commits:
+        - "090a843: feat(metabolic): add Slice 1.4A material basis"
+        - "d215fff: test(metabolic): add comprehensive unit tests for Slice 1.4A"
+        - "ada50da: test(metabolic): add TDD Red Phase tests for MetabolismSystem"
+        - "fe7feb1: feat(metabolic): implement MetabolismSystem (TDD Green Phase)"
+        - "7563101: test(metabolic): add TDD RED phase tests for Sprint 1.4C"
+        - "ce5b888: feat(metabolic): wire MetabolismSystem into simulation engine (TDD Green Phase)"
+        - "8e2009c: refactor(defines): add MetabolismDefines and TopologyDefines"
+        - "e11cf6f: refactor(economic): wire negligible thresholds to GameDefines"
+        - "4609e4f: refactor(topology): wire phase thresholds to GameDefines"
+
+    "1.5":
+      name: "The Dashboard"
+      status: "PARTIAL"
+      deliverables_complete:
+        - "NiceGUI 4-panel layout"
+        - "TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+        - "Control deck (STEP/PLAY/PAUSE/RESET)"
+      deliverables_remaining:
+        - "Wire 4-node scenario (currently 2-node)"
+        - "4 wealth lines color-coded by class"
+        - "Consciousness gap (P_w - C_w)"
+        - "Metabolic gauge showing overshoot_ratio"
+        - "Gramscian Wire MVP - dual narrative display"
+      files:
+        - "src/babylon/ui/main.py"
+        - "src/babylon/ui/components.py"
+      gramscian_wire_mvp:
+        spec: "ai-docs/gramscian-wire-mvp.yaml"
+        description: "Dual narrative display demonstrating 'neutrality is hegemony'"
+        status: "PLANNED"
+
+    "1.6":
+      name: "The Endgame"
+      status: "NOT_STARTED"
+      deliverables_planned:
+        - "ECOLOGICAL_OVERSHOOT detection"
+        - "Solidarity check at crisis moment"
+        - "Win/lose display (Revolutionary vs Fascist Path)"
+        - "Bondi Algorithm narration"
+
+  completion_criteria:
+    - "[ ] 4-node Imperial Circuit running in dashboard"
+    - "[x] MetabolismSystem depletes biocapacity over time (Sprint 1.4B)"
+    - "[x] MetabolismSystem registered in engine (Sprint 1.4C)"
+    - "[x] Ecological metrics collected by MetricsCollector (Sprint 1.4C)"
+    - "[ ] ECOLOGICAL_OVERSHOOT fires at ~30-50 ticks"
+    - "[ ] Dashboard shows rift widening visually"
+    - "[ ] Endgame screen displays outcome based on solidarity"
+    - "[x] Tests pass (current: 2464)"
+
+  future_epochs:
+    epoch_2:
+      name: "The Game"
+      thesis: "The player has agency. Decisions matter. Multiple endings."
+      structure: "Staged into 4 sub-epochs (2A/2B/2C/2D) per epoch-readiness-review.yaml"
+
+      sub_epochs:
+        "2A":
+          name: "Core Agency"
+          thesis: "The player can act. Resources constrain choices."
+          slices: ["2.1", "2.2a", "2.6"]
+          status: "PLANNED"
+        "2B":
+          name: "Organization"
+          thesis: "The party can fail from within. Class composition matters."
+          slices: ["2.2b", "2.3", "2.8"]
+          status: "PLANNED"
+          scope_note: "Doctrine System simplified to 3 trunks for 2B MVP"
+        "2C":
+          name: "Information"
+          thesis: "Win the narrative, know the terrain."
+          slices: ["2.5", "2.9", "2.10"]
+          status: "PLANNED"
+          critical_gap: "State AI decision logic must be defined before implementation"
+        "2D":
+          name: "Combat"
+          thesis: "Violence is the continuation of politics."
+          slices: ["2.7"]
+          status: "PLANNED"
+          note: "Combat is last because it requires all other systems"
+
+      slices:
+        "2.1": { name: "Demographic Resolution", sub_epoch: "2A", spec: "ai-docs/demographics-spec.yaml" }
+        "2.2a": { name: "Strategy Layer", sub_epoch: "2A", spec: "ai-docs/strategy-layer.yaml" }
+        "2.2b": { name: "The Vanguard", sub_epoch: "2B", spec: "ai-docs/cohesion-mechanic.yaml" }
+        "2.3": { name: "Reactionary Subject", sub_epoch: "2B", spec: "ai-docs/reactionary-subject.yaml" }
+        "2.4": { name: "Reproductive Labor", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+        "2.5": { name: "The Wire", sub_epoch: "2C", spec: "ai-docs/gramscian-wire-vision.yaml" }
+        "2.6": { name: "Resource Economy", sub_epoch: "2A", spec: "ai-docs/vanguard-economy.yaml" }
+        "2.7": { name: "Kinetic Warfare", sub_epoch: "2D", spec: "ai-docs/kinetic-warfare.yaml" }
+        "2.8": { name: "Doctrine System", sub_epoch: "2B", spec: "ai-docs/doctrine-tree.yaml" }
+        "2.9": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml" }
+        "2.10": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai-docs/fog-of-war.yaml" }
+        "2.11": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+
+    epoch_3:
+      name: "The Platform"
+      thesis: "Others can build on this. Modding, custom scenarios, educational tools."
+      slices:
+        "3.1": "Liberation Mechanics"
+        "3.2": "Scenario Editor"
+        "3.3": "Modding API"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -42,13 +221,15 @@ implemented:
     components:
       simulation_engine:
         status: "complete"
-        details: "Modular engine with 4 Systems, ServiceContainer DI"
+        details: "Modular engine with 7 Systems, ServiceContainer DI, typed events"
         location: "src/babylon/engine/simulation_engine.py"
         tests: "tests/unit/engine/test_simulation_engine.py (30+ tests)"
         architecture:
           - "SimulationEngine.run_tick(graph, services, context)"
-          - "4 Systems: ImperialRent, Consciousness, Survival, Contradiction"
-          - "ServiceContainer: config, database, event_bus, formulas"
+          - "7 Systems: ImperialRent, Solidarity, Consciousness, Survival, Struggle, Contradiction, Territory"
+          - "ServiceContainer: config, database, event_bus, formulas, defines"
+          - "_convert_bus_event_to_pydantic(): EventBus → typed SimulationEvent (13 event classes)"
+          - "Observer event injection via persistent_context['_observer_events']"
 
       service_container:
         status: "complete"
@@ -63,11 +244,21 @@ implemented:
 
       event_bus:
         status: "complete"
-        details: "Publish/subscribe event system"
+        details: "Publish/subscribe event system with 11 EventTypes"
         location: "src/babylon/engine/event_bus.py"
         tests: "tests/unit/engine/test_event_bus.py (20 tests)"
         events_published:
-          - "rupture - when tension reaches 1.0"
+          - "SURPLUS_EXTRACTION - imperial rent extracted"
+          - "IMPERIAL_SUBSIDY - subsidy paid to comprador"
+          - "ECONOMIC_CRISIS - crisis event triggered"
+          - "CONSCIOUSNESS_TRANSMISSION - ideology transmitted via solidarity"
+          - "MASS_AWAKENING - threshold crossed"
+          - "EXCESSIVE_FORCE - spark event (George Floyd Dynamic)"
+          - "UPRISING - revolt triggered"
+          - "SOLIDARITY_SPIKE - solidarity infrastructure built"
+          - "RUPTURE - tension reaches 1.0"
+          - "SOLIDARITY_AWAKENING - source enters struggle"
+          - "PHASE_TRANSITION - percolation state changes"
 
       formula_registry:
         status: "complete"
@@ -107,9 +298,39 @@ implemented:
 
       world_state:
         status: "complete"
-        details: "Immutable state with NetworkX graph conversion"
+        details: "Immutable state with NetworkX graph conversion, state_finances integration"
         location: "src/babylon/models/world_state.py"
-        tests: "tests/unit/models/test_world_state.py (35 tests)"
+        tests: "tests/unit/models/test_world_state.py (41 tests)"
+        state_finances_integration:
+          field: "state_finances: dict[str, StateFinance]"
+          graph_storage: "G.graph['state_finances'] metadata"
+          tests: "TestStateFinancesIntegration (6 tests)"
+
+      finance_models:
+        status: "complete"
+        details: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
+        spec: "ai-docs/political-economy-liquidity.yaml"
+        location: "src/babylon/models/entities/"
+        tests: "tests/unit/models/ (187 tests)"
+        models:
+          state_finance:
+            location: "src/babylon/models/entities/state_finance.py"
+            fields: ["treasury", "police_budget", "social_reproduction_budget", "tax_rate", "tribute_income", "debt_level", "debt_ceiling"]
+            computed: ["burn_rate"]
+            tests: "test_state_finance.py (55 tests)"
+          revolutionary_finance:
+            location: "src/babylon/models/entities/revolutionary_finance.py"
+            fields: ["war_chest", "operational_burn", "dues_income", "expropriation_income", "donor_income", "heat", "reformist_drift"]
+            tests: "test_revolutionary_finance.py (56 tests)"
+          precarity_state:
+            location: "src/babylon/models/entities/precarity_state.py"
+            fields: ["nominal_wage", "ppp_factor", "inflation_index", "subsistence_threshold", "organization"]
+            computed: ["real_wage", "precarity_index", "proletarianization_risk"]
+            tests: "test_precarity_state.py (65 tests)"
+        cost_checking:
+          location: "src/babylon/engine/simulation_engine.py"
+          behavior: "Logs warning when treasury < burn_rate"
+          tests: "TestCostChecking (5 tests)"
 
       simulation_config:
         status: "complete"
@@ -168,29 +389,50 @@ implemented:
           - "on_simulation_start(initial_state, config)"
           - "on_tick(previous_state, new_state)"
           - "on_simulation_end(final_state)"
+        implementations:
+          - "NarrativeDirector - AI narrative generation"
+          - "TopologyMonitor - phase transition detection"
+          - "EconomyMonitor - economic crisis detection"
+          - "CausalChainObserver - Shock Doctrine patterns"
+          - "MetricsCollector - unified metrics for dashboard/sweeper (Sprint 4.1)"
 
       narrative_director:
         status: "complete"
-        details: "AI Game Master that observes simulation and generates narrative"
+        details: "AI Game Master that observes simulation and generates narrative using typed SimulationEvent objects"
         location: "src/babylon/ai/director.py"
-        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py (27 tests)"
+        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py, tests/integration/test_narrative_pipeline.py (36 tests)"
         provides:
           - "NarrativeDirector class implementing SimulationObserver"
           - "RAG pipeline injection (optional)"
           - "Prompt builder injection (optional)"
           - "Error handling per ADR003"
-        missing: "LLM client integration (Sprint 3.3)"
+          - "Typed event consumption via state.events (Sprint 4.1)"
+          - "SEMANTIC_MAP with EventType enum keys for theoretical context"
+          - "SIGNIFICANT_EVENT_TYPES frozenset for narrative triggering"
+        sprint_4_1_changes:
+          - "Changed on_tick to use state.events instead of event_log strings"
+          - "SEMANTIC_MAP now uses EventType enum keys"
+          - "Added SIGNIFICANT_EVENT_TYPES: ECONOMIC_CRISIS, PHASE_TRANSITION, UPRISING, EXCESSIVE_FORCE, RUPTURE"
+          - "_retrieve_context_from_typed_events() method for semantic bridge"
 
       prompt_builder:
         status: "complete"
-        details: "Builds prompts following Marxist dialectical materialism"
+        details: "Builds prompts following Marxist dialectical materialism with typed event formatting"
         location: "src/babylon/ai/prompt_builder.py"
-        tests: "tests/unit/ai/test_prompt_builder.py"
+        tests: "tests/unit/ai/test_prompt_builder.py, tests/integration/test_narrative_pipeline.py"
         provides:
           - "DialecticalPromptBuilder class"
           - "build_system_prompt() - AI identity"
-          - "build_context_block(state, rag_context, events)"
+          - "build_context_block(state, rag_context, events: list[SimulationEvent])"
           - "_calculate_tension() - aggregate tension level"
+          - "_format_event() - typed event formatting with match/case (Sprint 4.1)"
+        sprint_4_1_changes:
+          - "Changed events param type from list[str] to list[SimulationEvent]"
+          - "Added _format_event() method with match/case for all event types"
+          - "PhaseTransitionEvent includes phase state and cadre_density"
+          - "CrisisEvent includes pool_ratio and decision"
+          - "SparkEvent includes trigger_type and node_id"
+          - "UprisingEvent includes participants count"
 
       rag_pipeline:
         status: "infrastructure_complete"
@@ -318,10 +560,59 @@ not_implemented:
       - "test_full_vertical_slice_10_ticks"
 
   ui:
-    priority: "low"
-    description: "Player interface (NiceGUI planned)"
-    blockers: "Phase 3 vertical slice complete"
+    priority: "active"
+    description: "Developer Dashboard MVP - 4-panel layout operational"
+    status: "FUNCTIONAL"
     phase: 4
+    pattern: "root_function"  # Use ui.run(main_page), NOT @ui.page decorator
+    components:
+      control_deck:
+        status: "complete"
+        location: "src/babylon/ui/controls.py"
+        tests: "tests/unit/ui/test_controls.py (20 tests)"
+        features:
+          - "STEP button - advance 1 tick"
+          - "PLAY button - start continuous loop"
+          - "PAUSE button - stop loop"
+          - "RESET button - reload simulation"
+          - "Tick counter - TICK: 000 format"
+        styling: "Cybernetic Terminal - dark bg, green text, monospace"
+      main_app:
+        status: "complete"
+        location: "src/babylon/ui/main.py"
+        tests: "tests/unit/ui/test_main.py"
+        note: "Uses root function pattern to avoid NiceGUI mode conflict"
+        layout: "3-column CSS Grid (1fr 2fr 1fr) with flex children"
+      dashboard_components:
+        status: "complete"
+        location: "src/babylon/ui/components.py"
+        tests: "tests/unit/ui/test_components.py (100+ tests)"
+        components:
+          trend_plotter: "ECharts time-series metrics (left panel)"
+          narrative_terminal: "Typewriter narrative display (center top)"
+          system_log: "Event log with auto-scroll (center bottom)"
+          state_inspector: "JSON editor for WorldState (right panel)"
+      async_runner:
+        status: "complete"
+        location: "src/babylon/engine/async_runner.py"
+        tests: "tests/unit/engine/test_async_runner.py"
+        purpose: "Non-blocking simulation for responsive UI during PLAY mode"
+        pattern: "Background thread with queue for UI callbacks"
+      subcutaneous_tests:
+        status: "complete"
+        location: "tests/integration/test_dashboard_integration.py"
+        purpose: "Integration tests with mocked NiceGUI components"
+        pattern: "Mock UI, test component logic without browser"
+    layout_fix_2025_12_25:
+      issue: "CSS Grid/Flexbox interaction - grid cell widths not propagating to flex-1 children"
+      root_cause: "flex-1 elements inside grid cells collapse to zero width without explicit w-full"
+      solution: "Add w-full class to all column and element wrappers in grid cells"
+      pattern: "grid cell → column with w-full → element with w-full + flex-1"
+      files_changed:
+        - "src/babylon/ui/main.py (grid layout)"
+        - "src/babylon/ui/components.py (component containers)"
+        - "src/babylon/ui/terminal.py (terminal container)"
+    blockers: "None - Dashboard operational"
 
   branching_history:
     priority: "low"
@@ -417,19 +708,31 @@ future_concepts:
 # =============================================================================
 
 current_focus:
-  primary: "Transitioning from Phase III (Material Base) to Phase IV (Superstructure)"
-  roadmap: "ai-docs/roadmap.md"
+  primary: "Epoch 1: The Demonstration - completing Slices 1.4-1.6"
+  roadmap: "ai-docs/epochs-overview.md"
   legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
-  phase2_design: "brainstorm/plans/phase2-game-loop-design.md"
+  legacy_phase_roadmap: "ai-docs/roadmap.md (DEPRECATED - see epochs-overview.md)"
   architecture_spec: "ai-docs/game-loop-architecture.yaml"
   verification_framework: "brainstorm/babylon-protocol-verification.md"
 
-  vertical_slice_scope:
-    description: "Minimal complete gameplay experience"
-    entities: "Factory worker (proletariat) vs Capitalist (bourgeoisie)"
-    location: "One city (implicit)"
-    phenomenon: "Wealth transfer via Imperial Rent"
-    flow: "Simulation tick → Events → RAG context → LLM prompt → Narrative output"
+  current_slice:
+    epoch: 1
+    slice: "1.5"
+    name: "The Dashboard"
+    spec: "ai-docs/state.yaml (Slice 1.5 section)"
+    goal: "Wire 4-node Imperial Circuit to dashboard, add metabolic gauge"
+    previous_slice:
+      slice: "1.4"
+      name: "The Rift"
+      status: "COMPLETE"
+      note: "MetabolismSystem integrated, ecological metrics collected"
+
+  epoch_1_scope:
+    description: "Playable demo showing Imperial Circuit self-destruction"
+    thesis: "The player watches the Imperial Circuit consume itself and sees the Fascist Bifurcation."
+    entities: "4-node Imperial Circuit: P_w, P_c, C_b, C_w"
+    phenomenon: "Metabolic rift → ecological overshoot → crisis resolution"
+    outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
 
   recently_completed:
     - "XML to JSON migration"
@@ -476,6 +779,41 @@ current_focus:
     - "Sprint 3.2: RAG Integration - RagPipeline injection into NarrativeDirector (27 tests, 763 total)"
     - "Tech debt: Fixed 90 mypy errors in RAG module (Mikado refactor)"
     - "Tech debt: Migrated ChromaDB API from deprecated Client to PersistentClient"
+    - "Sprint 3.1 Event Schema: src/babylon/models/events.py (SimulationEvent, ExtractionEvent)"
+    - "Sprint 3.1 Event Schema: WorldState.events: list[SimulationEvent] field"
+    - "Sprint 3.1 Event Schema: _convert_bus_event_to_pydantic() in SimulationEngine"
+    - "Sprint 3.1 Event Schema: DomainFactory.create_extraction_event(), Assert.has_event()"
+    - "Sprint 3.1+ Event Expansion: Added RUPTURE to EventType enum"
+    - "Sprint 3.1+ Event Expansion: 3 base classes (ConsciousnessEvent, StruggleEvent, ContradictionEvent)"
+    - "Sprint 3.1+ Event Expansion: 8 concrete events (SubsidyEvent, CrisisEvent, TransmissionEvent, MassAwakeningEvent, SparkEvent, UprisingEvent, SolidaritySpikeEvent, RuptureEvent)"
+    - "Sprint 3.1+ Event Expansion: _convert_bus_event_to_pydantic() handles all 10 EventTypes"
+    - "Sprint 3.1+ Event Expansion: Factory methods for all event types in DomainFactory"
+    - "Sprint 3.3 Topology Events: Added PHASE_TRANSITION to EventType (now 11 types)"
+    - "Sprint 3.3 Topology Events: TopologyEvent and PhaseTransitionEvent models"
+    - "Sprint 3.3 Topology Events: TopologyMonitor phase state tracking (_classify_phase)"
+    - "Sprint 3.3 Topology Events: TopologyMonitor.get_pending_events() for event collection"
+    - "Sprint 3.3 Topology Events: Simulation facade _collect_observer_events()"
+    - "Sprint 3.3 Topology Events: Observer events injected into next tick via persistent_context"
+    - "Sprint 3.3 4-Phase Model: Added cadre_density to TopologySnapshot and PhaseTransitionEvent"
+    - "Sprint 3.3 4-Phase Model: _classify_phase updated for gaseous/transitional/liquid/solid"
+    - "Sprint 3.3 4-Phase Model: Solid phase (cadre_density >= 0.5) distinguishes vanguard from mass movement"
+    - "Sprint 4.1 Narrative Bridge: PromptBuilder.build_context_block accepts list[SimulationEvent]"
+    - "Sprint 4.1 Narrative Bridge: Added _format_event() method with match/case for all event types"
+    - "Sprint 4.1 Narrative Bridge: NarrativeDirector.on_tick uses state.events instead of event_log"
+    - "Sprint 4.1 Narrative Bridge: SEMANTIC_MAP changed from string keys to EventType enum keys"
+    - "Sprint 4.1 Narrative Bridge: Added SIGNIFICANT_EVENT_TYPES frozenset for narrative filtering"
+    - "Phase 4 UI: AsyncSimulationRunner for non-blocking UI during PLAY mode"
+    - "Phase 4 UI: Subcutaneous integration tests for dashboard components"
+    - "Phase 4 UI: 4-panel dashboard layout with TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+    - "Phase 4 UI: CSS Grid/Flexbox width propagation fix (w-full on flex-1 children in grid cells)"
+    - "Phase 4.1: MetricsCollector observer - unified metrics for dashboard/sweeper (TDD: 101 tests)"
+    - "Phase 4.1: Metrics Pydantic models (EntityMetrics, EdgeMetrics, TickMetrics, SweepSummary)"
+    - "Phase 4.1: Dashboard integration - MetricsCollector registered as Simulation observer"
+    - "Political Economy of Liquidity Epoch 1: StateFinance model (55 tests)"
+    - "Political Economy of Liquidity Epoch 1: RevolutionaryFinance model (56 tests)"
+    - "Political Economy of Liquidity Epoch 1: PrecarityState model with computed fields (65 tests)"
+    - "Political Economy of Liquidity Epoch 1: WorldState.state_finances integration (6 tests)"
+    - "Political Economy of Liquidity Epoch 1: Cost-checking in step() (5 tests)"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -794,11 +1132,35 @@ current_focus:
         - "Modified ImperialRentSystem (event generation)"
         - "RAG corpus ingestion script (5 texts from Marxists.org)"
         - "Integration tests proving full narrative pipeline"
+        - "4-phase model: cadre_density in TopologySnapshot/PhaseTransitionEvent"
+        - "_classify_phase() returns gaseous/transitional/liquid/solid"
       llm_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
       testing_approach: "Integration tests instead of CLI runner"
       rag_corpus: "5 curated texts from Marxists.org (~200-500 chunks)"
       tests_passing: 800
       scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
+      phase_model: "4-phase: gaseous/transitional/liquid/solid (cadre_density distinguishes mass movement from vanguard)"
+
+    sprint_4_1:
+      name: "The Narrative Bridge (Typed Event Pipeline)"
+      status: "COMPLETE"
+      deliverables:
+        - "PromptBuilder.build_context_block accepts list[SimulationEvent]"
+        - "_format_event() method with match/case for all event types"
+        - "NarrativeDirector.on_tick uses state.events instead of event_log"
+        - "SEMANTIC_MAP with EventType enum keys"
+        - "SIGNIFICANT_EVENT_TYPES frozenset for filtering"
+        - "_retrieve_context_from_typed_events() for semantic bridge"
+        - "tests/integration/test_narrative_pipeline.py (9 tests)"
+      tests_passing: 1795
+      commits: "d756498"
+      key_insight: "AI pipeline now consumes typed events, enabling rich formatting per event type"
+      significant_events:
+        - "ECONOMIC_CRISIS"
+        - "PHASE_TRANSITION"
+        - "UPRISING"
+        - "EXCESSIVE_FORCE"
+        - "RUPTURE"
 
     sprint_3_4_1:
       name: "Economic Infrastructure (Imperial Circuit)"
@@ -835,7 +1197,21 @@ current_focus:
         "Agitation without solidarity produces fascism, not revolution."
 
   phase_roadmap:
-    superseded_note: "Four-Phase Blueprint → Six-Phase Fractal Evolution (2025-12-09)"
+    # ==========================================================================
+    # HISTORICAL REFERENCE ONLY - SUPERSEDED BY EPOCH + SLICE MODEL
+    # ==========================================================================
+    # This Phase numbering system is deprecated as of 2025-12-26.
+    # See ai-docs/epochs-overview.md for the current organizational model.
+    # Kept for historical reference - old commits reference these phases.
+    #
+    # Mapping:
+    #   Phase 0-2  → Epoch 0 (The Kernel)
+    #   Phase 3-4  → Epoch 1 (The Demonstration)
+    #   Phase 5+   → Epoch 2-3 (The Game, The Platform)
+    # ==========================================================================
+    superseded_by: "ai-docs/epochs-overview.md (Epoch + Slice model)"
+    superseded_date: "2025-12-26"
+    superseded_note: "Four-Phase Blueprint → Six-Phase Fractal Evolution (2025-12-09) → Epoch + Slice (2025-12-26)"
     phase_1:
       name: "Minimum Viable Dialectic"
       summary: "Prove the equations work"
@@ -844,6 +1220,17 @@ current_focus:
       name: "Topological Engine"
       summary: "The physics/update loop"
       status: "COMPLETE"
+    phase_2_5:
+      name: "Test Refactor (Operation Clean Slate)"
+      summary: "Testing infrastructure - DomainFactory, BabylonAssert, MetricsSpy"
+      status: "COMPLETE"
+      added: "2025-12-12 (Truth Sync)"
+    phase_2_6:
+      name: "Observer Protocol"
+      summary: "Decoupled observation - SimulationObserver, TopologyMonitor"
+      status: "COMPLETE"
+      added: "2025-12-12 (Truth Sync)"
+      note: "models/events.py (Pydantic event schema) COMPLETE - Sprint 3.1 Event Schema"
     phase_3:
       name: "Observer Pattern"
       summary: "AI narrates, never controls"
@@ -919,40 +1306,182 @@ current_focus:
       status: "FUTURE"
 
   next_steps:
-    current_sprint: "Sprint 3.4.4: Dynamic Balance"
-    completed:
-      - "Sprint 3.3: Vertical Slice (COMPLETE)"
-      - "Sprint 3.4.1: Economic Infrastructure - TRIBUTE, WAGES, CLIENT_STATE edges (COMPLETE)"
-      - "Sprint 3.4.2: Proletarian Internationalism - SolidaritySystem (COMPLETE)"
-      - "Sprint 3.4.3: Multi-Dimensional Consciousness - IdeologicalProfile (COMPLETE)"
-      - "Sprint 3.5: Layer 0 Territorial Substrate (COMPLETE)"
-    in_progress:
-      - "Verify Agitation Router mechanics in integration tests"
-    planned:
-      - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
-      - "Phase 4: NiceGUI Control Room - dashboard for simulation"
-      - "Phase 5: Internal Colonies - fractal topology within Core"
+    # Using Epoch + Slice model - see ai-docs/epochs-overview.md
+    current_work: "Slice 1.5: The Dashboard (wire 4-node scenario, metabolic gauge)"
+    epoch_1_remaining:
+      - "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
+      - "Slice 1.6: The Endgame - win/lose display based on solidarity"
+    epoch_1_completed:
+      - "Slice 1.1: The Circuit - ImperialRentSystem, 4-node scenario"
+      - "Slice 1.2: The Struggle - StruggleSystem, TerritorySystem"
+      - "Slice 1.3: The Observer - SimulationObserver, TopologyMonitor, MetricsCollector"
+      - "Slice 1.4: The Rift - MetabolismSystem, ecological metrics (Sprint 1.4A/B/C)"
+    epoch_2_planned:
+      - "Slice 2.1: Demographic Resolution (ai-docs/demographics-spec.yaml)"
+      - "Slice 2.2: Player Controls"
+      - "Slice 2.3: Reproductive Labor"
     optional:
       - "Expand RAG corpus with more Marxists.org texts"
       - "Timeline branching for history stack"
 
+    # Historical sprint references (pre-Epoch model)
+    completed_sprints_historical:
+      note: "Sprint numbering superseded by Slice numbering - kept for git history reference"
+      completed:
+        - "Sprint 3.3: Vertical Slice → part of Slice 1.3 (Observer)"
+        - "Sprint 3.4.1-3.4.3: Imperial Circuit → Slice 1.1 (Circuit)"
+        - "Sprint 3.5: Territorial Substrate → Slice 1.2 (Struggle)"
+        - "Phase 4.0: Dashboard MVP → Slice 1.5 (Dashboard)"
+
+  # ---------------------------------------------------------------------------
+  # VERTICAL INTEGRATION INITIATIVE: "The Living Circuit"
+  # ---------------------------------------------------------------------------
+  #
+  # Diagnosis (2025-12-25):
+  #   The dashboard EXISTS but doesn't REVEAL anything interesting.
+  #   Imperial rent hovers at 100, tension moves infinitesimally.
+  #   Root cause: Dashboard shows 2-node scenario, not the 4-node Imperial Circuit.
+  #
+  # Mantra: "A flat line on a fancy graph is still a flat line."
+  #
+  vertical_integration:
+    initiative_name: "The Living Circuit"
+    status: "IN PROGRESS"
+    diagnosis:
+      problem: "Dashboard is boring - flat metrics, single node visible"
+      root_causes:
+        - "Using create_two_node_scenario() instead of create_imperial_circuit_scenario()"
+        - "TrendPlotter only shows P_w (Periphery Worker), not all 4 classes"
+        - "Metrics show static wealth, not dynamic FLOWS between nodes"
+        - "Default GameDefines coefficients produce equilibrium, not crisis"
+      insight: "The dashboard is a LENS. It can't show interesting things if the simulation is static."
+
+    sprint_4_1_a:
+      name: "Wire the Circuit"
+      status: "PLANNED"
+      goal: "Switch dashboard to 4-node Imperial Circuit scenario"
+      deliverables:
+        - "main.py: import create_imperial_circuit_scenario"
+        - "main.py: replace create_two_node_scenario() call"
+        - "Verify 4 nodes appear in StateInspector: P_w, P_c, C_b, C_w"
+        - "Verify 5 edges: EXPLOITATION, TRIBUTE, WAGES, CLIENT_STATE, SOLIDARITY"
+      files:
+        - "src/babylon/ui/main.py (scenario import change)"
+      success_criteria: "StateInspector shows all 4 classes with their relationships"
+
+    sprint_4_1_b:
+      name: "Expose Meaningful Metrics"
+      status: "PLANNED"
+      goal: "TrendPlotter shows dynamics worth watching"
+      deliverables:
+        - "TrendPlotter: 4 wealth lines (color-coded by SocialRole)"
+        - "TrendPlotter: Consciousness differential (P_w - C_w)"
+        - "TrendPlotter: Solidarity edge strength over time"
+        - "TrendPlotter: Imperial rent pool level"
+        - "SystemLog: Filter for SIGNIFICANT_EVENT_TYPES only"
+      metrics_to_track:
+        wealth_by_class:
+          - "P_w (Periphery Worker) - red line"
+          - "P_c (Comprador) - orange line"
+          - "C_b (Core Bourgeoisie) - blue line"
+          - "C_w (Labor Aristocracy) - green line"
+        differentials:
+          - "consciousness_gap: P_w.consciousness - C_w.consciousness"
+          - "wealth_gap: C_b.wealth - P_w.wealth"
+        flows:
+          - "imperial_rent: total extraction per tick"
+          - "super_wages: WAGES edge value_flow"
+          - "solidarity_strength: SOLIDARITY edge attribute"
+      key_insight: |
+        The INTERESTING dynamics are in RELATIONSHIPS, not node attributes.
+        - EXPLOITATION rate (how fast value flows out of periphery)
+        - Consciousness DIFFERENTIAL (gap between P_w and C_w awareness)
+        - SOLIDARITY strength (infrastructure for revolution vs fascism)
+
+    sprint_4_1_c:
+      name: "Tune for Crisis"
+      status: "PLANNED"
+      goal: "Simulation produces crisis within 30-50 ticks"
+      deliverables:
+        - "GameDefines adjustment: faster consciousness drift"
+        - "GameDefines adjustment: higher tension accumulation"
+        - "Test Fascist Bifurcation path (solidarity_strength = 0)"
+        - "Test Revolutionary path (solidarity_strength > 0)"
+        - "Verify George Floyd Dynamic spark mechanics"
+      balance_targets:
+        - "Crisis event within 30-50 ticks of default scenario"
+        - "Visible consciousness divergence by tick 20"
+        - "Measurable wealth transfer by tick 10"
+        - "Fascist vs Revolutionary bifurcation clearly distinguishable"
+      formula_tuning:
+        - "consciousness_drift_k: increase for faster awakening"
+        - "tension_accumulation_rate: increase for faster crisis"
+        - "extraction_efficiency: balance for sustainable extraction"
+
+    philosophical_grounding: |
+      Horizontal expansion (more features) doesn't help if vertical integration
+      (making existing features work together) isn't complete.
+
+      The 4-node Imperial Circuit model exists. The dashboard exists.
+      But they're not connected. We're watching a 2-node toy model
+      on a 4-panel dashboard built for a 4-node system.
+
+      "A working 4-node simulation beats a broken 10-node simulation."
+
   mantra: "Graph + Math = History"
-  new_mantra: "The bomb factory pays well. That's the problem."
-  old_mantra: "State is data. Engine is logic. They never mix."
-  fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
-  george_jackson_mantra: "Fascism is the defensive form of capitalism."
-  milestone: "SPRINT 3.4.3 COMPLETE: George Jackson Refactor - IdeologicalProfile replaces scalar ideology"
-  next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
-  test_count: 987
+  epoch_mantra: "Build the demonstration first. Then build the game. Finally, build the platform."
+  old_mantras:
+    - "The bomb factory pays well. That's the problem."
+    - "State is data. Engine is logic. They never mix."
+    - "Agitation without solidarity produces fascism, not revolution."
+    - "Fascism is the defensive form of capitalism."
+    - "A flat line on a fancy graph is still a flat line."
+  milestone: "Political Economy of Liquidity Epoch 1 COMPLETE: Finance models + WorldState integration"
+  next_milestone: "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
+  test_count: 2651
+  test_count_note: "Updated 2025-12-26 - Political Economy of Liquidity Epoch 1 complete, 187 new tests"
+
+  metrics_audit:
+    date: "2025-12-25"
+    status: "PHASE 4.1B COMPLETE - ~85% coverage"
+    source_document: "brainstorm/metrics-collector-audit-reasoning.md"
+    critical_fixed_in_4_1b:
+      - "current_super_wage_rate ✅ FIXED - now in TickMetrics"
+      - "current_repression_level ✅ FIXED - now in TickMetrics"
+      - "pool_ratio ✅ ADDED - imperial rent pool health"
+      - "consciousness_gap ✅ ADDED - P_w - C_w differential"
+      - "wealth_gap ✅ ADDED - C_b - P_w differential"
+    topology_model_ready:
+      - "TopologySummary model ✅ CREATED - percolation_ratio, cadre_density, phase"
+      - "Integration with dashboard ❌ PENDING - TopologyMonitor not registered"
+    bugs_fixed_in_4_1b:
+      - "global_tension ✅ FIXED - now only averages EXPLOITATION edges"
+      - "edge metrics ✅ FIXED - aggregates (max tension, sum flows)"
+    remaining_gaps:
+      - "TopologyMonitor dashboard integration (Phase 4.2)"
+      - "Territory aggregate metrics (heat, population)"
+      - "Event count per tick"
+      - "repression_faced per entity"
+    full_audit: "See observer-layer.yaml metrics_collector.audit section"
+
   analysis_insight: |
-    2025-12-09: Identified why vertical slice stalls after tick 2.
-    Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
-    This is CORRECT for periphery dynamics, but model is too simple.
-    Current model is "orthodox book-worship Marxism" - missing:
-    - Super-wages (W > V) for core workers
-    - Imperial rent pool dynamics
-    - False consciousness from material benefit
-    - Multi-dimensional consciousness (class vs national vs atomization)
+    2025-12-25: Diagnosed why dashboard is boring.
+    Using create_two_node_scenario() instead of create_imperial_circuit_scenario().
+    Dashboard shows 1 of 4 classes, misses the whole Imperial Circuit dynamic.
+    The dashboard is a LENS - it can't show interesting things if simulation is static.
+
+    2025-12-25: MetricsCollector audit reveals ~60% coverage.
+    Critical missing: economy drivers (wage_rate, repression) and topology (percolation).
+    These are the DIALS that make the simulation interesting to watch.
+    Without them, dashboard shows effects but not causes.
+
+    2025-12-25: PHASE 4.1B COMPLETE via TDD (43 new tests).
+    Fixed: current_super_wage_rate, current_repression_level, pool_ratio exposed.
+    Fixed: consciousness_gap, wealth_gap derived differentials.
+    Fixed: global_tension bug (was averaging all edges, now EXPLOITATION only).
+    Fixed: edge aggregation bug (was overwriting, now max/sum).
+    Created: TopologySummary model ready for dashboard integration.
+    Documented: Causal DAG (Fundamentals → Systems → Metrics) in architecture.yaml.
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.
@@ -991,9 +1520,19 @@ tech_debt:
 
   test_coverage:
     status: "EXCELLENT"
-    current: "704 tests passing"
-    coverage: "Core engine + systems + persistence + components fully tested, TDD discipline maintained"
+    current: "1926 tests passing (2025-12-14)"
+    coverage: "Core engine + systems + persistence + components + events + AI narrative fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
+    testing_infrastructure:
+      - "DomainFactory (tests/factories/domain.py) - 31 tests"
+      - "BabylonAssert (tests/assertions.py) - 55 tests"
+      - "MockMetricsCollector (tests/mocks/metrics_collector.py) - 8 tests"
+      - "Event model tests (tests/unit/models/test_events.py) - 44 tests"
+      - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
+      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 30 tests (Sprint 3.3 4-phase model)"
+      - "Narrative pipeline tests (tests/integration/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
+      - "MetricsCollector tests (tests/unit/engine/observers/test_metrics_collector.py) - 60 tests (Sprint 4.1 TDD)"
+      - "Metrics model tests (tests/unit/models/test_metrics_models.py) - 41 tests (Sprint 4.1 TDD)"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

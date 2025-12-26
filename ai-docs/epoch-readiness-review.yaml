@@ -285,14 +285,20 @@ action_items:
     - id: UX-001
       issue: "Tutorial design missing"
       action: "Outline player learning sequence"
+      status: RESOLVED
+      resolution: "Created ai-docs/tutorial-design.yaml with learning philosophy, Epoch 1 onboarding, Epoch 2A-2C learning sequences, trap reveals, tooltip system, failure messages, progressive disclosure"
 
     - id: ECON-001
       issue: "Resource sinks missing"
       action: "Add decay/consumption to economy"
+      status: RESOLVED
+      resolution: "Created ai-docs/resource-sinks.yaml with passive decay rates, action costs, maintenance costs, crisis drains, equilibrium targets"
 
     - id: UI-001
       issue: "UI wireframes missing"
       action: "Visualize complex systems"
+      status: RESOLVED
+      resolution: "Created ai-docs/ui-wireframes.yaml with ASCII wireframes for main screen, Doctrine Tree, Panopticon view, Fog of War overlay, Gramscian Wire full view, Crisis overlay"
 
   p3_low:
     - id: DOCTRINE-001

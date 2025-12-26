@@ -46,6 +46,7 @@ referencing = "^0.37.0"
 aiohttp = "^3.13.2"
 openai = "^2.9.0"
 nicegui = "^3.4.0"
+filelock = ">=3.20.1"
 
 [tool.poetry.group.dev.dependencies]
 # Testing

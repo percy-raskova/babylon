@@ -170,6 +170,11 @@ class MetricsCollector:
             row["consciousness_gap"] = tick_metrics.consciousness_gap
             row["wealth_gap"] = tick_metrics.wealth_gap
 
+            # Ecological metrics (Slice 1.4)
+            row["overshoot_ratio"] = tick_metrics.overshoot_ratio
+            row["total_biocapacity"] = tick_metrics.total_biocapacity
+            row["total_consumption"] = tick_metrics.total_consumption
+
             rows.append(row)
 
         return rows
@@ -270,6 +275,15 @@ class MetricsCollector:
         if c_b is not None and p_w is not None:
             wealth_gap = float(c_b.wealth) - float(p_w.wealth)
 
+        # Ecological Metrics (Slice 1.4)
+        overshoot_ratio = state.overshoot_ratio if hasattr(state, "overshoot_ratio") else 0.0
+        total_biocapacity = (
+            float(state.total_biocapacity) if hasattr(state, "total_biocapacity") else 0.0
+        )
+        total_consumption = (
+            float(state.total_consumption) if hasattr(state, "total_consumption") else 0.0
+        )
+
         return TickMetrics(
             tick=state.tick,
             p_w=entity_slots.get("p_w"),
@@ -284,6 +298,9 @@ class MetricsCollector:
             pool_ratio=pool_ratio,
             consciousness_gap=consciousness_gap,
             wealth_gap=wealth_gap,
+            overshoot_ratio=overshoot_ratio,
+            total_biocapacity=total_biocapacity,
+            total_consumption=total_consumption,
         )
 
     def _extract_entity_metrics(self, entity: SocialClass) -> EntityMetrics:

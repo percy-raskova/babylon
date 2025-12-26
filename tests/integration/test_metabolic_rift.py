@@ -302,7 +302,7 @@ class TestOvershootDetection:
         territory = Territory(
             id="T001",
             name="Pristine Territory",
-            sector_type=SectorType.AGRICULTURAL,
+            sector_type=SectorType.RESIDENTIAL,  # Use existing enum value
             biocapacity=500.0,  # High biocapacity
             max_biocapacity=500.0,
         )

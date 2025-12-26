@@ -179,6 +179,10 @@ class WorldState(BaseModel):
         # Computed fields to exclude during reconstruction (Slice 1.4)
         social_class_computed = {"consumption_needs"}
 
+        # Fields that systems may add to graph but Territory doesn't accept
+        # (e.g., SurvivalSystem adds p_acquiescence/p_revolution to all nodes)
+        territory_excluded = {"p_acquiescence", "p_revolution"}
+
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
             # Create a copy without _node_type for model construction
@@ -186,14 +190,16 @@ class WorldState(BaseModel):
 
             if node_type == "territory":
                 # Reconstruct Territory
+                # Filter out fields that Territory doesn't accept
+                territory_data = {k: v for k, v in node_data.items() if k not in territory_excluded}
                 # Convert enum strings back to enums if needed
-                sector_type = node_data.get("sector_type")
+                sector_type = territory_data.get("sector_type")
                 if isinstance(sector_type, str):
-                    node_data["sector_type"] = SectorType(sector_type)
-                profile = node_data.get("profile")
+                    territory_data["sector_type"] = SectorType(sector_type)
+                profile = territory_data.get("profile")
                 if isinstance(profile, str):
-                    node_data["profile"] = OperationalProfile(profile)
-                territories[node_id] = Territory(**node_data)
+                    territory_data["profile"] = OperationalProfile(profile)
+                territories[node_id] = Territory(**territory_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor

@@ -1589,6 +1589,105 @@ decisions:
 
     mantra: "Strategic Map stores the world. Tactical Cache runs the war."
 
+    # =========================================================================
+    # AMENDMENT: Dynamic Sovereignty Refactor (2025-12-26)
+    # =========================================================================
+
+    amendments:
+      - id: "ADR029-A1"
+        date: "2025-12-26"
+        title: "Dynamic Sovereignty Refactor"
+        status: "accepted"
+
+        context: |
+          The original ADR029 schema represented territory control via a `controller`
+          property on Territory nodes (e.g., controller="STATE"). This is insufficient
+          for Epoch 3 requirements:
+          - Civil wars (multiple competing sovereignty claims)
+          - Secession/Balkanization (new nations emerging)
+          - Dual power situations (revolutionary control without legal recognition)
+
+          Property-based sovereignty requires O(N) updates to change borders and
+          cannot model contested territories or multiple claimants.
+
+        decision: |
+          **Sovereignty is a Node, not a Property.**
+
+          Refactor the schema to treat sovereignty as first-class graph entities:
+
+          1. **New Node Type: `Sovereign`**
+             - Represents political entities capable of claiming territory
+             - Properties: id, name, sovereignty_type, legitimacy, color_hex
+             - Examples: "United States Federal Government", "Provisional Revolutionary Command"
+
+          2. **New Edge Type: `CLAIMS` (Sovereign → Territory)**
+             - Represents sovereignty assertions over territory
+             - Properties: control_level (0-1), fiscal_status, legal_status
+             - Multiple CLAIMS edges can exist for contested territories
+
+          3. **Removed: `controller` property from Territory**
+             - Sovereignty now determined by incoming CLAIMS edges
+             - Effective controller = Sovereign with highest control_level
+
+          **The Fracture Operation:**
+          Sovereignty transfers are now O(1) edge operations:
+          ```cypher
+          // Transfer LA from USA to Revolutionary Command
+          MATCH (usa:Sovereign {id: 'SOV_USA_FED'})-[c:CLAIMS]->(la:Territory)
+          SET c.control_level = 0.0
+
+          MATCH (prc:Sovereign {id: 'SOV_PRC'})-[c:CLAIMS]->(la:Territory)
+          SET c.control_level = 1.0
+          ```
+
+        rationale:
+          o1_border_changes:
+            problem: "Secession requires updating controller property on many territories"
+            solution: "Edge rewiring is O(1) - delete old CLAIMS, create new CLAIMS"
+
+          civil_war_modeling:
+            problem: "Cannot represent multiple competing sovereignty claims"
+            solution: "Multiple CLAIMS edges with different control_levels"
+
+          dual_power:
+            problem: "Cannot distinguish legal authority from actual control"
+            solution: "CLAIMS edge has both legal_status and control_level properties"
+
+          layer_independence:
+            principle: "Land (geography) and State (politics) are independent"
+            solution: "ADJACENT_TO edges (Land) are unaffected by CLAIMS changes (State)"
+
+        consequences:
+          positive:
+            - "O(1) border changes via edge rewiring"
+            - "Civil war modeling with competing sovereignty claims"
+            - "Dual power situations (de jure vs de facto control)"
+            - "New nations can emerge dynamically (create Sovereign node)"
+            - "Legitimacy tracking per sovereign entity"
+            - "Land/State layer separation preserved"
+
+          negative:
+            - "More complex queries (must traverse CLAIMS edges)"
+            - "Schema migration required from v1.0.0"
+            - "Additional validation needed (control_level sum constraints)"
+
+        implementation:
+          spec_file: "ai-docs/epoch2-persistence.yaml (v1.1.0)"
+          init_script: "tools/init_epoch2_db.py (updated)"
+
+          new_schemas:
+            - "Sovereign node table"
+            - "CLAIMS edge table (Sovereign → Territory)"
+            - "ClaimsSnapshot table (Chronicle)"
+
+          removed:
+            - "Territory.controller property"
+            - "controller index on Territory"
+
+        related:
+          - "ai-docs/epoch2-persistence.yaml"
+          - "tools/init_epoch2_db.py"
+
 # =============================================================================
 # PENDING DECISIONS
 # =============================================================================

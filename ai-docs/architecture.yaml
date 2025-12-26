@@ -38,12 +38,35 @@ core_architecture:
 
     topology:
       purpose: "Fluid, relational state (hot computation environment)"
-      technology: "NetworkX (in-memory graph)"
+      technology: "Graph Abstraction Layer (GraphProtocol)"
+      approach: "Interface-First"
+      principle: |
+        The architecture defines a GraphProtocol interface, NOT a specific graph library.
+        NetworkX is an implementation detail - the current MVP adapter.
+        Future implementations (DuckDB + DuckPGQ) can be swapped without changing
+        any System code, as long as they implement the GraphProtocol interface.
+      implementations:
+        current:
+          adapter: "NetworkXAdapter"
+          backing: "NetworkX DiGraph (in-memory)"
+          epoch: "1 and 2 (MVP)"
+          location: "src/babylon/engine/adapters/networkx_adapter.py"
+        future:
+          adapter: "DuckDBAdapter"
+          backing: "DuckDB + DuckPGQ (persistent, OLAP-optimized)"
+          epoch: "3+ (Platform)"
+          location: "src/babylon/engine/adapters/duckdb_adapter.py (planned)"
+          benefits:
+            - "Native Parquet support for large-scale scenarios"
+            - "SQL/GQL hybrid queries for analytics"
+            - "Persistent graph state without custom serialization"
       locations:
+        protocol: "src/babylon/engine/graph_protocol.py"
         primary: "src/babylon/models/world_state.py (to_graph/from_graph)"
         formulas: "src/babylon/systems/formulas.py"
         engine: "src/babylon/engine/simulation_engine.py"
       contains:
+        - "GraphProtocol - interface abstraction for graph operations"
         - "WorldState.to_graph() - DiGraph of entities and relationships"
         - "Relationship edges (EXPLOITATION, SOLIDARITY, REPRESSION)"
         - "Node attributes (wealth, ideology, organization, p_*)"
@@ -51,6 +74,7 @@ core_architecture:
       data_flow: "Hydrated from Ledger → mutated during tick → dehydrated back"
       key_insight: "Graph + Math = History (ADR011)"
       runtime_constraint: "No database queries during tick - pure RAM operations"
+      see_also: "ai-docs/topology-system.yaml (GraphProtocol specification)"
 
     archive:
       purpose: "Semantic history and theory"

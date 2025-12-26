@@ -22,6 +22,235 @@ overview:
     (revolution vs fascism) the system reaches during crisis.
 
 # =============================================================================
+# TECHNOLOGY: GRAPH ABSTRACTION LAYER
+# =============================================================================
+
+technology:
+  name: "Graph Abstraction Layer"
+  status: "SPECIFICATION (MVP uses NetworkX directly)"
+  approach: "Interface-First"
+  updated: "2025-12-26"
+
+  description: |
+    The topology layer is DECOUPLED from any specific graph library.
+    We define a GraphProtocol interface that abstracts graph operations.
+    Concrete implementations (Adapters) provide the actual functionality.
+
+    This enables:
+    - Swappable backends without changing System code
+    - Testing with mock graphs
+    - Future migration to persistent graph databases (DuckDB + DuckPGQ)
+
+    IMPORTANT: NetworkX is an IMPLEMENTATION DETAIL, not the ARCHITECTURE.
+    The ARCHITECTURE is the GraphProtocol interface.
+
+  graph_protocol:
+    name: "GraphProtocol"
+    location: "src/babylon/engine/graph_protocol.py (planned)"
+    type: "typing.Protocol"
+    status: "SPECIFICATION"
+
+    purpose: |
+      Abstract interface for graph operations. All Systems interact with the
+      graph through this protocol, never directly with NetworkX or DuckDB.
+
+    core_methods:
+      node_operations:
+        - name: "add_node"
+          signature: "add_node(node_id: str, node_type: str, **attrs) -> None"
+          description: "Add a node with type marker and attributes"
+
+        - name: "get_node"
+          signature: "get_node(node_id: str) -> dict[str, Any]"
+          description: "Retrieve node attributes by ID"
+
+        - name: "update_node"
+          signature: "update_node(node_id: str, **attrs) -> None"
+          description: "Update node attributes (partial update)"
+
+        - name: "remove_node"
+          signature: "remove_node(node_id: str) -> None"
+          description: "Remove node and all incident edges"
+
+        - name: "get_nodes_by_type"
+          signature: "get_nodes_by_type(node_type: str) -> Iterator[tuple[str, dict]]"
+          description: "Iterate over nodes of a specific type"
+
+      edge_operations:
+        - name: "add_edge"
+          signature: "add_edge(source: str, target: str, edge_type: str, **attrs) -> None"
+          description: "Add directed edge with type and attributes"
+
+        - name: "get_edge"
+          signature: "get_edge(source: str, target: str, edge_type: str) -> dict[str, Any]"
+          description: "Retrieve edge attributes"
+
+        - name: "update_edge"
+          signature: "update_edge(source: str, target: str, edge_type: str, **attrs) -> None"
+          description: "Update edge attributes (partial update)"
+
+        - name: "remove_edge"
+          signature: "remove_edge(source: str, target: str, edge_type: str) -> None"
+          description: "Remove specific edge"
+
+        - name: "get_edges_by_type"
+          signature: "get_edges_by_type(edge_type: str) -> Iterator[tuple[str, str, dict]]"
+          description: "Iterate over edges of a specific type"
+
+      traversal_operations:
+        - name: "neighbors"
+          signature: "neighbors(node_id: str, edge_type: str | None = None) -> Iterator[str]"
+          description: "Get neighbor node IDs, optionally filtered by edge type"
+
+        - name: "predecessors"
+          signature: "predecessors(node_id: str, edge_type: str | None = None) -> Iterator[str]"
+          description: "Get nodes pointing TO this node"
+
+        - name: "successors"
+          signature: "successors(node_id: str, edge_type: str | None = None) -> Iterator[str]"
+          description: "Get nodes this node points TO"
+
+      aggregate_operations:
+        - name: "node_count"
+          signature: "node_count(node_type: str | None = None) -> int"
+          description: "Count nodes, optionally by type"
+
+        - name: "edge_count"
+          signature: "edge_count(edge_type: str | None = None) -> int"
+          description: "Count edges, optionally by type"
+
+  adapters:
+    networkx_adapter:
+      name: "NetworkXAdapter"
+      status: "CURRENT (MVP)"
+      location: "Currently inline in WorldState.to_graph()/from_graph()"
+      future_location: "src/babylon/engine/adapters/networkx_adapter.py"
+      backing: "networkx.DiGraph"
+      epoch_compatibility: "Epoch 1 and 2"
+
+      characteristics:
+        - "In-memory (fast, but limited by RAM)"
+        - "Pure Python (no external dependencies beyond NetworkX)"
+        - "Serializes to JSON via model_dump()/model_validate()"
+        - "Well-tested (50+ topology tests)"
+
+      current_implementation: |
+        Currently, WorldState.to_graph() and from_graph() serve as the de facto
+        adapter. The GraphProtocol will formalize this interface.
+
+      limitations:
+        - "No persistence - graph lost on process exit"
+        - "RAM-bound - large scenarios may hit memory limits"
+        - "No native graph query language"
+
+    duckdb_adapter:
+      name: "DuckDBAdapter"
+      status: "PLANNED (Epoch 3)"
+      location: "src/babylon/engine/adapters/duckdb_adapter.py (planned)"
+      backing: "DuckDB + DuckPGQ extension"
+      epoch_compatibility: "Epoch 3+"
+
+      characteristics:
+        - "Persistent (survives process restart)"
+        - "OLAP-optimized (fast aggregations, analytics)"
+        - "Native Parquet I/O (large-scale scenarios)"
+        - "SQL/GQL hybrid queries via DuckPGQ"
+        - "Columnar storage (efficient for time-series analysis)"
+
+      benefits:
+        - "Unified Ledger + Topology in single database"
+        - "Native support for scenario serialization"
+        - "Better performance for large graphs (>10K nodes)"
+        - "Built-in graph algorithms via DuckPGQ"
+
+      migration_strategy: |
+        1. Implement GraphProtocol interface
+        2. Create DuckDBAdapter implementing the protocol
+        3. Add configuration flag to select adapter
+        4. Migrate Ledger layer to DuckDB (unification)
+        5. Deprecate SQLite once validated
+
+  franchise_model:
+    name: "The Franchise Model"
+    status: "DESIGN PRINCIPLE"
+
+    principle: |
+      Strategic Agents (e.g., Revolutionary Organization, State) are DISTINCT
+      from Graph Nodes (e.g., Cells, Territories, SocialClasses). Agents
+      MANIPULATE the graph via the GraphProtocol interface - they are external
+      actors, not graph members.
+
+      This is like a franchise business:
+      - The Franchise Owner (Agent) manages multiple locations (Nodes)
+      - The Owner is NOT a location - they operate FROM OUTSIDE the graph
+      - Multiple Owners can compete for control of the same Nodes
+
+    diagram: |
+      ┌─────────────────────────────────────────────────────────────────────────┐
+      │                        THE FRANCHISE MODEL                              │
+      └─────────────────────────────────────────────────────────────────────────┘
+
+          ┌──────────────────┐           ┌──────────────────┐
+          │  Revolutionary   │           │      State       │
+          │   Organization   │           │     (Agent)      │
+          │     (Agent)      │           │                  │
+          └────────┬─────────┘           └────────┬─────────┘
+                   │                              │
+                   │  manipulates via             │  manipulates via
+                   │  GraphProtocol               │  GraphProtocol
+                   │                              │
+                   ▼                              ▼
+      ┌─────────────────────────────────────────────────────────────────────────┐
+      │                         GRAPH (Topology)                                │
+      │                                                                         │
+      │    ┌─────┐     SOLIDARITY      ┌─────┐     EXPLOITATION    ┌─────┐     │
+      │    │ C001├────────────────────►│ C002├────────────────────►│ C003│     │
+      │    │ P_w │                     │ C_w │                     │ C_b │     │
+      │    └──┬──┘                     └─────┘                     └─────┘     │
+      │       │                                                                 │
+      │       │ TENANCY                                                         │
+      │       ▼                                                                 │
+      │    ┌─────┐         ADJACENCY           ┌─────┐                         │
+      │    │ T001├────────────────────────────►│ T002│                         │
+      │    │ Slum│                             │ Dock│                         │
+      │    └─────┘                             └─────┘                         │
+      │                                                                         │
+      │    Nodes: SocialClass, Territory                                        │
+      │    Edges: SOLIDARITY, EXPLOITATION, TENANCY, ADJACENCY, etc.           │
+      └─────────────────────────────────────────────────────────────────────────┘
+
+          AGENTS are EXTERNAL to the graph.
+          AGENTS compete for control of graph NODES.
+          AGENTS act via the GraphProtocol interface.
+
+    implications:
+      agent_not_node: |
+        The Player (Revolutionary Organization) is NOT a node in the graph.
+        It is an Agent with a "portfolio" of controlled nodes (cells, territories).
+        The Agent's resources (war_chest, cadre) are stored separately from the graph.
+
+      state_not_node: |
+        The State is NOT a node - it is an Agent that manipulates Territories
+        and applies repression to SocialClasses. The State's resources
+        (legitimacy, repression_budget) are stored in StateFinance, not the graph.
+
+      multiple_agents: |
+        Multiple Agents can interact with the same graph:
+        - Revolutionary Organization (Player)
+        - State (AI opponent)
+        - Rival Organizations (future: multiplayer or AI factions)
+
+      ai_modeling: |
+        AI opponents can have DIFFERENT VIEWS of the same graph (Fog of War).
+        The Agent queries the graph through the interface and receives
+        filtered/masked results based on their intel level.
+
+      clear_separation: |
+        Clear separation between:
+        - "WHO acts" (Agents - external actors with resources and goals)
+        - "WHAT is acted upon" (Graph - nodes and edges representing material reality)
+
+# =============================================================================
 # GRAPH STRUCTURE
 # =============================================================================
 

@@ -28,6 +28,7 @@ This directory helps AI assistants:
 | `gramscian-wire-vision.yaml` | Slice 2.4 spec - Narrative Warfare, Hegemony (Epoch 2) | YAML |
 | `vanguard-economy.yaml` | Slice 2.5 spec - Cadre/Sympathizer/Reputation Resources | YAML |
 | `kinetic-warfare.yaml` | Slice 2.6 spec - Asymmetric Logistics, System Disruption | YAML |
+| `state-attention-economy.yaml` | Slice 2.8 spec - Panopticon, State AI Threads | YAML |
 | `formulas-spec.yaml` | All 16 mathematical formulas with signatures | YAML |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor | YAML |
 | **ARCHITECTURE** |||
@@ -79,6 +80,7 @@ For implementation work:
 - **Slice 2.4** (The Wire): See `ai-docs/gramscian-wire-vision.yaml`
 - **Slice 2.5** (Resource Economy): See `ai-docs/vanguard-economy.yaml`
 - **Slice 2.6** (Kinetic Warfare): See `ai-docs/kinetic-warfare.yaml`
+- **Slice 2.8** (The Panopticon): See `ai-docs/state-attention-economy.yaml`
 
 ## Maintenance
 

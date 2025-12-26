@@ -120,6 +120,7 @@ epoch_status:
         "2.5": "The Resource Economy - Vanguard Efficiency (ai-docs/vanguard-economy.yaml)"
         "2.6": "Kinetic Warfare - System Disruption (ai-docs/kinetic-warfare.yaml)"
         "2.7": "Multiple Scenarios"
+        "2.8": "The Panopticon - State Attention Economy (ai-docs/state-attention-economy.yaml)"
     epoch_3:
       name: "The Platform"
       thesis: "Others can build on this. Modding, custom scenarios, educational tools."

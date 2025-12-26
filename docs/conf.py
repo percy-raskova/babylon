@@ -153,9 +153,21 @@ todo_include_todos = True
 autosummary_generate = True
 autosummary_imported_members = False  # Prevent documenting re-exported members twice
 
-# Duplicate object description warnings are expected behavior with Pydantic models
-# being re-exported in __init__.py files. These don't affect documentation quality.
-# The warnings cannot be suppressed with suppress_warnings but don't block the build.
+# Suppress known-benign warnings that don't affect documentation quality
+# This allows CI to run with -W (warnings as errors) while ignoring noise
+suppress_warnings = [
+    # Duplicate object descriptions from Pydantic models re-exported in __init__.py
+    # These occur because autosummary documents both the original and re-exported location
+    "autodoc",
+    "autodoc.import_object",
+    # Reference warnings (intersphinx, cross-refs)
+    "ref.python",
+    "ref.ref",
+    # MyST cross-reference warnings
+    "myst.xref_missing",
+    # Docutils inline markup warnings (usually from docstrings with special chars)
+    "docutils",
+]
 
 # Mermaid configuration (sphinxcontrib-mermaid v1.2.3)
 # See: https://github.com/mgaitan/sphinxcontrib-mermaid
@@ -190,60 +202,171 @@ latex_documents = [
     ),
 ]
 
-# LaTeX styling for professional output
+# LaTeX styling for professional book output
 # "Bunker Constructivism" aesthetic from docs/concepts/aesthetics.rst
 latex_elements = {
     "papersize": "letterpaper",
     "pointsize": "11pt",
-    # Allow chapters to start on any page (eliminates blank pages)
-    "extraclassoptions": "openany",
-    # Custom preamble: Bunker Constructivism color scheme + typography
-    "preamble": r"""
-% ============================================================================
-% BUNKER CONSTRUCTIVISM THEME
-% "Damp Basement Cyberinsurgency" - CRT aesthetic for PDF output
-% ============================================================================
-
-% Typography (xelatex fontspec)
+    # Book-style layout
+    "extraclassoptions": "openany,twoside",
+    # CRITICAL: Pass options to xcolor BEFORE Sphinx loads it
+    # This fixes "Option clash for package xcolor" errors
+    "passoptionstopackages": r"\PassOptionsToPackage{svgnames,dvipsnames,table}{xcolor}",
+    # Professional fonts via fontspec (requires xelatex)
+    # DejaVu Sans Mono has better Unicode coverage (box-drawing chars, etc.)
+    "fontpkg": r"""
 \usepackage{fontspec}
 \setmainfont{TeX Gyre Termes}
 \setsansfont{TeX Gyre Heros}
-\setmonofont{TeX Gyre Cursor}
+\setmonofont{DejaVu Sans Mono}
+""",
+    # Custom preamble: Bunker Constructivism Professional Book Edition
+    "preamble": r"""
+% ============================================================================
+% BUNKER CONSTRUCTIVISM THEME - Professional Book Edition
+% "Damp Basement Cyberinsurgency" - CRT aesthetic for PDF output
+% ============================================================================
 
-% Color definitions from aesthetics.rst
-\usepackage{xcolor}
-\definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, active elements
-\definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - backgrounds
-\definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text
-\definecolor{ExposedCircuitry}{HTML}{FFD700} % The Circuit - edges, truth data
-\definecolor{ThermalWarning}{HTML}{8B0000}  % Deep shadows, stress indicators
-\definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks
-\definecolor{TheDust}{HTML}{C0C0C0}         % Secondary text, prompts
+% Better typography - subtle kerning and spacing improvements
+\usepackage{microtype}
 
-% Hyperlink styling - gold circuit traces
+% Fix fancyhdr headheight warning
+\setlength{\headheight}{24pt}
+\addtolength{\topmargin}{-12pt}
+
+% ============================================================================
+% COLOR DEFINITIONS - Bunker Constructivism Palette
+% Colors are LIGHT EMISSIONS in a dark room, not paint on surfaces.
+% The UI is a CRT monitor in a concrete bunker. See docs/concepts/aesthetics.rst
+% ============================================================================
+
+% PRIMARY COLORS (Light Emissions)
+\definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, critical thresholds, rupture
+                                            % "When red appears, it burns" - chapters, titles
+\definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - the Room itself, darkness is information
+\definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text (60-80% opacity in UI)
+\definecolor{ExposedCircuitry}{HTML}{FFD700} % The Circuit - truth data, verified connections,
+                                            % SOLIDARITY EDGES - the real infrastructure
+
+% SECONDARY COLORS
+\definecolor{ThermalWarning}{HTML}{8B0000}  % Overheating indicators, system stress, hot paths
+\definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks, cold metal
+\definecolor{TheDust}{HTML}{C0C0C0}         % Terminal prompts, secondary text, the dust that settles
+
+% ============================================================================
+% COVER PAGE COLORS - Royal purple void with phosphor green CRT text
+% ============================================================================
+\definecolor{RoyalVoid}{HTML}{1E1033}       % Deep royal purple - the command bunker
+\definecolor{PhosphorGreen}{HTML}{39FF14}   % Neon CRT green - terminal awakening
+\definecolor{PhosphorGreenDim}{HTML}{2AAE0F} % Dimmer green for subtitles
+
+% ============================================================================
+% PAGE COLORS - Quasi-dark mode for eye comfort
+% Not harsh white, not full dark - the amber glow of aged paper in bunker light
+% ============================================================================
+\definecolor{BunkerPaper}{HTML}{F5F0E8}     % Warm cream - aged paper under dim light
+\definecolor{BunkerInk}{HTML}{2D2A26}       % Warm dark gray - softer than pure black
+
+% ============================================================================
+% PAGE STYLING - Quasi-dark mode for comfortable reading
+% ============================================================================
+\pagecolor{BunkerPaper}                     % Warm cream background on all pages
+\color{BunkerInk}                           % Warm dark gray body text
+
+% Enhanced PDF bookmarks (better than hyperref alone)
+\usepackage{bookmark}
+
+% TikZ for cover page graphics (must be loaded BEFORE sphinxmaketitle definition)
+\usepackage{tikz}
+
+% ============================================================================
+% CUSTOM COVER PAGE - Royal purple void with phosphor green terminal text
+% Overrides Sphinx's default maketitle
+% ============================================================================
+\makeatletter
+\renewcommand{\sphinxmaketitle}{%
+  % Set purple background for title page
+  \pagecolor{RoyalVoid}%
+  \begin{titlepage}%
+    % Title content on purple background
+    \vspace*{4cm}%
+    \begin{center}%
+      % Main title in phosphor green
+      {\fontsize{48}{56}\selectfont\bfseries\color{PhosphorGreen}\@title\par}%
+      \vspace{2cm}%
+      % Subtitle/tagline
+      {\Large\color{PhosphorGreenDim}A Geopolitical Simulation Engine\par}%
+      \vspace{0.8cm}%
+      {\large\color{PhosphorGreenDim}Modeling Imperial Collapse Through Material Conditions\par}%
+      \vspace{4cm}%
+      % Decorative line
+      {\color{PhosphorGreen}\rule{0.5\textwidth}{2pt}\par}%
+      \vspace{3cm}%
+      % Author
+      {\Large\color{PhosphorGreenDim}\@author\par}%
+      \vspace{1.5cm}%
+      % Version/date
+      {\normalsize\color{TheDust}Version \py@release\par}%
+    \end{center}%
+  \end{titlepage}%
+  % Reset to cream background for all content pages
+  \pagecolor{BunkerPaper}%
+  \clearpage%
+}
+\makeatother
+
+% ============================================================================
+% HYPERLINK STYLING - Thematic Color Assignment
+% ============================================================================
 \hypersetup{
     colorlinks=true,
+    % Internal links (linkcolor): ThermalWarning - "hot paths" through the document
     linkcolor=ThermalWarning,
-    urlcolor=PhosphorBurn,
+    % External URLs (urlcolor): ExposedCircuitry - "solidarity edges to external truth"
+    % Gold represents verified connections to outside knowledge infrastructure
+    urlcolor=ExposedCircuitry,
+    % Citations: TheChassis - supporting material, inactive reference
     citecolor=TheChassis,
+    % PDF bookmarks and metadata
+    bookmarks=true,
+    bookmarksnumbered=true,
+    bookmarksopen=true,
+    bookmarksopenlevel=2,
+    pdfstartview=FitH,
 }
 
-% Chapter and section heading colors
+% ============================================================================
+% HEADING COLORS - Hierarchy through light intensity
+% PhosphorBurn (chapters) → ThermalWarning (sections) → TheChassis (subsections)
+% ============================================================================
 \usepackage{sectsty}
-\chapterfont{\color{PhosphorBurn}}
-\sectionfont{\color{ThermalWarning}}
-\subsectionfont{\color{TheChassis}}
+\chapterfont{\color{PhosphorBurn}}      % Critical thresholds - burns into attention
+\sectionfont{\color{ThermalWarning}}    % System stress - navigating deeper
+\subsectionfont{\color{TheChassis}}     % Inactive panels - lower intensity
 
-% Code block styling - dark terminal aesthetic
-\usepackage{mdframed}
-\surroundwithmdframed[
-    backgroundcolor=WetConcrete,
-    fontcolor=TerminalGlare,
-    linecolor=TheChassis,
-    linewidth=1pt,
-    innertopmargin=8pt,
-    innerbottommargin=8pt,
-]{Verbatim}
+% ============================================================================
+% TABLE OF CONTENTS - Same color hierarchy
+% ============================================================================
+\usepackage[titles]{tocloft}
+\renewcommand{\cftchapfont}{\bfseries\color{PhosphorBurn}}
+\renewcommand{\cftsecfont}{\color{ThermalWarning}}
+\renewcommand{\cftsubsecfont}{\color{TheChassis}}
+\renewcommand{\cftchappagefont}{\bfseries\color{TheChassis}}
+\renewcommand{\cftsecpagefont}{\color{TheChassis}}
+\renewcommand{\cftsubsecpagefont}{\color{TheDust}}
+
+% ============================================================================
+% FANCY HEADERS - Book feel with softer colors
+% ============================================================================
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\color{TheChassis}\thepage}
+\fancyhead[RE]{\color{TheChassis}\nouppercase{\leftmark}}
+\fancyhead[LO]{\color{TheChassis}\nouppercase{\rightmark}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\hbox to\headwidth{%
+    \color{TheChassis!50}\leaders\hrule height \headrulewidth\hfill}}
 
 % Admonition styling
 \usepackage{tcolorbox}
@@ -255,11 +378,23 @@ latex_elements = {
     {\Large\color{TheDust}#1}%
 }
 """,
-    # Chapter heading style - Sonny provides bold industrial look
-    "fncychap": r"\usepackage[Sonny]{fncychap}",
+    # Chapter heading style - Bjornstrup is professional book-like
+    "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
+    # Sphinx-specific styling (matches preamble colors)
+    # TitleColor: PhosphorBurn (212,0,0) - critical thresholds
+    # InnerLinkColor: ThermalWarning (139,0,0) - hot paths
+    # OuterLinkColor: ExposedCircuitry (255,215,0) - solidarity edges to external truth
+    "sphinxsetup": r"""
+        TitleColor={RGB}{212,0,0},
+        InnerLinkColor={RGB}{139,0,0},
+        OuterLinkColor={RGB}{255,215,0},
+    """,
     # Index formatting
     "printindex": r"\footnotesize\raggedright\printindex",
 }
 
 # LaTeX engine (xelatex has native Unicode support for Greek letters, arrows, etc.)
 latex_engine = "xelatex"
+
+# Use makeindex instead of xindy to avoid encoding issues
+latex_use_xindy = False

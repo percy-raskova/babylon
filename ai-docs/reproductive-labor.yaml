@@ -1,0 +1,220 @@
+# Reproductive Labor System
+# Marxist feminist extension to the economic simulation
+
+metadata:
+  created: 2025-12-26
+  status: PLANNED
+  theoretical_basis:
+    - "Marx, Capital Vol I (Simple Reproduction)"
+    - "Engels, Origin of the Family"
+    - "Combahee River Collective Statement (1977)"
+    - "Silvia Federici, Caliban and the Witch"
+    - "Lenin/Zetkin, Lenin on the Women's Question"
+
+# -----------------------------------------------------------------------------
+# PROBLEM STATEMENT
+# -----------------------------------------------------------------------------
+problem:
+  observation: |
+    Simulation terminates at tick 16 with outcome DIED when peripheral worker
+    wealth drops below DEATH_THRESHOLD (0.001). This models reproduction crisis
+    but lacks theoretical framing and buffer mechanisms.
+
+  current_model_flaw: |
+    Treats wealth as linear depletion to zero. Marx and feminist theorists show
+    it should be a reproduction CYCLE:
+
+    Labor -> Wages -> Subsistence + Reproductive Labor -> Reproduced Labor
+
+    The missing term is REPRODUCTIVE LABOR (cooking, caring, child-rearing):
+    - Unpaid: doesn't appear in wage calculations
+    - Gendered: overwhelmingly performed by women
+    - Invisible: not counted in GDP or capitalist accounting
+    - Essential: without it, labor power cannot be reproduced
+
+  key_insight: |
+    "Women's unpaid domestic labor, emotional labor, and reproductive labor
+    subsidizes capital accumulation by reproducing labor power at NO COST
+    to capital." - ProleWiki Essay on Prostitution
+
+# -----------------------------------------------------------------------------
+# THREE-TIER IMPLEMENTATION PLAN
+# -----------------------------------------------------------------------------
+
+tier_1:
+  name: "Minimal Viable Changes"
+  status: PLANNED
+  timeline: "Immediate (preserves MVP vertical slice)"
+
+  changes:
+    - id: subsistence_floor
+      description: "Add minimum wealth below which extraction is capped"
+      rationale: "Marx: 'value of labour-power is determined by the value of the necessaries'"
+      implementation:
+        file: src/babylon/config/defines.py
+        config:
+          core_subsistence_floor: 0.08  # Higher for labor aristocracy
+          periphery_subsistence_floor: 0.02  # Colonial depression of value
+
+    - id: reproductive_regeneration
+      description: "Workers regenerate wealth up to subsistence floor each tick"
+      rationale: "Represents reproductive labor restoring capacity to work"
+      implementation:
+        file: src/babylon/config/defines.py
+        config:
+          regeneration_rate: 0.01  # Per-tick regen up to floor
+          solidarity_regeneration_bonus: 0.005  # Bonus with SOLIDARITY edges
+
+    - id: capped_extraction
+      description: "ImperialRentSystem cannot extract below subsistence floor"
+      rationale: "Capital CANNOT extract more than workers can survive"
+      implementation:
+        file: src/babylon/engine/systems/economic.py
+        logic: |
+          extraction = min(extraction, worker.wealth - subsistence_floor)
+          unextracted = original_extraction - extraction  # New metric: CRISIS_PRESSURE
+
+    - id: reproduction_system
+      description: "New system after ImperialRentSystem for regeneration"
+      rationale: "Explicit modeling of reproductive labor cycle"
+      implementation:
+        file: src/babylon/engine/systems/reproduction.py  # NEW FILE
+        logic: |
+          solidarity_count = count_solidarity_edges(worker)
+          regen = base_rate + (solidarity_count * solidarity_bonus)
+          worker.wealth = min(worker.wealth + regen, subsistence_floor)
+
+tier_2:
+  name: "Intermediate Changes"
+  status: PLANNED
+  timeline: "Short-term (after Phase 4 complete)"
+
+  changes:
+    - id: debt_mechanism
+      description: "Workers can accrue debt when below subsistence"
+      rationale: "Buffer that delays crisis but creates future extraction"
+      implementation:
+        new_field: "SocialClass.debt: Currency"
+        logic: |
+          When wealth < subsistence:
+            debt += (subsistence - wealth)
+            wealth = subsistence  # Maintain consumption via debt
+          Debt creates future extraction drain
+          Debt crisis triggers when debt > threshold
+
+    - id: extraction_efficiency
+      description: "Starving workers produce less surplus value"
+      rationale: "Capital has incentive to maintain subsistence"
+      implementation:
+        logic: |
+          efficiency = sigmoid(worker.wealth / subsistence_floor)
+          actual_extraction = base_extraction * efficiency
+
+    - id: reproduction_pressure_metric
+      description: "Track when workers are AT subsistence floor"
+      rationale: "Visible indicator of stressed reproduction"
+      implementation:
+        new_metric: "reproduction_pressure"
+        calculation: "count of workers at subsistence floor / total workers"
+
+tier_3:
+  name: "Advanced Changes"
+  status: DEFERRED
+  timeline: "Future (theoretical completeness)"
+
+  changes:
+    - id: gendered_reproductive_labor
+      description: "Split SocialClass into gendered sub-agents"
+      rationale: "Federici: reproductive labor is gendered"
+      implementation:
+        new_model: "GenderedAgent"
+        tracks: ["reproductive_labor_hours", "wage_labor_hours"]
+        enables: "Wages for housework demands as consciousness factor"
+
+    - id: state_mediator
+      description: "State entity that taxes and redistributes"
+      rationale: "Capitalism's response to reproduction crisis"
+      implementation:
+        new_entity: "State"
+        functions:
+          - "Tax capital and workers"
+          - "Provide social welfare"
+          - "Austerity as extraction intensification"
+
+    - id: household_units
+      description: "Workers connected to households that pool resources"
+      rationale: "Engels: household as unit of reproduction"
+      implementation:
+        new_entity: "Household"
+        edges: ["HOUSEHOLD_MEMBER"]
+        pooling: "Shared subsistence buffer"
+
+# -----------------------------------------------------------------------------
+# THEORETICAL GROUNDING
+# -----------------------------------------------------------------------------
+
+theoretical_verification:
+  subsistence_floor:
+    marx: "'the price of labour-power... never sinks below it' (Capital Vol I)"
+    confirmed: true
+
+  differential_floors:
+    mlm_tw: "Imperial rent depresses peripheral wages below value"
+    marx: "Value of necessaries 'is known at any given epoch of a given society'"
+    confirmed: true
+
+  regeneration_via_solidarity:
+    combahee: "'we struggle together' - collective survival"
+    mutual_aid: "Survival mechanism outside commodity relations"
+    confirmed: true
+
+  capped_extraction:
+    marx: "'maintenance and reproduction of the working class remains a necessary condition'"
+    implication: "Capital cannot extract itself out of existence"
+    confirmed: true
+
+# -----------------------------------------------------------------------------
+# REFRAMING THE "DIED" OUTCOME
+# -----------------------------------------------------------------------------
+
+outcome_reframe:
+  current: "DIED - individual death"
+  proposed: "REPRODUCTION_CRISIS - systemic failure"
+
+  spectrum:
+    - state: "wealth > subsistence"
+      meaning: "Normal operation"
+
+    - state: "wealth AT subsistence"
+      meaning: "Reproduction pressure - strained but surviving"
+      new_metric: "reproduction_pressure"
+
+    - state: "wealth BELOW subsistence (via debt)"
+      meaning: "Crisis building - borrowed time"
+      new_metric: "debt_ratio"
+
+    - state: "wealth AT ZERO"
+      meaning: "Reproduction failure - even reproductive labor has failed"
+      historical_examples:
+        - "Bengal Famine (colonial extraction exceeded reproduction)"
+        - "Irish Famine (landlord extraction exceeded reproduction)"
+        - "Indigenous genocide (primitive accumulation)"
+
+  key_insight: |
+    The simulation dying at tick 16 is not "wrong" - it models what happens when
+    extraction EXCEEDS reproduction capacity. The modifications add the BUFFER
+    mechanisms that delay crisis and the METRICS that make the process visible.
+
+# -----------------------------------------------------------------------------
+# CROSS-REFERENCES
+# -----------------------------------------------------------------------------
+
+cross_references:
+  - file: ai-docs/imperial-circuit.yaml
+    relation: "Reproductive labor feeds into imperial rent extraction"
+  - file: ai-docs/topology-system.yaml
+    relation: "SOLIDARITY edges affect regeneration rate"
+  - file: ai-docs/formulas-spec.yaml
+    relation: "New formulas for regeneration and capped extraction"
+  - file: brainstorm/reproductive-labor-theory.md
+    relation: "Full theoretical analysis and source citations"

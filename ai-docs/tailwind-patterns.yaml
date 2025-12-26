@@ -1,0 +1,477 @@
+# Tailwind CSS Patterns & Quick Reference
+# ========================================
+# Distilled for Babylon NiceGUI development
+# Purpose: Quick lookup for common Tailwind patterns in our UI code
+#
+# C7 Library ID: /websites/v3_tailwindcss (2691 snippets, 85.9 score)
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-14"
+  purpose: |
+    Token-efficient Tailwind CSS reference focused on patterns used in
+    Babylon's NiceGUI components. Emphasizes:
+    - Arbitrary value syntax (critical for custom hex colors)
+    - Flexbox patterns (our primary layout method)
+    - Common gotchas when using Tailwind with NiceGUI
+  cross_references:
+    - "ai-docs/design-system.yaml (our color palette)"
+    - "ai-docs/nicegui-patterns.yaml (NiceGUI-specific patterns)"
+
+# =============================================================================
+# ARBITRARY VALUES (Most Critical for Our Use Case)
+# =============================================================================
+
+arbitrary_values:
+  description: |
+    Square bracket notation for one-off values not in the theme.
+    CRITICAL for our design system hex colors.
+
+  syntax: "property-[value]"
+
+  examples:
+    text_color: 'text-[#39FF14]'
+    background: 'bg-[#050505]'
+    border_color: 'border-[#404040]'
+    width: 'w-[200px]'
+    height: 'h-[calc(100vh-80px)]'
+    flex_basis: 'basis-[14.2857143%]'
+    margin: 'm-[17px]'
+    padding: 'p-[clamp(1rem,5vw,3rem)]'
+
+  our_palette_classes:
+    void: "bg-[#050505] text-[#050505] border-[#050505]"
+    wet_concrete: "bg-[#1A1A1A] text-[#1A1A1A] border-[#1A1A1A]"
+    dark_metal: "bg-[#404040] text-[#404040] border-[#404040]"
+    silver_dust: "bg-[#C0C0C0] text-[#C0C0C0] border-[#C0C0C0]"
+    data_green: "bg-[#39FF14] text-[#39FF14] border-[#39FF14]"
+    grow_light_purple: "bg-[#9D00FF] text-[#9D00FF] border-[#9D00FF]"
+    exposed_copper: "bg-[#FFD700] text-[#FFD700] border-[#FFD700]"
+    phosphor_burn_red: "bg-[#D40000] text-[#D40000] border-[#D40000]"
+
+  opacity_modifier:
+    description: "Add opacity with /XX suffix"
+    examples:
+      - "text-[#39FF14]/50  # 50% opacity"
+      - "bg-[#1A1A1A]/80   # 80% opacity"
+      - "border-[#404040]/60"
+
+# =============================================================================
+# FLEXBOX (Primary Layout Method)
+# =============================================================================
+
+flexbox:
+
+  container:
+    flex: "display: flex (block-level)"
+    inline_flex: "display: inline-flex"
+    direction:
+      flex_row: "flex-direction: row (default)"
+      flex_row_reverse: "flex-direction: row-reverse"
+      flex_col: "flex-direction: column"
+      flex_col_reverse: "flex-direction: column-reverse"
+
+  item_sizing:
+    flex_1: "flex: 1 1 0% (grow and shrink, ignore initial size)"
+    flex_auto: "flex: 1 1 auto (grow and shrink, consider initial size)"
+    flex_initial: "flex: 0 1 auto (shrink but don't grow)"
+    flex_none: "flex: none (don't grow or shrink)"
+
+  grow_shrink:
+    grow: "flex-grow: 1 (fill available space)"
+    grow_0: "flex-grow: 0 (don't grow)"
+    shrink: "flex-shrink: 1 (can shrink)"
+    shrink_0: "flex-shrink: 0 (don't shrink - IMPORTANT for fixed elements)"
+
+  basis:
+    description: "Initial size before flex grow/shrink"
+    examples:
+      basis_0: "flex-basis: 0px"
+      basis_full: "flex-basis: 100%"
+      basis_1_2: "flex-basis: 50%"
+      basis_1_3: "flex-basis: 33.333%"
+      basis_1_4: "flex-basis: 25%"
+      basis_auto: "flex-basis: auto"
+
+  alignment:
+    items_start: "align-items: flex-start"
+    items_center: "align-items: center"
+    items_end: "align-items: flex-end"
+    items_stretch: "align-items: stretch (default)"
+    items_baseline: "align-items: baseline"
+    justify_start: "justify-content: flex-start"
+    justify_center: "justify-content: center"
+    justify_end: "justify-content: flex-end"
+    justify_between: "justify-content: space-between"
+    justify_around: "justify-content: space-around"
+
+  common_patterns:
+    horizontal_center: "flex items-center justify-center"
+    space_between_row: "flex items-center justify-between"
+    vertical_stack: "flex flex-col"
+    horizontal_stack: "flex flex-row"
+    fill_available: "flex-1"
+    fixed_width_in_flex: "shrink-0 w-[200px]"
+
+# =============================================================================
+# GRID LAYOUT
+# =============================================================================
+
+grid:
+
+  columns:
+    grid_cols_1: "grid-template-columns: repeat(1, minmax(0, 1fr))"
+    grid_cols_2: "grid-template-columns: repeat(2, minmax(0, 1fr))"
+    grid_cols_3: "grid-template-columns: repeat(3, minmax(0, 1fr))"
+    grid_cols_4: "grid-template-columns: repeat(4, minmax(0, 1fr))"
+    grid_cols_none: "grid-template-columns: none"
+
+  spanning:
+    col_span_1: "grid-column: span 1 / span 1"
+    col_span_2: "grid-column: span 2 / span 2"
+    col_span_full: "grid-column: 1 / -1 (full width)"
+    col_span_N: "col-[span_N] for arbitrary spans"
+
+  gap:
+    gap_0: "gap: 0px"
+    gap_1: "gap: 0.25rem (4px)"
+    gap_2: "gap: 0.5rem (8px)"
+    gap_4: "gap: 1rem (16px)"
+    gap_8: "gap: 2rem (32px)"
+    gap_x_4: "column-gap: 1rem"
+    gap_y_4: "row-gap: 1rem"
+
+  nicegui_pattern: |
+    # NiceGUI grid with custom columns
+    ui.grid(columns="1fr 2fr 1fr").classes("w-full gap-4")
+
+# =============================================================================
+# SIZING
+# =============================================================================
+
+sizing:
+
+  width:
+    w_full: "width: 100%"
+    w_screen: "width: 100vw"
+    w_auto: "width: auto"
+    w_1_2: "width: 50%"
+    w_1_3: "width: 33.333%"
+    w_1_4: "width: 25%"
+    w_fit: "width: fit-content"
+    w_min: "width: min-content"
+    w_max: "width: max-content"
+    # Fixed sizes: w-0, w-1, w-2, ..., w-96 (0px to 24rem)
+
+  height:
+    h_full: "height: 100%"
+    h_screen: "height: 100vh"
+    h_auto: "height: auto"
+    h_fit: "height: fit-content"
+    # Fixed sizes: h-0, h-1, h-2, ..., h-96
+
+  min_max:
+    min_h_0: "min-height: 0px (CRITICAL for flex overflow fix!)"
+    min_h_full: "min-height: 100%"
+    min_h_screen: "min-height: 100vh"
+    max_h_full: "max-height: 100%"
+    max_h_screen: "max-height: 100vh"
+    min_w_0: "min-width: 0px"
+    max_w_full: "max-width: 100%"
+
+  size_shorthand:
+    description: "Set both width and height"
+    size_full: "width: 100%; height: 100%"
+    size_16: "width: 4rem; height: 4rem"
+
+# =============================================================================
+# TYPOGRAPHY
+# =============================================================================
+
+typography:
+
+  font_family:
+    font_sans: "font-family: ui-sans-serif, system-ui, ..."
+    font_serif: "font-family: ui-serif, Georgia, ..."
+    font_mono: "font-family: ui-monospace, monospace (OUR DEFAULT)"
+
+  font_size:
+    text_xs: "font-size: 0.75rem (12px)"
+    text_sm: "font-size: 0.875rem (14px)"
+    text_base: "font-size: 1rem (16px)"
+    text_lg: "font-size: 1.125rem (18px)"
+    text_xl: "font-size: 1.25rem (20px)"
+    text_2xl: "font-size: 1.5rem (24px)"
+    text_3xl: "font-size: 1.875rem (30px)"
+
+  font_weight:
+    font_normal: "font-weight: 400"
+    font_medium: "font-weight: 500"
+    font_semibold: "font-weight: 600"
+    font_bold: "font-weight: 700"
+
+  text_transform:
+    uppercase: "text-transform: uppercase"
+    lowercase: "text-transform: lowercase"
+    capitalize: "text-transform: capitalize"
+    normal_case: "text-transform: none"
+
+  letter_spacing:
+    tracking_tighter: "letter-spacing: -0.05em"
+    tracking_tight: "letter-spacing: -0.025em"
+    tracking_normal: "letter-spacing: 0em"
+    tracking_wide: "letter-spacing: 0.025em"
+    tracking_wider: "letter-spacing: 0.05em (OUR LABEL STYLE)"
+    tracking_widest: "letter-spacing: 0.1em"
+
+  line_height:
+    leading_none: "line-height: 1"
+    leading_tight: "line-height: 1.25"
+    leading_normal: "line-height: 1.5"
+    leading_relaxed: "line-height: 1.625"
+    leading_loose: "line-height: 2"
+
+  our_patterns:
+    labels: "font-mono uppercase tracking-wider text-xs"
+    body: "font-mono leading-relaxed"
+    terminal: "font-mono text-sm leading-tight"
+    data: "font-mono tabular-nums"
+
+# =============================================================================
+# OVERFLOW & SCROLLING
+# =============================================================================
+
+overflow:
+
+  basic:
+    overflow_auto: "overflow: auto (scrollbars when needed)"
+    overflow_hidden: "overflow: hidden (clip content)"
+    overflow_visible: "overflow: visible (no clipping)"
+    overflow_scroll: "overflow: scroll (always show scrollbars)"
+
+  axis_specific:
+    overflow_x_auto: "overflow-x: auto"
+    overflow_y_auto: "overflow-y: auto"
+    overflow_x_hidden: "overflow-x: hidden"
+    overflow_y_hidden: "overflow-y: hidden"
+    overflow_x_scroll: "overflow-x: scroll"
+    overflow_y_scroll: "overflow-y: scroll"
+
+  text_overflow:
+    truncate: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap"
+    text_ellipsis: "text-overflow: ellipsis"
+    text_clip: "text-overflow: clip"
+
+  word_breaking:
+    break_normal: "word-break: normal"
+    break_words: "overflow-wrap: break-word"
+    break_all: "word-break: break-all (USEFUL for long strings)"
+
+# =============================================================================
+# BORDERS & SPACING
+# =============================================================================
+
+borders:
+
+  width:
+    border: "border-width: 1px (default)"
+    border_0: "border-width: 0px"
+    border_2: "border-width: 2px"
+    border_4: "border-width: 4px"
+    border_t: "border-top-width: 1px"
+    border_r: "border-right-width: 1px"
+    border_b: "border-bottom-width: 1px"
+    border_l: "border-left-width: 1px"
+
+  radius:
+    rounded_none: "border-radius: 0px"
+    rounded_sm: "border-radius: 0.125rem (2px)"
+    rounded: "border-radius: 0.25rem (4px)"
+    rounded_md: "border-radius: 0.375rem (6px)"
+    rounded_lg: "border-radius: 0.5rem (8px)"
+    rounded_xl: "border-radius: 0.75rem (12px)"
+    rounded_full: "border-radius: 9999px (pill shape)"
+
+  our_pattern: "border border-[#404040] rounded-md"
+
+spacing:
+
+  padding:
+    p_0: "padding: 0px"
+    p_1: "padding: 0.25rem (4px)"
+    p_2: "padding: 0.5rem (8px)"
+    p_4: "padding: 1rem (16px)"
+    p_8: "padding: 2rem (32px)"
+    px_4: "padding-left/right: 1rem"
+    py_4: "padding-top/bottom: 1rem"
+    pt_4: "padding-top: 1rem"
+    pb_4: "padding-bottom: 1rem"
+
+  margin:
+    m_0: "margin: 0px"
+    m_auto: "margin: auto (centering)"
+    mx_auto: "margin-left/right: auto (horizontal center)"
+    my_4: "margin-top/bottom: 1rem"
+    mt_4: "margin-top: 1rem"
+    mb_4: "margin-bottom: 1rem"
+    ml_4: "margin-left: 1rem"
+    mr_4: "margin-right: 1rem"
+    # Negative margins: -m-4, -mt-4, etc.
+
+# =============================================================================
+# DISPLAY & VISIBILITY
+# =============================================================================
+
+display:
+  block: "display: block"
+  inline_block: "display: inline-block"
+  inline: "display: inline"
+  flex: "display: flex"
+  inline_flex: "display: inline-flex"
+  grid: "display: grid"
+  hidden: "display: none"
+
+visibility:
+  visible: "visibility: visible"
+  invisible: "visibility: hidden (preserves space)"
+
+# =============================================================================
+# RESPONSIVE BREAKPOINTS
+# =============================================================================
+
+breakpoints:
+
+  defaults:
+    sm: "640px  - @media (min-width: 640px)"
+    md: "768px  - @media (min-width: 768px)"
+    lg: "1024px - @media (min-width: 1024px)"
+    xl: "1280px - @media (min-width: 1280px)"
+    2xl: "1536px - @media (min-width: 1536px)"
+
+  usage:
+    description: |
+      Tailwind is mobile-first. Unprefixed utilities apply to all sizes.
+      Prefixed utilities apply at that breakpoint AND ABOVE.
+    examples:
+      - "text-sm md:text-base  # small on mobile, base on md+"
+      - "flex-col md:flex-row  # stack on mobile, row on md+"
+      - "hidden md:block       # hidden on mobile, visible on md+"
+      - "w-full md:w-1/2       # full width mobile, half on md+"
+
+# =============================================================================
+# COMMON COMPONENT PATTERNS
+# =============================================================================
+
+component_patterns:
+
+  terminal_output:
+    classes: "bg-[#050505] border border-[#404040] p-4 font-mono text-sm overflow-auto"
+    text: "text-[#39FF14]"
+
+  panel_card:
+    classes: "bg-[#1A1A1A] border border-[#404040] rounded-md p-4"
+
+  section_label:
+    classes: "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs"
+
+  control_button:
+    classes: "border border-[#39FF14]/60 text-[#39FF14] font-mono px-4 py-2"
+    hover: "hover:bg-[#39FF14]/10"
+    active: "active:bg-[#39FF14]/20"
+
+  scrollable_container:
+    classes: "w-full overflow-auto"
+    note: "Combine with explicit height or flex-1 + min-h-0"
+
+  full_height_column:
+    classes: "flex flex-col h-full"
+    children: "flex-1 min-h-0"
+
+# =============================================================================
+# GOTCHAS & NICEGUI SPECIFICS
+# =============================================================================
+
+gotchas:
+
+  - issue: "Classes not applying in NiceGUI"
+    cause: "NiceGUI uses Quasar which may override some styles"
+    fix: "Use .style() for critical CSS, or increase specificity"
+
+  - issue: "Height 100% not working"
+    cause: "Parent doesn't have explicit height"
+    fix: "Use h-screen or set parent height explicitly with style()"
+
+  - issue: "Flex child overflows container"
+    cause: "min-height defaults to auto in flexbox"
+    fix: "Add min-h-0 to flex children"
+
+  - issue: "calc() in classes"
+    cause: "Tailwind classes don't support calc directly"
+    fix: "Use arbitrary values: h-[calc(100vh-80px)] or .style()"
+
+  - issue: "Custom colors not working"
+    cause: "Missing bracket syntax or invalid hex"
+    fix: "Use text-[#HEXCODE] with valid 6-digit hex"
+
+  - issue: "Responsive classes not triggering"
+    cause: "Tailwind is mobile-first, breakpoints are min-width"
+    fix: "md:class only applies at 768px and ABOVE"
+
+nicegui_specifics:
+
+  classes_vs_style:
+    description: |
+      .classes() is for Tailwind/Quasar classes.
+      .style() is for raw CSS properties.
+      Some complex CSS (like calc) works better in .style().
+    example: |
+      # Tailwind classes
+      ui.element().classes("flex flex-col gap-4")
+
+      # Raw CSS for complex values
+      ui.element().style("height: calc(100vh - 80px)")
+
+  chaining:
+    example: |
+      ui.label("text").classes("text-[#39FF14] font-mono").style("flex: 1")
+
+# =============================================================================
+# QUICK LOOKUP TABLE
+# =============================================================================
+
+quick_lookup:
+  # Spacing (multiply by 4 for pixels)
+  "p-1": "4px"
+  "p-2": "8px"
+  "p-4": "16px"
+  "p-8": "32px"
+
+  # Text sizes
+  "text-xs": "12px"
+  "text-sm": "14px"
+  "text-base": "16px"
+  "text-lg": "18px"
+  "text-xl": "20px"
+  "text-2xl": "24px"
+
+  # Border radius
+  "rounded-sm": "2px"
+  "rounded": "4px"
+  "rounded-md": "6px"
+  "rounded-lg": "8px"
+
+  # Common widths
+  "w-full": "100%"
+  "w-1/2": "50%"
+  "w-1/3": "33.33%"
+  "w-1/4": "25%"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  c7_library: "/websites/v3_tailwindcss"
+  official_docs: "https://tailwindcss.com/docs"
+  cheat_sheet: "https://nerdcave.com/tailwind-cheat-sheet"
+  our_design_system: "ai-docs/design-system.yaml"

@@ -1,0 +1,540 @@
+# UI Wireframes Specification
+# Visual Layout for Complex Game Systems
+#
+# "If you can't diagram it, you can't build it."
+# - UI Design Principle
+#
+# This document specifies ASCII wireframes for complex game systems
+# that require careful UI design to be understandable.
+
+meta:
+  created: "2025-12-26"
+  purpose: "Visualize complex systems to guide implementation"
+  issue_id: "UI-001"
+  status: "SPEC_COMPLETE"
+  design_principle: "Progressive disclosure - show complexity only when needed"
+
+# =============================================================================
+# DESIGN PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_insight: |
+    Complex systems need clear visual metaphors.
+    Players should understand at a glance, then dig deeper if curious.
+
+  visual_hierarchy:
+    - "Primary: Current state (what IS)"
+    - "Secondary: Trends (where it's GOING)"
+    - "Tertiary: Details (WHY it's happening)"
+
+  accessibility:
+    - "Color is never the only indicator"
+    - "Text labels accompany all icons"
+    - "Critical information in center of screen"
+
+# =============================================================================
+# MAIN GAME SCREEN LAYOUT
+# =============================================================================
+
+main_screen:
+  description: "Primary game interface showing all systems"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  BABYLON - THE FALL OF AMERICA                          [Tick: 042]    │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │                                                                         │
+    │  ┌─────────────────────────────┐  ┌─────────────────────────────────┐  │
+    │  │     TOPOLOGY VIEW           │  │      RESOURCE PANEL             │  │
+    │  │                             │  │                                 │  │
+    │  │    [C_b]───────[C_la]       │  │  Cadre Labor:    ████░░  15/30  │  │
+    │  │      │           │         │  │  Sympathizers:   ██████  450    │  │
+    │  │      │ EXPLOIT   │ WAGES   │  │  Reputation:     ███░░░  0.35   │  │
+    │  │      ↓           ↓         │  │  Theor. Labor:   █████░  25     │  │
+    │  │    [P_w]═══════[L_u]       │  │                                 │  │
+    │  │      ║  SOLIDARITY  ║       │  │  [▲ +2%] [▼ -1%] [─ 0%] [▼ -3%]│  │
+    │  │      ╚══════════════╝       │  │        (trend indicators)      │  │
+    │  │                             │  ├─────────────────────────────────┤  │
+    │  │  Territory: [MUD]           │  │      COHESION GAUGE             │  │
+    │  │  Heat: ░░░░░█░░░░  0.2      │  │                                 │  │
+    │  │                             │  │  Cohesion:  ████████░░  0.75    │  │
+    │  └─────────────────────────────┘  │  Entropy:   ██░░░░░░░░  0.20    │  │
+    │                                    │  Discipline: ███████░░░  0.65   │  │
+    │  ┌─────────────────────────────┐  │  Chauvinism: █░░░░░░░░░  0.08   │  │
+    │  │     GRAMSCIAN WIRE          │  │                                 │  │
+    │  │                             │  │  [!] Chauvinism rising          │  │
+    │  │  Corporate    │  Liberated  │  └─────────────────────────────────┘  │
+    │  │  ─────────────┼───────────  │                                       │
+    │  │  "Officers    │ >>> STATE   │  ┌─────────────────────────────────┐  │
+    │  │   restored    │  VIOLENCE   │  │      ACTION MENU                │  │
+    │  │   order..."   │ SOLIDARITY  │  │                                 │  │
+    │  │               │ REQUIRED    │  │  [1] Agitate       (10 SL)      │  │
+    │  │               │ <<<         │  │  [2] Organize      (5 CL)       │  │
+    │  │                             │  │  [3] Educate       (5 TL)       │  │
+    │  └─────────────────────────────┘  │  [4] Strike        (50 SL)      │  │
+    │                                    │  [D] Doctrine Tree              │  │
+    │  ┌─────────────────────────────┐  │  [P] Panopticon View            │  │
+    │  │     EVENT LOG               │  │  [I] Intel Overlay              │  │
+    │  │                             │  └─────────────────────────────────┘  │
+    │  │  [!] EXCESSIVE_FORCE in T2  │                                       │
+    │  │  [i] Consciousness +0.05    │  ┌─────────────────────────────────┐  │
+    │  │  [$] Rent extracted: 120    │  │      STATUS BAR                 │  │
+    │  │  [↑] Solidarity formed P_w  │  │                                 │  │
+    │  │                             │  │  Phase: [ACCUMULATION]          │  │
+    │  └─────────────────────────────┘  │  Crisis in: ~15 ticks           │  │
+    │                                    │  Bifurcation: [UNDETERMINED]    │  │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  panels:
+    topology_view:
+      purpose: "Shows the Imperial Circuit graph"
+      elements:
+        - "Nodes: Social classes (C_b, C_la, P_w, L_u)"
+        - "Edges: EXPLOITATION (→), SOLIDARITY (═), WAGES (→)"
+        - "Territory indicator with heat gauge"
+
+    resource_panel:
+      purpose: "Shows player resources with trends"
+      elements:
+        - "Bar charts for each resource"
+        - "Numeric values"
+        - "Trend arrows (▲ growing, ▼ declining, ─ stable)"
+
+    cohesion_gauge:
+      purpose: "Internal organizational health"
+      elements:
+        - "Cohesion bar (higher = healthier)"
+        - "Entropy bar (lower = healthier)"
+        - "Discipline/Chauvinism counters"
+        - "Warning icons when thresholds crossed"
+
+    gramscian_wire:
+      purpose: "Dual narrative display"
+      elements:
+        - "Split view: Corporate vs Liberated"
+        - "Same event, different framing"
+        - "Visual emphasis on contradiction"
+
+    event_log:
+      purpose: "Recent game events"
+      elements:
+        - "Icon + brief description"
+        - "Color-coded by type (danger, info, economic)"
+
+    action_menu:
+      purpose: "Available player actions"
+      elements:
+        - "Numbered hotkeys"
+        - "Cost in parentheses"
+        - "Grayed out if insufficient resources"
+
+    status_bar:
+      purpose: "Game phase and trajectory"
+      elements:
+        - "Current phase (ACCUMULATION, CRISIS, RUPTURE)"
+        - "Estimated ticks to crisis"
+        - "Bifurcation prediction (when determinable)"
+
+# =============================================================================
+# DOCTRINE TREE VIEW
+# =============================================================================
+
+doctrine_tree:
+  description: "Ideological tech tree with 8 trunks and tag gates"
+
+  challenge: |
+    How to display a complex DAG with:
+    - 8 trunks (4 main + 4 synthesis)
+    - Multiple nodes per trunk
+    - Tag prerequisites (requires/unlocks)
+    - Degeneration paths
+    - Current position indicator
+
+  solution: "Radial layout with detail panel"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  DOCTRINE TREE                                          [Close: ESC]   │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │                                                                         │
+    │                          SCIENTIFIC                                     │
+    │                              │                                          │
+    │                         [Materialism]                                   │
+    │                        ╱            ╲                                   │
+    │               [Class Analysis]    [Dialectics]                          │
+    │                     │                   │                               │
+    │              [Internationalism]    [Praxis]◄── YOU ARE HERE             │
+    │                     │                   │                               │
+    │                     ╲                  ╱                                │
+    │                      ╲                ╱                                 │
+    │   MOVEMENTISM ◄───────[Junction]───────► VANGUARDISM                   │
+    │        │                   │                    │                       │
+    │   [Spontaneity]       [M-L Core]          [Democratic Centralism]       │
+    │        │                   │                    │                       │
+    │   [Tailism]          [Mass Line]          [Cadre Development]          │
+    │        ↓                   │                    ↓                       │
+    │   TRAP: Reformism    [People's War]       TRAP: Sectarianism           │
+    │                            │                                            │
+    │                       [Protracted]                                      │
+    │                            │                                            │
+    │                      [Liberation]                                       │
+    │                                                                         │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │  SELECTED: [Praxis]                                                     │
+    │  ─────────────────────────────────────────────────────────────────────  │
+    │  Status: UNLOCKED                          Cost: 15 TL                  │
+    │  Prerequisites: Dialectics                                              │
+    │  Unlocks: [Junction], [Rectification]                                   │
+    │  Tags: +Revolutionary, +Disciplined                                     │
+    │                                                                         │
+    │  "Theory without practice is sterile. Practice without theory is       │
+    │   blind. The unity of theory and practice is the hallmark of           │
+    │   scientific socialism."                                                │
+    │                                                                         │
+    │  [ADVANCE] (15 TL)                                      [CANCEL]        │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  visual_conventions:
+    nodes:
+      unlocked: "[Node Name]"
+      locked: "(Node Name)"
+      current: "[Node Name]◄── YOU ARE HERE"
+      trap: "TRAP: Name"
+
+    edges:
+      progression: "│ or ─"
+      fork: "╱ or ╲"
+      degeneration: "◄───"
+
+    trunks:
+      labels: "SCIENTIFIC, MOVEMENTISM, VANGUARDISM, etc."
+      position: "At branch points"
+
+  interaction:
+    navigation: "Arrow keys move selection"
+    inspect: "Enter shows detail panel"
+    advance: "A key advances if affordable"
+    zoom: "Mouse wheel or +/- keys"
+
+# =============================================================================
+# PANOPTICON VIEW
+# =============================================================================
+
+panopticon_view:
+  description: "State attention economy - Thread allocation display"
+
+  challenge: |
+    How to show:
+    - Available Threads (State's attention budget)
+    - Where Threads are allocated (which territories/targets)
+    - What each Thread is doing (Monitor/Investigate/Suppress/QRF)
+    - Threat assessments for each target
+    - State expansion triggers
+
+  solution: "Eye metaphor with thread lines to targets"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  THE PANOPTICON                                         [Close: ESC]   │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │                                                                         │
+    │  STATE ATTENTION BUDGET                                                 │
+    │  ════════════════════════════════════════════════════                  │
+    │  Threads: [●][●][●][●][○][○]  4/6 allocated  [RESERVE: 2]              │
+    │                                                                         │
+    │                              ┌─────────┐                                │
+    │                              │   EYE   │                                │
+    │                              │  ◉──◉   │                                │
+    │                              │ THE     │                                │
+    │                              │ STATE   │                                │
+    │                              │ SEES    │                                │
+    │                              └────┬────┘                                │
+    │                                   │                                     │
+    │           ┌───────────────────────┼───────────────────────┐            │
+    │           │                       │                       │            │
+    │           ▼                       ▼                       ▼            │
+    │    ┌─────────────┐         ┌─────────────┐         ┌─────────────┐     │
+    │    │ Territory 1 │         │ Territory 2 │         │ Territory 3 │     │
+    │    │ [WATER]     │         │ [MUD]       │         │ [DESERT]    │     │
+    │    ├─────────────┤         ├─────────────┤         ├─────────────┤     │
+    │    │ Threat: 0.3 │         │ Threat: 0.7 │         │ Threat: 0.2 │     │
+    │    │ Mode: MON   │         │ Mode: SUPP  │         │ Mode: ---   │     │
+    │    │ Threads: 0.5│         │ Threads: 2  │         │ Threads: 0  │     │
+    │    └─────────────┘         └─────────────┘         └─────────────┘     │
+    │          │                       │                                      │
+    │          │                       │                                      │
+    │    ┌─────────────┐         ┌─────────────┐                             │
+    │    │ Your Org    │         │ Decoy Org   │         [No Target]         │
+    │    │ [VANGUARD]  │         │ [NETWORKED] │                             │
+    │    ├─────────────┤         ├─────────────┤                             │
+    │    │ Threat: 0.6 │         │ Threat: 0.4 │                             │
+    │    │ Mode: INV   │         │ Mode: MON   │                             │
+    │    │ Threads: 1  │         │ Threads: 0.5│                             │
+    │    │ [!] DOSSIER │         │             │                             │
+    │    └─────────────┘         └─────────────┘                             │
+    │                                                                         │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │  EXPANSION TRIGGERS                                                     │
+    │  Thread Saturation: ████████░░ 80%  [WARNING: May expand soon]         │
+    │  State Legitimacy:  ██████░░░░ 60%  [Stable]                           │
+    │                                                                         │
+    │  [!] If saturation hits 90% for 3 ticks, State gains +1 Thread         │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  mode_indicators:
+    monitor: "MON (gray) - Passive surveillance"
+    investigate: "INV (yellow) - Active intel gathering"
+    suppress: "SUPP (orange) - Active disruption"
+    qrf: "QRF (red) - Kinetic response"
+
+  threat_visualization:
+    low: "░░░░░ (0.0-0.3)"
+    medium: "███░░ (0.3-0.6)"
+    high: "█████ (0.6-1.0)"
+
+  strategic_info:
+    - "Shows which targets absorb State attention"
+    - "Reveals blind spots where Threads aren't allocated"
+    - "Warns when State is about to expand capacity"
+
+# =============================================================================
+# FOG OF WAR / INTEL OVERLAY
+# =============================================================================
+
+fog_of_war:
+  description: "Epistemic horizon - what player can and cannot see"
+
+  challenge: |
+    How to show:
+    - WATER territories (reliable intel)
+    - MUD territories (partial intel)
+    - DESERT territories (masked/unreliable intel)
+    - Intel confidence levels
+    - Fish in Water mechanics
+
+  solution: "Opacity overlay with confidence indicators"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  INTEL OVERLAY                                          [Close: ESC]   │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │                                                                         │
+    │  EPISTEMIC HORIZON                                                      │
+    │  ═══════════════════════════════════════════════════════════           │
+    │                                                                         │
+    │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐         │
+    │  │   TERRITORY 1   │  │   TERRITORY 2   │  │   TERRITORY 3   │         │
+    │  │   [WATER]       │  │   [MUD]         │  │   [DESERT]      │         │
+    │  │                 │  │                 │  │                 │         │
+    │  │   ┌───────────┐ │  │   ┌───────────┐ │  │   ┌───────────┐ │         │
+    │  │   │ Clear     │ │  │   │ Partial   │ │  │   │ ░░░░░░░░░ │ │         │
+    │  │   │ Vision    │ │  │   │ Vision    │ │  │   │ ░░MASKED░░│ │         │
+    │  │   │           │ │  │   │           │ │  │   │ ░░░░░░░░░ │ │         │
+    │  │   │ Classes:  │ │  │   │ Classes:  │ │  │   │ Classes:  │ │         │
+    │  │   │  P_w: 120 │ │  │   │  P_w: ~80 │ │  │   │  P_w: ??? │ │         │
+    │  │   │  L_u: 45  │ │  │   │  L_u: ?   │ │  │   │  L_u: ??? │ │         │
+    │  │   │           │ │  │   │           │ │  │   │           │ │         │
+    │  │   │ Consc:    │ │  │   │ Consc:    │ │  │   │ Consc:    │ │         │
+    │  │   │  0.65     │ │  │   │  0.4-0.6  │ │  │   │ [UNKNOWN] │ │         │
+    │  │   │           │ │  │   │           │ │  │   │           │ │         │
+    │  │   │ State:    │ │  │   │ State:    │ │  │   │ State:    │ │         │
+    │  │   │  2 Threads│ │  │   │  1 Thread?│ │  │   │ [UNKNOWN] │ │         │
+    │  │   └───────────┘ │  │   └───────────┘ │  │   └───────────┘ │         │
+    │  │                 │  │                 │  │                 │         │
+    │  │ Confidence: 95% │  │ Confidence: 60% │  │ Confidence: 10% │         │
+    │  │ Source: FISH    │  │ Source: RUMOR   │  │ Source: GUESS   │         │
+    │  └─────────────────┘  └─────────────────┘  └─────────────────┘         │
+    │                                                                         │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │  INTEL SOURCES                                                          │
+    │  ─────────────────────────────────────────────────────────────────────  │
+    │  [FISH] Fish in Water - cadre embedded in population (high confidence) │
+    │  [RUMOR] Rumor network - sympathizer reports (medium confidence)       │
+    │  [GUESS] State monitoring - unreliable, may be disinformation (low)    │
+    │                                                                         │
+    │  [!] Actions in DESERT territories may fail due to bad intel           │
+    │  [i] Build SOLIDARITY edges to improve intel in MUD territories        │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  visibility_levels:
+    water:
+      display: "Clear vision"
+      data_accuracy: "Exact values"
+      confidence: "90-100%"
+      intel_source: "FISH (embedded cadre)"
+
+    mud:
+      display: "Partial vision"
+      data_accuracy: "Ranges (~80, 0.4-0.6)"
+      confidence: "50-80%"
+      intel_source: "RUMOR (sympathizers)"
+
+    desert:
+      display: "Masked (░░░)"
+      data_accuracy: "??? or [UNKNOWN]"
+      confidence: "10-30%"
+      intel_source: "GUESS (unreliable)"
+
+  disinformation_warning: |
+    In DESERT territories, displayed values may be WRONG.
+    State can feed false intel. Player must account for this.
+
+# =============================================================================
+# GRAMSCIAN WIRE (FULL VIEW)
+# =============================================================================
+
+gramscian_wire_full:
+  description: "Narrative warfare interface - hegemony contestation"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  THE WIRE - NARRATIVE WARFARE                           [Close: ESC]   │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │                                                                         │
+    │  HEGEMONY METER                                                         │
+    │  ════════════════════════════════════════════════════════════          │
+    │  STATE ████████████████████░░░░░░░░░░░░░░░░░░░░ COUNTER                │
+    │        ◄───────────────────┬───────────────────►                       │
+    │                            │                                            │
+    │                      [CONTESTED]                                        │
+    │                       Current: 0.65 State / 0.35 Counter                │
+    │                                                                         │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │                                                                         │
+    │  NARRATIVE STREAMS                                                      │
+    │  ═══════════════════════════════════════════════════════════           │
+    │                                                                         │
+    │  ┌────────────────────────────┐  ┌────────────────────────────┐        │
+    │  │ CORPORATE FEED             │  │ LIBERATED SIGNAL           │        │
+    │  │ (State Narrative)          │  │ (Counter-Narrative)        │        │
+    │  ├────────────────────────────┤  ├────────────────────────────┤        │
+    │  │                            │  │                            │        │
+    │  │ BREAKING: Police restore   │  │ >>> BREAKING <<<           │        │
+    │  │ order after disturbances   │  │ STATE VIOLENCE AGAINST     │        │
+    │  │ in downtown area.          │  │ PEACEFUL PROTESTERS        │        │
+    │  │                            │  │                            │        │
+    │  │ Officials praised for      │  │ 15 INJURED, 3 CRITICAL     │        │
+    │  │ "measured response"        │  │ SOLIDARITY REQUIRED NOW    │        │
+    │  │                            │  │                            │        │
+    │  │ [Reach: 85%]               │  │ [Reach: 25%]               │        │
+    │  │ [Credibility: 0.7]         │  │ [Credibility: 0.9]         │        │
+    │  └────────────────────────────┘  └────────────────────────────┘        │
+    │                                                                         │
+    │  ┌────────────────────────────┐  ┌────────────────────────────┐        │
+    │  │ Economic adjustment period │  │ >>> THE SYSTEM CANNOT <<<  │        │
+    │  │ requires temporary cuts... │  │ >>> SUSTAIN ITSELF <<<     │        │
+    │  │                            │  │                            │        │
+    │  │ [Reach: 90%]               │  │ [Reach: 15%]               │        │
+    │  │ [Credibility: 0.6]         │  │ [Credibility: 0.95]        │        │
+    │  └────────────────────────────┘  └────────────────────────────┘        │
+    │                                                                         │
+    ├─────────────────────────────────────────────────────────────────────────┤
+    │  NARRATIVE ACTIONS                                    Cost: Reputation │
+    │  ─────────────────────────────────────────────────────────────────────  │
+    │  [1] Counter-Narrative     (0.05 Rep) - Challenge specific story       │
+    │  [2] Alternative Framing   (0.10 Rep) - Reframe event meaning          │
+    │  [3] Evidence Campaign     (0.15 Rep) - Expose contradiction           │
+    │  [4] Mass Distribution     (0.20 Rep) - Increase Reach dramatically    │
+    │                                                                         │
+    │  [i] Hegemony shifts slowly. Consistent messaging beats intensity.     │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  mechanics:
+    hegemony_meter:
+      range: "[0, 1] where 0 = full State control, 1 = counter-hegemonic"
+      display: "Tug-of-war bar with current position"
+
+    narrative_attributes:
+      reach: "What percentage of population sees this narrative"
+      credibility: "How believable is this source (0-1)"
+      effect: "Reach × Credibility = Hegemony shift"
+
+    player_actions:
+      counter_narrative: "Challenge specific story"
+      alternative_framing: "Reframe event meaning"
+      evidence_campaign: "Expose State contradictions"
+      mass_distribution: "Increase counter-narrative reach"
+
+# =============================================================================
+# CRISIS OVERLAY
+# =============================================================================
+
+crisis_overlay:
+  description: "Displayed during RUPTURE events and bifurcation"
+
+  ascii_wireframe: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                                                                         │
+    │                                                                         │
+    │                    ╔═══════════════════════════════╗                   │
+    │                    ║                               ║                   │
+    │                    ║   THE METABOLIC RIFT OPENS    ║                   │
+    │                    ║                               ║                   │
+    │                    ║   ─────────────────────────   ║                   │
+    │                    ║                               ║                   │
+    │                    ║   The system can no longer    ║                   │
+    │                    ║   reproduce itself.           ║                   │
+    │                    ║                               ║                   │
+    │                    ║   What happens next depends   ║                   │
+    │                    ║   on what was built before.   ║                   │
+    │                    ║                               ║                   │
+    │                    ╚═══════════════════════════════╝                   │
+    │                                                                         │
+    │                         BIFURCATION IMMINENT                           │
+    │                                                                         │
+    │              ┌─────────────────┬─────────────────┐                     │
+    │              │   FASCISM       │   REVOLUTION    │                     │
+    │              │   ░░░░░░░░░░    │   ██████████    │                     │
+    │              │   Probability:  │   Probability:  │                     │
+    │              │   35%           │   65%           │                     │
+    │              │                 │                 │                     │
+    │              │   Conditions:   │   Conditions:   │                     │
+    │              │   - Low solidar │   - High solidar│                     │
+    │              │   - High chauvn │   - Cadre ready │                     │
+    │              │   - Atomization │   - Mass support│                     │
+    │              └─────────────────┴─────────────────┘                     │
+    │                                                                         │
+    │                    [Continue to see outcome...]                        │
+    │                                                                         │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  elements:
+    dramatic_pause: "Screen darkens, crisis message appears"
+    bifurcation_bar: "Shows probability of each outcome"
+    condition_list: "Explains WHY this outcome is likely"
+    continue_prompt: "Player must acknowledge to proceed"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  framework: "NiceGUI with Tailwind CSS"
+
+  component_mapping:
+    main_screen: "ui.row/ui.column layout"
+    topology_view: "NetworkX graph rendered via ECharts or D3"
+    resource_panel: "ui.linear_progress bars"
+    event_log: "ui.log or scrollable ui.column"
+    action_menu: "ui.button_group or keyboard shortcuts"
+
+  responsive_design:
+    desktop: "Full layout as shown"
+    tablet: "Stacked panels, collapsible sections"
+    mobile: "Single column, swipe between views"
+
+  accessibility:
+    keyboard_nav: "Full keyboard navigation"
+    screen_reader: "ARIA labels on all elements"
+    color_blind: "Patterns + text, not just color"
+
+  performance:
+    graph_rendering: "Debounce updates, batch redraws"
+    event_log: "Virtual scrolling for long lists"
+    animations: "CSS transitions, not JS animation loops"
+
+  files:
+    main_ui: "src/babylon/ui/main.py"
+    components: "src/babylon/ui/components/"
+    styles: "src/babylon/ui/styles/"

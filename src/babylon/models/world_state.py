@@ -27,6 +27,7 @@ from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType
+from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
     pass
@@ -50,7 +51,8 @@ class WorldState(BaseModel):
         entities: Map of entity ID to SocialClass (the nodes)
         territories: Map of territory ID to Territory (Layer 0 nodes)
         relationships: List of Relationship edges (the edges)
-        event_log: Recent events for narrative/debugging
+        event_log: Recent events for narrative/debugging (string format)
+        events: Structured simulation events for analysis (Sprint 3.1)
         economy: Global economic state for dynamic balance (Sprint 3.4.4)
     """
 
@@ -80,6 +82,11 @@ class WorldState(BaseModel):
     event_log: list[str] = Field(
         default_factory=list,
         description="Recent events for narrative/debugging",
+    )
+
+    events: list[SimulationEvent] = Field(
+        default_factory=list,
+        description="Structured simulation events for analysis (Sprint 3.1)",
     )
 
     economy: GlobalEconomy = Field(
@@ -141,13 +148,15 @@ class WorldState(BaseModel):
         G: nx.DiGraph[str],
         tick: int,
         event_log: list[str] | None = None,
+        events: list[SimulationEvent] | None = None,
     ) -> WorldState:
         """Reconstruct WorldState from NetworkX DiGraph.
 
         Args:
             G: NetworkX DiGraph with node/edge data
             tick: The tick number for the new state
-            event_log: Optional event log to preserve
+            event_log: Optional event log to preserve (backward compatibility)
+            events: Optional structured events to include (Sprint 3.1)
 
         Returns:
             New WorldState with entities, territories, and relationships from graph.
@@ -214,6 +223,7 @@ class WorldState(BaseModel):
             territories=territories,
             relationships=relationships,
             event_log=event_log or [],
+            events=events or [],
             economy=economy,
         )
 

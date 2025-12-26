@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "slice-spec.schema.json",
+  "title": "Babylon Slice Specification",
+  "description": "Schema for ai-docs/*-spec.yaml slice specification files",
+  "type": "object",
+  "required": ["meta"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["epoch", "sub_epoch", "slice", "status"],
+      "properties": {
+        "epoch": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "Epoch number (1=Demonstration, 2=Game, 3=Platform)"
+        },
+        "sub_epoch": {
+          "type": "string",
+          "enum": ["1A", "1B", "2A", "2B", "2C", "2D", "3A", "DEFERRED"],
+          "description": "Sub-epoch assignment for staged delivery"
+        },
+        "slice": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+[a-z]?$",
+          "description": "Slice identifier (e.g., '2.1', '2.2a', '2.10')"
+        },
+        "slice_name": {
+          "type": "string",
+          "description": "Human-readable slice name"
+        },
+        "name": {
+          "type": "string",
+          "description": "Alternative name field (for backward compatibility)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PLANNED", "IN_PROGRESS", "COMPLETE", "SPEC_COMPLETE", "CONCEPTUAL", "DEFERRED"],
+          "description": "Implementation status"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "Semver version string"
+        },
+        "created": {
+          "type": "string",
+          "format": "date",
+          "description": "Creation date (YYYY-MM-DD)"
+        },
+        "updated": {
+          "type": "string",
+          "format": "date",
+          "description": "Last update date (YYYY-MM-DD)"
+        },
+        "purpose": {
+          "type": "string",
+          "description": "Brief description of what this slice accomplishes"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+          "description": "Implementation priority"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of required slices/systems"
+        },
+        "scope_note": {
+          "type": "string",
+          "description": "Notes about scope reduction or MVP adjustments"
+        },
+        "critical_gap": {
+          "type": "string",
+          "description": "Critical issue that must be resolved before implementation"
+        },
+        "location": {
+          "type": "string",
+          "description": "Primary source file location"
+        },
+        "tests": {
+          "type": "string",
+          "description": "Test file location"
+        },
+        "theory_source": {
+          "type": "object",
+          "description": "Theoretical foundations (primary, secondary, tertiary)"
+        },
+        "theoretical_foundation": {
+          "type": "object",
+          "description": "Alternative theoretical foundation field"
+        },
+        "theory_sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "author": { "type": "string" },
+              "work": { "type": "string" },
+              "relevance": { "type": "string" }
+            }
+          },
+          "description": "List of theoretical sources"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

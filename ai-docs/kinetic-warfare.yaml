@@ -1,0 +1,798 @@
+# Kinetic Warfare - Asymmetric Logistics Engine
+# Epoch 2: The Game
+#
+# "We are not modeling frontlines. We are modeling System Disruption."
+# - Core Philosophy
+#
+# Combat operates on the Spatial Graph (Layer 0), targeting nodes and edges
+# of the Imperial Circuit. The ultimate test of strategy vs. Ultra-Left Deviation.
+
+meta:
+  epoch: 2
+  sub_epoch: "2D"
+  slice: "2.7"
+  slice_name: "Kinetic Warfare"
+  status: PLANNED
+  priority: MEDIUM
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Model asymmetric warfare as system disruption, not frontline combat"
+  scope_note: "Combat is last sub-epoch because it requires integration with Cohesion (2B), Wire (2C), Panopticon (2C)"
+  dependencies:
+    - "Slice 2.2b (Cohesion Mechanic) - Organizational health determines attack quality"
+    - "Slice 2.5 (The Wire) - Narrative framing of violence"
+    - "Slice 1.1 (Imperial Circuit) - Targets are nodes/edges of rent extraction"
+
+  theoretical_foundation:
+    primary: "Mao - On Protracted War (1938) - Three stages of revolutionary warfare"
+    secondary: "Che Guevara - Guerrilla Warfare (1961) - Foco theory and its failures"
+    tertiary: "Carlos Marighella - Minimanual (1969) - Urban guerrilla logistics"
+    critical: "Régis Debray - Revolution in the Revolution? - Critique of focoism"
+
+  design_principle: |
+    Combat is NOT about destroying the enemy. It is about:
+    1. Starving the Imperial Circuit of extracted value
+    2. Demonstrating state weakness (raising P(S|R))
+    3. Avoiding alienation of the masses (maintaining P(S|A) sympathy)
+
+    The player who "wins" every battle but alienates the population LOSES.
+    The player who strikes surgically at extraction while protecting civilians WINS.
+
+    This is the mechanical implementation of "Politics in command of the gun."
+
+# =============================================================================
+# ANTI-PATTERN WARNING
+# =============================================================================
+
+anti_pattern_warning:
+  context: "Kinetic actions are HIGH-RISK, HIGH-CONSEQUENCE"
+  ultra_left_trap: |
+    The most common failure mode is the "Ultra-Left Deviation":
+    - Player attacks visible, dramatic targets (bridges, power plants)
+    - These targets have HIGH COLLATERAL RISK
+    - Attacks succeed militarily but fail politically
+    - Population blames rebels for suffering, not the state
+    - Public support collapses, state repression intensifies
+    - Organization is exposed and destroyed
+
+    This is the Foco Theory failure: military success without political preparation.
+
+  correct_pattern: |
+    The correct approach is "System Disruption":
+    - Target EXTRACTION nodes (low collateral, high economic impact)
+    - Build popular support BEFORE kinetic action
+    - Use surgical strikes that hurt capital, not workers
+    - Frame every action through The Wire (narrative warfare)
+
+# =============================================================================
+# THE TARGET TRIAD
+# =============================================================================
+
+target_triad:
+  overview: |
+    All kinetic targets fall into three categories based on their position
+    in the Imperial Circuit. Each has distinct risk/reward profiles.
+
+  extraction_nodes:
+    name: "Nodes of Extraction"
+    nickname: "The Oil Rigs"
+    description: "Sources of Imperial Value - where surplus is extracted"
+
+    examples:
+      - "Industrial farms (agricultural surplus)"
+      - "Mines and resource extraction sites"
+      - "Logistics hubs and warehouses"
+      - "Data centers (information extraction)"
+      - "Call centers (labor arbitrage)"
+
+    profile:
+      security_rating: "LOW (0.2 - 0.4)"
+      collateral_risk: "LOW (0.1 - 0.3)"
+      strategic_value: "HIGH"
+      connectivity: "Peripheral (few edges)"
+
+    strategic_role: |
+      The "CORRECT" target class. These nodes:
+      - Generate Imperial Rent but are poorly defended
+      - Have low civilian density (workers can evacuate)
+      - Disabling them STARVES the state without hurting the masses
+      - Low blowback, high economic impact
+
+    attack_outcomes:
+      success:
+        - "Node disabled for N ticks (strategic_value determines N)"
+        - "Imperial Rent flow reduced by node.extraction_rate"
+        - "Worker consciousness INCREASES (state shown as vulnerable)"
+        - "Minor heat increase on attacking organization"
+      failure:
+        - "Attacking cadres captured or killed"
+        - "Organization suffers -cohesion from loss"
+        - "State increases security on similar nodes"
+
+    recommended_force: "Small cadre teams (quality over quantity)"
+
+  circulation_edges:
+    name: "Edges of Circulation"
+    nickname: "The Arteries"
+    description: "Logistics and information flow - dual-use infrastructure"
+
+    examples:
+      - "Power transmission lines"
+      - "Fiber optic cables"
+      - "Highways and bridges"
+      - "Rail lines"
+      - "Water treatment facilities"
+
+    profile:
+      security_rating: "MEDIUM (0.4 - 0.6)"
+      collateral_risk: "HIGH (0.6 - 0.9)"
+      strategic_value: "MEDIUM"
+      connectivity: "Central (critical edges)"
+
+    strategic_role: |
+      The "ULTRA-LEFT TRAP" target class. These edges:
+      - Are DUAL-USE (civilian and military)
+      - Disabling them hurts EVERYONE, not just the state
+      - Create dramatic visible effects (the trap)
+      - Trigger SOCIAL BLOWBACK - masses blame rebels
+
+    attack_types:
+      blind_attack:
+        description: "Standard attack without intelligence preparation"
+        outcome: |
+          - Edge disabled
+          - HIGH collateral damage
+          - Worker consciousness DECREASES
+          - Public support collapses
+          - Narrative: "The people blame the rebels for the blackout"
+
+      surgical_attack:
+        description: "Intelligence-prepared attack minimizing civilian impact"
+        requirements:
+          - "Reconnaissance action completed on target"
+          - "Cohesion >= 0.7 (disciplined execution)"
+          - "Cadre_ratio >= 0.2 (skilled operatives)"
+        outcome: |
+          - Edge disabled
+          - LOW collateral damage
+          - Worker consciousness STABLE or slight increase
+          - Narrative: "Rebels struck military logistics, spared hospitals"
+
+    attack_outcomes:
+      success_blind:
+        - "Edge disabled for N ticks"
+        - "BLOWBACK: Worker consciousness -= (collateral_risk * damage_done)"
+        - "State propaganda boost (The Wire hegemony increases)"
+        - "Organization heat SPIKES"
+      success_surgical:
+        - "Edge disabled for N ticks"
+        - "Minimal blowback (collateral_risk * 0.2)"
+        - "Counter-narrative possible (The Wire contest)"
+      failure:
+        - "Edge intact, attacking force destroyed"
+        - "State QRF activated in region"
+        - "Massive heat increase"
+
+    the_blowback_formula:
+      formula: "Consciousness_Delta = -(Collateral_Risk * Damage_Done * (1 - Surgical_Factor))"
+      variables:
+        collateral_risk: "Target's civilian exposure (0.0 - 1.0)"
+        damage_done: "Attack effectiveness (0.0 - 1.0)"
+        surgical_factor: "0.0 for blind, 0.8 for surgical"
+      example: |
+        Blind attack on power grid (collateral_risk=0.8, damage_done=0.9):
+        Consciousness_Delta = -(0.8 * 0.9 * 1.0) = -0.72
+        Worker consciousness drops by 72% of drift sensitivity.
+
+    recommended_force: "Small cadre teams with intelligence support"
+    warning: "NEVER attack with low-cohesion mobs"
+
+  realization_nodes:
+    name: "Nodes of Realization"
+    nickname: "The Engines"
+    description: "State security apparatus and high-tech production"
+
+    examples:
+      - "Military command centers"
+      - "Arms factories"
+      - "Intelligence agency headquarters"
+      - "Federal Reserve branches"
+      - "Strategic petroleum reserves"
+
+    profile:
+      security_rating: "MAXIMUM (0.8 - 1.0)"
+      collateral_risk: "LOW (0.1 - 0.3)"
+      strategic_value: "MAXIMUM"
+      connectivity: "Central (hub nodes)"
+
+    strategic_role: |
+      The "SUICIDE MISSION" target class. These nodes:
+      - Are the beating heart of state power
+      - Have MAXIMUM security (military protection)
+      - Require overwhelming force AND perfect execution
+      - Premature attack = Total Party Kill (Organization Wipeout)
+
+    the_qrf_mechanic:
+      name: "Quick Reaction Force"
+      description: |
+        Attacking a Realization Node triggers elite state response.
+        The attacking force faces a second "battle" against the QRF
+        while trying to extract.
+
+      qrf_strength: "security_rating * state_military_budget"
+      escape_probability: "min(cohesion, 0.5) * extraction_route_quality"
+      failure_consequence: "TOTAL PARTY KILL - all attacking units destroyed"
+
+    attack_requirements:
+      minimum_cohesion: 0.8
+      minimum_cadre_ratio: 0.3
+      required_preparations:
+        - "Reconnaissance completed"
+        - "Extraction route secured"
+        - "Diversionary operation planned"
+        - "The Wire narrative prepared"
+
+    attack_outcomes:
+      success:
+        - "Massive strategic impact (cripples state capability)"
+        - "P(S|R) spikes across all territories"
+        - "Revolutionary momentum surge"
+        - "BUT: State enters EMERGENCY MODE (repression * 2)"
+      failure:
+        - "TOTAL PARTY KILL: All attacking cadres killed/captured"
+        - "Organization cohesion COLLAPSES"
+        - "Sympathizers flee (mass defection)"
+        - "State propaganda victory"
+        - "Game Over if organization membership < critical_mass"
+
+    recommended_force: "Elite cadre units with diversionary support"
+    warning: "ONLY attempt in late-game with maxed cohesion"
+
+# =============================================================================
+# ENTITY ATTRIBUTES (Spatial Component)
+# =============================================================================
+
+entity_attributes:
+  overview: |
+    New attributes added to spatial entities (Territory nodes and edges)
+    to support kinetic warfare calculations.
+
+  node_attributes:
+    security_rating:
+      type: "Probability (0.0 - 1.0)"
+      description: "Resistance to attack. Higher = harder to disable."
+      calculation: |
+        Base from node_type (Extraction=0.3, Circulation=0.5, Realization=0.9)
+        Modified by:
+        - State military budget (+0.1 per tier)
+        - Recent attacks on similar nodes (+0.2 temporary)
+        - Regional heat level (+0.1 per 0.3 heat)
+
+    collateral_risk:
+      type: "Probability (0.0 - 1.0)"
+      description: "Probability of alienating masses if attacked."
+      calculation: |
+        Base from node_type (Extraction=0.2, Circulation=0.7, Realization=0.1)
+        Modified by:
+        - Population density in territory (+0.1 per density tier)
+        - Dual-use designation (+0.2 if serves civilian infrastructure)
+        - Time of attack (night raids reduce by 0.1)
+
+    strategic_value:
+      type: "float (0.0 - unbounded)"
+      description: "Impact on Imperial Rent if node is disabled."
+      calculation: |
+        Sum of:
+        - Direct extraction rate (for Extraction nodes)
+        - Connectivity centrality (for Circulation nodes)
+        - State capability multiplier (for Realization nodes)
+
+    target_type:
+      type: "TargetType enum"
+      values:
+        - "EXTRACTION"
+        - "CIRCULATION"
+        - "REALIZATION"
+      determination: "Set based on node's primary function in Imperial Circuit"
+
+  edge_attributes:
+    edge_security:
+      type: "Probability (0.0 - 1.0)"
+      description: "Difficulty of severing this connection."
+      note: "Edges inherit security from higher-security endpoint"
+
+    flow_volume:
+      type: "Currency"
+      description: "Value flowing through this edge per tick."
+      note: "Disabling high-flow edges has greater strategic impact"
+
+    redundancy_factor:
+      type: "float (0.0 - 1.0)"
+      description: "How easily the network can route around this edge."
+      calculation: "Based on graph connectivity analysis"
+
+  schema_extension:
+    location: "src/babylon/models/territory.py"
+    additions: |
+      class Territory(BaseModel):
+          # ... existing fields ...
+
+          # Kinetic Warfare attributes (Epoch 2)
+          security_rating: Probability = Probability(0.3)
+          collateral_risk: Probability = Probability(0.2)
+          strategic_value: float = 0.0
+          target_type: Optional[TargetType] = None
+          last_attack_tick: Optional[int] = None
+          qrf_response_time: int = 3  # ticks until QRF arrives
+
+# =============================================================================
+# THE COMBAT ALGORITHM
+# =============================================================================
+
+combat_algorithm:
+  name: "The Dialectic of Force"
+  overview: |
+    Combat resolution is deterministic based on force correlation,
+    modified by organizational quality (Cohesion) and preparation.
+
+  input_parameters:
+    attacking_force:
+      cadre_count: "int - Number of cadres committed"
+      sympathizer_count: "int - Number of sympathizers committed"
+      preparation_level: "float (0.0-1.0) - Reconnaissance quality"
+      extraction_plan: "bool - Is extraction route secured?"
+
+    target:
+      security_rating: "Probability"
+      collateral_risk: "Probability"
+      strategic_value: "float"
+      target_type: "TargetType"
+
+    organization_state:
+      cohesion: "Probability"
+      cadre_ratio: "float"
+      entropy: "float"
+
+  force_calculation:
+    formula: |
+      Force_Power = (Cadre_Count * CADRE_MULTIPLIER) + (Sympathizer_Count * SYMPATHIZER_MULTIPLIER)
+      Effective_Force = Force_Power * Cohesion * (1 - Entropy * 0.5)
+
+    constants:
+      CADRE_MULTIPLIER: 10.0
+      SYMPATHIZER_MULTIPLIER: 1.0
+
+    rationale: |
+      Cadres are 10x more effective than sympathizers due to training.
+      But raw force is degraded by:
+      - Low Cohesion (disorganized execution)
+      - High Entropy (confused objectives, poor communication)
+
+  success_probability:
+    formula: |
+      Base_Success = Effective_Force / (Target_Security * SECURITY_SCALING)
+      Preparation_Bonus = Preparation_Level * 0.3
+      Success_Prob = min(Base_Success + Preparation_Bonus, 0.95)
+
+    constants:
+      SECURITY_SCALING: 100.0  # Baseline force needed vs. security 1.0
+
+    caps:
+      maximum: 0.95  # Always 5% chance of failure (fog of war)
+      minimum: 0.05  # Always 5% chance of success (lucky break)
+
+  outcome_resolution:
+    success:
+      - "Target disabled for (strategic_value / 10) ticks"
+      - "Imperial Rent reduced by target contribution"
+      - "Apply consciousness effects based on target_type"
+      - "Apply heat increase to attacking organization"
+
+    failure:
+      - "Attacking force suffers casualties"
+      - "Casualty_Rate = (1 - Success_Prob) * Target_Security"
+      - "Organization cohesion -= Casualty_Rate * 0.1"
+      - "State increases regional security"
+
+  the_blowback_formula:
+    trigger: "Attack succeeds AND target_type == CIRCULATION"
+    formula: |
+      Blowback = Collateral_Risk * Damage_Done * (1 - Surgical_Factor)
+      Worker_Consciousness -= Blowback * K_CONSCIOUSNESS_SENSITIVITY
+
+      Where:
+      - Collateral_Risk: Target's collateral_risk attribute
+      - Damage_Done: Success degree (0.5 - 1.0)
+      - Surgical_Factor: 0.0 (blind) to 0.8 (surgical)
+      - K_CONSCIOUSNESS_SENSITIVITY: GameDefines constant
+
+    narrative_effect: |
+      The Wire receives event: COLLATERAL_DAMAGE
+      Corporate Feed: "Terrorist attack leaves thousands without power"
+      Liberated Signal: Must spend Hegemony to counter or accept consciousness loss
+
+  code_signature:
+    location: "src/babylon/engine/systems/kinetic.py"
+    class: "KineticSystem"
+    methods:
+      - |
+        def resolve_attack(
+            self,
+            attacking_force: AttackingForce,
+            target: Territory,
+            organization: Organization,
+            world_state: WorldState
+        ) -> AttackOutcome:
+            """
+            Resolve a kinetic attack against a spatial target.
+
+            Args:
+                attacking_force: Cadres and sympathizers committed
+                target: The Territory or Edge being attacked
+                organization: Player's organization state
+                world_state: Current simulation state
+
+            Returns:
+                AttackOutcome with success/failure, casualties, effects
+            """
+
+      - |
+        def calculate_blowback(
+            self,
+            target: Territory,
+            damage_done: float,
+            surgical: bool
+        ) -> float:
+            """
+            Calculate consciousness penalty from collateral damage.
+
+            Returns negative consciousness delta to apply to workers.
+            """
+
+      - |
+        def trigger_qrf(
+            self,
+            target: Territory,
+            attacking_force: AttackingForce,
+            organization: Organization
+        ) -> QRFOutcome:
+            """
+            Resolve QRF response for Realization node attacks.
+
+            This is the "escape" phase after a successful strike.
+            Failure here means Total Party Kill.
+            """
+
+# =============================================================================
+# THE ULTRA-LEFT DEVIATION (Game Over State)
+# =============================================================================
+
+ultra_left_deviation:
+  name: "The Isolation Spiral"
+  description: |
+    The game-ending failure state that occurs when kinetic action
+    outpaces political preparation.
+
+  mechanism:
+    step_1:
+      name: "The Tempting Target"
+      description: |
+        Player sees high-value Circulation target (power plant, bridge).
+        Attack is militarily feasible with available forces.
+        Player decides to strike without political preparation.
+
+    step_2:
+      name: "The Pyrrhic Victory"
+      description: |
+        Attack succeeds. Bridge destroyed. Power plant offline.
+        Dramatic visible result. Player feels powerful.
+        BUT: Collateral_Risk triggers massive blowback.
+
+    step_3:
+      name: "The Alienation"
+      description: |
+        Worker consciousness DROPS across affected territories.
+        P(S|A) for revolutionary option decreases.
+        Masses now see rebels as the problem, not the state.
+        Narrative: "They claim to fight for us but left us in the dark."
+
+    step_4:
+      name: "The Crackdown"
+      description: |
+        State uses public anger to justify increased Repression.
+        R multiplier increases, P(S|R) drops further.
+        Safe houses raided, sympathizers arrested.
+        "Human shield" of public support evaporates.
+
+    step_5:
+      name: "The Destruction"
+      description: |
+        Without public cover, organization is EXPOSED.
+        State QRF can now identify and eliminate cadres.
+        Organization membership drops below critical_mass.
+        GAME OVER: "The Revolution Was Defeated By Its Own Actions"
+
+  mathematical_model:
+    isolation_index: |
+      Isolation = (Heat / Public_Support)
+      When Isolation > ISOLATION_THRESHOLD:
+        Organization is EXPOSED
+        State can launch "Decapitation Strike"
+
+    threshold: 2.0  # Heat twice public support = exposed
+
+  prevention:
+    - "Never attack Circulation without surgical capability"
+    - "Build public support BEFORE kinetic action"
+    - "Use The Wire to frame every action"
+    - "Target Extraction nodes (low collateral)"
+    - "Accept slower progress over dramatic failures"
+
+# =============================================================================
+# DEVIATION EXAMPLE
+# =============================================================================
+
+deviation_example:
+  title: "The Power Plant Disaster"
+  context: |
+    Mid-game scenario. Player has built a large organization (5000 members)
+    but with low Cohesion (0.3) and low Cadre_Ratio (0.08).
+    A major power plant (Circulation node) is identified as a target.
+
+  player_decision:
+    target: "Metro Power Plant"
+    target_type: "CIRCULATION"
+    security_rating: 0.5
+    collateral_risk: 0.85
+    strategic_value: 150
+
+    attacking_force:
+      cadre_count: 50
+      sympathizer_count: 800
+      preparation_level: 0.2  # Minimal recon
+      extraction_plan: false  # No escape route
+
+    organization_state:
+      cohesion: 0.3
+      cadre_ratio: 0.08
+      entropy: 0.6
+
+  resolution:
+    step_1_force_calculation: |
+      Force_Power = (50 * 10) + (800 * 1) = 1300
+      Effective_Force = 1300 * 0.3 * (1 - 0.6 * 0.5) = 1300 * 0.3 * 0.7 = 273
+
+    step_2_success_probability: |
+      Base_Success = 273 / (0.5 * 100) = 5.46 (capped at 0.95)
+      Preparation_Bonus = 0.2 * 0.3 = 0.06
+      Success_Prob = 0.95 (overwhelming force)
+
+    step_3_attack_outcome: |
+      Attack SUCCEEDS. Power plant disabled.
+      But this is a CIRCULATION node with high collateral...
+
+    step_4_blowback_calculation: |
+      Surgical_Factor = 0.0 (no preparation, mob attack)
+      Damage_Done = 0.9 (near-total destruction)
+      Blowback = 0.85 * 0.9 * (1 - 0.0) = 0.765
+
+      Worker consciousness in region drops by 76.5%!
+
+    step_5_narrative_outcome: |
+      The Wire - Corporate Feed:
+      "Terrorist bomb leaves 500,000 without power. Three hospitals
+      on backup generators. Elderly resident dies in heat wave.
+      Police vow to bring perpetrators to justice."
+
+      The Wire - Liberated Signal:
+      [No counter-narrative prepared. Hegemony insufficient to respond.]
+
+      Public reaction: OUTRAGE against the organization.
+
+    step_6_cascade_effects: |
+      - Worker consciousness: -0.765 * K = massive drop
+      - Public support: Collapses in affected territory
+      - State repression: +0.3 (public demands crackdown)
+      - Organization heat: SPIKE (now exposed)
+      - Isolation Index: Heat / Support = 3.5 (above threshold)
+
+    step_7_game_over: |
+      Organization EXPOSED. State launches decapitation strike.
+      50 cadres captured. Leadership arrested.
+      Remaining 4150 sympathizers disperse (mass defection event).
+      Organization membership: 0.
+
+      GAME OVER: "The Power Plant Disaster"
+      "You won the battle and lost the war. The people blamed you
+      for their suffering, and the state used their anger to destroy
+      everything you built. This is the fate of Ultra-Left Deviation."
+
+  lessons:
+    - "Low Cohesion + Mob = Maximum Collateral"
+    - "Circulation targets require SURGICAL capability"
+    - "Preparation_Level matters more than raw force"
+    - "The Wire framing must be prepared BEFORE the strike"
+    - "A 5000-person organization can be destroyed in one action"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  imperial_circuit:
+    connection: "Kinetic targets ARE Imperial Circuit nodes/edges"
+    effect: |
+      Disabling an Extraction node:
+        - Reduces TRIBUTE/EXPLOITATION edges from that node
+        - Imperial Rent calculation excludes disabled nodes
+        - State budget decreases (affects QRF strength)
+
+      Disabling a Circulation edge:
+        - Severs connection (may partition graph)
+        - Rent flow must route around (or fails)
+        - BUT triggers collateral damage effects
+
+  cohesion_system:
+    connection: "Cohesion is the QUALITY multiplier for force"
+    effects:
+      high_cohesion:
+        - "Surgical attacks possible (Cohesion >= 0.7)"
+        - "Lower casualty rates on failure"
+        - "Better extraction from QRF encounters"
+        - "Discipline prevents collateral damage"
+      low_cohesion:
+        - "Only blind attacks possible"
+        - "High casualty rates"
+        - "Cannot attempt Realization nodes"
+        - "Mob behavior maximizes collateral"
+
+    feedback_loop: |
+      Kinetic action affects Cohesion:
+      - Successful surgical strikes: +Cohesion (builds confidence)
+      - Failed attacks with casualties: -Cohesion (demoralization)
+      - Collateral damage events: -Cohesion (moral injury)
+
+  the_wire:
+    connection: "Every kinetic action generates narrative events"
+    events:
+      - "SUCCESSFUL_STRIKE: Player can claim victory narrative"
+      - "COLLATERAL_DAMAGE: State gets propaganda ammunition"
+      - "FAILED_ATTACK: State demonstrates strength"
+      - "QRF_VICTORY: Martyrdom narrative possible"
+
+    hegemony_interaction: |
+      High Hegemony: State narrative dominates, blowback amplified
+      Contested Hegemony: Narrative battle over framing
+      Low Hegemony: Rebel narrative dominates, blowback mitigated
+
+  survival_calculus:
+    connection: "Kinetic outcomes affect P(S|A) and P(S|R)"
+    effects:
+      successful_extraction_strike:
+        - "P(S|R) increases (state shown vulnerable)"
+        - "P(S|A) stable or increases (workers see hope)"
+      successful_circulation_strike_blind:
+        - "P(S|R) may increase (state can't protect)"
+        - "P(S|A) DECREASES (workers suffer from action)"
+      failed_realization_strike:
+        - "P(S|R) DECREASES (state shown invincible)"
+        - "P(S|A) stable (workers not affected)"
+
+# =============================================================================
+# IMPLEMENTATION CHECKLIST
+# =============================================================================
+
+implementation:
+  priority: "MEDIUM - After cohesion and wire systems"
+  estimated_complexity: "HIGH - New system with multiple integrations"
+
+  checklist:
+    models:
+      - task: "Add TargetType enum to models/enums.py"
+        status: "TODO"
+
+      - task: "Add kinetic attributes to Territory model"
+        status: "TODO"
+
+      - task: "Create AttackingForce model"
+        status: "TODO"
+
+      - task: "Create AttackOutcome model"
+        status: "TODO"
+
+    system:
+      - task: "Create KineticSystem class"
+        file: "src/babylon/engine/systems/kinetic.py"
+        status: "TODO"
+
+      - task: "Implement resolve_attack() method"
+        status: "TODO"
+
+      - task: "Implement calculate_blowback() method"
+        status: "TODO"
+
+      - task: "Implement trigger_qrf() method"
+        status: "TODO"
+
+    integration:
+      - task: "Register KineticSystem with SimulationEngine"
+        status: "TODO"
+
+      - task: "Add kinetic events to EventType enum"
+        status: "TODO"
+
+      - task: "Connect to Imperial Circuit rent calculation"
+        status: "TODO"
+
+      - task: "Connect to Wire narrative generation"
+        status: "TODO"
+
+    tests:
+      - task: "Test force calculation with varying cohesion"
+        status: "TODO"
+
+      - task: "Test blowback formula"
+        status: "TODO"
+
+      - task: "Test QRF resolution"
+        status: "TODO"
+
+      - task: "Test Isolation Spiral game over"
+        status: "TODO"
+
+      - task: "Integration test with Imperial Circuit"
+        status: "TODO"
+
+  dependencies_required:
+    - "CohesionSystem implemented (Slice 2.2b)"
+    - "The Wire system implemented (Slice 2.4)"
+    - "Territory model has operational attributes"
+
+# =============================================================================
+# GAME DEFINES CONSTANTS
+# =============================================================================
+
+game_defines:
+  section: "kinetic"
+  constants:
+    cadre_multiplier: 10.0
+    sympathizer_multiplier: 1.0
+    security_scaling: 100.0
+    max_success_probability: 0.95
+    min_success_probability: 0.05
+    isolation_threshold: 2.0
+    qrf_base_strength: 50.0
+    extraction_node_base_security: 0.3
+    circulation_node_base_security: 0.5
+    realization_node_base_security: 0.9
+    surgical_attack_cohesion_requirement: 0.7
+    realization_attack_cohesion_requirement: 0.8
+    blowback_consciousness_sensitivity: 0.5
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  brainstorm: "brainstorm/mechanics/kinetic_warfare.md"
+  related_specs:
+    - "ai-docs/cohesion-mechanic.yaml (Cohesion affects attack quality)"
+    - "ai-docs/gramscian-wire-vision.yaml (Narrative framing of violence)"
+    - "ai-docs/strategy-layer.yaml (Kinetic is the 'Ultra-Left Trap' realized)"
+    - "ai-docs/epochs-overview.md (Epoch 2 slice definition)"
+  implementation:
+    - "src/babylon/engine/systems/economic.py (Imperial Circuit)"
+    - "src/babylon/models/territory.py (Target attributes)"
+    - "src/babylon/config/defines.py (Kinetic constants)"
+
+# =============================================================================
+# HISTORICAL NOTE
+# =============================================================================
+
+historical_note: |
+  This specification was originally placed in Epoch 3 (Slice 3.1) as part of
+  "The Platform" (modding/expansion). It has been moved to Epoch 2 as Slice 2.6
+  because kinetic warfare is core gameplay, not platform tooling.
+
+  The original Epoch 3 Slice 3.1 slot can be repurposed for Liberation Mechanics
+  or other expansion content.

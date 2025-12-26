@@ -3,15 +3,15 @@
 # Source: ~/projects/game/notes/manifesto.md
 
 meta:
-  version: "2.2.0"
+  version: "2.3.0"
   created: "2024-12-07"
-  updated: "2025-12-10"
+  updated: "2025-12-26"
   purpose: "Document the implemented mathematical formulas that transform types into behavior"
   principle: "Types are nouns, formulas are verbs"
-  status: "IMPLEMENTED (13 formulas) + CONCEPTUAL (1 distribution pattern)"
+  status: "IMPLEMENTED (15 formulas) + CONCEPTUAL (1 distribution pattern)"
   location: "src/babylon/systems/formulas.py"
   tests: "tests/unit/formulas/ (40+ tests, ALL PASSING)"
-  formula_count: 14
+  formula_count: 16
   note: "This spec documents the complete formula inventory driving the simulation."
   sprint_3_4_3_update: "Added calculate_ideological_routing() for George Jackson Refactor"
 
@@ -255,6 +255,144 @@ formulas:
 
     location: "src/babylon/systems/formulas.py"
     added_in: "Sprint 3.4.3"
+
+  # ---------------------------------------------------------------------------
+  # SOLIDARITY TRANSMISSION (Proletarian Internationalism)
+  # ---------------------------------------------------------------------------
+  solidarity_transmission:
+    function: "calculate_solidarity_transmission"
+    symbol: "dΨ_target"
+    equation: "dΨ_target = σ × (Ψ_source - Ψ_target)"
+    description: |
+      Calculate consciousness transmission via solidarity edges. Implements the
+      core mechanic of Proletarian Internationalism: consciousness flows from
+      periphery to core workers through solidarity infrastructure.
+
+      Key insight: solidarity_strength is STORED ON EDGE, not auto-calculated.
+      This enables the Fascist Bifurcation mechanic - same crisis conditions
+      produce different outcomes based on pre-built solidarity infrastructure.
+
+    inputs:
+      source_consciousness:
+        symbol: "Ψ_source"
+        type: "Probability [0, 1]"
+        description: "Consciousness level of source (periphery worker)"
+
+      target_consciousness:
+        symbol: "Ψ_target"
+        type: "Probability [0, 1]"
+        description: "Consciousness level of target (core worker)"
+
+      solidarity_strength:
+        symbol: "σ"
+        type: "Probability [0, 1]"
+        description: "Strength of solidarity infrastructure on edge (STORED, not derived)"
+
+      activation_threshold:
+        type: "float"
+        default: 0.3
+        description: "Minimum source consciousness for transmission to occur"
+
+    output:
+      type: "float"
+      description: "Change in target consciousness (can be negative if target > source)"
+
+    constraints:
+      - "Returns 0.0 if source_consciousness <= activation_threshold"
+      - "Returns 0.0 if solidarity_strength <= 0"
+      - "Transmission can be negative (reverse flow if target more conscious)"
+
+    key_insight: |
+      solidarity_strength on edge is the STORED infrastructure of internationalism.
+      Without it, periphery revolt produces fascism in core (no transmission).
+      With it, periphery revolt raises core consciousness (revolutionary transmission).
+      "Agitation without solidarity produces fascism, not revolution."
+
+    tests:
+      - "calculate_solidarity_transmission(0.8, 0.2, 0.5) ≈ 0.3  # High source, low target"
+      - "calculate_solidarity_transmission(0.2, 0.5, 0.5) == 0.0  # Below threshold"
+      - "calculate_solidarity_transmission(0.8, 0.2, 0.0) == 0.0  # No solidarity"
+      - "calculate_solidarity_transmission(0.5, 0.8, 0.5) ≈ -0.15  # Reverse flow"
+
+    location: "src/babylon/systems/formulas.py"
+    added_in: "Sprint 3.4.2"
+
+  # ---------------------------------------------------------------------------
+  # BOURGEOISIE DECISION (Dynamic Balance)
+  # ---------------------------------------------------------------------------
+  bourgeoisie_decision:
+    function: "calculate_bourgeoisie_decision"
+    class: "BourgeoisieDecision"
+    symbol: "D(π, τ)"
+    equation: |
+      Decision matrix based on pool_ratio (π) and aggregate_tension (τ):
+        π >= 0.7 AND τ < 0.3 → BRIBERY (+5% wages)
+        π < 0.1             → CRISIS (-15% wages, +20% repression)
+        π < 0.3 AND τ > 0.5 → IRON_FIST (+10% repression)
+        π < 0.3 AND τ ≤ 0.5 → AUSTERITY (-5% wages)
+        else                → NO_CHANGE
+    description: |
+      Models the bourgeoisie as a rational actor responding to material conditions.
+      The "Driver" mechanic from Sprint 3.4.4: the ruling class adjusts wages and
+      repression based on imperial rent pool health and class tension.
+
+      This is the feedback loop that creates dynamic balance:
+      - High pool + low tension → buy off workers (bribery)
+      - Low pool + high tension → crush resistance (iron fist)
+      - Low pool + low tension → quietly extract more (austerity)
+      - Crisis (pool < 0.1) → emergency measures (wage slash + repression spike)
+
+    inputs:
+      pool_ratio:
+        symbol: "π"
+        type: "Probability [0, 1+]"
+        description: "Imperial rent pool / initial pool (can exceed 1.0 if growing)"
+
+      aggregate_tension:
+        symbol: "τ"
+        type: "Probability [0, 1]"
+        description: "Average tension across class relationships"
+
+      high_threshold:
+        type: "float"
+        default: 0.7
+        description: "Pool ratio above which prosperity declared"
+
+      low_threshold:
+        type: "float"
+        default: 0.3
+        description: "Pool ratio below which austerity begins"
+
+      critical_threshold:
+        type: "float"
+        default: 0.1
+        description: "Pool ratio below which crisis fires"
+
+    output:
+      type: "tuple[str, float, float]"
+      description: "(decision: BourgeoisieDecision, wage_delta, repression_delta)"
+
+    decision_values:
+      NO_CHANGE: "Maintain status quo"
+      BRIBERY: "Increase wages to buy loyalty"
+      AUSTERITY: "Cut wages to restore pool"
+      IRON_FIST: "Increase repression to suppress resistance"
+      CRISIS: "Emergency measures - slash wages and spike repression"
+
+    key_insight: |
+      The bourgeoisie responds rationally to material conditions, not ideology.
+      High rent pool → can afford to bribe labor aristocracy
+      Low rent pool → must choose between repression or extraction
+      Crisis → both simultaneously (historical pattern of fascism)
+
+    tests:
+      - "calculate_bourgeoisie_decision(0.8, 0.2) → ('bribery', 0.05, 0.0)"
+      - "calculate_bourgeoisie_decision(0.05, 0.5) → ('crisis', -0.15, 0.20)"
+      - "calculate_bourgeoisie_decision(0.2, 0.6) → ('iron_fist', 0.0, 0.10)"
+      - "calculate_bourgeoisie_decision(0.2, 0.3) → ('austerity', -0.05, 0.0)"
+
+    location: "src/babylon/systems/formulas.py"
+    added_in: "Sprint 3.4.4"
 
   # ---------------------------------------------------------------------------
   # ECONOMIC FLOW / SUPERWAGES (The Distribution of Imperial Rent)
@@ -770,6 +908,8 @@ formula_summary:
     - { name: "is_labor_aristocracy", symbol: "-", purpose: "Boolean bribery check" }
     - { name: "calculate_consciousness_drift", symbol: "dΨ/dt", purpose: "Ideology change" }
     - { name: "calculate_ideological_routing", symbol: "Route", purpose: "Fascist Bifurcation" }
+    - { name: "calculate_solidarity_transmission", symbol: "dΨ_target", purpose: "Proletarian Internationalism" }
+    - { name: "calculate_bourgeoisie_decision", symbol: "D(π,τ)", purpose: "Dynamic Balance" }
     - name: "calculate_economic_flow"
       symbol: "Flow(Φ,β)"
       purpose: "Imperial Rent split (Profit vs Superwages)"

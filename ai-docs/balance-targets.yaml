@@ -1,0 +1,378 @@
+# Balance Targets Specification
+# Numerical Success Criteria for Gameplay
+#
+# "Without targets, you can't know if parameters are correct."
+# - Epoch Readiness Review (BALANCE-001)
+#
+# This document defines what "good" gameplay looks like numerically.
+# These targets guide parameter tuning and validate simulation behavior.
+
+meta:
+  epoch: 1
+  sub_epoch: "1A"
+  created: "2025-12-26"
+  purpose: "Define numerical success criteria for gameplay balance"
+  issue_id: "BALANCE-001"
+  status: "SPEC_COMPLETE"
+
+# =============================================================================
+# EPOCH 1: THE DEMONSTRATION
+# =============================================================================
+#
+# Thesis: "The player watches the Imperial Circuit consume itself."
+# The simulation should be INTERESTING to watch, not a flat line.
+
+epoch_1:
+  name: "The Demonstration"
+
+  # ---------------------------------------------------------------------------
+  # TIMING TARGETS
+  # ---------------------------------------------------------------------------
+  timing:
+    total_duration:
+      target_ticks: [30, 50]
+      description: "Game should reach crisis within this window"
+      rationale: "Short enough to be watchable, long enough to show dynamics"
+
+    phase_transitions:
+      early_game:
+        tick_range: [0, 10]
+        expected_events:
+          - "Initial extraction establishes wealth flow"
+          - "Consciousness begins rising in periphery"
+          - "Core workers remain comfortable (labor aristocracy)"
+        metrics:
+          wealth_transfer_visible: true
+          consciousness_differential_emerging: true
+
+      mid_game:
+        tick_range: [10, 25]
+        expected_events:
+          - "Extraction accelerates, biocapacity depletes"
+          - "Consciousness gap widens (P_w >> C_w)"
+          - "Tension accumulates on EXPLOITATION edges"
+          - "First EXCESSIVE_FORCE events may occur"
+        metrics:
+          consciousness_gap: ">= 0.3"  # P_w.consciousness - C_w.consciousness
+          tension_rising: true
+          biocapacity_depleting: true
+
+      late_game:
+        tick_range: [25, 50]
+        expected_events:
+          - "ECOLOGICAL_OVERSHOOT fires (crisis moment)"
+          - "Bifurcation occurs based on solidarity_strength"
+          - "Endgame state determined"
+        metrics:
+          crisis_fired: true
+          outcome_determined: true
+
+  # ---------------------------------------------------------------------------
+  # OUTCOME DISTRIBUTION
+  # ---------------------------------------------------------------------------
+  outcomes:
+    description: "Expected distribution of outcomes across many playthroughs"
+
+    default_scenario:
+      description: "Standard 4-node Imperial Circuit with default parameters"
+      revolutionary_path:
+        probability: 0.3  # 30% of runs
+        condition: "solidarity_strength >= solidarity_threshold at crisis"
+        teaching_moment: "Building solidarity infrastructure BEFORE crisis matters"
+
+      fascist_path:
+        probability: 0.7  # 70% of runs
+        condition: "solidarity_strength < solidarity_threshold at crisis"
+        teaching_moment: "Agitation without solidarity produces fascism"
+
+    tuned_scenario:
+      description: "After player understands mechanics and acts accordingly"
+      note: "Epoch 1 is passive observation, so this applies to Epoch 2"
+
+  # ---------------------------------------------------------------------------
+  # METRIC THRESHOLDS
+  # ---------------------------------------------------------------------------
+  thresholds:
+    description: "When these thresholds are crossed, interesting things should happen"
+
+    consciousness:
+      mass_awakening_threshold: 0.7
+      description: "When class consciousness crosses this, MASS_AWAKENING fires"
+      expected_timing: "tick 15-30 for periphery workers"
+
+    solidarity:
+      activation_threshold: 0.5
+      description: "When solidarity_strength >= this, consciousness transmits effectively"
+      bifurcation_threshold: 0.6
+      description_bifurcation: "At crisis, solidarity >= this leads to revolution"
+
+    tension:
+      rupture_threshold: 1.0
+      description: "When edge tension reaches 1.0, RUPTURE fires"
+      expected_timing: "Should not happen before crisis (tension is slow-burn)"
+
+    biocapacity:
+      overshoot_threshold: 0.0
+      description: "When biocapacity <= 0, ECOLOGICAL_OVERSHOOT fires"
+      target_timing: "tick 30-50"
+
+  # ---------------------------------------------------------------------------
+  # VISUAL DYNAMICS
+  # ---------------------------------------------------------------------------
+  visual_dynamics:
+    description: "What the dashboard should SHOW to be interesting"
+
+    wealth_lines:
+      P_w: { trend: "declining", color: "red", description: "Periphery worker impoverishment" }
+      P_c: { trend: "stable_high", color: "orange", description: "Comprador takes cut" }
+      C_b: { trend: "increasing", color: "blue", description: "Core bourgeoisie accumulates" }
+      C_w: { trend: "stable_high", color: "green", description: "Labor aristocracy maintained" }
+
+    consciousness_gap:
+      trend: "widening"
+      description: "Gap between P_w and C_w consciousness should grow"
+      target_by_crisis: ">= 0.5"
+
+    tension_gauge:
+      trend: "rising"
+      description: "Tension on EXPLOITATION edges should climb steadily"
+
+    metabolic_gauge:
+      trend: "declining"
+      description: "Biocapacity should deplete toward overshoot"
+
+# =============================================================================
+# EPOCH 2: THE GAME (TARGETS PER SUB-EPOCH)
+# =============================================================================
+
+epoch_2:
+  name: "The Game"
+
+  # ---------------------------------------------------------------------------
+  # SUB-EPOCH 2A: CORE AGENCY
+  # ---------------------------------------------------------------------------
+  sub_epoch_2a:
+    name: "Core Agency"
+
+    timing:
+      session_length:
+        target_ticks: [50, 100]
+        description: "Longer session due to player decision points"
+
+      decision_frequency:
+        target: "1 meaningful decision every 5-10 ticks"
+        description: "Player should feel engaged, not overwhelmed"
+
+    resource_balance:
+      description: "Cadre Labor / Sympathizer Labor / Reputation equilibrium"
+
+      starting_resources:
+        cadre_labor: 10
+        sympathizer_labor: 100
+        reputation: 0.1
+
+      target_ratios:
+        cadre_to_sympathizer: [0.05, 0.15]  # 5-15% cadre ratio is healthy
+        description: "Too few cadre = mob; too many = reading group"
+
+      growth_rate:
+        cadre: "slow (training takes time)"
+        sympathizer: "fast (mass recruitment easy)"
+        reputation: "medium (earned through actions)"
+
+    trap_visibility:
+      liberal_trap:
+        trigger_condition: "3+ consecutive electoral actions"
+        consequence: "Revolutionary pressure drops, State co-opts movement"
+        visibility: "Dashboard shows declining consciousness_gap"
+
+      ultra_left_trap:
+        trigger_condition: "Kinetic action without sufficient mass support"
+        consequence: "Blowback, network exposure, State crackdown"
+        visibility: "Dashboard shows solidarity_strength collapse"
+
+      rightist_trap:
+        trigger_condition: "Focus on wage improvements for C_w class"
+        consequence: "P_w-C_w solidarity broken, labor aristocracy reinforced"
+        visibility: "Dashboard shows consciousness_gap stagnating"
+
+  # ---------------------------------------------------------------------------
+  # SUB-EPOCH 2B: ORGANIZATION
+  # ---------------------------------------------------------------------------
+  sub_epoch_2b:
+    name: "Organization"
+
+    cohesion_dynamics:
+      starting_cohesion: 0.8
+      entropy_accumulation_rate: 0.01  # Per tick per member
+      description: "Growth automatically degrades cohesion"
+
+      healthy_range: [0.6, 1.0]
+      warning_range: [0.4, 0.6]
+      crisis_range: [0.0, 0.4]
+
+      transmission_law:
+        formula: "Effective_Transmission = min(Solidarity, Cohesion)"
+        description: "Cohesion caps how well consciousness transmits"
+
+    class_composition:
+      safe_chauvinism_threshold: 0.2
+      description: "If chauvinism exceeds this during crisis, RED_BROWN_COUP triggers"
+
+      chauvinism_sources:
+        C_la_recruitment: 0.1  # Each labor aristocrat brings chauvinism
+        C_pb_recruitment: 0.15  # Petty bourgeoisie brings more
+
+    doctrine_progression:
+      nodes_per_session: [2, 4]
+      description: "Player should unlock 2-4 doctrine nodes per full game"
+
+      theoretical_labor_generation:
+        base_rate: 1  # TL per tick
+        cadre_bonus: 0.1  # Per cadre above minimum
+
+  # ---------------------------------------------------------------------------
+  # SUB-EPOCH 2C: INFORMATION
+  # ---------------------------------------------------------------------------
+  sub_epoch_2c:
+    name: "Information"
+
+    hegemony_balance:
+      starting_state_hegemony: 0.9
+      starting_player_hegemony: 0.1
+      description: "State starts with narrative dominance"
+
+      contestation_rate:
+        player_actions: "Can shift 0.01-0.05 per action"
+        state_response: "State can recover 0.02 per tick if unchallenged"
+
+      victory_threshold: 0.5
+      description: "Hegemony >= 0.5 means counter-narrative is mainstream"
+
+    state_attention:
+      starting_threads: 3
+      max_threads: 10
+      description: "State starts with limited attention"
+
+      thread_allocation_time: "Immediate within tick"
+      expansion_cost: "Each new thread increases agitation by 0.05"
+
+      saturation_threshold: 0.8
+      description: "When 80%+ threads allocated, State is vulnerable to DDoS"
+
+    intel_quality:
+      water_territory:
+        confidence: [0.9, 1.0]
+        intel_decay_rate: 0.01
+      mud_territory:
+        confidence: [0.4, 0.7]
+        intel_decay_rate: 0.05
+      desert_territory:
+        confidence: [0.0, 0.3]
+        intel_decay_rate: 0.1
+        falsification_probability: 0.3
+
+  # ---------------------------------------------------------------------------
+  # SUB-EPOCH 2D: COMBAT
+  # ---------------------------------------------------------------------------
+  sub_epoch_2d:
+    name: "Combat"
+
+    blowback_formula:
+      base_support_loss: 0.1  # Per kinetic action
+      collateral_multiplier: 2.0  # If civilians harmed
+      framing_modifier: 0.5  # Wire hegemony can reduce blowback
+
+    target_effectiveness:
+      extraction_nodes:
+        success_impact: "High - starves State of resources"
+        blowback_risk: "Low - industrial targets"
+        recommended: true
+
+      circulation_edges:
+        success_impact: "Medium - disrupts supply chains"
+        blowback_risk: "High - affects civilian infrastructure"
+        trap: "Social Blowback mechanic"
+
+      realization_nodes:
+        success_impact: "Very High - command and control"
+        blowback_risk: "Extreme - triggers QRF response"
+        ultra_left_deviation_risk: true
+
+    ultra_left_deviation:
+      trigger_condition: "Kinetic success + mass support collapse"
+      description: "Winning battles while losing hearts"
+      game_over_state: true
+      teaching_moment: "Politics must precede violence"
+
+# =============================================================================
+# PARAMETER TUNING GUIDELINES
+# =============================================================================
+
+tuning_guidelines:
+  description: "How to adjust parameters when targets aren't met"
+
+  if_crisis_too_early:
+    symptom: "ECOLOGICAL_OVERSHOOT before tick 20"
+    adjustments:
+      - "Decrease extraction_efficiency"
+      - "Increase biocapacity_regeneration_rate"
+      - "Decrease consciousness_drift_k"
+
+  if_crisis_too_late:
+    symptom: "No ECOLOGICAL_OVERSHOOT by tick 60"
+    adjustments:
+      - "Increase extraction_efficiency"
+      - "Decrease biocapacity_regeneration_rate"
+      - "Increase tension_accumulation_rate"
+
+  if_flat_dynamics:
+    symptom: "Metrics don't change visibly"
+    adjustments:
+      - "Increase all rate parameters by 50%"
+      - "Check if scenario has correct edge types"
+      - "Verify 4-node circuit, not 2-node"
+
+  if_revolution_too_easy:
+    symptom: "Revolutionary path > 50% without player effort"
+    adjustments:
+      - "Decrease solidarity_transmission_rate"
+      - "Increase solidarity_threshold for bifurcation"
+
+  if_revolution_impossible:
+    symptom: "Fascist path > 95% even with optimal play"
+    adjustments:
+      - "Increase solidarity_transmission_rate"
+      - "Decrease solidarity_threshold for bifurcation"
+      - "Add more SOLIDARITY edges to scenario"
+
+# =============================================================================
+# VERIFICATION PROTOCOL
+# =============================================================================
+
+verification:
+  description: "How to test if balance targets are met"
+
+  automated_tests:
+    - name: "test_crisis_timing"
+      description: "Run 100 simulations, verify crisis fires in [30, 50] for 90%+"
+      location: "tests/integration/test_balance_targets.py"
+      status: "PLANNED"
+
+    - name: "test_outcome_distribution"
+      description: "Run 1000 simulations, verify ~70% fascist / ~30% revolutionary"
+      location: "tests/integration/test_balance_targets.py"
+      status: "PLANNED"
+
+    - name: "test_visual_dynamics"
+      description: "Verify wealth lines diverge, consciousness gap widens"
+      location: "tests/integration/test_balance_targets.py"
+      status: "PLANNED"
+
+  manual_playtesting:
+    protocol:
+      - "Run simulation with default parameters"
+      - "Observe dashboard for 50 ticks"
+      - "Record: tick of crisis, outcome, subjective interest level"
+      - "Adjust parameters and repeat"
+    frequency: "After any parameter change"

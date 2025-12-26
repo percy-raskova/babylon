@@ -58,7 +58,7 @@ class GlobalEconomy(BaseModel):
         pool_ratio < 0.1: CRISIS (emergency measures, emit event)
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
     imperial_rent_pool: Currency = Field(
         default=100.0,
@@ -67,10 +67,14 @@ class GlobalEconomy(BaseModel):
 
     current_super_wage_rate: Coefficient = Field(
         default=0.20,
+        alias="super_wage_rate",
+        validation_alias="super_wage_rate",
         description="Dynamic wage rate for WAGES edges (20% default)",
     )
 
     current_repression_level: Probability = Field(
         default=0.5,
+        alias="repression_level",
+        validation_alias="repression_level",
         description="System-wide repression modifier (blended with per-class values)",
     )

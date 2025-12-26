@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/collections/event_templates.schema.json",
+  "title": "Event Templates Collection",
+  "description": "Collection of mechanical event templates for recurring game events",
+
+  "type": "object",
+  "allOf": [
+    { "$ref": "../core/base.schema.json#/$defs/MetadataEnvelope" }
+  ],
+  "properties": {
+    "version": true,
+    "generatedAt": true,
+    "sourceFormat": true,
+    "event_templates": {
+      "type": "array",
+      "items": { "$ref": "../entities/event_template.schema.json" },
+      "description": "List of event templates"
+    }
+  },
+  "required": ["version", "generatedAt", "sourceFormat", "event_templates"],
+  "additionalProperties": false
+}

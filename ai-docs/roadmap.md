@@ -1,6 +1,19 @@
 # Babylon Master Roadmap: The Path to MVP & Horizontal Scaling
 
+> ⚠️ **DEPRECATED (2025-12-26)**: This document uses the old "Phase" numbering system.
+>
+> **See [epochs-overview.md](epochs-overview.md) for the current Epoch + Slice model.**
+>
+> This document is preserved for historical reference only. Old commits and discussions may reference these Phase numbers. The mapping is:
+> - Phase 0-2 → Epoch 0 (The Kernel)
+> - Phase 3-4 → Epoch 1 (The Demonstration)
+> - Phase 5+ → Epoch 2-3 (The Game, The Platform)
+
+---
+
 > "We build the skeleton first. Then we add the muscles. Finally, we teach it to speak."
+>
+> *Superseded by:* "Build the demonstration first. Then build the game. Finally, build the platform."
 
 ---
 
@@ -415,9 +428,11 @@ SimulationEngine.run_tick(graph, services, context)
 
 - `brainstorm/plans/four-phase-engine-blueprint.md` - DEPRECATED (2025-12-09)
 - Previous "Six-Phase Fractal Evolution" structure - SUPERSEDED (2025-12-12)
+- **THIS DOCUMENT** - DEPRECATED (2025-12-26) - See `ai-docs/epochs-overview.md`
 
 ---
 
 *Document created: 2025-12-09*
 *Last updated: 2025-12-25 (Developer Dashboard Functional)*
-*Epoch: MVP & Horizontal Scaling*
+*DEPRECATED: 2025-12-26 (Replaced by Epoch + Slice model)*
+*Canonical roadmap: ai-docs/epochs-overview.md*

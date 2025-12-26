@@ -71,6 +71,10 @@ mido = "^1.3.3"
 linkify-it-py = "^2.0.3"
 pip-audit = "^2.7.3"
 pytest-playwright = "^0.7.2"
+radon = "^6.0.1"
+xenon = "^0.9.3"
+pytest-randomly = "^4.0.1"
+mutmut = "^3.4.0"
 
 
 [tool.poetry.group.docs.dependencies]
@@ -122,11 +126,17 @@ select = [
     "I",      # isort (import sorting)
     "B",      # flake8-bugbear
     "C4",     # flake8-comprehensions
+    "C90",    # mccabe complexity (C901 rule)
     "UP",     # pyupgrade
     "ARG",    # unused arguments
     "SIM",    # flake8-simplify
 ]
 ignore = ["E501"]  # line length handled by formatter
+
+[tool.ruff.lint.mccabe]
+# Cyclomatic complexity threshold (CC > 15 triggers C901)
+# See ADR028 in ai-docs/decisions.yaml for rationale
+max-complexity = 15
 
 [tool.ruff.lint.isort]
 known-first-party = ["babylon"]
@@ -173,6 +183,15 @@ version = "0.3.0"
 tag_format = "v$version"
 version_files = ["pyproject.toml:version"]
 update_changelog_on_bump = true
+
+# =============================================================================
+# MUTMUT (Mutation Testing)
+# =============================================================================
+[tool.mutmut]
+# Only mutate the most critical pure-math module for CI gate
+# Full mutation testing is slow - use mise run mutate-critical for broader coverage
+paths_to_mutate = ["src/babylon/systems/formulas.py"]
+tests_dir = ["tests/"]
 
 # =============================================================================
 # BABYLON LOGGING CONFIGURATION

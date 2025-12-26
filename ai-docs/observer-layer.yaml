@@ -379,7 +379,7 @@ metrics_collector:
   audit:
     date: "2025-12-25"
     status: "PHASE 4.1B COMPLETE"
-    coverage_estimate: "~85% of meaningful metrics captured"
+    coverage_note: "Core entity metrics (7 fields/entity) and edge metrics (5 fields) captured; topology model ready but not wired to dashboard"
     phase_4_1b_completion:
       date: "2025-12-25"
       commits: ["96e6292", "5665520", "3b92753"]

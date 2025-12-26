@@ -1,0 +1,836 @@
+# Babylon Metabolic Slice Specification
+# Minimum Playable Metabolic Rift for MVP
+# The missing link: WHY the Imperial Circuit crashes
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-26"
+  updated: "2025-12-26"
+  purpose: "Track the widening rift between extraction and regeneration"
+  principle: "The Imperial Circuit is not perpetual; it consumes its own substrate"
+  status: "APPROVED_MVP"
+  epoch: 1
+  slice: "1.4"
+  slice_name: "The Rift"
+  priority: "CRITICAL"
+  theory_source: "Conversation on Malthusianism.txt"
+  location: "src/babylon/engine/systems/metabolism.py"
+  tests: "tests/unit/engine/systems/test_metabolism.py"
+  related_docs:
+    - "ai-docs/demographics-spec.yaml (Phase 5 full implementation)"
+    - "ai-docs/imperial-circuit.yaml (economic flows)"
+    - "ai-docs/carceral-geography.yaml (territory dynamics)"
+
+# =============================================================================
+# THEORETICAL FOUNDATION
+# =============================================================================
+
+theory:
+
+  the_thesis:
+    statement: |
+      The Imperial Circuit is not a perpetual motion machine.
+      It extracts from a finite substrate (biocapacity) and returns
+      less than it takes (the metabolic rift). Eventually, the substrate
+      is exhausted, and the system must either transform or collapse.
+
+    implication: |
+      Without the metabolic rift, Babylon's simulation has no endgame.
+      Imperial rent could flow forever. The rift provides the MATERIAL
+      constraint that forces the Fascist Bifurcation.
+
+  metabolic_rift:
+    definition: |
+      The gap between what is extracted from territories and what is
+      regenerated. Under capitalism, Extraction > Regeneration systematically,
+      because profit requires externalizing regeneration costs.
+
+    formula: "Delta_Biocapacity = Regeneration - (Extraction * Entropy_Factor)"
+
+    key_insight: |
+      The rift is not "environmental damage" as a side effect.
+      It is the CORE DYNAMIC of imperial accumulation.
+      Cheap commodities are cheap because regeneration costs are unpaid.
+
+  fascist_bifurcation_demographic:
+    definition: |
+      The system state where Total_Consumption > Total_Biocapacity.
+      At this point, SOMEONE'S consumption must be eliminated.
+      The choice is political: whose?
+
+    options:
+      austerity:
+        name: "Socialist Resolution"
+        mechanism: "Reduce S_class consumption of wealthy classes"
+        outcome: "No deaths, reduced lifestyles"
+
+      necropolitics:
+        name: "Fascist Resolution"
+        mechanism: "Deny S_bio to 'surplus populations'"
+        outcome: "Mass death in periphery, core lifestyles preserved"
+
+    trigger: "ECOLOGICAL_OVERSHOOT event emitted"
+
+# =============================================================================
+# DATA MODEL UPDATES (MVP SCOPE)
+# =============================================================================
+
+data_model:
+
+  territory_additions:
+    file: "src/babylon/models/entities/territory.py"
+    status: "REQUIRES IMPLEMENTATION"
+
+    new_fields:
+      biocapacity:
+        type: "Currency"
+        description: "Stock of extractable resources and ecosystem services"
+        default: 100.0
+        constraints:
+          - ">= 0.0 (cannot go negative; zero = depleted)"
+        note: "This is a STOCK that depletes/regenerates, not a flow"
+
+      regeneration_rate:
+        type: "Coefficient"
+        range: "[0.0, 0.1]"
+        default: 0.02
+        description: "Fraction of max_biocapacity restored per tick"
+        formula: "regen_amount = regeneration_rate * max_biocapacity"
+
+      max_biocapacity:
+        type: "Currency"
+        default: 100.0
+        description: "Maximum biocapacity when fully regenerated"
+        note: "biocapacity cannot exceed max_biocapacity"
+
+      extraction_intensity:
+        type: "Coefficient"
+        range: "[0.0, 1.0]"
+        default: 0.0
+        description: "How hard this territory is being extracted"
+        source: "Set by ImperialRentSystem based on EXPLOITATION edges"
+
+    pydantic_definition: |
+      # Add to Territory model
+      biocapacity: Currency = Field(default=Currency(100.0), ge=0.0)
+      max_biocapacity: Currency = Field(default=Currency(100.0), ge=0.0)
+      regeneration_rate: Coefficient = Field(default=Coefficient(0.02), ge=0.0, le=0.1)
+      extraction_intensity: Coefficient = Field(default=Coefficient(0.0), ge=0.0, le=1.0)
+
+  social_class_additions:
+    file: "src/babylon/models/entities/social_class.py"
+    status: "REQUIRES IMPLEMENTATION"
+
+    new_fields:
+      consumption_needs:
+        type: "Currency"
+        description: "Total consumption required per tick to maintain class position"
+        formula: "consumption_needs = s_bio + s_class"
+
+      s_bio:
+        type: "Currency"
+        default: 0.01
+        description: "Biological minimum for survival (calories, water, shelter)"
+        constraints:
+          - ">= 0.01 (absolute floor)"
+        note: "Below this threshold, mortality spikes"
+
+      s_class:
+        type: "Currency"
+        description: "Social reproduction requirement above biological minimum"
+        note: "Varies by class role"
+
+    class_defaults:
+      PERIPHERY_PROLETARIAT:
+        s_bio: 0.01
+        s_class: 0.00
+        consumption_needs: 0.01
+        note: "Survival only, no class reproduction"
+
+      LABOR_ARISTOCRACY:
+        s_bio: 0.01
+        s_class: 0.09
+        consumption_needs: 0.10
+        note: "Includes S_imperial from cheap imports"
+
+      PETTY_BOURGEOISIE:
+        s_bio: 0.01
+        s_class: 0.14
+        consumption_needs: 0.15
+        note: "Professional reproduction costs"
+
+      CORE_BOURGEOISIE:
+        s_bio: 0.01
+        s_class: 0.24
+        consumption_needs: 0.25
+        note: "Luxury + capital maintenance"
+
+      COMPRADOR_BOURGEOISIE:
+        s_bio: 0.01
+        s_class: 0.19
+        consumption_needs: 0.20
+        note: "Import-dependent lifestyle"
+
+      LUMPENPROLETARIAT:
+        s_bio: 0.01
+        s_class: 0.00
+        consumption_needs: 0.01
+        note: "Excluded from formal economy"
+
+    pydantic_definition: |
+      # Add to SocialClass model
+      s_bio: Currency = Field(default=Currency(0.01), ge=0.01)
+      s_class: Currency = Field(default=Currency(0.0), ge=0.0)
+
+      @computed_field
+      @property
+      def consumption_needs(self) -> Currency:
+          return Currency(self.s_bio + self.s_class)
+
+  global_economy_additions:
+    file: "src/babylon/models/entities/economy.py"
+    status: "REQUIRES IMPLEMENTATION"
+
+    new_fields:
+      total_biocapacity:
+        type: "Currency"
+        description: "Sum of all territory biocapacity stocks"
+        computed: true
+
+      total_consumption:
+        type: "Currency"
+        description: "Sum of all class consumption_needs * wealth_weight"
+        computed: true
+
+      metabolic_balance:
+        type: "float"
+        description: "total_biocapacity - total_consumption"
+        note: "Negative = overshoot"
+
+      overshoot_ratio:
+        type: "float"
+        description: "total_consumption / total_biocapacity"
+        note: "> 1.0 = overshoot active"
+
+# =============================================================================
+# SYSTEM ARCHITECTURE: MetabolismSystem
+# =============================================================================
+
+system_architecture:
+
+  metabolism_system:
+    name: "MetabolismSystem"
+    file: "src/babylon/engine/systems/metabolism.py"
+    status: "REQUIRES IMPLEMENTATION"
+    protocol: "System (step signature)"
+
+    purpose: |
+      Track the metabolic rift: the gap between extraction and regeneration.
+      Emit ECOLOGICAL_OVERSHOOT when consumption exceeds biocapacity.
+      This is the material constraint that makes the simulation finite.
+
+    position_in_loop:
+      order: 2.5
+      after: "SolidaritySystem (consciousness transmission)"
+      before: "ConsciousnessSystem (ideology drift)"
+      rationale: |
+        Metabolism runs AFTER economic extraction (ImperialRentSystem)
+        sets extraction_intensity, but BEFORE consciousness drift.
+        Material conditions (rift) should precede ideological response.
+
+    execution_order_diagram: |
+      SimulationEngine.run_tick():
+        1. ImperialRentSystem     (extraction, rent flows)
+        2. SolidaritySystem       (consciousness transmission)
+        2.5 MetabolismSystem      <-- NEW: rift calculation
+        3. ConsciousnessSystem    (ideology drift/bifurcation)
+        4. SurvivalSystem         (P(S|A), P(S|R))
+        5. StruggleSystem         (agency, George Floyd Dynamic)
+        6. ContradictionSystem    (tension, rupture)
+        7. TerritorySystem        (heat, eviction)
+
+    inputs:
+      from_graph:
+        - "Territory nodes: biocapacity, max_biocapacity, regeneration_rate"
+        - "SocialClass nodes: consumption_needs, wealth"
+        - "EXPLOITATION edges: value_flow (determines extraction_intensity)"
+
+      from_services:
+        - "config.entropy_factor (default 1.2 - extraction costs more than it yields)"
+        - "config.overshoot_threshold (default 1.0 - ratio triggering event)"
+
+    process:
+      step_1_calculate_extraction:
+        description: "Determine how much each territory is being extracted"
+        logic: |
+          for territory in graph.territories:
+            # Sum extraction from all EXPLOITATION edges targeting this territory
+            inbound_extraction = sum(
+              edge.value_flow for edge in graph.edges
+              if edge.target == territory and edge.type == EXPLOITATION
+            )
+            territory.extraction_intensity = min(1.0, inbound_extraction / territory.biocapacity)
+
+      step_2_apply_rift:
+        description: "Update biocapacity based on extraction vs regeneration"
+        formula: |
+          for territory in graph.territories:
+            extraction = territory.extraction_intensity * territory.biocapacity * entropy_factor
+            regeneration = territory.regeneration_rate * territory.max_biocapacity
+            delta = regeneration - extraction
+            territory.biocapacity = max(0.0, min(territory.max_biocapacity, territory.biocapacity + delta))
+
+      step_3_calculate_totals:
+        description: "Aggregate global consumption and biocapacity"
+        logic: |
+          total_biocapacity = sum(t.biocapacity for t in graph.territories)
+          total_consumption = sum(
+            c.consumption_needs * (c.wealth / 100.0)  # wealth-weighted
+            for c in graph.social_classes
+          )
+          metabolic_balance = total_biocapacity - total_consumption
+          overshoot_ratio = total_consumption / max(0.01, total_biocapacity)
+
+      step_4_emit_events:
+        description: "Emit ECOLOGICAL_OVERSHOOT if consumption exceeds capacity"
+        logic: |
+          if overshoot_ratio > overshoot_threshold:
+            emit(SimulationEvent(
+              event_type=EventType.ECOLOGICAL_OVERSHOOT,
+              source_id="GLOBAL",
+              data={
+                "overshoot_ratio": overshoot_ratio,
+                "metabolic_balance": metabolic_balance,
+                "total_consumption": total_consumption,
+                "total_biocapacity": total_biocapacity
+              }
+            ))
+
+    outputs:
+      graph_mutations:
+        - "Territory.biocapacity: Updated stock value"
+        - "Territory.extraction_intensity: Set from edge flows"
+
+      events_emitted:
+        - type: "EventType.ECOLOGICAL_OVERSHOOT"
+          trigger: "overshoot_ratio > 1.0"
+          data:
+            - "overshoot_ratio: float"
+            - "metabolic_balance: float"
+            - "total_consumption: float"
+            - "total_biocapacity: float"
+
+      metrics_exposed:
+        - "metabolic_balance"
+        - "overshoot_ratio"
+        - "total_biocapacity"
+        - "total_consumption"
+        - "per_territory_biocapacity"
+        - "per_territory_extraction_intensity"
+
+    constants:
+      ENTROPY_FACTOR:
+        value: 1.2
+        description: "Extraction costs 20% more biocapacity than value extracted"
+        rationale: "Thermodynamic inefficiency + externalized costs"
+
+      OVERSHOOT_THRESHOLD:
+        value: 1.0
+        description: "Ratio at which ECOLOGICAL_OVERSHOOT fires"
+
+      DEPLETION_WARNING_THRESHOLD:
+        value: 0.3
+        description: "Biocapacity fraction triggering early warning"
+
+# =============================================================================
+# ENUM ADDITIONS
+# =============================================================================
+
+enum_additions:
+  file: "src/babylon/models/enums.py"
+  status: "REQUIRES IMPLEMENTATION"
+
+  EventType:
+    new_value: "ECOLOGICAL_OVERSHOOT"
+    description: "Emitted when total_consumption > total_biocapacity"
+    string_value: "ecological_overshoot"
+
+# =============================================================================
+# INTEGRATION PLAN
+# =============================================================================
+
+integration:
+
+  simulation_engine:
+    file: "src/babylon/engine/simulation_engine.py"
+    changes:
+      - "Import MetabolismSystem"
+      - "Add to DEFAULT_SYSTEMS list at position 2.5 (after Solidarity, before Consciousness)"
+      - "Ensure system receives graph with Territory nodes"
+
+    code_location: |
+      # In SimulationEngine.__init__ or DEFAULT_SYSTEMS
+      DEFAULT_SYSTEMS = [
+          ImperialRentSystem(),
+          SolidaritySystem(),
+          MetabolismSystem(),    # <-- INSERT HERE
+          ConsciousnessSystem(),
+          SurvivalSystem(),
+          StruggleSystem(),
+          ContradictionSystem(),
+          TerritorySystem(),
+      ]
+
+  imperial_rent_system:
+    file: "src/babylon/engine/systems/economic.py"
+    changes:
+      - "When extracting rent, also set extraction_intensity on source Territory"
+      - "extraction_intensity = value_extracted / territory.biocapacity"
+
+    integration_point: |
+      # In ImperialRentSystem.step(), after calculating extraction:
+      if source_territory := graph.get_territory_for_class(source_class):
+          source_territory.extraction_intensity = min(1.0,
+              extracted_value / max(0.01, source_territory.biocapacity)
+          )
+
+  metrics_collector:
+    file: "src/babylon/engine/observers/metrics.py"
+    changes:
+      - "Add metabolic fields to TickMetrics"
+      - "Collect from WorldState after MetabolismSystem runs"
+
+    new_tick_metrics_fields:
+      metabolic_balance:
+        type: "float"
+        description: "total_biocapacity - total_consumption"
+
+      overshoot_ratio:
+        type: "float"
+        description: "total_consumption / total_biocapacity"
+
+      total_biocapacity:
+        type: "Currency"
+        description: "Sum of all territory biocapacity"
+
+      total_consumption:
+        type: "Currency"
+        description: "Sum of all class consumption_needs"
+
+      territories_depleted:
+        type: "int"
+        description: "Count of territories with biocapacity < 0.1 * max"
+
+  dashboard_signals:
+    description: "What the user sees to understand the rift"
+
+    primary_indicators:
+      metabolic_gauge:
+        metric: "overshoot_ratio"
+        display: "Gauge from 0.0 to 2.0"
+        zones:
+          sustainable: "[0.0, 0.8) - Green"
+          warning: "[0.8, 1.0) - Yellow"
+          overshoot: "[1.0, 1.5) - Orange"
+          crisis: "[1.5, 2.0] - Red"
+
+      rift_trend:
+        metric: "metabolic_balance"
+        display: "Line chart over time"
+        interpretation: |
+          Negative slope = rift widening
+          Zero slope = equilibrium
+          Positive slope = rift healing (rare under capitalism)
+
+    secondary_indicators:
+      territory_health_map:
+        metric: "per_territory_biocapacity / max_biocapacity"
+        display: "Territory grid with color coding"
+        colors:
+          healthy: "> 0.7 - Green"
+          stressed: "0.3 - 0.7 - Yellow"
+          depleted: "< 0.3 - Red"
+
+      extraction_intensity_map:
+        metric: "per_territory_extraction_intensity"
+        display: "Territory grid showing extraction pressure"
+
+      class_consumption_breakdown:
+        metric: "consumption_needs by class"
+        display: "Stacked bar chart"
+        insight: "Shows WHO consumes HOW MUCH"
+
+  world_state:
+    file: "src/babylon/models/world_state.py"
+    changes:
+      - "Add computed properties for metabolic aggregates"
+      - "Ensure to_graph() includes new Territory fields"
+
+    new_properties: |
+      @computed_field
+      @property
+      def total_biocapacity(self) -> Currency:
+          return Currency(sum(t.biocapacity for t in self.territories))
+
+      @computed_field
+      @property
+      def total_consumption(self) -> Currency:
+          return Currency(sum(
+              c.consumption_needs * (c.wealth / 100.0)
+              for c in self.classes
+          ))
+
+      @computed_field
+      @property
+      def metabolic_balance(self) -> float:
+          return float(self.total_biocapacity - self.total_consumption)
+
+      @computed_field
+      @property
+      def overshoot_ratio(self) -> float:
+          if self.total_biocapacity <= 0:
+              return float('inf')
+          return float(self.total_consumption / self.total_biocapacity)
+
+# =============================================================================
+# MVP BOUNDARIES
+# =============================================================================
+
+scope:
+
+  in_scope:
+    - "Biocapacity as stock on Territory"
+    - "Regeneration rate as fixed coefficient"
+    - "Extraction intensity derived from EXPLOITATION edge flows"
+    - "Simple rift formula: regen - (extraction * entropy)"
+    - "ECOLOGICAL_OVERSHOOT event emission"
+    - "Dashboard metrics for rift visualization"
+    - "S_bio vs S_class distinction on SocialClass"
+    - "Consumption needs as sum of S_bio + S_class"
+
+  out_of_scope:
+    dynamic_population:
+      description: "Population growth/decline based on conditions"
+      phase: "5+"
+      rationale: "Requires ReproductiveLabor system"
+
+    migration:
+      description: "Movement of populations between territories"
+      phase: "5+"
+      rationale: "Requires path-finding and migration pull/push factors"
+
+    warfare:
+      description: "Military destruction of biocapacity"
+      phase: "6+"
+      rationale: "Requires combat system"
+
+    climate_modeling:
+      description: "Global biocapacity decline from emissions"
+      phase: "6+"
+      rationale: "Requires atmosphere/carbon system"
+
+    reproductive_labor:
+      description: "Labor that restores biocapacity"
+      phase: "5+"
+      rationale: "Significant subsystem"
+
+    necropolitics_resolution:
+      description: "Automatic population elimination during overshoot"
+      phase: "5+"
+      rationale: "Requires demographic system integration"
+
+  mvp_goal: |
+    The MVP goal is TRACKING the rift, not simulating full ecosystem dynamics.
+    The player should SEE:
+    1. Biocapacity depleting over time
+    2. The overshoot_ratio approaching and exceeding 1.0
+    3. The ECOLOGICAL_OVERSHOOT event firing
+
+    This creates narrative tension ("the system is unsustainable") without
+    requiring full demographic resolution mechanics.
+
+# =============================================================================
+# FORMULAS
+# =============================================================================
+
+formulas:
+
+  biocapacity_update:
+    function: "calculate_biocapacity_delta"
+    file: "src/babylon/systems/formulas.py"
+    status: "REQUIRES IMPLEMENTATION"
+    equation: "ΔB = R - (E × η)"
+    expanded: "ΔB = (regeneration_rate × max_biocapacity) - (extraction_intensity × biocapacity × entropy_factor)"
+
+    inputs:
+      regeneration_rate:
+        symbol: "r"
+        type: "Coefficient [0, 0.1]"
+        description: "Fraction of max restored per tick"
+
+      max_biocapacity:
+        symbol: "B_max"
+        type: "Currency"
+        description: "Maximum possible biocapacity"
+
+      extraction_intensity:
+        symbol: "e"
+        type: "Coefficient [0, 1]"
+        description: "How hard territory is being extracted"
+
+      biocapacity:
+        symbol: "B"
+        type: "Currency"
+        description: "Current biocapacity stock"
+
+      entropy_factor:
+        symbol: "η"
+        type: "Coefficient"
+        default: 1.2
+        description: "Thermodynamic inefficiency multiplier"
+
+    output:
+      type: "Currency"
+      description: "Change in biocapacity (can be negative)"
+
+    constraints:
+      - "Result clamped to [0, max_biocapacity]"
+      - "Cannot extract from depleted territory (B = 0)"
+
+    tests:
+      - "calculate_biocapacity_delta(0.02, 100, 0.0, 100, 1.2) == 2.0  # Pure regen"
+      - "calculate_biocapacity_delta(0.02, 100, 0.1, 100, 1.2) == -10.0  # Net depletion"
+      - "calculate_biocapacity_delta(0.02, 100, 0.0167, 100, 1.2) ≈ 0.0  # Equilibrium"
+
+  overshoot_ratio:
+    function: "calculate_overshoot_ratio"
+    file: "src/babylon/systems/formulas.py"
+    status: "REQUIRES IMPLEMENTATION"
+    equation: "O = C_total / B_total"
+
+    inputs:
+      total_consumption:
+        symbol: "C_total"
+        type: "Currency"
+        description: "Sum of all class consumption_needs (wealth-weighted)"
+
+      total_biocapacity:
+        symbol: "B_total"
+        type: "Currency"
+        description: "Sum of all territory biocapacity"
+
+    output:
+      type: "float"
+      range: "[0, ∞)"
+      description: "Ratio of consumption to capacity"
+
+    thresholds:
+      sustainable: "O < 0.8"
+      warning: "0.8 <= O < 1.0"
+      overshoot: "O >= 1.0"
+      crisis: "O >= 1.5"
+
+    tests:
+      - "calculate_overshoot_ratio(80, 100) == 0.8  # Sustainable"
+      - "calculate_overshoot_ratio(100, 100) == 1.0  # Threshold"
+      - "calculate_overshoot_ratio(150, 100) == 1.5  # Crisis"
+
+# =============================================================================
+# NARRATIVE INTEGRATION
+# =============================================================================
+
+narrative:
+
+  event_templates:
+    ecological_overshoot:
+      trigger: "EventType.ECOLOGICAL_OVERSHOOT"
+      template: |
+        ECOLOGICAL OVERSHOOT: Consumption exceeds regeneration.
+        Overshoot ratio: {overshoot_ratio:.2f}x capacity.
+        Metabolic balance: {metabolic_balance:.2f} (deficit).
+        Assessment: System consuming its own substrate.
+        Projection: Resolution required within {ticks_to_collapse} ticks.
+
+    territory_depleted:
+      trigger: "territory.biocapacity < 0.1 * territory.max_biocapacity"
+      template: |
+        TERRITORY DEPLETED: {territory_name} biocapacity critical.
+        Current: {biocapacity:.1f} / {max_biocapacity:.1f} ({pct:.1%}).
+        Extraction intensity: {extraction_intensity:.2f}.
+        Assessment: Regeneration insufficient. Territory approaching exhaustion.
+
+    rift_widening:
+      trigger: "metabolic_balance decreasing for 5+ consecutive ticks"
+      template: |
+        METABOLIC RIFT WIDENING: Extraction/regeneration gap growing.
+        Current balance: {metabolic_balance:.2f}.
+        Trend: {delta_per_tick:.2f}/tick.
+        Projection: Overshoot in {ticks_to_overshoot} ticks at current rate.
+
+  vocabulary:
+    prefer:
+      - "metabolic rift"
+      - "ecological overshoot"
+      - "consumption deficit"
+      - "substrate depletion"
+      - "regeneration insufficient"
+      - "extraction intensity"
+
+    avoid:
+      - "overpopulation"
+      - "too many people"
+      - "carrying capacity exceeded"
+      - "unsustainable population"
+
+# =============================================================================
+# TESTING REQUIREMENTS
+# =============================================================================
+
+testing:
+
+  unit_tests:
+    file: "tests/unit/engine/systems/test_metabolism.py"
+    required_tests:
+      - "test_biocapacity_regeneration_only"
+      - "test_biocapacity_extraction_only"
+      - "test_biocapacity_equilibrium"
+      - "test_biocapacity_depletion"
+      - "test_biocapacity_clamped_at_zero"
+      - "test_biocapacity_clamped_at_max"
+      - "test_overshoot_ratio_calculation"
+      - "test_ecological_overshoot_event_emission"
+      - "test_extraction_intensity_from_exploitation_edges"
+      - "test_consumption_needs_calculation"
+      - "test_s_bio_vs_s_class_distinction"
+
+  integration_tests:
+    file: "tests/integration/test_metabolic_integration.py"
+    required_tests:
+      - "test_metabolism_in_simulation_loop"
+      - "test_imperial_rent_sets_extraction_intensity"
+      - "test_overshoot_triggers_during_high_extraction"
+      - "test_dashboard_receives_metabolic_metrics"
+
+  property_tests:
+    - "Biocapacity never goes negative"
+    - "Biocapacity never exceeds max"
+    - "Overshoot ratio >= 0"
+    - "Total consumption equals sum of class consumption_needs"
+
+# =============================================================================
+# IMPLEMENTATION CHECKLIST
+# =============================================================================
+
+implementation_checklist:
+  priority: "CRITICAL - Blocks Phase 4.1 completion"
+
+  step_1_model_updates:
+    status: "TODO"
+    files:
+      - "src/babylon/models/entities/territory.py"
+      - "src/babylon/models/entities/social_class.py"
+      - "src/babylon/models/entities/economy.py"
+    tasks:
+      - "Add biocapacity, max_biocapacity, regeneration_rate, extraction_intensity to Territory"
+      - "Add s_bio, s_class, consumption_needs to SocialClass"
+      - "Add metabolic aggregate properties to GlobalEconomy"
+
+  step_2_enum_update:
+    status: "TODO"
+    files:
+      - "src/babylon/models/enums.py"
+    tasks:
+      - "Add ECOLOGICAL_OVERSHOOT to EventType enum"
+
+  step_3_formula_implementation:
+    status: "TODO"
+    files:
+      - "src/babylon/systems/formulas.py"
+    tasks:
+      - "Implement calculate_biocapacity_delta()"
+      - "Implement calculate_overshoot_ratio()"
+      - "Add tests in tests/unit/formulas/test_metabolism_formulas.py"
+
+  step_4_system_implementation:
+    status: "TODO"
+    files:
+      - "src/babylon/engine/systems/metabolism.py"
+    tasks:
+      - "Create MetabolismSystem class implementing System protocol"
+      - "Implement step() with extraction intensity, rift calculation, event emission"
+      - "Add tests in tests/unit/engine/systems/test_metabolism.py"
+
+  step_5_integration:
+    status: "TODO"
+    files:
+      - "src/babylon/engine/simulation_engine.py"
+      - "src/babylon/engine/systems/economic.py"
+    tasks:
+      - "Add MetabolismSystem to DEFAULT_SYSTEMS at position 2.5"
+      - "Update ImperialRentSystem to set extraction_intensity on Territory"
+
+  step_6_metrics:
+    status: "TODO"
+    files:
+      - "src/babylon/models/metrics.py"
+      - "src/babylon/engine/observers/metrics.py"
+    tasks:
+      - "Add metabolic fields to TickMetrics"
+      - "Update MetricsCollector to capture metabolic state"
+
+  step_7_world_state:
+    status: "TODO"
+    files:
+      - "src/babylon/models/world_state.py"
+    tasks:
+      - "Add computed properties for metabolic aggregates"
+      - "Ensure to_graph() serializes new Territory fields"
+
+  step_8_dashboard:
+    status: "TODO"
+    files:
+      - "src/babylon/ui/main.py"
+    tasks:
+      - "Add metabolic gauge component"
+      - "Add rift trend chart"
+      - "Add territory health visualization"
+
+  step_9_documentation:
+    status: "TODO"
+    files:
+      - "ai-docs/architecture.yaml"
+      - "ai-docs/formulas-spec.yaml"
+    tasks:
+      - "Add MetabolismSystem to systems list"
+      - "Add new formulas to formula inventory"
+      - "Update CLAUDE.md with metabolic metrics"
+
+# =============================================================================
+# SUCCESS CRITERIA
+# =============================================================================
+
+success_criteria:
+
+  functional:
+    - "MetabolismSystem runs in simulation loop without errors"
+    - "Biocapacity depletes when extraction_intensity > 0"
+    - "Biocapacity regenerates when extraction_intensity = 0"
+    - "ECOLOGICAL_OVERSHOOT fires when overshoot_ratio > 1.0"
+    - "Dashboard displays metabolic gauge and trend"
+
+  observational:
+    - "Player can SEE the rift widening over time"
+    - "Player can SEE which territories are being depleted"
+    - "Player can SEE the overshoot moment approaching"
+    - "Narrative describes overshoot in materialist terms"
+
+  integration:
+    - "Extraction intensity correlates with ImperialRentSystem activity"
+    - "Consumption needs correctly reflect class S_bio + S_class"
+    - "MetricsCollector captures all metabolic fields"
+    - "All tests pass (unit + integration)"
+
+  mvp_definition_of_done:
+    - "100 ticks of simulation with increasing extraction → overshoot event fires"
+    - "Dashboard shows rift widening visually"
+    - "No regressions in existing systems (1600+ tests still pass)"

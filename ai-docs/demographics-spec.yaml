@@ -1,0 +1,763 @@
+# Babylon Demographics Specification
+# Machine-readable spec for the Marxist-Malthusian Demographic Engine
+# Replaces "Vulgar Malthusian" 4X game logic with materialist population mechanics
+
+meta:
+  version: "0.1.0"
+  created: "2025-12-26"
+  updated: "2025-12-26"
+  purpose: "Model population dynamics through class reproduction and metabolic rift, not abstract 'carrying capacity'"
+  principle: "Population is not limited by space, but by the rift between extraction and regeneration"
+  status: "FUTURE ENHANCEMENT (Epoch 2)"
+  epoch: 2
+  slice: "2.1"
+  slice_name: "Demographic Resolution"
+  location: "src/babylon/engine/systems/demographics.py (PLANNED)"
+  tests: "tests/unit/engine/systems/test_demographics.py (PLANNED)"
+  dependencies:
+    - "ImperialRentSystem (S_class funding source)"
+    - "TerritorySystem (Biocapacity stock tracking)"
+    - "ReproductiveLabor system (Labor_Restoration generation)"
+
+# =============================================================================
+# THEORETICAL FOUNDATION: THE METABOLIC RIFT
+# =============================================================================
+
+theory:
+  name: "Marxist-Malthusian Demographic Engine"
+
+  critique_of_malthus:
+    vulgar_malthusianism: |
+      Standard 4X games model population through "carrying capacity" - a fixed
+      number of people a territory can support. This leads to fascistic logic:
+      "There are too many people, therefore some must die/leave."
+
+      This is ideological mystification. It treats population as the CAUSE of
+      resource scarcity, rather than the EFFECT of social organization.
+
+    the_real_question: |
+      The question is never "how many people can the land support?" but rather:
+      "WHO consumes HOW MUCH of WHAT?"
+
+      A territory that "cannot support" 10,000 subsistence farmers can easily
+      support 100 billionaires - because the billionaires extract resources
+      from OTHER territories via imperial rent.
+
+    marxist_correction: |
+      Population pressure is a function of:
+      1. CLASS CONSUMPTION PATTERNS (not raw headcount)
+      2. METABOLIC RIFT (extraction vs regeneration)
+      3. IMPERIAL RENT FLOWS (subsidizing core consumption)
+
+      The simulation must track the COST OF REPRODUCING STYLES OF LIFE,
+      not just biological organisms.
+
+  metabolic_rift:
+    definition: |
+      The "Metabolic Rift" (John Bellamy Foster, following Marx) describes
+      the rupture in the natural nutrient cycle caused by capitalist agriculture.
+
+      Under capitalism, nutrients flow ONE WAY: from soil to city to sewer.
+      There is no return flow. The rift widens until the soil is exhausted.
+
+    generalized_form: |
+      We generalize this to ALL resource cycles:
+      - Labor power extracted, not restored (burnout, disability, death)
+      - Ecosystems extracted, not regenerated (deforestation, fishery collapse)
+      - Social bonds extracted, not maintained (atomization, anomie)
+
+      The rift is the GAP between what is taken and what is restored.
+
+    simulation_implication: |
+      Population is limited not by SPACE but by RIFT.
+      A territory with high extraction and low restoration will collapse
+      regardless of physical size. A territory with balanced flows can
+      sustain population indefinitely.
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+constants:
+  S_BIO_MINIMUM:
+    value: 0.01
+    unit: "Currency"
+    description: "Absolute biological minimum for survival (calories, shelter, water)"
+
+  S_CLASS_LABOR_ARISTOCRACY:
+    value: 0.15
+    unit: "Currency"
+    description: "Social reproduction cost for Labor Aristocracy lifestyle"
+    note: "Includes S_bio + S_imperial (consumer goods, healthcare, education)"
+
+  S_CLASS_PETTY_BOURGEOISIE:
+    value: 0.25
+    unit: "Currency"
+    description: "Social reproduction cost for Petty Bourgeoisie lifestyle"
+
+  S_CLASS_BOURGEOISIE:
+    value: 0.50
+    unit: "Currency"
+    description: "Social reproduction cost for Bourgeoisie lifestyle"
+    note: "Luxury consumption, asset maintenance, social capital reproduction"
+
+  NATURAL_REGEN_RATE:
+    value: 0.02
+    unit: "Biocapacity/tick"
+    description: "Base ecosystem regeneration rate without human intervention"
+
+  LABOR_RESTORATION_EFFICIENCY:
+    value: 0.7
+    unit: "Coefficient"
+    description: "How much reproductive labor converts to actual restoration"
+
+  POLLUTION_DECAY_RATE:
+    value: 0.01
+    unit: "Degradation/tick"
+    description: "Rate at which pollution degrades biocapacity"
+
+  CRISIS_THRESHOLD:
+    value: 0.0
+    unit: "Delta_Biocapacity"
+    description: "Point at which metabolic rift triggers demographic crisis"
+
+# =============================================================================
+# CLASS-BASED CONSUMPTION MODEL
+# =============================================================================
+
+class_consumption:
+  principle: |
+    "Subsistence" is not a biological constant but a CLASS POSITION.
+
+    A proletarian needs calories to survive.
+    A labor aristocrat needs calories PLUS consumer goods PLUS healthcare
+    PLUS education for children PLUS retirement savings.
+
+    The "American Dream" is a specific S_class value - the cost of
+    reproducing a particular lifestyle. When imperial rent shrinks,
+    this S_class becomes unaffordable, triggering crisis.
+
+  subsistence_split:
+    S_bio:
+      symbol: "S_bio"
+      definition: "Biological Subsistence"
+      description: |
+        The absolute minimum consumption required to not die.
+        Calories, clean water, basic shelter, minimal healthcare.
+        This is the FLOOR - below this, mortality spikes.
+      unit: "Currency"
+      typical_value: 0.01
+      political_meaning: |
+        S_bio is what remains when all else is stripped away.
+        Fascism operates by denying S_bio to "surplus populations."
+
+    S_class:
+      symbol: "S_class"
+      definition: "Social Reproduction"
+      description: |
+        The consumption required to reproduce a CLASS POSITION.
+        Includes S_bio plus class-specific commodities:
+        - Education (reproducing skills)
+        - Healthcare (reproducing labor capacity)
+        - Consumer goods (reproducing social status)
+        - Housing (reproducing spatial position)
+        - Leisure (reproducing mental health)
+      unit: "Currency"
+      formula: "S_class = S_bio + S_status + S_skills + S_health"
+      political_meaning: |
+        S_class is what must be consumed to remain in one's class.
+        Downward mobility = S_class becoming unaffordable.
+        The "middle class squeeze" is S_class inflation outpacing wages.
+
+    S_imperial:
+      symbol: "S_imperial"
+      definition: "Imperial Subsidy Component"
+      description: |
+        The portion of S_class funded by imperial rent extraction.
+        This is the "cheap goods" effect - consumer products made
+        affordable by peripheral super-exploitation.
+      unit: "Currency"
+      formula: "S_imperial = S_class - S_domestic"
+      political_meaning: |
+        S_imperial is the material basis of labor aristocracy loyalty.
+        When imperial rent shrinks, S_imperial collapses, and the
+        "American lifestyle" becomes unaffordable.
+
+        This is why core workers support imperialism:
+        their S_class DEPENDS on peripheral extraction.
+
+  the_american_problem:
+    description: |
+      The United States consumes approximately 25% of global resources
+      with 4% of global population. This is not "overpopulation" -
+      it is CLASS CONSUMPTION INEQUALITY.
+
+      The simulation must ask: "What is the S_class of the American
+      working class, and what imperial rent flow sustains it?"
+
+    formalization: |
+      Let:
+        Pop_core = Core population
+        Pop_periphery = Periphery population
+        S_class_core = Core class consumption (high)
+        S_bio_periphery = Periphery biological consumption (low)
+
+      Global consumption = (Pop_core * S_class_core) + (Pop_periphery * S_bio_periphery)
+
+      The "population problem" is actually a S_class problem:
+      reducing S_class_core would do more than eliminating Pop_periphery.
+
+# =============================================================================
+# THE METABOLIC RIFT FORMULA
+# =============================================================================
+
+formulas:
+
+  # ---------------------------------------------------------------------------
+  # BIOCAPACITY DELTA (The Rift)
+  # ---------------------------------------------------------------------------
+  biocapacity_delta:
+    function: "calculate_biocapacity_delta"
+    symbol: "ΔB"
+    equation: "ΔB = (R_nat + L_restore) - (E_extract + P_degrade)"
+    status: "PLANNED"
+    description: |
+      The fundamental demographic equation. Biocapacity changes each tick
+      based on the balance between regeneration and extraction.
+
+      When ΔB < 0: The rift widens. Territory is being depleted.
+      When ΔB > 0: The rift heals. Territory is regenerating.
+      When ΔB = 0: Sustainable equilibrium (rare under capitalism).
+
+    inputs:
+      natural_regeneration:
+        symbol: "R_nat"
+        type: "Currency"
+        description: "Ecosystem self-healing (forests regrow, fish reproduce)"
+
+      labor_restoration:
+        symbol: "L_restore"
+        type: "Currency"
+        description: "Human effort to restore capacity (reforestation, soil amendment)"
+        source: "ReproductiveLabor system"
+
+      resource_extraction:
+        symbol: "E_extract"
+        type: "Currency"
+        description: "Resources removed from territory (mining, logging, fishing)"
+        source: "ImperialRentSystem extraction"
+
+      pollution_degradation:
+        symbol: "P_degrade"
+        type: "Currency"
+        description: "Capacity destroyed by pollution (toxic waste, CO2, soil salinity)"
+
+    output:
+      type: "Currency"
+      description: "Net change in biocapacity (positive = regeneration, negative = rift)"
+
+    key_insight: |
+      The rift is NOT a fixed "carrying capacity."
+      It is a DYNAMIC BALANCE that humans can shift in either direction.
+
+      Capitalism systematically maximizes E_extract and minimizes L_restore,
+      widening the rift until crisis forces resolution.
+
+  # ---------------------------------------------------------------------------
+  # CLASS REPRODUCTION COST
+  # ---------------------------------------------------------------------------
+  class_reproduction:
+    function: "calculate_class_reproduction_cost"
+    symbol: "C_repro"
+    equation: "C_repro(class) = Pop(class) * S_class(class)"
+    status: "PLANNED"
+    description: |
+      Total consumption required to reproduce a class for one tick.
+      This is the DEMAND side of the demographic equation.
+
+    inputs:
+      population:
+        symbol: "Pop"
+        type: "int"
+        description: "Number of individuals in class"
+
+      class_subsistence:
+        symbol: "S_class"
+        type: "Currency"
+        description: "Per-capita consumption for class position reproduction"
+
+    output:
+      type: "Currency"
+      description: "Total consumption required by class"
+
+    class_values:
+      PERIPHERY_PROLETARIAT:
+        S_class: "S_bio (0.01)"
+        note: "Biological minimum only"
+      LABOR_ARISTOCRACY:
+        S_class: "S_bio + S_imperial (0.15)"
+        note: "Consumer goods subsidized by imperial rent"
+      PETTY_BOURGEOISIE:
+        S_class: "S_bio + S_status + S_skills (0.25)"
+        note: "Professional reproduction costs"
+      CORE_BOURGEOISIE:
+        S_class: "S_bio + S_luxury + S_capital (0.50)"
+        note: "Luxury consumption and capital maintenance"
+
+  # ---------------------------------------------------------------------------
+  # GLOBAL CONSUMPTION BALANCE
+  # ---------------------------------------------------------------------------
+  consumption_balance:
+    function: "calculate_consumption_balance"
+    symbol: "Balance"
+    equation: "Balance = Global_Biocapacity - Sum(C_repro(all_classes))"
+    status: "PLANNED"
+    description: |
+      The global balance between available biocapacity and total class
+      consumption. When this goes negative, demographic crisis begins.
+
+    inputs:
+      global_biocapacity:
+        symbol: "B_global"
+        type: "Currency"
+        description: "Sum of all territory biocapacity stocks"
+
+      total_consumption:
+        symbol: "C_total"
+        type: "Currency"
+        description: "Sum of all class reproduction costs"
+
+    output:
+      type: "Currency"
+      description: "Surplus (positive) or deficit (negative)"
+
+    thresholds:
+      surplus: "> 0.1"
+      equilibrium: "[-0.1, 0.1]"
+      deficit: "< -0.1"
+      crisis: "< -0.3"
+
+    key_insight: |
+      This is where the "population problem" reveals its class character.
+      A deficit can be resolved by:
+      1. Reducing Pop (Malthusian - kill people)
+      2. Reducing S_class (Socialist - redistribute)
+      3. Increasing B (Ecological - restore)
+      4. Stealing B from elsewhere (Imperial - extract)
+
+      Capitalism chooses (4), then (1). Never (2) or (3).
+
+# =============================================================================
+# THE FASCIST BIFURCATION (DEMOGRAPHIC)
+# =============================================================================
+
+fascist_bifurcation:
+  principle: |
+    When Global_Consumption > Global_Biocapacity, the system enters
+    demographic crisis. There are only three ways to resolve this:
+
+    1. FASCIST SOLUTION: Eliminate S_bio of "surplus populations"
+       (Let periphery die to protect core S_class)
+
+    2. SOCIALIST SOLUTION: Eliminate S_class luxury consumption
+       (Redistribute from rich to poor, maximize L_restore)
+
+    3. IMPERIAL SOLUTION: Externalize the rift
+       (Extract from colonies, defer crisis to future)
+
+    The simulation must model all three pathways and their consequences.
+
+  crisis_trigger:
+    condition: "consumption_balance < CRISIS_THRESHOLD"
+    effects:
+      - "EventType.DEMOGRAPHIC_CRISIS emitted"
+      - "Bourgeoisie forced to choose resolution pathway"
+      - "Class tensions spike across all relationships"
+
+  resolution_pathways:
+
+    fascist_solution:
+      name: "Necropolitical Resolution"
+      description: |
+        The fascist solution to demographic crisis is to ELIMINATE the
+        biological subsistence of "surplus populations." This is not
+        metaphorical - it is literal mass death through:
+        - Denial of food aid
+        - Medical apartheid
+        - Environmental sacrifice zones
+        - Border militarization (let migrants drown)
+        - Carceral disposal (mass incarceration as slow death)
+
+      mechanism: |
+        Reduce Global_Consumption by setting S_bio = 0 for
+        PERIPHERY_PROLETARIAT nodes in selected territories.
+        This kills population but "balances" the equation.
+
+      formula: "Pop_eliminated = (Deficit / S_bio_periphery)"
+
+      political_meaning: |
+        "Life unworthy of life." The simulation makes explicit what
+        fascism mystifies: the material basis of genocide.
+
+      narrative_flag: "NECROPOLITICS_ACTIVE"
+
+    socialist_solution:
+      name: "Redistributive Resolution"
+      description: |
+        The socialist solution is to resolve the deficit by eliminating
+        S_class luxury consumption (austerity for the RICH) and
+        maximizing Labor_Restoration (ecological repair).
+
+      mechanism: |
+        Reduce S_class for BOURGEOISIE and LABOR_ARISTOCRACY to
+        approach S_bio levels. Redirect surplus to L_restore.
+
+      formula: "S_class_new = S_bio + (S_class_old - S_bio) * austerity_factor"
+
+      political_meaning: |
+        "From each according to ability, to each according to need."
+        No one dies, but lifestyles change dramatically.
+
+      narrative_flag: "REDISTRIBUTION_ACTIVE"
+
+    imperial_solution:
+      name: "Externalization Resolution"
+      description: |
+        The imperial solution is to STEAL biocapacity from elsewhere.
+        This defers the crisis but does not resolve it - the rift
+        simply widens in the periphery.
+
+      mechanism: |
+        Transfer Biocapacity stock from PERIPHERY territories to CORE.
+        Increase E_extract on peripheral nodes.
+
+      formula: "B_transfer = Deficit * imperial_extraction_rate"
+
+      political_meaning: |
+        The classic colonial "solution" - export the crisis.
+        This is why climate change hits the Global South first.
+
+      narrative_flag: "IMPERIAL_EXTRACTION_INTENSIFIED"
+
+  decision_logic:
+    description: |
+      The bourgeoisie choose resolution pathway based on:
+      1. Imperial rent availability (can we externalize?)
+      2. Core class consciousness (will they accept redistribution?)
+      3. Peripheral resistance (can we eliminate without backlash?)
+
+    decision_tree: |
+      IF imperial_rent_pool > Deficit:
+        → IMPERIAL_SOLUTION (externalize)
+      ELSE IF core_consciousness > 0.5:
+        → SOCIALIST_SOLUTION (forced redistribution)
+      ELSE:
+        → FASCIST_SOLUTION (necropolitics)
+
+    key_insight: |
+      Fascism is the DEFAULT resolution when imperialism fails and
+      socialism is blocked. This is why fascism rises during
+      imperial decline - the externalization option closes.
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+
+  imperial_rent_system:
+    connection: "S_class funding source"
+    description: |
+      The ImperialRentSystem provides the imperial rent that funds
+      S_imperial - the portion of core class consumption subsidized
+      by peripheral extraction.
+
+    data_flow:
+      from: "ImperialRentSystem.imperial_rent_pool"
+      to: "DemographicsSystem.s_imperial_available"
+
+    mechanics:
+      - "When rent shrinks, S_imperial shrinks"
+      - "S_class becomes unaffordable for labor aristocracy"
+      - "Downward mobility OR fascist scapegoating"
+
+  territory_system:
+    connection: "Biocapacity stock tracking"
+    description: |
+      TerritorySystem tracks Biocapacity as a stock attribute on
+      Territory nodes. DemographicsSystem reads this stock and
+      calculates Delta_Biocapacity each tick.
+
+    data_flow:
+      from: "Territory.biocapacity (stock)"
+      to: "DemographicsSystem.calculate_biocapacity_delta()"
+      back: "Territory.biocapacity += Delta_Biocapacity"
+
+    mechanics:
+      - "HIGH_PROFILE territories extract faster (industry)"
+      - "LOW_PROFILE territories may regenerate (subsistence)"
+      - "Heat dynamics affect extraction intensity"
+
+  reproductive_labor:
+    connection: "Labor_Restoration generation"
+    description: |
+      The ReproductiveLabor system (Phase 5+) generates L_restore -
+      the human effort that heals the metabolic rift. This includes:
+      - Care work (restoring labor power)
+      - Ecological restoration (reforestation, soil repair)
+      - Social reproduction (education, community building)
+
+    data_flow:
+      from: "ReproductiveLaborSystem.total_restoration"
+      to: "DemographicsSystem.labor_restoration"
+
+    mechanics:
+      - "Reproductive labor is undervalued under capitalism"
+      - "L_restore << E_extract systematically"
+      - "Socialist transition requires inverting this ratio"
+
+  consciousness_system:
+    connection: "Resolution pathway selection"
+    description: |
+      Class consciousness levels determine which crisis resolution
+      pathway is selected. High core consciousness blocks fascism.
+
+    data_flow:
+      from: "SocialClass.consciousness (all classes)"
+      to: "DemographicsSystem.select_resolution_pathway()"
+
+    mechanics:
+      - "High periphery consciousness blocks necropolitics (resistance)"
+      - "High core consciousness enables redistribution (solidarity)"
+      - "Atomization enables fascism (no resistance)"
+
+# =============================================================================
+# NARRATIVE IMPLICATIONS
+# =============================================================================
+
+narrative_implications:
+  purpose: |
+    The AI Narrator (Bondi Algorithm) must describe demographic shifts
+    in materialist terms, never Malthusian mystification. The narrative
+    should reveal the CLASS CHARACTER of population dynamics.
+
+  vocabulary:
+    avoid:
+      - "overpopulation"
+      - "carrying capacity exceeded"
+      - "too many people"
+      - "population bomb"
+      - "unsustainable population growth"
+      - "demographic pressure"
+
+    prefer:
+      - "metabolic rift widening"
+      - "consumption deficit"
+      - "class reproduction crisis"
+      - "extraction exceeds regeneration"
+      - "biocapacity depletion"
+      - "S_class unaffordable"
+      - "necropolitical resolution"
+      - "imperial subsidy collapse"
+
+  event_templates:
+
+    rift_widening:
+      trigger: "Delta_Biocapacity < -0.1 for 5+ ticks"
+      template: |
+        METABOLIC RIFT: Territory {territory_id} extraction rate
+        exceeds regeneration. Biocapacity: {biocapacity:.2f} (-{delta:.2f}/tick).
+        At current rate, depletion in {ticks_to_zero} ticks.
+        Assessment: Extraction-regeneration imbalance unsustainable.
+
+    consumption_crisis:
+      trigger: "consumption_balance < -0.3"
+      template: |
+        DEMOGRAPHIC CRISIS: Global consumption exceeds biocapacity.
+        Deficit: {deficit:.2f}. Resolution required.
+        Class consumption profile:
+          - Bourgeoisie: {c_bourgeoisie:.2f} ({pct_bourgeoisie:.1%})
+          - Labor Aristocracy: {c_labor_aristocracy:.2f} ({pct_la:.1%})
+          - Periphery Proletariat: {c_periphery:.2f} ({pct_periphery:.1%})
+        Note: {pct_bourgeoisie:.1%} of consumption by {pop_pct_bourgeoisie:.1%} of population.
+
+    fascist_resolution:
+      trigger: "NECROPOLITICS_ACTIVE flag set"
+      template: |
+        NECROPOLITICAL RESOLUTION INITIATED.
+        Target population: {target_class} in {target_territory}.
+        S_bio denial mechanism: {mechanism}.
+        Projected mortality: {projected_deaths} over {timeframe} ticks.
+        Consumption deficit resolved: {deficit_resolved:.2f}.
+        Assessment: The Empire cannibalizes its periphery to feed the core.
+
+    socialist_resolution:
+      trigger: "REDISTRIBUTION_ACTIVE flag set"
+      template: |
+        REDISTRIBUTIVE RESOLUTION INITIATED.
+        Austerity targets: {austerity_classes}.
+        S_class reduction: {reduction_pct:.1%}.
+        L_restore increase: {restoration_increase:.2f}.
+        Projected timeline to equilibrium: {ticks_to_balance} ticks.
+        Assessment: Class consumption equalized. No mortality required.
+
+    imperial_intensification:
+      trigger: "IMPERIAL_EXTRACTION_INTENSIFIED flag set"
+      template: |
+        IMPERIAL EXTRACTION INTENSIFIED.
+        Source territories: {source_territories}.
+        Biocapacity transfer: {b_transfer:.2f}.
+        Periphery rift acceleration: {rift_acceleration:.2f}/tick.
+        Assessment: Crisis externalized. Deferred, not resolved.
+        Periphery depletion in {periphery_ticks_to_crisis} ticks.
+
+  key_narrative_principles:
+
+    never_blame_population: |
+      The narrative must NEVER frame the crisis as "too many people."
+      Always frame as "too much consumption by too few" or
+      "extraction without restoration."
+
+    reveal_class_character: |
+      Every demographic event should expose the CLASS distribution
+      of consumption. "X% of consumption by Y% of population."
+
+    name_the_mechanism: |
+      Fascist solutions must be named explicitly:
+      - "S_bio denial"
+      - "Necropolitical resolution"
+      - "Sacrifice zone designation"
+      Never euphemize mass death.
+
+    show_alternatives: |
+      When fascist resolution occurs, narrative should note:
+      "Alternative: {socialist_resolution} was available but blocked
+      by {blocking_factor}."
+
+# =============================================================================
+# TESTING SCENARIOS
+# =============================================================================
+
+test_scenarios:
+
+  sustainable_equilibrium:
+    description: "Territory with balanced extraction and regeneration"
+    setup:
+      biocapacity: 100.0
+      natural_regen: 5.0
+      labor_restoration: 3.0
+      extraction: 6.0
+      pollution: 2.0
+    expected:
+      delta_biocapacity: 0.0
+      crisis: false
+
+  rift_widening:
+    description: "Classic extractive territory depleting"
+    setup:
+      biocapacity: 100.0
+      natural_regen: 2.0
+      labor_restoration: 0.0
+      extraction: 10.0
+      pollution: 3.0
+    expected:
+      delta_biocapacity: -11.0
+      ticks_to_depletion: 9
+      crisis_at_tick: 7
+
+  class_consumption_inequality:
+    description: "Core consumes disproportionately"
+    setup:
+      pop_core: 100
+      pop_periphery: 1000
+      s_class_core: 0.25
+      s_bio_periphery: 0.01
+      global_biocapacity: 30.0
+    expected:
+      consumption_core: 25.0
+      consumption_periphery: 10.0
+      total_consumption: 35.0
+      deficit: 5.0
+      core_pct_of_consumption: 71.4
+      core_pct_of_population: 9.1
+
+  fascist_bifurcation:
+    description: "Crisis resolved through necropolitics"
+    setup:
+      deficit: 10.0
+      imperial_rent_pool: 2.0  # Insufficient for externalization
+      core_consciousness: 0.2  # Too low for redistribution
+      periphery_consciousness: 0.3  # Too low for resistance
+      s_bio_periphery: 0.01
+    expected:
+      resolution: "FASCIST_SOLUTION"
+      pop_eliminated: 1000
+      narrative_flag: "NECROPOLITICS_ACTIVE"
+
+# =============================================================================
+# FUTURE WORK
+# =============================================================================
+
+future_enhancements:
+
+  phase_5_mvp:
+    - "Basic biocapacity tracking on Territory nodes"
+    - "S_bio vs S_class split for all SocialClass entities"
+    - "Consumption balance calculation"
+    - "Crisis event emission"
+
+  phase_5_full:
+    - "Full metabolic rift formula"
+    - "All three resolution pathways"
+    - "ReproductiveLabor system integration"
+    - "Narrative templates for demographic events"
+
+  phase_6:
+    - "Multi-territory biocapacity flows"
+    - "Climate change modeling (systemic rift widening)"
+    - "Intergenerational reproduction (skill inheritance)"
+    - "Migration as rift response"
+
+# =============================================================================
+# PHILOSOPHICAL GROUNDING
+# =============================================================================
+
+grounding:
+  sources:
+    - "Marx, Capital Vol. 1 (Metabolic Rift)"
+    - "Foster, Marx's Ecology"
+    - "Mbembe, Necropolitics"
+    - "Cope, Divided World Divided Class"
+    - "Davis, Planet of Slums"
+
+  key_quotes:
+    metabolic_rift: |
+      "Capitalist production... disturbs the metabolic interaction between man
+      and the earth, i.e., it prevents the return to the soil of its
+      constituent elements consumed by man in the form of food and clothing;
+      hence it hinders the operation of the eternal natural condition for
+      the lasting fertility of the soil." - Marx, Capital Vol. 1
+
+    necropolitics: |
+      "The ultimate expression of sovereignty resides, to a large degree,
+      in the power and the capacity to dictate who may live and who must die."
+      - Achille Mbembe, Necropolitics
+
+    superwages: |
+      "The US working class as a whole is not exploited; it participates in
+      the exploitation of the Third World... The average American lives at
+      the expense of other peoples." - Zak Cope, Divided World Divided Class
+
+  design_principle: |
+    This system exists to make the MATERIAL BASIS of fascism explicit.
+
+    Fascism is not "irrational hatred" - it is a RATIONAL response to
+    demographic crisis when imperialism fails and socialism is blocked.
+    The player must understand: fascism emerges from the logic of
+    class consumption inequality, not from "bad ideas."
+
+    The simulation should create moments where the player sees:
+    "If I don't redistribute, these people will die. If I do redistribute,
+    I lose the labor aristocracy. What do I choose?"
+
+    That is the Fascist Bifurcation made playable.

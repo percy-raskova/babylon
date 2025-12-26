@@ -4,11 +4,16 @@
 # Related: ADR029_hybrid_graph_architecture
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   status: "specification"
   epoch: 2
   codename: "The War"
   purpose: "Define the hybrid graph architecture for continental-scale simulation"
+  amendments:
+    - version: "1.1.0"
+      date: "2025-12-26"
+      title: "Dynamic Sovereignty Refactor"
+      summary: "Sovereignty as Node, not Property. Enables O(1) border changes for civil war and Balkanization."
 
 # =============================================================================
 # OVERVIEW
@@ -46,11 +51,145 @@ overview:
       definition: "Writing Tactical Cache changes back to Strategic Map"
       trigger: "End of tick, checkpoint, or sector transition"
 
+    # === Dynamic Sovereignty (v1.1.0) ===
+    dynamic_sovereignty:
+      definition: "Sovereignty as graph edges, not node properties"
+      principle: |
+        The Land (physical mesh) and the State (sovereignty claims) are independent layers.
+        A mountain range doesn't care who claims sovereignty over it.
+      layers:
+        land_layer:
+          edges: "ADJACENT_TO"
+          nature: "Immutable geography - physical borders, terrain"
+          changes: "Only via geological/construction events (rare)"
+        state_layer:
+          edges: "CLAIMS (Sovereign → Territory)"
+          nature: "Mutable politics - who governs what"
+          changes: "O(1) edge rewiring for secession, conquest, revolution"
+
+    sovereign:
+      definition: "A political entity capable of claiming sovereignty over Territory"
+      examples:
+        - "United States Federal Government"
+        - "Provisional Revolutionary Command"
+        - "California Republic (post-secession)"
+        - "Occupied Zone Administration"
+
+    fracture_operation:
+      definition: "Sovereignty transfer via edge manipulation"
+      steps:
+        - "Delete or reduce control_level on old Sovereign→Territory CLAIMS edge"
+        - "Create new CLAIMS edge from new Sovereign to Territory"
+      complexity: "O(1) - pure graph rewiring, no node property changes"
+
 # =============================================================================
-# NODE SCHEMA: TERRITORY
+# NODE SCHEMAS
 # =============================================================================
 
 node_schemas:
+
+  # ===========================================================================
+  # SOVEREIGN (v1.1.0 - Dynamic Sovereignty)
+  # ===========================================================================
+
+  Sovereign:
+    description: |
+      A political entity capable of claiming sovereignty over Territory. Sovereigns are
+      first-class nodes, not properties, enabling:
+      - Multiple competing sovereignty claims (civil war, dual power)
+      - O(1) border changes via edge rewiring (secession, conquest)
+      - Legitimacy tracking over time (recognition, consent)
+
+      Examples:
+      - United States Federal Government (recognized state)
+      - Provisional Revolutionary Command (insurgent)
+      - California Republic (secessionist)
+      - FEMA Zone 9 Administration (emergency authority)
+
+    properties:
+      id:
+        type: "STRING"
+        description: "Unique identifier for the sovereign entity"
+        format: "SOV_{CODE} (e.g., 'SOV_USA_FED', 'SOV_PRC', 'SOV_CAL_REP')"
+        primary_key: true
+        examples:
+          - "SOV_USA_FED"  # United States Federal Government
+          - "SOV_PRC"      # Provisional Revolutionary Command
+          - "SOV_CAL_REP"  # California Republic
+          - "SOV_FEMA_9"   # FEMA Zone 9 Administration
+
+      name:
+        type: "STRING"
+        description: "Human-readable name of the sovereign"
+        examples:
+          - "United States Federal Government"
+          - "Provisional Revolutionary Command"
+          - "California Republic"
+
+      sovereignty_type:
+        type: "ENUM"
+        values:
+          - "RECOGNIZED_STATE"  # Internationally recognized nation-state
+          - "PROVISIONAL"       # Transitional/revolutionary government
+          - "INSURGENT"         # Armed revolutionary movement
+          - "OCCUPATION"        # Military occupation authority
+          - "SECESSIONIST"      # Breakaway state seeking recognition
+          - "EMERGENCY"         # Emergency/martial law authority
+        description: "Classification of sovereignty claim"
+        default: "RECOGNIZED_STATE"
+
+      legitimacy:
+        type: "DOUBLE"
+        description: "Degree of recognized legitimate authority (0-1)"
+        constraints: "[0.0, 1.0]"
+        semantics:
+          1.0: "Full international recognition + internal consent"
+          0.7: "Recognized by major powers, some internal dissent"
+          0.4: "Disputed recognition, significant resistance"
+          0.1: "Widely rejected, controls only by force"
+        default: 1.0
+        note: "Affects diplomatic options, population compliance, AI faction behavior"
+
+      color_hex:
+        type: "STRING"
+        description: "UI display color for this sovereign's territories"
+        format: "#RRGGBB"
+        examples:
+          - "#3C3B6E"  # USA blue
+          - "#B22234"  # Revolutionary red
+          - "#FFD700"  # California gold
+        default: "#808080"
+
+      capital_territory_id:
+        type: "STRING"
+        description: "Territory ID of the sovereign's capital/seat of power"
+        nullable: true
+        foreign_key: "Territory.id"
+
+      founded_tick:
+        type: "INT32"
+        description: "Simulation tick when this sovereign was established"
+        default: 0
+
+      dissolved_tick:
+        type: "INT32"
+        description: "Simulation tick when this sovereign ceased to exist (null if active)"
+        nullable: true
+        default: null
+
+    indexes:
+      - property: "id"
+        type: "PRIMARY"
+      - property: "sovereignty_type"
+        type: "HASH"
+        reason: "Fast filtering by type (insurgent vs recognized)"
+      - property: "legitimacy"
+        type: "BTREE"
+        reason: "Range queries for legitimacy thresholds"
+
+  # ===========================================================================
+  # TERRITORY
+  # ===========================================================================
 
   Territory:
     description: |
@@ -108,11 +247,12 @@ node_schemas:
         default: 0.5
 
       # === Political Properties ===
-      controller:
-        type: "STRING"
-        description: "Faction currently controlling this territory"
-        values: ["STATE", "PLAYER", "CONTESTED", "NEUTRAL"]
-        default: "STATE"
+      # NOTE (v1.1.0): The `controller` property has been REMOVED.
+      # Sovereignty is now expressed via CLAIMS edges from Sovereign nodes.
+      # - STATE → Sovereign node with sovereignty_type=RECOGNIZED_STATE
+      # - PLAYER → Player's Sovereign node (sovereignty_type=INSURGENT/PROVISIONAL)
+      # - CONTESTED → Multiple CLAIMS edges with different control_levels
+      # - NEUTRAL → No CLAIMS edges (ungoverned territory)
 
       heat:
         type: "DOUBLE"
@@ -152,12 +292,13 @@ node_schemas:
     indexes:
       - property: "id"
         type: "PRIMARY"
-      - property: "controller"
-        type: "HASH"
-        reason: "Fast filtering by faction control"
+      # NOTE (v1.1.0): controller index removed - use CLAIMS edges instead
       - property: "bioregion"
         type: "HASH"
         reason: "Fast filtering for metabolism calculations"
+      - property: "heat"
+        type: "BTREE"
+        reason: "Range queries for state attention thresholds"
 
 # =============================================================================
 # EDGE SCHEMAS
@@ -272,6 +413,104 @@ edge_schemas:
         description: "Territory cannot be adjacent to itself"
         enforcement: "CHECK constraint"
 
+  # ===========================================================================
+  # CLAIMS (v1.1.0 - Dynamic Sovereignty)
+  # ===========================================================================
+
+  CLAIMS:
+    description: |
+      Represents a sovereignty claim from a Sovereign to a Territory. This is the
+      core of the Dynamic Sovereignty system.
+
+      Key Properties:
+      - A Territory can have MULTIPLE CLAIMS edges (contested territory)
+      - Only ONE claim should have control_level >= 0.5 at a time (effective control)
+      - Sovereignty changes are O(1) edge operations (delete old, create new)
+
+      Examples:
+      - (SOV_USA_FED) -[:CLAIMS]-> (US-CA)  # USA claims California
+      - (SOV_PRC) -[:CLAIMS]-> (US-CA-037)  # Revolutionary Command claims LA County
+      - Dual power: Both edges exist with different control_levels
+
+      Fracture Operation (Secession):
+      ```cypher
+      // Step 1: Reduce USA control over California
+      MATCH (usa:Sovereign {id: 'SOV_USA_FED'})-[c:CLAIMS]->(ca:Territory {id: 'US-CA'})
+      SET c.control_level = 0.1, c.legal_status = 'DISPUTED'
+
+      // Step 2: Create California Republic claim
+      MATCH (cal:Sovereign {id: 'SOV_CAL_REP'})
+      MATCH (ca:Territory {id: 'US-CA'})
+      CREATE (cal)-[:CLAIMS {control_level: 0.9, legal_status: 'DE_FACTO'}]->(ca)
+      ```
+
+    from_node: "Sovereign"
+    to_node: "Territory"
+
+    properties:
+      control_level:
+        type: "DOUBLE"
+        description: "Degree of effective control (0-1)"
+        constraints: "[0.0, 1.0]"
+        semantics:
+          1.0: "Complete control - all state functions operational"
+          0.7: "Strong control - occasional resistance, functions mostly intact"
+          0.4: "Contested - significant resistance, partial state collapse"
+          0.1: "Nominal - claim exists but little actual control"
+          0.0: "No control - claim is purely symbolic/historical"
+        default: 1.0
+        note: "Sum of control_levels for a territory should not exceed 1.0"
+
+      fiscal_status:
+        type: "ENUM"
+        values:
+          - "TAXED"     # Normal revenue extraction
+          - "REVOLT"    # Tax resistance, reduced revenue
+          - "BLOCKADE"  # External forces preventing revenue
+          - "LIBERATED" # No taxation (revolutionary zone)
+          - "OCCUPIED"  # Extraction by military force
+        description: "Revenue relationship between sovereign and territory"
+        default: "TAXED"
+
+      legal_status:
+        type: "ENUM"
+        values:
+          - "DE_JURE"   # Internationally recognized claim
+          - "DE_FACTO"  # Actual control without recognition
+          - "DISPUTED"  # Multiple claimants, no clear winner
+          - "OCCUPIED"  # Military occupation, original sovereignty suspended
+          - "CEDED"     # Formerly held, formally transferred
+        description: "Legal nature of the sovereignty claim"
+        default: "DE_JURE"
+
+      claimed_since_tick:
+        type: "INT32"
+        description: "Tick when this claim was established"
+        default: 0
+
+      recognition_level:
+        type: "DOUBLE"
+        description: "International recognition of this specific claim (0-1)"
+        constraints: "[0.0, 1.0]"
+        default: 1.0
+        note: "Affects diplomatic relations and legitimacy calculations"
+
+    constraints:
+      - name: "no_self_claim"
+        description: "A sovereign cannot claim a territory that IS itself"
+        enforcement: "Application-level validation"
+        note: "Sovereigns are not territories"
+
+      - name: "control_sum_limit"
+        description: "Sum of control_levels for a territory should not exceed 1.0"
+        enforcement: "Application-level validation"
+        note: "Soft constraint - temporary violations during transitions allowed"
+
+    indexes:
+      - properties: ["from_node", "to_node"]
+        type: "COMPOSITE"
+        reason: "Fast lookup of claims by sovereign or territory"
+
 # =============================================================================
 # THE CHRONICLE: HISTORICAL TRACKING
 # =============================================================================
@@ -318,7 +557,7 @@ chronicle:
           auto_increment: true
         edge_type:
           type: "STRING"
-          values: ["ADMINISTERS", "ADJACENT_TO"]
+          values: ["ADMINISTERS", "ADJACENT_TO", "CLAIMS"]
         from_id:
           type: "STRING"
         to_id:
@@ -464,11 +703,53 @@ hydration:
       This prevents edge-of-sector artifacts.
 
     ghost_node_properties:
-      - "id"
-      - "name"
-      - "controller"
-      - "heat"
+      territory:
+        - "id"
+        - "name"
+        - "heat"
+      sovereign:
+        - "id"
+        - "name"
+        - "legitimacy"
     marker: "_is_ghost: true"
+
+  sovereignty_hydration:
+    description: "How to hydrate sovereignty claims along with territories"
+    note: "Added in v1.1.0 for Dynamic Sovereignty"
+
+    protocol:
+      1_load_territories:
+        action: "Load Territory nodes for sector (unchanged)"
+
+      2_load_sovereigns:
+        action: "Load all Sovereigns that claim any territory in sector"
+        query: |
+          MATCH (sov:Sovereign)-[:CLAIMS]->(t:Territory)
+          WHERE t.id IN $territory_ids
+          RETURN DISTINCT sov
+
+      3_load_claims:
+        action: "Load CLAIMS edges for hydrated territories"
+        query: |
+          MATCH (sov:Sovereign)-[c:CLAIMS]->(t:Territory)
+          WHERE t.id IN $territory_ids
+          RETURN sov.id, c, t.id
+
+      4_build_networkx:
+        action: "Convert to NetworkX with sovereignty layer"
+        code_pattern: |
+          # Territory nodes as before
+          for territory in territories:
+              graph.add_node(territory.id, node_type='Territory', **territory.to_dict())
+
+          # Sovereign nodes
+          for sovereign in sovereigns:
+              graph.add_node(sovereign.id, node_type='Sovereign', **sovereign.to_dict())
+
+          # CLAIMS edges (Sovereign -> Territory)
+          for claim in claims:
+              graph.add_edge(claim.sovereign_id, claim.territory_id,
+                           edge_type='CLAIMS', **claim.properties)
 
 # =============================================================================
 # FLUSH STRATEGY
@@ -539,22 +820,81 @@ flush:
 query_patterns:
   description: "Common query patterns for Epoch 2 operations"
 
+  # ===========================================================================
+  # SOVEREIGNTY QUERIES (v1.1.0)
+  # ===========================================================================
+
+  territories_by_sovereign:
+    description: "Get all territories claimed by a specific sovereign"
+    query: |
+      MATCH (sov:Sovereign {id: $sovereign_id})-[c:CLAIMS]->(t:Territory)
+      WHERE c.control_level > 0.0
+      RETURN t.id, t.name, c.control_level, c.legal_status
+      ORDER BY c.control_level DESC
+    use_case: "Display sovereign's domain on map"
+
+  effective_controller:
+    description: "Find which sovereign has effective control of a territory"
+    query: |
+      MATCH (sov:Sovereign)-[c:CLAIMS]->(t:Territory {id: $territory_id})
+      WHERE c.control_level >= 0.5
+      RETURN sov.id, sov.name, c.control_level
+      ORDER BY c.control_level DESC
+      LIMIT 1
+    use_case: "Determine who actually controls a territory"
+
+  contested_territories:
+    description: "Find territories with multiple sovereignty claims"
+    query: |
+      MATCH (t:Territory)
+      WHERE SIZE([(s:Sovereign)-[c:CLAIMS]->(t) WHERE c.control_level > 0.1 | s]) > 1
+      RETURN t.id, t.name,
+             [(s:Sovereign)-[c:CLAIMS]->(t) | {sov: s.name, control: c.control_level}] AS claims
+    use_case: "Identify civil war zones and dual power situations"
+
+  fracture_candidates:
+    description: "Find territories ripe for sovereignty fracture"
+    query: |
+      MATCH (sov:Sovereign)-[c:CLAIMS]->(t:Territory)
+      WHERE c.control_level < 0.5 AND t.heat >= 0.6
+      RETURN t.id, t.name, sov.name, c.control_level, t.heat
+      ORDER BY c.control_level ASC
+    use_case: "Predict where secession/revolution may occur"
+
+  sovereignty_border:
+    description: "Find the border between two sovereign entities"
+    query: |
+      MATCH (sov1:Sovereign {id: $sovereign_1})-[:CLAIMS]->(t1:Territory)
+      MATCH (sov2:Sovereign {id: $sovereign_2})-[:CLAIMS]->(t2:Territory)
+      MATCH (t1)-[:ADJACENT_TO]-(t2)
+      RETURN t1.id AS territory_1, t2.id AS territory_2
+    use_case: "Identify front lines between competing sovereigns"
+
+  # ===========================================================================
+  # TRADITIONAL QUERIES (updated for CLAIMS)
+  # ===========================================================================
+
   front_line_detection:
     description: "Find territories at the boundary between factions"
     query: |
-      MATCH (friendly:Territory)-[:ADJACENT_TO]-(hostile:Territory)
-      WHERE friendly.controller = 'PLAYER'
-        AND hostile.controller = 'STATE'
+      // Find Player-claimed territories adjacent to State-claimed territories
+      MATCH (player_sov:Sovereign {sovereignty_type: 'INSURGENT'})-[:CLAIMS]->(friendly:Territory)
+      MATCH (state_sov:Sovereign {sovereignty_type: 'RECOGNIZED_STATE'})-[:CLAIMS]->(hostile:Territory)
+      MATCH (friendly)-[:ADJACENT_TO]-(hostile)
       RETURN DISTINCT friendly.id, friendly.name, friendly.heat
     use_case: "Identify where conflict will occur next"
 
   supply_line_check:
     description: "Verify path exists between two player territories"
     query: |
+      MATCH (player_sov:Sovereign {id: $player_sovereign_id})
       MATCH path = shortestPath(
         (a:Territory {id: $from})-[:ADJACENT_TO*]-(b:Territory {id: $to})
       )
-      WHERE ALL(n IN nodes(path) WHERE n.controller IN ['PLAYER', 'NEUTRAL'])
+      WHERE ALL(t IN nodes(path) WHERE
+        EXISTS((player_sov)-[:CLAIMS {control_level: 0.5}]->(t))
+        OR NOT EXISTS((:Sovereign)-[:CLAIMS]->(t))  // Neutral
+      )
       RETURN path
     use_case: "Check if reinforcements can reach isolated territory"
 
@@ -570,14 +910,13 @@ query_patterns:
   encirclement_detection:
     description: "Find player territories completely surrounded by enemy"
     query: |
-      MATCH (player:Territory {controller: 'PLAYER'})
-      WHERE NOT EXISTS(
-        (player)-[:ADJACENT_TO]-(:Territory {controller: 'PLAYER'})
-      )
-      AND NOT EXISTS(
-        (player)-[:ADJACENT_TO]-(:Territory {controller: 'NEUTRAL'})
-      )
-      RETURN player.id, player.name
+      MATCH (player_sov:Sovereign {id: $player_sovereign_id})-[:CLAIMS]->(player_t:Territory)
+      WHERE NOT EXISTS {
+        MATCH (player_t)-[:ADJACENT_TO]-(neighbor:Territory)
+        WHERE EXISTS((player_sov)-[:CLAIMS]->(neighbor))
+           OR NOT EXISTS((:Sovereign)-[:CLAIMS]->(neighbor))
+      }
+      RETURN player_t.id, player_t.name
     use_case: "Identify vulnerable positions for strategic planning"
 
   heat_spread_candidates:
@@ -672,6 +1011,19 @@ testing:
 
     sample_us_subset:
       description: "Small representative sample for tests"
+
+      sovereigns:
+        - id: "SOV_USA_FED"
+          name: "United States Federal Government"
+          sovereignty_type: "RECOGNIZED_STATE"
+          legitimacy: 1.0
+          color_hex: "#3C3B6E"
+        - id: "SOV_PRC"
+          name: "Provisional Revolutionary Command"
+          sovereignty_type: "INSURGENT"
+          legitimacy: 0.2
+          color_hex: "#B22234"
+
       territories:
         - "US (Federal)"
         - "US-CA (California)"
@@ -679,6 +1031,7 @@ testing:
         - "US-AZ (Arizona)"
         - "US-CA-037 (LA County)"
         - "US-CA-059 (Orange County)"
+
       edges:
         ADMINISTERS:
           - ["US", "US-CA"]
@@ -691,3 +1044,25 @@ testing:
           - ["US-CA", "US-AZ"]
           - ["US-NV", "US-AZ"]
           - ["US-CA-037", "US-CA-059"]
+        CLAIMS:
+          - from: "SOV_USA_FED"
+            to: "US"
+            control_level: 1.0
+            legal_status: "DE_JURE"
+          - from: "SOV_USA_FED"
+            to: "US-CA"
+            control_level: 0.9
+            legal_status: "DE_JURE"
+          - from: "SOV_USA_FED"
+            to: "US-NV"
+            control_level: 1.0
+            legal_status: "DE_JURE"
+          - from: "SOV_USA_FED"
+            to: "US-AZ"
+            control_level: 1.0
+            legal_status: "DE_JURE"
+          - from: "SOV_PRC"
+            to: "US-CA-037"
+            control_level: 0.4
+            legal_status: "DE_FACTO"
+            note: "Revolutionary command has partial control of LA County"

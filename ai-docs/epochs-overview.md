@@ -177,8 +177,9 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 | 2.2b | The Vanguard (Internal) | Cohesion, entropy, organizational dynamics |
 | 2.3 | Reproductive Labor | L_restore, regeneration via care work |
 | 2.4 | The Wire (Narrative Warfare) | Hegemony mechanics, propaganda actions |
-| 2.5 | Multiple Scenarios | Historical scenarios, custom setups |
+| 2.5 | The Resource Economy | Cadre Labor, Sympathizer Labor, Reputation |
 | 2.6 | Kinetic Warfare | Asymmetric logistics, system disruption |
+| 2.7 | Multiple Scenarios | Historical scenarios, custom setups |
 
 ### Slice 2.1: Demographic Resolution
 
@@ -229,6 +230,18 @@ Full interactive narrative control system based on Gramscian hegemony:
 - **Player Actions:** `jam_signal`, `distribute_samizdat`, `capture_media_node`, `viral_campaign`
 
 This builds on the Gramscian Wire MVP from Epoch 1 (dual narrative display) by adding player agency over narrative terrain. "The War of Position" becomes playable.
+
+### Slice 2.5: The Resource Economy
+
+**Spec:** `ai-docs/vanguard-economy.yaml`
+
+The "Vanguard Efficiency Equation" - materialist resource model:
+- **Three Currencies:** Cadre Labor (quality), Sympathizer Labor (quantity), Reputation (multiplier)
+- **Transmission Belt:** Coherence Factor = sigmoid(Cadre/Sympathizer/K)
+- **The Influencer Trap:** High Rep + Low Cadre = uncontrollable mobs
+- **The Reading Group Trap:** High Cadre + Low SL = irrelevant precision
+
+This is where "What Is To Be Done?" becomes gameplay. Players must balance quality and quantity - neither extreme wins.
 
 ### Slice 2.6: Kinetic Warfare
 

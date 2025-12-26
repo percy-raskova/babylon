@@ -35,6 +35,9 @@ This directory helps AI assistants:
 | `fog-of-war.yaml` | Slice 2.10 spec - Epistemic Horizon, Fish in Water Intel | YAML |
 | `formulas-spec.yaml` | All 16 mathematical formulas with signatures | YAML |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor | YAML |
+| **BALANCE & TUNING** |||
+| `balance-targets.yaml` | Numerical success criteria, timing windows, outcome distribution | YAML |
+| `state-ai-algorithm.yaml` | Panopticon decision logic, threat assessment, Thread allocation | YAML |
 | **ARCHITECTURE** |||
 | `architecture.yaml` | System structure, directory map, data flow | YAML |
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas | YAML |

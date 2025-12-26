@@ -177,6 +177,26 @@ class MetricsCollector:
 
         global_tension = self._compute_global_tension(state)
 
+        # Extract economy drivers
+        current_super_wage_rate = 0.20
+        current_repression_level = 0.5
+        pool_ratio = 1.0
+        if state.economy is not None:
+            current_super_wage_rate = float(state.economy.current_super_wage_rate)
+            current_repression_level = float(state.economy.current_repression_level)
+            pool_ratio = min(float(state.economy.imperial_rent_pool) / 100.0, 1.0)
+
+        # Calculate differentials
+        consciousness_gap = 0.0
+        wealth_gap = 0.0
+        p_w = entity_slots.get("p_w")
+        c_w = entity_slots.get("c_w")
+        c_b = entity_slots.get("c_b")
+        if p_w is not None and c_w is not None:
+            consciousness_gap = float(p_w.consciousness) - float(c_w.consciousness)
+        if c_b is not None and p_w is not None:
+            wealth_gap = float(c_b.wealth) - float(p_w.wealth)
+
         return TickMetrics(
             tick=state.tick,
             p_w=entity_slots.get("p_w"),
@@ -186,6 +206,11 @@ class MetricsCollector:
             edges=edge_metrics,
             imperial_rent_pool=imperial_rent_pool,
             global_tension=global_tension,
+            current_super_wage_rate=current_super_wage_rate,
+            current_repression_level=current_repression_level,
+            pool_ratio=pool_ratio,
+            consciousness_gap=consciousness_gap,
+            wealth_gap=wealth_gap,
         )
 
     def _extract_entity_metrics(self, entity: SocialClass) -> EntityMetrics:
@@ -201,39 +226,41 @@ class MetricsCollector:
         )
 
     def _extract_edge_metrics(self, state: WorldState) -> EdgeMetrics:
-        """Extract EdgeMetrics from WorldState relationships."""
-        exploitation_tension = 0.0
-        exploitation_rent = 0.0
-        tribute_flow = 0.0
-        wages_paid = 0.0
-        solidarity_strength = 0.0
+        """Extract EdgeMetrics from WorldState relationships with aggregation."""
+        exploitation_tensions: list[float] = []
+        exploitation_rents: list[float] = []
+        tribute_flows: list[float] = []
+        wages_paid_list: list[float] = []
+        solidarity_strengths: list[float] = []
 
         for rel in state.relationships:
             if rel.edge_type == EdgeType.EXPLOITATION:
-                exploitation_tension = float(rel.tension)
-                exploitation_rent = float(rel.value_flow)
+                exploitation_tensions.append(float(rel.tension))
+                exploitation_rents.append(float(rel.value_flow))
             elif rel.edge_type == EdgeType.TRIBUTE:
-                tribute_flow = float(rel.value_flow)
+                tribute_flows.append(float(rel.value_flow))
             elif rel.edge_type == EdgeType.WAGES:
-                wages_paid = float(rel.value_flow)
+                wages_paid_list.append(float(rel.value_flow))
             elif rel.edge_type == EdgeType.SOLIDARITY:
-                solidarity_strength = float(rel.solidarity_strength)
+                solidarity_strengths.append(float(rel.solidarity_strength))
 
         return EdgeMetrics(
-            exploitation_tension=exploitation_tension,
-            exploitation_rent=exploitation_rent,
-            tribute_flow=tribute_flow,
-            wages_paid=wages_paid,
-            solidarity_strength=solidarity_strength,
+            exploitation_tension=max(exploitation_tensions, default=0.0),
+            exploitation_rent=sum(exploitation_rents),
+            tribute_flow=sum(tribute_flows),
+            wages_paid=sum(wages_paid_list),
+            solidarity_strength=max(solidarity_strengths, default=0.0),
         )
 
     def _compute_global_tension(self, state: WorldState) -> float:
-        """Compute average tension across all relationships."""
-        if not state.relationships:
+        """Compute average tension across EXPLOITATION relationships only."""
+        exploitation_rels = [
+            rel for rel in state.relationships if rel.edge_type == EdgeType.EXPLOITATION
+        ]
+        if not exploitation_rels:
             return 0.0
-
-        total_tension = sum(float(rel.tension) for rel in state.relationships)
-        return total_tension / len(state.relationships)
+        total_tension = sum(float(rel.tension) for rel in exploitation_rels)
+        return total_tension / len(exploitation_rels)
 
     def _compute_summary(self) -> SweepSummary:
         """Compute SweepSummary from history."""

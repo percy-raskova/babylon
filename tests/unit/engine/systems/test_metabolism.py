@@ -186,8 +186,11 @@ class TestMetabolismSystemEvents:
         Scenario: Warning light activates when overshooting
         - Low biocapacity territory (biocapacity=10.0)
         - High consumption class (s_bio=5.0, s_class=10.0, consumption_needs=15.0)
-        - Overshoot ratio = 15 / 10 = 1.5 > 1.0
+        - After regeneration: biocapacity = 10 + (0.02 * 100) = 12.0
+        - Overshoot ratio = 15 / 12 = 1.25 > 1.0
         - Expected: ECOLOGICAL_OVERSHOOT event published
+
+        Note: Biocapacity is updated BEFORE overshoot check (regeneration happens first).
         """
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
@@ -225,9 +228,10 @@ class TestMetabolismSystemEvents:
 
         event = overshoot_events[0]
         assert event.tick == 5
-        assert event.payload["overshoot_ratio"] == pytest.approx(1.5, abs=0.01)
+        # After regeneration: 10 + 2 = 12, ratio = 15/12 = 1.25
+        assert event.payload["overshoot_ratio"] == pytest.approx(1.25, abs=0.01)
         assert event.payload["total_consumption"] == pytest.approx(15.0, abs=0.01)
-        assert event.payload["total_biocapacity"] == pytest.approx(10.0, abs=0.01)
+        assert event.payload["total_biocapacity"] == pytest.approx(12.0, abs=0.01)
 
     def test_no_event_when_sustainable(self) -> None:
         """No ECOLOGICAL_OVERSHOOT event when consumption <= biocapacity.
@@ -370,8 +374,10 @@ class TestMetabolismSystemAggregation:
         - C001: s_bio=5, s_class=15 -> 20
         - C002: s_bio=5, s_class=25 -> 30
         - Total consumption = 50.0
-        - Biocapacity = 40.0
-        - Overshoot ratio = 50/40 = 1.25 (overshoot!)
+        - Initial biocapacity = 40.0, after regen = 40 + 2 = 42.0
+        - Overshoot ratio = 50/42 = 1.19 (overshoot!)
+
+        Note: Biocapacity is updated BEFORE overshoot check (regeneration happens first).
         """
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
@@ -406,15 +412,16 @@ class TestMetabolismSystemAggregation:
         # Act
         system.step(graph, services, context)
 
-        # Assert: Overshoot event (50/40 = 1.25 > 1.0)
+        # Assert: Overshoot event (50/42 = 1.19 > 1.0)
         events = services.event_bus.get_history()
         overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
         assert len(overshoot_events) == 1
 
         event = overshoot_events[0]
-        assert event.payload["overshoot_ratio"] == pytest.approx(1.25, abs=0.01)
+        # After regeneration: 40 + 2 = 42, ratio = 50/42 = 1.19
+        assert event.payload["overshoot_ratio"] == pytest.approx(1.19, abs=0.01)
         assert event.payload["total_consumption"] == pytest.approx(50.0, abs=0.01)
-        assert event.payload["total_biocapacity"] == pytest.approx(40.0, abs=0.01)
+        assert event.payload["total_biocapacity"] == pytest.approx(42.0, abs=0.01)
 
 
 @pytest.mark.unit

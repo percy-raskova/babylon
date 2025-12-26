@@ -139,8 +139,44 @@ description = "Run tests with coverage report"
 run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
 
 # =============================================================================
-# MUTATION TESTING (Periodic Quality Audit)
+# MUTATION TESTING (Test Quality Verification)
 # =============================================================================
+
+[tasks.mutation]
+description = "Run mutation testing on simulation-critical code (~15-30 min)"
+run = """
+echo "🧬 Running mutation testing on critical simulation code..."
+echo "   Target: src/babylon/engine/systems/ and src/babylon/systems/"
+echo ""
+poetry run mutmut run \
+  --paths-to-mutate=src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py,src/babylon/systems/formulas.py \
+  --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
+echo ""
+echo "📊 Results:"
+poetry run mutmut results
+"""
+
+[tasks.mutation-fast]
+description = "Run mutation testing on formulas only (~5-10 min)"
+run = """
+echo "🧬 Running mutation testing on formulas..."
+poetry run mutmut run \
+  --paths-to-mutate=src/babylon/systems/formulas.py \
+  --runner="poetry run pytest tests/unit/formulas -x -q --tb=no"
+poetry run mutmut results
+"""
+
+[tasks.mutation-file]
+description = "Run mutation testing on a specific file (usage: mise run mutation-file src/babylon/foo.py)"
+run = """
+if [ -z "$1" ]; then
+  echo "Usage: mise run mutation-file <path/to/file.py>"
+  exit 1
+fi
+echo "🧬 Running mutation testing on $1..."
+poetry run mutmut run --paths-to-mutate="$1"
+poetry run mutmut results
+"""
 
 [tasks.mutate]
 description = "Run full mutation testing (entire src/babylon/, overnight run)"

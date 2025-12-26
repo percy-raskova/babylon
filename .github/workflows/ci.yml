@@ -58,6 +58,18 @@ jobs:
       - name: Run tests
         run: poetry run pytest -m "not ai" --tb=short -q
 
+      # Coverage gate for simulation-critical code
+      # Enforces 80% coverage on engine/systems and formulas modules
+      - name: Coverage Gate (Simulation Code)
+        run: |
+          poetry run pytest -m "not ai" \
+            --cov=src/babylon/engine/systems \
+            --cov=src/babylon/systems \
+            --cov-fail-under=80 \
+            --cov-report=term-missing:skip-covered \
+            -q --tb=no
+        # Blocks merge if simulation code coverage drops below 80%
+
       # Code complexity analysis - see ADR028 in ai-docs/decisions.yaml
       - name: Code Complexity Report
         run: poetry run radon cc src/ -a -s --show-complexity
@@ -174,13 +186,15 @@ jobs:
         run: poetry run ruff format --check .
 
   # Mutation testing - validates test quality for critical math
-  # Only runs on PRs to main (slow, ~15-30 min)
+  # Only runs on PRs to main - uses incremental testing on changed files
   mutation:
     name: Mutation Testing (Test Quality)
     runs-on: ubuntu-latest
     if: github.base_ref == 'main'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for diff
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -203,12 +217,40 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
-      # Run mutation testing on critical formulas module
+      # Detect changed simulation files for incremental mutation testing
+      - name: Get changed simulation files
+        id: changed
+        run: |
+          # Get files changed in this PR that are in simulation-critical paths
+          CHANGED=$(git diff --name-only origin/main...HEAD | \
+            grep -E '^src/babylon/(engine/systems|systems)/.*\.py$' | \
+            grep -v '__pycache__' | \
+            grep -v '__init__' | \
+            tr '\n' ',' | sed 's/,$//')
+          echo "files=$CHANGED" >> $GITHUB_OUTPUT
+          if [ -n "$CHANGED" ]; then
+            echo "📝 Changed simulation files: $CHANGED"
+          else
+            echo "📝 No simulation files changed in this PR"
+          fi
+
+      # Run incremental mutation testing on changed files only
       # See ADR028 in ai-docs/decisions.yaml
-      - name: Run Mutation Tests
-        run: poetry run mutmut run
-        # mutmut returns non-zero if mutants survive
+      - name: Run Mutation Tests (Incremental)
+        if: steps.changed.outputs.files != ''
+        run: |
+          echo "🧬 Running mutation testing on changed files..."
+          poetry run mutmut run \
+            --paths-to-mutate="${{ steps.changed.outputs.files }}" \
+            --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
 
       - name: Show Mutation Results
-        if: always()
-        run: poetry run mutmut results --all true
+        if: steps.changed.outputs.files != '' && always()
+        run: |
+          echo ""
+          echo "📊 Mutation Testing Results:"
+          poetry run mutmut results
+
+      - name: Skip Message
+        if: steps.changed.outputs.files == ''
+        run: echo "✅ No simulation-critical files changed - skipping mutation testing"

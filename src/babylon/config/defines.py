@@ -390,6 +390,66 @@ class StruggleDefines(BaseModel):
     )
 
 
+class EndgameDefines(BaseModel):
+    """Configuration for endgame detection thresholds (Slice 1.6).
+
+    The EndgameDetector monitors WorldState for three possible game endings:
+
+    1. REVOLUTIONARY_VICTORY: percolation >= threshold AND consciousness > threshold
+       The masses have achieved critical organization AND ideological clarity.
+
+    2. ECOLOGICAL_COLLAPSE: overshoot_ratio > threshold for N consecutive ticks
+       Sustained ecological overshoot leads to irreversible collapse.
+
+    3. FASCIST_CONSOLIDATION: national_identity > class_consciousness for M+ nodes
+       Fascist ideology has captured the majority of the population.
+
+    Attributes:
+        revolutionary_percolation_threshold: Minimum percolation ratio (0.7 = 70%
+            of nodes in giant solidarity component) for revolutionary victory.
+        revolutionary_consciousness_threshold: Minimum average class consciousness
+            (0.8 = 80% ideological clarity) for revolutionary victory.
+        ecological_overshoot_threshold: Consumption/biocapacity ratio above which
+            ecological damage accumulates (2.0 = consuming 2x biocapacity).
+        ecological_sustained_ticks: Number of consecutive ticks overshoot must
+            persist before triggering ECOLOGICAL_COLLAPSE (5 ticks).
+        fascist_majority_threshold: Minimum number of nodes where national_identity
+            exceeds class_consciousness for FASCIST_CONSOLIDATION (3 nodes).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    revolutionary_percolation_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Percolation ratio threshold for revolutionary victory (70%)",
+    )
+    revolutionary_consciousness_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Average consciousness threshold for revolutionary victory (80%)",
+    )
+    ecological_overshoot_threshold: float = Field(
+        default=2.0,
+        gt=0.0,
+        description="Overshoot ratio threshold for ecological collapse tracking",
+    )
+    ecological_sustained_ticks: int = Field(
+        default=5,
+        ge=1,
+        le=100,
+        description="Consecutive ticks of overshoot before collapse triggers",
+    )
+    fascist_majority_threshold: int = Field(
+        default=3,
+        ge=1,
+        le=100,
+        description="Minimum nodes with national_identity > class_consciousness",
+    )
+
+
 class InitialDefines(BaseModel):
     """Initial condition coefficients."""
 
@@ -430,6 +490,7 @@ class GameDefines(BaseModel):
     - topology: Phase transition thresholds (gaseous/liquid/solid)
     - metabolism: Metabolic rift (ecological limits)
     - struggle: Struggle dynamics (Agency Layer)
+    - endgame: Endgame detection thresholds
     - initial: Initial conditions
     """
 
@@ -445,6 +506,7 @@ class GameDefines(BaseModel):
     topology: TopologyDefines = Field(default_factory=TopologyDefines)
     metabolism: MetabolismDefines = Field(default_factory=MetabolismDefines)
     struggle: StruggleDefines = Field(default_factory=StruggleDefines)
+    endgame: EndgameDefines = Field(default_factory=EndgameDefines)
     initial: InitialDefines = Field(default_factory=InitialDefines)
 
     # Legacy flat attributes for backward compatibility
@@ -535,6 +597,7 @@ class GameDefines(BaseModel):
             topology=TopologyDefines(**data.get("topology", {})),
             metabolism=MetabolismDefines(**data.get("metabolism", {})),
             struggle=StruggleDefines(**data.get("struggle", {})),
+            endgame=EndgameDefines(**data.get("endgame", {})),
             initial=InitialDefines(**data.get("initial", {})),
         )
 

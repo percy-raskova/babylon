@@ -760,3 +760,58 @@ class TestStepTensionRate:
         state = step(two_node_state, config)
 
         assert state.relationships[0].tension == initial_tension
+
+
+# =============================================================================
+# METABOLISM SYSTEM REGISTRATION TESTS (Sprint 1.4C)
+# =============================================================================
+
+
+@pytest.mark.red_phase  # TDD RED phase - intentionally failing until GREEN phase
+class TestMetabolismSystemRegistration:
+    """Test that MetabolismSystem is registered in DEFAULT_SYSTEMS.
+
+    Sprint 1.4C: The Wiring - MetabolismSystem must be included in the
+    default system list for the metabolic rift feedback loop to function.
+    """
+
+    def test_metabolism_system_in_default_systems(self) -> None:
+        """MetabolismSystem should be registered in _DEFAULT_SYSTEMS.
+
+        The metabolic rift dynamics (biocapacity regeneration, overshoot
+        detection) only run if MetabolismSystem is in the engine's system list.
+        """
+        from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
+
+        system_types = [type(s).__name__ for s in _DEFAULT_SYSTEMS]
+        assert "MetabolismSystem" in system_types, (
+            "MetabolismSystem not found in _DEFAULT_SYSTEMS. "
+            "Import and register it in simulation_engine.py after TerritorySystem."
+        )
+
+    def test_metabolism_system_runs_after_territory_system(self) -> None:
+        """MetabolismSystem should run after TerritorySystem.
+
+        Ecological dynamics depend on territory state, so MetabolismSystem
+        must be ordered after TerritorySystem in the system list.
+        """
+        from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
+        from babylon.engine.systems.metabolism import MetabolismSystem
+        from babylon.engine.systems.territory import TerritorySystem
+
+        # Find positions of both systems
+        territory_idx = None
+        metabolism_idx = None
+
+        for i, system in enumerate(_DEFAULT_SYSTEMS):
+            if isinstance(system, TerritorySystem):
+                territory_idx = i
+            if isinstance(system, MetabolismSystem):
+                metabolism_idx = i
+
+        assert territory_idx is not None, "TerritorySystem not in _DEFAULT_SYSTEMS"
+        assert metabolism_idx is not None, "MetabolismSystem not in _DEFAULT_SYSTEMS"
+        assert metabolism_idx > territory_idx, (
+            f"MetabolismSystem (idx={metabolism_idx}) should run after "
+            f"TerritorySystem (idx={territory_idx})"
+        )

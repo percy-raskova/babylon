@@ -1167,3 +1167,121 @@ class TestTickMetricsDifferentials:
         """
         metrics = TickMetrics(tick=0)
         assert metrics.wealth_gap == 0.0
+
+
+# =============================================================================
+# BATCH 8: ECOLOGICAL METRICS TESTS (Sprint 1.4C - The Wiring)
+# =============================================================================
+
+
+@pytest.mark.red_phase  # TDD RED phase - intentionally failing until GREEN phase
+class TestTickMetricsEcologicalFields:
+    """Tests for TickMetrics ecological metric fields.
+
+    Sprint 1.4C: The Wiring - TickMetrics must include ecological metrics
+    for the Metabolic Rift feedback loop to be observable in dashboards.
+    """
+
+    def test_tick_metrics_has_overshoot_ratio_field(self) -> None:
+        """TickMetrics should have overshoot_ratio field.
+
+        overshoot_ratio = total_consumption / total_biocapacity
+        When > 1.0, we are in ecological overshoot (consumption exceeds capacity).
+        """
+        # Check field exists in model
+        assert "overshoot_ratio" in TickMetrics.model_fields, (
+            "TickMetrics missing 'overshoot_ratio' field. "
+            "Add: overshoot_ratio: float = Field(default=0.0, ge=0.0)"
+        )
+
+    def test_tick_metrics_has_total_biocapacity_field(self) -> None:
+        """TickMetrics should have total_biocapacity field.
+
+        total_biocapacity is the global sum of territory biocapacity,
+        representing the planet's regenerative capacity.
+        """
+        assert "total_biocapacity" in TickMetrics.model_fields, (
+            "TickMetrics missing 'total_biocapacity' field. "
+            "Add: total_biocapacity: Currency = Field(default=0.0, ge=0.0)"
+        )
+
+    def test_tick_metrics_has_total_consumption_field(self) -> None:
+        """TickMetrics should have total_consumption field.
+
+        total_consumption is the global sum of entity consumption needs,
+        representing total resource demand from all social classes.
+        """
+        assert "total_consumption" in TickMetrics.model_fields, (
+            "TickMetrics missing 'total_consumption' field. "
+            "Add: total_consumption: Currency = Field(default=0.0, ge=0.0)"
+        )
+
+    def test_overshoot_ratio_accepts_values(self) -> None:
+        """overshoot_ratio field should accept valid float values.
+
+        Overshoot can be > 1.0 (in overshoot) or <= 1.0 (sustainable).
+        """
+        metrics = TickMetrics(tick=0, overshoot_ratio=1.5)
+        assert metrics.overshoot_ratio == 1.5
+
+        metrics_sustainable = TickMetrics(tick=0, overshoot_ratio=0.7)
+        assert metrics_sustainable.overshoot_ratio == 0.7
+
+    def test_overshoot_ratio_defaults_to_zero(self) -> None:
+        """overshoot_ratio should default to 0.0.
+
+        When no ecological data is available, default to 0 (no consumption).
+        """
+        metrics = TickMetrics(tick=0)
+        assert metrics.overshoot_ratio == 0.0
+
+    def test_overshoot_ratio_must_be_non_negative(self) -> None:
+        """overshoot_ratio should not accept negative values.
+
+        Negative overshoot is physically meaningless.
+        """
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, overshoot_ratio=-0.5)
+
+    def test_total_biocapacity_accepts_values(self) -> None:
+        """total_biocapacity field should accept valid Currency values."""
+        metrics = TickMetrics(tick=0, total_biocapacity=500.0)
+        assert metrics.total_biocapacity == 500.0
+
+    def test_total_biocapacity_defaults_to_zero(self) -> None:
+        """total_biocapacity should default to 0.0."""
+        metrics = TickMetrics(tick=0)
+        assert metrics.total_biocapacity == 0.0
+
+    def test_total_biocapacity_must_be_non_negative(self) -> None:
+        """total_biocapacity should not accept negative values."""
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, total_biocapacity=-100.0)
+
+    def test_total_consumption_accepts_values(self) -> None:
+        """total_consumption field should accept valid Currency values."""
+        metrics = TickMetrics(tick=0, total_consumption=300.0)
+        assert metrics.total_consumption == 300.0
+
+    def test_total_consumption_defaults_to_zero(self) -> None:
+        """total_consumption should default to 0.0."""
+        metrics = TickMetrics(tick=0)
+        assert metrics.total_consumption == 0.0
+
+    def test_total_consumption_must_be_non_negative(self) -> None:
+        """total_consumption should not accept negative values."""
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, total_consumption=-50.0)
+
+    def test_ecological_metrics_serialize_to_json(self) -> None:
+        """Ecological metrics should serialize correctly to JSON."""
+        metrics = TickMetrics(
+            tick=5,
+            overshoot_ratio=1.25,
+            total_biocapacity=400.0,
+            total_consumption=500.0,
+        )
+        json_str = metrics.model_dump_json()
+        assert "1.25" in json_str  # overshoot_ratio
+        assert "400" in json_str  # total_biocapacity
+        assert "500" in json_str  # total_consumption

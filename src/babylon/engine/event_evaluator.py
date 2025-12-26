@@ -126,6 +126,38 @@ def evaluate_node_condition(
     )
 
 
+def _collect_edge_value(
+    edge_data: dict[str, Any],
+    target_edge_type: EdgeType,
+    metric: str,
+) -> float | None:
+    """Extract value from an edge if it matches the target type.
+
+    Args:
+        edge_data: Edge attributes dictionary.
+        target_edge_type: EdgeType to match.
+        metric: Metric to extract ("count", "sum_strength", "avg_strength").
+
+    Returns:
+        Edge value if matches, None otherwise.
+    """
+    edge_type = edge_data.get("edge_type")
+    if isinstance(edge_type, str):
+        try:
+            edge_type = EdgeType(edge_type)
+        except ValueError:
+            return None
+
+    if edge_type != target_edge_type:
+        return None
+
+    if metric == "count":
+        return 1.0
+    elif metric in ("sum_strength", "avg_strength"):
+        return float(edge_data.get("solidarity_strength", 0.0))
+    return None
+
+
 def evaluate_edge_condition(
     condition: EdgeCondition,
     graph: nx.DiGraph[str],
@@ -145,45 +177,19 @@ def evaluate_edge_condition(
     seen_edges: set[tuple[str, str]] = set()
 
     for node_id in matching_nodes:
-        # Check incoming edges
-        for source, target, edge_data in graph.in_edges(node_id, data=True):
+        # Collect from both incoming and outgoing edges
+        all_edges = list(graph.in_edges(node_id, data=True)) + list(
+            graph.out_edges(node_id, data=True)
+        )
+
+        for source, target, edge_data in all_edges:
             if (source, target) in seen_edges:
                 continue
             seen_edges.add((source, target))
 
-            edge_type = edge_data.get("edge_type")
-            if isinstance(edge_type, str):
-                try:
-                    edge_type = EdgeType(edge_type)
-                except ValueError:
-                    continue
-
-            if edge_type == condition.edge_type:
-                if condition.metric == "count":
-                    edge_values.append(1.0)
-                elif condition.metric in ("sum_strength", "avg_strength"):
-                    strength = edge_data.get("solidarity_strength", 0.0)
-                    edge_values.append(strength)
-
-        # Also check outgoing edges
-        for source, target, edge_data in graph.out_edges(node_id, data=True):
-            if (source, target) in seen_edges:
-                continue
-            seen_edges.add((source, target))
-
-            edge_type = edge_data.get("edge_type")
-            if isinstance(edge_type, str):
-                try:
-                    edge_type = EdgeType(edge_type)
-                except ValueError:
-                    continue
-
-            if edge_type == condition.edge_type:
-                if condition.metric == "count":
-                    edge_values.append(1.0)
-                elif condition.metric in ("sum_strength", "avg_strength"):
-                    strength = edge_data.get("solidarity_strength", 0.0)
-                    edge_values.append(strength)
+            value = _collect_edge_value(edge_data, condition.edge_type, condition.metric)
+            if value is not None:
+                edge_values.append(value)
 
     # Calculate result based on metric
     if condition.metric == "count":
@@ -215,6 +221,49 @@ def evaluate_graph_condition(
     return compare(value, condition.operator, condition.threshold)
 
 
+def _calculate_edge_density(graph: nx.DiGraph[str], edge_type: EdgeType) -> float:
+    """Calculate edge density for a specific edge type."""
+    type_str = edge_type.value
+    edge_count = sum(
+        1
+        for _, _, d in graph.edges(data=True)
+        if d.get("edge_type") == edge_type or d.get("edge_type") == type_str
+    )
+    num_nodes = graph.number_of_nodes()
+    max_edges = num_nodes * (num_nodes - 1)
+    return edge_count / max_edges if max_edges > 0 else 0.0
+
+
+def _get_social_nodes(graph: nx.DiGraph[str]) -> list[dict[str, Any]]:
+    """Get all non-territory nodes from graph."""
+    return [data for _, data in graph.nodes(data=True) if data.get("_node_type") != "territory"]
+
+
+def _calculate_average_ideology_field(graph: nx.DiGraph[str], field: str) -> float:
+    """Calculate average of an ideology field across social nodes."""
+    values = []
+    for node_data in _get_social_nodes(graph):
+        ideology = node_data.get("ideology", {})
+        if isinstance(ideology, dict):
+            values.append(ideology.get(field, 0.0))
+    return sum(values) / len(values) if values else 0.0
+
+
+def _calculate_gini(graph: nx.DiGraph[str]) -> float:
+    """Calculate Gini coefficient for wealth distribution."""
+    wealth_values = [data.get("wealth", 0.0) for data in _get_social_nodes(graph)]
+
+    if not wealth_values or sum(wealth_values) == 0:
+        return 0.0
+
+    sorted_wealth = sorted(wealth_values)
+    n = len(sorted_wealth)
+    total = sum(sorted_wealth)
+    cumulative = sum((2 * (i + 1) - n - 1) * w for i, w in enumerate(sorted_wealth))
+
+    return cumulative / (n * total) if total > 0 else 0.0
+
+
 def calculate_graph_metric(graph: nx.DiGraph[str], metric: str) -> float:
     """Calculate a graph-level aggregate metric.
 
@@ -225,80 +274,20 @@ def calculate_graph_metric(graph: nx.DiGraph[str], metric: str) -> float:
     Returns:
         The calculated metric value.
     """
-    if metric == "solidarity_density":
-        solidarity_edges = sum(
-            1
-            for _, _, d in graph.edges(data=True)
-            if d.get("edge_type") == EdgeType.SOLIDARITY or d.get("edge_type") == "solidarity"
-        )
-        num_nodes = graph.number_of_nodes()
-        max_edges = num_nodes * (num_nodes - 1)
-        return solidarity_edges / max_edges if max_edges > 0 else 0.0
+    # Dispatch table for metric calculations
+    dispatch: dict[str, Any] = {
+        "solidarity_density": lambda: _calculate_edge_density(graph, EdgeType.SOLIDARITY),
+        "exploitation_density": lambda: _calculate_edge_density(graph, EdgeType.EXPLOITATION),
+        "average_agitation": lambda: _calculate_average_ideology_field(graph, "agitation"),
+        "average_consciousness": lambda: _calculate_average_ideology_field(
+            graph, "class_consciousness"
+        ),
+        "total_wealth": lambda: sum(d.get("wealth", 0.0) for d in _get_social_nodes(graph)),
+        "gini_coefficient": lambda: _calculate_gini(graph),
+    }
 
-    elif metric == "exploitation_density":
-        exploitation_edges = sum(
-            1
-            for _, _, d in graph.edges(data=True)
-            if d.get("edge_type") == EdgeType.EXPLOITATION or d.get("edge_type") == "exploitation"
-        )
-        num_nodes = graph.number_of_nodes()
-        max_edges = num_nodes * (num_nodes - 1)
-        return exploitation_edges / max_edges if max_edges > 0 else 0.0
-
-    elif metric == "average_agitation":
-        agitation_values = []
-        for _, data in graph.nodes(data=True):
-            if data.get("_node_type") == "territory":
-                continue
-            ideology = data.get("ideology", {})
-            if isinstance(ideology, dict):
-                agitation = ideology.get("agitation", 0.0)
-                agitation_values.append(agitation)
-        return sum(agitation_values) / len(agitation_values) if agitation_values else 0.0
-
-    elif metric == "average_consciousness":
-        consciousness_values = []
-        for _, data in graph.nodes(data=True):
-            if data.get("_node_type") == "territory":
-                continue
-            ideology = data.get("ideology", {})
-            if isinstance(ideology, dict):
-                consciousness = ideology.get("class_consciousness", 0.0)
-                consciousness_values.append(consciousness)
-        return (
-            sum(consciousness_values) / len(consciousness_values) if consciousness_values else 0.0
-        )
-
-    elif metric == "total_wealth":
-        total = 0.0
-        for _, data in graph.nodes(data=True):
-            if data.get("_node_type") == "territory":
-                continue
-            wealth = data.get("wealth", 0.0)
-            total += wealth
-        return total
-
-    elif metric == "gini_coefficient":
-        # Simplified Gini calculation
-        wealth_values = []
-        for _, data in graph.nodes(data=True):
-            if data.get("_node_type") == "territory":
-                continue
-            wealth = data.get("wealth", 0.0)
-            wealth_values.append(wealth)
-
-        if not wealth_values or sum(wealth_values) == 0:
-            return 0.0
-
-        sorted_wealth = sorted(wealth_values)
-        n = len(sorted_wealth)
-        cumulative = 0.0
-        for i, w in enumerate(sorted_wealth):
-            cumulative += (2 * (i + 1) - n - 1) * w
-
-        return cumulative / (n * sum(sorted_wealth)) if sum(sorted_wealth) > 0 else 0.0
-
-    return 0.0
+    calculator = dispatch.get(metric)
+    return calculator() if calculator else 0.0
 
 
 def filter_nodes(

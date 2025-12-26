@@ -191,6 +191,47 @@ class SocialClass(BaseModel):
         str_strip_whitespace=True,  # Clean string inputs
     )
 
+    @staticmethod
+    def _unpack_component(
+        data: dict[str, Any],
+        key: str,
+        component_type: type[BaseModel],
+        field_mapping: dict[str, tuple[str, Any]],
+    ) -> None:
+        """Unpack a component into its constituent fields.
+
+        Args:
+            data: The data dictionary to modify.
+            key: Key of the component in data.
+            component_type: Expected Pydantic model type.
+            field_mapping: Map of component field -> (target field, default value).
+        """
+        if key not in data:
+            return
+
+        component = data.pop(key)
+        if isinstance(component, component_type):
+            component = component.model_dump()
+        elif not isinstance(component, dict):
+            raise ValueError(f"{key} must be {component_type.__name__} or dict")
+
+        for comp_field, (target_field, default) in field_mapping.items():
+            value = component.get(comp_field, default)
+            if value is not None:
+                data.setdefault(target_field, value)
+
+    @staticmethod
+    def _convert_legacy_ideology(data: dict[str, Any]) -> None:
+        """Convert legacy scalar ideology to IdeologicalProfile."""
+        ideology_value = data.get("ideology")
+        if ideology_value is None:
+            return
+
+        if isinstance(ideology_value, int | float) and not isinstance(ideology_value, bool):
+            data["ideology"] = IdeologicalProfile.from_legacy_ideology(float(ideology_value))
+        elif isinstance(ideology_value, dict):
+            data["ideology"] = IdeologicalProfile(**ideology_value)
+
     @model_validator(mode="before")
     @classmethod
     def unpack_components_and_convert_legacy(cls, data: Any) -> Any:
@@ -198,55 +239,33 @@ class SocialClass(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        if "economic" in data:
-            economic = data.pop("economic")
-            if isinstance(economic, EconomicComponent):
-                economic = economic.model_dump()
-            elif not isinstance(economic, dict):
-                raise ValueError("economic must be EconomicComponent or dict")
-            data.setdefault("wealth", economic.get("wealth", 10.0))
-            data.setdefault("subsistence_threshold", economic.get("subsistence_threshold", 5.0))
+        # Unpack each component type
+        cls._unpack_component(
+            data,
+            "economic",
+            EconomicComponent,
+            {"wealth": ("wealth", 10.0), "subsistence_threshold": ("subsistence_threshold", 5.0)},
+        )
+        cls._unpack_component(
+            data,
+            "ideological",
+            IdeologicalComponent,
+            {"ideology": ("ideology", None), "organization": ("organization", 0.1)},
+        )
+        cls._unpack_component(
+            data,
+            "survival",
+            SurvivalComponent,
+            {"p_acquiescence": ("p_acquiescence", 0.0), "p_revolution": ("p_revolution", 0.0)},
+        )
+        cls._unpack_component(
+            data,
+            "material_conditions",
+            MaterialConditionsComponent,
+            {"repression_faced": ("repression_faced", 0.5)},
+        )
 
-        if "ideological" in data:
-            ideological = data.pop("ideological")
-            if isinstance(ideological, IdeologicalComponent):
-                ideological = ideological.model_dump()
-            elif not isinstance(ideological, dict):
-                raise ValueError("ideological must be IdeologicalComponent or dict")
-            # Get ideology from component - could be float or IdeologicalProfile
-            ideology_val = ideological.get("ideology")
-            if ideology_val is not None:
-                data.setdefault("ideology", ideology_val)
-            data.setdefault("organization", ideological.get("organization", 0.1))
-
-        if "survival" in data:
-            survival = data.pop("survival")
-            if isinstance(survival, SurvivalComponent):
-                survival = survival.model_dump()
-            elif not isinstance(survival, dict):
-                raise ValueError("survival must be SurvivalComponent or dict")
-            data.setdefault("p_acquiescence", survival.get("p_acquiescence", 0.0))
-            data.setdefault("p_revolution", survival.get("p_revolution", 0.0))
-
-        if "material_conditions" in data:
-            material = data.pop("material_conditions")
-            if isinstance(material, MaterialConditionsComponent):
-                material = material.model_dump()
-            elif not isinstance(material, dict):
-                raise ValueError("material_conditions must be MaterialConditionsComponent or dict")
-            data.setdefault("repression_faced", material.get("repression_faced", 0.5))
-
-        # LEGACY COMPATIBILITY: Convert float ideology to IdeologicalProfile
-        ideology_value = data.get("ideology")
-        if ideology_value is not None:
-            if isinstance(ideology_value, int | float) and not isinstance(ideology_value, bool):
-                # Convert legacy scalar ideology to IdeologicalProfile
-                data["ideology"] = IdeologicalProfile.from_legacy_ideology(float(ideology_value))
-            elif isinstance(ideology_value, dict):
-                # Dict representation - convert to IdeologicalProfile
-                data["ideology"] = IdeologicalProfile(**ideology_value)
-            # If already IdeologicalProfile, leave as-is
-
+        cls._convert_legacy_ideology(data)
         return data
 
     # Required fields

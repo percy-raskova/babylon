@@ -1095,3 +1095,662 @@ class TestSimulationIntegration:
         # Ticks should be sequential
         for i, metrics in enumerate(collector.history):
             assert metrics.tick == i
+
+
+# =============================================================================
+# BATCH 4: ECONOMY DRIVER EXTRACTION TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestEconomyDriverExtraction:
+    """Tests for economy driver extraction from WorldState.
+
+    Phase 4.1B: Expose Meaningful Metrics - Economy Driver Extraction.
+    These tests verify that the MetricsCollector correctly extracts
+    economy driver values from the simulation state.
+    """
+
+    def test_extracts_current_super_wage_rate_from_economy(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Extracts current_super_wage_rate from state.economy.
+
+        The super-wage rate is extracted from GlobalEconomy.super_wage_rate.
+        """
+        economy = GlobalEconomy(super_wage_rate=0.25)
+        state = WorldState(tick=0, economy=economy)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.current_super_wage_rate == 0.25
+
+    def test_extracts_current_repression_level_from_economy(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Extracts current_repression_level from state.economy.
+
+        The repression level is extracted from GlobalEconomy.repression_level.
+        """
+        economy = GlobalEconomy(repression_level=0.7)
+        state = WorldState(tick=0, economy=economy)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.current_repression_level == 0.7
+
+    def test_calculates_pool_ratio_from_economy(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Calculates pool_ratio as imperial_rent_pool / initial_pool.
+
+        The pool ratio indicates how depleted the rent pool is.
+        """
+        economy = GlobalEconomy(imperial_rent_pool=80.0, initial_pool=100.0)
+        state = WorldState(tick=0, economy=economy)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.pool_ratio == 0.8
+
+    def test_pool_ratio_uses_100_as_initial_pool_default(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """pool_ratio uses 100.0 as the default initial pool.
+
+        When initial_pool is not specified, use 100.0 as the denominator.
+        """
+        economy = GlobalEconomy(imperial_rent_pool=50.0)
+        state = WorldState(tick=0, economy=economy)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # 50 / 100 = 0.5
+        assert latest.pool_ratio == 0.5
+
+    def test_pool_ratio_clamped_to_one(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """pool_ratio is clamped to max 1.0.
+
+        Even if imperial_rent_pool exceeds initial_pool (e.g., due to
+        external injection), the ratio is clamped to 1.0.
+        """
+        economy = GlobalEconomy(imperial_rent_pool=150.0, initial_pool=100.0)
+        state = WorldState(tick=0, economy=economy)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.pool_ratio == 1.0  # Clamped from 1.5
+
+    def test_handles_missing_economy_gracefully(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Returns default values when state.economy is None.
+
+        When economy is not set, use default values for all economy drivers.
+        """
+        state = WorldState(tick=0)  # No economy
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Default values when economy is missing
+        assert latest.current_super_wage_rate == 0.2
+        assert latest.current_repression_level == 0.5
+        assert latest.pool_ratio == 1.0
+
+
+# =============================================================================
+# BATCH 5: DIFFERENTIAL CALCULATION TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestDifferentialCalculation:
+    """Tests for derived differential calculations.
+
+    Phase 4.1B: Expose Meaningful Metrics - Differential Calculation.
+    These tests verify that the MetricsCollector correctly computes
+    derived differentials from entity values.
+    """
+
+    def test_calculates_consciousness_gap(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Calculates consciousness_gap as P_w.consciousness - C_w.consciousness.
+
+        The consciousness gap measures how far ahead the periphery worker is
+        in class consciousness compared to the labor aristocracy.
+        """
+        from babylon.models.entities.social_class import (
+            IdeologicalProfile,
+            SocialClass,
+        )
+        from babylon.models.enums import SocialRole
+
+        # Periphery worker with consciousness 0.7
+        p_w = SocialClass(
+            id="C001",
+            name="Periphery Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=0.5,
+            ideology=IdeologicalProfile(class_consciousness=0.7),  # Higher consciousness
+        )
+        # Labor aristocracy with consciousness 0.3
+        c_w = SocialClass(
+            id="C004",
+            name="Labor Aristocracy",
+            role=SocialRole.LABOR_ARISTOCRACY,
+            wealth=0.6,
+            ideology=IdeologicalProfile(class_consciousness=0.3),  # Lower consciousness
+        )
+        state = WorldState(tick=0, entities={"C001": p_w, "C004": c_w})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # 0.7 - 0.3 = 0.4
+        assert abs(latest.consciousness_gap - 0.4) < 0.001
+
+    def test_consciousness_gap_handles_missing_p_w(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Returns 0.0 for consciousness_gap when P_w is missing.
+
+        When the periphery worker entity is not present, default to 0.0.
+        """
+        from babylon.models.entities.social_class import (
+            IdeologicalProfile,
+            SocialClass,
+        )
+        from babylon.models.enums import SocialRole
+
+        # Only labor aristocracy, no periphery worker
+        c_w = SocialClass(
+            id="C004",
+            name="Labor Aristocracy",
+            role=SocialRole.LABOR_ARISTOCRACY,
+            wealth=0.6,
+            ideology=IdeologicalProfile(class_consciousness=0.3),
+        )
+        state = WorldState(tick=0, entities={"C004": c_w})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.consciousness_gap == 0.0
+
+    def test_consciousness_gap_handles_missing_c_w(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Returns 0.0 for consciousness_gap when C_w is missing.
+
+        When the labor aristocracy entity is not present, default to 0.0.
+        """
+        from babylon.models.entities.social_class import (
+            IdeologicalProfile,
+            SocialClass,
+        )
+        from babylon.models.enums import SocialRole
+
+        # Only periphery worker, no labor aristocracy
+        p_w = SocialClass(
+            id="C001",
+            name="Periphery Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=0.5,
+            ideology=IdeologicalProfile(class_consciousness=0.7),
+        )
+        state = WorldState(tick=0, entities={"C001": p_w})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.consciousness_gap == 0.0
+
+    def test_calculates_wealth_gap(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Calculates wealth_gap as C_b.wealth - P_w.wealth.
+
+        The wealth gap measures the wealth differential between the
+        core bourgeoisie and the periphery worker.
+        """
+        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.enums import SocialRole
+
+        # Periphery worker with wealth 0.2
+        p_w = SocialClass(
+            id="C001",
+            name="Periphery Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=0.2,
+        )
+        # Core bourgeoisie with wealth 0.9
+        c_b = SocialClass(
+            id="C003",
+            name="Core Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=0.9,
+        )
+        state = WorldState(tick=0, entities={"C001": p_w, "C003": c_b})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # 0.9 - 0.2 = 0.7
+        assert abs(latest.wealth_gap - 0.7) < 0.001
+
+    def test_wealth_gap_handles_missing_entities(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Returns 0.0 for wealth_gap when either entity is missing.
+
+        When P_w or C_b is not present, default to 0.0.
+        """
+        state = WorldState(tick=0, entities={})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.wealth_gap == 0.0
+
+
+# =============================================================================
+# BATCH 6: GLOBAL TENSION BUG FIX TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestGlobalTensionBugFix:
+    """Tests for global_tension calculation bug fix.
+
+    Phase 4.1B: Bug Fix - global_tension should only average EXPLOITATION edges.
+    The current implementation incorrectly averages all edge tensions,
+    including SOLIDARITY, WAGES, etc., which dilutes the metric.
+    """
+
+    def test_global_tension_only_averages_exploitation_edges(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """global_tension should only average EXPLOITATION edge tensions.
+
+        EXPLOITATION edges represent the core class antagonism; other edge
+        types should not factor into global tension.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        # Create state with one EXPLOITATION edge (tension 0.8)
+        # and one SOLIDARITY edge (tension 0.2)
+        exploitation_edge = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.8,
+            value_flow=10.0,
+        )
+        solidarity_edge = Relationship(
+            source_id="C001",
+            target_id="C004",
+            edge_type=EdgeType.SOLIDARITY,
+            tension=0.2,  # Should be IGNORED
+            value_flow=0.0,
+        )
+        state = WorldState(
+            tick=0,
+            relationships=[exploitation_edge, solidarity_edge],
+        )
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Only EXPLOITATION tension matters: 0.8
+        assert latest.global_tension == 0.8
+
+    def test_global_tension_ignores_solidarity_edges(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """global_tension ignores SOLIDARITY edge tensions.
+
+        SOLIDARITY represents mutual support, not class antagonism.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        solidarity_edge = Relationship(
+            source_id="C001",
+            target_id="C004",
+            edge_type=EdgeType.SOLIDARITY,
+            tension=0.9,  # High tension on SOLIDARITY (should be ignored)
+            value_flow=0.0,
+        )
+        state = WorldState(tick=0, relationships=[solidarity_edge])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # No EXPLOITATION edges, so tension is 0.0
+        assert latest.global_tension == 0.0
+
+    def test_global_tension_ignores_wages_edges(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """global_tension ignores WAGES edge tensions.
+
+        WAGES represents payment to labor aristocracy, not exploitation.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        wages_edge = Relationship(
+            source_id="C003",
+            target_id="C004",
+            edge_type=EdgeType.WAGES,
+            tension=0.7,  # Should be ignored
+            value_flow=5.0,
+        )
+        state = WorldState(tick=0, relationships=[wages_edge])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.global_tension == 0.0
+
+    def test_global_tension_zero_when_no_exploitation_edges(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """global_tension is 0.0 when no EXPLOITATION edges exist.
+
+        With no exploitation relationships, there is no class tension
+        to measure.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        # Only non-exploitation edges
+        tribute_edge = Relationship(
+            source_id="C002",
+            target_id="C003",
+            edge_type=EdgeType.TRIBUTE,
+            tension=0.5,
+            value_flow=10.0,
+        )
+        state = WorldState(tick=0, relationships=[tribute_edge])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.global_tension == 0.0
+
+    def test_global_tension_multiple_exploitation_edges(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """global_tension averages multiple EXPLOITATION edge tensions.
+
+        When multiple exploitation relationships exist, average their tensions.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        # Two EXPLOITATION edges with different tensions
+        expl1 = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.4,
+            value_flow=10.0,
+        )
+        expl2 = Relationship(
+            source_id="C002",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.8,
+            value_flow=5.0,
+        )
+        state = WorldState(tick=0, relationships=[expl1, expl2])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Average: (0.4 + 0.8) / 2 = 0.6
+        assert abs(latest.global_tension - 0.6) < 0.001
+
+
+# =============================================================================
+# BATCH 7: EDGE AGGREGATION FIX TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestEdgeAggregationFix:
+    """Tests for edge aggregation in EdgeMetrics.
+
+    Phase 4.1B: Bug Fix - Multiple edges of the same type should be aggregated.
+    When multiple EXPLOITATION, TRIBUTE, or SOLIDARITY edges exist, their
+    values should be aggregated correctly (max for tension, sum for flows).
+    """
+
+    def test_aggregates_multiple_exploitation_tensions(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """exploitation_tension uses max() across all EXPLOITATION edges.
+
+        When multiple exploitation relationships exist, use the maximum
+        tension to reflect the most volatile relationship.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        expl1 = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.3,
+            value_flow=10.0,
+        )
+        expl2 = Relationship(
+            source_id="C002",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.7,  # Higher tension
+            value_flow=5.0,
+        )
+        state = WorldState(tick=0, relationships=[expl1, expl2])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Max: max(0.3, 0.7) = 0.7
+        assert latest.edges.exploitation_tension == 0.7
+
+    def test_aggregates_multiple_exploitation_rents(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """exploitation_rent uses sum() across all EXPLOITATION edges.
+
+        Total imperial rent extracted is the sum of all exploitation flows.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        expl1 = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.3,
+            value_flow=10.0,
+        )
+        expl2 = Relationship(
+            source_id="C002",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.7,
+            value_flow=5.0,
+        )
+        state = WorldState(tick=0, relationships=[expl1, expl2])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Sum: 10.0 + 5.0 = 15.0
+        assert latest.edges.exploitation_rent == 15.0
+
+    def test_aggregates_multiple_tribute_flows(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """tribute_flow uses sum() across all TRIBUTE edges.
+
+        Total tribute is the sum of all comprador-to-core flows.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        trib1 = Relationship(
+            source_id="C002",
+            target_id="C003",
+            edge_type=EdgeType.TRIBUTE,
+            tension=0.0,
+            value_flow=8.0,
+        )
+        trib2 = Relationship(
+            source_id="C005",  # Another comprador
+            target_id="C003",
+            edge_type=EdgeType.TRIBUTE,
+            tension=0.0,
+            value_flow=12.0,
+        )
+        state = WorldState(tick=0, relationships=[trib1, trib2])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Sum: 8.0 + 12.0 = 20.0
+        assert latest.edges.tribute_flow == 20.0
+
+    def test_aggregates_multiple_solidarity_strengths(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """solidarity_strength uses max() across all SOLIDARITY edges.
+
+        The solidarity network's strength is its strongest link.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        sol1 = Relationship(
+            source_id="C001",
+            target_id="C004",
+            edge_type=EdgeType.SOLIDARITY,
+            tension=0.0,
+            solidarity_strength=0.4,
+        )
+        sol2 = Relationship(
+            source_id="C001",
+            target_id="C005",
+            edge_type=EdgeType.SOLIDARITY,
+            tension=0.0,
+            solidarity_strength=0.8,  # Stronger link
+        )
+        state = WorldState(tick=0, relationships=[sol1, sol2])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Max: max(0.4, 0.8) = 0.8
+        assert latest.edges.solidarity_strength == 0.8
+
+    def test_csv_export_includes_aggregated_values(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """CSV export includes properly aggregated edge values.
+
+        The to_csv_rows() method should reflect aggregated values,
+        not just the first edge encountered.
+        """
+        from babylon.models.entities.relationship import Relationship
+
+        expl1 = Relationship(
+            source_id="C003",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.3,
+            value_flow=10.0,
+        )
+        expl2 = Relationship(
+            source_id="C002",
+            target_id="C001",
+            edge_type=EdgeType.EXPLOITATION,
+            tension=0.7,
+            value_flow=5.0,
+        )
+        state = WorldState(tick=0, relationships=[expl1, expl2])
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        rows = collector.to_csv_rows()
+        assert len(rows) == 1
+        row = rows[0]
+
+        # Aggregated values in CSV
+        assert row["exploitation_tension"] == 0.7  # max
+        assert row["exploitation_rent"] == 15.0  # sum

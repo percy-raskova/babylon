@@ -832,3 +832,338 @@ class TestMetricsModelsIntegration:
         assert entity.p_acquiescence == 0.8
         assert entity.p_revolution == 0.2
         assert entity.organization == 0.15
+
+
+# =============================================================================
+# BATCH 1: ECONOMY DRIVERS MODEL TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.math
+class TestTickMetricsEconomyDrivers:
+    """Tests for TickMetrics economy driver fields.
+
+    Phase 4.1B: Expose Meaningful Metrics - Economy Drivers.
+    These fields expose the current super-wage rate and repression level
+    that drive the simulation dynamics.
+    """
+
+    def test_accepts_current_super_wage_rate(self) -> None:
+        """TickMetrics accepts Coefficient field for current super-wage rate.
+
+        The super-wage rate (Wc/Vc) determines how much core workers receive
+        above the value they produce, funded by imperial rent.
+        """
+        metrics = TickMetrics(tick=0, current_super_wage_rate=0.3)
+        assert metrics.current_super_wage_rate == 0.3
+        # Verify it's a float (Coefficient type serializes to float)
+        assert isinstance(metrics.current_super_wage_rate, float)
+
+    def test_current_super_wage_rate_defaults_to_zero_point_two(self) -> None:
+        """current_super_wage_rate defaults to 0.20.
+
+        Default super-wage rate of 20% matches the imperial rent extraction
+        efficiency coefficient in GameDefines.
+        """
+        metrics = TickMetrics(tick=0)
+        assert metrics.current_super_wage_rate == 0.2
+
+    def test_current_super_wage_rate_must_be_non_negative(self) -> None:
+        """current_super_wage_rate must be >= 0 (Coefficient constraint).
+
+        Negative super-wage rates are economically meaningless.
+        """
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, current_super_wage_rate=-0.1)
+
+    def test_accepts_current_repression_level(self) -> None:
+        """TickMetrics accepts Probability field for current repression level.
+
+        The repression level represents the intensity of state violence
+        directed at the periphery proletariat.
+        """
+        metrics = TickMetrics(tick=0, current_repression_level=0.7)
+        assert metrics.current_repression_level == 0.7
+
+    def test_current_repression_level_defaults_to_zero_point_five(self) -> None:
+        """current_repression_level defaults to 0.5.
+
+        Default repression level of 50% represents baseline state violence.
+        """
+        metrics = TickMetrics(tick=0)
+        assert metrics.current_repression_level == 0.5
+
+    def test_current_repression_level_must_be_probability(self) -> None:
+        """current_repression_level must be bounded [0, 1].
+
+        Repression is a probability-like value bounded between 0 (no repression)
+        and 1 (maximum repression).
+        """
+        # Test upper bound
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, current_repression_level=1.5)
+        # Test lower bound
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, current_repression_level=-0.1)
+
+    def test_accepts_pool_ratio(self) -> None:
+        """TickMetrics accepts Probability field for pool ratio.
+
+        The pool ratio represents imperial_rent_pool / initial_pool,
+        indicating how depleted the rent pool is.
+        """
+        metrics = TickMetrics(tick=0, pool_ratio=0.8)
+        assert metrics.pool_ratio == 0.8
+
+    def test_pool_ratio_defaults_to_one(self) -> None:
+        """pool_ratio defaults to 1.0.
+
+        Default pool ratio of 1.0 means the rent pool is at its initial value
+        (no depletion yet).
+        """
+        metrics = TickMetrics(tick=0)
+        assert metrics.pool_ratio == 1.0
+
+
+# =============================================================================
+# BATCH 2: TOPOLOGY SUMMARY MODEL TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.math
+class TestTopologySummary:
+    """Tests for TopologySummary model.
+
+    Phase 4.1B: Expose Meaningful Metrics - Topology Summary.
+    This model captures the topological phase state of the simulation,
+    including percolation ratio, cadre density, and phase classification.
+    """
+
+    def test_can_instantiate_with_all_fields(self) -> None:
+        """TopologySummary accepts all topology-related fields.
+
+        Expected fields:
+        - percolation_ratio: Probability [0, 1] (largest component / total)
+        - cadre_density: Probability [0, 1] (cadres / total_proletariat)
+        - num_components: int >= 0 (number of connected components)
+        - phase: str (topological phase classification)
+        """
+        from babylon.models.metrics import TopologySummary
+
+        topology = TopologySummary(
+            percolation_ratio=0.8,
+            cadre_density=0.15,
+            num_components=3,
+            phase="transitional",
+        )
+        assert topology.percolation_ratio == 0.8
+        assert topology.cadre_density == 0.15
+        assert topology.num_components == 3
+        assert topology.phase == "transitional"
+
+    def test_percolation_ratio_must_be_probability(self) -> None:
+        """percolation_ratio must be bounded [0, 1].
+
+        The percolation ratio is the fraction of nodes in the largest
+        connected component, which is always between 0 and 1.
+        """
+        from babylon.models.metrics import TopologySummary
+
+        # Test upper bound
+        with pytest.raises(ValidationError):
+            TopologySummary(
+                percolation_ratio=1.5,
+                cadre_density=0.15,
+                num_components=3,
+                phase="gaseous",
+            )
+        # Test lower bound
+        with pytest.raises(ValidationError):
+            TopologySummary(
+                percolation_ratio=-0.1,
+                cadre_density=0.15,
+                num_components=3,
+                phase="gaseous",
+            )
+
+    def test_cadre_density_must_be_probability(self) -> None:
+        """cadre_density must be bounded [0, 1].
+
+        Cadre density is the fraction of proletarians who are cadres,
+        always between 0 and 1.
+        """
+        from babylon.models.metrics import TopologySummary
+
+        with pytest.raises(ValidationError):
+            TopologySummary(
+                percolation_ratio=0.8,
+                cadre_density=1.5,  # Invalid: > 1.0
+                num_components=3,
+                phase="gaseous",
+            )
+
+    def test_num_components_must_be_non_negative(self) -> None:
+        """num_components must be >= 0.
+
+        The number of connected components cannot be negative.
+        """
+        from babylon.models.metrics import TopologySummary
+
+        with pytest.raises(ValidationError):
+            TopologySummary(
+                percolation_ratio=0.8,
+                cadre_density=0.15,
+                num_components=-1,  # Invalid: < 0
+                phase="gaseous",
+            )
+
+    def test_phase_accepts_valid_phases(self) -> None:
+        """phase field accepts valid phase strings.
+
+        Valid phases are based on percolation theory:
+        - "gaseous": Fragmented, no percolation (ratio < 0.25)
+        - "transitional": Near percolation threshold (0.25 <= ratio < 0.5)
+        - "liquid": Partial percolation (0.5 <= ratio < 0.75)
+        - "solid": Full percolation (ratio >= 0.75)
+        """
+        from babylon.models.metrics import TopologySummary
+
+        for phase in ["gaseous", "transitional", "liquid", "solid"]:
+            topology = TopologySummary(
+                percolation_ratio=0.5,
+                cadre_density=0.15,
+                num_components=3,
+                phase=phase,
+            )
+            assert topology.phase == phase
+
+    def test_phase_rejects_invalid_phase(self) -> None:
+        """phase field rejects invalid phase strings.
+
+        Only the four valid phases are accepted.
+        """
+        from babylon.models.metrics import TopologySummary
+
+        with pytest.raises(ValidationError):
+            TopologySummary(
+                percolation_ratio=0.5,
+                cadre_density=0.15,
+                num_components=3,
+                phase="plasma",  # Invalid phase
+            )
+
+    def test_all_fields_have_defaults(self) -> None:
+        """TopologySummary can be constructed with no arguments.
+
+        All fields should have sensible defaults:
+        - percolation_ratio: 0.0 (no percolation)
+        - cadre_density: 0.0 (no cadres)
+        - num_components: 0 (empty graph)
+        - phase: "gaseous" (fragmented initial state)
+        """
+        from babylon.models.metrics import TopologySummary
+
+        topology = TopologySummary()
+        assert topology.percolation_ratio == 0.0
+        assert topology.cadre_density == 0.0
+        assert topology.num_components == 0
+        assert topology.phase == "gaseous"
+
+    def test_tick_metrics_accepts_topology_field(self) -> None:
+        """TickMetrics accepts optional TopologySummary field.
+
+        The topology field provides topological phase information
+        for dashboard visualization.
+        """
+        from babylon.models.metrics import TopologySummary
+
+        topology = TopologySummary(
+            percolation_ratio=0.8,
+            cadre_density=0.15,
+            num_components=3,
+            phase="solid",
+        )
+        metrics = TickMetrics(tick=0, topology=topology)
+        assert metrics.topology is not None
+        assert metrics.topology.phase == "solid"
+        assert metrics.topology.percolation_ratio == 0.8
+
+        # Also test that it defaults to None
+        metrics_no_topology = TickMetrics(tick=0)
+        assert metrics_no_topology.topology is None
+
+
+# =============================================================================
+# BATCH 3: DERIVED DIFFERENTIALS TESTS (Phase 4.1B)
+# =============================================================================
+
+
+@pytest.mark.math
+class TestTickMetricsDifferentials:
+    """Tests for TickMetrics differential/gap fields.
+
+    Phase 4.1B: Expose Meaningful Metrics - Derived Differentials.
+    These fields expose pre-computed differentials between entity values
+    that drive key simulation dynamics.
+    """
+
+    def test_accepts_consciousness_gap(self) -> None:
+        """TickMetrics accepts float field for consciousness gap.
+
+        The consciousness gap (p_w.consciousness - c_w.consciousness) measures
+        how far ahead the periphery worker is in class consciousness compared
+        to the labor aristocracy.
+        """
+        metrics = TickMetrics(tick=0, consciousness_gap=0.3)
+        assert metrics.consciousness_gap == 0.3
+
+    def test_consciousness_gap_can_be_negative(self) -> None:
+        """consciousness_gap can be negative.
+
+        Negative gap means labor aristocracy has higher consciousness
+        than periphery worker (rare but possible scenario).
+        """
+        metrics = TickMetrics(tick=0, consciousness_gap=-0.5)
+        assert metrics.consciousness_gap == -0.5
+
+    def test_consciousness_gap_bounded_minus_one_to_one(self) -> None:
+        """consciousness_gap is bounded [-1.0, 1.0].
+
+        Since both consciousnesses are in [0, 1], the difference is in [-1, 1].
+        """
+        # Test upper bound
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, consciousness_gap=1.5)
+        # Test lower bound
+        with pytest.raises(ValidationError):
+            TickMetrics(tick=0, consciousness_gap=-1.5)
+        # Boundary values should work
+        metrics_max = TickMetrics(tick=0, consciousness_gap=1.0)
+        assert metrics_max.consciousness_gap == 1.0
+        metrics_min = TickMetrics(tick=0, consciousness_gap=-1.0)
+        assert metrics_min.consciousness_gap == -1.0
+
+    def test_consciousness_gap_defaults_to_zero(self) -> None:
+        """consciousness_gap defaults to 0.0.
+
+        Default gap of 0 means no consciousness differential.
+        """
+        metrics = TickMetrics(tick=0)
+        assert metrics.consciousness_gap == 0.0
+
+    def test_accepts_wealth_gap(self) -> None:
+        """TickMetrics accepts float field for wealth gap.
+
+        The wealth gap (c_b.wealth - p_w.wealth) measures the wealth
+        differential between core bourgeoisie and periphery worker.
+        """
+        metrics = TickMetrics(tick=0, wealth_gap=0.8)
+        assert metrics.wealth_gap == 0.8
+
+    def test_wealth_gap_defaults_to_zero(self) -> None:
+        """wealth_gap defaults to 0.0.
+
+        Default gap of 0 means no wealth differential.
+        """
+        metrics = TickMetrics(tick=0)
+        assert metrics.wealth_gap == 0.0

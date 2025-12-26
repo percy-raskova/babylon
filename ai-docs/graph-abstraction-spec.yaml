@@ -1,0 +1,1264 @@
+# Graph Abstraction Layer Specification
+# Slice 1.7: The Graph Bridge
+#
+# This document specifies the interface boundary between Game Loop and Graph Engine.
+# The GraphProtocol enables backend-agnostic graph operations, allowing NetworkX (Epoch 1)
+# to be swapped for DuckDB+DuckPGQ (Epoch 3) without changing System code.
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-26"
+  updated: "2025-12-26"
+  slice: "1.7"
+  name: "The Graph Bridge"
+  epoch: "1.7 (Late Epoch 1 / Bridge to Epoch 2)"
+  status: "PLANNED"
+  pattern: "Adapter"
+
+  related_docs:
+    - "ai-docs/architecture.yaml - Core architecture with franchise_model"
+    - "ai-docs/topology-system.yaml - GraphProtocol and technology_bridge"
+    - "ai-docs/database-spec.yaml - Ledger layer (SQLite/DuckDB)"
+
+  design_principles:
+    - "Backend-agnostic: Works with NetworkX now, DuckDB later"
+    - "Set-oriented: Think in tables, not just objects (DuckDB-ready)"
+    - "Minimal but complete: Just enough methods to cover all System needs"
+    - "Lazy evaluation: Return iterators/generators, not materialized lists"
+
+# =============================================================================
+# THE PROTOCOL: GraphProtocol
+# =============================================================================
+
+graph_protocol:
+  name: "GraphProtocol"
+  type: "typing.Protocol"
+  location: "src/babylon/engine/graph_protocol.py (planned)"
+  status: "SPECIFICATION"
+
+  purpose: |
+    Abstract interface for all graph operations. Systems interact with the
+    simulation graph ONLY through this protocol. The concrete implementation
+    (NetworkX, DuckDB) is hidden behind the adapter.
+
+    Key insight: The protocol is designed to map cleanly to BOTH:
+    - NetworkX (object-oriented, in-memory graph)
+    - DuckDB/SQL (set-oriented, table-based queries)
+
+  # ---------------------------------------------------------------------------
+  # NODE OPERATIONS (CRUD)
+  # ---------------------------------------------------------------------------
+  node_operations:
+    add_node:
+      signature: |
+        def add_node(
+            self,
+            node_id: str,
+            node_type: str,
+            **attributes: Any
+        ) -> None
+      description: "Add a node with type marker and arbitrary attributes"
+      parameters:
+        node_id: "Unique identifier (e.g., 'C001', 'T_oakland', 'pop_oakland_workers')"
+        node_type: "Discriminator for polymorphism (e.g., 'social_class', 'territory', 'org_unit')"
+        attributes: "Type-specific attributes (wealth, heat, discipline, etc.)"
+      duckdb_translation: |
+        INSERT INTO nodes (id, type, attrs_json)
+        VALUES (?, ?, json(?))
+      networkx_translation: |
+        self._graph.add_node(node_id, _node_type=node_type, **attributes)
+
+    get_node:
+      signature: |
+        def get_node(self, node_id: str) -> GraphNode | None
+      description: "Retrieve node by ID, returns None if not found"
+      returns: "GraphNode Pydantic model or None"
+      duckdb_translation: |
+        SELECT id, type, attrs_json FROM nodes WHERE id = ?
+      networkx_translation: |
+        return GraphNode(**self._graph.nodes[node_id]) if node_id in self._graph else None
+
+    update_node:
+      signature: |
+        def update_node(self, node_id: str, **attributes: Any) -> None
+      description: "Partial update of node attributes (merge, not replace)"
+      raises: "KeyError if node does not exist"
+      duckdb_translation: |
+        UPDATE nodes SET attrs_json = json_patch(attrs_json, ?)
+        WHERE id = ?
+      networkx_translation: |
+        self._graph.nodes[node_id].update(attributes)
+
+    remove_node:
+      signature: |
+        def remove_node(self, node_id: str) -> None
+      description: "Remove node and all incident edges"
+      raises: "KeyError if node does not exist"
+      duckdb_translation: |
+        DELETE FROM edges WHERE source_id = ? OR target_id = ?;
+        DELETE FROM nodes WHERE id = ?
+      networkx_translation: |
+        self._graph.remove_node(node_id)
+
+  # ---------------------------------------------------------------------------
+  # EDGE OPERATIONS (CRUD)
+  # ---------------------------------------------------------------------------
+  edge_operations:
+    add_edge:
+      signature: |
+        def add_edge(
+            self,
+            source: str,
+            target: str,
+            edge_type: str,
+            weight: float = 1.0,
+            **attributes: Any
+        ) -> None
+      description: "Add directed edge with type, weight, and attributes"
+      parameters:
+        source: "Source node ID"
+        target: "Target node ID"
+        edge_type: "Edge category (SOLIDARITY, EXPLOITATION, COMMAND, etc.)"
+        weight: "Generic weight (0.0 to 1.0 typically, but unbounded)"
+        attributes: "Type-specific attributes (tension, value_flow, etc.)"
+      duckdb_translation: |
+        INSERT INTO edges (source_id, target_id, type, weight, attrs_json)
+        VALUES (?, ?, ?, ?, json(?))
+      networkx_translation: |
+        self._graph.add_edge(source, target, _edge_type=edge_type, weight=weight, **attributes)
+
+    get_edge:
+      signature: |
+        def get_edge(
+            self,
+            source: str,
+            target: str,
+            edge_type: str
+        ) -> GraphEdge | None
+      description: "Retrieve specific edge by source, target, and type"
+      note: "MultiDiGraph semantics - multiple edges between same nodes allowed if different types"
+      duckdb_translation: |
+        SELECT * FROM edges
+        WHERE source_id = ? AND target_id = ? AND type = ?
+      networkx_translation: |
+        edge_data = self._graph.edges.get((source, target))
+        return GraphEdge(**edge_data) if edge_data and edge_data.get('_edge_type') == edge_type else None
+
+    update_edge:
+      signature: |
+        def update_edge(
+            self,
+            source: str,
+            target: str,
+            edge_type: str,
+            **attributes: Any
+        ) -> None
+      description: "Partial update of edge attributes"
+      duckdb_translation: |
+        UPDATE edges SET attrs_json = json_patch(attrs_json, ?), weight = COALESCE(?, weight)
+        WHERE source_id = ? AND target_id = ? AND type = ?
+      networkx_translation: |
+        self._graph.edges[source, target].update(attributes)
+
+    remove_edge:
+      signature: |
+        def remove_edge(
+            self,
+            source: str,
+            target: str,
+            edge_type: str
+        ) -> None
+      description: "Remove specific edge"
+      duckdb_translation: |
+        DELETE FROM edges
+        WHERE source_id = ? AND target_id = ? AND type = ?
+      networkx_translation: |
+        self._graph.remove_edge(source, target)
+
+  # ---------------------------------------------------------------------------
+  # TRAVERSAL OPERATIONS
+  # ---------------------------------------------------------------------------
+  traversal_operations:
+    get_neighborhood:
+      signature: |
+        def get_neighborhood(
+            self,
+            node_id: str,
+            radius: int = 1,
+            edge_types: set[str] | None = None,
+            direction: Literal["out", "in", "both"] = "out"
+        ) -> SubgraphView
+      description: |
+        Get all nodes within `radius` hops of the source node.
+        Returns a SubgraphView (read-only view of the subgraph).
+      parameters:
+        node_id: "Center node for neighborhood"
+        radius: "Maximum hop distance (1 = immediate neighbors)"
+        edge_types: "Filter to specific edge types (None = all)"
+        direction: "Which edges to follow: outgoing, incoming, or both"
+      returns: "SubgraphView containing nodes and edges in neighborhood"
+      duckdb_translation: |
+        -- Recursive CTE for variable-depth traversal
+        WITH RECURSIVE neighborhood AS (
+            SELECT id, 0 as depth FROM nodes WHERE id = ?
+            UNION
+            SELECT e.target_id, n.depth + 1
+            FROM neighborhood n
+            JOIN edges e ON e.source_id = n.id
+            WHERE n.depth < ? AND (? IS NULL OR e.type IN (?))
+        )
+        SELECT DISTINCT id FROM neighborhood
+      networkx_translation: |
+        # BFS traversal with depth limit
+        nodes = nx.single_source_shortest_path_length(
+            self._graph, node_id, cutoff=radius
+        ).keys()
+        return SubgraphView(self._graph.subgraph(nodes))
+
+    execute_traversal:
+      signature: |
+        def execute_traversal(self, query: TraversalQuery) -> TraversalResult
+      description: |
+        Execute a generic traversal query. This is the hook for complex
+        operations like percolation analysis, pathfinding, and component detection.
+      parameters:
+        query: "TraversalQuery Pydantic model specifying the traversal"
+      returns: "TraversalResult with nodes, edges, paths, or aggregates"
+      note: |
+        This is the "escape hatch" for operations that don't fit the CRUD model.
+        Each adapter implements this differently, but the interface is uniform.
+      supported_query_types:
+        - "bfs: Breadth-first search from start nodes"
+        - "dfs: Depth-first search from start nodes"
+        - "shortest_path: Find shortest path between two nodes"
+        - "connected_components: Find all connected components (for percolation)"
+        - "percolation: Specialized percolation analysis"
+        - "reachability: Check if target is reachable from source"
+
+    shortest_path:
+      signature: |
+        def shortest_path(
+            self,
+            source: str,
+            target: str,
+            edge_types: set[str] | None = None,
+            weight_attr: str | None = None
+        ) -> list[str] | None
+      description: "Find shortest path between two nodes"
+      parameters:
+        source: "Start node ID"
+        target: "End node ID"
+        edge_types: "Filter to specific edge types"
+        weight_attr: "Attribute to use as weight (None = hop count)"
+      returns: "List of node IDs in path, or None if no path exists"
+
+  # ---------------------------------------------------------------------------
+  # SET-ORIENTED QUERIES (DuckDB-Ready)
+  # ---------------------------------------------------------------------------
+  set_operations:
+    purpose: |
+      These methods return iterators (lazy evaluation) for DuckDB compatibility.
+      In NetworkX, we iterate over the graph. In DuckDB, we stream query results.
+
+    query_nodes:
+      signature: |
+        def query_nodes(
+            self,
+            node_type: str | None = None,
+            predicate: Callable[[GraphNode], bool] | None = None,
+            attributes: dict[str, Any] | None = None
+        ) -> Iterator[GraphNode]
+      description: "Query nodes with optional filtering"
+      parameters:
+        node_type: "Filter by node type (None = all types)"
+        predicate: "Python callable for complex filtering (Epoch 1 only)"
+        attributes: "Attribute equality filter (DuckDB-translatable)"
+      duckdb_translation: |
+        SELECT * FROM nodes
+        WHERE (? IS NULL OR type = ?)
+        AND (json_extract(attrs_json, ?) = ?)  -- for each attribute filter
+      networkx_translation: |
+        for node_id in self._graph.nodes:
+            node = self._graph.nodes[node_id]
+            if node_type and node.get('_node_type') != node_type:
+                continue
+            if predicate and not predicate(GraphNode(**node)):
+                continue
+            yield GraphNode(id=node_id, **node)
+
+    query_edges:
+      signature: |
+        def query_edges(
+            self,
+            edge_type: str | None = None,
+            predicate: Callable[[GraphEdge], bool] | None = None,
+            min_weight: float | None = None,
+            max_weight: float | None = None
+        ) -> Iterator[GraphEdge]
+      description: "Query edges with optional filtering"
+      parameters:
+        edge_type: "Filter by edge type"
+        predicate: "Python callable for complex filtering"
+        min_weight: "Minimum weight threshold"
+        max_weight: "Maximum weight threshold"
+
+    count_nodes:
+      signature: |
+        def count_nodes(self, node_type: str | None = None) -> int
+      description: "Count nodes, optionally by type"
+      duckdb_translation: |
+        SELECT COUNT(*) FROM nodes WHERE (? IS NULL OR type = ?)
+
+    count_edges:
+      signature: |
+        def count_edges(self, edge_type: str | None = None) -> int
+      description: "Count edges, optionally by type"
+
+    aggregate:
+      signature: |
+        def aggregate(
+            self,
+            target: Literal["nodes", "edges"],
+            group_by: str | None = None,
+            agg_func: Literal["count", "sum", "avg", "min", "max"] = "count",
+            agg_attr: str | None = None
+        ) -> dict[str, float]
+      description: "Aggregate over nodes or edges"
+      example: |
+        # Count nodes by type
+        graph.aggregate("nodes", group_by="type")
+        # → {"social_class": 4, "territory": 3, "org_unit": 2}
+
+        # Sum wealth across social classes
+        graph.aggregate("nodes", group_by="type", agg_func="sum", agg_attr="wealth")
+        # → {"social_class": 4500.0, "territory": 0.0}
+
+# =============================================================================
+# DATA MODELS
+# =============================================================================
+
+data_models:
+  purpose: |
+    Pydantic models for type-safe graph data. These models are used at the
+    protocol boundary - adapters convert to/from their internal representation.
+
+  # ---------------------------------------------------------------------------
+  # GraphNode
+  # ---------------------------------------------------------------------------
+  graph_node:
+    name: "GraphNode"
+    type: "Pydantic BaseModel (frozen)"
+    location: "src/babylon/models/graph.py (planned)"
+
+    fields:
+      id:
+        type: "str"
+        description: "Unique node identifier"
+        constraints: "Non-empty, valid identifier pattern"
+        examples: ["C001", "T_oakland", "pop_oakland_workers", "chapter_oakland"]
+
+      node_type:
+        type: "str"
+        description: "Discriminator for polymorphism"
+        constraints: "One of: social_class, territory, org_unit, pop_fragment"
+        note: "Extensible - new types can be added without schema changes"
+
+      attributes:
+        type: "dict[str, Any]"
+        description: "Type-specific attributes stored as JSON"
+        validation: "Validated by type-specific schemas (see node_type_schemas)"
+
+    schema: |
+      class GraphNode(BaseModel):
+          """Type-safe graph node representation."""
+          model_config = ConfigDict(frozen=True)
+
+          id: str = Field(..., min_length=1)
+          node_type: str = Field(..., min_length=1)
+          attributes: dict[str, Any] = Field(default_factory=dict)
+
+          def get_attr(self, key: str, default: Any = None) -> Any:
+              """Get attribute with default."""
+              return self.attributes.get(key, default)
+
+          @property
+          def wealth(self) -> float:
+              """Convenience accessor for common attribute."""
+              return self.attributes.get("wealth", 0.0)
+
+  # ---------------------------------------------------------------------------
+  # GraphEdge
+  # ---------------------------------------------------------------------------
+  graph_edge:
+    name: "GraphEdge"
+    type: "Pydantic BaseModel (frozen)"
+    location: "src/babylon/models/graph.py (planned)"
+
+    fields:
+      source_id:
+        type: "str"
+        description: "Source node ID"
+
+      target_id:
+        type: "str"
+        description: "Target node ID"
+
+      edge_type:
+        type: "str"
+        description: "Edge category"
+        values:
+          epoch_1:
+            - "SOLIDARITY: Consciousness transmission infrastructure"
+            - "EXPLOITATION: Imperial rent extraction"
+            - "WAGES: Super-wage payments"
+            - "REPRESSION: State violence"
+            - "TENANCY: Occupancy relationship"
+            - "ADJACENCY: Spatial connectivity"
+          epoch_2:
+            - "COMMAND: OrganizationUnit hierarchy"
+            - "OPERATES_IN: OrganizationUnit → Territory presence"
+            - "INFLUENCES: OrganizationUnit → PopFragment organizing"
+            - "RESIDES_IN: PopFragment → Territory location"
+
+      weight:
+        type: "float"
+        description: "Generic weight (interpretation depends on edge_type)"
+        constraints: "Typically [0.0, 1.0] but unbounded for value_flow"
+
+      attributes:
+        type: "dict[str, Any]"
+        description: "Type-specific attributes"
+        common_attributes:
+          tension: "Intensity [0, 1] - accumulated conflict"
+          value_flow: "Currency - economic transfer"
+          solidarity_strength: "Coefficient [0, 1] - connection strength"
+
+    schema: |
+      class GraphEdge(BaseModel):
+          """Type-safe graph edge representation."""
+          model_config = ConfigDict(frozen=True)
+
+          source_id: str = Field(..., min_length=1)
+          target_id: str = Field(..., min_length=1)
+          edge_type: str = Field(..., min_length=1)
+          weight: float = Field(default=1.0)
+          attributes: dict[str, Any] = Field(default_factory=dict)
+
+          @property
+          def tension(self) -> float:
+              """Convenience accessor for tension."""
+              return self.attributes.get("tension", 0.0)
+
+          @property
+          def value_flow(self) -> float:
+              """Convenience accessor for value_flow."""
+              return self.attributes.get("value_flow", 0.0)
+
+  # ---------------------------------------------------------------------------
+  # TraversalQuery and TraversalResult
+  # ---------------------------------------------------------------------------
+  traversal_query:
+    name: "TraversalQuery"
+    type: "Pydantic BaseModel (frozen)"
+    purpose: "Generic traversal query specification"
+
+    fields:
+      query_type:
+        type: "Literal['bfs', 'dfs', 'shortest_path', 'connected_components', 'percolation', 'reachability']"
+        description: "Type of traversal to execute"
+
+      start_nodes:
+        type: "list[str] | None"
+        description: "Starting node IDs (None = all nodes)"
+
+      target_nodes:
+        type: "list[str] | None"
+        description: "Target node IDs (for shortest_path, reachability)"
+
+      edge_filter:
+        type: "EdgeFilter | None"
+        description: "Filter which edges to traverse"
+
+      node_filter:
+        type: "NodeFilter | None"
+        description: "Filter which nodes to include"
+
+      max_depth:
+        type: "int | None"
+        description: "Maximum traversal depth"
+
+      collect:
+        type: "list[Literal['nodes', 'edges', 'paths', 'component_sizes']]"
+        description: "What to include in result"
+        default: "['nodes']"
+
+    schema: |
+      class EdgeFilter(BaseModel):
+          """Filter for edge traversal."""
+          edge_types: set[str] | None = None
+          min_weight: float | None = None
+          max_weight: float | None = None
+
+      class NodeFilter(BaseModel):
+          """Filter for node inclusion."""
+          node_types: set[str] | None = None
+          attribute_predicates: dict[str, Any] | None = None
+
+      class TraversalQuery(BaseModel):
+          """Generic traversal query specification."""
+          query_type: Literal["bfs", "dfs", "shortest_path",
+                              "connected_components", "percolation", "reachability"]
+          start_nodes: list[str] | None = None
+          target_nodes: list[str] | None = None
+          edge_filter: EdgeFilter | None = None
+          node_filter: NodeFilter | None = None
+          max_depth: int | None = None
+          collect: list[str] = Field(default=["nodes"])
+
+  traversal_result:
+    name: "TraversalResult"
+    type: "Pydantic BaseModel (frozen)"
+    purpose: "Result of traversal query execution"
+
+    fields:
+      nodes:
+        type: "list[str]"
+        description: "Node IDs in traversal result"
+
+      edges:
+        type: "list[tuple[str, str, str]]"
+        description: "Edge tuples (source, target, type) in result"
+
+      paths:
+        type: "list[list[str]]"
+        description: "Paths found (for shortest_path queries)"
+
+      components:
+        type: "list[list[str]]"
+        description: "Connected components (for component queries)"
+
+      component_sizes:
+        type: "list[int]"
+        description: "Sizes of connected components (sorted descending)"
+
+      metadata:
+        type: "dict[str, Any]"
+        description: "Query-specific metadata"
+
+    schema: |
+      class TraversalResult(BaseModel):
+          """Result of traversal query."""
+          nodes: list[str] = Field(default_factory=list)
+          edges: list[tuple[str, str, str]] = Field(default_factory=list)
+          paths: list[list[str]] = Field(default_factory=list)
+          components: list[list[str]] = Field(default_factory=list)
+          component_sizes: list[int] = Field(default_factory=list)
+          metadata: dict[str, Any] = Field(default_factory=dict)
+
+          @property
+          def largest_component_size(self) -> int:
+              """Size of giant component."""
+              return self.component_sizes[0] if self.component_sizes else 0
+
+          @property
+          def percolation_ratio(self) -> float:
+              """Fraction of nodes in giant component."""
+              total = sum(self.component_sizes) if self.component_sizes else 0
+              return self.largest_component_size / total if total > 0 else 0.0
+
+# =============================================================================
+# THE FRANCHISE SCHEMA (Epoch 2 Scale)
+# =============================================================================
+
+franchise_schema:
+  name: "Franchise Schema"
+  epoch: "2+"
+  status: "DESIGN"
+
+  purpose: |
+    Define the node types needed for Epoch 2 scale, where the simulation
+    models hundreds of population fragments across dozens of territories,
+    organized by multiple competing organizations.
+
+  principle: |
+    The "Franchise Model": Agents (Organizations) are EXTERNAL to the graph.
+    They manipulate the graph through OrganizationUnits (their "franchises").
+
+    Think of it like a franchise business:
+    - McDonald's Corporation (Agent) doesn't appear in the real estate graph
+    - But McDonald's restaurants (OrganizationUnits) DO appear in territories
+    - Corporate sends signals to restaurants, restaurants affect local markets
+
+  # ---------------------------------------------------------------------------
+  # NODE TYPES
+  # ---------------------------------------------------------------------------
+  node_types:
+    organization_unit:
+      name: "OrganizationUnit"
+      purpose: "The Player's 'franchises' in the graph"
+      subtypes:
+        chapter:
+          description: "City-level organization (e.g., Oakland Chapter)"
+          typical_scale: "1 per major city"
+          attributes:
+            - "discipline: Probability - internal cohesion"
+            - "resources: Currency - available funds/supplies"
+            - "cover_status: Literal['overt', 'semi-clandestine', 'underground']"
+            - "cadre_count: int - number of committed activists"
+
+        cell:
+          description: "Neighborhood-level unit (e.g., West Oakland Cell)"
+          typical_scale: "2-5 per chapter"
+          attributes:
+            - "discipline: Probability"
+            - "specialty: Literal['organizing', 'defense', 'propaganda', 'logistics']"
+            - "parent_chapter_id: str - reference to parent chapter"
+
+        brigade:
+          description: "Task-specific formation (e.g., Tenant Defense Brigade)"
+          typical_scale: "1-3 per chapter"
+          attributes:
+            - "mission: str - current objective"
+            - "deployment_territory_id: str - where currently operating"
+
+        caucus:
+          description: "Embedded unit in existing organization (e.g., Teachers Caucus)"
+          typical_scale: "Variable"
+          attributes:
+            - "host_organization: str - union, party, etc."
+            - "influence_level: Probability - control within host"
+
+    territory:
+      name: "Territory"
+      purpose: "Spatial substrate (zones, districts)"
+      note: "Extends existing Territory model from Epoch 1"
+      subtypes:
+        zone:
+          description: "Large area (e.g., Bay Area)"
+          typical_scale: "1-3 per scenario"
+
+        district:
+          description: "City/county level (e.g., Oakland)"
+          typical_scale: "5-10 per zone"
+
+        neighborhood:
+          description: "Local area (e.g., West Oakland)"
+          typical_scale: "3-5 per district"
+
+      attributes:
+        - "heat: Probability - state attention level"
+        - "profile: OperationalProfile - visibility"
+        - "rent_level: Currency - imperial rent extracted"
+        - "controller_id: str | None - which Agent controls"
+        - "terrain: Literal['urban', 'suburban', 'rural', 'industrial']"
+
+    pop_fragment:
+      name: "PopFragment"
+      purpose: "Population segments within territories"
+      note: "Replaces SocialClass at scale (SocialClass = 4 nodes, PopFragment = 100+)"
+      subtypes:
+        worker_segment:
+          description: "Working class population segment"
+          examples: ["Oakland Dockworkers", "SF Tech Workers", "LA Garment Workers"]
+          attributes:
+            - "population: int - number of people"
+            - "sector: SectorType - industry"
+            - "union_density: Probability - organization level"
+
+        petit_bourgeois:
+          description: "Small business owners, professionals"
+          examples: ["Oakland Shop Owners", "SF Landlords"]
+          attributes:
+            - "population: int"
+            - "property_value: Currency"
+
+        lumpen:
+          description: "Marginalized populations"
+          examples: ["Oakland Unhoused", "LA Day Laborers"]
+          attributes:
+            - "population: int"
+            - "desperation: Probability - susceptibility to recruitment/cooptation"
+
+      common_attributes:
+        - "wealth: Currency - collective resources"
+        - "consciousness: IdeologicalProfile - political awareness"
+        - "agitation: Probability - current mobilization level"
+        - "territory_id: str - where they reside"
+
+  # ---------------------------------------------------------------------------
+  # EDGE TYPES (Epoch 2)
+  # ---------------------------------------------------------------------------
+  edge_types:
+    command:
+      source: "OrganizationUnit"
+      target: "OrganizationUnit"
+      direction: "Hierarchical (parent → child)"
+      purpose: "Internal organization hierarchy"
+      attributes:
+        - "authority_level: Probability - strength of command"
+        - "communication_security: Probability - risk of interception"
+
+    operates_in:
+      source: "OrganizationUnit"
+      target: "Territory"
+      direction: "Org → Territory"
+      purpose: "Presence in a territory"
+      attributes:
+        - "visibility: Probability - how exposed the operation is"
+        - "establishment_tick: int - when presence was established"
+
+    influences:
+      source: "OrganizationUnit"
+      target: "PopFragment"
+      direction: "Org → Pop"
+      purpose: "Organizing relationship"
+      attributes:
+        - "influence_strength: Probability - depth of organizing"
+        - "relationship_type: Literal['organizing', 'mutual_aid', 'defense', 'propaganda']"
+
+    resides_in:
+      source: "PopFragment"
+      target: "Territory"
+      direction: "Pop → Territory"
+      purpose: "Location of population"
+      attributes:
+        - "tenure_security: Probability - risk of displacement"
+
+    solidarity:
+      source: "PopFragment"
+      target: "PopFragment"
+      direction: "Bidirectional (typically)"
+      purpose: "Cross-segment solidarity (consciousness transmission)"
+      note: "Epoch 2 version of SOLIDARITY edge"
+      attributes:
+        - "strength: Probability"
+        - "basis: Literal['class', 'neighborhood', 'identity', 'workplace']"
+
+  # ---------------------------------------------------------------------------
+  # GRAPH SCALE
+  # ---------------------------------------------------------------------------
+  scale:
+    epoch_1:
+      description: "The Demonstration - minimal viable graph"
+      nodes:
+        social_class: 4
+        territory: "3-5"
+      edges: "~20"
+      total: "~10 nodes"
+
+    epoch_2:
+      description: "The Game - city-scale simulation"
+      nodes:
+        organization_unit: "10-30"
+        territory: "20-50"
+        pop_fragment: "50-100"
+      edges: "~500"
+      total: "~150 nodes"
+
+    epoch_3:
+      description: "The Platform - national/global scale"
+      nodes:
+        organization_unit: "100+"
+        territory: "200+"
+        pop_fragment: "1000+"
+      edges: "~10000"
+      total: "~1500 nodes"
+      note: "DuckDB required for this scale"
+
+# =============================================================================
+# ACTION FLOW: Agent → Signal → Graph
+# =============================================================================
+
+action_flow:
+  name: "The Signal Pattern"
+  epoch: "2+"
+  status: "DESIGN"
+
+  principle: |
+    Agents (Player, State, AI Factions) do NOT manipulate the graph directly.
+    They issue Signals to OrganizationUnits, which then produce Effects.
+
+    This separation enables:
+    - Fog of War (Agent doesn't see all graph state)
+    - Action validation (Agent must have resources for Signal)
+    - Deterministic replay (Signals are the action log)
+
+  diagram: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                         THE ACTION FLOW                                  │
+    │                    Agent → Signal → Unit → Effect → Graph               │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────┐                              ┌──────────────────┐
+    │      AGENT       │                              │      AGENT       │
+    │     (Player)     │                              │     (State)      │
+    │                  │                              │                  │
+    │  war_chest: 500  │                              │  legitimacy: 75  │
+    │  intel_level: 3  │                              │  budget: 10000   │
+    └────────┬─────────┘                              └────────┬─────────┘
+             │                                                  │
+             │ OrganizeSignal                                   │ RepressionSignal
+             │ target: "chapter_oakland"                        │ target: "T_oakland"
+             │ intensity: 0.8                                   │ intensity: 0.6
+             ▼                                                  ▼
+    ┌──────────────────┐                              ┌──────────────────┐
+    │ OrganizationUnit │                              │    Territory     │
+    │ "chapter_oakland"│                              │   "T_oakland"    │
+    │                  │                              │                  │
+    │  discipline: 0.7 │                              │  heat: 0.4 → 0.7 │
+    │  resources: 200  │                              │  profile: HIGH   │
+    └────────┬─────────┘                              └──────────────────┘
+             │
+             │ generates Effect
+             │ (OrganizingEffect)
+             ▼
+    ┌──────────────────────────────────────────────────────────────────┐
+    │                           GRAPH                                   │
+    │                                                                   │
+    │   ┌──────────────┐    INFLUENCES     ┌──────────────┐            │
+    │   │ chapter_     ├──────────────────►│ pop_oakland_ │            │
+    │   │ oakland      │    strength: 0.6  │ workers      │            │
+    │   └──────────────┘                   └──────────────┘            │
+    │                                             │                     │
+    │                                             │ consciousness += 0.1│
+    │                                             ▼                     │
+    │                                      ┌──────────────┐            │
+    │                                      │ Modified     │            │
+    │                                      │ PopFragment  │            │
+    │                                      └──────────────┘            │
+    └──────────────────────────────────────────────────────────────────┘
+
+  # ---------------------------------------------------------------------------
+  # SIGNAL TYPES
+  # ---------------------------------------------------------------------------
+  signal_types:
+    organize_signal:
+      name: "OrganizeSignal"
+      agent: "Player (Revolutionary Organization)"
+      target: "OrganizationUnit"
+      purpose: "Order a unit to organize in their territory"
+      parameters:
+        target_unit_id: "str - which unit receives the order"
+        intensity: "Probability - resource allocation (0.1 = light, 1.0 = all-in)"
+        focus: "Literal['consciousness', 'recruitment', 'mutual_aid']"
+      cost: "resources * intensity from Agent's war_chest"
+      effect: "Unit generates OrganizingEffect on nearby PopFragments"
+
+    deploy_signal:
+      name: "DeploySignal"
+      agent: "Player"
+      target: "OrganizationUnit"
+      purpose: "Move a unit to a new territory"
+      parameters:
+        target_unit_id: "str"
+        destination_territory_id: "str"
+        cover_level: "Literal['overt', 'covert']"
+      cost: "Fixed cost + distance modifier"
+      effect: "Creates OPERATES_IN edge to new territory"
+
+    repression_signal:
+      name: "RepressionSignal"
+      agent: "State"
+      target: "Territory"
+      purpose: "Increase state pressure on a territory"
+      parameters:
+        target_territory_id: "str"
+        intensity: "Probability - force level"
+        tactic: "Literal['surveillance', 'raids', 'curfew', 'martial_law']"
+      cost: "Deducted from State budget, costs legitimacy"
+      effect: "Increases territory heat, may disrupt OrganizationUnits"
+
+    infiltrate_signal:
+      name: "InfiltrateSignal"
+      agent: "State"
+      target: "OrganizationUnit"
+      purpose: "COINTELPRO operation against a unit"
+      parameters:
+        target_unit_id: "str"
+        operation: "Literal['surveillance', 'bad_jacketing', 'provocation']"
+      cost: "From COINTELPRO budget"
+      effect: "May reduce unit discipline, create intel for State"
+
+  # ---------------------------------------------------------------------------
+  # EFFECT TYPES
+  # ---------------------------------------------------------------------------
+  effect_types:
+    organizing_effect:
+      name: "OrganizingEffect"
+      producer: "OrganizationUnit"
+      target: "PopFragment"
+      changes:
+        - "consciousness: Δ based on unit discipline and influence_strength"
+        - "agitation: Δ based on focus parameter"
+        - "INFLUENCES edge strength: +Δ"
+
+    repression_effect:
+      name: "RepressionEffect"
+      producer: "State (via Territory)"
+      target: "Territory, OrganizationUnits in territory"
+      changes:
+        - "territory.heat: +intensity"
+        - "unit.cover_status: may force underground"
+        - "May trigger EXCESSIVE_FORCE event if intensity high"
+
+    displacement_effect:
+      name: "DisplacementEffect"
+      producer: "Territory (when heat exceeds threshold)"
+      target: "PopFragment, OrganizationUnit"
+      changes:
+        - "RESIDES_IN edge removed (population displaced)"
+        - "OPERATES_IN edge removed (unit forced out)"
+        - "May create refugee PopFragment in adjacent territory"
+
+  # ---------------------------------------------------------------------------
+  # VALIDATION
+  # ---------------------------------------------------------------------------
+  validation:
+    principle: |
+      Before a Signal is executed, the system validates:
+      1. Agent has sufficient resources
+      2. Agent has visibility to the target (not in Fog of War)
+      3. Target exists and is in valid state for this signal
+      4. Signal parameters are within allowed ranges
+
+    example: |
+      # Player tries to organize in a territory they can't see
+      signal = OrganizeSignal(target="chapter_hidden", intensity=0.5)
+
+      validation_result = validate_signal(player, signal)
+      # → ValidationError("Target 'chapter_hidden' is in Desert zone - no visibility")
+
+# =============================================================================
+# NETWORKX ADAPTER (Reference Implementation)
+# =============================================================================
+
+networkx_adapter:
+  name: "NetworkXAdapter"
+  status: "REFERENCE IMPLEMENTATION (Epoch 1)"
+  location: "src/babylon/engine/adapters/inmemory_adapter.py (planned)"
+
+  purpose: |
+    Reference implementation of GraphProtocol using NetworkX.
+    This is the MVP adapter for Epoch 1 and 2.
+
+  implementation_notes:
+    storage: |
+      Uses nx.DiGraph internally. Node types stored as '_node_type' attribute.
+      Edge types stored as '_edge_type' attribute. All other attributes stored directly.
+
+    multi_edge_handling: |
+      NetworkX DiGraph allows only one edge per (source, target) pair.
+      For multiple edge types between same nodes, we use edge key or
+      store type in edge attributes. Consider nx.MultiDiGraph for Epoch 2.
+
+    traversal_implementation: |
+      execute_traversal() dispatches to NetworkX algorithms:
+      - connected_components → nx.connected_components(G.to_undirected())
+      - shortest_path → nx.shortest_path(G, source, target)
+      - bfs → nx.bfs_tree(G, source, depth_limit=max_depth)
+
+  skeleton: |
+    from typing import Any, Iterator, Literal
+    import networkx as nx
+    from babylon.models.graph import GraphNode, GraphEdge, TraversalQuery, TraversalResult
+
+    class NetworkXAdapter:
+        """Reference implementation of GraphProtocol using NetworkX."""
+
+        def __init__(self) -> None:
+            self._graph: nx.DiGraph = nx.DiGraph()
+
+        # ─────────────────────────────────────────────────────────────────────
+        # NODE OPERATIONS
+        # ─────────────────────────────────────────────────────────────────────
+
+        def add_node(self, node_id: str, node_type: str, **attributes: Any) -> None:
+            """Add a node with type marker and attributes."""
+            self._graph.add_node(node_id, _node_type=node_type, **attributes)
+
+        def get_node(self, node_id: str) -> GraphNode | None:
+            """Retrieve node by ID."""
+            if node_id not in self._graph:
+                return None
+            data = dict(self._graph.nodes[node_id])
+            node_type = data.pop('_node_type', 'unknown')
+            return GraphNode(id=node_id, node_type=node_type, attributes=data)
+
+        def update_node(self, node_id: str, **attributes: Any) -> None:
+            """Partial update of node attributes."""
+            if node_id not in self._graph:
+                raise KeyError(f"Node '{node_id}' does not exist")
+            self._graph.nodes[node_id].update(attributes)
+
+        def remove_node(self, node_id: str) -> None:
+            """Remove node and all incident edges."""
+            self._graph.remove_node(node_id)
+
+        # ─────────────────────────────────────────────────────────────────────
+        # EDGE OPERATIONS
+        # ─────────────────────────────────────────────────────────────────────
+
+        def add_edge(
+            self,
+            source: str,
+            target: str,
+            edge_type: str,
+            weight: float = 1.0,
+            **attributes: Any
+        ) -> None:
+            """Add directed edge with type and weight."""
+            self._graph.add_edge(
+                source, target,
+                _edge_type=edge_type,
+                weight=weight,
+                **attributes
+            )
+
+        def get_edge(self, source: str, target: str, edge_type: str) -> GraphEdge | None:
+            """Retrieve specific edge."""
+            if not self._graph.has_edge(source, target):
+                return None
+            data = dict(self._graph.edges[source, target])
+            if data.get('_edge_type') != edge_type:
+                return None
+            data.pop('_edge_type', None)
+            weight = data.pop('weight', 1.0)
+            return GraphEdge(
+                source_id=source,
+                target_id=target,
+                edge_type=edge_type,
+                weight=weight,
+                attributes=data
+            )
+
+        # ─────────────────────────────────────────────────────────────────────
+        # TRAVERSAL OPERATIONS
+        # ─────────────────────────────────────────────────────────────────────
+
+        def get_neighborhood(
+            self,
+            node_id: str,
+            radius: int = 1,
+            edge_types: set[str] | None = None,
+            direction: Literal["out", "in", "both"] = "out"
+        ) -> "SubgraphView":
+            """Get all nodes within radius hops."""
+            if node_id not in self._graph:
+                raise KeyError(f"Node '{node_id}' does not exist")
+
+            # BFS with depth limit
+            nodes = {node_id}
+            frontier = {node_id}
+
+            for _ in range(radius):
+                new_frontier: set[str] = set()
+                for n in frontier:
+                    # Get neighbors based on direction
+                    if direction in ("out", "both"):
+                        for neighbor in self._graph.successors(n):
+                            edge_data = self._graph.edges[n, neighbor]
+                            if edge_types is None or edge_data.get('_edge_type') in edge_types:
+                                new_frontier.add(neighbor)
+                    if direction in ("in", "both"):
+                        for neighbor in self._graph.predecessors(n):
+                            edge_data = self._graph.edges[neighbor, n]
+                            if edge_types is None or edge_data.get('_edge_type') in edge_types:
+                                new_frontier.add(neighbor)
+                nodes |= new_frontier
+                frontier = new_frontier
+
+            return SubgraphView(self._graph.subgraph(nodes))
+
+        def execute_traversal(self, query: TraversalQuery) -> TraversalResult:
+            """Execute generic traversal query."""
+            if query.query_type == "connected_components":
+                return self._execute_components_query(query)
+            elif query.query_type == "shortest_path":
+                return self._execute_shortest_path_query(query)
+            elif query.query_type == "bfs":
+                return self._execute_bfs_query(query)
+            else:
+                raise ValueError(f"Unsupported query type: {query.query_type}")
+
+        def _execute_components_query(self, query: TraversalQuery) -> TraversalResult:
+            """Find connected components (for percolation analysis)."""
+            # Build filtered subgraph
+            filtered = self._build_filtered_subgraph(query)
+
+            # Find components (undirected)
+            components = list(nx.connected_components(filtered.to_undirected()))
+            components.sort(key=len, reverse=True)  # Largest first
+
+            return TraversalResult(
+                nodes=[n for c in components for n in c],
+                components=[list(c) for c in components],
+                component_sizes=[len(c) for c in components]
+            )
+
+        def _build_filtered_subgraph(self, query: TraversalQuery) -> nx.DiGraph:
+            """Build subgraph matching query filters."""
+            # Start with all nodes or specified start nodes
+            if query.start_nodes:
+                nodes = set(query.start_nodes)
+            else:
+                nodes = set(self._graph.nodes)
+
+            # Apply node filter
+            if query.node_filter and query.node_filter.node_types:
+                nodes = {
+                    n for n in nodes
+                    if self._graph.nodes[n].get('_node_type') in query.node_filter.node_types
+                }
+
+            # Build subgraph with edge filtering
+            subgraph = self._graph.subgraph(nodes).copy()
+
+            # Remove edges that don't match filter
+            if query.edge_filter:
+                edges_to_remove = []
+                for u, v, data in subgraph.edges(data=True):
+                    if query.edge_filter.edge_types:
+                        if data.get('_edge_type') not in query.edge_filter.edge_types:
+                            edges_to_remove.append((u, v))
+                            continue
+                    if query.edge_filter.min_weight is not None:
+                        if data.get('weight', 0) < query.edge_filter.min_weight:
+                            edges_to_remove.append((u, v))
+                            continue
+                subgraph.remove_edges_from(edges_to_remove)
+
+            return subgraph
+
+        # ─────────────────────────────────────────────────────────────────────
+        # SET OPERATIONS
+        # ─────────────────────────────────────────────────────────────────────
+
+        def query_nodes(
+            self,
+            node_type: str | None = None,
+            predicate: Callable[[GraphNode], bool] | None = None,
+            attributes: dict[str, Any] | None = None
+        ) -> Iterator[GraphNode]:
+            """Query nodes with optional filtering."""
+            for node_id in self._graph.nodes:
+                data = dict(self._graph.nodes[node_id])
+                n_type = data.pop('_node_type', 'unknown')
+
+                # Type filter
+                if node_type and n_type != node_type:
+                    continue
+
+                # Attribute filter
+                if attributes:
+                    if not all(data.get(k) == v for k, v in attributes.items()):
+                        continue
+
+                node = GraphNode(id=node_id, node_type=n_type, attributes=data)
+
+                # Predicate filter
+                if predicate and not predicate(node):
+                    continue
+
+                yield node
+
+        def count_nodes(self, node_type: str | None = None) -> int:
+            """Count nodes, optionally by type."""
+            if node_type is None:
+                return self._graph.number_of_nodes()
+            return sum(
+                1 for n in self._graph.nodes
+                if self._graph.nodes[n].get('_node_type') == node_type
+            )
+
+  # ---------------------------------------------------------------------------
+  # DUCKDB MAPPING (Future Reference)
+  # ---------------------------------------------------------------------------
+  duckdb_mapping:
+    description: |
+      How NetworkXAdapter methods map to DuckDB/SQL operations.
+      This shows the Columnar Adapter is feasible with the same interface.
+
+    tables:
+      nodes: |
+        CREATE TABLE nodes (
+            id VARCHAR PRIMARY KEY,
+            type VARCHAR NOT NULL,
+            attrs JSON DEFAULT '{}'
+        );
+      edges: |
+        CREATE TABLE edges (
+            source_id VARCHAR NOT NULL,
+            target_id VARCHAR NOT NULL,
+            type VARCHAR NOT NULL,
+            weight DOUBLE DEFAULT 1.0,
+            attrs JSON DEFAULT '{}',
+            PRIMARY KEY (source_id, target_id, type),
+            FOREIGN KEY (source_id) REFERENCES nodes(id),
+            FOREIGN KEY (target_id) REFERENCES nodes(id)
+        );
+
+    method_mapping:
+      add_node: "INSERT INTO nodes VALUES (?, ?, json(?))"
+      get_node: "SELECT * FROM nodes WHERE id = ?"
+      update_node: "UPDATE nodes SET attrs = json_patch(attrs, ?) WHERE id = ?"
+      remove_node: "DELETE FROM nodes WHERE id = ?"
+      add_edge: "INSERT INTO edges VALUES (?, ?, ?, ?, json(?))"
+      count_nodes: "SELECT COUNT(*) FROM nodes WHERE (? IS NULL OR type = ?)"
+      connected_components: |
+        -- DuckPGQ provides graph algorithms
+        -- This is pseudocode for the concept
+        MATCH (n)-[e:SOLIDARITY*]-(m)
+        WHERE e.weight >= 0.1
+        RETURN connected_component(n) as component, collect(n.id) as nodes
+
+# =============================================================================
+# IMPLEMENTATION ROADMAP
+# =============================================================================
+
+implementation_roadmap:
+  phase_1:
+    name: "Protocol Definition"
+    epoch: "1.7"
+    status: "THIS SPECIFICATION"
+    deliverables:
+      - "GraphProtocol as typing.Protocol"
+      - "GraphNode, GraphEdge Pydantic models"
+      - "TraversalQuery, TraversalResult models"
+    location: "src/babylon/models/graph.py"
+
+  phase_2:
+    name: "NetworkXAdapter"
+    epoch: "1.7"
+    status: "PLANNED"
+    deliverables:
+      - "NetworkXAdapter implementing GraphProtocol"
+      - "Unit tests for all protocol methods"
+      - "Integration with existing WorldState.to_graph()"
+    location: "src/babylon/engine/adapters/inmemory_adapter.py"
+
+  phase_3:
+    name: "System Refactor"
+    epoch: "2.0"
+    status: "FUTURE"
+    deliverables:
+      - "Refactor all 8 Systems to use GraphProtocol"
+      - "Remove direct NetworkX imports from Systems"
+      - "Add lint rules to enforce protocol usage"
+
+  phase_4:
+    name: "Franchise Schema"
+    epoch: "2.0"
+    status: "FUTURE"
+    deliverables:
+      - "OrganizationUnit, PopFragment node types"
+      - "COMMAND, OPERATES_IN, INFLUENCES edge types"
+      - "Signal/Effect action flow"
+
+  phase_5:
+    name: "ColumnarAdapter"
+    epoch: "3.0"
+    status: "FUTURE"
+    deliverables:
+      - "DuckDB + DuckPGQ implementation"
+      - "Performance benchmarks vs NetworkXAdapter"
+      - "Migration tooling"

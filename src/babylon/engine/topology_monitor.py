@@ -1,14 +1,14 @@
-"""Topology Monitor for phase transition detection (Sprint 3.1).
+"""Topology Monitor for phase transition detection (Sprint 3.1, 3.3).
 
 The TopologyMonitor is a SimulationObserver that tracks the "condensation"
 of revolutionary consciousness through the social graph using percolation
-theory. It detects phase transitions from "atomized" (gaseous) to
-"condensed" (liquid) movement states.
+theory. It detects phase transitions between 4 phases of movement organization.
 
-Theoretical Model:
-    - Gaseous State: Many small, disconnected components. Vulnerable to purge.
-    - Liquid State: Giant Component (L_max) spans >50% of network. Resilient.
-    - Phase Shift: The tick where the graph crosses percolation threshold.
+Theoretical Model (4-Phase):
+    - Gaseous State: percolation < 0.1 (atomized, no coordination)
+    - Transitional State: 0.1 <= percolation < 0.5 (emerging structure)
+    - Liquid State: percolation >= 0.5, cadre_density < 0.5 (mass movement)
+    - Solid State: percolation >= 0.5, cadre_density >= 0.5 (vanguard party)
 
 Key Metrics:
     - num_components: Number of disconnected solidarity cells
@@ -16,10 +16,13 @@ Key Metrics:
     - percolation_ratio: L_max / N (giant component dominance)
     - potential_liquidity: SOLIDARITY edges > 0.1 (sympathizers)
     - actual_liquidity: SOLIDARITY edges > 0.5 (cadre)
+    - cadre_density: actual_liquidity / max(1, potential_liquidity)
 
 Narrative States:
     - "Gaseous": percolation < 0.1 (atomized, vulnerable)
-    - "Condensation": percolation crosses 0.5 (vanguard formed)
+    - "Transitional": 0.1 <= percolation < 0.5 (emerging structure)
+    - "Liquid": percolation >= 0.5 (mass movement with weak ties)
+    - "Solid": percolation >= 0.5 AND cadre_density >= 0.5 (vanguard party)
     - "Brittle": potential >> actual (broad but lacks discipline)
     - "Sword of Damocles": resilience test fails (purge would destroy)
 """
@@ -33,6 +36,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.models.enums import EdgeType
+from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 
 if TYPE_CHECKING:
@@ -283,6 +287,9 @@ class TopologyMonitor:
         self._resilience_interval: int = resilience_test_interval
         self._removal_rate: float = resilience_removal_rate
         self._logger: logging.Logger = logger or logging.getLogger(__name__)
+        # Sprint 3.3: Phase transition event emission
+        self._previous_phase: str | None = None
+        self._pending_events: list[SimulationEvent] = []
 
     @property
     def name(self) -> str:
@@ -293,6 +300,48 @@ class TopologyMonitor:
     def history(self) -> list[TopologySnapshot]:
         """Return copy of snapshot history."""
         return list(self._history)
+
+    def _classify_phase(self, percolation_ratio: float, cadre_density: float = 0.0) -> str:
+        """Classify network state based on percolation ratio and cadre density.
+
+        Uses a 4-phase model based on percolation theory:
+
+        - Gaseous: percolation < 0.1 (atomized, no coordination)
+        - Transitional: 0.1 <= percolation < 0.5 (emerging structure)
+        - Liquid: percolation >= 0.5, cadre_density < 0.5 (mass movement, weak ties)
+        - Solid: percolation >= 0.5, cadre_density >= 0.5 (vanguard party, strong ties)
+
+        Args:
+            percolation_ratio: L_max / N ratio from topology analysis.
+            cadre_density: Ratio of cadre to sympathizers (actual/potential).
+                Defaults to 0.0 for backward compatibility.
+
+        Returns:
+            Phase classification: "gaseous", "transitional", "liquid", or "solid".
+        """
+        if percolation_ratio < GASEOUS_THRESHOLD:
+            return "gaseous"
+        if percolation_ratio < CONDENSATION_THRESHOLD:
+            return "transitional"
+        # percolation >= 0.5: distinguish liquid vs solid by cadre density
+        if cadre_density >= CONDENSATION_THRESHOLD:
+            return "solid"
+        return "liquid"
+
+    def get_pending_events(self) -> list[SimulationEvent]:
+        """Return and clear pending events for collection by Simulation facade.
+
+        Observer events cannot be emitted directly to WorldState because
+        observers run AFTER WorldState is frozen. Instead, pending events
+        are collected by the Simulation facade and injected into the
+        NEXT tick's WorldState.
+
+        Returns:
+            List of pending SimulationEvent objects (cleared after return).
+        """
+        events = list(self._pending_events)
+        self._pending_events.clear()
+        return events
 
     def on_simulation_start(
         self,
@@ -309,6 +358,8 @@ class TopologyMonitor:
         """
         self._history.clear()
         self._previous_percolation = 0.0
+        self._previous_phase = None  # Reset phase tracking
+        self._pending_events.clear()  # Clear any stale events
         self._record_snapshot(initial_state, is_start=True)
 
     def on_tick(
@@ -360,6 +411,11 @@ class TopologyMonitor:
         # Calculate liquidity
         potential, actual = calculate_liquidity(graph)
 
+        # Calculate cadre_density: actual / potential (with division-by-zero protection)
+        cadre_density = actual / max(1, potential)
+        # Clamp to [0, 1] for safety
+        cadre_density = max(0.0, min(1.0, cadre_density))
+
         # Run resilience test if interval reached
         is_resilient: bool | None = None
         if self._resilience_interval > 0:
@@ -368,7 +424,7 @@ class TopologyMonitor:
                 result = check_resilience(graph, removal_rate=self._removal_rate)
                 is_resilient = result.is_resilient
 
-        # Create snapshot
+        # Create snapshot (now includes cadre_density)
         snapshot = TopologySnapshot(
             tick=state.tick,
             num_components=num_components,
@@ -377,11 +433,31 @@ class TopologyMonitor:
             percolation_ratio=percolation_ratio,
             potential_liquidity=potential,
             actual_liquidity=actual,
+            cadre_density=cadre_density,
             is_resilient=is_resilient,
         )
 
         # Log narratives
         self._log_narratives(snapshot)
+
+        # Sprint 3.3: Phase transition detection and event emission (4-phase model)
+        current_phase = self._classify_phase(percolation_ratio, cadre_density)
+
+        if self._previous_phase is not None and current_phase != self._previous_phase:
+            # Phase transition detected - emit event
+            event = PhaseTransitionEvent(
+                tick=state.tick,
+                previous_state=self._previous_phase,
+                new_state=current_phase,
+                percolation_ratio=percolation_ratio,
+                num_components=num_components,
+                largest_component_size=max_component_size,
+                cadre_density=cadre_density,
+                is_resilient=is_resilient,
+            )
+            self._pending_events.append(event)
+
+        self._previous_phase = current_phase
 
         # Update state
         self._previous_percolation = percolation_ratio

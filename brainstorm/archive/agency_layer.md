@@ -1,3 +1,10 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/agency-layer.yaml`
+> **Implemented In:** `src/babylon/engine/systems/struggle.py`
+> **Archive Note:** This exploratory document is kept for historical context. The Agency Layer (George Floyd Dynamic) was implemented in Sprint 3.1.
+
+---
+
 # The Agency Layer: A Design Document
 
 **Sprint: Agency Layer - The George Floyd Dynamic**

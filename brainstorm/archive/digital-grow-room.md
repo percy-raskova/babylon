@@ -1,3 +1,10 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/design-system.yaml`
+> **Implemented In:** `src/babylon/ui/` (NiceGUI dashboard)
+> **Archive Note:** This aesthetic specification is kept for historical context. The "Insurgent Operator" aesthetic was adopted in Phase 4 UI.
+
+---
+
 # The Digital Grow Room - UI Aesthetic Specification
 
 **Status:** Approved Design Direction (Phase 4)

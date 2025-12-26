@@ -5,10 +5,14 @@ simulation state over time and output to CSV.
 
 Test Classes:
     TestModuleStructure: Verify module exists and has required functions
-    TestCollectTickData: Verify tick data collection from WorldState
     TestRunTrace: Verify trace execution returns correct data structure
     TestWriteCsv: Verify CSV output functionality
     TestCLI: Verify command-line interface works correctly
+    TestIntegration: Integration tests including Phase 4.1B metrics
+
+Note:
+    TestExtractSweepSummary tests are skipped pending refactor to use
+    MetricsCollector instead of manual trace_data extraction.
 """
 
 from __future__ import annotations
@@ -58,12 +62,6 @@ class TestModuleStructure:
             f"parameter_analysis.py not found at {PARAMETER_ANALYSIS_PATH}"
         )
 
-    def test_collect_tick_data_function_exists(self) -> None:
-        """Verify collect_tick_data function exists in module."""
-        module = load_parameter_analysis_module()
-        assert hasattr(module, "collect_tick_data"), "Module missing 'collect_tick_data' function"
-        assert callable(module.collect_tick_data), "'collect_tick_data' is not callable"
-
     def test_run_trace_function_exists(self) -> None:
         """Verify run_trace function exists in module."""
         module = load_parameter_analysis_module()
@@ -81,15 +79,6 @@ class TestModuleStructure:
         module = load_parameter_analysis_module()
         assert hasattr(module, "main"), "Module missing 'main' function"
         assert callable(module.main), "'main' is not callable"
-
-    def test_collect_tick_data_signature(self) -> None:
-        """Verify collect_tick_data has correct parameter signature."""
-        module = load_parameter_analysis_module()
-        sig = inspect.signature(module.collect_tick_data)
-        param_names = list(sig.parameters.keys())
-
-        assert "state" in param_names, "Missing 'state' parameter"
-        assert "tick" in param_names, "Missing 'tick' parameter"
 
     def test_run_trace_signature(self) -> None:
         """Verify run_trace has correct parameter signature."""
@@ -117,109 +106,39 @@ class TestModuleStructure:
         assert "__main__" in source_code, "Missing __main__ check"
 
 
-class TestCollectTickData:
-    """Test tick data collection from WorldState."""
-
-    def test_collect_tick_data_returns_dict_with_tick(self) -> None:
-        """Verify collect_tick_data returns dict with tick number."""
-        module = load_parameter_analysis_module()
-
-        # Create a real scenario state for testing
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=5)
-
-        assert isinstance(result, dict), f"Expected dict, got {type(result)}"
-        assert "tick" in result, "Result missing 'tick' key"
-        assert result["tick"] == 5, f"Expected tick=5, got {result['tick']}"
-
-    def test_collect_tick_data_tracks_periphery_worker(self) -> None:
-        """Verify collect_tick_data tracks C001 (Periphery Worker) data."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # Periphery worker should have wealth tracked
-        assert "p_w_wealth" in result, "Missing p_w_wealth (Periphery Worker wealth)"
-        assert "p_w_consciousness" in result, "Missing p_w_consciousness"
-        assert "p_w_psa" in result, "Missing p_w_psa (P(S|A))"
-        assert "p_w_psr" in result, "Missing p_w_psr (P(S|R))"
-        assert "p_w_organization" in result, "Missing p_w_organization"
-
-    def test_collect_tick_data_tracks_all_entities(self) -> None:
-        """Verify collect_tick_data tracks data for all 4 entities."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # All entities should have at least wealth tracked
-        assert "p_w_wealth" in result, "Missing Periphery Worker (C001) wealth"
-        assert "p_c_wealth" in result, "Missing Comprador (C002) wealth"
-        assert "c_b_wealth" in result, "Missing Core Bourgeoisie (C003) wealth"
-        assert "c_w_wealth" in result, "Missing Labor Aristocracy (C004) wealth"
-
-    def test_collect_tick_data_tracks_edges(self) -> None:
-        """Verify collect_tick_data tracks key edge data."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # Key edges should be tracked
-        assert "exploitation_tension" in result, "Missing exploitation edge tension"
-        assert "exploitation_rent" in result, "Missing exploitation edge value_flow"
-        # Tribute and wages may or may not exist depending on scenario
-        # but the columns should be present (possibly with None/0.0)
-
-    def test_collect_tick_data_values_are_numeric(self) -> None:
-        """Verify collected data values are numeric types."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # All values except tick should be numeric
-        for key, value in result.items():
-            if value is not None:
-                assert isinstance(value, int | float), (
-                    f"Value for '{key}' should be numeric, got {type(value)}"
-                )
-
-
 class TestRunTrace:
     """Test the run_trace function."""
 
-    def test_run_trace_returns_list_of_dicts(self) -> None:
-        """Verify run_trace returns a list of dictionaries."""
+    def test_run_trace_returns_collector_config_defines(self) -> None:
+        """Verify run_trace returns (MetricsCollector, SimulationConfig, GameDefines)."""
+        from babylon.config.defines import GameDefines
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.config import SimulationConfig
+
         module = load_parameter_analysis_module()
 
-        result = module.run_trace(max_ticks=3)
+        collector, config, defines = module.run_trace(max_ticks=3)
 
-        assert isinstance(result, list), f"Expected list, got {type(result)}"
-        assert len(result) > 0, "Expected non-empty result list"
-        assert all(isinstance(item, dict) for item in result), "All items should be dictionaries"
+        assert isinstance(collector, MetricsCollector), (
+            f"Expected MetricsCollector, got {type(collector)}"
+        )
+        assert isinstance(config, SimulationConfig), (
+            f"Expected SimulationConfig, got {type(config)}"
+        )
+        assert isinstance(defines, GameDefines), f"Expected GameDefines, got {type(defines)}"
+
+        # to_csv_rows() should return list of dicts
+        rows = collector.to_csv_rows()
+        assert isinstance(rows, list), "to_csv_rows should return list"
+        assert len(rows) > 0, "Should have at least one row"
+        assert all(isinstance(item, dict) for item in rows), "All items should be dicts"
 
     def test_run_trace_respects_tick_limit(self) -> None:
         """Verify run_trace stops at max_ticks."""
         module = load_parameter_analysis_module()
 
-        result = module.run_trace(max_ticks=5)
+        collector, _config, _defines = module.run_trace(max_ticks=5)
+        result = collector.to_csv_rows()
 
         # Should have at most 5 ticks (could be fewer if entity dies)
         assert len(result) <= 5, f"Expected <= 5 ticks, got {len(result)}"
@@ -229,7 +148,8 @@ class TestRunTrace:
         """Verify tick numbers in result are sequential starting from 0."""
         module = load_parameter_analysis_module()
 
-        result = module.run_trace(max_ticks=5)
+        collector, _config, _defines = module.run_trace(max_ticks=5)
+        result = collector.to_csv_rows()
 
         # Tick numbers should be 0, 1, 2, ... in order
         for i, tick_data in enumerate(result):
@@ -240,14 +160,16 @@ class TestRunTrace:
         module = load_parameter_analysis_module()
 
         # Run with default extraction
-        result_default = module.run_trace(max_ticks=10)
+        collector_default, _, _ = module.run_trace(max_ticks=10)
+        result_default = collector_default.to_csv_rows()
 
         # Run with very low extraction (should survive longer)
-        result_low = module.run_trace(
+        collector_low, _, _ = module.run_trace(
             param_path="economy.extraction_efficiency",
             param_value=0.01,
             max_ticks=10,
         )
+        result_low = collector_low.to_csv_rows()
 
         # Both should produce results
         assert len(result_default) > 0, "Default trace should produce results"
@@ -278,7 +200,8 @@ class TestWriteCsv:
         output_path = tmp_path / "test_columns.csv"
 
         # Run a trace and write to CSV
-        trace_data = module.run_trace(max_ticks=3)
+        collector, _config, _defines = module.run_trace(max_ticks=3)
+        trace_data = collector.to_csv_rows()
         module.write_csv(trace_data, output_path)
 
         # Read CSV and check columns
@@ -310,7 +233,8 @@ class TestWriteCsv:
         output_path = tmp_path / "test_readable.csv"
 
         # Run a trace and write to CSV
-        trace_data = module.run_trace(max_ticks=3)
+        collector, _config, _defines = module.run_trace(max_ticks=3)
+        trace_data = collector.to_csv_rows()
         module.write_csv(trace_data, output_path)
 
         # Read CSV and verify we can parse rows
@@ -368,7 +292,8 @@ class TestIntegration:
         output_path = tmp_path / "full_trace.csv"
 
         # Run full trace
-        trace_data = module.run_trace(max_ticks=10)
+        collector, _config, _defines = module.run_trace(max_ticks=10)
+        trace_data = collector.to_csv_rows()
 
         # Write to CSV
         module.write_csv(trace_data, output_path)
@@ -387,7 +312,8 @@ class TestIntegration:
         module = load_parameter_analysis_module()
 
         # Run trace with enough ticks to see changes
-        trace_data = module.run_trace(max_ticks=10)
+        collector, _config, _defines = module.run_trace(max_ticks=10)
+        trace_data = collector.to_csv_rows()
 
         # Get wealth values for Periphery Worker
         p_w_wealths = [
@@ -406,6 +332,87 @@ class TestIntegration:
         assert isinstance(first_wealth, int | float), "First wealth should be numeric"
         assert isinstance(last_wealth, int | float), "Last wealth should be numeric"
 
+    @pytest.mark.integration
+    def test_trace_includes_phase_4_1b_metrics(self) -> None:
+        """Verify run_trace includes new metrics from MetricsCollector.
+
+        Phase 4.1B introduced MetricsCollector with additional causal DAG metrics.
+        This test verifies that when MetricsCollector is integrated into run_trace,
+        these new columns are present in the output.
+        """
+        module = load_parameter_analysis_module()
+        collector, _config, _defines = module.run_trace(max_ticks=5)
+        trace_data = collector.to_csv_rows()
+
+        # Must have at least one tick of data
+        assert len(trace_data) > 0, "run_trace should return at least one row"
+
+        first_row = trace_data[0]
+
+        # Phase 4.1B columns should be present
+        assert "consciousness_gap" in first_row, "Missing consciousness_gap"
+        assert "wealth_gap" in first_row, "Missing wealth_gap"
+        assert "imperial_rent_pool" in first_row, "Missing imperial_rent_pool"
+        assert "current_super_wage_rate" in first_row, "Missing current_super_wage_rate"
+        assert "global_tension" in first_row, "Missing global_tension"
+        assert "pool_ratio" in first_row, "Missing pool_ratio"
+
+    @pytest.mark.integration
+    def test_json_export_captures_dag_structure(self, tmp_path: Path) -> None:
+        """Verify JSON export captures causal DAG hierarchy.
+
+        Sprint 4.1C: JSON export should preserve the 3-level DAG structure:
+        - Level 1 (Fundamental): GameDefines parameters
+        - Level 2 (Config): SimulationConfig settings
+        - Level 3 (Emergent): SweepSummary computed from simulation
+        """
+        import json
+
+        module = load_parameter_analysis_module()
+
+        csv_path = tmp_path / "trace.csv"
+        json_path = tmp_path / "trace.json"
+
+        # Run trace
+        collector, config, defines = module.run_trace(max_ticks=5)
+        trace_data = collector.to_csv_rows()
+        module.write_csv(trace_data, csv_path)
+
+        # Export JSON
+        collector.export_json(json_path, defines, config, csv_path=csv_path)
+
+        # Verify JSON structure
+        assert json_path.exists(), "JSON file not created"
+        data = json.loads(json_path.read_text())
+
+        # Check schema version
+        assert "schema_version" in data, "Missing schema_version"
+        assert data["schema_version"] == "1.0", "Unexpected schema version"
+
+        # Check DAG levels documented
+        assert "causal_dag_levels" in data, "Missing causal_dag_levels"
+        assert "fundamental" in data["causal_dag_levels"]
+        assert "config" in data["causal_dag_levels"]
+        assert "emergent" in data["causal_dag_levels"]
+
+        # Check fundamentals (GameDefines)
+        assert "fundamentals" in data, "Missing fundamentals"
+        assert "economy" in data["fundamentals"], "Missing economy in fundamentals"
+        assert "extraction_efficiency" in data["fundamentals"]["economy"]
+
+        # Check config (SimulationConfig)
+        assert "config" in data, "Missing config"
+
+        # Check summary (SweepSummary - emergent)
+        assert "summary" in data, "Missing summary"
+        assert data["summary"] is not None, "Summary should not be None"
+        assert "ticks_survived" in data["summary"]
+        assert "outcome" in data["summary"]
+
+        # Check CSV reference
+        assert "time_series_csv" in data, "Missing time_series_csv"
+        assert str(csv_path) in data["time_series_csv"]
+
 
 # =============================================================================
 # SWEEP COMMAND TESTS
@@ -413,7 +420,11 @@ class TestIntegration:
 
 
 class TestExtractSweepSummary:
-    """Tests for extract_sweep_summary function."""
+    """Tests for extract_sweep_summary function with MetricsCollector.
+
+    Tests verify that extract_sweep_summary correctly extracts summary
+    statistics from a MetricsCollector instance.
+    """
 
     def test_extract_sweep_summary_exists(self) -> None:
         """extract_sweep_summary function should exist."""
@@ -421,34 +432,112 @@ class TestExtractSweepSummary:
         assert hasattr(module, "extract_sweep_summary"), "Module missing 'extract_sweep_summary'"
         assert callable(module.extract_sweep_summary)
 
-    def test_extract_sweep_summary_empty_trace(self) -> None:
-        """Should handle empty trace data gracefully."""
+    def test_extract_sweep_summary_empty_collector(self) -> None:
+        """Should handle empty MetricsCollector gracefully."""
+        from babylon.engine.observers.metrics import MetricsCollector
+
         module = load_parameter_analysis_module()
-        result = module.extract_sweep_summary([], 0.1)
+        collector = MetricsCollector(mode="batch")
+        # Empty collector has no history, summary is None
+        result = module.extract_sweep_summary(collector, 0.1)
         assert result["value"] == 0.1
         assert result["ticks_survived"] == 0
         assert result["outcome"] == "ERROR"
 
     def test_extract_sweep_summary_basic_fields(self) -> None:
-        """Should extract basic summary fields."""
+        """Should extract basic summary fields from collector."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {
-                "tick": 0,
-                "p_w_wealth": 0.5,
-                "p_c_wealth": 0.2,
-                "c_b_wealth": 0.9,
-                "c_w_wealth": 0.3,
-            },
-            {
-                "tick": 1,
-                "p_w_wealth": 0.4,
-                "p_c_wealth": 0.15,
-                "c_b_wealth": 0.95,
-                "c_w_wealth": 0.28,
-            },
-        ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+        collector = MetricsCollector(mode="batch")
+
+        # Manually populate history for testing
+        tick0 = TickMetrics(
+            tick=0,
+            p_w=EntityMetrics(
+                wealth=0.5,
+                consciousness=0.3,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.8,
+                p_revolution=0.1,
+                organization=0.2,
+            ),
+            p_c=EntityMetrics(
+                wealth=0.2,
+                consciousness=0.0,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.9,
+                p_revolution=0.05,
+                organization=0.1,
+            ),
+            c_b=EntityMetrics(
+                wealth=0.9,
+                consciousness=0.1,
+                national_identity=0.8,
+                agitation=0.0,
+                p_acquiescence=0.95,
+                p_revolution=0.01,
+                organization=0.05,
+            ),
+            c_w=EntityMetrics(
+                wealth=0.3,
+                consciousness=0.2,
+                national_identity=0.6,
+                agitation=0.0,
+                p_acquiescence=0.85,
+                p_revolution=0.08,
+                organization=0.15,
+            ),
+            edges=EdgeMetrics(exploitation_tension=0.1, exploitation_rent=0.05),
+        )
+        tick1 = TickMetrics(
+            tick=1,
+            p_w=EntityMetrics(
+                wealth=0.4,
+                consciousness=0.35,
+                national_identity=0.5,
+                agitation=0.1,
+                p_acquiescence=0.75,
+                p_revolution=0.15,
+                organization=0.25,
+            ),
+            p_c=EntityMetrics(
+                wealth=0.15,
+                consciousness=0.0,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.88,
+                p_revolution=0.06,
+                organization=0.1,
+            ),
+            c_b=EntityMetrics(
+                wealth=0.95,
+                consciousness=0.1,
+                national_identity=0.8,
+                agitation=0.0,
+                p_acquiescence=0.95,
+                p_revolution=0.01,
+                organization=0.05,
+            ),
+            c_w=EntityMetrics(
+                wealth=0.28,
+                consciousness=0.22,
+                national_identity=0.6,
+                agitation=0.05,
+                p_acquiescence=0.82,
+                p_revolution=0.1,
+                organization=0.18,
+            ),
+            edges=EdgeMetrics(exploitation_tension=0.15, exploitation_rent=0.06),
+        )
+
+        # Populate collector history
+        collector._history = [tick0, tick1]
+
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["value"] == 0.2
         assert result["ticks_survived"] == 2
         assert result["outcome"] == "SURVIVED"
@@ -456,68 +545,326 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_detects_death(self) -> None:
         """Should detect DIED outcome when wealth <= 0.001."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_wealth": 0.1},
-            {"tick": 1, "p_w_wealth": 0.0005},  # Dead
-        ]
-        result = module.extract_sweep_summary(trace_data, 0.3)
+        collector = MetricsCollector(mode="batch")
+
+        tick0 = TickMetrics(
+            tick=0,
+            p_w=EntityMetrics(
+                wealth=0.1,
+                consciousness=0.3,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.8,
+                p_revolution=0.1,
+                organization=0.2,
+            ),
+            edges=EdgeMetrics(),
+        )
+        tick1 = TickMetrics(
+            tick=1,
+            p_w=EntityMetrics(
+                wealth=0.0005,  # Dead
+                consciousness=0.3,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.8,
+                p_revolution=0.1,
+                organization=0.2,
+            ),
+            edges=EdgeMetrics(),
+        )
+
+        collector._history = [tick0, tick1]
+        result = module.extract_sweep_summary(collector, 0.3)
         assert result["outcome"] == "DIED"
 
     def test_extract_sweep_summary_calculates_crossover(self) -> None:
         """Should detect crossover tick when P(S|R) > P(S|A)."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_psr": 0.1, "p_w_psa": 0.5, "p_w_wealth": 0.5},
-            {"tick": 1, "p_w_psr": 0.3, "p_w_psa": 0.4, "p_w_wealth": 0.4},
-            {"tick": 2, "p_w_psr": 0.6, "p_w_psa": 0.3, "p_w_wealth": 0.3},  # Crossover!
-            {"tick": 3, "p_w_psr": 0.7, "p_w_psa": 0.2, "p_w_wealth": 0.2},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.5,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.4,
+                    p_revolution=0.3,
+                    organization=0.3,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=2,  # Crossover!
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.5,
+                    national_identity=0.5,
+                    agitation=0.2,
+                    p_acquiescence=0.3,
+                    p_revolution=0.6,
+                    organization=0.4,
+                ),
+                edges=EdgeMetrics(),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["crossover_tick"] == 2
 
     def test_extract_sweep_summary_no_crossover(self) -> None:
         """Should return None for crossover_tick if no crossover."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_psr": 0.1, "p_w_psa": 0.5, "p_w_wealth": 0.5},
-            {"tick": 1, "p_w_psr": 0.2, "p_w_psa": 0.6, "p_w_wealth": 0.5},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.5,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.35,
+                    national_identity=0.5,
+                    agitation=0.05,
+                    p_acquiescence=0.6,
+                    p_revolution=0.2,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["crossover_tick"] is None
 
     def test_extract_sweep_summary_cumulative_rent(self) -> None:
         """Should calculate cumulative rent extracted."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "exploitation_rent": 0.1, "p_w_wealth": 0.5},
-            {"tick": 1, "exploitation_rent": 0.15, "p_w_wealth": 0.4},
-            {"tick": 2, "exploitation_rent": 0.12, "p_w_wealth": 0.3},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.8,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(exploitation_rent=0.1),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.35,
+                    national_identity=0.5,
+                    agitation=0.05,
+                    p_acquiescence=0.75,
+                    p_revolution=0.15,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(exploitation_rent=0.15),
+            ),
+            TickMetrics(
+                tick=2,
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.7,
+                    p_revolution=0.2,
+                    organization=0.3,
+                ),
+                edges=EdgeMetrics(exploitation_rent=0.12),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert abs(result["cumulative_rent"] - 0.37) < 0.001
 
     def test_extract_sweep_summary_peak_consciousness(self) -> None:
         """Should track peak consciousness values."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_consciousness": 0.4, "c_w_consciousness": 0.3, "p_w_wealth": 0.5},
-            {"tick": 1, "p_w_consciousness": 0.6, "c_w_consciousness": 0.5, "p_w_wealth": 0.4},
-            {"tick": 2, "p_w_consciousness": 0.5, "c_w_consciousness": 0.4, "p_w_wealth": 0.3},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.8,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                c_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.3,
+                    national_identity=0.6,
+                    agitation=0.0,
+                    p_acquiescence=0.85,
+                    p_revolution=0.08,
+                    organization=0.15,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.6,  # Peak
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.7,
+                    p_revolution=0.2,
+                    organization=0.3,
+                ),
+                c_w=EntityMetrics(
+                    wealth=0.28,
+                    consciousness=0.5,  # Peak
+                    national_identity=0.6,
+                    agitation=0.05,
+                    p_acquiescence=0.8,
+                    p_revolution=0.12,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=2,
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.5,  # Lower than peak
+                    national_identity=0.5,
+                    agitation=0.15,
+                    p_acquiescence=0.65,
+                    p_revolution=0.25,
+                    organization=0.35,
+                ),
+                c_w=EntityMetrics(
+                    wealth=0.26,
+                    consciousness=0.4,  # Lower than peak
+                    national_identity=0.6,
+                    agitation=0.08,
+                    p_acquiescence=0.75,
+                    p_revolution=0.15,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["peak_p_w_consciousness"] == 0.6
         assert result["peak_c_w_consciousness"] == 0.5
 
     def test_extract_sweep_summary_max_tension(self) -> None:
         """Should track max tension."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "exploitation_tension": 0.01, "p_w_wealth": 0.5},
-            {"tick": 1, "exploitation_tension": 0.05, "p_w_wealth": 0.4},
-            {"tick": 2, "exploitation_tension": 0.03, "p_w_wealth": 0.3},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.8,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(exploitation_tension=0.01),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.35,
+                    national_identity=0.5,
+                    agitation=0.05,
+                    p_acquiescence=0.75,
+                    p_revolution=0.15,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(exploitation_tension=0.05),  # Max
+            ),
+            TickMetrics(
+                tick=2,
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.7,
+                    p_revolution=0.2,
+                    organization=0.3,
+                ),
+                edges=EdgeMetrics(exploitation_tension=0.03),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["max_tension"] == 0.05
 
 
@@ -537,7 +884,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.2,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert isinstance(result, list)
@@ -549,7 +896,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.3,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         # 0.1, 0.2, 0.3 = 3 values
@@ -562,7 +909,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "value" in result[0]
@@ -575,7 +922,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "ticks_survived" in result[0]
@@ -588,7 +935,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "outcome" in result[0]
@@ -601,7 +948,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "final_p_w_wealth" in result[0]

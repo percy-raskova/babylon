@@ -22,7 +22,9 @@ The fluent API provides:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
     from babylon.models import Relationship, SocialClass, WorldState
@@ -136,6 +138,104 @@ class Assert:
                 f"not found in state. Available relationships: {available}"
             )
         return RelationshipAssert(self._state, source_id, target_id)
+
+    # =========================================================================
+    # Event assertions (Sprint 3.1)
+    # =========================================================================
+
+    def has_events_count(self, count: int) -> Assert:
+        """Assert the number of structured events equals expected count.
+
+        Args:
+            count: Expected number of events.
+
+        Returns:
+            Self for chaining.
+
+        Raises:
+            AssertionFailed: If event count does not match.
+        """
+        actual = len(self._state.events)
+        if actual != count:
+            raise AssertionFailed(f"Expected {count} events, but found {actual}")
+        return self
+
+    def has_event(
+        self,
+        event_type: type[SimulationEvent],
+        **filters: Any,
+    ) -> Assert:
+        """Assert that an event of the given type exists with matching filters.
+
+        Supports special comparison operators as filter suffixes:
+        - ``_gt``: Greater than (e.g., ``amount_gt=0.0``)
+        - ``_lt``: Less than
+        - ``_gte``: Greater than or equal
+        - ``_lte``: Less than or equal
+
+        Args:
+            event_type: SimulationEvent subclass to match.
+            **filters: Field=value pairs to match against, or field_op=value
+                for comparisons.
+
+        Returns:
+            Self for chaining.
+
+        Raises:
+            AssertionFailed: If no matching event found.
+
+        Example::
+
+            Assert(state).has_event(ExtractionEvent, source_id="C001")
+            Assert(state).has_event(ExtractionEvent, amount_gt=0.0)
+        """
+        for event in self._state.events:
+            if not isinstance(event, event_type):
+                continue
+
+            # Check all filters
+            match = True
+            for key, value in filters.items():
+                # Handle comparison operators
+                if key.endswith("_gt"):
+                    field_name = key[:-3]
+                    actual = getattr(event, field_name, None)
+                    if actual is None or actual <= value:
+                        match = False
+                        break
+                elif key.endswith("_lt"):
+                    field_name = key[:-3]
+                    actual = getattr(event, field_name, None)
+                    if actual is None or actual >= value:
+                        match = False
+                        break
+                elif key.endswith("_gte"):
+                    field_name = key[:-4]
+                    actual = getattr(event, field_name, None)
+                    if actual is None or actual < value:
+                        match = False
+                        break
+                elif key.endswith("_lte"):
+                    field_name = key[:-4]
+                    actual = getattr(event, field_name, None)
+                    if actual is None or actual > value:
+                        match = False
+                        break
+                else:
+                    # Direct equality check
+                    if getattr(event, key, None) != value:
+                        match = False
+                        break
+
+            if match:
+                return self
+
+        # No matching event found
+        event_types = [type(e).__name__ for e in self._state.events]
+        raise AssertionFailed(
+            f"No event matching type={event_type.__name__}, filters={filters} "
+            f"in state.events (found {len(self._state.events)} events: {event_types})"
+        )
 
 
 class EntityAssert:

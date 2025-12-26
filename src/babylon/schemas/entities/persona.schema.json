@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/persona.schema.json",
+  "title": "Persona",
+  "description": "AI narrative persona for the NarrativeDirector",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*[a-z0-9]$",
+      "description": "Unique snake_case identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Full display name of the persona"
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Persona's role or title"
+    },
+    "voice": {
+      "type": "object",
+      "description": "Voice characteristics for narrative generation",
+      "properties": {
+        "tone": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Emotional and rhetorical tone"
+        },
+        "style": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Writing style and theoretical framework"
+        },
+        "address_user_as": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the persona addresses the user"
+        }
+      },
+      "required": ["tone", "style", "address_user_as"],
+      "additionalProperties": false
+    },
+    "obsessions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "description": "Topics the persona is obsessed with analyzing"
+    },
+    "directives": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1,
+      "description": "Behavioral directives for the persona"
+    },
+    "restrictions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Topics or behaviors to avoid"
+    }
+  },
+  "required": ["id", "name", "role", "voice", "obsessions", "directives"],
+  "additionalProperties": false
+}

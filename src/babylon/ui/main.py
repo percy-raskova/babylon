@@ -27,8 +27,18 @@ from babylon.engine.simulation import Simulation
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.models.world_state import WorldState
-from babylon.ui.components import StateInspector, SystemLog, TrendPlotter, WirePanel
+from babylon.ui.components import (
+    ConsciousnessGapGauge,
+    EndgamePanel,
+    MetabolicGauge,
+    StateInspector,
+    SystemLog,
+    TrendPlotter,
+    WealthTrendPanel,
+    WirePanel,
+)
 from babylon.ui.controls import ControlDeck
+from babylon.ui.design_system import BunkerPalette
 from babylon.ui.terminal import NarrativeTerminal, find_narrative_director, poll_narrative_director
 
 
@@ -66,6 +76,12 @@ class DashboardState:
         self.metrics_collector: MetricsCollector | None = None
         self.wire_panel: WirePanel | None = None
         self.last_dual_narrative_index: int = 0
+        # Slice 1.5: New gauge components (wired but not yet displayed in layout)
+        self.metabolic_gauge: MetabolicGauge | None = None
+        self.consciousness_gauge: ConsciousnessGapGauge | None = None
+        self.wealth_trend_panel: WealthTrendPanel | None = None
+        # Slice 1.6: Endgame panel overlay
+        self.endgame_panel: EndgamePanel | None = None
 
 
 # Module-level state instance
@@ -347,8 +363,12 @@ def main_page() -> None:
     ui.dark_mode().enable()
 
     # Header row: Title + ControlDeck (wet_concrete background)
-    with ui.row().classes("w-full items-center justify-between p-4 bg-[#1A1A1A]"):
-        ui.label("BABYLON v0.3").classes("text-[#9D00FF] font-mono text-2xl")
+    with ui.row().classes(
+        f"w-full items-center justify-between p-4 bg-[{BunkerPalette.WET_CONCRETE}]"
+    ):
+        ui.label("BABYLON v0.3").classes(
+            f"text-[{BunkerPalette.GROW_LIGHT_PURPLE}] font-mono text-2xl"
+        )
         _state.control_deck = ControlDeck(
             on_step=on_step,
             on_play=on_play,
@@ -367,7 +387,9 @@ def main_page() -> None:
         # Left panel: TrendPlotter (full height)
         # h-full stretches column to fill grid cell; w-full + flex-1 fills remaining space
         with ui.column().classes("gap-2 h-full w-full"):
-            ui.label("METRICS").classes("text-[#C0C0C0] font-mono uppercase tracking-wider text-xs")
+            ui.label("METRICS").classes(
+                f"text-[{BunkerPalette.SILVER_DUST}] font-mono uppercase tracking-wider text-xs"
+            )
             with ui.element("div").classes("flex-1 min-h-0 w-full"):
                 _state.trend_plotter = TrendPlotter()
 
@@ -377,7 +399,7 @@ def main_page() -> None:
             # The Wire panel (top half) - dual narrative display
             with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):
                 ui.label("THE WIRE").classes(
-                    "text-[#9D00FF] font-mono uppercase tracking-wider text-xs"
+                    f"text-[{BunkerPalette.GROW_LIGHT_PURPLE}] font-mono uppercase tracking-wider text-xs"
                 )
                 with ui.element("div").classes("flex-1 min-h-0 w-full"):
                     _state.wire_panel = WirePanel()
@@ -385,7 +407,7 @@ def main_page() -> None:
             # System Log panel (bottom half) - flex-1 takes other 50%
             with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):
                 ui.label("SYSTEM LOG").classes(
-                    "text-[#39FF14] font-mono uppercase tracking-wider text-xs"
+                    f"text-[{BunkerPalette.DATA_GREEN}] font-mono uppercase tracking-wider text-xs"
                 )
                 with ui.element("div").classes("flex-1 min-h-0 w-full"):
                     _state.system_log = SystemLog()
@@ -394,7 +416,7 @@ def main_page() -> None:
         # h-full + w-full stretches column to fill grid cell; flex-1 fills remaining space
         with ui.column().classes("gap-2 h-full w-full"):
             ui.label("STATE: C001").classes(
-                "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs"
+                f"text-[{BunkerPalette.SILVER_DUST}] font-mono uppercase tracking-wider text-xs"
             )
             with ui.element("div").classes("flex-1 min-h-0 w-full"):
                 _state.state_inspector = StateInspector()

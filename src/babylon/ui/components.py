@@ -8,6 +8,10 @@ Components:
     TrendPlotter: Real-time EChart line graph for simulation metrics.
     StateInspector: JSON viewer for raw entity state inspection.
     WirePanel: Dual narrative display panel (The Gramscian Wire).
+    GaugePanel: Reusable arc gauge visualization component.
+    MetabolicGauge: Specialized gauge for overshoot_ratio metric.
+    ConsciousnessGapGauge: Specialized gauge for consciousness differential.
+    WealthTrendPanel: Multi-line trend chart for class wealth comparison.
     EndgamePanel: Game outcome display panel (Slice 1.6: Endgame Detection).
 
 Example:
@@ -22,6 +26,9 @@ Example:
 
     >>> inspector = StateInspector()
     >>> inspector.refresh({"id": "C001", "wealth": 100.0})
+
+See Also:
+    :mod:`babylon.ui.design_system`: Bunker Constructivism color palette.
 """
 
 from __future__ import annotations
@@ -33,6 +40,7 @@ from nicegui import ui
 
 from babylon.models.enums import GameOutcome
 from babylon.models.events import SimulationEvent
+from babylon.ui.design_system import BunkerPalette
 
 if TYPE_CHECKING:
     pass
@@ -42,6 +50,7 @@ class SystemLog:
     """Raw event log with instant display (NO typewriter animation).
 
     The SystemLog provides:
+
     - Instant append of log entries (no queue, no animation)
     - Color-coded log levels (INFO, WARN, ERROR)
     - Auto-scrolling to newest content
@@ -52,30 +61,41 @@ class SystemLog:
     appear immediately.
 
     Styling:
-        - Container: bg-[#050505] border border-[#404040] p-4 overflow-auto font-mono text-sm
-        - INFO: text-[#39FF14] (data_green)
-        - WARN: text-[#FFD700] (exposed_copper)
-        - ERROR: text-[#D40000] (phosphor_burn_red)
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
 
-    Args:
-        None
+        - Container background: ``VOID`` (#050505)
+        - Container border: ``DARK_METAL`` (#404040)
+        - INFO level: ``DATA_GREEN`` (#39FF14)
+        - WARN level: ``EXPOSED_COPPER`` (#FFD700)
+        - ERROR level: ``PHOSPHOR_BURN_RED`` (#D40000)
+
+    Attributes:
+        scroll_area: NiceGUI scroll area element.
+        CONTAINER_CLASSES: CSS class string for container styling.
+        LEVEL_COLORS: Mapping of log level to hex color.
 
     Example:
         >>> log = SystemLog()
         >>> log.log("System initialized")  # INFO level (default)
         >>> log.log("Resources low", level="WARN")
         >>> log.log("Critical failure!", level="ERROR")
+
+    See Also:
+        :class:`~babylon.ui.terminal.NarrativeTerminal`: Typewriter-animated display.
     """
 
     # Design System: Bunker Constructivism terminal_output component
     # h-full fills flex container; min-h-0 allows shrinking below content height
-    CONTAINER_CLASSES = "bg-[#050505] border border-[#404040] p-4 w-full h-full min-h-0 overflow-auto font-mono text-sm"
+    CONTAINER_CLASSES = (
+        f"bg-[{BunkerPalette.VOID}] border border-[{BunkerPalette.DARK_METAL}] "
+        "p-4 w-full h-full min-h-0 overflow-auto font-mono text-sm"
+    )
 
-    # Design System color palette (from ai-docs/design-system.yaml)
+    # Design System color palette (from BunkerPalette)
     LEVEL_COLORS: dict[str, str] = {
-        "INFO": "#39FF14",  # data_green
-        "WARN": "#FFD700",  # exposed_copper
-        "ERROR": "#D40000",  # phosphor_burn_red
+        "INFO": BunkerPalette.LOG_INFO,
+        "WARN": BunkerPalette.LOG_WARN,
+        "ERROR": BunkerPalette.LOG_ERROR,
     }
 
     def __init__(self) -> None:
@@ -119,37 +139,45 @@ class SystemLog:
 class TrendPlotter:
     """Real-time EChart line graph for simulation metrics.
 
-    Displays:
-        - Global Imperial Rent (green line)
-        - Global Tension (red line)
+    Displays two key simulation metrics as line graphs:
 
-    Maintains rolling window of last 50 ticks.
+    - **Imperial Rent** (green line): The surplus value extracted from periphery.
+    - **Global Tension** (red line): Average tension across all relationships.
 
-    Styling (from ai-docs/design-system.yaml):
-        - Chart background: void (#050505)
-        - Axis lines/grid: dark_metal (#404040)
-        - Axis labels/legend: silver_dust (#C0C0C0)
-        - Imperial Rent line: data_green (#39FF14)
-        - Global Tension line: phosphor_burn_red (#D40000)
+    The plotter maintains a rolling window of the last 50 ticks,
+    automatically discarding older data points.
 
-    Args:
-        None
+    Styling:
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
+
+        - Chart background: ``VOID`` (#050505)
+        - Axis lines/grid: ``DARK_METAL`` (#404040)
+        - Axis labels/legend: ``SILVER_DUST`` (#C0C0C0)
+        - Imperial Rent line: ``DATA_GREEN`` (#39FF14)
+        - Global Tension line: ``PHOSPHOR_BURN_RED`` (#D40000)
+
+    Attributes:
+        MAX_POINTS: Maximum data points in rolling window (50).
+        echart: NiceGUI EChart element.
 
     Example:
         >>> plotter = TrendPlotter()
         >>> plotter.push_data(tick=1, rent=100.0, tension=0.5)
         >>> plotter.push_data(tick=2, rent=150.0, tension=0.6)
+
+    See Also:
+        :class:`WealthTrendPanel`: Multi-class wealth comparison chart.
     """
 
     # Rolling window size
     MAX_POINTS = 50
 
-    # Design System color palette (from ai-docs/design-system.yaml)
-    VOID = "#050505"
-    DARK_METAL = "#404040"
-    SILVER_DUST = "#C0C0C0"
-    DATA_GREEN = "#39FF14"
-    PHOSPHOR_BURN_RED = "#D40000"
+    # Design System color palette (from BunkerPalette)
+    VOID = BunkerPalette.VOID
+    DARK_METAL = BunkerPalette.DARK_METAL
+    SILVER_DUST = BunkerPalette.SILVER_DUST
+    DATA_GREEN = BunkerPalette.DATA_GREEN
+    PHOSPHOR_BURN_RED = BunkerPalette.PHOSPHOR_BURN_RED
 
     def __init__(self) -> None:
         """Initialize the TrendPlotter with empty data."""
@@ -247,18 +275,21 @@ class StateInspector:
     Used to inspect C001 (Periphery Worker) entity state.
 
     The StateInspector provides:
-        - Read-only JSON display (no editing allowed)
-        - Full replacement on refresh (no merging)
-        - Support for nested dicts, lists, and numeric values
-        - Bunker Constructivism aesthetic styling
 
-    Styling (from ai-docs/design-system.yaml):
-        - Container: bg-[#050505] border border-[#404040] p-2 overflow-auto
-        - Background: void (#050505)
-        - Border: dark_metal (#404040)
+    - Read-only JSON display (no editing allowed)
+    - Full replacement on refresh (no merging)
+    - Support for nested dicts, lists, and numeric values
+    - Bunker Constructivism aesthetic styling
 
-    Args:
-        None
+    Styling:
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
+
+        - Container background: ``VOID`` (#050505)
+        - Container border: ``DARK_METAL`` (#404040)
+
+    Attributes:
+        json_editor: NiceGUI json_editor element.
+        CONTAINER_CLASSES: CSS class string for container styling.
 
     Example:
         >>> inspector = StateInspector()
@@ -269,7 +300,8 @@ class StateInspector:
     # Design System: Bunker Constructivism JSON viewer component
     # h-full fills flex container; min-h-0 allows shrinking below content height
     CONTAINER_CLASSES = (
-        "bg-[#050505] border border-[#404040] p-2 w-full h-full min-h-0 overflow-auto"
+        f"bg-[{BunkerPalette.VOID}] border border-[{BunkerPalette.DARK_METAL}] "
+        "p-2 w-full h-full min-h-0 overflow-auto"
     )
 
     def __init__(self) -> None:
@@ -457,17 +489,20 @@ class GaugePanel:
     """Reusable arc gauge visualization component.
 
     The GaugePanel provides:
+
     - Arc/dial gauge visualization using ECharts
     - Configurable value range (0 to max_value)
     - Optional threshold for color transitions
     - Bunker Constructivism aesthetic styling
 
-    Styling (from ai-docs/design-system.yaml):
-        - Background: void (#050505)
-        - Border: dark_metal (#404040)
-        - Labels: silver_dust (#C0C0C0)
-        - Healthy values: data_green (#39FF14)
-        - Critical values: phosphor_burn_red (#D40000)
+    Styling:
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
+
+        - Background: ``VOID`` (#050505)
+        - Axis/tick marks: ``DARK_METAL`` (#404040)
+        - Labels: ``SILVER_DUST`` (#C0C0C0)
+        - Healthy values: ``DATA_GREEN`` (#39FF14)
+        - Critical values: ``PHOSPHOR_BURN_RED`` (#D40000)
 
     Args:
         title: Optional title displayed on the gauge.
@@ -476,18 +511,25 @@ class GaugePanel:
         threshold: Optional threshold for color change. Values at or above
             threshold display in red; values below display in green.
 
+    Attributes:
+        echart: NiceGUI EChart element.
+
     Example:
         >>> gauge = GaugePanel(title="Overshoot", max_value=2.0, threshold=1.0)
         >>> gauge.update(0.75)  # Green - below threshold
         >>> gauge.update(1.5)   # Red - above threshold
+
+    See Also:
+        :class:`MetabolicGauge`: Overshoot ratio gauge.
+        :class:`ConsciousnessGapGauge`: Consciousness differential gauge.
     """
 
-    # Design System color palette (from ai-docs/design-system.yaml)
-    VOID: str = "#050505"
-    DARK_METAL: str = "#404040"
-    SILVER_DUST: str = "#C0C0C0"
-    DATA_GREEN: str = "#39FF14"
-    PHOSPHOR_BURN_RED: str = "#D40000"
+    # Design System color palette (from BunkerPalette)
+    VOID: str = BunkerPalette.VOID
+    DARK_METAL: str = BunkerPalette.DARK_METAL
+    SILVER_DUST: str = BunkerPalette.SILVER_DUST
+    DATA_GREEN: str = BunkerPalette.DATA_GREEN
+    PHOSPHOR_BURN_RED: str = BunkerPalette.PHOSPHOR_BURN_RED
 
     def __init__(
         self,
@@ -595,23 +637,41 @@ class MetabolicGauge:
     whether resource consumption exceeds biocapacity. Uses a threshold of 1.0
     to distinguish sustainable (green) from overshoot (red) states.
 
-    Overshoot Ratio = Consumption / Biocapacity:
-    - Ratio < 1.0: Sustainable (within planetary limits)
-    - Ratio >= 1.0: Overshoot (ecological debt)
+    The overshoot ratio is defined as::
+
+        Overshoot Ratio = Consumption / Biocapacity
+
+    Interpretation:
+
+    - Ratio < 1.0: **Sustainable** - within planetary limits
+    - Ratio >= 1.0: **Overshoot** - ecological debt accumulating
 
     Styling:
-        - Sustainable (< 1.0): data_green (#39FF14)
-        - Overshoot (>= 1.0): phosphor_burn_red (#D40000)
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
+
+        - Sustainable (< 1.0): ``DATA_GREEN`` (#39FF14)
+        - Overshoot (>= 1.0): ``PHOSPHOR_BURN_RED`` (#D40000)
+
+    Attributes:
+        gauge: Underlying :class:`GaugePanel` instance.
+        echart: NiceGUI EChart element (exposed from gauge).
+        threshold: Overshoot threshold value (1.0).
+        max_value: Maximum displayable value (3.0).
+        title: Gauge title ("METABOLIC OVERSHOOT").
 
     Example:
         >>> gauge = MetabolicGauge()
         >>> gauge.refresh(overshoot_ratio=0.75)  # Green - sustainable
         >>> gauge.refresh(overshoot_ratio=1.5)   # Red - overshoot
+
+    See Also:
+        :class:`GaugePanel`: Base gauge component.
+        :mod:`babylon.engine.systems.metabolism`: Metabolism system calculations.
     """
 
-    # Design system colors
-    SUSTAINABLE_COLOR: str = "#39FF14"
-    OVERSHOOT_COLOR: str = "#D40000"
+    # Design system colors (from BunkerPalette)
+    SUSTAINABLE_COLOR: str = BunkerPalette.DATA_GREEN
+    OVERSHOOT_COLOR: str = BunkerPalette.PHOSPHOR_BURN_RED
 
     # Configuration
     TITLE: str = "METABOLIC OVERSHOOT"
@@ -649,27 +709,44 @@ class ConsciousnessGapGauge:
     The ConsciousnessGapGauge displays the difference between Periphery
     Worker (C001) and Labor Aristocracy (C004) consciousness levels.
 
-    Consciousness Gap = p_w.consciousness - c_w.consciousness:
-    - Positive gap: Periphery Worker more class-conscious (revolutionary potential)
-    - Negative gap: Labor Aristocracy more conscious (false consciousness dominant)
-    - Zero gap: Ideological convergence (unusual equilibrium)
+    The consciousness gap is defined as::
+
+        Consciousness Gap = P_W.consciousness - C_W.consciousness
+
+    Interpretation:
+
+    - Positive gap (> 0): Periphery Worker more class-conscious (revolutionary potential)
+    - Negative gap (< 0): Labor Aristocracy more conscious (false consciousness dominant)
+    - Zero gap (= 0): Ideological convergence (unusual equilibrium)
 
     Styling:
-        - Positive (> 0): data_green (#39FF14) - revolutionary consciousness
-        - Negative (< 0): phosphor_burn_red (#D40000) - false consciousness
-        - Zero (= 0): silver_dust (#C0C0C0) - neutral/equilibrium
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
+
+        - Positive (> 0): ``DATA_GREEN`` (#39FF14) - revolutionary consciousness
+        - Negative (< 0): ``PHOSPHOR_BURN_RED`` (#D40000) - false consciousness
+        - Zero (= 0): ``SILVER_DUST`` (#C0C0C0) - neutral/equilibrium
+
+    Attributes:
+        echart: NiceGUI EChart element.
+        min_value: Minimum value on gauge scale (-1.0).
+        max_value: Maximum value on gauge scale (1.0).
+        title: Gauge title ("CONSCIOUSNESS GAP").
 
     Example:
         >>> gauge = ConsciousnessGapGauge()
         >>> gauge.refresh(consciousness_gap=0.3)   # Green - P_W more conscious
         >>> gauge.refresh(consciousness_gap=-0.2)  # Red - C_W more conscious
         >>> gauge.refresh(consciousness_gap=0.0)   # Silver - equilibrium
+
+    See Also:
+        :class:`GaugePanel`: Base gauge component.
+        :mod:`babylon.engine.systems.ideology`: Consciousness system calculations.
     """
 
-    # Design system colors
-    POSITIVE_COLOR: str = "#39FF14"  # data_green
-    NEGATIVE_COLOR: str = "#D40000"  # phosphor_burn_red
-    NEUTRAL_COLOR: str = "#C0C0C0"  # silver_dust
+    # Design system colors (from BunkerPalette)
+    POSITIVE_COLOR: str = BunkerPalette.DATA_GREEN
+    NEGATIVE_COLOR: str = BunkerPalette.PHOSPHOR_BURN_RED
+    NEUTRAL_COLOR: str = BunkerPalette.SILVER_DUST
 
     # Configuration
     TITLE: str = "CONSCIOUSNESS GAP"
@@ -700,7 +777,7 @@ class ConsciousnessGapGauge:
 
         self.echart: Any = ui.echart(
             {
-                "backgroundColor": "#050505",
+                "backgroundColor": BunkerPalette.VOID,
                 "title": {
                     "text": self.TITLE,
                     "left": "center",
@@ -718,16 +795,16 @@ class ConsciousnessGapGauge:
                         "axisLine": {
                             "lineStyle": {
                                 "width": 10,
-                                "color": [[1, "#404040"]],
+                                "color": [[1, BunkerPalette.DARK_METAL]],
                             }
                         },
                         "splitLine": {
                             "length": 10,
-                            "lineStyle": {"color": "#404040"},
+                            "lineStyle": {"color": BunkerPalette.DARK_METAL},
                         },
                         "axisTick": {
                             "length": 5,
-                            "lineStyle": {"color": "#404040"},
+                            "lineStyle": {"color": BunkerPalette.DARK_METAL},
                         },
                         "axisLabel": {
                             "color": self.NEUTRAL_COLOR,
@@ -775,41 +852,52 @@ class WealthTrendPanel:
     """Multi-line trend chart showing wealth for all four social classes.
 
     Displays comparative wealth trajectories for:
-    - C001 (Periphery Worker): The exploited class
-    - C002 (Comprador): Intermediary class
-    - C003 (Core Bourgeoisie): The exploiter class
-    - C004 (Labor Aristocracy): The bought-off class
 
-    Maintains a rolling window of the last MAX_POINTS ticks.
+    - **C001 (Periphery Worker)**: The exploited class - green line
+    - **C002 (Comprador)**: Intermediary class - gold line
+    - **C003 (Core Bourgeoisie)**: The exploiter class - red line
+    - **C004 (Labor Aristocracy)**: The bought-off class - blue line
 
-    Styling (from ai-docs/design-system.yaml):
-        - Background: void (#050505)
-        - Axes/Grid: dark_metal (#404040)
-        - Labels/Legend: silver_dust (#C0C0C0)
-        - P_W line: grow_light_purple (#9D00FF)
-        - P_C line: exposed_copper (#FFD700)
-        - C_B line: goldenrod (#DAA520)
-        - C_W line: royal_blue (#4169E1)
+    Maintains a rolling window of the last MAX_POINTS (50) ticks,
+    automatically discarding older data points.
+
+    Styling:
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors:
+
+        - Background: ``VOID`` (#050505)
+        - Axes/Grid: ``DARK_METAL`` (#404040)
+        - Labels/Legend: ``SILVER_DUST`` (#C0C0C0)
+        - Periphery Worker line: ``PW_COLOR`` (#39FF14 data_green)
+        - Comprador line: ``PC_COLOR`` (#FFD700 exposed_copper)
+        - Core Bourgeoisie line: ``CB_COLOR`` (#D40000 phosphor_burn_red)
+        - Labor Aristocracy line: ``CW_COLOR`` (#4169E1 royal_blue)
+
+    Attributes:
+        MAX_POINTS: Maximum data points in rolling window (50).
+        echart: NiceGUI EChart element.
 
     Example:
         >>> panel = WealthTrendPanel()
         >>> panel.push_data(tick=1, p_w_wealth=100, p_c_wealth=200,
         ...                 c_b_wealth=500, c_w_wealth=150)
+
+    See Also:
+        :class:`TrendPlotter`: Simplified two-metric trend chart.
     """
 
     # Rolling window size
     MAX_POINTS: int = 50
 
-    # Design System color palette
-    VOID: str = "#050505"
-    DARK_METAL: str = "#404040"
-    SILVER_DUST: str = "#C0C0C0"
+    # Design System color palette (from BunkerPalette)
+    VOID: str = BunkerPalette.VOID
+    DARK_METAL: str = BunkerPalette.DARK_METAL
+    SILVER_DUST: str = BunkerPalette.SILVER_DUST
 
-    # Class line colors
-    PW_COLOR: str = "#39FF14"  # data_green - Periphery Worker (the carrier)
-    PC_COLOR: str = "#FFD700"  # exposed_copper - Comprador
-    CB_COLOR: str = "#D40000"  # phosphor_burn_red - Core Bourgeoisie (exploiter)
-    CW_COLOR: str = "#4169E1"  # royal_blue - Labor Aristocracy
+    # Class line colors (from BunkerPalette)
+    PW_COLOR: str = BunkerPalette.PW_COLOR  # data_green - Periphery Worker
+    PC_COLOR: str = BunkerPalette.PC_COLOR  # exposed_copper - Comprador
+    CB_COLOR: str = BunkerPalette.CB_COLOR  # phosphor_burn_red - Core Bourgeoisie
+    CW_COLOR: str = BunkerPalette.CW_COLOR  # royal_blue - Labor Aristocracy
 
     def __init__(self) -> None:
         """Initialize the WealthTrendPanel with empty data."""
@@ -937,10 +1025,12 @@ class EndgamePanel:
     The EndgamePanel displays the game outcome when the simulation terminates.
     It provides visual feedback for each outcome type with appropriate styling.
 
-    Styling per outcome (Bunker Constructivism design system):
-        - REVOLUTIONARY_VICTORY: Triumph green (#39FF14), victory message
-        - ECOLOGICAL_COLLAPSE: Warning amber (#B8860B), collapse message
-        - FASCIST_CONSOLIDATION: Danger red (#D40000), defeat message
+    Styling:
+        Uses :class:`~babylon.ui.design_system.BunkerPalette` colors per outcome:
+
+        - REVOLUTIONARY_VICTORY: ``TRIUMPH_GREEN`` (#39FF14), victory message
+        - ECOLOGICAL_COLLAPSE: ``WARNING_AMBER`` (#B8860B), collapse message
+        - FASCIST_CONSOLIDATION: ``PHOSPHOR_BURN_RED`` (#D40000), defeat message
         - IN_PROGRESS: Panel hidden (no display needed)
 
     The panel is initially hidden and becomes visible when display_outcome()
@@ -965,19 +1055,23 @@ class EndgamePanel:
         True
         >>> panel.current_color
         '#39FF14'
+
+    See Also:
+        :class:`~babylon.engine.observers.endgame_detector.EndgameDetector`: Detects outcomes.
+        :class:`~babylon.models.enums.GameOutcome`: Outcome enum values.
     """
 
-    # Design System colors (from ai-docs/design-system.yaml)
-    TRIUMPH_GREEN: str = "#39FF14"  # data_green - victory
-    WARNING_AMBER: str = "#B8860B"  # dark goldenrod - ecological warning
-    DANGER_RED: str = "#D40000"  # phosphor_burn_red - defeat
-    VOID: str = "#050505"  # background
-    SILVER_DUST: str = "#C0C0C0"  # text
+    # Design System colors (from BunkerPalette)
+    TRIUMPH_GREEN: str = BunkerPalette.TRIUMPH_GREEN
+    WARNING_AMBER: str = BunkerPalette.WARNING_AMBER
+    DANGER_RED: str = BunkerPalette.PHOSPHOR_BURN_RED
+    VOID: str = BunkerPalette.VOID
+    SILVER_DUST: str = BunkerPalette.SILVER_DUST
 
     # Outcome-specific styling configuration
     OUTCOME_STYLES: dict[GameOutcome, dict[str, str]] = {
         GameOutcome.REVOLUTIONARY_VICTORY: {
-            "color": "#39FF14",
+            "color": BunkerPalette.TRIUMPH_GREEN,
             "label": "REVOLUTIONARY VICTORY",
             "message": (
                 "The workers have triumphed! Through solidarity and class consciousness, "
@@ -986,7 +1080,7 @@ class EndgamePanel:
             ),
         },
         GameOutcome.ECOLOGICAL_COLLAPSE: {
-            "color": "#B8860B",
+            "color": BunkerPalette.WARNING_AMBER,
             "label": "ECOLOGICAL COLLAPSE",
             "message": (
                 "The metabolic rift has proven fatal. Capital's relentless extraction "
@@ -995,7 +1089,7 @@ class EndgamePanel:
             ),
         },
         GameOutcome.FASCIST_CONSOLIDATION: {
-            "color": "#D40000",
+            "color": BunkerPalette.PHOSPHOR_BURN_RED,
             "label": "FASCIST CONSOLIDATION",
             "message": (
                 "Darkness has fallen. False consciousness has triumphed over class solidarity. "
@@ -1004,7 +1098,7 @@ class EndgamePanel:
             ),
         },
         GameOutcome.IN_PROGRESS: {
-            "color": "#C0C0C0",
+            "color": BunkerPalette.SILVER_DUST,
             "label": "IN PROGRESS",
             "message": "The struggle continues...",
         },

@@ -3,15 +3,15 @@
 The EndgameDetector is a SimulationObserver that monitors WorldState for
 three possible game ending conditions:
 
-1. REVOLUTIONARY_VICTORY: percolation >= 0.7 AND class_consciousness > 0.8
+1. REVOLUTIONARY_VICTORY: percolation >= threshold AND class_consciousness > threshold
    - The masses have achieved critical organization AND ideological clarity
    - This represents successful proletarian revolution
 
-2. ECOLOGICAL_COLLAPSE: overshoot_ratio > 2.0 for 5 consecutive ticks
+2. ECOLOGICAL_COLLAPSE: overshoot_ratio > threshold for N consecutive ticks
    - Sustained ecological overshoot leads to irreversible collapse
    - Capital's metabolic rift has become fatal
 
-3. FASCIST_CONSOLIDATION: national_identity > class_consciousness for 3+ nodes
+3. FASCIST_CONSOLIDATION: national_identity > class_consciousness for M+ nodes
    - Fascist ideology has captured the majority of the population
    - False consciousness prevents class-based organization
 
@@ -20,6 +20,8 @@ Priority when multiple conditions are met:
 
 The detector implements the Observer Pattern: it receives state change
 notifications but cannot modify simulation state.
+
+Thresholds are configurable via GameDefines.endgame for scenario customization.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from babylon.config.defines import EndgameDefines, GameDefines
 from babylon.engine.topology_monitor import (
     calculate_component_metrics,
     extract_solidarity_subgraph,
@@ -40,8 +43,11 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# CONSTANTS
+# LEGACY CONSTANTS (deprecated - use GameDefines.endgame instead)
 # =============================================================================
+
+# These constants are kept for backward compatibility with tests that import them.
+# New code should use GameDefines.endgame attributes instead.
 
 # Revolutionary victory thresholds
 PERCOLATION_THRESHOLD = 0.7  # 70% of nodes in giant component
@@ -70,11 +76,13 @@ class EndgameDetector:
     - Current outcome (IN_PROGRESS until game ends)
     - Consecutive overshoot tick counter (for ecological collapse)
     - Pending events list (for ENDGAME_REACHED event emission)
+    - Configurable thresholds via GameDefines.endgame
 
     Attributes:
         name: Observer identifier ("EndgameDetector").
         outcome: Current GameOutcome (starts as IN_PROGRESS).
         is_game_over: Boolean indicating if game has ended.
+        defines: EndgameDefines containing threshold configuration.
 
     Example:
         >>> from babylon.engine.observers.endgame_detector import EndgameDetector
@@ -83,20 +91,46 @@ class EndgameDetector:
         <GameOutcome.IN_PROGRESS: 'in_progress'>
         >>> detector.is_game_over
         False
+
+        >>> # Custom thresholds via GameDefines
+        >>> from babylon.config.defines import GameDefines, EndgameDefines
+        >>> custom = GameDefines(endgame=EndgameDefines(
+        ...     revolutionary_percolation_threshold=0.5,
+        ...     fascist_majority_threshold=5,
+        ... ))
+        >>> detector = EndgameDetector(defines=custom)
+        >>> detector.defines.revolutionary_percolation_threshold
+        0.5
     """
 
-    def __init__(self, logger: logging.Logger | None = None) -> None:
+    def __init__(
+        self,
+        logger: logging.Logger | None = None,
+        defines: GameDefines | None = None,
+    ) -> None:
         """Initialize EndgameDetector.
 
         Args:
             logger: Logger instance for endgame notifications.
                 Defaults to module-level logger if not provided.
+            defines: GameDefines containing endgame thresholds.
+                Defaults to GameDefines() with standard thresholds.
         """
         self._logger: logging.Logger = logger or logging.getLogger(__name__)
+        self._defines: EndgameDefines = (defines or GameDefines()).endgame
         self._outcome: GameOutcome = GameOutcome.IN_PROGRESS
         self._overshoot_consecutive_ticks: int = 0
         self._pending_events: list[EndgameEvent] = []
         self._endgame_event_emitted: bool = False
+
+    @property
+    def defines(self) -> EndgameDefines:
+        """Return the endgame threshold configuration.
+
+        Returns:
+            EndgameDefines containing all threshold values.
+        """
+        return self._defines
 
     @property
     def name(self) -> str:
@@ -212,8 +246,8 @@ class EndgameDetector:
         """Check if revolutionary victory conditions are met.
 
         Conditions:
-        - percolation_ratio >= 0.7 (70% in giant component)
-        - average class_consciousness > 0.8 across proletariat nodes
+        - percolation_ratio >= defines.revolutionary_percolation_threshold
+        - average class_consciousness > defines.revolutionary_consciousness_threshold
 
         Args:
             state: Current WorldState to analyze.
@@ -238,7 +272,7 @@ class EndgameDetector:
         solidarity_graph = extract_solidarity_subgraph(graph)
         _, _, percolation_ratio = calculate_component_metrics(solidarity_graph, total_nodes)
 
-        if percolation_ratio < PERCOLATION_THRESHOLD:
+        if percolation_ratio < self._defines.revolutionary_percolation_threshold:
             return False
 
         # Calculate average class consciousness across all social_class nodes
@@ -260,13 +294,14 @@ class EndgameDetector:
 
         average_consciousness = total_consciousness / consciousness_count
 
-        return average_consciousness > CONSCIOUSNESS_THRESHOLD
+        return average_consciousness > self._defines.revolutionary_consciousness_threshold
 
     def _check_ecological_collapse(self, state: WorldState) -> bool:
         """Check if ecological collapse conditions are met.
 
         Conditions:
-        - overshoot_ratio > 2.0 for 5 consecutive ticks
+        - overshoot_ratio > defines.ecological_overshoot_threshold for
+          defines.ecological_sustained_ticks consecutive ticks
 
         overshoot_ratio = total_consumption / total_biocapacity
 
@@ -298,18 +333,19 @@ class EndgameDetector:
 
         overshoot_ratio = total_consumption / total_biocapacity
 
-        if overshoot_ratio > OVERSHOOT_THRESHOLD:
+        if overshoot_ratio > self._defines.ecological_overshoot_threshold:
             self._overshoot_consecutive_ticks += 1
         else:
             self._overshoot_consecutive_ticks = 0
 
-        return self._overshoot_consecutive_ticks >= OVERSHOOT_CONSECUTIVE_TICKS
+        return self._overshoot_consecutive_ticks >= self._defines.ecological_sustained_ticks
 
     def _check_fascist_consolidation(self, state: WorldState) -> bool:
         """Check if fascist consolidation conditions are met.
 
         Conditions:
-        - national_identity > class_consciousness for 3+ nodes
+        - national_identity > class_consciousness for
+          defines.fascist_majority_threshold or more nodes
 
         Args:
             state: Current WorldState to analyze.
@@ -332,7 +368,7 @@ class EndgameDetector:
             if national_identity > class_consciousness:
                 fascist_node_count += 1
 
-        return fascist_node_count >= FASCIST_NODES_THRESHOLD
+        return fascist_node_count >= self._defines.fascist_majority_threshold
 
     def _emit_endgame_event(self, state: WorldState) -> None:
         """Emit ENDGAME_REACHED event when game ends.

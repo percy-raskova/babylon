@@ -5,6 +5,7 @@ enabling unified metrics collection between the parameter sweeper and
 dashboard components.
 
 Sprint 4.1: Phase 4 Dashboard/Sweeper unification.
+Sprint 4.1B: Expose meaningful metrics (economy drivers, topology, differentials).
 """
 
 from __future__ import annotations
@@ -172,7 +173,7 @@ class TickMetrics(BaseModel):
         default=0.0,
         ge=0.0,
         le=1.0,
-        description="Average tension across all relationships [0, 1]",
+        description="Average tension across EXPLOITATION relationships [0, 1]",
     )
     current_super_wage_rate: float = Field(
         default=0.20,

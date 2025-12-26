@@ -2,8 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.0"
+  version: "2.0.1"
   updated: "2025-12-26"
+  last_sprint: "1.4B - MetabolismSystem implementation"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -60,14 +61,25 @@ epoch_status:
 
     "1.4":
       name: "The Rift"
-      status: "IN_PROGRESS"
+      status: "PARTIAL"  # Core complete, integration remaining
       spec: "ai-docs/metabolic-slice.yaml"
-      deliverables_planned:
-        - "MetabolismSystem (biocapacity tracking)"
-        - "Territory.biocapacity field"
-        - "SocialClass.consumption_needs (s_bio + s_class)"
-        - "ECOLOGICAL_OVERSHOOT event"
+      deliverables_complete:
+        - "Territory metabolic fields (biocapacity, max_biocapacity, regeneration_rate, extraction_intensity)"
+        - "SocialClass consumption fields (s_bio, s_class, consumption_needs computed)"
+        - "WorldState computed properties (total_biocapacity, total_consumption, overshoot_ratio)"
+        - "calculate_biocapacity_delta() and calculate_overshoot_ratio() formulas"
+        - "ECOLOGICAL_OVERSHOOT EventType"
+        - "MetabolismSystem with 15 tests"
+      deliverables_remaining:
+        - "Add MetabolismSystem to DEFAULT_SYSTEMS"
+        - "Wire ImperialRentSystem to set extraction_intensity"
+        - "Dashboard metabolic gauge"
       formula: "ΔB = Regeneration - (Extraction × Entropy_Factor)"
+      commits:
+        - "090a843: feat(metabolic): add Slice 1.4A material basis"
+        - "d215fff: test(metabolic): add comprehensive unit tests for Slice 1.4A"
+        - "ada50da: test(metabolic): add TDD Red Phase tests for MetabolismSystem"
+        - "fe7feb1: feat(metabolic): implement MetabolismSystem (TDD Green Phase)"
 
     "1.5":
       name: "The Dashboard"
@@ -101,11 +113,11 @@ epoch_status:
 
   completion_criteria:
     - "[ ] 4-node Imperial Circuit running in dashboard"
-    - "[ ] MetabolismSystem depletes biocapacity over time"
+    - "[x] MetabolismSystem depletes biocapacity over time (Sprint 1.4B)"
     - "[ ] ECOLOGICAL_OVERSHOOT fires at ~30-50 ticks"
     - "[ ] Dashboard shows rift widening visually"
     - "[ ] Endgame screen displays outcome based on solidarity"
-    - "[x] Tests pass (current: 2248)"
+    - "[x] Tests pass (current: 2428)"
 
   future_epochs:
     epoch_2:

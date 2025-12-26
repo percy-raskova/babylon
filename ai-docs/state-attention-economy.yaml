@@ -10,13 +10,15 @@
 
 meta:
   epoch: 2
-  slice: "2.8"
+  sub_epoch: "2C"
+  slice: "2.9"
   slice_name: "The Panopticon"
   status: PLANNED
   priority: HIGH
   version: "1.0.0"
   created: "2025-12-26"
   purpose: "Model state surveillance/repression as limited attention allocation problem"
+  critical_gap: "State AI decision logic (Thread allocation algorithm) must be defined before implementation"
 
   theoretical_foundation:
     primary: "Tiqqun - The Cybernetic Hypothesis (2001) - Control as information processing"

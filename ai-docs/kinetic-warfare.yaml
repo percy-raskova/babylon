@@ -9,16 +9,18 @@
 
 meta:
   epoch: 2
-  slice: "2.6"
+  sub_epoch: "2D"
+  slice: "2.7"
   slice_name: "Kinetic Warfare"
   status: PLANNED
   priority: MEDIUM
   version: "1.0.0"
   created: "2025-12-26"
   purpose: "Model asymmetric warfare as system disruption, not frontline combat"
+  scope_note: "Combat is last sub-epoch because it requires integration with Cohesion (2B), Wire (2C), Panopticon (2C)"
   dependencies:
     - "Slice 2.2b (Cohesion Mechanic) - Organizational health determines attack quality"
-    - "Slice 2.4 (The Wire) - Narrative framing of violence"
+    - "Slice 2.5 (The Wire) - Narrative framing of violence"
     - "Slice 1.1 (Imperial Circuit) - Targets are nodes/edges of rent extraction"
 
   theoretical_foundation:

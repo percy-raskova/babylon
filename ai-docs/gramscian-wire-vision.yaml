@@ -9,7 +9,8 @@
 
 meta:
   epoch: 2
-  slice: "2.4"
+  sub_epoch: "2C"
+  slice: "2.5"
   slice_name: "The Wire (Narrative Warfare)"
   status: PLANNED
   version: "1.0.0"

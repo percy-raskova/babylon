@@ -6,6 +6,7 @@
 
 meta:
   epoch: 2
+  sub_epoch: "2B"
   slice: "2.2b"
   slice_name: "The Vanguard (Internal Dynamics)"
   status: PLANNED

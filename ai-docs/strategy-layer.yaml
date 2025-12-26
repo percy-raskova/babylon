@@ -5,6 +5,7 @@
 
 meta:
   epoch: 2
+  sub_epoch: "2A"
   slice: "2.2a"
   slice_name: "Player Controls (External Actions)"
   status: PLANNED

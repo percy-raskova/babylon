@@ -10,7 +10,8 @@
 
 meta:
   epoch: 2
-  slice: "2.5"
+  sub_epoch: "2A"
+  slice: "2.6"
   slice_name: "The Resource Economy"
   status: PLANNED
   priority: HIGH

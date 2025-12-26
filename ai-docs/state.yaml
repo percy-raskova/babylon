@@ -111,19 +111,47 @@ epoch_status:
     epoch_2:
       name: "The Game"
       thesis: "The player has agency. Decisions matter. Multiple endings."
+      structure: "Staged into 4 sub-epochs (2A/2B/2C/2D) per epoch-readiness-review.yaml"
+
+      sub_epochs:
+        "2A":
+          name: "Core Agency"
+          thesis: "The player can act. Resources constrain choices."
+          slices: ["2.1", "2.2a", "2.6"]
+          status: "PLANNED"
+        "2B":
+          name: "Organization"
+          thesis: "The party can fail from within. Class composition matters."
+          slices: ["2.2b", "2.3", "2.8"]
+          status: "PLANNED"
+          scope_note: "Doctrine System simplified to 3 trunks for 2B MVP"
+        "2C":
+          name: "Information"
+          thesis: "Win the narrative, know the terrain."
+          slices: ["2.5", "2.9", "2.10"]
+          status: "PLANNED"
+          critical_gap: "State AI decision logic must be defined before implementation"
+        "2D":
+          name: "Combat"
+          thesis: "Violence is the continuation of politics."
+          slices: ["2.7"]
+          status: "PLANNED"
+          note: "Combat is last because it requires all other systems"
+
       slices:
-        "2.1": "Demographic Resolution (ai-docs/demographics-spec.yaml)"
-        "2.2a": "Player Controls - External Actions (ai-docs/strategy-layer.yaml)"
-        "2.2b": "The Vanguard - Internal Dynamics (ai-docs/cohesion-mechanic.yaml)"
-        "2.3": "The Reactionary Subject - Class Basis of Fascism (ai-docs/reactionary-subject.yaml)"
-        "2.4": "Reproductive Labor"
-        "2.5": "The Wire - Narrative Warfare (ai-docs/gramscian-wire-vision.yaml)"
-        "2.6": "The Resource Economy - Vanguard Efficiency (ai-docs/vanguard-economy.yaml)"
-        "2.7": "Kinetic Warfare - System Disruption (ai-docs/kinetic-warfare.yaml)"
-        "2.8": "The Doctrine System - Ideological Line Struggle (ai-docs/doctrine-tree.yaml)"
-        "2.9": "The Panopticon - State Attention Economy (ai-docs/state-attention-economy.yaml)"
-        "2.10": "The Epistemic Horizon - Fish in Water Intel (ai-docs/fog-of-war.yaml)"
-        "2.11": "Multiple Scenarios"
+        "2.1": { name: "Demographic Resolution", sub_epoch: "2A", spec: "ai-docs/demographics-spec.yaml" }
+        "2.2a": { name: "Strategy Layer", sub_epoch: "2A", spec: "ai-docs/strategy-layer.yaml" }
+        "2.2b": { name: "The Vanguard", sub_epoch: "2B", spec: "ai-docs/cohesion-mechanic.yaml" }
+        "2.3": { name: "Reactionary Subject", sub_epoch: "2B", spec: "ai-docs/reactionary-subject.yaml" }
+        "2.4": { name: "Reproductive Labor", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+        "2.5": { name: "The Wire", sub_epoch: "2C", spec: "ai-docs/gramscian-wire-vision.yaml" }
+        "2.6": { name: "Resource Economy", sub_epoch: "2A", spec: "ai-docs/vanguard-economy.yaml" }
+        "2.7": { name: "Kinetic Warfare", sub_epoch: "2D", spec: "ai-docs/kinetic-warfare.yaml" }
+        "2.8": { name: "Doctrine System", sub_epoch: "2B", spec: "ai-docs/doctrine-tree.yaml" }
+        "2.9": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml" }
+        "2.10": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai-docs/fog-of-war.yaml" }
+        "2.11": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+
     epoch_3:
       name: "The Platform"
       thesis: "Others can build on this. Modding, custom scenarios, educational tools."

@@ -24,6 +24,7 @@
 
 meta:
   epoch: 2
+  sub_epoch: "2B"
   slice: "2.3"
   name: "The Reactionary Subject"
   subtitle: "The Class Basis of Fascism"

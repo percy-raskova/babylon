@@ -168,22 +168,75 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 
 **Status:** PLANNED
 
-### Slices
+### Sub-Epoch Model
 
-| Slice | Name | Description |
-|-------|------|-------------|
-| 2.1 | Demographic Resolution | Full necropolitics vs redistribution mechanics |
-| 2.2a | Strategy Layer (External) | Resource traps: Liberal, Ultra-Left, Rightist |
-| 2.2b | The Vanguard (Internal) | Cohesion, entropy, organizational dynamics |
-| 2.3 | The Reactionary Subject | Class basis of fascism, organizational traps |
-| 2.4 | Reproductive Labor | L_restore, regeneration via care work |
-| 2.5 | The Wire (Narrative Warfare) | Hegemony mechanics, propaganda actions |
-| 2.6 | The Resource Economy | Cadre Labor, Sympathizer Labor, Reputation |
-| 2.7 | Kinetic Warfare | Asymmetric logistics, system disruption |
-| 2.8 | The Doctrine System | Ideological tech tree, line struggle, traps |
-| 2.9 | The Panopticon | State attention economy, surveillance costs |
-| 2.10 | The Epistemic Horizon | Fog of war, Fish in Water intel system |
-| 2.11 | Multiple Scenarios | Historical scenarios, custom setups |
+Epoch 2 is divided into **four sub-epochs** for staged delivery:
+
+| Sub-Epoch | Name | Focus | Slices |
+|-----------|------|-------|--------|
+| **2A** | Core Agency | Basic player actions & resources | 2.1, 2.2a, 2.6 |
+| **2B** | Organization | Internal dynamics & class struggle | 2.2b, 2.3, 2.8 |
+| **2C** | Information | Narrative warfare & intelligence | 2.5, 2.9, 2.10 |
+| **2D** | Combat | Kinetic operations | 2.7 |
+
+**Rationale:** Each sub-epoch delivers a playable increment:
+- **2A** gives players meaningful choices within 3 slices
+- **2B** adds organizational complexity once basics work
+- **2C** adds information warfare as late-game depth
+- **2D** adds combat last (combat systems are notoriously difficult to balance)
+
+**Deferrals:**
+- Slice 2.4 (Reproductive Labor) → Epoch 2.5 or 3 (needs more design work)
+- Slice 2.11 (Multiple Scenarios) → Epoch 3 (platform work)
+
+### All Slices Overview
+
+| Slice | Name | Sub-Epoch | Status | Description |
+|-------|------|-----------|--------|-------------|
+| 2.1 | Demographic Resolution | 2A | PLANNED | Full necropolitics vs redistribution mechanics |
+| 2.2a | Strategy Layer (External) | 2A | PLANNED | Resource traps: Liberal, Ultra-Left, Rightist |
+| 2.2b | The Vanguard (Internal) | 2B | PLANNED | Cohesion, entropy, organizational dynamics |
+| 2.3 | The Reactionary Subject | 2B | PLANNED | Class basis of fascism, organizational traps |
+| 2.4 | Reproductive Labor | DEFERRED | CONCEPTUAL | L_restore, regeneration via care work |
+| 2.5 | The Wire (Narrative Warfare) | 2C | PLANNED | Hegemony mechanics, propaganda actions |
+| 2.6 | The Resource Economy | 2A | PLANNED | Cadre Labor, Sympathizer Labor, Reputation |
+| 2.7 | Kinetic Warfare | 2D | PLANNED | Asymmetric logistics, system disruption |
+| 2.8 | The Doctrine System | 2B | PLANNED | Ideological tech tree, line struggle, traps |
+| 2.9 | The Panopticon | 2C | PLANNED | State attention economy, surveillance costs |
+| 2.10 | The Epistemic Horizon | 2C | PLANNED | Fog of war, Fish in Water intel system |
+| 2.11 | Multiple Scenarios | DEFERRED | CONCEPTUAL | Historical scenarios, custom setups |
+
+---
+
+## Sub-Epoch 2A: Core Agency
+
+**Thesis:** *"The player can act. Resources constrain choices. Traps are visible."*
+
+**Status:** PLANNED
+
+**Dependencies:** Epoch 1 complete
+
+**Target:** A playable game where:
+1. Player allocates resources (CL, SL, Reputation)
+2. Player chooses actions (Electoralism, Adventurism, Economism)
+3. Demographics resolve through player choices
+4. Traps become obvious through failure
+
+### 2A Slices
+
+| Slice | Name | Priority | Description |
+|-------|------|----------|-------------|
+| 2.1 | Demographic Resolution | P0 | Population metabolism, resolution pathways |
+| 2.2a | Strategy Layer | P0 | External actions, resource traps |
+| 2.6 | Resource Economy | P0 | CL/SL/Reputation currencies |
+
+### 2A Completion Criteria
+
+- [ ] Player can spend CL/SL/Reputation on actions
+- [ ] Three resource traps are functional (Liberal, Ultra-Left, Rightist)
+- [ ] Demographics respond to player choices
+- [ ] Multiple endings based on action patterns
+- [ ] Tests pass (target: +300 from Epoch 1)
 
 ### Slice 2.1: Demographic Resolution
 
@@ -324,6 +377,133 @@ Key mechanics:
 - **Intel Decay:** Information becomes stale faster in hostile territory
 
 This complements the Panopticon (Slice 2.9): State sees everywhere but understands nothing; Player understands but only where they've built relationships. "Win the people, know the terrain."
+
+---
+
+## Sub-Epoch 2B: Organization
+
+**Thesis:** *"The party can fail from within. Cohesion matters. Class composition determines destiny."*
+
+**Status:** PLANNED
+
+**Dependencies:** Sub-Epoch 2A complete
+
+**Target:** A playable game where:
+1. Organizational health affects action success
+2. Wrong class composition leads to betrayal
+3. Doctrine choices create path dependencies
+4. Iron Law of Oligarchy becomes visceral
+
+### 2B Slices
+
+| Slice | Name | Priority | Description |
+|-------|------|----------|-------------|
+| 2.2b | The Vanguard | P0 | Cohesion, entropy, internal dynamics |
+| 2.3 | Reactionary Subject | P0 | Class basis of fascism, chauvinism |
+| 2.8 | Doctrine System | P1 | Ideological tech tree (SIMPLIFIED for 2B) |
+
+### 2B Completion Criteria
+
+- [ ] Cohesion affects transmission of consciousness
+- [ ] Entropy accumulates with growth
+- [ ] Class composition affects organizational behavior
+- [ ] Chauvinism triggers RED_BROWN_COUP during crisis
+- [ ] Doctrine tree with 2-3 trunks functional (full 8 trunks deferred)
+- [ ] Tests pass (target: +250 from 2A)
+
+### 2B Scope Notes
+
+**Doctrine Simplification for 2B:**
+- Implement 3 trunks only: Scientific (correct), Reformist (trap), Insurrectionist (trap)
+- Defer synthesis trunks (Autonomist-Scientific, etc.) to 2B.5
+- Defer degeneration paths (PatSoc Pipeline) to 2B.5
+- Focus on core tag mechanics: LEGALITY, MILITANCY, MASS_LINK
+
+---
+
+## Sub-Epoch 2C: Information
+
+**Thesis:** *"Win the narrative, know the terrain. The State sees everything but understands nothing."*
+
+**Status:** PLANNED
+
+**Dependencies:** Sub-Epoch 2B complete
+
+**Target:** A playable game where:
+1. Hegemony is a contestable resource
+2. State attention is finite and exploitable
+3. Intelligence requires social relationships
+4. Information asymmetry creates strategic depth
+
+### 2C Slices
+
+| Slice | Name | Priority | Description |
+|-------|------|----------|-------------|
+| 2.5 | The Wire | P0 | Narrative warfare, hegemony mechanics |
+| 2.9 | The Panopticon | P0 | State attention economy, Thread allocation |
+| 2.10 | Epistemic Horizon | P1 | Fog of war, Fish in Water intel |
+
+### 2C Completion Criteria
+
+- [ ] Hegemony resource affects narrative framing
+- [ ] State allocates Threads based on threat assessment
+- [ ] Player can saturate State attention (DDoS strategy)
+- [ ] Intel quality depends on mass relationships
+- [ ] Hostile territories can provide FALSIFIED intel
+- [ ] Tests pass (target: +300 from 2B)
+
+### 2C Scope Notes
+
+**State AI Decision Logic (Critical Gap):**
+Before implementing 2C, must define:
+- Thread allocation algorithm (utility function or weighted random)
+- Expansion trigger conditions (when does State upgrade?)
+- Threat assessment heuristics
+
+**Fog of War Simplification for 2C:**
+- Start with simple vision states (Desert/Mud/Water)
+- Defer intel falsification mechanics to 2C.5
+- Focus on Mass Receptivity formula
+
+---
+
+## Sub-Epoch 2D: Combat
+
+**Thesis:** *"Violence is the continuation of politics. Win the people before the battle."*
+
+**Status:** PLANNED
+
+**Dependencies:** Sub-Epoch 2C complete (requires Wire for outcome framing, Panopticon for State response)
+
+**Target:** A playable game where:
+1. Kinetic actions have political consequences
+2. Blowback alienates masses
+3. Ultra-Left deviation leads to defeat despite military success
+4. Combat integrates with all previous systems
+
+### 2D Slices
+
+| Slice | Name | Priority | Description |
+|-------|------|----------|-------------|
+| 2.7 | Kinetic Warfare | P0 | Asymmetric logistics, target selection |
+
+### 2D Completion Criteria
+
+- [ ] Three target types functional (Extraction, Circulation, Realization)
+- [ ] Blowback formula affects mass support
+- [ ] Cohesion affects attack quality
+- [ ] Wire frames combat outcomes
+- [ ] State responds via Panopticon Thread allocation
+- [ ] Ultra-Left deviation is achievable game-over state
+- [ ] Tests pass (target: +150 from 2C)
+
+### 2D Scope Notes
+
+**Why Combat is Last:**
+1. Combat systems are notoriously difficult to balance
+2. Combat outcomes must integrate with Cohesion (2B), Wire (2C), Panopticon (2C)
+3. Political consequences require all other systems functional
+4. Players should learn "politics first" before having combat as an option
 
 ---
 

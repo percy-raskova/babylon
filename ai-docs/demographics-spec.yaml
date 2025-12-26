@@ -10,6 +10,7 @@ meta:
   principle: "Population is not limited by space, but by the rift between extraction and regeneration"
   status: "FUTURE ENHANCEMENT (Epoch 2)"
   epoch: 2
+  sub_epoch: "2A"
   slice: "2.1"
   slice_name: "Demographic Resolution"
   location: "src/babylon/engine/systems/demographics.py (PLANNED)"

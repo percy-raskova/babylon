@@ -1,3 +1,10 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/synopticon-spec.yaml`
+> **Implemented In:** `src/babylon/engine/observer.py` (SimulationObserver protocol)
+> **Archive Note:** This conceptual document is kept for historical context. The Synopticon observer pattern was implemented in Phase 3.
+
+---
+
 # The Synopticon: Phase 3 Observer System
 
 > *"We use the masses as our eyes and ears. The camera lens does not judge; it only records the contradictions."*

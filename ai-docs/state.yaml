@@ -1188,24 +1188,32 @@ current_focus:
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
   integration_mantra: "A flat line on a fancy graph is still a flat line."
-  milestone: "PHASE 4 UI: Developer Dashboard MVP - 4-panel layout operational with AsyncSimulationRunner"
-  next_milestone: "Phase 4.1B: MetricsCollector gap fixes (economy drivers + topology)"
-  test_count: 2210
-  test_count_note: "Updated 2025-12-25 - MetricsCollector observer (+101 tests TDD)"
+  milestone: "PHASE 4.1B COMPLETE: MetricsCollector gap fixes - economy drivers + topology model"
+  next_milestone: "Phase 4.2: TopologyMonitor dashboard integration + territory metrics"
+  test_count: 2253
+  test_count_note: "Updated 2025-12-25 - Phase 4.1B (+43 tests via TDD)"
 
   metrics_audit:
     date: "2025-12-25"
-    status: "GAPS IDENTIFIED - 60% coverage"
-    critical_missing:
-      - "current_super_wage_rate (GlobalEconomy) - labor aristocracy driver"
-      - "current_repression_level (GlobalEconomy) - P(S|R) factor"
-      - "percolation_ratio (TopologyMonitor) - phase transition"
-      - "cadre_density (TopologyMonitor) - vanguard detection"
-    implementation_bugs:
-      - "global_tension diluted by non-EXPLOITATION edges"
-      - "edge metrics overwrite when multiple same-type edges"
-      - "TopologyMonitor not registered with dashboard"
-    next_action: "TDD fix Phase 1 critical gaps (~20 tests)"
+    status: "PHASE 4.1B COMPLETE - ~85% coverage"
+    source_document: "brainstorm/metrics-collector-audit-reasoning.md"
+    critical_fixed_in_4_1b:
+      - "current_super_wage_rate ✅ FIXED - now in TickMetrics"
+      - "current_repression_level ✅ FIXED - now in TickMetrics"
+      - "pool_ratio ✅ ADDED - imperial rent pool health"
+      - "consciousness_gap ✅ ADDED - P_w - C_w differential"
+      - "wealth_gap ✅ ADDED - C_b - P_w differential"
+    topology_model_ready:
+      - "TopologySummary model ✅ CREATED - percolation_ratio, cadre_density, phase"
+      - "Integration with dashboard ❌ PENDING - TopologyMonitor not registered"
+    bugs_fixed_in_4_1b:
+      - "global_tension ✅ FIXED - now only averages EXPLOITATION edges"
+      - "edge metrics ✅ FIXED - aggregates (max tension, sum flows)"
+    remaining_gaps:
+      - "TopologyMonitor dashboard integration (Phase 4.2)"
+      - "Territory aggregate metrics (heat, population)"
+      - "Event count per tick"
+      - "repression_faced per entity"
     full_audit: "See observer-layer.yaml metrics_collector.audit section"
 
   analysis_insight: |
@@ -1218,6 +1226,14 @@ current_focus:
     Critical missing: economy drivers (wage_rate, repression) and topology (percolation).
     These are the DIALS that make the simulation interesting to watch.
     Without them, dashboard shows effects but not causes.
+
+    2025-12-25: PHASE 4.1B COMPLETE via TDD (43 new tests).
+    Fixed: current_super_wage_rate, current_repression_level, pool_ratio exposed.
+    Fixed: consciousness_gap, wealth_gap derived differentials.
+    Fixed: global_tension bug (was averaging all edges, now EXPLOITATION only).
+    Fixed: edge aggregation bug (was overwriting, now max/sum).
+    Created: TopologySummary model ready for dashboard integration.
+    Documented: Causal DAG (Fundamentals → Systems → Metrics) in architecture.yaml.
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.

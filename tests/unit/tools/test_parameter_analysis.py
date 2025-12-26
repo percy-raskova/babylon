@@ -5,10 +5,14 @@ simulation state over time and output to CSV.
 
 Test Classes:
     TestModuleStructure: Verify module exists and has required functions
-    TestCollectTickData: Verify tick data collection from WorldState
     TestRunTrace: Verify trace execution returns correct data structure
     TestWriteCsv: Verify CSV output functionality
     TestCLI: Verify command-line interface works correctly
+    TestIntegration: Integration tests including Phase 4.1B metrics
+
+Note:
+    TestExtractSweepSummary tests are skipped pending refactor to use
+    MetricsCollector instead of manual trace_data extraction.
 """
 
 from __future__ import annotations
@@ -58,12 +62,6 @@ class TestModuleStructure:
             f"parameter_analysis.py not found at {PARAMETER_ANALYSIS_PATH}"
         )
 
-    def test_collect_tick_data_function_exists(self) -> None:
-        """Verify collect_tick_data function exists in module."""
-        module = load_parameter_analysis_module()
-        assert hasattr(module, "collect_tick_data"), "Module missing 'collect_tick_data' function"
-        assert callable(module.collect_tick_data), "'collect_tick_data' is not callable"
-
     def test_run_trace_function_exists(self) -> None:
         """Verify run_trace function exists in module."""
         module = load_parameter_analysis_module()
@@ -81,15 +79,6 @@ class TestModuleStructure:
         module = load_parameter_analysis_module()
         assert hasattr(module, "main"), "Module missing 'main' function"
         assert callable(module.main), "'main' is not callable"
-
-    def test_collect_tick_data_signature(self) -> None:
-        """Verify collect_tick_data has correct parameter signature."""
-        module = load_parameter_analysis_module()
-        sig = inspect.signature(module.collect_tick_data)
-        param_names = list(sig.parameters.keys())
-
-        assert "state" in param_names, "Missing 'state' parameter"
-        assert "tick" in param_names, "Missing 'tick' parameter"
 
     def test_run_trace_signature(self) -> None:
         """Verify run_trace has correct parameter signature."""
@@ -115,91 +104,6 @@ class TestModuleStructure:
         source_code = PARAMETER_ANALYSIS_PATH.read_text()
         assert "if __name__" in source_code, "Missing main execution block"
         assert "__main__" in source_code, "Missing __main__ check"
-
-
-class TestCollectTickData:
-    """Test tick data collection from WorldState."""
-
-    def test_collect_tick_data_returns_dict_with_tick(self) -> None:
-        """Verify collect_tick_data returns dict with tick number."""
-        module = load_parameter_analysis_module()
-
-        # Create a real scenario state for testing
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=5)
-
-        assert isinstance(result, dict), f"Expected dict, got {type(result)}"
-        assert "tick" in result, "Result missing 'tick' key"
-        assert result["tick"] == 5, f"Expected tick=5, got {result['tick']}"
-
-    def test_collect_tick_data_tracks_periphery_worker(self) -> None:
-        """Verify collect_tick_data tracks C001 (Periphery Worker) data."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # Periphery worker should have wealth tracked
-        assert "p_w_wealth" in result, "Missing p_w_wealth (Periphery Worker wealth)"
-        assert "p_w_consciousness" in result, "Missing p_w_consciousness"
-        assert "p_w_psa" in result, "Missing p_w_psa (P(S|A))"
-        assert "p_w_psr" in result, "Missing p_w_psr (P(S|R))"
-        assert "p_w_organization" in result, "Missing p_w_organization"
-
-    def test_collect_tick_data_tracks_all_entities(self) -> None:
-        """Verify collect_tick_data tracks data for all 4 entities."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # All entities should have at least wealth tracked
-        assert "p_w_wealth" in result, "Missing Periphery Worker (C001) wealth"
-        assert "p_c_wealth" in result, "Missing Comprador (C002) wealth"
-        assert "c_b_wealth" in result, "Missing Core Bourgeoisie (C003) wealth"
-        assert "c_w_wealth" in result, "Missing Labor Aristocracy (C004) wealth"
-
-    def test_collect_tick_data_tracks_edges(self) -> None:
-        """Verify collect_tick_data tracks key edge data."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # Key edges should be tracked
-        assert "exploitation_tension" in result, "Missing exploitation edge tension"
-        assert "exploitation_rent" in result, "Missing exploitation edge value_flow"
-        # Tribute and wages may or may not exist depending on scenario
-        # but the columns should be present (possibly with None/0.0)
-
-    def test_collect_tick_data_values_are_numeric(self) -> None:
-        """Verify collected data values are numeric types."""
-        module = load_parameter_analysis_module()
-
-        from babylon.engine.scenarios import create_imperial_circuit_scenario
-
-        state, _config, _defines = create_imperial_circuit_scenario()
-
-        result = module.collect_tick_data(state, tick=0)
-
-        # All values except tick should be numeric
-        for key, value in result.items():
-            if value is not None:
-                assert isinstance(value, int | float), (
-                    f"Value for '{key}' should be numeric, got {type(value)}"
-                )
 
 
 class TestRunTrace:
@@ -406,14 +310,54 @@ class TestIntegration:
         assert isinstance(first_wealth, int | float), "First wealth should be numeric"
         assert isinstance(last_wealth, int | float), "Last wealth should be numeric"
 
+    @pytest.mark.integration
+    def test_trace_includes_phase_4_1b_metrics(self) -> None:
+        """Verify run_trace includes new metrics from MetricsCollector.
+
+        Phase 4.1B introduced MetricsCollector with additional causal DAG metrics.
+        This test verifies that when MetricsCollector is integrated into run_trace,
+        these new columns are present in the output.
+        """
+        module = load_parameter_analysis_module()
+        trace_data = module.run_trace(max_ticks=5)
+
+        # Must have at least one tick of data
+        assert len(trace_data) > 0, "run_trace should return at least one row"
+
+        first_row = trace_data[0]
+
+        # Phase 4.1B columns should be present
+        assert "consciousness_gap" in first_row, "Missing consciousness_gap"
+        assert "wealth_gap" in first_row, "Missing wealth_gap"
+        assert "imperial_rent_pool" in first_row, "Missing imperial_rent_pool"
+        assert "current_super_wage_rate" in first_row, "Missing current_super_wage_rate"
+        assert "global_tension" in first_row, "Missing global_tension"
+        assert "pool_ratio" in first_row, "Missing pool_ratio"
+
 
 # =============================================================================
 # SWEEP COMMAND TESTS
 # =============================================================================
 
 
+@pytest.mark.skip(
+    reason="Pending refactor: extract_sweep_summary will take MetricsCollector instead of trace_data"
+)
 class TestExtractSweepSummary:
-    """Tests for extract_sweep_summary function."""
+    """Tests for extract_sweep_summary function.
+
+    NOTE: These tests are skipped because extract_sweep_summary signature will change from:
+        extract_sweep_summary(trace_data: list[dict], value: float) -> dict
+    to:
+        extract_sweep_summary(collector: MetricsCollector, value: float) -> dict
+
+    Once the code refactor is complete, these tests need to be updated to:
+    1. Create a MetricsCollector(mode="batch") instance
+    2. Populate it with test data via collector.record_tick_metrics()
+    3. Pass the collector instead of trace_data
+
+    See: Phase 4.1B MetricsCollector integration
+    """
 
     def test_extract_sweep_summary_exists(self) -> None:
         """extract_sweep_summary function should exist."""

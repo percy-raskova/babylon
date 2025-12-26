@@ -55,6 +55,19 @@ repos:
         stages: [pre-commit]
 
   # ==========================================================================
+  # COMPLEXITY GATE - Catch high-complexity functions before CI
+  # ==========================================================================
+  - repo: local
+    hooks:
+      - id: complexity-check
+        name: complexity (CC > 15)
+        entry: poetry run ruff check src/ --select=C90 --no-fix
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+  # ==========================================================================
   # COMMITIZEN - Conventional Commits
   # ==========================================================================
   - repo: https://github.com/commitizen-tools/commitizen

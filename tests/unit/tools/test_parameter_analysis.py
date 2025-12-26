@@ -109,21 +109,36 @@ class TestModuleStructure:
 class TestRunTrace:
     """Test the run_trace function."""
 
-    def test_run_trace_returns_list_of_dicts(self) -> None:
-        """Verify run_trace returns a list of dictionaries."""
+    def test_run_trace_returns_collector_config_defines(self) -> None:
+        """Verify run_trace returns (MetricsCollector, SimulationConfig, GameDefines)."""
+        from babylon.config.defines import GameDefines
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.config import SimulationConfig
+
         module = load_parameter_analysis_module()
 
-        result = module.run_trace(max_ticks=3)
+        collector, config, defines = module.run_trace(max_ticks=3)
 
-        assert isinstance(result, list), f"Expected list, got {type(result)}"
-        assert len(result) > 0, "Expected non-empty result list"
-        assert all(isinstance(item, dict) for item in result), "All items should be dictionaries"
+        assert isinstance(collector, MetricsCollector), (
+            f"Expected MetricsCollector, got {type(collector)}"
+        )
+        assert isinstance(config, SimulationConfig), (
+            f"Expected SimulationConfig, got {type(config)}"
+        )
+        assert isinstance(defines, GameDefines), f"Expected GameDefines, got {type(defines)}"
+
+        # to_csv_rows() should return list of dicts
+        rows = collector.to_csv_rows()
+        assert isinstance(rows, list), "to_csv_rows should return list"
+        assert len(rows) > 0, "Should have at least one row"
+        assert all(isinstance(item, dict) for item in rows), "All items should be dicts"
 
     def test_run_trace_respects_tick_limit(self) -> None:
         """Verify run_trace stops at max_ticks."""
         module = load_parameter_analysis_module()
 
-        result = module.run_trace(max_ticks=5)
+        collector, _config, _defines = module.run_trace(max_ticks=5)
+        result = collector.to_csv_rows()
 
         # Should have at most 5 ticks (could be fewer if entity dies)
         assert len(result) <= 5, f"Expected <= 5 ticks, got {len(result)}"
@@ -133,7 +148,8 @@ class TestRunTrace:
         """Verify tick numbers in result are sequential starting from 0."""
         module = load_parameter_analysis_module()
 
-        result = module.run_trace(max_ticks=5)
+        collector, _config, _defines = module.run_trace(max_ticks=5)
+        result = collector.to_csv_rows()
 
         # Tick numbers should be 0, 1, 2, ... in order
         for i, tick_data in enumerate(result):
@@ -144,14 +160,16 @@ class TestRunTrace:
         module = load_parameter_analysis_module()
 
         # Run with default extraction
-        result_default = module.run_trace(max_ticks=10)
+        collector_default, _, _ = module.run_trace(max_ticks=10)
+        result_default = collector_default.to_csv_rows()
 
         # Run with very low extraction (should survive longer)
-        result_low = module.run_trace(
+        collector_low, _, _ = module.run_trace(
             param_path="economy.extraction_efficiency",
             param_value=0.01,
             max_ticks=10,
         )
+        result_low = collector_low.to_csv_rows()
 
         # Both should produce results
         assert len(result_default) > 0, "Default trace should produce results"
@@ -182,7 +200,8 @@ class TestWriteCsv:
         output_path = tmp_path / "test_columns.csv"
 
         # Run a trace and write to CSV
-        trace_data = module.run_trace(max_ticks=3)
+        collector, _config, _defines = module.run_trace(max_ticks=3)
+        trace_data = collector.to_csv_rows()
         module.write_csv(trace_data, output_path)
 
         # Read CSV and check columns
@@ -214,7 +233,8 @@ class TestWriteCsv:
         output_path = tmp_path / "test_readable.csv"
 
         # Run a trace and write to CSV
-        trace_data = module.run_trace(max_ticks=3)
+        collector, _config, _defines = module.run_trace(max_ticks=3)
+        trace_data = collector.to_csv_rows()
         module.write_csv(trace_data, output_path)
 
         # Read CSV and verify we can parse rows
@@ -272,7 +292,8 @@ class TestIntegration:
         output_path = tmp_path / "full_trace.csv"
 
         # Run full trace
-        trace_data = module.run_trace(max_ticks=10)
+        collector, _config, _defines = module.run_trace(max_ticks=10)
+        trace_data = collector.to_csv_rows()
 
         # Write to CSV
         module.write_csv(trace_data, output_path)
@@ -291,7 +312,8 @@ class TestIntegration:
         module = load_parameter_analysis_module()
 
         # Run trace with enough ticks to see changes
-        trace_data = module.run_trace(max_ticks=10)
+        collector, _config, _defines = module.run_trace(max_ticks=10)
+        trace_data = collector.to_csv_rows()
 
         # Get wealth values for Periphery Worker
         p_w_wealths = [
@@ -319,7 +341,8 @@ class TestIntegration:
         these new columns are present in the output.
         """
         module = load_parameter_analysis_module()
-        trace_data = module.run_trace(max_ticks=5)
+        collector, _config, _defines = module.run_trace(max_ticks=5)
+        trace_data = collector.to_csv_rows()
 
         # Must have at least one tick of data
         assert len(trace_data) > 0, "run_trace should return at least one row"
@@ -333,6 +356,62 @@ class TestIntegration:
         assert "current_super_wage_rate" in first_row, "Missing current_super_wage_rate"
         assert "global_tension" in first_row, "Missing global_tension"
         assert "pool_ratio" in first_row, "Missing pool_ratio"
+
+    @pytest.mark.integration
+    def test_json_export_captures_dag_structure(self, tmp_path: Path) -> None:
+        """Verify JSON export captures causal DAG hierarchy.
+
+        Sprint 4.1C: JSON export should preserve the 3-level DAG structure:
+        - Level 1 (Fundamental): GameDefines parameters
+        - Level 2 (Config): SimulationConfig settings
+        - Level 3 (Emergent): SweepSummary computed from simulation
+        """
+        import json
+
+        module = load_parameter_analysis_module()
+
+        csv_path = tmp_path / "trace.csv"
+        json_path = tmp_path / "trace.json"
+
+        # Run trace
+        collector, config, defines = module.run_trace(max_ticks=5)
+        trace_data = collector.to_csv_rows()
+        module.write_csv(trace_data, csv_path)
+
+        # Export JSON
+        collector.export_json(json_path, defines, config, csv_path=csv_path)
+
+        # Verify JSON structure
+        assert json_path.exists(), "JSON file not created"
+        data = json.loads(json_path.read_text())
+
+        # Check schema version
+        assert "schema_version" in data, "Missing schema_version"
+        assert data["schema_version"] == "1.0", "Unexpected schema version"
+
+        # Check DAG levels documented
+        assert "causal_dag_levels" in data, "Missing causal_dag_levels"
+        assert "fundamental" in data["causal_dag_levels"]
+        assert "config" in data["causal_dag_levels"]
+        assert "emergent" in data["causal_dag_levels"]
+
+        # Check fundamentals (GameDefines)
+        assert "fundamentals" in data, "Missing fundamentals"
+        assert "economy" in data["fundamentals"], "Missing economy in fundamentals"
+        assert "extraction_efficiency" in data["fundamentals"]["economy"]
+
+        # Check config (SimulationConfig)
+        assert "config" in data, "Missing config"
+
+        # Check summary (SweepSummary - emergent)
+        assert "summary" in data, "Missing summary"
+        assert data["summary"] is not None, "Summary should not be None"
+        assert "ticks_survived" in data["summary"]
+        assert "outcome" in data["summary"]
+
+        # Check CSV reference
+        assert "time_series_csv" in data, "Missing time_series_csv"
+        assert str(csv_path) in data["time_series_csv"]
 
 
 # =============================================================================

@@ -21,7 +21,7 @@ Sprint 4.2: Added Persona support for customizable narrative voices.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from babylon.ai.llm_provider import LLMProvider
 from babylon.ai.prompt_builder import DialecticalPromptBuilder
@@ -35,6 +35,42 @@ if TYPE_CHECKING:
     from babylon.rag.rag_pipeline import RagPipeline
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# DUAL NARRATIVE SYSTEM PROMPTS - The Gramscian Wire
+# =============================================================================
+
+CORPORATE_SYSTEM_PROMPT = """
+You are a spokesperson for the stability of the realm.
+Your role is to report events in a way that:
+- Downplays crisis and unrest
+- Uses passive voice to obscure agency
+- Frames protesters/strikers as disruptive
+- Presents authorities as reasonable
+- Never questions systemic causes
+- Treats the current order as natural and inevitable
+
+Report the following event in 2-3 sentences.
+Use the style of a professional news wire service.
+Be measured, "neutral," and reassuring.
+"""
+
+LIBERATED_SYSTEM_PROMPT = """
+You are a revolutionary radio operator broadcasting from an underground network.
+Your role is to:
+- Expose the contradictions in this event
+- Use active voice to name oppressors
+- Connect specific incidents to systemic analysis
+- Frame workers/protesters as righteous resistance
+- Call for solidarity and collective action
+- Treat the current order as historical and changeable
+
+Report the following event in 2-3 sentences.
+Use the aesthetic of intercepted underground transmissions.
+Be urgent, clear, and inspiring.
+Wrap transmission in >>> markers.
+"""
 
 
 class NarrativeDirector:
@@ -143,6 +179,7 @@ class NarrativeDirector:
         self._llm = llm
         self._narrative_log: list[str] = []
         self._config: SimulationConfig | None = None
+        self._dual_narratives: dict[int, dict[str, Any]] = {}
 
     @property
     def name(self) -> str:
@@ -181,6 +218,18 @@ class NarrativeDirector:
             List of generated narrative strings.
         """
         return list(self._narrative_log)
+
+    @property
+    def dual_narratives(self) -> dict[int, dict[str, Any]]:
+        """Return dual narratives indexed by tick.
+
+        Returns a copy of the internal dict to prevent external modification.
+
+        Returns:
+            Dict mapping tick numbers to narrative entries containing
+            'event', 'corporate', and 'liberated' keys.
+        """
+        return dict(self._dual_narratives)
 
     def on_simulation_start(
         self,
@@ -244,10 +293,29 @@ class NarrativeDirector:
         if self._use_llm:
             logger.debug("[%s] Full context:\n%s", self.name, context_block)
 
+        # Generate dual narratives for significant events (Gramscian Wire MVP)
+        # Track which events get dual narratives to avoid duplicate LLM calls
+        dual_narrative_ticks: set[int] = set()
+        if self._use_llm and self._llm is not None:
+            for event in new_events:
+                if event.event_type in self.SIGNIFICANT_EVENT_TYPES:
+                    corporate = self._generate_perspective(event, "CORPORATE")
+                    liberated = self._generate_perspective(event, "LIBERATED")
+                    self._dual_narratives[event.tick] = {
+                        "event": event,
+                        "corporate": corporate,
+                        "liberated": liberated,
+                    }
+                    dual_narrative_ticks.add(event.tick)
+
         # Generate narrative for significant events (Sprint 4.1)
+        # Skip events that already got dual narratives
         if self._use_llm and self._llm is not None and new_events:
             significant_events = [
-                e for e in new_events if e.event_type in self.SIGNIFICANT_EVENT_TYPES
+                e
+                for e in new_events
+                if e.event_type in self.SIGNIFICANT_EVENT_TYPES
+                and e.tick not in dual_narrative_ticks
             ]
             if significant_events:
                 system_prompt = self._prompt_builder.build_system_prompt()
@@ -348,3 +416,35 @@ class NarrativeDirector:
         """
         for event in events:
             logger.info("[%s] Tick %d: %s", self.name, tick, event)
+
+    def _generate_perspective(
+        self,
+        event: SimulationEvent,
+        perspective: Literal["CORPORATE", "LIBERATED"],
+    ) -> str:
+        """Generate narrative from specified perspective.
+
+        Args:
+            event: The simulation event to narrate.
+            perspective: "CORPORATE" or "LIBERATED" voice.
+
+        Returns:
+            Generated narrative text.
+        """
+        if self._llm is None:
+            return f"[{perspective}] {event.event_type.value}"
+
+        system_prompt = (
+            CORPORATE_SYSTEM_PROMPT if perspective == "CORPORATE" else LIBERATED_SYSTEM_PROMPT
+        )
+
+        event_context = self._prompt_builder._format_event(event)
+
+        try:
+            return self._llm.generate(
+                prompt=event_context,
+                system_prompt=system_prompt,
+            )
+        except Exception as e:
+            logger.warning("[%s] %s generation failed: %s", self.name, perspective, e)
+            return f"[{perspective}] {event.event_type.value}"

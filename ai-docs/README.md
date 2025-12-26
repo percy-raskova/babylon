@@ -18,6 +18,7 @@ This directory helps AI assistants:
 | **ROADMAP & STATUS** |||
 | `epochs-overview.md` | **CANONICAL ROADMAP** - Epoch + Slice model | Markdown |
 | `state.yaml` | Current project state, test counts, slice status | YAML |
+| `epoch-readiness-review.yaml` | Critical analysis: strengths, concerns, staging recommendations | YAML |
 | `roadmap.md` | ~~Old Phase-based roadmap~~ (DEPRECATED - see epochs-overview.md) | Markdown |
 | **SPECIFICATIONS** |||
 | `metabolic-slice.yaml` | Slice 1.4 spec - MetabolismSystem, biocapacity | YAML |

@@ -22,6 +22,7 @@ Phase 4a: Refactored to use ServiceContainer for dependency injection.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import GameDefines
@@ -31,6 +32,7 @@ from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
+from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.struggle import StruggleSystem
@@ -55,6 +57,8 @@ from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
     import networkx as nx
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationEngine:
@@ -105,7 +109,8 @@ class SimulationEngine:
 # modifies ideology BEFORE the general consciousness drift calculation
 # StruggleSystem runs AFTER SurvivalSystem (needs P values), BEFORE ContradictionSystem
 # The solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1
-# TerritorySystem runs LAST - spatial dynamics are superstructure effects
+# TerritorySystem runs LAST before MetabolismSystem - spatial dynamics are superstructure effects
+# MetabolismSystem runs AFTER TerritorySystem - ecological limits are material substrate
 _DEFAULT_SYSTEMS: list[System] = [
     ImperialRentSystem(),
     SolidaritySystem(),  # Sprint 3.4.2: Proletarian Internationalism
@@ -114,6 +119,7 @@ _DEFAULT_SYSTEMS: list[System] = [
     StruggleSystem(),  # Agency Layer: George Floyd Dynamic
     ContradictionSystem(),
     TerritorySystem(),  # Sprint 3.5.4: Layer 0 - Territorial Substrate
+    MetabolismSystem(),  # Slice 1.4: Metabolic Rift
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
@@ -285,9 +291,17 @@ def step(
         4. Contradictions (tension from all above)
         5. Event capture (log significant changes)
     """
-    # Short-circuit for empty state
-    if not state.entities:
+    # Short-circuit for empty state (no entities AND no territories)
+    if not state.entities and not state.territories:
         return state.model_copy(update={"tick": state.tick + 1})
+
+    # Cost-checking: Log warnings for insolvent states (Epoch 1: The Ledger)
+    for state_id, finance in state.state_finances.items():
+        if finance.treasury < finance.burn_rate:
+            logger.warning(
+                f"State {state_id} treasury ({finance.treasury:.2f}) < "
+                f"burn_rate ({finance.burn_rate:.2f})"
+            )
 
     # Convert to mutable graph for system application
     G = state.to_graph()

@@ -48,7 +48,9 @@ if TYPE_CHECKING:
 # CONSTANTS
 # =============================================================================
 
-# Thresholds for narrative detection
+# Thresholds for narrative detection (DEPRECATED: use GameDefines.topology.*)
+# These constants are kept for backward compatibility but should not be used
+# in new code. TopologyMonitor now accepts threshold parameters in __init__.
 GASEOUS_THRESHOLD = 0.1  # percolation_ratio below this = atomized
 CONDENSATION_THRESHOLD = 0.5  # percolation_ratio crossing this = phase shift
 BRITTLE_MULTIPLIER = 2  # potential > actual * this = brittle
@@ -272,6 +274,9 @@ class TopologyMonitor:
         resilience_test_interval: int = 5,
         resilience_removal_rate: float = DEFAULT_REMOVAL_RATE,
         logger: logging.Logger | None = None,
+        gaseous_threshold: float | None = None,
+        condensation_threshold: float | None = None,
+        vanguard_threshold: float | None = None,
     ) -> None:
         """Initialize TopologyMonitor.
 
@@ -281,7 +286,18 @@ class TopologyMonitor:
             resilience_removal_rate: Fraction of nodes to remove in test.
                 Default 0.2 (20%).
             logger: Logger instance (default: module logger)
+            gaseous_threshold: Percolation ratio below this = atomized.
+                Defaults to GameDefines.topology.gaseous_threshold (0.1).
+            condensation_threshold: Percolation ratio for phase transition.
+                Defaults to GameDefines.topology.condensation_threshold (0.5).
+            vanguard_threshold: Cadre density threshold for solid phase.
+                Defaults to GameDefines.topology.vanguard_density_threshold (0.5).
         """
+        # Import here to avoid circular dependency
+        from babylon.config.defines import GameDefines
+
+        defaults = GameDefines()
+
         self._history: list[TopologySnapshot] = []
         self._previous_percolation: float = 0.0
         self._resilience_interval: int = resilience_test_interval
@@ -290,6 +306,23 @@ class TopologyMonitor:
         # Sprint 3.3: Phase transition event emission
         self._previous_phase: str | None = None
         self._pending_events: list[SimulationEvent] = []
+
+        # Configurable thresholds (defaults from GameDefines)
+        self._gaseous_threshold: float = (
+            gaseous_threshold
+            if gaseous_threshold is not None
+            else defaults.topology.gaseous_threshold
+        )
+        self._condensation_threshold: float = (
+            condensation_threshold
+            if condensation_threshold is not None
+            else defaults.topology.condensation_threshold
+        )
+        self._vanguard_threshold: float = (
+            vanguard_threshold
+            if vanguard_threshold is not None
+            else defaults.topology.vanguard_density_threshold
+        )
 
     @property
     def name(self) -> str:
@@ -306,10 +339,12 @@ class TopologyMonitor:
 
         Uses a 4-phase model based on percolation theory:
 
-        - Gaseous: percolation < 0.1 (atomized, no coordination)
-        - Transitional: 0.1 <= percolation < 0.5 (emerging structure)
-        - Liquid: percolation >= 0.5, cadre_density < 0.5 (mass movement, weak ties)
-        - Solid: percolation >= 0.5, cadre_density >= 0.5 (vanguard party, strong ties)
+        - Gaseous: percolation < gaseous_threshold (atomized, no coordination)
+        - Transitional: gaseous <= percolation < condensation (emerging structure)
+        - Liquid: percolation >= condensation, cadre < vanguard (mass movement)
+        - Solid: percolation >= condensation, cadre >= vanguard (vanguard party)
+
+        Thresholds are configurable via constructor or GameDefines.topology.
 
         Args:
             percolation_ratio: L_max / N ratio from topology analysis.
@@ -319,12 +354,12 @@ class TopologyMonitor:
         Returns:
             Phase classification: "gaseous", "transitional", "liquid", or "solid".
         """
-        if percolation_ratio < GASEOUS_THRESHOLD:
+        if percolation_ratio < self._gaseous_threshold:
             return "gaseous"
-        if percolation_ratio < CONDENSATION_THRESHOLD:
+        if percolation_ratio < self._condensation_threshold:
             return "transitional"
-        # percolation >= 0.5: distinguish liquid vs solid by cadre density
-        if cadre_density >= CONDENSATION_THRESHOLD:
+        # percolation >= condensation: distinguish liquid vs solid by cadre density
+        if cadre_density >= self._vanguard_threshold:
             return "solid"
         return "liquid"
 
@@ -470,7 +505,7 @@ class TopologyMonitor:
             snapshot: Current TopologySnapshot to analyze
         """
         # Gaseous state detection
-        if snapshot.percolation_ratio < GASEOUS_THRESHOLD:
+        if snapshot.percolation_ratio < self._gaseous_threshold:
             self._logger.info(
                 "STATE: Gaseous. Movement is atomized. "
                 f"(percolation={snapshot.percolation_ratio:.2f}, "
@@ -479,8 +514,8 @@ class TopologyMonitor:
 
         # Phase shift detection (crossing condensation threshold)
         if (
-            self._previous_percolation < CONDENSATION_THRESHOLD
-            and snapshot.percolation_ratio >= CONDENSATION_THRESHOLD
+            self._previous_percolation < self._condensation_threshold
+            and snapshot.percolation_ratio >= self._condensation_threshold
         ):
             self._logger.info(
                 "PHASE SHIFT: Condensation detected. A Vanguard Party has formed. "

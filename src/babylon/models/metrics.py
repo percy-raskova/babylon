@@ -207,6 +207,23 @@ class TickMetrics(BaseModel):
         description="C_b.wealth - P_w.wealth (unbounded)",
     )
 
+    # Ecological Metrics (Slice 1.4)
+    overshoot_ratio: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Global ecological overshoot ratio (consumption/biocapacity)",
+    )
+    total_biocapacity: Currency = Field(
+        default=Currency(0.0),
+        ge=0.0,
+        description="Sum of all territory biocapacity",
+    )
+    total_consumption: Currency = Field(
+        default=Currency(0.0),
+        ge=0.0,
+        description="Sum of all class consumption needs",
+    )
+
 
 class SweepSummary(BaseModel):
     """Summary statistics for a completed simulation run.

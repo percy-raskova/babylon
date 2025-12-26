@@ -109,6 +109,18 @@ class EconomyDefines(BaseModel):
         description="P(S|R)/P(S|A) ratio threshold for subsidy",
     )
 
+    # Negligible value thresholds (noise filtering)
+    negligible_rent: float = Field(
+        default=0.01,
+        ge=0.0,
+        description="Rent below this threshold skips event emission",
+    )
+    negligible_subsidy: float = Field(
+        default=0.01,
+        ge=0.0,
+        description="Subsidy below this threshold skips processing",
+    )
+
 
 class SurvivalDefines(BaseModel):
     """Survival calculus coefficients."""
@@ -280,6 +292,67 @@ class TerritoryDefines(BaseModel):
     )
 
 
+class TopologyDefines(BaseModel):
+    """Phase transition coefficients for solidarity network analysis.
+
+    The topology system tracks phase transitions in class solidarity:
+    - Gaseous: Atomized, no collective action capacity
+    - Transitional: Solidarity building, weak ties forming
+    - Liquid: Mass movement (percolation but low cadre density)
+    - Solid: Vanguard party (percolation with high cadre density)
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    gaseous_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Percolation ratio below this = atomized (no collective action)",
+    )
+    condensation_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Percolation ratio for phase transition (gaseous→liquid/solid)",
+    )
+    vanguard_density_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Cadre density threshold for vanguard party (liquid→solid)",
+    )
+
+
+class MetabolismDefines(BaseModel):
+    """Metabolic rift coefficients (Slice 1.4 - Ecological Limits).
+
+    The Metabolism System tracks the widening rift between extraction and regeneration:
+    - Biocapacity regeneration and depletion
+    - ECOLOGICAL_OVERSHOOT event when consumption exceeds biocapacity
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    entropy_factor: float = Field(
+        default=1.2,
+        gt=1.0,
+        le=3.0,
+        description="Extraction costs more than it yields (thermodynamic inefficiency)",
+    )
+    overshoot_threshold: float = Field(
+        default=1.0,
+        gt=0.0,
+        le=2.0,
+        description="Consumption/biocapacity ratio triggering ECOLOGICAL_OVERSHOOT",
+    )
+    max_overshoot_ratio: float = Field(
+        default=999.0,
+        gt=0.0,
+        description="Cap for overshoot ratio when biocapacity depleted",
+    )
+
+
 class StruggleDefines(BaseModel):
     """Struggle dynamics coefficients (Agency Layer - "George Floyd" Dynamic).
 
@@ -354,6 +427,8 @@ class GameDefines(BaseModel):
     - tension: Tension dynamics
     - consciousness: Consciousness drift
     - territory: Territory dynamics
+    - topology: Phase transition thresholds (gaseous/liquid/solid)
+    - metabolism: Metabolic rift (ecological limits)
     - struggle: Struggle dynamics (Agency Layer)
     - initial: Initial conditions
     """
@@ -367,6 +442,8 @@ class GameDefines(BaseModel):
     tension: TensionDefines = Field(default_factory=TensionDefines)
     consciousness: ConsciousnessDefines = Field(default_factory=ConsciousnessDefines)
     territory: TerritoryDefines = Field(default_factory=TerritoryDefines)
+    topology: TopologyDefines = Field(default_factory=TopologyDefines)
+    metabolism: MetabolismDefines = Field(default_factory=MetabolismDefines)
     struggle: StruggleDefines = Field(default_factory=StruggleDefines)
     initial: InitialDefines = Field(default_factory=InitialDefines)
 
@@ -455,6 +532,8 @@ class GameDefines(BaseModel):
             tension=TensionDefines(**data.get("tension", {})),
             consciousness=ConsciousnessDefines(**data.get("consciousness", {})),
             territory=TerritoryDefines(**data.get("territory", {})),
+            topology=TopologyDefines(**data.get("topology", {})),
+            metabolism=MetabolismDefines(**data.get("metabolism", {})),
             struggle=StruggleDefines(**data.get("struggle", {})),
             initial=InitialDefines(**data.get("initial", {})),
         )

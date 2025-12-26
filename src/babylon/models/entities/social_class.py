@@ -18,7 +18,7 @@ multi-dimensional IdeologicalProfile containing:
 
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from babylon.models.enums import SocialRole
 from babylon.models.types import Currency, Probability
@@ -266,6 +266,10 @@ class SocialClass(BaseModel):
         )
 
         cls._convert_legacy_ideology(data)
+
+        # Remove computed fields that may be present from serialization (Slice 1.4)
+        data.pop("consumption_needs", None)
+
         return data
 
     # Required fields
@@ -338,6 +342,24 @@ class SocialClass(BaseModel):
         ge=0.0,
         description="PPP multiplier applied to wages (1.0 = no bonus)",
     )
+
+    # Metabolic Consumption (Slice 1.4)
+    s_bio: Currency = Field(
+        default=0.01,
+        ge=0.0,
+        description="Biological minimum for survival (calories, water)",
+    )
+    s_class: Currency = Field(
+        default=0.0,
+        ge=0.0,
+        description="Social reproduction requirement (lifestyle maintenance)",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def consumption_needs(self) -> Currency:
+        """Total consumption required per tick (Wealth-independent demand)."""
+        return Currency(self.s_bio + self.s_class)
 
     @property
     def economic(self) -> EconomicComponent:

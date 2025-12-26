@@ -550,3 +550,174 @@ class TestTerritorySinkNode:
             territory_type=TerritoryType.PERIPHERY,
         )
         assert territory.is_sink_node is False
+
+
+# =============================================================================
+# METABOLIC DYNAMICS TESTS (Slice 1.4)
+# =============================================================================
+
+
+@pytest.mark.topology
+class TestTerritoryMetabolicDefaults:
+    """Territory metabolic fields should have sensible defaults."""
+
+    def test_biocapacity_defaults_to_100(self) -> None:
+        """Biocapacity defaults to 100.0 (full stock)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+        )
+        assert territory.biocapacity == 100.0
+
+    def test_max_biocapacity_defaults_to_100(self) -> None:
+        """Max biocapacity defaults to 100.0 (carrying capacity)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+        )
+        assert territory.max_biocapacity == 100.0
+
+    def test_regeneration_rate_defaults_to_0_02(self) -> None:
+        """Regeneration rate defaults to 2% per tick."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+        )
+        assert territory.regeneration_rate == 0.02
+
+    def test_extraction_intensity_defaults_to_0(self) -> None:
+        """Extraction intensity defaults to 0 (no extraction)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+        )
+        assert territory.extraction_intensity == 0.0
+
+
+@pytest.mark.topology
+class TestTerritoryMetabolicConstraints:
+    """Territory metabolic fields should be properly constrained."""
+
+    def test_biocapacity_accepts_zero(self) -> None:
+        """Zero biocapacity is valid (depleted ecosystem)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            biocapacity=0.0,
+        )
+        assert territory.biocapacity == 0.0
+
+    def test_biocapacity_rejects_negative(self) -> None:
+        """Negative biocapacity is invalid."""
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                biocapacity=-10.0,
+            )
+
+    def test_max_biocapacity_accepts_zero(self) -> None:
+        """Zero max biocapacity is valid (barren land)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            max_biocapacity=0.0,
+        )
+        assert territory.max_biocapacity == 0.0
+
+    def test_max_biocapacity_rejects_negative(self) -> None:
+        """Negative max biocapacity is invalid."""
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                max_biocapacity=-50.0,
+            )
+
+    def test_regeneration_rate_accepts_zero(self) -> None:
+        """Zero regeneration rate is valid (dead ecosystem)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            regeneration_rate=0.0,
+        )
+        assert territory.regeneration_rate == 0.0
+
+    def test_regeneration_rate_accepts_one(self) -> None:
+        """100% regeneration rate is valid (edge case)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            regeneration_rate=1.0,
+        )
+        assert territory.regeneration_rate == 1.0
+
+    def test_regeneration_rate_rejects_negative(self) -> None:
+        """Negative regeneration rate is invalid."""
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                regeneration_rate=-0.01,
+            )
+
+    def test_regeneration_rate_rejects_greater_than_one(self) -> None:
+        """Regeneration rate > 1.0 is invalid."""
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                regeneration_rate=1.1,
+            )
+
+    def test_extraction_intensity_accepts_zero(self) -> None:
+        """Zero extraction intensity is valid (no extraction)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            extraction_intensity=0.0,
+        )
+        assert territory.extraction_intensity == 0.0
+
+    def test_extraction_intensity_accepts_one(self) -> None:
+        """100% extraction intensity is valid (maximum exploitation)."""
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.RESIDENTIAL,
+            extraction_intensity=1.0,
+        )
+        assert territory.extraction_intensity == 1.0
+
+    def test_extraction_intensity_rejects_negative(self) -> None:
+        """Negative extraction intensity is invalid."""
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                extraction_intensity=-0.1,
+            )
+
+    def test_extraction_intensity_rejects_greater_than_one(self) -> None:
+        """Extraction intensity > 1.0 is invalid."""
+        with pytest.raises(ValidationError):
+            Territory(
+                id="T001",
+                name="Test",
+                sector_type=SectorType.RESIDENTIAL,
+                extraction_intensity=1.5,
+            )

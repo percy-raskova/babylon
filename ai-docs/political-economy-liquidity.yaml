@@ -553,41 +553,68 @@ integration_points:
 roadmap:
   epoch_1:
     name: "The Ledger"
-    status: "planned"
+    status: "COMPLETE"
+    completed_date: "2025-12-26"
     description: |
       Basic data models and cost-checking infrastructure.
       No dynamic effects yet - just tracking and validation.
 
     deliverables:
       - task: "Create StateFinance Pydantic model"
+        status: "COMPLETE"
         location: "src/babylon/models/entities/state_finance.py"
-        fields: ["treasury", "burn_rate", "tax_rate", "debt_level"]
-        tests: "tests/unit/models/test_state_finance.py"
+        fields: ["treasury", "police_budget", "social_reproduction_budget", "tax_rate", "tribute_income", "debt_level", "debt_ceiling"]
+        computed_fields: ["burn_rate"]
+        tests: "tests/unit/models/test_state_finance.py (55 tests)"
 
       - task: "Create RevolutionaryFinance Pydantic model"
+        status: "COMPLETE"
         location: "src/babylon/models/entities/revolutionary_finance.py"
-        fields: ["war_chest", "operational_burn", "heat", "reformist_drift"]
-        tests: "tests/unit/models/test_revolutionary_finance.py"
+        fields: ["war_chest", "operational_burn", "dues_income", "expropriation_income", "donor_income", "heat", "reformist_drift"]
+        tests: "tests/unit/models/test_revolutionary_finance.py (56 tests)"
 
       - task: "Create PrecarityState Pydantic model"
+        status: "COMPLETE"
         location: "src/babylon/models/entities/precarity_state.py"
-        fields: ["nominal_wage", "ppp_factor", "inflation_index", "real_wage"]
-        tests: "tests/unit/models/test_precarity_state.py"
+        fields: ["nominal_wage", "ppp_factor", "inflation_index", "subsistence_threshold", "organization"]
+        computed_fields: ["real_wage", "precarity_index", "proletarianization_risk"]
+        tests: "tests/unit/models/test_precarity_state.py (65 tests)"
 
       - task: "Add liquidity fields to WorldState"
+        status: "COMPLETE"
         location: "src/babylon/models/world_state.py"
         integration: "state_finances: dict[str, StateFinance]"
+        graph_integration: "G.graph['state_finances'] metadata"
+        tests: "tests/unit/models/test_world_state.py::TestStateFinancesIntegration (6 tests)"
 
       - task: "Implement cost-checking in step()"
+        status: "COMPLETE"
         location: "src/babylon/engine/simulation_engine.py"
-        behavior: "Validate treasury >= burn_rate, log warnings"
+        behavior: "Logs warning when treasury < burn_rate for each state"
+        tests: "tests/unit/engine/test_simulation_engine.py::TestCostChecking (5 tests)"
 
     acceptance_criteria:
-      - "All three finance models pass validation tests"
-      - "WorldState serializes/deserializes with finance data"
-      - "step() logs when treasury < burn_rate"
+      - "[x] All three finance models pass validation tests (187 tests)"
+      - "[x] WorldState serializes/deserializes with finance data"
+      - "[x] step() logs when treasury < burn_rate"
 
-    estimated_effort: "1 sprint (3-5 days)"
+    commits:
+      - "404f793: test(models): add failing tests for finance models (TDD Red Phase)"
+      - "aa49d35: feat(models): implement finance models for Political Economy of Liquidity"
+      - "535e138: feat(engine): integrate StateFinance with WorldState and add cost-checking"
+
+    implementation_notes: |
+      Implemented using strict TDD workflow:
+      1. RED Phase: Wrote 187 failing tests across 3 model test files
+      2. GREEN Phase: Implemented models to pass all tests
+      3. Integration: Added state_finances to WorldState with graph serialization
+      4. Cost-checking: Added treasury < burn_rate warning in step()
+
+      Key design decisions:
+      - StateFinance integrated into WorldState (others exist but not wired)
+      - burn_rate is a computed field (police_budget + social_reproduction_budget)
+      - PrecarityState stores subsistence_threshold and organization for computed fields
+      - All models use frozen=True for immutability
 
   epoch_2:
     name: "Friction"

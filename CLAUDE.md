@@ -160,7 +160,7 @@ SimulationEngine.run_tick(graph, services, context)
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems
 - `src/babylon/engine/services.py` - ServiceContainer (DI container)
-- `src/babylon/engine/event_bus.py` - Publish/subscribe events (11 EventTypes)
+- `src/babylon/engine/event_bus.py` - Publish/subscribe events (12 EventTypes)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`
@@ -188,13 +188,16 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 ## Formula System
 
-12 formulas in `src/babylon/systems/formulas.py`:
+17 formulas in `src/babylon/systems/formulas.py`:
 
 | Category | Formulas |
 |----------|----------|
 | Fundamental Theorem | `calculate_imperial_rent`, `calculate_labor_aristocracy_ratio`, `is_labor_aristocracy`, `calculate_consciousness_drift` |
 | Survival Calculus | `calculate_acquiescence_probability`, `calculate_revolution_probability`, `calculate_crossover_threshold`, `apply_loss_aversion` |
 | Unequal Exchange | `calculate_exchange_ratio`, `calculate_exploitation_rate`, `calculate_value_transfer`, `prebisch_singer_effect` |
+| Solidarity | `calculate_solidarity_transmission`, `calculate_ideological_routing` |
+| Dynamic Balance | `calculate_bourgeoisie_decision` |
+| Metabolic Rift | `calculate_biocapacity_delta`, `calculate_overshoot_ratio` |
 
 ## Pytest Markers
 
@@ -277,6 +280,10 @@ def calculate_imperial_rent(wages: Currency, value: Currency) -> Currency:
 **Bifurcation Formula**: When wages fall, agitation energy routes to either Fascism (+1 ideology) or Revolution (-1 ideology) based on SOLIDARITY edge presence.
 
 **Heat Dynamics**: HIGH_PROFILE territories gain heat (state attention), LOW_PROFILE decays heat. Heat >=0.8 triggers eviction pipeline.
+
+**Metabolic Rift**: Ecological limits on capital accumulation:
+- Biocapacity Delta: ΔB = R - (E × η) where R=regeneration, E=extraction, η=entropy
+- Overshoot Ratio: O = C / B where C=consumption, B=biocapacity (O>1 = ecological overshoot)
 
 ## Configuration: GameDefines
 

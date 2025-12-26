@@ -41,8 +41,8 @@ class TestPhaseTransitionEventType:
         assert EventType("phase_transition") == EventType.PHASE_TRANSITION
 
     def test_event_type_count_updated(self) -> None:
-        """EventType count is 11 (original 10 + 1 new PHASE_TRANSITION)."""
-        assert len(EventType) == 11
+        """EventType count is 12 (includes ECOLOGICAL_OVERSHOOT from Slice 1.4)."""
+        assert len(EventType) == 12
 
 
 # =============================================================================

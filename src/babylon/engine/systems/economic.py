@@ -169,7 +169,7 @@ class ImperialRentSystem:
                 tick_context["current_pool"] += rent
 
             # Emit event for AI narrative layer (ignore floating point noise)
-            if rent > 0.01:
+            if rent > services.defines.economy.negligible_rent:
                 tick = context.get("tick", 0)
                 services.event_bus.publish(
                     Event(
@@ -421,7 +421,7 @@ class ImperialRentSystem:
             available_pool = tick_context["current_pool"]
             max_subsidy = min(max_subsidy, available_pool)
 
-            if max_subsidy <= 0.01:
+            if max_subsidy <= services.defines.economy.negligible_subsidy:
                 # Negligible subsidy
                 continue
 

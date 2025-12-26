@@ -178,6 +178,7 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 | 2.3 | Reproductive Labor | L_restore, regeneration via care work |
 | 2.4 | The Wire (Narrative Warfare) | Hegemony mechanics, propaganda actions |
 | 2.5 | Multiple Scenarios | Historical scenarios, custom setups |
+| 2.6 | Kinetic Warfare | Asymmetric logistics, system disruption |
 
 ### Slice 2.1: Demographic Resolution
 
@@ -229,6 +230,18 @@ Full interactive narrative control system based on Gramscian hegemony:
 
 This builds on the Gramscian Wire MVP from Epoch 1 (dual narrative display) by adding player agency over narrative terrain. "The War of Position" becomes playable.
 
+### Slice 2.6: Kinetic Warfare
+
+**Spec:** `ai-docs/kinetic-warfare.yaml`
+
+The "Asymmetric Logistics Engine" - combat as system disruption:
+- **Target Triad:** Extraction (correct), Circulation (trap), Realization (suicide)
+- **The Blowback Formula:** Collateral damage alienates masses
+- **Ultra-Left Deviation:** Game over state from political failure despite military success
+- **Integration:** Cohesion affects attack quality, Wire frames outcomes
+
+This is where the "Ultra-Left Trap" from the Strategy Layer becomes mechanically realized. Players learn that winning battles while losing hearts is the path to defeat.
+
 ---
 
 ## Epoch 3: The Platform (FUTURE)
@@ -241,10 +254,9 @@ This builds on the Gramscian Wire MVP from Epoch 1 (dual narrative display) by a
 
 | Slice | Name | Description |
 |-------|------|-------------|
-| 3.1 | Kinetic Warfare | Asymmetric logistics, sabotage mechanics |
-| 3.2 | Liberation Mechanics | Reversing carceral geography |
-| 3.3 | Scenario Editor | Custom scenario creation |
-| 3.4 | Modding API | External system integration |
+| 3.1 | Liberation Mechanics | Reversing carceral geography |
+| 3.2 | Scenario Editor | Custom scenario creation |
+| 3.3 | Modding API | External system integration |
 
 ---
 

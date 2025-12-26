@@ -26,6 +26,7 @@ This directory helps AI assistants:
 | `strategy-layer.yaml` | Slice 2.2a spec - External Actions, Resource Traps | YAML |
 | `cohesion-mechanic.yaml` | Slice 2.2b spec - Internal Dynamics, Iron Law of Oligarchy | YAML |
 | `gramscian-wire-vision.yaml` | Slice 2.4 spec - Narrative Warfare, Hegemony (Epoch 2) | YAML |
+| `kinetic-warfare.yaml` | Slice 2.6 spec - Asymmetric Logistics, System Disruption | YAML |
 | `formulas-spec.yaml` | All 16 mathematical formulas with signatures | YAML |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor | YAML |
 | **ARCHITECTURE** |||
@@ -75,6 +76,7 @@ For implementation work:
 - **Slice 2.2a** (Strategy Layer): See `ai-docs/strategy-layer.yaml`
 - **Slice 2.2b** (The Vanguard): See `ai-docs/cohesion-mechanic.yaml`
 - **Slice 2.4** (The Wire): See `ai-docs/gramscian-wire-vision.yaml`
+- **Slice 2.6** (Kinetic Warfare): See `ai-docs/kinetic-warfare.yaml`
 
 ## Maintenance
 

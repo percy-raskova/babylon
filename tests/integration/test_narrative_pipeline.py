@@ -1047,7 +1047,8 @@ class TestPersonaIntegration:
         assert "Architect" in system_prompt, (
             "System prompt should contain persona's address term 'Architect'"
         )
-        assert "Marxist" in system_prompt or "Cybernetic" in system_prompt, (
+        # Check that voice content is present (tone or style keywords)
+        assert "Sardonic" in system_prompt or "Visceral" in system_prompt, (
             "System prompt should contain persona's voice style"
         )
 
@@ -1313,9 +1314,9 @@ class TestPersonaIntegration:
         system_prompt = mock_llm.call_history[0].get("system_prompt", "")
         prompt = mock_llm.call_history[0]["prompt"]
 
-        # Percy mentions Liquid/Solid phases in her obsessions
-        assert "Liquid" in system_prompt or "Solid" in system_prompt, (
-            "Percy's obsessions should mention phase states"
+        # Percy's obsessions should be in system prompt
+        assert "rotting" in system_prompt or "chaos" in system_prompt, (
+            "Percy's obsessions should be in system prompt"
         )
         # Event data should be in prompt
         assert "solid" in prompt.lower() or "phase" in prompt.lower()

@@ -277,7 +277,7 @@ class TestNarrativeDirectorIntegration:
         # Verify persona elements are in system prompt
         assert "Persephone" in system_prompt
         assert "Architect" in system_prompt  # address_user_as
-        assert "Dialectical" in system_prompt  # tone
+        assert "Sardonic" in system_prompt or "Prophetic" in system_prompt  # tone
 
 
 class TestHardCaseScenario:

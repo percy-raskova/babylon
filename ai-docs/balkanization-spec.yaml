@@ -1,0 +1,586 @@
+# Balkanization System Specification
+# Epoch 3: The Collapse
+# Date: 2025-12-26
+# Related: ADR029_hybrid_graph_architecture, epoch2-persistence.yaml
+
+meta:
+  version: "1.0.0"
+  status: "specification"
+  epoch: 3
+  codename: "The Collapse"
+  purpose: "Model the fracture of US sovereignty and the emergence of successor states"
+
+  theoretical_mandate: |
+    The core struggle is SETTLERS vs. INDIGENOUS.
+
+    The primary failure mode for the player is not just "Fascism," but also
+    "Settler-Socialism"—movements that claim to be revolutionary but refuse
+    to dismantle the colonial relationship to the land.
+
+    You cannot build socialism on stolen land.
+
+# =============================================================================
+# THEORETICAL FRAMEWORK
+# =============================================================================
+
+theory:
+  settler_colonialism:
+    definition: |
+      The United States is a settler-colonial state. Its existence is predicated on:
+      1. The ongoing theft of Indigenous land (Turtle Island)
+      2. The enslavement and super-exploitation of Black people (New Afrika)
+      3. The extraction of surplus value from the global periphery (Imperial Rent)
+
+      Settler colonialism is not an event in the past—it is an ongoing structure
+      that requires constant reproduction.
+
+    implications:
+      - '"Class struggle" that ignores land is fundamentally limited'
+      - '"Progressive" movements that maintain extraction are part of the problem'
+      - True liberation requires dismantling the settler relationship to land
+
+  the_metabolic_rift:
+    definition: |
+      The rupture in the metabolic interaction between humanity and nature
+      caused by capitalist production and intensified by settler colonialism.
+
+      The settler relationship to land is inherently extractive—land is "resource"
+      to be exploited, not living relation to be sustained.
+
+    mechanics:
+      extraction_causes_rift: |
+        Every tick of extraction degrades Territory.habitability
+        This is true REGARDLESS of who controls the extraction
+        A "socialist" pipeline is still a pipeline
+
+      only_abolition_heals: |
+        Only Sovereigns with extraction_policy: CEASE can stop the degradation
+        Only ABOLISH factions implement CEASE
+        Therefore: only decolonization can resolve the metabolic rift
+
+  the_three_paths:
+    fascist_victory:
+      colonial_stance: "UPHOLD"
+      outcome: "Explicit colonial violence, accelerated extraction, quick collapse"
+      endgame: "ECOLOGICAL_COLLAPSE or NUCLEAR_WAR"
+
+    red_ogv:
+      colonial_stance: "IGNORE"
+      outcome: "Colonialism with red flags, 'sustainable' extraction, slow collapse"
+      endgame: "ECOLOGICAL_COLLAPSE (delayed but inevitable)"
+      trap: |
+        This is the "False Summit"—the player thinks they won the revolution,
+        but they kept the oil pipelines running for "green jobs" and the
+        habitability metric continues to crash.
+
+    true_liberation:
+      colonial_stance: "ABOLISH"
+      outcome: "Decolonization, Land Back, metabolic restoration"
+      endgame: "SUSTAINABLE_FUTURE"
+      requirement: "Coalition of Indigenous Sovereignty + Black Liberation + Anti-Colonial Communists"
+
+# =============================================================================
+# COLONIAL STANCE SYSTEM
+# =============================================================================
+
+colonial_stance:
+  description: |
+    Every Faction and Ideology has a `colonial_stance` property that determines
+    its relationship to settler colonialism. This is the fundamental political axis.
+
+  enum_values:
+    UPHOLD:
+      definition: "Explicitly defend and extend settler sovereignty"
+      examples:
+        - "Fascist movements (MAGA, Patriot Front)"
+        - "Liberal establishment (Democratic/Republican)"
+        - "Settler nationalism"
+      mechanics:
+        extraction_modifier: 1.5  # Intensify extraction
+        violence_modifier: 2.0    # Maximum state violence
+        class_reduction: 0.0      # No class consciousness development
+        metabolic_reduction: -0.5 # Actively accelerate rift
+      extraction_policy: "INTENSIFY"
+
+    IGNORE:
+      definition: "Focus on class struggle while ignoring the colonial question"
+      examples:
+        - "Settler-socialists (DSA, CPUSA)"
+        - "Economistic unions"
+        - "Dogmatic Marxists who dismiss 'identity politics'"
+      mechanics:
+        extraction_modifier: 0.8  # Slightly reduced but continued extraction
+        violence_modifier: 0.5    # Less police violence
+        class_reduction: 0.7      # Good at building class consciousness
+        metabolic_reduction: 0.0  # Does NOTHING for the metabolic rift
+      extraction_policy: "CONTINUE"
+      trap: |
+        THE RED SETTLER TRAP
+
+        If this faction wins:
+        - Class tension decreases (they do address wages, healthcare, etc.)
+        - BUT metabolic tension continues to rise
+        - Territory.habitability continues to degrade
+        - Eventual ECOLOGICAL_COLLAPSE
+
+        The player might think: "I organized the workers, I seized the state, I won!"
+        Then they watch the Habitability metric continue to crash because they
+        kept the oil pipelines running to pay for "Socialist Universal Healthcare."
+
+    ABOLISH:
+      definition: "Dismantle the settler relationship to land"
+      examples:
+        - "Indigenous sovereignty movements (Land Back)"
+        - "Black national liberation (New Afrika)"
+        - "Anti-colonial communists (genuine internationalists)"
+      mechanics:
+        extraction_modifier: 0.0  # Cease extractive production
+        violence_modifier: 0.3    # Defensive violence only
+        class_reduction: 0.5      # Addresses class through decolonization
+        metabolic_reduction: 0.8  # Actually heals the metabolic rift
+      extraction_policy: "CEASE"
+      path: |
+        THE CORRECT PATH
+
+        Only this coalition can achieve True Victory:
+        - Stop extraction (extraction_policy: CEASE)
+        - Begin land restoration (metabolic_reduction > 0)
+        - Habitability stabilizes then improves
+        - Sustainable endgame possible
+
+# =============================================================================
+# FACTION SYSTEM
+# =============================================================================
+
+faction_schema:
+  description: |
+    Factions are political formations that can contest sovereignty. They are
+    distinct from Sovereigns—a Faction can exist without holding power, and
+    a Sovereign's behavior is determined by its ruling Faction.
+
+  node_type: "Faction"
+
+  properties:
+    id:
+      type: "STRING"
+      description: "Unique identifier"
+      format: "FAC_{CODE}"
+      examples:
+        - "FAC_RESTORATIONIST"
+        - "FAC_WORKERS_CONGRESS"
+        - "FAC_DECOLONIAL"
+      primary_key: true
+
+    name:
+      type: "STRING"
+      description: "Human-readable name"
+      examples:
+        - "Restorationist Front"
+        - "Workers' Congress"
+        - "Decolonial Front"
+
+    ideology:
+      type: "STRING"
+      description: "Ideological classification"
+      examples:
+        - "FASCISM"
+        - "SETTLER_SOCIALISM"
+        - "ANTI_COLONIAL_COMMUNISM"
+
+    colonial_stance:
+      type: "ENUM"
+      values: ["UPHOLD", "IGNORE", "ABOLISH"]
+      description: "Relationship to settler colonialism"
+      critical: true
+      note: "This is the fundamental political axis"
+
+    is_settler_formation:
+      type: "BOOLEAN"
+      description: "Does this faction's base come from the settler population?"
+      note: |
+        Important for understanding material interests.
+        Settler workers have a material stake in colonialism (cheap land, jobs on
+        stolen resources, wages subsidized by imperial rent).
+        This doesn't mean they can't support decolonization, but it creates
+        contradictions that must be addressed.
+
+    # === Mechanical Properties ===
+    extraction_modifier:
+      type: "DOUBLE"
+      description: "Multiplier on extraction rate when ruling"
+      constraints: ">= 0.0"
+      derived_from: "colonial_stance"
+
+    violence_modifier:
+      type: "DOUBLE"
+      description: "Multiplier on state violence when ruling"
+      constraints: ">= 0.0"
+      derived_from: "colonial_stance"
+
+    class_reduction:
+      type: "DOUBLE"
+      description: "Effectiveness at reducing class tension"
+      constraints: "[0.0, 1.0]"
+
+    metabolic_reduction:
+      type: "DOUBLE"
+      description: "Effectiveness at healing the metabolic rift"
+      constraints: "[-1.0, 1.0]"  # Negative = accelerates rift
+      critical: true
+      note: "Only ABOLISH factions have positive values"
+
+    color_hex:
+      type: "STRING"
+      description: "UI display color"
+      format: "#RRGGBB"
+
+  example_factions:
+    restorationist_front:
+      id: "FAC_RESTORATIONIST"
+      name: "Restorationist Front"
+      ideology: "FASCISM"
+      colonial_stance: "UPHOLD"
+      is_settler_formation: true
+      extraction_modifier: 1.5
+      violence_modifier: 2.0
+      class_reduction: 0.0
+      metabolic_reduction: -0.5
+      color_hex: "#1A1A1A"  # Black
+      description: |
+        The explicit fascist faction. They promise to "restore" America to
+        a mythologized past of white settler dominance. High violence,
+        accelerated extraction, quick ecological collapse.
+
+    workers_congress:
+      id: "FAC_WORKERS_CONGRESS"
+      name: "Workers' Congress"
+      ideology: "SETTLER_SOCIALISM"
+      colonial_stance: "IGNORE"
+      is_settler_formation: true
+      extraction_modifier: 0.8
+      violence_modifier: 0.5
+      class_reduction: 0.7
+      metabolic_reduction: 0.0
+      color_hex: "#CC0000"  # Red
+      description: |
+        THE TRAP FACTION.
+
+        This faction represents the historical error of settler-socialism.
+        They build strong unions, fight for universal healthcare, maybe even
+        seize the means of production—but they keep the oil pipelines running,
+        the lithium mines operating, the agricultural extraction continuing.
+
+        They will re-implement colonialism with red flags.
+
+        If the player supports this faction and they win:
+        - Class tension decreases (they do good work on wages/healthcare)
+        - BUT habitability continues to crash
+        - The player experiences the theoretical critique through gameplay:
+          "You cannot build socialism on stolen land."
+
+    decolonial_front:
+      id: "FAC_DECOLONIAL"
+      name: "Decolonial Front"
+      ideology: "ANTI_COLONIAL_COMMUNISM"
+      colonial_stance: "ABOLISH"
+      is_settler_formation: false
+      extraction_modifier: 0.0
+      violence_modifier: 0.3
+      class_reduction: 0.5
+      metabolic_reduction: 0.8
+      color_hex: "#FFD700"  # Gold (for the sun, for liberation)
+      description: |
+        THE CORRECT PATH.
+
+        A coalition of:
+        - Indigenous sovereignty movements (Land Back)
+        - Black national liberation (New Afrika)
+        - Anti-colonial communists who reject settler privilege
+
+        This is the only faction that can achieve True Victory because they
+        are the only ones who stop extraction. Their extraction_modifier is 0.0
+        and their metabolic_reduction is positive.
+
+        The catch: They are harder to support because the player (implicitly
+        positioned as a settler) must confront their own material stake in
+        colonialism.
+
+# =============================================================================
+# INFLUENCES EDGE
+# =============================================================================
+
+influences_edge:
+  description: |
+    Represents a Faction's influence over a Territory. When a Sovereign collapses,
+    the Faction with the highest influence over contested territories wins.
+
+  edge_type: "INFLUENCES"
+  from_node: "Faction"
+  to_node: "Territory"
+
+  properties:
+    influence_level:
+      type: "DOUBLE"
+      description: "Degree of faction influence (0-1)"
+      constraints: "[0.0, 1.0]"
+
+    support_type:
+      type: "ENUM"
+      values:
+        - "MATERIAL"     # Resources, supplies, funding
+        - "IDEOLOGICAL"  # Political education, propaganda
+        - "MILITARY"     # Armed presence, militias
+      description: "Nature of the faction's support"
+
+    base_of_support:
+      type: "STRING"
+      description: "Which population segment supports this faction here"
+      examples:
+        - "Industrial workers"
+        - "Rural settlers"
+        - "Indigenous communities"
+        - "Urban lumpenproletariat"
+
+# =============================================================================
+# SOVEREIGN UPDATE
+# =============================================================================
+
+sovereign_update:
+  description: |
+    When a Faction becomes the ruling power, it creates (or takes over) a Sovereign.
+    The Sovereign's extraction_policy is determined by the ruling Faction's colonial_stance.
+
+  new_properties:
+    ruling_faction_id:
+      type: "STRING"
+      description: "ID of the Faction that controls this Sovereign"
+      foreign_key: "Faction.id"
+      nullable: true
+      note: "Null for historical sovereigns with no clear faction"
+
+    extraction_policy:
+      type: "ENUM"
+      values:
+        - "INTENSIFY"  # UPHOLD → accelerate extraction
+        - "CONTINUE"   # IGNORE → maintain extraction
+        - "CEASE"      # ABOLISH → stop extraction, begin restoration
+      description: "Sovereign's relationship to extractive production"
+      derived_from: "ruling_faction.colonial_stance"
+
+    metabolic_impact:
+      type: "DOUBLE"
+      description: "Per-tick change to habitability in claimed territories"
+      formula: |
+        if extraction_policy == INTENSIFY:
+            return -0.02  # Rapid degradation
+        elif extraction_policy == CONTINUE:
+            return -0.005  # Slow but steady degradation
+        elif extraction_policy == CEASE:
+            return +0.01  # Gradual restoration
+
+# =============================================================================
+# COLLAPSE TRANSITION
+# =============================================================================
+
+collapse_transition:
+  description: |
+    When a Sovereign collapses (legitimacy <= 0 or ECOLOGICAL_OVERSHOOT),
+    contested territories transition to new sovereigns based on faction influence.
+
+  trigger_conditions:
+    - "sovereign.legitimacy <= 0.0"
+    - "ECOLOGICAL_OVERSHOOT event fired"
+    - "NUCLEAR_EXCHANGE event fired"
+    - "Player triggers GENERAL_UPRISING"
+
+  transition_logic:
+    step_1_identify_contested:
+      action: "Find all territories claimed by collapsing Sovereign"
+      query: |
+        MATCH (old_sov:Sovereign {id: $collapsing_sovereign_id})-[c:CLAIMS]->(t:Territory)
+        RETURN t.id
+
+    step_2_calculate_influence:
+      action: "For each territory, sum faction influence"
+      query: |
+        MATCH (f:Faction)-[i:INFLUENCES]->(t:Territory {id: $territory_id})
+        RETURN f.id, f.name, f.colonial_stance, SUM(i.influence_level) AS total_influence
+        ORDER BY total_influence DESC
+
+    step_3_determine_winner:
+      action: "Faction with highest influence claims territory"
+      note: |
+        If no faction has influence, territory becomes NEUTRAL (no claims).
+        This represents "ungoverned zones" in the collapse.
+
+    step_4_create_sovereigns:
+      action: "Create or update Sovereigns for winning factions"
+      logic: |
+        for territory in contested_territories:
+            winner = get_highest_influence_faction(territory)
+            if winner:
+                sovereign = get_or_create_sovereign(winner)
+                create_claims_edge(sovereign, territory, control_level=0.8)
+                # Note: initial control is not 1.0—consolidation takes time
+
+    step_5_apply_extraction_policy:
+      action: "New sovereign's extraction_policy affects habitability"
+      formula: |
+        territory.habitability += sovereign.metabolic_impact * tick
+
+# =============================================================================
+# ENDGAME STATES
+# =============================================================================
+
+endgame_states:
+  description: "Possible endings based on which factions win the collapse"
+
+  fascist_victory:
+    trigger: "UPHOLD faction controls majority of territories"
+    outcome: |
+      Explicit settler-colonial restoration. Concentration camps, accelerated
+      extraction, rapid ecological collapse.
+    ending_type: "GAME_OVER"
+    message: |
+      The Restorationists have won. The camps are open. The pipelines flow.
+      The land dies quickly now.
+
+      This was always where settler colonialism led.
+
+  red_ogv:
+    trigger: "IGNORE faction controls majority of territories"
+    outcome: |
+      THE FALSE SUMMIT.
+
+      The workers seized the state! Universal healthcare! Strong unions!
+      But the pipelines still flow. The mines still dig. The land still dies.
+
+      Class tension decreases (they do address material needs).
+      Metabolic tension continues to rise (they maintain extraction).
+      Habitability crashes over 50-100 ticks.
+      Eventually: ECOLOGICAL_COLLAPSE.
+    ending_type: "DELAYED_GAME_OVER"
+    message: |
+      The Workers' Congress has won. The red flag flies over the capital.
+      Healthcare is universal. Wages are fair.
+
+      But the oil still flows. The lithium still mines. The land still dies.
+
+      You built socialism on stolen land.
+      You kept the colonial relationship to the earth.
+      You cannot sustain what you have built.
+
+      [Habitability: 0.2 and falling...]
+
+  true_liberation:
+    trigger: "ABOLISH faction controls majority of territories"
+    outcome: |
+      Decolonization begins. Land Back. The pipelines stop. The mines close.
+      Habitability stabilizes, then slowly improves.
+      The metabolic rift begins to heal.
+    ending_type: "TRUE_VICTORY"
+    message: |
+      The Decolonial Front has won. Land Back is underway.
+
+      The pipelines have stopped. The mines are closing.
+      The land is beginning to heal.
+
+      This was always the only path forward.
+      You cannot build a future on stolen land.
+      You had to give it back.
+
+  fragmented_collapse:
+    trigger: "No faction controls majority; territories split among multiple sovereigns"
+    outcome: |
+      Balkanization without resolution. Multiple small sovereigns compete.
+      Depends on the mix of colonial_stances among the fragments.
+    ending_type: "CONTINUED_STRUGGLE"
+    message: |
+      The empire has fractured. Many flags fly where one once did.
+
+      The struggle continues. The outcome is not yet written.
+
+# =============================================================================
+# GAMEPLAY IMPLICATIONS
+# =============================================================================
+
+gameplay:
+  the_players_choice:
+    description: |
+      The game does NOT script the winner. The player must choose who to support.
+
+      - Support the Restorationist Front → Fascist victory (quick, violent collapse)
+      - Support the Workers' Congress → Red OGV (slow, "sustainable" collapse)
+      - Support the Decolonial Front → True Liberation (only sustainable path)
+
+    the_trap: |
+      The Workers' Congress is the most "comfortable" choice for a player
+      implicitly positioned as a settler:
+      - They speak the language of class struggle
+      - They promise material improvements (healthcare, wages)
+      - They don't require confronting colonial guilt
+
+      But they lead to ecological collapse. The game forces the player to
+      experience this trap: "I thought I won, but the planet is dying anyway."
+
+    the_challenge: |
+      Supporting the Decolonial Front requires:
+      - Confronting settler privilege
+      - Accepting that "class struggle" is insufficient
+      - Understanding that land is not "resource" but living relation
+      - Potentially sacrificing some settler material interests
+
+      This is the harder path. But it's the only sustainable one.
+
+  emergent_narrative:
+    description: |
+      The game doesn't tell the player what to think. It creates conditions
+      where the theoretical critique emerges from gameplay:
+
+      1. Player supports Workers' Congress
+      2. Workers' Congress wins the revolution
+      3. Player feels victorious
+      4. Habitability metric continues to decline
+      5. Player realizes: "Wait, we won, why is the planet still dying?"
+      6. Player understands: extraction_policy was CONTINUE, not CEASE
+      7. Player experiences the theoretical insight through gameplay:
+         "You cannot build socialism on stolen land."
+
+  replayability:
+    description: |
+      After experiencing the "Red Settler Trap" ending, the player can replay
+      and try supporting the Decolonial Front. Now they understand why
+      colonial_stance matters more than class_reduction.
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  files:
+    specification: "ai-docs/balkanization-spec.yaml (this file)"
+    persistence: "ai-docs/epoch2-persistence.yaml (updated for v1.2.0)"
+    init_script: "tools/init_epoch2_db.py (test scenario)"
+
+  new_schemas:
+    - "Faction node table"
+    - "INFLUENCES edge table (Faction → Territory)"
+    - "Sovereign.ruling_faction_id property"
+    - "Sovereign.extraction_policy property"
+
+  related_systems:
+    - "MetabolismSystem (habitability degradation)"
+    - "TerritorySystem (heat, state attention)"
+    - "SurvivalSystem (P(S|A), P(S|R))"
+
+  testing:
+    scenario: "Three-faction contest for Los Angeles"
+    factions:
+      - "Restorationist Front (UPHOLD)"
+      - "Workers' Congress (IGNORE)"
+      - "Decolonial Front (ABOLISH)"
+    expected_outcomes:
+      - "Highest influence wins"
+      - "Winner's extraction_policy determines habitability trajectory"
+      - "IGNORE leads to delayed collapse"
+      - "Only ABOLISH stabilizes habitability"

@@ -200,6 +200,35 @@ class Simulation:
                     e,
                 )
 
+    def _collect_observer_events(self) -> None:
+        """Collect pending events from observers for next tick.
+
+        Sprint 3.3: Observer events are collected after each tick and stored
+        in persistent_context for injection into the NEXT tick's WorldState.
+
+        Observers run AFTER WorldState is frozen, so their events cannot be
+        added to the current tick. Instead, events are collected here and
+        the step() function in simulation_engine.py will inject them into
+        the next tick's structured events.
+        """
+        from babylon.models.events import SimulationEvent
+
+        observer_events: list[SimulationEvent] = []
+        for observer in self._observers:
+            if hasattr(observer, "get_pending_events"):
+                try:
+                    events = observer.get_pending_events()
+                    observer_events.extend(events)
+                except Exception as e:
+                    logger.warning(
+                        "Observer %s failed get_pending_events: %s",
+                        observer.name,
+                        e,
+                    )
+
+        if observer_events:
+            self._persistent_context["_observer_events"] = observer_events
+
     def step(self) -> WorldState:
         """Advance simulation by one tick.
 
@@ -229,6 +258,9 @@ class Simulation:
 
         # Notify observers after state reconstruction (per design decision)
         self._notify_observers_tick(previous_state, new_state)
+
+        # Collect observer events for next tick (Sprint 3.3)
+        self._collect_observer_events()
 
         return new_state
 

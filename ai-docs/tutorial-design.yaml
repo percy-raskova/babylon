@@ -1,0 +1,365 @@
+# Tutorial Design Specification
+# Player Learning Sequence
+#
+# "The game teaches through systemic understanding, not lectures."
+# - Design Principle
+#
+# Players should learn MLM-TW theory by PLAYING, not by reading walls of text.
+# Each mechanic introduces a concept; failure teaches the lesson.
+
+meta:
+  created: "2025-12-26"
+  purpose: "Define how players learn game mechanics progressively"
+  issue_id: "UX-001"
+  status: "SPEC_COMPLETE"
+  design_principle: "Show, don't tell. Let failure be the teacher."
+
+# =============================================================================
+# LEARNING PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_insight: |
+    The game IS the tutorial. Every mechanic teaches a theoretical concept.
+    Players who understand the game understand the theory.
+
+  anti_patterns:
+    - "Wall of text explanations"
+    - "Pausing gameplay for tutorials"
+    - "Abstract concepts before concrete experience"
+    - "Teaching mechanics without teaching WHY"
+
+  patterns:
+    - "Introduce one concept at a time"
+    - "Let players fail, then explain why"
+    - "Use tooltips for just-in-time information"
+    - "Reference theory only after player has felt it"
+
+  psychological_goal: |
+    Build confidence that the system is learnable and fair.
+    When players fail, they should think "I made a mistake" not "the game cheated."
+
+# =============================================================================
+# EPOCH 1: PASSIVE LEARNING (OBSERVATION)
+# =============================================================================
+
+epoch_1:
+  name: "The Demonstration"
+  mode: "Observation Only"
+  duration: "~30-50 ticks (5-10 minutes)"
+
+  learning_goals:
+    - "Understand that wealth flows from periphery to core"
+    - "See that consciousness rises under exploitation"
+    - "Witness the crisis moment (ECOLOGICAL_OVERSHOOT)"
+    - "Observe bifurcation (fascism vs revolution) based on solidarity"
+
+  # ---------------------------------------------------------------------------
+  # ONBOARDING SEQUENCE
+  # ---------------------------------------------------------------------------
+  onboarding:
+    step_1:
+      trigger: "Game start"
+      display: "Minimal HUD with 4-node circuit visible"
+      tooltip: "The Imperial Circuit - watch how wealth flows"
+      duration: "5 seconds, then fade"
+
+    step_2:
+      trigger: "First SURPLUS_EXTRACTION event"
+      highlight: "EXPLOITATION edge glows"
+      tooltip: "Value extracted from periphery workers"
+      teaching: "Wealth doesn't appear from nowhere"
+
+    step_3:
+      trigger: "Tick 5"
+      highlight: "P_w consciousness bar"
+      tooltip: "Consciousness rises as exploitation continues"
+      teaching: "Oppression creates awareness"
+
+    step_4:
+      trigger: "First consciousness_gap > 0.3"
+      highlight: "Consciousness differential display"
+      tooltip: "Core workers don't see what periphery sees"
+      teaching: "Labor aristocracy is blinded by super-wages"
+
+    step_5:
+      trigger: "ECOLOGICAL_OVERSHOOT event"
+      display: "Crisis overlay"
+      text: "THE METABOLIC RIFT HAS OPENED"
+      tooltip: "This is the crisis moment. What happens now depends on what was built before."
+      pause: true  # Brief pause for dramatic effect
+
+    step_6:
+      trigger: "Bifurcation resolved"
+      display: "Outcome screen"
+      text_revolutionary: "REVOLUTIONARY PATH - Solidarity held"
+      text_fascist: "FASCIST PATH - Agitation without solidarity"
+      teaching: "The outcome was determined by infrastructure built BEFORE the crisis"
+
+  # ---------------------------------------------------------------------------
+  # GRAMSCIAN WIRE MVP
+  # ---------------------------------------------------------------------------
+  dual_narrative:
+    purpose: "Teach 'neutrality is hegemony' through parallel display"
+
+    display:
+      left_panel: "Corporate Feed (State narrative)"
+      right_panel: "Liberated Signal (Counter-narrative)"
+
+    on_event:
+      EXCESSIVE_FORCE:
+        corporate: "Officers restored order amid disturbances"
+        liberated: ">>> STATE VIOLENCE - SOLIDARITY REQUIRED <<<"
+
+      UPRISING:
+        corporate: "Riots threaten public safety"
+        liberated: ">>> THE PEOPLE RISE - CONSCIOUSNESS SPREADS <<<"
+
+      ECOLOGICAL_OVERSHOOT:
+        corporate: "Economic adjustment period begins"
+        liberated: ">>> THE SYSTEM CANNOT SUSTAIN ITSELF <<<"
+
+    teaching: "Same event, two framings. There is no neutral news."
+
+# =============================================================================
+# EPOCH 2A: CORE AGENCY (FIRST DECISIONS)
+# =============================================================================
+
+epoch_2a:
+  name: "Core Agency"
+  mode: "Player Makes Decisions"
+  new_concepts: ["Resources", "Actions", "Traps"]
+
+  # ---------------------------------------------------------------------------
+  # TUTORIAL SCENARIO: FIRST STEPS
+  # ---------------------------------------------------------------------------
+  tutorial_scenario:
+    name: "The Awakening"
+    description: "Simplified scenario introducing player agency"
+
+    setup:
+      resources:
+        cadre_labor: 5
+        sympathizer_labor: 50
+        reputation: 0.05
+      territory: "Single contested territory (MUD)"
+      state_threads: 1
+
+    objectives:
+      - "Spend Sympathizer Labor on a mass action"
+      - "Observe the result"
+      - "Understand resource trade-offs"
+
+  # ---------------------------------------------------------------------------
+  # LEARNING SEQUENCE
+  # ---------------------------------------------------------------------------
+  learning_sequence:
+    lesson_1:
+      name: "Your First Action"
+      trigger: "Tutorial scenario start"
+      prompt: "You have resources. Click an action to spend them."
+      action_available: "Agitate (costs 10 SL)"
+      on_success: "Consciousness increased in target territory"
+      tooltip: "Sympathizer Labor converts to agitation"
+
+    lesson_2:
+      name: "The Liberal Trap"
+      trigger: "Player has 20+ SL available"
+      prompt: "Electoral campaign available (costs 20 SL)"
+      temptation: "High visibility, low State attention"
+      consequence: "Revolutionary pressure drops"
+      teaching: "Electoralism feels productive but hollows revolution"
+      reveal_after: "3 electoral actions in a row"
+
+    lesson_3:
+      name: "Resource Limits"
+      trigger: "Player tries to spend more than they have"
+      prompt: "Insufficient resources"
+      tooltip: "Resources regenerate slowly. Choose wisely."
+      teaching: "You cannot do everything. Prioritize."
+
+    lesson_4:
+      name: "The Cadre Question"
+      trigger: "Action fails due to low cadre ratio"
+      prompt: "Action succeeded but result was chaotic"
+      tooltip: "Cadre provide discipline. Mobs are unpredictable."
+      teaching: "Quality (Cadre) vs Quantity (Sympathizers) - neither extreme wins"
+
+  # ---------------------------------------------------------------------------
+  # TRAP REVEALS
+  # ---------------------------------------------------------------------------
+  trap_reveals:
+    liberal_trap:
+      trigger: "3 consecutive electoral actions"
+      reveal:
+        title: "THE LIBERAL TRAP"
+        text: "You chose reform over revolution. The system absorbed your energy."
+        visual: "Consciousness gap stagnating on chart"
+        theory_link: "See: Reformism and its consequences"
+
+    ultra_left_trap:
+      trigger: "Kinetic action with < 0.3 mass support"
+      reveal:
+        title: "THE ULTRA-LEFT TRAP"
+        text: "Military victory, political defeat. The masses don't support you."
+        visual: "Solidarity collapse on chart"
+        theory_link: "See: Adventurism and isolation"
+
+    rightist_trap:
+      trigger: "3 consecutive economistic actions"
+      reveal:
+        title: "THE RIGHTIST TRAP"
+        text: "You improved conditions for the labor aristocracy. They no longer need revolution."
+        visual: "C_w consciousness dropping"
+        theory_link: "See: Economism and class collaboration"
+
+# =============================================================================
+# EPOCH 2B: ORGANIZATION (INTERNAL DYNAMICS)
+# =============================================================================
+
+epoch_2b:
+  name: "Organization"
+  mode: "Managing the Vanguard"
+  new_concepts: ["Cohesion", "Entropy", "Class Composition", "Doctrine"]
+
+  learning_sequence:
+    lesson_1:
+      name: "The Iron Law"
+      trigger: "First mass recruitment action"
+      observation: "Cohesion dropped after recruitment"
+      tooltip: "Growth automatically generates entropy"
+      teaching: "Robert Michels was right - every organization decays"
+
+    lesson_2:
+      name: "The Transmission Law"
+      trigger: "Consciousness transmission fails"
+      observation: "Solidarity existed but transmission was blocked"
+      tooltip: "Effective_Transmission = min(Solidarity, Cohesion)"
+      teaching: "Internal health limits external effectiveness"
+
+    lesson_3:
+      name: "Who You Organize Matters"
+      trigger: "First C_la (labor aristocracy) recruitment"
+      observation: "Resources increased, but Chauvinism appeared"
+      tooltip: "Labor aristocrats bring skills but also reactionary tendencies"
+      teaching: "Class composition determines organizational character"
+
+    lesson_4:
+      name: "Rectification"
+      trigger: "Chauvinism exceeds 0.2"
+      prompt: "Rectification campaign available"
+      tooltip: "Painful internal struggle to remove reactionary elements"
+      teaching: "Sometimes you must shrink to survive"
+
+# =============================================================================
+# EPOCH 2C: INFORMATION (NARRATIVE WARFARE)
+# =============================================================================
+
+epoch_2c:
+  name: "Information"
+  mode: "Contesting Hegemony"
+  new_concepts: ["Hegemony", "State Attention", "Intelligence"]
+
+  learning_sequence:
+    lesson_1:
+      name: "The War of Position"
+      trigger: "First hegemony action"
+      observation: "Narrative shifted slightly"
+      tooltip: "Hegemony is contested terrain, not fixed reality"
+      teaching: "Gramsci's insight: control the narrative, control the future"
+
+    lesson_2:
+      name: "State Attention"
+      trigger: "First Thread allocated to player"
+      observation: "State is now watching this territory"
+      tooltip: "The Panopticon has finite attention. You are now on its radar."
+      teaching: "Visibility has costs"
+
+    lesson_3:
+      name: "DDoS the State"
+      trigger: "Create 3+ simultaneous visible actions"
+      observation: "State cannot cover all threats"
+      tooltip: "Saturate their attention, act in the blind spots"
+      teaching: "The State sees everything but processes only fragments"
+
+    lesson_4:
+      name: "Fish in Water"
+      trigger: "First intel operation in hostile territory"
+      observation: "Intel is unreliable or falsified"
+      tooltip: "In hostile territory, the masses deceive you"
+      teaching: "Intelligence flows through relationships, not surveillance"
+
+# =============================================================================
+# TOOLTIP SYSTEM
+# =============================================================================
+
+tooltips:
+  design_principles:
+    - "Short (< 20 words)"
+    - "Actionable (what to do, not just what it is)"
+    - "Contextual (appears when relevant)"
+    - "Non-blocking (doesn't pause gameplay)"
+
+  tooltip_levels:
+    level_1_basic:
+      trigger: "Hover over any UI element"
+      content: "Simple definition"
+      example: "Cadre Labor: Your trained revolutionaries"
+
+    level_2_expanded:
+      trigger: "Hold hover for 2 seconds"
+      content: "Mechanical explanation"
+      example: "Cadre Labor: Spent on high-quality actions. Regenerates slowly. Cadre:Sympathizer ratio affects coherence."
+
+    level_3_theory:
+      trigger: "Click '?' icon"
+      content: "Theoretical connection"
+      example: "See: Lenin's 'What Is To Be Done?' - the distinction between professional revolutionaries and mass movement."
+
+# =============================================================================
+# FAILURE MESSAGES
+# =============================================================================
+
+failure_messages:
+  design_principle: "Explain WHY they failed, not just THAT they failed"
+
+  examples:
+    insufficient_resources:
+      bad: "Not enough Sympathizer Labor"
+      good: "This action requires 20 SL. You have 15. Consider: where can you build support first?"
+
+    low_cohesion:
+      bad: "Cohesion too low"
+      good: "Your organization is fractured. Actions succeed but results are chaotic. Consider: rectification or political education?"
+
+    state_suppression:
+      bad: "Action blocked by State"
+      good: "The Panopticon saw you coming. Thread was already allocated here. Consider: decoys or different territory?"
+
+    blowback:
+      bad: "Action caused blowback"
+      good: "Military success, political failure. Collateral damage cost you 15% mass support. Consider: was this target worth it?"
+
+# =============================================================================
+# PROGRESSIVE DISCLOSURE
+# =============================================================================
+
+progressive_disclosure:
+  principle: "Don't show everything at once. Reveal complexity as player demonstrates mastery."
+
+  ui_unlocks:
+    epoch_1:
+      visible: ["Wealth charts", "Consciousness bars", "Event log", "Dual narrative"]
+      hidden: ["Resource panel", "Action menu", "Doctrine tree", "Intel overlay"]
+
+    epoch_2a:
+      unlocks: ["Resource panel", "Action menu"]
+      still_hidden: ["Doctrine tree", "Intel overlay", "Cohesion display"]
+
+    epoch_2b:
+      unlocks: ["Cohesion display", "Doctrine tree (simplified)"]
+      still_hidden: ["Full doctrine tree", "Intel overlay"]
+
+    epoch_2c:
+      unlocks: ["Intel overlay", "Hegemony meter", "Thread allocation display"]
+      full_ui: true

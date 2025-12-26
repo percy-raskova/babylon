@@ -1,0 +1,449 @@
+# JSON Editor (svelte-jsoneditor) Patterns & Quick Reference
+# ==========================================================
+# Distilled from Babylon GUI development sessions (Dec 2025)
+# Purpose: Understand NiceGUI's json_editor component API
+#
+# C7 Library ID: /josdejong/jsoneditor (245 snippets)
+# Note: NiceGUI uses svelte-jsoneditor, a modern rewrite by same author
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-14"
+  purpose: |
+    Token-efficient reference for NiceGUI's ui.json_editor component.
+    The API is non-obvious - methods are called via run_editor_method().
+    Consult when:
+    - Building state inspectors or data viewers
+    - Setting read-only mode
+    - Updating content dynamically
+    - Getting data from the editor
+  cross_references:
+    - "ai-docs/nicegui-patterns.yaml (NiceGUI patterns)"
+    - "ai-docs/asyncio-patterns.yaml (async get() calls)"
+
+# =============================================================================
+# INITIALIZATION
+# =============================================================================
+
+initialization:
+
+  basic_editor:
+    description: "Create a JSON editor with initial data"
+    pattern: |
+      from nicegui import ui
+
+      json_data = {
+          'name': 'Alice',
+          'age': 42,
+          'active': True,
+      }
+
+      # Note: content is wrapped in {'content': {'json': ...}}
+      editor = ui.json_editor({'content': {'json': json_data}})
+    critical: |
+      The first argument is a dict with structure:
+      {'content': {'json': <your_data>}}
+
+      NOT just the data directly!
+
+  with_callbacks:
+    description: "Editor with change and selection callbacks"
+    pattern: |
+      def on_change(event):
+          print(f'Changed: {event}')
+
+      def on_select(event):
+          print(f'Selected: {event}')
+
+      editor = ui.json_editor(
+          {'content': {'json': data}},
+          on_change=on_change,
+          on_select=on_select,
+      )
+
+  with_schema_validation:
+    description: "Editor that validates against JSON schema"
+    pattern: |
+      schema = {
+          'type': 'object',
+          'properties': {
+              'id': {'type': 'integer'},
+              'name': {'type': 'string'},
+              'price': {'type': 'number', 'exclusiveMinimum': 0},
+          },
+          'required': ['id', 'name', 'price'],
+      }
+
+      data = {'id': 42, 'name': 'Widget', 'price': 15.0}
+
+      editor = ui.json_editor(
+          {'content': {'json': data}},
+          schema=schema,  # Validates and shows warnings
+      )
+
+  styling:
+    description: "Apply CSS classes and styles"
+    pattern: |
+      editor = (
+          ui.json_editor({'content': {'json': data}})
+          .classes("w-full")
+          .style("height: 100%")
+      )
+
+# =============================================================================
+# run_editor_method() API (Critical Section)
+# =============================================================================
+
+run_editor_method:
+
+  overview:
+    description: "Call methods on the underlying JSONEditor instance"
+    syntax: |
+      # Synchronous call (fire-and-forget)
+      editor.run_editor_method('methodName', arg1, arg2, ...)
+
+      # Async call (await result)
+      result = await editor.run_editor_method('methodName', arg1, ...)
+    parameters:
+      name: "Method name (string). Prefix ':' for JS expressions"
+      args: "Arguments to pass to the method"
+      timeout: "Max wait time in seconds (default: 1.0)"
+
+  set_content:
+    description: "Replace editor content completely"
+    pattern: |
+      # Set new JSON data
+      editor.run_editor_method('set', {'json': new_data})
+    warning: |
+      The argument is {'json': data}, NOT just data!
+      This resets editor state (expanded nodes, selection).
+    our_usage: |
+      # From StateInspector.refresh()
+      self.json_editor.run_editor_method("set", {"json": entity_data})
+
+  update_props:
+    description: "Update editor properties (read-only, etc.)"
+    pattern: |
+      # Make editor read-only
+      editor.run_editor_method('updateProps', {'readOnly': True})
+
+      # Make editor editable again
+      editor.run_editor_method('updateProps', {'readOnly': False})
+    our_usage: |
+      # From StateInspector._build_ui()
+      self.json_editor.run_editor_method("updateProps", {"readOnly": True})
+
+  get_data_async:
+    description: "Get current JSON data (async required)"
+    pattern: |
+      async def get_editor_data():
+          data = await editor.run_editor_method('get')
+          return data
+
+      # In a button handler
+      async def on_click():
+          data = await editor.run_editor_method('get')
+          ui.notify(f'Data: {data}')
+    critical: |
+      MUST await this call! Returns the JSON data.
+      Without await, you get a coroutine, not the data.
+
+  expand_collapse:
+    description: "Control node expansion"
+    patterns:
+      expand_all: |
+        # ':' prefix indicates JavaScript expression
+        editor.run_editor_method(':expand', '[]', 'path => true')
+      collapse_all: |
+        editor.run_editor_method('collapse', [])
+      expand_specific: |
+        # Expand only specific paths (JS expression)
+        editor.run_editor_method(
+            ':expand',
+            '[]',
+            'path => path.length < 2'  # Expand first 2 levels
+        )
+    note: |
+      The ':' prefix is NiceGUI's way to pass JavaScript expressions
+      instead of JSON-serialized values.
+
+  javascript_expressions:
+    description: "Using ':' prefix for JS code"
+    explanation: |
+      NiceGUI's run_editor_method supports a ':' prefix on the method name
+      to indicate that arguments should be evaluated as JavaScript.
+    pattern: |
+      # Without ':' - arguments are JSON-serialized
+      editor.run_editor_method('set', {'json': data})
+
+      # With ':' - arguments are JavaScript expressions
+      editor.run_editor_method(':expand', '[]', 'path => true')
+
+      # The JS expression 'path => true' is evaluated client-side
+
+# =============================================================================
+# COMMON METHODS REFERENCE
+# =============================================================================
+
+methods_reference:
+
+  content_methods:
+    set:
+      description: "Replace content, reset state"
+      signature: "set({json: object} | {text: string})"
+      example: "editor.run_editor_method('set', {'json': data})"
+
+    get:
+      description: "Get current content (async)"
+      signature: "get() -> {json: object} | {text: string}"
+      example: "data = await editor.run_editor_method('get')"
+      returns: "Dict with 'json' or 'text' key"
+
+    update:
+      description: "Update content, preserve state"
+      signature: "update({json: object})"
+      example: "editor.run_editor_method('update', {'json': data})"
+      note: "Preserves expanded nodes, selection, search"
+
+  view_methods:
+    expand:
+      description: "Expand nodes"
+      signature: "expand(path?, callback?)"
+      examples:
+        all: "run_editor_method(':expand', '[]', 'path => true')"
+        first_level: "run_editor_method(':expand', '[]', 'path => path.length === 0')"
+
+    collapse:
+      description: "Collapse nodes"
+      signature: "collapse(path?)"
+      example: "run_editor_method('collapse', [])"
+
+    scrollTo:
+      description: "Scroll to a path"
+      signature: "scrollTo(path)"
+      example: "run_editor_method('scrollTo', ['users', 0, 'name'])"
+
+  property_methods:
+    updateProps:
+      description: "Update editor properties"
+      signature: "updateProps(props)"
+      common_props:
+        readOnly: "boolean - Disable editing"
+        mode: "'tree' | 'text' | 'table'"
+        mainMenuBar: "boolean - Show/hide menu"
+        navigationBar: "boolean - Show/hide nav"
+        statusBar: "boolean - Show/hide status"
+      example: |
+        run_editor_method('updateProps', {
+            'readOnly': True,
+            'mainMenuBar': False,
+        })
+
+  selection_methods:
+    select:
+      description: "Select content"
+      signature: "select(selection)"
+
+    focus:
+      description: "Focus the editor"
+      signature: "focus()"
+      example: "run_editor_method('focus')"
+
+# =============================================================================
+# BABYLON-SPECIFIC PATTERNS
+# =============================================================================
+
+babylon_patterns:
+
+  state_inspector:
+    description: "Read-only JSON viewer for entity state"
+    location: "src/babylon/ui/components.py"
+    pattern: |
+      class StateInspector:
+          """Displays entity state as read-only JSON."""
+
+          CONTAINER_CLASSES = "bg-[#050505] border border-[#404040]"
+          CONTAINER_STYLE = "flex: 1; min-height: 0"
+
+          def __init__(self) -> None:
+              self._current_data: dict[str, Any] = {}
+              self._build_ui()
+
+          def _build_ui(self) -> None:
+              with ui.element("div").classes(self.CONTAINER_CLASSES).style(self.CONTAINER_STYLE):
+                  self.json_editor: Any = (
+                      ui.json_editor({"content": {"json": self._current_data}})
+                      .classes("w-full")
+                      .style("height: 100%")
+                  )
+                  # CRITICAL: Set read-only mode after creation
+                  self.json_editor.run_editor_method("updateProps", {"readOnly": True})
+
+          def refresh(self, entity_data: dict[str, Any]) -> None:
+              """Update displayed data."""
+              self._current_data = entity_data
+              self.json_editor.run_editor_method("set", {"json": entity_data})
+
+  editable_config:
+    description: "Editable JSON for configuration"
+    pattern: |
+      class ConfigEditor:
+          def __init__(self, initial_config: dict) -> None:
+              self.editor = ui.json_editor(
+                  {'content': {'json': initial_config}},
+                  on_change=self._on_change,
+              )
+
+          def _on_change(self, event) -> None:
+              """Handle edits - validate and apply."""
+              # event contains change details
+              pass
+
+          async def get_config(self) -> dict:
+              """Get current configuration."""
+              result = await self.editor.run_editor_method('get')
+              return result.get('json', {})
+
+  simulation_state_viewer:
+    description: "Display WorldState as JSON"
+    pattern: |
+      def refresh_state_inspector(state: WorldState) -> None:
+          """Convert WorldState to displayable dict and refresh."""
+          state_dict = {
+              'tick': state.tick,
+              'classes': [
+                  {
+                      'name': c.name,
+                      'population': c.population,
+                      'wealth': float(c.wealth),
+                      'consciousness': float(c.consciousness),
+                  }
+                  for c in state.social_classes
+              ],
+              'territories': [t.name for t in state.territories],
+          }
+          state_inspector.refresh(state_dict)
+
+# =============================================================================
+# COMMON ERRORS AND FIXES
+# =============================================================================
+
+common_errors:
+
+  wrong_content_structure:
+    error: "Editor shows empty or unexpected content"
+    cause: "Passed data directly instead of wrapping in content structure"
+    fix: |
+      # WRONG
+      ui.json_editor(my_data)
+      ui.json_editor({'json': my_data})
+
+      # CORRECT
+      ui.json_editor({'content': {'json': my_data}})
+
+  forgot_await_on_get:
+    error: "Got coroutine object instead of data"
+    cause: "Didn't await run_editor_method('get')"
+    fix: |
+      # WRONG
+      data = editor.run_editor_method('get')  # Returns coroutine!
+
+      # CORRECT
+      data = await editor.run_editor_method('get')
+
+  set_without_json_wrapper:
+    error: "set() doesn't update content"
+    cause: "Passed data directly to set()"
+    fix: |
+      # WRONG
+      editor.run_editor_method('set', new_data)
+
+      # CORRECT
+      editor.run_editor_method('set', {'json': new_data})
+
+  readonly_not_working:
+    error: "Editor still editable after setting readOnly"
+    cause: "Used wrong method or wrong prop structure"
+    fix: |
+      # WRONG
+      editor.run_editor_method('readOnly', True)
+      editor.run_editor_method('set', {'readOnly': True})
+
+      # CORRECT
+      editor.run_editor_method('updateProps', {'readOnly': True})
+
+  expand_not_working:
+    error: "expand() doesn't expand all nodes"
+    cause: "Missing ':' prefix for JS expression"
+    fix: |
+      # WRONG - 'path => true' passed as string, not evaluated
+      editor.run_editor_method('expand', '[]', 'path => true')
+
+      # CORRECT - ':' prefix evaluates as JS
+      editor.run_editor_method(':expand', '[]', 'path => true')
+
+# =============================================================================
+# GOTCHAS CHECKLIST
+# =============================================================================
+
+gotchas:
+  - issue: "Content structure wrong"
+    fix: "Use {'content': {'json': data}} for initialization"
+
+  - issue: "set() not updating"
+    fix: "Use {'json': data} as argument, not just data"
+
+  - issue: "get() returns coroutine"
+    fix: "Must await: data = await run_editor_method('get')"
+
+  - issue: "readOnly not working"
+    fix: "Use updateProps({'readOnly': True})"
+
+  - issue: "expand all nodes fails"
+    fix: "Use ':expand' with JS expression: ':expand', '[]', 'path => true'"
+
+  - issue: "Editor not filling container"
+    fix: "Add .classes('w-full').style('height: 100%')"
+
+  - issue: "Type hints for editor"
+    fix: "Use Any type: self.json_editor: Any = ui.json_editor(...)"
+
+  - issue: "Changes not persisting"
+    fix: "Use on_change callback to capture edits"
+
+# =============================================================================
+# DARK THEME STYLING
+# =============================================================================
+
+dark_theme:
+
+  note: |
+    svelte-jsoneditor automatically adapts to dark mode via CSS.
+    NiceGUI's dark mode should handle this. If custom styling needed:
+
+  custom_css: |
+    # Add custom CSS for dark theme if needed
+    ui.add_head_html('''
+        <style>
+            .jse-theme-dark {
+                --jse-background-color: #050505;
+                --jse-text-color: #C0C0C0;
+            }
+        </style>
+    ''')
+
+  container_styling: |
+    # Our Bunker Constructivism container
+    with ui.element("div").classes("bg-[#050505] border border-[#404040]"):
+        editor = ui.json_editor({'content': {'json': data}})
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  svelte_jsoneditor: "https://github.com/josdejong/svelte-jsoneditor"
+  nicegui_docs: "https://nicegui.io/documentation/json_editor"
+  original_jsoneditor: "https://github.com/josdejong/jsoneditor"
+  our_implementation:
+    - "src/babylon/ui/components.py (StateInspector)"

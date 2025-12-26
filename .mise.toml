@@ -44,6 +44,18 @@ run = "poetry run yamllint -c .yamllint.yaml ."
 description = "Lint Markdown files"
 run = "npx markdownlint --config .markdownlint.yaml '**/*.md' --ignore 'CHANGELOG.md' --ignore 'brainstorm/**' --ignore '.venv/**'"
 
+[tasks.complexity]
+description = "Show code complexity report (radon)"
+run = "poetry run radon cc src/ -a -s --show-complexity"
+
+[tasks.complexity-check]
+description = "Run complexity gate (xenon) - fails if CC > 15"
+run = "poetry run xenon --max-absolute C src/"
+
+[tasks.complexity-grade]
+description = "Show complexity grades summary"
+run = "poetry run radon cc src/ -a -s"
+
 [tasks.check]
 description = "Run all quality checks (lint, format, typecheck, test-fast)"
 depends = ["lint", "format", "typecheck", "test-fast"]
@@ -115,6 +127,78 @@ latexmk -pdf -interaction=nonstopmode ${1:-babylon-docs}.tex
 """
 
 # =============================================================================
+# SECURITY & COVERAGE
+# =============================================================================
+
+[tasks.security]
+description = "Run security audit on dependencies"
+run = "poetry run pip-audit"
+
+[tasks.coverage]
+description = "Run tests with coverage report"
+run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
+
+# =============================================================================
+# MUTATION TESTING (Test Quality Verification)
+# =============================================================================
+
+[tasks.mutation]
+description = "Run mutation testing on simulation-critical code (~15-30 min)"
+run = """
+echo "🧬 Running mutation testing on critical simulation code..."
+echo "   Target: src/babylon/engine/systems/ and src/babylon/systems/"
+echo ""
+poetry run mutmut run \
+  --paths-to-mutate=src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py,src/babylon/systems/formulas.py \
+  --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
+echo ""
+echo "📊 Results:"
+poetry run mutmut results
+"""
+
+[tasks.mutation-fast]
+description = "Run mutation testing on formulas only (~5-10 min)"
+run = """
+echo "🧬 Running mutation testing on formulas..."
+poetry run mutmut run \
+  --paths-to-mutate=src/babylon/systems/formulas.py \
+  --runner="poetry run pytest tests/unit/formulas -x -q --tb=no"
+poetry run mutmut results
+"""
+
+[tasks.mutation-file]
+description = "Run mutation testing on a specific file (usage: mise run mutation-file src/babylon/foo.py)"
+run = """
+if [ -z "$1" ]; then
+  echo "Usage: mise run mutation-file <path/to/file.py>"
+  exit 1
+fi
+echo "🧬 Running mutation testing on $1..."
+poetry run mutmut run --paths-to-mutate="$1"
+poetry run mutmut results
+"""
+
+[tasks.mutate]
+description = "Run full mutation testing (entire src/babylon/, overnight run)"
+run = "poetry run python tools/run_mutmut.py"
+
+[tasks.mutate-critical]
+description = "Run mutation testing on critical formulas only (faster, ~30 min)"
+run = "poetry run python tools/run_mutmut.py --critical"
+
+[tasks.mutate-results]
+description = "Show mutation testing results summary"
+run = "poetry run mutmut results"
+
+[tasks.mutate-show]
+description = "Show specific mutant details (usage: mise run mutate-show 42)"
+run = "poetry run mutmut show ${1:-1}"
+
+[tasks.mutate-html]
+description = "Generate HTML report of mutation testing results"
+run = "poetry run mutmut html && echo 'Report: html/index.html'"
+
+# =============================================================================
 # DATA / RAG
 # =============================================================================
 
@@ -142,13 +226,45 @@ run = "poetry run python tools/init_db.py"
 description = "Run vertical slice integration test"
 run = "poetry run python tools/vertical_slice.py"
 
+[tasks.interview-persona]
+description = "Test Persephone's narrative voice with Hard Case scenarios"
+run = "poetry run python tools/interview_persona.py"
+
 [tasks.verify-formulas]
 description = "Verify math formula divergence"
 run = "poetry run python tools/verify_math_divergence.py"
 
 [tasks.analyze-trace]
-description = "Run single simulation with full time-series CSV output"
-run = "poetry run python tools/parameter_analysis.py trace --csv results/trace.csv"
+description = "Run simulation trace with CSV + JSON output"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv results/trace.csv \
+  --json results/trace.json \
+  --ticks ${usage_ticks}
+"""
+
+[tasks.analyze-trace-csv]
+description = "Run simulation trace with CSV only"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv results/trace.csv \
+  --ticks ${usage_ticks}
+"""
+
+[tasks.analyze-trace-json]
+description = "Run simulation trace with JSON metadata only"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv /dev/null \
+  --json results/trace.json \
+  --ticks ${usage_ticks}
+"""
 
 [tasks.analyze-sweep]
 description = "Run parameter sweep with rich summary metrics"
@@ -166,6 +282,14 @@ run = "poetry run python tools/tune_parameters.py"
 [tasks.tune-params-custom]
 description = "Run parameter sweep with custom range (usage: mise run tune-params-custom 0.1 0.5 0.05)"
 run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-0.50} --step ${3:-0.05}"
+
+[tasks.narrative-sweep]
+description = "Run 5-point Dialectical U-Curve analysis"
+run = "poetry run python tools/narrative_sweep.py"
+
+[tasks.narrative-sweep-mock]
+description = "Run U-Curve analysis with MockLLM (no API key needed)"
+run = "poetry run python tools/narrative_sweep.py --mock"
 
 # =============================================================================
 # VERSIONING
@@ -252,3 +376,15 @@ run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"
 [tasks.soundfont-info]
 description = "Show info about the current soundfont"
 run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""
+
+# =============================================================================
+# UI / DASHBOARD
+# =============================================================================
+
+[tasks.ui]
+description = "Launch the Synopticon debug dashboard (NiceGUI)"
+run = "poetry run python src/babylon/ui/main.py"
+
+[tasks.ui-dev]
+description = "Launch dashboard with auto-reload for development"
+run = "poetry run python -c \"from nicegui import ui; from babylon.ui.main import main_page, init_simulation; init_simulation(); ui.run(main_page, title='Babylon v0.3', dark=True, reload=True, port=6969)\""

@@ -1,0 +1,471 @@
+# Babylon CI/CD Workflow Documentation
+# Comprehensive reference for GitHub Actions, branch protection, and contributor workflow
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-12"
+  purpose: "Document CI workflow for Benevolent Dictator governance model"
+  related_files:
+    - ".github/workflows/ci.yml"
+    - ".github/workflows/docs.yml"
+    - ".github/workflows/extended-analysis.yml"
+    - ".github/workflows/release.yml"
+    - ".github/workflows/dependabot-automerge.yml"
+    - ".github/PULL_REQUEST_TEMPLATE.md"
+    - "brainstorm/branch-protection-setup.md"
+    - "brainstorm/ci-best-practices-bd-model.md"
+  related_adrs:
+    - "ADR021_cicd_philosophy"
+
+# =============================================================================
+# GOVERNANCE MODEL
+# =============================================================================
+
+governance:
+  model: "Benevolent Dictator (BD)"
+  dictator: "Persephone Raskova (@percy-raskova)"
+
+  description: |
+    Single maintainer has final authority on all merges to main.
+    Contributors submit PRs to dev. BD curates and releases.
+
+  trust_model:
+    contributors: "Can branch from dev, PR to dev"
+    bd: "Can merge to dev, exclusively merges to main"
+    ci: "Applies equally to all code (BD included)"
+
+  rationale: |
+    - Small project with clear vision
+    - BD catches BD mistakes via CI (self-discipline)
+    - Contributors aren't blocked waiting for reviews on dev
+    - main remains pristine release branch
+
+# =============================================================================
+# BRANCH STRUCTURE
+# =============================================================================
+
+branches:
+  structure: |
+    main ────► stable releases (BD merges only)
+      │              ▲
+      ▼              │
+    dev ─────► integration (PRs welcome here)
+      │    ▲
+      ▼    │
+    feature/*, fix/*, docs/*, refactor/*, test/*
+
+  main:
+    purpose: "Stable releases only"
+    who_merges: "BD only"
+    protection:
+      require_pr: true
+      require_ci_pass: ["ci", "docs"]
+      require_up_to_date: true
+      require_review: true  # BD self-review as deliberate pause
+      allow_force_push: false
+      allow_deletions: false
+
+  dev:
+    purpose: "Integration branch for PRs"
+    who_merges: "BD (from feature branches)"
+    protection:
+      require_pr: true
+      require_ci_pass: ["ci"]
+      require_up_to_date: false  # Avoid rebase churn
+      require_review: false  # BD can self-merge
+      allow_force_push: false
+      allow_deletions: false
+
+  feature_branches:
+    naming_convention:
+      feature: "feature/* - New functionality"
+      fix: "fix/* - Bug fixes"
+      docs: "docs/* - Documentation"
+      refactor: "refactor/* - Code improvements"
+      test: "test/* - Test changes"
+    branch_from: "dev"
+    pr_to: "dev"
+
+# =============================================================================
+# CI TRIGGER STRATEGY
+# =============================================================================
+
+triggers:
+  philosophy: "Funnel of increasing strictness"
+
+  description: |
+    PRs to dev get fast feedback (permissive but informative).
+    PRs to main get full validation (strict release gate).
+    Push events validate post-merge state.
+
+  ci_yml:
+    on_push: ["main", "dev"]
+    on_pull_request: ["main", "dev"]
+
+  docs_yml:
+    on_push: ["main"]
+    paths: ["docs/**", "src/**", ".github/workflows/docs.yml"]
+    purpose: "GitHub Pages deployment (releases only)"
+
+  extended_analysis_yml:
+    on_release: "published"
+    on_schedule: "weekly (Sunday midnight)"
+    on_workflow_dispatch: true
+    purpose: "Expensive tests that don't run on every PR"
+
+# =============================================================================
+# WORKFLOW FILES
+# =============================================================================
+
+workflows:
+  ci_yml:
+    file: ".github/workflows/ci.yml"
+    triggers: ["push to main/dev", "PR to main/dev"]
+    jobs:
+      ci:
+        name: "Lint, Type Check & Test"
+        blocks_merge: true
+        steps:
+          - "poetry run ruff check ."
+          - "poetry run mypy src"
+          - "poetry run pytest -m 'not ai' --tb=short -q"
+        failure_meaning: "Likely bugs, type errors, or broken functionality"
+
+      security:
+        name: "Security Audit"
+        blocks_merge: true
+        steps:
+          - "poetry run pip-audit"
+        failure_meaning: "Known vulnerabilities in dependencies"
+
+      docs:
+        name: "Documentation Build"
+        blocks_merge: true
+        steps:
+          - "poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v"
+          - "cd docs && poetry run sphinx-build -b html . _build/html"
+        failure_meaning: "Documentation examples don't work or Sphinx errors"
+
+      style:
+        name: "Style Check (Informational)"
+        blocks_merge: false
+        continue_on_error: true
+        steps:
+          - "poetry run ruff format --check ."
+        failure_meaning: "Formatting differs from standard (maintainer can fix)"
+
+  docs_yml:
+    file: ".github/workflows/docs.yml"
+    triggers: ["push to main (paths: docs/**, src/**)"]
+    jobs:
+      build:
+        name: "Build Documentation"
+        purpose: "Build HTML docs for GitHub Pages"
+      deploy:
+        name: "Deploy to GitHub Pages"
+        purpose: "Publish to github.io"
+    note: "Only runs on main - don't deploy dev docs"
+
+  extended_analysis_yml:
+    file: ".github/workflows/extended-analysis.yml"
+    triggers: ["release", "weekly schedule", "manual dispatch"]
+    jobs:
+      extended_tests:
+        matrix: ["3.12", "3.13"]
+        purpose: "Python version compatibility"
+      parameter_analysis:
+        commands: ["mise run analyze-trace", "mise run analyze-sweep"]
+        artifacts: "results/"
+      ai_evaluation:
+        condition: "release only"
+        command: "poetry run pytest -m 'ai' --tb=short -q"
+
+  release_yml:
+    file: ".github/workflows/release.yml"
+    triggers: ["push tag v*"]
+    purpose: "Create GitHub Release with artifacts"
+
+  dependabot_automerge_yml:
+    file: ".github/workflows/dependabot-automerge.yml"
+    triggers: ["pull_request (dependabot)"]
+    purpose: "Auto-merge minor/patch dependency updates"
+
+# =============================================================================
+# REQUIRED VS ADVISORY CHECKS
+# =============================================================================
+
+check_policy:
+  philosophy: "Block on correctness, advise on style"
+
+  prs_to_dev:
+    required:
+      - ci: "Lint, types, tests must pass"
+    advisory:
+      - docs: "Build should work but shouldn't block contributors"
+      - style: "Formatting is nice-to-have"
+    rationale: "Don't scare off beginners with strict requirements"
+
+  prs_to_main:
+    required:
+      - ci: "All correctness checks"
+      - docs: "Documentation is part of the release"
+    advisory:
+      - style: "BD can fix formatting in merge"
+    rationale: "Release quality - everything must work"
+
+  enforcement: |
+    The workflow defines WHAT runs. Branch protection defines WHAT MUST PASS.
+    GitHub Settings → Branches → Branch protection rules controls enforcement.
+
+# =============================================================================
+# PR TEMPLATE
+# =============================================================================
+
+pr_template:
+  file: ".github/PULL_REQUEST_TEMPLATE.md"
+  tone: "Welcoming, beginner-friendly"
+
+  sections:
+    - "What does this PR do? (brief description)"
+    - "Related Issue (link or N/A)"
+    - "Checklist (just a guide, not strict requirements)"
+    - "Questions for Reviewers (encourages asking)"
+
+  key_phrases:
+    - "Don't stress about the checklist - it's just a guide!"
+    - "First time contributing? Welcome!"
+    - "Don't hesitate to ask questions in the comments"
+
+  philosophy: |
+    The checklist is guidance, not gatekeeping.
+    Maintainer can fix style issues on merge.
+    Questions are encouraged, not discouraged.
+
+# =============================================================================
+# BEGINNER-FRIENDLY CI PHILOSOPHY
+# =============================================================================
+
+beginner_friendly:
+  context: "Contributors are new to coding, getting their feet wet"
+
+  goals:
+    - "Teach good habits without intimidation"
+    - "Provide clear feedback on failures"
+    - "Create path forward, not dead ends"
+
+  failure_messaging:
+    bad_example: "Error: MyPy found 3 type errors. Build failed."
+    good_example: |
+      Type Check Results
+
+      Found 3 type hints that need attention. Don't worry - this is
+      one of the trickier parts of Python!
+
+      What to do:
+      1. Look at the file:line numbers below
+      2. Check if you're missing a type hint
+      3. Ask for help in discussions if you're stuck!
+
+  advisory_check_messaging:
+    example: |
+      Style Suggestion (not required)
+
+      The formatter found some spacing tweaks. These won't block your PR!
+
+      If you want to fix them locally:
+        poetry run ruff format .
+
+      Or just ignore this - the maintainer can clean it up when merging.
+
+  maintainer_safety_net: |
+    For a hobby project with beginners, the BD often fixes small issues
+    rather than sending PRs back. This keeps momentum while teaching by example.
+
+    Acceptable workflow:
+    1. Contributor submits PR with minor style issues
+    2. CI shows yellow warning (advisory)
+    3. BD merges and fixes style in the merge commit
+    4. Contributor learns from the diff
+
+  what_not_to_require:
+    - "Perfect commit messages (fix them yourself)"
+    - "100% test coverage (celebrate any tests)"
+    - "Documentation updates (add them yourself)"
+    - "Changelog entries (generate automatically)"
+
+  focus: "Correctness (does it work?) not Polish (is it perfect?)"
+
+# =============================================================================
+# LOCAL TESTING WITH GH ACT
+# =============================================================================
+
+local_testing:
+  tool: "gh act"
+  version: "0.2.82"
+  purpose: "Run GitHub Actions locally in Docker"
+
+  commands:
+    dry_run: "gh act --dryrun"
+    run_ci_job: "gh act -j ci"
+    run_pull_request: "gh act pull_request"
+    run_push: "gh act push"
+    run_security: "mise run security"
+    run_coverage: "mise run coverage"
+
+  custom_events:
+    location: ".github/test-events/"
+    pr_to_dev_json: |
+      {
+        "pull_request": {
+          "base": { "ref": "dev" },
+          "head": { "ref": "feature/test" }
+        }
+      }
+    usage: "gh act pull_request -e .github/test-events/pr-to-dev.json"
+
+  benefits:
+    - "Validate YAML syntax before pushing"
+    - "Test workflow logic locally"
+    - "Faster feedback than waiting for GitHub"
+    - "Debug workflow failures interactively"
+
+  limitations:
+    - "Requires Docker"
+    - "Some GitHub-specific features may not work"
+    - "Secrets not available (by design)"
+
+# =============================================================================
+# MERGE STRATEGIES
+# =============================================================================
+
+merge_strategies:
+  feature_to_dev:
+    method: "Squash merge"
+    rationale:
+      - "Each PR = one atomic commit in dev"
+      - "Easy to revert problematic contributions"
+      - "Cleans up messy feature branch history"
+      - "Contributor attribution in commit message"
+    commit_format: |
+      feat(topology): add solidarity edge decay (#42)
+
+      Co-authored-by: contributor <email>
+
+  dev_to_main:
+    method: "Merge commit (no squash)"
+    rationale:
+      - "Preserves individual commits from dev"
+      - "Creates explicit release boundary"
+      - "Git history shows what went into each release"
+      - "Easy to diff between releases"
+    commit_format: |
+      Merge branch 'dev' into main
+
+      Release 0.3.0 - Imperial Rent Balancing
+
+# =============================================================================
+# HOTFIX WORKFLOW
+# =============================================================================
+
+hotfix_workflow:
+  description: "Hotfixes bypass dev, go directly to main"
+
+  flow: |
+    main (broken)
+      │
+      └─► fix/critical-bug (branch from main)
+            │
+            └─► PR to main (BD only)
+                  │
+                  ├─► CI runs, BD merges
+                  │
+                  └─► Create backport PR to dev
+
+  backport_requirement: |
+    After hotfix merges to main, MUST backport to dev.
+    Otherwise next dev→main merge may:
+    - Re-introduce the bug
+    - Create merge conflicts
+
+  automation: "Manual - BD creates backport PR"
+
+# =============================================================================
+# RELEASE WORKFLOW
+# =============================================================================
+
+release_workflow:
+  trigger: "BD merges dev → main"
+
+  automated_steps:
+    - "Full CI suite passes"
+    - "Create git tag from version in pyproject.toml"
+    - "Generate changelog from conventional commits"
+    - "Build artifacts (PDF docs if configured)"
+    - "Create GitHub Release with notes and artifacts"
+
+  manual_steps:
+    - "BD reviews dev branch stability"
+    - "BD creates PR from dev to main"
+    - "BD self-approves (deliberate pause)"
+    - "BD merges"
+
+# =============================================================================
+# CONFIGURATION CHECKLIST
+# =============================================================================
+
+configuration_checklist:
+  github_branch_protection:
+    dev:
+      - "Require PR before merging: ON"
+      - "Require status checks: ci"
+      - "Require branches up to date: OFF"
+      - "Require review: OFF"
+      - "Do not allow bypassing: ON"
+    main:
+      - "Require PR before merging: ON"
+      - "Require status checks: ci, docs"
+      - "Require branches up to date: ON"
+      - "Require review from Code Owners: ON"
+      - "Do not allow bypassing: ON"
+      - "Do not allow deletions: ON"
+      - "Do not allow force pushes: ON"
+
+  codeowners_file:
+    location: ".github/CODEOWNERS"
+    content: "* @percy-raskova"
+    purpose: "Makes BD required reviewer for main PRs"
+
+  workflow_permissions:
+    docs_yml:
+      contents: "read"
+      pages: "write"
+      id_token: "write"
+
+# =============================================================================
+# COMMON ISSUES AND SOLUTIONS
+# =============================================================================
+
+troubleshooting:
+  ci_not_running_on_dev_prs:
+    symptom: "PRs to dev don't trigger CI"
+    cause: "ci.yml only had main in triggers"
+    solution: "Add dev to branches list (done in Phase 1)"
+    verification: "gh act --dryrun shows all jobs"
+
+  sphinx_duplicate_warnings:
+    symptom: "Autodoc warns about duplicate object descriptions"
+    cause: "Pydantic models re-exported in __init__.py"
+    solution: "suppress_warnings in conf.py includes 'autodoc'"
+    reference: "ADR022_sphinx_autosummary_config"
+
+  style_check_blocking:
+    symptom: "Style failures block merge"
+    cause: "Missing continue-on-error: true"
+    solution: "Style job has continue-on-error: true"
+    verification: "Style job shows yellow, not red"
+
+  contributor_confused_by_failure:
+    symptom: "New contributor doesn't know what to do"
+    cause: "Unfriendly error messages"
+    solution: "Add contextual help in workflow output"
+    future_work: "Phase 2 - friendly failure messages"

@@ -142,6 +142,47 @@ class TestLaborAristocracy:
         with pytest.raises(ValueError, match="value_produced must be > 0"):
             calculate_labor_aristocracy_ratio(core_wages=80.0, value_produced=0.0)
 
+    def test_wages_slightly_above_value_is_aristocracy(self) -> None:
+        """When wages are marginally above value, worker is labor aristocracy.
+
+        This boundary test catches mutation survival where > is mutated to >=.
+        """
+        # 100.001 > 100.0 -> True (labor aristocracy)
+        assert is_labor_aristocracy(core_wages=100.001, value_produced=100.0) is True
+
+    def test_wages_slightly_below_value_is_not_aristocracy(self) -> None:
+        """When wages are marginally below value, worker is NOT labor aristocracy.
+
+        This boundary test catches mutation survival where > is mutated to >=.
+        """
+        # 99.999 < 100.0 -> False (not labor aristocracy)
+        assert is_labor_aristocracy(core_wages=99.999, value_produced=100.0) is False
+
+    def test_exact_equality_is_not_aristocracy(self) -> None:
+        """When wages exactly equal value, worker is NOT labor aristocracy.
+
+        Wc/Vc > 1 (strictly greater) defines labor aristocracy.
+        Exact equality means no rent extraction is occurring.
+        """
+        # 100.0 == 100.0 -> False (Wc/Vc = 1.0, not > 1)
+        assert is_labor_aristocracy(core_wages=100.0, value_produced=100.0) is False
+
+    def test_zero_wages_is_not_aristocracy(self) -> None:
+        """When wages are zero, worker is NOT labor aristocracy.
+
+        A worker receiving no wages cannot be benefiting from imperial rent.
+        """
+        # 0.0 / 100.0 = 0.0 < 1 -> False
+        assert is_labor_aristocracy(core_wages=0.0, value_produced=100.0) is False
+
+    def test_negative_value_raises_error(self) -> None:
+        """Negative value_produced is invalid and should raise ValueError.
+
+        Value produced must be positive for the ratio to be meaningful.
+        """
+        with pytest.raises(ValueError, match="value_produced must be > 0"):
+            is_labor_aristocracy(core_wages=100.0, value_produced=-50.0)
+
 
 @pytest.mark.math
 class TestConsciousnessDrift:
@@ -214,3 +255,184 @@ class TestConsciousnessDrift:
 
         # Decay term: -0.2 * 0.8 = -0.16
         assert drift < 0.0, "High consciousness should decay"
+
+
+@pytest.mark.math
+class TestConsciousnessDriftBifurcation:
+    """Test the Fascist Bifurcation mechanic in consciousness drift.
+
+    Sprint 3.4.2b: When wages are FALLING (wage_change < 0), crisis creates
+    "agitation energy" that channels into either:
+    - Revolution (if solidarity_pressure > 0) - positive drift
+    - Fascism (if solidarity_pressure = 0) - negative drift via loss aversion
+
+    This encodes the historical insight: "Agitation without solidarity
+    produces fascism, not revolution." (Germany 1933 vs Russia 1917)
+    """
+
+    def test_falling_wages_with_solidarity_increases_consciousness(self) -> None:
+        """Crisis + solidarity channels agitation into revolutionary consciousness.
+
+        When wages fall AND solidarity exists, the agitation energy
+        produces revolutionary drift (more class consciousness).
+
+        This is the Russia 1917 scenario: crisis plus solidarity = revolution.
+        """
+        # Base scenario at Wc/Vc = 1.0 (neutral material conditions)
+        # Use minimal decay to isolate the bifurcation effect
+        drift = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,  # Wc/Vc = 1.0 (neutral base drift)
+            current_consciousness=0.3,
+            sensitivity_k=1.0,
+            decay_lambda=0.0,  # No decay to isolate bifurcation
+            solidarity_pressure=0.5,  # Solidarity present
+            wage_change=-10.0,  # Wages FALLING (crisis)
+        )
+
+        # Base drift = k(1 - 1.0) - 0.0*0.3 = 0.0
+        # Agitation energy = |-10| * 2.25 = 22.5
+        # Crisis modifier = 22.5 * min(1.0, 0.5) = 11.25
+        # Total drift = 0.0 + 11.25 = 11.25 (positive = revolutionary)
+        assert drift > 0.0, "Crisis with solidarity should increase consciousness"
+        assert drift == pytest.approx(11.25, abs=0.01)
+
+    def test_falling_wages_without_solidarity_decreases_consciousness(self) -> None:
+        """Crisis without solidarity channels agitation into fascist reaction.
+
+        When wages fall AND NO solidarity exists, the agitation energy
+        produces reactionary drift (less class consciousness, more national identity).
+
+        This is the Germany 1933 scenario: crisis without solidarity = fascism.
+        """
+        # Base scenario at Wc/Vc = 1.0 (neutral material conditions)
+        drift = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,  # Wc/Vc = 1.0 (neutral base drift)
+            current_consciousness=0.3,
+            sensitivity_k=1.0,
+            decay_lambda=0.0,  # No decay to isolate bifurcation
+            solidarity_pressure=0.0,  # NO solidarity - the fascist condition
+            wage_change=-10.0,  # Wages FALLING (crisis)
+        )
+
+        # Base drift = k(1 - 1.0) - 0.0*0.3 = 0.0
+        # Agitation energy = |-10| * 2.25 = 22.5
+        # No solidarity -> subtract agitation: drift = 0.0 - 22.5 = -22.5
+        # Total drift = -22.5 (negative = fascist/reactionary)
+        assert drift < 0.0, "Crisis without solidarity should decrease consciousness"
+        assert drift == pytest.approx(-22.5, abs=0.01)
+
+    def test_rising_wages_no_bifurcation_triggered(self) -> None:
+        """Rising wages do not trigger the bifurcation mechanic.
+
+        The bifurcation only activates when wage_change < 0 (crisis).
+        Rising wages = stability, no agitation energy generated.
+        """
+        # Compare with and without wage_change when wages rising
+        drift_no_change = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,
+            current_consciousness=0.3,
+            sensitivity_k=1.0,
+            decay_lambda=0.1,
+            solidarity_pressure=0.5,
+            wage_change=0.0,  # No change
+        )
+
+        drift_rising = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,
+            current_consciousness=0.3,
+            sensitivity_k=1.0,
+            decay_lambda=0.1,
+            solidarity_pressure=0.5,
+            wage_change=10.0,  # Wages RISING (prosperity)
+        )
+
+        # Rising wages should NOT trigger bifurcation
+        # Both should be the same (only base drift + decay)
+        assert drift_no_change == pytest.approx(drift_rising, abs=0.001)
+
+    def test_loss_aversion_coefficient_applied(self) -> None:
+        """Verify the 2.25 loss aversion multiplier is correctly applied.
+
+        Kahneman-Tversky: Losses loom 2.25x larger than equivalent gains.
+        This amplifies the agitation energy during crisis.
+        """
+        # With solidarity: agitation energy = |wage_change| * 2.25
+        drift = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,
+            current_consciousness=0.0,
+            sensitivity_k=1.0,
+            decay_lambda=0.0,
+            solidarity_pressure=1.0,  # Full solidarity
+            wage_change=-1.0,  # Minimal wage loss
+        )
+
+        # Expected: base_drift (0) + crisis_modifier
+        # crisis_modifier = |(-1)| * 2.25 * min(1.0, 1.0) = 2.25
+        assert drift == pytest.approx(2.25, abs=0.01)
+
+    def test_solidarity_pressure_clamped_to_one(self) -> None:
+        """Verify solidarity_pressure is clamped via min(1.0, solidarity_pressure).
+
+        Even if solidarity_pressure > 1.0 (multiple solidarity edges),
+        the maximum modifier is still clamped.
+        """
+        # Test with solidarity_pressure > 1.0
+        drift_high = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,
+            current_consciousness=0.0,
+            sensitivity_k=1.0,
+            decay_lambda=0.0,
+            solidarity_pressure=2.0,  # Exceeds 1.0 (multiple edges)
+            wage_change=-10.0,
+        )
+
+        drift_max = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,
+            current_consciousness=0.0,
+            sensitivity_k=1.0,
+            decay_lambda=0.0,
+            solidarity_pressure=1.0,  # Exactly 1.0
+            wage_change=-10.0,
+        )
+
+        # Both should produce the same result because min(1.0, 2.0) = 1.0
+        assert drift_high == pytest.approx(drift_max, abs=0.001)
+
+    def test_zero_wage_change_no_bifurcation(self) -> None:
+        """Zero wage change does not trigger bifurcation.
+
+        Only negative wage_change (falling wages) triggers the mechanic.
+        """
+        drift = calculate_consciousness_drift(
+            core_wages=50.0,
+            value_produced=50.0,
+            current_consciousness=0.0,
+            sensitivity_k=1.0,
+            decay_lambda=0.0,
+            solidarity_pressure=0.5,
+            wage_change=0.0,  # No change
+        )
+
+        # Base drift = k(1 - 1.0) - 0.0*0.0 = 0.0
+        # No bifurcation triggered
+        assert drift == pytest.approx(0.0, abs=0.001)
+
+    def test_value_produced_validation_in_bifurcation(self) -> None:
+        """ValueError raised for zero/negative value_produced even with bifurcation params."""
+        with pytest.raises(ValueError, match="value_produced must be > 0"):
+            calculate_consciousness_drift(
+                core_wages=50.0,
+                value_produced=0.0,  # Invalid
+                current_consciousness=0.3,
+                sensitivity_k=1.0,
+                decay_lambda=0.1,
+                solidarity_pressure=0.5,
+                wage_change=-10.0,
+            )

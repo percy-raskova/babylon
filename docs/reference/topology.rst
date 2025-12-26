@@ -110,6 +110,9 @@ The :class:`TopologySnapshot` model captures metrics at each tick:
    * - ``actual_liquidity``
      - ``int``
      - Count of SOLIDARITY edges > 0.5 strength
+   * - ``cadre_density``
+     - ``float``
+     - actual/potential liquidity ratio [0, 1] (Sprint 3.3)
    * - ``is_resilient``
      - ``bool | None``
      - Whether network survives purge test (None if not tested)
@@ -309,6 +312,71 @@ Lifecycle Hooks
 
    Called when simulation ends. Logs summary statistics.
 
+Event Emission (Sprint 3.3)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The TopologyMonitor emits :class:`PhaseTransitionEvent` when percolation ratio
+crosses threshold boundaries. Events are collected and injected into the next
+tick's WorldState.
+
+**Internal State:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Attribute
+     - Type
+     - Description
+   * - ``_previous_phase``
+     - ``str | None``
+     - Last known phase state
+   * - ``_pending_events``
+     - ``list[SimulationEvent]``
+     - Events awaiting collection
+
+**Methods:**
+
+.. py:method:: _classify_phase(percolation_ratio, cadre_density=0.0)
+
+   Classify current phase state from percolation ratio and cadre density.
+
+   :param percolation_ratio: Current L_max / N ratio
+   :type percolation_ratio: float
+   :param cadre_density: Ratio of actual/potential liquidity (default 0.0)
+   :type cadre_density: float
+   :returns: Phase state name
+   :rtype: str ("gaseous" | "transitional" | "liquid" | "solid")
+
+.. py:method:: get_pending_events()
+
+   Return and clear pending events list.
+
+   :returns: List of events awaiting injection
+   :rtype: list[SimulationEvent]
+
+**Phase States (4-Phase Model - Sprint 3.3):**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 35 50
+
+   * - State
+     - Threshold
+     - Political Meaning
+   * - Gaseous
+     - ``ratio < 0.1``
+     - Atomized leftism, no coordination capacity
+   * - Transitional
+     - ``0.1 <= ratio < 0.5``
+     - Emerging structure, vulnerable to disruption
+   * - Liquid
+     - ``ratio >= 0.5 AND cadre < 0.5``
+     - Mass movement formed, broad but lacks discipline
+   * - Solid
+     - ``ratio >= 0.5 AND cadre >= 0.5``
+     - Vanguard party crystallized, iron discipline
+
 Narrative States
 ~~~~~~~~~~~~~~~~
 
@@ -324,9 +392,15 @@ The monitor logs these narrative states based on metrics:
    * - Gaseous
      - ``percolation_ratio < 0.1``
      - "Movement is atomized"
-   * - Condensation
-     - ``percolation_ratio`` crosses 0.5
-     - "Vanguard Party has formed"
+   * - Liquid
+     - ``ratio >= 0.5 AND cadre < 0.5``
+     - "Mass movement formed, lacks cadre discipline"
+   * - Solid
+     - ``ratio >= 0.5 AND cadre >= 0.5``
+     - "Vanguard Party crystallized, iron discipline"
+   * - Crystallization
+     - ``liquid -> solid`` transition
+     - "Mass movement hardened into disciplined vanguard"
    * - Brittle
      - ``potential > actual * 2``
      - "Movement is broad but brittle"
@@ -367,6 +441,8 @@ See Also
 --------
 
 - :doc:`/concepts/percolation-theory` - Conceptual explanation of percolation theory
+- :doc:`/concepts/event-system` - Event system architecture
+- :doc:`/reference/events` - Complete event type reference (includes PhaseTransitionEvent)
 - :doc:`/concepts/imperial-rent` - Related economic mechanics
 - :py:mod:`babylon.engine.systems.solidarity` - Solidarity transmission system
 - :py:mod:`babylon.systems.formulas` - Mathematical formulas

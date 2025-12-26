@@ -7,6 +7,9 @@ that constructs prompts following the AI_COMMS.md context hierarchy:
 3. Recent Events (from tick delta)
 
 The builder creates structured prompts grounded in Marxist dialectical materialism.
+
+Sprint 4.1: Updated to use typed SimulationEvent objects from state.events
+instead of string-based event_log.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.events import ExtractionEvent, SparkEvent
 
 # =============================================================================
 # FIXTURES
@@ -165,7 +169,10 @@ class TestSystemPrompt:
 
 @pytest.mark.unit
 class TestContextBlock:
-    """Tests for context block generation."""
+    """Tests for context block generation.
+
+    Sprint 4.1: Updated to use typed SimulationEvent objects.
+    """
 
     def test_build_context_block_includes_material_conditions(
         self,
@@ -175,10 +182,19 @@ class TestContextBlock:
         from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=5,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         context = builder.build_context_block(
             state=state_with_entities,
             rag_context=["Historical context"],
-            events=["Event A"],
+            events=[extraction_event],
         )
 
         # Should include material conditions header or content
@@ -198,10 +214,19 @@ class TestContextBlock:
             "The revolution of 1917 established...",
             "Class consciousness emerges from...",
         ]
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=5,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         context = builder.build_context_block(
             state=state_with_entities,
             rag_context=rag_docs,
-            events=["Event A"],
+            events=[extraction_event],
         )
 
         # Should include the RAG documents
@@ -212,20 +237,37 @@ class TestContextBlock:
         self,
         state_with_entities: WorldState,
     ) -> None:
-        """Context block includes recent events section."""
+        """Context block includes recent events section.
+
+        Sprint 4.1: Updated to use typed events - check for event type info.
+        """
         from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
-        events = ["Strike in factory district", "Police deployed to quell unrest"]
+
+        # Create typed events (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=5,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+        spark_event = SparkEvent(
+            tick=5,
+            node_id="C001",
+            repression=0.8,
+            spark_probability=0.4,
+        )
+
         context = builder.build_context_block(
             state=state_with_entities,
             rag_context=["Historical context"],
-            events=events,
+            events=[extraction_event, spark_event],
         )
 
-        # Should include the events
-        assert "strike" in context.lower()
-        assert "police" in context.lower()
+        # Should include formatted event info
+        assert "surplus_extraction" in context.lower() or "extraction" in context.lower()
+        assert "force" in context.lower() or "repression" in context.lower()
 
     def test_context_block_handles_empty_rag_context(
         self,
@@ -235,16 +277,25 @@ class TestContextBlock:
         from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
         builder = DialecticalPromptBuilder()
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=5,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         context = builder.build_context_block(
             state=state_with_entities,
             rag_context=[],
-            events=["Event A"],
+            events=[extraction_event],
         )
 
         # Should not crash, should have some indication of no context
         assert context is not None
         # Should still have material conditions and events
-        assert "event" in context.lower() or "Event A" in context
+        assert "surplus_extraction" in context.lower() or "extraction" in context.lower()
 
     def test_context_block_handles_empty_events(
         self,

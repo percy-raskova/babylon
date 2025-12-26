@@ -20,6 +20,7 @@ Schema validation is provided for observer JSON outputs:
 
 from babylon.engine.observers.causal import CausalChainObserver
 from babylon.engine.observers.economic import EconomyMonitor
+from babylon.engine.observers.metrics import MetricsCollector
 from babylon.engine.observers.schema_validator import (
     is_valid_narrative_frame,
     validate_narrative_frame,
@@ -28,6 +29,7 @@ from babylon.engine.observers.schema_validator import (
 __all__ = [
     "CausalChainObserver",
     "EconomyMonitor",
+    "MetricsCollector",
     "is_valid_narrative_frame",
     "validate_narrative_frame",
 ]

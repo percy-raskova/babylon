@@ -15,10 +15,11 @@ Architecture
 
    architecture
    simulation-systems
+   event-system
 
 Understanding the Embedded Trinity architecture (Ledger, Topology, Archive),
-how the seven simulation systems work together, and how data flows through
-the simulation engine.
+how the seven simulation systems work together, the event system that enables
+AI observation, and how data flows through the simulation engine.
 
 Economic Theory
 ---------------

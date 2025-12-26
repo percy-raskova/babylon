@@ -1,0 +1,433 @@
+# Save/Load System Specification
+# Game State Persistence
+#
+# "The ability to save is the ability to learn."
+# - Game Design Principle
+#
+# This document specifies how game state is persisted and restored.
+
+meta:
+  created: "2025-12-26"
+  purpose: "Specify game state persistence and restoration"
+  issue_id: "PERSIST-001"
+  status: "SPEC_COMPLETE"
+  priority: "LOW"
+
+# =============================================================================
+# DESIGN PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_principle: |
+    Save files should be:
+    - Human-readable (for debugging and modding)
+    - Version-tolerant (older saves work with newer code)
+    - Compact (no redundant data)
+    - Complete (all state needed to resume)
+
+  format_choice: "JSON"
+  rationale: |
+    - Pydantic models serialize to JSON natively
+    - Human-readable and editable
+    - Easy to version and migrate
+    - Compatible with existing data pipeline
+
+  anti_goals:
+    - "Binary formats (hard to debug)"
+    - "Database-backed saves (overkill for single-player)"
+    - "Cloud saves (privacy concerns, complexity)"
+    - "Auto-save every tick (performance impact)"
+
+# =============================================================================
+# SAVE FILE STRUCTURE
+# =============================================================================
+
+save_file_structure:
+  filename_pattern: "babylon_save_{slot}_{timestamp}.json"
+  example: "babylon_save_01_20251226_143052.json"
+
+  schema:
+    version:
+      type: "str"
+      description: "Save format version for migration"
+      example: "1.0.0"
+
+    metadata:
+      type: "object"
+      fields:
+        save_name: "User-provided save name"
+        timestamp: "ISO 8601 datetime"
+        game_version: "Game version that created save"
+        playtime_seconds: "Total playtime in this save"
+        tick: "Current tick number"
+        epoch: "Current epoch (1, 2A, 2B, etc.)"
+
+    world_state:
+      type: "object"
+      description: "Serialized WorldState model"
+      contains:
+        - "graph (NetworkX serialized)"
+        - "social_classes"
+        - "territories"
+        - "relationships"
+        - "global_modifiers"
+
+    simulation_config:
+      type: "object"
+      description: "Serialized SimulationConfig"
+      contains:
+        - "random_seed"
+        - "difficulty_settings"
+        - "game_defines_overrides"
+
+    vanguard_state:
+      type: "object"
+      description: "Player organization state (Epoch 2+)"
+      contains:
+        - "resources (CL, SL, Rep, TL)"
+        - "cohesion_metrics"
+        - "doctrine_tree"
+        - "active_actions"
+
+    event_history:
+      type: "array"
+      description: "Log of significant events"
+      contains:
+        - "event_type"
+        - "tick"
+        - "data"
+      max_entries: 1000  # Rolling window
+
+    rng_state:
+      type: "object"
+      description: "Random number generator state for reproducibility"
+      contains:
+        - "numpy_rng_state"
+        - "python_random_state"
+
+  example_save: |
+    {
+      "version": "1.0.0",
+      "metadata": {
+        "save_name": "Test Revolution",
+        "timestamp": "2025-12-26T14:30:52Z",
+        "game_version": "0.3.8",
+        "playtime_seconds": 3600,
+        "tick": 42,
+        "epoch": "2A"
+      },
+      "world_state": {
+        "graph": { ... },  // NetworkX node-link format
+        "social_classes": [ ... ],
+        "territories": [ ... ],
+        "relationships": [ ... ]
+      },
+      "simulation_config": {
+        "random_seed": 12345,
+        "difficulty": "normal"
+      },
+      "vanguard_state": {
+        "cadre_labor": 25,
+        "sympathizer_labor": 450,
+        "reputation": 0.35,
+        "theoretical_labor": 15,
+        "doctrine_acquired": ["class_consciousness", "trade_unionism"]
+      },
+      "event_history": [
+        {"type": "SURPLUS_EXTRACTION", "tick": 1, "data": {...}},
+        {"type": "CONSCIOUSNESS_SPARK", "tick": 15, "data": {...}}
+      ],
+      "rng_state": { ... }
+    }
+
+# =============================================================================
+# SAVE SLOTS
+# =============================================================================
+
+save_slots:
+  manual_slots: 10
+  quicksave_slot: 1
+  autosave_slots: 3  # Rolling autosaves
+
+  slot_display:
+    format: |
+      Slot 1: "Test Revolution" - Tick 42, Epoch 2A
+              2 hours playtime, saved 5 minutes ago
+
+  organization:
+    directory: "~/.babylon/saves/"
+    per_slot_file: true
+    backup_on_overwrite: true
+
+# =============================================================================
+# SAVE OPERATIONS
+# =============================================================================
+
+save_operations:
+  manual_save:
+    trigger: "User presses Save button or hotkey (F5)"
+    process:
+      1: "Pause simulation"
+      2: "Serialize current state"
+      3: "Validate serialization (round-trip check)"
+      4: "Write to slot file"
+      5: "Update slot metadata"
+      6: "Resume simulation"
+    feedback: "Toast notification: 'Game saved to Slot X'"
+
+  quicksave:
+    trigger: "User presses quicksave hotkey (F6)"
+    slot: "Dedicated quicksave slot"
+    process: "Same as manual_save but faster (skip slot selection)"
+
+  autosave:
+    trigger:
+      - "Every 10 ticks"
+      - "Before major events (UPRISING, RUPTURE)"
+      - "On epoch transition"
+    slots: "Rolling 3 autosave slots"
+    process: |
+      1. Check if autosave enabled
+      2. Serialize state
+      3. Write to oldest autosave slot
+      4. No user feedback (silent)
+
+# =============================================================================
+# LOAD OPERATIONS
+# =============================================================================
+
+load_operations:
+  manual_load:
+    trigger: "User selects slot from Load menu"
+    process:
+      1: "Confirm with user (will lose unsaved progress)"
+      2: "Read save file"
+      3: "Validate version and integrity"
+      4: "Deserialize to models"
+      5: "Rebuild graph from serialized data"
+      6: "Restore RNG state"
+      7: "Initialize systems with restored state"
+      8: "Resume at saved tick"
+    feedback: "Toast: 'Loaded save from Slot X'"
+
+  quickload:
+    trigger: "User presses quickload hotkey (F7)"
+    process: "Same as manual_load but from quicksave slot"
+
+  error_handling:
+    corrupt_save:
+      detection: "JSON parse failure or validation error"
+      response: "Show error, offer to load backup"
+    version_mismatch:
+      detection: "Save version > current format version"
+      response: "Show warning, attempt migration or refuse"
+    missing_data:
+      detection: "Required fields missing"
+      response: "Attempt graceful degradation, log warning"
+
+# =============================================================================
+# VERSION MIGRATION
+# =============================================================================
+
+version_migration:
+  principle: |
+    Newer game versions should load older saves.
+    Older game versions may not load newer saves.
+
+  migration_chain:
+    "0.9.0": "No migration needed (initial format)"
+    "1.0.0":
+      from: ["0.9.0"]
+      changes:
+        - "Add vanguard_state section"
+        - "Add doctrine_tree field"
+      migrator: "migrate_0_9_to_1_0(save_data)"
+
+  migration_process:
+    1: "Read save file"
+    2: "Check version field"
+    3: "If version < current, apply migration chain"
+    4: "Update version field"
+    5: "Proceed with normal load"
+
+  backwards_compatibility_window: "3 minor versions"
+  deprecation_warning: "Saves older than window show warning on load"
+
+# =============================================================================
+# SERIALIZATION DETAILS
+# =============================================================================
+
+serialization:
+  pydantic_models:
+    method: "model.model_dump(mode='json')"
+    handles:
+      - "Constrained types (Probability, Currency)"
+      - "Enums (serialize as strings)"
+      - "Optional fields (omit if None)"
+
+  networkx_graph:
+    method: "nx.node_link_data(graph)"
+    output: |
+      {
+        "directed": true,
+        "multigraph": false,
+        "nodes": [
+          {"id": "C_b", "type": "SocialClass", ...},
+          {"id": "T1", "type": "Territory", ...}
+        ],
+        "links": [
+          {"source": "C_b", "target": "P_w", "type": "EXPLOITATION", ...}
+        ]
+      }
+    restoration: "nx.node_link_graph(data)"
+
+  rng_state:
+    numpy:
+      save: "np.random.get_state()"
+      restore: "np.random.set_state(state)"
+    python:
+      save: "random.getstate()"
+      restore: "random.setstate(state)"
+    purpose: "Exact reproducibility when loading"
+
+  compression:
+    default: "None (JSON is readable)"
+    optional: "gzip for save file archiving"
+    indicator: ".json.gz extension"
+
+# =============================================================================
+# INTEGRITY CHECKS
+# =============================================================================
+
+integrity:
+  on_save:
+    - "Validate WorldState model"
+    - "Ensure graph is connected"
+    - "Check resource values in valid ranges"
+    - "Verify event history not truncated"
+
+  on_load:
+    - "JSON schema validation"
+    - "Pydantic model validation"
+    - "Graph reconstruction validation"
+    - "Checksum verification (optional)"
+
+  checksum:
+    algorithm: "SHA-256"
+    scope: "Hash of serialized world_state"
+    storage: "metadata.checksum field"
+    purpose: "Detect file corruption or tampering"
+
+# =============================================================================
+# UI INTEGRATION
+# =============================================================================
+
+ui:
+  save_menu:
+    access: "ESC -> Save Game, or F5 hotkey"
+    display: |
+      ┌─────────────────────────────────────────────┐
+      │  SAVE GAME                         [Close] │
+      ├─────────────────────────────────────────────┤
+      │                                             │
+      │  Slot 1: "Test Revolution"                 │
+      │          Tick 42, Epoch 2A, 2h playtime    │
+      │          Saved: 5 minutes ago              │
+      │          [SAVE] [DELETE]                   │
+      │                                             │
+      │  Slot 2: [Empty]                           │
+      │          [SAVE]                            │
+      │                                             │
+      │  Slot 3: "Failed Attempt"                  │
+      │          Tick 78, Epoch 2B, 4h playtime    │
+      │          Saved: 2 days ago                 │
+      │          [SAVE] [DELETE]                   │
+      │                                             │
+      │  ─────────────────────────────────────────  │
+      │  Quicksave: Tick 41, saved 10 minutes ago  │
+      │  Autosave 1: Tick 40, 12 minutes ago       │
+      │  Autosave 2: Tick 30, 20 minutes ago       │
+      │  Autosave 3: Tick 20, 28 minutes ago       │
+      │                                             │
+      └─────────────────────────────────────────────┘
+
+  load_menu:
+    access: "ESC -> Load Game, or F7 hotkey"
+    display: "Similar to save menu but with [LOAD] buttons"
+    confirmation: "Are you sure? Unsaved progress will be lost."
+
+  hotkeys:
+    quicksave: "F5 or F6"
+    quickload: "F7 or F9"
+    save_menu: "ESC -> Save"
+    load_menu: "ESC -> Load"
+
+# =============================================================================
+# IMPLEMENTATION
+# =============================================================================
+
+implementation:
+  files:
+    save_manager: "src/babylon/persistence/save_manager.py"
+    serializers: "src/babylon/persistence/serializers.py"
+    migrators: "src/babylon/persistence/migrators.py"
+    tests: "tests/unit/persistence/test_save_load.py"
+
+  classes:
+    SaveManager: |
+      class SaveManager:
+          def __init__(self, save_dir: Path):
+              ...
+
+          def save(self, slot: int, state: GameState, name: str) -> None:
+              ...
+
+          def load(self, slot: int) -> GameState:
+              ...
+
+          def list_saves(self) -> list[SaveMetadata]:
+              ...
+
+          def delete_save(self, slot: int) -> None:
+              ...
+
+    GameState: |
+      class GameState(BaseModel):
+          """Complete serializable game state."""
+          world_state: WorldState
+          simulation_config: SimulationConfig
+          vanguard_state: Optional[VanguardState]
+          event_history: list[EventRecord]
+          rng_state: RNGState
+
+  testing:
+    - "Test save/load round-trip"
+    - "Test version migration"
+    - "Test corrupt file handling"
+    - "Test large save files (100+ ticks)"
+    - "Test RNG state restoration (determinism)"
+
+# =============================================================================
+# FUTURE CONSIDERATIONS
+# =============================================================================
+
+future:
+  cloud_sync:
+    status: "NOT PLANNED"
+    rationale: "Privacy concerns, complexity, single-player focus"
+
+  save_sharing:
+    status: "POSSIBLE"
+    mechanism: "Export save file, share manually"
+    consideration: "May need to strip personal metadata"
+
+  replay_system:
+    status: "DEFERRED"
+    concept: "Save only initial state + all actions, replay on load"
+    benefit: "Smaller save files, enables replay viewer"
+    cost: "Requires deterministic simulation"
+
+  ironman_mode:
+    status: "DEFERRED"
+    concept: "Single autosave, no manual saves, permadeath"
+    purpose: "Challenge mode for experienced players"

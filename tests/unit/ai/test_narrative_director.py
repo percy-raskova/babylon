@@ -5,6 +5,9 @@ that observes simulation state changes and generates narrative.
 
 The NarrativeDirector sits in the Ideological Superstructure - it observes
 the Material Base (simulation mechanics) but cannot modify it.
+
+Sprint 4.1: Updated to use typed SimulationEvent objects from state.events
+instead of string-based event_log.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.events import ExtractionEvent, TransmissionEvent
 
 # =============================================================================
 # FIXTURES
@@ -155,7 +159,10 @@ class TestNarrativeDirectorEvents:
         self,
         initial_state: WorldState,
     ) -> None:
-        """on_tick detects new events added during tick."""
+        """on_tick detects new events added during tick.
+
+        Sprint 4.1: Updated to use typed events.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
@@ -163,11 +170,26 @@ class TestNarrativeDirectorEvents:
         # Initial state with no events
         previous_state = initial_state
 
+        # Create typed events (Sprint 4.1)
+        event_a = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+        event_b = TransmissionEvent(
+            tick=1,
+            target_id="C001",
+            source_id="C002",
+            delta=0.05,
+            solidarity_strength=0.5,
+        )
+
         # New state with events added
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Event A happened", "Event B happened"],
+                "events": [event_a, event_b],
             }
         )
 
@@ -179,36 +201,60 @@ class TestNarrativeDirectorEvents:
         initial_state: WorldState,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """on_tick logs new events."""
+        """on_tick logs new events.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent and check
+        for formatted event text in logs.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Revolution brewing in the periphery"],
+                "events": [extraction_event],
             }
         )
 
         with caplog.at_level(logging.INFO):
             director.on_tick(previous_state, new_state)
 
-        assert "Revolution brewing" in caplog.text
+        # Check that the formatted event is logged
+        assert "SURPLUS_EXTRACTION" in caplog.text
 
     def test_on_tick_handles_no_new_events(
         self,
         initial_state: WorldState,
     ) -> None:
-        """on_tick handles case with no new events gracefully."""
+        """on_tick handles case with no new events gracefully.
+
+        Sprint 4.1: Updated to use typed events.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector()
 
-        # Both states have same event log
-        previous_state = initial_state.model_copy(update={"event_log": ["Old event"]})
-        new_state = initial_state.model_copy(update={"tick": 1, "event_log": ["Old event"]})
+        # Create a typed event
+        old_event = ExtractionEvent(
+            tick=0,
+            source_id="C001",
+            target_id="C002",
+            amount=5.0,
+        )
+
+        # Both states have same events
+        previous_state = initial_state.model_copy(update={"events": [old_event]})
+        new_state = initial_state.model_copy(update={"tick": 1, "events": [old_event]})
 
         # Should not raise
         director.on_tick(previous_state, new_state)

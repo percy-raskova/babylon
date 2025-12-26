@@ -1,0 +1,399 @@
+# Strategy Layer Specification
+# Player Agency and Resource Traps for Epoch 2: The Game
+#
+# "Every revolutionary movement contains within it the seeds of its own betrayal."
+
+meta:
+  epoch: 2
+  sub_epoch: "2A"
+  slice: "2.2a"
+  slice_name: "Player Controls (External Actions)"
+  status: PLANNED
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Define player agency mechanics with meaningful but dangerous choices"
+  thesis: "Player choices matter, but history punishes opportunism."
+
+# =============================================================================
+# ANTI-PATTERN WARNING
+# =============================================================================
+#
+# DO NOT implement this in the Engine yet.
+# Epoch 1 (The Demonstration) must remain OBSERVATION-ONLY.
+#
+# The player watches the Imperial Circuit consume itself.
+# Player agency comes in Epoch 2 (The Game).
+#
+# This specification exists to:
+#   1. Document the design for future implementation
+#   2. Ensure Epoch 1 systems don't preclude Epoch 2 mechanics
+#   3. Guide narrative development (AI can foreshadow these traps)
+#
+# =============================================================================
+
+overview:
+  description: |
+    The Strategy Layer gives players meaningful choices that appear beneficial
+    but contain hidden traps. Each trap represents a historical deviation from
+    revolutionary praxis: Liberalism, Ultra-Leftism, and Economism.
+
+    The player spends resources (Cadre Labor, Sympathizer Labor, Solidarity)
+    on actions that provide short-term gains but create long-term vulnerabilities.
+    When Crisis arrives (ECOLOGICAL_OVERSHOOT from Epoch 1), these vulnerabilities
+    determine whether the movement achieves Revolution or collapses into Fascism.
+
+  design_principles:
+    - "No free lunches: every action has opportunity cost"
+    - "Traps are seductive: short-term metrics improve"
+    - "History judges: consequences manifest during Crisis"
+    - "Player learns: failure teaches revolutionary theory"
+
+  theoretical_basis:
+    liberalism: "Lenin, 'Left-Wing' Communism: An Infantile Disorder (1920)"
+    ultra_leftism: "Mao, On Contradiction (1937)"
+    economism: "Lenin, What Is To Be Done? (1902)"
+
+# =============================================================================
+# RESOURCE CURRENCIES
+# =============================================================================
+
+resources:
+  cadre_labor:
+    symbol: "CL"
+    description: "Deterministic, high-value structural actions"
+    generation:
+      - "Organized workers in base areas"
+      - "Training programs (time investment)"
+      - "Successful struggle outcomes"
+    characteristics:
+      - "Scarce and precious"
+      - "Quality over quantity"
+      - "Cannot be bought, only built"
+    formula: "CL_generation = base_cadre * training_rate * morale"
+
+  sympathizer_labor:
+    symbol: "SL"
+    description: "Stochastic, mass-volume actions"
+    generation:
+      - "Agitation campaigns"
+      - "Viral moments (EXCESSIVE_FORCE events)"
+      - "Crisis conditions"
+    characteristics:
+      - "Abundant but unreliable"
+      - "Quantity over quality"
+      - "Decays without Coherence"
+    formula: "SL_effective = SL_raw * Reputation * Coherence_Factor"
+
+  solidarity:
+    symbol: "SOL"
+    description: "Infrastructure for consciousness transmission"
+    generation:
+      - "SOLIDARITY_SPIKE events"
+      - "Successful mutual aid"
+      - "Shared struggle experiences"
+    characteristics:
+      - "Stored on SOLIDARITY edges"
+      - "Enables Fascist Bifurcation prevention"
+      - "Fragile under atomization"
+    note: "Already implemented in Epoch 1 (SolidaritySystem)"
+
+  coherence:
+    symbol: "COH"
+    description: "Organizational discipline and theoretical clarity"
+    generation:
+      - "Study circles"
+      - "Democratic centralism in action"
+      - "Cadre/Sympathizer ratio maintenance"
+    decay:
+      - "Natural entropy over time"
+      - "Rapid growth without consolidation"
+      - "Ideological drift under pressure"
+    formula: "Coherence_Factor = Cadre_Count / (Cadre_Count + Sympathizer_Count)"
+    trap_note: "The Influencer Trap: high Reputation + low Coherence = mob, not movement"
+
+# =============================================================================
+# THE THREE TRAPS
+# =============================================================================
+
+traps:
+  liberal_trap:
+    name: "The Liberal Trap (Electoralism)"
+    historical_examples:
+      - "German SPD voting for war credits (1914)"
+      - "Chilean Popular Unity nationalization without power (1970-73)"
+      - "Syriza capitulation to Troika (2015)"
+
+    action:
+      id: "run_candidate"
+      display_name: "Run Electoral Campaign"
+      cost:
+        cadre_labor: 10
+        cash: 5000
+      cooldown_ticks: 20
+
+    immediate_effects:
+      repression: -0.15  # State sees you as "legitimate"
+      agitation: -0.10   # Energy channeled into voting
+      legitimacy: +0.20  # Media coverage, ballot access
+      note: "Metrics improve. Player feels smart."
+
+    hidden_costs:
+      revolutionary_pressure: -0.25
+      solidarity_decay_rate: +0.05  # Workers trust institutions, not each other
+      cadre_demoralization: 0.10    # Best organizers become staffers
+
+    trap_trigger:
+      condition: "ECOLOGICAL_OVERSHOOT event fires while legitimacy > 0.5"
+      event: "INSTITUTIONAL_DISSOLUTION"
+      description: |
+        When Crisis hits, the State dissolves the institutions you captured.
+        Your electoral gains vanish. Cadre spent on campaigns are not available
+        for revolutionary work. The movement trusted bourgeois democracy;
+        bourgeois democracy did not trust the movement.
+      narrative_hook: "The movement traded its teeth for a seat at the table."
+
+    recovery:
+      difficulty: "HARD"
+      requires:
+        - "legitimacy < 0.2 (public break with institutions)"
+        - "cadre_labor recovery period (10+ ticks)"
+      note: "Burned bridges with liberal allies. Must rebuild from base."
+
+  ultra_left_trap:
+    name: "The Ultra-Left Trap (Adventurism)"
+    historical_examples:
+      - "Blanquist insurrections (1839, 1870)"
+      - "Red Army Faction bank robberies (1970s)"
+      - "Weather Underground townhouse explosion (1970)"
+
+    action:
+      id: "kinetic_strike"
+      display_name: "Direct Action (Sabotage)"
+      cost:
+        sympathizer_labor: 50
+        operational_security: 20  # Exposure risk
+      cooldown_ticks: 5
+
+    immediate_effects:
+      extraction_rate: -0.30  # Pipelines/logistics disrupted
+      state_attention: +0.40  # Heat spikes
+      agitation: +0.15        # Propaganda of the deed
+      note: "Dramatic. Visible. Feels powerful."
+
+    hidden_costs:
+      repression: +0.35
+      network_exposure: 0.20  # Informants, surveillance
+      coherence_test: true    # If COH < 0.4, triggers collapse
+
+    trap_trigger:
+      condition: "kinetic_strike while coherence < 0.4"
+      event: "NETWORK_COLLAPSE"
+      description: |
+        The State's repression apparatus targets a movement that cannot
+        withstand the pressure. Informants compromise cells. Leaders are
+        arrested. Sympathizers distance themselves. The organization
+        implodes not from external force but internal weakness.
+      narrative_hook: "The spark ignited, but there was no fire—only smoke and ash."
+
+    recovery:
+      difficulty: "VERY_HARD"
+      requires:
+        - "Underground period (15+ ticks at low profile)"
+        - "Rebuild cadre from scratch"
+        - "Sympathizer trust must be re-earned"
+      note: "State now knows your network. Starting over with a target on your back."
+
+  rightist_trap:
+    name: "The Rightist Trap (Economism)"
+    historical_examples:
+      - "AFL craft unionism vs IWW (1900s-1920s)"
+      - "UAW no-strike pledges (WWII)"
+      - "Service worker unions without political program (contemporary)"
+
+    action:
+      id: "wage_strike"
+      display_name: "Economic Strike (Wages Only)"
+      cost:
+        solidarity: 15  # Burns solidarity on narrow goal
+        sympathizer_labor: 30
+      cooldown_ticks: 10
+
+    immediate_effects:
+      worker_wealth: +0.20      # Wages increase
+      p_survival_acquiescence: +0.15  # Life gets easier
+      worker_satisfaction: +0.25
+      note: "Workers' lives improve. Materially successful."
+
+    hidden_costs:
+      reformism: +0.30          # System works! Why revolution?
+      class_consciousness: -0.10
+      agitation_routing: "PRESERVATION"  # Not REVOLUTION
+
+    trap_trigger:
+      condition: "reformism > 0.6 when ECOLOGICAL_OVERSHOOT fires"
+      event: "LABOR_ARISTOCRACY_CAPTURE"
+      description: |
+        The workers have won enough concessions to identify with the system.
+        When Crisis arrives, they defend their gains rather than transform
+        society. The movement becomes a constituency of the status quo.
+        Player has successfully created... a labor aristocracy.
+      narrative_hook: "The workers won the battle for wages and lost the war for liberation."
+
+    recovery:
+      difficulty: "MODERATE"
+      requires:
+        - "Economic crisis erodes gains (external condition)"
+        - "Reformism < 0.3"
+        - "Re-agitation campaign"
+      note: "Easier to recover than other traps, but requires external crisis."
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  inputs:
+    struggle_system:
+      provides:
+        - "agitation (current level)"
+        - "UPRISING events (trigger conditions)"
+        - "EXCESSIVE_FORCE events (sympathizer generation)"
+      location: "src/babylon/engine/systems/struggle.py"
+
+    economy_system:
+      provides:
+        - "extraction_rate (target for kinetic strikes)"
+        - "worker_wealth (economism effects)"
+        - "imperial_rent_pool (crisis proximity)"
+      location: "src/babylon/engine/systems/economic.py"
+
+    solidarity_system:
+      provides:
+        - "solidarity_strength (resource for wage strikes)"
+        - "consciousness_transmission (affected by traps)"
+      location: "src/babylon/engine/systems/solidarity.py"
+
+    metabolism_system:
+      provides:
+        - "ECOLOGICAL_OVERSHOOT event (trap trigger)"
+        - "biocapacity (crisis timeline)"
+      location: "src/babylon/engine/systems/metabolism.py"
+      note: "Epoch 1 Slice 1.4 - must be implemented first"
+
+  outputs:
+    event_bus:
+      new_events:
+        - "INSTITUTIONAL_DISSOLUTION"
+        - "NETWORK_COLLAPSE"
+        - "LABOR_ARISTOCRACY_CAPTURE"
+        - "ACTION_ATTEMPTED (generic for all player actions)"
+      location: "src/babylon/engine/event_bus.py"
+
+    world_state:
+      new_fields:
+        - "SocialClass.reformism: Intensity"
+        - "SocialClass.legitimacy: Probability"
+        - "SocialClass.coherence: Probability"
+      location: "src/babylon/models/entities/social_class.py"
+
+    game_defines:
+      new_coefficients:
+        - "trap_liberal_repression_reduction: 0.15"
+        - "trap_liberal_revolutionary_pressure_decay: 0.25"
+        - "trap_ultra_coherence_threshold: 0.4"
+        - "trap_rightist_reformism_gain: 0.30"
+      location: "src/babylon/config/defines.py"
+
+# =============================================================================
+# NARRATIVE ALIGNMENT
+# =============================================================================
+
+narrative:
+  description: |
+    The AI Narrator (implemented in Epoch 1) will eventually describe these
+    failures when they occur. The narrative voice should teach theory through
+    experience, not lecture.
+
+  narrator_hooks:
+    liberal_trap:
+      foreshadowing:
+        - "The candidate's smile graces the evening news. The picket line thins."
+        - "In the capitol, your representatives negotiate. In the streets, your people wait."
+      consequence:
+        - "The parliament dissolved itself today. Your seats, your committees, your carefully cultivated legitimacy—gone with a stroke of emergency powers."
+
+    ultra_left_trap:
+      foreshadowing:
+        - "The action was spectacular. The response will be methodical."
+        - "Heroes of the movement, faces now known to every surveillance camera."
+      consequence:
+        - "The raids came at dawn. The network that took years to build unraveled in hours. Not martyrs—just prisoners."
+
+    rightist_trap:
+      foreshadowing:
+        - "The contract is signed. Wages rise. The picket signs go into storage."
+        - "Comfortable workers make uncomfortable revolutionaries."
+      consequence:
+        - "When the crisis came, they defended their pensions, not their class. The movement had succeeded—at becoming what it fought."
+
+  semantic_map_additions:
+    INSTITUTIONAL_DISSOLUTION:
+      theory: "The state in capitalist society cannot be captured; it must be smashed."
+      source: "Lenin, State and Revolution"
+    NETWORK_COLLAPSE:
+      theory: "Without revolutionary theory there can be no revolutionary movement."
+      source: "Lenin, What Is To Be Done?"
+    LABOR_ARISTOCRACY_CAPTURE:
+      theory: "The bourgeoisie of an imperialist country can bribe the upper strata of 'its' workers."
+      source: "Lenin, Imperialism"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  epoch_2_prerequisites:
+    - "Epoch 1 complete (all 6 slices)"
+    - "ECOLOGICAL_OVERSHOOT event working"
+    - "Dashboard showing meaningful metrics"
+    - "Win/lose conditions for Epoch 1 demo"
+
+  suggested_order:
+    1: "Resource system (CL, SL, COH tracking)"
+    2: "Action framework (player inputs, cooldowns)"
+    3: "Liberal Trap (simplest trap)"
+    4: "Rightist Trap (builds on economism concept)"
+    5: "Ultra-Left Trap (most complex, requires kinetic warfare)"
+
+  testing_approach:
+    - "Unit tests for each trap's immediate effects"
+    - "Integration tests for trap triggers during crisis"
+    - "Property-based tests for resource economics"
+    - "Scenario tests: 'Can player achieve revolution while avoiding all traps?'"
+
+  balance_targets:
+    - "Each trap should be tempting at least once per game"
+    - "Avoiding all traps should require knowledge of theory"
+    - "Recovery from one trap should be possible; recovery from two should be very hard"
+    - "Falling into all three should guarantee Fascist Bifurcation"
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  companion_spec: "ai-docs/cohesion-mechanic.yaml (Slice 2.2b - Internal Dynamics)"
+  specs:
+    - "ai-docs/epochs-overview.md (Epoch 2 definition)"
+    - "ai-docs/cohesion-mechanic.yaml (Cohesion limits external action effectiveness)"
+    - "ai-docs/metabolic-slice.yaml (ECOLOGICAL_OVERSHOOT trigger)"
+    - "ai-docs/demographics-spec.yaml (population consequences)"
+  brainstorm:
+    - "brainstorm/mechanics/vanguard_economy.md (Cadre/Sympathizer distinction)"
+    - "brainstorm/mechanics/kinetic_warfare.md (Ultra-Left Trap mechanics)"
+    - "brainstorm/mechanics/resource-system.md (LP/Coherence concepts)"
+  theory:
+    - "Lenin, What Is To Be Done? (Economism critique)"
+    - "Lenin, 'Left-Wing' Communism (Ultra-Leftism critique)"
+    - "Lenin, State and Revolution (Liberalism critique)"
+    - "Mao, On Contradiction (Dialectical analysis of deviations)"

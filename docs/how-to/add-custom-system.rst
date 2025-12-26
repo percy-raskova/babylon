@@ -32,7 +32,7 @@ Systems implement the ``System`` protocol. Here's a complete example—a
        def __init__(self, effectiveness: float = 0.1):
            self.effectiveness = effectiveness
 
-       def process(self, graph, services, context):
+       def step(self, graph, services, context):
            for node_id, data in graph.nodes(data=True):
                if data.get("_node_type") != "social_class":
                    continue
@@ -44,39 +44,46 @@ Systems implement the ``System`` protocol. Here's a complete example—a
 
 **Key requirements:**
 
-1. Implement ``process(graph, services, context)`` method
+1. Implement ``step(graph, services, context)`` method
 2. Only mutate the ``graph`` parameter
 3. Do not store state between ticks (stateless design)
 
 Register Your System
 --------------------
 
-Method 1: Direct Registration
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Add systems directly to the engine:
+Systems are passed to the engine at construction time via constructor injection.
+There is no runtime registration—the system list is immutable after creation.
 
 .. code-block:: python
 
-   from babylon.engine import SimulationEngine
-
-   engine = SimulationEngine()
-   engine.register_system(PropagandaSystem(effectiveness=0.05))
-
-Method 2: Via SimulationConfig
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Pass systems through configuration:
-
-.. code-block:: python
-
-   from babylon.models import SimulationConfig
-
-   config = SimulationConfig(
-       additional_systems=[
-           PropagandaSystem(effectiveness=0.05)
-       ]
+   from babylon.engine.simulation_engine import SimulationEngine
+   from babylon.engine.systems import (
+       ImperialRentSystem,
+       SolidaritySystem,
+       ConsciousnessSystem,
+       SurvivalSystem,
+       StruggleSystem,
+       ContradictionSystem,
+       TerritorySystem,
    )
+
+   # Create custom system list with your system inserted
+   custom_systems = [
+       ImperialRentSystem(),
+       SolidaritySystem(),
+       ConsciousnessSystem(),
+       SurvivalSystem(),
+       PropagandaSystem(effectiveness=0.05),  # Custom system
+       StruggleSystem(),
+       ContradictionSystem(),
+       TerritorySystem(),
+   ]
+
+   # Pass systems at construction
+   engine = SimulationEngine(systems=custom_systems)
+
+**Order matters!** Economic systems must run before ideology systems.
+The default order encodes historical materialist causality.
 
 Use the Formula Registry
 ------------------------
@@ -87,14 +94,14 @@ For calculations that might need to be swapped or tested, use the
 .. code-block:: python
 
    class SurvivalSystem:
-       def process(self, graph, services, context):
-           formulas = services.formula_registry
+       def step(self, graph, services, context):
+           formulas = services.formulas  # FormulaRegistry
 
            for node_id, data in graph.nodes(data=True):
                # Use registered formula (allows hot-swapping)
                P_S_A = formulas.calculate_acquiescence_probability(
                    wealth=data["wealth"],
-                   subsistence=context.config.subsistence_threshold
+                   subsistence=services.defines.survival.default_subsistence
                )
                graph.nodes[node_id]["P_acquiescence"] = P_S_A
 
@@ -120,7 +127,7 @@ Systems can emit events for observers via the EventBus:
 
 
    class ContradictionSystem:
-       def process(self, graph, services, context):
+       def step(self, graph, services, context):
            for node_id, data in graph.nodes(data=True):
                if data["tension"] > rupture_threshold:
                    services.event_bus.emit(
@@ -161,9 +168,16 @@ Systems are designed for isolated testing:
 
    @pytest.fixture
    def services():
+       from babylon.models import SimulationConfig
+       from babylon.config.defines import GameDefines
+       from babylon.engine.database import DatabaseConnection
+
        return ServiceContainer(
+           config=SimulationConfig(),
+           database=DatabaseConnection(":memory:"),
            event_bus=EventBus(),
-           formula_registry=FormulaRegistry()
+           formulas=FormulaRegistry(),
+           defines=GameDefines(),
        )
 
 
@@ -171,10 +185,10 @@ Systems are designed for isolated testing:
        # Arrange
        minimal_graph.nodes["C001"]["ideology"] = 0.8
        system = PropagandaSystem(effectiveness=0.1)
-       context = TickContext(tick=0, config=SimulationConfig())
+       context = {"tick": 0}  # Context is a simple dict
 
        # Act
-       system.process(minimal_graph, services, context)
+       system.step(minimal_graph, services, context)
 
        # Assert
        new_ideology = minimal_graph.nodes["C001"]["ideology"]
@@ -201,8 +215,8 @@ Add logging to trace system execution:
        def __init__(self):
            self.logger = logging.getLogger(__name__)
 
-       def process(self, graph, services, context):
-           self.logger.debug(f"Tick {context.tick}: Processing consciousness")
+       def step(self, graph, services, context):
+           self.logger.debug(f"Tick {context['tick']}: Processing consciousness")
 
            for node_id, data in graph.nodes(data=True):
                old_ideology = data["ideology"]

@@ -57,6 +57,35 @@ GUI Development
    Build visualization and user interface features using NiceGUI.
    Covers the phased approach from basic displays to full interactivity.
 
+Getting Started
+---------------
+
+.. toctree::
+   :maxdepth: 1
+
+   setup-dev-environment
+
+**Set Up a Development Environment**
+   Complete setup guide for Linux, macOS, and Windows. Windows users get
+   step-by-step WSL 2 installation and VSCode Remote integration.
+
+Contributing
+------------
+
+.. toctree::
+   :maxdepth: 1
+
+   contribute
+   run-ci-locally
+
+**Submit a Pull Request**
+   Complete workflow from branching to merge. Includes branch naming,
+   commit conventions, and handling CI failures.
+
+**Run CI Locally**
+   Test CI checks before pushing using direct commands, mise tasks,
+   or ``gh act`` for full workflow simulation.
+
 Coming Soon
 -----------
 

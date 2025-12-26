@@ -1,0 +1,585 @@
+# Quasar Framework Patterns & Quick Reference
+# ============================================
+# Distilled from C7 documentation research (Dec 2025)
+# Purpose: Understand NiceGUI's underlying component library
+#
+# C7 Library ID: /websites/quasar_dev (3963 snippets, 79.6 benchmark)
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-14"
+  purpose: |
+    Token-efficient reference for Quasar Framework patterns. NiceGUI is built
+    on Quasar, so understanding Quasar props enables advanced customization
+    via NiceGUI's .props() method. Consult when:
+    - Customizing button styles and behaviors
+    - Building card-based layouts
+    - Implementing dark mode theming
+    - Adding badges, progress indicators, icons
+  cross_references:
+    - "ai-docs/nicegui-patterns.yaml (NiceGUI-specific patterns)"
+    - "ai-docs/design-system.yaml (Bunker Constructivism colors)"
+    - "ai-docs/tailwind-patterns.yaml (layout utilities)"
+
+# =============================================================================
+# NICEGUI + QUASAR INTEGRATION
+# =============================================================================
+
+nicegui_integration:
+
+  props_method:
+    description: "Apply Quasar props to NiceGUI elements"
+    pattern: |
+      # Boolean props - just the name
+      ui.button('Click').props('flat')
+      ui.button('Click').props('dense round')
+
+      # Value props - name=value
+      ui.button('Click').props('color=primary')
+      ui.button('Click').props('icon=play_arrow size=lg')
+
+      # Multiple props
+      ui.button('Play').props('flat dense color=positive icon=play_arrow')
+
+  quasar_element:
+    description: "Create any Quasar component via ui.element"
+    pattern: |
+      # Create QBadge directly
+      ui.element('q-badge').props('color=red floating').text('3')
+
+      # Create QLinearProgress
+      ui.element('q-linear-progress').props('value=0.5 color=primary')
+
+      # Create QSpinner
+      ui.element('q-spinner').props('color=primary size=3em')
+
+  style_vs_props:
+    description: "When to use .style(), .classes(), .props()"
+    guidelines:
+      style: "CSS properties - dimensions, flex, positioning"
+      classes: "Tailwind utilities - spacing, colors, layout"
+      props: "Quasar component behavior - flat, dense, color, icon"
+
+# =============================================================================
+# BUTTON (QBtn)
+# =============================================================================
+
+button:
+
+  style_props:
+    description: "Visual style variations"
+    props:
+      flat: "No background, just text/icon"
+      outline: "Border only, transparent background"
+      push: "3D push effect"
+      unelevated: "Flat with background color"
+      glossy: "Shiny/glossy appearance"
+    pattern: |
+      ui.button('Flat').props('flat')
+      ui.button('Outline').props('outline color=primary')
+      ui.button('Push').props('push color=secondary')
+      ui.button('Glossy').props('glossy color=accent')
+
+  shape_props:
+    description: "Button shape variations"
+    props:
+      round: "Circular button (usually icon-only)"
+      rounded: "Rounded corners (less than round)"
+      square: "Sharp corners"
+    pattern: |
+      ui.button(icon='play_arrow').props('round color=primary')
+      ui.button('Rounded').props('rounded')
+      ui.button('Square').props('square')
+
+  size_props:
+    description: "Button size variations"
+    props:
+      size: "xs, sm, md, lg, xl or pixel value"
+      dense: "Reduced padding for compact layouts"
+    pattern: |
+      ui.button('Small').props('size=sm')
+      ui.button('Large').props('size=lg')
+      ui.button('Dense').props('dense')
+      ui.button('Custom').props('size=20px')
+
+  icon_props:
+    description: "Icon placement"
+    props:
+      icon: "Icon on left side"
+      icon-right: "Icon on right side"
+    pattern: |
+      ui.button('Play').props('icon=play_arrow color=positive')
+      ui.button('Next').props('icon-right=arrow_forward')
+      ui.button().props('round icon=settings')  # Icon-only
+
+  state_props:
+    description: "Button states"
+    props:
+      disable: "Disabled state"
+      loading: "Shows spinner (use with v-model)"
+    pattern: |
+      ui.button('Disabled').props('disable')
+      # Loading requires reactive binding in Quasar
+
+  color_props:
+    description: "Color customization"
+    props:
+      color: "Background color (Quasar palette name)"
+      text-color: "Text/icon color"
+    pattern: |
+      ui.button('Primary').props('color=primary')
+      ui.button('Custom').props('color=amber text-color=black')
+      ui.button('Dark').props('color=dark')
+
+  common_combinations:
+    description: "Frequently used button styles"
+    patterns:
+      control_button: 'props("flat dense color=positive icon=play_arrow")'
+      icon_button: 'props("round flat icon=settings")'
+      action_button: 'props("unelevated color=primary")'
+      destructive: 'props("color=negative icon=delete")'
+      toolbar_button: 'props("flat dense square")'
+
+# =============================================================================
+# BUTTON GROUP (QBtnGroup)
+# =============================================================================
+
+button_group:
+
+  basic:
+    description: "Group related buttons together"
+    pattern: |
+      # NiceGUI doesn't have direct QBtnGroup, use ui.element
+      with ui.element('q-btn-group').props('push'):
+          ui.button('One').props('push')
+          ui.button('Two').props('push')
+          ui.button('Three').props('push')
+
+  styling:
+    description: "Group-level styling props"
+    props:
+      push: "Push style for all buttons"
+      outline: "Outline style for all buttons"
+      rounded: "Rounded group corners"
+      stretch: "Buttons stretch to fill space"
+    pattern: |
+      with ui.element('q-btn-group').props('outline rounded'):
+          ui.button('A').props('outline')
+          ui.button('B').props('outline')
+
+# =============================================================================
+# CARD (QCard)
+# =============================================================================
+
+card:
+
+  structure:
+    description: "Card anatomy"
+    components:
+      q-card: "Container"
+      q-card-section: "Content area"
+      q-card-actions: "Button area"
+      q-separator: "Divider between sections"
+    pattern: |
+      with ui.element('q-card').props('flat bordered'):
+          with ui.element('q-card-section'):
+              ui.label('Title').classes('text-h6')
+          ui.element('q-separator')
+          with ui.element('q-card-section'):
+              ui.label('Content here')
+          with ui.element('q-card-actions'):
+              ui.button('Action').props('flat')
+
+  style_props:
+    description: "Card appearance"
+    props:
+      flat: "No shadow"
+      bordered: "Add border"
+      square: "No border radius"
+      dark: "Dark mode styling"
+    pattern: |
+      ui.element('q-card').props('flat bordered dark')
+
+  horizontal_layout:
+    description: "Side-by-side card sections"
+    pattern: |
+      with ui.element('q-card').props('flat bordered'):
+          with ui.element('q-card-section').props('horizontal'):
+              with ui.element('q-card-section'):
+                  ui.label('Left content')
+              ui.element('q-separator').props('vertical')
+              with ui.element('q-card-section'):
+                  ui.label('Right content')
+
+# =============================================================================
+# SCROLL AREA (QScrollArea)
+# =============================================================================
+
+scroll_area:
+
+  basic:
+    description: "Custom scrollbar wrapper"
+    pattern: |
+      with ui.element('q-scroll-area').style('height: 200px; max-width: 300px'):
+          for i in range(100):
+              ui.label(f'Item {i}')
+
+  dark_mode:
+    description: "Dark theme scroll area"
+    pattern: |
+      ui.element('q-scroll-area').props('dark').classes('bg-grey-9 text-white')
+
+  thumb_styling:
+    description: "Custom scrollbar appearance"
+    props:
+      thumb-style: "CSS for thumb"
+      bar-style: "CSS for track"
+    note: "Requires JS object binding, complex in NiceGUI"
+
+  horizontal:
+    description: "Horizontal scrolling"
+    pattern: |
+      with ui.element('q-scroll-area').style('height: 230px'):
+          with ui.row().classes('no-wrap'):
+              for i in range(10):
+                  ui.element('div').style('width: 150px').text(f'Panel {i}')
+
+# =============================================================================
+# BADGE (QBadge)
+# =============================================================================
+
+badge:
+
+  basic:
+    description: "Small indicator badge"
+    pattern: |
+      ui.element('q-badge').props('color=red').text('3')
+      ui.element('q-badge').props('color=primary label=New')
+
+  floating:
+    description: "Badge floats over parent element"
+    pattern: |
+      with ui.button('Notifications'):
+          ui.element('q-badge').props('color=red floating').text('5')
+
+  styling:
+    description: "Badge appearance options"
+    props:
+      rounded: "Circular/pill shape"
+      outline: "Border only, transparent background"
+      transparent: "Semi-transparent background"
+      floating: "Position over parent"
+      multi-line: "Allow text wrapping"
+    pattern: |
+      ui.element('q-badge').props('rounded color=primary').text('99+')
+      ui.element('q-badge').props('outline color=orange').text('v1.0')
+      ui.element('q-badge').props('rounded color=red')  # Dot indicator
+
+  color_props:
+    description: "Badge colors"
+    props:
+      color: "Background color"
+      text-color: "Text color"
+    pattern: |
+      ui.element('q-badge').props('color=yellow text-color=black').text('Warning')
+
+# =============================================================================
+# LINEAR PROGRESS (QLinearProgress)
+# =============================================================================
+
+linear_progress:
+
+  determinate:
+    description: "Known progress value (0-1)"
+    pattern: |
+      ui.element('q-linear-progress').props('value=0.7 color=primary')
+
+  indeterminate:
+    description: "Unknown progress (animated)"
+    pattern: |
+      ui.element('q-linear-progress').props('indeterminate color=secondary')
+
+  query:
+    description: "Alternative indeterminate animation"
+    pattern: |
+      ui.element('q-linear-progress').props('query color=accent')
+
+  buffer:
+    description: "Show buffer alongside progress"
+    pattern: |
+      ui.element('q-linear-progress').props('value=0.3 buffer=0.7')
+
+  styling:
+    description: "Visual customization"
+    props:
+      size: "Height in pixels or CSS unit"
+      rounded: "Rounded ends"
+      stripe: "Animated stripe pattern"
+      track-color: "Background track color"
+      reverse: "Right-to-left direction"
+      instant-feedback: "No transition animation"
+    pattern: |
+      ui.element('q-linear-progress').props('value=0.5 size=10px rounded stripe color=warning')
+
+  dark_mode:
+    description: "Dark theme progress bar"
+    pattern: |
+      ui.element('q-linear-progress').props('dark value=0.5 color=positive')
+
+# =============================================================================
+# SPINNER (Loading Indicators)
+# =============================================================================
+
+spinner:
+
+  basic:
+    description: "Default spinner"
+    pattern: |
+      ui.element('q-spinner').props('color=primary size=3em')
+
+  variants:
+    description: "Different spinner styles"
+    types:
+      - "q-spinner (default)"
+      - "q-spinner-dots"
+      - "q-spinner-gears"
+      - "q-spinner-hourglass"
+      - "q-spinner-cube"
+      - "q-spinner-facebook"
+      - "q-spinner-ios"
+      - "q-spinner-radio"
+    pattern: |
+      ui.element('q-spinner-gears').props('color=primary size=2em')
+      ui.element('q-spinner-dots').props('color=secondary size=40px')
+
+  props:
+    description: "Spinner customization"
+    props:
+      size: "CSS size (px, em, rem)"
+      color: "Quasar color palette name"
+    pattern: |
+      ui.element('q-spinner-hourglass').props('size=4em color=accent')
+
+  button_loading:
+    description: "Spinner inside button (NiceGUI pattern)"
+    pattern: |
+      # Use slot in Quasar, but NiceGUI handles this differently
+      # NiceGUI buttons have built-in loading state
+      button = ui.button('Submit', on_click=async_handler)
+      # Set loading state programmatically
+
+# =============================================================================
+# ICON (QIcon)
+# =============================================================================
+
+icon:
+
+  material_icons:
+    description: "Google Material Icons (default)"
+    naming: "snake_case, no prefix"
+    pattern: |
+      ui.icon('thumb_up')
+      ui.icon('play_arrow')
+      ui.icon('settings')
+      ui.icon('warning')
+
+  material_symbols:
+    description: "Material Symbols variants"
+    prefixes:
+      outlined: "sym_o_"
+      rounded: "sym_r_"
+      sharp: "sym_s_"
+    pattern: |
+      ui.icon('sym_r_thumb_up')  # Rounded
+      ui.icon('sym_o_settings')  # Outlined
+
+  sizing:
+    description: "Icon size options"
+    props:
+      size: "CSS size or Quasar size (xs, sm, md, lg, xl)"
+    pattern: |
+      ui.icon('star', size='2em')
+      ui.icon('star').props('size=lg')
+
+  coloring:
+    description: "Icon colors"
+    props:
+      color: "Quasar palette color"
+    pattern: |
+      ui.icon('warning', color='negative')
+      ui.icon('check_circle', color='positive')
+
+  common_icons:
+    description: "Frequently used icons in Babylon"
+    icons:
+      play: "play_arrow"
+      pause: "pause"
+      step: "skip_next"
+      stop: "stop"
+      settings: "settings"
+      refresh: "refresh"
+      warning: "warning"
+      error: "error"
+      info: "info"
+      chart: "show_chart"
+      list: "list"
+      expand: "expand_more"
+      collapse: "expand_less"
+
+# =============================================================================
+# COLOR PALETTE
+# =============================================================================
+
+colors:
+
+  quasar_palette:
+    description: "Built-in Quasar color names"
+    semantic:
+      primary: "Brand primary"
+      secondary: "Brand secondary"
+      accent: "Accent/highlight"
+      positive: "Success/confirm (green)"
+      negative: "Error/danger (red)"
+      info: "Information (blue)"
+      warning: "Warning (yellow/orange)"
+      dark: "Dark background"
+    shades:
+      grey: "grey-1 through grey-10"
+      colors: "red, pink, purple, blue, cyan, teal, green, lime, yellow, amber, orange, brown"
+      numbered: "red-1 through red-14 (lighter to darker)"
+
+  dark_mode:
+    description: "Dark mode configuration"
+    body_classes:
+      light: "body--light"
+      dark: "body--dark"
+    component_prop: 'props("dark")'
+    pattern: |
+      # Force dark mode on components
+      ui.element('q-card').props('dark').classes('bg-grey-9')
+      ui.element('q-list').props('dark bordered')
+
+  custom_colors:
+    description: "Use arbitrary hex colors"
+    pattern: |
+      # Quasar doesn't support arbitrary colors in color prop
+      # Use Tailwind classes instead
+      ui.button('Custom').classes('bg-[#39FF14] text-black')
+
+# =============================================================================
+# COMMON PATTERNS
+# =============================================================================
+
+common_patterns:
+
+  dense_mode:
+    description: "Compact UI for dense layouts"
+    props_support:
+      - "QBtn: dense"
+      - "QList: dense"
+      - "QItem: dense"
+      - "QInput: dense"
+    pattern: |
+      ui.button('Dense').props('dense')
+      ui.element('q-list').props('dense')
+
+  clickable_items:
+    description: "Interactive list items"
+    pattern: |
+      with ui.element('q-list').props('bordered'):
+          with ui.element('q-item').props('clickable v-ripple'):
+              with ui.element('q-item-section'):
+                  ui.label('Clickable Item')
+
+  separator:
+    description: "Visual divider"
+    props:
+      vertical: "Vertical separator"
+      inset: "Indented separator"
+      dark: "Dark mode separator"
+    pattern: |
+      ui.element('q-separator')
+      ui.element('q-separator').props('vertical')
+      ui.element('q-separator').props('inset dark')
+
+  tooltip:
+    description: "Hover tooltip"
+    pattern: |
+      with ui.button('Hover me'):
+          ui.element('q-tooltip').text('This is a tooltip')
+
+# =============================================================================
+# BABYLON-SPECIFIC COMBINATIONS
+# =============================================================================
+
+babylon_patterns:
+
+  control_deck_button:
+    description: "Standard simulation control button"
+    pattern: |
+      ui.button(icon='play_arrow').props(
+          'flat dense color=positive'
+      ).classes('text-[#39FF14]')
+
+  status_badge:
+    description: "Simulation state indicator"
+    pattern: |
+      with ui.row().classes('items-center gap-2'):
+          ui.element('q-badge').props('rounded color=positive')
+          ui.label('RUNNING').classes('text-sm text-[#39FF14]')
+
+  panel_header:
+    description: "Standard panel title bar"
+    pattern: |
+      with ui.row().classes('w-full items-center justify-between p-2 border-b border-[#404040]'):
+          ui.label('PANEL TITLE').classes('text-sm font-bold tracking-wider text-[#C0C0C0]')
+          ui.button(icon='refresh').props('flat dense round size=sm')
+
+  loading_overlay:
+    description: "Loading state for panels"
+    pattern: |
+      # Show while data loads
+      with ui.element('div').classes('flex items-center justify-center h-32'):
+          ui.element('q-spinner-gears').props('color=primary size=3em')
+          ui.label('Loading...').classes('ml-2 text-[#C0C0C0]')
+
+# =============================================================================
+# GOTCHAS CHECKLIST
+# =============================================================================
+
+gotchas:
+  - issue: "Quasar color prop doesn't accept hex"
+    fix: "Use Tailwind classes for custom colors: .classes('bg-[#39FF14]')"
+
+  - issue: "Props not applying"
+    fix: "Check prop syntax: boolean='propname', value='propname=value'"
+
+  - issue: "Dark mode not working"
+    fix: "Add dark prop AND dark background class"
+
+  - issue: "Badge not floating"
+    fix: "Parent needs position: relative (add classes('relative'))"
+
+  - issue: "Spinner too small"
+    fix: "Use size prop with units: size=3em or size=40px"
+
+  - issue: "Button icon not showing"
+    fix: "Use icon prop not content: .props('icon=play_arrow')"
+
+  - issue: "QCard not styled"
+    fix: "Add flat and/or bordered props for visible styling"
+
+  - issue: "Linear progress invisible"
+    fix: "Ensure value is between 0 and 1, add color prop"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  c7_library: "/websites/quasar_dev"
+  official_docs: "https://quasar.dev/vue-components"
+  icon_search: "https://fonts.google.com/icons"
+  our_usage:
+    - "src/babylon/ui/controls.py (ControlDeck buttons)"
+    - "src/babylon/ui/components.py (panel styling)"

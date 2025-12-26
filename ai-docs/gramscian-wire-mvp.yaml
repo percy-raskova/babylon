@@ -1,0 +1,517 @@
+# Gramscian Wire - MVP Specification
+# Epoch 1: The Dual Narrative Display (Passive Observation)
+#
+# "The same event. Two stories. The thesis demonstrated."
+# - Operational Goal
+
+meta:
+  epoch: 1
+  slice: "1.5"
+  slice_name: "The Dashboard (Wire Integration)"
+  status: APPROVED_MVP
+  priority: HIGH
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Demonstrate thesis that 'neutrality is hegemony' through dual narrative display"
+  full_vision: "ai-docs/gramscian-wire-vision.yaml (Epoch 2 interactive version)"
+
+  design_principle: |
+    The MVP demonstrates the THESIS without the MECHANICS.
+    The player OBSERVES that different perspectives exist.
+    The player does NOT YET fight for narrative control.
+    This is the foundation on which Epoch 2 builds.
+
+# =============================================================================
+# CONSTRAINTS
+# =============================================================================
+#
+# Epoch 1 = OBSERVATION ONLY
+#
+# What IS included:
+#   - Dual narrative generation (Corporate + Liberated)
+#   - Side-by-side or toggle UI display
+#   - Different LLM prompts per perspective
+#   - Different aesthetic treatment per channel
+#
+# What is NOT included:
+#   - Hegemony resource/metric
+#   - Player propaganda actions
+#   - Consciousness effects from narrative exposure
+#   - Media capture mechanics
+#   - Any interactive narrative warfare
+#
+# The goal is to SHOW the player that news is constructed,
+# not to let them DO anything about it yet.
+#
+# =============================================================================
+
+# =============================================================================
+# CORE CONCEPT: THE DUAL NARRATIVE DISPLAY
+# =============================================================================
+
+dual_narrative:
+  purpose: |
+    For every SIGNIFICANT event, the NarrativeDirector generates TWO texts
+    using different system prompts. The UI displays both, demonstrating
+    that "objective news" is a fiction.
+
+  thesis_demonstrated: |
+    The player watches the same strike described as:
+    - "Labor Unrest Threatens Recovery" (Corporate Feed)
+    - "WORKERS RISE AGAINST EXPLOITATION" (Liberated Signal)
+
+    No game mechanic needs to explain this. The juxtaposition IS the lesson.
+    The player SEES that reality is framed differently by different interests.
+    This is the foundation of Gramscian consciousness.
+
+  trigger_events:
+    description: "Only significant events generate dual narratives (conserve LLM calls)"
+    significant_types:
+      - "ECONOMIC_CRISIS"
+      - "UPRISING"
+      - "EXCESSIVE_FORCE"
+      - "PHASE_TRANSITION"
+      - "SOLIDARITY_SPIKE"
+      - "RUPTURE"
+      - "MASS_AWAKENING"
+    note: "Matches SIGNIFICANT_EVENT_TYPES from NarrativeDirector"
+
+# =============================================================================
+# TWO CHANNELS (MVP VERSION)
+# =============================================================================
+
+channels:
+  corporate_feed:
+    id: "CORPORATE"
+    name: "The State"
+    subtitle: "Official Channels"
+    status: "IMPLEMENT"
+
+    aesthetic:
+      style: "Clean, professional, news wire"
+      background: "#1a1a1a"
+      text_color: "#ffffff"
+      accent_color: "#4a90d9"  # Blue - authority
+      font: "system-ui, sans-serif"
+      border: "1px solid #333"
+
+    system_prompt: |
+      You are a spokesperson for the stability of the realm.
+      Your role is to report events in a way that:
+      - Downplays crisis and unrest
+      - Uses passive voice to obscure agency
+      - Frames protesters/strikers as disruptive
+      - Presents authorities as reasonable
+      - Never questions systemic causes
+      - Treats the current order as natural and inevitable
+
+      Report the following event in 2-3 sentences.
+      Use the style of a professional news wire service.
+      Be measured, "neutral," and reassuring.
+
+    linguistic_patterns:
+      voice: "passive"
+      vocabulary:
+        subjects: "elements, individuals, parties"
+        actions: "disturbances, incidents, situations"
+        authorities: "officials, experts, stakeholders"
+      framing:
+        blame: "deflect to individuals or external factors"
+        system: "never questioned"
+        alternatives: "impractical or dangerous"
+
+    example_output:
+      event: "UPRISING in Sector 7"
+      text: |
+        Authorities are responding to disturbances in the industrial district.
+        Several individuals have been detained. Officials urge residents to
+        remain calm and avoid the affected area. The situation is expected
+        to be resolved shortly.
+
+  liberated_signal:
+    id: "LIBERATED"
+    name: "The Underground"
+    subtitle: "Intercepted Signal"
+    status: "IMPLEMENT"
+
+    aesthetic:
+      style: "Samizdat, pirate radio, urgent"
+      background: "#0d0d0d"
+      text_color: "#00ff88"  # data_green
+      accent_color: "#9b59b6"  # Purple - grow_light
+      font: "monospace"
+      border: "1px solid #333"
+      effects:
+        - ">>> TRANSMISSION <<< markers"
+        - "Occasional [STATIC] insertions"
+        - "ALL CAPS for emphasis"
+
+    system_prompt: |
+      You are a revolutionary radio operator broadcasting
+      from an underground network.
+      Your role is to:
+      - Expose the contradictions in this event
+      - Use active voice to name oppressors
+      - Connect specific incidents to systemic analysis
+      - Frame workers/protesters as righteous resistance
+      - Call for solidarity and collective action
+      - Treat the current order as historical and changeable
+
+      Report the following event in 2-3 sentences.
+      Use the aesthetic of intercepted underground transmissions.
+      Be urgent, clear, and inspiring.
+      Wrap transmission in >>> markers.
+
+    linguistic_patterns:
+      voice: "active"
+      vocabulary:
+        subjects: "comrades, workers, the people"
+        actions: "resistance, uprising, solidarity"
+        authorities: "the state, capital, the bosses"
+      framing:
+        blame: "systemic, structural, class-based"
+        system: "historical, contingent, must be changed"
+        alternatives: "necessary, achievable, being built"
+
+    example_output:
+      event: "UPRISING in Sector 7"
+      text: |
+        >>> INTERCEPTED TRANSMISSION <<<
+
+        COMRADES RISE IN SECTOR 7!
+        The workers refuse another day of exploitation.
+        The state responds with force—AS IT ALWAYS DOES.
+        But force cannot contain the contradictions forever.
+        SOLIDARITY WITH SECTOR 7. THE STRUGGLE CONTINUES.
+
+        >>> END TRANSMISSION <<<
+
+# =============================================================================
+# GENERATION PIPELINE (MVP)
+# =============================================================================
+
+generation_pipeline:
+  overview: |
+    When a significant event occurs, generate TWO narrative texts.
+    Store both with the event. Display based on user toggle.
+
+  implementation_approach:
+    option_1_parallel:
+      description: "Two LLM calls in parallel"
+      pros: "Faster, independent"
+      cons: "Double LLM cost"
+    option_2_sequential:
+      description: "One call with both perspectives requested"
+      pros: "Single call"
+      cons: "May confuse the model, output parsing harder"
+    recommendation: "Option 1 (parallel) for clarity"
+
+  flow:
+    step_1:
+      name: "Event Detection"
+      location: "Simulation._collect_observer_events()"
+      action: "Check if event.type in SIGNIFICANT_EVENT_TYPES"
+
+    step_2:
+      name: "Dual Generation"
+      location: "NarrativeDirector.on_tick()"
+      action: |
+        if event.type in SIGNIFICANT_EVENT_TYPES:
+            corporate_text = self._generate_perspective(event, "CORPORATE")
+            liberated_text = self._generate_perspective(event, "LIBERATED")
+            event.narratives = {
+                "corporate": corporate_text,
+                "liberated": liberated_text
+            }
+
+    step_3:
+      name: "Storage"
+      location: "SimulationEvent (extended)"
+      schema: |
+        class SimulationEvent(BaseModel):
+            # ... existing fields ...
+            narratives: Optional[dict[str, str]] = None
+            # e.g., {"corporate": "...", "liberated": "..."}
+
+    step_4:
+      name: "Display"
+      location: "UI WirePanel component"
+      action: "Show based on selected channel or side-by-side"
+
+  new_method:
+    location: "src/babylon/ai/director.py"
+    signature: |
+      def _generate_perspective(
+          self,
+          event: SimulationEvent,
+          perspective: Literal["CORPORATE", "LIBERATED"]
+      ) -> str:
+          """
+          Generate narrative text for event from specified perspective.
+
+          Args:
+              event: The simulation event to narrate
+              perspective: Which voice to use
+
+          Returns:
+              Generated narrative text
+          """
+          if perspective == "CORPORATE":
+              system_prompt = CORPORATE_SYSTEM_PROMPT
+              rag_corpus = "hegemonic"
+          else:
+              system_prompt = LIBERATED_SYSTEM_PROMPT
+              rag_corpus = "counter_hegemonic"
+
+          context = self._retrieve_context(event, corpus=rag_corpus)
+          return self._call_llm(system_prompt, event, context)
+
+# =============================================================================
+# UI SPECIFICATION
+# =============================================================================
+
+ui_spec:
+  component_name: "WirePanel"
+  location: "src/babylon/ui/components.py"
+
+  layout_options:
+    toggle_mode:
+      description: "Single view with channel toggle buttons"
+      layout: |
+        ┌─────────────────────────────────────────────────┐
+        │  [THE STATE] [THE UNDERGROUND]                   │
+        ├─────────────────────────────────────────────────┤
+        │                                                 │
+        │  Authorities are responding to disturbances...  │
+        │                                                 │
+        └─────────────────────────────────────────────────┘
+      pros: "Clean, focused"
+      cons: "Comparison requires memory"
+
+    side_by_side:
+      description: "Both channels visible simultaneously"
+      layout: |
+        ┌──────────────────────┬──────────────────────────┐
+        │  THE STATE           │  THE UNDERGROUND         │
+        ├──────────────────────┼──────────────────────────┤
+        │                      │                          │
+        │  Authorities are     │  >>> TRANSMISSION <<<    │
+        │  responding to       │  COMRADES RISE IN        │
+        │  disturbances...     │  SECTOR 7!...            │
+        │                      │                          │
+        └──────────────────────┴──────────────────────────┘
+      pros: "Immediate comparison, thesis visible"
+      cons: "Less space per channel"
+      recommendation: "PREFERRED for MVP - the juxtaposition IS the point"
+
+  integration:
+    placement: "Replace or extend NarrativeTerminal in center panel"
+    trigger: "When event has narratives dict populated"
+    fallback: "If no dual narrative, show single narrative as before"
+
+  styling:
+    corporate_panel:
+      classes: "wire-corporate"
+      css: |
+        .wire-corporate {
+          background: #1a1a1a;
+          color: #ffffff;
+          font-family: system-ui, sans-serif;
+          border-left: 3px solid #4a90d9;
+          padding: 1rem;
+        }
+
+    liberated_panel:
+      classes: "wire-liberated"
+      css: |
+        .wire-liberated {
+          background: #0d0d0d;
+          color: #00ff88;
+          font-family: 'Fira Code', monospace;
+          border-left: 3px solid #9b59b6;
+          padding: 1rem;
+        }
+        .wire-liberated .transmission-marker {
+          color: #9b59b6;
+          font-weight: bold;
+        }
+
+# =============================================================================
+# RAG CORPUS CONSIDERATION
+# =============================================================================
+
+rag_corpus:
+  note: |
+    For MVP, RAG retrieval is OPTIONAL enhancement.
+    The system prompts alone create sufficient differentiation.
+    But if RAG is used, different corpora should inform different perspectives.
+
+  hegemonic_sources:
+    description: "Context for Corporate Feed"
+    sources:
+      - "Mainstream economics textbooks"
+      - "Government and institutional reports"
+      - "Business journalism style guides"
+    effect: "Grounds narrative in 'respectable' discourse"
+
+  counter_hegemonic_sources:
+    description: "Context for Liberated Signal"
+    sources:
+      - "Existing Marxist corpus (already in ChromaDB)"
+      - "Labor history documents"
+      - "Revolutionary press archives"
+    effect: "Grounds narrative in theoretical framework"
+
+  mvp_recommendation: |
+    For MVP, use the SAME corpus (existing Marxist texts) but with
+    DIFFERENT prompts. The prompt alone creates the perspective difference.
+    Corpus differentiation can be added in Epoch 2.
+
+# =============================================================================
+# IMPLEMENTATION CHECKLIST
+# =============================================================================
+
+implementation:
+  priority: "HIGH - demonstrates core thesis"
+  estimated_effort: "4-6 hours"
+
+  checklist:
+    code_changes:
+      - task: "Add CORPORATE_SYSTEM_PROMPT to director.py"
+        file: "src/babylon/ai/director.py"
+        status: "TODO"
+
+      - task: "Add LIBERATED_SYSTEM_PROMPT to director.py"
+        file: "src/babylon/ai/director.py"
+        status: "TODO"
+
+      - task: "Add _generate_perspective() method to NarrativeDirector"
+        file: "src/babylon/ai/director.py"
+        status: "TODO"
+
+      - task: "Add narratives field to SimulationEvent"
+        file: "src/babylon/models/events.py"
+        status: "TODO"
+
+      - task: "Update on_tick() to generate dual narratives"
+        file: "src/babylon/ai/director.py"
+        status: "TODO"
+
+      - task: "Create WirePanel UI component"
+        file: "src/babylon/ui/components.py"
+        status: "TODO"
+
+      - task: "Integrate WirePanel into main.py layout"
+        file: "src/babylon/ui/main.py"
+        status: "TODO"
+
+    tests:
+      - task: "Test _generate_perspective() returns different text per perspective"
+        file: "tests/unit/ai/test_narrative_director.py"
+        status: "TODO"
+
+      - task: "Test narratives field populated on significant events"
+        file: "tests/unit/models/test_events.py"
+        status: "TODO"
+
+      - task: "Test WirePanel displays both channels"
+        file: "tests/unit/ui/test_components.py"
+        status: "TODO"
+
+  dependencies:
+    - "LLM provider functional (DeepSeek or mock)"
+    - "NarrativeDirector already integrated"
+    - "NiceGUI dashboard operational"
+
+# =============================================================================
+# EXAMPLE: COMPLETE EVENT FLOW
+# =============================================================================
+
+example_flow:
+  event: "EXCESSIVE_FORCE in Sector 3, Tick 27"
+
+  step_1_event:
+    description: "Engine emits SparkEvent"
+    data: |
+      SparkEvent(
+          event_type=EventType.EXCESSIVE_FORCE,
+          tick=27,
+          territory_id="sector_3",
+          trigger_type="POLICE_BRUTALITY",
+          victim_class="proletariat"
+      )
+
+  step_2_detection:
+    description: "NarrativeDirector checks significance"
+    logic: "EXCESSIVE_FORCE in SIGNIFICANT_EVENT_TYPES → True"
+
+  step_3_generation:
+    description: "Generate both perspectives"
+
+    corporate_call:
+      prompt: "You are a spokesperson for stability... [CORPORATE_SYSTEM_PROMPT]"
+      event_context: "Police action in Sector 3, one individual detained"
+      output: |
+        Officers responded to reports of suspicious activity in Sector 3
+        yesterday evening. One individual was taken into custody. Officials
+        report no injuries and urge residents to cooperate with authorities.
+
+    liberated_call:
+      prompt: "You are a revolutionary radio operator... [LIBERATED_SYSTEM_PROMPT]"
+      event_context: "State violence against worker in Sector 3"
+      output: |
+        >>> INTERCEPTED TRANSMISSION <<<
+
+        ANOTHER COMRADE FALLS TO STATE VIOLENCE.
+        Sector 3. The pigs beat a worker for the crime of existing.
+        They call it "maintaining order." We call it what it is: TERROR.
+        Remember this face. Remember this sector.
+        SOLIDARITY NETWORKS ACTIVATE.
+
+        >>> END TRANSMISSION <<<
+
+  step_4_storage:
+    description: "Store both narratives with event"
+    result: |
+      event.narratives = {
+          "corporate": "Officers responded to...",
+          "liberated": ">>> INTERCEPTED TRANSMISSION <<<\n\nANOTHER COMRADE..."
+      }
+
+  step_5_display:
+    description: "UI shows side-by-side"
+    visual: |
+      ┌──────────────────────┬──────────────────────────┐
+      │  THE STATE           │  THE UNDERGROUND         │
+      ├──────────────────────┼──────────────────────────┤
+      │                      │                          │
+      │  Officers responded  │  >>> INTERCEPTED <<<     │
+      │  to reports of       │                          │
+      │  suspicious activity │  ANOTHER COMRADE FALLS   │
+      │  in Sector 3...      │  TO STATE VIOLENCE...    │
+      │                      │                          │
+      └──────────────────────┴──────────────────────────┘
+
+  thesis_demonstrated: |
+    The player SEES:
+    - Corporate: "Officers responded... one individual taken into custody"
+    - Liberated: "STATE VIOLENCE... pigs beat a worker"
+
+    Same event. Two realities. The lesson is immediate and visceral.
+    No mechanics needed. The juxtaposition teaches Gramsci.
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  full_vision: "ai-docs/gramscian-wire-vision.yaml (Epoch 2 interactive version)"
+  brainstorm: "brainstorm/narrative/gramscian-wire.md (original concept)"
+  related_specs:
+    - "ai-docs/observer-layer.yaml (event types, NarrativeDirector)"
+    - "ai-docs/epochs-overview.md (Slice 1.5 definition)"
+    - "ai-docs/design-system.yaml (color palette, typography)"
+  implementation:
+    - "src/babylon/ai/director.py (NarrativeDirector)"
+    - "src/babylon/ui/components.py (UI components)"
+    - "src/babylon/models/events.py (SimulationEvent)"

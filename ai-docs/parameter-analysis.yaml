@@ -256,6 +256,151 @@ parameters_to_analyze:
       hypothesis: "Both affect time-to-death, may compound"
 
 # =============================================================================
+# ARCHITECTURAL ANALYSIS (2025-12-25)
+# =============================================================================
+# Understanding the relationship between parameter sweeping and metrics collection
+
+architecture_analysis:
+  date: "2025-12-25"
+
+  coupling_problem:
+    status: "DESIGN DEBT IDENTIFIED"
+    description: |
+      parameter_analysis.py and MetricsCollector implement PARALLEL data collection
+      paths. When new metrics are added to TickMetrics, parameter_analysis.py does
+      NOT automatically receive them because it has its own collect_tick_data().
+
+    current_state:
+      dashboard_path:
+        uses: "MetricsCollector (observer pattern)"
+        method: "collector.to_csv_rows()"
+        auto_updates: true
+      sweeper_path:
+        uses: "collect_tick_data() (manual extraction)"
+        method: "Direct WorldState field access"
+        auto_updates: false
+
+    evidence:
+      location: "tools/parameter_analysis.py:108-173"
+      code_pattern: |
+        # Duplicates MetricsCollector extraction logic
+        row["p_w_wealth"] = float(p_w.wealth)
+        row["p_w_consciousness"] = float(p_w.ideology.class_consciousness)
+        # ... manually lists each field
+
+    impact: |
+      Phase 4.1B added current_super_wage_rate, current_repression_level, pool_ratio,
+      consciousness_gap, wealth_gap to TickMetrics. Dashboard sees these automatically.
+      ParameterSweeper does NOT see them without code changes to collect_tick_data().
+
+    recommended_fix:
+      description: "Refactor parameter_analysis.py to use MetricsCollector"
+      priority: "Phase 4.2 or later"
+      pattern: |
+        from babylon.engine.observers.metrics import MetricsCollector
+
+        collector = MetricsCollector(mode="batch")
+        collector.on_simulation_start(state, config)
+        for tick in range(max_ticks):
+            prev = state
+            state = step(state, config, context, defines)
+            collector.on_tick(prev, state)
+
+        return collector.to_csv_rows()  # Automatic, includes ALL metrics
+
+  fundamental_vs_derived:
+    description: |
+      In physics, we have Planck constants (c, h, G) from which everything derives.
+      What are our simulation's "Planck constants"? Understanding this hierarchy
+      clarifies what ParameterSweeper should vary vs what MetricsCollector should observe.
+
+    causal_hierarchy:
+      level_1_fundamentals:
+        description: "TRUE FUNDAMENTALS (Independent Variables) - The simulation's atoms"
+        location: "src/babylon/config/defines.py (GameDefines)"
+        parameters:
+          extraction_efficiency:
+            path: "economy.extraction_efficiency"
+            type: "float [0, 1]"
+            why_fundamental: "Determines Phi (imperial rent) - core of MLM-TW model"
+          initial_rent_pool:
+            path: "economy.initial_rent_pool"
+            type: "Currency"
+            why_fundamental: "Sets economic scale, pool_ratio reference point"
+          subsistence:
+            path: "survival.default_subsistence"
+            type: "float [0, 1]"
+            why_fundamental: "Sets P(S|A) baseline - material survival threshold"
+          default_repression:
+            path: "survival.default_repression"
+            type: "float [0, 1]"
+            why_fundamental: "Sets P(S|R) denominator - state violence capacity"
+          default_organization:
+            path: "survival.default_organization"
+            type: "float [0, 1]"
+            why_fundamental: "Sets P(S|R) numerator - collective action capacity"
+          steepness_k:
+            path: "survival.steepness_k"
+            type: "float > 0"
+            why_fundamental: "Shape of P(S|A) sigmoid - how sharply survival drops"
+          loss_aversion_lambda:
+            path: "behavioral.loss_aversion_lambda"
+            type: "float > 0"
+            why_fundamental: "Kahneman-Tversky constant - behavioral economics baseline"
+          initial_wealth_distribution:
+            components: ["initial.worker_wealth", "initial.owner_wealth"]
+            why_fundamental: "Starting material conditions - 4 entity starting points"
+
+      level_2_dynamics:
+        description: "DERIVED DYNAMICS (State Variables) - Evolve over time from fundamentals"
+        examples:
+          - "wealth: Previous + inflows - outflows (accounting identity)"
+          - "consciousness: dΨ = k(1 - W_c/V_c) - λΨ (differential equation)"
+          - "tension: Accumulates from wealth gaps (difference equation)"
+          - "current_super_wage_rate: Bourgeois heuristic output"
+          - "current_repression_level: Bourgeois heuristic output"
+
+      level_3_metrics:
+        description: "DERIVED METRICS (Observations) - Computed from state for analysis"
+        location: "src/babylon/models/metrics.py (TickMetrics)"
+        examples:
+          - "pool_ratio = imperial_rent_pool / initial_pool"
+          - "consciousness_gap = P_w.Ψ - C_w.Ψ"
+          - "wealth_gap = C_b.W - P_w.W"
+          - "global_tension = avg(EXPLOITATION.tension)"
+          - "P(S|A) = σ(W - S)"
+          - "P(S|R) = O / (R + base)"
+          - "percolation_ratio = L_max / N"
+
+    minimal_basis:
+      description: "The truly irreducible parameters from MLM-TW theory"
+      parameters:
+        - "Initial wealth distribution (4 values)"
+        - "Extraction rate (how fast imperial rent flows)"
+        - "Subsistence threshold (below this, P(S|A) collapses)"
+        - "Repression capacity (state violence as material force)"
+        - "Solidarity edge weights (infrastructure for consciousness transmission)"
+      insight: |
+        Everything else derives from these + time:
+        - Consciousness flows through solidarity edges
+        - Tension accumulates from wealth gaps
+        - Pool depletes from extraction
+        - Wage/repression adjusts from pool ratio
+        - Phase transitions emerge from percolation
+
+    architecture_principle: |
+      ParameterSweeper should:
+        - INPUT: Vary FUNDAMENTALS (via GameDefines injection)
+        - OUTPUT: Observe DERIVED METRICS (via MetricsCollector)
+        - NEVER: Directly manipulate state variables
+
+      Current architecture status:
+        - GameDefines ✅ - Correctly stores fundamentals
+        - Systems ✅ - Correctly compute derived dynamics
+        - MetricsCollector ✅ - Correctly observes derived metrics
+        - ParameterSweeper ❌ - Bypasses MetricsCollector, breaks abstraction
+
+# =============================================================================
 # IMPLEMENTATION PHASES
 # =============================================================================
 

@@ -42,6 +42,9 @@ from babylon.models.enums import (
     SocialRole,
 )
 
+# Sprint 4.1: Unified Metrics (MetricsCollector observer)
+from babylon.models.metrics import EdgeMetrics, EntityMetrics, SweepSummary, TickMetrics
+
 # Scenario configuration for multiverse simulation
 from babylon.models.scenario import ScenarioConfig
 
@@ -100,4 +103,9 @@ __all__ = [
     # Sprint 3.1: Topology Metrics
     "TopologySnapshot",
     "ResilienceResult",
+    # Sprint 4.1: Unified Metrics (MetricsCollector observer)
+    "EntityMetrics",
+    "EdgeMetrics",
+    "TickMetrics",
+    "SweepSummary",
 ]

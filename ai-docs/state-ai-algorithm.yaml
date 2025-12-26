@@ -1,0 +1,386 @@
+# State AI Algorithm Specification
+# The Panopticon Decision Logic
+#
+# "The State sees everything but understands nothing."
+# - Operational Paradox
+#
+# This document specifies HOW the State AI makes decisions,
+# not just WHAT it can do (covered in state-attention-economy.yaml).
+
+meta:
+  epoch: 2
+  sub_epoch: "2C"
+  slice: "2.9"
+  created: "2025-12-26"
+  purpose: "Specify State AI decision algorithms for Thread allocation"
+  issue_id: "AI-001"
+  status: "SPEC_COMPLETE"
+  companion_spec: "ai-docs/state-attention-economy.yaml"
+
+# =============================================================================
+# DESIGN PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_principle: |
+    The State is NOT an omniscient god-AI. It is a bureaucracy.
+    It has limited attention (Threads), imperfect information, and institutional biases.
+    The player exploits these limitations, not the State's power.
+
+  behavioral_model: "Satisficing Bureaucracy"
+  description: |
+    The State doesn't optimize globally. It satisfices locally.
+    Each Thread operates semi-independently with local information.
+    The State's "intelligence" emerges from the aggregate, not central planning.
+
+  design_goals:
+    - "Predictable enough to be exploitable"
+    - "Complex enough to feel like an adversary"
+    - "Biased toward visible threats (legibility bias)"
+    - "Slow to adapt to novel tactics"
+
+# =============================================================================
+# THREAT ASSESSMENT
+# =============================================================================
+
+threat_assessment:
+  description: "How the State evaluates threats to determine Thread allocation"
+
+  # ---------------------------------------------------------------------------
+  # THREAT SCORE FORMULA
+  # ---------------------------------------------------------------------------
+  threat_score:
+    formula: |
+      Threat(t) = Visibility(t) × Severity(t) × Recency(t) + Institutional_Memory(t)
+
+    components:
+      visibility:
+        description: "How 'legible' is this threat to the State?"
+        calculation: |
+          Visibility = base_visibility + activity_level + network_exposure
+
+        factors:
+          base_visibility:
+            WATER_territory: 0.1   # Fish in water - hard to see
+            MUD_territory: 0.5     # Contested - partial visibility
+            DESERT_territory: 0.9  # Hostile to player - State sees clearly
+
+          activity_level:
+            no_recent_actions: 0.0
+            minor_actions: 0.1
+            major_actions: 0.3
+            kinetic_actions: 0.5
+
+          network_exposure:
+            no_exposed_edges: 0.0
+            some_edges_known: 0.2
+            network_mapped: 0.5
+
+      severity:
+        description: "How dangerous is this threat to State interests?"
+        calculation: |
+          Severity = class_threat + organization_threat + ideological_threat
+
+        factors:
+          class_threat:
+            P_w: 0.3   # Periphery workers - exploitable, less threatening
+            L_u: 0.4   # Lumpen - unpredictable
+            C_la: 0.1  # Labor aristocracy - aligned with State
+            C_pb: 0.2  # Petty bourgeoisie - potential fascist base
+
+          organization_threat:
+            atomized: 0.1
+            networked: 0.3
+            vanguard: 0.6
+            armed: 0.9
+
+          ideological_threat:
+            reformist: 0.1
+            autonomist: 0.3
+            insurrectionist: 0.7
+            scientific: 0.8  # Leninist/Maoist most threatening
+
+      recency:
+        description: "How recently was threat activity observed?"
+        decay_formula: "Recency = exp(-decay_rate × ticks_since_observation)"
+        decay_rate: 0.1
+        max_value: 1.0
+        min_value: 0.1
+
+      institutional_memory:
+        description: "Historical record of this target"
+        factors:
+          prior_incidents: 0.1  # Per past event
+          dossier_thickness: "Cumulative file on target"
+          max_contribution: 0.5
+
+  # ---------------------------------------------------------------------------
+  # THREAT RANKING
+  # ---------------------------------------------------------------------------
+  threat_ranking:
+    description: "How threats are prioritized for Thread allocation"
+
+    algorithm: "Priority Queue"
+    implementation: |
+      1. Calculate Threat(t) for all known targets
+      2. Sort targets by Threat score descending
+      3. Allocate Threads to top N targets (N = available Threads)
+      4. Remaining targets receive no active attention
+
+    tie_breaking:
+      - "Higher Severity wins"
+      - "Higher Visibility wins"
+      - "Older dossier wins (institutional inertia)"
+
+# =============================================================================
+# THREAD ALLOCATION ALGORITHM
+# =============================================================================
+
+thread_allocation:
+  description: "How the State decides what each Thread does"
+
+  # ---------------------------------------------------------------------------
+  # ALLOCATION MODES
+  # ---------------------------------------------------------------------------
+  modes:
+    monitor:
+      thread_cost: 0.5  # Half a Thread can monitor
+      description: "Passive surveillance of low-priority targets"
+      triggers:
+        - "Threat score in [0.2, 0.4]"
+        - "No recent escalation"
+      outputs:
+        - "Updates Visibility for target"
+        - "No direct action"
+
+    investigate:
+      thread_cost: 1.0
+      description: "Active intelligence gathering"
+      triggers:
+        - "Threat score in [0.4, 0.6]"
+        - "Unknown network structure"
+      outputs:
+        - "Reveals hidden edges (network exposure)"
+        - "Updates dossier"
+        - "May trigger FISH_OUT_OF_WATER for Player cadre"
+
+    suppress:
+      thread_cost: 1.5
+      description: "Active disruption of target"
+      triggers:
+        - "Threat score in [0.6, 0.8]"
+        - "Target actively organizing"
+      outputs:
+        - "Reduces target's solidarity_strength"
+        - "Increases agitation (backfire potential)"
+        - "May trigger EXCESSIVE_FORCE event"
+
+    qrf_strike:
+      thread_cost: 3.0
+      description: "Quick Reaction Force - kinetic response"
+      triggers:
+        - "Threat score > 0.8"
+        - "Target engaged in kinetic action"
+        - "OR Rupture imminent in territory"
+      outputs:
+        - "Neutralizes target (removes from network)"
+        - "High collateral risk"
+        - "Triggers EXCESSIVE_FORCE event"
+        - "Major agitation increase"
+
+  # ---------------------------------------------------------------------------
+  # ALLOCATION DECISION TREE
+  # ---------------------------------------------------------------------------
+  decision_tree:
+    description: "Step-by-step Thread allocation logic"
+
+    algorithm: |
+      FOR each available Thread:
+        1. Get highest-priority unallocated target from threat queue
+        2. IF Threat(target) >= 0.8 AND Thread available for QRF:
+             Allocate QRF_STRIKE
+        3. ELIF Threat(target) >= 0.6:
+             Allocate SUPPRESS
+        4. ELIF Threat(target) >= 0.4:
+             Allocate INVESTIGATE
+        5. ELIF Threat(target) >= 0.2:
+             Allocate MONITOR (can share Thread)
+        6. ELSE:
+             Thread remains idle (reserve for emergencies)
+
+    emergency_reserve:
+      description: "State keeps Threads in reserve for surprises"
+      reserve_fraction: 0.2  # 20% of Threads held back
+      trigger_for_release: "UPRISING event or RUPTURE event"
+
+# =============================================================================
+# EXPANSION TRIGGERS
+# =============================================================================
+
+expansion_triggers:
+  description: "When does the State acquire more Threads (expand Panopticon)?"
+
+  # ---------------------------------------------------------------------------
+  # CRISIS-DRIVEN EXPANSION
+  # ---------------------------------------------------------------------------
+  crisis_driven:
+    description: "State expands capacity in response to threats"
+
+    triggers:
+      thread_saturation:
+        condition: "allocated_threads / total_threads >= 0.9"
+        duration: "3 consecutive ticks"
+        response: "Request +1 Thread"
+
+      major_incident:
+        condition: "UPRISING event fires"
+        response: "Immediate +2 Threads (emergency powers)"
+
+      network_discovery:
+        condition: "Investigation reveals large network (> 10 nodes)"
+        response: "Request +1 Thread for dedicated monitoring"
+
+  # ---------------------------------------------------------------------------
+  # POLITICAL-DRIVEN EXPANSION
+  # ---------------------------------------------------------------------------
+  political_driven:
+    description: "State expands for political reasons (not threat-based)"
+
+    triggers:
+      mass_surveillance_act:
+        condition: "State legitimacy >= 0.6 AND agitation >= 0.3"
+        response: "+3 Threads, costs legitimacy (-0.1)"
+        description: "Exploiting fear to expand powers"
+
+      algorithmic_policing:
+        condition: "State has TECHNOLOGY_SURVEILLANCE doctrine"
+        response: "+2 Threads, costs legitimacy (-0.05)"
+        description: "Automated threat assessment"
+
+      emergency_powers:
+        condition: "RUPTURE event fires"
+        response: "+5 Threads, costs legitimacy (-0.2)"
+        description: "Martial law / state of emergency"
+
+  # ---------------------------------------------------------------------------
+  # EXPANSION COSTS
+  # ---------------------------------------------------------------------------
+  expansion_costs:
+    description: "Every expansion has a price (Police State Spiral)"
+
+    legitimacy_cost:
+      per_thread: -0.02
+      description: "Each new Thread slightly erodes State legitimacy"
+
+    agitation_generation:
+      per_thread: 0.01
+      description: "Surveillance generates resentment"
+
+    fiscal_cost:
+      per_thread: 10  # Currency units per tick
+      description: "Threads cost money to maintain"
+
+    spiral_formula: |
+      More surveillance → more resistance → more surveillance
+      This is intentional - the Panopticon contains the seeds of its own overextension
+
+# =============================================================================
+# BEHAVIORAL BIASES
+# =============================================================================
+
+behavioral_biases:
+  description: "Systematic flaws in State AI that players can exploit"
+
+  legibility_bias:
+    description: "State overweights visible, legible threats"
+    effect: "Covert actions have lower threat scores than equivalent overt actions"
+    exploit: "Use clandestine organization to avoid detection"
+
+  institutional_inertia:
+    description: "State continues monitoring old threats even when they're inactive"
+    effect: "Threads may be 'stuck' on low-priority targets with thick dossiers"
+    exploit: "Create decoy organizations to absorb State attention"
+
+  escalation_ladder:
+    description: "State escalates in predictable sequence: Monitor → Investigate → Suppress → QRF"
+    effect: "State doesn't skip steps even when it should"
+    exploit: "Withdraw before escalation completes, waste State resources"
+
+  territorial_assumption:
+    description: "State assumes territory correlates with threat"
+    effect: "DESERT territories get more attention even if player isn't there"
+    exploit: "Operate in unexpected territories"
+
+  network_blindness:
+    description: "State focuses on nodes, underweights edges"
+    effect: "Solidarity edges are invisible until investigation reveals them"
+    exploit: "Build solidarity infrastructure before State notices"
+
+# =============================================================================
+# DDOS STRATEGY (PLAYER COUNTER)
+# =============================================================================
+
+ddos_strategy:
+  description: "How players can overwhelm State attention"
+
+  principle: |
+    The State has finite Threads. The player can generate infinite noise.
+    Saturate State attention with decoys, then execute real operations in blind spots.
+
+  tactics:
+    decoy_organizations:
+      description: "Create visible but harmless groups to absorb Threads"
+      cost: "Sympathizer Labor"
+      effect: "Each decoy absorbs 0.5-1 Thread on average"
+
+    protest_saturation:
+      description: "Multiple simultaneous protests across territories"
+      cost: "Reputation + Sympathizer Labor"
+      effect: "Forces Thread allocation decisions, reveals State priorities"
+
+    information_flooding:
+      description: "Generate false positives through noise"
+      cost: "Low (automated with Reputation)"
+      effect: "Reduces Investigation efficiency"
+
+  saturation_threshold:
+    description: "When State is overwhelmed"
+    condition: "Player-generated threats > available Threads × 1.5"
+    effects:
+      - "State cannot cover all threats"
+      - "Investigation quality drops 50%"
+      - "QRF response time doubles"
+      - "Blind spots emerge for covert action"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  data_structures:
+    threat_queue:
+      type: "Priority Queue (max-heap by Threat score)"
+      updates: "Recalculated each tick"
+
+    thread_registry:
+      type: "Dict[ThreadID, AllocationState]"
+      fields: ["target_id", "mode", "ticks_allocated", "results"]
+
+    dossier_store:
+      type: "Dict[TargetID, Dossier]"
+      fields: ["threat_history", "network_map", "incident_log"]
+
+  integration_points:
+    - "StateSystem.allocate_threads(world_state) -> ThreadAllocation"
+    - "StateSystem.assess_threats(world_state) -> List[ThreatAssessment]"
+    - "StateSystem.execute_allocation(thread_allocation, world_state) -> WorldState"
+
+  testing_strategy:
+    - "Unit tests for threat score calculation"
+    - "Unit tests for decision tree logic"
+    - "Integration tests for DDoS saturation"
+    - "Behavioral tests for bias exploitation"
+
+  location:
+    system: "src/babylon/engine/systems/state.py (PLANNED)"
+    tests: "tests/unit/engine/systems/test_state.py (PLANNED)"

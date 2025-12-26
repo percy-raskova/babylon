@@ -25,6 +25,8 @@ from babylon.models.enums import EdgeType, EventType
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.protocol import ContextType
+
 
 def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
     """Extract class_consciousness from graph node data.
@@ -98,7 +100,7 @@ class SolidaritySystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Apply solidarity transmission to all SOLIDARITY edges.
 

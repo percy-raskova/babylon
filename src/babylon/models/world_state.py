@@ -20,13 +20,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import networkx as nx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType
+from babylon.models.events import SimulationEvent
+from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     pass
@@ -50,7 +53,8 @@ class WorldState(BaseModel):
         entities: Map of entity ID to SocialClass (the nodes)
         territories: Map of territory ID to Territory (Layer 0 nodes)
         relationships: List of Relationship edges (the edges)
-        event_log: Recent events for narrative/debugging
+        event_log: Recent events for narrative/debugging (string format)
+        events: Structured simulation events for analysis (Sprint 3.1)
         economy: Global economic state for dynamic balance (Sprint 3.4.4)
     """
 
@@ -82,9 +86,19 @@ class WorldState(BaseModel):
         description="Recent events for narrative/debugging",
     )
 
+    events: list[SimulationEvent] = Field(
+        default_factory=list,
+        description="Structured simulation events for analysis (Sprint 3.1)",
+    )
+
     economy: GlobalEconomy = Field(
         default_factory=GlobalEconomy,
         description="Global economic state for dynamic balance (Sprint 3.4.4)",
+    )
+
+    state_finances: dict[str, StateFinance] = Field(
+        default_factory=dict,
+        description="Financial state for each sovereign entity (Epoch 1: The Ledger)",
     )
 
     # =========================================================================
@@ -120,6 +134,11 @@ class WorldState(BaseModel):
         # Store economy in graph metadata (Sprint 3.4.4)
         G.graph["economy"] = self.economy.model_dump()
 
+        # Store state finances in graph metadata (Epoch 1: The Ledger)
+        G.graph["state_finances"] = {
+            state_id: finance.model_dump() for state_id, finance in self.state_finances.items()
+        }
+
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
             G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
@@ -141,13 +160,15 @@ class WorldState(BaseModel):
         G: nx.DiGraph[str],
         tick: int,
         event_log: list[str] | None = None,
+        events: list[SimulationEvent] | None = None,
     ) -> WorldState:
         """Reconstruct WorldState from NetworkX DiGraph.
 
         Args:
             G: NetworkX DiGraph with node/edge data
             tick: The tick number for the new state
-            event_log: Optional event log to preserve
+            event_log: Optional event log to preserve (backward compatibility)
+            events: Optional structured events to include (Sprint 3.1)
 
         Returns:
             New WorldState with entities, territories, and relationships from graph.
@@ -162,9 +183,21 @@ class WorldState(BaseModel):
         economy_data = G.graph.get("economy")
         economy = GlobalEconomy(**economy_data) if economy_data is not None else GlobalEconomy()
 
+        # Reconstruct state_finances from graph metadata (Epoch 1: The Ledger)
+        # Falls back to empty dict if not present (backward compatibility)
+        sf_data = G.graph.get("state_finances", {})
+        state_finances = {state_id: StateFinance(**data) for state_id, data in sf_data.items()}
+
         # Reconstruct entities and territories from nodes based on _node_type
         entities: dict[str, SocialClass] = {}
         territories: dict[str, Territory] = {}
+
+        # Computed fields to exclude during reconstruction (Slice 1.4)
+        social_class_computed = {"consumption_needs"}
+
+        # Fields that systems may add to graph but Territory doesn't accept
+        # (e.g., SurvivalSystem adds p_acquiescence/p_revolution to all nodes)
+        territory_excluded = {"p_acquiescence", "p_revolution"}
 
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
@@ -173,17 +206,21 @@ class WorldState(BaseModel):
 
             if node_type == "territory":
                 # Reconstruct Territory
+                # Filter out fields that Territory doesn't accept
+                territory_data = {k: v for k, v in node_data.items() if k not in territory_excluded}
                 # Convert enum strings back to enums if needed
-                sector_type = node_data.get("sector_type")
+                sector_type = territory_data.get("sector_type")
                 if isinstance(sector_type, str):
-                    node_data["sector_type"] = SectorType(sector_type)
-                profile = node_data.get("profile")
+                    territory_data["sector_type"] = SectorType(sector_type)
+                profile = territory_data.get("profile")
                 if isinstance(profile, str):
-                    node_data["profile"] = OperationalProfile(profile)
-                territories[node_id] = Territory(**node_data)
+                    territory_data["profile"] = OperationalProfile(profile)
+                territories[node_id] = Territory(**territory_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
-                entities[node_id] = SocialClass(**node_data)
+                # Filter out computed fields that shouldn't be passed to constructor
+                entity_data = {k: v for k, v in node_data.items() if k not in social_class_computed}
+                entities[node_id] = SocialClass(**entity_data)
 
         # Reconstruct relationships from edges
         relationships: list[Relationship] = []
@@ -214,7 +251,9 @@ class WorldState(BaseModel):
             territories=territories,
             relationships=relationships,
             event_log=event_log or [],
+            events=events or [],
             economy=economy,
+            state_finances=state_finances,
         )
 
     # =========================================================================
@@ -280,3 +319,27 @@ class WorldState(BaseModel):
         """
         new_log = [*self.event_log, event]
         return self.model_copy(update={"event_log": new_log})
+
+    # =========================================================================
+    # Metabolic Aggregates (Slice 1.4)
+    # =========================================================================
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_biocapacity(self) -> Currency:
+        """Global sum of territory biocapacity."""
+        return Currency(sum(t.biocapacity for t in self.territories.values()))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_consumption(self) -> Currency:
+        """Global sum of consumption needs."""
+        return Currency(sum(e.consumption_needs for e in self.entities.values()))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def overshoot_ratio(self) -> float:
+        """Global ecological overshoot ratio."""
+        if self.total_biocapacity <= 0:
+            return 999.0
+        return float(self.total_consumption / self.total_biocapacity)

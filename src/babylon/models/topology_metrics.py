@@ -7,10 +7,14 @@ Models:
     TopologySnapshot: Metrics snapshot at a specific tick
     ResilienceResult: Result of purge simulation (Sword of Damocles)
 
-Theoretical Background:
-    - Gaseous State: Many small components, percolation < 0.5
-    - Liquid State: Giant component spans majority, percolation >= 0.5
-    - Phase Shift: The tick where percolation crosses threshold
+Theoretical Background (4-Phase Model):
+    - Gaseous State: percolation < 0.1 (atomized, no coordination)
+    - Transitional State: 0.1 <= percolation < 0.5 (emerging structure)
+    - Liquid State: percolation >= 0.5, cadre_density < 0.5 (mass movement)
+    - Solid State: percolation >= 0.5, cadre_density >= 0.5 (vanguard party)
+
+Key Metric:
+    cadre_density = actual_liquidity / max(1, potential_liquidity)
 """
 
 from __future__ import annotations
@@ -37,9 +41,11 @@ class TopologySnapshot(BaseModel):
         actual_liquidity: Count of SOLIDARITY edges > 0.5 (cadre)
         is_resilient: Whether movement survives 20% purge (optional)
 
-    Interpretation:
-        - percolation_ratio < 0.1: Gaseous (atomized, vulnerable to purge)
-        - percolation_ratio >= 0.5: Liquid (condensed, vanguard formed)
+    Interpretation (4-Phase Model):
+        - percolation_ratio < 0.1: Gaseous (atomized, no coordination)
+        - 0.1 <= percolation_ratio < 0.5: Transitional (emerging structure)
+        - percolation_ratio >= 0.5 AND cadre_density < 0.5: Liquid (mass movement)
+        - percolation_ratio >= 0.5 AND cadre_density >= 0.5: Solid (vanguard party)
         - potential >> actual: Broad but brittle (lacks cadre discipline)
     """
 
@@ -54,6 +60,12 @@ class TopologySnapshot(BaseModel):
     )
     potential_liquidity: int = Field(ge=0, description="SOLIDARITY edges > 0.1 (sympathizers)")
     actual_liquidity: int = Field(ge=0, description="SOLIDARITY edges > 0.5 (cadre)")
+    cadre_density: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="Ratio of actual to potential solidarity (cadre / sympathizers)",
+    )
     is_resilient: bool | None = Field(
         default=None, description="Survives 20% purge (None if not tested)"
     )

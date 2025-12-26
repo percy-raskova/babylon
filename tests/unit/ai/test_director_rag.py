@@ -10,6 +10,9 @@ Design decisions (from plan):
 - Error Handling: Catch RAG errors, log, continue (ADR003)
 - Context Format: Follow AI_COMMS.md hierarchy
 - Query Strategy: Join new events as query text, top_k=3
+
+Sprint 4.1: Updated to use typed SimulationEvent objects from state.events
+instead of string-based event_log.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.events import ExtractionEvent
 
 # =============================================================================
 # FIXTURES
@@ -205,16 +209,27 @@ class TestDirectorRAGQueryBehavior:
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """on_tick queries RAG when new events occur."""
+        """on_tick queries RAG when new events occur.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Strike broke out in factory district"],
+                "events": [extraction_event],
             }
         )
 
@@ -228,14 +243,25 @@ class TestDirectorRAGQueryBehavior:
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """on_tick skips RAG query when no new events."""
+        """on_tick skips RAG query when no new events.
+
+        Sprint 4.1: Updated to use typed events.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
-        # Both states have same event log (no new events)
-        previous_state = initial_state.model_copy(update={"event_log": ["Old event"]})
-        new_state = initial_state.model_copy(update={"tick": 1, "event_log": ["Old event"]})
+        # Create a typed event
+        old_event = ExtractionEvent(
+            tick=0,
+            source_id="C001",
+            target_id="C002",
+            amount=5.0,
+        )
+
+        # Both states have same events (no new events)
+        previous_state = initial_state.model_copy(update={"events": [old_event]})
+        new_state = initial_state.model_copy(update={"tick": 1, "events": [old_event]})
 
         director.on_tick(previous_state, new_state)
 
@@ -249,19 +275,27 @@ class TestDirectorRAGQueryBehavior:
     ) -> None:
         """RAG query uses semantic bridge to translate events to theory queries.
 
-        Sprint 3.4: The semantic bridge translates simulation keywords like
+        Sprint 3.4: The semantic bridge translates EventType enum like
         SURPLUS_EXTRACTION into theoretical queries like 'surplus value'.
-        Unrecognized events use the fallback 'dialectical materialism' query.
+        Sprint 4.1: Updated to use typed ExtractionEvent.
         """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
+        # Create typed extraction event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["SURPLUS_EXTRACTION from Worker to Owner"],
+                "events": [extraction_event],
             }
         )
 
@@ -281,16 +315,27 @@ class TestDirectorRAGQueryBehavior:
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """RAG query uses top_k=3 for result limit."""
+        """RAG query uses top_k=3 for result limit.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Revolution brewing"],
+                "events": [extraction_event],
             }
         )
 
@@ -309,7 +354,10 @@ class TestDirectorRAGQueryBehavior:
         mock_rag_pipeline: MagicMock,
         mock_prompt_builder: MagicMock,
     ) -> None:
-        """RAG results are passed to prompt builder."""
+        """RAG results are passed to prompt builder.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(
@@ -317,11 +365,19 @@ class TestDirectorRAGQueryBehavior:
             prompt_builder=mock_prompt_builder,
         )
 
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Workers unite"],
+                "events": [extraction_event],
             }
         )
 
@@ -352,7 +408,10 @@ class TestDirectorRAGErrorHandling:
         self,
         initial_state: WorldState,
     ) -> None:
-        """RAG error does not halt observer processing."""
+        """RAG error does not halt observer processing.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         mock_rag = MagicMock()
@@ -360,11 +419,19 @@ class TestDirectorRAGErrorHandling:
 
         director = NarrativeDirector(rag_pipeline=mock_rag)
 
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Critical event occurred"],
+                "events": [extraction_event],
             }
         )
 
@@ -376,7 +443,10 @@ class TestDirectorRAGErrorHandling:
         initial_state: WorldState,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """RAG errors are logged for visibility."""
+        """RAG errors are logged for visibility.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         mock_rag = MagicMock()
@@ -384,11 +454,19 @@ class TestDirectorRAGErrorHandling:
 
         director = NarrativeDirector(rag_pipeline=mock_rag)
 
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Event with failing RAG"],
+                "events": [extraction_event],
             }
         )
 
@@ -402,7 +480,10 @@ class TestDirectorRAGErrorHandling:
         self,
         initial_state: WorldState,
     ) -> None:
-        """RAG timeout is handled gracefully (returns empty context)."""
+        """RAG timeout is handled gracefully (returns empty context).
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         mock_rag = MagicMock()
@@ -410,11 +491,19 @@ class TestDirectorRAGErrorHandling:
 
         director = NarrativeDirector(rag_pipeline=mock_rag)
 
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Timeout test event"],
+                "events": [extraction_event],
             }
         )
 
@@ -436,7 +525,10 @@ class TestDirectorFullContext:
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """Full context is assembled with all components."""
+        """Full context is assembled with all components.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
         from babylon.ai.prompt_builder import DialecticalPromptBuilder
 
@@ -447,12 +539,19 @@ class TestDirectorFullContext:
             prompt_builder=real_builder,
         )
 
+        # Create typed events (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
-        events = ["Strike in factory", "Troops deployed"]
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": events,
+                "events": [extraction_event],
             }
         )
 
@@ -469,7 +568,10 @@ class TestDirectorFullContext:
         mock_rag_pipeline: MagicMock,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """Context includes RAG results when available."""
+        """Context includes RAG results when available.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(
@@ -477,11 +579,19 @@ class TestDirectorFullContext:
             use_llm=True,  # Enable debug logging
         )
 
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Test event"],
+                "events": [extraction_event],
             }
         )
 
@@ -497,16 +607,27 @@ class TestDirectorFullContext:
         self,
         initial_state: WorldState,
     ) -> None:
-        """Context assembly works without RAG pipeline."""
+        """Context assembly works without RAG pipeline.
+
+        Sprint 4.1: Updated to use typed ExtractionEvent.
+        """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector()  # No RAG
+
+        # Create typed event (Sprint 4.1)
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Event without RAG"],
+                "events": [extraction_event],
             }
         )
 

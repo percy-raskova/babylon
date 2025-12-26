@@ -714,3 +714,145 @@ class TestSocialClassComponentAccess:
         assert isinstance(worker.ideological, IdeologicalComponent)
         assert isinstance(worker.survival, SurvivalComponent)
         assert isinstance(worker.material_conditions, MaterialConditionsComponent)
+
+
+# =============================================================================
+# METABOLIC CONSUMPTION TESTS (Slice 1.4)
+# =============================================================================
+
+
+@pytest.mark.math
+class TestSocialClassMetabolicDefaults:
+    """SocialClass metabolic fields should have sensible defaults."""
+
+    def test_s_bio_defaults_to_0_01(self) -> None:
+        """Biological minimum defaults to 0.01 (1% of baseline)."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+        )
+        assert worker.s_bio == 0.01
+
+    def test_s_class_defaults_to_0(self) -> None:
+        """Social reproduction defaults to 0 (no lifestyle overhead)."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+        )
+        assert worker.s_class == 0.0
+
+
+@pytest.mark.math
+class TestSocialClassMetabolicConstraints:
+    """SocialClass metabolic fields should be properly constrained."""
+
+    def test_s_bio_accepts_zero(self) -> None:
+        """Zero biological minimum is valid (edge case)."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            s_bio=0.0,
+        )
+        assert worker.s_bio == 0.0
+
+    def test_s_bio_rejects_negative(self) -> None:
+        """Negative biological minimum is invalid."""
+        with pytest.raises(ValidationError):
+            SocialClass(
+                id="C001",
+                name="Worker",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                s_bio=-0.01,
+            )
+
+    def test_s_class_accepts_zero(self) -> None:
+        """Zero social reproduction is valid (subsistence living)."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            s_class=0.0,
+        )
+        assert worker.s_class == 0.0
+
+    def test_s_class_rejects_negative(self) -> None:
+        """Negative social reproduction is invalid."""
+        with pytest.raises(ValidationError):
+            SocialClass(
+                id="C001",
+                name="Worker",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                s_class=-0.5,
+            )
+
+    def test_s_class_accepts_high_value(self) -> None:
+        """High social reproduction is valid (labor aristocracy lifestyle)."""
+        bourgeois = SocialClass(
+            id="C001",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            s_class=10.0,
+        )
+        assert bourgeois.s_class == 10.0
+
+
+@pytest.mark.math
+class TestSocialClassConsumptionNeeds:
+    """SocialClass consumption_needs computed property."""
+
+    def test_consumption_needs_sums_s_bio_and_s_class(self) -> None:
+        """Consumption needs = s_bio + s_class."""
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            s_bio=0.05,
+            s_class=0.15,
+        )
+        assert worker.consumption_needs == pytest.approx(0.20, abs=0.001)
+
+    def test_consumption_needs_zero_when_both_zero(self) -> None:
+        """Zero consumption when both components are zero."""
+        minimal = SocialClass(
+            id="C001",
+            name="Minimal",
+            role=SocialRole.LUMPENPROLETARIAT,
+            s_bio=0.0,
+            s_class=0.0,
+        )
+        assert minimal.consumption_needs == 0.0
+
+    def test_consumption_needs_bio_only(self) -> None:
+        """Consumption equals s_bio when s_class is zero."""
+        subsistence = SocialClass(
+            id="C001",
+            name="Subsistence",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            s_bio=0.03,
+            s_class=0.0,
+        )
+        assert subsistence.consumption_needs == pytest.approx(0.03, abs=0.001)
+
+    def test_consumption_needs_class_difference(self) -> None:
+        """Different classes have different consumption needs."""
+        proletariat = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            s_bio=0.02,
+            s_class=0.01,
+        )
+        labor_aristocracy = SocialClass(
+            id="C002",
+            name="Labor Aristocracy",
+            role=SocialRole.LABOR_ARISTOCRACY,
+            s_bio=0.02,
+            s_class=0.10,  # Higher lifestyle expectations
+        )
+
+        assert proletariat.consumption_needs < labor_aristocracy.consumption_needs
+        assert proletariat.consumption_needs == pytest.approx(0.03, abs=0.001)
+        assert labor_aristocracy.consumption_needs == pytest.approx(0.12, abs=0.001)

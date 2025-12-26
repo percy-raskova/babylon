@@ -4,59 +4,61 @@ version = "0.3.0"
 description = "A Marxist text-based role playing game powered by Claude. It aims to educate and entertain by turning the immortal science of dialectical materialism into a game engine."
 readme = "README.md"
 license = "AGPL-3.0-or-later"
-authors = ["Persephone Raskova <percy@babylonrpg.com>"]
-keywords = ["ai", "llm", "marxism", "rpg", "dystopian"]
-packages = [{include = "babylon", from = "src"}]
+authors = [
+    "Persephone Raskova <percy@babylonrpg.com>",
+]
+keywords = [
+    "ai",
+    "llm",
+    "marxism",
+    "rpg",
+    "dystopian",
+]
+packages = [
+    { include = "babylon", from = "src" },
+]
 
 [tool.poetry.urls]
-"Homepage" = "https://babylonrpg.com"
-"Documentation" = "https://github.com/bogdanscarwash/babylon#readme"
-"Issues" = "https://github.com/bogdanscarwash/babylon/issues"
-"Source" = "https://github.com/bogdanscarwash/babylon"
+Homepage = "https://babylonrpg.com"
+Documentation = "https://github.com/bogdanscarwash/babylon#readme"
+Issues = "https://github.com/bogdanscarwash/babylon/issues"
+Source = "https://github.com/bogdanscarwash/babylon"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-# Core
 pydantic = ">=2.10.3"
 numpy = ">=1.26.4"
 networkx = ">=3.2.1"
 sqlalchemy = ">=2.0.36"
-# CLI/UI
 typer = ">=0.15.1"
 rich = ">=13.9.4"
 coloredlogs = ">=15.0.1"
-# API
-# Data
 pandas = ">=2.2.3"
 pyyaml = ">=6.0.2"
 python-dotenv = ">=1.0.1"
-# AI/RAG
 chromadb = ">=1.0.0"
 tokenizers = ">=0.19.1"
-# Utils
 backoff = ">=2.2.1"
 requests = ">=2.32.3"
 certifi = ">=2025.11.12"
 ratelimit = ">=2.2.1"
 psutil = ">=7.1.0"
 gputil = "==1.4.0"
-# Legacy (review for removal)
 jsonschema = "^4.25.1"
 referencing = "^0.37.0"
 aiohttp = "^3.13.2"
 openai = "^2.9.0"
+nicegui = "^3.4.0"
+filelock = ">=3.20.1"
 
 [tool.poetry.group.dev.dependencies]
-# Testing
 pytest = "^8.3.4"
 pytest-mock = "^3.14.0"
 pytest-asyncio = "^1.0.0"
 pytest-cov = "^7.0.0"
-# Code Quality
 mypy = "^1.13.0"
 ruff = "^0.14.0"
 pre-commit = "^4.0.0"
-# Versioning
 commitizen = "^4.1.0"
 types-jsonschema = "^4.25.1.20251009"
 types-pyyaml = "^6.0.12.20250915"
@@ -67,7 +69,12 @@ markdownify = "^1.2.2"
 yamllint = "^1.37.1"
 mido = "^1.3.3"
 linkify-it-py = "^2.0.3"
-
+pip-audit = "^2.7.3"
+pytest-playwright = "^0.7.2"
+radon = "^6.0.1"
+xenon = "^0.9.3"
+pytest-randomly = "^4.0.1"
+mutmut = "^3.4.0"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -77,20 +84,24 @@ myst-parser = "^4.0.1"
 sphinx-autobuild = "^2024.10.3"
 sphinxcontrib-mermaid = "^1.2"
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
-
-# =============================================================================
-# PYTEST
-# =============================================================================
 [tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["tests"]
+pythonpath = [
+    "src",
+]
+testpaths = [
+    "tests",
+]
+norecursedirs = [
+    "mutants",
+    ".mutmut-cache",
+    "html",
+]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-# Doctest options for formulas module
-doctest_optionflags = ["NORMALIZE_WHITESPACE", "ELLIPSIS"]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "ELLIPSIS",
+]
 markers = [
     "unit: Fast unit tests for isolated components (no I/O, no AI)",
     "math: Deterministic mathematical formulas (fast, pure functions)",
@@ -98,41 +109,54 @@ markers = [
     "topology: Graph/Network operations (fast, deterministic)",
     "integration: Database/ChromaDB tests (medium, I/O bound)",
     "ai: AI/RAG evaluation tests (slow, non-deterministic)",
+    "red_phase: TDD RED phase tests (intentionally failing until GREEN phase)",
 ]
 
-# =============================================================================
-# RUFF (Linting + Formatting + Import Sorting)
-# =============================================================================
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src"]
-exclude = ["assets/music/"]
+src = [
+    "src",
+]
+exclude = [
+    "assets/music/",
+]
 
 [tool.ruff.lint]
 select = [
-    "E",      # pycodestyle errors
-    "W",      # pycodestyle warnings
-    "F",      # pyflakes
-    "I",      # isort (import sorting)
-    "B",      # flake8-bugbear
-    "C4",     # flake8-comprehensions
-    "UP",     # pyupgrade
-    "ARG",    # unused arguments
-    "SIM",    # flake8-simplify
+    "E",
+    "W",
+    "F",
+    "I",
+    "B",
+    "C4",
+    "C90",
+    "UP",
+    "ARG",
+    "SIM",
 ]
-ignore = ["E501"]  # line length handled by formatter
+ignore = [
+    "E501",
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
 
 [tool.ruff.lint.isort]
-known-first-party = ["babylon"]
+known-first-party = [
+    "babylon",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use fixtures for side-effects (cleanup, module state reset)
+"tests/**" = ["ARG001", "ARG002"]
+# Tools are data generators/scripts, complexity limits don't apply
+"tools/**" = ["C901"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
-# =============================================================================
-# MYPY (Type Checking)
-# =============================================================================
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -147,56 +171,68 @@ no_implicit_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 show_error_codes = true
-exclude = ["tests/", "build/", "dist/", "assets/music/"]
+exclude = [
+    "tests/",
+    "build/",
+    "dist/",
+    "assets/music/",
+]
+plugins = [
+    "pydantic.mypy",
+]
 
-# =============================================================================
-# COMMITIZEN (Conventional Commits)
-# =============================================================================
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
 [tool.commitizen]
 name = "cz_conventional_commits"
 version = "0.3.0"
 tag_format = "v$version"
-version_files = ["pyproject.toml:version"]
+version_files = [
+    "pyproject.toml:version",
+]
 update_changelog_on_bump = true
 
-# =============================================================================
-# BABYLON LOGGING CONFIGURATION
-# =============================================================================
-# Centralized log level control. Override with LOG_LEVEL env var for global,
-# or set per-module levels below for granular control.
-#
-# Levels: TRACE (5), DEBUG (10), INFO (20), WARNING (30), ERROR (40), CRITICAL (50)
-# =============================================================================
+[tool.mutmut]
+paths_to_mutate = [
+    "src/babylon/systems/formulas.py",
+    "src/babylon/engine/systems/economic.py",
+    "src/babylon/engine/systems/survival.py",
+]
+tests_dir = [
+    "tests/unit/",
+]
+also_copy = [
+    "src/",
+    "tools/",
+]
+debug = false
+
 [tool.babylon.logging]
-# Global default level (can be overridden by LOG_LEVEL env var)
 default_level = "INFO"
-
-# Console output level (usually INFO for clean output)
 console_level = "INFO"
-
-# File output level (usually DEBUG for detailed logs)
 file_level = "DEBUG"
 
-# Per-module log levels (override default for specific modules)
 [tool.babylon.logging.modules]
-# Engine systems - set to DEBUG when debugging simulation
 "babylon.engine" = "INFO"
 "babylon.engine.systems" = "INFO"
 "babylon.engine.simulation" = "INFO"
-
-# RAG system - set to DEBUG when debugging retrieval
 "babylon.rag" = "INFO"
 "babylon.rag.retrieval" = "INFO"
 "babylon.rag.embeddings" = "INFO"
 "babylon.rag.chunker" = "INFO"
-
-# Data layer
 "babylon.data" = "INFO"
 "babylon.data.chroma_manager" = "INFO"
+chromadb = "WARNING"
+httpx = "WARNING"
+httpcore = "WARNING"
+urllib3 = "WARNING"
+asyncio = "WARNING"
 
-# Third-party suppressions (keep at WARNING to reduce noise)
-"chromadb" = "WARNING"
-"httpx" = "WARNING"
-"httpcore" = "WARNING"
-"urllib3" = "WARNING"
-"asyncio" = "WARNING"
+[build-system]
+requires = [
+    "poetry-core>=1.0.0",
+]
+build-backend = "poetry.core.masonry.api"

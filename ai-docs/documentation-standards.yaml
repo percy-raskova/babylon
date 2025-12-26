@@ -1,0 +1,489 @@
+# Babylon Documentation Standards
+# How to write documentation for this project
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-12"
+  purpose: "Ensure consistent, accurate, maintainable documentation"
+  related_files:
+    - "docs/conf.py"
+    - "docs/reference/documentation.rst"
+    - "CLAUDE.md"
+
+# =============================================================================
+# CORE PRINCIPLES
+# =============================================================================
+
+principles:
+  accuracy_over_comprehensiveness:
+    rule: "Five accurate documents beat fifty with half outdated"
+    implication: "Delete or update stale docs immediately"
+
+  demand_driven:
+    rule: "Documentation emerges from actual pain points"
+    question: "What specific person is currently blocked by absence of this info?"
+    anti_pattern: "Writing docs for hypothetical future readers"
+
+  verifiability:
+    rule: "Every factual claim must be traceable to code"
+    forbidden:
+      - "Arbitrary performance claims without benchmarks"
+      - "Features that don't exist in code (even if planned)"
+      - "Unverified API signatures"
+    options_for_unverified:
+      - "Remove the claim"
+      - "Weaken to something verifiable"
+      - "Flag explicitly for human verification"
+
+  single_purpose:
+    rule: "Each document serves ONE Diataxis quadrant and ONE audience"
+    violation: "Mixing tutorial (hand-holding) with reference (lookup)"
+    fix: "Split into multiple documents in appropriate categories"
+
+  immutability_of_history:
+    rule: "Capture reasoning that made sense at the time"
+    implication: "Don't retroactively edit ADRs to hide past thinking"
+
+# =============================================================================
+# DIATAXIS FRAMEWORK
+# =============================================================================
+
+diataxis:
+  description: "Four-quadrant documentation system"
+  reference: "https://diataxis.fr/"
+
+  quadrants:
+    tutorials:
+      location: "docs/tutorials/"
+      purpose: "Learning-oriented, for newcomers"
+      characteristics:
+        - "Hand-holding step-by-step"
+        - "Builds foundational knowledge"
+        - "Teaches through doing"
+        - "Has clear learning outcomes"
+      tone: "Encouraging, patient"
+      example: "tutorials/first-simulation.rst"
+      question: "How do I learn this?"
+
+    how_to:
+      location: "docs/how-to/"
+      purpose: "Task-oriented, for practitioners"
+      characteristics:
+        - "Assumes existing knowledge"
+        - "Goal-focused (solve specific problem)"
+        - "Practical steps"
+        - "No background explanation"
+      tone: "Direct, efficient"
+      example: "how-to/contribute.rst"
+      question: "How do I accomplish X?"
+
+    concepts:
+      location: "docs/concepts/"
+      purpose: "Understanding-oriented, for deep learning"
+      characteristics:
+        - "Explains why, not just how"
+        - "Provides context and background"
+        - "Discusses alternatives and trade-offs"
+        - "Connects to theory"
+      tone: "Thoughtful, explanatory"
+      example: "concepts/imperial-rent.rst"
+      question: "Why does this work this way?"
+
+    reference:
+      location: "docs/reference/"
+      purpose: "Information-oriented, for lookup"
+      characteristics:
+        - "Comprehensive and accurate"
+        - "Consistent structure"
+        - "No tutorial content"
+        - "Assumes knowledge, provides facts"
+      tone: "Precise, technical"
+      example: "reference/ci-workflow.rst"
+      question: "What are the exact details?"
+
+  common_mistakes:
+    tutorial_in_reference:
+      symptom: "Reference doc explains 'why' at length"
+      fix: "Move explanation to concepts/, keep reference terse"
+
+    reference_in_how_to:
+      symptom: "How-to lists every option and parameter"
+      fix: "How-to shows ONE working example, link to reference for options"
+
+    how_to_in_tutorial:
+      symptom: "Tutorial jumps to advanced tasks"
+      fix: "Tutorial builds gradually, how-to assumes competence"
+
+# =============================================================================
+# RST FORMAT STANDARDS
+# =============================================================================
+
+rst_format:
+  file_extension: ".rst"
+  encoding: "UTF-8"
+
+  headings:
+    level_1: "======="  # Document title (only one per file)
+    level_2: "-------"
+    level_3: "~~~~~~~"
+    level_4: "^^^^^^"
+    rule: "Underline must be at least as long as heading text"
+
+  code_blocks:
+    inline: "``code``"
+    block: |
+      .. code-block:: python
+
+         def example():
+             pass
+    supported_languages:
+      - python
+      - bash
+      - yaml
+      - json
+      - text
+    note: "Use 'text' for generic output, 'bash' for shell commands"
+
+  cross_references:
+    document: ":doc:`/path/to/document`"
+    section: ":ref:`section-label`"
+    class: ":class:`babylon.models.SocialClass`"
+    function: ":func:`babylon.systems.formulas.calculate_imperial_rent`"
+    module: ":mod:`babylon.engine.systems`"
+    external: "`Link text <https://url>`_"
+
+  admonitions:
+    note: ".. note::"
+    warning: ".. warning::"
+    tip: ".. tip::"
+    important: ".. important::"
+    usage: "Use sparingly - too many admonitions dilute their impact"
+
+  lists:
+    bullet: "- item"
+    numbered: "1. item"
+    definition: |
+      term
+         Definition text indented
+
+  tables:
+    simple: |
+      .. list-table::
+         :widths: 30 70
+         :header-rows: 1
+
+         * - Column 1
+           - Column 2
+         * - Data
+           - More data
+
+# =============================================================================
+# DOCSTRING STANDARDS
+# =============================================================================
+
+docstrings:
+  format: "RST (reStructuredText)"
+  reason: "Sphinx autodoc native format"
+
+  required_on:
+    - "All public classes"
+    - "All public functions"
+    - "All public methods"
+    - "All modules (module docstring)"
+
+  structure:
+    summary: "One-line summary (imperative mood)"
+    blank_line: "Required after summary if more content follows"
+    description: "Extended description (optional)"
+    sections:
+      - "Args:"
+      - "Returns:"
+      - "Raises:"
+      - "Example:"
+      - "See Also:"
+      - "Note:"
+
+  example:
+    good: |
+      def calculate_imperial_rent(wages: Currency, value: Currency) -> Currency:
+          """Calculate imperial rent extracted via unequal exchange.
+
+          The fundamental theorem of MLM-TW: when wages exceed value produced,
+          the difference represents imperial rent transferred from periphery.
+
+          Args:
+              wages: Currency amount paid to workers in core.
+              value: Currency amount of value actually produced.
+
+          Returns:
+              Imperial rent (Phi) extracted from periphery workers.
+
+          Raises:
+              ValueError: If wages or value are negative.
+
+          Example:
+              >>> calculate_imperial_rent(wages=Currency(100.0), value=Currency(80.0))
+              Currency(20.0)
+
+          See Also:
+              :func:`calculate_exploitation_rate`: Related exploitation metric.
+          """
+
+    bad: |
+      def calculate_imperial_rent(wages, value):
+          """
+          Calculate imperial rent.
+          Uses `markdown code` style - WRONG for RST
+          returns the **bold without spaces**error
+          """
+
+  common_errors:
+    markdown_in_rst:
+      wrong: "`code`"
+      right: "``code``"
+
+    missing_blank_line:
+      wrong: "Summary\nMore text"
+      right: "Summary\n\nMore text"
+
+    wrong_param_format:
+      wrong: "@param wages: the wages"
+      right: "Args:\n    wages: The wages."
+
+# =============================================================================
+# SPHINX CONFIGURATION
+# =============================================================================
+
+sphinx:
+  config_file: "docs/conf.py"
+
+  extensions:
+    required:
+      - "sphinx.ext.autodoc"
+      - "sphinx.ext.autosummary"
+      - "sphinx.ext.intersphinx"
+      - "sphinx.ext.viewcode"
+      - "sphinx.ext.doctest"
+      - "sphinx_autodoc_typehints"
+      - "myst_parser"
+      - "sphinxcontrib.mermaid"
+
+  key_settings:
+    autodoc_typehints: "description"
+    napoleon_google_docstring: true
+    autosummary_imported_members: false
+    myst_enable_extensions:
+      - "colon_fence"
+      - "deflist"
+      - "tasklist"
+      - "dollarmath"
+
+  suppress_warnings:
+    items:
+      - "autodoc"
+      - "autodoc.import_object"
+      - "ref.python"
+      - "myst.xref_missing"
+    reason: "Pydantic re-exports cause unavoidable duplicate warnings"
+
+  build_commands:
+    html: "poetry run sphinx-build -b html docs docs/_build/html"
+    strict: "poetry run sphinx-build -W -b html docs docs/_build/html"
+    live: "mise run docs-live"
+
+# =============================================================================
+# MARKDOWN VS RST
+# =============================================================================
+
+markdown_vs_rst:
+  policy: "RST for Sphinx docs, Markdown for non-Sphinx files"
+
+  use_rst_for:
+    - "docs/**/*.rst"
+    - "Python docstrings"
+
+  use_markdown_for:
+    - "README.md"
+    - "CONTRIBUTORS.md"
+    - "brainstorm/**/*.md"
+    - "ai-docs/**/*.md"
+    - "GitHub-rendered files"
+
+  myst_parser:
+    purpose: "Allows Markdown files in Sphinx when needed"
+    enabled_extensions:
+      - "strikethrough"
+      - "tasklist"
+      - "dollarmath"
+    caution: "Prefer RST for complex documentation (better Sphinx integration)"
+
+# =============================================================================
+# AI-DOCS STANDARDS
+# =============================================================================
+
+ai_docs:
+  location: "ai-docs/"
+  purpose: "Machine-readable documentation for LLM assistants"
+
+  format: "YAML"
+  reason: "Structured, parseable, good for context injection"
+
+  structure:
+    meta:
+      required_fields:
+        - "version"
+        - "updated"
+        - "purpose"
+      optional_fields:
+        - "related_files"
+        - "related_adrs"
+
+    sections: "Use YAML comments as section headers"
+
+  naming_convention:
+    pattern: "kebab-case.yaml"
+    examples:
+      - "ci-workflow.yaml"
+      - "documentation-standards.yaml"
+      - "game-loop-architecture.yaml"
+
+  line_length:
+    limit: "No strict limit (prose content)"
+    yamllint: "ai-docs/ excluded from yamllint"
+
+  update_triggers:
+    - "New domain concepts introduced"
+    - "Architectural decisions made"
+    - "Patterns emerge or change"
+    - "Mistakes made (add to anti-patterns)"
+
+# =============================================================================
+# ACCURACY REQUIREMENTS
+# =============================================================================
+
+accuracy:
+  cardinal_rule: "Never document features that don't exist in code"
+
+  verification_checklist:
+    code_examples:
+      - "Does this import path exist?"
+      - "Does this class/function exist?"
+      - "Does the signature match?"
+      - "Does the example actually run?"
+
+    api_documentation:
+      - "Are all parameters documented?"
+      - "Are types correct?"
+      - "Are defaults accurate?"
+
+    configuration:
+      - "Do these settings exist?"
+      - "Are default values correct?"
+      - "Do environment variables work?"
+
+  planned_features:
+    wrong: "Document in main docs with 'coming soon'"
+    right: "Document in brainstorm/ or roadmap only"
+
+  speculation:
+    forbidden:
+      - "This should improve performance by ~50%"
+      - "Users will typically want to..."
+      - "In the future, this will..."
+    allowed:
+      - "Benchmarks show 47% improvement (see tests/benchmarks/)"
+      - "This pattern addresses the use case where..."
+
+# =============================================================================
+# CROSS-REFERENCING
+# =============================================================================
+
+cross_referencing:
+  within_docs:
+    same_quadrant: "Use relative links"
+    different_quadrant: "Use absolute paths from root"
+    example: ":doc:`/concepts/imperial-rent`"
+
+  to_code:
+    classes: ":class:`babylon.models.SocialClass`"
+    functions: ":func:`babylon.systems.formulas.calculate_imperial_rent`"
+    modules: ":mod:`babylon.engine.systems`"
+
+  to_external:
+    intersphinx_targets:
+      - "python"
+      - "pydantic"
+      - "networkx"
+    example: ":class:`pydantic.BaseModel`"
+
+  see_also_sections:
+    purpose: "Help readers find related content"
+    placement: "End of document or major section"
+    format: |
+      See Also
+      --------
+
+      - :doc:`/concepts/related-concept` - Explanation of X
+      - :doc:`/how-to/related-task` - How to do Y
+
+# =============================================================================
+# MAINTENANCE
+# =============================================================================
+
+maintenance:
+  when_to_update:
+    - "Code changes that affect documented behavior"
+    - "New features added"
+    - "Bugs fixed that were documented as features"
+    - "User confusion indicates documentation gap"
+
+  when_to_delete:
+    - "Feature removed from code"
+    - "Documentation no longer accurate and can't be fixed"
+    - "Duplicate content exists elsewhere"
+
+  review_cadence:
+    human_docs: "Review during major releases"
+    ai_docs: "Update with each significant change"
+    api_docs: "Auto-generated from docstrings"
+
+  stale_indicators:
+    - "Import paths that don't exist"
+    - "Function signatures that don't match"
+    - "Screenshots of old UI"
+    - "References to removed features"
+
+# =============================================================================
+# ANTI-PATTERNS
+# =============================================================================
+
+anti_patterns:
+  premature_documentation:
+    description: "Writing docs for features before they exist"
+    symptom: "Docs describe planned behavior, not actual behavior"
+    fix: "Wait until feature is implemented and tested"
+
+  documentation_debt:
+    description: "Letting docs fall behind code"
+    symptom: "Users report docs don't match behavior"
+    fix: "Update docs in same PR as code changes"
+
+  super_documents:
+    description: "One doc tries to be tutorial + reference + how-to"
+    symptom: "Document is 1000+ lines, hard to navigate"
+    fix: "Split by Diataxis quadrant"
+
+  copy_paste_docs:
+    description: "Same information in multiple places"
+    symptom: "Updates require changing multiple files"
+    fix: "Single source of truth, cross-reference elsewhere"
+
+  screenshot_heavy:
+    description: "Relying on screenshots instead of text"
+    symptom: "Screenshots become outdated, can't be searched"
+    fix: "Use text with occasional screenshots for complex UI"
+
+  undocumented_assumptions:
+    description: "Docs assume knowledge without stating it"
+    symptom: "New users confused, experienced users fine"
+    fix: "Add Prerequisites section, link to background docs"

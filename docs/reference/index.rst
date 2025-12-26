@@ -36,6 +36,17 @@ Simulation Systems
 API reference for the seven core simulation systems (ImperialRent, Solidarity,
 Consciousness, Survival, Contradiction, Territory, Struggle).
 
+Event System
+------------
+
+.. toctree::
+   :maxdepth: 1
+
+   events
+
+Complete reference for the typed event system: 11 EventTypes, 13 event classes,
+event lifecycle, and factory methods for testing.
+
 Configuration
 -------------
 
@@ -99,3 +110,14 @@ Error Handling
    error-codes
 
 Error code taxonomy and error handling conventions.
+
+CI/CD Workflow
+--------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ci-workflow
+
+GitHub Actions workflows, branch protection rules, and the Benevolent
+Dictator governance model.

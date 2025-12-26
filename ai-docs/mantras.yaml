@@ -12,6 +12,25 @@ meta:
 
 mantras:
 
+  north_star:
+    text: "A teenager picks it up, has fun, thinks it's cool, and learns how the world works."
+    meaning: |
+      This is the ultimate success criterion for Babylon.
+      Not architectural elegance. Not test coverage. Not theoretical rigor.
+
+      A person who hasn't read Marx plays this game and starts asking
+      the right questions about imperial rent, class consciousness,
+      and why revolution happens in the periphery, not the core.
+
+      Political education through storytelling with a complex backend.
+      The backend complexity serves the story. The story serves understanding.
+    applies_to:
+      - "Feature prioritization"
+      - "UI/UX decisions"
+      - "Scope discussions"
+      - "When to ship vs when to polish"
+    added: "2025-12-26"
+
   graph_plus_math:
     text: "Graph + Math = History"
     meaning: |
@@ -211,3 +230,64 @@ mantras:
       - "Code review"
       - "Documentation CI"
     added: "2025-12-11"
+
+# =============================================================================
+# DESIGN MANTRAS
+# =============================================================================
+
+  red_is_pain:
+    text: "Red is Pain, not Decoration."
+    meaning: |
+      Use #D40000 (phosphor_burn_red) ONLY for critical alerts, ruptures,
+      and pain states. Never for decorative borders, inactive elements,
+      or general emphasis.
+
+      Red demands attention. Overuse dilutes its power.
+      When everything is urgent, nothing is urgent.
+    applies_to:
+      - "UI component design"
+      - "Alert system implementation"
+      - "Color selection for states"
+    anti_pattern: "Using red for decorative borders or inactive elements"
+    reference: "ai-docs/design-system.yaml:palette.semantic.phosphor_burn_red"
+    added: "2025-12-14"
+
+  purple_is_life_green_is_data:
+    text: "Purple is Life, Green is Data."
+    meaning: |
+      Distinguish the AI's voice from the System's metrics:
+
+      - PURPLE (#9D00FF, grow_light_purple): AI Narrative, Life, Broadcast
+        The Signal. What the AI generates. Organic, alive, growing.
+
+      - GREEN (#39FF14, data_green): Metrics, Terminal Output, Statistics
+        The Carrier. What the system measures. Digital, precise, factual.
+
+      This separation lets players immediately identify AI-generated content
+      versus mechanical system data.
+    applies_to:
+      - "Narrative display styling"
+      - "Metrics/statistics formatting"
+      - "Terminal output design"
+    reference: "ai-docs/design-system.yaml:palette.semantic"
+    added: "2025-12-14"
+
+  screen_is_physical:
+    text: "The Screen is a Physical Object."
+    meaning: |
+      The UI represents a CRT monitor in a damp basement, not a clean web app.
+      Grain, scanlines, and vignette are ESSENTIAL, not optional decorations.
+
+      Implementation requirements:
+      - CRT scanline overlay (horizontal lines)
+      - Vignette effect (edge darkening)
+      - Subtle grain texture
+      - Occasional flicker (intentional imperfection)
+
+      If it looks like a modern web app, something is wrong.
+    applies_to:
+      - "Root UI container styling"
+      - "Visual effect implementation"
+      - "Aesthetic consistency reviews"
+    reference: "ai-docs/design-system.yaml:components.crt_overlay"
+    added: "2025-12-14"

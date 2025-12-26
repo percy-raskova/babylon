@@ -1,0 +1,582 @@
+# Apache ECharts Patterns & Quick Reference
+# ==========================================
+# Distilled from C7 documentation research (Dec 2025)
+# Purpose: Provide quick solutions for chart visualization in NiceGUI
+#
+# C7 Library ID: /apache/echarts-doc (1973 snippets, 80.2 benchmark)
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-14"
+  purpose: |
+    Token-efficient reference for ECharts patterns used in Babylon's
+    TrendPlotter and data visualization components. Consult when:
+    - Building new chart types
+    - Configuring axis and legends
+    - Implementing real-time data updates
+    - Styling charts for dark theme
+  cross_references:
+    - "ai-docs/nicegui-patterns.yaml (NiceGUI integration)"
+    - "ai-docs/design-system.yaml (Bunker Constructivism colors)"
+    - "ai-docs/tailwind-patterns.yaml (layout utilities)"
+
+# =============================================================================
+# BASIC CHART STRUCTURE
+# =============================================================================
+
+basic_structure:
+
+  line_chart:
+    description: "Standard line chart for time-series data"
+    pattern: |
+      option = {
+          xAxis: {
+              type: 'category',
+              data: ['Tick 1', 'Tick 2', 'Tick 3', 'Tick 4', 'Tick 5']
+          },
+          yAxis: {
+              type: 'value'
+          },
+          series: [{
+              data: [820, 932, 901, 934, 1290],
+              type: 'line'
+          }]
+      }
+
+  multiple_series:
+    description: "Multiple lines on same chart (e.g., proletariat vs bourgeoisie)"
+    pattern: |
+      option = {
+          legend: {
+              data: ['P(S|A)', 'P(S|R)']
+          },
+          xAxis: {
+              type: 'category',
+              data: ['T0', 'T1', 'T2', 'T3', 'T4']
+          },
+          yAxis: {
+              type: 'value'
+          },
+          series: [
+              {
+                  name: 'P(S|A)',
+                  type: 'line',
+                  data: [0.8, 0.75, 0.7, 0.65, 0.6]
+              },
+              {
+                  name: 'P(S|R)',
+                  type: 'line',
+                  data: [0.2, 0.25, 0.35, 0.5, 0.65]
+              }
+          ]
+      }
+
+  step_line:
+    description: "Step chart for discrete value changes"
+    pattern: |
+      series: [{
+          type: 'line',
+          step: 'middle',  # or 'start', 'end', true
+          data: [120, 132, 101, 134, 90]
+      }]
+
+  stacked_lines:
+    description: "Stacked area chart for cumulative visualization"
+    pattern: |
+      series: [
+          {
+              name: 'Core',
+              type: 'line',
+              stack: 'Total',  # Same stack name groups series
+              data: [120, 132, 101, 134, 90]
+          },
+          {
+              name: 'Periphery',
+              type: 'line',
+              stack: 'Total',
+              data: [220, 182, 191, 234, 290]
+          }
+      ]
+
+# =============================================================================
+# DYNAMIC UPDATES (Critical for Real-Time Dashboard)
+# =============================================================================
+
+dynamic_updates:
+
+  setOption_basics:
+    description: "Update chart data and configuration"
+    signatures:
+      full_replace: 'chart.setOption(option, {notMerge: true})'
+      merge_update: 'chart.setOption(option)  # Default: merges with existing'
+      component_replace: 'chart.setOption(option, {replaceMerge: ["xAxis", "series"]})'
+      lazy_update: 'chart.setOption(option, {lazyUpdate: true})  # Batch updates'
+    nicegui_pattern: |
+      # In NiceGUI, modify options dict then call update()
+      self.echart.options['xAxis']['data'].append('New Tick')
+      self.echart.options['series'][0]['data'].append(new_value)
+      self.echart.update()  # CRITICAL: Must call update()!
+
+  async_data_loading:
+    description: "Initialize empty, populate asynchronously"
+    pattern: |
+      # Phase 1: Initialize with empty structure
+      option = {
+          xAxis: { data: [] },
+          yAxis: {},
+          series: [{
+              name: 'Metric',
+              type: 'line',
+              data: []
+          }]
+      }
+      chart.setOption(option)
+
+      # Phase 2: Populate with data
+      chart.setOption({
+          xAxis: { data: fetched_categories },
+          series: [{
+              name: 'Metric',  # Find series by name
+              data: fetched_values
+          }]
+      })
+
+  append_data:
+    description: "Add new data points in real-time"
+    nicegui_pattern: |
+      def add_data_point(self, tick: int, value: float) -> None:
+          """Add single data point and update chart."""
+          self.echart.options['xAxis']['data'].append(f'T{tick}')
+          self.echart.options['series'][0]['data'].append(value)
+
+          # Keep only last N points to prevent memory growth
+          MAX_POINTS = 100
+          if len(self.echart.options['xAxis']['data']) > MAX_POINTS:
+              self.echart.options['xAxis']['data'] = self.echart.options['xAxis']['data'][-MAX_POINTS:]
+              self.echart.options['series'][0]['data'] = self.echart.options['series'][0]['data'][-MAX_POINTS:]
+
+          self.echart.update()
+
+  get_current_option:
+    description: "Retrieve current chart state"
+    pattern: |
+      # Returns array-form of all options
+      current = chart.getOption()
+      # Use setOption for modifications, not direct mutation
+
+# =============================================================================
+# AXIS CONFIGURATION
+# =============================================================================
+
+axis:
+
+  xAxis_category:
+    description: "Category axis for labels (ticks, names, dates)"
+    pattern: |
+      xAxis: {
+          type: 'category',
+          data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+          name: 'Day',
+          nameLocation: 'middle',  # 'start', 'middle', 'end'
+          nameGap: 30,
+          axisLabel: {
+              rotate: 45,  # Rotate labels if crowded
+              formatter: '{value} ms'  # Custom format
+          }
+      }
+
+  yAxis_value:
+    description: "Value axis for numeric data"
+    pattern: |
+      yAxis: {
+          type: 'value',
+          name: 'Probability',
+          nameLocation: 'end',
+          min: 0,
+          max: 1,  # For probabilities
+          axisLabel: {
+              formatter: '{value}'
+          },
+          splitLine: {
+              show: true,
+              lineStyle: { color: '#404040' }
+          }
+      }
+
+  axis_name_styling:
+    description: "Style axis labels and names"
+    pattern: |
+      xAxis: {
+          name: 'Simulation Tick',
+          nameTextStyle: {
+              color: '#C0C0C0',
+              fontSize: 12
+          },
+          axisLine: {
+              lineStyle: { color: '#404040' }
+          },
+          axisLabel: {
+              color: '#C0C0C0'
+          }
+      }
+
+  dual_yAxis:
+    description: "Two Y-axes for different scales"
+    pattern: |
+      yAxis: [
+          {
+              type: 'value',
+              name: 'Currency',
+              position: 'left'
+          },
+          {
+              type: 'value',
+              name: 'Probability',
+              position: 'right',
+              min: 0,
+              max: 1
+          }
+      ],
+      series: [
+          { type: 'bar', yAxisIndex: 0, data: [...] },
+          { type: 'line', yAxisIndex: 1, data: [...] }
+      ]
+
+# =============================================================================
+# LEGEND & TOOLTIP
+# =============================================================================
+
+legend_tooltip:
+
+  legend_basic:
+    description: "Show/hide series via clickable legend"
+    pattern: |
+      legend: {
+          data: ['Series A', 'Series B'],
+          textStyle: { color: '#C0C0C0' },
+          top: 10,
+          right: 10
+      }
+
+  legend_with_truncation:
+    description: "Handle long legend names"
+    pattern: |
+      legend: {
+          formatter: function (name) {
+              return echarts.format.truncateText(name, 40, '14px monospace', '...');
+          },
+          tooltip: { show: true }  # Full name on hover
+      }
+
+  legend_selectors:
+    description: "Add 'select all' / 'inverse' buttons"
+    pattern: |
+      legend: {
+          selector: true,  # or ['all', 'inverse']
+          # Or customize:
+          selector: [
+              { type: 'all', title: 'Select All' },
+              { type: 'inverse', title: 'Invert' }
+          ]
+      }
+
+  tooltip_axis:
+    description: "Tooltip triggered by axis (for line charts)"
+    pattern: |
+      tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+              type: 'cross'  # 'line', 'cross', 'shadow'
+          }
+      }
+
+  tooltip_item:
+    description: "Tooltip triggered by data point"
+    pattern: |
+      tooltip: {
+          trigger: 'item',
+          formatter: '{b}: {c}'  # {a}=series, {b}=category, {c}=value
+      }
+
+  tooltip_custom_formatter:
+    description: "JavaScript formatter for complex tooltips"
+    nicegui_pattern: |
+      # Use ':' prefix for JS expressions in NiceGUI
+      tooltip: {
+          trigger: 'axis',
+          ':formatter': '''function(params) {
+              var result = params[0].name + "<br/>";
+              params.forEach(function(item) {
+                  result += item.marker + item.seriesName + ": " + item.value.toFixed(3) + "<br/>";
+              });
+              return result;
+          }'''
+      }
+
+# =============================================================================
+# DARK THEME & STYLING
+# =============================================================================
+
+dark_theme:
+
+  built_in_dark:
+    description: "Use ECharts built-in dark theme"
+    pattern: |
+      # JavaScript
+      var chart = echarts.init(dom, 'dark');
+
+  custom_dark_theme:
+    description: "Define custom dark theme (Bunker Constructivism)"
+    pattern: |
+      # Register theme
+      var babylonTheme = {
+          color: ['#39FF14', '#9D00FF', '#FFD700', '#D40000', '#00FFFF'],
+          backgroundColor: '#050505',
+          textStyle: { color: '#C0C0C0' },
+          title: { textStyle: { color: '#C0C0C0' } },
+          legend: { textStyle: { color: '#C0C0C0' } },
+          xAxis: {
+              axisLine: { lineStyle: { color: '#404040' } },
+              axisLabel: { color: '#C0C0C0' }
+          },
+          yAxis: {
+              axisLine: { lineStyle: { color: '#404040' } },
+              axisLabel: { color: '#C0C0C0' },
+              splitLine: { lineStyle: { color: '#404040' } }
+          }
+      };
+      echarts.registerTheme('babylon', babylonTheme);
+      var chart = echarts.init(dom, 'babylon');
+
+  inline_dark_styling:
+    description: "Apply dark colors directly in options"
+    pattern: |
+      option = {
+          backgroundColor: '#050505',
+          textStyle: { color: '#C0C0C0' },
+          xAxis: {
+              axisLine: { lineStyle: { color: '#404040' } },
+              axisLabel: { color: '#C0C0C0' }
+          },
+          yAxis: {
+              axisLine: { lineStyle: { color: '#404040' } },
+              axisLabel: { color: '#C0C0C0' },
+              splitLine: { lineStyle: { color: '#404040' } }
+          },
+          series: [{
+              lineStyle: { color: '#39FF14' },
+              itemStyle: { color: '#39FF14' }
+          }]
+      }
+
+  babylon_colors:
+    description: "Project color palette for charts"
+    palette:
+      data_green: "#39FF14"      # Primary data
+      grow_light_purple: "#9D00FF"  # Secondary data
+      exposed_copper: "#FFD700"  # Warnings, highlights
+      phosphor_burn_red: "#D40000"  # Alerts, ruptures
+      silver_dust: "#C0C0C0"     # Text, labels
+      dark_metal: "#404040"      # Grid lines, borders
+      void: "#050505"            # Background
+
+# =============================================================================
+# GRID & MULTIPLE CHARTS
+# =============================================================================
+
+grid_layout:
+
+  basic_grid:
+    description: "Position chart within container"
+    pattern: |
+      grid: {
+          left: '10%',
+          right: '10%',
+          top: 60,
+          bottom: 60,
+          containLabel: true  # Include axis labels in calculation
+      }
+
+  multiple_grids:
+    description: "Multiple charts in one canvas"
+    pattern: |
+      grid: [
+          { left: '10%', right: '55%', top: 60, height: '35%' },  # Top chart
+          { left: '10%', right: '55%', top: '55%', height: '35%' }  # Bottom chart
+      ],
+      xAxis: [
+          { type: 'category', gridIndex: 0, data: [...] },
+          { type: 'category', gridIndex: 1, data: [...] }
+      ],
+      yAxis: [
+          { type: 'value', gridIndex: 0 },
+          { type: 'value', gridIndex: 1 }
+      ],
+      series: [
+          { type: 'line', xAxisIndex: 0, yAxisIndex: 0, data: [...] },
+          { type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: [...] }
+      ]
+
+  dataZoom:
+    description: "Interactive zoom on chart data"
+    pattern: |
+      dataZoom: [
+          {
+              type: 'inside',  # Mouse wheel zoom
+              xAxisIndex: [0],
+              start: 0,
+              end: 100
+          },
+          {
+              type: 'slider',  # Slider control
+              xAxisIndex: [0],
+              start: 0,
+              end: 100,
+              bottom: 10
+          }
+      ]
+
+# =============================================================================
+# ANIMATION
+# =============================================================================
+
+animation:
+
+  global_config:
+    description: "Enable/disable and configure animations"
+    pattern: |
+      option = {
+          animation: true,  # Global enable/disable
+          animationDuration: 1000,  # ms for initial render
+          animationEasing: 'cubicOut',  # Easing function
+          animationDelay: 0,  # Delay before animation
+          animationDurationUpdate: 300,  # ms for updates
+          animationEasingUpdate: 'cubicInOut'
+      }
+
+  per_data_animation:
+    description: "Stagger animation by data index"
+    pattern: |
+      animationDelay: function (idx) {
+          return idx * 100;  # Later data = longer delay
+      },
+      animationDurationUpdate: function (idx) {
+          return idx * 50;
+      }
+
+  easing_functions:
+    description: "Available easing options"
+    common:
+      - "linear"
+      - "cubicIn, cubicOut, cubicInOut"
+      - "quadraticIn, quadraticOut, quadraticInOut"
+      - "elasticOut"
+      - "bounceOut"
+
+  disable_for_performance:
+    description: "Disable animation for large datasets"
+    pattern: |
+      option = {
+          animation: false
+      }
+      # Or use lazyUpdate
+      chart.setOption(option, { lazyUpdate: true })
+
+# =============================================================================
+# NICEGUI INTEGRATION
+# =============================================================================
+
+nicegui_integration:
+
+  basic_usage:
+    description: "Create ECharts in NiceGUI"
+    pattern: |
+      from nicegui import ui
+
+      ui.echart({
+          'xAxis': {'type': 'category', 'data': ['A', 'B', 'C']},
+          'yAxis': {'type': 'value'},
+          'series': [{'type': 'line', 'data': [10, 20, 30]}]
+      }).classes('w-full h-64')
+
+  with_click_handler:
+    description: "Handle chart click events"
+    pattern: |
+      def handle_click(e):
+          print(f"Clicked: {e.name} = {e.value}")
+
+      ui.echart(options, on_point_click=handle_click)
+
+  dynamic_js_formatter:
+    description: "Use JavaScript expressions in options"
+    pattern: |
+      # Prefix with ':' for JS expressions
+      {
+          'yAxis': {
+              'axisLabel': {
+                  ':formatter': 'value => "$" + value.toFixed(2)'
+              }
+          }
+      }
+
+  full_component_example:
+    description: "Complete TrendPlotter-style component"
+    pattern: |
+      class TrendPlotter:
+          CONTAINER_CLASSES = "bg-[#050505] border border-[#404040]"
+
+          def __init__(self) -> None:
+              self._build_ui()
+
+          def _build_ui(self) -> None:
+              with ui.element("div").classes(self.CONTAINER_CLASSES).style("flex: 1; min-height: 0"):
+                  self.echart = ui.echart({
+                      'backgroundColor': '#050505',
+                      'xAxis': {'type': 'category', 'data': []},
+                      'yAxis': {'type': 'value'},
+                      'series': [{'type': 'line', 'data': [], 'lineStyle': {'color': '#39FF14'}}],
+                  }).classes("w-full h-full")
+
+          def add_point(self, label: str, value: float) -> None:
+              self.echart.options['xAxis']['data'].append(label)
+              self.echart.options['series'][0]['data'].append(value)
+              self.echart.update()
+
+# =============================================================================
+# GOTCHAS CHECKLIST
+# =============================================================================
+
+gotchas:
+  - issue: "Chart not updating in NiceGUI"
+    fix: "Call echart.update() after modifying options dict"
+
+  - issue: "JavaScript formatter not working"
+    fix: "Use ':' prefix for JS expressions: ':formatter'"
+
+  - issue: "Theme colors not applied"
+    fix: "Register theme before init, or use inline styling in options"
+
+  - issue: "Chart overflows container"
+    fix: "Ensure container has explicit dimensions; use .classes('w-full h-full')"
+
+  - issue: "Axis labels cut off"
+    fix: "Add containLabel: true to grid config"
+
+  - issue: "Animation stuttering with frequent updates"
+    fix: "Use lazyUpdate: true or disable animation for real-time data"
+
+  - issue: "Series not matching legend"
+    fix: "Ensure series.name matches legend.data entries"
+
+  - issue: "Multiple series on wrong axis"
+    fix: "Set xAxisIndex and yAxisIndex on each series"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  c7_library: "/apache/echarts-doc"
+  official_docs: "https://echarts.apache.org/en/option.html"
+  our_components:
+    - "src/babylon/ui/components.py (TrendPlotter)"

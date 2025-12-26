@@ -1,0 +1,310 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://babylonrpg.com/schemas/entities/event_template.schema.json",
+  "title": "EventTemplate",
+  "description": "A declarative template for recurring game events with preconditions and resolutions",
+
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^EVT_[a-z][a-z0-9_]*$",
+      "description": "Unique template identifier (e.g., EVT_bifurcation_moment)"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed explanation"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["economic", "consciousness", "struggle", "contradiction", "territory"],
+      "description": "Category matching system domains"
+    },
+    "preconditions": {
+      "$ref": "#/$defs/PreconditionSet"
+    },
+    "resolutions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Resolution" },
+      "minItems": 1,
+      "description": "Resolution paths evaluated in order; first matching wins"
+    },
+    "narrative": {
+      "$ref": "#/$defs/NarrativeHooks"
+    },
+    "cooldown_ticks": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Minimum ticks between activations"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 100,
+      "description": "Higher priority templates evaluate first"
+    }
+  },
+  "required": ["id", "name", "category", "preconditions", "resolutions"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "PreconditionSet": {
+      "type": "object",
+      "properties": {
+        "node_conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/NodeCondition" },
+          "description": "Conditions on node attributes"
+        },
+        "edge_conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EdgeCondition" },
+          "description": "Conditions on edge types/counts"
+        },
+        "graph_conditions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GraphCondition" },
+          "description": "Conditions on graph-level metrics"
+        },
+        "logic": {
+          "type": "string",
+          "enum": ["all", "any"],
+          "default": "all",
+          "description": "Logic for combining conditions"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "NodeCondition": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Dot-notation path to node attribute (e.g., ideology.agitation)"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [">=", "<=", ">", "<", "==", "!="],
+          "description": "Comparison operator"
+        },
+        "threshold": {
+          "type": "number",
+          "description": "Value to compare against"
+        },
+        "node_filter": {
+          "$ref": "#/$defs/NodeFilter",
+          "description": "Optional filter to select which nodes to check"
+        },
+        "aggregation": {
+          "type": "string",
+          "enum": ["any", "all", "count", "sum", "avg", "max", "min"],
+          "default": "any",
+          "description": "How to aggregate across matched nodes"
+        }
+      },
+      "required": ["path", "operator", "threshold"],
+      "additionalProperties": false
+    },
+
+    "EdgeCondition": {
+      "type": "object",
+      "properties": {
+        "edge_type": {
+          "type": "string",
+          "enum": ["exploitation", "solidarity", "repression", "competition", "tribute", "wages", "client_state", "tenancy", "adjacency"],
+          "description": "Type of edge to check"
+        },
+        "metric": {
+          "type": "string",
+          "enum": ["count", "sum_strength", "avg_strength"],
+          "default": "count",
+          "description": "What to measure about the edges"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [">=", "<=", ">", "<", "==", "!="],
+          "description": "Comparison operator"
+        },
+        "threshold": {
+          "type": "number",
+          "description": "Value to compare against"
+        },
+        "node_filter": {
+          "$ref": "#/$defs/NodeFilter",
+          "description": "Filter to select nodes whose edges to count"
+        }
+      },
+      "required": ["edge_type", "operator", "threshold"],
+      "additionalProperties": false
+    },
+
+    "GraphCondition": {
+      "type": "object",
+      "properties": {
+        "metric": {
+          "type": "string",
+          "enum": [
+            "solidarity_density",
+            "exploitation_density",
+            "average_agitation",
+            "average_consciousness",
+            "total_wealth",
+            "gini_coefficient"
+          ],
+          "description": "Graph-level metric to evaluate"
+        },
+        "operator": {
+          "type": "string",
+          "enum": [">=", "<=", ">", "<", "==", "!="],
+          "description": "Comparison operator"
+        },
+        "threshold": {
+          "type": "number",
+          "description": "Value to compare against"
+        }
+      },
+      "required": ["metric", "operator", "threshold"],
+      "additionalProperties": false
+    },
+
+    "NodeFilter": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["core_bourgeoisie", "periphery_proletariat", "labor_aristocracy", "petty_bourgeoisie", "lumpenproletariat", "comprador_bourgeoisie"]
+          },
+          "description": "Filter by SocialRole"
+        },
+        "node_type": {
+          "type": "string",
+          "enum": ["social_class", "territory"],
+          "description": "Filter by _node_type"
+        },
+        "id_pattern": {
+          "type": "string",
+          "description": "Regex pattern for node IDs"
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "Resolution": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Resolution identifier (e.g., fascist_capture)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name"
+        },
+        "condition": {
+          "$ref": "#/$defs/PreconditionSet",
+          "description": "Condition that must be true to select this resolution"
+        },
+        "effects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TemplateEffect" },
+          "description": "Effects to apply when this resolution is selected"
+        },
+        "emit_event": {
+          "$ref": "#/$defs/EventEmission",
+          "description": "Event to emit for narrative layer"
+        },
+        "narrative": {
+          "$ref": "#/$defs/NarrativeHooks",
+          "description": "Resolution-specific narrative hooks"
+        }
+      },
+      "required": ["id"],
+      "additionalProperties": false
+    },
+
+    "TemplateEffect": {
+      "type": "object",
+      "properties": {
+        "target_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Entity ID to modify (${node_id} for dynamic substitution)"
+        },
+        "attribute": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Attribute name to change"
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["increase", "decrease", "set", "multiply"],
+          "description": "Operation to perform"
+        },
+        "magnitude": {
+          "type": "number",
+          "description": "Amount of change"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable explanation"
+        }
+      },
+      "required": ["target_id", "attribute", "operation", "magnitude"],
+      "additionalProperties": false
+    },
+
+    "EventEmission": {
+      "type": "object",
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "EventType to emit (e.g., RUPTURE, UPRISING)"
+        },
+        "payload_template": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Template for event payload with ${node_id} substitution"
+        }
+      },
+      "required": ["event_type"],
+      "additionalProperties": false
+    },
+
+    "NarrativeHooks": {
+      "type": "object",
+      "properties": {
+        "motif": {
+          "type": "string",
+          "description": "Narrative motif key for AI observer (e.g., bifurcation)"
+        },
+        "historical_echoes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Historical parallel references (e.g., weimar_1932)"
+        },
+        "flavor_text_key": {
+          "type": "string",
+          "description": "Key for localized flavor text lookup"
+        },
+        "entity_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Entity IDs to reference in narrative"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,647 @@
+# Python asyncio Patterns & Quick Reference
+# ==========================================
+# Distilled from Babylon GUI development sessions (Dec 2025)
+# Purpose: Prevent async/await errors in NiceGUI and general Python async code
+#
+# Python stdlib - no C7 library ID (standard library)
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-14"
+  purpose: |
+    Token-efficient reference for Python asyncio patterns used in Babylon's
+    NiceGUI dashboard. Async errors are subtle and common. Consult when:
+    - Writing async button handlers
+    - Running blocking code without freezing UI
+    - Detecting sync vs async callbacks
+    - Setting up timers and periodic tasks
+    - Writing async tests
+  cross_references:
+    - "ai-docs/nicegui-patterns.yaml (UI async patterns)"
+    - "ai-docs/quasar-patterns.yaml (button callbacks)"
+
+# =============================================================================
+# BASIC ASYNC/AWAIT SYNTAX
+# =============================================================================
+
+basics:
+
+  async_function:
+    description: "Define an asynchronous function (coroutine)"
+    pattern: |
+      async def fetch_data() -> dict:
+          """Async functions return coroutines, not values directly."""
+          result = await some_async_operation()
+          return result
+
+  await_coroutine:
+    description: "Await must be used to get result from coroutine"
+    pattern: |
+      # CORRECT - await the coroutine
+      result = await fetch_data()
+
+      # WRONG - returns coroutine object, not result!
+      result = fetch_data()  # <coroutine object at 0x...>
+    warning: |
+      Forgetting await is the #1 async bug. The code runs without error
+      but the coroutine never executes. Python may warn:
+      "coroutine 'fetch_data' was never awaited"
+
+  await_context:
+    description: "await can only be used inside async functions"
+    pattern: |
+      # CORRECT - inside async function
+      async def main():
+          data = await fetch_data()
+
+      # WRONG - outside async context
+      def sync_main():
+          data = await fetch_data()  # SyntaxError!
+
+  run_from_sync:
+    description: "Run async code from synchronous context"
+    pattern: |
+      import asyncio
+
+      async def main():
+          return await fetch_data()
+
+      # Entry point - run the event loop
+      result = asyncio.run(main())
+    note: |
+      asyncio.run() creates a new event loop, runs the coroutine,
+      and closes the loop. Use ONCE at program entry point.
+
+# =============================================================================
+# BLOCKING OPERATIONS (Critical for NiceGUI)
+# =============================================================================
+
+blocking_operations:
+
+  the_problem:
+    description: "Why blocking code freezes the UI"
+    explanation: |
+      NiceGUI runs on a single-threaded asyncio event loop.
+      If you call a blocking function (I/O, CPU-intensive, time.sleep),
+      the entire UI freezes until it completes.
+
+      SYMPTOMS:
+      - Button clicks don't respond
+      - UI stops updating
+      - Browser shows "not responding"
+    bad_example: |
+      # BAD - blocks the event loop!
+      async def on_click():
+          time.sleep(5)  # UI frozen for 5 seconds!
+          simulation.run_heavy_computation()  # More freezing!
+
+  asyncio_to_thread:
+    description: "Run blocking code in a thread pool"
+    pattern: |
+      import asyncio
+
+      async def on_step() -> None:
+          """Handle step button - run simulation without blocking UI."""
+          # Run blocking simulation.step() in background thread
+          await asyncio.to_thread(simulation.step)
+          # UI stays responsive during execution
+          refresh_ui()
+    parameters:
+      func: "The synchronous function to run"
+      "*args": "Positional arguments to pass"
+      "**kwargs": "Keyword arguments to pass (Python 3.9+)"
+    notes:
+      - "Returns the function's return value"
+      - "Exceptions propagate normally"
+      - "Thread pool is managed automatically"
+
+  to_thread_with_args:
+    description: "Pass arguments to the blocking function"
+    pattern: |
+      async def process_file(path: str) -> dict:
+          # Pass arguments after the function
+          result = await asyncio.to_thread(
+              heavy_parse_function,
+              path,
+              encoding='utf-8'
+          )
+          return result
+
+  when_to_use_to_thread:
+    description: "Identifying blocking operations"
+    blocking_operations:
+      - "time.sleep() - use asyncio.sleep() instead"
+      - "File I/O - reading/writing large files"
+      - "CPU-intensive computation"
+      - "Database queries (unless using async driver)"
+      - "Network requests (unless using aiohttp/httpx)"
+      - "Subprocess calls"
+      - "Any third-party sync library"
+    pattern: |
+      # CPU-intensive
+      await asyncio.to_thread(compute_expensive_metric, data)
+
+      # File I/O
+      content = await asyncio.to_thread(Path(file).read_text)
+
+      # Subprocess
+      await asyncio.to_thread(subprocess.run, ['cmd', 'arg'])
+
+  asyncio_sleep:
+    description: "Non-blocking sleep"
+    pattern: |
+      import asyncio
+
+      # WRONG - blocks event loop
+      time.sleep(1)
+
+      # CORRECT - yields control to event loop
+      await asyncio.sleep(1)
+
+# =============================================================================
+# CALLBACK DETECTION (Babylon Pattern)
+# =============================================================================
+
+callback_detection:
+
+  the_problem:
+    description: "Handling both sync and async callbacks"
+    explanation: |
+      NiceGUI buttons can accept either sync or async callbacks.
+      When writing a handler that invokes user-provided callbacks,
+      you must detect the type and handle appropriately.
+
+  inspect_iscoroutinefunction:
+    description: "Detect if a callable is async"
+    pattern: |
+      import inspect
+
+      def is_async_callback(callback) -> bool:
+          """Check if callback is an async function."""
+          return inspect.iscoroutinefunction(callback)
+    behavior:
+      async_def: "Returns True"
+      regular_def: "Returns False"
+      lambda: "Returns False"
+      partial: "Checks the wrapped function"
+
+  babylon_invoke_pattern:
+    description: "Our standard callback invocation pattern"
+    pattern: |
+      import inspect
+      from collections.abc import Callable
+
+      # Type alias for callbacks that can be sync or async
+      ButtonCallback = Callable[[], None] | Callable[[], Awaitable[None]]
+
+      async def _invoke_callback(self, callback: ButtonCallback | None) -> None:
+          """Invoke a callback, awaiting if it's async.
+
+          This method provides async-safe callback invocation by detecting
+          whether the callback is a coroutine function and awaiting it if so.
+
+          Args:
+              callback: The callback to invoke, or None (no-op).
+          """
+          if callback is not None:
+              if inspect.iscoroutinefunction(callback):
+                  await callback()
+              else:
+                  callback()
+    usage: |
+      class ControlDeck:
+          def __init__(self, on_step: ButtonCallback | None = None):
+              self._on_step = on_step
+
+          async def _handle_step(self) -> None:
+              """Handle STEP button click."""
+              await self._invoke_callback(self._on_step)
+
+  alternative_try_await:
+    description: "Alternative pattern using try/await"
+    pattern: |
+      async def invoke_callback(callback):
+          """Try to await, fall back to sync call."""
+          result = callback()
+          if inspect.iscoroutine(result):
+              await result
+    note: |
+      This pattern calls the function first, then checks the result.
+      Less efficient but handles edge cases like methods that
+      return coroutines dynamically.
+
+# =============================================================================
+# TASK MANAGEMENT
+# =============================================================================
+
+task_management:
+
+  create_task:
+    description: "Fire-and-forget async operations"
+    pattern: |
+      import asyncio
+
+      async def background_save():
+          await asyncio.to_thread(save_to_disk)
+          print("Saved!")
+
+      async def on_click():
+          # Don't wait for save - continue immediately
+          asyncio.create_task(background_save())
+          ui.notify("Saving in background...")
+    warning: |
+      Tasks can be garbage collected if not stored!
+      Store reference if you need to cancel or await later.
+
+  storing_task_reference:
+    description: "Keep task alive and cancellable"
+    pattern: |
+      class Controller:
+          def __init__(self):
+              self._background_task: asyncio.Task | None = None
+
+          async def start_background_work(self):
+              self._background_task = asyncio.create_task(
+                  self._run_forever()
+              )
+
+          async def stop_background_work(self):
+              if self._background_task:
+                  self._background_task.cancel()
+                  try:
+                      await self._background_task
+                  except asyncio.CancelledError:
+                      pass  # Expected
+                  self._background_task = None
+
+  gather_parallel:
+    description: "Run multiple coroutines concurrently"
+    pattern: |
+      import asyncio
+
+      async def fetch_all_data():
+          # Run all three concurrently, wait for all to complete
+          results = await asyncio.gather(
+              fetch_users(),
+              fetch_orders(),
+              fetch_inventory(),
+          )
+          users, orders, inventory = results
+          return {"users": users, "orders": orders, "inventory": inventory}
+
+  gather_with_exceptions:
+    description: "Handle exceptions in parallel tasks"
+    pattern: |
+      # return_exceptions=True returns exceptions as results
+      results = await asyncio.gather(
+          risky_operation_1(),
+          risky_operation_2(),
+          return_exceptions=True
+      )
+
+      for result in results:
+          if isinstance(result, Exception):
+              print(f"Task failed: {result}")
+          else:
+              print(f"Task succeeded: {result}")
+
+  wait_with_timeout:
+    description: "Wait for coroutine with timeout"
+    pattern: |
+      import asyncio
+
+      async def fetch_with_timeout():
+          try:
+              result = await asyncio.wait_for(
+                  slow_operation(),
+                  timeout=5.0
+              )
+              return result
+          except asyncio.TimeoutError:
+              return None  # Operation took too long
+
+# =============================================================================
+# NICEGUI TIMER PATTERNS
+# =============================================================================
+
+nicegui_timers:
+
+  critical_placement:
+    description: "Timer MUST be inside page function"
+    pattern: |
+      from nicegui import ui
+
+      # WRONG - timer at module level causes errors!
+      # ui.timer(1.0, update_display)  # Don't do this!
+
+      @ui.page('/')
+      def main_page():
+          # ... UI setup ...
+
+          # CORRECT - timer inside page function
+          ui.timer(interval=1.0, callback=periodic_update)
+
+          # Or for one-shot:
+          ui.timer(1.0, lambda: ui.notify('Ready!'), once=True)
+    why: |
+      NiceGUI timers need a client context. Module-level code
+      runs before any client connects.
+
+  periodic_update:
+    description: "Update UI periodically"
+    pattern: |
+      @ui.page('/')
+      def dashboard():
+          label = ui.label('Loading...')
+
+          def update():
+              label.text = f'Time: {datetime.now()}'
+
+          ui.timer(1.0, update)  # Every 1 second
+
+  async_timer_callback:
+    description: "Async callback in timer"
+    pattern: |
+      @ui.page('/')
+      def dashboard():
+          async def fetch_and_update():
+              data = await asyncio.to_thread(fetch_remote_data)
+              update_display(data)
+
+          ui.timer(5.0, fetch_and_update)  # NiceGUI handles async
+
+  conditional_timer:
+    description: "Timer that can be enabled/disabled"
+    pattern: |
+      @ui.page('/')
+      def dashboard():
+          is_running = False
+
+          async def run_loop():
+              if is_running:
+                  await asyncio.to_thread(simulation.step)
+                  refresh_ui()
+
+          def toggle_play():
+              nonlocal is_running
+              is_running = not is_running
+
+          ui.button('Play/Pause', on_click=toggle_play)
+          ui.timer(1.0, run_loop)
+
+# =============================================================================
+# TESTING ASYNC CODE
+# =============================================================================
+
+testing:
+
+  pytest_asyncio_setup:
+    description: "Configure pytest for async tests"
+    pyproject_toml: |
+      [tool.pytest.ini_options]
+      asyncio_mode = "auto"
+      # or "strict" to require explicit @pytest.mark.asyncio
+    conftest_py: |
+      import pytest
+
+      # Optional: custom event loop policy
+      @pytest.fixture(scope="session")
+      def event_loop_policy():
+          import asyncio
+          return asyncio.DefaultEventLoopPolicy()
+
+  async_test_function:
+    description: "Write async test functions"
+    pattern: |
+      import pytest
+
+      @pytest.mark.asyncio
+      async def test_async_operation():
+          result = await fetch_data()
+          assert result == expected
+
+      # With asyncio_mode = "auto", marker is optional:
+      async def test_auto_detected():
+          result = await process_item()
+          assert result.success
+
+  async_fixtures:
+    description: "Create async test fixtures"
+    pattern: |
+      import pytest
+      import pytest_asyncio
+
+      @pytest_asyncio.fixture
+      async def database_connection():
+          conn = await create_connection()
+          yield conn
+          await conn.close()
+
+      @pytest.mark.asyncio
+      async def test_query(database_connection):
+          result = await database_connection.execute("SELECT 1")
+          assert result == 1
+
+  testing_callbacks:
+    description: "Test callback detection without UI"
+    pattern: |
+      import inspect
+
+      def test_callback_detection():
+          """Test that we correctly detect async callbacks."""
+          async def async_callback():
+              pass
+
+          def sync_callback():
+              pass
+
+          assert inspect.iscoroutinefunction(async_callback)
+          assert not inspect.iscoroutinefunction(sync_callback)
+
+  mocking_async:
+    description: "Mock async functions"
+    pattern: |
+      from unittest.mock import AsyncMock, patch
+
+      @pytest.mark.asyncio
+      async def test_with_mock():
+          mock_fetch = AsyncMock(return_value={"data": "test"})
+
+          with patch('module.fetch_data', mock_fetch):
+              result = await process_data()
+              assert result["data"] == "test"
+              mock_fetch.assert_awaited_once()
+
+# =============================================================================
+# COMMON ERRORS AND FIXES
+# =============================================================================
+
+common_errors:
+
+  coroutine_never_awaited:
+    error: "RuntimeWarning: coroutine 'func' was never awaited"
+    cause: "Called async function without await"
+    fix: |
+      # WRONG
+      result = fetch_data()
+
+      # CORRECT
+      result = await fetch_data()
+
+  cannot_await_outside_async:
+    error: "SyntaxError: 'await' outside async function"
+    cause: "Used await in synchronous function"
+    fix: |
+      # Option 1: Make the function async
+      async def handler():
+          await operation()
+
+      # Option 2: Use asyncio.run() at entry point
+      def main():
+          asyncio.run(async_main())
+
+  event_loop_running:
+    error: "RuntimeError: This event loop is already running"
+    cause: "Called asyncio.run() inside existing event loop"
+    fix: |
+      # Don't use asyncio.run() inside NiceGUI handlers
+      # NiceGUI already provides an event loop
+
+      # WRONG
+      async def on_click():
+          asyncio.run(some_coroutine())  # Loop already running!
+
+      # CORRECT
+      async def on_click():
+          await some_coroutine()
+
+  blocking_event_loop:
+    error: "UI freezes / becomes unresponsive"
+    cause: "Blocking call in async context"
+    fix: |
+      # WRONG - blocks the loop
+      async def handler():
+          time.sleep(5)
+          result = heavy_computation()
+
+      # CORRECT - run in thread
+      async def handler():
+          await asyncio.sleep(5)
+          result = await asyncio.to_thread(heavy_computation)
+
+  task_garbage_collected:
+    error: "Task was destroyed but it is pending"
+    cause: "Task reference lost before completion"
+    fix: |
+      # WRONG - task may be GC'd
+      asyncio.create_task(background_work())
+
+      # CORRECT - store reference
+      self._task = asyncio.create_task(background_work())
+
+  nicegui_context_error:
+    error: "No client context found"
+    cause: "Timer or UI operation outside page function"
+    fix: |
+      # WRONG - at module level
+      ui.timer(1.0, update)
+
+      # CORRECT - inside page function
+      @ui.page('/')
+      def main():
+          ui.timer(1.0, update)
+
+# =============================================================================
+# GOTCHAS CHECKLIST
+# =============================================================================
+
+gotchas:
+  - issue: "Coroutine never awaited warning"
+    fix: "Add await before async function calls"
+
+  - issue: "UI freezes during operation"
+    fix: "Use asyncio.to_thread() for blocking code"
+
+  - issue: "Can't use await in callback"
+    fix: "Make callback async def, NiceGUI handles it"
+
+  - issue: "asyncio.run() fails in NiceGUI"
+    fix: "Don't use asyncio.run() - just await directly"
+
+  - issue: "Timer not working at module level"
+    fix: "Move ui.timer() inside @ui.page function"
+
+  - issue: "Task disappears before completing"
+    fix: "Store task reference in instance variable"
+
+  - issue: "Don't know if callback is async"
+    fix: "Use inspect.iscoroutinefunction() to detect"
+
+  - issue: "Tests not running async"
+    fix: "Add asyncio_mode='auto' to pytest config"
+
+  - issue: "time.sleep() blocking async code"
+    fix: "Use await asyncio.sleep() instead"
+
+  - issue: "Callback invocation error"
+    fix: "Use _invoke_callback pattern from ControlDeck"
+
+# =============================================================================
+# BABYLON-SPECIFIC PATTERNS
+# =============================================================================
+
+babylon_patterns:
+
+  simulation_step:
+    description: "Non-blocking simulation step"
+    location: "src/babylon/ui/main.py"
+    pattern: |
+      async def on_step() -> None:
+          """Handle step button click without blocking UI."""
+          await asyncio.to_thread(simulation.step)
+          control_deck.update_tick(simulation.current_tick)
+          # Update other UI components...
+
+  control_deck_callbacks:
+    description: "Flexible callback handling"
+    location: "src/babylon/ui/controls.py"
+    pattern: |
+      # Accept both sync and async callbacks
+      ButtonCallback = Callable[[], None] | Callable[[], Awaitable[None]]
+
+      control_deck = ControlDeck(
+          on_step=async_step_handler,    # async callback
+          on_play=sync_play_handler,     # sync callback - both work!
+      )
+
+  periodic_simulation:
+    description: "Auto-running simulation loop"
+    pattern: |
+      is_playing = False
+
+      async def run_loop():
+          if is_playing:
+              await asyncio.to_thread(simulation.step)
+              refresh_all_panels()
+
+      @ui.page('/')
+      def dashboard():
+          ui.timer(1.0, run_loop)
+
+          def toggle_play():
+              nonlocal is_playing
+              is_playing = not is_playing
+
+          ControlDeck(on_play=toggle_play, on_pause=toggle_play)
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  python_docs: "https://docs.python.org/3/library/asyncio.html"
+  nicegui_async: "https://nicegui.io/documentation/section_pages_routing#async_handlers"
+  pytest_asyncio: "https://pytest-asyncio.readthedocs.io/"
+  our_implementation:
+    - "src/babylon/ui/main.py (on_step with to_thread)"
+    - "src/babylon/ui/controls.py (callback detection pattern)"

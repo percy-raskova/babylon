@@ -5,10 +5,10 @@
 # used to model revolutionary organization via percolation theory.
 
 meta:
-  version: "1.0.0"
-  updated: "2025-12-11"
+  version: "1.2.0"
+  updated: "2025-12-12"
   status: "IMPLEMENTED"
-  tests: 55  # 34 unit + 21 integration
+  tests: 85  # 34 unit + 21 integration + 30 phase transition (Sprint 3.3: 4-phase model)
 
 overview:
   purpose: |
@@ -130,6 +130,15 @@ metrics:
     description: "Count of SOLIDARITY edges with strength > 0.5"
     interpretation: "Cadre network (committed activists)"
 
+  cadre_density:
+    formula: "actual_liquidity / max(1, potential_liquidity)"
+    range: "[0, 1]"
+    description: "Ratio of committed cadre to sympathizer network"
+    interpretation:
+      - "< 0.5: Mass movement with weak ties (liquid)"
+      - ">= 0.5: Vanguard party with strong cadre discipline (solid)"
+    note: "Distinguishes between broad movements and disciplined parties"
+
   brittleness:
     condition: "potential > actual * 2"
     description: "Movement is broad but lacks disciplined core"
@@ -165,6 +174,11 @@ thresholds:
     value: 0.5
     file: "topology_monitor.py:54"
     description: "Minimum solidarity_strength for cadre"
+
+  CADRE_DENSITY_THRESHOLD:
+    value: 0.5
+    file: "topology_monitor.py:_classify_phase"
+    description: "Above this cadre_density, movement is 'solid' (disciplined vanguard)"
 
   # Resilience testing
   DEFAULT_REMOVAL_RATE:
@@ -246,7 +260,7 @@ formulas:
 
 models:
   TopologySnapshot:
-    location: "models/topology_metrics.py:23-59"
+    location: "models/topology_metrics.py:23-67"
     type: "Pydantic BaseModel (frozen)"
     fields:
       tick: "int"
@@ -256,6 +270,7 @@ models:
       percolation_ratio: "Probability [0, 1]"
       potential_liquidity: "int"
       actual_liquidity: "int"
+      cadre_density: "float [0, 1] (Sprint 3.3)"
       is_resilient: "bool | None"
 
   ResilienceResult:
@@ -269,6 +284,87 @@ models:
       survival_threshold: "float"
       seed: "int | None"
 
+  TopologyEvent:
+    location: "models/events.py"
+    type: "Pydantic BaseModel (frozen)"
+    parent: "SimulationEvent"
+    status: "IMPLEMENTED (Sprint 3.3)"
+    fields:
+      percolation_ratio: "Probability [0, 1]"
+      num_components: "int"
+    description: |
+      Base class for topology-related events. Contains percolation metrics
+      common to all topology events.
+
+  PhaseTransitionEvent:
+    location: "models/events.py"
+    type: "Pydantic BaseModel (frozen)"
+    parent: "TopologyEvent"
+    status: "IMPLEMENTED (Sprint 3.3 - 4-phase model)"
+    fields:
+      event_type: "EventType.PHASE_TRANSITION"
+      previous_state: "str (gaseous|transitional|liquid|solid)"
+      new_state: "str (gaseous|transitional|liquid|solid)"
+      largest_component_size: "int"
+      cadre_density: "float [0, 1] (Sprint 3.3)"
+      is_resilient: "bool | None"
+    description: |
+      Emitted when percolation_ratio or cadre_density crosses phase threshold boundaries.
+      Represents the crystallization of atomized leftism into organized revolutionary
+      force (liquid = mass movement, solid = vanguard party).
+
+# =============================================================================
+# PHASE STATES
+# =============================================================================
+
+phase_states:
+  gaseous:
+    threshold: "percolation_ratio < 0.1"
+    description: "Atomized movement. No coordination capacity."
+    political_meaning: |
+      Individual cells operate in isolation. No giant component.
+      State can eliminate nodes without cascade effects.
+      Consciousness transmission blocked.
+
+  transitional:
+    threshold: "0.1 <= percolation_ratio < 0.5"
+    description: "Emerging structure. Unstable coordination."
+    political_meaning: |
+      Some clusters forming but not yet a vanguard.
+      Vulnerable to targeted disruption.
+      Consciousness can propagate within clusters.
+
+  liquid:
+    threshold: "percolation_ratio >= 0.5 AND cadre_density < 0.5"
+    description: "Mass movement formed. Broad but loosely organized."
+    political_meaning: |
+      Giant component exists (coordination possible).
+      Movement of movements - many sympathizers, few committed cadre.
+      Vulnerable to ideological drift and internal division.
+      Historical example: Occupy Wall Street (2011).
+
+  solid:
+    threshold: "percolation_ratio >= 0.5 AND cadre_density >= 0.5"
+    description: "Vanguard party crystallized. Disciplined cadre core."
+    political_meaning: |
+      Giant component AND strong ties throughout.
+      Iron discipline - committed activists dominate network.
+      Can survive repression and maintain ideological coherence.
+      Historical example: Bolshevik Party (1917).
+
+  classification_function:
+    location: "engine/topology_monitor.py:_classify_phase()"
+    signature: "_classify_phase(percolation_ratio: float, cadre_density: float = 0.0) -> str"
+    returns: "'gaseous' | 'transitional' | 'liquid' | 'solid'"
+    logic: |
+      if percolation_ratio < GASEOUS_THRESHOLD:
+          return "gaseous"
+      if percolation_ratio < CONDENSATION_THRESHOLD:
+          return "transitional"
+      if cadre_density >= 0.5:
+          return "solid"
+      return "liquid"
+
 # =============================================================================
 # OBSERVER PATTERN
 # =============================================================================
@@ -277,11 +373,25 @@ observer:
   class: "TopologyMonitor"
   location: "engine/topology_monitor.py:243-452"
   protocol: "SimulationObserver"
+  status: "COMPLETE (Sprint 3.3)"
 
   lifecycle_hooks:
-    on_simulation_start: "Initialize history, record initial snapshot"
-    on_tick: "Record snapshot, detect phase transitions"
+    on_simulation_start: "Initialize history, record initial snapshot, reset phase state"
+    on_tick: "Record snapshot, detect phase transitions, emit PhaseTransitionEvent"
     on_simulation_end: "Log summary statistics"
+
+  event_emission:
+    status: "IMPLEMENTED (Sprint 3.3)"
+    mechanism: |
+      TopologyMonitor tracks _previous_phase and _pending_events internally.
+      When percolation_ratio crosses a threshold boundary, a PhaseTransitionEvent
+      is appended to _pending_events. The Simulation facade calls
+      get_pending_events() after each tick, collecting events and injecting
+      them into the next tick's WorldState via persistent_context['_observer_events'].
+    methods:
+      _classify_phase: "Determine current phase state from percolation_ratio"
+      get_pending_events: "Return and clear pending events list"
+    injection_point: "simulation_engine.py: step() reads persistent_context['_observer_events']"
 
   configuration:
     resilience_test_interval:
@@ -297,9 +407,15 @@ observer:
     gaseous:
       condition: "percolation_ratio < 0.1"
       message: "STATE: Gaseous. Movement is atomized."
-    condensation:
-      condition: "percolation_ratio crosses 0.5"
-      message: "PHASE SHIFT: Condensation detected. A Vanguard Party has formed."
+    condensation_liquid:
+      condition: "percolation_ratio crosses 0.5 AND cadre_density < 0.5"
+      message: "PHASE SHIFT: Liquid state. Mass movement formed but lacks cadre discipline."
+    condensation_solid:
+      condition: "percolation_ratio >= 0.5 AND cadre_density >= 0.5"
+      message: "PHASE SHIFT: Solid state. Vanguard Party has crystallized. Iron discipline achieved."
+    liquid_to_solid:
+      condition: "state transitions from liquid to solid (cadre_density crosses 0.5)"
+      message: "CRYSTALLIZATION: Mass movement hardened into disciplined vanguard."
     brittle:
       condition: "potential > actual * 2"
       message: "WARNING: Movement is broad but brittle. Lacks cadre discipline."
@@ -342,6 +458,10 @@ files:
       tests: 21
       purpose: "Integration tests with Simulation lifecycle"
 
+    - path: "tests/unit/topology/test_phase_transition.py"
+      tests: 30
+      purpose: "Phase transition event emission and injection (Sprint 3.3: 4-phase model)"
+
 # =============================================================================
 # COMMON QUERIES
 # =============================================================================
@@ -354,9 +474,13 @@ common_queries:
       # After simulation runs...
       latest = monitor.history[-1]
       if latest.percolation_ratio < 0.1:
-          print("Gaseous")
-      elif latest.percolation_ratio >= 0.5:
-          print("Liquid - Vanguard formed")
+          print("Gaseous - Atomized")
+      elif latest.percolation_ratio < 0.5:
+          print("Transitional - Emerging")
+      elif latest.cadre_density >= 0.5:
+          print("Solid - Vanguard Party (iron discipline)")
+      else:
+          print("Liquid - Mass Movement (weak ties)")
 
   test_network_resilience:
     pattern: |

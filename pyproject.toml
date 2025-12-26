@@ -153,6 +153,10 @@ known-first-party = [
     "ARG002",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests use fixtures for side-effects (cleanup, module state reset)
+"tests/**" = ["ARG001", "ARG002"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

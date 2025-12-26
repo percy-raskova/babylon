@@ -163,8 +163,36 @@ description = "Verify math formula divergence"
 run = "poetry run python tools/verify_math_divergence.py"
 
 [tasks.analyze-trace]
-description = "Run single simulation with full time-series CSV output"
-run = "poetry run python tools/parameter_analysis.py trace --csv results/trace.csv"
+description = "Run simulation trace with CSV + JSON output"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv results/trace.csv \
+  --json results/trace.json \
+  --ticks ${usage_ticks}
+"""
+
+[tasks.analyze-trace-csv]
+description = "Run simulation trace with CSV only"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv results/trace.csv \
+  --ticks ${usage_ticks}
+"""
+
+[tasks.analyze-trace-json]
+description = "Run simulation trace with JSON metadata only"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv /dev/null \
+  --json results/trace.json \
+  --ticks ${usage_ticks}
+"""
 
 [tasks.analyze-sweep]
 description = "Run parameter sweep with rich summary metrics"

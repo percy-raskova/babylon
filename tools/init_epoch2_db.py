@@ -3,8 +3,10 @@
 
 This script creates the graph schema for continental-scale simulation:
 - Sovereign nodes (Dynamic Sovereignty - v1.1.0)
+- Faction nodes (Balkanization System - v1.2.0)
 - Territory nodes (OGV/OPC)
 - CLAIMS edges (Sovereign -> Territory sovereignty claims)
+- INFLUENCES edges (Faction -> Territory political influence)
 - ADMINISTERS edges (Territory -> Territory administrative hierarchy)
 - ADJACENT_TO edges (Territory -> Territory physical adjacency mesh)
 
@@ -14,6 +16,14 @@ Key Design (Dynamic Sovereignty):
     - Civil war (multiple competing claims)
     - Secession (edge rewiring)
     - Conquest (claim transfer)
+
+Key Design (Balkanization System - v1.2.0):
+    Factions have colonial_stance (UPHOLD/IGNORE/ABOLISH) determining their relationship
+    to settler colonialism. When a Sovereign collapses, the Faction with highest
+    INFLUENCES edges wins and creates a new Sovereign with:
+    - UPHOLD -> extraction_policy: INTENSIFY
+    - IGNORE -> extraction_policy: CONTINUE (THE RED SETTLER TRAP)
+    - ABOLISH -> extraction_policy: CEASE (the only path to healing)
 
 Related: ADR029_hybrid_graph_architecture, ai-docs/epoch2-persistence.yaml
 
@@ -49,7 +59,7 @@ except ImportError:
 # NODE TABLES
 # -----------------------------------------------------------------------------
 
-# Sovereign: Political entities that claim sovereignty over territories (v1.1.0)
+# Sovereign: Political entities that claim sovereignty over territories (v1.1.0 + v1.2.0)
 SOVEREIGN_NODE_SCHEMA = """
 CREATE NODE TABLE IF NOT EXISTS Sovereign (
     id STRING PRIMARY KEY,
@@ -59,7 +69,27 @@ CREATE NODE TABLE IF NOT EXISTS Sovereign (
     color_hex STRING DEFAULT '#808080',
     capital_territory_id STRING,
     founded_tick INT32 DEFAULT 0,
-    dissolved_tick INT32
+    dissolved_tick INT32,
+    ruling_faction_id STRING,
+    extraction_policy STRING DEFAULT 'CONTINUE'
+)
+"""
+
+# Faction: Political formations that contest sovereignty (v1.2.0 - Balkanization)
+# colonial_stance determines extraction_policy when ruling: UPHOLD->INTENSIFY, IGNORE->CONTINUE, ABOLISH->CEASE
+FACTION_NODE_SCHEMA = """
+CREATE NODE TABLE IF NOT EXISTS Faction (
+    id STRING PRIMARY KEY,
+    name STRING,
+    ideology STRING,
+    colonial_stance STRING,
+    is_settler_formation BOOLEAN DEFAULT true,
+    extraction_modifier DOUBLE DEFAULT 1.0,
+    violence_modifier DOUBLE DEFAULT 1.0,
+    class_reduction DOUBLE DEFAULT 0.0,
+    metabolic_reduction DOUBLE DEFAULT 0.0,
+    color_hex STRING DEFAULT '#808080',
+    founded_tick INT32 DEFAULT 0
 )
 """
 
@@ -113,6 +143,19 @@ CREATE REL TABLE IF NOT EXISTS ADJACENT_TO (
     barrier_type STRING DEFAULT 'NONE',
     permeability DOUBLE DEFAULT 1.0,
     border_length_km DOUBLE DEFAULT 0.0
+)
+"""
+
+# INFLUENCES: Faction influence over territories (v1.2.0 - Balkanization)
+# When a Sovereign collapses, faction with highest SUM(influence_level) wins
+INFLUENCES_EDGE_SCHEMA = """
+CREATE REL TABLE IF NOT EXISTS INFLUENCES (
+    FROM Faction TO Territory,
+    influence_level DOUBLE DEFAULT 0.0,
+    support_type STRING DEFAULT 'IDEOLOGICAL',
+    cadre_count INT32 DEFAULT 0,
+    sympathizer_count INT64 DEFAULT 0,
+    established_tick INT32 DEFAULT 0
 )
 """
 
@@ -173,9 +216,11 @@ def init_schema(conn: kuzu.Connection) -> None:
     schemas = [
         # Node tables first
         ("Sovereign node", SOVEREIGN_NODE_SCHEMA),
+        ("Faction node", FACTION_NODE_SCHEMA),
         ("Territory node", TERRITORY_NODE_SCHEMA),
         # Edge tables (depend on node tables)
         ("CLAIMS edge", CLAIMS_EDGE_SCHEMA),
+        ("INFLUENCES edge", INFLUENCES_EDGE_SCHEMA),
         ("ADMINISTERS edge", ADMINISTERS_EDGE_SCHEMA),
         ("ADJACENT_TO edge", ADJACENT_TO_EDGE_SCHEMA),
         # Chronicle tables
@@ -223,13 +268,20 @@ def init_db(db_path: str | Path) -> kuzu.Connection:
 
 
 def insert_test_data(conn: kuzu.Connection) -> None:
-    """Insert test data demonstrating Dynamic Sovereignty.
+    """Insert test data demonstrating Dynamic Sovereignty and Balkanization.
 
     Creates:
     - 2 Sovereigns: USA Federal Government and Provisional Revolutionary Command
+    - 3 Factions: Restorationist Front, Workers' Congress, Decolonial Front
     - 2 Territories: California and Los Angeles
     - CLAIMS edges showing sovereignty relationships
+    - INFLUENCES edges showing faction influence (demonstrates THE RED SETTLER TRAP)
     - ADMINISTERS edge showing administrative hierarchy
+
+    THE RED SETTLER TRAP Demonstration:
+        In LA County, Workers' Congress (IGNORE stance) has higher influence (0.7)
+        than Decolonial Front (ABOLISH stance, 0.3). If USA collapses in LA,
+        Workers' Congress wins -> extraction_policy: CONTINUE -> planet still dies.
 
     Args:
         conn: KuzuDB connection object.
@@ -241,6 +293,7 @@ def insert_test_data(conn: kuzu.Connection) -> None:
     # =========================================================================
 
     # Create United States Federal Government sovereign
+    # NOTE: No ruling_faction_id - the "neutral" state that maintains extraction
     conn.execute("""
         CREATE (s:Sovereign {
             id: 'SOV_USA_FED',
@@ -248,12 +301,14 @@ def insert_test_data(conn: kuzu.Connection) -> None:
             sovereignty_type: 'RECOGNIZED_STATE',
             legitimacy: 1.0,
             color_hex: '#3C3B6E',
-            founded_tick: 0
+            founded_tick: 0,
+            extraction_policy: 'CONTINUE'
         })
     """)
-    print("  [OK] Created Sovereign: SOV_USA_FED (United States Federal Government)")
+    print("  [OK] Created Sovereign: SOV_USA_FED (extraction_policy: CONTINUE)")
 
     # Create Provisional Revolutionary Command sovereign (player faction)
+    # This sovereign is controlled by Workers' Congress - THE TRAP
     conn.execute("""
         CREATE (s:Sovereign {
             id: 'SOV_PRC',
@@ -261,10 +316,72 @@ def insert_test_data(conn: kuzu.Connection) -> None:
             sovereignty_type: 'INSURGENT',
             legitimacy: 0.2,
             color_hex: '#B22234',
+            founded_tick: 0,
+            ruling_faction_id: 'FAC_WORKERS_CONGRESS',
+            extraction_policy: 'CONTINUE'
+        })
+    """)
+    print("  [OK] Created Sovereign: SOV_PRC (ruled by Workers' Congress)")
+    print("       ^ THE TRAP: extraction_policy is CONTINUE despite red flag!")
+
+    # =========================================================================
+    # FACTION NODES (Balkanization v1.2.0)
+    # =========================================================================
+
+    # Restorationist Front - Fascist (UPHOLD stance)
+    conn.execute("""
+        CREATE (f:Faction {
+            id: 'FAC_RESTORATIONIST',
+            name: 'Restorationist Front',
+            ideology: 'FASCISM',
+            colonial_stance: 'UPHOLD',
+            is_settler_formation: true,
+            extraction_modifier: 1.5,
+            violence_modifier: 1.5,
+            class_reduction: 0.0,
+            metabolic_reduction: -0.5,
+            color_hex: '#000000',
             founded_tick: 0
         })
     """)
-    print("  [OK] Created Sovereign: SOV_PRC (Provisional Revolutionary Command)")
+    print("  [OK] Created Faction: FAC_RESTORATIONIST (UPHOLD - accelerates extraction)")
+
+    # Workers' Congress - Settler-Socialist (IGNORE stance) - THE TRAP
+    conn.execute("""
+        CREATE (f:Faction {
+            id: 'FAC_WORKERS_CONGRESS',
+            name: 'Workers Congress',
+            ideology: 'SETTLER_SOCIALISM',
+            colonial_stance: 'IGNORE',
+            is_settler_formation: true,
+            extraction_modifier: 0.8,
+            violence_modifier: 0.6,
+            class_reduction: 0.8,
+            metabolic_reduction: 0.0,
+            color_hex: '#FF0000',
+            founded_tick: 0
+        })
+    """)
+    print("  [OK] Created Faction: FAC_WORKERS_CONGRESS (IGNORE - THE RED SETTLER TRAP)")
+    print("       ^ High class_reduction but ZERO metabolic_reduction!")
+
+    # Decolonial Front - Anti-Colonial Communist (ABOLISH stance) - Correct Path
+    conn.execute("""
+        CREATE (f:Faction {
+            id: 'FAC_DECOLONIAL',
+            name: 'Decolonial Front',
+            ideology: 'ANTI_COLONIAL_COMMUNISM',
+            colonial_stance: 'ABOLISH',
+            is_settler_formation: false,
+            extraction_modifier: 0.0,
+            violence_modifier: 0.3,
+            class_reduction: 0.5,
+            metabolic_reduction: 0.8,
+            color_hex: '#008000',
+            founded_tick: 0
+        })
+    """)
+    print("  [OK] Created Faction: FAC_DECOLONIAL (ABOLISH - only path to healing)")
 
     # =========================================================================
     # TERRITORY NODES
@@ -349,6 +466,57 @@ def insert_test_data(conn: kuzu.Connection) -> None:
     print("       ^ DUAL POWER: LA has claims from both USA and PRC!")
 
     # =========================================================================
+    # INFLUENCES EDGES (Balkanization v1.2.0)
+    # =========================================================================
+
+    # Workers' Congress has highest influence in LA - THE TRAP
+    conn.execute("""
+        MATCH (fac:Faction {id: 'FAC_WORKERS_CONGRESS'})
+        MATCH (terr:Territory {id: 'US-CA-037-LA'})
+        CREATE (fac)-[:INFLUENCES {
+            influence_level: 0.7,
+            support_type: 'LABOR',
+            cadre_count: 200,
+            sympathizer_count: 500000,
+            established_tick: 0
+        }]->(terr)
+    """)
+    print("  [OK] Created INFLUENCES: FAC_WORKERS_CONGRESS -> US-CA-037-LA (0.7)")
+    print("       ^ THE TRAP: Highest influence in LA! If collapse, they win.")
+
+    # Decolonial Front has lower influence - the harder path
+    conn.execute("""
+        MATCH (fac:Faction {id: 'FAC_DECOLONIAL'})
+        MATCH (terr:Territory {id: 'US-CA-037-LA'})
+        CREATE (fac)-[:INFLUENCES {
+            influence_level: 0.3,
+            support_type: 'IDEOLOGICAL',
+            cadre_count: 80,
+            sympathizer_count: 150000,
+            established_tick: 0
+        }]->(terr)
+    """)
+    print("  [OK] Created INFLUENCES: FAC_DECOLONIAL -> US-CA-037-LA (0.3)")
+    print("       ^ Player must actively build this to flip LA!")
+
+    # Workers' Congress also in California statewide
+    conn.execute("""
+        MATCH (fac:Faction {id: 'FAC_WORKERS_CONGRESS'})
+        MATCH (terr:Territory {id: 'US-CA'})
+        CREATE (fac)-[:INFLUENCES {
+            influence_level: 0.4,
+            support_type: 'ELECTORAL',
+            cadre_count: 100,
+            sympathizer_count: 2000000,
+            established_tick: 0
+        }]->(terr)
+    """)
+    print("  [OK] Created INFLUENCES: FAC_WORKERS_CONGRESS -> US-CA (0.4)")
+
+    # Restorationist has no influence in California (coastal elite territory)
+    # They dominate rural areas (not in this test set)
+
+    # =========================================================================
     # ADMINISTERS EDGE (Administrative Hierarchy - unchanged)
     # =========================================================================
 
@@ -376,6 +544,29 @@ Total control = 1.0 (contested but accounted for)
 
 This is the core of Dynamic Sovereignty: sovereignty as EDGES, not properties.
     """)
+    print("=" * 70)
+    print("THE RED SETTLER TRAP DEMONSTRATION")
+    print("=" * 70)
+    print("""
+Los Angeles has competing FACTION influences:
+  - FAC_WORKERS_CONGRESS (IGNORE stance): influence_level=0.7
+  - FAC_DECOLONIAL (ABOLISH stance): influence_level=0.3
+
+THE TRAP: If USA collapses in LA, Workers' Congress WINS!
+  - New Sovereign gets extraction_policy: CONTINUE
+  - Habitability continues to degrade (-0.005/tick)
+  - Player experiences "false summit" - won revolution, losing planet
+
+THE CORRECT PATH:
+  - Player must actively build FAC_DECOLONIAL influence
+  - Flip LA so Decolonial has majority when collapse occurs
+  - Only then: extraction_policy: CEASE, habitability can recover (+0.01/tick)
+
+The three factions represent three relationships to settler colonialism:
+  - UPHOLD (Restorationist): Explicit fascist defense of extraction
+  - IGNORE (Workers' Congress): Class-only socialism, maintains extraction
+  - ABOLISH (Decolonial): Only path to true liberation and ecological healing
+    """)
 
 
 def verify_test_data(conn: kuzu.Connection) -> bool:
@@ -396,6 +587,14 @@ def verify_test_data(conn: kuzu.Connection) -> bool:
         print(f"  [FAIL] Expected 2 sovereigns, found {count}")
         return False
     print(f"  [OK] Sovereign count: {count}")
+
+    # Count factions (v1.2.0)
+    result = conn.execute("MATCH (f:Faction) RETURN COUNT(f) AS count")
+    count = result.get_next()[0]
+    if count != 3:
+        print(f"  [FAIL] Expected 3 factions, found {count}")
+        return False
+    print(f"  [OK] Faction count: {count}")
 
     # Count territories
     result = conn.execute("MATCH (t:Territory) RETURN COUNT(t) AS count")
@@ -455,6 +654,48 @@ def verify_test_data(conn: kuzu.Connection) -> bool:
     """)
     for terr_name, sov_name, control in result.get_all():
         print(f"       {terr_name}: {sov_name} ({control})")
+
+    # Verify INFLUENCES edges (v1.2.0)
+    result = conn.execute("""
+        MATCH (fac:Faction)-[i:INFLUENCES]->(terr:Territory)
+        RETURN fac.name, terr.name, i.influence_level, i.support_type
+        ORDER BY terr.name, i.influence_level DESC
+    """)
+    influences = result.get_all()
+    if len(influences) != 3:
+        print(f"  [FAIL] Expected 3 INFLUENCES edges, found {len(influences)}")
+        return False
+    print(f"\n  [OK] INFLUENCES edge count: {len(influences)}")
+    for fac_name, terr_name, influence, support in influences:
+        print(f"       {fac_name} -> {terr_name}: {influence} ({support})")
+
+    # Verify THE RED SETTLER TRAP - Workers' Congress dominates LA
+    result = conn.execute("""
+        MATCH (fac:Faction)-[i:INFLUENCES]->(terr:Territory {id: 'US-CA-037-LA'})
+        RETURN fac.name, fac.colonial_stance, i.influence_level
+        ORDER BY i.influence_level DESC
+    """)
+    influences = result.get_all()
+    if len(influences) != 2:
+        print(f"  [FAIL] Expected 2 factions influencing LA, found {len(influences)}")
+        return False
+    top_faction, top_stance, top_influence = influences[0]
+    if top_stance != "IGNORE":
+        print(f"  [FAIL] Expected IGNORE faction to dominate LA, found {top_stance}")
+        return False
+    print("\n  [OK] THE RED SETTLER TRAP verified:")
+    print(f"       LA dominated by {top_faction} ({top_stance} stance) at {top_influence}")
+    print("       If collapse -> extraction_policy: CONTINUE -> planet dies")
+
+    # Verify faction colonial stances
+    result = conn.execute("""
+        MATCH (f:Faction)
+        RETURN f.name, f.colonial_stance, f.extraction_modifier, f.metabolic_reduction
+        ORDER BY f.extraction_modifier DESC
+    """)
+    print("\n  Faction colonial stances:")
+    for name, stance, extr_mod, metab_red in result.get_all():
+        print(f"       {name}: {stance} (extraction: {extr_mod}x, metabolic: {metab_red})")
 
     print("\nAll verifications passed!")
     return True

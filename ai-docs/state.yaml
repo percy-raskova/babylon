@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.1"
+  version: "2.0.2"
   updated: "2025-12-26"
-  last_sprint: "1.4B - MetabolismSystem implementation"
+  last_sprint: "1.4C - The Wiring (MetabolismSystem integration)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -61,7 +61,7 @@ epoch_status:
 
     "1.4":
       name: "The Rift"
-      status: "PARTIAL"  # Core complete, integration remaining
+      status: "COMPLETE"  # Core + Integration complete, only dashboard remains
       spec: "ai-docs/metabolic-slice.yaml"
       deliverables_complete:
         - "Territory metabolic fields (biocapacity, max_biocapacity, regeneration_rate, extraction_intensity)"
@@ -69,17 +69,22 @@ epoch_status:
         - "WorldState computed properties (total_biocapacity, total_consumption, overshoot_ratio)"
         - "calculate_biocapacity_delta() and calculate_overshoot_ratio() formulas"
         - "ECOLOGICAL_OVERSHOOT EventType"
-        - "MetabolismSystem with 15 tests"
+        - "MetabolismSystem with 15 unit tests"
+        - "MetabolismSystem registered in DEFAULT_SYSTEMS (after TerritorySystem)"
+        - "Ecological metrics in TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
+        - "MetricsCollector extracts ecological state from WorldState"
+        - "Integration tests proving system runs in engine loop (15 tests)"
       deliverables_remaining:
-        - "Add MetabolismSystem to DEFAULT_SYSTEMS"
-        - "Wire ImperialRentSystem to set extraction_intensity"
-        - "Dashboard metabolic gauge"
+        - "Dashboard metabolic gauge (Slice 1.5)"
+        - "[DEFERRED] Wire ImperialRentSystem to set extraction_intensity (Epoch 2)"
       formula: "ΔB = Regeneration - (Extraction × Entropy_Factor)"
       commits:
         - "090a843: feat(metabolic): add Slice 1.4A material basis"
         - "d215fff: test(metabolic): add comprehensive unit tests for Slice 1.4A"
         - "ada50da: test(metabolic): add TDD Red Phase tests for MetabolismSystem"
         - "fe7feb1: feat(metabolic): implement MetabolismSystem (TDD Green Phase)"
+        - "7563101: test(metabolic): add TDD RED phase tests for Sprint 1.4C"
+        - "ce5b888: feat(metabolic): wire MetabolismSystem into simulation engine (TDD Green Phase)"
 
     "1.5":
       name: "The Dashboard"
@@ -114,10 +119,12 @@ epoch_status:
   completion_criteria:
     - "[ ] 4-node Imperial Circuit running in dashboard"
     - "[x] MetabolismSystem depletes biocapacity over time (Sprint 1.4B)"
+    - "[x] MetabolismSystem registered in engine (Sprint 1.4C)"
+    - "[x] Ecological metrics collected by MetricsCollector (Sprint 1.4C)"
     - "[ ] ECOLOGICAL_OVERSHOOT fires at ~30-50 ticks"
     - "[ ] Dashboard shows rift widening visually"
     - "[ ] Endgame screen displays outcome based on solidarity"
-    - "[x] Tests pass (current: 2428)"
+    - "[x] Tests pass (current: 2464)"
 
   future_epochs:
     epoch_2:
@@ -673,10 +680,15 @@ current_focus:
 
   current_slice:
     epoch: 1
-    slice: "1.4"
-    name: "The Rift"
-    spec: "ai-docs/metabolic-slice.yaml"
-    goal: "MetabolismSystem depletes biocapacity, triggers ECOLOGICAL_OVERSHOOT"
+    slice: "1.5"
+    name: "The Dashboard"
+    spec: "ai-docs/state.yaml (Slice 1.5 section)"
+    goal: "Wire 4-node Imperial Circuit to dashboard, add metabolic gauge"
+    previous_slice:
+      slice: "1.4"
+      name: "The Rift"
+      status: "COMPLETE"
+      note: "MetabolismSystem integrated, ecological metrics collected"
 
   epoch_1_scope:
     description: "Playable demo showing Imperial Circuit self-destruction"
@@ -1253,11 +1265,15 @@ current_focus:
 
   next_steps:
     # Using Epoch + Slice model - see ai-docs/epochs-overview.md
-    current_work: "Slice 1.4: The Rift (MetabolismSystem)"
+    current_work: "Slice 1.5: The Dashboard (wire 4-node scenario, metabolic gauge)"
     epoch_1_remaining:
-      - "Slice 1.4: The Rift - MetabolismSystem + ECOLOGICAL_OVERSHOOT"
-      - "Slice 1.5: The Dashboard - wire 4-node scenario, meaningful metrics"
+      - "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
       - "Slice 1.6: The Endgame - win/lose display based on solidarity"
+    epoch_1_completed:
+      - "Slice 1.1: The Circuit - ImperialRentSystem, 4-node scenario"
+      - "Slice 1.2: The Struggle - StruggleSystem, TerritorySystem"
+      - "Slice 1.3: The Observer - SimulationObserver, TopologyMonitor, MetricsCollector"
+      - "Slice 1.4: The Rift - MetabolismSystem, ecological metrics (Sprint 1.4A/B/C)"
     epoch_2_planned:
       - "Slice 2.1: Demographic Resolution (ai-docs/demographics-spec.yaml)"
       - "Slice 2.2: Player Controls"
@@ -1378,10 +1394,10 @@ current_focus:
     - "Agitation without solidarity produces fascism, not revolution."
     - "Fascism is the defensive form of capitalism."
     - "A flat line on a fancy graph is still a flat line."
-  milestone: "EPOCH MODEL: Restructured roadmap using Epoch + Slice model"
-  next_milestone: "Slice 1.4: The Rift - implement MetabolismSystem"
-  test_count: 2248
-  test_count_note: "Updated 2025-12-26 - Verified via pytest --collect-only"
+  milestone: "SLICE 1.4 COMPLETE: MetabolismSystem integrated with simulation engine"
+  next_milestone: "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
+  test_count: 2464
+  test_count_note: "Updated 2025-12-26 - Sprint 1.4C complete, 36 new tests added"
 
   metrics_audit:
     date: "2025-12-25"

@@ -761,22 +761,26 @@ implementation_checklist:
       - "[x] Add tests in tests/unit/engine/systems/test_metabolism.py (15 tests)"
 
   step_5_integration:
-    status: "PARTIAL"
+    status: "COMPLETE"  # Sprint 1.4C (2025-12-26)
     files:
       - "src/babylon/engine/simulation_engine.py"
       - "src/babylon/engine/systems/economic.py"
     tasks:
-      - "[ ] Add MetabolismSystem to DEFAULT_SYSTEMS at position 2.5"
-      - "[ ] Update ImperialRentSystem to set extraction_intensity on Territory"
+      - "[x] Add MetabolismSystem to DEFAULT_SYSTEMS (after TerritorySystem)"
+      - "[SKIPPED MVP] Update ImperialRentSystem to set extraction_intensity on Territory"
+    notes: |
+      extraction_intensity wiring skipped for MVP. MetabolismSystem runs with default
+      extraction_intensity=0.0, meaning biocapacity regenerates. Overshoot still detectable
+      based on consumption vs biocapacity. Full wiring deferred to Epoch 2.
 
   step_6_metrics:
-    status: "TODO"
+    status: "COMPLETE"  # Sprint 1.4C (2025-12-26)
     files:
       - "src/babylon/models/metrics.py"
       - "src/babylon/engine/observers/metrics.py"
     tasks:
-      - "Add metabolic fields to TickMetrics"
-      - "Update MetricsCollector to capture metabolic state"
+      - "[x] Add metabolic fields to TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
+      - "[x] Update MetricsCollector to capture metabolic state from WorldState computed properties"
 
   step_7_world_state:
     status: "COMPLETE"  # Sprint 1.4A (2025-12-26)

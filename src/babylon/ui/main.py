@@ -240,7 +240,9 @@ def refresh_ui() -> None:
     if _state.trend_plotter is not None:
         if _state.metrics_collector is not None and _state.metrics_collector.latest is not None:
             latest = _state.metrics_collector.latest
-            _state.trend_plotter.push_data(latest.tick, latest.imperial_rent_pool, latest.global_tension)
+            _state.trend_plotter.push_data(
+                latest.tick, latest.imperial_rent_pool, latest.global_tension
+            )
         else:
             # Fallback for initial render before first step
             rent = float(sim_state.economy.imperial_rent_pool)
@@ -256,7 +258,7 @@ def refresh_ui() -> None:
 
     # 5. Log new events -> SystemLog (NEW)
     if _state.system_log is not None:
-        new_events = sim_state.events[_state.last_event_index:]
+        new_events = sim_state.events[_state.last_event_index :]
         for event in new_events:
             level = _event_to_log_level(event)
             _state.system_log.log(f"[{event.event_type.value}] tick={event.tick}", level)

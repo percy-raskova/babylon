@@ -61,7 +61,7 @@ class TestStepHandler:
         """on_step() handles None runner gracefully."""
         import babylon.ui.main as main
 
-        main.runner = None
+        main._state.runner = None
 
         # Should not raise
         await main.on_step()
@@ -94,7 +94,7 @@ class TestPlayHandler:
         """on_play() handles None runner gracefully."""
         import babylon.ui.main as main
 
-        main.runner = None
+        main._state.runner = None
 
         # Should not raise
         await main.on_play()
@@ -127,7 +127,7 @@ class TestPauseHandler:
         """on_pause() handles None runner gracefully."""
         import babylon.ui.main as main
 
-        main.runner = None
+        main._state.runner = None
 
         # Should not raise
         await main.on_pause()
@@ -162,11 +162,11 @@ class TestResetHandler:
     ) -> None:
         """on_reset() resets last_narrative_index to 0."""
         main = main_module_with_mocks
-        main.last_narrative_index = 10
+        main._state.last_narrative_index = 10
 
         await main.on_reset()
 
-        assert main.last_narrative_index == 0
+        assert main._state.last_narrative_index == 0
 
     async def test_on_reset_resets_event_index(
         self,
@@ -174,11 +174,11 @@ class TestResetHandler:
     ) -> None:
         """on_reset() resets last_event_index to 0."""
         main = main_module_with_mocks
-        main.last_event_index = 5
+        main._state.last_event_index = 5
 
         await main.on_reset()
 
-        assert main.last_event_index == 0
+        assert main._state.last_event_index == 0
 
     async def test_on_reset_reinitializes_simulation(
         self,
@@ -209,16 +209,16 @@ class TestResetHandler:
         """on_reset() handles None runner gracefully."""
         import babylon.ui.main as main
 
-        main.runner = None
-        main.last_narrative_index = 10
-        main.last_event_index = 5
+        main._state.runner = None
+        main._state.last_narrative_index = 10
+        main._state.last_event_index = 5
 
         # Should not raise
         await main.on_reset()
 
         # Indices should still be reset
-        assert main.last_narrative_index == 0
-        assert main.last_event_index == 0
+        assert main._state.last_narrative_index == 0
+        assert main._state.last_event_index == 0
 
 
 # =============================================================================
@@ -285,7 +285,7 @@ class TestPollRunner:
         """poll_runner() returns early when runner is None."""
         import babylon.ui.main as main
 
-        main.runner = None
+        main._state.runner = None
 
         # Should not raise
         await main.poll_runner()
@@ -306,8 +306,8 @@ class TestInitSimulation:
         """init_simulation() sets module-level simulation variable."""
         import babylon.ui.main as main
 
-        main.simulation = None
-        main.runner = None
+        main._state.simulation = None
+        main._state.runner = None
 
         main.init_simulation()
 
@@ -320,8 +320,8 @@ class TestInitSimulation:
         """init_simulation() sets module-level runner variable."""
         import babylon.ui.main as main
 
-        main.simulation = None
-        main.runner = None
+        main._state.simulation = None
+        main._state.runner = None
 
         main.init_simulation()
 
@@ -334,8 +334,8 @@ class TestInitSimulation:
         """init_simulation() creates runner that wraps the simulation."""
         import babylon.ui.main as main
 
-        main.simulation = None
-        main.runner = None
+        main._state.simulation = None
+        main._state.runner = None
 
         main.init_simulation()
         assert main.runner is not None  # Type narrowing
@@ -349,8 +349,8 @@ class TestInitSimulation:
         """init_simulation() creates runner with 1.0s tick interval."""
         import babylon.ui.main as main
 
-        main.simulation = None
-        main.runner = None
+        main._state.simulation = None
+        main._state.runner = None
 
         main.init_simulation()
         assert main.runner is not None  # Type narrowing

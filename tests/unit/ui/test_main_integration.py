@@ -12,7 +12,7 @@ Key difference from unit tests:
 
 Example:
     >>> main.init_simulation()
-    >>> main.trend_plotter = TrendPlotter()  # Real component
+    >>> main._state.trend_plotter = TrendPlotter()  # Real component
     >>> main.simulation.step()
     >>> main.refresh_ui()
     >>> assert len(main.trend_plotter._ticks) == 1  # Real state assertion
@@ -46,7 +46,7 @@ class TestSingleStepCycle:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.trend_plotter = TrendPlotter()
+        main._state.trend_plotter = TrendPlotter()
 
         # Step and refresh
         main.simulation.step()
@@ -67,7 +67,7 @@ class TestSingleStepCycle:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.state_inspector = StateInspector()
+        main._state.state_inspector = StateInspector()
 
         # Step and refresh
         main.simulation.step()
@@ -86,8 +86,8 @@ class TestSingleStepCycle:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.system_log = SystemLog()
-        main.last_event_index = 0
+        main._state.system_log = SystemLog()
+        main._state.last_event_index = 0
 
         # Step and refresh
         main.simulation.step()
@@ -116,7 +116,7 @@ class TestMultipleSteps:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.trend_plotter = TrendPlotter()
+        main._state.trend_plotter = TrendPlotter()
 
         # Run 5 steps
         for _ in range(5):
@@ -138,7 +138,7 @@ class TestMultipleSteps:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.trend_plotter = TrendPlotter()
+        main._state.trend_plotter = TrendPlotter()
 
         # Run 5 steps
         for _ in range(5):
@@ -158,15 +158,15 @@ class TestMultipleSteps:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.system_log = SystemLog()
-        main.last_event_index = 0
+        main._state.system_log = SystemLog()
+        main._state.last_event_index = 0
 
         # Run a step
         main.simulation.step()
         main.refresh_ui()
 
         # Event index should track total events
-        assert main.last_event_index == len(main.simulation.current_state.events)
+        assert main._state.last_event_index == len(main.simulation.current_state.events)
 
 
 # =============================================================================
@@ -197,7 +197,7 @@ class TestResetCycle:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.trend_plotter = TrendPlotter()
+        main._state.trend_plotter = TrendPlotter()
 
         # Run 3 steps
         for _ in range(3):
@@ -207,8 +207,8 @@ class TestResetCycle:
         assert len(main.trend_plotter._ticks) == 3
 
         # Simulate reset sequence (sync version of on_reset)
-        main.last_narrative_index = 0
-        main.last_event_index = 0
+        main._state.last_narrative_index = 0
+        main._state.last_event_index = 0
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing after reset
 
@@ -266,7 +266,7 @@ class TestRollingWindow:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.trend_plotter = TrendPlotter()
+        main._state.trend_plotter = TrendPlotter()
 
         # Run 60 steps (past the 50-point limit)
         for _ in range(60):
@@ -288,7 +288,7 @@ class TestRollingWindow:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.trend_plotter = TrendPlotter()
+        main._state.trend_plotter = TrendPlotter()
 
         # Run 60 steps
         for _ in range(60):
@@ -318,7 +318,7 @@ class TestStateInspectorIntegration:
         from babylon.ui.components import StateInspector
 
         main.init_simulation()
-        main.state_inspector = StateInspector()
+        main._state.state_inspector = StateInspector()
 
         main.refresh_ui()
 
@@ -333,7 +333,7 @@ class TestStateInspectorIntegration:
         from babylon.ui.components import StateInspector
 
         main.init_simulation()
-        main.state_inspector = StateInspector()
+        main._state.state_inspector = StateInspector()
 
         main.refresh_ui()
 
@@ -350,7 +350,7 @@ class TestStateInspectorIntegration:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.state_inspector = StateInspector()
+        main._state.state_inspector = StateInspector()
 
         main.refresh_ui()
         initial_data = dict(main.state_inspector._current_data)
@@ -382,8 +382,8 @@ class TestSystemLogIntegration:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.system_log = SystemLog()
-        main.last_event_index = 0
+        main._state.system_log = SystemLog()
+        main._state.last_event_index = 0
 
         # Run a step to potentially generate events
         main.simulation.step()
@@ -407,8 +407,8 @@ class TestSystemLogIntegration:
 
         main.init_simulation()
         assert main.simulation is not None  # Type narrowing
-        main.system_log = SystemLog()
-        main.last_event_index = 0
+        main._state.system_log = SystemLog()
+        main._state.last_event_index = 0
 
         # Run enough steps to generate extraction events
         # (extraction happens each tick in the two-node scenario)

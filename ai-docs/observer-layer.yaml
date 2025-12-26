@@ -378,8 +378,13 @@ metrics_collector:
 
   audit:
     date: "2025-12-25"
-    status: "GAPS IDENTIFIED"
-    coverage_estimate: "~60% of meaningful metrics captured"
+    status: "PHASE 4.1B COMPLETE"
+    coverage_estimate: "~85% of meaningful metrics captured"
+    phase_4_1b_completion:
+      date: "2025-12-25"
+      commits: ["96e6292", "5665520", "3b92753"]
+      tests_added: 43
+      total_tests: 144
 
     what_is_tracked:
       entity_metrics:
@@ -398,55 +403,70 @@ metrics_collector:
 
     critical_gaps:
       description: "Dashboard incomplete without these metrics"
+      status: "FIXED IN PHASE 4.1B"
       items:
         current_super_wage_rate:
           source: "GlobalEconomy.current_super_wage_rate"
           type: "Coefficient"
           why_critical: "Core driver of labor aristocracy loyalty - why C_w supports imperialism"
           location: "src/babylon/models/entities/economy.py:68"
+          status: "FIXED - added to TickMetrics"
 
         current_repression_level:
           source: "GlobalEconomy.current_repression_level"
           type: "Probability"
           why_critical: "System-wide P(S|R) factor - affects all survival calculations"
           location: "src/babylon/models/entities/economy.py:73"
+          status: "FIXED - added to TickMetrics"
+
+        pool_ratio:
+          source: "Derived: imperial_rent_pool / initial_pool"
+          type: "Probability"
+          why_critical: "Triggers bourgeois heuristics at thresholds (0.7, 0.3, 0.1)"
+          status: "FIXED - added to TickMetrics"
 
         percolation_ratio:
           source: "TopologyMonitor.percolation_ratio"
           type: "Probability"
           why_critical: "Phase transition indicator (gaseous→transitional→liquid→solid)"
           location: "src/babylon/engine/topology_monitor.py"
-          note: "TopologyMonitor not registered with dashboard Simulation"
+          status: "MODEL READY - TopologySummary added to TickMetrics, awaiting dashboard integration"
 
         cadre_density:
           source: "TopologyMonitor.cadre_density"
           type: "float [0,1]"
           why_critical: "Distinguishes vanguard party from mass movement"
           location: "src/babylon/engine/topology_monitor.py"
+          status: "MODEL READY - TopologySummary added to TickMetrics, awaiting dashboard integration"
 
     high_priority_gaps:
       description: "Significantly improves analysis capability"
+      status: "MOSTLY FIXED IN PHASE 4.1B"
       items:
         consciousness_gap:
           formula: "p_w.consciousness - c_w.consciousness"
-          type: "float"
+          type: "float [-1, 1]"
           why_important: "Revolutionary divergence - when periphery awakens faster than core"
+          status: "FIXED - added to TickMetrics"
 
         wealth_gap:
           formula: "c_b.wealth - p_w.wealth"
-          type: "Currency"
+          type: "float (unbounded)"
           why_important: "Exploitation intensity indicator"
+          status: "FIXED - added to TickMetrics"
 
         repression_faced:
           source: "SocialClass.repression_faced"
           type: "Probability"
           why_important: "Per-class state violence level (not system-wide)"
           location: "src/babylon/models/entities/social_class.py:303"
+          status: "OPEN - per-entity metric, requires EntityMetrics extension"
 
         num_components:
           source: "TopologyMonitor.num_components"
           type: "int"
           why_important: "Movement fragmentation - how many isolated cells"
+          status: "MODEL READY - in TopologySummary, awaiting dashboard integration"
 
     medium_priority_gaps:
       items:
@@ -465,62 +485,101 @@ metrics_collector:
 
     implementation_issues:
       edge_overwrite_bug:
-        location: "src/babylon/engine/observers/metrics.py:211-220"
+        location: "src/babylon/engine/observers/metrics.py:228-253"
         description: |
           When iterating over relationships, if multiple edges of same type exist,
           only the LAST one is captured due to simple assignment (not aggregation).
-        code: |
-          for rel in state.relationships:
-              if rel.edge_type == EdgeType.EXPLOITATION:
-                  exploitation_tension = float(rel.tension)  # OVERWRITES!
-        impact: "Medium - current 4-node model has one EXPLOITATION edge"
-        fix: "Aggregate or track per-edge-pair"
+        status: "FIXED IN PHASE 4.1B"
+        fix_applied: |
+          Now uses list collection and aggregation:
+          - exploitation_tension: max() of all EXPLOITATION edges
+          - exploitation_rent: sum() of all EXPLOITATION edges
+          - tribute_flow: sum() of all TRIBUTE edges
+          - wages_paid: sum() of all WAGES edges
+          - solidarity_strength: max() of all SOLIDARITY edges
+        tests: "TestEdgeAggregationFix (5 tests)"
 
       global_tension_dilution:
-        location: "src/babylon/engine/observers/metrics.py:230-236"
+        location: "src/babylon/engine/observers/metrics.py:255-263"
         description: |
           global_tension averages tension across ALL edge types (SOLIDARITY, WAGES, etc.),
           most of which have tension=0.0, artificially diluting the meaningful value.
-        code: |
-          total_tension = sum(float(rel.tension) for rel in state.relationships)
-          return total_tension / len(state.relationships)
-        impact: "High - global_tension metric is misleading"
-        fix: "Only average EXPLOITATION edge tensions"
+        status: "FIXED IN PHASE 4.1B"
+        fix_applied: |
+          Now filters to EXPLOITATION edges only before averaging:
+          exploitation_rels = [rel for rel in state.relationships
+                               if rel.edge_type == EdgeType.EXPLOITATION]
+        tests: "TestGlobalTensionBugFix (5 tests)"
 
       topology_not_integrated:
         location: "src/babylon/ui/main.py:60"
         description: |
           Dashboard Simulation only registers MetricsCollector as observer.
           TopologyMonitor is NOT registered, so percolation metrics unavailable.
+        status: "OPEN - Phase 4.2 work"
         code: |
           simulation = Simulation(state, config, observers=[metrics_collector], defines=defines)
         impact: "Critical - phase transition data invisible to dashboard"
-        fix: "Either register TopologyMonitor or compute topology inline"
+        fix: "Register TopologyMonitor, populate TickMetrics.topology from it"
 
     recommended_fixes:
       phase_1_critical:
         description: "Must fix for dashboard to be useful"
+        status: "COMPLETE (Phase 4.1B)"
+        completed: "2025-12-25"
         items:
-          - "Add current_super_wage_rate, current_repression_level to TickMetrics"
-          - "Add TopologySummary model (percolation_ratio, cadre_density, phase)"
-          - "Add derived differentials (consciousness_gap, wealth_gap)"
-        estimated_tests: 20
-        estimated_effort: "1-2 hours TDD"
+          - "✅ Add current_super_wage_rate, current_repression_level to TickMetrics"
+          - "✅ Add pool_ratio to TickMetrics"
+          - "✅ Add TopologySummary model (percolation_ratio, cadre_density, num_components, phase)"
+          - "✅ Add derived differentials (consciousness_gap, wealth_gap)"
+        tests_added: 22
+        commits: ["96e6292", "5665520"]
 
       phase_2_high:
         description: "Significantly improves insight"
+        status: "COMPLETE (Phase 4.1B)"
+        completed: "2025-12-25"
         items:
-          - "Fix global_tension to only average EXPLOITATION edges"
-          - "Add repression_faced to EntityMetrics"
-          - "Handle multiple edges of same type correctly"
-        estimated_tests: 15
-        estimated_effort: "1 hour TDD"
+          - "✅ Fix global_tension to only average EXPLOITATION edges"
+          - "✅ Handle multiple edges of same type correctly (aggregation)"
+          - "⏳ Add repression_faced to EntityMetrics (deferred)"
+        tests_added: 10
+        commits: ["96e6292", "5665520"]
 
       phase_3_medium:
         description: "Nice to have for deep analysis"
+        status: "OPEN"
         items:
           - "Add event_count tracking"
           - "Add territory aggregate metrics"
           - "Full TopologySnapshot history access"
+          - "Wire TopologyMonitor to dashboard (populate TickMetrics.topology)"
         estimated_tests: 10
         estimated_effort: "1 hour TDD"
+
+    phase_4_1b_additions:
+      description: "New fields added to TickMetrics in Phase 4.1B"
+      date: "2025-12-25"
+      new_models:
+        TopologySummary:
+          location: "src/babylon/models/metrics.py"
+          fields:
+            - "percolation_ratio: Probability [0,1] - L_max/N"
+            - "cadre_density: Probability [0,1] - actual/potential liquidity"
+            - "num_components: int >= 0"
+            - "phase: Literal['gaseous','transitional','liquid','solid']"
+      new_tick_metrics_fields:
+        economy_drivers:
+          - "current_super_wage_rate: float >= 0 (default 0.20)"
+          - "current_repression_level: Probability [0,1] (default 0.5)"
+          - "pool_ratio: Probability [0,1] (default 1.0)"
+        topology:
+          - "topology: TopologySummary | None"
+        differentials:
+          - "consciousness_gap: float [-1,1] (P_w - C_w consciousness)"
+          - "wealth_gap: float (C_b - P_w wealth, unbounded)"
+      csv_export:
+        new_columns:
+          - "imperial_rent_pool, global_tension"
+          - "current_super_wage_rate, current_repression_level, pool_ratio"
+          - "consciousness_gap, wealth_gap"

@@ -326,8 +326,8 @@ class TestStructuredEventsInWorldState:
         # Act
         new_state = step(state, SimulationConfig())
 
-        # Assert - These methods don't exist yet (RED phase)
-        Assert(new_state).has_events_count(1)
+        # Assert - At least one ExtractionEvent should exist
+        # Note: Don't check exact count - StruggleSystem may add random spark events
         Assert(new_state).has_event(ExtractionEvent)
 
     @pytest.mark.unit
@@ -428,8 +428,9 @@ class TestStructuredEventsInWorldState:
         new_state = step(state, SimulationConfig())
 
         # Assert - Both should be populated
-        # Typed events list
-        Assert(new_state).has_events_count(1)
+        # Typed events list (at least one extraction event)
+        # Note: Don't check exact count - StruggleSystem may add random spark events
+        Assert(new_state).has_event(ExtractionEvent)
         # Legacy string log (backward compatibility)
         assert len(new_state.event_log) > 0
         assert any("SURPLUS_EXTRACTION" in log for log in new_state.event_log)

@@ -48,7 +48,8 @@ This directory helps AI assistants:
 | `architecture.yaml` | System structure, directory map, data flow | YAML |
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas | YAML |
 | `entities.yaml` | 17 game entity types and relationships | YAML |
-| `decisions.yaml` | Architecture Decision Records (ADR001-ADR028) | YAML |
+| `decisions.yaml` | Architecture Decision Records (ADR001-ADR029) | YAML |
+| `epoch2-persistence.yaml` | Epoch 2 data layer: KuzuDB Strategic Map + NetworkX Tactical Cache | YAML |
 | **PATTERNS & STANDARDS** |||
 | `ontology.yaml` | Domain terms (MLM-TW, architecture, game) | YAML |
 | `patterns.yaml` | How to do things here | YAML |

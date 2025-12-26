@@ -1,0 +1,693 @@
+# Epoch 2 Persistence Specification
+# Strategic Map: KuzuDB + Tactical Cache: NetworkX
+# Date: 2025-12-26
+# Related: ADR029_hybrid_graph_architecture
+
+meta:
+  version: "1.0.0"
+  status: "specification"
+  epoch: 2
+  codename: "The War"
+  purpose: "Define the hybrid graph architecture for continental-scale simulation"
+
+# =============================================================================
+# OVERVIEW
+# =============================================================================
+
+overview:
+  thesis: |
+    Epoch 2 models the full United States as a battleground. This requires ~74,000
+    Territory nodes (50 states + 3,000 counties + 70,000 cities/townships) with
+    both administrative hierarchy (who governs what) and physical adjacency
+    (what borders what).
+
+    Pure NetworkX cannot handle this scale in RAM. We bifurcate the architecture:
+    - **KuzuDB**: Disk-backed "Strategic Map" storing the complete world
+    - **NetworkX**: In-memory "Tactical Cache" for active simulation sectors
+
+  key_concepts:
+    strategic_map:
+      storage: "KuzuDB (embedded graph database)"
+      contains: "Complete World Graph + Historical Chronicle"
+      scale: "74,000+ nodes, disk-backed"
+      queries: "Cypher-like syntax for complex graph traversal"
+
+    tactical_cache:
+      storage: "NetworkX (in-memory)"
+      contains: "Active Sector (subset being simulated)"
+      scale: "100-1,000 nodes per sector"
+      purpose: "Fast tick calculations, unchanged from Epoch 1"
+
+    hydration:
+      definition: "Loading nodes from Strategic Map into Tactical Cache"
+      trigger: "Player action, conflict expansion, or sector boundary crossing"
+
+    flush:
+      definition: "Writing Tactical Cache changes back to Strategic Map"
+      trigger: "End of tick, checkpoint, or sector transition"
+
+# =============================================================================
+# NODE SCHEMA: TERRITORY
+# =============================================================================
+
+node_schemas:
+
+  Territory:
+    description: |
+      The fundamental spatial unit of Epoch 2. Represents either:
+      - OGV (Observable Geographic Volume): Physical land (a county, a city block)
+      - OPC (Observable Political Container): Administrative unit (a state, a jurisdiction)
+
+      Note: OGV and OPC often overlap but can diverge (e.g., tribal lands within state
+      boundaries, military bases with federal jurisdiction).
+
+    properties:
+      # === Identity ===
+      id:
+        type: "STRING"
+        description: "Unique identifier using FIPS-like coding"
+        format: "COUNTRY-STATE-COUNTY-LOCALITY (e.g., 'US-CA-037' for Los Angeles County)"
+        primary_key: true
+        examples:
+          - "US"  # Federal level
+          - "US-CA"  # California state
+          - "US-CA-037"  # Los Angeles County
+          - "US-CA-037-LA"  # City of Los Angeles
+
+      name:
+        type: "STRING"
+        description: "Human-readable name"
+        examples: ["United States", "California", "Los Angeles County", "Compton"]
+
+      type:
+        type: "ENUM"
+        values: ["OGV", "OPC"]
+        description: |
+          OGV = Observable Geographic Volume (physical land)
+          OPC = Observable Political Container (administrative unit)
+        default: "OPC"
+
+      # === Material Properties ===
+      area_sq_km:
+        type: "DOUBLE"
+        description: "Physical area in square kilometers"
+        constraints: ">= 0"
+        note: "OPC without physical territory (e.g., virtual jurisdictions) may have 0"
+
+      bioregion:
+        type: "STRING"
+        description: "Ecological classification for metabolism calculations"
+        examples: ["Pacific Coast", "Great Basin", "Gulf Coast", "Great Plains"]
+        note: "Maps to regeneration rates in MetabolismSystem"
+
+      habitability:
+        type: "DOUBLE"
+        description: "How suitable for human settlement (0-1)"
+        constraints: "[0.0, 1.0]"
+        factors: "Climate, water access, soil quality, infrastructure"
+        default: 0.5
+
+      # === Political Properties ===
+      controller:
+        type: "STRING"
+        description: "Faction currently controlling this territory"
+        values: ["STATE", "PLAYER", "CONTESTED", "NEUTRAL"]
+        default: "STATE"
+
+      heat:
+        type: "DOUBLE"
+        description: "State attention level from TerritorySystem"
+        constraints: "[0.0, 1.0]"
+        note: "Heat >= 0.8 triggers eviction pipeline"
+        default: 0.0
+
+      # === Demographic Properties (Epoch 2A) ===
+      population:
+        type: "INT64"
+        description: "Total population count"
+        constraints: ">= 0"
+        default: 0
+
+      class_composition:
+        type: "MAP"
+        description: "Population breakdown by social class"
+        schema:
+          proletariat: "INT64"
+          petty_bourgeoisie: "INT64"
+          bourgeoisie: "INT64"
+          lumpen: "INT64"
+        note: "Sum should equal population"
+
+      # === Chronicle Properties (historical tracking) ===
+      created_tick:
+        type: "INT32"
+        description: "Tick when this territory was created/discovered"
+        default: 0
+
+      last_modified_tick:
+        type: "INT32"
+        description: "Tick when this territory was last modified"
+        default: 0
+
+    indexes:
+      - property: "id"
+        type: "PRIMARY"
+      - property: "controller"
+        type: "HASH"
+        reason: "Fast filtering by faction control"
+      - property: "bioregion"
+        type: "HASH"
+        reason: "Fast filtering for metabolism calculations"
+
+# =============================================================================
+# EDGE SCHEMAS
+# =============================================================================
+
+edge_schemas:
+
+  ADMINISTERS:
+    description: |
+      Represents administrative/political hierarchy. Forms a DAG (Directed Acyclic Graph)
+      from Federal → State → County → City/Township.
+
+      Direction: Parent → Child (the parent ADMINISTERS the child)
+
+      Examples:
+      - (US) -[:ADMINISTERS]-> (US-CA)  # Federal administers California
+      - (US-CA) -[:ADMINISTERS]-> (US-CA-037)  # California administers LA County
+      - (US-CA-037) -[:ADMINISTERS]-> (US-CA-037-LA)  # LA County administers LA City
+
+    from_node: "Territory"
+    to_node: "Territory"
+
+    properties:
+      control_level:
+        type: "DOUBLE"
+        description: "Degree of administrative control (0-1)"
+        constraints: "[0.0, 1.0]"
+        semantics:
+          1.0: "Full de jure and de facto control"
+          0.7: "De jure control, limited enforcement"
+          0.3: "Nominal authority, mostly autonomous"
+          0.0: "No effective control"
+        default: 1.0
+
+      legal_status:
+        type: "ENUM"
+        values:
+          - "DE_JURE"      # Recognized legal authority
+          - "DE_FACTO"     # Actual control without legal recognition
+          - "CONTESTED"    # Multiple claimants
+          - "SUBVERSIVE"   # Player has infiltrated but State has legal control
+        description: |
+          DE_JURE: The controlling entity has recognized legal authority
+          DE_FACTO: Control exists but lacks formal recognition
+          CONTESTED: Multiple factions claim authority
+          SUBVERSIVE: Hidden player control (dual power situation)
+        default: "DE_JURE"
+
+    constraints:
+      - name: "no_cycles"
+        description: "ADMINISTERS must form a DAG (no territory administers itself)"
+        enforcement: "Application-level validation"
+
+      - name: "single_parent"
+        description: "Each territory has at most one administrative parent"
+        enforcement: "UNIQUE constraint on (to_node, edge_type)"
+        note: "Exception: contested territories may have multiple claimants"
+
+  ADJACENT_TO:
+    description: |
+      Represents physical adjacency (shared border). Forms a mesh/network graph.
+      This is the "Land as Material" topology - who can move where, who borders whom.
+
+      Direction: Bidirectional (if A borders B, B borders A)
+      Implementation: Store both directions explicitly for query efficiency
+
+      Examples:
+      - (US-CA) -[:ADJACENT_TO]-> (US-NV)  # California borders Nevada
+      - (US-CA) -[:ADJACENT_TO]-> (US-OR)  # California borders Oregon
+      - (US-CA) -[:ADJACENT_TO]-> (US-AZ)  # California borders Arizona
+
+    from_node: "Territory"
+    to_node: "Territory"
+
+    properties:
+      barrier_type:
+        type: "ENUM"
+        values:
+          - "NONE"       # Open border, easy movement
+          - "RIVER"      # River/water barrier
+          - "MOUNTAIN"   # Mountain range
+          - "HIGHWAY"    # Highway corridor (increases permeability)
+          - "BORDER"     # International border (special restrictions)
+          - "WALL"       # Physical barrier (e.g., border wall)
+        description: "Type of physical feature at the boundary"
+        default: "NONE"
+
+      permeability:
+        type: "DOUBLE"
+        description: "Ease of movement/influence across boundary (0-1)"
+        constraints: "[0.0, 1.0]"
+        semantics:
+          1.0: "Completely open, no friction"
+          0.7: "Minor barriers (river, mountains)"
+          0.3: "Significant barriers (controlled border)"
+          0.0: "Impassable (fortified wall, ocean)"
+        default: 1.0
+
+      border_length_km:
+        type: "DOUBLE"
+        description: "Length of shared border in kilometers"
+        constraints: ">= 0"
+        default: 0.0
+        note: "Used for calculating influence spread and military operations"
+
+    constraints:
+      - name: "bidirectional"
+        description: "If A-[:ADJACENT_TO]->B exists, B-[:ADJACENT_TO]->A must exist"
+        enforcement: "Application-level validation on insert"
+
+      - name: "no_self_loops"
+        description: "Territory cannot be adjacent to itself"
+        enforcement: "CHECK constraint"
+
+# =============================================================================
+# THE CHRONICLE: HISTORICAL TRACKING
+# =============================================================================
+
+chronicle:
+  description: |
+    The Chronicle stores historical snapshots enabling time-travel queries.
+    "What was California's controller in tick 50?" becomes a simple query.
+
+  tables:
+
+    TerritorySnapshot:
+      description: "Point-in-time snapshot of Territory state"
+      properties:
+        snapshot_id:
+          type: "INT64"
+          primary_key: true
+          auto_increment: true
+        territory_id:
+          type: "STRING"
+          foreign_key: "Territory.id"
+        tick:
+          type: "INT32"
+          description: "Simulation tick when snapshot was taken"
+        controller:
+          type: "STRING"
+        heat:
+          type: "DOUBLE"
+        population:
+          type: "INT64"
+        class_composition:
+          type: "MAP"
+      indexes:
+        - properties: ["territory_id", "tick"]
+          type: "COMPOSITE"
+          reason: "Fast lookup of territory state at specific tick"
+
+    EdgeSnapshot:
+      description: "Point-in-time snapshot of edge state"
+      properties:
+        snapshot_id:
+          type: "INT64"
+          primary_key: true
+          auto_increment: true
+        edge_type:
+          type: "STRING"
+          values: ["ADMINISTERS", "ADJACENT_TO"]
+        from_id:
+          type: "STRING"
+        to_id:
+          type: "STRING"
+        tick:
+          type: "INT32"
+        properties:
+          type: "MAP"
+          description: "Serialized edge properties at this tick"
+      indexes:
+        - properties: ["from_id", "to_id", "tick"]
+          type: "COMPOSITE"
+
+    SimulationEvent:
+      description: "Log of significant events for narrative reconstruction"
+      properties:
+        event_id:
+          type: "INT64"
+          primary_key: true
+          auto_increment: true
+        tick:
+          type: "INT32"
+        event_type:
+          type: "STRING"
+          description: "EventType enum value"
+        territory_id:
+          type: "STRING"
+          nullable: true
+        payload:
+          type: "MAP"
+          description: "Event-specific data"
+        created_at:
+          type: "TIMESTAMP"
+          default: "CURRENT_TIMESTAMP"
+
+  query_examples:
+    territory_at_tick: |
+      // What was California's state in tick 50?
+      MATCH (t:TerritorySnapshot)
+      WHERE t.territory_id = 'US-CA' AND t.tick <= 50
+      RETURN t
+      ORDER BY t.tick DESC
+      LIMIT 1
+
+    controller_timeline: |
+      // Timeline of who controlled Los Angeles
+      MATCH (t:TerritorySnapshot)
+      WHERE t.territory_id = 'US-CA-037-LA'
+      RETURN t.tick, t.controller
+      ORDER BY t.tick ASC
+
+    front_line_at_tick: |
+      // What territories were contested in tick 100?
+      MATCH (t:TerritorySnapshot)
+      WHERE t.tick = 100 AND t.controller = 'CONTESTED'
+      RETURN t.territory_id, t.heat
+
+# =============================================================================
+# HYDRATION STRATEGY
+# =============================================================================
+
+hydration:
+  description: |
+    Hydration is the process of loading a "Sector" from KuzuDB into NetworkX
+    for active simulation. The Tactical Cache holds only the nodes being
+    actively simulated this tick.
+
+  sector_selection:
+    description: "How to determine which territories to hydrate"
+
+    strategies:
+      conflict_zone:
+        description: "N-hop neighborhood around contested territories"
+        query: |
+          // Get all territories within 2 hops of contested zones
+          MATCH (contested:Territory {controller: 'CONTESTED'})
+          MATCH (t:Territory)
+          WHERE t = contested
+             OR EXISTS((t)-[:ADJACENT_TO*1..2]-(contested))
+          RETURN t
+        parameters:
+          hop_distance: 2
+          max_nodes: 500
+
+      player_focus:
+        description: "Territories where player has operations"
+        query: |
+          // Get player-controlled territories and neighbors
+          MATCH (player:Territory {controller: 'PLAYER'})
+          OPTIONAL MATCH (player)-[:ADJACENT_TO]-(neighbor)
+          OPTIONAL MATCH (player)<-[:ADMINISTERS*1..2]-(parent)
+          RETURN DISTINCT player, neighbor, parent
+
+      hot_zones:
+        description: "High-heat territories requiring State attention"
+        query: |
+          MATCH (t:Territory)
+          WHERE t.heat >= 0.5
+          RETURN t
+          ORDER BY t.heat DESC
+          LIMIT 100
+
+  hydration_protocol:
+    steps:
+      1_select_sector:
+        action: "Run sector selection query against KuzuDB"
+        output: "List of territory IDs to hydrate"
+
+      2_load_nodes:
+        action: "Fetch full Territory data for selected IDs"
+        query: |
+          MATCH (t:Territory)
+          WHERE t.id IN $territory_ids
+          RETURN t
+
+      3_load_edges:
+        action: "Fetch edges between hydrated nodes"
+        query: |
+          MATCH (a:Territory)-[e]-(b:Territory)
+          WHERE a.id IN $territory_ids AND b.id IN $territory_ids
+          RETURN a.id, type(e), e, b.id
+
+      4_build_networkx:
+        action: "Convert Kuzu results to NetworkX DiGraph"
+        code_pattern: |
+          graph = nx.DiGraph()
+          for territory in territories:
+              graph.add_node(territory.id, **territory.to_dict())
+          for edge in edges:
+              graph.add_edge(edge.from_id, edge.to_id, **edge.properties)
+
+      5_inject_into_engine:
+        action: "Pass hydrated graph to SimulationEngine"
+        note: "Engine code unchanged from Epoch 1"
+
+  boundary_handling:
+    description: "How to handle edges that cross sector boundaries"
+
+    strategy: "ghost_nodes"
+    explanation: |
+      When a hydrated node has edges to non-hydrated nodes, we create "ghost nodes"
+      with minimal data. Ghost nodes are read-only - changes to them are discarded.
+      This prevents edge-of-sector artifacts.
+
+    ghost_node_properties:
+      - "id"
+      - "name"
+      - "controller"
+      - "heat"
+    marker: "_is_ghost: true"
+
+# =============================================================================
+# FLUSH STRATEGY
+# =============================================================================
+
+flush:
+  description: |
+    Flush is the process of writing Tactical Cache changes back to the Strategic Map.
+    This happens at tick boundaries and must be atomic.
+
+  flush_protocol:
+    steps:
+      1_diff_detection:
+        action: "Compare current NetworkX state to pre-tick snapshot"
+        method: "Track dirty flags or hash node dictionaries"
+        output: "List of changed nodes and edges"
+
+      2_batch_update:
+        action: "Write changes to KuzuDB in single transaction"
+        query_pattern: |
+          // Update modified territories
+          UNWIND $updates AS u
+          MATCH (t:Territory {id: u.id})
+          SET t.controller = u.controller,
+              t.heat = u.heat,
+              t.population = u.population,
+              t.last_modified_tick = $current_tick
+
+      3_chronicle_append:
+        action: "Write snapshot to Chronicle tables"
+        condition: "Every N ticks or on significant events"
+        query: |
+          CREATE (s:TerritorySnapshot {
+            territory_id: $id,
+            tick: $tick,
+            controller: $controller,
+            heat: $heat,
+            population: $population
+          })
+
+      4_commit_transaction:
+        action: "Commit KuzuDB transaction"
+        on_failure: "Rollback and retry or halt simulation"
+
+  atomicity:
+    requirement: "Flush must be all-or-nothing"
+    implementation: "KuzuDB transactions with explicit BEGIN/COMMIT/ROLLBACK"
+    failure_handling: |
+      If flush fails:
+      1. Log error with full context
+      2. Attempt retry (up to 3 times)
+      3. If persistent failure, save NetworkX state to emergency file
+      4. Halt simulation with user notification
+
+  performance_optimization:
+    batch_size: 1000
+    description: "Process updates in batches to reduce transaction overhead"
+
+    chronicle_frequency:
+      default: "every_10_ticks"
+      on_event: "UPRISING, RUPTURE, PHASE_TRANSITION"
+      description: "Balance history granularity vs storage cost"
+
+# =============================================================================
+# QUERY PATTERNS
+# =============================================================================
+
+query_patterns:
+  description: "Common query patterns for Epoch 2 operations"
+
+  front_line_detection:
+    description: "Find territories at the boundary between factions"
+    query: |
+      MATCH (friendly:Territory)-[:ADJACENT_TO]-(hostile:Territory)
+      WHERE friendly.controller = 'PLAYER'
+        AND hostile.controller = 'STATE'
+      RETURN DISTINCT friendly.id, friendly.name, friendly.heat
+    use_case: "Identify where conflict will occur next"
+
+  supply_line_check:
+    description: "Verify path exists between two player territories"
+    query: |
+      MATCH path = shortestPath(
+        (a:Territory {id: $from})-[:ADJACENT_TO*]-(b:Territory {id: $to})
+      )
+      WHERE ALL(n IN nodes(path) WHERE n.controller IN ['PLAYER', 'NEUTRAL'])
+      RETURN path
+    use_case: "Check if reinforcements can reach isolated territory"
+
+  administrative_tree:
+    description: "Get full hierarchy for a territory"
+    query: |
+      MATCH (t:Territory {id: $territory_id})
+      MATCH path = (root:Territory)-[:ADMINISTERS*]->(t)
+      WHERE NOT EXISTS(()-[:ADMINISTERS]->(root))
+      RETURN nodes(path)
+    use_case: "Understand jurisdictional chain (Federal → State → County → City)"
+
+  encirclement_detection:
+    description: "Find player territories completely surrounded by enemy"
+    query: |
+      MATCH (player:Territory {controller: 'PLAYER'})
+      WHERE NOT EXISTS(
+        (player)-[:ADJACENT_TO]-(:Territory {controller: 'PLAYER'})
+      )
+      AND NOT EXISTS(
+        (player)-[:ADJACENT_TO]-(:Territory {controller: 'NEUTRAL'})
+      )
+      RETURN player.id, player.name
+    use_case: "Identify vulnerable positions for strategic planning"
+
+  heat_spread_candidates:
+    description: "Find territories likely to gain heat next tick"
+    query: |
+      MATCH (hot:Territory)-[:ADJACENT_TO]-(neighbor:Territory)
+      WHERE hot.heat >= 0.7 AND neighbor.heat < 0.5
+      RETURN neighbor.id, neighbor.heat, COUNT(hot) AS hot_neighbors
+      ORDER BY hot_neighbors DESC
+    use_case: "Predict State attention spread for evasion planning"
+
+# =============================================================================
+# MIGRATION PATH
+# =============================================================================
+
+migration:
+  description: "How to transition from Epoch 1 to Epoch 2"
+
+  epoch_1_preservation:
+    principle: "Epoch 1 code remains 100% unchanged"
+    reason: "Epoch 1 uses NetworkX + SQLite, which continues to work"
+    coexistence: "Games can run in Epoch 1 mode (small scale) or Epoch 2 mode (continental)"
+
+  initial_data_load:
+    source: "US Census Bureau geographic data + manual curation"
+    format: "GeoJSON or CSV with FIPS codes"
+    ingestion: "tools/init_epoch2_db.py creates schema and loads initial data"
+
+  phases:
+    phase_1_skeleton:
+      deliverables:
+        - "tools/init_epoch2_db.py (schema creation)"
+        - "Basic Territory and edge population"
+        - "Test with 50 states + DC"
+      timeline: "Epoch 2A"
+
+    phase_2_hydration:
+      deliverables:
+        - "src/babylon/data/kuzu_manager.py"
+        - "Hydration/flush protocol"
+        - "Integration with SimulationEngine"
+      timeline: "Epoch 2A-2B"
+
+    phase_3_chronicle:
+      deliverables:
+        - "Chronicle tables"
+        - "Historical query API"
+        - "Narrative Director integration"
+      timeline: "Epoch 2C"
+
+    phase_4_full_scale:
+      deliverables:
+        - "Load all 74k territories"
+        - "Performance optimization"
+        - "Sector management UI"
+      timeline: "Epoch 2D"
+
+# =============================================================================
+# TESTING STRATEGY
+# =============================================================================
+
+testing:
+  unit_tests:
+    location: "tests/unit/data/test_kuzu_manager.py"
+    patterns:
+      - "Test schema creation"
+      - "Test node CRUD operations"
+      - "Test edge CRUD operations"
+      - "Test query execution"
+
+  integration_tests:
+    location: "tests/integration/test_epoch2_persistence.py"
+    patterns:
+      - "Test hydration from Kuzu to NetworkX"
+      - "Test flush from NetworkX to Kuzu"
+      - "Test round-trip data integrity"
+      - "Test Chronicle snapshot creation"
+      - "Test historical queries"
+
+  fixtures:
+    in_memory_kuzu:
+      description: "Create ephemeral Kuzu database for tests"
+      pattern: |
+        @pytest.fixture
+        def kuzu_db(tmp_path):
+            db_path = tmp_path / "test.kuzu"
+            db = kuzu.Database(str(db_path))
+            conn = kuzu.Connection(db)
+            init_schema(conn)
+            yield conn
+            # Cleanup handled by tmp_path
+
+    sample_us_subset:
+      description: "Small representative sample for tests"
+      territories:
+        - "US (Federal)"
+        - "US-CA (California)"
+        - "US-NV (Nevada)"
+        - "US-AZ (Arizona)"
+        - "US-CA-037 (LA County)"
+        - "US-CA-059 (Orange County)"
+      edges:
+        ADMINISTERS:
+          - ["US", "US-CA"]
+          - ["US", "US-NV"]
+          - ["US", "US-AZ"]
+          - ["US-CA", "US-CA-037"]
+          - ["US-CA", "US-CA-059"]
+        ADJACENT_TO:
+          - ["US-CA", "US-NV"]
+          - ["US-CA", "US-AZ"]
+          - ["US-NV", "US-AZ"]
+          - ["US-CA-037", "US-CA-059"]

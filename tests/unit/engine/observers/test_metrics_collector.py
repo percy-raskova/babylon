@@ -1754,3 +1754,238 @@ class TestEdgeAggregationFix:
         # Aggregated values in CSV
         assert row["exploitation_tension"] == 0.7  # max
         assert row["exploitation_rent"] == 15.0  # sum
+
+
+# =============================================================================
+# BATCH 8: ECOLOGICAL METRICS EXTRACTION TESTS (Sprint 1.4C - The Wiring)
+# =============================================================================
+
+
+@pytest.mark.red_phase  # TDD RED phase - intentionally failing until GREEN phase
+class TestEcologicalMetricsExtraction:
+    """Tests for ecological metrics extraction from WorldState.
+
+    Sprint 1.4C: The Wiring - MetricsCollector must extract ecological
+    metrics (overshoot_ratio, total_biocapacity, total_consumption) from
+    WorldState computed fields.
+    """
+
+    def test_extracts_overshoot_ratio_from_world_state(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """MetricsCollector should extract overshoot_ratio from WorldState.
+
+        The overshoot_ratio computed field on WorldState should be captured
+        in the TickMetrics snapshot.
+        """
+        from babylon.models.entities.territory import Territory
+        from babylon.models.enums import SectorType
+
+        # Create state with overshoot conditions
+        territory = Territory(
+            id="T001",
+            name="Depleted",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=20.0,
+            max_biocapacity=100.0,
+        )
+        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.enums import SocialRole
+
+        entity = SocialClass(
+            id="C001",
+            name="Consumer",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=100.0,
+            s_bio=30.0,  # 30 + 10 = 40 consumption
+            s_class=10.0,
+        )
+        state = WorldState(
+            tick=0,
+            territories={"T001": territory},
+            entities={"C001": entity},
+        )
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # overshoot_ratio = 40 / 20 = 2.0
+        assert latest.overshoot_ratio == 2.0, (
+            f"Expected overshoot_ratio=2.0, got {latest.overshoot_ratio}. "
+            "Is MetricsCollector extracting WorldState.overshoot_ratio?"
+        )
+
+    def test_extracts_total_biocapacity_from_world_state(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """MetricsCollector should extract total_biocapacity from WorldState.
+
+        The total_biocapacity computed field sums all territory biocapacities.
+        """
+        from babylon.models.entities.territory import Territory
+        from babylon.models.enums import SectorType
+
+        territories = {
+            "T001": Territory(
+                id="T001",
+                name="Zone A",
+                sector_type=SectorType.INDUSTRIAL,
+                biocapacity=100.0,
+            ),
+            "T002": Territory(
+                id="T002",
+                name="Zone B",
+                sector_type=SectorType.RESIDENTIAL,
+                biocapacity=150.0,
+            ),
+        }
+        state = WorldState(tick=0, territories=territories)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.total_biocapacity == 250.0, (
+            f"Expected total_biocapacity=250.0, got {latest.total_biocapacity}. "
+            "Is MetricsCollector extracting WorldState.total_biocapacity?"
+        )
+
+    def test_extracts_total_consumption_from_world_state(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """MetricsCollector should extract total_consumption from WorldState.
+
+        The total_consumption computed field sums all entity consumption_needs.
+        """
+        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.enums import SocialRole
+
+        entities = {
+            "C001": SocialClass(
+                id="C001",
+                name="Class A",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                wealth=10.0,
+                s_bio=10.0,
+                s_class=5.0,
+            ),
+            "C002": SocialClass(
+                id="C002",
+                name="Class B",
+                role=SocialRole.CORE_BOURGEOISIE,
+                wealth=100.0,
+                s_bio=20.0,
+                s_class=15.0,
+            ),
+        }
+        state = WorldState(tick=0, entities=entities)
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        # Total = (10+5) + (20+15) = 50
+        assert latest.total_consumption == 50.0, (
+            f"Expected total_consumption=50.0, got {latest.total_consumption}. "
+            "Is MetricsCollector extracting WorldState.total_consumption?"
+        )
+
+    def test_ecological_metrics_default_when_no_territories(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Ecological metrics should default to 0.0 when no territories exist.
+
+        When there are no territories, total_biocapacity and overshoot_ratio
+        should use sensible defaults.
+        """
+        state = WorldState(tick=0, territories={})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.total_biocapacity == 0.0
+        # overshoot_ratio with 0 biocapacity should be handled (e.g., 0.0 or high)
+        # The exact handling depends on implementation
+        assert latest.overshoot_ratio >= 0.0
+
+    def test_ecological_metrics_in_csv_export(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """CSV export should include ecological metric columns.
+
+        The to_csv_rows() method should include overshoot_ratio,
+        total_biocapacity, and total_consumption columns.
+        """
+        from babylon.models.entities.territory import Territory
+        from babylon.models.enums import SectorType
+
+        territory = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+        )
+        state = WorldState(tick=0, territories={"T001": territory})
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        rows = collector.to_csv_rows()
+        assert len(rows) == 1
+        row = rows[0]
+
+        # Check ecological columns exist
+        assert "overshoot_ratio" in row, "Missing overshoot_ratio in CSV export"
+        assert "total_biocapacity" in row, "Missing total_biocapacity in CSV export"
+        assert "total_consumption" in row, "Missing total_consumption in CSV export"
+
+    def test_ecological_metrics_track_over_ticks(
+        self,
+        config: SimulationConfig,
+    ) -> None:
+        """Ecological metrics should update correctly over multiple ticks.
+
+        When WorldState changes, the collector should capture the new values.
+        """
+        from babylon.models.entities.territory import Territory
+        from babylon.models.enums import SectorType
+
+        territory_initial = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+        )
+        state0 = WorldState(tick=0, territories={"T001": territory_initial})
+
+        # After simulation, biocapacity changes
+        territory_depleted = Territory(
+            id="T001",
+            name="Test",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=75.0,  # Depleted from 100 -> 75
+        )
+        state1 = WorldState(tick=1, territories={"T001": territory_depleted})
+
+        collector = MetricsCollector(mode="batch")
+        collector.on_simulation_start(state0, config)
+        collector.on_tick(state0, state1)
+
+        history = collector.history
+        assert len(history) == 2
+
+        # Tick 0 should have biocapacity 100
+        assert history[0].total_biocapacity == 100.0
+        # Tick 1 should have biocapacity 75
+        assert history[1].total_biocapacity == 75.0

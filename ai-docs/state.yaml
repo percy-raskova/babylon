@@ -2,8 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.0"
+  version: "2.0.4"
   updated: "2025-12-26"
+  last_sprint: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -60,14 +61,37 @@ epoch_status:
 
     "1.4":
       name: "The Rift"
-      status: "IN_PROGRESS"
+      status: "COMPLETE"  # Core + Integration complete, only dashboard remains
       spec: "ai-docs/metabolic-slice.yaml"
-      deliverables_planned:
-        - "MetabolismSystem (biocapacity tracking)"
-        - "Territory.biocapacity field"
-        - "SocialClass.consumption_needs (s_bio + s_class)"
-        - "ECOLOGICAL_OVERSHOOT event"
+      deliverables_complete:
+        - "Territory metabolic fields (biocapacity, max_biocapacity, regeneration_rate, extraction_intensity)"
+        - "SocialClass consumption fields (s_bio, s_class, consumption_needs computed)"
+        - "WorldState computed properties (total_biocapacity, total_consumption, overshoot_ratio)"
+        - "calculate_biocapacity_delta() and calculate_overshoot_ratio() formulas"
+        - "ECOLOGICAL_OVERSHOOT EventType"
+        - "MetabolismSystem with 15 unit tests"
+        - "MetabolismSystem registered in DEFAULT_SYSTEMS (after TerritorySystem)"
+        - "Ecological metrics in TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
+        - "MetricsCollector extracts ecological state from WorldState"
+        - "Integration tests proving system runs in engine loop (15 tests)"
+        - "MetabolismDefines in GameDefines (entropy_factor, overshoot_threshold, max_overshoot_ratio)"
+        - "TopologyDefines in GameDefines (gaseous_threshold, condensation_threshold, vanguard_density_threshold)"
+        - "EconomyDefines additions (negligible_rent, negligible_subsidy)"
+        - "All magic numbers wired to GameDefines (no hardcoded thresholds in systems)"
+      deliverables_remaining:
+        - "Dashboard metabolic gauge (Slice 1.5)"
+        - "[DEFERRED] Wire ImperialRentSystem to set extraction_intensity (Epoch 2)"
       formula: "ΔB = Regeneration - (Extraction × Entropy_Factor)"
+      commits:
+        - "090a843: feat(metabolic): add Slice 1.4A material basis"
+        - "d215fff: test(metabolic): add comprehensive unit tests for Slice 1.4A"
+        - "ada50da: test(metabolic): add TDD Red Phase tests for MetabolismSystem"
+        - "fe7feb1: feat(metabolic): implement MetabolismSystem (TDD Green Phase)"
+        - "7563101: test(metabolic): add TDD RED phase tests for Sprint 1.4C"
+        - "ce5b888: feat(metabolic): wire MetabolismSystem into simulation engine (TDD Green Phase)"
+        - "8e2009c: refactor(defines): add MetabolismDefines and TopologyDefines"
+        - "e11cf6f: refactor(economic): wire negligible thresholds to GameDefines"
+        - "4609e4f: refactor(topology): wire phase thresholds to GameDefines"
 
     "1.5":
       name: "The Dashboard"
@@ -101,11 +125,13 @@ epoch_status:
 
   completion_criteria:
     - "[ ] 4-node Imperial Circuit running in dashboard"
-    - "[ ] MetabolismSystem depletes biocapacity over time"
+    - "[x] MetabolismSystem depletes biocapacity over time (Sprint 1.4B)"
+    - "[x] MetabolismSystem registered in engine (Sprint 1.4C)"
+    - "[x] Ecological metrics collected by MetricsCollector (Sprint 1.4C)"
     - "[ ] ECOLOGICAL_OVERSHOOT fires at ~30-50 ticks"
     - "[ ] Dashboard shows rift widening visually"
     - "[ ] Endgame screen displays outcome based on solidarity"
-    - "[x] Tests pass (current: 2248)"
+    - "[x] Tests pass (current: 2464)"
 
   future_epochs:
     epoch_2:
@@ -272,9 +298,39 @@ implemented:
 
       world_state:
         status: "complete"
-        details: "Immutable state with NetworkX graph conversion"
+        details: "Immutable state with NetworkX graph conversion, state_finances integration"
         location: "src/babylon/models/world_state.py"
-        tests: "tests/unit/models/test_world_state.py (35 tests)"
+        tests: "tests/unit/models/test_world_state.py (41 tests)"
+        state_finances_integration:
+          field: "state_finances: dict[str, StateFinance]"
+          graph_storage: "G.graph['state_finances'] metadata"
+          tests: "TestStateFinancesIntegration (6 tests)"
+
+      finance_models:
+        status: "complete"
+        details: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
+        spec: "ai-docs/political-economy-liquidity.yaml"
+        location: "src/babylon/models/entities/"
+        tests: "tests/unit/models/ (187 tests)"
+        models:
+          state_finance:
+            location: "src/babylon/models/entities/state_finance.py"
+            fields: ["treasury", "police_budget", "social_reproduction_budget", "tax_rate", "tribute_income", "debt_level", "debt_ceiling"]
+            computed: ["burn_rate"]
+            tests: "test_state_finance.py (55 tests)"
+          revolutionary_finance:
+            location: "src/babylon/models/entities/revolutionary_finance.py"
+            fields: ["war_chest", "operational_burn", "dues_income", "expropriation_income", "donor_income", "heat", "reformist_drift"]
+            tests: "test_revolutionary_finance.py (56 tests)"
+          precarity_state:
+            location: "src/babylon/models/entities/precarity_state.py"
+            fields: ["nominal_wage", "ppp_factor", "inflation_index", "subsistence_threshold", "organization"]
+            computed: ["real_wage", "precarity_index", "proletarianization_risk"]
+            tests: "test_precarity_state.py (65 tests)"
+        cost_checking:
+          location: "src/babylon/engine/simulation_engine.py"
+          behavior: "Logs warning when treasury < burn_rate"
+          tests: "TestCostChecking (5 tests)"
 
       simulation_config:
         status: "complete"
@@ -661,10 +717,15 @@ current_focus:
 
   current_slice:
     epoch: 1
-    slice: "1.4"
-    name: "The Rift"
-    spec: "ai-docs/metabolic-slice.yaml"
-    goal: "MetabolismSystem depletes biocapacity, triggers ECOLOGICAL_OVERSHOOT"
+    slice: "1.5"
+    name: "The Dashboard"
+    spec: "ai-docs/state.yaml (Slice 1.5 section)"
+    goal: "Wire 4-node Imperial Circuit to dashboard, add metabolic gauge"
+    previous_slice:
+      slice: "1.4"
+      name: "The Rift"
+      status: "COMPLETE"
+      note: "MetabolismSystem integrated, ecological metrics collected"
 
   epoch_1_scope:
     description: "Playable demo showing Imperial Circuit self-destruction"
@@ -748,6 +809,11 @@ current_focus:
     - "Phase 4.1: MetricsCollector observer - unified metrics for dashboard/sweeper (TDD: 101 tests)"
     - "Phase 4.1: Metrics Pydantic models (EntityMetrics, EdgeMetrics, TickMetrics, SweepSummary)"
     - "Phase 4.1: Dashboard integration - MetricsCollector registered as Simulation observer"
+    - "Political Economy of Liquidity Epoch 1: StateFinance model (55 tests)"
+    - "Political Economy of Liquidity Epoch 1: RevolutionaryFinance model (56 tests)"
+    - "Political Economy of Liquidity Epoch 1: PrecarityState model with computed fields (65 tests)"
+    - "Political Economy of Liquidity Epoch 1: WorldState.state_finances integration (6 tests)"
+    - "Political Economy of Liquidity Epoch 1: Cost-checking in step() (5 tests)"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -1241,11 +1307,15 @@ current_focus:
 
   next_steps:
     # Using Epoch + Slice model - see ai-docs/epochs-overview.md
-    current_work: "Slice 1.4: The Rift (MetabolismSystem)"
+    current_work: "Slice 1.5: The Dashboard (wire 4-node scenario, metabolic gauge)"
     epoch_1_remaining:
-      - "Slice 1.4: The Rift - MetabolismSystem + ECOLOGICAL_OVERSHOOT"
-      - "Slice 1.5: The Dashboard - wire 4-node scenario, meaningful metrics"
+      - "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
       - "Slice 1.6: The Endgame - win/lose display based on solidarity"
+    epoch_1_completed:
+      - "Slice 1.1: The Circuit - ImperialRentSystem, 4-node scenario"
+      - "Slice 1.2: The Struggle - StruggleSystem, TerritorySystem"
+      - "Slice 1.3: The Observer - SimulationObserver, TopologyMonitor, MetricsCollector"
+      - "Slice 1.4: The Rift - MetabolismSystem, ecological metrics (Sprint 1.4A/B/C)"
     epoch_2_planned:
       - "Slice 2.1: Demographic Resolution (ai-docs/demographics-spec.yaml)"
       - "Slice 2.2: Player Controls"
@@ -1366,10 +1436,10 @@ current_focus:
     - "Agitation without solidarity produces fascism, not revolution."
     - "Fascism is the defensive form of capitalism."
     - "A flat line on a fancy graph is still a flat line."
-  milestone: "EPOCH MODEL: Restructured roadmap using Epoch + Slice model"
-  next_milestone: "Slice 1.4: The Rift - implement MetabolismSystem"
-  test_count: 2248
-  test_count_note: "Updated 2025-12-26 - Verified via pytest --collect-only"
+  milestone: "Political Economy of Liquidity Epoch 1 COMPLETE: Finance models + WorldState integration"
+  next_milestone: "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
+  test_count: 2651
+  test_count_note: "Updated 2025-12-26 - Political Economy of Liquidity Epoch 1 complete, 187 new tests"
 
   metrics_audit:
     date: "2025-12-25"

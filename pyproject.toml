@@ -193,6 +193,10 @@ update_changelog_on_bump = true
 # Results saved to .mutmut-cache (SQLite), view with: mutmut results
 paths_to_mutate = ["src/babylon/"]
 tests_dir = ["tests/unit/"]
+# Copy full src/ and tools/ so all imports and path tests work
+also_copy = ["src/", "tools/"]
+# Disable debug for production runs (enable when troubleshooting)
+debug = false
 
 # =============================================================================
 # BABYLON LOGGING CONFIGURATION

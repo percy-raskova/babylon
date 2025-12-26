@@ -118,14 +118,14 @@ epoch_status:
         "2.3": "Reproductive Labor"
         "2.4": "The Wire - Narrative Warfare (ai-docs/gramscian-wire-vision.yaml)"
         "2.5": "Multiple Scenarios"
+        "2.6": "Kinetic Warfare - System Disruption (ai-docs/kinetic-warfare.yaml)"
     epoch_3:
       name: "The Platform"
       thesis: "Others can build on this. Modding, custom scenarios, educational tools."
       slices:
-        "3.1": "Kinetic Warfare"
-        "3.2": "Liberation Mechanics"
-        "3.3": "Scenario Editor"
-        "3.4": "Modding API"
+        "3.1": "Liberation Mechanics"
+        "3.2": "Scenario Editor"
+        "3.3": "Modding API"
 
 # =============================================================================
 # IMPLEMENTATION STATUS

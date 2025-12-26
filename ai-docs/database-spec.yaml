@@ -2,9 +2,9 @@
 # Logical Data Dictionary for the Ledger Component
 
 meta:
-  version: "1.1.0"
+  version: "1.2.0"
   created: "2025-12-09"
-  updated: "2025-12-09"
+  updated: "2025-12-26"
   purpose: "Source of truth for the Ledger layer domain model storage"
   contents:
     - "Logical Data Dictionary - conceptual entity definitions"
@@ -13,8 +13,106 @@ meta:
     - "Query Patterns - common SQL queries"
   related_docs:
     - "ai-docs/architecture.yaml - Embedded Trinity overview"
+    - "ai-docs/topology-system.yaml - Graph Abstraction Layer"
     - "ai-docs/entities.yaml - Entity reference"
     - "src/babylon/models/entities/ - Pydantic implementations"
+
+# =============================================================================
+# LAYER DISTINCTION: LEDGER vs TOPOLOGY
+# =============================================================================
+
+layer_distinction:
+  description: |
+    IMPORTANT: This specification covers the LEDGER layer (SQLite).
+    The TOPOLOGY layer uses a separate Graph Abstraction Layer (GraphProtocol).
+
+    These are two distinct components of the Embedded Trinity architecture.
+
+  ledger_layer:
+    purpose: "Persistent storage for entities (cold storage)"
+    technology: "SQLite 3.x"
+    location: "src/babylon/data/babylon.db"
+    used_for:
+      - "Save/load game state"
+      - "Checkpointing and crash recovery"
+      - "Historical snapshots"
+      - "Between-session persistence"
+    pattern: |
+      HYDRATION: Load from SQLite → Pydantic models → WorldState
+      DEHYDRATION: WorldState → Pydantic models → Write to SQLite
+    constraint: "NO Ledger I/O during simulation tick"
+
+  topology_layer:
+    purpose: "Hot computation graph (in-memory)"
+    technology: "Graph Abstraction Layer (GraphProtocol)"
+    spec: "ai-docs/topology-system.yaml"
+    used_for:
+      - "Simulation tick execution"
+      - "Edge traversal (solidarity, exploitation)"
+      - "Percolation analysis"
+      - "System calculations"
+    pattern: |
+      WorldState.to_graph() → NetworkX DiGraph (or future adapter)
+      Systems mutate graph → WorldState.from_graph()
+    constraint: "All tick operations in RAM, no database queries"
+
+    adapters:
+      current:
+        name: "NetworkXAdapter"
+        backing: "networkx.DiGraph"
+        epoch: "1 and 2 (MVP)"
+        status: "IMPLEMENTED (inline in WorldState)"
+      future:
+        name: "DuckDBAdapter"
+        backing: "DuckDB + DuckPGQ"
+        epoch: "3+ (Platform)"
+        status: "PLANNED"
+
+  relationship: |
+    ┌──────────────┐     HYDRATE      ┌──────────────┐     to_graph()    ┌──────────────┐
+    │   LEDGER     │ ───────────────► │  WorldState  │ ───────────────► │   TOPOLOGY   │
+    │   (SQLite)   │  load_state()    │  (Pydantic)  │                   │   (Graph)    │
+    │              │                  │              │                   │              │
+    │  Cold        │                  │  Bridge      │                   │  Hot         │
+    │  Storage     │                  │  Model       │                   │  Compute     │
+    └──────────────┘                  └──────────────┘                   └──────────────┘
+           ▲                                                                    │
+           │                                                                    │
+           │                         DEHYDRATE                                  │
+           └────────────────────────────────────────────────────────────────────┘
+                               save_state() ← from_graph()
+
+  future_evolution:
+    description: "DuckDB may eventually UNIFY Ledger and Topology"
+    timeline: "Epoch 3+ (Platform)"
+    rationale: |
+      DuckDB + DuckPGQ enables both relational queries (Ledger operations)
+      AND graph queries (Topology operations) in a single database.
+
+      Benefits of unification:
+      - Single database file for entire game state
+      - Native graph algorithms (shortest path, centrality)
+      - SQL + GQL in same query
+      - Better performance for large scenarios
+      - Simplified persistence (no hydration/dehydration)
+
+    migration_path:
+      - "Phase 1: Implement GraphProtocol interface"
+      - "Phase 2: Create DuckDBAdapter for Topology"
+      - "Phase 3: Migrate Ledger tables to DuckDB"
+      - "Phase 4: Deprecate SQLite, unify to DuckDB"
+      - "Phase 5: Enable DuckPGQ graph queries"
+
+  key_insight: |
+    The Ledger (SQLite) and Topology (NetworkX) are SEPARATE systems today.
+    This separation exists because:
+    1. Different access patterns (batch I/O vs. per-tick traversal)
+    2. Different consistency requirements (ACID vs. in-memory speed)
+    3. Historical accident (built incrementally)
+
+    The Graph Abstraction Layer enables future unification without
+    rewriting the simulation engine. The GraphProtocol interface
+    abstracts away the backing store.
 
 # =============================================================================
 # LOGICAL DATA DICTIONARY

@@ -1,0 +1,1391 @@
+# State Repression Engine Specification
+# Machine-readable reference for modeling state violence as constrained system
+#
+# Core Insight: The State is not omnipotent. It is bound by Legitimacy.
+# The more illegitimate it becomes, the more desperate and self-destructive its actions.
+# "The mask of democracy is expensive to maintain, but cheaper than open war."
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-26"
+  status: "SPECIFICATION"
+  author: "Systems Architecture"
+  depends_on:
+    - "topology-system.yaml"
+    - "state.yaml"
+    - "observer-layer.yaml"
+  implements:
+    epoch: 2
+    sub_epoch: "2C"
+    slice: "2.9"
+    name: "The Panopticon"
+
+overview:
+  purpose: |
+    Model state repression as a CONSTRAINED REACTIVE SYSTEM, not an omnipotent
+    antagonist. The State must balance violence against legitimacy costs, economic
+    consequences, and the fundamental contradiction that escalation destroys the
+    base it seeks to protect.
+
+  core_insight: |
+    The State operates under "Rules of Engagement" (ROE) determined by its
+    Legitimacy resource. High legitimacy enables subtle control (COINTELPRO).
+    Low legitimacy forces desperate violence that accelerates collapse.
+
+    Historical grounding:
+    - Tier 1: FBI COINTELPRO (1956-1971), modern surveillance capitalism
+    - Tier 2: Weimar Germany emergency powers, Ferguson 2014, Hong Kong 2019
+    - Tier 3: Syria 2011-present, Myanmar coup, Pinochet's Chile
+
+  philosophical_basis: |
+    "Hegemony" (Gramsci): The State prefers to rule by consent, not force.
+    Force is expensive, reveals the class nature of the state, and radicalizes
+    the population. The "Mask of Legitimacy" is the State's most valuable asset.
+
+    When the mask slips, the State faces a dilemma:
+    - Escalate → Destroy legitimacy → Destroy economic base → Collapse
+    - De-escalate → Appear weak → Embolden opposition → Lose control
+
+    This is the "Legitimacy Trap" - the State cannot win by escalation alone.
+
+# =============================================================================
+# SECTION 1: THE LEGITIMACY STATE MACHINE (ROE TIERS)
+# =============================================================================
+
+legitimacy_state_machine:
+  description: |
+    Legitimacy is the State's primary resource for maintaining control without
+    overt violence. It represents "manufactured consent" - the population's
+    belief that the State has the right to rule.
+
+  legitimacy_resource:
+    type: "Annotated[float, Ge(0.0), Le(100.0)]"
+    default: 75.0
+    description: "Manufactured consent level (0 = failed state, 100 = total hegemony)"
+
+    depletion_triggers:
+      excessive_force:
+        event: "EventType.EXCESSIVE_FORCE"
+        formula: "legitimacy_delta = -visibility × casualty_factor × media_coverage"
+        description: "Police brutality caught on camera devastates legitimacy"
+
+      uprising_suppression:
+        event: "EventType.UPRISING"
+        formula: "legitimacy_delta = -uprising_size × violence_level × international_attention"
+        description: "Crushing protests with force reveals state's true nature"
+
+      economic_crisis:
+        trigger: "pool_ratio < 0.3"
+        formula: "legitimacy_delta = -crisis_severity × (1 - propaganda_effectiveness)"
+        description: "When the economy fails, the social contract breaks"
+
+      collateral_damage:
+        trigger: "civilian_casualties > 0"
+        formula: "legitimacy_delta = -casualties × (1 + international_coverage)"
+        description: "Killing civilians destroys the 'protection' narrative"
+
+      international_condemnation:
+        trigger: "external_pressure_events"
+        formula: "legitimacy_delta = -pressure_level × dependency_on_foreign_capital"
+        description: "Sanctions and condemnation matter when you need foreign investment"
+
+    regeneration_triggers:
+      reform_theater:
+        action: "cosmetic_policy_change"
+        formula: "legitimacy_delta = +reform_visibility × (1 - population_cynicism)"
+        description: "Announce reforms without changing power structures"
+
+      npic_absorption:
+        action: "co-opt_activist_leaders"
+        formula: "legitimacy_delta = +leader_profile × grant_amount / movement_size"
+        description: "Non-Profit Industrial Complex: buy off opposition leaders"
+
+      economic_stability:
+        trigger: "pool_ratio > 0.7 AND unemployment < 0.1"
+        formula: "legitimacy_delta = +stability_factor × consumer_confidence"
+        description: "Bread and circuses - prosperity buys consent"
+
+      propaganda_success:
+        action: "narrative_control"
+        formula: "legitimacy_delta = +media_penetration × message_consistency"
+        description: "Control the story, control the population"
+
+  roe_tiers:
+    tier_1_civil_order:
+      name: "Civil Order"
+      alias: "The Mask of Legitimacy"
+      threshold: "legitimacy > 60"
+
+      description: |
+        The State operates within the liberal democratic framework. Violence is
+        hidden, individualized, and plausibly deniable. The primary weapons are
+        legal, financial, and psychological.
+
+      constraints:
+        kinetic_violence: "BANNED - Any use triggers tier transition"
+        mass_arrests: "BANNED - Must use individual prosecutions"
+        military_deployment: "BANNED - Only police allowed"
+        curfews: "BANNED - Must maintain appearance of freedom"
+
+      available_tools:
+        police:
+          description: "Routine policing, traffic stops, 'wellness checks'"
+          heat_generation: "LOW"
+          legitimacy_cost: 0
+          targeting: "individual"
+
+        courts:
+          description: "Prosecutions, injunctions, restraining orders"
+          heat_generation: "NONE"
+          legitimacy_cost: 0
+          targeting: "individual"
+          effect: "Remove target from organizing for X turns (prison)"
+
+        fines:
+          description: "Civil penalties, permit violations, tax audits"
+          heat_generation: "NONE"
+          legitimacy_cost: 0
+          targeting: "individual OR organization"
+          effect: "Drain revolutionary resources"
+
+        npic_grants:
+          description: "Fund 'moderate' organizations, co-opt leadership"
+          heat_generation: "NONE"
+          legitimacy_cost: 0
+          targeting: "organization"
+          effect: "Reduce militancy, redirect energy to reform"
+
+        surveillance:
+          description: "Warrantless monitoring, metadata collection, informants"
+          heat_generation: "LOW"
+          legitimacy_cost: 0
+          targeting: "network"
+          effect: "Increase state intel_level"
+
+        cointelpro:
+          description: "Active measures against organization (see Section 2)"
+          heat_generation: "NONE"
+          legitimacy_cost: 0
+          targeting: "network topology"
+          effect: "Degrade solidarity edges, inject suspicion"
+
+      economic_mode:
+        imperial_rent_efficiency: 1.0
+        gdp_modifier: 1.0
+        capital_flight: 0.0
+        description: "Business as usual - full extraction, no disruption"
+
+      narrative_frame: "Democracy is working. Change happens slowly. Trust the process."
+
+    tier_2_state_of_exception:
+      name: "State of Exception"
+      alias: "The Grey Zone"
+      threshold: "20 < legitimacy <= 60"
+
+      description: |
+        The liberal democratic facade cracks. Emergency powers are invoked.
+        Violence becomes visible but is framed as "temporary" and "necessary."
+        The State hemorrhages legitimacy with each action.
+
+      constraints:
+        kinetic_violence: "LIMITED - Rubber bullets, tear gas, batons"
+        mass_arrests: "ALLOWED - But each costs legitimacy"
+        military_deployment: "ALLOWED - National Guard, not active duty"
+        curfews: "ALLOWED - But costs legitimacy per day active"
+
+      available_tools:
+        riot_control:
+          description: "Tear gas, rubber bullets, water cannons, sound weapons"
+          heat_generation: "HIGH"
+          legitimacy_cost: 5
+          targeting: "territory"
+          effect: "Disperse gatherings, inflict injuries"
+
+        curfews:
+          description: "Restrict movement, justify stops and arrests"
+          heat_generation: "MEDIUM"
+          legitimacy_cost: 2  # per tick active
+          targeting: "territory"
+          effect: "Reduce organizational capacity in area"
+
+        mass_arrests:
+          description: "Kettle and arrest large groups"
+          heat_generation: "HIGH"
+          legitimacy_cost: 3  # per 100 arrested
+          targeting: "gathering"
+          effect: "Remove activists, but fills cells with radicalizers"
+
+        national_guard:
+          description: "Military forces in domestic role"
+          heat_generation: "VERY_HIGH"
+          legitimacy_cost: 10  # per deployment
+          targeting: "territory"
+          effect: "Overwhelming force presence"
+
+        cointelpro:
+          description: "Continues from Tier 1, more aggressive"
+          heat_generation: "NONE"
+          legitimacy_cost: 0
+          targeting: "network topology"
+          effect: "Accelerated operations, higher risk of exposure"
+
+      economic_mode:
+        imperial_rent_efficiency: 0.75
+        gdp_modifier: 0.75
+        capital_flight: 0.25
+        description: |
+          Capital begins fleeing. Insurance costs spike. Tourism collapses.
+          The economic base that funds repression begins to erode.
+
+      economic_effects:
+        capital_flight:
+          trigger: "tier_transition_to_2"
+          formula: "imperial_rent_pool -= pool × 0.25"
+          description: "Capitalists move assets offshore"
+
+        insurance_crisis:
+          trigger: "riot_control OR mass_arrests"
+          formula: "territory.economic_output -= damage_claims"
+          description: "Property damage claims overwhelm insurers"
+
+        supply_chain_disruption:
+          trigger: "curfews"
+          formula: "logistics_efficiency -= curfew_duration × 0.1"
+          description: "Workers can't get to work, goods can't move"
+
+      narrative_frame: "Temporary measures for public safety. Order will be restored."
+
+    tier_3_open_war:
+      name: "Open War"
+      alias: "The Mask Off"
+      threshold: "legitimacy <= 20"
+
+      description: |
+        The State abandons any pretense of legitimacy. This is civil war.
+        The State can deploy maximum violence, but at catastrophic cost.
+        Imperial rent collection halts. The economy collapses.
+
+      constraints:
+        kinetic_violence: "UNLIMITED - But destroys everything"
+        mass_arrests: "IRRELEVANT - Shooting replaces arresting"
+        military_deployment: "FULL - Active duty, armor, air support"
+        curfews: "IRRELEVANT - Martial law in effect"
+
+      available_tools:
+        qrf:
+          description: "Quick Reaction Force - special operations, targeted raids"
+          heat_generation: "EXTREME"
+          legitimacy_cost: 15
+          targeting: "cell"
+          effect: "Eliminate specific targets, high collateral risk"
+
+        drone_strikes:
+          description: "Aerial surveillance and kinetic strikes"
+          heat_generation: "EXTREME"
+          legitimacy_cost: 20
+          targeting: "coordinates"
+          effect: "Precision destruction, but civilian casualties likely"
+
+        artillery:
+          description: "Heavy weapons against urban areas"
+          heat_generation: "EXTREME"
+          legitimacy_cost: 50
+          targeting: "territory"
+          effect: "Area denial, mass casualties, infrastructure destruction"
+
+        death_squads:
+          description: "Extrajudicial killings by state-aligned paramilitaries"
+          heat_generation: "EXTREME"
+          legitimacy_cost: 25
+          targeting: "individual"
+          effect: "Terror, but creates martyrs"
+
+      economic_mode:
+        imperial_rent_efficiency: 0.0
+        gdp_modifier: 0.25
+        capital_flight: 1.0
+        description: |
+          Imperial rent collection HALTS. All mobile capital has fled.
+          State runs on emergency reserves, foreign loans, or asset seizure.
+          Economy is in freefall.
+
+      economic_effects:
+        total_capital_flight:
+          trigger: "tier_transition_to_3"
+          formula: "imperial_rent_pool = 0"
+          description: "Every capitalist who can flee has fled"
+
+        infrastructure_destruction:
+          trigger: "artillery OR drone_strikes"
+          formula: "territory.economic_capacity -= strike_intensity"
+          description: "You cannot extract rent from rubble"
+
+        international_sanctions:
+          trigger: "civilian_casualties > threshold"
+          formula: "foreign_trade *= 0.1"
+          description: "Pariah state status, isolated from global economy"
+
+        hyperinflation:
+          trigger: "prolonged_tier_3"
+          formula: "currency_value *= 0.5 per tick"
+          description: "State prints money to fund war, currency collapses"
+
+      narrative_frame: "The enemy within must be destroyed. No mercy."
+
+  tier_transition_logic:
+    description: |
+      Tier transitions occur automatically when legitimacy crosses thresholds.
+      Transitions are STICKY - it's harder to regain legitimacy than to lose it.
+
+    downward_transition:
+      trigger: "legitimacy crosses threshold downward"
+      event: "LEGITIMACY_CRISIS"
+      effects:
+        - "Emit tier transition event"
+        - "Apply economic consequences immediately"
+        - "Unlock new repression tools"
+        - "State AI recalculates strategy"
+
+    upward_transition:
+      trigger: "legitimacy crosses threshold upward"
+      conditions:
+        - "No UPRISING events in last 10 ticks"
+        - "No active combat operations"
+        - "Successful reform/propaganda campaign"
+      event: "LEGITIMACY_RECOVERY"
+      effects:
+        - "Emit tier transition event"
+        - "Lock higher-tier repression tools"
+        - "Begin economic recovery (gradual)"
+
+    hysteresis:
+      description: "Upward transitions require crossing threshold + buffer"
+      buffer: 5
+      example: "To exit Tier 2 (threshold 60), must reach legitimacy 65"
+      rationale: "Trust is hard to rebuild. Population remembers violence."
+
+# =============================================================================
+# SECTION 2: THE COINTELPRO MODULE (THE "MIND")
+# =============================================================================
+
+cointelpro_module:
+  description: |
+    COINTELPRO (Counter Intelligence Program) models the State's ability to
+    attack revolutionary organization from within. Unlike kinetic violence,
+    COINTELPRO targets the NETWORK TOPOLOGY - the solidarity edges that enable
+    coordination.
+
+    Historical basis: FBI's actual COINTELPRO (1956-1971) targeted Black Panthers,
+    American Indian Movement, Students for a Democratic Society, and others.
+    Tactics included: infiltration, psychological warfare, legal harassment,
+    and assassination.
+
+  primary_target: "SOLIDARITY edges in topology graph"
+  secondary_target: "High-centrality nodes (leaders, organizers)"
+  operational_constraint: "Only available in Tier 1 and Tier 2"
+
+  resources:
+    intel_budget:
+      source: "StateFinance.repression_budget"
+      allocation: "Percentage of repression budget for COINTELPRO"
+      default: 0.4  # 40% of repression budget
+      description: "Funds infiltrators, informants, operations"
+
+    intel_level:
+      type: "Probability [0, 1]"
+      description: "State's knowledge of revolutionary network topology"
+      initial: 0.1
+      growth: "Increases with successful surveillance and informants"
+      decay: "Decreases when cells practice good OPSEC"
+
+  operations:
+    bad_jacketing:
+      description: |
+        "Bad-jacketing" creates suspicion that a legitimate activist is actually
+        a police informant. This exploits organizational paranoia to trigger
+        internal purges, destroying solidarity edges from within.
+
+        Historical example: FBI spread rumors that BPP members were informants,
+        leading to internal trials and sometimes executions of loyal members.
+
+      target: "SOLIDARITY edge with high centrality or strength"
+
+      parameters:
+        suspicion_injection_rate:
+          type: "Coefficient [0, 1]"
+          default: 0.15
+          description: "Base rate of suspicion added to edge per operation"
+
+        paranoia_multiplier:
+          type: "Coefficient [1, 3]"
+          source: "Inverse of target cell's discipline"
+          formula: "multiplier = 1 + (1 - cell_discipline)"
+          description: "Low-discipline cells are more susceptible"
+
+        operation_cost:
+          type: "Currency"
+          formula: "base_cost × target_edge_strength"
+          description: "Stronger edges are harder to break"
+
+      logic_pseudocode: |
+        def execute_bad_jacket(edge, intel_budget):
+            # Check if operation is affordable
+            cost = DEFINES.bad_jacket_base_cost * edge.solidarity_strength
+            if cost > intel_budget:
+                return OperationResult.INSUFFICIENT_FUNDS
+
+            # Calculate suspicion injection
+            cell_discipline = get_cell_discipline(edge.target_node)
+            paranoia_factor = 1 + (1 - cell_discipline)
+            suspicion_delta = DEFINES.suspicion_injection_rate * paranoia_factor
+
+            # Apply suspicion to edge
+            edge.suspicion += suspicion_delta
+            intel_budget -= cost
+
+            # Check for internal purge trigger
+            if edge.suspicion > edge.solidarity_strength:
+                # Cell turns on itself
+                emit_event(INTERNAL_PURGE, edge)
+                remove_edge(edge)  # Solidarity destroyed
+                return OperationResult.CRITICAL_SUCCESS
+
+            return OperationResult.PARTIAL_SUCCESS
+
+      event_triggers:
+        - type: "BAD_JACKET_OPERATION"
+          fields: [target_edge_id, suspicion_added, cost]
+
+        - type: "INTERNAL_PURGE"
+          condition: "suspicion > solidarity_strength"
+          fields: [edge_destroyed, casualties]
+
+      counter_measures:
+        organizational_discipline:
+          description: "High discipline reduces paranoia_multiplier"
+          formula: "paranoia_factor = 1 + (1 - discipline)"
+          threshold: "At discipline >= 0.9, paranoia_factor = 1.1 (near immune)"
+
+        transparency_culture:
+          description: "Open communication surfaces suspicions for group evaluation"
+          effect: "Suspicion decays by 10% per tick if cell has transparency policy"
+
+        counter_intelligence:
+          description: "Dedicated CI function can detect bad-jacket operations"
+          formula: "detection_chance = ci_investment × base_detection_rate"
+          effect: "If detected, suspicion is removed and State pays exposure cost"
+
+    false_flag_proposals:
+      description: |
+        State agents embedded in revolutionary organizations propose missions
+        designed to trap the player. These missions appear valuable but lead to:
+        - Exposure (high heat generation)
+        - Civilian casualties (player loses legitimacy)
+        - Asset seizure (resource loss)
+        - Arrests (cell members captured)
+
+        Historical example: COINTELPRO agents proposed violent actions to entrap
+        activists, creating evidence for prosecution.
+
+      target: "Player's mission queue / strategic decision-making"
+
+      parameters:
+        trap_value_inflation:
+          type: "Coefficient [1.5, 3.0]"
+          default: 2.0
+          description: "False flag missions appear 2x more valuable than reality"
+
+        detection_base_rate:
+          type: "Probability"
+          default: 0.2
+          description: "Base chance player detects the trap"
+
+        discipline_detection_bonus:
+          type: "Coefficient"
+          formula: "cell_discipline × 0.5"
+          description: "Disciplined cells are better at vetting missions"
+
+      trap_types:
+        exposure_trap:
+          description: "Mission generates maximum heat, reveals cell location"
+          actual_outcome: "heat += 0.8, territory flagged as hostile"
+          presented_as: "Low-risk intelligence gathering operation"
+
+        atrocity_trap:
+          description: "Mission causes civilian casualties, damages player legitimacy"
+          actual_outcome: "player_legitimacy -= casualties × visibility"
+          presented_as: "Strike against valid military target"
+
+        seizure_trap:
+          description: "Mission walks into prepared ambush, loses resources"
+          actual_outcome: "resources -= mission_investment, casualties likely"
+          presented_as: "Weapons cache acquisition opportunity"
+
+        arrest_trap:
+          description: "Mission is monitored, participants arrested on return"
+          actual_outcome: "participating_cadre moved to IMPRISONED status"
+          presented_as: "Routine organizational task"
+
+      logic_pseudocode: |
+        def generate_false_flag(player_mission_queue, infiltrator):
+            # Select trap type based on State priorities
+            if state.priority == "exposure":
+                trap = ExposureTrap()
+            elif state.priority == "attrition":
+                trap = SeizureTrap()
+            else:
+                trap = random.choice(ALL_TRAP_TYPES)
+
+            # Inflate apparent value
+            trap.presented_value = trap.actual_value * DEFINES.trap_value_inflation
+
+            # Add to player's queue (appears as normal mission)
+            player_mission_queue.add(trap.as_mission())
+
+            return trap
+
+        def player_selects_mission(mission, cell):
+            if mission.is_false_flag:
+                # Check for detection
+                detection_chance = DEFINES.detection_base_rate
+                detection_chance += cell.discipline * DEFINES.discipline_detection_bonus
+                detection_chance += cell.counter_intel * DEFINES.ci_bonus
+
+                if random.random() < detection_chance:
+                    emit_event(FALSE_FLAG_EXPOSED, mission)
+                    # Player avoids trap, may identify infiltrator
+                    return MissionResult.ABORTED_TRAP_DETECTED
+
+                else:
+                    # Trap springs
+                    execute_trap_outcome(mission.trap_type, cell)
+                    return MissionResult.TRAP_SPRUNG
+
+      event_triggers:
+        - type: "FALSE_FLAG_PROPOSED"
+          fields: [mission_id, trap_type, presented_value]
+
+        - type: "FALSE_FLAG_EXPOSED"
+          condition: "player detects trap"
+          fields: [mission_id, infiltrator_id]
+
+        - type: "FALSE_FLAG_SPRUNG"
+          condition: "player falls for trap"
+          fields: [mission_id, trap_type, damage_inflicted]
+
+      counter_measures:
+        vetting_process:
+          description: "Multi-stage approval for high-value missions"
+          effect: "Detection chance += 0.15 for vetted missions"
+          cost: "Adds 2 ticks delay to mission execution"
+
+        need_to_know:
+          description: "Compartmentalized information limits exposure"
+          effect: "Exposure traps only reveal participating cell, not network"
+
+        trusted_couriers:
+          description: "Mission proposals only accepted from verified sources"
+          effect: "New sources cannot propose missions for 10 ticks"
+
+    snitch_budget:
+      description: |
+        The State converts economically desperate individuals into temporary
+        surveillance assets. Targets the lumpenproletariat - those outside
+        formal employment, with low class consciousness, and high desperation.
+
+        Historical basis: Police regularly recruit drug users, petty criminals,
+        and homeless individuals as informants in exchange for money or leniency.
+
+      target: "Population nodes with SocialRole.LUMPENPROLETARIAT"
+
+      parameters:
+        recruitment_budget:
+          type: "Currency"
+          source: "intel_budget × snitch_allocation_rate"
+          default_allocation: 0.3
+
+        payment_per_informant:
+          type: "Currency"
+          default: 50.0
+          description: "Monthly payment to active informant"
+
+        desperation_threshold:
+          type: "Probability"
+          formula: "(1 - wealth / subsistence) × (1 - class_consciousness)"
+          description: "Higher desperation = easier recruitment"
+
+      mechanics:
+        recruitment:
+          target_selection: "Nodes where desperation_threshold > 0.6"
+          success_formula: "recruitment_chance = desperation × payment_attractiveness"
+          effect: "Creates one-way INFORMANT edge from recruited node to State"
+
+        informant_edge:
+          type: "EdgeType.INFORMANT"
+          direction: "Population → State (one-way)"
+          data_flow: "intel about nearby SOLIDARITY edges"
+          decay: "Informant edge degrades by 0.1 per tick (unreliable)"
+          discovery_risk: "2% per tick of exposure by revolutionary counter-intel"
+
+        intel_generation:
+          formula: "intel_value = informant_observation_radius × nearby_solidarity_edges"
+          description: "Informants reveal portions of the network to the State"
+
+      logic_pseudocode: |
+        def recruit_snitches(lumpen_population, snitch_budget):
+            recruited = []
+
+            for node in lumpen_population:
+                if snitch_budget < DEFINES.payment_per_informant:
+                    break
+
+                desperation = calculate_desperation(node)
+                if desperation < DEFINES.desperation_threshold:
+                    continue
+
+                recruitment_chance = desperation * DEFINES.recruitment_effectiveness
+                if random.random() < recruitment_chance:
+                    # Create informant edge
+                    create_edge(node, STATE_NODE, EdgeType.INFORMANT)
+                    snitch_budget -= DEFINES.payment_per_informant
+                    recruited.append(node)
+
+            return recruited
+
+        def process_informant_intel(informant_edges):
+            for edge in informant_edges:
+                # Informant observes nearby solidarity edges
+                visible_edges = get_edges_in_radius(edge.source, DEFINES.observation_radius)
+                for target_edge in visible_edges:
+                    if target_edge.type == EdgeType.SOLIDARITY:
+                        state.intel_level += DEFINES.intel_per_observation
+                        reveal_edge_to_state(target_edge)
+
+                # Decay informant reliability
+                edge.reliability -= DEFINES.informant_decay_rate
+                if edge.reliability <= 0:
+                    remove_edge(edge)
+
+      event_triggers:
+        - type: "INFORMANT_RECRUITED"
+          fields: [node_id, payment, observation_radius]
+
+        - type: "INFORMANT_EXPOSED"
+          condition: "counter-intel detects informant"
+          fields: [node_id, exposed_by]
+
+        - type: "INTEL_GATHERED"
+          condition: "informant reveals edge"
+          fields: [revealed_edge_id, accuracy]
+
+      counter_measures:
+        material_support:
+          description: "Provide resources to lumpen population"
+          effect: "Reduces desperation, makes recruitment harder"
+          formula: "desperation -= support_amount / subsistence"
+
+        class_education:
+          description: "Political education programs for marginalized"
+          effect: "Increases class_consciousness, reduces recruitment pool"
+          formula: "consciousness += education_investment × receptivity"
+
+        community_accountability:
+          description: "Neighborhood structures that detect outside payments"
+          effect: "Increases informant exposure risk by 5% per tick"
+
+# =============================================================================
+# SECTION 3: THE MALINOVSKY PARADOX (THE "JUDO" COUNTER-MEASURE)
+# =============================================================================
+
+malinovsky_paradox:
+  description: |
+    Roman Malinovsky (1876-1918) was a Bolshevik leader who was also an agent
+    of the Okhrana (Tsarist secret police). The paradox: to maintain his cover
+    as a revolutionary leader, he had to actually BE an effective revolutionary.
+    He organized strikes, delivered powerful speeches, and built the party -
+    while simultaneously reporting to the Okhrana.
+
+    Lenin knew he was likely a spy but kept him because his labor value exceeded
+    his intelligence cost. This is the Malinovsky Paradox: at high organizational
+    discipline, spies become NET CONTRIBUTORS to the revolution.
+
+  historical_context: |
+    The Okhrana got intel. The Bolsheviks got a skilled organizer.
+    When Malinovsky was finally exposed after the revolution, the question arose:
+    "Did he do more harm as a spy, or more good as an organizer?"
+
+    The answer depends on the organization's discipline. In a loose, chaotic
+    movement, spies leak freely. In a disciplined vanguard party, spies must
+    perform genuine labor to maintain cover, and that labor benefits the cause.
+
+  mechanic_name: "Malinovsky Judo"
+
+  core_principle: |
+    The player can deliberately cultivate high-discipline cells as "spy traps."
+    At high discipline:
+    - Spies must work harder to maintain cover (generates labor for player)
+    - Spies observe less (discipline limits access to sensitive info)
+    - Spies risk exposure (disciplined comrades notice inconsistencies)
+
+  discipline_threshold:
+    value: 0.8
+    config_key: "DEFINES.repression.malinovsky_discipline_threshold"
+    description: "Organization level at which Malinovsky effect activates"
+
+  formulas:
+    spy_labor_output:
+      description: "Labor tokens generated by spy maintaining cover"
+      formula: |
+        spy_labor_output = cell_discipline × spy_competence × cover_maintenance_factor
+
+        Where:
+        - cell_discipline: Cell's organization attribute [0, 1]
+        - spy_competence: Infiltrator's competence attribute [0, 1]
+        - cover_maintenance_factor: Base labor required for cover (default 0.7)
+      example: |
+        Cell discipline = 0.9
+        Spy competence = 0.8
+        Cover factor = 0.7
+
+        Labor output = 0.9 × 0.8 × 0.7 = 0.504 labor tokens per tick
+        (Spy generates half a labor token just staying undercover)
+
+    intel_leak:
+      description: "Intel generated by spy for State"
+      formula: |
+        intel_leak = (1 - cell_discipline) × spy_competence × intel_extraction_efficiency
+
+        Where:
+        - cell_discipline: Limits what spy can observe/access
+        - spy_competence: Spy's ability to extract and transmit intel
+        - intel_extraction_efficiency: Base rate (default 0.5)
+      example: |
+        Cell discipline = 0.9 (high discipline)
+        Spy competence = 0.8
+        Extraction efficiency = 0.5
+
+        Intel leak = (1 - 0.9) × 0.8 × 0.5 = 0.04 intel per tick
+        (Almost nothing leaks from a disciplined cell)
+
+        Compare to low discipline = 0.3:
+        Intel leak = (1 - 0.3) × 0.8 × 0.5 = 0.28 intel per tick
+        (7x more intel leaks from sloppy organization)
+
+    net_value:
+      description: "Is the spy a net asset or liability to the revolution?"
+      formula: |
+        net_value = spy_labor_output - (intel_leak × intel_value_to_state)
+
+        If net_value > 0: Spy is NET CONTRIBUTOR (Malinovsky condition)
+        If net_value < 0: Spy is NET LIABILITY (standard infiltration)
+      crossover_point: |
+        Setting net_value = 0 and solving:
+        cell_discipline × spy_competence × cover_factor =
+          (1 - cell_discipline) × spy_competence × intel_efficiency × intel_value
+
+        For default parameters, crossover occurs at discipline ≈ 0.75
+
+  logic_pseudocode: |
+    def process_infiltrator(infiltrator, cell):
+        discipline = cell.organization
+
+        # Calculate spy's labor contribution
+        labor_output = (
+            discipline *
+            infiltrator.competence *
+            DEFINES.cover_maintenance_factor
+        )
+        cell.labor_pool += labor_output
+        infiltrator.labor_contributed += labor_output
+
+        # Calculate intel leakage
+        intel_leak = (
+            (1 - discipline) *
+            infiltrator.competence *
+            DEFINES.intel_extraction_efficiency
+        )
+        state.intel_level += intel_leak
+        infiltrator.intel_gathered += intel_leak
+
+        # Check for Malinovsky condition
+        intel_value = intel_leak * DEFINES.intel_value_coefficient
+        if labor_output > intel_value:
+            # Spy is net contributor
+            emit_event(MALINOVSKY_CONDITION, infiltrator, cell)
+            # State may consider extracting spy (burning asset)
+
+        # Discipline-based exposure risk
+        exposure_risk = discipline * DEFINES.exposure_rate_per_discipline
+        if random.random() < exposure_risk:
+            # High-discipline comrades notice something off
+            emit_event(INFILTRATOR_SUSPECTED, infiltrator, cell)
+            # Cell may investigate, potentially exposing spy
+
+        # Cover decay in high-discipline environments
+        if discipline > DEFINES.malinovsky_discipline_threshold:
+            infiltrator.cover_integrity -= DEFINES.cover_decay_rate
+            if infiltrator.cover_integrity <= 0:
+                emit_event(SPY_EXPOSED, infiltrator, cell)
+                remove_infiltrator(infiltrator)
+
+  strategic_implications:
+    for_player:
+      - "Invest in discipline to neutralize infiltration threat"
+      - "High-discipline cells can be used as 'honey pots'"
+      - "Accept that some spies will exist, but make them work for you"
+      - "The paranoid purge is often more damaging than the spy"
+
+    for_state:
+      - "Infiltration has diminishing returns against disciplined targets"
+      - "May need to 'burn' spies in high-discipline cells (extract dramatically)"
+      - "Low-discipline movements are much more vulnerable"
+      - "Consider extraction events to cause maximum damage"
+
+  counter_play_state:
+    extraction_event:
+      description: "State 'burns' infiltrator for maximum damage"
+      trigger: "cover_integrity < 0.3 OR state decides to strike"
+      effect: |
+        - Spy reveals everything they know before extraction
+        - May sabotage operations, steal resources
+        - Potentially causes arrests or assassinations
+        - But: State loses trained asset permanently
+      trade_off: "Short-term damage vs long-term intelligence loss"
+
+    agent_provocateur:
+      description: "Spy proposes violent action to entrap cell"
+      condition: "Only works if discipline < 0.7 (vetted out otherwise)"
+      effect: "Cell members arrested or killed in botched operation"
+
+  event_triggers:
+    - type: "MALINOVSKY_CONDITION"
+      condition: "labor_output > intel_value"
+      fields: [infiltrator_id, cell_id, labor_generated, intel_leaked]
+
+    - type: "INFILTRATOR_SUSPECTED"
+      condition: "discipline-based detection roll succeeds"
+      fields: [infiltrator_id, cell_id, suspicion_level]
+
+    - type: "SPY_EXPOSED"
+      condition: "cover_integrity <= 0 OR investigation succeeds"
+      fields: [infiltrator_id, cell_id, exposure_method]
+
+    - type: "INFILTRATOR_EXTRACTED"
+      condition: "state burns asset"
+      fields: [infiltrator_id, cell_id, damage_inflicted, intel_gained]
+
+# =============================================================================
+# SECTION 4: INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  reads_from:
+    topology_system:
+      file: "ai-docs/topology-system.yaml"
+      data_consumed:
+        percolation_ratio:
+          description: "Network connectivity level"
+          usage: "Determines difficulty of infiltration and COINTELPRO ops"
+          formula: "infiltration_difficulty = 1 + percolation_ratio"
+
+        cadre_density:
+          description: "Ratio of committed cadre to sympathizers"
+          usage: "Affects bad-jacketing resistance"
+          formula: "bad_jacket_resistance = cadre_density * 0.5"
+
+        solidarity_edges:
+          description: "SOLIDARITY edge attributes (strength, suspicion)"
+          usage: "Primary targets for COINTELPRO operations"
+          read_fields: [solidarity_strength, target_node, source_node]
+
+        phase_state:
+          description: "Current phase (gaseous/transitional/liquid/solid)"
+          usage: "Informs State ROE decisions"
+          decision_logic: |
+            if phase == "gaseous":
+                # Movement is weak, use COINTELPRO to keep it atomized
+                strategy = COINTELPRO_FOCUS
+            elif phase == "transitional":
+                # Movement crystallizing, escalate to prevent it
+                strategy = MASS_ARREST_FOCUS
+            elif phase in ["liquid", "solid"]:
+                # Movement is dangerous, consider kinetic options
+                strategy = KINETIC_CONSIDERATION
+
+        num_components:
+          description: "Number of disconnected revolutionary cells"
+          usage: "More components = more targets, but damage doesn't cascade"
+
+    state_yaml:
+      file: "ai-docs/state.yaml"
+      data_consumed:
+        territory_heat:
+          description: "Heat level on each territory"
+          usage: "High-heat territories attract repression"
+          targeting: "Repression prioritizes heat > 0.5 territories"
+
+        social_class_attributes:
+          description: "Wealth, consciousness, organization of each class"
+          usage: "Identifies vulnerable populations for snitch recruitment"
+          snitch_targeting: "desperation = (1 - wealth/subsistence) × (1 - consciousness)"
+
+        state_finances:
+          description: "StateFinance model (treasury, budgets)"
+          usage: "Repression budget drawn from state finances"
+          read_fields: [treasury, police_budget, burn_rate]
+
+  writes_to:
+    world_state:
+      file: "src/babylon/models/world_state.py"
+      data_written:
+        legitimacy:
+          description: "New field: State's legitimacy level"
+          type: "Legitimacy (Annotated float 0-100)"
+          location: "WorldState.repression_state.legitimacy"
+          updated_by: "RepressionSystem on each tick"
+
+        current_tier:
+          description: "Current ROE tier"
+          type: "ROETier enum"
+          location: "WorldState.repression_state.current_tier"
+          updated_by: "Tier transition logic"
+
+        repression_budget:
+          description: "Available funds for repression"
+          type: "Currency"
+          location: "WorldState.repression_state.repression_budget"
+          source: "StateFinance.treasury allocation"
+
+        intel_level:
+          description: "State's knowledge of revolutionary network"
+          type: "Probability [0, 1]"
+          location: "WorldState.repression_state.intel_level"
+          updated_by: "Surveillance, informants, infiltrators"
+
+        active_infiltrators:
+          description: "Dict of deployed infiltrators"
+          type: "dict[str, Infiltrator]"
+          location: "WorldState.active_infiltrators"
+          updated_by: "Infiltration deployment, exposure events"
+
+        edge_suspicion:
+          description: "Suspicion attribute on SOLIDARITY edges"
+          type: "Coefficient [0, 1]"
+          location: "Relationship.suspicion"
+          updated_by: "Bad-jacketing operations"
+
+    state_yaml_updates:
+      heat:
+        description: "COINTELPRO operations may increase local heat"
+        update_logic: "Failed ops or exposed infiltrators generate heat"
+
+      territory_status:
+        description: "Repression events affect territory control"
+        update_logic: "Mass arrests may trigger territory state changes"
+
+    events_emitted:
+      new_event_types:
+        - name: "LEGITIMACY_CRISIS"
+          parent: "SimulationEvent"
+          fields: [previous_tier, new_tier, legitimacy_level, trigger_event]
+          description: "State crosses tier boundary downward"
+
+        - name: "LEGITIMACY_RECOVERY"
+          parent: "SimulationEvent"
+          fields: [previous_tier, new_tier, legitimacy_level]
+          description: "State crosses tier boundary upward"
+
+        - name: "INFILTRATION_ATTEMPT"
+          parent: "SimulationEvent"
+          fields: [infiltrator_id, target_cell_id, success, cost]
+          description: "State deploys agent into revolutionary cell"
+
+        - name: "BAD_JACKET_OPERATION"
+          parent: "SimulationEvent"
+          fields: [target_edge_id, suspicion_added, detected]
+          description: "State attempts to inject suspicion into edge"
+
+        - name: "INTERNAL_PURGE"
+          parent: "SimulationEvent"
+          fields: [edge_id, cell_id, casualties, triggered_by]
+          description: "Cell turns on itself due to paranoia"
+
+        - name: "FALSE_FLAG_PROPOSED"
+          parent: "SimulationEvent"
+          fields: [mission_id, trap_type, presented_value]
+          description: "Agent proposes trap mission"
+
+        - name: "FALSE_FLAG_EXPOSED"
+          parent: "SimulationEvent"
+          fields: [mission_id, infiltrator_id, detection_method]
+          description: "Player detects trap mission"
+
+        - name: "INFORMANT_RECRUITED"
+          parent: "SimulationEvent"
+          fields: [node_id, payment, observation_radius]
+          description: "State turns population member into snitch"
+
+        - name: "SPY_EXPOSED"
+          parent: "SimulationEvent"
+          fields: [infiltrator_id, cell_id, exposure_method, intel_lost]
+          description: "Cell identifies and expels infiltrator"
+
+        - name: "MALINOVSKY_CONDITION"
+          parent: "SimulationEvent"
+          fields: [infiltrator_id, cell_id, labor_generated, intel_leaked]
+          description: "Spy becomes net contributor to revolution"
+
+        - name: "MARTIAL_LAW_DECLARED"
+          parent: "SimulationEvent"
+          fields: [territories_affected, duration, legitimacy_cost]
+          description: "State enters Tier 3 open warfare"
+
+        - name: "MASS_ARREST"
+          parent: "SimulationEvent"
+          fields: [territory_id, arrests_count, legitimacy_cost]
+          description: "State conducts mass detention"
+
+        - name: "KINETIC_STRIKE"
+          parent: "SimulationEvent"
+          fields: [target_type, target_id, casualties, collateral, legitimacy_cost]
+          description: "State uses lethal force"
+
+  game_defines_additions:
+    location: "src/babylon/config/defines.py"
+    new_section: "RepressionDefines"
+    parameters:
+      # Tier thresholds
+      tier_1_threshold:
+        type: "int"
+        default: 60
+        description: "Legitimacy above this = Civil Order"
+
+      tier_2_threshold:
+        type: "int"
+        default: 20
+        description: "Legitimacy above this = State of Exception"
+
+      hysteresis_buffer:
+        type: "int"
+        default: 5
+        description: "Additional legitimacy needed for upward tier transition"
+
+      # COINTELPRO parameters
+      infiltration_base_cost:
+        type: "float"
+        default: 100.0
+        description: "Base cost to deploy infiltrator"
+
+      bad_jacket_base_cost:
+        type: "float"
+        default: 25.0
+        description: "Base cost per bad-jacketing operation"
+
+      suspicion_injection_rate:
+        type: "float"
+        default: 0.15
+        description: "Base suspicion added per operation"
+
+      snitch_recruitment_threshold:
+        type: "float"
+        default: 0.6
+        description: "Minimum desperation for recruitment"
+
+      snitch_payment:
+        type: "float"
+        default: 50.0
+        description: "Payment per informant per tick"
+
+      # Malinovsky parameters
+      malinovsky_discipline_threshold:
+        type: "float"
+        default: 0.8
+        description: "Discipline level for Malinovsky effect"
+
+      cover_maintenance_factor:
+        type: "float"
+        default: 0.7
+        description: "Base labor required for spy cover"
+
+      intel_extraction_efficiency:
+        type: "float"
+        default: 0.5
+        description: "Base intel gathering rate"
+
+      cover_decay_rate:
+        type: "float"
+        default: 0.05
+        description: "Cover decay per tick in high-discipline cell"
+
+      exposure_rate_per_discipline:
+        type: "float"
+        default: 0.1
+        description: "Exposure risk multiplier from discipline"
+
+      # Legitimacy parameters
+      legitimacy_decay_rate:
+        type: "float"
+        default: 0.5
+        description: "Natural legitimacy decay per tick during crisis"
+
+      excessive_force_legitimacy_cost:
+        type: "float"
+        default: 5.0
+        description: "Legitimacy lost per EXCESSIVE_FORCE event"
+
+      uprising_suppression_legitimacy_cost:
+        type: "float"
+        default: 10.0
+        description: "Legitimacy lost per suppressed uprising"
+
+      # Economic consequences
+      tier_2_capital_flight:
+        type: "float"
+        default: 0.25
+        description: "Fraction of imperial rent lost in Tier 2"
+
+      tier_3_economic_collapse:
+        type: "float"
+        default: 1.0
+        description: "Fraction of imperial rent lost in Tier 3"
+
+# =============================================================================
+# SECTION 5: SYSTEM ARCHITECTURE
+# =============================================================================
+
+system_architecture:
+  new_system:
+    name: "RepressionSystem"
+    location: "src/babylon/engine/systems/repression.py"
+    protocol: "System"
+
+    position_in_pipeline: |
+      SimulationEngine.run_tick()
+        ├── ImperialRentSystem      # Generate wealth
+        ├── SolidaritySystem        # Transmit consciousness
+        ├── ConsciousnessSystem     # Update ideology
+        ├── SurvivalSystem          # Calculate probabilities
+        ├── StruggleSystem          # Agency layer, sparks
+        ├── RepressionSystem        # NEW: State response ← HERE
+        ├── ContradictionSystem     # Tension accumulation
+        ├── TerritorySystem         # Heat dynamics
+        └── MetabolismSystem        # Ecological limits
+
+    step_function:
+      signature: "step(graph: nx.DiGraph, services: ServiceContainer, context: dict) -> nx.DiGraph"
+      logic: |
+        def step(self, graph, services, context):
+            # 1. Read current legitimacy state
+            repression_state = graph.graph.get("repression_state", default_repression_state())
+
+            # 2. Process legitimacy changes from previous tick's events
+            repression_state = self._update_legitimacy(repression_state, context)
+
+            # 3. Determine current tier
+            tier = self._calculate_tier(repression_state.legitimacy)
+
+            # 4. Check for tier transitions
+            if tier != repression_state.current_tier:
+                self._emit_tier_transition(tier, repression_state, services.event_bus)
+                repression_state = repression_state.with_tier(tier)
+
+            # 5. Execute tier-appropriate operations
+            if tier in [ROETier.CIVIL_ORDER, ROETier.STATE_OF_EXCEPTION]:
+                graph = self._execute_cointelpro(graph, repression_state, services)
+
+            if tier == ROETier.STATE_OF_EXCEPTION:
+                graph = self._execute_mass_repression(graph, repression_state, services)
+
+            if tier == ROETier.OPEN_WAR:
+                graph = self._execute_kinetic_operations(graph, repression_state, services)
+
+            # 6. Process infiltrators (Malinovsky logic)
+            graph = self._process_infiltrators(graph, repression_state, services)
+
+            # 7. Update repression budget
+            repression_state = self._calculate_budget(repression_state, graph)
+
+            # 8. Store updated state
+            graph.graph["repression_state"] = repression_state
+
+            return graph
+
+  new_models:
+    location: "src/babylon/models/entities/"
+
+    legitimacy_type:
+      file: "types.py"
+      definition: "Legitimacy = Annotated[float, Ge(0.0), Le(100.0)]"
+
+    roe_tier_enum:
+      file: "enums.py"
+      definition: |
+        class ROETier(StrEnum):
+            CIVIL_ORDER = "civil_order"
+            STATE_OF_EXCEPTION = "state_of_exception"
+            OPEN_WAR = "open_war"
+
+    repression_state_model:
+      file: "repression_state.py"
+      fields:
+        - "legitimacy: Legitimacy = 75.0"
+        - "current_tier: ROETier = ROETier.CIVIL_ORDER"
+        - "repression_budget: Currency = Currency(0.0)"
+        - "intel_level: Probability = Probability(0.0)"
+        - "active_infiltrators: int = 0"
+        - "snitch_network_size: int = 0"
+        - "operations_this_tick: list[str] = []"
+
+    infiltrator_model:
+      file: "infiltrator.py"
+      fields:
+        - "id: str"
+        - "target_cell_id: str"
+        - "competence: Probability = Probability(0.5)"
+        - "cover_integrity: Probability = Probability(1.0)"
+        - "intel_gathered: float = 0.0"
+        - "labor_contributed: float = 0.0"
+        - "deployed_tick: int"
+        - "status: Literal['active', 'suspected', 'exposed', 'extracted']"
+
+  test_requirements:
+    unit_tests:
+      - "test_legitimacy_tier_calculation"
+      - "test_tier_transition_events"
+      - "test_bad_jacketing_mechanics"
+      - "test_false_flag_detection"
+      - "test_snitch_recruitment"
+      - "test_malinovsky_labor_output"
+      - "test_malinovsky_intel_leak"
+      - "test_malinovsky_crossover"
+      - "test_economic_consequences_tier_2"
+      - "test_economic_collapse_tier_3"
+
+    integration_tests:
+      - "test_repression_system_in_pipeline"
+      - "test_legitimacy_decay_during_uprising"
+      - "test_cointelpro_degrades_solidarity"
+      - "test_high_discipline_resists_infiltration"
+      - "test_tier_transition_triggers_capital_flight"
+
+# =============================================================================
+# SECTION 6: NARRATIVE INTEGRATION
+# =============================================================================
+
+narrative_integration:
+  semantic_map_additions:
+    description: "Add repression events to NarrativeDirector's SEMANTIC_MAP"
+    mappings:
+      LEGITIMACY_CRISIS:
+        query: "state legitimacy crisis emergency powers"
+        theoretical_context: "State of exception, Agamben, emergency powers"
+
+      INFILTRATION_ATTEMPT:
+        query: "COINTELPRO infiltration state repression"
+        theoretical_context: "Counter-insurgency, political policing"
+
+      BAD_JACKET_OPERATION:
+        query: "COINTELPRO bad jacketing paranoia"
+        theoretical_context: "Psychological warfare, organizational destruction"
+
+      INTERNAL_PURGE:
+        query: "revolutionary purge paranoia internal enemies"
+        theoretical_context: "Organizational paranoia, trust networks"
+
+      SPY_EXPOSED:
+        query: "infiltrator exposed counter-intelligence"
+        theoretical_context: "Security culture, organizational discipline"
+
+      MALINOVSKY_CONDITION:
+        query: "Malinovsky paradox double agent revolutionary"
+        theoretical_context: "Historical double agents, infiltration economics"
+
+      MARTIAL_LAW_DECLARED:
+        query: "martial law military occupation state violence"
+        theoretical_context: "State terror, civil war, breakdown of hegemony"
+
+  significant_events_additions:
+    description: "Add to SIGNIFICANT_EVENT_TYPES for narrative triggering"
+    events:
+      - "LEGITIMACY_CRISIS"
+      - "MARTIAL_LAW_DECLARED"
+      - "INTERNAL_PURGE"
+      - "SPY_EXPOSED"
+
+  prompt_formatting:
+    tier_1_voice: |
+      Narrative frame: Liberal democracy, due process, reform.
+      Vocabulary: "Investigations," "prosecutions," "community safety."
+      Tone: Bureaucratic, procedural, reassuring.
+
+    tier_2_voice: |
+      Narrative frame: Emergency, temporary measures, public order.
+      Vocabulary: "Curfew," "National Guard," "unlawful assembly."
+      Tone: Strained reassurance, creeping authoritarianism.
+
+    tier_3_voice: |
+      Narrative frame: War, enemies of the state, survival.
+      Vocabulary: "Terrorists," "traitors," "elimination."
+      Tone: Martial, apocalyptic, desperate.
+
+# =============================================================================
+# APPENDIX: HISTORICAL REFERENCES
+# =============================================================================
+
+historical_references:
+  cointelpro:
+    period: "1956-1971"
+    agency: "FBI"
+    targets:
+      - "Black Panther Party"
+      - "American Indian Movement"
+      - "Students for a Democratic Society"
+      - "Communist Party USA"
+      - "Martin Luther King Jr."
+    tactics:
+      - "Infiltration and agent provocateurs"
+      - "Psychological warfare and bad-jacketing"
+      - "Legal harassment and surveillance"
+      - "Assassination (Fred Hampton)"
+    sources:
+      - "Church Committee Report (1975)"
+      - "FBI COINTELPRO documents (FOIA releases)"
+
+  malinovsky:
+    full_name: "Roman Vatslavovich Malinovsky"
+    period: "1876-1918"
+    role: "Bolshevik Duma deputy AND Okhrana agent"
+    key_insight: |
+      To maintain his cover as a revolutionary leader, Malinovsky had to
+      actually be an effective revolutionary. He organized strikes, delivered
+      powerful speeches, and built the party organization - while simultaneously
+      reporting to the Okhrana. Lenin suspected him but kept him because his
+      labor value exceeded his intelligence cost.
+    outcome: "Executed by Bolsheviks after revolution"
+    sources:
+      - "Pipes, Richard. 'The Russian Revolution'"
+      - "Ulam, Adam. 'The Bolsheviks'"
+
+  state_of_exception:
+    theorist: "Carl Schmitt / Giorgio Agamben"
+    concept: |
+      The sovereign is whoever decides on the state of exception. Emergency
+      powers reveal the true nature of state power - the suspension of law
+      in the name of preserving law.
+    modern_examples:
+      - "Weimar Article 48"
+      - "USA PATRIOT Act"
+      - "Hong Kong National Security Law"
+    sources:
+      - "Schmitt, Carl. 'Political Theology'"
+      - "Agamben, Giorgio. 'State of Exception'"
+
+  legitimacy_theory:
+    theorists:
+      - "Max Weber (rational-legal legitimacy)"
+      - "Antonio Gramsci (hegemony)"
+      - "Jürgen Habermas (legitimation crisis)"
+    key_concept: |
+      States require not just monopoly of violence, but the population's
+      belief that state violence is legitimate. When this belief collapses,
+      the state must rely on naked force - which is expensive and self-defeating.

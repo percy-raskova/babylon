@@ -4,7 +4,7 @@
 # Related: ADR029_hybrid_graph_architecture
 
 meta:
-  version: "1.1.0"
+  version: "1.2.0"
   status: "specification"
   epoch: 2
   codename: "The War"
@@ -14,6 +14,14 @@ meta:
       date: "2025-12-26"
       title: "Dynamic Sovereignty Refactor"
       summary: "Sovereignty as Node, not Property. Enables O(1) border changes for civil war and Balkanization."
+
+    - version: "1.2.0"
+      date: "2025-12-26"
+      title: "Balkanization System - Colonial Stance"
+      summary: |
+        Add Faction nodes with colonial_stance (UPHOLD/IGNORE/ABOLISH) to model the
+        settler-colonial dimension of political struggle. Implements the "Red Settler Trap"
+        where settler-socialist factions can win the revolution but lose the planet.
 
 # =============================================================================
 # OVERVIEW
@@ -177,6 +185,37 @@ node_schemas:
         nullable: true
         default: null
 
+      # === Balkanization Properties (v1.2.0) ===
+      ruling_faction_id:
+        type: "STRING"
+        description: "ID of the Faction that controls this Sovereign"
+        nullable: true
+        foreign_key: "Faction.id"
+        note: |
+          A Sovereign's behavior (extraction, violence, legitimacy trajectory) is
+          determined by its ruling Faction. When a new Sovereign emerges from collapse,
+          ruling_faction_id is set to the Faction that won the influence contest.
+
+      extraction_policy:
+        type: "ENUM"
+        values:
+          - "INTENSIFY"  # UPHOLD stance → accelerate extraction
+          - "CONTINUE"   # IGNORE stance → maintain extraction (THE TRAP)
+          - "CEASE"      # ABOLISH stance → stop extraction
+        description: "How this Sovereign relates to colonial extraction"
+        derived_from: "ruling_faction.colonial_stance"
+        semantics:
+          INTENSIFY: "Fascist restoration - 1.5x extraction, habitability degrades faster"
+          CONTINUE: "Settler-socialist - 0.8x extraction, habitability STILL degrades"
+          CEASE: "Decolonial - 0.0x extraction, habitability can recover"
+        default: "CONTINUE"
+        critical: true
+        note: |
+          This is the mechanical consequence of the Red Settler Trap.
+          IGNORE factions produce CONTINUE policy.
+          Only ABOLISH factions produce CEASE policy.
+          Only CEASE allows habitability recovery (+0.01/tick).
+
     indexes:
       - property: "id"
         type: "PRIMARY"
@@ -186,6 +225,126 @@ node_schemas:
       - property: "legitimacy"
         type: "BTREE"
         reason: "Range queries for legitimacy thresholds"
+
+  # ===========================================================================
+  # FACTION (v1.2.0 - Balkanization System)
+  # ===========================================================================
+
+  Faction:
+    description: |
+      Political formations that can contest sovereignty. Factions are distinct from
+      Sovereigns—a Faction can exist without holding power, and a Sovereign's behavior
+      is determined by its ruling Faction.
+
+      The critical property is `colonial_stance`, which determines the faction's
+      relationship to settler colonialism and, consequently, its extraction_policy
+      when ruling.
+
+      The Three Stances:
+      - UPHOLD: Explicitly defend settler sovereignty (Fascists, Liberals)
+      - IGNORE: Focus on class, ignore land (Settler-Socialists) ← THE TRAP
+      - ABOLISH: Dismantle settler relationship (Indigenous, New Afrika, Anti-Colonial)
+
+    properties:
+      id:
+        type: "STRING"
+        description: "Unique identifier"
+        format: "FAC_{CODE}"
+        examples:
+          - "FAC_RESTORATIONIST"
+          - "FAC_WORKERS_CONGRESS"
+          - "FAC_DECOLONIAL"
+        primary_key: true
+
+      name:
+        type: "STRING"
+        description: "Human-readable name"
+        examples:
+          - "Restorationist Front"
+          - "Workers' Congress"
+          - "Decolonial Front"
+
+      ideology:
+        type: "STRING"
+        description: "Ideological classification"
+        examples:
+          - "FASCISM"
+          - "SETTLER_SOCIALISM"
+          - "ANTI_COLONIAL_COMMUNISM"
+
+      colonial_stance:
+        type: "ENUM"
+        values: ["UPHOLD", "IGNORE", "ABOLISH"]
+        description: |
+          The faction's relationship to settler colonialism.
+          This is THE FUNDAMENTAL POLITICAL AXIS.
+
+          UPHOLD: Defend settler sovereignty, intensify extraction
+          IGNORE: Focus on class, maintain extraction (THE RED SETTLER TRAP)
+          ABOLISH: Dismantle settler relationship, cease extraction
+        critical: true
+
+      is_settler_formation:
+        type: "BOOLEAN"
+        description: "Does this faction's base come from the settler population?"
+        note: |
+          Settler workers have a material stake in colonialism (cheap land,
+          jobs on stolen resources, wages subsidized by imperial rent).
+        default: true
+
+      # === Mechanical Properties ===
+      extraction_modifier:
+        type: "DOUBLE"
+        description: "Multiplier on extraction rate when ruling"
+        constraints: ">= 0.0"
+        semantics:
+          1.5: "UPHOLD - intensify extraction"
+          0.8: "IGNORE - slightly reduced extraction"
+          0.0: "ABOLISH - cease extraction"
+        derived_from: "colonial_stance"
+
+      violence_modifier:
+        type: "DOUBLE"
+        description: "Multiplier on state violence when ruling"
+        constraints: ">= 0.0"
+        default: 1.0
+
+      class_reduction:
+        type: "DOUBLE"
+        description: "Effectiveness at reducing class tension"
+        constraints: "[0.0, 1.0]"
+        note: "IGNORE factions are often HIGH here - they address wages/healthcare"
+
+      metabolic_reduction:
+        type: "DOUBLE"
+        description: "Effectiveness at healing the metabolic rift"
+        constraints: "[-1.0, 1.0]"
+        critical: true
+        note: |
+          ONLY ABOLISH factions have POSITIVE values.
+          IGNORE factions have 0.0 - they do NOTHING for the metabolic rift.
+          This is THE RED SETTLER TRAP.
+
+      color_hex:
+        type: "STRING"
+        description: "UI display color"
+        format: "#RRGGBB"
+        default: "#808080"
+
+      founded_tick:
+        type: "INT32"
+        description: "Tick when this faction was established"
+        default: 0
+
+    indexes:
+      - property: "id"
+        type: "PRIMARY"
+      - property: "colonial_stance"
+        type: "HASH"
+        reason: "Fast filtering by colonial stance"
+      - property: "ideology"
+        type: "HASH"
+        reason: "Fast filtering by ideology"
 
   # ===========================================================================
   # TERRITORY
@@ -511,6 +670,87 @@ edge_schemas:
         type: "COMPOSITE"
         reason: "Fast lookup of claims by sovereign or territory"
 
+  # ===========================================================================
+  # INFLUENCES (v1.2.0 - Balkanization System)
+  # ===========================================================================
+
+  INFLUENCES:
+    description: |
+      Represents a Faction's influence over a Territory. Factions build influence
+      through organizing, propaganda, and material support. When a Sovereign collapses,
+      the Faction with highest total influence over contested territories takes power.
+
+      Key Properties:
+      - Multiple Factions can INFLUENCE the same Territory
+      - Influence does NOT equal control (that's CLAIMS)
+      - When a Sovereign fails, INFLUENCES edges determine successor
+
+      The Collapse Transition:
+      1. Sovereign loses control_level < 0.2 (legitimacy crisis)
+      2. Query: Which Faction has highest SUM(INFLUENCES.influence_level) to contested territories?
+      3. Create new Sovereign with ruling_faction_id = winning Faction
+      4. New Sovereign inherits extraction_policy from Faction's colonial_stance
+
+    from_node: "Faction"
+    to_node: "Territory"
+
+    properties:
+      influence_level:
+        type: "DOUBLE"
+        description: "Degree of faction influence (0-1)"
+        constraints: "[0.0, 1.0]"
+        semantics:
+          1.0: "Total ideological capture - population fully supports faction"
+          0.7: "Strong base - active organizers, regular attendance at actions"
+          0.4: "Moderate presence - sympathizers, some material support"
+          0.1: "Nascent - awareness exists, potential for growth"
+          0.0: "No presence"
+        default: 0.0
+        note: "Unlike CLAIMS.control_level, influence can exceed 1.0 in sum across factions"
+
+      support_type:
+        type: "ENUM"
+        values:
+          - "MATERIAL"     # Money, weapons, supplies
+          - "IDEOLOGICAL"  # Propaganda, education, media
+          - "MILITARY"     # Armed cadre, militias
+          - "ELECTORAL"    # Voter base, candidates
+          - "LABOR"        # Union presence, strike capability
+        description: "Primary form of support provided by faction"
+        default: "IDEOLOGICAL"
+
+      cadre_count:
+        type: "INT32"
+        description: "Number of active organizers in this territory"
+        constraints: ">= 0"
+        default: 0
+        note: "From vanguard-economy.yaml - cadre are trained revolutionaries"
+
+      sympathizer_count:
+        type: "INT64"
+        description: "Number of passive supporters in this territory"
+        constraints: ">= 0"
+        default: 0
+        note: "Sympathizers can be mobilized but don't actively organize"
+
+      established_tick:
+        type: "INT32"
+        description: "Tick when faction first established presence"
+        default: 0
+
+    constraints:
+      - name: "no_self_influence"
+        description: "Faction cannot influence itself (it's not a Territory)"
+        enforcement: "Type system prevents this"
+
+    indexes:
+      - properties: ["from_node", "to_node"]
+        type: "COMPOSITE"
+        reason: "Fast lookup of faction influence by territory"
+      - property: "influence_level"
+        type: "BTREE"
+        reason: "Range queries for influence thresholds"
+
 # =============================================================================
 # THE CHRONICLE: HISTORICAL TRACKING
 # =============================================================================
@@ -557,7 +797,7 @@ chronicle:
           auto_increment: true
         edge_type:
           type: "STRING"
-          values: ["ADMINISTERS", "ADJACENT_TO", "CLAIMS"]
+          values: ["ADMINISTERS", "ADJACENT_TO", "CLAIMS", "INFLUENCES"]
         from_id:
           type: "STRING"
         to_id:
@@ -871,6 +1111,68 @@ query_patterns:
     use_case: "Identify front lines between competing sovereigns"
 
   # ===========================================================================
+  # FACTION INFLUENCE QUERIES (v1.2.0 - Balkanization)
+  # ===========================================================================
+
+  faction_influence_map:
+    description: "Get all territories where a faction has influence"
+    query: |
+      MATCH (fac:Faction {id: $faction_id})-[i:INFLUENCES]->(t:Territory)
+      WHERE i.influence_level > 0.0
+      RETURN t.id, t.name, i.influence_level, i.support_type, i.cadre_count
+      ORDER BY i.influence_level DESC
+    use_case: "Display faction's sphere of influence on map"
+
+  factions_by_territory:
+    description: "Get all factions with influence in a territory"
+    query: |
+      MATCH (fac:Faction)-[i:INFLUENCES]->(t:Territory {id: $territory_id})
+      WHERE i.influence_level > 0.1
+      RETURN fac.id, fac.name, fac.colonial_stance, i.influence_level, i.support_type
+      ORDER BY i.influence_level DESC
+    use_case: "Show competing factions in a territory"
+
+  collapse_successor:
+    description: "Determine which faction wins when a sovereign collapses"
+    query: |
+      // Find contested territories (where collapsing sovereign had claims)
+      MATCH (dying_sov:Sovereign {id: $sovereign_id})-[:CLAIMS]->(t:Territory)
+      // Sum influence per faction across all contested territories
+      MATCH (fac:Faction)-[i:INFLUENCES]->(t)
+      RETURN fac.id, fac.name, fac.colonial_stance,
+             SUM(i.influence_level) AS total_influence
+      ORDER BY total_influence DESC
+      LIMIT 1
+    use_case: "Resolve sovereignty collapse - determines who takes power"
+    critical: true
+    note: |
+      THE RED SETTLER TRAP: If Workers' Congress (IGNORE stance) wins,
+      new Sovereign gets extraction_policy: CONTINUE → habitability still degrades.
+      Only Decolonial Front (ABOLISH stance) produces extraction_policy: CEASE.
+
+  colonial_stance_distribution:
+    description: "Get influence distribution by colonial stance"
+    query: |
+      MATCH (fac:Faction)-[i:INFLUENCES]->(t:Territory {id: $territory_id})
+      RETURN fac.colonial_stance,
+             SUM(i.influence_level) AS total_influence,
+             COLLECT(fac.name) AS factions
+      ORDER BY total_influence DESC
+    use_case: "Understand political composition of a territory"
+
+  abolish_faction_territories:
+    description: "Find territories where ABOLISH factions have majority influence"
+    query: |
+      MATCH (fac:Faction {colonial_stance: 'ABOLISH'})-[i:INFLUENCES]->(t:Territory)
+      WITH t, SUM(i.influence_level) AS abolish_influence
+      MATCH (all_fac:Faction)-[ai:INFLUENCES]->(t)
+      WITH t, abolish_influence, SUM(ai.influence_level) AS total_influence
+      WHERE abolish_influence > total_influence * 0.5
+      RETURN t.id, t.name, abolish_influence, total_influence
+    use_case: "Identify territories on path to true liberation"
+    note: "Only these territories can achieve CEASE extraction policy when sovereign forms"
+
+  # ===========================================================================
   # TRADITIONAL QUERIES (updated for CLAIMS)
   # ===========================================================================
 
@@ -1010,19 +1312,73 @@ testing:
             # Cleanup handled by tmp_path
 
     sample_us_subset:
-      description: "Small representative sample for tests"
+      description: "Small representative sample for tests demonstrating Balkanization mechanics"
 
+      # === FACTIONS (v1.2.0) ===
+      factions:
+        - id: "FAC_RESTORATIONIST"
+          name: "Restorationist Front"
+          ideology: "FASCISM"
+          colonial_stance: "UPHOLD"
+          is_settler_formation: true
+          extraction_modifier: 1.5
+          violence_modifier: 1.5
+          class_reduction: 0.0
+          metabolic_reduction: -0.5  # ACCELERATES ecological collapse
+          color_hex: "#000000"
+          note: "Fascist reaction - explicit colonial defense, intensified extraction"
+
+        - id: "FAC_WORKERS_CONGRESS"
+          name: "Workers' Congress"
+          ideology: "SETTLER_SOCIALISM"
+          colonial_stance: "IGNORE"
+          is_settler_formation: true
+          extraction_modifier: 0.8
+          violence_modifier: 0.6
+          class_reduction: 0.8   # Good at addressing class issues
+          metabolic_reduction: 0.0  # THE RED SETTLER TRAP - zero metabolic healing
+          color_hex: "#FF0000"
+          note: |
+            THE TRAP: High class_reduction (they address worker needs) but
+            zero metabolic_reduction. If they win, extraction continues,
+            habitability degrades, and the planet dies with a red flag.
+
+        - id: "FAC_DECOLONIAL"
+          name: "Decolonial Front"
+          ideology: "ANTI_COLONIAL_COMMUNISM"
+          colonial_stance: "ABOLISH"
+          is_settler_formation: false
+          extraction_modifier: 0.0
+          violence_modifier: 0.3
+          class_reduction: 0.5
+          metabolic_reduction: 0.8  # THE ONLY PATH TO HEALING
+          color_hex: "#008000"
+          note: |
+            Coalition of Indigenous sovereignty movements, New Afrika, and
+            anti-colonial communists. Only faction that can achieve TRUE victory.
+
+      # === SOVEREIGNS ===
       sovereigns:
         - id: "SOV_USA_FED"
           name: "United States Federal Government"
           sovereignty_type: "RECOGNIZED_STATE"
           legitimacy: 1.0
           color_hex: "#3C3B6E"
+          ruling_faction_id: null  # No formal faction - the "neutral" state
+          extraction_policy: "CONTINUE"
+          note: "The default state - not explicitly fascist, but maintains extraction"
+
         - id: "SOV_PRC"
           name: "Provisional Revolutionary Command"
           sovereignty_type: "INSURGENT"
           legitimacy: 0.2
           color_hex: "#B22234"
+          ruling_faction_id: "FAC_WORKERS_CONGRESS"
+          extraction_policy: "CONTINUE"
+          note: |
+            THE TRAP IN ACTION: Even under revolutionary command, if Workers'
+            Congress leads, extraction_policy is CONTINUE. They won the revolution
+            but maintained the settler-colonial relationship to land.
 
       territories:
         - "US (Federal)"
@@ -1066,3 +1422,69 @@ testing:
             control_level: 0.4
             legal_status: "DE_FACTO"
             note: "Revolutionary command has partial control of LA County"
+
+        # === INFLUENCES (v1.2.0 - Faction influence over territories) ===
+        INFLUENCES:
+          # Restorationist Front - strong in rural/exurban areas
+          - from: "FAC_RESTORATIONIST"
+            to: "US-AZ"
+            influence_level: 0.6
+            support_type: "ELECTORAL"
+            cadre_count: 50
+            note: "Strong base in Arizona - Minuteman types, border militias"
+
+          - from: "FAC_RESTORATIONIST"
+            to: "US-NV"
+            influence_level: 0.3
+            support_type: "MILITARY"
+            cadre_count: 20
+            note: "Nevada militia movement - Bundy ranch types"
+
+          # Workers' Congress - strong in industrial/urban areas
+          - from: "FAC_WORKERS_CONGRESS"
+            to: "US-CA-037"
+            influence_level: 0.7
+            support_type: "LABOR"
+            cadre_count: 200
+            note: |
+              THE TRAP: Workers' Congress has highest influence in LA County.
+              If USA collapses here, they win - and extraction continues.
+
+          - from: "FAC_WORKERS_CONGRESS"
+            to: "US-CA"
+            influence_level: 0.4
+            support_type: "ELECTORAL"
+            cadre_count: 100
+            note: "DSA-types, union leadership"
+
+          # Decolonial Front - present but not dominant (the harder path)
+          - from: "FAC_DECOLONIAL"
+            to: "US-CA-037"
+            influence_level: 0.3
+            support_type: "IDEOLOGICAL"
+            cadre_count: 80
+            note: |
+              Lower influence than Workers' Congress - the correct path is harder.
+              Player must actively support Decolonial Front to flip LA.
+
+          - from: "FAC_DECOLONIAL"
+            to: "US-AZ"
+            influence_level: 0.2
+            support_type: "MATERIAL"
+            cadre_count: 40
+            note: "Tohono O'odham nation, border communities - Indigenous sovereignty"
+
+      # === SCENARIO COMMENTARY ===
+      scenario_notes: |
+        This test fixture demonstrates THE RED SETTLER TRAP:
+
+        1. If USA collapses in LA County, Workers' Congress wins (0.7 > 0.3)
+        2. New Sovereign gets extraction_policy: CONTINUE (from IGNORE stance)
+        3. Habitability continues to degrade (-0.005/tick)
+        4. Player experiences "false summit" - won the revolution, losing the planet
+
+        To achieve TRUE victory:
+        - Player must actively support Decolonial Front (build INFLUENCES edges)
+        - Flip LA County so Decolonial has majority when collapse occurs
+        - New Sovereign then gets extraction_policy: CEASE
+        - Only then can habitability recover (+0.01/tick)

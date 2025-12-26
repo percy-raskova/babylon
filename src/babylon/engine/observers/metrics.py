@@ -152,6 +152,19 @@ class MetricsCollector:
             row["wages_paid"] = tick_metrics.edges.wages_paid
             row["solidarity_strength"] = tick_metrics.edges.solidarity_strength
 
+            # Global metrics
+            row["imperial_rent_pool"] = tick_metrics.imperial_rent_pool
+            row["global_tension"] = tick_metrics.global_tension
+
+            # Economy drivers (Phase 4.1B)
+            row["current_super_wage_rate"] = tick_metrics.current_super_wage_rate
+            row["current_repression_level"] = tick_metrics.current_repression_level
+            row["pool_ratio"] = tick_metrics.pool_ratio
+
+            # Derived differentials (Phase 4.1B)
+            row["consciousness_gap"] = tick_metrics.consciousness_gap
+            row["wealth_gap"] = tick_metrics.wealth_gap
+
             rows.append(row)
 
         return rows

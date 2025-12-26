@@ -132,6 +132,8 @@ def reset_main_module_state() -> Generator[None, None, None]:
     original_last_narrative_index = main._state.last_narrative_index
     original_last_event_index = main._state.last_event_index
     original_metrics_collector = main._state.metrics_collector
+    original_wire_panel = main._state.wire_panel
+    original_last_dual_narrative_index = main._state.last_dual_narrative_index
 
     yield
 
@@ -146,6 +148,8 @@ def reset_main_module_state() -> Generator[None, None, None]:
     main._state.last_narrative_index = original_last_narrative_index
     main._state.last_event_index = original_last_event_index
     main._state.metrics_collector = original_metrics_collector
+    main._state.wire_panel = original_wire_panel
+    main._state.last_dual_narrative_index = original_last_dual_narrative_index
 
 
 @pytest.fixture

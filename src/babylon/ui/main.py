@@ -27,7 +27,7 @@ from babylon.engine.simulation import Simulation
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
 from babylon.models.world_state import WorldState
-from babylon.ui.components import StateInspector, SystemLog, TrendPlotter
+from babylon.ui.components import StateInspector, SystemLog, TrendPlotter, WirePanel
 from babylon.ui.controls import ControlDeck
 from babylon.ui.terminal import NarrativeTerminal, find_narrative_director, poll_narrative_director
 
@@ -64,6 +64,8 @@ class DashboardState:
         self.state_inspector: StateInspector | None = None
         self.last_event_index: int = 0
         self.metrics_collector: MetricsCollector | None = None
+        self.wire_panel: WirePanel | None = None
+        self.last_dual_narrative_index: int = 0
 
 
 # Module-level state instance
@@ -142,6 +144,7 @@ async def on_reset() -> None:
         await _state.runner.stop()
     _state.last_narrative_index = 0  # Reset narrative polling index
     _state.last_event_index = 0  # Reset event tracking index
+    _state.last_dual_narrative_index = 0  # Reset dual narrative tracking
     init_simulation()
     refresh_ui()
 
@@ -204,13 +207,56 @@ def _event_to_log_level(event: SimulationEvent) -> str:
     return "INFO"
 
 
+def _refresh_wire_panel() -> None:
+    """Poll NarrativeDirector for dual narratives and update WirePanel.
+
+    The Gramscian Wire displays contrasting corporate vs liberated perspectives
+    on significant events, demonstrating the thesis that "Neutrality is Hegemony".
+    """
+    if _state.wire_panel is None:
+        return
+    director = _get_narrative_director()
+    if director is None or not hasattr(director, "dual_narratives"):
+        return
+    dual_narratives = director.dual_narratives
+    for tick, data in dual_narratives.items():
+        if tick > _state.last_dual_narrative_index:
+            _state.wire_panel.log(
+                data["event"],
+                {"corporate": data["corporate"], "liberated": data["liberated"]},
+            )
+    if dual_narratives:
+        _state.last_dual_narrative_index = max(dual_narratives.keys())
+
+
+def _refresh_trend_plotter(sim_state: WorldState) -> None:
+    """Push metrics to TrendPlotter from MetricsCollector or fallback.
+
+    Args:
+        sim_state: Current simulation state for fallback metrics.
+    """
+    if _state.trend_plotter is None:
+        return
+    if _state.metrics_collector is not None and _state.metrics_collector.latest is not None:
+        latest = _state.metrics_collector.latest
+        _state.trend_plotter.push_data(
+            latest.tick, latest.imperial_rent_pool, latest.global_tension
+        )
+    else:
+        # Fallback for initial render before first step
+        rent = float(sim_state.economy.imperial_rent_pool)
+        tension = _calculate_global_tension(sim_state)
+        _state.trend_plotter.push_data(sim_state.tick, rent, tension)
+
+
 def refresh_ui() -> None:
     """Update all Synopticon panels with current simulation state.
 
-    This function pushes data to all four panels:
+    This function pushes data to all panels:
 
     1. ControlDeck: Update tick counter
     2. NarrativeTerminal: Poll NarrativeDirector for new narrative entries
+    2b. WirePanel: Poll NarrativeDirector for dual narratives (Gramscian Wire)
     3. TrendPlotter: Push Imperial Rent and Global Tension metrics
     4. StateInspector: Update with C001 entity state
     5. SystemLog: Log new simulation events with appropriate severity levels
@@ -220,11 +266,11 @@ def refresh_ui() -> None:
 
     sim_state = _state.simulation.current_state
 
-    # 1. Update tick counter (existing)
+    # 1. Update tick counter
     if _state.control_deck is not None:
         _state.control_deck.update_tick(sim_state.tick)
 
-    # 2. Poll NarrativeDirector -> NarrativeTerminal (existing)
+    # 2. Poll NarrativeDirector -> NarrativeTerminal
     if _state.terminal is not None:
         director = _get_narrative_director()
         if director is not None:
@@ -234,29 +280,19 @@ def refresh_ui() -> None:
             for entry in new_entries:
                 _state.terminal.log(entry)
 
-    # 3. Push metrics -> TrendPlotter via MetricsCollector (Sprint 4.1)
-    # Uses unified metrics collection instead of hardcoded extraction
-    # Falls back to direct state access if collector hasn't received data yet
-    if _state.trend_plotter is not None:
-        if _state.metrics_collector is not None and _state.metrics_collector.latest is not None:
-            latest = _state.metrics_collector.latest
-            _state.trend_plotter.push_data(
-                latest.tick, latest.imperial_rent_pool, latest.global_tension
-            )
-        else:
-            # Fallback for initial render before first step
-            rent = float(sim_state.economy.imperial_rent_pool)
-            tension = _calculate_global_tension(sim_state)
-            _state.trend_plotter.push_data(sim_state.tick, rent, tension)
+    # 2b. Poll NarrativeDirector for dual narratives -> WirePanel
+    _refresh_wire_panel()
 
-    # 4. Update StateInspector with C001 entity (full entity, not just metrics)
-    # StateInspector shows complete entity state including id, name, role etc.
+    # 3. Push metrics -> TrendPlotter
+    _refresh_trend_plotter(sim_state)
+
+    # 4. Update StateInspector with C001 entity
     if _state.state_inspector is not None:
         entity = sim_state.entities.get("C001")
         if entity is not None:
             _state.state_inspector.refresh(entity.model_dump())
 
-    # 5. Log new events -> SystemLog (NEW)
+    # 5. Log new events -> SystemLog
     if _state.system_log is not None:
         new_events = sim_state.events[_state.last_event_index :]
         for event in new_events:
@@ -335,15 +371,16 @@ def main_page() -> None:
             with ui.element("div").classes("flex-1 min-h-0 w-full"):
                 _state.trend_plotter = TrendPlotter()
 
-        # Center panel: NarrativeTerminal (top 50%) + SystemLog (bottom 50%)
+        # Center panel: WirePanel (The Gramscian Wire) + SystemLog
         # h-full + w-full stretches to grid cell; children use flex-1 to split evenly
         with ui.column().classes("gap-4 h-full w-full"):
-            # Narrative panel (top half) - flex-1 takes 50% of available space
+            # The Wire panel (top half) - dual narrative display
             with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):
-                ui.label("NARRATIVE").classes(
+                ui.label("THE WIRE").classes(
                     "text-[#9D00FF] font-mono uppercase tracking-wider text-xs"
                 )
                 with ui.element("div").classes("flex-1 min-h-0 w-full"):
+                    _state.wire_panel = WirePanel()
                     _state.terminal = NarrativeTerminal()
             # System Log panel (bottom half) - flex-1 takes other 50%
             with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):

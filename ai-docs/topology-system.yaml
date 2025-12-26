@@ -120,13 +120,13 @@ technology:
           description: "Count edges, optionally by type"
 
   adapters:
-    networkx_adapter:
-      name: "NetworkXAdapter"
+    inmemory_adapter:
+      name: "InMemoryAdapter"
       status: "CURRENT (MVP)"
       location: "Currently inline in WorldState.to_graph()/from_graph()"
-      future_location: "src/babylon/engine/adapters/networkx_adapter.py"
+      future_location: "src/babylon/engine/adapters/inmemory_adapter.py"
       backing: "networkx.DiGraph"
-      epoch_compatibility: "Epoch 1 and 2"
+      epoch_compatibility: "Epoch 1 (direct) and Epoch 2 (via interface)"
 
       characteristics:
         - "In-memory (fast, but limited by RAM)"
@@ -143,10 +143,10 @@ technology:
         - "RAM-bound - large scenarios may hit memory limits"
         - "No native graph query language"
 
-    duckdb_adapter:
-      name: "DuckDBAdapter"
+    columnar_adapter:
+      name: "ColumnarAdapter"
       status: "PLANNED (Epoch 3)"
-      location: "src/babylon/engine/adapters/duckdb_adapter.py (planned)"
+      location: "src/babylon/engine/adapters/columnar_adapter.py (planned)"
       backing: "DuckDB + DuckPGQ extension"
       epoch_compatibility: "Epoch 3+"
 
@@ -165,10 +165,108 @@ technology:
 
       migration_strategy: |
         1. Implement GraphProtocol interface
-        2. Create DuckDBAdapter implementing the protocol
+        2. Create ColumnarAdapter implementing the protocol
         3. Add configuration flag to select adapter
         4. Migrate Ledger layer to DuckDB (unification)
         5. Deprecate SQLite once validated
+
+  # -------------------------------------------------------------------------
+  # TECHNOLOGY BRIDGE: Epoch 1 → Epoch 2 Migration
+  # -------------------------------------------------------------------------
+  technology_bridge:
+    name: "Epoch 1 → 2 Bridge"
+    status: "TRANSITION PLAN"
+    updated: "2025-12-26"
+
+    principle: |
+      The transition from Epoch 1 to Epoch 2 is a GRADUAL migration from
+      direct NetworkX access to GraphProtocol-mediated access. This allows
+      existing code to continue working while new code uses the abstraction.
+
+    epochs:
+      epoch_1:
+        name: "The Demonstration"
+        graph_access: "Direct NetworkX"
+        pattern: |
+          WorldState.to_graph() returns raw NetworkX DiGraph.
+          Systems access graph.nodes['C001']['wealth'] directly.
+          No interface abstraction - NetworkX IS the API.
+        status: "CURRENT IMPLEMENTATION"
+        constraint: |
+          This is acceptable for Epoch 1 because:
+          - Small scale (4 SocialClass nodes, few Territories)
+          - No persistence requirements during tick
+          - Developer-facing (Debug UI only)
+
+      epoch_2:
+        name: "The Game"
+        graph_access: "GraphProtocol ONLY"
+        pattern: |
+          Systems interact ONLY via GraphProtocol interface.
+          WorldState.to_graph() returns a GraphProtocol-wrapped adapter.
+          All direct NetworkX calls are prohibited in System code.
+        constraint: |
+          Required for Epoch 2 because:
+          - Larger scale (100+ nodes for scenarios)
+          - Fog of War requires filtered views
+          - Agent abstraction requires clean separation
+        enforcement: |
+          Linting rules can detect direct nx.* imports in Systems.
+          All System.step() receives GraphProtocol, not DiGraph.
+
+      epoch_3:
+        name: "The Platform"
+        graph_access: "ColumnarAdapter (DuckDB + DuckPGQ)"
+        pattern: |
+          Same GraphProtocol interface, different backing store.
+          Swap InMemoryAdapter for ColumnarAdapter in config.
+          Zero changes to System code.
+        benefit: |
+          Persistent graphs, SQL analytics, Parquet export.
+
+    migration_stages:
+      stage_1:
+        name: "Interface Definition"
+        epoch: "Late Epoch 1"
+        tasks:
+          - "Define GraphProtocol as typing.Protocol"
+          - "Document all required methods (16 methods)"
+          - "Create InMemoryAdapter wrapping NetworkX"
+        status: "SPECIFICATION COMPLETE"
+
+      stage_2:
+        name: "Adapter Implementation"
+        epoch: "Early Epoch 2"
+        tasks:
+          - "Implement InMemoryAdapter with full test coverage"
+          - "Update WorldState.to_graph() to return wrapped adapter"
+          - "Refactor one System to use GraphProtocol (proof of concept)"
+        status: "PLANNED"
+
+      stage_3:
+        name: "System Migration"
+        epoch: "Epoch 2"
+        tasks:
+          - "Refactor all 8 Systems to use GraphProtocol"
+          - "Add lint rules to prevent direct NetworkX imports"
+          - "Validate via integration tests"
+        status: "PLANNED"
+
+      stage_4:
+        name: "Backend Swap"
+        epoch: "Epoch 3"
+        tasks:
+          - "Implement ColumnarAdapter (DuckDB + DuckPGQ)"
+          - "Add configuration to select adapter"
+          - "Performance benchmarking: InMemory vs Columnar"
+        status: "FUTURE"
+
+    explicit_statement: |
+      FOR EPOCH 1: We use direct NetworkX. This is acceptable.
+      FOR EPOCH 2: We interact ONLY via the GraphProtocol interface.
+
+      The GraphProtocol is the architectural boundary. NetworkX is an
+      implementation detail that can be swapped without changing System code.
 
   franchise_model:
     name: "The Franchise Model"

@@ -61,6 +61,10 @@ class MetabolismSystem:
             services: ServiceContainer with config, formulas, event_bus, database.
             context: Dict or TickContext with 'tick' (int) key.
         """
+        # Get metabolism parameters from GameDefines
+        entropy_factor = services.defines.metabolism.entropy_factor
+        overshoot_threshold = services.defines.metabolism.overshoot_threshold
+
         # Phase 1: Update each territory's biocapacity
         for node_id, data in graph.nodes(data=True):
             if data.get("_node_type") != "territory":
@@ -72,6 +76,7 @@ class MetabolismSystem:
                 max_biocapacity=data.get("max_biocapacity", 100.0),
                 extraction_intensity=data.get("extraction_intensity", 0.0),
                 current_biocapacity=data.get("biocapacity", 100.0),
+                entropy_factor=entropy_factor,
             )
 
             # Calculate new biocapacity with clamping
@@ -95,10 +100,14 @@ class MetabolismSystem:
             if data.get("_node_type") == "social_class"
         )
 
-        # Phase 3: Check overshoot and emit event if ratio > 1.0
-        ratio = calculate_overshoot_ratio(total_consumption, total_biocapacity)
+        # Phase 3: Check overshoot and emit event if ratio exceeds threshold
+        ratio = calculate_overshoot_ratio(
+            total_consumption,
+            total_biocapacity,
+            max_ratio=services.defines.metabolism.max_overshoot_ratio,
+        )
 
-        if ratio > 1.0:
+        if ratio > overshoot_threshold:
             tick = context.get("tick", 0) if isinstance(context, dict) else context.tick
             services.event_bus.publish(
                 Event(

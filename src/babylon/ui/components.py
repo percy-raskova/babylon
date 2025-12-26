@@ -7,6 +7,7 @@ Components:
     SystemLog: Raw event log with instant display (NO typewriter animation).
     TrendPlotter: Real-time EChart line graph for simulation metrics.
     StateInspector: JSON viewer for raw entity state inspection.
+    WirePanel: Dual narrative display panel (The Gramscian Wire).
 
 Example:
     >>> from babylon.ui.components import SystemLog, TrendPlotter, StateInspector
@@ -24,9 +25,12 @@ Example:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from nicegui import ui
+
+from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
     pass
@@ -294,3 +298,154 @@ class StateInspector:
         """
         self._current_data = entity_data
         self.json_editor.run_editor_method("set", {"json": entity_data})
+
+
+@dataclass
+class WirePanelEntry:
+    """Entry in the WirePanel log.
+
+    Attributes:
+        event: The simulation event that triggered this entry.
+        narratives: Optional dict with "corporate" and "liberated" keys.
+        has_dual_narrative: Whether this entry has both narrative perspectives.
+    """
+
+    event: SimulationEvent
+    narratives: dict[str, str] | None
+    has_dual_narrative: bool
+
+
+class WirePanel:
+    """Dual narrative display panel (The Gramscian Wire).
+
+    Displays side-by-side Corporate and Liberated narratives for significant
+    simulation events, demonstrating "Neutrality is Hegemony" thesis.
+
+    Layout::
+
+        +----------------------+--------------------------+
+        |  THE STATE           |  THE UNDERGROUND         |
+        +----------------------+--------------------------+
+        |  [Corporate text]    |  [Liberated text]        |
+        +----------------------+--------------------------+
+
+    Attributes:
+        CORPORATE_BG: Background color for corporate panel.
+        CORPORATE_TEXT: Text color for corporate panel.
+        CORPORATE_BORDER: Border accent color for corporate panel.
+        CORPORATE_FONT: Font family for corporate panel.
+        LIBERATED_BG: Background color for liberated panel.
+        LIBERATED_TEXT: Text color for liberated panel.
+        LIBERATED_BORDER: Border accent color for liberated panel.
+        LIBERATED_FONT: Font family for liberated panel.
+    """
+
+    # Corporate panel styling (The State)
+    CORPORATE_BG: str = "#1a1a1a"
+    CORPORATE_TEXT: str = "#ffffff"
+    CORPORATE_BORDER: str = "#4a90d9"
+    CORPORATE_FONT: str = "system-ui, sans-serif"
+
+    # Liberated panel styling (The Underground)
+    LIBERATED_BG: str = "#0d0d0d"
+    LIBERATED_TEXT: str = "#00ff88"
+    LIBERATED_BORDER: str = "#9b59b6"
+    LIBERATED_FONT: str = "monospace"
+
+    def __init__(self) -> None:
+        """Initialize WirePanel with empty state."""
+        self._entries: list[WirePanelEntry] = []
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Construct the UI elements."""
+        with ui.scroll_area().classes("w-full h-full min-h-0") as scroll:
+            self.scroll_area: Any = scroll
+            self._content = ui.column().classes("w-full gap-4")
+
+    def log(
+        self,
+        event: SimulationEvent,
+        narratives: dict[str, str] | None = None,
+    ) -> None:
+        """Log event with optional dual narratives.
+
+        Args:
+            event: The simulation event.
+            narratives: Optional {"corporate": "...", "liberated": "..."} dict.
+        """
+        has_dual = (
+            narratives is not None and "corporate" in narratives and "liberated" in narratives
+        )
+        entry = WirePanelEntry(
+            event=event,
+            narratives=narratives,
+            has_dual_narrative=has_dual,
+        )
+        self._entries.append(entry)
+
+        if has_dual and narratives is not None:
+            self._render_dual(narratives)
+        else:
+            self._render_single(event)
+
+        self.scroll_area.scroll_to(percent=1.0)
+
+    def _render_dual(self, narratives: dict[str, str]) -> None:
+        """Render side-by-side dual narrative view.
+
+        Args:
+            narratives: Dict with "corporate" and "liberated" keys.
+        """
+        with self._content, ui.row().classes("w-full gap-2"):
+            # Corporate panel (THE STATE)
+            with (
+                ui.column()
+                .classes("flex-1")
+                .style(
+                    f"background: {self.CORPORATE_BG}; "
+                    f"border-left: 3px solid {self.CORPORATE_BORDER}; "
+                    f"padding: 1rem;"
+                )
+            ):
+                ui.label("THE STATE").classes("font-bold text-xs uppercase tracking-wider").style(
+                    f"color: {self.CORPORATE_BORDER};"
+                )
+                ui.label(narratives["corporate"]).style(
+                    f"color: {self.CORPORATE_TEXT}; font-family: {self.CORPORATE_FONT};"
+                )
+
+            # Liberated panel (THE UNDERGROUND)
+            with (
+                ui.column()
+                .classes("flex-1")
+                .style(
+                    f"background: {self.LIBERATED_BG}; "
+                    f"border-left: 3px solid {self.LIBERATED_BORDER}; "
+                    f"padding: 1rem;"
+                )
+            ):
+                ui.label("THE UNDERGROUND").classes(
+                    "font-bold text-xs uppercase tracking-wider"
+                ).style(f"color: {self.LIBERATED_BORDER};")
+                ui.label(narratives["liberated"]).style(
+                    f"color: {self.LIBERATED_TEXT}; font-family: {self.LIBERATED_FONT};"
+                )
+
+    def _render_single(self, event: SimulationEvent) -> None:
+        """Render fallback single-panel view for events without narratives.
+
+        Args:
+            event: The simulation event to display.
+        """
+        with (
+            self._content,
+            ui.element("div").style(
+                f"background: {self.CORPORATE_BG}; "
+                f"border-left: 3px solid {self.CORPORATE_BORDER}; "
+                f"padding: 1rem;"
+            ),
+        ):
+            ui.label(f"[{event.event_type.value}] tick={event.tick}").style(
+                f"color: {self.CORPORATE_TEXT}; font-family: {self.CORPORATE_FONT};"
+            )

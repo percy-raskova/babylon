@@ -184,8 +184,13 @@ class TestNarrativeDirectorIntegration:
 
     def test_director_processes_significant_events(self) -> None:
         """Verify director calls LLM for significant events."""
+        # 3 calls: 2 for dual narratives + 1 for main narrative
         mock_llm = MockLLM(
-            responses=["The empire extracts its tribute, comrade."],
+            responses=[
+                "[CORP] Corporate response.",  # dual: corporate
+                "[LIB] Liberated response.",  # dual: liberated
+                "The empire extracts its tribute, comrade.",  # main narrative
+            ],
         )
         persona = load_default_persona()
         director = NarrativeDirector(
@@ -225,8 +230,8 @@ class TestNarrativeDirectorIntegration:
 
         director.on_tick(previous_state, new_state)
 
-        # Verify LLM was called
-        assert mock_llm.call_count == 1
+        # Verify LLM was called (3 calls: 2 for dual narratives + 1 for main narrative)
+        assert mock_llm.call_count == 3
         assert len(director.narrative_log) == 1
         assert "tribute" in director.narrative_log[0]
 
@@ -270,8 +275,10 @@ class TestNarrativeDirectorIntegration:
         director.on_tick(previous_state, new_state)
 
         # Verify system prompt contains persona elements
-        assert mock_llm.call_count == 1
-        call = mock_llm.call_history[0]
+        # (3 calls: 2 for dual narratives + 1 for main narrative)
+        assert mock_llm.call_count == 3
+        # Check the main narrative call (last one) for persona elements
+        call = mock_llm.call_history[-1]
         system_prompt = call["system_prompt"]
 
         # Verify persona elements are in system prompt
@@ -285,11 +292,24 @@ class TestHardCaseScenario:
 
     def test_hard_case_full_scenario_with_mock_llm(self) -> None:
         """Verify all 3 Hard Case events generate narrative."""
+        # 9 calls total: 3 per tick (2 dual narratives + 1 main narrative) * 3 ticks
+        # Positions: Tick 1: [0:corporate, 1:liberated, 2:main]
+        #            Tick 2: [3:corporate, 4:liberated, 5:main]
+        #            Tick 3: [6:corporate, 7:liberated, 8:main]
         mock_llm = MockLLM(
             responses=[
-                "The Squeeze: Debt servicing drains the periphery.",
-                "The Crash: Austerity is capital's desperation.",
-                "The Reaction: Solidarity crystallizes into organization.",
+                # Tick 1 (extraction_event)
+                "[CORP] Markets remain stable.",  # 0: corporate
+                "[LIB] Workers exploited!",  # 1: liberated
+                "The Squeeze: Debt servicing drains the periphery.",  # 2: main
+                # Tick 2 (crisis_event)
+                "[CORP] Minor adjustment needed.",  # 3: corporate
+                "[LIB] Crisis exposes contradictions!",  # 4: liberated
+                "The Crash: Austerity is capital's desperation.",  # 5: main
+                # Tick 3 (phase_event)
+                "[CORP] Community activity noted.",  # 6: corporate
+                "[LIB] Solidarity rises!",  # 7: liberated
+                "The Reaction: Solidarity crystallizes into organization.",  # 8: main
             ],
         )
         persona = load_default_persona()
@@ -328,7 +348,8 @@ class TestHardCaseScenario:
         )
 
         director.on_tick(state_0, state_1)
-        assert mock_llm.call_count == 1
+        # 3 calls: 2 for dual narratives + 1 for main narrative
+        assert mock_llm.call_count == 3
 
         # Tick 2: The Crash (accumulate previous events)
         crisis_event = CrisisEvent(
@@ -347,7 +368,8 @@ class TestHardCaseScenario:
         )
 
         director.on_tick(state_1, state_2)
-        assert mock_llm.call_count == 2
+        # 6 calls: 3 from tick 1 + 3 from tick 2
+        assert mock_llm.call_count == 6
 
         # Tick 3: The Reaction (accumulate all events)
         phase_event = PhaseTransitionEvent(
@@ -368,7 +390,8 @@ class TestHardCaseScenario:
         )
 
         director.on_tick(state_2, state_3)
-        assert mock_llm.call_count == 3
+        # 9 calls: 3 per tick * 3 ticks
+        assert mock_llm.call_count == 9
 
         # Verify all narratives generated
         assert len(director.narrative_log) == 3

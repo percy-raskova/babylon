@@ -309,13 +309,11 @@ class NarrativeDirector:
                     dual_narrative_ticks.add(event.tick)
 
         # Generate narrative for significant events (Sprint 4.1)
-        # Skip events that already got dual narratives
+        # Note: Dual narratives are generated above for WirePanel display.
+        # This generates the main narrative for NarrativeTerminal (backward compat).
         if self._use_llm and self._llm is not None and new_events:
             significant_events = [
-                e
-                for e in new_events
-                if e.event_type in self.SIGNIFICANT_EVENT_TYPES
-                and e.tick not in dual_narrative_ticks
+                e for e in new_events if e.event_type in self.SIGNIFICANT_EVENT_TYPES
             ]
             if significant_events:
                 system_prompt = self._prompt_builder.build_system_prompt()

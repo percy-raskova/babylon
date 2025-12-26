@@ -412,7 +412,7 @@ class TopologyMonitor:
         potential, actual = calculate_liquidity(graph)
 
         # Calculate cadre_density: actual / potential (with division-by-zero protection)
-        cadre_density = actual / max(1, potential) if potential > 0 else 0.0
+        cadre_density = actual / max(1, potential)
         # Clamp to [0, 1] for safety
         cadre_density = max(0.0, min(1.0, cadre_density))
 

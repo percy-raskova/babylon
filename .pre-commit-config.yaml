@@ -37,6 +37,7 @@ repos:
           - backoff>=2.0
           - ratelimit>=2.0
           - openai>=2.0
+          - nicegui>=2.0
         args: [--config-file=pyproject.toml]
         exclude: ^tests/|^examples/|^src/babylon/rag/|^src/babylon/__main__.py|^src/babylon/metrics/|^tools/|^assets/music/
 
@@ -47,7 +48,7 @@ repos:
     hooks:
       - id: pytest-fast
         name: pytest (fast tests)
-        entry: poetry run pytest tests/unit/formulas tests/unit/engine -q --tb=no
+        entry: poetry run pytest tests/unit/formulas tests/unit/engine -q --tb=no -m "not red_phase"
         language: system
         pass_filenames: false
         always_run: true

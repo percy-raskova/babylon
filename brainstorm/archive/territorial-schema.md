@@ -1,3 +1,10 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/territorial-schema.yaml`
+> **Implemented In:** `src/babylon/models/entities/territory.py`
+> **Archive Note:** This exploratory document is kept for historical context. The Territorial Schema was implemented in Phase 3.5.
+
+---
+
 # Territorial Schema: Design Document
 
 ## The Core Thesis

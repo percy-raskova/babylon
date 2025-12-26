@@ -1,6 +1,13 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/parameter-analysis.yaml`
+> **Implemented In:** `tools/parameter_analysis.py`
+> **Archive Note:** This planning document is kept for historical context. The parameter analysis tool was implemented with trace/sweep commands.
+
+---
+
 # Parameter Analysis Plan
 
-> **Status:** PLANNED
+> **Status:** ~~PLANNED~~ IMPLEMENTED
 > **Created:** 2025-12-11
 > **Spec:** ai-docs/parameter-analysis.yaml
 

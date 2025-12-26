@@ -45,4 +45,26 @@ def list_data_files() -> list[str]:
     return [f.name for f in GAME_DATA_DIR.glob("*.json")]
 
 
-__all__ = ["GAME_DATA_DIR", "load_json", "list_data_files"]
+def load_event_templates() -> list[Any]:
+    """Load event templates from the event_templates.json file.
+
+    Parses the JSON file and converts each template dict to an EventTemplate
+    Pydantic model.
+
+    Returns:
+        List of EventTemplate objects.
+
+    Raises:
+        FileNotFoundError: If event_templates.json doesn't exist.
+        ValidationError: If template data is invalid.
+    """
+    from babylon.models.entities.event_template import EventTemplate
+
+    data = load_json("event_templates.json")
+    templates = []
+    for template_data in data.get("event_templates", []):
+        templates.append(EventTemplate(**template_data))
+    return templates
+
+
+__all__ = ["GAME_DATA_DIR", "load_json", "list_data_files", "load_event_templates"]

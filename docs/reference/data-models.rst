@@ -212,7 +212,7 @@ Edge Types
 Entity Collections
 ------------------
 
-The Ledger stores 16 JSON entity collections in ``src/babylon/data/game/``:
+The Ledger stores 18 JSON entity collections in ``src/babylon/data/game/``:
 
 .. list-table::
    :header-rows: 1

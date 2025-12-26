@@ -761,6 +761,7 @@ def calculate_biocapacity_delta(
 def calculate_overshoot_ratio(
     total_consumption: float,
     total_biocapacity: float,
+    max_ratio: float = 999.0,
 ) -> float:
     """Calculate ecological overshoot ratio: O = C / B.
 
@@ -770,6 +771,7 @@ def calculate_overshoot_ratio(
     Args:
         total_consumption: Total consumption needs across all entities
         total_biocapacity: Total available biocapacity
+        max_ratio: Cap for ratio when biocapacity depleted (default 999.0)
 
     Returns:
         Overshoot ratio (>1.0 = ecological overshoot)
@@ -783,6 +785,6 @@ def calculate_overshoot_ratio(
         999.0
     """
     if total_biocapacity <= 0:
-        return 999.0  # Cap at high value instead of inf
+        return max_ratio  # Cap at high value instead of inf
 
     return total_consumption / total_biocapacity

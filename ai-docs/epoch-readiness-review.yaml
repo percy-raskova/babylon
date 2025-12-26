@@ -265,15 +265,21 @@ action_items:
     - id: SCOPE-001
       issue: "Epoch 2 scope overload"
       action: "Split into 2A/2B/2C/2D sub-epochs"
+      status: RESOLVED
+      resolution: "Implemented in epochs-overview.md, all slice specs updated with sub_epoch field"
 
   p1_high:
     - id: BALANCE-001
       issue: "No balance targets"
       action: "Define numerical success criteria for gameplay"
+      status: RESOLVED
+      resolution: "Created ai-docs/balance-targets.yaml with timing, outcomes, thresholds, tuning guidelines"
 
     - id: AI-001
       issue: "State AI logic undefined"
       action: "Specify Panopticon decision algorithm"
+      status: RESOLVED
+      resolution: "Created ai-docs/state-ai-algorithm.yaml with threat assessment, Thread allocation, expansion triggers, behavioral biases"
 
   p2_medium:
     - id: UX-001

@@ -2,9 +2,10 @@
 # How the pieces fit together
 
 meta:
-  version: "3.4.0"
-  updated: "2025-12-14"
-  status: "Phase 3.4 in progress (1,926 tests, Narrative Bridge complete)"
+  version: "4.0.0"
+  updated: "2025-12-26"
+  status: "Epoch 1 → 2 Bridge architecture defined"
+  epoch_compatibility: "1 → 2 Bridge"
   related_docs:
     - "ai-docs/database-spec.yaml - SQLite schema and DDL"
     - "ai-docs/rag-architecture.yaml - ChromaDB collections"
@@ -74,6 +75,207 @@ core_architecture:
       data_flow: "Observes state → Queries RAG → Builds prompt → Calls LLM → Outputs narrative"
       key_insight: "Read-only access to simulation state (ADR003)"
       current_status: "Observer + RAG complete, LLM integration pending (Sprint 3.3)"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: THE DUAL PIPELINE
+# =============================================================================
+# APPROVED_ARCHITECTURE - Prepares for Epoch 2 (The Game) without breaking Epoch 1
+
+dual_pipeline:
+  name: "The Shadow Layer"
+  epoch_compatibility: "1 → 2 Bridge"
+  status: "APPROVED_ARCHITECTURE"
+  created: "2025-12-26"
+
+  principle: |
+    The current Debug UI is a "God View" connected directly to WorldState (Truth).
+    This MUST remain for Epoch 1 (The Demonstration) to function.
+
+    Epoch 2 (The Game) requires a PLAYER VIEW with Fog of War.
+    We achieve this by adding a SHADOW LAYER - NOT by refactoring the UI.
+
+    Two pipelines run in parallel:
+    - Pipeline A (Truth): Feeds the Debug UI (God View)
+    - Pipeline B (Subjectivity): Feeds the future Game UI (Player View)
+
+  constraint: |
+    WorldState is ALWAYS the Source of Truth.
+    PlayerShadowState is ALWAYS a derivative view.
+    The Shadow may contain stale, approximate, or FALSIFIED data.
+    The Truth never lies; the Shadow may deceive.
+
+  pipelines:
+    pipeline_a_truth:
+      name: "Pipeline A: Truth (God View)"
+      description: "The existing Epoch 1 architecture - unchanged"
+      flow: |
+        SimulationEngine
+             │
+             ▼
+         WorldState (Source of Truth)
+             │
+             ▼
+         Debug UI (God View)
+      characteristics:
+        accuracy: "100% - sees TRUE state of all attributes"
+        latency: "0 - instant access to current tick"
+        masking: "None - no fog of war"
+        purpose: "Development, debugging, demonstration"
+      implementation:
+        existing: true
+        changes_required: "None - preserve exactly as-is"
+
+    pipeline_b_subjectivity:
+      name: "Pipeline B: Subjectivity (Player View)"
+      description: "The Epoch 2 extension - new infrastructure"
+      flow: |
+        SimulationEngine
+             │
+             ▼
+         WorldState (Source of Truth)
+             │
+             ▼
+         FogOfWarSystem (Filter)
+             │
+             ▼
+         PlayerShadowState (Subjective View)
+             │
+             ▼
+         Game UI (Player View) [FUTURE]
+      characteristics:
+        accuracy: "Variable - depends on Mass_Receptivity"
+        latency: "May be stale - intel decays over time"
+        masking: "Yes - Desert territories show FALSIFIED data"
+        purpose: "Gameplay with fog of war"
+      implementation:
+        existing: false
+        spec: "ai-docs/fog-of-war.yaml"
+        new_components:
+          - "FogOfWarSystem (filters WorldState → PlayerShadowState)"
+          - "PlayerShadowState (subjective snapshot)"
+          - "IntelligenceSystem (calculates Mass_Receptivity, Intel_Confidence)"
+
+  diagram: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                         THE DUAL PIPELINE                               │
+    │                    (Epoch 1 → 2 Bridge Architecture)                    │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────┐
+    │ SimulationEngine │
+    │   (run_tick())   │
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │   WorldState     │◄───────────────────────────────────────┐
+    │ (Source of Truth)│                                        │
+    │                  │   IMMUTABLE • ACCURATE • CANONICAL     │
+    └────────┬─────────┘                                        │
+             │                                                  │
+             ├─────────────────────────────────────┐            │
+             │                                     │            │
+             ▼                                     ▼            │
+    ┌──────────────────┐                  ┌──────────────────┐  │
+    │  PIPELINE A      │                  │  PIPELINE B      │  │
+    │  (Truth)         │                  │  (Subjectivity)  │  │
+    │                  │                  │                  │  │
+    │  WorldState      │                  │  FogOfWarSystem  │  │
+    │       │          │                  │       │          │  │
+    │       ▼          │                  │       ▼          │  │
+    │  Debug UI        │                  │ PlayerShadow-    │  │
+    │  (God View)      │                  │ State            │  │
+    │                  │                  │       │          │  │
+    │  EPOCH 1         │                  │       ▼          │  │
+    │  PRESERVED       │                  │  Game UI         │  │
+    │                  │                  │  (Player View)   │  │
+    │                  │                  │                  │  │
+    │                  │                  │  EPOCH 2         │  │
+    │                  │                  │  NEW             │  │
+    └──────────────────┘                  └──────────────────┘  │
+                                                                │
+    The Debug UI ALWAYS reads from WorldState (Truth).          │
+    The Game UI ALWAYS reads from PlayerShadowState (Shadow).   │
+    Shadow is DERIVED from Truth, never the reverse.────────────┘
+
+  player_shadow_state:
+    name: "PlayerShadowState"
+    purpose: "Subjective view of the world from player's perspective"
+    characteristics:
+      derivative: "Always generated FROM WorldState, never independent"
+      mutable: "Can be stale (intel decay), approximate (Mud), or FALSE (Desert)"
+      per_territory: "Each territory has its own Intel_Confidence"
+
+    data_quality_states:
+      water:
+        condition: "Mass_Receptivity >= 0.8"
+        intel_confidence: "0.9-1.0"
+        data: "TRUE - matches WorldState"
+        description: "Base area - masses are your eyes"
+
+      mud:
+        condition: "0.2 <= Mass_Receptivity < 0.8"
+        intel_confidence: "0.4-0.7"
+        data: "APPROXIMATE - ±0.2 margin of error"
+        description: "Contested - partial information"
+
+      desert:
+        condition: "Mass_Receptivity < 0.2"
+        intel_confidence: "0.1-0.3"
+        data: "MASKED - may be FALSIFIED"
+        description: "Hostile - locals deceive you"
+
+    generation_process:
+      trigger: "After each tick, or on demand"
+      steps:
+        - "1. Read WorldState (Truth)"
+        - "2. For each territory, calculate Mass_Receptivity"
+        - "3. For each territory, calculate Intel_Confidence"
+        - "4. For Desert territories, apply MASKING (generate plausible false data)"
+        - "5. For Mud territories, apply APPROXIMATION (add noise)"
+        - "6. Store result as PlayerShadowState"
+
+    integration_with_debug_ui:
+      principle: "Debug UI displays BOTH states for development"
+      display:
+        - "Left panel: WorldState (Truth) - always accurate"
+        - "Right panel: PlayerShadowState (Shadow) - what player would see"
+        - "Diff highlight: Show which values are masked/approximate"
+      benefit: "Developers can verify fog of war is working correctly"
+
+  fog_of_war_system:
+    name: "FogOfWarSystem"
+    type: "Observer System (read-only on WorldState)"
+    spec: "ai-docs/fog-of-war.yaml"
+    responsibilities:
+      - "Calculate Mass_Receptivity per territory"
+      - "Calculate Intel_Confidence per territory"
+      - "Generate PlayerShadowState from WorldState"
+      - "Apply masking for Desert territories"
+      - "Apply approximation for Mud territories"
+      - "Track intel decay over time"
+
+    does_not_modify: "WorldState (Truth is immutable)"
+    produces: "PlayerShadowState (new object each tick)"
+
+  implementation_notes:
+    phase_1:
+      name: "Infrastructure Only"
+      scope: "Add FogOfWarSystem and PlayerShadowState models"
+      ui_changes: "None - Debug UI unchanged"
+      purpose: "Prepare backend for Epoch 2"
+
+    phase_2:
+      name: "Debug Integration"
+      scope: "Add Shadow display to Debug UI (side-by-side comparison)"
+      ui_changes: "Add optional Shadow panel"
+      purpose: "Verify fog of war calculations"
+
+    phase_3:
+      name: "Game UI"
+      scope: "Build separate Game UI that reads from PlayerShadowState"
+      ui_changes: "New UI entirely"
+      purpose: "Epoch 2 player experience"
 
 # =============================================================================
 # DIRECTORY STRUCTURE

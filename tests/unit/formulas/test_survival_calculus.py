@@ -249,6 +249,152 @@ class TestCrossoverEvent:
 
         assert p_a > p_r, "Above crossover, acquiescence should be rational"
 
+    def test_below_crossover_revolution_wins(self) -> None:
+        """Below crossover wealth, revolution becomes rational.
+
+        When wealth falls below the crossover point, P(S|R) > P(S|A).
+        """
+        # Parameters where P(S|R) is moderate and crossover is meaningful
+        cohesion = 0.4
+        repression = 0.5  # P(S|R) = 0.4/0.5 = 0.8
+        threshold = 0.5
+        steepness = 3.0
+
+        crossover = calculate_crossover_threshold(
+            cohesion=cohesion,
+            repression=repression,
+            subsistence_threshold=threshold,
+            steepness_k=steepness,
+        )
+
+        # Test a wealth level below crossover
+        low_wealth = max(crossover - 0.3, 0.05)
+
+        p_a = calculate_acquiescence_probability(
+            wealth=low_wealth,
+            subsistence_threshold=threshold,
+            steepness_k=steepness,
+        )
+        p_r = calculate_revolution_probability(
+            cohesion=cohesion,
+            repression=repression,
+        )
+
+        assert p_r > p_a, "Below crossover, revolution should be rational"
+
+    def test_p_revolution_zero_returns_zero(self) -> None:
+        """When P(S|R) = 0 (no cohesion), crossover returns 0.0.
+
+        With zero cohesion, revolution is never rational regardless of wealth.
+        """
+        crossover = calculate_crossover_threshold(
+            cohesion=0.0,  # No organization = P(S|R) = 0
+            repression=0.5,
+            subsistence_threshold=0.5,
+            steepness_k=2.0,
+        )
+
+        assert crossover == 0.0
+
+    def test_p_revolution_one_returns_one(self) -> None:
+        """When P(S|R) = 1 (capped), crossover returns 1.0.
+
+        Maximum revolutionary probability is capped at 1.0.
+        """
+        crossover = calculate_crossover_threshold(
+            cohesion=0.9,
+            repression=0.001,  # Very low repression -> P(S|R) capped at 1.0
+            subsistence_threshold=0.5,
+            steepness_k=2.0,
+        )
+
+        assert crossover == 1.0
+
+    def test_crossover_clamped_to_valid_range(self) -> None:
+        """Crossover value is always in [0, 1] range.
+
+        The result is clamped: max(0.0, min(1.0, crossover))
+        """
+        # Test various parameter combinations
+        test_cases = [
+            (0.1, 0.9, 0.5, 2.0),  # Low cohesion
+            (0.9, 0.1, 0.5, 2.0),  # High cohesion
+            (0.5, 0.5, 0.1, 5.0),  # Low threshold
+            (0.5, 0.5, 0.9, 5.0),  # High threshold
+        ]
+
+        for cohesion, repression, threshold, steepness in test_cases:
+            crossover = calculate_crossover_threshold(
+                cohesion=cohesion,
+                repression=repression,
+                subsistence_threshold=threshold,
+                steepness_k=steepness,
+            )
+            assert 0.0 <= crossover <= 1.0, (
+                f"Crossover out of bounds for c={cohesion}, r={repression}, "
+                f"t={threshold}, k={steepness}"
+            )
+
+    def test_crossover_at_exact_fifty_percent_revolution(self) -> None:
+        """When P(S|R) = 0.5, crossover equals subsistence threshold.
+
+        At 50% revolution probability, sigmoid crosses at its midpoint.
+        """
+        cohesion = 0.25
+        repression = 0.5  # P(S|R) = 0.25 / 0.5 = 0.5
+        threshold = 0.6
+        steepness = 2.0
+
+        crossover = calculate_crossover_threshold(
+            cohesion=cohesion,
+            repression=repression,
+            subsistence_threshold=threshold,
+            steepness_k=steepness,
+        )
+
+        # At P(S|R) = 0.5, ln(1/0.5 - 1) = ln(1) = 0
+        # So crossover = threshold - 0/k = threshold
+        assert crossover == pytest.approx(threshold, abs=0.01)
+
+    def test_steepness_affects_crossover_position(self) -> None:
+        """Higher steepness concentrates the crossover region.
+
+        With same parameters, different steepness values affect crossover.
+        The crossover formula is: crossover = threshold - ln_term / k
+        where ln_term = ln(1/p_revolution - 1)
+
+        With P(S|R) = 0.6 > 0.5:
+        ln_term = ln(1/0.6 - 1) = ln(0.667) < 0 (negative)
+        crossover = threshold - (negative / k) = threshold + |ln_term|/k
+
+        Higher k means smaller |ln_term|/k, so crossover closer to threshold.
+        """
+        cohesion = 0.3
+        repression = 0.5  # P(S|R) = 0.6
+        threshold = 0.5
+
+        crossover_low_k = calculate_crossover_threshold(
+            cohesion=cohesion,
+            repression=repression,
+            subsistence_threshold=threshold,
+            steepness_k=1.0,  # Low steepness
+        )
+
+        crossover_high_k = calculate_crossover_threshold(
+            cohesion=cohesion,
+            repression=repression,
+            subsistence_threshold=threshold,
+            steepness_k=5.0,  # High steepness
+        )
+
+        # Both should be valid but different due to steepness effect on ln_term/k
+        assert 0.0 <= crossover_low_k <= 1.0
+        assert 0.0 <= crossover_high_k <= 1.0
+        # With P(S|R) = 0.6 > 0.5, ln_term is negative
+        # crossover = 0.5 - (neg/k) = 0.5 + |ln_term|/k
+        # Higher k means smaller |ln_term|/k, so crossover is closer to threshold (smaller)
+        assert crossover_high_k < crossover_low_k
+
 
 @pytest.mark.math
 class TestLossAversion:

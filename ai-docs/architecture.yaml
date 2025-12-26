@@ -104,13 +104,17 @@ directory_map:
         - "history_formatter.py: format_class_struggle_history()"
       subdirs:
         systems/:
-          purpose: "Modular System implementations"
+          purpose: "Modular System implementations (8 Systems)"
           files:
             - "protocol.py: System protocol with step(graph, services, context)"
-            - "economic.py: ImperialRentSystem"
-            - "ideology.py: ConsciousnessSystem"
-            - "survival.py: SurvivalSystem"
-            - "contradiction.py: ContradictionSystem"
+            - "economic.py: ImperialRentSystem - wealth extraction via imperial rent"
+            - "solidarity.py: SolidaritySystem - consciousness transmission via SOLIDARITY edges"
+            - "ideology.py: ConsciousnessSystem - ideology drift & bifurcation"
+            - "survival.py: SurvivalSystem - P(S|A), P(S|R) calculations"
+            - "struggle.py: StruggleSystem - Agency Layer (George Floyd Dynamic)"
+            - "contradiction.py: ContradictionSystem - tension/rupture dynamics"
+            - "territory.py: TerritorySystem - heat, eviction, carceral geography"
+            - "event_template.py: EventTemplateSystem - structured event templates"
         history/:
           purpose: "State persistence and undo/redo"
           files:

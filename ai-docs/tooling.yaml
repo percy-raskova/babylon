@@ -2,7 +2,7 @@
 # How tools are configured and why
 
 meta:
-  version: "1.1.0"
+  version: "1.2.0"
   updated: "2025-12-26"
   purpose: "Document tooling decisions to avoid re-investigation"
 
@@ -389,6 +389,86 @@ code_complexity:
       description: "Alternative to CC that weights nested structures higher"
       status: "Blocked - Ruff doesn't support yet"
       notes: "When Ruff adds cognitive complexity, consider switching"
+
+# =============================================================================
+# MUTATION TESTING
+# =============================================================================
+
+mutation_testing:
+  philosophy: "Coverage lies - mutation testing proves tests actually catch bugs"
+
+  rationale: |
+    You can have 100% line coverage but still miss bugs. Mutation testing
+    makes small changes to code (mutations) and verifies tests catch them.
+    If tests pass with mutated code, you have a test gap.
+
+  tool: "mutmut"
+  package: "mutmut"
+  config_file: "pyproject.toml [tool.mutmut]"
+
+  how_it_works:
+    - "Makes small changes (mutations) to source code"
+    - "Runs test suite against each mutation"
+    - "If tests still pass → mutant 'survived' (test gap!)"
+    - "If tests fail → mutant 'killed' (tests are effective)"
+
+  example_mutations:
+    - "Change > to >= (boundary conditions)"
+    - "Change + to - (arithmetic operators)"
+    - "Replace return value with constant"
+    - "Remove statement entirely"
+
+  ci_integration:
+    trigger: "PRs to main only"
+    scope: "src/babylon/systems/formulas.py (critical pure math)"
+    behavior: "Blocks merge if mutants survive"
+    rationale: |
+      formulas.py contains the mathematical core of the simulation.
+      These functions MUST be correctly tested. Mutation testing
+      ensures tests catch off-by-one errors, boundary issues, etc.
+
+  mise_tasks:
+    mutate:
+      command: "poetry run mutmut run --paths-to-mutate=src/babylon/systems/formulas.py"
+      description: "Run mutation testing on core formulas (~15-30 min)"
+
+    mutate_critical:
+      command: "poetry run mutmut run --paths-to-mutate=..."
+      description: "Run mutation testing on critical engine systems"
+
+    mutate_results:
+      command: "poetry run mutmut results"
+      description: "Show mutation testing results summary"
+
+    mutate_show:
+      command: "poetry run mutmut show <id>"
+      description: "Show specific mutant details"
+
+    mutate_html:
+      command: "poetry run mutmut html"
+      description: "Generate HTML report"
+
+  workflow:
+    periodic_audit:
+      - "Run mise run mutate periodically (weekly or per-release)"
+      - "Review surviving mutants with mise run mutate-results"
+      - "Investigate specific mutants with mise run mutate-show <id>"
+      - "Write tests to kill survivors"
+
+    pr_to_main:
+      - "CI automatically runs mutation testing"
+      - "PR blocked if any mutants survive in formulas.py"
+      - "Developer must add tests to kill survivors before merge"
+
+  time_cost:
+    formulas_py: "~15-30 minutes (200-400 mutations)"
+    full_codebase: "Hours (not recommended for CI)"
+
+  why_only_main:
+    - "Mutation testing is slow (full test run per mutation)"
+    - "PRs to main are rare (BD merges only)"
+    - "Main is stable release branch - quality gate justified"
+    - "Dev branches move fast - don't want to block velocity"
 
 # =============================================================================
 # PYTHON TOOLING

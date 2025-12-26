@@ -1,0 +1,528 @@
+# Cohesion Mechanic Specification
+# The Vanguard: Intra-Organizational Dynamics for Epoch 2
+#
+# "Every organization carries within itself the seeds of its own bureaucratization."
+# - Robert Michels, Political Parties (1911)
+
+meta:
+  epoch: 2
+  slice: "2.2b"
+  slice_name: "The Vanguard (Internal Dynamics)"
+  status: PLANNED
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Model internal organizational decay and the cost of scaling"
+  theory_source:
+    primary: "Robert Michels - The Iron Law of Oligarchy (1911)"
+    secondary: "Mao Zedong - Rectification Campaigns (Yan'an, 1942-1944)"
+    tertiary: "Lenin - What Is To Be Done? (1902) - Cadre vs Mass distinction"
+
+  relationship_to_strategy_layer: |
+    This spec is COMPLEMENTARY to ai-docs/strategy-layer.yaml (Slice 2.2).
+    - Strategy Layer: EXTERNAL actions (Elections, Strikes, Sabotage)
+    - Cohesion Mechanic: INTERNAL dynamics (Organization health, scaling costs)
+
+    Together they form the complete "Player Agency" system for Epoch 2.
+    External actions CONSUME resources; Cohesion determines CAPACITY.
+
+# =============================================================================
+# ANTI-PATTERN WARNING
+# =============================================================================
+#
+# DO NOT implement this in the Engine yet.
+# Epoch 1 (The Demonstration) must remain OBSERVATION-ONLY.
+#
+# Current SolidaritySystem assumes 100% transmission efficiency.
+# This is "Platonic Idealism" - no real organization works this way.
+# This spec introduces FRICTION and DECAY to ground the model in reality.
+#
+# =============================================================================
+
+# =============================================================================
+# THEORETICAL FOUNDATION
+# =============================================================================
+
+theory:
+  the_iron_law:
+    source: "Robert Michels, Political Parties (1911)"
+    statement: |
+      "Who says organization, says oligarchy."
+
+      Every organization, no matter how democratic its origins, tends toward:
+      1. Concentration of power in leadership
+      2. Divergence of leader interests from member interests
+      3. Ossification of structure as scale increases
+      4. Substitution of organizational survival for original goals
+
+    mechanical_translation: |
+      As Member_Count increases, Entropy increases.
+      As Entropy increases, Cohesion decreases.
+      As Cohesion decreases, Transmission efficiency decreases.
+      Therefore: Growth degrades revolutionary capacity unless counteracted.
+
+  the_rectification_principle:
+    source: "Mao Zedong, Yan'an Rectification Movement (1942-1944)"
+    statement: |
+      "The Party must periodically purge opportunists and revisionists
+      to maintain ideological unity and organizational discipline."
+
+    mechanical_translation: |
+      Rectification trades SIZE for COHESION.
+      It is costly but necessary to prevent organizational death.
+      The question is WHEN and HOW MUCH, not WHETHER.
+
+  the_vanguard_paradox:
+    source: "Lenin, What Is To Be Done? (1902)"
+    statement: |
+      "The working class, exclusively by its own effort, is able to develop
+      only trade-union consciousness... Socialist consciousness can only be
+      brought to them from without."
+
+    mechanical_translation: |
+      High Sympathizer count without Cadre leadership = Economism.
+      High Cadre count without Sympathizer base = Sectarianism.
+      The cadre_ratio must be maintained within optimal bounds.
+      Too low: the mass overwhelms the vanguard (mob, not movement).
+      Too high: the vanguard loses touch with the mass (sect, not party).
+
+# =============================================================================
+# THE FUNDAMENTAL LAWS
+# =============================================================================
+
+laws:
+  transmission_law:
+    name: "The Transmission Law"
+    formula: "Effective_Transmission = min(Solidarity_Strength, Cohesion_Level)"
+    explanation: |
+      You cannot transmit revolutionary energy through a broken organization.
+      A 0.9 Solidarity edge through a 0.2 Cohesion org delivers only 0.2.
+      The excess (0.7) dissipates as "Heat" - internal drama, infighting, confusion.
+
+    code_signature: |
+      def calculate_effective_transmission(
+          solidarity_strength: float,  # From SOLIDARITY edge
+          source_cohesion: float,       # From source node
+          target_cohesion: float        # From target node
+      ) -> tuple[float, float]:
+          """
+          Returns (effective_transmission, heat_generated).
+          Heat = wasted revolutionary energy due to organizational friction.
+          """
+          min_cohesion = min(source_cohesion, target_cohesion)
+          effective = min(solidarity_strength, min_cohesion)
+          heat = solidarity_strength - effective
+          return (effective, heat)
+
+    implications:
+      - "Building solidarity without building organization is futile"
+      - "High-energy moments (uprisings) are wasted if org is not ready"
+      - "Cohesion is the BOTTLENECK, not solidarity"
+
+  scale_law:
+    name: "The Scale Law (Iron Law Formalized)"
+    formula: "Entropy_Growth = base_entropy_rate * log(Member_Count + 1) * (1 - cadre_ratio)"
+    explanation: |
+      Entropy grows LOGARITHMICALLY with size, meaning:
+      - Small orgs (10-100) can maintain cohesion easily
+      - Medium orgs (1000-10000) require constant maintenance
+      - Large orgs (100000+) are fighting entropy as a primary activity
+
+      Cadre_ratio acts as a DAMPENER:
+      - High cadre_ratio (0.3+) slows entropy growth
+      - Low cadre_ratio (0.05-) accelerates entropy growth
+      - Cadre are "antibodies" against organizational decay
+
+    code_signature: |
+      def calculate_entropy_growth(
+          member_count: int,
+          cadre_ratio: float,
+          base_entropy_rate: float = 0.01
+      ) -> float:
+          """
+          Returns entropy delta for this tick.
+          """
+          import math
+          scale_factor = math.log(member_count + 1)
+          dampening = 1.0 - cadre_ratio
+          return base_entropy_rate * scale_factor * dampening
+
+    implications:
+      - "Mass recruitment without cadre training is organizational suicide"
+      - "Every growth spurt must be followed by consolidation"
+      - "The Influencer Trap: viral moments bring sympathizers, not cadres"
+
+  decay_law:
+    name: "The Decay Law (Cohesion Erosion)"
+    formula: "Cohesion_Delta = regeneration_rate - (Entropy * decay_coefficient)"
+    explanation: |
+      Cohesion naturally decays as Entropy accumulates.
+      Regeneration comes from:
+      - Political education (study circles)
+      - Shared struggle (successful actions)
+      - Democratic practice (genuine participation)
+
+      Without active regeneration, all organizations tend toward:
+      1. Factionalism (competing power centers)
+      2. Bureaucratism (process over purpose)
+      3. Opportunism (individual over collective)
+
+    code_signature: |
+      def calculate_cohesion_delta(
+          current_entropy: float,
+          regeneration_rate: float,  # From political education, victories
+          decay_coefficient: float = 0.5
+      ) -> float:
+          """
+          Returns cohesion delta for this tick.
+          Can be negative (decay) or positive (regeneration).
+          """
+          decay = current_entropy * decay_coefficient
+          return regeneration_rate - decay
+
+# =============================================================================
+# NEW ENTITY ATTRIBUTES
+# =============================================================================
+
+entity_model:
+  organization_component:
+    description: |
+      New component to be added to SocialClass nodes representing
+      organized political formations (not raw demographic categories).
+
+    location: "src/babylon/models/components/organization.py"
+    note: "OrganizationComponent already exists; extend with these fields"
+
+    new_fields:
+      cohesion:
+        type: "Probability"  # 0.0 to 1.0
+        default: 0.8
+        description: "Structural integrity and transmission capacity"
+        decay_source: "Entropy accumulation"
+        regen_source: "Political education, shared victories"
+
+      entropy:
+        type: "Intensity"  # 0.0 to 1.0
+        default: 0.1
+        description: "Accumulated organizational 'rot' and dysfunction"
+        growth_source: "Scale Law (member growth)"
+        reduction: "Rectification actions"
+
+      cadre_ratio:
+        type: "Probability"  # 0.0 to 1.0
+        default: 0.15
+        description: "Ratio of committed cadres to total members"
+        optimal_range: [0.10, 0.30]
+        too_low: "Mass overwhelms vanguard (mob)"
+        too_high: "Vanguard loses mass base (sect)"
+
+      member_count:
+        type: "int"
+        default: 100
+        description: "Total organizational membership (cadres + sympathizers)"
+        formula: "cadre_count + sympathizer_count"
+
+      heat_accumulated:
+        type: "float"
+        default: 0.0
+        description: "Wasted transmission energy from cohesion bottleneck"
+        effect: "High heat triggers factionalism events"
+
+# =============================================================================
+# GAMEPLAY MECHANICS
+# =============================================================================
+
+mechanics:
+  growth_action:
+    id: "mass_recruitment"
+    display_name: "Mass Recruitment Drive"
+    description: |
+      Open the doors. Bring in the masses. Quantity over quality.
+      The movement grows in raw numbers but dilutes its coherence.
+
+    cost:
+      sympathizer_labor: 20
+      cash: 1000
+
+    effects:
+      member_count: "+50%"
+      entropy: "+0.15"
+      cohesion: "-0.10"
+      cadre_ratio: "-0.05"  # Cadres diluted by new recruits
+
+    the_trap: |
+      "Bloating" - The org looks powerful on paper (high member count)
+      but becomes impotent in action (low transmission efficiency).
+      When crisis hits, the mass cannot be mobilized coherently.
+      The viral moment brought followers, not fighters.
+
+    narrative_hooks:
+      success: "The movement swells. New faces fill the halls. The air buzzes with possibility."
+      warning: "The old guard whispers about 'tourists' and 'careerists.' Meetings grow chaotic."
+      failure: "A hundred thousand members. A hundred factions. No unified action possible."
+
+  rectification_action:
+    id: "purge_opportunists"
+    display_name: "Rectification Campaign"
+    description: |
+      Expel the careerists. Educate the wavering. Restore discipline.
+      Painful but necessary surgery on the organizational body.
+
+    cost:
+      cadre_labor: 15
+      morale: -0.10  # Short-term pain
+
+    effects:
+      member_count: "-20%"
+      entropy: "-0.25"
+      cohesion: "+0.20"
+      cadre_ratio: "+0.08"  # Sympathizers leave, cadres remain
+
+    the_cost: |
+      Raw numbers decrease. Some genuine comrades leave, alienated
+      by the process. External enemies mock the "purge."
+      But those who remain can actually fight.
+
+    narrative_hooks:
+      success: "The ranks thin. Those who remain look each other in the eye. They know why they're here."
+      warning: "Accusations fly. Old friendships fracture. Some call it 'Stalinism.'"
+      excess: "The rectification consumes itself. Everyone suspects everyone. Paralysis."
+
+    historical_parallels:
+      - "Yan'an Rectification (1942-1944) - Success case"
+      - "Cultural Revolution (1966-1976) - Excess case"
+      - "Bolshevik Party 1921 purge - Necessity case"
+
+  education_action:
+    id: "political_education"
+    display_name: "Study Circle Campaign"
+    description: |
+      Invest in ideological clarity. Theory informs practice.
+      Slower than recruitment, more sustainable than purges.
+
+    cost:
+      cadre_labor: 10
+      time: "5 ticks to see effect"
+
+    effects:
+      cohesion_regen_rate: "+0.05"
+      cadre_ratio: "+0.02"  # Sympathizers become cadres
+      entropy: "-0.05"
+
+    note: |
+      This is the SUSTAINABLE path. Neither bloating nor purging,
+      but patient construction. The problem: it takes time,
+      and history doesn't always wait.
+
+# =============================================================================
+# FAIL STATES
+# =============================================================================
+
+fail_states:
+  bifurcation_event:
+    id: "ORGANIZATIONAL_SPLIT"
+    trigger:
+      condition: "cohesion < 0.2 AND crisis_active"
+      crisis_types:
+        - "ECOLOGICAL_OVERSHOOT"
+        - "ECONOMIC_CRISIS"
+        - "PHASE_TRANSITION (to solid)"
+
+    description: |
+      The organization cannot hold together under pressure.
+      Latent factions crystallize into open breaks.
+      One node becomes two hostile nodes.
+
+    effects:
+      node_split:
+        original: "P_w"
+        fragments:
+          - id: "P_w_Revisionist"
+            ideology_drift: +0.3  # Toward reformism
+            member_count: "60% of original"
+            cohesion: 0.5  # Smaller, more coherent
+          - id: "P_w_UltraLeft"
+            ideology_drift: -0.3  # Toward adventurism
+            member_count: "40% of original"
+            cohesion: 0.6  # Smaller, more coherent
+
+      edge_effects:
+        - "All SOLIDARITY edges from original node are SEVERED"
+        - "New HOSTILITY edge between fragments (tension: 0.5)"
+        - "State temporarily gains advantage (divide and conquer)"
+
+    consequence: |
+      Before fighting the State, the player must now fight a civil war.
+      Resources spent on internal conflict. The moment is lost.
+      History's window closes while revolutionaries argue.
+
+    narrative_hook: |
+      "The meeting erupted. Years of suppressed grievances surfaced in accusations
+      and counter-accusations. By dawn, two organizations existed where one had been.
+      The bourgeois press reported the split with undisguised glee."
+
+    historical_parallels:
+      - "Menshevik-Bolshevik split (1903)"
+      - "Sino-Soviet split (1961)"
+      - "SDS split into Weathermen and RYM II (1969)"
+
+  dissolution_event:
+    id: "ORGANIZATIONAL_COLLAPSE"
+    trigger:
+      condition: "cohesion < 0.1 AND entropy > 0.8"
+
+    description: |
+      The organization ceases to function as a coherent entity.
+      Not a split but a dissolution. Members drift away.
+      The name remains but the substance is gone.
+
+    effects:
+      - "Node is REMOVED from active topology"
+      - "Members scattered to other nodes or atomized"
+      - "All organizational resources lost"
+      - "Cadres become individual actors (potential for rebuilding)"
+
+    narrative_hook: |
+      "The last meeting drew seven people. They voted to 'suspend operations
+      pending reorganization.' Everyone knew what that meant. The posters
+      came down. The office closed. Another failed experiment in revolution."
+
+# =============================================================================
+# INTEGRATION PLAN
+# =============================================================================
+
+integration:
+  topology_system:
+    location: "src/babylon/engine/topology_monitor.py"
+    changes:
+      - "Update percolation calculation to weight by cohesion"
+      - "Phase transitions now depend on EFFECTIVE solidarity, not raw"
+      - "Add cohesion to TopologySnapshot model"
+
+  solidarity_system:
+    location: "src/babylon/engine/systems/solidarity.py"
+    changes:
+      - "Update calculate_solidarity_transmission() to apply Transmission Law"
+      - "Generate HEAT_GENERATED events when transmission is capped"
+      - "Track heat_accumulated on source nodes"
+      - "High heat triggers FACTIONALISM_WARNING events"
+
+    new_formula: |
+      # Current (Epoch 1 - Platonic):
+      transmission = solidarity_strength * source.consciousness
+
+      # New (Epoch 2 - Materialist):
+      effective_capacity = min(source.cohesion, target.cohesion)
+      transmission = min(solidarity_strength, effective_capacity) * source.consciousness
+      heat = solidarity_strength - min(solidarity_strength, effective_capacity)
+
+  consciousness_system:
+    location: "src/babylon/engine/systems/ideology.py"
+    changes:
+      - "Entropy affects consciousness drift (high entropy = confused messaging)"
+      - "Low cohesion amplifies atomization effects"
+
+  event_bus:
+    location: "src/babylon/engine/event_bus.py"
+    new_events:
+      - "ORGANIZATIONAL_SPLIT"
+      - "ORGANIZATIONAL_COLLAPSE"
+      - "RECTIFICATION_STARTED"
+      - "MASS_RECRUITMENT"
+      - "FACTIONALISM_WARNING"
+      - "HEAT_GENERATED"
+
+  game_defines:
+    location: "src/babylon/config/defines.py"
+    new_coefficients:
+      base_entropy_rate: 0.01
+      cohesion_decay_coefficient: 0.5
+      cohesion_regen_base: 0.02
+      critical_cohesion_threshold: 0.2
+      optimal_cadre_ratio_min: 0.10
+      optimal_cadre_ratio_max: 0.30
+      heat_factionalism_threshold: 0.5
+
+  narrative_alignment:
+    semantic_map_additions:
+      FACTIONALISM_WARNING:
+        low_cohesion: "The old guard grumbles about 'adventurists.' The youth mock 'fossils.'"
+        high_entropy: "No one can explain what the movement actually stands for anymore."
+      ORGANIZATIONAL_SPLIT:
+        theory: "Unity is struggle, not absence of contradiction."
+        source: "Mao, On Contradiction"
+      HEAT_GENERATED:
+        metaphor: "Revolutionary energy dissipates into factional heat."
+        description: "The message gets garbled. The action gets delayed. The moment passes."
+
+# =============================================================================
+# SCENARIO EXAMPLE
+# =============================================================================
+
+scenario_example:
+  name: "The Impotent Giant"
+  description: |
+    A scenario demonstrating how a massive but low-cohesion organization
+    fails to trigger revolution despite favorable objective conditions.
+
+  setup:
+    node: "P_w (Periphery Workers)"
+    member_count: 500000
+    cohesion: 0.15
+    entropy: 0.75
+    cadre_ratio: 0.03
+    solidarity_edge_strength: 0.85
+
+  conditions:
+    agitation: 0.9
+    consciousness: 0.8
+    p_revolution: 0.75
+    crisis: "ECOLOGICAL_OVERSHOOT imminent"
+
+  expectation_platonic: |
+    (Current Epoch 1 model)
+    High solidarity (0.85) * High consciousness (0.8) = Strong transmission
+    High agitation (0.9) + Strong transmission = Revolution
+    Result: UPRISING event, possible SOLIDARITY_SPIKE
+
+  reality_materialist: |
+    (Epoch 2 model with Cohesion)
+    Effective_Transmission = min(0.85, 0.15) = 0.15
+    Heat_Generated = 0.85 - 0.15 = 0.70 (massive waste)
+
+    The 500,000 members cannot coordinate:
+    - 50 different factions issue 50 different statements
+    - Local chapters act independently, cancel each other out
+    - Leadership paralyzed by internal conflicts
+    - Mass mobilization called but only 5% actually show up
+
+    When ECOLOGICAL_OVERSHOOT fires:
+    - Cohesion (0.15) < Critical_Threshold (0.2)
+    - ORGANIZATIONAL_SPLIT triggered
+    - P_w becomes P_w_Revisionist + P_w_UltraLeft
+    - Solidarity edges severed
+    - The moment is lost
+
+  lesson: |
+    "Half a million followers. A hundred true cadres.
+    The revolution needed a party; it got a mailing list.
+    The crisis came and went. History moved on."
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  specs:
+    - "ai-docs/epochs-overview.md (Epoch 2 definition)"
+    - "ai-docs/strategy-layer.yaml (External actions, Slice 2.2)"
+    - "ai-docs/metabolic-slice.yaml (ECOLOGICAL_OVERSHOOT trigger)"
+    - "ai-docs/demographics-spec.yaml (Population dynamics)"
+  brainstorm:
+    - "brainstorm/mechanics/vanguard_economy.md (Cadre/Sympathizer distinction)"
+    - "brainstorm/mechanics/resource-system.md (Coherence concept)"
+  theory:
+    - "Robert Michels, Political Parties (1911)"
+    - "Mao Zedong, Combat Liberalism (1937)"
+    - "Mao Zedong, On Contradiction (1937)"
+    - "Lenin, What Is To Be Done? (1902)"
+    - "Jo Freeman, The Tyranny of Structurelessness (1972)"

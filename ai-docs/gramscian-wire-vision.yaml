@@ -1,0 +1,640 @@
+# Gramscian Wire - Full Vision Specification
+# Epoch 2: The War of Position for Narrative Control
+#
+# "Neutrality is Hegemony. There is no objective news."
+# - Operational Axiom
+#
+# "The ruling ideas of each age have ever been the ideas of its ruling class."
+# - Marx & Engels, Communist Manifesto (1848)
+
+meta:
+  epoch: 2
+  slice: "2.4"
+  slice_name: "The Wire (Narrative Warfare)"
+  status: PLANNED
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Model contested narrative terrain as playable hegemony mechanics"
+  supersedes: "brainstorm/narrative/gramscian-wire.md"
+  mvp_companion: "ai-docs/gramscian-wire-mvp.yaml (Epoch 1 passive version)"
+
+  theory_source:
+    primary: "Antonio Gramsci - Prison Notebooks (1929-1935)"
+    secondary: "Noam Chomsky - Manufacturing Consent (1988)"
+    tertiary: "Guy Debord - Society of the Spectacle (1967)"
+
+# =============================================================================
+# ANTI-PATTERN WARNING
+# =============================================================================
+#
+# DO NOT implement interactive Hegemony mechanics in Epoch 1.
+# Epoch 1 demonstrates the THESIS (dual narratives exist).
+# Epoch 2 implements the MECHANICS (player fights for narrative control).
+#
+# See ai-docs/gramscian-wire-mvp.yaml for the Epoch 1 passive version.
+#
+# =============================================================================
+
+# =============================================================================
+# THEORETICAL FOUNDATION
+# =============================================================================
+
+theory:
+  gramscian_hegemony:
+    source: "Antonio Gramsci, Prison Notebooks"
+    statement: |
+      The ruling class maintains power not just through coercion (police, military)
+      but through CONSENT - by making their worldview seem like "common sense."
+
+      Media is a key instrument of hegemony:
+      - The bourgeois press FRAMES events to NATURALIZE capitalism
+      - Revolutionary press provides COUNTER-HEGEMONIC narratives
+      - The SAME EVENT is described completely differently by class perspective
+
+    mechanical_translation: |
+      Hegemony is a RESOURCE that determines default narrative visibility.
+      High Hegemony = Corporate Feed is "mainstream," Liberated Signal is "fringe."
+      Low Hegemony = Cracks appear in the official story.
+      The player fights a "War of Position" for narrative terrain.
+
+  manufacturing_consent:
+    source: "Chomsky & Herman, Manufacturing Consent"
+    statement: |
+      Mass media operates through filters:
+      1. Ownership (who controls the outlet)
+      2. Advertising (who pays the bills)
+      3. Sourcing (who provides "authoritative" quotes)
+      4. Flak (who punishes deviation)
+      5. Anti-ideology (what enemy narrative is invoked)
+
+    mechanical_translation: |
+      The Corporate Feed applies these filters automatically.
+      Counter-hegemonic narratives must overcome each filter.
+      Player actions can weaken filters (capture outlets, disrupt funding).
+
+  spectacle:
+    source: "Guy Debord, Society of the Spectacle"
+    statement: |
+      "The spectacle is not a collection of images;
+      it is a social relation between people that is mediated by images."
+
+    mechanical_translation: |
+      The population's consciousness is shaped by WHICH narrative they consume.
+      Intel Briefing shows "The Real" - but The Real alone cannot mobilize.
+      Narrative warfare is not optional; it is the terrain of struggle.
+
+# =============================================================================
+# CORE MECHANIC: THE HEGEMONY RESOURCE
+# =============================================================================
+
+hegemony_resource:
+  name: "Hegemony"
+  symbol: "H"
+  type: "Probability"  # 0.0 to 1.0
+  description: |
+    Cultural/narrative control over public discourse.
+    Represents which perspective is considered "mainstream" vs "fringe."
+
+  effects_by_level:
+    high_hegemony:  # H > 0.7
+      description: "The official story is unquestioned."
+      effects:
+        - "Corporate Feed is default view for neutral population"
+        - "Liberated Signal marked as 'disinformation' / 'extremist'"
+        - "Consciousness drift toward acquiescence accelerated"
+        - "Counter-hegemonic actions cost more resources"
+        - "Media captures (propaganda actions) have reduced effect"
+
+    medium_hegemony:  # 0.3 < H < 0.7
+      description: "Cracks in the narrative. Alternative voices audible."
+      effects:
+        - "Both feeds visible to population"
+        - "Consciousness drift based on material conditions"
+        - "Propaganda actions at normal cost/effect"
+        - "Events create narrative competition"
+
+    low_hegemony:  # H < 0.3
+      description: "The official story is discredited. Counter-narrative rising."
+      effects:
+        - "Liberated Signal gains mainstream visibility"
+        - "Corporate Feed seen as propaganda by significant population"
+        - "Consciousness drift toward revolution accelerated"
+        - "State increases repression (coercion replaces consent)"
+
+  generation:
+    increases_hegemony:
+      - "Economic stability (system appears to work)"
+      - "Successful repression (dissent visibly punished)"
+      - "Media consolidation (fewer independent voices)"
+      - "Co-optation of opposition (reformism succeeds)"
+    decreases_hegemony:
+      - "Economic crisis (system visibly fails)"
+      - "State violence (brutality exposed)"
+      - "Counter-narrative actions (samizdat, pirate radio)"
+      - "Solidarity events (collective action visible)"
+
+  formula: |
+    Hegemony_Delta = (stability_factor * media_control) - (crisis_visibility * counter_action)
+
+    Where:
+      stability_factor = 1 - (tension + consciousness_gap) / 2
+      media_control = corporate_reach / (corporate_reach + liberated_reach)
+      crisis_visibility = count(visible_crisis_events) / total_events
+      counter_action = sum(propaganda_action_effects)
+
+# =============================================================================
+# THE THREE CHANNELS
+# =============================================================================
+
+channels:
+  corporate_feed:
+    id: "CORPORATE"
+    name: "Corporate Feed"
+    subtitle: "The Hegemonic Voice"
+    perspective: "Bourgeois naturalization"
+    voice: "Neutral (but actually ruling class perspective)"
+
+    aesthetic:
+      style: "Clean, professional, AP/Reuters"
+      colors: "White text on dark, blue accents"
+      font: "Sans-serif, authoritative"
+      ui_treatment: "Standard news ticker / article format"
+
+    linguistic_patterns:
+      passive_voice: true
+      euphemisms:
+        "strike": "labor unrest"
+        "layoffs": "workforce optimization"
+        "police killing": "officer-involved shooting"
+        "poverty": "economic hardship"
+        "exploitation": "market dynamics"
+        "imperialism": "international partnerships"
+      framing:
+        victims: "blamed for their situation"
+        perpetrators: "institutions, never named individuals"
+        system: "natural, inevitable, best available"
+        alternatives: "naive, dangerous, foreign"
+
+    generation:
+      prompt_template: |
+        You are a neutral, professional news wire service.
+        Report this event in the style of AP or Reuters.
+        Use passive voice. Avoid inflammatory language.
+        Frame unrest as threatening to stability.
+        Present the official position sympathetically.
+        Never question systemic causes.
+
+      rag_sources:
+        - "Wall Street Journal editorials"
+        - "Government press releases"
+        - "Corporate communications"
+        - "Mainstream economics textbooks"
+
+    examples:
+      strike:
+        headline: "Labor Unrest Threatens Economic Recovery"
+        body: |
+          Radical elements disrupt production at key industrial facility.
+          Analysts warn of investment flight as productivity drops.
+          Government officials urge calm, promise swift resolution.
+          "We remain committed to the wellbeing of all stakeholders,"
+          said company spokesperson.
+
+      police_violence:
+        headline: "Officers Restore Order Amid Disturbances"
+        body: |
+          Law enforcement responded to reports of civil unrest
+          in the downtown area yesterday evening. Several arrests
+          were made. Officials report the situation is now under control.
+          Community leaders call for calm.
+
+      extraction:
+        headline: "Free Trade Agreement Benefits All Parties"
+        body: |
+          Economic analysts hail the new partnership as a model
+          of international cooperation. "This will create jobs
+          and prosperity for workers in both nations," said
+          Trade Ministry officials.
+
+  liberated_signal:
+    id: "LIBERATED"
+    name: "Liberated Signal"
+    subtitle: "The Counter-Hegemonic Voice"
+    perspective: "Revolutionary consciousness"
+    voice: "Urgent, theoretical, structural analysis"
+
+    aesthetic:
+      style: "Samizdat, underground press, pirate radio"
+      colors: "Purple glow, green data, signal interference"
+      font: "Monospace, intercepted transmission feel"
+      ui_treatment: "Glitchy, static bursts, >>> markers <<<"
+
+    linguistic_patterns:
+      active_voice: true
+      direct_language:
+        "labor unrest": "WORKERS RISE"
+        "workforce optimization": "MASS LAYOFFS"
+        "officer-involved shooting": "STATE MURDER"
+        "economic hardship": "CAPITALIST IMMISERATION"
+        "market dynamics": "EXPLOITATION"
+        "international partnerships": "IMPERIAL EXTRACTION"
+      framing:
+        victims: "exploited classes fighting back"
+        perpetrators: "named capitalists, specific state actors"
+        system: "historical, changeable, must be overthrown"
+        alternatives: "necessary, achievable, being built now"
+
+    generation:
+      prompt_template: |
+        You are an underground radio operator broadcasting
+        revolutionary analysis to the masses.
+        Expose the contradictions in this event.
+        Use active voice. Name the oppressors.
+        Connect to broader systemic analysis.
+        End with a call to solidarity.
+        Use the aesthetic of intercepted transmissions.
+
+      rag_sources:
+        - "Marx and Engels collected works"
+        - "Lenin collected works"
+        - "Fanon, Wretched of the Earth"
+        - "Revolutionary press archives"
+        - "Labor history documents"
+
+    examples:
+      strike:
+        headline: ">>> WORKERS RISE AGAINST EXPLOITATION! <<<"
+        body: |
+          >>> INTERCEPTED TRANSMISSION <<<
+
+          Brave comrades at [SECTOR 7] refuse starvation wages!
+          The bosses thought they could squeeze us forever.
+          THEY WERE WRONG.
+
+          Solidarity actions spreading to adjacent sectors.
+          The dialectic intensifies.
+          THE CONTRADICTIONS CANNOT BE CONTAINED.
+
+          >>> END TRANSMISSION <<<
+
+      police_violence:
+        headline: ">>> STATE MURDER - SOLIDARITY REQUIRED <<<"
+        body: |
+          >>> INTERCEPTED TRANSMISSION <<<
+
+          Another comrade falls to the armed wing of capital.
+          The police are not here to protect YOU.
+          They protect PROPERTY. They protect PROFIT.
+
+          This is not an isolated incident.
+          This is the system working as designed.
+
+          ORGANIZE. RESIST. REMEMBER.
+
+          >>> END TRANSMISSION <<<
+
+      extraction:
+        headline: ">>> IMPERIAL PLUNDER CONTINUES <<<"
+        body: |
+          >>> INTERCEPTED TRANSMISSION <<<
+
+          The "trade agreement" they celebrate is THEFT.
+          Value flows from the periphery to the core.
+          Workers here starve so capitalists there profit.
+
+          The global working class has no borders.
+          Our solidarity must have none either.
+
+          >>> END TRANSMISSION <<<
+
+  intel_stream:
+    id: "INTEL"
+    name: "Intel Stream"
+    subtitle: "The Real"
+    perspective: "Raw engine data"
+    voice: "Factual, numerical, no interpretation"
+
+    aesthetic:
+      style: "Terminal, dossier, data dump"
+      colors: "Green text on black, data_green from design system"
+      font: "Monospace, fixed-width tables"
+      ui_treatment: "Structured data, JSON-like, box-drawing characters"
+
+    linguistic_patterns:
+      no_interpretation: true
+      format: "FIELD: VALUE"
+      sections:
+        - "INCIDENT METADATA"
+        - "MATERIAL CONDITIONS"
+        - "CONSCIOUSNESS SHIFT"
+        - "TACTICAL ASSESSMENT"
+
+    generation:
+      method: "Direct from engine state, no LLM"
+      source: "WorldState diff + SimulationEvent data"
+      format: |
+        ╔═══════════════════════════════════════════════════════╗
+        ║  INCIDENT: {event_type}_{tick}                        ║
+        ║  SECTOR: {territory_id} | TICK: {tick}                ║
+        ╠═══════════════════════════════════════════════════════╣
+        ║  MATERIAL CONDITIONS:                                 ║
+        ║    {field}: {old_value} → {new_value} ({delta})       ║
+        ║                                                       ║
+        ║  CONSCIOUSNESS SHIFT:                                 ║
+        ║    {consciousness_field}: {delta}                     ║
+        ║                                                       ║
+        ║  TACTICAL ASSESSMENT:                                 ║
+        ║    {generated_analysis}                               ║
+        ╚═══════════════════════════════════════════════════════╝
+
+    examples:
+      strike:
+        content: |
+          ╔═══════════════════════════════════════════════════════╗
+          ║  INCIDENT: STRIKE_ACTION_042                          ║
+          ║  SECTOR: Industrial-7 | TICK: 42                      ║
+          ╠═══════════════════════════════════════════════════════╣
+          ║  MATERIAL CONDITIONS:                                 ║
+          ║    Wage cut: -15% (trigger)                           ║
+          ║    Subsistence gap: CRITICAL                          ║
+          ║                                                       ║
+          ║  CONSCIOUSNESS SHIFT:                                 ║
+          ║    Organization: 0.3 → 0.5 (+0.2)                     ║
+          ║    Agitation: 0.1 → 0.25 (+0.15)                      ║
+          ║                                                       ║
+          ║  TACTICAL ASSESSMENT:                                 ║
+          ║    Spontaneous action. No vanguard guidance.          ║
+          ║    High potential, low coordination.                  ║
+          ║    Window for intervention: 3 ticks                   ║
+          ╚═══════════════════════════════════════════════════════╝
+
+# =============================================================================
+# PLAYER ACTIONS: NARRATIVE WARFARE
+# =============================================================================
+
+player_actions:
+  jam_signal:
+    id: "jam_signal"
+    display_name: "Signal Jamming"
+    description: |
+      Disrupt Corporate Feed transmission in a territory.
+      Temporary reduction in hegemonic narrative reach.
+
+    cost:
+      cadre_labor: 5
+      equipment: "transmitter"
+      territory_requirement: "must control adjacent territory"
+
+    effects:
+      hegemony: -0.05  # Per tick while active
+      corporate_reach: -0.20  # In target territory
+      heat: +0.15  # State notices interference
+
+    duration: "5 ticks"
+    cooldown: "10 ticks"
+
+    risks:
+      - "Transmitter location can be traced"
+      - "Escalating state repression"
+      - "Equipment seizure if heat too high"
+
+    narrative_hook: |
+      Static crackles across the Corporate Feed. For a moment,
+      the official story stutters. In that silence, other voices
+      become audible.
+
+  distribute_samizdat:
+    id: "distribute_samizdat"
+    display_name: "Samizdat Distribution"
+    description: |
+      Spread counter-hegemonic literature in a territory.
+      Slow but persistent consciousness shift.
+
+    cost:
+      sympathizer_labor: 20
+      cash: 500
+      territory_requirement: "sympathizer presence"
+
+    effects:
+      consciousness_drift: +0.02  # Toward revolution, per tick
+      liberated_reach: +0.10  # Permanent in territory
+      solidarity_awakening_chance: 0.05  # Per tick
+
+    duration: "Permanent effect, decays without renewal"
+    cooldown: "3 ticks"
+
+    risks:
+      - "Distributor arrest if heat high"
+      - "Material confiscation"
+      - "Informant infiltration"
+
+    narrative_hook: |
+      Pamphlets appear in break rooms. Newsletters slide under doors.
+      The official story is not the only story. Workers whisper:
+      "Have you read...?"
+
+  capture_media_node:
+    id: "capture_media_node"
+    display_name: "Media Node Capture"
+    description: |
+      Gain control of a media outlet (newspaper, radio station, etc.).
+      Major shift in narrative terrain.
+
+    cost:
+      cadre_labor: 25
+      cash: 10000  # Or equivalent resources
+      organization: 0.5  # Minimum organization level
+
+    effects:
+      hegemony: -0.15  # Permanent while held
+      liberated_reach: +0.30  # Permanent while held
+      consciousness_drift: +0.03  # Territory-wide, per tick
+
+    duration: "Until lost to counter-action"
+    prerequisites:
+      - "Territory control OR successful uprising in territory"
+      - "Sufficient organization to operate outlet"
+
+    risks:
+      - "State counter-offensive to retake"
+      - "Requires ongoing resources to maintain"
+      - "Target for sabotage"
+
+    narrative_hook: |
+      The transmission tower changes hands. New voices speak
+      from old frequencies. The population hears something
+      they've never heard on this channel before: the truth.
+
+  viral_campaign:
+    id: "viral_campaign"
+    display_name: "Viral Counter-Narrative"
+    description: |
+      Rapid spread of counter-hegemonic narrative through
+      existing solidarity networks. High impact, high risk.
+
+    cost:
+      sympathizer_labor: 50
+      solidarity_edge_count: 3  # Minimum connected solidarity edges
+
+    effects:
+      hegemony: -0.10  # Immediate, one-time
+      consciousness_spike: 0.15  # All connected nodes
+      agitation: +0.10  # All connected nodes
+
+    duration: "Instant effect"
+    cooldown: "20 ticks"
+
+    risks:
+      - "Message can be co-opted or distorted"
+      - "Triggers immediate state response"
+      - "Network exposure (edges become visible to state)"
+
+    narrative_hook: |
+      The message spreads like fire through dry grass.
+      Within hours, everyone has heard. Everyone is talking.
+      The official story struggles to keep up.
+      For one moment, the counter-narrative IS the narrative.
+
+# =============================================================================
+# NARRATIVE GENERATION PIPELINE
+# =============================================================================
+
+generation_pipeline:
+  overview: |
+    Every significant event generates THREE narrative versions.
+    The visibility of each depends on Hegemony level.
+    Player channel selection affects what THEY see.
+    Population channel exposure affects consciousness drift.
+
+  flow:
+    step_1:
+      name: "Event Detection"
+      action: "Engine emits SimulationEvent"
+      output: "Typed event object with all metadata"
+
+    step_2:
+      name: "Significance Check"
+      action: "Filter for SIGNIFICANT_EVENT_TYPES"
+      filter:
+        - "ECONOMIC_CRISIS"
+        - "UPRISING"
+        - "EXCESSIVE_FORCE"
+        - "PHASE_TRANSITION"
+        - "ECOLOGICAL_OVERSHOOT"
+        - "ORGANIZATIONAL_SPLIT"
+
+    step_3:
+      name: "Perspective Generation"
+      action: "Generate three versions"
+      sub_steps:
+        corporate:
+          prompt: "Use corporate_feed.generation.prompt_template"
+          rag_query: "Query corporate_feed.generation.rag_sources"
+          output: "Hegemonic narrative string"
+        liberated:
+          prompt: "Use liberated_signal.generation.prompt_template"
+          rag_query: "Query liberated_signal.generation.rag_sources"
+          output: "Counter-hegemonic narrative string"
+        intel:
+          method: "Direct from engine state (no LLM)"
+          output: "Structured data display"
+
+    step_4:
+      name: "Storage"
+      action: "Store all three versions with event"
+      schema: |
+        WireEntry:
+          event_id: str
+          tick: int
+          event_type: EventType
+          narratives:
+            corporate: str
+            liberated: str
+            intel: str
+          hegemony_at_generation: float
+
+    step_5:
+      name: "Display"
+      action: "UI presents based on channel selection"
+      logic: |
+        if player_channel == "CORPORATE":
+          display(entry.narratives.corporate)
+        elif player_channel == "LIBERATED":
+          display(entry.narratives.liberated)
+        else:  # INTEL
+          display(entry.narratives.intel)
+
+    step_6:
+      name: "Population Effect"
+      action: "Consciousness drift based on exposure"
+      formula: |
+        effective_narrative = hegemony * corporate_effect + (1 - hegemony) * liberated_effect
+        consciousness_drift += effective_narrative * population_exposure
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  observer_layer:
+    location: "ai-docs/observer-layer.yaml"
+    relationship: "Wire is an OBSERVER that generates narrative per event"
+    changes:
+      - "Add WireObserver to observer registry"
+      - "WireObserver.on_event() generates three narratives"
+      - "Store narratives with event for later retrieval"
+
+  narrative_director:
+    location: "src/babylon/ai/director.py"
+    changes:
+      - "Split generate_narrative() into generate_perspectives()"
+      - "Accept perspective parameter (CORPORATE, LIBERATED)"
+      - "Use different system prompts per perspective"
+      - "Query different RAG sources per perspective"
+
+  rag_pipeline:
+    location: "src/babylon/rag/rag_pipeline.py"
+    changes:
+      - "Add corpus_id parameter to query()"
+      - "Define HEGEMONIC_CORPUS and COUNTER_HEGEMONIC_CORPUS"
+      - "Route queries to appropriate corpus"
+
+  ui_components:
+    location: "src/babylon/ui/components.py"
+    changes:
+      - "WirePanel component with channel tabs"
+      - "Channel-specific styling (corporate clean, liberated glitchy)"
+      - "Toggle or side-by-side display mode"
+
+  world_state:
+    location: "src/babylon/models/world_state.py"
+    new_fields:
+      - "hegemony: Probability"
+      - "corporate_reach: dict[TerritoryId, Probability]"
+      - "liberated_reach: dict[TerritoryId, Probability]"
+
+  game_defines:
+    location: "src/babylon/config/defines.py"
+    new_coefficients:
+      hegemony_drift_rate: 0.01
+      corporate_consciousness_effect: -0.02
+      liberated_consciousness_effect: 0.03
+      jamming_hegemony_reduction: 0.05
+      samizdat_consciousness_boost: 0.02
+      media_capture_hegemony_cost: 0.15
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  mvp_spec: "ai-docs/gramscian-wire-mvp.yaml (Epoch 1 passive version)"
+  brainstorm: "brainstorm/narrative/gramscian-wire.md (original concept)"
+  related_specs:
+    - "ai-docs/observer-layer.yaml (event system)"
+    - "ai-docs/strategy-layer.yaml (player actions)"
+    - "ai-docs/cohesion-mechanic.yaml (organizational capacity)"
+  theory:
+    - "Gramsci, Prison Notebooks (hegemony theory)"
+    - "Chomsky & Herman, Manufacturing Consent (media filters)"
+    - "Debord, Society of the Spectacle (mediated reality)"

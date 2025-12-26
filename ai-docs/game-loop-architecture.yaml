@@ -262,9 +262,11 @@ simulation_engine:
 
   interceptor_system:
     name: "Event Interceptors"
-    status: "APPROVED_ARCHITECTURE"
+    status: "IMPLEMENTED"
     epoch_compatibility: "1 → 2 Bridge"
+    pattern: "Chain of Responsibility"
     created: "2025-12-26"
+    updated: "2025-12-26"
 
     rationale: |
       Epoch 2 introduces adversarial mechanics where the State can BLOCK or
@@ -277,7 +279,7 @@ simulation_engine:
       Epoch 2 requires: Signal → Intercept → Emit (or Block)
 
       This is purely BACKEND LOGIC. The UI does not change.
-      Interceptors are registered per event type and evaluated in priority order.
+      Interceptors are registered globally and evaluated in priority order.
 
     current_flow: |
       ┌─────────────┐     EMIT      ┌─────────────┐
@@ -296,38 +298,145 @@ simulation_engine:
                                            ▼                             ▼
                                     ┌─────────────┐               ┌─────────────┐
                                     │   BLOCKED   │               │    EMIT     │
-                                    │  (No emit)  │               │ (Continue)  │
+                                    │  (Audit log)│               │ (Continue)  │
                                     └─────────────┘               └─────────────┘
 
-    interceptor_protocol:
-      name: "Interceptor"
-      location: "src/babylon/engine/interceptors.py (new)"
-      interface: |
-        class Interceptor(Protocol):
-            priority: int  # Lower = earlier execution (0-100)
-            event_types: Set[EventType]  # Which events to intercept
-
-            def intercept(
-                self,
-                event: Event,
-                context: InterceptContext
-            ) -> InterceptResult:
-                """
-                Evaluate the event and decide whether to allow, block, or modify.
-
-                Returns:
-                    InterceptResult with:
-                    - action: ALLOW | BLOCK | MODIFY
-                    - modified_event: Event (if MODIFY)
-                    - reason: str (for logging/narrative)
-                """
-                ...
+    implementation:
+      interceptor_module: "src/babylon/engine/interceptor.py"
+      event_bus_module: "src/babylon/engine/event_bus.py"
+      classes:
+        InterceptResult: "Rich container with event + reason (frozen dataclass)"
+        EventInterceptor: "Abstract Base Class for all interceptors"
+        WorldContext: "Protocol for read-only world state"
+        BlockedEvent: "Audit record for blocked events"
+        SimpleWorldContext: "Basic WorldContext implementation for testing"
+      methods:
+        register_interceptor: "Add interceptor to the chain"
+        unregister_interceptor: "Remove interceptor from the chain"
+        publish: "Modified to run interceptor chain before emit"
+        get_blocked_events: "Access audit log of blocked events"
+        clear_blocked_events: "Clear the audit log"
 
     intercept_result:
-      actions:
-        ALLOW: "Event proceeds to next interceptor (or emit if last)"
-        BLOCK: "Event is stopped, not emitted, reason logged"
-        MODIFY: "Event is replaced with modified version, continues chain"
+      name: "InterceptResult"
+      type: "frozen dataclass"
+      location: "src/babylon/engine/interceptor.py"
+      purpose: |
+        Rich container for interceptor decisions that captures BOTH the event
+        outcome AND the narrative reason. This is critical for Epoch 2's
+        Gramscian Wire / player feedback systems.
+      schema: |
+        @dataclass(frozen=True)
+        class InterceptResult:
+            event: Event | None  # None = blocked
+            reason: str = ""     # Narrative explanation (required if blocked)
+
+            @classmethod
+            def allow(cls, event: Event) -> InterceptResult
+            @classmethod
+            def block(cls, reason: str) -> InterceptResult
+            @classmethod
+            def modify(cls, new_event: Event, reason: str = "") -> InterceptResult
+
+            @property
+            def is_blocked(self) -> bool
+            @property
+            def is_modified(self) -> bool
+      factory_methods:
+        allow: "Pass event unchanged (reason empty)"
+        block: "Stop event, reason REQUIRED for narrative"
+        modify: "Transform event, reason optional"
+      validation: "block() raises ValueError if reason is empty"
+
+    interceptor_interface:
+      name: "EventInterceptor"
+      type: "ABC (Abstract Base Class)"
+      location: "src/babylon/engine/interceptor.py"
+      interface: |
+        class EventInterceptor(ABC):
+            @property
+            @abstractmethod
+            def name(self) -> str:
+                """Interceptor name for debugging and audit logs."""
+                ...
+
+            @property
+            def priority(self) -> int:
+                """Priority for chain ordering (higher runs first). Default: 100"""
+                return 100
+
+            @abstractmethod
+            def intercept(
+                self, event: Event, context: WorldContext | None
+            ) -> InterceptResult:
+                """
+                Process an event through this interceptor.
+
+                Returns:
+                    - InterceptResult.allow(event) to pass through
+                    - InterceptResult.block(reason) to stop the chain
+                    - InterceptResult.modify(new_event, reason) to transform
+                """
+                ...
+      priority_ranges:
+        90_100: "Security/State interceptors (block first)"
+        50_89: "Faction/adversarial interceptors"
+        10_49: "Resource/validation interceptors"
+        1_9: "Logging/audit interceptors (run last)"
+
+    world_context:
+      type: "Protocol"
+      location: "src/babylon/engine/interceptor.py"
+      purpose: "Read-only view of world state for interceptor decisions"
+      minimal_interface: |
+        class WorldContext(Protocol):
+            @property
+            def tick(self) -> int: ...
+      simple_implementation: |
+        @dataclass
+        class SimpleWorldContext:
+            tick: int = 0
+            data: dict[str, Any] = field(default_factory=dict)
+      note: "Specific interceptors may require richer context implementations"
+
+    pipeline_logic:
+      steps:
+        1_receive: "EventBus.publish(event, context) receives signal"
+        2_fast_path: "If no interceptors registered, emit immediately (zero overhead)"
+        3_sort: "Sort interceptors by priority (higher first: 100 before 50)"
+        4_loop: "For each interceptor in sorted order:"
+        5_intercept: "  result = interceptor.intercept(event, context)"
+        6_check_blocked: "  If result.is_blocked: log WARNING, append to blocked_events, STOP"
+        7_check_modified: "  If result.is_modified: log INFO with reason"
+        8_chain: "  Update current_event = result.event, continue to next"
+        9_emit: "After all interceptors pass: emit to subscribers"
+
+      backwards_compatibility: |
+        If no interceptors are registered, publish() uses the fast path:
+        - No sorting overhead
+        - No loop overhead
+        - Epoch 1 events flow through with zero latency impact
+
+    audit_requirements:
+      blocked_events_channel:
+        purpose: "Debug channel for intercepted events with narrative reasons"
+        storage: "EventBus._blocked_events: list[BlockedEvent]"
+        access: "EventBus.get_blocked_events() -> list[BlockedEvent]"
+        record_format: |
+          @dataclass(frozen=True)
+          class BlockedEvent:
+              event: Event           # The original event that was blocked
+              interceptor_name: str  # Who blocked it
+              reason: str            # Narrative reason for blocking
+              blocked_at: datetime   # When it was blocked
+        use_cases:
+          - "Debug UI: Show blocked events with narrative reasons"
+          - "Game UI: Display 'Action blocked: {reason}' to player"
+          - "Testing: Assert specific events were blocked with expected reasons"
+          - "Logging: Trace adversarial mechanics for debugging"
+      logging:
+        blocked: "logger.warning('Event {type} BLOCKED by {name}: {reason}')"
+        modified: "logger.info('Event {type} MODIFIED by {name}: {reason}')"
 
     built_in_interceptors:
       state_attention_interceptor:

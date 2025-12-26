@@ -38,6 +38,9 @@ This directory helps AI assistants:
 | **BALANCE & TUNING** |||
 | `balance-targets.yaml` | Numerical success criteria, timing windows, outcome distribution | YAML |
 | `state-ai-algorithm.yaml` | Panopticon decision logic, threat assessment, Thread allocation | YAML |
+| `tutorial-design.yaml` | Player learning sequence, progressive disclosure, trap reveals | YAML |
+| `resource-sinks.yaml` | Resource decay/consumption mechanics, equilibrium targets | YAML |
+| `ui-wireframes.yaml` | ASCII wireframes for complex systems (Doctrine, Panopticon, Fog) | YAML |
 | **ARCHITECTURE** |||
 | `architecture.yaml` | System structure, directory map, data flow | YAML |
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas | YAML |

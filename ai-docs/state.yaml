@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.3"
+  version: "2.0.4"
   updated: "2025-12-26"
-  last_sprint: "1.4D - Parameterization (GameDefines wiring)"
+  last_sprint: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -298,9 +298,39 @@ implemented:
 
       world_state:
         status: "complete"
-        details: "Immutable state with NetworkX graph conversion"
+        details: "Immutable state with NetworkX graph conversion, state_finances integration"
         location: "src/babylon/models/world_state.py"
-        tests: "tests/unit/models/test_world_state.py (35 tests)"
+        tests: "tests/unit/models/test_world_state.py (41 tests)"
+        state_finances_integration:
+          field: "state_finances: dict[str, StateFinance]"
+          graph_storage: "G.graph['state_finances'] metadata"
+          tests: "TestStateFinancesIntegration (6 tests)"
+
+      finance_models:
+        status: "complete"
+        details: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
+        spec: "ai-docs/political-economy-liquidity.yaml"
+        location: "src/babylon/models/entities/"
+        tests: "tests/unit/models/ (187 tests)"
+        models:
+          state_finance:
+            location: "src/babylon/models/entities/state_finance.py"
+            fields: ["treasury", "police_budget", "social_reproduction_budget", "tax_rate", "tribute_income", "debt_level", "debt_ceiling"]
+            computed: ["burn_rate"]
+            tests: "test_state_finance.py (55 tests)"
+          revolutionary_finance:
+            location: "src/babylon/models/entities/revolutionary_finance.py"
+            fields: ["war_chest", "operational_burn", "dues_income", "expropriation_income", "donor_income", "heat", "reformist_drift"]
+            tests: "test_revolutionary_finance.py (56 tests)"
+          precarity_state:
+            location: "src/babylon/models/entities/precarity_state.py"
+            fields: ["nominal_wage", "ppp_factor", "inflation_index", "subsistence_threshold", "organization"]
+            computed: ["real_wage", "precarity_index", "proletarianization_risk"]
+            tests: "test_precarity_state.py (65 tests)"
+        cost_checking:
+          location: "src/babylon/engine/simulation_engine.py"
+          behavior: "Logs warning when treasury < burn_rate"
+          tests: "TestCostChecking (5 tests)"
 
       simulation_config:
         status: "complete"
@@ -779,6 +809,11 @@ current_focus:
     - "Phase 4.1: MetricsCollector observer - unified metrics for dashboard/sweeper (TDD: 101 tests)"
     - "Phase 4.1: Metrics Pydantic models (EntityMetrics, EdgeMetrics, TickMetrics, SweepSummary)"
     - "Phase 4.1: Dashboard integration - MetricsCollector registered as Simulation observer"
+    - "Political Economy of Liquidity Epoch 1: StateFinance model (55 tests)"
+    - "Political Economy of Liquidity Epoch 1: RevolutionaryFinance model (56 tests)"
+    - "Political Economy of Liquidity Epoch 1: PrecarityState model with computed fields (65 tests)"
+    - "Political Economy of Liquidity Epoch 1: WorldState.state_finances integration (6 tests)"
+    - "Political Economy of Liquidity Epoch 1: Cost-checking in step() (5 tests)"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -1401,10 +1436,10 @@ current_focus:
     - "Agitation without solidarity produces fascism, not revolution."
     - "Fascism is the defensive form of capitalism."
     - "A flat line on a fancy graph is still a flat line."
-  milestone: "SLICE 1.4 COMPLETE: MetabolismSystem integrated with simulation engine"
+  milestone: "Political Economy of Liquidity Epoch 1 COMPLETE: Finance models + WorldState integration"
   next_milestone: "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
-  test_count: 2464
-  test_count_note: "Updated 2025-12-26 - Sprint 1.4C complete, 36 new tests added"
+  test_count: 2651
+  test_count_note: "Updated 2025-12-26 - Political Economy of Liquidity Epoch 1 complete, 187 new tests"
 
   metrics_audit:
     date: "2025-12-25"

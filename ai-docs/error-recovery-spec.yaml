@@ -1,0 +1,527 @@
+# Error Recovery Specification
+# Handling Invalid States Gracefully
+#
+# "Fail gracefully, recover automatically, log everything."
+# - Resilience Principle
+#
+# This document specifies how the game handles errors and invalid states.
+
+meta:
+  created: "2025-12-26"
+  purpose: "Specify error handling and recovery mechanisms"
+  issue_id: "ERROR-001"
+  status: "SPEC_COMPLETE"
+  priority: "LOW"
+
+# =============================================================================
+# DESIGN PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_principles:
+    - "Never crash silently - always inform the player"
+    - "Prefer recovery over failure when possible"
+    - "Log everything for debugging"
+    - "Fail fast in development, fail gracefully in production"
+    - "Invalid state is a bug, not a feature"
+
+  error_hierarchy:
+    1_recoverable: "Can fix automatically, player may not notice"
+    2_degraded: "Can continue with reduced functionality"
+    3_save_and_exit: "Cannot continue, but can save progress"
+    4_critical: "Cannot continue, cannot save, data may be lost"
+
+  anti_goals:
+    - "Silent data corruption"
+    - "Undefined behavior from invalid states"
+    - "Cryptic error messages"
+    - "Loss of player progress without warning"
+
+# =============================================================================
+# ERROR CATEGORIES
+# =============================================================================
+
+error_categories:
+  # ---------------------------------------------------------------------------
+  # CATEGORY 1: MATHEMATICAL ERRORS
+  # ---------------------------------------------------------------------------
+  mathematical:
+    division_by_zero:
+      example: "P(S|R) = Organization / Repression where Repression = 0"
+      detection: "ZeroDivisionError or explicit check"
+      recovery:
+        method: "Substitute safe default"
+        implementation: |
+          def safe_divide(a: float, b: float, default: float = 0.0) -> float:
+              if b == 0:
+                  log.warning(f"Division by zero avoided: {a}/{b}, using {default}")
+                  return default
+              return a / b
+        default_values:
+          "P(S|R)": 0.0  # Zero revolution probability if no repression
+          "extraction_rate": 0.0  # No extraction if denominator is zero
+
+    out_of_range:
+      example: "Probability = 1.5 or Consciousness = -0.2"
+      detection: "Pydantic constrained types"
+      recovery:
+        method: "Clamp to valid range"
+        implementation: |
+          consciousness = clamp(consciousness, 0.0, 1.0)
+        logging: "log.warning(f'Value {value} clamped to {clamped}')"
+
+    nan_inf:
+      example: "Result of invalid mathematical operation"
+      detection: "math.isnan() or math.isinf()"
+      recovery:
+        method: "Substitute safe default, log error"
+        implementation: |
+          if math.isnan(result) or math.isinf(result):
+              log.error(f"NaN/Inf detected in {calculation}, using fallback")
+              result = fallback_value
+
+  # ---------------------------------------------------------------------------
+  # CATEGORY 2: GRAPH ERRORS
+  # ---------------------------------------------------------------------------
+  graph:
+    disconnected_graph:
+      example: "Node removed causing graph to split"
+      detection: "not nx.is_weakly_connected(graph)"
+      recovery:
+        method: "Identify orphaned components, reconnect or remove"
+        implementation: |
+          components = list(nx.weakly_connected_components(graph))
+          if len(components) > 1:
+              main_component = max(components, key=len)
+              for component in components:
+                  if component != main_component:
+                      log.warning(f"Removing orphaned component: {component}")
+                      graph.remove_nodes_from(component)
+        severity: "degraded"
+
+    missing_node:
+      example: "Reference to node that doesn't exist"
+      detection: "KeyError when accessing graph[node_id]"
+      recovery:
+        method: "Skip operation, log warning"
+        implementation: |
+          if node_id not in graph:
+              log.warning(f"Missing node {node_id}, skipping operation")
+              return None
+
+    invalid_edge_type:
+      example: "Edge with unrecognized EdgeType"
+      detection: "EdgeType validation failure"
+      recovery:
+        method: "Remove invalid edge, log error"
+        implementation: |
+          if edge_type not in EdgeType:
+              log.error(f"Invalid edge type {edge_type}, removing edge")
+              graph.remove_edge(source, target)
+
+    cycle_in_dag:
+      example: "Circular dependency in doctrine tree"
+      detection: "not nx.is_directed_acyclic_graph(graph)"
+      recovery:
+        method: "Remove most recent edge that created cycle"
+        severity: "degraded"
+
+  # ---------------------------------------------------------------------------
+  # CATEGORY 3: STATE VALIDATION ERRORS
+  # ---------------------------------------------------------------------------
+  state_validation:
+    negative_resources:
+      example: "cadre_labor = -5"
+      detection: "Pydantic validator or explicit check"
+      recovery:
+        method: "Set to zero, log warning"
+        implementation: |
+          if resource < 0:
+              log.warning(f"Negative resource {name}={resource}, setting to 0")
+              resource = 0
+
+    impossible_state:
+      example: "Consciousness > 1.0 after calculation"
+      detection: "Post-tick state validation"
+      recovery:
+        method: "Clamp to valid bounds"
+        implementation: |
+          def validate_world_state(state: WorldState) -> WorldState:
+              for cls in state.social_classes:
+                  cls.consciousness = clamp(cls.consciousness, 0.0, 1.0)
+                  cls.population = max(0, cls.population)
+              return state
+
+    missing_required_data:
+      example: "SocialClass without required fields"
+      detection: "Pydantic validation error"
+      recovery:
+        method: "Use default values, log warning"
+        implementation: |
+          try:
+              cls = SocialClass.model_validate(data)
+          except ValidationError as e:
+              log.warning(f"Validation failed: {e}, using defaults")
+              cls = SocialClass.model_validate({**DEFAULTS, **data})
+
+    stale_references:
+      example: "Edge references deleted node"
+      detection: "Graph integrity check"
+      recovery:
+        method: "Remove stale edges, log warning"
+
+  # ---------------------------------------------------------------------------
+  # CATEGORY 4: SYSTEM ERRORS
+  # ---------------------------------------------------------------------------
+  system:
+    system_execution_failure:
+      example: "ImperialRentSystem.execute() raises exception"
+      detection: "try/except in engine loop"
+      recovery:
+        method: "Skip system for this tick, log error, continue"
+        implementation: |
+          for system in self.systems:
+              try:
+                  graph = system.execute(graph, context)
+              except Exception as e:
+                  log.error(f"System {system.__class__.__name__} failed: {e}")
+                  # Continue with next system
+        severity: "degraded"
+
+    event_handler_failure:
+      example: "Observer callback raises exception"
+      detection: "try/except in event dispatch"
+      recovery:
+        method: "Log error, continue dispatching to other handlers"
+        implementation: |
+          for handler in self.handlers:
+              try:
+                  handler(event)
+              except Exception as e:
+                  log.error(f"Handler {handler} failed: {e}")
+                  # Continue with next handler
+
+    timeout:
+      example: "Tick takes > 5 seconds"
+      detection: "Timer in engine loop"
+      recovery:
+        method: "Log warning, reduce simulation speed"
+        implementation: |
+          start = time.time()
+          # ... tick execution ...
+          elapsed = time.time() - start
+          if elapsed > 5.0:
+              log.warning(f"Tick {tick} took {elapsed:.2f}s")
+
+  # ---------------------------------------------------------------------------
+  # CATEGORY 5: I/O ERRORS
+  # ---------------------------------------------------------------------------
+  io:
+    save_failure:
+      example: "Disk full, permission denied"
+      detection: "IOError during save"
+      recovery:
+        method: "Show error to player, offer alternatives"
+        implementation: |
+          try:
+              save_manager.save(slot, state)
+          except IOError as e:
+              show_error_dialog(f"Save failed: {e}")
+              offer_alternative_save_location()
+
+    load_failure:
+      example: "Corrupt save file"
+      detection: "JSON parse error, validation failure"
+      recovery:
+        method: "Show error, offer backup or new game"
+        implementation: |
+          try:
+              state = save_manager.load(slot)
+          except (json.JSONDecodeError, ValidationError) as e:
+              show_error_dialog(f"Load failed: {e}")
+              offer_load_backup_or_new_game()
+
+    config_failure:
+      example: "Invalid configuration file"
+      detection: "YAML parse error, validation failure"
+      recovery:
+        method: "Use defaults, log warning"
+        implementation: |
+          try:
+              config = load_config(path)
+          except Exception as e:
+              log.warning(f"Config load failed: {e}, using defaults")
+              config = DEFAULT_CONFIG
+
+# =============================================================================
+# VALIDATION LAYERS
+# =============================================================================
+
+validation_layers:
+  layer_1_input:
+    when: "Before data enters the system"
+    what: "Pydantic model validation"
+    action: "Reject invalid input with clear error"
+
+  layer_2_pre_tick:
+    when: "Before each tick executes"
+    what: "WorldState.validate()"
+    action: "Log warnings, fix recoverable issues"
+
+  layer_3_post_tick:
+    when: "After each tick completes"
+    what: "WorldState.validate()"
+    action: "Detect corruption introduced during tick"
+
+  layer_4_pre_save:
+    when: "Before saving game"
+    what: "Full state validation + graph integrity"
+    action: "Refuse to save if state is corrupt"
+
+  layer_5_post_load:
+    when: "After loading game"
+    what: "Full state validation + graph reconstruction"
+    action: "Apply recovery or reject load"
+
+  implementation: |
+    class WorldState(BaseModel):
+        @model_validator(mode='after')
+        def validate_invariants(self) -> 'WorldState':
+            # Check graph connectivity
+            if not nx.is_weakly_connected(self.to_graph()):
+                raise ValueError("Graph is disconnected")
+
+            # Check resource bounds
+            for cls in self.social_classes:
+                if not 0 <= cls.consciousness <= 1:
+                    raise ValueError(f"Invalid consciousness: {cls.consciousness}")
+
+            return self
+
+# =============================================================================
+# LOGGING AND TELEMETRY
+# =============================================================================
+
+logging:
+  levels:
+    DEBUG: "Detailed trace for development"
+    INFO: "Normal operation milestones"
+    WARNING: "Recovered from error, degraded state"
+    ERROR: "Failed operation, continuing"
+    CRITICAL: "Cannot continue, save and exit"
+
+  format: |
+    %(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s
+
+  destinations:
+    file: "~/.babylon/logs/babylon.log"
+    console: "stderr (if --verbose)"
+    rolling: "Keep last 5 log files, 10MB each"
+
+  error_context:
+    include:
+      - "Current tick number"
+      - "Active system name"
+      - "Relevant state snapshot"
+      - "Stack trace"
+    exclude:
+      - "Full world state (too large)"
+      - "Personal information"
+
+  example: |
+    2025-12-26 14:30:52 [WARNING] babylon.systems.economic:142 -
+      Division by zero avoided in calculate_extraction_rate():
+      extraction_volume=1000, worker_population=0, using default=0.0
+      Context: tick=42, territory=T1
+
+# =============================================================================
+# USER-FACING ERROR MESSAGES
+# =============================================================================
+
+user_messages:
+  principle: |
+    Error messages should be:
+    - Clear (no jargon)
+    - Actionable (what can user do?)
+    - Honest (don't hide severity)
+
+  templates:
+    recoverable: |
+      ⚠️ Minor issue detected
+      {description}
+      The game has automatically corrected this.
+      Your progress is safe.
+
+    degraded: |
+      ⚠️ Something went wrong
+      {description}
+      The game will continue with reduced functionality.
+      Consider saving your game.
+
+    save_and_exit: |
+      ❌ Critical error
+      {description}
+      The game needs to close.
+      Your progress has been auto-saved.
+      [OK]
+
+    critical: |
+      ❌ Unrecoverable error
+      {description}
+      The game must close immediately.
+      Recent progress may be lost.
+      Please report this issue.
+      [Copy Error Log] [OK]
+
+  examples:
+    division_by_zero: "A calculation produced an invalid result. The game has used a safe default value."
+    corrupt_save: "Your save file appears to be damaged. Would you like to load the backup?"
+    system_failure: "A game system encountered an error. Some features may be unavailable until you restart."
+
+# =============================================================================
+# RECOVERY PROCEDURES
+# =============================================================================
+
+recovery_procedures:
+  automatic:
+    description: "Errors the system handles without user intervention"
+    examples:
+      - "Clamping out-of-range values"
+      - "Skipping failed system for one tick"
+      - "Removing orphaned graph nodes"
+      - "Using default values for missing data"
+
+  prompted:
+    description: "Errors that require user decision"
+    examples:
+      - "Load backup save vs start new game"
+      - "Continue with reduced functionality vs exit"
+      - "Report error vs dismiss"
+
+  manual:
+    description: "Errors requiring developer intervention"
+    examples:
+      - "Consistent reproduction of critical bug"
+      - "Data corruption requiring save file editing"
+    support: |
+      - Error log contains full context
+      - Save file can be shared for debugging
+      - Discord/GitHub for bug reports
+
+# =============================================================================
+# TESTING ERROR HANDLING
+# =============================================================================
+
+testing:
+  unit_tests:
+    - "Test division by zero handling"
+    - "Test out-of-range clamping"
+    - "Test disconnected graph recovery"
+    - "Test corrupt save file handling"
+    - "Test system failure isolation"
+
+  property_tests:
+    - "Fuzz WorldState with invalid values"
+    - "Verify all operations preserve invariants"
+    - "Test random system failure combinations"
+
+  integration_tests:
+    - "Simulate disk full during save"
+    - "Corrupt save file and attempt load"
+    - "Inject exceptions into systems"
+
+  chaos_engineering:
+    description: "Deliberately introduce failures in dev/test"
+    tools:
+      - "Random exception injection"
+      - "Random value corruption"
+      - "Random system skipping"
+    purpose: "Verify recovery paths work correctly"
+
+# =============================================================================
+# IMPLEMENTATION
+# =============================================================================
+
+implementation:
+  files:
+    error_handling: "src/babylon/core/errors.py"
+    validators: "src/babylon/core/validators.py"
+    recovery: "src/babylon/core/recovery.py"
+    tests: "tests/unit/core/test_error_handling.py"
+
+  classes:
+    BabylonError: |
+      class BabylonError(Exception):
+          """Base exception for all game errors."""
+          def __init__(self, message: str, context: dict = None):
+              self.context = context or {}
+              super().__init__(message)
+
+    RecoverableError: |
+      class RecoverableError(BabylonError):
+          """Error that can be automatically recovered from."""
+          pass
+
+    CriticalError: |
+      class CriticalError(BabylonError):
+          """Error that requires save and exit."""
+          pass
+
+    StateValidator: |
+      class StateValidator:
+          def validate(self, state: WorldState) -> list[ValidationError]:
+              """Return list of validation errors found."""
+              ...
+
+          def repair(self, state: WorldState) -> WorldState:
+              """Attempt to repair invalid state."""
+              ...
+
+  patterns:
+    fail_safe_wrapper: |
+      def fail_safe(default=None, log_level=logging.WARNING):
+          def decorator(func):
+              @wraps(func)
+              def wrapper(*args, **kwargs):
+                  try:
+                      return func(*args, **kwargs)
+                  except Exception as e:
+                      log.log(log_level, f"{func.__name__} failed: {e}")
+                      return default
+              return wrapper
+          return decorator
+
+      @fail_safe(default=0.0)
+      def risky_calculation(x, y):
+          return x / y
+
+    recovery_chain: |
+      def execute_with_recovery(operation, *recovery_steps):
+          try:
+              return operation()
+          except RecoverableError as e:
+              for step in recovery_steps:
+                  try:
+                      return step(e)
+                  except RecoverableError:
+                      continue
+              raise CriticalError("All recovery steps failed")
+
+# =============================================================================
+# MONITORING (FUTURE)
+# =============================================================================
+
+monitoring:
+  status: "DEFERRED"
+  purpose: "Track error rates across player base"
+  privacy: "Opt-in only, anonymized data"
+
+  metrics:
+    - "Error rate by type"
+    - "Recovery success rate"
+    - "Most common error contexts"
+    - "Crash rate by version"
+
+  implementation:
+    when: "After initial release, if player base justifies it"
+    how: "Opt-in telemetry with clear privacy policy"

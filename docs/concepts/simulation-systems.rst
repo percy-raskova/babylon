@@ -21,9 +21,9 @@ transform the world state. This design choice enables:
        B --> C["2. SolidaritySystem<br/>Transmit consciousness"]
        C --> D["3. ConsciousnessSystem<br/>Drift ideology"]
        D --> E["4. SurvivalSystem<br/>Calculate probabilities"]
-       E --> F["5. ContradictionSystem<br/>Accumulate tension"]
-       F --> G["6. TerritorySystem<br/>Process heat/eviction"]
-       G --> H["7. StruggleSystem<br/>Agency responses"]
+       E --> F["5. StruggleSystem<br/>Agency responses"]
+       F --> G["6. ContradictionSystem<br/>Accumulate tension"]
+       G --> H["7. TerritorySystem<br/>Process heat/eviction"]
        H --> I["WorldState (tick N+1)"]
 
 The System Protocol
@@ -34,11 +34,11 @@ All systems implement a common protocol that enforces separation of concerns:
 .. code-block:: python
 
    class System(Protocol):
-       def process(
+       def step(
            self,
-           graph: nx.DiGraph,
+           graph: nx.DiGraph[str],
            services: ServiceContainer,
-           context: TickContext
+           context: ContextType,  # Union[dict[str, Any], TickContext]
        ) -> None:
            """Mutate graph according to system logic."""
            ...

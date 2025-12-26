@@ -1,0 +1,791 @@
+# Political Economy of Liquidity
+# The Financial Layer of Babylon: Money as Constraint, Not Score
+#
+# "Capital is dead labour, that, vampire-like, only lives by sucking living labour."
+# - Karl Marx, Capital Vol. 1
+#
+# This specification defines how money flows through the simulation as a
+# BOTTLENECK FOR AGENCY rather than a victory point to accumulate.
+
+meta:
+  version: "1.0.0"
+  status: "draft"
+  created: "2025-12-26"
+  principle: "Money is the bottleneck of agency, not a score."
+  theoretical_basis:
+    - "Marx: Fictitious Capital (Capital Vol. 3, Part V)"
+    - "Samir Amin: Unequal Exchange and Imperial Rent"
+    - "Michael Hudson: Super Imperialism and Dollar Hegemony"
+    - "Cope: Divided World Divided Class (Super-wages and PPP)"
+
+# =============================================================================
+# CONCEPTUAL FRAMEWORK
+# =============================================================================
+
+conceptual_framework:
+  core_insight: |
+    Money in Babylon is not wealth - it is the CAPACITY TO ACT.
+    Without liquidity, agents cannot execute their strategies regardless
+    of their material position or ideological commitment.
+
+    This creates the fundamental tension:
+    - The State must SPEND to maintain order (repression + social reproduction)
+    - Revolutionaries must FUND operations while avoiding corruption
+    - Both face trade-offs that reveal their class character
+
+  state_view:
+    name: "Fictitious Capital & Imperial Rent"
+    description: |
+      The capitalist state commands two sources of "money from nothing":
+
+      1. FICTITIOUS CAPITAL (Debt/Money Printing)
+         - State issues bonds or prints currency
+         - Creates inflation that devalues workers' wages
+         - A hidden tax on the proletariat
+         - Finite: hyperinflation destroys legitimacy
+
+      2. IMPERIAL RENT (Tribute from Periphery)
+         - Value extracted via unequal exchange
+         - Flows through CLIENT_STATE edges in topology
+         - Funds super-wages for labor aristocracy
+         - Finite: peripheral revolution cuts the flow
+
+    dialectic: |
+      The state appears omnipotent (can print money!) but is actually
+      constrained by material reality. Inflation erodes real wages,
+      creating the conditions for its own negation.
+
+  revolutionary_view:
+    name: "Logistics vs. Purity"
+    description: |
+      Revolutionary organizations face the fundamental contradiction:
+
+      LOGISTICS: Operations require money
+      - Safe houses, printing presses, weapons, food
+      - Organizers need to eat, families need support
+      - "An army marches on its stomach" - Napoleon
+
+      PURITY: Money corrupts
+      - Bourgeois funding comes with strings attached
+      - Reformist drift follows liberal dollars
+      - Expropriation invites state repression
+
+      The revolutionary must navigate this without becoming
+      what they sought to destroy.
+
+    dialectic: |
+      The party that refuses all compromise starves.
+      The party that compromises too much becomes the enemy.
+      Only correct analysis of material conditions resolves this.
+
+  the_precarity_thesis: |
+    Real wages determine consciousness more than nominal wages.
+
+    A worker earning $50,000/year in a city where rent is $40,000
+    is more precarious than one earning $30,000 where rent is $10,000.
+
+    Inflation is class warfare conducted through monetary policy:
+    - Wages are sticky (slow to adjust)
+    - Prices are flexible (fast to rise)
+    - The gap is extracted surplus value
+
+    As inflation rises, the "comfortable" labor aristocrat discovers
+    they are one paycheck from proletarianization.
+
+# =============================================================================
+# DATA STRUCTURES
+# =============================================================================
+
+data_structures:
+  state_finance:
+    name: "StateFinance"
+    description: "Financial state of a sovereign entity (nation-state, client state)"
+    location: "src/babylon/models/entities/state_finance.py"
+    fields:
+      # Treasury
+      - name: "treasury"
+        type: "Currency"
+        description: "Available liquid funds for state operations"
+        default: 100.0
+        constraints: ">= 0"
+
+      # Burn Rate Components
+      - name: "police_budget"
+        type: "Currency"
+        description: "Cost to maintain repression apparatus per tick"
+        default: 10.0
+        formula: "repression_level * police_cost_coefficient"
+
+      - name: "social_reproduction_budget"
+        type: "Currency"
+        description: "Welfare, infrastructure, legitimacy maintenance"
+        default: 15.0
+        formula: "population * social_spending_per_capita"
+
+      - name: "burn_rate"
+        type: "Currency"
+        description: "Total mandatory spending per tick"
+        computed: true
+        formula: "police_budget + social_reproduction_budget"
+
+      # Revenue Sources
+      - name: "tax_rate"
+        type: "Coefficient"
+        description: "Extraction rate from domestic bourgeoisie"
+        default: 0.3
+        constraints: "[0.0, 1.0]"
+        effects:
+          - "High tax -> Bourgeoisie anger -> Capital flight risk"
+          - "Low tax -> Revenue shortfall -> Austerity"
+
+      - name: "tribute_income"
+        type: "Currency"
+        description: "Imperial rent from CLIENT_STATE edges"
+        default: 0.0
+        source: "ImperialRentSystem._process_tribute_phase"
+
+      - name: "debt_level"
+        type: "Currency"
+        description: "Accumulated state debt (bonds + printed money)"
+        default: 0.0
+        constraints: ">= 0"
+
+      - name: "debt_ceiling"
+        type: "Currency"
+        description: "Maximum sustainable debt before hyperinflation"
+        default: 500.0
+        formula: "gdp_equivalent * debt_tolerance_ratio"
+
+      # Derived Metrics
+      - name: "inflation_index"
+        type: "Coefficient"
+        description: "Multiplier on nominal prices (1.0 = no inflation)"
+        default: 1.0
+        constraints: ">= 1.0"
+        formula: "1.0 + (debt_level / debt_ceiling) * inflation_sensitivity"
+
+      - name: "fiscal_health"
+        type: "Probability"
+        description: "0 = imminent collapse, 1 = healthy"
+        computed: true
+        formula: "1.0 - (burn_rate - revenue) / treasury if revenue < burn_rate else 1.0"
+
+  revolutionary_finance:
+    name: "RevolutionaryFinance"
+    description: "Financial state of a revolutionary organization"
+    location: "src/babylon/models/entities/revolutionary_finance.py"
+    fields:
+      # War Chest
+      - name: "war_chest"
+        type: "Currency"
+        description: "Available funds for revolutionary operations"
+        default: 5.0
+        constraints: ">= 0"
+
+      - name: "operational_burn"
+        type: "Currency"
+        description: "Minimum spend to maintain organization per tick"
+        default: 2.0
+        formula: "cadre_count * cadre_upkeep + safe_house_count * safe_house_rent"
+
+      # Funding Sources (see mechanics.revolutionary_fundraising)
+      - name: "dues_income"
+        type: "Currency"
+        description: "Regular contributions from members"
+        default: 1.0
+        formula: "member_count * dues_rate * collection_efficiency"
+
+      - name: "expropriation_income"
+        type: "Currency"
+        description: "Funds from direct action (robbery, seizure)"
+        default: 0.0
+        effects:
+          - "Generates HEAT on organization"
+          - "Risk of cadre arrest/death"
+
+      - name: "donor_income"
+        type: "Currency"
+        description: "Contributions from liberal/reformist sources"
+        default: 0.0
+        effects:
+          - "Increases REFORMIST_DRIFT on organization"
+          - "May come with operational constraints"
+
+      # Corruption Metrics
+      - name: "heat"
+        type: "Intensity"
+        description: "State attention on this organization"
+        default: 0.0
+        constraints: "[0.0, 1.0]"
+        decay: 0.05
+        effects:
+          - "> 0.5: Increased raid probability"
+          - "> 0.8: Leadership targeted for elimination"
+
+      - name: "reformist_drift"
+        type: "Ideology"
+        description: "Deviation from revolutionary line toward reformism"
+        default: 0.0
+        constraints: "[-1.0, 1.0]"
+        effects:
+          - "> 0.3: Cadre defection risk"
+          - "> 0.6: Organization splits"
+          - "> 0.9: Full recuperation into bourgeois politics"
+
+  precarity_state:
+    name: "PrecarityState"
+    description: "Economic precarity metrics for a social class"
+    location: "src/babylon/models/entities/precarity_state.py"
+    fields:
+      - name: "nominal_wage"
+        type: "Currency"
+        description: "Wage in currency units"
+        source: "ImperialRentSystem._process_wages_phase"
+
+      - name: "ppp_factor"
+        type: "Coefficient"
+        description: "Purchasing power parity multiplier"
+        default: 1.0
+        formula: "1.0 + (extraction_efficiency * superwage_multiplier * ppp_impact)"
+
+      - name: "inflation_index"
+        type: "Coefficient"
+        description: "Local inflation rate"
+        source: "StateFinance.inflation_index"
+
+      - name: "real_wage"
+        type: "Currency"
+        description: "Actual purchasing power"
+        computed: true
+        formula: "(nominal_wage * ppp_factor) / inflation_index"
+
+      - name: "precarity_index"
+        type: "Probability"
+        description: "How close to subsistence threshold"
+        computed: true
+        formula: "1.0 - sigmoid(real_wage - subsistence_threshold)"
+
+      - name: "proletarianization_risk"
+        type: "Probability"
+        description: "Risk of falling from labor aristocracy to proletariat"
+        computed: true
+        formula: "precarity_index * (1.0 - organization)"
+
+# =============================================================================
+# MECHANICS
+# =============================================================================
+
+mechanics:
+  state_fiscal_trilemma:
+    name: "The Fiscal Trilemma"
+    description: |
+      The state must pay its burn rate every tick or face consequences.
+      It has three funding sources, each with costs:
+
+      1. TAX: Extract from domestic bourgeoisie
+         - Pro: No inflation, no imperial dependency
+         - Con: Bourgeoisie anger, capital flight, investment strike
+
+      2. TRIBUTE: Imperial rent from periphery
+         - Pro: No domestic costs, funds super-wages
+         - Con: Requires imperial apparatus, vulnerable to peripheral revolt
+
+      3. DEBT: Print money / issue bonds
+         - Pro: Immediate liquidity, no direct antagonism
+         - Con: Inflation erodes real wages, eventual hyperinflation
+
+      The trilemma: You cannot maximize all three. Choose your class character.
+
+    burn_rate_formula:
+      description: "Mandatory state spending per tick"
+      latex: "B = P_{budget} + S_{budget}"
+      python: "burn_rate = police_budget + social_reproduction_budget"
+      components:
+        police_budget: "repression_level * defines.economy.police_cost_per_repression"
+        social_reproduction_budget: "population * defines.economy.social_spending_per_capita"
+
+    revenue_formula:
+      description: "Total state income per tick"
+      latex: "R = T_{tax} + T_{tribute} + D_{new}"
+      python: "revenue = tax_revenue + tribute_income + new_debt"
+      components:
+        tax_revenue: "bourgeoisie_wealth * tax_rate * collection_efficiency"
+        tribute_income: "sum(edge.tribute_flow for edge in CLIENT_STATE edges)"
+        new_debt: "min(debt_request, debt_ceiling - debt_level)"
+
+    inflation_formula:
+      description: "Inflation rises with debt ratio"
+      latex: "I = 1 + \\frac{D}{D_{ceiling}} \\cdot k_{inflation}"
+      python: "inflation_index = 1.0 + (debt_level / debt_ceiling) * inflation_sensitivity"
+      parameters:
+        inflation_sensitivity:
+          default: 2.0
+          description: "How aggressively debt converts to inflation"
+
+    austerity_crisis:
+      description: "What happens when treasury < burn_rate"
+      trigger: "treasury < burn_rate AND no_debt_capacity"
+      outcomes:
+        cut_police:
+          effect: "repression_level *= 0.5"
+          consequence: "Revolutionary opportunity window opens"
+        cut_social:
+          effect: "social_reproduction_budget *= 0.5"
+          consequence: "Discontent spikes, legitimacy collapses"
+        default_on_debt:
+          effect: "debt_level = 0, inflation_index *= 2.0"
+          consequence: "Hyperinflation, currency collapse"
+      decision_logic: |
+        The AI bourgeoisie uses calculate_bourgeoisie_decision() heuristics:
+        - If high tension: prioritize police (maintain repression)
+        - If low tension: prioritize social (maintain legitimacy)
+        - If desperate: default on debt (pass costs to workers via inflation)
+
+  revolutionary_fundraising:
+    name: "The Fundraising Spectrum"
+    description: |
+      Revolutionary organizations must fund operations while avoiding
+      corruption (reformist drift) and state attention (heat).
+
+      Three primary sources, each with trade-offs:
+
+    source_matrix:
+      member_dues:
+        yield: "low"
+        yield_formula: "member_count * dues_rate * collection_efficiency"
+        heat_generated: 0.0
+        drift_generated: 0.0
+        risk: "none"
+        description: |
+          Safe, sustainable, but limited by membership base.
+          A party of 1000 paying $10/month = $10,000/month.
+          Barely covers operational costs for serious organization.
+        theoretical_basis: "Mass line funding - the party serves the people"
+
+      expropriation:
+        yield: "high"
+        yield_formula: "target_value * success_probability * (1.0 - state_recovery)"
+        heat_generated: 0.3
+        drift_generated: 0.0
+        risk: "cadre_arrest, cadre_death, organization_raid"
+        description: |
+          Bank robbery, bourgeois kidnapping, seizure of assets.
+          High yield but attracts immediate state attention.
+          Heat decays slowly; multiple expropriations compound.
+        theoretical_basis: "Propaganda of the deed - action funds action"
+        examples:
+          - "Bolshevik 1907 Tiflis bank robbery: 250,000 rubles"
+          - "RAF 1970s bank robberies funded operations"
+          - "FARC kidnapping funded decades of guerrilla war"
+
+      liberal_donors:
+        yield: "medium"
+        yield_formula: "donor_pool * donor_rate * ideological_alignment"
+        heat_generated: 0.0
+        drift_generated: 0.2
+        risk: "reformist_drift, operational_constraints, exposure"
+        description: |
+          Wealthy sympathizers, NGOs, foreign governments.
+          No heat but money comes with strings.
+          Donors want "respectable" tactics, electoral politics.
+        theoretical_basis: "Recuperation - capital absorbs opposition"
+        examples:
+          - "Ford Foundation funding of civil rights movement"
+          - "Soros funding of color revolutions"
+          - "Church funding of liberation theology (with limits)"
+
+    heat_mechanics:
+      description: "State attention on revolutionary organization"
+      accumulation: "heat += action.heat_generated"
+      decay: "heat *= (1.0 - heat_decay_rate) per tick"
+      thresholds:
+        surveillance: 0.3
+        infiltration: 0.5
+        raids: 0.7
+        leadership_targeting: 0.9
+      effects:
+        - "Heat > 0.5: random cadre arrests each tick"
+        - "Heat > 0.8: safe houses compromised"
+        - "Heat > 0.95: organization decapitation attempt"
+
+    drift_mechanics:
+      description: "Ideological corruption from bourgeois funding"
+      accumulation: "reformist_drift += funding.drift_generated"
+      decay: "None - drift is permanent without rectification campaign"
+      thresholds:
+        tension: 0.3
+        splits: 0.6
+        recuperation: 0.9
+      effects:
+        - "Drift > 0.3: cadre begin questioning revolutionary line"
+        - "Drift > 0.6: organization splits (revolutionary vs reformist faction)"
+        - "Drift > 0.9: organization fully recuperated, becomes NGO/party"
+      rectification:
+        trigger: "Manual player decision OR automatic at drift > 0.5"
+        cost: "Lose donor_income, purge compromised cadre"
+        effect: "drift *= 0.5, but organization capacity reduced"
+
+  precarity_equation:
+    name: "The Precarity Equation"
+    description: |
+      Real wages determine material conditions more than nominal wages.
+      Inflation is the hidden mechanism of class warfare.
+
+    real_wage_formula:
+      description: "Actual purchasing power of wages"
+      latex: "W_{real} = \\frac{W_{nominal} \\cdot PPP}{I}"
+      python: "real_wage = (nominal_wage * ppp_factor) / inflation_index"
+      variables:
+        nominal_wage: "Currency amount paid"
+        ppp_factor: "Purchasing power parity (super-wage effect)"
+        inflation_index: "Price level multiplier"
+
+    precarity_formula:
+      description: "How close to subsistence threshold"
+      latex: "P = 1 - \\sigma(W_{real} - S)"
+      python: "precarity = 1.0 - sigmoid(real_wage - subsistence_threshold, k=steepness)"
+      interpretation:
+        - "precarity = 0: Comfortable, no material pressure"
+        - "precarity = 0.5: At subsistence threshold"
+        - "precarity = 1.0: Below subsistence, survival mode"
+
+    consciousness_feedback:
+      description: "How precarity affects consciousness"
+      mechanism: |
+        Rising precarity creates material basis for radicalization:
+        1. Inflation erodes real wages
+        2. Precarity index rises
+        3. P(S|A) (acquiescence survival) drops
+        4. P(S|R) (revolution survival) becomes rational
+        5. Consciousness drifts toward revolution
+
+      formula: "consciousness_pressure = precarity * (1.0 - reformist_drift)"
+      integration: "Feeds into ConsciousnessSystem.calculate_consciousness_drift()"
+
+    labor_aristocracy_collapse:
+      description: "When super-wages fail to insulate"
+      trigger: "real_wage falls below proletarian_threshold despite ppp_factor"
+      effect: |
+        Labor aristocrat discovers their "middle class" status was contingent
+        on imperial rent flows. As periphery revolts or inflation spikes,
+        their material conditions converge with the proletariat.
+
+      proletarianization_formula:
+        latex: "P_{prole} = P_{precarity} \\cdot (1 - O)"
+        python: "proletarianization_risk = precarity_index * (1.0 - organization)"
+        interpretation: "High precarity + low organization = fall into proletariat"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration_points:
+  imperial_circuit:
+    description: "How liquidity connects to ImperialRentSystem"
+    data_flow:
+      - source: "ImperialRentSystem._process_tribute_phase"
+        target: "StateFinance.tribute_income"
+        description: "Tribute from CLIENT_STATE edges fills state treasury"
+
+      - source: "ImperialRentSystem._process_wages_phase"
+        target: "PrecarityState.nominal_wage"
+        description: "Super-wages paid to labor aristocracy"
+
+      - source: "StateFinance.inflation_index"
+        target: "PrecarityState.inflation_index"
+        description: "State debt creates inflation that erodes wages"
+
+    feedback_loop: |
+      Imperial Circuit -> Treasury -> Debt Capacity -> Inflation ->
+      Real Wages -> Precarity -> Consciousness -> Revolutionary Capacity ->
+      Peripheral Revolt Risk -> Imperial Circuit (reduced)
+
+  consciousness_system:
+    description: "How liquidity affects consciousness dynamics"
+    integration:
+      - mechanic: "Precarity -> Consciousness Drift"
+        formula: "drift_modifier = precarity_index * consciousness_sensitivity"
+        location: "ConsciousnessSystem.calculate_consciousness_drift()"
+
+      - mechanic: "Reformist Drift -> Bifurcation"
+        formula: "If reformist_drift > 0.5: bias toward fascism in bifurcation"
+        location: "IdeologySystem.calculate_ideological_routing()"
+
+      - mechanic: "Real Wage Collapse -> Rupture"
+        formula: "If real_wage < subsistence * 0.5: force rupture evaluation"
+        location: "ContradictionSystem.evaluate_rupture()"
+
+  topology_system:
+    description: "How liquidity affects graph structure"
+    integration:
+      - mechanic: "Asset Upkeep"
+        description: "Nodes with operational_profile require currency upkeep"
+        formula: "If treasury < upkeep: asset.operational = False"
+        affected_assets:
+          - "PRINTING_PRESS: Requires paper, ink, electricity"
+          - "SAFE_HOUSE: Requires rent, utilities"
+          - "ARMS_CACHE: Requires maintenance, security"
+
+      - mechanic: "Edge Maintenance"
+        description: "Some edges require ongoing payment"
+        formula: "If payment missed: edge.strength *= decay_rate"
+        affected_edges:
+          - "CLIENT_STATE: Requires subsidy to maintain"
+          - "SUPPLY_CHAIN: Requires payment to suppliers"
+
+  survival_system:
+    description: "How liquidity modifies survival calculus"
+    integration:
+      - mechanic: "P(S|A) Modification"
+        description: "Real wage affects acquiescence survival"
+        formula: "wealth_for_sigmoid = real_wage (not nominal_wage)"
+        location: "SurvivalSystem.calculate_acquiescence_probability()"
+
+      - mechanic: "P(S|R) Modification"
+        description: "War chest affects revolutionary capacity"
+        formula: "organization_effective = organization * min(1.0, war_chest / operational_burn)"
+        location: "SurvivalSystem.calculate_revolution_probability()"
+
+# =============================================================================
+# ROADMAP: STAGGERED IMPLEMENTATION
+# =============================================================================
+
+roadmap:
+  epoch_1:
+    name: "The Ledger"
+    status: "planned"
+    description: |
+      Basic data models and cost-checking infrastructure.
+      No dynamic effects yet - just tracking and validation.
+
+    deliverables:
+      - task: "Create StateFinance Pydantic model"
+        location: "src/babylon/models/entities/state_finance.py"
+        fields: ["treasury", "burn_rate", "tax_rate", "debt_level"]
+        tests: "tests/unit/models/test_state_finance.py"
+
+      - task: "Create RevolutionaryFinance Pydantic model"
+        location: "src/babylon/models/entities/revolutionary_finance.py"
+        fields: ["war_chest", "operational_burn", "heat", "reformist_drift"]
+        tests: "tests/unit/models/test_revolutionary_finance.py"
+
+      - task: "Create PrecarityState Pydantic model"
+        location: "src/babylon/models/entities/precarity_state.py"
+        fields: ["nominal_wage", "ppp_factor", "inflation_index", "real_wage"]
+        tests: "tests/unit/models/test_precarity_state.py"
+
+      - task: "Add liquidity fields to WorldState"
+        location: "src/babylon/models/world_state.py"
+        integration: "state_finances: dict[str, StateFinance]"
+
+      - task: "Implement cost-checking in step()"
+        location: "src/babylon/engine/simulation_engine.py"
+        behavior: "Validate treasury >= burn_rate, log warnings"
+
+    acceptance_criteria:
+      - "All three finance models pass validation tests"
+      - "WorldState serializes/deserializes with finance data"
+      - "step() logs when treasury < burn_rate"
+
+    estimated_effort: "1 sprint (3-5 days)"
+
+  epoch_2:
+    name: "Friction"
+    status: "planned"
+    description: |
+      Dynamic effects: debt generation, fundraising choices, heat/drift.
+      Money becomes a real constraint on agency.
+
+    deliverables:
+      - task: "Implement FiscalSystem"
+        location: "src/babylon/engine/systems/fiscal.py"
+        behavior: |
+          1. Calculate burn_rate for each state
+          2. Collect tax_revenue, tribute_income
+          3. Generate new_debt if deficit
+          4. Update inflation_index based on debt ratio
+          5. Trigger austerity_crisis if insolvent
+        tests: "tests/unit/engine/systems/test_fiscal.py"
+
+      - task: "Implement FundraisingSystem"
+        location: "src/babylon/engine/systems/fundraising.py"
+        behavior: |
+          1. Collect dues_income from members
+          2. Process expropriation actions (yield + heat)
+          3. Process donor_income (yield + drift)
+          4. Decay heat over time
+          5. Check for drift thresholds (splits, recuperation)
+        tests: "tests/unit/engine/systems/test_fundraising.py"
+
+      - task: "Add EXPROPRIATION action type"
+        location: "src/babylon/models/enums.py"
+        integration: "StruggleSystem recognizes EXPROPRIATION as valid action"
+
+      - task: "Add FISCAL_CRISIS and ORGANIZATION_SPLIT events"
+        location: "src/babylon/models/events.py"
+        integration: "EventBus emits on austerity/split triggers"
+
+    acceptance_criteria:
+      - "States can go bankrupt and enter austerity"
+      - "Expropriation generates heat, heat decays"
+      - "Donor funding increases reformist drift"
+      - "Organizations split at drift > 0.6"
+
+    estimated_effort: "2 sprints (6-10 days)"
+
+  epoch_3:
+    name: "Material Reality"
+    status: "planned"
+    description: |
+      Full integration: Imperial Circuit -> Treasury -> Inflation ->
+      PPP -> Real Wages -> Consciousness -> Revolutionary Capacity.
+
+    deliverables:
+      - task: "Integrate FiscalSystem with ImperialRentSystem"
+        behavior: "tribute_income flows from _process_tribute_phase to StateFinance"
+
+      - task: "Implement PrecaritySystem"
+        location: "src/babylon/engine/systems/precarity.py"
+        behavior: |
+          1. Calculate real_wage for each class
+          2. Update precarity_index
+          3. Feed precarity into consciousness_drift
+          4. Trigger proletarianization if labor aristocrat precarity > threshold
+        tests: "tests/unit/engine/systems/test_precarity.py"
+
+      - task: "Modify ConsciousnessSystem for precarity input"
+        behavior: "consciousness_drift receives precarity_modifier"
+
+      - task: "Add Labor Aristocracy Collapse mechanic"
+        behavior: |
+          When real_wage < proletarian_threshold:
+          - SocialRole changes from LABOR_ARISTOCRACY to PROLETARIAT
+          - Sudden consciousness shift (no longer bought off)
+          - Generates PROLETARIANIZATION event
+
+      - task: "Add Hyperinflation end-game"
+        behavior: |
+          When inflation_index > 10.0:
+          - Currency collapse event
+          - All nominal values reset
+          - State legitimacy crisis
+
+    acceptance_criteria:
+      - "Inflation from debt erodes real wages"
+      - "Precarity feeds into consciousness drift"
+      - "Labor aristocrats can be proletarianized"
+      - "Hyperinflation triggers currency collapse"
+
+    estimated_effort: "2 sprints (6-10 days)"
+
+# =============================================================================
+# GAME DEFINES ADDITIONS
+# =============================================================================
+
+game_defines:
+  description: "New coefficients for GameDefines Pydantic model"
+  location: "src/babylon/config/defines.py"
+
+  economy_additions:
+    # Fiscal Trilemma
+    police_cost_per_repression:
+      default: 15.0
+      description: "Currency cost per 0.1 repression level"
+
+    social_spending_per_capita:
+      default: 0.1
+      description: "Currency cost per population unit for social reproduction"
+
+    debt_tolerance_ratio:
+      default: 5.0
+      description: "Debt ceiling as multiple of GDP equivalent"
+
+    inflation_sensitivity:
+      default: 2.0
+      description: "How aggressively debt converts to inflation"
+
+    austerity_police_cut:
+      default: 0.5
+      description: "Multiplier on police budget during austerity"
+
+    austerity_social_cut:
+      default: 0.5
+      description: "Multiplier on social budget during austerity"
+
+    # Revolutionary Fundraising
+    dues_rate:
+      default: 0.02
+      description: "Fraction of member income collected as dues"
+
+    expropriation_heat:
+      default: 0.3
+      description: "Heat generated per expropriation action"
+
+    donor_drift:
+      default: 0.2
+      description: "Reformist drift per donor funding acceptance"
+
+    heat_decay_rate:
+      default: 0.05
+      description: "Heat decay per tick"
+
+    # Precarity
+    proletarian_threshold:
+      default: 0.3
+      description: "Real wage below which labor aristocrat becomes proletariat"
+
+    precarity_consciousness_weight:
+      default: 0.5
+      description: "How much precarity influences consciousness drift"
+
+# =============================================================================
+# THEORETICAL NOTES
+# =============================================================================
+
+theoretical_notes:
+  on_fictitious_capital: |
+    Marx distinguished between money-capital (M) and fictitious capital.
+
+    Money-capital represents claims on real value (commodities, labor-power).
+    Fictitious capital represents claims on FUTURE value extraction.
+
+    State debt is fictitious capital: a promise to extract future surplus.
+    When the state prints money, it creates a claim without corresponding value.
+    This claim is redeemed through inflation - a hidden tax on wage-earners.
+
+    The genius of modern capitalism is making this extraction invisible.
+    Workers see their nominal wages rise while real purchasing power falls.
+    Only Marxist analysis reveals the mechanism.
+
+  on_imperial_rent: |
+    Samir Amin and the dependency theorists showed that "free trade" between
+    unequal nations transfers value from periphery to core.
+
+    This value appears in the core as:
+    1. Super-profits for capital (higher rate of return)
+    2. Super-wages for labor (buying off the working class)
+    3. State revenue (taxes on super-profits, tribute from client states)
+
+    The labor aristocracy's "middle class" lifestyle depends on this transfer.
+    Their class consciousness is mediated by their material stake in imperialism.
+
+    When imperial rent flows are disrupted (peripheral revolt, rival imperialism),
+    the material basis for labor aristocracy consciousness erodes.
+
+  on_the_vanguard_funding_problem: |
+    Lenin faced this problem concretely. The Bolsheviks needed money:
+    - Iskra printing and distribution
+    - Full-time revolutionary cadre
+    - Arms for the coming insurrection
+
+    Solutions:
+    1. Member dues (limited by worker poverty)
+    2. Wealthy sympathizers (Gorky, Morozov) - with drift risk
+    3. Expropriations (Tiflis robbery) - with heat risk
+    4. Foreign funding (German money in 1917) - with dependency risk
+
+    The correct balance depends on the concrete situation.
+    A party in a revolutionary situation can take more heat.
+    A party in reaction must preserve cadre and avoid exposure.
+
+    There is no formula - only correct analysis of material conditions.

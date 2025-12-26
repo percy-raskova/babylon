@@ -5,17 +5,19 @@
 # The State is "what the dice land on." The Engine is "the physics of the throw."
 
 meta:
-  version: "3.1.0"
+  version: "4.0.0"
   created: "2024-12-07"
-  updated: "2025-12-11"
+  updated: "2025-12-26"
   status: "implemented"
   phase: 2
+  epoch_compatibility: "1 → 2 Bridge"
   principle: "State is pure data. Engine is pure transformation. They never mix."
   implementation_status: "1445 tests passing, 7 Systems in modular architecture"
   recent_additions:
     - "StruggleSystem (Agency Layer - George Floyd Dynamic)"
     - "SolidaritySystem (Proletarian Internationalism)"
     - "TerritorySystem (Layer 0 - Territorial Substrate)"
+    - "Interceptor Architecture (Epoch 2 Bridge)"
 
 # =============================================================================
 # THE FUNDAMENTAL SEPARATION
@@ -252,6 +254,277 @@ simulation_engine:
       solidarity_spike: "The Bridge Building - Solidarity infrastructure created"
       # Contradiction events
       rupture: "When tension on an edge reaches 1.0"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: INTERCEPTOR ARCHITECTURE
+# =============================================================================
+# Enables adversarial mechanics (State blocking Player actions) without UI changes
+
+  interceptor_system:
+    name: "Event Interceptors"
+    status: "IMPLEMENTED"
+    epoch_compatibility: "1 → 2 Bridge"
+    pattern: "Chain of Responsibility"
+    created: "2025-12-26"
+    updated: "2025-12-26"
+
+    rationale: |
+      Epoch 2 introduces adversarial mechanics where the State can BLOCK or
+      MODIFY player actions. Examples:
+      - State blocks AGITATE action in high-surveillance territory
+      - State intercepts SUPPLY_RUN and confiscates resources
+      - Fascist faction disrupts ORGANIZE action in their territory
+
+      The current Event Bus has: Signal → Emit
+      Epoch 2 requires: Signal → Intercept → Emit (or Block)
+
+      This is purely BACKEND LOGIC. The UI does not change.
+      Interceptors are registered globally and evaluated in priority order.
+
+    current_flow: |
+      ┌─────────────┐     EMIT      ┌─────────────┐
+      │   System    │ ────────────► │  EventBus   │ ────► Subscribers
+      │  (Signal)   │               │             │
+      └─────────────┘               └─────────────┘
+
+    new_flow: |
+      ┌─────────────┐    SIGNAL     ┌─────────────┐   INTERCEPT   ┌─────────────┐
+      │   System    │ ────────────► │  EventBus   │ ────────────► │ Interceptor │
+      │  (Action)   │               │  (Staging)  │               │   Chain     │
+      └─────────────┘               └─────────────┘               └──────┬──────┘
+                                                                         │
+                                           ┌─────────────────────────────┤
+                                           │                             │
+                                           ▼                             ▼
+                                    ┌─────────────┐               ┌─────────────┐
+                                    │   BLOCKED   │               │    EMIT     │
+                                    │  (Audit log)│               │ (Continue)  │
+                                    └─────────────┘               └─────────────┘
+
+    implementation:
+      interceptor_module: "src/babylon/engine/interceptor.py"
+      event_bus_module: "src/babylon/engine/event_bus.py"
+      classes:
+        InterceptResult: "Rich container with event + reason (frozen dataclass)"
+        EventInterceptor: "Abstract Base Class for all interceptors"
+        WorldContext: "Protocol for read-only world state"
+        BlockedEvent: "Audit record for blocked events"
+        SimpleWorldContext: "Basic WorldContext implementation for testing"
+      methods:
+        register_interceptor: "Add interceptor to the chain"
+        unregister_interceptor: "Remove interceptor from the chain"
+        publish: "Modified to run interceptor chain before emit"
+        get_blocked_events: "Access audit log of blocked events"
+        clear_blocked_events: "Clear the audit log"
+
+    intercept_result:
+      name: "InterceptResult"
+      type: "frozen dataclass"
+      location: "src/babylon/engine/interceptor.py"
+      purpose: |
+        Rich container for interceptor decisions that captures BOTH the event
+        outcome AND the narrative reason. This is critical for Epoch 2's
+        Gramscian Wire / player feedback systems.
+      schema: |
+        @dataclass(frozen=True)
+        class InterceptResult:
+            event: Event | None  # None = blocked
+            reason: str = ""     # Narrative explanation (required if blocked)
+
+            @classmethod
+            def allow(cls, event: Event) -> InterceptResult
+            @classmethod
+            def block(cls, reason: str) -> InterceptResult
+            @classmethod
+            def modify(cls, new_event: Event, reason: str = "") -> InterceptResult
+
+            @property
+            def is_blocked(self) -> bool
+            @property
+            def is_modified(self) -> bool
+      factory_methods:
+        allow: "Pass event unchanged (reason empty)"
+        block: "Stop event, reason REQUIRED for narrative"
+        modify: "Transform event, reason optional"
+      validation: "block() raises ValueError if reason is empty"
+
+    interceptor_interface:
+      name: "EventInterceptor"
+      type: "ABC (Abstract Base Class)"
+      location: "src/babylon/engine/interceptor.py"
+      interface: |
+        class EventInterceptor(ABC):
+            @property
+            @abstractmethod
+            def name(self) -> str:
+                """Interceptor name for debugging and audit logs."""
+                ...
+
+            @property
+            def priority(self) -> int:
+                """Priority for chain ordering (higher runs first). Default: 100"""
+                return 100
+
+            @abstractmethod
+            def intercept(
+                self, event: Event, context: WorldContext | None
+            ) -> InterceptResult:
+                """
+                Process an event through this interceptor.
+
+                Returns:
+                    - InterceptResult.allow(event) to pass through
+                    - InterceptResult.block(reason) to stop the chain
+                    - InterceptResult.modify(new_event, reason) to transform
+                """
+                ...
+      priority_ranges:
+        90_100: "Security/State interceptors (block first)"
+        50_89: "Faction/adversarial interceptors"
+        10_49: "Resource/validation interceptors"
+        1_9: "Logging/audit interceptors (run last)"
+
+    world_context:
+      type: "Protocol"
+      location: "src/babylon/engine/interceptor.py"
+      purpose: "Read-only view of world state for interceptor decisions"
+      minimal_interface: |
+        class WorldContext(Protocol):
+            @property
+            def tick(self) -> int: ...
+      simple_implementation: |
+        @dataclass
+        class SimpleWorldContext:
+            tick: int = 0
+            data: dict[str, Any] = field(default_factory=dict)
+      note: "Specific interceptors may require richer context implementations"
+
+    pipeline_logic:
+      steps:
+        1_receive: "EventBus.publish(event, context) receives signal"
+        2_fast_path: "If no interceptors registered, emit immediately (zero overhead)"
+        3_sort: "Sort interceptors by priority (higher first: 100 before 50)"
+        4_loop: "For each interceptor in sorted order:"
+        5_intercept: "  result = interceptor.intercept(event, context)"
+        6_check_blocked: "  If result.is_blocked: log WARNING, append to blocked_events, STOP"
+        7_check_modified: "  If result.is_modified: log INFO with reason"
+        8_chain: "  Update current_event = result.event, continue to next"
+        9_emit: "After all interceptors pass: emit to subscribers"
+
+      backwards_compatibility: |
+        If no interceptors are registered, publish() uses the fast path:
+        - No sorting overhead
+        - No loop overhead
+        - Epoch 1 events flow through with zero latency impact
+
+    audit_requirements:
+      blocked_events_channel:
+        purpose: "Debug channel for intercepted events with narrative reasons"
+        storage: "EventBus._blocked_events: list[BlockedEvent]"
+        access: "EventBus.get_blocked_events() -> list[BlockedEvent]"
+        record_format: |
+          @dataclass(frozen=True)
+          class BlockedEvent:
+              event: Event           # The original event that was blocked
+              interceptor_name: str  # Who blocked it
+              reason: str            # Narrative reason for blocking
+              blocked_at: datetime   # When it was blocked
+        use_cases:
+          - "Debug UI: Show blocked events with narrative reasons"
+          - "Game UI: Display 'Action blocked: {reason}' to player"
+          - "Testing: Assert specific events were blocked with expected reasons"
+          - "Logging: Trace adversarial mechanics for debugging"
+      logging:
+        blocked: "logger.warning('Event {type} BLOCKED by {name}: {reason}')"
+        modified: "logger.info('Event {type} MODIFIED by {name}: {reason}')"
+
+    built_in_interceptors:
+      state_attention_interceptor:
+        priority: 10
+        event_types: ["AGITATE", "ORGANIZE", "SUPPLY_RUN", "STRIKE"]
+        behavior: |
+          Checks if territory has State attention > threshold.
+          If yes, probability of BLOCK based on attention level.
+          On BLOCK: Emit SECURITY_BREACH event instead.
+        integration: "ai-docs/state-attention-economy.yaml (Slice 2.9)"
+
+      fascist_faction_interceptor:
+        priority: 20
+        event_types: ["ORGANIZE", "AGITATE", "ESTABLISH_CONTACT"]
+        behavior: |
+          Checks if territory has fascist_alignment > threshold.
+          If yes, probability of BLOCK or MODIFY (reduced effect).
+          May trigger VIGILANTISM counter-event.
+        integration: "ai-docs/reactionary-subject.yaml (Slice 2.3)"
+
+      resource_interceptor:
+        priority: 30
+        event_types: ["SUPPLY_RUN", "ARM_MILITIA", "RECRUIT"]
+        behavior: |
+          Checks if organization has sufficient resources.
+          If not, BLOCK with reason "Insufficient Cadre Labor" etc.
+        integration: "ai-docs/vanguard-economy.yaml (Slice 2.6)"
+
+      fog_of_war_interceptor:
+        priority: 40
+        event_types: ["SOCIAL_INVESTIGATION", "ESTABLISH_CONTACT"]
+        behavior: |
+          Checks Mass_Receptivity of target territory.
+          If too low (Desert), BLOCK intel-gathering actions.
+          Returns reason "Masses will not speak to you."
+        integration: "ai-docs/fog-of-war.yaml (Slice 2.10)"
+
+    interceptor_chain:
+      execution_order: "Sorted by priority (ascending)"
+      short_circuit: "First BLOCK stops chain"
+      modification_chaining: "MODIFY events pass to next interceptor"
+      example: |
+        Player issues AGITATE action in hostile territory:
+
+        1. StateAttentionInterceptor (priority=10)
+           - Territory surveillance = 0.8 (high)
+           - Roll: 0.6 < 0.8 → BLOCK
+           - Reason: "State security forces detained the organizers"
+           - Emit: SECURITY_BREACH event
+           - Chain STOPS
+
+        2. FascistFactionInterceptor (priority=20)
+           - Never reached (blocked at step 1)
+
+        Player issues AGITATE action in friendly territory:
+
+        1. StateAttentionInterceptor (priority=10)
+           - Territory surveillance = 0.2 (low)
+           - Roll: 0.7 > 0.2 → ALLOW
+           - Chain continues
+
+        2. FascistFactionInterceptor (priority=20)
+           - fascist_alignment = 0.1 (minimal)
+           - → ALLOW
+           - Chain continues
+
+        3. ResourceInterceptor (priority=30)
+           - Cadre Labor available = 5 (sufficient)
+           - → ALLOW
+           - Chain continues
+
+        4. No more interceptors → EMIT original event
+
+    ui_implications:
+      epoch_1: "None - interceptors are pure backend logic"
+      epoch_2: |
+        Game UI may display interceptor results:
+        - "Action blocked: State forces intercepted your organizers"
+        - "Action modified: Reduced effectiveness due to hostile territory"
+        But this is Game UI (Player View), not Debug UI (God View).
+        Debug UI shows interceptor chain execution for debugging.
+
+    implementation_notes:
+      backward_compatible: true
+      existing_events: "Still emit directly if no interceptors registered"
+      new_events: "Pass through interceptor chain"
+      testing: "Interceptors are pure functions, easy to unit test"
+      performance: "Interceptors are synchronous, no async overhead"
 
   formula_registry:
     class: "FormulaRegistry"

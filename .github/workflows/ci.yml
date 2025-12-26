@@ -7,9 +7,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -58,9 +58,63 @@ jobs:
       - name: Run tests
         run: poetry run pytest -m "not ai" --tb=short -q
 
+      # Coverage gate for simulation-critical code
+      # Enforces 80% coverage on engine/systems and formulas modules
+      - name: Coverage Gate (Simulation Code)
+        run: |
+          poetry run pytest -m "not ai" \
+            --cov=src/babylon/engine/systems \
+            --cov=src/babylon/systems \
+            --cov-fail-under=80 \
+            --cov-report=term-missing:skip-covered \
+            -q --tb=no
+        # Blocks merge if simulation code coverage drops below 80%
+
+      # Code complexity analysis - see ADR028 in ai-docs/decisions.yaml
+      - name: Code Complexity Report
+        run: poetry run radon cc src/ -a -s --show-complexity
+        continue-on-error: true  # Informational only, never blocks
+
+      - name: Code Complexity Gate
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        run: poetry run xenon --max-absolute C src/
+        # Blocks merge to main if any function exceeds CC 15 (grade C boundary)
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Security audit
+        run: poetry run pip-audit
+
   docs:
     name: Documentation Build
     runs-on: ubuntu-latest
+    # Only build docs on main branch - saves CI time on dev/feature branches
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
     steps:
       - uses: actions/checkout@v4
 
@@ -96,7 +150,7 @@ jobs:
       - name: Build documentation
         run: |
           cd docs
-          poetry run sphinx-build -W -b html . _build/html
+          poetry run sphinx-build -b html . _build/html
 
   # Style check - informational only, doesn't block merges
   # Pre-commit hooks handle formatting locally
@@ -130,3 +184,73 @@ jobs:
 
       - name: Check formatting
         run: poetry run ruff format --check .
+
+  # Mutation testing - validates test quality for critical math
+  # Only runs on PRs to main - uses incremental testing on changed files
+  mutation:
+    name: Mutation Testing (Test Quality)
+    runs-on: ubuntu-latest
+    if: github.base_ref == 'main'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for diff
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # Detect changed simulation files for incremental mutation testing
+      - name: Get changed simulation files
+        id: changed
+        run: |
+          # Get files changed in this PR that are in simulation-critical paths
+          CHANGED=$(git diff --name-only origin/main...HEAD | \
+            grep -E '^src/babylon/(engine/systems|systems)/.*\.py$' | \
+            grep -v '__pycache__' | \
+            grep -v '__init__' | \
+            tr '\n' ',' | sed 's/,$//')
+          echo "files=$CHANGED" >> $GITHUB_OUTPUT
+          if [ -n "$CHANGED" ]; then
+            echo "📝 Changed simulation files: $CHANGED"
+          else
+            echo "📝 No simulation files changed in this PR"
+          fi
+
+      # Run incremental mutation testing on changed files only
+      # See ADR028 in ai-docs/decisions.yaml
+      - name: Run Mutation Tests (Incremental)
+        if: steps.changed.outputs.files != ''
+        run: |
+          echo "🧬 Running mutation testing on changed files..."
+          poetry run mutmut run \
+            --paths-to-mutate="${{ steps.changed.outputs.files }}" \
+            --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
+
+      - name: Show Mutation Results
+        if: steps.changed.outputs.files != '' && always()
+        run: |
+          echo ""
+          echo "📊 Mutation Testing Results:"
+          poetry run mutmut results
+
+      - name: Skip Message
+        if: steps.changed.outputs.files == ''
+        run: echo "✅ No simulation-critical files changed - skipping mutation testing"

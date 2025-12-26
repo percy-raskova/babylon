@@ -23,6 +23,7 @@ from babylon.config.defines import GameDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
+from babylon.models.enums import GameOutcome
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
@@ -327,3 +328,85 @@ class Simulation:
         if self._started:
             self._notify_observers_end()
             self._started = False
+
+    def get_outcome(self) -> GameOutcome:
+        """Return current game outcome from EndgameDetector if present.
+
+        Searches registered observers for an EndgameDetector and returns
+        its current outcome. If no EndgameDetector is registered, returns
+        IN_PROGRESS.
+
+        Returns:
+            GameOutcome enum value indicating current game state.
+
+        Example:
+            >>> from babylon.engine.observers import EndgameDetector
+            >>> detector = EndgameDetector()
+            >>> sim = Simulation(state, config, observers=[detector])
+            >>> sim.get_outcome()
+            <GameOutcome.IN_PROGRESS: 'in_progress'>
+        """
+        from babylon.engine.observers.endgame_detector import EndgameDetector
+
+        for observer in self._observers:
+            if isinstance(observer, EndgameDetector):
+                return observer.outcome
+
+        return GameOutcome.IN_PROGRESS
+
+    def run_until_endgame(
+        self,
+        max_ticks: int = 1000,
+    ) -> tuple[WorldState, GameOutcome]:
+        """Run simulation until an endgame condition is met or max_ticks reached.
+
+        This method runs the simulation step by step, checking after each tick
+        whether the EndgameDetector has detected a game ending condition.
+        It terminates early if an endgame is reached.
+
+        Args:
+            max_ticks: Maximum number of ticks to run before returning.
+                Defaults to 1000 to prevent infinite loops.
+
+        Returns:
+            Tuple of (final_state, outcome):
+            - final_state: The WorldState when simulation stopped
+            - outcome: GameOutcome indicating why simulation stopped
+              (may be IN_PROGRESS if max_ticks reached without endgame)
+
+        Raises:
+            ValueError: If max_ticks is negative.
+
+        Example:
+            >>> from babylon.engine.observers import EndgameDetector
+            >>> detector = EndgameDetector()
+            >>> sim = Simulation(state, config, observers=[detector])
+            >>> final_state, outcome = sim.run_until_endgame(max_ticks=100)
+            >>> if outcome == GameOutcome.REVOLUTIONARY_VICTORY:
+            ...     print("The workers have won!")
+        """
+        if max_ticks < 0:
+            error_message = f"max_ticks must be non-negative, got {max_ticks}"
+            raise ValueError(error_message)
+
+        from babylon.engine.observers.endgame_detector import EndgameDetector
+
+        # Find the EndgameDetector
+        detector: EndgameDetector | None = None
+        for observer in self._observers:
+            if isinstance(observer, EndgameDetector):
+                detector = observer
+                break
+
+        tick_count = 0
+        while tick_count < max_ticks:
+            self.step()
+            tick_count += 1
+
+            # Check if game ended
+            if detector is not None and detector.is_game_over:
+                break
+
+        # Return final state and outcome
+        outcome = detector.outcome if detector is not None else GameOutcome.IN_PROGRESS
+        return (self._current_state, outcome)

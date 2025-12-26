@@ -63,7 +63,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, GameOutcome
 from babylon.models.types import Currency
 
 
@@ -654,4 +654,43 @@ class PhaseTransitionEvent(TopologyEvent):
     is_resilient: bool | None = Field(
         default=None,
         description="Whether network survives purge (may be None if test not run)",
+    )
+
+
+# =============================================================================
+# Endgame Events (Slice 1.6)
+# =============================================================================
+
+
+class EndgameEvent(SimulationEvent):
+    """Endgame reached event (ENDGAME_REACHED).
+
+    Emitted when a game-ending condition is met. The simulation terminates
+    after this event with the specified outcome.
+
+    Outcomes:
+        - REVOLUTIONARY_VICTORY: Proletarian revolution succeeded
+        - ECOLOGICAL_COLLAPSE: Metabolic rift has become fatal
+        - FASCIST_CONSOLIDATION: Fascism has consolidated power
+
+    Attributes:
+        event_type: Always ENDGAME_REACHED.
+        outcome: The GameOutcome that ended the simulation.
+
+    Example:
+        >>> event = EndgameEvent(
+        ...     tick=50,
+        ...     outcome=GameOutcome.REVOLUTIONARY_VICTORY,
+        ... )
+        >>> event.event_type
+        <EventType.ENDGAME_REACHED: 'endgame_reached'>
+    """
+
+    event_type: EventType = Field(
+        default=EventType.ENDGAME_REACHED,
+        description="Event type (always ENDGAME_REACHED)",
+    )
+    outcome: GameOutcome = Field(
+        ...,
+        description="The game outcome that ended the simulation",
     )

@@ -144,6 +144,7 @@ class EventType(StrEnum):
     SOLIDARITY_SPIKE = "solidarity_spike"  # Agency Layer - The Bridge Building
     RUPTURE = "rupture"  # Contradiction rupture - tension reached critical threshold
     PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
+    ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)
 
 
 class OperationalProfile(StrEnum):
@@ -249,3 +250,33 @@ class DisplacementPriorityMode(StrEnum):
     CONTAINMENT = "containment"
     ELIMINATION = "elimination"
     AUTO = "auto"
+
+
+class GameOutcome(StrEnum):
+    """Possible game ending outcomes (Slice 1.6: Endgame Detection).
+
+    The simulation can end in three ways, plus the ongoing state:
+
+    Values:
+        IN_PROGRESS: Game is still ongoing (no endgame condition met yet).
+
+        REVOLUTIONARY_VICTORY: The masses have won. Requires:
+            - percolation_ratio >= 0.7 (70%+ in giant component)
+            - average class_consciousness > 0.8 (ideological clarity)
+
+        ECOLOGICAL_COLLAPSE: The planet has collapsed. Requires:
+            - overshoot_ratio > 2.0 for 5 consecutive ticks
+            (Capital's metabolic rift has become fatal)
+
+        FASCIST_CONSOLIDATION: Fascism has won. Requires:
+            - national_identity > class_consciousness for 3+ nodes
+            (False consciousness prevents class-based organization)
+
+    Priority when multiple conditions are met:
+        REVOLUTIONARY_VICTORY > ECOLOGICAL_COLLAPSE > FASCIST_CONSOLIDATION
+    """
+
+    IN_PROGRESS = "in_progress"
+    REVOLUTIONARY_VICTORY = "revolutionary_victory"
+    ECOLOGICAL_COLLAPSE = "ecological_collapse"
+    FASCIST_CONSOLIDATION = "fascist_consolidation"

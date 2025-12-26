@@ -7,17 +7,22 @@ during simulation runs. Supports two modes:
 - "batch": Accumulates all history (for parameter sweeps)
 
 Sprint 4.1: Phase 4 Dashboard/Sweeper unification.
+Sprint 4.1C: Add JSON export for DAG structure preservation.
 """
 
 from __future__ import annotations
 
+import json
 from collections import deque
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from babylon.models.enums import EdgeType
 from babylon.models.metrics import EdgeMetrics, EntityMetrics, SweepSummary, TickMetrics
 
 if TYPE_CHECKING:
+    from babylon.config.defines import GameDefines
     from babylon.models.config import SimulationConfig
     from babylon.models.entities.social_class import SocialClass
     from babylon.models.world_state import WorldState
@@ -168,6 +173,61 @@ class MetricsCollector:
             rows.append(row)
 
         return rows
+
+    def to_json(
+        self,
+        defines: GameDefines,
+        config: SimulationConfig,
+        csv_path: Path | None = None,
+    ) -> dict[str, Any]:
+        """Export run metadata as structured JSON for reproducibility.
+
+        Captures the causal DAG hierarchy:
+        - Level 1 (Fundamental): GameDefines parameters
+        - Level 2 (Config): SimulationConfig settings
+        - Level 3 (Emergent): SweepSummary computed from simulation
+
+        Args:
+            defines: GameDefines with fundamental parameters
+            config: SimulationConfig with run settings
+            csv_path: Optional path to associated CSV time-series file
+
+        Returns:
+            Structured dict ready for JSON serialization
+        """
+        summary = self.summary
+        return {
+            "schema_version": "1.0",
+            "generated_at": datetime.now(UTC).isoformat(),
+            "causal_dag_levels": {
+                "fundamental": "GameDefines - exogenous parameters",
+                "config": "SimulationConfig - run settings",
+                "emergent": "SweepSummary - observed outcomes",
+            },
+            "fundamentals": defines.model_dump(mode="json"),
+            "config": config.model_dump(mode="json"),
+            "summary": summary.model_dump(mode="json") if summary else None,
+            "ticks_collected": len(self._history),
+            "time_series_csv": str(csv_path) if csv_path else None,
+        }
+
+    def export_json(
+        self,
+        path: Path,
+        defines: GameDefines,
+        config: SimulationConfig,
+        csv_path: Path | None = None,
+    ) -> None:
+        """Write JSON metadata to file.
+
+        Args:
+            path: Output path for JSON file
+            defines: GameDefines with fundamental parameters
+            config: SimulationConfig with run settings
+            csv_path: Optional path to associated CSV time-series file
+        """
+        data = self.to_json(defines, config, csv_path)
+        path.write_text(json.dumps(data, indent=2, default=str))
 
     def _record_snapshot(self, state: WorldState) -> TickMetrics:
         """Extract metrics from WorldState and create TickMetrics."""

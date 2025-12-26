@@ -148,11 +148,11 @@ def run_trace(
     param_path: str | None = None,
     param_value: float | None = None,
     max_ticks: int = DEFAULT_TICKS,
-) -> list[dict[str, Any]]:
-    """Run single simulation, return per-tick data.
+) -> tuple[MetricsCollector, SimulationConfig, GameDefines]:
+    """Run single simulation, return collector with config for export.
 
     Executes a simulation using MetricsCollector observer and returns
-    comprehensive state data at each tick via CSV-compatible format.
+    the collector along with config/defines for flexible export (CSV/JSON).
 
     Args:
         param_path: Optional dot-separated parameter path to modify
@@ -160,7 +160,7 @@ def run_trace(
         max_ticks: Maximum number of ticks to run
 
     Returns:
-        List of dictionaries, one per tick, with all collected metrics
+        Tuple of (MetricsCollector, SimulationConfig, GameDefines)
     """
     # Create scenario with default parameters
     state, config, scenario_defines = create_imperial_circuit_scenario()
@@ -174,7 +174,7 @@ def run_trace(
 
     # Run simulation with MetricsCollector
     collector = _run_simulation_with_metrics(state, config, defines, max_ticks)
-    return collector.to_csv_rows()
+    return collector, config, defines
 
 
 def extract_sweep_summary(
@@ -359,6 +359,12 @@ Examples:
         required=True,
         help="Output CSV file path (required)",
     )
+    trace_parser.add_argument(
+        "--json",
+        type=Path,
+        default=None,
+        help="Output JSON metadata file path (optional, captures DAG structure)",
+    )
 
     # sweep subcommand
     sweep_parser = subparsers.add_parser(
@@ -418,17 +424,23 @@ Examples:
                 print(f"  Parameter override: {param_path}={param_value}")
 
             # Run trace
-            trace_data = run_trace(
+            collector, config, defines = run_trace(
                 param_path=param_path,
                 param_value=param_value,
                 max_ticks=args.ticks,
             )
 
             # Write CSV
+            trace_data = collector.to_csv_rows()
             write_csv(trace_data, args.csv)
 
             print(f"Trace complete: {len(trace_data)} ticks recorded")
             print(f"Output written to: {args.csv}")
+
+            # Write JSON if requested
+            if args.json is not None:
+                collector.export_json(args.json, defines, config, csv_path=args.csv)
+                print(f"JSON metadata written to: {args.json}")
 
             return 0
 

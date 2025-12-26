@@ -2,11 +2,318 @@
 # All game entities and their relationships
 
 meta:
-  version: "1.1.0"
-  updated: "2025-12-08"
+  version: "2.0.0"
+  updated: "2025-12-26"
   total_entity_types: 17
   schema_location: "src/babylon/schemas/entities/"
   data_location: "src/babylon/data/game/"
+  epoch_compatibility: "1 → 2 Bridge"
+  status: "APPROVED_ARCHITECTURE"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: TRIPLE-LAYER TRAIT SYSTEM
+# =============================================================================
+# Structured extensibility for Epoch 2 properties without schema migrations
+# SECOND REVISION: Replaces simple "tags" approach with typed layers
+
+extensibility_system:
+  name: "Triple-Layer Trait System"
+  status: "APPROVED_ARCHITECTURE"
+  epoch_compatibility: "1 → 2 Bridge"
+  created: "2025-12-26"
+  revision: 2
+
+  rationale: |
+    The simple "tags: Dict[str, Any]" approach was REJECTED because:
+    1. No type safety - can't validate that formula inputs are floats
+    2. No semantic distinction - mixing binary flags with numeric values
+    3. Hard to query - no structured access patterns for SQL
+    4. No namespace protection - easy to collide with engine internals
+
+    The Triple-Layer solution provides:
+    - Type safety per layer (Set[str], Dict[str, float], Dict[str, Any])
+    - Clear semantic boundaries (identity, formulas, metadata)
+    - Efficient SQL queries via JSON/JSONB
+    - Reserved namespaces for engine and fog-of-war
+
+  triple_layer_schema:
+    principle: "Separate concerns by data type and usage pattern"
+
+    layer_1_flags:
+      name: "Flags"
+      type: "Set[str]"
+      default: "set()"
+      purpose: "Binary states and categorical identity markers"
+      validation:
+        format: "UPPERCASE_WITH_UNDERSCORES"
+        pattern: "^[A-Z][A-Z0-9_]*$"
+      access_pattern: |
+        if "HAS_CADRE" in entity.flags:
+            apply_cadre_bonus()
+      examples:
+        categorical:
+          - "URBAN"           # Territory type
+          - "RURAL"           # Territory type
+          - "INDUSTRIAL"      # Territory type
+        state:
+          - "HAS_CADRE"       # Cadre present in territory
+          - "LOCKOUT_ACTIVE"  # C_pb has locked out workers
+          - "STRIKE_READY"    # Workers prepared to strike
+        identity:
+          - "LABOR_ARISTOCRACY"  # Class is C_la
+          - "LUMPEN"             # Class is L_u
+          - "FASCIST_DRIFT"      # Moving toward fascism
+        fog_of_war:
+          - "MASKED"          # Data is falsified in shadow state
+          - "APPROXIMATE"     # Data has noise in shadow state
+          - "STALE"           # Intel is outdated
+          - "HOSTILE"         # Territory hostile to player
+          - "BASE_AREA"       # Revolutionary base territory
+
+    layer_2_modifiers:
+      name: "Modifiers"
+      type: "Dict[str, float]"
+      default: "{}"
+      purpose: "Scalar values used directly in formulas"
+      validation:
+        key_format: "lowercase_with_underscores"
+        value_type: "float"
+        value_range: "Usually 0.0-1.0, but can be unbounded"
+      access_pattern: |
+        chauvinism = entity.modifiers.get("chauvinism", 0.0)
+        defection_risk = sigmoid(chauvinism - discipline)
+      examples:
+        reactionary_subject:
+          chauvinism: "Accumulated chauvinism debuff (0.0-1.0)"
+          entitlement: "Investment in status quo (0.0-1.0)"
+          fascist_alignment: "Progress toward fascist faction (0.0-1.0)"
+          volatility: "Lumpen instability (0.0-1.0)"
+        epistemic_horizon:
+          mass_receptivity: "Willingness to share intel (0.0-1.0)"
+          intel_confidence: "Accuracy of player's knowledge (0.0-1.0)"
+          intel_decay_rate: "Decay rate per tick (float)"
+        panopticon:
+          security_rating: "State attention level (0.0-1.0)"
+          surveillance_threads: "Allocated attention threads (int as float)"
+          terror_index: "Accumulated terror from actions (unbounded)"
+        kinetic_warfare:
+          combat_readiness: "Unit combat effectiveness (0.0-1.0)"
+          operational_security: "Resistance to detection (0.0-1.0)"
+          blowback_accumulated: "Collateral damage consequences (unbounded)"
+        metabolism:
+          entropy: "Ecological rift accumulation (0.0-1.0)"
+          biocapacity_modifier: "Adjustment to territory biocapacity"
+        vanguard:
+          cadre_discipline: "Quality of cadre leadership (0.0-1.0)"
+          coherence_factor: "Organization transmission efficiency"
+          reputation_local: "Local reputation modifier (-1.0 to 1.0)"
+
+    layer_3_properties:
+      name: "Properties"
+      type: "Dict[str, Any]"
+      default: "{}"
+      purpose: "Unstructured metadata, references, display data"
+      validation:
+        key_format: "lowercase_with_underscores"
+        value_type: "Any JSON-serializable value"
+      access_pattern: |
+        custom_name = entity.properties.get("custom_name", entity.name)
+        doctrine = entity.properties.get("doctrine_alignment")
+      examples:
+        metadata:
+          custom_name: "User-assigned name for display"
+          description: "Extended description text"
+          icon_override: "Custom icon path"
+        references:
+          doctrine_alignment: "Reference to doctrine tree node"
+          faction_affiliation: "Reference to faction entity"
+          territory_of_origin: "For displaced populations"
+        history:
+          last_action_tick: "Tick when last action was taken"
+          creation_context: "How this entity was created"
+        debug:
+          test_scenario: "Which test scenario created this"
+          notes: "Developer notes"
+
+  reserved_namespaces:
+    description: |
+      Certain key prefixes are RESERVED and have special behavior.
+      Do not use these prefixes for custom modifiers/properties.
+
+    sys_prefix:
+      prefix: "sys_"
+      reserved_for: "Engine internals"
+      behavior: "May be overwritten by engine, not for user modification"
+      examples:
+        - "sys_last_tick_updated"
+        - "sys_creation_tick"
+        - "sys_computed_hash"
+        - "sys_validation_status"
+
+    secret_prefix:
+      prefix: "secret_"
+      reserved_for: "Fog of War sensitive data"
+      behavior: |
+        AUTOMATICALLY FILTERED by FogOfWarSystem when generating PlayerShadowState.
+        Only included if Intel_Confidence > threshold (typically 0.8).
+        This is how we hide true values in Desert territory.
+      examples:
+        - "secret_true_agitation"      # Real agitation (masked shows false)
+        - "secret_informant_count"     # Hidden informants in territory
+        - "secret_militia_strength"    # True enemy strength
+        - "secret_fascist_cell_size"   # Hidden reactionary organization
+      fog_of_war_integration: |
+        When PlayerShadowState is generated:
+        1. Copy all flags, modifiers, properties
+        2. For Desert (Intel_Confidence < 0.2):
+           - REMOVE all secret_* entries
+           - REPLACE with masked values
+        3. For Mud (0.2 <= Intel_Confidence < 0.8):
+           - REMOVE most secret_* entries
+           - Some may leak through with noise
+        4. For Water (Intel_Confidence >= 0.8):
+           - INCLUDE secret_* entries (masses tell you everything)
+
+  entity_mappings:
+    description: "How specific entity types use the trait system"
+
+    social_class:
+      location: "src/babylon/models/entities/social_class.py"
+      inherits_from: "BaseEntity"
+      future_modifiers:
+        chauvinism: |
+          Tracks Fascist drift for Labor Aristocracy (C_la).
+          Accumulated via super-wages and imperial benefit.
+          Triggers defection when chauvinism > discipline during CRISIS.
+          Source: ai-docs/reactionary-subject.yaml (Slice 2.3)
+        entitlement: |
+          Investment in status quo (C_pb and C_la).
+          High entitlement + high agitation = fascist recruitment.
+          Source: ai-docs/reactionary-subject.yaml (Slice 2.3)
+        volatility: |
+          Lumpenproletariat (L_u) instability.
+          High volatility + low discipline = SPONTANEOUS_RIOT risk.
+          Source: ai-docs/reactionary-subject.yaml (Slice 2.3)
+        cadre_discipline: |
+          Quality of cadre leadership in this class.
+          Affects combat effectiveness and intel gathering.
+          Source: ai-docs/vanguard-economy.yaml (Slice 2.6)
+      future_flags:
+        - "LABOR_ARISTOCRACY"
+        - "LUMPEN"
+        - "DEFECTION_RISK"
+        - "FASCIST_DRIFT"
+        - "GUERILLA_CAPABLE"
+
+    territory:
+      location: "src/babylon/models/entities/territory.py"
+      inherits_from: "BaseEntity"
+      future_modifiers:
+        entropy: |
+          Ecological rift accumulation.
+          Increases when S_bio consumption exceeds regeneration.
+          Triggers ECOLOGICAL_COLLAPSE at threshold.
+          Source: ai-docs/metabolic-slice.yaml (Slice 1.4)
+        mass_receptivity: |
+          Willingness of local population to share intel.
+          Calculated from P(S|A), ideological alignment, class factor.
+          Determines vision state (Water/Mud/Desert).
+          Source: ai-docs/fog-of-war.yaml (Slice 2.10)
+        intel_confidence: |
+          Accuracy of player's knowledge about this territory.
+          Derived from base_observation + (cadre × mass_receptivity).
+          Source: ai-docs/fog-of-war.yaml (Slice 2.10)
+        security_rating: |
+          State attention level on this territory.
+          High security = high risk of SECURITY_BREACH.
+          Source: ai-docs/state-attention-economy.yaml (Slice 2.9)
+        fascist_alignment: |
+          Progress of territory toward fascist control.
+          When >= 1.0, territory joins Fascist faction.
+          Source: ai-docs/reactionary-subject.yaml (Slice 2.3)
+      future_flags:
+        - "URBAN"
+        - "RURAL"
+        - "INDUSTRIAL"
+        - "HAS_CADRE"
+        - "CONTACT_NETWORK"
+        - "BASE_AREA"
+        - "HOSTILE"
+        - "MASKED"
+        - "UNDER_SURVEILLANCE"
+        - "LOCKOUT_ACTIVE"
+
+  debug_ui_integration:
+    name: "Generic Trait Inspector"
+    location: "Entity detail sidebar in Debug Dashboard"
+    purpose: |
+      The Debug UI (God View) displays all three layers with appropriate
+      visualizations. This allows developers to inspect Epoch 2 properties
+      during development and testing.
+
+    render_patterns:
+      flags:
+        component: "Badges/Chips"
+        style: "Colored pills, uppercase text"
+        interaction: "Click to toggle, filter by flag"
+        example: "[URBAN] [HAS_CADRE] [STRIKE_READY]"
+
+      modifiers:
+        component: "Progress Bars or Value Tags"
+        style: "Horizontal bar with numeric value"
+        interaction: "Editable for testing, color-coded by range"
+        example: |
+          chauvinism:      ████████░░ 0.78
+          reactionary_lat: ██░░░░░░░░ 0.23
+          volatility:      ████░░░░░░ 0.45
+
+      properties:
+        component: "Key-Value Text (collapsible)"
+        style: "Monospace, JSON-like display"
+        interaction: "Expandable, editable for testing"
+        example: |
+          custom_name: "Oakland Proletariat"
+          doctrine_alignment: "insurrectionist"
+
+    layout_diagram: |
+      ┌─────────────────────────────────────────────────┐
+      │ Entity: Oakland Proletariat (C_001)             │
+      ├─────────────────────────────────────────────────┤
+      │ FLAGS:                                          │
+      │   [URBAN] [HAS_CADRE] [STRIKE_READY]           │
+      ├─────────────────────────────────────────────────┤
+      │ MODIFIERS:                                      │
+      │   chauvinism:        ████████░░ 0.78           │
+      │   entitlement:       ██████░░░░ 0.62           │
+      │   volatility:        ████░░░░░░ 0.45           │
+      │   cadre_discipline:  ███████░░░ 0.71           │
+      ├─────────────────────────────────────────────────┤
+      │ PROPERTIES:                                     │
+      │   custom_name: "Oakland Proletariat"            │
+      │   doctrine_alignment: "insurrectionist"         │
+      │   last_action_tick: 42                          │
+      └─────────────────────────────────────────────────┘
+
+  implementation:
+    location: "src/babylon/models/entities/base.py"
+    changes:
+      - "Add flags: Set[str] = Field(default_factory=set)"
+      - "Add modifiers: Dict[str, float] = Field(default_factory=dict)"
+      - "Add properties: Dict[str, Any] = Field(default_factory=dict)"
+    helper_methods:
+      has_flag: "def has_flag(self, flag: str) -> bool"
+      add_flag: "def add_flag(self, flag: str) -> None"
+      remove_flag: "def remove_flag(self, flag: str) -> None"
+      get_modifier: "def get_modifier(self, key: str, default: float = 0.0) -> float"
+      set_modifier: "def set_modifier(self, key: str, value: float) -> None"
+      get_property: "def get_property(self, key: str, default: Any = None) -> Any"
+      set_property: "def set_property(self, key: str, value: Any) -> None"
+    validation:
+      flags: "Must match ^[A-Z][A-Z0-9_]*$ pattern"
+      modifiers: "Values must be float (or coercible to float)"
+      properties: "Values must be JSON-serializable"
+    migration: "None - additive only, existing entities get empty collections"
+    backward_compatible: true
 
 # =============================================================================
 # ENTITY OVERVIEW

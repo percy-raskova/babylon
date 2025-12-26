@@ -2,11 +2,163 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.8.0"
-  updated: "2025-12-25"
+  version: "2.0.0"
+  updated: "2025-12-26"
   principle: "Be honest about what's implemented vs aspirational"
-  architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "MetricsCollector Observer (2025-12-25)"
+  architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
+  canonical_roadmap: "ai-docs/epochs-overview.md"
+  last_audit: "Documentation Accuracy Audit (2025-12-26)"
+
+# =============================================================================
+# EPOCH + SLICE STATUS
+# =============================================================================
+#
+# Epochs are playable checkpoints. Slices are complete vertical features.
+# See ai-docs/epochs-overview.md for full details.
+#
+epoch_status:
+  current_epoch: 1
+  epoch_name: "The Demonstration"
+  thesis: "The player watches the Imperial Circuit consume itself and sees the Fascist Bifurcation."
+
+  slices:
+    "1.1":
+      name: "The Circuit"
+      status: "COMPLETE"
+      deliverables:
+        - "ImperialRentSystem (4-phase extraction)"
+        - "SolidaritySystem (consciousness transmission)"
+        - "4-node Imperial Circuit scenario"
+      files:
+        - "src/babylon/engine/systems/economic.py"
+        - "src/babylon/engine/systems/solidarity.py"
+        - "src/babylon/engine/scenarios.py"
+
+    "1.2":
+      name: "The Struggle"
+      status: "COMPLETE"
+      deliverables:
+        - "StruggleSystem (George Floyd Dynamic)"
+        - "TerritorySystem (carceral geography)"
+        - "Agency Layer mechanics"
+      files:
+        - "src/babylon/engine/systems/struggle.py"
+        - "src/babylon/engine/systems/territory.py"
+
+    "1.3":
+      name: "The Observer"
+      status: "COMPLETE"
+      deliverables:
+        - "SimulationObserver protocol"
+        - "TopologyMonitor (phase transitions)"
+        - "MetricsCollector (unified metrics)"
+        - "11 EventTypes"
+      files:
+        - "src/babylon/engine/observer.py"
+        - "src/babylon/engine/topology_monitor.py"
+        - "src/babylon/engine/observers/metrics.py"
+
+    "1.4":
+      name: "The Rift"
+      status: "IN_PROGRESS"
+      spec: "ai-docs/metabolic-slice.yaml"
+      deliverables_planned:
+        - "MetabolismSystem (biocapacity tracking)"
+        - "Territory.biocapacity field"
+        - "SocialClass.consumption_needs (s_bio + s_class)"
+        - "ECOLOGICAL_OVERSHOOT event"
+      formula: "ΔB = Regeneration - (Extraction × Entropy_Factor)"
+
+    "1.5":
+      name: "The Dashboard"
+      status: "PARTIAL"
+      deliverables_complete:
+        - "NiceGUI 4-panel layout"
+        - "TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+        - "Control deck (STEP/PLAY/PAUSE/RESET)"
+      deliverables_remaining:
+        - "Wire 4-node scenario (currently 2-node)"
+        - "4 wealth lines color-coded by class"
+        - "Consciousness gap (P_w - C_w)"
+        - "Metabolic gauge showing overshoot_ratio"
+        - "Gramscian Wire MVP - dual narrative display"
+      files:
+        - "src/babylon/ui/main.py"
+        - "src/babylon/ui/components.py"
+      gramscian_wire_mvp:
+        spec: "ai-docs/gramscian-wire-mvp.yaml"
+        description: "Dual narrative display demonstrating 'neutrality is hegemony'"
+        status: "PLANNED"
+
+    "1.6":
+      name: "The Endgame"
+      status: "NOT_STARTED"
+      deliverables_planned:
+        - "ECOLOGICAL_OVERSHOOT detection"
+        - "Solidarity check at crisis moment"
+        - "Win/lose display (Revolutionary vs Fascist Path)"
+        - "Bondi Algorithm narration"
+
+  completion_criteria:
+    - "[ ] 4-node Imperial Circuit running in dashboard"
+    - "[ ] MetabolismSystem depletes biocapacity over time"
+    - "[ ] ECOLOGICAL_OVERSHOOT fires at ~30-50 ticks"
+    - "[ ] Dashboard shows rift widening visually"
+    - "[ ] Endgame screen displays outcome based on solidarity"
+    - "[x] Tests pass (current: 2248)"
+
+  future_epochs:
+    epoch_2:
+      name: "The Game"
+      thesis: "The player has agency. Decisions matter. Multiple endings."
+      structure: "Staged into 4 sub-epochs (2A/2B/2C/2D) per epoch-readiness-review.yaml"
+
+      sub_epochs:
+        "2A":
+          name: "Core Agency"
+          thesis: "The player can act. Resources constrain choices."
+          slices: ["2.1", "2.2a", "2.6"]
+          status: "PLANNED"
+        "2B":
+          name: "Organization"
+          thesis: "The party can fail from within. Class composition matters."
+          slices: ["2.2b", "2.3", "2.8"]
+          status: "PLANNED"
+          scope_note: "Doctrine System simplified to 3 trunks for 2B MVP"
+        "2C":
+          name: "Information"
+          thesis: "Win the narrative, know the terrain."
+          slices: ["2.5", "2.9", "2.10"]
+          status: "PLANNED"
+          critical_gap: "State AI decision logic must be defined before implementation"
+        "2D":
+          name: "Combat"
+          thesis: "Violence is the continuation of politics."
+          slices: ["2.7"]
+          status: "PLANNED"
+          note: "Combat is last because it requires all other systems"
+
+      slices:
+        "2.1": { name: "Demographic Resolution", sub_epoch: "2A", spec: "ai-docs/demographics-spec.yaml" }
+        "2.2a": { name: "Strategy Layer", sub_epoch: "2A", spec: "ai-docs/strategy-layer.yaml" }
+        "2.2b": { name: "The Vanguard", sub_epoch: "2B", spec: "ai-docs/cohesion-mechanic.yaml" }
+        "2.3": { name: "Reactionary Subject", sub_epoch: "2B", spec: "ai-docs/reactionary-subject.yaml" }
+        "2.4": { name: "Reproductive Labor", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+        "2.5": { name: "The Wire", sub_epoch: "2C", spec: "ai-docs/gramscian-wire-vision.yaml" }
+        "2.6": { name: "Resource Economy", sub_epoch: "2A", spec: "ai-docs/vanguard-economy.yaml" }
+        "2.7": { name: "Kinetic Warfare", sub_epoch: "2D", spec: "ai-docs/kinetic-warfare.yaml" }
+        "2.8": { name: "Doctrine System", sub_epoch: "2B", spec: "ai-docs/doctrine-tree.yaml" }
+        "2.9": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml" }
+        "2.10": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai-docs/fog-of-war.yaml" }
+        "2.11": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+
+    epoch_3:
+      name: "The Platform"
+      thesis: "Others can build on this. Modding, custom scenarios, educational tools."
+      slices:
+        "3.1": "Liberation Mechanics"
+        "3.2": "Scenario Editor"
+        "3.3": "Modding API"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -500,19 +652,26 @@ future_concepts:
 # =============================================================================
 
 current_focus:
-  primary: "Transitioning from Phase III (Material Base) to Phase IV (Superstructure)"
-  roadmap: "ai-docs/roadmap.md"
+  primary: "Epoch 1: The Demonstration - completing Slices 1.4-1.6"
+  roadmap: "ai-docs/epochs-overview.md"
   legacy_roadmap: "brainstorm/plans/four-phase-engine-blueprint.md (DEPRECATED)"
-  phase2_design: "brainstorm/plans/phase2-game-loop-design.md"
+  legacy_phase_roadmap: "ai-docs/roadmap.md (DEPRECATED - see epochs-overview.md)"
   architecture_spec: "ai-docs/game-loop-architecture.yaml"
   verification_framework: "brainstorm/babylon-protocol-verification.md"
 
-  vertical_slice_scope:
-    description: "Minimal complete gameplay experience"
-    entities: "Factory worker (proletariat) vs Capitalist (bourgeoisie)"
-    location: "One city (implicit)"
-    phenomenon: "Wealth transfer via Imperial Rent"
-    flow: "Simulation tick → Events → RAG context → LLM prompt → Narrative output"
+  current_slice:
+    epoch: 1
+    slice: "1.4"
+    name: "The Rift"
+    spec: "ai-docs/metabolic-slice.yaml"
+    goal: "MetabolismSystem depletes biocapacity, triggers ECOLOGICAL_OVERSHOOT"
+
+  epoch_1_scope:
+    description: "Playable demo showing Imperial Circuit self-destruction"
+    thesis: "The player watches the Imperial Circuit consume itself and sees the Fascist Bifurcation."
+    entities: "4-node Imperial Circuit: P_w, P_c, C_b, C_w"
+    phenomenon: "Metabolic rift → ecological overshoot → crisis resolution"
+    outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
 
   recently_completed:
     - "XML to JSON migration"
@@ -972,7 +1131,21 @@ current_focus:
         "Agitation without solidarity produces fascism, not revolution."
 
   phase_roadmap:
-    superseded_note: "Four-Phase Blueprint → Six-Phase Fractal Evolution (2025-12-09)"
+    # ==========================================================================
+    # HISTORICAL REFERENCE ONLY - SUPERSEDED BY EPOCH + SLICE MODEL
+    # ==========================================================================
+    # This Phase numbering system is deprecated as of 2025-12-26.
+    # See ai-docs/epochs-overview.md for the current organizational model.
+    # Kept for historical reference - old commits reference these phases.
+    #
+    # Mapping:
+    #   Phase 0-2  → Epoch 0 (The Kernel)
+    #   Phase 3-4  → Epoch 1 (The Demonstration)
+    #   Phase 5+   → Epoch 2-3 (The Game, The Platform)
+    # ==========================================================================
+    superseded_by: "ai-docs/epochs-overview.md (Epoch + Slice model)"
+    superseded_date: "2025-12-26"
+    superseded_note: "Four-Phase Blueprint → Six-Phase Fractal Evolution (2025-12-09) → Epoch + Slice (2025-12-26)"
     phase_1:
       name: "Minimum Viable Dialectic"
       summary: "Prove the equations work"
@@ -1067,25 +1240,28 @@ current_focus:
       status: "FUTURE"
 
   next_steps:
-    current_sprint: "Phase 4.1: The Living Circuit (Vertical Integration)"
-    completed:
-      - "Sprint 3.3: Vertical Slice (COMPLETE)"
-      - "Sprint 3.4.1: Economic Infrastructure - TRIBUTE, WAGES, CLIENT_STATE edges (COMPLETE)"
-      - "Sprint 3.4.2: Proletarian Internationalism - SolidaritySystem (COMPLETE)"
-      - "Sprint 3.4.3: Multi-Dimensional Consciousness - IdeologicalProfile (COMPLETE)"
-      - "Sprint 3.5: Layer 0 Territorial Substrate (COMPLETE)"
-      - "Phase 4.0: Developer Dashboard MVP - 4-panel layout operational (COMPLETE)"
-    in_progress:
-      - "Phase 4.1: The Living Circuit - wire 4-node Imperial Circuit into dashboard"
-    planned:
-      - "Phase 4.1A: Wire the Circuit - switch to create_imperial_circuit_scenario()"
-      - "Phase 4.1B: Expose Meaningful Metrics - multi-class TrendPlotter"
-      - "Phase 4.1C: Tune for Crisis - GameDefines adjustment for drama"
-      - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
-      - "Phase 5: Internal Colonies - fractal topology within Core"
+    # Using Epoch + Slice model - see ai-docs/epochs-overview.md
+    current_work: "Slice 1.4: The Rift (MetabolismSystem)"
+    epoch_1_remaining:
+      - "Slice 1.4: The Rift - MetabolismSystem + ECOLOGICAL_OVERSHOOT"
+      - "Slice 1.5: The Dashboard - wire 4-node scenario, meaningful metrics"
+      - "Slice 1.6: The Endgame - win/lose display based on solidarity"
+    epoch_2_planned:
+      - "Slice 2.1: Demographic Resolution (ai-docs/demographics-spec.yaml)"
+      - "Slice 2.2: Player Controls"
+      - "Slice 2.3: Reproductive Labor"
     optional:
       - "Expand RAG corpus with more Marxists.org texts"
       - "Timeline branching for history stack"
+
+    # Historical sprint references (pre-Epoch model)
+    completed_sprints_historical:
+      note: "Sprint numbering superseded by Slice numbering - kept for git history reference"
+      completed:
+        - "Sprint 3.3: Vertical Slice → part of Slice 1.3 (Observer)"
+        - "Sprint 3.4.1-3.4.3: Imperial Circuit → Slice 1.1 (Circuit)"
+        - "Sprint 3.5: Territorial Substrate → Slice 1.2 (Struggle)"
+        - "Phase 4.0: Dashboard MVP → Slice 1.5 (Dashboard)"
 
   # ---------------------------------------------------------------------------
   # VERTICAL INTEGRATION INITIATIVE: "The Living Circuit"
@@ -1183,15 +1359,17 @@ current_focus:
       "A working 4-node simulation beats a broken 10-node simulation."
 
   mantra: "Graph + Math = History"
-  new_mantra: "The bomb factory pays well. That's the problem."
-  old_mantra: "State is data. Engine is logic. They never mix."
-  fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
-  george_jackson_mantra: "Fascism is the defensive form of capitalism."
-  integration_mantra: "A flat line on a fancy graph is still a flat line."
-  milestone: "PHASE 4.1B COMPLETE: MetricsCollector gap fixes - economy drivers + topology model"
-  next_milestone: "Phase 4.2: TopologyMonitor dashboard integration + territory metrics"
-  test_count: 2253
-  test_count_note: "Updated 2025-12-25 - Phase 4.1B (+43 tests via TDD)"
+  epoch_mantra: "Build the demonstration first. Then build the game. Finally, build the platform."
+  old_mantras:
+    - "The bomb factory pays well. That's the problem."
+    - "State is data. Engine is logic. They never mix."
+    - "Agitation without solidarity produces fascism, not revolution."
+    - "Fascism is the defensive form of capitalism."
+    - "A flat line on a fancy graph is still a flat line."
+  milestone: "EPOCH MODEL: Restructured roadmap using Epoch + Slice model"
+  next_milestone: "Slice 1.4: The Rift - implement MetabolismSystem"
+  test_count: 2248
+  test_count_note: "Updated 2025-12-26 - Verified via pytest --collect-only"
 
   metrics_audit:
     date: "2025-12-25"

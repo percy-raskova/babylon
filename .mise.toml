@@ -154,13 +154,45 @@ run = "poetry run python tools/init_db.py"
 description = "Run vertical slice integration test"
 run = "poetry run python tools/vertical_slice.py"
 
+[tasks.interview-persona]
+description = "Test Persephone's narrative voice with Hard Case scenarios"
+run = "poetry run python tools/interview_persona.py"
+
 [tasks.verify-formulas]
 description = "Verify math formula divergence"
 run = "poetry run python tools/verify_math_divergence.py"
 
 [tasks.analyze-trace]
-description = "Run single simulation with full time-series CSV output"
-run = "poetry run python tools/parameter_analysis.py trace --csv results/trace.csv"
+description = "Run simulation trace with CSV + JSON output"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv results/trace.csv \
+  --json results/trace.json \
+  --ticks ${usage_ticks}
+"""
+
+[tasks.analyze-trace-csv]
+description = "Run simulation trace with CSV only"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv results/trace.csv \
+  --ticks ${usage_ticks}
+"""
+
+[tasks.analyze-trace-json]
+description = "Run simulation trace with JSON metadata only"
+usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+run = """
+mkdir -p results
+poetry run python tools/parameter_analysis.py trace \
+  --csv /dev/null \
+  --json results/trace.json \
+  --ticks ${usage_ticks}
+"""
 
 [tasks.analyze-sweep]
 description = "Run parameter sweep with rich summary metrics"
@@ -178,6 +210,14 @@ run = "poetry run python tools/tune_parameters.py"
 [tasks.tune-params-custom]
 description = "Run parameter sweep with custom range (usage: mise run tune-params-custom 0.1 0.5 0.05)"
 run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-0.50} --step ${3:-0.05}"
+
+[tasks.narrative-sweep]
+description = "Run 5-point Dialectical U-Curve analysis"
+run = "poetry run python tools/narrative_sweep.py"
+
+[tasks.narrative-sweep-mock]
+description = "Run U-Curve analysis with MockLLM (no API key needed)"
+run = "poetry run python tools/narrative_sweep.py --mock"
 
 # =============================================================================
 # VERSIONING
@@ -264,3 +304,15 @@ run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"
 [tasks.soundfont-info]
 description = "Show info about the current soundfont"
 run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""
+
+# =============================================================================
+# UI / DASHBOARD
+# =============================================================================
+
+[tasks.ui]
+description = "Launch the Synopticon debug dashboard (NiceGUI)"
+run = "poetry run python src/babylon/ui/main.py"
+
+[tasks.ui-dev]
+description = "Launch dashboard with auto-reload for development"
+run = "poetry run python -c \"from nicegui import ui; from babylon.ui.main import main_page, init_simulation; init_simulation(); ui.run(main_page, title='Babylon v0.3', dark=True, reload=True, port=6969)\""

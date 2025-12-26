@@ -1,0 +1,736 @@
+# Pydantic V2 Patterns & Quick Reference
+# ========================================
+# Distilled from Babylon codebase patterns (Dec 2025)
+# Purpose: Comprehensive Pydantic reference for data modeling
+#
+# C7 Library ID: /websites/pydantic_dev (2805 snippets, 94.4 benchmark)
+
+meta:
+  version: "1.0.0"
+  updated: "2025-12-14"
+  purpose: |
+    Token-efficient reference for Pydantic V2 patterns used throughout Babylon.
+    Pydantic is the backbone of our architecture - all game entities, configs,
+    and data transfer objects are Pydantic models.
+
+    Consult when:
+    - Defining new entity models
+    - Creating constrained types
+    - Writing validators
+    - Serializing for UI display or storage
+    - Converting between models and dicts/JSON
+  cross_references:
+    - "ai-docs/entities.yaml (17 game entity types)"
+    - "ai-docs/architecture.yaml (The Embedded Trinity)"
+    - "ai-docs/game-loop-architecture.yaml (Engine/State separation)"
+
+# =============================================================================
+# MODEL BASICS
+# =============================================================================
+
+model_basics:
+
+  basemodel:
+    description: "All game entities inherit from BaseModel"
+    pattern: |
+      from pydantic import BaseModel, Field
+
+      class Territory(BaseModel):
+          id: str = Field(..., pattern=r"^T[0-9]{3}$")
+          name: str = Field(..., min_length=1)
+          heat: float = Field(default=0.0, ge=0.0, le=1.0)
+    critical: |
+      - Use Field(...) for required fields (... = Ellipsis means required)
+      - Use Field(default=X) for optional fields with defaults
+      - NEVER use raw dicts - always Pydantic models
+
+  configdict:
+    description: "Model configuration via ConfigDict"
+    pattern: |
+      from pydantic import BaseModel, ConfigDict
+
+      class ImmutableConfig(BaseModel):
+          model_config = ConfigDict(
+              frozen=True,           # Immutable (hashable)
+              extra="forbid",        # Reject unknown fields
+              validate_assignment=True,  # Re-validate on mutation
+              str_strip_whitespace=True, # Clean string inputs
+          )
+    common_options:
+      frozen: "Make model immutable (enables hashing)"
+      extra: "'forbid' | 'ignore' | 'allow' - handle unknown fields"
+      validate_assignment: "Re-validate when fields are mutated"
+      from_attributes: "Enable ORM mode (model_validate from objects)"
+      str_strip_whitespace: "Strip whitespace from strings"
+      populate_by_name: "Accept both alias and field name"
+    our_usage: |
+      # SimulationConfig - frozen for determinism
+      model_config = ConfigDict(frozen=True)
+
+      # SocialClass - strict validation
+      model_config = ConfigDict(
+          extra="forbid",
+          validate_assignment=True,
+          str_strip_whitespace=True,
+      )
+
+# =============================================================================
+# FIELD DEFINITIONS
+# =============================================================================
+
+field_definitions:
+
+  field_basics:
+    description: "Field() for metadata and constraints"
+    pattern: |
+      from pydantic import BaseModel, Field
+
+      class SocialClass(BaseModel):
+          # Required field with pattern constraint
+          id: str = Field(..., pattern=r"^C[0-9]{3}$", description="Unique ID")
+
+          # Required field with min_length
+          name: str = Field(..., min_length=1, description="Class name")
+
+          # Optional with default
+          wealth: float = Field(default=10.0, ge=0.0, description="Economic resources")
+
+          # Default factory for mutable defaults
+          tags: list[str] = Field(default_factory=list)
+    constraints:
+      ge: "Greater than or equal (>=)"
+      gt: "Greater than (>)"
+      le: "Less than or equal (<=)"
+      lt: "Less than (<)"
+      min_length: "Minimum string/list length"
+      max_length: "Maximum string/list length"
+      pattern: "Regex pattern for strings"
+
+  exclude_from_serialization:
+    description: "Exclude fields from model_dump()"
+    pattern: |
+      from pydantic import BaseModel, Field
+
+      class Transaction(BaseModel):
+          id: str
+          private_id: str = Field(exclude=True)  # Never serialized
+
+      t = Transaction(id="123", private_id="secret")
+      print(t.model_dump())  # {'id': '123'} - private_id excluded
+
+  computed_fields:
+    description: "Computed properties included in serialization"
+    pattern: |
+      from pydantic import BaseModel, computed_field
+
+      class Box(BaseModel):
+          width: float
+          height: float
+          depth: float
+
+          @computed_field
+          @property
+          def volume(self) -> float:
+              return self.width * self.height * self.depth
+
+      b = Box(width=1, height=2, depth=3)
+      print(b.model_dump())  # {'width': 1.0, ..., 'volume': 6.0}
+
+# =============================================================================
+# CONSTRAINED TYPES (Babylon Pattern)
+# =============================================================================
+
+constrained_types:
+
+  overview:
+    description: "Domain-specific types with built-in validation"
+    location: "src/babylon/models/types.py"
+    philosophy: |
+      Instead of raw floats, use semantic types that self-validate.
+      This catches bugs at data entry, not deep in formulas.
+
+  annotated_pattern:
+    description: "The Pydantic V2 way to define constrained types"
+    pattern: |
+      from typing import Annotated
+      from pydantic import Field
+
+      # Define once
+      Probability = Annotated[
+          float,
+          Field(ge=0.0, le=1.0, description="Value in [0, 1]"),
+      ]
+
+      # Use everywhere
+      class SurvivalState(BaseModel):
+          p_acquiescence: Probability  # Auto-validated [0, 1]
+          p_revolution: Probability
+    critical: |
+      This is the V2 pattern - replaces V1's conint(), confloat(), etc.
+      Annotated types work in any BaseModel field.
+
+  babylon_types:
+    description: "Our domain-specific constrained types"
+    types:
+      Probability:
+        range: "[0.0, 1.0]"
+        usage: "P(S|A), P(S|R), tension, organization, repression"
+        pattern: |
+          Probability = Annotated[float, Field(ge=0.0, le=1.0)]
+
+      Ideology:
+        range: "[-1.0, 1.0]"
+        usage: "Revolutionary (-1) to reactionary (+1) spectrum"
+        pattern: |
+          Ideology = Annotated[float, Field(ge=-1.0, le=1.0)]
+
+      Currency:
+        range: "[0.0, inf)"
+        usage: "Wealth, wages, rent, GDP (non-negative)"
+        pattern: |
+          Currency = Annotated[float, Field(ge=0.0)]
+
+      Intensity:
+        range: "[0.0, 1.0]"
+        usage: "Contradiction intensity (0=dormant, 1=rupture)"
+        pattern: |
+          Intensity = Annotated[float, Field(ge=0.0, le=1.0)]
+
+      Coefficient:
+        range: "[0.0, 1.0]"
+        usage: "Formula parameters (alpha, lambda, k)"
+        pattern: |
+          Coefficient = Annotated[float, Field(ge=0.0, le=1.0)]
+
+      Ratio:
+        range: "(0.0, inf)"
+        usage: "Wage ratios, exchange ratios (positive, non-zero)"
+        pattern: |
+          Ratio = Annotated[float, Field(gt=0.0)]
+
+  why_constrained_types:
+    description: "Benefits of domain types over raw floats"
+    benefits:
+      - "Self-documenting: `wealth: Currency` vs `wealth: float`"
+      - "Fail fast: Invalid values caught at model creation"
+      - "Centralized validation: Change once, applies everywhere"
+      - "IDE support: Type hints propagate"
+
+# =============================================================================
+# VALIDATORS
+# =============================================================================
+
+validators:
+
+  field_validator:
+    description: "Validate individual fields"
+    pattern: |
+      from pydantic import BaseModel, field_validator
+
+      class Model(BaseModel):
+          name: str
+
+          @field_validator('name')
+          @classmethod
+          def name_must_be_capitalized(cls, v: str) -> str:
+              if not v[0].isupper():
+                  raise ValueError('name must start with capital letter')
+              return v
+    modes:
+      before: "Run before Pydantic type coercion"
+      after: "Run after type coercion (default)"
+      plain: "Replace Pydantic validation entirely"
+      wrap: "Wrap around Pydantic validation"
+    multiple_fields: |
+      @field_validator('f1', 'f2', mode='before')
+      @classmethod
+      def validate_both(cls, v: str) -> str:
+          return v.strip()
+
+  model_validator_before:
+    description: "Preprocess raw input before model instantiation"
+    pattern: |
+      from typing import Any
+      from pydantic import BaseModel, model_validator
+
+      class SocialClass(BaseModel):
+          wealth: float
+          subsistence: float
+
+          @model_validator(mode='before')
+          @classmethod
+          def unpack_economic_component(cls, data: Any) -> Any:
+              if not isinstance(data, dict):
+                  return data
+
+              # Unpack nested 'economic' component
+              if 'economic' in data:
+                  economic = data.pop('economic')
+                  if isinstance(economic, dict):
+                      data.setdefault('wealth', economic.get('wealth', 10.0))
+                      data.setdefault('subsistence', economic.get('subsistence', 5.0))
+
+              return data
+    our_usage: |
+      # SocialClass.unpack_components_and_convert_legacy()
+      # - Unpacks nested component objects
+      # - Converts legacy scalar ideology to IdeologicalProfile
+
+  model_validator_after:
+    description: "Post-validation checks on complete model"
+    pattern: |
+      from typing_extensions import Self
+      from pydantic import BaseModel, model_validator
+
+      class UserModel(BaseModel):
+          password: str
+          password_repeat: str
+
+          @model_validator(mode='after')
+          def check_passwords_match(self) -> Self:
+              if self.password != self.password_repeat:
+                  raise ValueError('Passwords do not match')
+              return self
+    critical: |
+      - mode='after' receives the fully validated model instance
+      - MUST return self
+      - Use for cross-field validation
+
+# =============================================================================
+# SERIALIZATION (model_dump / model_validate)
+# =============================================================================
+
+serialization:
+
+  model_dump:
+    description: "Convert model to dictionary"
+    pattern: |
+      from pydantic import BaseModel
+
+      class User(BaseModel):
+          id: int
+          name: str
+
+      user = User(id=123, name='Jane Doe')
+
+      # Basic dump
+      user.model_dump()  # {'id': 123, 'name': 'Jane Doe'}
+
+      # Exclude fields
+      user.model_dump(exclude={'id'})  # {'name': 'Jane Doe'}
+
+      # Include only specific fields
+      user.model_dump(include={'name'})  # {'name': 'Jane Doe'}
+
+      # JSON-compatible output (converts datetime, Decimal, etc.)
+      user.model_dump(mode='json')
+    parameters:
+      mode: "'python' (default) or 'json' for JSON-serializable output"
+      include: "Set/dict of fields to include"
+      exclude: "Set/dict of fields to exclude"
+      exclude_unset: "Exclude fields never explicitly set"
+      exclude_defaults: "Exclude fields equal to their default"
+      exclude_none: "Exclude fields with None value"
+      by_alias: "Use field aliases in output keys"
+    our_usage: |
+      # UI: Display entity state in StateInspector
+      state_inspector.refresh(entity.model_dump())
+
+      # Graph: Store node attributes
+      G.add_node(entity_id, **entity.model_dump())
+
+      # Relationship: Convert to edge attributes
+      return self.model_dump(exclude={"source_id", "target_id"})
+
+  model_dump_json:
+    description: "Convert model directly to JSON string"
+    pattern: |
+      user = User(id=123, name='Jane Doe')
+
+      # Direct to JSON string
+      json_str = user.model_dump_json(indent=2)
+
+      # With exclude
+      json_str = user.model_dump_json(exclude={'id'})
+    our_usage: |
+      # History: Save WorldState to file
+      json_content = state.model_dump_json(indent=2)
+
+  model_validate:
+    description: "Create model from dict (with validation)"
+    pattern: |
+      from pydantic import BaseModel
+
+      class User(BaseModel):
+          id: int
+          name: str
+
+      # From dict
+      user = User.model_validate({'id': 123, 'name': 'Jane'})
+
+      # From object with attributes (requires from_attributes=True)
+      user = User.model_validate(orm_user, from_attributes=True)
+    our_usage: |
+      # Engine: Reconstruct GlobalEconomy from graph
+      return GlobalEconomy.model_validate(economy_data)
+
+  model_validate_json:
+    description: "Create model from JSON string"
+    pattern: |
+      json_str = '{"id": 123, "name": "Jane"}'
+      user = User.model_validate_json(json_str)
+    our_usage: |
+      # History: Load WorldState from file
+      return WorldState.model_validate_json(content)
+
+      # Load Checkpoint
+      return Checkpoint.model_validate_json(content)
+
+# =============================================================================
+# NESTED MODELS
+# =============================================================================
+
+nested_models:
+
+  composition:
+    description: "Models containing other models"
+    pattern: |
+      from pydantic import BaseModel
+
+      class EconomicComponent(BaseModel):
+          wealth: float
+          subsistence_threshold: float
+
+      class IdeologicalComponent(BaseModel):
+          ideology: float
+          organization: float
+
+      class SocialClass(BaseModel):
+          id: str
+          economic: EconomicComponent
+          ideological: IdeologicalComponent
+
+      # Pydantic auto-validates nested models from dicts
+      sc = SocialClass(
+          id="C001",
+          economic={"wealth": 100, "subsistence_threshold": 10},
+          ideological={"ideology": 0.5, "organization": 0.2},
+      )
+    our_usage: |
+      # WorldState contains lists of nested models
+      class WorldState(BaseModel):
+          social_classes: list[SocialClass]
+          territories: list[Territory]
+          relationships: list[Relationship]
+
+  default_factory:
+    description: "Factory function for mutable defaults"
+    pattern: |
+      from pydantic import BaseModel, Field
+
+      class Container(BaseModel):
+          items: list[str] = Field(default_factory=list)
+          metadata: dict[str, int] = Field(default_factory=dict)
+          profile: IdeologicalProfile = Field(default_factory=IdeologicalProfile)
+    critical: |
+      NEVER use mutable defaults directly:
+        items: list[str] = []  # WRONG! Shared between instances
+        items: list[str] = Field(default_factory=list)  # CORRECT
+
+# =============================================================================
+# JSON SCHEMA GENERATION
+# =============================================================================
+
+json_schema:
+
+  model_json_schema:
+    description: "Generate JSON Schema from model"
+    pattern: |
+      import json
+      from pydantic import BaseModel
+
+      class User(BaseModel):
+          id: int
+          name: str
+
+      schema = User.model_json_schema()
+      print(json.dumps(schema, indent=2))
+    modes:
+      validation: "Schema for validating input (accepts multiple formats)"
+      serialization: "Schema for output format (single format)"
+    our_usage: |
+      # We validate game data against JSON Schema Draft 2020-12
+      # Located in: src/babylon/schemas/entities/
+      # Data files: src/babylon/data/game/*.json
+
+# =============================================================================
+# BABYLON-SPECIFIC PATTERNS
+# =============================================================================
+
+babylon_patterns:
+
+  entity_model:
+    description: "Standard pattern for game entities"
+    location: "src/babylon/models/entities/"
+    pattern: |
+      from pydantic import BaseModel, ConfigDict, Field
+      from babylon.models.types import Currency, Probability
+
+      class SocialClass(BaseModel):
+          """A social class in the world system."""
+
+          model_config = ConfigDict(
+              extra="forbid",
+              validate_assignment=True,
+              str_strip_whitespace=True,
+          )
+
+          # Required: ID with pattern constraint
+          id: str = Field(..., pattern=r"^C[0-9]{3}$")
+          name: str = Field(..., min_length=1)
+
+          # Constrained domain types
+          wealth: Currency = Field(default=10.0)
+          p_acquiescence: Probability = Field(default=0.0)
+          p_revolution: Probability = Field(default=0.0)
+
+  immutable_config:
+    description: "Frozen models for simulation configuration"
+    location: "src/babylon/models/config.py"
+    pattern: |
+      from pydantic import BaseModel, ConfigDict, Field
+      from babylon.models.types import Coefficient, Currency
+
+      class SimulationConfig(BaseModel):
+          """Immutable configuration - frozen for determinism."""
+
+          model_config = ConfigDict(frozen=True)
+
+          extraction_efficiency: Coefficient = Field(default=0.8)
+          subsistence_threshold: Currency = Field(default=0.3)
+
+  component_unpacking:
+    description: "Flatten nested components via model_validator"
+    location: "src/babylon/models/entities/social_class.py"
+    pattern: |
+      @model_validator(mode="before")
+      @classmethod
+      def unpack_components(cls, data: Any) -> Any:
+          if not isinstance(data, dict):
+              return data
+
+          # Unpack nested component
+          if "economic" in data:
+              economic = data.pop("economic")
+              if isinstance(economic, BaseModel):
+                  economic = economic.model_dump()
+              data.setdefault("wealth", economic.get("wealth", 10.0))
+
+          return data
+    note: |
+      This pattern allows both flat and nested input:
+        SocialClass(id="C001", wealth=100)  # Flat
+        SocialClass(id="C001", economic={"wealth": 100})  # Nested
+
+  legacy_conversion:
+    description: "Convert legacy data formats"
+    pattern: |
+      @model_validator(mode="before")
+      @classmethod
+      def convert_legacy_ideology(cls, data: Any) -> Any:
+          if not isinstance(data, dict):
+              return data
+
+          ideology_value = data.get("ideology")
+          if isinstance(ideology_value, (int, float)) and not isinstance(ideology_value, bool):
+              # Convert scalar to IdeologicalProfile
+              data["ideology"] = IdeologicalProfile.from_legacy_ideology(float(ideology_value))
+
+          return data
+
+  worldstate_graph_conversion:
+    description: "Convert between WorldState and NetworkX graph"
+    location: "src/babylon/models/world_state.py"
+    pattern: |
+      def to_graph(self) -> nx.DiGraph:
+          G = nx.DiGraph()
+          G.graph["economy"] = self.economy.model_dump()
+
+          for entity in self.social_classes:
+              entity_id = entity.id
+              G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
+
+          return G
+
+      @classmethod
+      def from_graph(cls, G: nx.DiGraph) -> "WorldState":
+          # Reconstruct from node/edge attributes
+          pass
+
+# =============================================================================
+# COMMON ERRORS AND FIXES
+# =============================================================================
+
+common_errors:
+
+  mutable_default:
+    error: "Default list/dict shared between instances"
+    cause: "Used mutable default directly"
+    fix: |
+      # WRONG
+      class Model(BaseModel):
+          items: list[str] = []
+
+      # CORRECT
+      class Model(BaseModel):
+          items: list[str] = Field(default_factory=list)
+
+  forgot_model_dump:
+    error: "TypeError when passing model to dict-expecting function"
+    cause: "Passed model instead of dict"
+    fix: |
+      # WRONG
+      json_editor.update(entity)
+
+      # CORRECT
+      json_editor.update(entity.model_dump())
+
+  validator_not_classmethod:
+    error: "Validator not being called"
+    cause: "Missing @classmethod decorator"
+    fix: |
+      # WRONG
+      @field_validator('name')
+      def validate_name(cls, v):
+          return v
+
+      # CORRECT
+      @field_validator('name')
+      @classmethod
+      def validate_name(cls, v):
+          return v
+
+  model_validator_no_return:
+    error: "Model fields are None after validation"
+    cause: "model_validator(mode='after') didn't return self"
+    fix: |
+      # WRONG
+      @model_validator(mode='after')
+      def check_fields(self) -> Self:
+          if self.x < 0:
+              raise ValueError('x must be positive')
+          # Missing return!
+
+      # CORRECT
+      @model_validator(mode='after')
+      def check_fields(self) -> Self:
+          if self.x < 0:
+              raise ValueError('x must be positive')
+          return self  # MUST return self
+
+  wrong_validator_mode:
+    error: "Validator receives wrong type"
+    cause: "Used wrong mode for the task"
+    fix: |
+      # mode='before': receives raw input (Any)
+      # mode='after': receives validated type
+      # mode='plain': replaces validation entirely
+
+      # For preprocessing raw dicts:
+      @model_validator(mode='before')
+
+      # For cross-field validation on complete model:
+      @model_validator(mode='after')
+
+  extra_fields_allowed:
+    error: "Unknown fields silently accepted"
+    cause: "Missing extra='forbid' in ConfigDict"
+    fix: |
+      class StrictModel(BaseModel):
+          model_config = ConfigDict(extra="forbid")
+          name: str
+
+      StrictModel(name="x", unknown="y")  # Raises ValidationError
+
+  frozen_mutation:
+    error: "Cannot assign to field - model is frozen"
+    cause: "Trying to mutate frozen model"
+    fix: |
+      # Use model_copy for updates
+      new_config = old_config.model_copy(update={"extraction_efficiency": 0.9})
+
+# =============================================================================
+# GOTCHAS CHECKLIST
+# =============================================================================
+
+gotchas:
+  - issue: "Mutable defaults shared"
+    fix: "Use Field(default_factory=list) not items: list = []"
+
+  - issue: "Validator not called"
+    fix: "Add @classmethod decorator after @field_validator"
+
+  - issue: "model_validator returns None"
+    fix: "Always return self in mode='after' validators"
+
+  - issue: "Extra fields silently accepted"
+    fix: "Use ConfigDict(extra='forbid')"
+
+  - issue: "Can't mutate frozen model"
+    fix: "Use model_copy(update={...}) to create modified copy"
+
+  - issue: "Raw dict instead of model"
+    fix: "Call model_dump() before passing to non-Pydantic functions"
+
+  - issue: "Validation error on mutation"
+    fix: "Enable validate_assignment=True for mutation validation"
+
+  - issue: "JSON serialization fails"
+    fix: "Use model_dump(mode='json') for JSON-compatible output"
+
+  - issue: "V1 syntax doesn't work"
+    fix: "V2 uses model_dump not dict(), model_validate not parse_obj()"
+
+# =============================================================================
+# V1 TO V2 MIGRATION CHEATSHEET
+# =============================================================================
+
+v1_to_v2_migration:
+
+  method_renames:
+    ".dict()": ".model_dump()"
+    ".json()": ".model_dump_json()"
+    ".parse_obj()": ".model_validate()"
+    ".parse_raw()": ".model_validate_json()"
+    ".schema()": ".model_json_schema()"
+    ".schema_json()": "json.dumps(Model.model_json_schema())"
+    ".copy()": ".model_copy()"
+    ".update_forward_refs()": ".model_rebuild()"
+    "__fields__": "model_fields"
+
+  config_changes:
+    "class Config:": "model_config = ConfigDict(...)"
+    "orm_mode = True": "from_attributes=True"
+    "allow_population_by_field_name": "populate_by_name"
+
+  constrained_types:
+    old: "conint(ge=0, le=100)"
+    new: "Annotated[int, Field(ge=0, le=100)]"
+
+  validators:
+    old: "@validator('name')"
+    new: "@field_validator('name')"
+    old_root: "@root_validator"
+    new_root: "@model_validator"
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  pydantic_docs: "https://docs.pydantic.dev/latest/"
+  c7_library: "/websites/pydantic_dev (2805 snippets)"
+  our_types: "src/babylon/models/types.py"
+  our_entities: "src/babylon/models/entities/"
+  our_config: "src/babylon/models/config.py"
+  our_world_state: "src/babylon/models/world_state.py"

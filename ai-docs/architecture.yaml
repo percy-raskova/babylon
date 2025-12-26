@@ -2,9 +2,9 @@
 # How the pieces fit together
 
 meta:
-  version: "3.3.0"
-  updated: "2025-12-09"
-  status: "Phase 3 in progress (983+ tests, Observer + RAG complete, LLM next)"
+  version: "3.4.0"
+  updated: "2025-12-14"
+  status: "Phase 3.4 in progress (1,926 tests, Narrative Bridge complete)"
   related_docs:
     - "ai-docs/database-spec.yaml - SQLite schema and DDL"
     - "ai-docs/rag-architecture.yaml - ChromaDB collections"
@@ -434,6 +434,114 @@ interfaces:
   topology_to_archive:
     pattern: "State changes → ChromaDB queries → narrative"
     example: "Contradiction intensified → find similar historical events → generate description"
+
+# =============================================================================
+# CAUSAL DAG: FUNDAMENTALS → SYSTEMS → METRICS
+# =============================================================================
+# Understanding the flow from input parameters to observable outputs
+
+causal_dag:
+  description: |
+    The simulation follows a strict causal hierarchy:
+    1. FUNDAMENTALS (GameDefines) are the independent variables we control
+    2. SYSTEMS transform state according to formulas
+    3. METRICS (MetricsCollector) observe the derived outputs
+
+    This separation clarifies:
+    - What ParameterSweeper should vary (fundamentals)
+    - What MetricsCollector should observe (derived metrics)
+    - Why state variables should never be directly manipulated
+
+  diagram: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                         FUNDAMENTALS (Level 1)                          │
+    │  GameDefines: extraction_efficiency, subsistence, repression,           │
+    │               organization, initial wealth, loss_aversion_lambda, k     │
+    │  Location: src/babylon/config/defines.py                                │
+    └─────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                           SYSTEMS (Level 2)                             │
+    │  ImperialRentSystem, SurvivalSystem, SolidaritySystem,                  │
+    │  ConsciousnessSystem, ContradictionSystem, TerritorySystem              │
+    │  Location: src/babylon/engine/systems/                                  │
+    └─────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                       STATE VARIABLES (Level 2b)                        │
+    │  WorldState: wealth[], consciousness[], tension[], imperial_rent_pool   │
+    │  Location: src/babylon/models/world_state.py                            │
+    └─────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        ▼
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                       DERIVED METRICS (Level 3)                         │
+    │  MetricsCollector: pool_ratio, consciousness_gap, wealth_gap,           │
+    │                    global_tension, P(S|A), P(S|R), percolation_ratio    │
+    │  Location: src/babylon/engine/observers/metrics.py                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+  levels:
+    level_1_fundamentals:
+      description: "TRUE FUNDAMENTALS - Independent variables, simulation's atoms"
+      location: "src/babylon/config/defines.py"
+      examples:
+        - "economy.extraction_efficiency - Determines imperial rent (Phi)"
+        - "economy.initial_rent_pool - Sets economic scale"
+        - "survival.default_subsistence - P(S|A) baseline"
+        - "survival.default_repression - P(S|R) denominator"
+        - "behavioral.loss_aversion_lambda - Kahneman-Tversky constant"
+      principle: "ParameterSweeper varies THESE"
+
+    level_2_systems:
+      description: "TRANSFORMATION LAYER - Pure functions on state"
+      location: "src/babylon/engine/systems/"
+      function: "step(WorldState, config, context, defines) → WorldState"
+      constraint: "No side effects, no DB I/O, no external state"
+
+    level_2b_state:
+      description: "STATE VARIABLES - Evolve over time via Systems"
+      location: "src/babylon/models/world_state.py"
+      examples:
+        - "wealth: Previous + inflows - outflows"
+        - "consciousness: dΨ = k(1 - W_c/V_c) - λΨ"
+        - "tension: Accumulates from wealth gaps"
+      constraint: "Never manipulate directly - let Systems transform them"
+
+    level_3_metrics:
+      description: "DERIVED METRICS - Observations computed from state"
+      location: "src/babylon/models/metrics.py"
+      examples:
+        - "pool_ratio = imperial_rent_pool / initial_pool"
+        - "consciousness_gap = P_w.Ψ - C_w.Ψ"
+        - "global_tension = avg(EXPLOITATION.tension)"
+        - "P(S|A) = σ(W - S)"
+      principle: "MetricsCollector observes THESE"
+
+  minimal_basis:
+    description: "The truly irreducible parameters from MLM-TW theory"
+    parameters:
+      - "Initial wealth distribution (4 values)"
+      - "Extraction rate (how fast imperial rent flows)"
+      - "Subsistence threshold (P(S|A) collapse point)"
+      - "Repression capacity (state violence)"
+      - "Solidarity edge weights (consciousness transmission)"
+    insight: |
+      Everything else derives from these + time. This is the simulation's
+      equivalent of physics' Planck constants (c, h, G).
+
+  architecture_principle: |
+    CORRECT USAGE:
+    - ParameterSweeper: Vary FUNDAMENTALS (GameDefines), observe METRICS
+    - MetricsCollector: Read-only observation of DERIVED METRICS
+    - Systems: Transform state according to formulas
+
+    ANTI-PATTERN:
+    - Directly manipulating state variables (bypasses Systems)
+    - Hardcoding metrics extraction (creates parallel paths)
+    - Mixing fundamental and derived in same interface
 
 # =============================================================================
 # EXTENSION POINTS

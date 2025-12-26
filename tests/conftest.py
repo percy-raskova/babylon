@@ -1,7 +1,9 @@
 import os
+import random
 import shutil
 import tempfile
 import time
+from collections.abc import Generator
 
 import pytest
 from sqlalchemy import Engine, create_engine
@@ -12,6 +14,21 @@ from babylon.data.database import Base
 from babylon.metrics.collector import MetricsCollector
 
 # Import all models to ensure they're registered with SQLAlchemy
+
+
+@pytest.fixture(autouse=True)
+def _isolate_random_state() -> Generator[None, None, None]:
+    """Isolate random state between tests to prevent pollution.
+
+    Tests calling random.seed() (e.g., George Floyd Dynamic tests)
+    won't affect subsequent tests. Each test starts with the random
+    state it inherited, and that state is restored after the test.
+    """
+    saved_state = random.getstate()
+    try:
+        yield
+    finally:
+        random.setstate(saved_state)
 
 
 @pytest.fixture(scope="session")

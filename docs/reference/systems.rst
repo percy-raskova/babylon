@@ -15,7 +15,7 @@ All systems implement this protocol:
            self,
            graph: nx.DiGraph[str],
            services: ServiceContainer,
-           context: dict[str, Any],
+           context: ContextType,  # Union[dict[str, Any], TickContext]
        ) -> None:
            """Mutate graph according to system logic."""
            ...

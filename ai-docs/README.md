@@ -31,6 +31,15 @@ This directory helps AI assistants:
 | `game-data.yaml` | External data sources and CI/CD pipeline | YAML |
 | `theory.md` | MLM-TW theoretical foundation | Markdown |
 | `rag-architecture.yaml` | RAG as permission system, validation pipeline | YAML |
+| `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism | YAML |
+| `synopticon-spec.yaml` | Observer system architecture, Lens filter, SynopticView | YAML |
+| `nicegui-patterns.yaml` | NiceGUI development patterns, gotchas, quick reference | YAML |
+| `tailwind-patterns.yaml` | Tailwind CSS patterns, arbitrary values, flexbox, sizing | YAML |
+| `echarts-patterns.yaml` | Apache ECharts chart configuration, dynamic updates, styling | YAML |
+| `quasar-patterns.yaml` | Quasar Framework components, props, dark mode | YAML |
+| `asyncio-patterns.yaml` | Python asyncio, to_thread, callback detection, timers | YAML |
+| `jsoneditor-patterns.yaml` | JSON Editor (svelte-jsoneditor), run_editor_method API | YAML |
+| `pydantic-patterns.yaml` | Pydantic V2 models, validators, serialization, constrained types | YAML |
 
 ## Usage
 

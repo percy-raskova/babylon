@@ -2,11 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.5.0"
-  updated: "2025-12-12"
+  version: "1.8.0"
+  updated: "2025-12-25"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "Sprint 3.3 Topology Events (2025-12-12)"
+  last_audit: "MetricsCollector Observer (2025-12-25)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -181,29 +181,50 @@ implemented:
           - "on_simulation_start(initial_state, config)"
           - "on_tick(previous_state, new_state)"
           - "on_simulation_end(final_state)"
+        implementations:
+          - "NarrativeDirector - AI narrative generation"
+          - "TopologyMonitor - phase transition detection"
+          - "EconomyMonitor - economic crisis detection"
+          - "CausalChainObserver - Shock Doctrine patterns"
+          - "MetricsCollector - unified metrics for dashboard/sweeper (Sprint 4.1)"
 
       narrative_director:
         status: "complete"
-        details: "AI Game Master that observes simulation and generates narrative"
+        details: "AI Game Master that observes simulation and generates narrative using typed SimulationEvent objects"
         location: "src/babylon/ai/director.py"
-        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py (27 tests)"
+        tests: "tests/unit/ai/test_narrative_director.py, test_director_rag.py, tests/integration/test_narrative_pipeline.py (36 tests)"
         provides:
           - "NarrativeDirector class implementing SimulationObserver"
           - "RAG pipeline injection (optional)"
           - "Prompt builder injection (optional)"
           - "Error handling per ADR003"
-        missing: "LLM client integration (Sprint 3.3)"
+          - "Typed event consumption via state.events (Sprint 4.1)"
+          - "SEMANTIC_MAP with EventType enum keys for theoretical context"
+          - "SIGNIFICANT_EVENT_TYPES frozenset for narrative triggering"
+        sprint_4_1_changes:
+          - "Changed on_tick to use state.events instead of event_log strings"
+          - "SEMANTIC_MAP now uses EventType enum keys"
+          - "Added SIGNIFICANT_EVENT_TYPES: ECONOMIC_CRISIS, PHASE_TRANSITION, UPRISING, EXCESSIVE_FORCE, RUPTURE"
+          - "_retrieve_context_from_typed_events() method for semantic bridge"
 
       prompt_builder:
         status: "complete"
-        details: "Builds prompts following Marxist dialectical materialism"
+        details: "Builds prompts following Marxist dialectical materialism with typed event formatting"
         location: "src/babylon/ai/prompt_builder.py"
-        tests: "tests/unit/ai/test_prompt_builder.py"
+        tests: "tests/unit/ai/test_prompt_builder.py, tests/integration/test_narrative_pipeline.py"
         provides:
           - "DialecticalPromptBuilder class"
           - "build_system_prompt() - AI identity"
-          - "build_context_block(state, rag_context, events)"
+          - "build_context_block(state, rag_context, events: list[SimulationEvent])"
           - "_calculate_tension() - aggregate tension level"
+          - "_format_event() - typed event formatting with match/case (Sprint 4.1)"
+        sprint_4_1_changes:
+          - "Changed events param type from list[str] to list[SimulationEvent]"
+          - "Added _format_event() method with match/case for all event types"
+          - "PhaseTransitionEvent includes phase state and cadre_density"
+          - "CrisisEvent includes pool_ratio and decision"
+          - "SparkEvent includes trigger_type and node_id"
+          - "UprisingEvent includes participants count"
 
       rag_pipeline:
         status: "infrastructure_complete"
@@ -331,10 +352,59 @@ not_implemented:
       - "test_full_vertical_slice_10_ticks"
 
   ui:
-    priority: "low"
-    description: "Player interface (NiceGUI planned)"
-    blockers: "Phase 3 vertical slice complete"
+    priority: "active"
+    description: "Developer Dashboard MVP - 4-panel layout operational"
+    status: "FUNCTIONAL"
     phase: 4
+    pattern: "root_function"  # Use ui.run(main_page), NOT @ui.page decorator
+    components:
+      control_deck:
+        status: "complete"
+        location: "src/babylon/ui/controls.py"
+        tests: "tests/unit/ui/test_controls.py (20 tests)"
+        features:
+          - "STEP button - advance 1 tick"
+          - "PLAY button - start continuous loop"
+          - "PAUSE button - stop loop"
+          - "RESET button - reload simulation"
+          - "Tick counter - TICK: 000 format"
+        styling: "Cybernetic Terminal - dark bg, green text, monospace"
+      main_app:
+        status: "complete"
+        location: "src/babylon/ui/main.py"
+        tests: "tests/unit/ui/test_main.py"
+        note: "Uses root function pattern to avoid NiceGUI mode conflict"
+        layout: "3-column CSS Grid (1fr 2fr 1fr) with flex children"
+      dashboard_components:
+        status: "complete"
+        location: "src/babylon/ui/components.py"
+        tests: "tests/unit/ui/test_components.py (100+ tests)"
+        components:
+          trend_plotter: "ECharts time-series metrics (left panel)"
+          narrative_terminal: "Typewriter narrative display (center top)"
+          system_log: "Event log with auto-scroll (center bottom)"
+          state_inspector: "JSON editor for WorldState (right panel)"
+      async_runner:
+        status: "complete"
+        location: "src/babylon/engine/async_runner.py"
+        tests: "tests/unit/engine/test_async_runner.py"
+        purpose: "Non-blocking simulation for responsive UI during PLAY mode"
+        pattern: "Background thread with queue for UI callbacks"
+      subcutaneous_tests:
+        status: "complete"
+        location: "tests/integration/test_dashboard_integration.py"
+        purpose: "Integration tests with mocked NiceGUI components"
+        pattern: "Mock UI, test component logic without browser"
+    layout_fix_2025_12_25:
+      issue: "CSS Grid/Flexbox interaction - grid cell widths not propagating to flex-1 children"
+      root_cause: "flex-1 elements inside grid cells collapse to zero width without explicit w-full"
+      solution: "Add w-full class to all column and element wrappers in grid cells"
+      pattern: "grid cell → column with w-full → element with w-full + flex-1"
+      files_changed:
+        - "src/babylon/ui/main.py (grid layout)"
+        - "src/babylon/ui/components.py (component containers)"
+        - "src/babylon/ui/terminal.py (terminal container)"
+    blockers: "None - Dashboard operational"
 
   branching_history:
     priority: "low"
@@ -504,6 +574,21 @@ current_focus:
     - "Sprint 3.3 Topology Events: TopologyMonitor.get_pending_events() for event collection"
     - "Sprint 3.3 Topology Events: Simulation facade _collect_observer_events()"
     - "Sprint 3.3 Topology Events: Observer events injected into next tick via persistent_context"
+    - "Sprint 3.3 4-Phase Model: Added cadre_density to TopologySnapshot and PhaseTransitionEvent"
+    - "Sprint 3.3 4-Phase Model: _classify_phase updated for gaseous/transitional/liquid/solid"
+    - "Sprint 3.3 4-Phase Model: Solid phase (cadre_density >= 0.5) distinguishes vanguard from mass movement"
+    - "Sprint 4.1 Narrative Bridge: PromptBuilder.build_context_block accepts list[SimulationEvent]"
+    - "Sprint 4.1 Narrative Bridge: Added _format_event() method with match/case for all event types"
+    - "Sprint 4.1 Narrative Bridge: NarrativeDirector.on_tick uses state.events instead of event_log"
+    - "Sprint 4.1 Narrative Bridge: SEMANTIC_MAP changed from string keys to EventType enum keys"
+    - "Sprint 4.1 Narrative Bridge: Added SIGNIFICANT_EVENT_TYPES frozenset for narrative filtering"
+    - "Phase 4 UI: AsyncSimulationRunner for non-blocking UI during PLAY mode"
+    - "Phase 4 UI: Subcutaneous integration tests for dashboard components"
+    - "Phase 4 UI: 4-panel dashboard layout with TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
+    - "Phase 4 UI: CSS Grid/Flexbox width propagation fix (w-full on flex-1 children in grid cells)"
+    - "Phase 4.1: MetricsCollector observer - unified metrics for dashboard/sweeper (TDD: 101 tests)"
+    - "Phase 4.1: Metrics Pydantic models (EntityMetrics, EdgeMetrics, TickMetrics, SweepSummary)"
+    - "Phase 4.1: Dashboard integration - MetricsCollector registered as Simulation observer"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -822,11 +907,35 @@ current_focus:
         - "Modified ImperialRentSystem (event generation)"
         - "RAG corpus ingestion script (5 texts from Marxists.org)"
         - "Integration tests proving full narrative pipeline"
+        - "4-phase model: cadre_density in TopologySnapshot/PhaseTransitionEvent"
+        - "_classify_phase() returns gaseous/transitional/liquid/solid"
       llm_choice: "DeepSeek API (OpenAI-compatible, cost-effective)"
       testing_approach: "Integration tests instead of CLI runner"
       rag_corpus: "5 curated texts from Marxists.org (~200-500 chunks)"
       tests_passing: 800
       scope: "Factory worker vs capitalist, one phenomenon (wealth transfer)"
+      phase_model: "4-phase: gaseous/transitional/liquid/solid (cadre_density distinguishes mass movement from vanguard)"
+
+    sprint_4_1:
+      name: "The Narrative Bridge (Typed Event Pipeline)"
+      status: "COMPLETE"
+      deliverables:
+        - "PromptBuilder.build_context_block accepts list[SimulationEvent]"
+        - "_format_event() method with match/case for all event types"
+        - "NarrativeDirector.on_tick uses state.events instead of event_log"
+        - "SEMANTIC_MAP with EventType enum keys"
+        - "SIGNIFICANT_EVENT_TYPES frozenset for filtering"
+        - "_retrieve_context_from_typed_events() for semantic bridge"
+        - "tests/integration/test_narrative_pipeline.py (9 tests)"
+      tests_passing: 1795
+      commits: "d756498"
+      key_insight: "AI pipeline now consumes typed events, enabling rich formatting per event type"
+      significant_events:
+        - "ECONOMIC_CRISIS"
+        - "PHASE_TRANSITION"
+        - "UPRISING"
+        - "EXCESSIVE_FORCE"
+        - "RUPTURE"
 
     sprint_3_4_1:
       name: "Economic Infrastructure (Imperial Circuit)"
@@ -958,41 +1067,173 @@ current_focus:
       status: "FUTURE"
 
   next_steps:
-    current_sprint: "Sprint 3.4.4: Dynamic Balance"
+    current_sprint: "Phase 4.1: The Living Circuit (Vertical Integration)"
     completed:
       - "Sprint 3.3: Vertical Slice (COMPLETE)"
       - "Sprint 3.4.1: Economic Infrastructure - TRIBUTE, WAGES, CLIENT_STATE edges (COMPLETE)"
       - "Sprint 3.4.2: Proletarian Internationalism - SolidaritySystem (COMPLETE)"
       - "Sprint 3.4.3: Multi-Dimensional Consciousness - IdeologicalProfile (COMPLETE)"
       - "Sprint 3.5: Layer 0 Territorial Substrate (COMPLETE)"
+      - "Phase 4.0: Developer Dashboard MVP - 4-panel layout operational (COMPLETE)"
     in_progress:
-      - "Verify Agitation Router mechanics in integration tests"
+      - "Phase 4.1: The Living Circuit - wire 4-node Imperial Circuit into dashboard"
     planned:
+      - "Phase 4.1A: Wire the Circuit - switch to create_imperial_circuit_scenario()"
+      - "Phase 4.1B: Expose Meaningful Metrics - multi-class TrendPlotter"
+      - "Phase 4.1C: Tune for Crisis - GameDefines adjustment for drama"
       - "Sprint 3.4.4: Dynamic Balance - shrinking pool, bourgeoisie choices"
-      - "Phase 4: NiceGUI Control Room - dashboard for simulation"
       - "Phase 5: Internal Colonies - fractal topology within Core"
     optional:
       - "Expand RAG corpus with more Marxists.org texts"
       - "Timeline branching for history stack"
+
+  # ---------------------------------------------------------------------------
+  # VERTICAL INTEGRATION INITIATIVE: "The Living Circuit"
+  # ---------------------------------------------------------------------------
+  #
+  # Diagnosis (2025-12-25):
+  #   The dashboard EXISTS but doesn't REVEAL anything interesting.
+  #   Imperial rent hovers at 100, tension moves infinitesimally.
+  #   Root cause: Dashboard shows 2-node scenario, not the 4-node Imperial Circuit.
+  #
+  # Mantra: "A flat line on a fancy graph is still a flat line."
+  #
+  vertical_integration:
+    initiative_name: "The Living Circuit"
+    status: "IN PROGRESS"
+    diagnosis:
+      problem: "Dashboard is boring - flat metrics, single node visible"
+      root_causes:
+        - "Using create_two_node_scenario() instead of create_imperial_circuit_scenario()"
+        - "TrendPlotter only shows P_w (Periphery Worker), not all 4 classes"
+        - "Metrics show static wealth, not dynamic FLOWS between nodes"
+        - "Default GameDefines coefficients produce equilibrium, not crisis"
+      insight: "The dashboard is a LENS. It can't show interesting things if the simulation is static."
+
+    sprint_4_1_a:
+      name: "Wire the Circuit"
+      status: "PLANNED"
+      goal: "Switch dashboard to 4-node Imperial Circuit scenario"
+      deliverables:
+        - "main.py: import create_imperial_circuit_scenario"
+        - "main.py: replace create_two_node_scenario() call"
+        - "Verify 4 nodes appear in StateInspector: P_w, P_c, C_b, C_w"
+        - "Verify 5 edges: EXPLOITATION, TRIBUTE, WAGES, CLIENT_STATE, SOLIDARITY"
+      files:
+        - "src/babylon/ui/main.py (scenario import change)"
+      success_criteria: "StateInspector shows all 4 classes with their relationships"
+
+    sprint_4_1_b:
+      name: "Expose Meaningful Metrics"
+      status: "PLANNED"
+      goal: "TrendPlotter shows dynamics worth watching"
+      deliverables:
+        - "TrendPlotter: 4 wealth lines (color-coded by SocialRole)"
+        - "TrendPlotter: Consciousness differential (P_w - C_w)"
+        - "TrendPlotter: Solidarity edge strength over time"
+        - "TrendPlotter: Imperial rent pool level"
+        - "SystemLog: Filter for SIGNIFICANT_EVENT_TYPES only"
+      metrics_to_track:
+        wealth_by_class:
+          - "P_w (Periphery Worker) - red line"
+          - "P_c (Comprador) - orange line"
+          - "C_b (Core Bourgeoisie) - blue line"
+          - "C_w (Labor Aristocracy) - green line"
+        differentials:
+          - "consciousness_gap: P_w.consciousness - C_w.consciousness"
+          - "wealth_gap: C_b.wealth - P_w.wealth"
+        flows:
+          - "imperial_rent: total extraction per tick"
+          - "super_wages: WAGES edge value_flow"
+          - "solidarity_strength: SOLIDARITY edge attribute"
+      key_insight: |
+        The INTERESTING dynamics are in RELATIONSHIPS, not node attributes.
+        - EXPLOITATION rate (how fast value flows out of periphery)
+        - Consciousness DIFFERENTIAL (gap between P_w and C_w awareness)
+        - SOLIDARITY strength (infrastructure for revolution vs fascism)
+
+    sprint_4_1_c:
+      name: "Tune for Crisis"
+      status: "PLANNED"
+      goal: "Simulation produces crisis within 30-50 ticks"
+      deliverables:
+        - "GameDefines adjustment: faster consciousness drift"
+        - "GameDefines adjustment: higher tension accumulation"
+        - "Test Fascist Bifurcation path (solidarity_strength = 0)"
+        - "Test Revolutionary path (solidarity_strength > 0)"
+        - "Verify George Floyd Dynamic spark mechanics"
+      balance_targets:
+        - "Crisis event within 30-50 ticks of default scenario"
+        - "Visible consciousness divergence by tick 20"
+        - "Measurable wealth transfer by tick 10"
+        - "Fascist vs Revolutionary bifurcation clearly distinguishable"
+      formula_tuning:
+        - "consciousness_drift_k: increase for faster awakening"
+        - "tension_accumulation_rate: increase for faster crisis"
+        - "extraction_efficiency: balance for sustainable extraction"
+
+    philosophical_grounding: |
+      Horizontal expansion (more features) doesn't help if vertical integration
+      (making existing features work together) isn't complete.
+
+      The 4-node Imperial Circuit model exists. The dashboard exists.
+      But they're not connected. We're watching a 2-node toy model
+      on a 4-panel dashboard built for a 4-node system.
+
+      "A working 4-node simulation beats a broken 10-node simulation."
 
   mantra: "Graph + Math = History"
   new_mantra: "The bomb factory pays well. That's the problem."
   old_mantra: "State is data. Engine is logic. They never mix."
   fascist_trap_mantra: "Agitation without solidarity produces fascism, not revolution."
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
-  milestone: "SPRINT 3.3 COMPLETE: Topology Events - PhaseTransitionEvent emitted on phase state changes"
-  next_milestone: "SPRINT 3.4.4: Dynamic Balance - verify agitation routing mechanics"
-  test_count: 1785
-  test_count_note: "Updated 2025-12-12 (Sprint 3.1+ Event Expansion: +57 tests, Sprint 3.3 Topology Events: +25 tests)"
+  integration_mantra: "A flat line on a fancy graph is still a flat line."
+  milestone: "PHASE 4.1B COMPLETE: MetricsCollector gap fixes - economy drivers + topology model"
+  next_milestone: "Phase 4.2: TopologyMonitor dashboard integration + territory metrics"
+  test_count: 2253
+  test_count_note: "Updated 2025-12-25 - Phase 4.1B (+43 tests via TDD)"
+
+  metrics_audit:
+    date: "2025-12-25"
+    status: "PHASE 4.1B COMPLETE - ~85% coverage"
+    source_document: "brainstorm/metrics-collector-audit-reasoning.md"
+    critical_fixed_in_4_1b:
+      - "current_super_wage_rate ✅ FIXED - now in TickMetrics"
+      - "current_repression_level ✅ FIXED - now in TickMetrics"
+      - "pool_ratio ✅ ADDED - imperial rent pool health"
+      - "consciousness_gap ✅ ADDED - P_w - C_w differential"
+      - "wealth_gap ✅ ADDED - C_b - P_w differential"
+    topology_model_ready:
+      - "TopologySummary model ✅ CREATED - percolation_ratio, cadre_density, phase"
+      - "Integration with dashboard ❌ PENDING - TopologyMonitor not registered"
+    bugs_fixed_in_4_1b:
+      - "global_tension ✅ FIXED - now only averages EXPLOITATION edges"
+      - "edge metrics ✅ FIXED - aggregates (max tension, sum flows)"
+    remaining_gaps:
+      - "TopologyMonitor dashboard integration (Phase 4.2)"
+      - "Territory aggregate metrics (heat, population)"
+      - "Event count per tick"
+      - "repression_faced per entity"
+    full_audit: "See observer-layer.yaml metrics_collector.audit section"
+
   analysis_insight: |
-    2025-12-09: Identified why vertical slice stalls after tick 2.
-    Consciousness formula has k/λ ratio = 5.0, hits ceiling at tick 2.
-    This is CORRECT for periphery dynamics, but model is too simple.
-    Current model is "orthodox book-worship Marxism" - missing:
-    - Super-wages (W > V) for core workers
-    - Imperial rent pool dynamics
-    - False consciousness from material benefit
-    - Multi-dimensional consciousness (class vs national vs atomization)
+    2025-12-25: Diagnosed why dashboard is boring.
+    Using create_two_node_scenario() instead of create_imperial_circuit_scenario().
+    Dashboard shows 1 of 4 classes, misses the whole Imperial Circuit dynamic.
+    The dashboard is a LENS - it can't show interesting things if simulation is static.
+
+    2025-12-25: MetricsCollector audit reveals ~60% coverage.
+    Critical missing: economy drivers (wage_rate, repression) and topology (percolation).
+    These are the DIALS that make the simulation interesting to watch.
+    Without them, dashboard shows effects but not causes.
+
+    2025-12-25: PHASE 4.1B COMPLETE via TDD (43 new tests).
+    Fixed: current_super_wage_rate, current_repression_level, pool_ratio exposed.
+    Fixed: consciousness_gap, wealth_gap derived differentials.
+    Fixed: global_tension bug (was averaging all edges, now EXPLOITATION only).
+    Fixed: edge aggregation bug (was overwriting, now max/sum).
+    Created: TopologySummary model ready for dashboard integration.
+    Documented: Causal DAG (Fundamentals → Systems → Metrics) in architecture.yaml.
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.
@@ -1031,8 +1272,8 @@ tech_debt:
 
   test_coverage:
     status: "EXCELLENT"
-    current: "1785 tests passing (2025-12-12)"
-    coverage: "Core engine + systems + persistence + components + events fully tested, TDD discipline maintained"
+    current: "1926 tests passing (2025-12-14)"
+    coverage: "Core engine + systems + persistence + components + events + AI narrative fully tested, TDD discipline maintained"
     action: "Continue TDD for new features"
     testing_infrastructure:
       - "DomainFactory (tests/factories/domain.py) - 31 tests"
@@ -1040,7 +1281,10 @@ tech_debt:
       - "MockMetricsCollector (tests/mocks/metrics_collector.py) - 8 tests"
       - "Event model tests (tests/unit/models/test_events.py) - 44 tests"
       - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
-      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 25 tests"
+      - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 30 tests (Sprint 3.3 4-phase model)"
+      - "Narrative pipeline tests (tests/integration/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
+      - "MetricsCollector tests (tests/unit/engine/observers/test_metrics_collector.py) - 60 tests (Sprint 4.1 TDD)"
+      - "Metrics model tests (tests/unit/models/test_metrics_models.py) - 41 tests (Sprint 4.1 TDD)"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

@@ -61,7 +61,7 @@ The Ledger uses two complementary systems:
 Entity Collections
 ^^^^^^^^^^^^^^^^^^
 
-The Ledger contains 16 JSON entity collections in ``src/babylon/data/game/``:
+The Ledger contains 18 JSON entity collections in ``src/babylon/data/game/``:
 
 .. list-table:: Entity Collections
    :header-rows: 1
@@ -185,7 +185,7 @@ Babylon uses ChromaDB as a vector database:
 .. code-block:: python
 
    from babylon.rag.retrieval import VectorStore, Retriever
-   from babylon.rag.chunking import DocumentChunk
+   from babylon.rag.chunker import DocumentChunk
 
    # Initialize store
    store = VectorStore(collection_name="events")

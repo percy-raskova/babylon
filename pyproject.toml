@@ -150,6 +150,8 @@ known-first-party = [
 [tool.ruff.lint.per-file-ignores]
 # Tests use fixtures for side-effects (cleanup, module state reset)
 "tests/**" = ["ARG001", "ARG002"]
+# Tools are data generators/scripts, complexity limits don't apply
+"tools/**" = ["C901"]
 
 [tool.ruff.format]
 quote-style = "double"

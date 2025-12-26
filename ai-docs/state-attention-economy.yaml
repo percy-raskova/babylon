@@ -1,0 +1,1023 @@
+# State Attention Economy - The Panopticon
+# Epoch 2: The Game
+#
+# "The State sees everything but understands nothing."
+# - Operational Paradox
+#
+# Unlike the Player (constrained by Material Resources), the State is
+# constrained by Information Processing Capacity (Attention Threads).
+# Expanding this capacity generates Systemic Fragility.
+
+meta:
+  epoch: 2
+  slice: "2.8"
+  slice_name: "The Panopticon"
+  status: PLANNED
+  priority: HIGH
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Model state surveillance/repression as limited attention allocation problem"
+
+  theoretical_foundation:
+    primary: "Tiqqun - The Cybernetic Hypothesis (2001) - Control as information processing"
+    secondary: "James C. Scott - Seeing Like a State (1998) - Legibility and its costs"
+    tertiary: "Security Dilemma Theory - Defensive measures create offensive threats"
+    critical: "Foucault - Discipline and Punish (1975) - The Panopticon's internal contradiction"
+
+  design_principle: |
+    The State is NOT omniscient. It is a processing system with FINITE BANDWIDTH.
+
+    The core tension:
+    1. The State WANTS perfect information (total surveillance)
+    2. Perfect surveillance COSTS something (legitimacy, economy, freedom)
+    3. Every expansion of surveillance INCREASES revolutionary potential
+    4. The State is trapped in a dialectic it cannot escape
+
+    The player's goal is to EXPLOIT this contradiction:
+    - Saturate attention with noise (cheap riots)
+    - Execute strategic actions in the blind spots
+    - Bait the State into the "Police State Spiral"
+
+    "The more the State sees, the less the people accept its vision."
+
+# =============================================================================
+# ANTI-PATTERN WARNING
+# =============================================================================
+
+anti_pattern_warning:
+  context: "The State AI must feel threatening but exploitable"
+
+  for_designers: |
+    THE STATE MUST NOT BE OMNISCIENT.
+    If the State can see everything, the player cannot win.
+    If the State can react to everything, strategy becomes impossible.
+
+    The State is a REACTIVE GIANT:
+    - Massive power but limited attention
+    - Compelled to respond to visible threats
+    - Struggles to detect invisible preparation
+    - Can be baited, saturated, and misdirected
+
+  for_players: |
+    THE STATE MUST FEEL DANGEROUS.
+    A trivial opponent makes victory meaningless.
+    The Panopticon must inspire fear AND respect.
+
+    The challenge is ASYMMETRIC WARFARE:
+    - You cannot outfight the State directly
+    - You CAN outthink the State's processing limits
+    - Every State action has opportunity costs
+    - Every State expansion has systemic costs
+
+# =============================================================================
+# THE CORE RESOURCE: THREADS (Θ)
+# =============================================================================
+
+threads:
+  symbol: "Θ"
+  name: "Attention Threads"
+  description: |
+    The integer limit of concurrent operations the State can perform per tick.
+    Represents the cognitive bandwidth of the security apparatus.
+
+  metaphor: |
+    Think of the State as a computer with limited CPU cores.
+    Each Thread is one "core" that can process one task.
+    The State cannot run more concurrent operations than it has Threads.
+    Unlike the player's material resources, Threads are ALLOCATION, not EXPENDITURE.
+
+  base_value: 2
+  base_rationale: |
+    A baseline State can:
+    - Monitor one region AND
+    - Suppress one disturbance
+    OR
+    - Investigate one organization (2 Threads)
+
+    This forces PRIORITIZATION from the start.
+
+  properties:
+    type: "int"
+    minimum: 1
+    maximum: 20  # Even Police State has cognitive limits
+    regeneration: "Full restoration each tick (allocation, not expenditure)"
+    visibility: "HIDDEN from player (player must infer from State behavior)"
+
+  code_type:
+    type: "int"
+    unit: "attention_threads"
+    constraint: "Positive integer"
+
+# =============================================================================
+# STATE ACTIONS (Thread Allocation)
+# =============================================================================
+
+state_actions:
+  overview: |
+    Each tick, the State AI allocates its Threads across available actions.
+    Actions compete for limited attention. The player can exploit this competition.
+
+  monitor:
+    name: "Monitor"
+    thread_cost: 1
+    target: "Territory or Organization"
+    duration: "1 tick"
+
+    effects:
+      - "Reveals hidden stats in territory (Consciousness, Heat)"
+      - "If targeting Organization: Reveals approximate membership count"
+      - "If targeting high-Heat territory: Reveals active Agitation sources"
+
+    limitations:
+      - "Does NOT reveal Cadre count (requires Investigate)"
+      - "Does NOT reveal Cohesion (requires Investigate)"
+      - "Information decays after 1 tick (must re-Monitor)"
+
+    player_counter: |
+      Low-visibility operations in unmonitored territories.
+      "Theory Building" and "Logistics" generate no Heat.
+      The State can only Monitor a fraction of the map.
+
+  investigate:
+    name: "Investigate"
+    thread_cost: 2
+    target: "Territory or Organization"
+    duration: "Instant result, 3 tick cooldown on same target"
+
+    effects:
+      - "Deep intelligence gathering"
+      - "Reveals Cadre count (approximate)"
+      - "Reveals Cohesion level"
+      - "Reveals recent actions taken in territory"
+      - "Small Repression spike (+0.05 in territory)"
+
+    limitations:
+      - "Expensive (half of base Threads)"
+      - "Cooldown prevents spamming"
+      - "Repression spike may trigger backlash"
+
+    player_counter: |
+      Dispersed organization structure.
+      Cell-based architecture limits investigation damage.
+      "Sacrifice" cells to protect core leadership.
+
+  suppress:
+    name: "Suppress"
+    thread_cost: 3
+    target: "Territory"
+    duration: "Immediate"
+
+    effects:
+      - "High Repression spike in territory (+0.3)"
+      - "Agitation reduced by 50%"
+      - "Heat reduced by 30%"
+      - "Sympathizers in territory: 10% arrested/demobilized"
+      - "If Organization present: 5% Cadre captured"
+
+    limitations:
+      - "VERY expensive (150% of base Threads)"
+      - "Requires Monitor data to be effective"
+      - "Collateral effects may increase Consciousness elsewhere"
+      - "Creates martyrs if Cadre captured publicly"
+
+    player_counter: |
+      Suppression is VISIBLE. The Wire can frame it.
+      Martyrdom narratives increase Consciousness.
+      "They came for our neighbors" effect spreads agitation.
+
+  qrf_strike:
+    name: "QRF Strike"
+    thread_cost: "ALL available Threads"
+    target: "Specific Organization node"
+    duration: "Immediate"
+
+    effects:
+      - "Massive damage to targeted organization component"
+      - "30-50% Cadre casualties in targeted cell"
+      - "Cohesion damage (-0.3)"
+      - "If leadership targeted: Potential decapitation"
+
+    critical_limitation: |
+      ALL THREADS CONSUMED.
+      For that tick, the rest of the map is BLIND.
+      No Monitoring, no Suppression elsewhere.
+      Player can execute ANY action unopposed in other territories.
+
+    player_counter: |
+      THE PRIMARY EXPLOIT.
+      Bait the State into QRF with visible, expendable assets.
+      Execute strategic operations while State is committed.
+      "The matador's cape is not where the sword strikes."
+
+  auto_monitor:
+    name: "Automated Monitoring"
+    thread_cost: 0  # Free action from Algorithmic Policing upgrade
+    target: "High-Heat territories (Heat > 0.6)"
+    availability: "Only with Algorithmic Policing expansion"
+
+    effects:
+      - "Passive Monitor effect on high-heat nodes"
+      - "Does not consume Threads"
+
+    limitations:
+      - "Only monitors VISIBLE heat"
+      - "Misses low-profile, high-danger operations"
+      - "Subject to false positives (generates noise)"
+
+    player_counter: |
+      Keep strategic territories LOW HEAT.
+      Use high-heat territories as decoys.
+      "The camera watches the burning building, not the safe house."
+
+# =============================================================================
+# EXPANSION MECHANICS (The Faustian Bargain)
+# =============================================================================
+
+expansion_mechanics:
+  overview: |
+    The State can permanently increase Θ, but every upgrade adds a permanent
+    DEBUFF that strengthens the revolutionary movement. This is the "Faustian
+    Bargain" - more control means more resistance.
+
+    The player can BAIT the State into expansions by creating conditions that
+    seem to require them. Each expansion is a strategic victory for the player.
+
+  mass_surveillance_act:
+    name: "Mass Surveillance Act"
+    description: "Cameras everywhere. Total visibility."
+
+    mechanical_effects:
+      thread_bonus: "+2 Θ permanently"
+      auto_monitor: "All territories with Heat > 0.4 passively monitored"
+
+    systemic_cost:
+      debuff: "Global Agitation Floor +0.1"
+      explanation: |
+        Everyone feels watched. Privacy anxiety becomes ambient.
+        Even non-political citizens become resentful.
+        The minimum Agitation level in ALL territories rises.
+
+    player_opportunity: |
+      EASIER RECRUITMENT.
+      - Agitation generation from privacy anger
+      - Middle-class sympathy for "civil liberties"
+      - "Nothing to hide" narrative collapses
+      - Sympathizer generation rate +20%
+
+    trigger_conditions:
+      - "3+ territories with Heat > 0.7"
+      - "2+ successful attacks on Extraction nodes"
+      - "Organization membership > 10,000"
+
+    narrative: |
+      The Wire - Corporate Feed:
+      "In response to growing threats, the Security Enhancement Act
+      will provide authorities with the tools they need to keep us safe."
+
+      The Wire - Liberated Signal:
+      ">>> THEY'RE WATCHING EVERYONE NOW <<<
+      First they came for the organizers. Now they come for YOU.
+      Your phone. Your email. Your thoughts.
+      THE PANOPTICON IS COMPLETE. BUT WE ARE STILL HERE."
+
+  algorithmic_policing:
+    name: "Algorithmic Policing"
+    description: "Predictive algorithms target 'high-risk' populations."
+
+    mechanical_effects:
+      free_monitor: "+1 Free Monitor action (no Thread cost) per tick"
+      predictive: "Auto-flags territories with rising Consciousness"
+
+    systemic_cost:
+      debuff: "Legitimacy -0.2"
+      explanation: |
+        False positives. Racial bias. Algorithmic injustice.
+        The system targets the innocent alongside the guilty.
+        Public trust in institutions erodes.
+
+    player_opportunity: |
+      LABOR ARISTOCRACY ALIENATION.
+      - Middle-class ("I follow the rules") realizes rules don't protect them
+      - Professional class becomes sympathetic to movement
+      - Skilled workers available for recruitment
+      - Consciousness among C_w (Labor Aristocracy) rises faster
+
+    trigger_conditions:
+      - "State already has Mass Surveillance Act"
+      - "5+ Monitor actions per tick attempted (thread starvation)"
+      - "Player Cohesion detected > 0.6"
+
+    narrative: |
+      The Wire - Corporate Feed:
+      "New AI-powered community safety systems will help officers
+      focus resources where they're needed most."
+
+      The Wire - Liberated Signal:
+      ">>> THE ALGORITHM KNOWS YOUR FACE <<<
+      They don't need evidence. They have PREDICTIONS.
+      Walking while poor. Existing while radical.
+      THEIR MACHINE SEES ENEMIES EVERYWHERE."
+
+  emergency_powers:
+    name: "Emergency Powers (Martial Law)"
+    description: "Constitutional crisis. The mask drops."
+
+    mechanical_effects:
+      thread_multiplier: "2x Θ for 5 ticks"
+      qrf_enhancement: "QRF Strike costs halved (can strike twice)"
+      suppress_boost: "Suppress costs reduced to 2 Θ"
+
+    systemic_cost:
+      debuff: "Imperial Rent Efficiency -50%"
+      explanation: |
+        The economy CHOKES under martial law.
+        Supply chains disrupted. Workers cannot commute.
+        Businesses close. Capital flight begins.
+        The extraction that funds the State collapses.
+
+    player_opportunity: |
+      THE ACCELERATIONIST PLAY.
+      Force the State into Martial Law. Then WAIT.
+      - Imperial Rent drops 50% → State budget crisis
+      - Economic pain radicalizes the masses
+      - Legitimacy collapse (people see the tanks)
+      - After 5 ticks: Θ returns to normal, but economy is damaged
+      - STARVATION CONDITIONS may trigger RUPTURE
+
+    trigger_conditions:
+      - "Rupture Event in progress"
+      - "3+ simultaneous Uprisings"
+      - "Realization Node successfully attacked"
+
+    duration: "5 ticks (cannot be extended)"
+
+    aftermath: |
+      When Martial Law ends:
+      - Θ returns to pre-emergency level
+      - Economy slowly recovers (10 ticks to full)
+      - Legitimacy damage is PERMANENT (-0.3)
+      - "State of Exception" becomes normalized (can be invoked again)
+
+    narrative: |
+      The Wire - Corporate Feed:
+      "The President has declared a temporary state of emergency
+      to restore order and protect critical infrastructure."
+
+      The Wire - Liberated Signal:
+      ">>> THE MASKS ARE OFF <<<
+      They called it democracy. Now they call it emergency.
+      The tanks in the streets tell the truth they always hid:
+      THIS WAS NEVER YOUR COUNTRY. IT WAS ALWAYS THEIRS.
+      BUT EMPIRES FALL. AND THIS ONE IS FALLING NOW."
+
+  police_state_spiral:
+    name: "The Police State Spiral"
+    description: "The feedback loop that destroys the State from within"
+
+    mechanism: |
+      1. State buys Surveillance to find Cadre
+         → Agitation Floor rises (privacy anger)
+      2. More people join Riots (spontaneous)
+         → State needs more Threads
+      3. State buys Algorithmic Policing
+         → Legitimacy falls (false positives)
+      4. Middle class alienated, joins movement
+         → More Riots, more diverse
+      5. State declares Emergency Powers
+         → Economy crashes
+      6. Starvation conditions → RUPTURE
+      7. State has infinite eyes but is drowning in targets
+
+    mathematical_model:
+      surveillance_pressure: |
+        Each expansion increases base Agitation:
+        Agitation_Floor = 0.0 + (0.1 * Surveillance_Acts) + (0.05 * Algorithmic_Systems)
+
+      legitimacy_decay: |
+        Legitimacy = Base_Legitimacy - (0.2 * Algorithmic_Systems) - (0.3 * Emergency_Declarations)
+
+      economic_damage: |
+        Rent_Efficiency = 1.0 - (0.5 * Active_Emergency_Ticks / 5)
+
+      spiral_threshold: |
+        When Agitation_Floor > 0.3 AND Legitimacy < 0.5:
+        Spontaneous Riots generate faster than State can suppress
+        "The Panopticon drowns in its own data"
+
+# =============================================================================
+# THE OVERLOAD STRATEGY (DDoS)
+# =============================================================================
+
+overload_strategy:
+  name: "Distributed Denial of Service"
+  description: |
+    The player creates more visible threats than the State can process,
+    saturating attention while executing strategic operations in blind spots.
+
+  saturation_ratio:
+    formula: "Saturation = Active_Threats / Available_Threads"
+    thresholds:
+      comfortable: "< 0.5 (State has capacity to spare)"
+      stressed: "0.5 - 1.0 (State must prioritize)"
+      saturated: "1.0 - 2.0 (State cannot address all threats)"
+      overwhelmed: "> 2.0 (Cascading failures)"
+
+    effects:
+      comfortable: |
+        State can Monitor, Investigate, AND Suppress.
+        Player actions are likely to be detected.
+        Low-profile operations required.
+
+      stressed: |
+        State must choose between actions.
+        Some threats go unaddressed.
+        Strategic windows appear.
+
+      saturated: |
+        State enters REACTIVE mode.
+        Only responds to highest-visibility threats.
+        Invisible operations proceed unopposed.
+
+      overwhelmed: |
+        State loses coherent response.
+        QRF becomes only option.
+        ALL non-QRF territories become blind spots.
+
+  the_bait:
+    name: "Creating Noise"
+    description: "Cheap, visible actions that consume State attention"
+
+    noise_generators:
+      - name: "Spontaneous Riots"
+        cost: "Low SL, Low Coherence"
+        visibility: "HIGH"
+        state_response: "Must Suppress (3 Θ)"
+        strategic_value: "Zero (but consumes State resources)"
+
+      - name: "Propaganda Campaigns"
+        cost: "Low CL"
+        visibility: "MEDIUM"
+        state_response: "May Investigate (2 Θ)"
+        strategic_value: "Some (consciousness raised)"
+
+      - name: "Wildcat Strikes"
+        cost: "Medium SL"
+        visibility: "HIGH"
+        state_response: "Must Suppress or economy suffers"
+        strategic_value: "Medium (economic damage)"
+
+  the_switch:
+    name: "Silent Operations"
+    description: "Strategic actions executed while State is distracted"
+
+    silent_operations:
+      - name: "Theory Development"
+        visibility: "ZERO (internal)"
+        state_detection: "Impossible without infiltration"
+        value: "Increases Cohesion, trains future Cadre"
+
+      - name: "Logistics Building"
+        visibility: "LOW"
+        state_detection: "Requires Investigation, not Monitor"
+        value: "Prepares infrastructure for future operations"
+
+      - name: "Safe House Establishment"
+        visibility: "ZERO"
+        state_detection: "Only through informants"
+        value: "Provides Extraction routes, reduces QRF damage"
+
+      - name: "Cell Division"
+        visibility: "ZERO"
+        state_detection: "Impossible"
+        value: "Distributes risk, limits Investigation damage"
+
+      - name: "Targeted Recruitment"
+        visibility: "LOW"
+        state_detection: "Requires Monitor on specific territory"
+        value: "Quality over quantity (Cadre generation)"
+
+  optimal_pattern:
+    description: "The Matador Strategy"
+    phases:
+      phase_1_provocation:
+        action: "Create 3+ visible riots in peripheral territories"
+        state_response: "State allocates Suppress to each (9+ Θ consumed)"
+        result: "State saturated or must choose which riots to ignore"
+
+      phase_2_misdirection:
+        action: "Stage visible 'attack preparation' on Circulation node"
+        state_response: "State commits remaining Threads to defense"
+        result: "State fully committed to visible threats"
+
+      phase_3_execution:
+        action: "Execute actual objective in unmonitored territory"
+        examples:
+          - "Surgical strike on true target (Extraction node)"
+          - "Leadership meeting in safe territory"
+          - "Mass recruitment in sympathetic region"
+        result: "Strategic objective achieved without State interference"
+
+# =============================================================================
+# AI LOGIC (The Blind Giant)
+# =============================================================================
+
+ai_logic:
+  name: "The Blind Giant"
+  description: |
+    The State AI is REACTIVE and VISIBILITY-BIASED.
+    It cannot anticipate. It can only respond to what it sees.
+    This is the fundamental asymmetry the player exploits.
+
+  core_behavior:
+    reactive_doctrine: |
+      The State AI uses a simple priority queue:
+      1. Sort all visible threats by (Heat * Visibility)
+      2. Allocate Threads to highest threats first
+      3. Stop when Threads exhausted
+
+      The State CANNOT:
+      - Anticipate future actions
+      - Evaluate strategic importance (only visibility)
+      - Sacrifice short-term for long-term
+      - Accept visible threats going unaddressed
+
+    visibility_bias: |
+      The State prioritizes:
+      - HIGH Agitation, HIGH Heat (riots, protests)
+      - VISIBLE organization activity
+      - Recent public attacks
+
+      The State IGNORES:
+      - LOW Agitation, HIGH Danger (disciplined Party)
+      - Internal organization building
+      - Long-term strategic preparation
+
+      "The State sees the fire, not the arsonist with a plan."
+
+    compulsion_loop: |
+      The State AI is COMPELLED to respond to visible threats.
+      It cannot strategically ignore a riot to hunt Cadre.
+      Politicians demand visible action. Media demands response.
+
+      This is the "Democratic Vulnerability":
+      Even authoritarian states must maintain appearance of control.
+
+  priority_algorithm:
+    pseudocode: |
+      def allocate_threads(state: StateAI, world: WorldState) -> List[Action]:
+          threats = get_visible_threats(world)
+          threats.sort(key=lambda t: t.heat * t.visibility, reverse=True)
+
+          actions = []
+          remaining_threads = state.threads
+
+          for threat in threats:
+              if remaining_threads <= 0:
+                  break
+
+              response = select_response(threat, remaining_threads)
+              if response.thread_cost <= remaining_threads:
+                  actions.append(response)
+                  remaining_threads -= response.thread_cost
+
+          return actions
+
+    response_selection: |
+      For each threat, State selects cheapest adequate response:
+      - Heat < 0.3: Monitor (1 Θ)
+      - Heat 0.3-0.6: Investigate (2 Θ)
+      - Heat > 0.6: Suppress (3 Θ)
+      - Active Attack: QRF Strike (All Θ)
+
+  exploitable_weaknesses:
+    visibility_blindness:
+      weakness: "Cannot detect low-visibility, high-importance actions"
+      exploit: "Build power quietly while creating visible distractions"
+
+    reactive_only:
+      weakness: "Cannot anticipate or prevent future actions"
+      exploit: "Long-term planning is invisible to State"
+
+    compulsion_to_respond:
+      weakness: "Must respond to visible threats (political pressure)"
+      exploit: "Create threats faster than State can respond"
+
+    qrf_tunnel_vision:
+      weakness: "QRF Strike consumes ALL attention"
+      exploit: "Bait QRF with expendable asset, strike elsewhere"
+
+    thread_exhaustion:
+      weakness: "Finite Threads per tick"
+      exploit: "Saturation attacks (DDoS)"
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  vanguard_economy:
+    connection: "Noise generation consumes SL; silent ops consume CL"
+    cross_reference: "ai-docs/vanguard-economy.yaml"
+    effects: |
+      - Riots (noise) require SL but not high Coherence
+      - Strategic ops require CL and Coherence
+      - Player must BALANCE noise generation vs. strategic capacity
+      - "Cheap riots" are not actually free (SL cost)
+
+  kinetic_warfare:
+    connection: "State QRF is the defensive kinetic response"
+    cross_reference: "ai-docs/kinetic-warfare.yaml"
+    effects: |
+      - QRF Strike is the State's kinetic action
+      - Player kinetic actions trigger State attention
+      - Extraction attacks: Low visibility, State may miss
+      - Circulation attacks: HIGH visibility, always detected
+      - Realization attacks: Maximum response (instant QRF)
+
+  the_wire:
+    connection: "State expansions generate narrative events"
+    cross_reference: "ai-docs/gramscian-wire-vision.yaml"
+    effects: |
+      - Surveillance Act: "Civil liberties" narrative opportunity
+      - Algorithmic Policing: "Bias" narrative opportunity
+      - Martial Law: "Mask off" narrative opportunity
+      - Each expansion is a Wire battle the player can win
+
+  cohesion_system:
+    connection: "QRF damage affects organizational Cohesion"
+    cross_reference: "ai-docs/cohesion-mechanic.yaml"
+    effects: |
+      - Successful QRF Strike: Cohesion -0.3
+      - Cadre casualties: Cadre_Ratio drops
+      - Distributed cells limit QRF damage
+      - High Cohesion = better extraction planning
+
+  survival_calculus:
+    connection: "State Repression affects P(S|R)"
+    cross_reference: "src/babylon/systems/formulas.py"
+    effects: |
+      P(S|R) = Organization / Repression
+
+      State actions increase R:
+      - Monitor: No change
+      - Investigate: +0.05 R locally
+      - Suppress: +0.3 R in territory
+      - QRF Strike: +0.5 R if visible
+
+      But State expansions affect both R AND consciousness:
+      - Surveillance raises Agitation (more potential R)
+      - Algorithmic Policing drops Legitimacy (more potential organizers)
+
+  imperial_circuit:
+    connection: "Emergency Powers cripples extraction"
+    cross_reference: "src/babylon/engine/systems/economic.py"
+    effects: |
+      Martial Law reduces Imperial Rent Efficiency by 50%:
+      - Supply chains disrupted
+      - Workers cannot commute
+      - Capital flight begins
+      - State budget crisis
+
+      This creates opportunity for ACCELERATIONIST play:
+      Force Martial Law → Economy crashes → Rupture conditions
+
+# =============================================================================
+# POLICE STATE SPIRAL EXAMPLE
+# =============================================================================
+
+police_state_spiral_example:
+  title: "The Panopticon Drowns"
+  context: |
+    Demonstrates the feedback loop where State surveillance expansions
+    increase revolutionary potential until the system collapses.
+
+  initial_state:
+    threads: 2
+    legitimacy: 0.8
+    agitation_floor: 0.0
+    rent_efficiency: 1.0
+    player_organization:
+      cadre: 100
+      sympathizers: 2000
+      coherence: 0.4
+
+  phase_1_initial_operations:
+    tick: 1-10
+    player_action: |
+      Player conducts low-visibility organizing.
+      Occasional visible protests to probe State capacity.
+
+    state_response: |
+      State Monitors high-heat territories.
+      Suppresses occasional protest.
+      Capacity seems adequate.
+
+    result:
+      cadre: 200
+      sympathizers: 5000
+      state_threads: 2
+
+  phase_2_escalation:
+    tick: 11-20
+    player_action: |
+      Player attacks Extraction Node (low visibility).
+      Simultaneously stages 3 protests (high visibility).
+
+    state_response: |
+      State saturated (3 Suppress = 9 Θ, only has 2).
+      Ignores 2 protests, Suppresses 1.
+      Extraction attack succeeds undetected.
+
+    state_decision: |
+      "We need more surveillance. Pass the Mass Surveillance Act."
+
+    result:
+      state_threads: 4  # +2 from Surveillance Act
+      agitation_floor: 0.1  # Permanent debuff
+      new_sympathizers: "+1000 (privacy anger)"
+
+  phase_3_spiral_begins:
+    tick: 21-30
+    player_action: |
+      Player exploits agitation floor.
+      Even "quiet" territories now have base 0.1 Agitation.
+      Riots become spontaneous in some areas.
+
+    state_response: |
+      State has 4 Threads but faces 5+ simultaneous incidents.
+      Still saturated. Suppresses highest priority.
+      Cannot Investigate player organization.
+
+    state_decision: |
+      "The algorithm will help us prioritize. Deploy Algorithmic Policing."
+
+    result:
+      state_threads: "4 + 1 Free Monitor"
+      legitimacy: 0.6  # -0.2 from Algorithmic Policing
+      new_sympathizers: "+2000 (false positive victims)"
+
+  phase_4_legitimacy_collapse:
+    tick: 31-40
+    player_action: |
+      Player openly recruits from middle class.
+      "The algorithm flagged me for reading the news."
+      Consciousness rises among Labor Aristocracy.
+
+    world_state: |
+      Spontaneous riots now outpace State response.
+      Agitation floor + low legitimacy = constant unrest.
+      State is Suppressing 2-3 territories per tick.
+
+    state_observation: |
+      "We have cameras everywhere but more fires than ever."
+
+    result:
+      player_sympathizers: 20000
+      player_cadre: 500
+      legitimacy: 0.5
+      state_mood: "Desperate"
+
+  phase_5_emergency:
+    tick: 41
+    trigger: |
+      Player attacks Realization Node (Arms Factory).
+      Attack fails, but visibility is maximum.
+
+    state_decision: |
+      "Declare Emergency Powers. We need to crush this now."
+
+    immediate_effects:
+      threads: 8  # Doubled
+      rent_efficiency: 0.5  # Economy crashes
+      legitimacy: 0.2  # Tanks in streets
+
+    state_action: |
+      Massive QRF Strike on visible player cells.
+      20% of Cadre captured.
+      Cohesion drops to 0.2.
+
+    player_response: |
+      Player anticipated this.
+      Leadership was in safe houses (invisible).
+      Core organization survives.
+
+  phase_6_aftermath:
+    tick: 42-50
+    world_state: |
+      Martial Law in effect.
+      Economy collapsing (50% rent efficiency).
+      Supply chains failing.
+      Food prices spike.
+      Workers cannot afford subsistence.
+
+    population_response: |
+      Consciousness SPIKES across all classes.
+      "They crashed the economy to hunt protesters."
+      Even Labor Aristocracy turns against State.
+      Survival Calculus shifts: P(S|A) dropping for everyone.
+
+    player_opportunity: |
+      RUPTURE CONDITIONS APPROACHING.
+      The player has LESS organization than before.
+      But the MATERIAL CONDITIONS for revolution are now present.
+
+  phase_7_rupture:
+    tick: 55
+    trigger: |
+      Martial Law ends. Threads return to 4.
+      But economy only at 60% recovery.
+      Legitimacy permanently at 0.2.
+      Agitation floor at 0.15.
+
+    result: |
+      The State "won" every battle.
+      Captured Cadre. Crushed visible riots.
+      Deployed maximum force.
+
+      BUT:
+      - Economy is crippled
+      - Legitimacy is destroyed
+      - Agitation is permanently elevated
+      - P(S|A) has crossed below P(S|R) for millions
+
+      RUPTURE EVENT TRIGGERS.
+
+      The State's victory WAS its defeat.
+      The Panopticon drowned in its own data.
+
+  lesson: |
+    "The State has infinite eyes but finite processing.
+    Every expansion of vision expanded the revolution.
+    They saw everything. They understood nothing.
+    And in the end, there were too many fires to watch."
+
+# =============================================================================
+# GAME DEFINES CONSTANTS
+# =============================================================================
+
+game_defines:
+  section: "state_attention"
+  constants:
+    # Base threads
+    base_threads: 2
+    max_threads: 20
+
+    # Action costs
+    monitor_cost: 1
+    investigate_cost: 2
+    suppress_cost: 3
+    qrf_cost: "ALL"
+
+    # Expansion effects
+    surveillance_thread_bonus: 2
+    surveillance_agitation_floor: 0.1
+    algorithmic_legitimacy_cost: 0.2
+    emergency_thread_multiplier: 2.0
+    emergency_rent_efficiency: 0.5
+    emergency_duration: 5
+
+    # AI behavior
+    heat_visibility_weight: 1.0
+    min_response_threshold: 0.3
+    qrf_trigger_threshold: 0.9
+
+    # Saturation thresholds
+    saturation_stressed: 0.5
+    saturation_saturated: 1.0
+    saturation_overwhelmed: 2.0
+
+# =============================================================================
+# ENTITY SCHEMA
+# =============================================================================
+
+entity_schema:
+  state_attention:
+    location: "src/babylon/models/state.py"
+    schema: |
+      class StateAttention(BaseModel):
+          threads: int = 2
+          surveillance_acts: int = 0
+          algorithmic_systems: int = 0
+          emergency_active: bool = False
+          emergency_ticks_remaining: int = 0
+
+          @property
+          def effective_threads(self) -> int:
+              base = self.threads
+              if self.emergency_active:
+                  return base * 2
+              return base
+
+          @property
+          def agitation_floor(self) -> float:
+              return 0.1 * self.surveillance_acts + 0.05 * self.algorithmic_systems
+
+          @property
+          def legitimacy_modifier(self) -> float:
+              return -0.2 * self.algorithmic_systems - 0.3 * (1 if self.emergency_active else 0)
+
+  state_action:
+    location: "src/babylon/models/actions.py"
+    schema: |
+      class StateAction(BaseModel):
+          action_type: StateActionType
+          thread_cost: int
+          target_territory: Optional[str] = None
+          target_organization: Optional[str] = None
+
+          @classmethod
+          def monitor(cls, target: str) -> "StateAction":
+              return cls(action_type=StateActionType.MONITOR, thread_cost=1, target_territory=target)
+
+          @classmethod
+          def suppress(cls, target: str) -> "StateAction":
+              return cls(action_type=StateActionType.SUPPRESS, thread_cost=3, target_territory=target)
+
+# =============================================================================
+# IMPLEMENTATION CHECKLIST
+# =============================================================================
+
+implementation:
+  priority: "HIGH - Core opponent AI"
+  estimated_complexity: "HIGH - AI behavior, integration across systems"
+
+  checklist:
+    models:
+      - task: "Create StateAttention model"
+        file: "src/babylon/models/state.py"
+        status: "TODO"
+
+      - task: "Create StateAction model"
+        file: "src/babylon/models/actions.py"
+        status: "TODO"
+
+      - task: "Create StateActionType enum"
+        status: "TODO"
+
+    ai:
+      - task: "Create StateAI class"
+        file: "src/babylon/engine/ai/state_ai.py"
+        status: "TODO"
+
+      - task: "Implement priority queue allocation"
+        status: "TODO"
+
+      - task: "Implement expansion decision logic"
+        status: "TODO"
+
+    system:
+      - task: "Create PanopticonSystem class"
+        file: "src/babylon/engine/systems/panopticon.py"
+        status: "TODO"
+
+      - task: "Implement thread allocation per tick"
+        status: "TODO"
+
+      - task: "Implement saturation calculation"
+        status: "TODO"
+
+    integration:
+      - task: "Connect to Vanguard Economy (SL for noise)"
+        status: "TODO"
+
+      - task: "Connect to Kinetic Warfare (QRF)"
+        status: "TODO"
+
+      - task: "Connect to The Wire (expansion narratives)"
+        status: "TODO"
+
+      - task: "Connect to Imperial Circuit (Martial Law damage)"
+        status: "TODO"
+
+    tests:
+      - task: "Test thread allocation priority"
+        status: "TODO"
+
+      - task: "Test saturation mechanics"
+        status: "TODO"
+
+      - task: "Test expansion debuffs"
+        status: "TODO"
+
+      - task: "Test Police State Spiral"
+        status: "TODO"
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  related_specs:
+    - "ai-docs/vanguard-economy.yaml (Player resources)"
+    - "ai-docs/kinetic-warfare.yaml (QRF mechanics)"
+    - "ai-docs/gramscian-wire-vision.yaml (Narrative framing)"
+    - "ai-docs/cohesion-mechanic.yaml (QRF damage effects)"
+    - "ai-docs/strategy-layer.yaml (Player action costs)"
+  theoretical:
+    - "Tiqqun - The Cybernetic Hypothesis (2001)"
+    - "James C. Scott - Seeing Like a State (1998)"
+    - "Michel Foucault - Discipline and Punish (1975)"
+  implementation:
+    - "src/babylon/engine/ai/state_ai.py (StateAI)"
+    - "src/babylon/engine/systems/panopticon.py (PanopticonSystem)"
+    - "src/babylon/models/state.py (StateAttention)"

@@ -180,6 +180,7 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 | 2.5 | The Resource Economy | Cadre Labor, Sympathizer Labor, Reputation |
 | 2.6 | Kinetic Warfare | Asymmetric logistics, system disruption |
 | 2.7 | Multiple Scenarios | Historical scenarios, custom setups |
+| 2.8 | The Panopticon | State attention economy, surveillance costs |
 
 ### Slice 2.1: Demographic Resolution
 
@@ -254,6 +255,18 @@ The "Asymmetric Logistics Engine" - combat as system disruption:
 - **Integration:** Cohesion affects attack quality, Wire frames outcomes
 
 This is where the "Ultra-Left Trap" from the Strategy Layer becomes mechanically realized. Players learn that winning battles while losing hearts is the path to defeat.
+
+### Slice 2.8: The Panopticon
+
+**Spec:** `ai-docs/state-attention-economy.yaml`
+
+The "State Attention Economy" - enemy AI as information processing:
+- **Threads (Θ):** Integer limit of concurrent State operations per tick
+- **Expansion Costs:** Surveillance increases Agitation, Algorithms drop Legitimacy
+- **DDoS Strategy:** Saturate State attention with noise, execute in blind spots
+- **Police State Spiral:** More surveillance → more resistance → more surveillance
+
+This is where the enemy becomes exploitable. The State can see everything but process only fragments. The player wins by overwhelming cognition, not defeating force.
 
 ---
 

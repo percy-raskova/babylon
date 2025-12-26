@@ -1,0 +1,317 @@
+# Epoch Readiness Review
+# Critical analysis of Epoch 1 & 2 specifications
+# Date: 2025-12-26
+# Reviewer: Claude (Opus 4.5)
+# Purpose: Determine implementation readiness, identify gaps, recommend staging
+
+meta:
+  review_type: specification_audit
+  scope: [epoch_1, epoch_2]
+  verdict:
+    epoch_1: ready
+    epoch_2: ready_with_scope_reduction
+
+executive_summary: |
+  Epoch 1 is ready for completion with solid foundations.
+  Epoch 2 specifications are theoretically excellent but operationally over-scoped.
+  Recommend proceeding with Epoch 1 as-is, treating Epoch 2 as multiple sub-epochs.
+
+# ============================================================================
+# PART 1: STRENGTHS
+# ============================================================================
+
+strengths:
+
+  theoretical_coherence:
+    assessment: excellent
+    details:
+      - Mechanics model actual MLM-TW concepts, not arbitrary game rules
+      - Imperial Rent (Φ) as wealth extraction mechanism
+      - Survival Calculus (P(S|A) vs P(S|R)) as decision driver
+      - Consciousness propagation through SOLIDARITY edges
+      - Bifurcation into Revolution vs Fascism based on material conditions
+    value: Game teaches theory through systemic understanding
+
+  mathematical_foundation:
+    assessment: excellent
+    details:
+      - Every major system has explicit formulas
+      - "M_r = (1 - P(S|A)) × I_a × C_f for mass receptivity"
+      - "Thread allocation: Θ ∈ [0, 1] with defined actions"
+      - Doctrine advancement costs in Theoretical Labor (TL)
+    value: Avoids vibes-based design where mechanics are undefined until implementation
+
+  dialectical_contradictions:
+    assessment: excellent
+    details:
+      - Vanguard: Growth generates entropy; success breeds bureaucracy
+      - Doctrine: Advancement risks degeneration (PatSoc Pipeline, Movementism)
+      - State: Expansion fragments attention; Panopticon can overextend
+      - Player: Short-term acquiescence vs long-term revolution
+    value: Game teaches through systemic contradiction, not lectures
+
+  separation_of_concerns:
+    assessment: good
+    details:
+      - Epoch 1 (Demonstration) vs Epoch 2 (Game) is smart architecture
+      - Epoch 1 proves engine works passively
+      - Epoch 2 adds agency without rewriting core
+      - Systems communicate through EventBus, not direct coupling
+    value: Clean extension path for future development
+
+# ============================================================================
+# PART 2: CRITICAL CONCERNS
+# ============================================================================
+
+concerns:
+
+  scope_overload:
+    severity: high
+    slice_count: 11
+    risk_assessment:
+      - slice_2.1_demographics: { complexity: medium, risk: moderate }
+      - slice_2.2a_strategy: { complexity: high, risk: low }
+      - slice_2.2b_cohesion: { complexity: high, risk: high, note: "entropy/disorder is fuzzy" }
+      - slice_2.3_reactionary: { complexity: medium, risk: low }
+      - slice_2.5_wire: { complexity: very_high, risk: high, note: "narrative AI is hard" }
+      - slice_2.6_economy: { complexity: high, risk: moderate, note: "needs sink balance" }
+      - slice_2.7_kinetic: { complexity: very_high, risk: very_high, note: "combat is notoriously hard" }
+      - slice_2.8_doctrine: { complexity: very_high, risk: high, note: "8 trunks × N nodes × tags" }
+      - slice_2.9_panopticon: { complexity: high, risk: moderate, note: "needs AI decision logic" }
+      - slice_2.10_fog: { complexity: high, risk: high }
+    estimate: "6+ months minimum if all attempted simultaneously"
+    recommendation: Stage into sub-epochs
+
+  missing_player_onboarding:
+    severity: high
+    missing_elements:
+      - Tutorial sequence design
+      - Tooltip/help system specification
+      - Progressive complexity introduction
+      - First hour experience flow
+    question: "How does a new player learn Survival Calculus without reading Marxist theory?"
+    affected_slices: [1.5_dashboard, all_epoch_2]
+
+  balance_testing_framework:
+    severity: medium
+    observation: |
+      Many formulas contain tunable constants (RESISTANCE_SCALE=1.3, spark_probability_scale,
+      Thread thresholds) but no specification of target outcomes.
+    missing_targets:
+      - Target play duration (30 ticks? 100 ticks?)
+      - Victory probability targets (revolution succeeds 30%? 50%?)
+      - Crisis timing windows (tick 30-50 consistently?)
+    consequence: "Without targets, cannot validate if parameters are correct"
+
+  ui_ux_underspecified:
+    severity: medium
+    gaps:
+      - Doctrine Tree: "How is 8-trunk DAG with tag gates visualized?"
+      - Panopticon: "How does player see Thread allocation in real-time?"
+      - Fog of War: "How does Masked Data display in hostile territories?"
+      - Gramscian Wire: "What does narrative warfare look like on screen?"
+    observation: "Mechanical complexity vastly exceeds UI specification depth"
+
+  resource_economy_lacks_sinks:
+    severity: medium
+    observation: "Vanguard Economy specifies generation but limited consumption"
+    generation_specified:
+      - Sympathizers from successful actions
+      - Cadre from training and mentorship
+      - Reputation from achievements
+    consumption_unclear:
+      - What drains Sympathizers over time?
+      - What consumes Cadre beyond deployment?
+      - Does Reputation decay?
+    consequence: "Without sinks, economies inflate. By tick 100, player may have infinite resources."
+
+  state_ai_underspecified:
+    severity: medium
+    observation: "Panopticon has elegant Thread mechanics but decision logic is unclear"
+    questions:
+      - How does State decide where to allocate Threads?
+      - What triggers Mass Surveillance Act expansion?
+      - Is there a utility function? Random weighted selection?
+    summary: "Spec says WHAT State can do, not HOW it chooses"
+
+  doctrine_overcomplexity:
+    severity: medium
+    current_spec:
+      trunks: 8  # 4 main + 4 synthesis
+      nodes_per_trunk: variable
+      tag_types: 6
+      degeneration_paths: multiple_bidirectional
+      currency: Theoretical Labor (TL)
+    assessment: "Feature-complete tech tree system, excessive for MVP"
+    mvp_recommendation:
+      trunks: 2-3  # Scientific + one trap path
+      tag_types: 2-3
+      degeneration_paths: defer_to_epoch_2b
+
+# ============================================================================
+# PART 3: MISSING CRITICAL ELEMENTS
+# ============================================================================
+
+missing_elements:
+
+  save_load_system:
+    severity: high
+    note: "No specification for game state persistence"
+    questions:
+      - Can player save mid-game?
+      - Resume later?
+      - Multiple save slots?
+
+  performance_budget:
+    severity: medium
+    note: "No timing constraints on tick execution"
+    questions:
+      - What if tick takes 500ms? 5 seconds?
+      - Target framerate for UI updates?
+
+  error_recovery:
+    severity: medium
+    note: "No specification for invalid states"
+    scenarios:
+      - WorldState becomes invalid
+      - Graph becomes disconnected
+      - Division by zero in formula
+
+  accessibility:
+    severity: low  # for MVP
+    missing:
+      - Colorblind modes
+      - Screen reader support
+      - Alternative input methods
+
+  victory_loss_communication:
+    severity: medium
+    note: "Endgame (Slice 1.6) mentions detection but not communication"
+    questions:
+      - What does win screen say?
+      - What does loss screen say?
+      - How does player know WHY they won/lost?
+
+# ============================================================================
+# PART 4: RECOMMENDATIONS
+# ============================================================================
+
+recommendations:
+
+  epoch_1:
+    verdict: proceed_as_is
+    priority_fixes:
+      - Ensure 4-node Imperial Circuit runs to crisis (tick 30-50)
+      - Make bifurcation (Revolution vs Fascism) visually obvious
+      - Add minimal endgame screens with outcome explanation
+
+  epoch_2_staging:
+    verdict: split_into_sub_epochs
+    proposed_structure:
+      epoch_2a_core_agency:
+        slices: [2.1_demographics, 2.2a_strategy, 2.6_economy]
+        focus: "Demographics + Strategy + Resources"
+        rationale: "Gives player meaningful actions within 2-3 slices"
+
+      epoch_2b_organization:
+        slices: [2.2b_cohesion, 2.3_reactionary, 2.8_doctrine_simplified]
+        focus: "Cohesion + Fascism + Doctrine MVP"
+        rationale: "Adds organizational complexity once basics work"
+
+      epoch_2c_information:
+        slices: [2.5_wire, 2.9_panopticon, 2.10_fog]
+        focus: "Wire + Panopticon + Fog"
+        rationale: "Adds information warfare as late-game depth"
+
+      epoch_2d_combat:
+        slices: [2.7_kinetic]
+        focus: "Kinetic Warfare"
+        rationale: "Combat is notoriously difficult, deserves dedicated focus"
+
+  specific_deferrals:
+    - element: "Full Doctrine Tree (8 trunks)"
+      defer_to: epoch_2b
+      reason: "Too complex for initial agency"
+
+    - element: "Degeneration Paths"
+      defer_to: epoch_2b
+      reason: "Requires tree to be stable first"
+
+    - element: "Gramscian Wire full system"
+      defer_to: epoch_2c
+      reason: "Narrative AI is hard"
+
+    - element: "Kinetic Warfare"
+      defer_to: epoch_2d
+      reason: "Combat systems need dedicated focus"
+
+    - element: "Fog of War masking"
+      defer_to: epoch_2c
+      reason: "Can start with simple vision"
+
+  additions_before_epoch_2:
+    - Balance targets document defining "good" gameplay numerically
+    - Tutorial outline for player learning sequence
+    - UI wireframes for complex systems
+    - State AI specification for Panopticon decisions
+    - Resource sink design to prevent inflation
+
+# ============================================================================
+# PART 5: PRIORITIZED ACTION ITEMS
+# ============================================================================
+
+action_items:
+  p0_critical:
+    - id: SCOPE-001
+      issue: "Epoch 2 scope overload"
+      action: "Split into 2A/2B/2C/2D sub-epochs"
+
+  p1_high:
+    - id: BALANCE-001
+      issue: "No balance targets"
+      action: "Define numerical success criteria for gameplay"
+
+    - id: AI-001
+      issue: "State AI logic undefined"
+      action: "Specify Panopticon decision algorithm"
+
+  p2_medium:
+    - id: UX-001
+      issue: "Tutorial design missing"
+      action: "Outline player learning sequence"
+
+    - id: ECON-001
+      issue: "Resource sinks missing"
+      action: "Add decay/consumption to economy"
+
+    - id: UI-001
+      issue: "UI wireframes missing"
+      action: "Visualize complex systems"
+
+  p3_low:
+    - id: DOCTRINE-001
+      issue: "Doctrine overcomplexity"
+      action: "Reduce to 2-3 trunks for MVP"
+
+    - id: PERSIST-001
+      issue: "Save/Load unspecified"
+      action: "Specify state persistence"
+
+    - id: ERROR-001
+      issue: "Error recovery unspecified"
+      action: "Handle invalid states gracefully"
+
+# ============================================================================
+# FINAL VERDICT
+# ============================================================================
+
+final_verdict:
+  epoch_1:
+    ready: true
+    action: "Complete Slices 1.4-1.6, tune 4-node circuit"
+
+  epoch_2:
+    ready: true
+    condition: "Not all at once"
+    action: "Begin with Epoch 2A (Demographics + Strategy + Economy)"
+    rationale: "Three slices give players meaningful agency without requiring all 11 systems"

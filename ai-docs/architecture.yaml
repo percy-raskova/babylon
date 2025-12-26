@@ -2,9 +2,10 @@
 # How the pieces fit together
 
 meta:
-  version: "3.4.0"
-  updated: "2025-12-14"
-  status: "Phase 3.4 in progress (1,926 tests, Narrative Bridge complete)"
+  version: "4.0.0"
+  updated: "2025-12-26"
+  status: "Epoch 1 → 2 Bridge architecture defined"
+  epoch_compatibility: "1 → 2 Bridge"
   related_docs:
     - "ai-docs/database-spec.yaml - SQLite schema and DDL"
     - "ai-docs/rag-architecture.yaml - ChromaDB collections"
@@ -76,6 +77,430 @@ core_architecture:
       current_status: "Observer + RAG complete, LLM integration pending (Sprint 3.3)"
 
 # =============================================================================
+# EPOCH 2 BRIDGE: THE DUAL PIPELINE
+# =============================================================================
+# APPROVED_ARCHITECTURE - Prepares for Epoch 2 (The Game) without breaking Epoch 1
+
+dual_pipeline:
+  name: "The Shadow Layer"
+  epoch_compatibility: "1 → 2 Bridge"
+  status: "APPROVED_ARCHITECTURE"
+  created: "2025-12-26"
+
+  principle: |
+    The current Debug UI is a "God View" connected directly to WorldState (Truth).
+    This MUST remain for Epoch 1 (The Demonstration) to function.
+
+    Epoch 2 (The Game) requires a PLAYER VIEW with Fog of War.
+    We achieve this by adding a SHADOW LAYER - NOT by refactoring the UI.
+
+    Two pipelines run in parallel:
+    - Pipeline A (Truth): Feeds the Debug UI (God View)
+    - Pipeline B (Subjectivity): Feeds the future Game UI (Player View)
+
+  constraint: |
+    WorldState is ALWAYS the Source of Truth.
+    PlayerShadowState is ALWAYS a derivative view.
+    The Shadow may contain stale, approximate, or FALSIFIED data.
+    The Truth never lies; the Shadow may deceive.
+
+  pipelines:
+    pipeline_a_truth:
+      name: "Pipeline A: Truth (God View)"
+      description: "The existing Epoch 1 architecture - unchanged"
+      flow: |
+        SimulationEngine
+             │
+             ▼
+         WorldState (Source of Truth)
+             │
+             ▼
+         Debug UI (God View)
+      characteristics:
+        accuracy: "100% - sees TRUE state of all attributes"
+        latency: "0 - instant access to current tick"
+        masking: "None - no fog of war"
+        purpose: "Development, debugging, demonstration"
+      implementation:
+        existing: true
+        changes_required: "None - preserve exactly as-is"
+
+    pipeline_b_subjectivity:
+      name: "Pipeline B: Subjectivity (Player View)"
+      description: "The Epoch 2 extension - new infrastructure"
+      flow: |
+        SimulationEngine
+             │
+             ▼
+         WorldState (Source of Truth)
+             │
+             ▼
+         FogOfWarSystem (Filter)
+             │
+             ▼
+         PlayerShadowState (Subjective View)
+             │
+             ▼
+         Game UI (Player View) [FUTURE]
+      characteristics:
+        accuracy: "Variable - depends on Mass_Receptivity"
+        latency: "May be stale - intel decays over time"
+        masking: "Yes - Desert territories show FALSIFIED data"
+        purpose: "Gameplay with fog of war"
+      implementation:
+        existing: false
+        spec: "ai-docs/fog-of-war.yaml"
+        new_components:
+          - "FogOfWarSystem (filters WorldState → PlayerShadowState)"
+          - "PlayerShadowState (subjective snapshot)"
+          - "IntelligenceSystem (calculates Mass_Receptivity, Intel_Confidence)"
+
+  diagram: |
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │                         THE DUAL PIPELINE                               │
+    │                    (Epoch 1 → 2 Bridge Architecture)                    │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+    ┌──────────────────┐
+    │ SimulationEngine │
+    │   (run_tick())   │
+    └────────┬─────────┘
+             │
+             ▼
+    ┌──────────────────┐
+    │   WorldState     │◄───────────────────────────────────────┐
+    │ (Source of Truth)│                                        │
+    │                  │   IMMUTABLE • ACCURATE • CANONICAL     │
+    └────────┬─────────┘                                        │
+             │                                                  │
+             ├─────────────────────────────────────┐            │
+             │                                     │            │
+             ▼                                     ▼            │
+    ┌──────────────────┐                  ┌──────────────────┐  │
+    │  PIPELINE A      │                  │  PIPELINE B      │  │
+    │  (Truth)         │                  │  (Subjectivity)  │  │
+    │                  │                  │                  │  │
+    │  WorldState      │                  │  FogOfWarSystem  │  │
+    │       │          │                  │       │          │  │
+    │       ▼          │                  │       ▼          │  │
+    │  Debug UI        │                  │ PlayerShadow-    │  │
+    │  (God View)      │                  │ State            │  │
+    │                  │                  │       │          │  │
+    │  EPOCH 1         │                  │       ▼          │  │
+    │  PRESERVED       │                  │  Game UI         │  │
+    │                  │                  │  (Player View)   │  │
+    │                  │                  │                  │  │
+    │                  │                  │  EPOCH 2         │  │
+    │                  │                  │  NEW             │  │
+    └──────────────────┘                  └──────────────────┘  │
+                                                                │
+    The Debug UI ALWAYS reads from WorldState (Truth).          │
+    The Game UI ALWAYS reads from PlayerShadowState (Shadow).   │
+    Shadow is DERIVED from Truth, never the reverse.────────────┘
+
+  player_shadow_state:
+    name: "PlayerShadowState"
+    purpose: "Subjective view of the world from player's perspective"
+    characteristics:
+      derivative: "Always generated FROM WorldState, never independent"
+      mutable: "Can be stale (intel decay), approximate (Mud), or FALSE (Desert)"
+      per_territory: "Each territory has its own Intel_Confidence"
+
+    data_quality_states:
+      water:
+        condition: "Mass_Receptivity >= 0.8"
+        intel_confidence: "0.9-1.0"
+        data: "TRUE - matches WorldState"
+        description: "Base area - masses are your eyes"
+
+      mud:
+        condition: "0.2 <= Mass_Receptivity < 0.8"
+        intel_confidence: "0.4-0.7"
+        data: "APPROXIMATE - ±0.2 margin of error"
+        description: "Contested - partial information"
+
+      desert:
+        condition: "Mass_Receptivity < 0.2"
+        intel_confidence: "0.1-0.3"
+        data: "MASKED - may be FALSIFIED"
+        description: "Hostile - locals deceive you"
+
+    generation_process:
+      trigger: "After each tick, or on demand"
+      steps:
+        - "1. Read WorldState (Truth)"
+        - "2. For each territory, calculate Mass_Receptivity"
+        - "3. For each territory, calculate Intel_Confidence"
+        - "4. For Desert territories, apply MASKING (generate plausible false data)"
+        - "5. For Mud territories, apply APPROXIMATION (add noise)"
+        - "6. Store result as PlayerShadowState"
+
+    integration_with_debug_ui:
+      principle: "Debug UI displays BOTH states for development"
+      display:
+        - "Left panel: WorldState (Truth) - always accurate"
+        - "Right panel: PlayerShadowState (Shadow) - what player would see"
+        - "Diff highlight: Show which values are masked/approximate"
+      benefit: "Developers can verify fog of war is working correctly"
+
+  fog_of_war_system:
+    name: "FogOfWarSystem"
+    type: "Observer System (read-only on WorldState)"
+    spec: "ai-docs/fog-of-war.yaml"
+    responsibilities:
+      - "Calculate Mass_Receptivity per territory"
+      - "Calculate Intel_Confidence per territory"
+      - "Generate PlayerShadowState from WorldState"
+      - "Apply masking for Desert territories"
+      - "Apply approximation for Mud territories"
+      - "Track intel decay over time"
+
+    does_not_modify: "WorldState (Truth is immutable)"
+    produces: "PlayerShadowState (new object each tick)"
+
+  implementation_notes:
+    phase_1:
+      name: "Infrastructure Only"
+      scope: "Add FogOfWarSystem and PlayerShadowState models"
+      ui_changes: "None - Debug UI unchanged"
+      purpose: "Prepare backend for Epoch 2"
+
+    phase_2:
+      name: "Debug Integration"
+      scope: "Add Shadow display to Debug UI (side-by-side comparison)"
+      ui_changes: "Add optional Shadow panel"
+      purpose: "Verify fog of war calculations"
+
+    phase_3:
+      name: "Game UI"
+      scope: "Build separate Game UI that reads from PlayerShadowState"
+      ui_changes: "New UI entirely"
+      purpose: "Epoch 2 player experience"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: DATA PERSISTENCE STRATEGY
+# =============================================================================
+# How Triple-Layer Traits are stored without schema migrations
+
+trait_persistence:
+  name: "Triple-Layer Trait Persistence"
+  status: "APPROVED_ARCHITECTURE"
+  epoch_compatibility: "1 → 2 Bridge"
+  created: "2025-12-26"
+
+  principle: |
+    The Triple-Layer Trait System (flags, modifiers, properties) must be
+    persisted WITHOUT requiring schema migrations. We achieve this by
+    storing all three layers as JSON/JSONB in a single column.
+
+  storage_strategy:
+    sqlite:
+      column: "traits_json TEXT DEFAULT '{}'"
+      format: |
+        {
+          "flags": ["URBAN", "HAS_CADRE", "STRIKE_READY"],
+          "modifiers": {
+            "chauvinism": 0.78,
+            "entitlement": 0.62,
+            "volatility": 0.45
+          },
+          "properties": {
+            "custom_name": "Oakland Proletariat",
+            "doctrine_alignment": "insurrectionist"
+          }
+        }
+
+    postgresql:
+      column: "traits JSONB DEFAULT '{}'"
+      note: "JSONB allows indexed queries on trait contents"
+
+  query_patterns:
+    sqlite:
+      find_by_flag: |
+        SELECT * FROM social_classes
+        WHERE json_extract(traits_json, '$.flags') LIKE '%HAS_CADRE%';
+
+      find_by_modifier_threshold: |
+        SELECT * FROM social_classes
+        WHERE CAST(json_extract(traits_json, '$.modifiers.chauvinism') AS REAL) > 0.5;
+
+      find_by_property: |
+        SELECT * FROM territories
+        WHERE json_extract(traits_json, '$.properties.doctrine_alignment') = 'insurrectionist';
+
+    postgresql:
+      find_by_flag: |
+        SELECT * FROM social_classes
+        WHERE traits->'flags' ? 'HAS_CADRE';
+
+      find_by_modifier_threshold: |
+        SELECT * FROM social_classes
+        WHERE (traits->'modifiers'->>'chauvinism')::float > 0.5;
+
+      find_by_property: |
+        SELECT * FROM territories
+        WHERE traits->'properties'->>'doctrine_alignment' = 'insurrectionist';
+
+  pydantic_integration:
+    model_definition: |
+      class BaseEntity(BaseModel):
+          id: str
+          name: str
+          # ... existing fields ...
+
+          # Triple-Layer Traits
+          flags: Set[str] = Field(default_factory=set)
+          modifiers: Dict[str, float] = Field(default_factory=dict)
+          properties: Dict[str, Any] = Field(default_factory=dict)
+
+    serialization: |
+      # Pydantic handles JSON serialization automatically
+      entity.model_dump_json()  # Includes flags, modifiers, properties
+
+      # For database storage, we may want just the traits
+      traits_json = json.dumps({
+          "flags": list(entity.flags),
+          "modifiers": entity.modifiers,
+          "properties": entity.properties
+      })
+
+    hydration: |
+      # When loading from database
+      traits_data = json.loads(row.traits_json)
+      entity = SocialClass(
+          id=row.id,
+          name=row.name,
+          flags=set(traits_data.get("flags", [])),
+          modifiers=traits_data.get("modifiers", {}),
+          properties=traits_data.get("properties", {})
+      )
+
+  migration_strategy:
+    existing_entities: "Get empty flags={}, modifiers={}, properties={}"
+    backward_compatible: true
+    no_schema_changes: "traits_json column is additive, not replacement"
+    rollback: "Simply ignore traits_json column if reverting to Epoch 1"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: DEBUG UI PATTERNS (GOD VIEW)
+# =============================================================================
+# How the Debug Dashboard displays Triple-Layer Traits
+
+debug_ui_patterns:
+  name: "Generic Trait Inspector"
+  status: "APPROVED_ARCHITECTURE"
+  epoch_compatibility: "1 → 2 Bridge"
+  created: "2025-12-26"
+
+  principle: |
+    The Debug Dashboard (God View) must display Triple-Layer Traits in a way
+    that is:
+    1. Visually distinct per layer type
+    2. Editable for testing
+    3. Filterable for debugging
+    4. Consistent across all entity types
+
+  component_specification:
+    flags_display:
+      component_name: "FlagBadges"
+      render_as: "Horizontal row of colored chips/badges"
+      styling:
+        background: "Semi-transparent colored pill"
+        text: "Uppercase, monospace font"
+        colors:
+          identity: "Blue (URBAN, RURAL, LABOR_ARISTOCRACY)"
+          state: "Green (HAS_CADRE, STRIKE_READY)"
+          warning: "Yellow (DEFECTION_RISK, FASCIST_DRIFT)"
+          fog_of_war: "Red (MASKED, HOSTILE, STALE)"
+      interaction:
+        click: "Toggle flag on/off (for testing)"
+        right_click: "Filter view to entities with this flag"
+      example_render: "[URBAN] [HAS_CADRE] [STRIKE_READY]"
+
+    modifiers_display:
+      component_name: "ModifierBars"
+      render_as: "Vertical list of progress bars with values"
+      styling:
+        layout: "Label (left-aligned) | Bar (center) | Value (right-aligned)"
+        bar_fill: "Gradient based on value (green → yellow → red)"
+        value_format: "2 decimal places"
+        font: "Monospace for alignment"
+      color_coding:
+        low: "Green (0.0 - 0.3)"
+        medium: "Yellow (0.3 - 0.7)"
+        high: "Red (0.7 - 1.0)"
+        unbounded: "Purple (values > 1.0)"
+      interaction:
+        click: "Open inline editor for value"
+        drag: "Adjust value by dragging bar"
+      example_render: |
+        chauvinism:        ████████░░ 0.78
+        entitlement:       ██████░░░░ 0.62
+        volatility:        ████░░░░░░ 0.45
+        cadre_discipline:  ███████░░░ 0.71
+
+    properties_display:
+      component_name: "PropertyList"
+      render_as: "Collapsible key-value list"
+      styling:
+        layout: "Key: Value (monospace)"
+        key_style: "Bold, muted color"
+        value_style: "Normal weight, syntax highlighting for types"
+        nested: "Indent + collapse arrow for nested objects"
+      interaction:
+        click_key: "Copy key to clipboard"
+        click_value: "Open inline editor"
+        collapse: "Toggle visibility of nested content"
+      example_render: |
+        ▼ properties
+          custom_name: "Oakland Proletariat"
+          doctrine_alignment: "insurrectionist"
+          last_action_tick: 42
+
+  layout_specification:
+    entity_detail_panel:
+      location: "Right sidebar of Debug Dashboard"
+      sections:
+        - "Header: Entity ID, Name, Type"
+        - "Core Fields: wealth, ideology, organization (existing)"
+        - "FLAGS: FlagBadges component"
+        - "MODIFIERS: ModifierBars component"
+        - "PROPERTIES: PropertyList component"
+      collapsible: true
+      default_state: "FLAGS and MODIFIERS expanded, PROPERTIES collapsed"
+
+    diagram: |
+      ┌─────────────────────────────────────────────────┐
+      │ Entity: Oakland Proletariat (C_001)             │
+      │ Type: SocialClass | Role: Proletariat           │
+      ├─────────────────────────────────────────────────┤
+      │ CORE FIELDS:                                    │
+      │   wealth: 0.45    ideology: -0.23    org: 0.67  │
+      ├─────────────────────────────────────────────────┤
+      │ FLAGS:                                          │
+      │   [URBAN] [HAS_CADRE] [STRIKE_READY]           │
+      ├─────────────────────────────────────────────────┤
+      │ MODIFIERS:                                      │
+      │   chauvinism:        ████████░░ 0.78           │
+      │   entitlement:       ██████░░░░ 0.62           │
+      │   volatility:        ████░░░░░░ 0.45           │
+      │   cadre_discipline:  ███████░░░ 0.71           │
+      ├─────────────────────────────────────────────────┤
+      │ ▶ PROPERTIES (click to expand)                  │
+      └─────────────────────────────────────────────────┘
+
+  filtering_capability:
+    purpose: "Allow filtering entity list by trait values"
+    filter_types:
+      by_flag: "Show entities that have/don't have specific flag"
+      by_modifier_range: "Show entities where modifier is in range"
+      by_property_value: "Show entities with specific property value"
+    example_filters:
+      - "flags contains DEFECTION_RISK"
+      - "modifiers.chauvinism > 0.5"
+      - "properties.doctrine_alignment == 'insurrectionist'"
+
+# =============================================================================
 # DIRECTORY STRUCTURE
 # =============================================================================
 
@@ -104,13 +529,17 @@ directory_map:
         - "history_formatter.py: format_class_struggle_history()"
       subdirs:
         systems/:
-          purpose: "Modular System implementations"
+          purpose: "Modular System implementations (8 Systems)"
           files:
             - "protocol.py: System protocol with step(graph, services, context)"
-            - "economic.py: ImperialRentSystem"
-            - "ideology.py: ConsciousnessSystem"
-            - "survival.py: SurvivalSystem"
-            - "contradiction.py: ContradictionSystem"
+            - "economic.py: ImperialRentSystem - wealth extraction via imperial rent"
+            - "solidarity.py: SolidaritySystem - consciousness transmission via SOLIDARITY edges"
+            - "ideology.py: ConsciousnessSystem - ideology drift & bifurcation"
+            - "survival.py: SurvivalSystem - P(S|A), P(S|R) calculations"
+            - "struggle.py: StruggleSystem - Agency Layer (George Floyd Dynamic)"
+            - "contradiction.py: ContradictionSystem - tension/rupture dynamics"
+            - "territory.py: TerritorySystem - heat, eviction, carceral geography"
+            - "event_template.py: EventTemplateSystem - structured event templates"
         history/:
           purpose: "State persistence and undo/redo"
           files:

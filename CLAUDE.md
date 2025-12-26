@@ -160,7 +160,7 @@ SimulationEngine.run_tick(graph, services, context)
 **Key Components**:
 - `src/babylon/engine/simulation_engine.py` - Orchestrates Systems
 - `src/babylon/engine/services.py` - ServiceContainer (DI container)
-- `src/babylon/engine/event_bus.py` - Publish/subscribe events (9 EventTypes)
+- `src/babylon/engine/event_bus.py` - Publish/subscribe events (11 EventTypes)
 - `src/babylon/engine/formula_registry.py` - 12 hot-swappable formulas
 - `src/babylon/engine/simulation.py` - Stateful facade for multi-tick runs
 - `src/babylon/engine/factories.py` - `create_proletariat()`, `create_bourgeoisie()`

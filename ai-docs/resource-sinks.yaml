@@ -1,0 +1,390 @@
+# Resource Sinks Specification
+# Decay and Consumption for Vanguard Economy
+#
+# "Without sinks, economies inflate. By tick 100, player has infinite resources."
+# - Epoch Readiness Review (ECON-001)
+#
+# This document specifies how resources are CONSUMED, not just generated.
+# A healthy economy has balanced sources and sinks.
+
+meta:
+  epoch: 2
+  sub_epoch: "2A"
+  created: "2025-12-26"
+  purpose: "Define resource consumption mechanics to prevent inflation"
+  issue_id: "ECON-001"
+  status: "SPEC_COMPLETE"
+  companion_spec: "ai-docs/vanguard-economy.yaml"
+
+# =============================================================================
+# DESIGN PHILOSOPHY
+# =============================================================================
+
+philosophy:
+  core_principle: |
+    Resources must be SPENT to be meaningful. Accumulation without expenditure
+    is a sign of broken economy design. The player should always face trade-offs.
+
+  economic_balance:
+    sources: "Actions that generate resources"
+    sinks: "Actions/decay that consume resources"
+    goal: "Sinks slightly exceed sources at equilibrium, forcing active play"
+
+  anti_inflation_mechanisms:
+    - "Passive decay (resources rot over time)"
+    - "Maintenance costs (keeping what you have)"
+    - "Action costs (doing things)"
+    - "Crisis drains (emergencies consume reserves)"
+    - "Opportunity costs (choosing one thing means losing another)"
+
+# =============================================================================
+# CADRE LABOR (CL) SINKS
+# =============================================================================
+
+cadre_labor:
+  description: "Trained revolutionaries - quality resource"
+
+  # ---------------------------------------------------------------------------
+  # PASSIVE DECAY
+  # ---------------------------------------------------------------------------
+  passive_decay:
+    burnout:
+      rate: 0.02  # 2% per tick
+      description: "Cadre burn out from sustained effort"
+      prevention: "Rest actions, rotation, care infrastructure"
+
+    defection:
+      base_rate: 0.01  # 1% per tick
+      modifiers:
+        low_morale: "+0.02 if morale < 0.3"
+        state_pressure: "+0.01 per Thread on organization"
+        better_offers: "+0.02 if State offers amnesty"
+      description: "Cadre leave for various reasons"
+
+    death_capture:
+      base_rate: 0.005  # 0.5% per tick
+      modifiers:
+        kinetic_operations: "+0.05 during combat"
+        state_suppression: "+0.02 under active suppression"
+      description: "Cadre lost to State action"
+
+  # ---------------------------------------------------------------------------
+  # ACTION COSTS
+  # ---------------------------------------------------------------------------
+  action_costs:
+    training:
+      cost: 2  # CL to train new cadre
+      description: "Cadre train cadre - investment required"
+
+    high_risk_operations:
+      cost: "1-5 CL depending on operation"
+      risk: "May lose cadre on failure"
+      examples:
+        infiltration: 2
+        sabotage: 3
+        armed_action: 5
+
+    leadership:
+      cost: 1  # Per 50 sympathizers
+      description: "Cadre required to lead mass actions"
+      formula: "CL_required = ceil(SL_deployed / 50)"
+
+    rectification:
+      cost: "10% of current cadre"
+      description: "Internal struggle is costly"
+
+  # ---------------------------------------------------------------------------
+  # MAINTENANCE COSTS
+  # ---------------------------------------------------------------------------
+  maintenance:
+    security:
+      cost: 0.1  # Per cadre per tick under surveillance
+      description: "Evading State attention costs energy"
+
+    organization:
+      cost: 0.05  # Per cadre per tick
+      description: "Keeping structure requires continuous effort"
+      waiver: "Reduces if cohesion > 0.8"
+
+# =============================================================================
+# SYMPATHIZER LABOR (SL) SINKS
+# =============================================================================
+
+sympathizer_labor:
+  description: "Mass supporters - quantity resource"
+
+  # ---------------------------------------------------------------------------
+  # PASSIVE DECAY
+  # ---------------------------------------------------------------------------
+  passive_decay:
+    enthusiasm_decay:
+      rate: 0.03  # 3% per tick
+      description: "Enthusiasm fades without sustained engagement"
+      prevention: "Regular actions, visible victories"
+
+    life_pressures:
+      rate: 0.02  # 2% per tick
+      description: "People have jobs, families, survival needs"
+      note: "Higher in low P(S|A) populations"
+
+    repression_fear:
+      base_rate: 0.01
+      modifiers:
+        visible_arrests: "+0.03 per EXCESSIVE_FORCE event"
+        state_surveillance: "+0.01 per Thread in territory"
+      description: "Fear drives people away"
+
+    disillusionment:
+      trigger: "Major failure or broken promise"
+      loss: "10-30% of sympathizers"
+      description: "Failed actions lose supporters"
+
+  # ---------------------------------------------------------------------------
+  # ACTION COSTS
+  # ---------------------------------------------------------------------------
+  action_costs:
+    mass_actions:
+      rally: 20
+      protest: 30
+      strike: 50
+      occupation: 100
+      description: "Mobilizing people requires organization"
+
+    outreach:
+      leafleting: 5
+      door_knocking: 10
+      public_meeting: 15
+      description: "Reaching new people costs effort"
+
+    support_actions:
+      safe_house_network: 10  # Per tick to maintain
+      supply_logistics: 20   # Per territory
+      medical_support: 15    # Per kinetic action
+
+  # ---------------------------------------------------------------------------
+  # CONVERSION (SL → OTHER)
+  # ---------------------------------------------------------------------------
+  conversion:
+    to_cadre:
+      ratio: "10 SL → 1 CL candidate"
+      success_rate: 0.5
+      description: "Most candidates don't complete training"
+
+    to_material:
+      ratio: "Varies by campaign"
+      description: "Fundraising converts sympathy to resources"
+
+# =============================================================================
+# REPUTATION SINKS
+# =============================================================================
+
+reputation:
+  description: "Public standing - multiplier resource"
+
+  # ---------------------------------------------------------------------------
+  # PASSIVE DECAY
+  # ---------------------------------------------------------------------------
+  passive_decay:
+    attention_decay:
+      rate: 0.05  # 5% per tick
+      description: "Public memory is short"
+      prevention: "Continuous visible action"
+
+    scandal_risk:
+      probability: 0.02  # Per tick
+      effect: "-10% reputation"
+      description: "Random negative events"
+      mitigation: "Cohesion > 0.7 reduces probability"
+
+  # ---------------------------------------------------------------------------
+  # ACTIVE DRAINS
+  # ---------------------------------------------------------------------------
+  active_drains:
+    state_propaganda:
+      effect: "-0.02 per tick per Thread in SUPPRESS mode"
+      description: "State actively attacks reputation"
+
+    failure_publicity:
+      trigger: "Failed public action"
+      effect: "-5% to -20% depending on visibility"
+      description: "Failures are remembered"
+
+    blowback:
+      trigger: "Collateral damage in kinetic action"
+      effect: "-10% to -50% depending on severity"
+      description: "Violence against civilians destroys reputation"
+
+    internal_scandal:
+      trigger: "Cohesion < 0.4"
+      probability: 0.1  # Per tick
+      effect: "-15% reputation"
+      description: "Internal problems become public"
+
+  # ---------------------------------------------------------------------------
+  # SPENDING
+  # ---------------------------------------------------------------------------
+  spending:
+    media_campaign:
+      cost: 0.1  # Reputation to run campaign
+      description: "Spending social capital on messaging"
+
+    alliance_building:
+      cost: 0.05  # Per alliance maintained
+      description: "Relationships require investment"
+
+    damage_control:
+      cost: 0.2  # To mitigate scandal
+      description: "Fixing problems costs more than preventing them"
+
+# =============================================================================
+# THEORETICAL LABOR (TL) SINKS
+# =============================================================================
+
+theoretical_labor:
+  description: "Intellectual capacity for doctrine development"
+
+  # ---------------------------------------------------------------------------
+  # PASSIVE DECAY
+  # ---------------------------------------------------------------------------
+  passive_decay:
+    knowledge_atrophy:
+      rate: 0.02  # Per tick
+      description: "Theory forgotten without practice"
+      prevention: "Regular political education"
+
+    generational_loss:
+      trigger: "Cadre turnover > 20%"
+      effect: "-10% TL pool"
+      description: "New cadre don't know what old cadre knew"
+
+  # ---------------------------------------------------------------------------
+  # SPENDING
+  # ---------------------------------------------------------------------------
+  spending:
+    doctrine_advancement:
+      cost: "Varies by node (see doctrine-tree.yaml)"
+      description: "Unlocking new ideological positions"
+
+    political_education:
+      cost: 5  # Per session
+      effect: "+cohesion, -entropy"
+      description: "Investing in organizational health"
+
+    theoretical_publication:
+      cost: 10
+      effect: "+reputation among intellectuals"
+      description: "Writing and distributing theory"
+
+    line_struggle:
+      cost: 20
+      description: "Internal debates are expensive"
+      risk: "May trigger ORGANIZATIONAL_SPLIT if cohesion low"
+
+# =============================================================================
+# CRISIS DRAINS
+# =============================================================================
+
+crisis_drains:
+  description: "Major events that consume large amounts of resources"
+
+  state_crackdown:
+    trigger: "State allocates 3+ Threads to SUPPRESS"
+    effects:
+      cadre_labor: "-20%"
+      sympathizer_labor: "-30%"
+      reputation: "-10%"
+    description: "Concentrated repression is devastating"
+
+  failed_uprising:
+    trigger: "UPRISING event fails"
+    effects:
+      cadre_labor: "-40%"
+      sympathizer_labor: "-50%"
+      reputation: "-30%"
+      theoretical_labor: "-20%"
+    description: "Failed insurrection is catastrophic"
+
+  organizational_split:
+    trigger: "Cohesion < 0.3 during crisis"
+    effects:
+      cadre_labor: "-50% (half leave)"
+      sympathizer_labor: "-40%"
+      reputation: "-25%"
+    description: "Internal fracture is worse than external attack"
+
+  red_brown_coup:
+    trigger: "Chauvinism > Discipline during crisis"
+    effects:
+      cadre_labor: "-60% (defection to fascists)"
+      sympathizer_labor: "-30%"
+      reputation: "-50%"
+      theoretical_labor: "-80%"
+    description: "The worst outcome - betrayal from within"
+
+# =============================================================================
+# EQUILIBRIUM TARGETS
+# =============================================================================
+
+equilibrium:
+  description: "Healthy economy should hover around these values"
+
+  steady_state:
+    cadre_labor:
+      sustainable_range: [10, 50]
+      warning_low: 5
+      warning_high: 100  # Bloated bureaucracy
+    sympathizer_labor:
+      sustainable_range: [50, 500]
+      warning_low: 20
+      warning_high: 1000  # Mob without leadership
+    reputation:
+      sustainable_range: [0.1, 0.5]
+      warning_low: 0.05
+      warning_high: 0.8  # Hubris territory
+
+  growth_targets:
+    early_game: "5% net growth per 10 ticks"
+    mid_game: "2% net growth per 10 ticks"
+    late_game: "0% (maintenance mode) or negative (crisis)"
+
+  warning_signs:
+    inflation: "Resources growing > 10% per 10 ticks without action"
+    deflation: "Resources shrinking > 10% per 10 ticks without crisis"
+    imbalance: "Cadre:Sympathizer ratio outside [0.05, 0.2]"
+
+# =============================================================================
+# IMPLEMENTATION NOTES
+# =============================================================================
+
+implementation:
+  decay_timing:
+    when: "End of each tick, after all actions resolve"
+    order:
+      - "Apply passive decay to all resources"
+      - "Apply maintenance costs"
+      - "Apply crisis drains if applicable"
+      - "Check for warning thresholds"
+
+  formulas:
+    cadre_decay: |
+      CL_new = CL * (1 - burnout_rate - defection_rate - death_rate)
+      CL_new = max(0, CL_new - maintenance_cost)
+
+    sympathizer_decay: |
+      SL_new = SL * (1 - enthusiasm_decay - life_pressures - repression_fear)
+      SL_new = max(0, SL_new)
+
+    reputation_decay: |
+      Rep_new = Rep * (1 - attention_decay)
+      Rep_new = Rep_new - state_propaganda - scandal_effects
+      Rep_new = max(0, min(1, Rep_new))
+
+  ui_feedback:
+    resource_panel:
+      - "Show decay rate next to current value"
+      - "Color code: green (growing), yellow (stable), red (declining)"
+      - "Tooltip explains what's causing decay"
+
+    warnings:
+      low_resources: "Flashing icon when below warning threshold"
+      imbalance: "Ratio indicator shows healthy vs unhealthy"

@@ -72,7 +72,7 @@ jobs:
         run: mise run analyze-sweep
 
       - name: Upload analysis results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: parameter-analysis-results
           path: results/

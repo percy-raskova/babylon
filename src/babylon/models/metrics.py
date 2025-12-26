@@ -99,6 +99,38 @@ class EdgeMetrics(BaseModel):
     )
 
 
+class TopologySummary(BaseModel):
+    """Topology metrics summary for phase transition detection.
+
+    Captures the topological phase state of the simulation,
+    including percolation ratio, cadre density, and phase classification.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    percolation_ratio: Probability = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="L_max / N - giant component dominance [0, 1]",
+    )
+    cadre_density: Probability = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="actual_liquidity / potential_liquidity [0, 1]",
+    )
+    num_components: int = Field(
+        default=0,
+        ge=0,
+        description="Number of disconnected solidarity cells (>= 0)",
+    )
+    phase: Literal["gaseous", "transitional", "liquid", "solid"] = Field(
+        default="gaseous",
+        description="Current phase classification",
+    )
+
+
 class TickMetrics(BaseModel):
     """Complete metrics snapshot for a single simulation tick.
 
@@ -141,6 +173,37 @@ class TickMetrics(BaseModel):
         ge=0.0,
         le=1.0,
         description="Average tension across all relationships [0, 1]",
+    )
+    current_super_wage_rate: float = Field(
+        default=0.20,
+        ge=0.0,
+        description="Dynamic wage rate [0, 1] - percentage of tribute",
+    )
+    current_repression_level: Probability = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="System-wide repression modifier [0, 1]",
+    )
+    pool_ratio: Probability = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="imperial_rent_pool / initial_pool [0, 1]",
+    )
+    topology: TopologySummary | None = Field(
+        default=None,
+        description="Topology metrics snapshot (optional)",
+    )
+    consciousness_gap: float = Field(
+        default=0.0,
+        ge=-1.0,
+        le=1.0,
+        description="P_w.consciousness - C_w.consciousness [-1, 1]",
+    )
+    wealth_gap: float = Field(
+        default=0.0,
+        description="C_b.wealth - P_w.wealth (unbounded)",
     )
 
 

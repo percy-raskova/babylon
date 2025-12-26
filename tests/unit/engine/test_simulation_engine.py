@@ -815,3 +815,158 @@ class TestMetabolismSystemRegistration:
             f"MetabolismSystem (idx={metabolism_idx}) should run after "
             f"TerritorySystem (idx={territory_idx})"
         )
+
+
+# =============================================================================
+# COST-CHECKING TESTS (Epoch 1: Political Economy of Liquidity)
+# =============================================================================
+
+
+@pytest.mark.ledger
+class TestCostChecking:
+    """Test fiscal cost-checking in step().
+
+    Epoch 1: The Ledger - Political Economy of Liquidity.
+    When a state's treasury falls below its burn_rate, the step() function
+    should log a warning. This is the first step toward fiscal crisis mechanics.
+    """
+
+    def test_step_logs_warning_when_treasury_below_burn_rate(
+        self,
+        two_node_state: WorldState,
+        config: SimulationConfig,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """step() logs warning when state treasury < burn_rate.
+
+        StateFinance defaults:
+        - treasury: 100.0
+        - police_budget: 10.0
+        - social_reproduction_budget: 15.0
+        - burn_rate (computed): 25.0
+
+        When treasury (5.0) < burn_rate (25.0), a warning should be logged.
+        """
+        import logging
+
+        from babylon.models.entities.state_finance import StateFinance
+
+        # StateFinance with treasury (5.0) < burn_rate (25.0)
+        insolvent_finance = StateFinance(treasury=5.0)
+        state = two_node_state.model_copy(update={"state_finances": {"USA": insolvent_finance}})
+
+        with caplog.at_level(logging.WARNING):
+            step(state, config)
+
+        # Verify warning was logged about USA's fiscal situation
+        assert "USA" in caplog.text
+        assert "treasury" in caplog.text.lower() or "burn_rate" in caplog.text.lower()
+
+    def test_step_no_warning_when_treasury_sufficient(
+        self,
+        two_node_state: WorldState,
+        config: SimulationConfig,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """step() does not warn when treasury >= burn_rate.
+
+        When treasury (100.0) >= burn_rate (25.0), no warning should be logged.
+        """
+        import logging
+
+        from babylon.models.entities.state_finance import StateFinance
+
+        # StateFinance with treasury (100.0) >= burn_rate (25.0)
+        solvent_finance = StateFinance(treasury=100.0)
+        state = two_node_state.model_copy(update={"state_finances": {"USA": solvent_finance}})
+
+        with caplog.at_level(logging.WARNING):
+            step(state, config)
+
+        # Should not contain warning about USA treasury
+        # (there may be other warnings, so we check specifically for fiscal terms)
+        warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        fiscal_warnings = [
+            r
+            for r in warning_records
+            if "USA" in r.message
+            and ("treasury" in r.message.lower() or "burn" in r.message.lower())
+        ]
+        assert len(fiscal_warnings) == 0
+
+    def test_step_handles_empty_state_finances(
+        self,
+        two_node_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """step() handles empty state_finances dict without errors.
+
+        Backward compatibility: states without any state_finances should
+        continue to work normally without raising exceptions.
+        """
+        # Default two_node_state has no state_finances (empty dict)
+        # This should not raise an exception
+        new_state = step(two_node_state, config)
+
+        # Verify step completed normally
+        assert new_state.tick == 1
+
+    def test_step_logs_warning_for_each_insolvent_state(
+        self,
+        two_node_state: WorldState,
+        config: SimulationConfig,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """step() logs warnings for each state where treasury < burn_rate.
+
+        If multiple states are insolvent, each should get its own warning.
+        """
+        import logging
+
+        from babylon.models.entities.state_finance import StateFinance
+
+        # USA is insolvent, UK is solvent
+        finances = {
+            "USA": StateFinance(treasury=5.0),  # < burn_rate (25.0)
+            "UK": StateFinance(treasury=100.0),  # >= burn_rate (25.0)
+            "FRANCE": StateFinance(treasury=10.0),  # < burn_rate (25.0)
+        }
+        state = two_node_state.model_copy(update={"state_finances": finances})
+
+        with caplog.at_level(logging.WARNING):
+            step(state, config)
+
+        # USA and FRANCE should have warnings, UK should not
+        assert "USA" in caplog.text
+        assert "FRANCE" in caplog.text
+        # UK should not appear in warnings about insolvency
+        warning_records = [r for r in caplog.records if r.levelno >= logging.WARNING]
+        uk_fiscal_warnings = [
+            r
+            for r in warning_records
+            if "UK" in r.message
+            and ("treasury" in r.message.lower() or "burn" in r.message.lower())
+        ]
+        assert len(uk_fiscal_warnings) == 0
+
+    def test_step_preserves_state_finances_in_output(
+        self,
+        two_node_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """step() preserves state_finances in the output WorldState.
+
+        The state_finances dict should flow through the graph transformation
+        and be present in the returned WorldState.
+        """
+        from babylon.models.entities.state_finance import StateFinance
+
+        finances = {"USA": StateFinance(treasury=500.0, police_budget=30.0)}
+        state = two_node_state.model_copy(update={"state_finances": finances})
+
+        new_state = step(state, config)
+
+        # state_finances should be preserved
+        assert "USA" in new_state.state_finances
+        assert new_state.state_finances["USA"].treasury == 500.0
+        assert new_state.state_finances["USA"].police_budget == 30.0

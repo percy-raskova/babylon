@@ -22,6 +22,7 @@ Phase 4a: Refactored to use ServiceContainer for dependency injection.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from babylon.config.defines import GameDefines
@@ -56,6 +57,8 @@ from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
     import networkx as nx
+
+logger = logging.getLogger(__name__)
 
 
 class SimulationEngine:
@@ -291,6 +294,14 @@ def step(
     # Short-circuit for empty state (no entities AND no territories)
     if not state.entities and not state.territories:
         return state.model_copy(update={"tick": state.tick + 1})
+
+    # Cost-checking: Log warnings for insolvent states (Epoch 1: The Ledger)
+    for state_id, finance in state.state_finances.items():
+        if finance.treasury < finance.burn_rate:
+            logger.warning(
+                f"State {state_id} treasury ({finance.treasury:.2f}) < "
+                f"burn_rate ({finance.burn_rate:.2f})"
+            )
 
     # Convert to mutable graph for system application
     G = state.to_graph()

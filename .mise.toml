@@ -143,14 +143,12 @@ run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing
 # =============================================================================
 
 [tasks.mutate]
-description = "Run mutation testing on core formulas (slow, ~15-30 min)"
-run = "poetry run mutmut run --paths-to-mutate=src/babylon/systems/formulas.py"
+description = "Run full mutation testing (entire src/babylon/, overnight run)"
+run = "poetry run python tools/run_mutmut.py"
 
 [tasks.mutate-critical]
-description = "Run mutation testing on critical engine systems"
-run = """
-poetry run mutmut run --paths-to-mutate=src/babylon/systems/formulas.py,src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py
-"""
+description = "Run mutation testing on critical formulas only (faster, ~30 min)"
+run = "poetry run python tools/run_mutmut.py --critical"
 
 [tasks.mutate-results]
 description = "Show mutation testing results summary"

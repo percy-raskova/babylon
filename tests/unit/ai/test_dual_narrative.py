@@ -432,16 +432,22 @@ class TestOnTickPopulatesDualNarratives:
         assert entry["corporate"] == corporate_text
         assert entry["liberated"] == liberated_text
 
-    def test_on_tick_calls_llm_twice_for_significant_event(
+    def test_on_tick_calls_llm_three_times_for_significant_event(
         self,
         initial_state: WorldState,
         uprising_event: UprisingEvent,
     ) -> None:
-        """on_tick calls LLM twice for significant event (corporate + liberated)."""
+        """on_tick calls LLM 3 times: 2 for dual narratives + 1 for main narrative."""
         from babylon.ai.director import NarrativeDirector
         from babylon.ai.llm_provider import MockLLM
 
-        mock_llm = MockLLM(responses=["Corporate narrative", "Liberated narrative"])
+        mock_llm = MockLLM(
+            responses=[
+                "Corporate narrative",  # dual: corporate
+                "Liberated narrative",  # dual: liberated
+                "Main narrative",  # main narrative
+            ]
+        )
         director = NarrativeDirector(use_llm=True, llm=mock_llm)
 
         previous_state = initial_state
@@ -454,8 +460,8 @@ class TestOnTickPopulatesDualNarratives:
 
         director.on_tick(previous_state, new_state)
 
-        # Should have called generate() twice - once per perspective
-        assert mock_llm.call_count == 2
+        # Should have called generate() 3 times: 2 dual + 1 main
+        assert mock_llm.call_count == 3
 
     def test_on_tick_no_dual_narrative_without_llm(
         self,

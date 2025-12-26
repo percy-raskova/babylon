@@ -340,23 +340,11 @@ class TestIntegration:
 # =============================================================================
 
 
-@pytest.mark.skip(
-    reason="Pending refactor: extract_sweep_summary will take MetricsCollector instead of trace_data"
-)
 class TestExtractSweepSummary:
-    """Tests for extract_sweep_summary function.
+    """Tests for extract_sweep_summary function with MetricsCollector.
 
-    NOTE: These tests are skipped because extract_sweep_summary signature will change from:
-        extract_sweep_summary(trace_data: list[dict], value: float) -> dict
-    to:
-        extract_sweep_summary(collector: MetricsCollector, value: float) -> dict
-
-    Once the code refactor is complete, these tests need to be updated to:
-    1. Create a MetricsCollector(mode="batch") instance
-    2. Populate it with test data via collector.record_tick_metrics()
-    3. Pass the collector instead of trace_data
-
-    See: Phase 4.1B MetricsCollector integration
+    Tests verify that extract_sweep_summary correctly extracts summary
+    statistics from a MetricsCollector instance.
     """
 
     def test_extract_sweep_summary_exists(self) -> None:
@@ -365,34 +353,112 @@ class TestExtractSweepSummary:
         assert hasattr(module, "extract_sweep_summary"), "Module missing 'extract_sweep_summary'"
         assert callable(module.extract_sweep_summary)
 
-    def test_extract_sweep_summary_empty_trace(self) -> None:
-        """Should handle empty trace data gracefully."""
+    def test_extract_sweep_summary_empty_collector(self) -> None:
+        """Should handle empty MetricsCollector gracefully."""
+        from babylon.engine.observers.metrics import MetricsCollector
+
         module = load_parameter_analysis_module()
-        result = module.extract_sweep_summary([], 0.1)
+        collector = MetricsCollector(mode="batch")
+        # Empty collector has no history, summary is None
+        result = module.extract_sweep_summary(collector, 0.1)
         assert result["value"] == 0.1
         assert result["ticks_survived"] == 0
         assert result["outcome"] == "ERROR"
 
     def test_extract_sweep_summary_basic_fields(self) -> None:
-        """Should extract basic summary fields."""
+        """Should extract basic summary fields from collector."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {
-                "tick": 0,
-                "p_w_wealth": 0.5,
-                "p_c_wealth": 0.2,
-                "c_b_wealth": 0.9,
-                "c_w_wealth": 0.3,
-            },
-            {
-                "tick": 1,
-                "p_w_wealth": 0.4,
-                "p_c_wealth": 0.15,
-                "c_b_wealth": 0.95,
-                "c_w_wealth": 0.28,
-            },
-        ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+        collector = MetricsCollector(mode="batch")
+
+        # Manually populate history for testing
+        tick0 = TickMetrics(
+            tick=0,
+            p_w=EntityMetrics(
+                wealth=0.5,
+                consciousness=0.3,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.8,
+                p_revolution=0.1,
+                organization=0.2,
+            ),
+            p_c=EntityMetrics(
+                wealth=0.2,
+                consciousness=0.0,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.9,
+                p_revolution=0.05,
+                organization=0.1,
+            ),
+            c_b=EntityMetrics(
+                wealth=0.9,
+                consciousness=0.1,
+                national_identity=0.8,
+                agitation=0.0,
+                p_acquiescence=0.95,
+                p_revolution=0.01,
+                organization=0.05,
+            ),
+            c_w=EntityMetrics(
+                wealth=0.3,
+                consciousness=0.2,
+                national_identity=0.6,
+                agitation=0.0,
+                p_acquiescence=0.85,
+                p_revolution=0.08,
+                organization=0.15,
+            ),
+            edges=EdgeMetrics(exploitation_tension=0.1, exploitation_rent=0.05),
+        )
+        tick1 = TickMetrics(
+            tick=1,
+            p_w=EntityMetrics(
+                wealth=0.4,
+                consciousness=0.35,
+                national_identity=0.5,
+                agitation=0.1,
+                p_acquiescence=0.75,
+                p_revolution=0.15,
+                organization=0.25,
+            ),
+            p_c=EntityMetrics(
+                wealth=0.15,
+                consciousness=0.0,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.88,
+                p_revolution=0.06,
+                organization=0.1,
+            ),
+            c_b=EntityMetrics(
+                wealth=0.95,
+                consciousness=0.1,
+                national_identity=0.8,
+                agitation=0.0,
+                p_acquiescence=0.95,
+                p_revolution=0.01,
+                organization=0.05,
+            ),
+            c_w=EntityMetrics(
+                wealth=0.28,
+                consciousness=0.22,
+                national_identity=0.6,
+                agitation=0.05,
+                p_acquiescence=0.82,
+                p_revolution=0.1,
+                organization=0.18,
+            ),
+            edges=EdgeMetrics(exploitation_tension=0.15, exploitation_rent=0.06),
+        )
+
+        # Populate collector history
+        collector._history = [tick0, tick1]
+
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["value"] == 0.2
         assert result["ticks_survived"] == 2
         assert result["outcome"] == "SURVIVED"
@@ -400,68 +466,326 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_detects_death(self) -> None:
         """Should detect DIED outcome when wealth <= 0.001."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_wealth": 0.1},
-            {"tick": 1, "p_w_wealth": 0.0005},  # Dead
-        ]
-        result = module.extract_sweep_summary(trace_data, 0.3)
+        collector = MetricsCollector(mode="batch")
+
+        tick0 = TickMetrics(
+            tick=0,
+            p_w=EntityMetrics(
+                wealth=0.1,
+                consciousness=0.3,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.8,
+                p_revolution=0.1,
+                organization=0.2,
+            ),
+            edges=EdgeMetrics(),
+        )
+        tick1 = TickMetrics(
+            tick=1,
+            p_w=EntityMetrics(
+                wealth=0.0005,  # Dead
+                consciousness=0.3,
+                national_identity=0.5,
+                agitation=0.0,
+                p_acquiescence=0.8,
+                p_revolution=0.1,
+                organization=0.2,
+            ),
+            edges=EdgeMetrics(),
+        )
+
+        collector._history = [tick0, tick1]
+        result = module.extract_sweep_summary(collector, 0.3)
         assert result["outcome"] == "DIED"
 
     def test_extract_sweep_summary_calculates_crossover(self) -> None:
         """Should detect crossover tick when P(S|R) > P(S|A)."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_psr": 0.1, "p_w_psa": 0.5, "p_w_wealth": 0.5},
-            {"tick": 1, "p_w_psr": 0.3, "p_w_psa": 0.4, "p_w_wealth": 0.4},
-            {"tick": 2, "p_w_psr": 0.6, "p_w_psa": 0.3, "p_w_wealth": 0.3},  # Crossover!
-            {"tick": 3, "p_w_psr": 0.7, "p_w_psa": 0.2, "p_w_wealth": 0.2},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.5,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.4,
+                    p_revolution=0.3,
+                    organization=0.3,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=2,  # Crossover!
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.5,
+                    national_identity=0.5,
+                    agitation=0.2,
+                    p_acquiescence=0.3,
+                    p_revolution=0.6,
+                    organization=0.4,
+                ),
+                edges=EdgeMetrics(),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["crossover_tick"] == 2
 
     def test_extract_sweep_summary_no_crossover(self) -> None:
         """Should return None for crossover_tick if no crossover."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_psr": 0.1, "p_w_psa": 0.5, "p_w_wealth": 0.5},
-            {"tick": 1, "p_w_psr": 0.2, "p_w_psa": 0.6, "p_w_wealth": 0.5},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.5,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.35,
+                    national_identity=0.5,
+                    agitation=0.05,
+                    p_acquiescence=0.6,
+                    p_revolution=0.2,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["crossover_tick"] is None
 
     def test_extract_sweep_summary_cumulative_rent(self) -> None:
         """Should calculate cumulative rent extracted."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "exploitation_rent": 0.1, "p_w_wealth": 0.5},
-            {"tick": 1, "exploitation_rent": 0.15, "p_w_wealth": 0.4},
-            {"tick": 2, "exploitation_rent": 0.12, "p_w_wealth": 0.3},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.8,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(exploitation_rent=0.1),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.35,
+                    national_identity=0.5,
+                    agitation=0.05,
+                    p_acquiescence=0.75,
+                    p_revolution=0.15,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(exploitation_rent=0.15),
+            ),
+            TickMetrics(
+                tick=2,
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.7,
+                    p_revolution=0.2,
+                    organization=0.3,
+                ),
+                edges=EdgeMetrics(exploitation_rent=0.12),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert abs(result["cumulative_rent"] - 0.37) < 0.001
 
     def test_extract_sweep_summary_peak_consciousness(self) -> None:
         """Should track peak consciousness values."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "p_w_consciousness": 0.4, "c_w_consciousness": 0.3, "p_w_wealth": 0.5},
-            {"tick": 1, "p_w_consciousness": 0.6, "c_w_consciousness": 0.5, "p_w_wealth": 0.4},
-            {"tick": 2, "p_w_consciousness": 0.5, "c_w_consciousness": 0.4, "p_w_wealth": 0.3},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.8,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                c_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.3,
+                    national_identity=0.6,
+                    agitation=0.0,
+                    p_acquiescence=0.85,
+                    p_revolution=0.08,
+                    organization=0.15,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.6,  # Peak
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.7,
+                    p_revolution=0.2,
+                    organization=0.3,
+                ),
+                c_w=EntityMetrics(
+                    wealth=0.28,
+                    consciousness=0.5,  # Peak
+                    national_identity=0.6,
+                    agitation=0.05,
+                    p_acquiescence=0.8,
+                    p_revolution=0.12,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(),
+            ),
+            TickMetrics(
+                tick=2,
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.5,  # Lower than peak
+                    national_identity=0.5,
+                    agitation=0.15,
+                    p_acquiescence=0.65,
+                    p_revolution=0.25,
+                    organization=0.35,
+                ),
+                c_w=EntityMetrics(
+                    wealth=0.26,
+                    consciousness=0.4,  # Lower than peak
+                    national_identity=0.6,
+                    agitation=0.08,
+                    p_acquiescence=0.75,
+                    p_revolution=0.15,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["peak_p_w_consciousness"] == 0.6
         assert result["peak_c_w_consciousness"] == 0.5
 
     def test_extract_sweep_summary_max_tension(self) -> None:
         """Should track max tension."""
+        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
+
         module = load_parameter_analysis_module()
-        trace_data = [
-            {"tick": 0, "exploitation_tension": 0.01, "p_w_wealth": 0.5},
-            {"tick": 1, "exploitation_tension": 0.05, "p_w_wealth": 0.4},
-            {"tick": 2, "exploitation_tension": 0.03, "p_w_wealth": 0.3},
+        collector = MetricsCollector(mode="batch")
+
+        ticks = [
+            TickMetrics(
+                tick=0,
+                p_w=EntityMetrics(
+                    wealth=0.5,
+                    consciousness=0.3,
+                    national_identity=0.5,
+                    agitation=0.0,
+                    p_acquiescence=0.8,
+                    p_revolution=0.1,
+                    organization=0.2,
+                ),
+                edges=EdgeMetrics(exploitation_tension=0.01),
+            ),
+            TickMetrics(
+                tick=1,
+                p_w=EntityMetrics(
+                    wealth=0.4,
+                    consciousness=0.35,
+                    national_identity=0.5,
+                    agitation=0.05,
+                    p_acquiescence=0.75,
+                    p_revolution=0.15,
+                    organization=0.25,
+                ),
+                edges=EdgeMetrics(exploitation_tension=0.05),  # Max
+            ),
+            TickMetrics(
+                tick=2,
+                p_w=EntityMetrics(
+                    wealth=0.3,
+                    consciousness=0.4,
+                    national_identity=0.5,
+                    agitation=0.1,
+                    p_acquiescence=0.7,
+                    p_revolution=0.2,
+                    organization=0.3,
+                ),
+                edges=EdgeMetrics(exploitation_tension=0.03),
+            ),
         ]
-        result = module.extract_sweep_summary(trace_data, 0.2)
+
+        collector._history = ticks
+        result = module.extract_sweep_summary(collector, 0.2)
         assert result["max_tension"] == 0.05
 
 
@@ -481,7 +805,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.2,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert isinstance(result, list)
@@ -493,7 +817,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.3,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         # 0.1, 0.2, 0.3 = 3 values
@@ -506,7 +830,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "value" in result[0]
@@ -519,7 +843,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "ticks_survived" in result[0]
@@ -532,7 +856,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "outcome" in result[0]
@@ -545,7 +869,7 @@ class TestRunSweep:
             param_path="economy.extraction_efficiency",
             start=0.1,
             end=0.1,
-            step=0.1,
+            step_size=0.1,
             max_ticks=5,
         )
         assert "final_p_w_wealth" in result[0]

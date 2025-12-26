@@ -26,9 +26,10 @@ from typing import Any, Final
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from babylon.config.defines import GameDefines
+from babylon.engine.observers.metrics import MetricsCollector
 from babylon.engine.scenarios import create_imperial_circuit_scenario
-from babylon.engine.simulation_engine import step
-from babylon.models.enums import EdgeType
+from babylon.engine.simulation import Simulation
+from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
 
 # Constants
@@ -60,6 +61,44 @@ def is_dead(wealth: float) -> bool:
         True if wealth is at or below death threshold
     """
     return wealth <= DEATH_THRESHOLD
+
+
+def _run_simulation_with_metrics(
+    state: WorldState,
+    config: SimulationConfig,
+    defines: GameDefines,
+    max_ticks: int,
+) -> MetricsCollector:
+    """Run simulation with MetricsCollector observer.
+
+    Uses Simulation facade with observer pattern for unified metrics collection.
+    MetricsCollector records initial state (tick 0) plus state after each step,
+    so we run max_ticks - 1 steps to get max_ticks total data points.
+
+    Args:
+        state: Initial WorldState
+        config: Simulation configuration
+        defines: GameDefines with parameters
+        max_ticks: Maximum ticks to run (total data points collected)
+
+    Returns:
+        MetricsCollector with recorded history
+    """
+    collector = MetricsCollector(mode="batch")
+    sim = Simulation(state, config, observers=[collector], defines=defines)
+
+    # First step triggers on_simulation_start (records tick 0) + on_tick (records tick 1)
+    # Each subsequent step records one more tick
+    # To get max_ticks data points: initial (1) + steps (max_ticks - 1) = max_ticks
+    for _ in range(max_ticks - 1):
+        sim.step()
+        # Check death condition - stop if periphery worker dies
+        worker = sim.current_state.entities.get(PERIPHERY_WORKER_ID)
+        if worker is not None and is_dead(float(worker.wealth)):
+            break
+
+    sim.end()
+    return collector
 
 
 def inject_parameter(
@@ -105,74 +144,6 @@ def inject_parameter(
     return base_defines.model_copy(update={category: new_category})
 
 
-def collect_tick_data(state: WorldState, tick: int) -> dict[str, Any]:
-    """Collect all entity and edge data for one tick.
-
-    Captures comprehensive state information for analysis:
-    - Entity wealth, consciousness, organization, survival probabilities
-    - Edge tension, value flows, solidarity strength
-
-    Args:
-        state: Current WorldState snapshot
-        tick: Current tick number
-
-    Returns:
-        Dictionary with all collected metrics for this tick
-    """
-    row: dict[str, Any] = {"tick": tick}
-
-    # Collect entity data
-    # Periphery Worker (C001)
-    p_w = state.entities.get("C001")
-    if p_w is not None:
-        row["p_w_wealth"] = float(p_w.wealth)
-        row["p_w_consciousness"] = float(p_w.ideology.class_consciousness)
-        row["p_w_national_identity"] = float(p_w.ideology.national_identity)
-        row["p_w_agitation"] = float(p_w.ideology.agitation)
-        row["p_w_psa"] = float(p_w.p_acquiescence)
-        row["p_w_psr"] = float(p_w.p_revolution)
-        row["p_w_organization"] = float(p_w.organization)
-
-    # Comprador (C002)
-    p_c = state.entities.get("C002")
-    if p_c is not None:
-        row["p_c_wealth"] = float(p_c.wealth)
-
-    # Core Bourgeoisie (C003)
-    c_b = state.entities.get("C003")
-    if c_b is not None:
-        row["c_b_wealth"] = float(c_b.wealth)
-
-    # Labor Aristocracy (C004)
-    c_w = state.entities.get("C004")
-    if c_w is not None:
-        row["c_w_wealth"] = float(c_w.wealth)
-        row["c_w_consciousness"] = float(c_w.ideology.class_consciousness)
-        row["c_w_national_identity"] = float(c_w.ideology.national_identity)
-        row["c_w_agitation"] = float(c_w.ideology.agitation)
-
-    # Collect edge data
-    # Initialize edge columns with defaults
-    row["exploitation_tension"] = 0.0
-    row["exploitation_rent"] = 0.0
-    row["tribute_flow"] = 0.0
-    row["wages_paid"] = 0.0
-    row["solidarity_strength"] = 0.0
-
-    for rel in state.relationships:
-        if rel.edge_type == EdgeType.EXPLOITATION:
-            row["exploitation_tension"] = float(rel.tension)
-            row["exploitation_rent"] = float(rel.value_flow)
-        elif rel.edge_type == EdgeType.TRIBUTE:
-            row["tribute_flow"] = float(rel.value_flow)
-        elif rel.edge_type == EdgeType.WAGES:
-            row["wages_paid"] = float(rel.value_flow)
-        elif rel.edge_type == EdgeType.SOLIDARITY:
-            row["solidarity_strength"] = float(rel.solidarity_strength)
-
-    return row
-
-
 def run_trace(
     param_path: str | None = None,
     param_value: float | None = None,
@@ -180,8 +151,8 @@ def run_trace(
 ) -> list[dict[str, Any]]:
     """Run single simulation, return per-tick data.
 
-    Executes a simulation and collects comprehensive state data at each tick.
-    Optionally injects a custom parameter value before running.
+    Executes a simulation using MetricsCollector observer and returns
+    comprehensive state data at each tick via CSV-compatible format.
 
     Args:
         param_path: Optional dot-separated parameter path to modify
@@ -201,97 +172,49 @@ def run_trace(
     else:
         defines = scenario_defines
 
-    # Run simulation and collect data
-    trace_data: list[dict[str, Any]] = []
-    persistent_context: dict[str, Any] = {}
-
-    for tick in range(max_ticks):
-        # Collect data before step (for tick 0) or after previous step
-        tick_data = collect_tick_data(state, tick)
-        trace_data.append(tick_data)
-
-        # Check for death - stop if periphery worker dies
-        worker = state.entities.get(PERIPHERY_WORKER_ID)
-        if worker is not None and is_dead(worker.wealth):
-            break
-
-        # Run simulation step
-        state = step(state, config, persistent_context, defines)
-
-    return trace_data
+    # Run simulation with MetricsCollector
+    collector = _run_simulation_with_metrics(state, config, defines, max_ticks)
+    return collector.to_csv_rows()
 
 
 def extract_sweep_summary(
-    trace_data: list[dict[str, Any]],
+    collector: MetricsCollector,
     param_value: float,
 ) -> dict[str, Any]:
-    """Extract summary metrics from trace data.
+    """Extract summary metrics from MetricsCollector.
 
     Args:
-        trace_data: Full time-series from run_trace
+        collector: MetricsCollector with recorded history
         param_value: The parameter value used
 
     Returns:
         Summary dict with aggregated metrics
     """
-    if not trace_data:
+    if collector.summary is None:
         return {"value": param_value, "ticks_survived": 0, "outcome": "ERROR"}
 
-    last_tick = trace_data[-1]
-    ticks_survived = len(trace_data)
-
-    # Determine outcome
-    p_w_wealth = last_tick.get("p_w_wealth", 0.0)
-    outcome = "DIED" if p_w_wealth <= DEATH_THRESHOLD else "SURVIVED"
-
-    # Final entity states
-    summary: dict[str, Any] = {
+    summary = collector.summary
+    return {
         "value": param_value,
-        "ticks_survived": ticks_survived,
-        "outcome": outcome,
-        "final_p_w_wealth": last_tick.get("p_w_wealth", 0.0),
-        "final_p_c_wealth": last_tick.get("p_c_wealth", 0.0),
-        "final_c_b_wealth": last_tick.get("c_b_wealth", 0.0),
-        "final_c_w_wealth": last_tick.get("c_w_wealth", 0.0),
+        "ticks_survived": summary.ticks_survived,
+        "outcome": summary.outcome,
+        "final_p_w_wealth": float(summary.final_p_w_wealth),
+        "final_p_c_wealth": float(summary.final_p_c_wealth),
+        "final_c_b_wealth": float(summary.final_c_b_wealth),
+        "final_c_w_wealth": float(summary.final_c_w_wealth),
+        "max_tension": float(summary.max_tension),
+        "crossover_tick": summary.crossover_tick,
+        "cumulative_rent": float(summary.cumulative_rent),
+        "peak_p_w_consciousness": float(summary.peak_p_w_consciousness),
+        "peak_c_w_consciousness": float(summary.peak_c_w_consciousness),
     }
-
-    # Max tension
-    summary["max_tension"] = max(
-        (row.get("exploitation_tension", 0.0) for row in trace_data),
-        default=0.0,
-    )
-
-    # Crossover detection (when P(S|R) > P(S|A))
-    crossover_tick: int | None = None
-    for row in trace_data:
-        psr = row.get("p_w_psr", 0.0)
-        psa = row.get("p_w_psa", 1.0)
-        if psr > psa:
-            crossover_tick = row["tick"]
-            break
-    summary["crossover_tick"] = crossover_tick
-
-    # Cumulative rent
-    summary["cumulative_rent"] = sum(row.get("exploitation_rent", 0.0) for row in trace_data)
-
-    # Peak consciousness
-    summary["peak_p_w_consciousness"] = max(
-        (row.get("p_w_consciousness", 0.0) for row in trace_data),
-        default=0.0,
-    )
-    summary["peak_c_w_consciousness"] = max(
-        (row.get("c_w_consciousness", 0.0) for row in trace_data),
-        default=0.0,
-    )
-
-    return summary
 
 
 def run_sweep(
     param_path: str,
     start: float,
     end: float,
-    step: float,
+    step_size: float,
     max_ticks: int = DEFAULT_TICKS,
 ) -> list[dict[str, Any]]:
     """Run parameter sweep, return summary per value.
@@ -303,7 +226,7 @@ def run_sweep(
         param_path: Dot-separated parameter path (e.g., 'economy.extraction_efficiency')
         start: Starting value for the parameter
         end: Ending value for the parameter
-        step: Step size between values
+        step_size: Step size between values
         max_ticks: Maximum ticks per simulation
 
     Returns:
@@ -312,22 +235,22 @@ def run_sweep(
     results: list[dict[str, Any]] = []
 
     # Calculate number of steps
-    num_steps = int(round((end - start) / step)) + 1
+    num_steps = int(round((end - start) / step_size)) + 1
 
     for i in range(num_steps):
-        value = round(start + (i * step), 6)
-        if value > end + (step / 10):
+        value = round(start + (i * step_size), 6)
+        if value > end + (step_size / 10):
             break
 
-        # Run trace for this value
-        trace_data = run_trace(
-            param_path=param_path,
-            param_value=value,
-            max_ticks=max_ticks,
-        )
+        # Create fresh scenario and inject parameter
+        state, config, scenario_defines = create_imperial_circuit_scenario()
+        defines = inject_parameter(GameDefines(), param_path, value)
+
+        # Run simulation with MetricsCollector
+        collector = _run_simulation_with_metrics(state, config, defines, max_ticks)
 
         # Extract summary metrics
-        summary = extract_sweep_summary(trace_data, value)
+        summary = extract_sweep_summary(collector, value)
         results.append(summary)
 
     return results
@@ -526,7 +449,7 @@ Examples:
                 param_path=args.param,
                 start=args.start,
                 end=args.end,
-                step=args.step,
+                step_size=args.step,
                 max_ticks=args.ticks,
             )
 

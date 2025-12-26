@@ -1,0 +1,871 @@
+# ==============================================================================
+# Slice 2.10: The Epistemic Horizon
+# "The Fish in Water" - Dialectical Intelligence
+# ==============================================================================
+#
+# CRITIQUE OF TRADITIONAL FOG OF WAR:
+# Most games treat intelligence as presence-based: "1 Scout = 100% Vision."
+# This ignores the fundamental insight of guerrilla warfare:
+#
+#   "The guerrilla must move amongst the people as a fish swims in the sea."
+#   - Mao Zedong, On Guerrilla Warfare
+#
+# A fish out of water is visible, vulnerable, and BLIND.
+# A Cadre in hostile territory is the same - the masses don't help them,
+# they actively deceive them and report them to the State.
+#
+# NEW THESIS: Intelligence is not about PRESENCE but about RELATIONSHIP.
+# You know what the masses tell you. You see through their eyes.
+# Win the people, know the terrain. Alienate the people, walk into ambushes.
+#
+# ==============================================================================
+
+meta:
+  epoch: 2
+  slice: "2.10"
+  name: "The Epistemic Horizon"
+  subtitle: "Dialectical Intelligence (Fog of War)"
+  status: "SPEC_COMPLETE"
+  created: "2025-12-26"
+  theory_sources:
+    - author: "Mao Zedong"
+      work: "On Guerrilla Warfare (1937)"
+      relevance: "Fish in water thesis, mass line, political work precedes military"
+    - author: "Mao Zedong"
+      work: "Report on an Investigation of the Peasant Movement in Hunan (1927)"
+      relevance: "Social investigation methodology, learning from the masses"
+    - author: "Che Guevara"
+      work: "Guerrilla Warfare (1961)"
+      relevance: "Intelligence networks, popular support as force multiplier"
+    - author: "Vo Nguyen Giap"
+      work: "People's War, People's Army (1961)"
+      relevance: "Total integration of military and political work"
+
+  mantra: "You cannot know the terrain if the terrain doesn't want you to know."
+
+# ==============================================================================
+# CORE THESIS
+# ==============================================================================
+
+thesis:
+  statement: |
+    Traditional intelligence models treat information as a commodity to be
+    gathered through technical means (scouts, satellites, signals). This is
+    the BOURGEOIS model of intelligence - it assumes you can buy or steal
+    knowledge without building relationships.
+
+    The DIALECTICAL model recognizes that in political struggle, intelligence
+    flows through SOCIAL RELATIONSHIPS. The masses are the sea in which the
+    guerrilla swims. When the sea is friendly, it reveals everything - hidden
+    paths, enemy movements, supply caches, informants. When the sea is hostile,
+    it conceals, deceives, and reports you to the enemy.
+
+    This creates a fundamental asymmetry:
+    - The State can SEE everywhere (Panopticon) but cannot UNDERSTAND
+    - The Revolution can UNDERSTAND but only where it has built relationships
+
+    The player learns: Political work precedes military work.
+    Mass line precedes action. The fish must be in water to swim.
+
+  liberal_trap: |
+    The liberal believes intelligence is neutral - just "gather information."
+    This leads to:
+    - Sending scouts into hostile territory (getting them killed/captured)
+    - Trusting technical intelligence over human intelligence
+    - Acting on information from people who hate you (walking into traps)
+    - Believing you can operate without political preparation
+
+    The game teaches: You cannot KNOW a territory until you WIN it politically.
+    Intelligence is not gathered, it is EARNED through mass work.
+
+# ==============================================================================
+# THE INTELLIGENCE FORMULA
+# ==============================================================================
+
+intelligence_formula:
+  name: "Intel Confidence"
+  symbol: "I_c"
+  range: [0.0, 1.0]
+  description: |
+    Intel Confidence represents how accurately the player perceives a territory.
+    At I_c = 1.0, the player sees the TRUE state of all attributes.
+    At I_c = 0.0, the player sees nothing.
+    At I_c < 0.2 (Desert condition), the player may see FALSIFIED data.
+
+  formula: |
+    I_c = B_o + (C_p × M_r)
+
+    Where:
+      B_o = Base Observation (always visible public information)
+      C_p = Cadre Presence (0 or 1, or count for multiple cadre)
+      M_r = Mass Receptivity (willingness of masses to share information)
+
+  components:
+    base_observation:
+      symbol: "B_o"
+      value: 0.1
+      description: |
+        Public information visible without any presence:
+        - Territory type (Slums, Suburbs, Industrial)
+        - Approximate population
+        - Major infrastructure (visible buildings)
+        - Official State presence (police stations, bases)
+
+        This is what you could learn from a map or public records.
+        You cannot hide that a factory exists, but you can hide
+        what happens inside it.
+
+    cadre_presence:
+      symbol: "C_p"
+      type: "Boolean or Integer"
+      description: |
+        Whether the organization has human assets in the territory.
+        - 0: No presence (only Base_Observation available)
+        - 1: Cadre present (can potentially gather intel)
+        - N: Multiple Cadre (slight bonus, but diminishing returns)
+
+        CRITICAL: Presence alone is NOT sufficient.
+        A Cadre in hostile territory is like a fish on land -
+        visible, vulnerable, and blind.
+
+    mass_receptivity:
+      symbol: "M_r"
+      range: [0.0, 1.0]
+      description: |
+        The willingness of the local population to share information
+        with the revolutionary organization. This is the KEY variable
+        that traditional fog of war ignores.
+
+        High receptivity = The masses are your eyes and ears
+        Low receptivity = The masses are the enemy's eyes and ears
+
+# ==============================================================================
+# MASS RECEPTIVITY CALCULATION
+# ==============================================================================
+
+mass_receptivity:
+  name: "Mass Receptivity"
+  symbol: "M_r"
+  range: [0.0, 1.0]
+  description: |
+    Mass Receptivity is a derived metric representing how willing the
+    local population is to share information with the organization.
+    It depends on three factors:
+    1. Material conditions (do they have anything to lose?)
+    2. Ideological alignment (do they identify with you?)
+    3. Class composition (which class dominates this territory?)
+
+  formula: |
+    M_r = (1 - P(S|A)) × I_a × C_f
+
+    Where:
+      P(S|A) = Probability of Survival by Acquiescence (from Survival Calculus)
+      I_a = Ideological Alignment (0.0 to 1.0)
+      C_f = Class Factor (based on dominant class in territory)
+
+  components:
+    desperation_factor:
+      formula: "(1 - P(S|A))"
+      description: |
+        When P(S|A) is low, the masses have nothing to lose.
+        They gain nothing by acquiescing to the system.
+        Therefore, they have nothing to lose by helping the revolution.
+
+        When P(S|A) is high, the masses are comfortable.
+        They have something to protect by staying quiet.
+        They will hedge their bets or actively oppose you.
+
+        This is the MATERIAL BASIS of intelligence:
+        "Those with nothing to lose have nothing to hide."
+
+    ideological_alignment:
+      symbol: "I_a"
+      range: [0.0, 1.0]
+      description: |
+        How closely the local population's consciousness aligns with
+        the organization's ideology. Derived from:
+        - Average class_consciousness in territory
+        - Organization's reputation in territory
+        - Historical actions (did you help or harm them?)
+
+        Even desperate people won't help an organization they hate.
+        Even comfortable people might help an organization they love.
+
+    class_factor:
+      symbol: "C_f"
+      description: |
+        The class composition of the territory affects baseline receptivity.
+        Different classes have different structural relationships to
+        revolutionary organizations.
+
+      values:
+        proletariat:
+          symbol: "P_w"
+          factor: 1.0
+          description: |
+            The exploited working class has no structural reason to
+            protect the system. If ideologically aligned and desperate,
+            they become the revolutionary organization's eyes and ears.
+
+        lumpenproletariat:
+          symbol: "L_u"
+          factor: 1.0
+          description: |
+            The surplus population has zero investment in the system.
+            Police are their natural enemy. If organized, they are the
+            most reliable intelligence source because they have the
+            most to gain and least to lose.
+
+        petty_bourgeoisie:
+          symbol: "C_pb"
+          factor: 0.3
+          description: |
+            Small property owners hedge their bets. They might help
+            if they think you'll win, but they'll also help the State
+            if they think you'll lose. Their information is unreliable
+            and their loyalty is conditional.
+
+        labor_aristocracy:
+          symbol: "C_la"
+          factor: 0.2
+          description: |
+            The labor aristocracy is structurally invested in the
+            imperial order. They have super-wages to protect. They
+            will actively inform on the organization to protect their
+            privilege. In C_la territory, Cadre are in DANGER.
+
+  examples:
+    proletarian_slum:
+      territory: "P_w dominated, high exploitation, low wages"
+      P_S_A: 0.2  # Low - acquiescence doesn't help survival
+      I_a: 0.7   # Moderate - some revolutionary consciousness
+      C_f: 1.0   # Proletariat
+      M_r: "(1 - 0.2) × 0.7 × 1.0 = 0.56"  # Mud/Contested
+      description: "Receptive but not fully trusted yet"
+
+    labor_aristocracy_suburb:
+      territory: "C_la dominated, high wages, comfortable"
+      P_S_A: 0.9  # High - acquiescence works for them
+      I_a: 0.3   # Low - invested in system
+      C_f: 0.2   # Labor Aristocracy
+      M_r: "(1 - 0.9) × 0.3 × 0.2 = 0.006"  # Desert
+      description: "Hostile territory - Cadre are in danger"
+
+    base_area:
+      territory: "P_w dominated, liberated zone, high solidarity"
+      P_S_A: 0.3  # Low-moderate - still risky but organized
+      I_a: 0.95  # Very high - revolutionary territory
+      C_f: 1.0   # Proletariat
+      M_r: "(1 - 0.3) × 0.95 × 1.0 = 0.665"  # Water (with work, can reach 0.8+)
+      description: "Friendly territory - masses are your network"
+
+# ==============================================================================
+# THE THREE STATES OF VISION
+# ==============================================================================
+
+vision_states:
+  description: |
+    Based on Mass Receptivity, territories fall into three states that
+    determine what the player can see and trust.
+
+  desert:
+    name: "The Desert"
+    threshold: "M_r < 0.2"
+    intel_confidence: "~0.15-0.25"
+    description: |
+      The fish is out of water. The Cadre is surrounded by people who
+      will not help them and may actively work against them.
+
+    visibility:
+      public_info: true  # Base observation always works
+      population: true
+      territory_type: true
+      state_presence: "Visible"
+      agitation: "MASKED"  # May show false value
+      organization_strength: "MASKED"
+      hidden_threats: "INVISIBLE"
+      supply_caches: "INVISIBLE"
+      informants: "INVISIBLE"
+
+    mechanics:
+      masking: |
+        In Desert conditions, some attributes are not just unknown -
+        they are FALSIFIED. The UI shows a plausible but FALSE value.
+
+        The player cannot tell which values are masked without higher
+        receptivity. This creates the "ambush trap" where you think
+        a territory is calm when it's actually mobilizing against you.
+
+        Masked attributes:
+        - Agitation: May show low when actually high
+        - Enemy strength: May show low when preparing ambush
+        - Allegiance: May show neutral when actively hostile
+
+      cadre_risk: |
+        Cadre in Desert territories face:
+        - High probability of being reported (Security_Breach)
+        - Rapid State Attention accumulation (+0.2/tick)
+        - Risk of capture if Security_Breach triggers
+        - Network exposure if captured
+
+      decay_rate: 0.2  # Per tick - intel becomes stale very fast
+
+    narrative_example: |
+      "Your operative in the suburb reports calm. The lawns are mowed.
+      The children play. The Neighborhood Watch meets on Tuesdays.
+      What your operative cannot see: the WhatsApp group, the gun safe
+      in every garage, the militia drilling in the church basement.
+      The suburb smiles and waits for you to make a mistake."
+
+  mud:
+    name: "The Mud"
+    threshold: "0.2 <= M_r < 0.8"
+    intel_confidence: "~0.4-0.7"
+    description: |
+      The fish is in shallow water. Some of the masses help you,
+      some are neutral, some are hostile. Information flows but
+      incompletely. You know the general situation but miss details.
+
+    visibility:
+      public_info: true
+      population: true
+      territory_type: true
+      state_presence: "Visible"
+      agitation: "Approximate"  # ±0.2 margin of error
+      organization_strength: "Approximate"
+      hidden_threats: "PARTIALLY_VISIBLE"  # Larger threats visible
+      supply_caches: "Some visible"
+      informants: "INVISIBLE"  # Still hidden
+
+    mechanics:
+      approximation: |
+        In Mud conditions, attributes are shown with uncertainty.
+        The UI displays a range or a "~" prefix indicating the value
+        is approximate.
+
+        You know "tensions are rising" but not exactly how high.
+        You know "there's some enemy presence" but not the exact count.
+
+      cadre_risk: |
+        Cadre in Mud territories face:
+        - Moderate probability of being reported
+        - State Attention accumulation (+0.1/tick)
+        - Can operate but must be careful
+        - Some mass protection but not complete
+
+      decay_rate: 0.05  # Per tick - moderate decay
+
+    narrative_example: |
+      "The factory district is split. The older workers remember the
+      last strike - some with pride, some with fear. Your contacts say
+      tensions are rising, but they can't tell you about the new foreman
+      who's been photographing union members. You know enough to act,
+      but not enough to act safely."
+
+  water:
+    name: "The Water"
+    threshold: "M_r >= 0.8"
+    intel_confidence: "~0.9-1.0"
+    description: |
+      The fish is in deep water. The masses ARE your intelligence network.
+      They tell you everything because they are you - the organization
+      and the people are one.
+
+    visibility:
+      public_info: true
+      population: true
+      territory_type: true
+      state_presence: "Visible (including plainclothes)"
+      agitation: "EXACT"
+      organization_strength: "EXACT"
+      hidden_threats: "VISIBLE"
+      supply_caches: "VISIBLE"
+      informants: "VISIBLE"  # The masses know and tell you
+
+    mechanics:
+      full_transparency: |
+        In Water conditions, you see the TRUE state of all attributes.
+        The masses are your eyes. They report:
+        - Every police patrol and its timing
+        - Every informant and their handler
+        - Every supply cache and safe house
+        - Every faction's true strength and morale
+
+      cadre_safety: |
+        Cadre in Water territories are protected:
+        - The masses hide them from State detection
+        - State Attention accumulation is reduced (-0.05/tick)
+        - Early warning of State operations
+        - Network resilience (if one contact is captured,
+          others continue to function)
+
+      decay_rate: 0.01  # Per tick - masses keep you updated
+
+    narrative_example: |
+      "In the liberated zone, you know everything. The grandmother who
+      watches the corner knows when the patrol changes shift. The children
+      who play in the street know which houses are safe. The workers who
+      unload the trucks know what supplies are coming. You are not a spy
+      in their midst - you are their organization, and they are your eyes."
+
+# ==============================================================================
+# ACTIONS: THE MASS LINE
+# ==============================================================================
+
+actions:
+  description: |
+    The critical insight: You cannot SCOUT your way to intelligence.
+    You must WORK your way to intelligence. The Mass Line is not just
+    ideology - it is the operational doctrine of revolutionary intelligence.
+
+  agitate_locally:
+    name: "AGITATE_LOCALLY"
+    cost:
+      cadre_labor: 5
+      time: "1 tick"
+    requirements:
+      - "Cadre present in territory"
+    effects:
+      ideological_alignment: "+0.05 per tick"
+      state_attention: "+0.02 per tick (risky in hostile territory)"
+    description: |
+      The fundamental mass work action. Cadre engage with the local
+      population, spreading revolutionary consciousness and building
+      relationships.
+
+      This is NOT propaganda distribution - it is two-way communication.
+      The Cadre LEARN from the masses while teaching them.
+
+      Effect on intel: Increases M_r indirectly by increasing I_a.
+      You cannot shortcut this work. Political work precedes intelligence.
+
+    failure_modes:
+      desert_territory: |
+        In Desert conditions, agitation is extremely dangerous.
+        The Cadre are easily identified and reported.
+        State Attention increases rapidly (+0.2/tick instead of +0.02).
+        High probability of Security_Breach event.
+
+        You should NOT agitate in hostile territory without first
+        establishing a safe network through other means.
+
+  social_investigation:
+    name: "SOCIAL_INVESTIGATION"
+    cost:
+      cadre_labor: 10
+      time: "3 ticks"
+    requirements:
+      - "Cadre present in territory"
+      - "M_r >= 0.3 (cannot investigate if masses won't talk)"
+    effects:
+      intel_confidence: "+0.2 (one-time boost)"
+      hidden_attributes: "Reveals one hidden attribute"
+    description: |
+      Deep research into local conditions. The Cadre systematically
+      interviews the masses, maps social relationships, and documents
+      the local situation.
+
+      This is Mao's "investigation" method - actually talking to people
+      and recording what they say. Not surveillance, but conversation.
+
+      Reveals:
+      - Hidden reactionary cells
+      - Informant networks
+      - Supply cache locations
+      - Local power dynamics (who really controls what)
+
+    failure_modes:
+      low_receptivity: |
+        If M_r < 0.3, the action automatically fails.
+        The masses will not talk to you. They may actively lie.
+        Any "intel" gathered is potentially MASKED (false).
+
+        Message: "The investigation fails. The people do not trust you.
+        You must first do mass work to earn their trust."
+
+  establish_contact_network:
+    name: "ESTABLISH_CONTACT_NETWORK"
+    cost:
+      cadre_labor: 20
+      time: "5 ticks"
+    requirements:
+      - "Cadre present in territory"
+      - "M_r >= 0.5 (need significant trust)"
+      - "Social Investigation completed previously"
+    effects:
+      intel_infrastructure: "Creates persistent intel network"
+      intel_decay: "Reduced to 0.01/tick in this territory"
+      early_warning: "Alerts for State operations"
+    description: |
+      Creates a permanent intelligence network in the territory.
+      This is not a "spy network" - it is a relationship network.
+      The masses WANT to help you because you are their organization.
+
+      Once established, the network:
+      - Provides continuous intel without Cadre presence
+      - Warns of State operations before they happen
+      - Hides Cadre when needed
+      - Identifies threats and opportunities
+
+    vulnerabilities:
+      infiltration: |
+        Contact networks can be infiltrated by State assets.
+        If State Attention on territory exceeds 0.7:
+        - 10% chance per tick of network compromise
+        - Compromise leads to SECURITY_BREACH cascade
+        - Network must be rebuilt from scratch
+
+      decapitation: |
+        If key contacts are captured, network degrades.
+        Each captured contact: -0.1 M_r in territory
+        If too many captured: Network collapses
+
+# ==============================================================================
+# INTEGRATION WITH OTHER SYSTEMS
+# ==============================================================================
+
+integration:
+  state_attention:
+    slice: "2.9"
+    connection: |
+      The Panopticon and Epistemic Horizon are COMPLEMENTARY systems:
+      - Panopticon: How the STATE sees the PLAYER
+      - Epistemic Horizon: How the PLAYER sees the WORLD
+
+      The key interaction is FISH OUT OF WATER:
+      - Cadre in hostile territory (low M_r) are easily detected
+      - The masses actively REPORT them to the State
+      - State Attention increases rapidly
+      - This creates a feedback loop: hostile territory → exposure → capture
+
+      Formula for State Attention from Fish Out of Water:
+      ```
+      ΔA_state = (1 - M_r) × Cadre_Presence × 0.2
+      ```
+
+      In friendly territory (high M_r), masses HIDE the Cadre:
+      ```
+      ΔA_state = max(0, (0.5 - M_r) × Cadre_Presence × 0.1)
+      ```
+
+  reactionary_subject:
+    slice: "2.3"
+    connection: |
+      The Reactionary Subject defines CLASS COMPOSITION which determines
+      the baseline Class Factor (C_f) for Mass Receptivity.
+
+      Territory dominated by:
+      - P_w (Proletariat): C_f = 1.0 - potential Base Area
+      - L_u (Lumpenproletariat): C_f = 1.0 - potential Base Area
+      - C_pb (Petty Bourgeoisie): C_f = 0.3 - difficult terrain
+      - C_la (Labor Aristocracy): C_f = 0.2 - hostile terrain
+
+      This means you cannot build intelligence networks in C_la suburbs
+      without FIRST changing the class character of the territory
+      (which may not be possible).
+
+  kinetic_warfare:
+    slice: "2.7"
+    connection: |
+      Intel Confidence directly affects combat outcomes.
+
+      Attack with high confidence (Water):
+      - Know enemy positions
+      - Know escape routes
+      - Know which buildings are safe
+      - Surprise multiplier active
+
+      Attack with low confidence (Desert):
+      - Enemy positions unknown
+      - May walk into ambush
+      - No escape route intel
+      - Enemy gets surprise multiplier
+
+      The lesson: Do political work BEFORE military work.
+      Win the terrain before you fight on it.
+
+  resource_economy:
+    slice: "2.6"
+    connection: |
+      Intelligence work requires Cadre Labor:
+      - Agitation: 5 CL per tick
+      - Social Investigation: 10 CL (3 ticks)
+      - Contact Network: 20 CL (5 ticks)
+
+      This creates a resource trade-off:
+      - Cadre spent on intel can't do other work
+      - But operations without intel are disasters
+      - Balance: Invest in intel for territories you plan to operate in
+
+# ==============================================================================
+# INTELLIGENCE DECAY
+# ==============================================================================
+
+intelligence_decay:
+  description: |
+    Intelligence is perishable. The situation changes, and if no one
+    tells you, your information becomes stale and wrong.
+
+    Decay rate depends on Mass Receptivity:
+    - High M_r: Masses keep you updated (slow decay)
+    - Low M_r: No one tells you anything (fast decay)
+
+  formula: |
+    I_c(t+1) = I_c(t) × (1 - decay_rate)
+
+    Where decay_rate depends on M_r:
+    - Water (M_r >= 0.8): decay_rate = 0.01
+    - Mud (0.2 <= M_r < 0.8): decay_rate = 0.05
+    - Desert (M_r < 0.2): decay_rate = 0.20
+
+  implications:
+    hostile_territory: |
+      In hostile territory, intel decays by 20% per tick.
+      After 5 ticks, intel is essentially worthless.
+      After 10 ticks, it may be actively WRONG (stale masked data).
+
+      You cannot "scout once and know forever."
+      You must maintain presence AND receptivity.
+
+    friendly_territory: |
+      In friendly territory, intel decays by only 1% per tick.
+      The masses keep you updated continuously.
+      Even if Cadre leave temporarily, intel remains fresh.
+
+      This is the advantage of Base Areas:
+      Not just safety, but KNOWLEDGE.
+
+# ==============================================================================
+# THE SPY SCENARIO: THE AMBUSH TRAP
+# ==============================================================================
+
+spy_scenario:
+  name: "The Suburban Ambush"
+  description: |
+    A scenario demonstrating the danger of trusting intel from hostile territory.
+
+  setup:
+    territory: "Maple Heights Subdivision"
+    class_composition: "C_la dominant (Labor Aristocracy suburb)"
+    recent_events: "ECONOMIC_CRISIS has caused layoffs at defense contractor"
+    true_state:
+      agitation: 0.9  # Very high - fascist mobilization underway
+      fascist_militia: 50  # Organized, armed, drilling
+      informant_network: "Active - reporting all suspicious activity"
+      sentiment: "Scapegoating immigrants and 'communists' for layoffs"
+
+  player_action:
+    action: "Send Cadre to investigate"
+    cadre_count: 1
+    expected_outcome: "Assess local conditions for potential organizing"
+
+  intelligence_calculation:
+    P_S_A: 0.85  # High - they were comfortable until crisis
+    I_a: 0.15   # Very low - identify with system, blame outsiders
+    C_f: 0.2    # Labor Aristocracy
+    M_r: "(1 - 0.85) × 0.15 × 0.2 = 0.0045"  # DESERT
+    I_c: "0.1 + (1 × 0.0045) = 0.1045"  # Very low confidence
+
+  what_player_sees:
+    ui_display:
+      territory_name: "Maple Heights Subdivision"
+      territory_type: "Suburban Residential"
+      population: "~5,000"
+      agitation: "0.1"  # MASKED - shows calm
+      organization: "None detected"  # MASKED - militia hidden
+      state_presence: "Low"
+      confidence_indicator: "None visible"  # The trap
+    internal_note: |
+      The UI shows "Agitation: 0.1" with no warning.
+      The player has no way to know this is MASKED data.
+      The locals are hiding their mobilization.
+
+  player_decision:
+    reasoning: |
+      "The suburb looks calm. Low agitation, no organization detected.
+      The crisis must not have affected them much. Let's plan a leaflet
+      campaign to start building consciousness."
+    action: "Plan leaflet distribution operation with 10 Cadre"
+
+  operation:
+    phase_1:
+      action: "Cadre enter territory with leaflets"
+      reality: |
+        The moment the Cadre enter, the Neighborhood Watch activates.
+        Every resident has the WhatsApp group. Within 5 minutes, the
+        militia is mobilizing. Police are called. Escape routes are
+        blocked by "concerned citizens."
+
+    phase_2:
+      action: "Cadre begin distributing leaflets"
+      reality: |
+        The residents don't argue or engage. They smile, nod, and
+        immediately photograph the Cadre, their vehicle, their plates.
+        Meanwhile, armed militia are taking positions.
+
+    phase_3:
+      action: "Cadre attempt to leave"
+      event: "AMBUSH_SPRUNG"
+      effects:
+        - "3 Cadre captured by militia (handed to police)"
+        - "2 Cadre injured in confrontation"
+        - "Vehicle seized, plates traced to safe house"
+        - "SECURITY_BREACH cascade begins"
+        - "Network exposure: safe house compromised"
+
+  aftermath:
+    immediate:
+      cadre_lost: 3
+      cadre_injured: 2
+      safe_house: "Compromised"
+      state_attention: "+0.4 on organization"
+    cascade:
+      interrogation: "Captured Cadre may reveal other contacts"
+      network_damage: "Safe house must be abandoned"
+      reputation: "-0.2 in region (operation failed publicly)"
+
+  lesson: |
+    "You planned your operation based on data that showed calm. But you
+    were reading MASKED data from a hostile population. The suburb wasn't
+    calm - it was mobilizing. The low agitation you saw was a lie the
+    locals were happy to let you believe.
+
+    The fish was out of water. It could not see the sharks circling.
+
+    Before operating in hostile territory, you must first do the political
+    work to change the territory - or accept that you are operating blind
+    and plan accordingly."
+
+# ==============================================================================
+# UI REPRESENTATION
+# ==============================================================================
+
+ui_representation:
+  description: |
+    The UI must communicate uncertainty without making the player paranoid
+    about every piece of data. The goal is to teach the PATTERN:
+    friendly territory = trustworthy data, hostile territory = suspect data.
+
+  confidence_indicators:
+    high_confidence:
+      threshold: "I_c >= 0.8"
+      display: "Solid white text"
+      example: "Agitation: 0.7"
+
+    moderate_confidence:
+      threshold: "0.4 <= I_c < 0.8"
+      display: "Text with ~ prefix, slightly faded"
+      example: "Agitation: ~0.5"
+
+    low_confidence:
+      threshold: "0.2 <= I_c < 0.4"
+      display: "Text with ? suffix, faded"
+      example: "Agitation: 0.3?"
+
+    masked_data:
+      threshold: "I_c < 0.2"
+      display: "APPEARS NORMAL - the trap"
+      example: "Agitation: 0.1"
+      note: |
+        This is the critical design decision. Masked data looks NORMAL.
+        The player must learn to distrust data from hostile territories
+        not because the UI warns them, but because they've been burned.
+
+        After experiencing the Ambush Scenario, players will:
+        1. Check M_r before trusting any data
+        2. Do political work before military work
+        3. Understand that hostile territory = blind territory
+
+  territory_overlay:
+    description: |
+      The map should visually indicate the vision state of each territory.
+
+    water:
+      color: "Blue-green glow"
+      description: "Territory where masses are your eyes"
+
+    mud:
+      color: "Brown/amber tint"
+      description: "Territory with partial information"
+
+    desert:
+      color: "Red/gray tint"
+      description: "Hostile territory - you are blind and exposed"
+
+# ==============================================================================
+# IMPLEMENTATION NOTES
+# ==============================================================================
+
+implementation:
+  new_fields:
+    territory:
+      mass_receptivity:
+        type: "Intensity (0.0 to 1.0)"
+        derivation: "Calculated from P(S|A), ideological_alignment, class_factor"
+
+      intel_confidence:
+        type: "Intensity (0.0 to 1.0)"
+        derivation: "Calculated from base_observation + (cadre_presence × mass_receptivity)"
+
+      intel_decay_rate:
+        type: "float"
+        derivation: "Based on vision_state (water/mud/desert)"
+
+      masked_attributes:
+        type: "dict[str, Any]"
+        description: "True values for masked attributes (hidden from player)"
+
+    organization:
+      contact_networks:
+        type: "list[TerritoryID]"
+        description: "Territories where contact networks are established"
+
+  new_events:
+    - "SECURITY_BREACH: Cadre exposed in hostile territory"
+    - "NETWORK_COMPROMISE: Contact network infiltrated"
+    - "INTEL_DECAY: Intel confidence dropped below threshold"
+    - "AMBUSH: Operation based on masked intel fails"
+
+  new_formulas:
+    calculate_mass_receptivity:
+      inputs: ["P_S_A", "ideological_alignment", "class_factor"]
+      formula: "(1 - P_S_A) × ideological_alignment × class_factor"
+      returns: "Intensity"
+
+    calculate_intel_confidence:
+      inputs: ["base_observation", "cadre_presence", "mass_receptivity"]
+      formula: "base_observation + (cadre_presence × mass_receptivity)"
+      returns: "Intensity"
+
+    apply_intel_decay:
+      inputs: ["intel_confidence", "decay_rate"]
+      formula: "intel_confidence × (1 - decay_rate)"
+      returns: "Intensity"
+
+  system_required:
+    name: "IntelligenceSystem"
+    responsibilities:
+      - "Calculate Mass Receptivity per territory per tick"
+      - "Calculate Intel Confidence per territory"
+      - "Apply intel decay per tick"
+      - "Generate masked data for low-confidence territories"
+      - "Detect Security Breach conditions"
+      - "Manage contact network state"
+
+# ==============================================================================
+# CROSS-REFERENCES
+# ==============================================================================
+
+cross_references:
+  - file: "ai-docs/state-attention-economy.yaml"
+    relevance: "Panopticon - complementary State vision system"
+  - file: "ai-docs/reactionary-subject.yaml"
+    relevance: "Class Factor derivation from class composition"
+  - file: "ai-docs/kinetic-warfare.yaml"
+    relevance: "Intel affects combat outcomes"
+  - file: "ai-docs/vanguard-economy.yaml"
+    relevance: "Cadre Labor costs for intel actions"
+  - file: "ai-docs/strategy-layer.yaml"
+    relevance: "Mass work actions that affect receptivity"
+  - file: "ai-docs/cohesion-mechanic.yaml"
+    relevance: "Organization health affects intel operations"

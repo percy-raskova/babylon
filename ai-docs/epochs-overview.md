@@ -182,7 +182,8 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 | 2.7 | Kinetic Warfare | Asymmetric logistics, system disruption |
 | 2.8 | The Doctrine System | Ideological tech tree, line struggle, traps |
 | 2.9 | The Panopticon | State attention economy, surveillance costs |
-| 2.10 | Multiple Scenarios | Historical scenarios, custom setups |
+| 2.10 | The Epistemic Horizon | Fog of war, Fish in Water intel system |
+| 2.11 | Multiple Scenarios | Historical scenarios, custom setups |
 
 ### Slice 2.1: Demographic Resolution
 
@@ -305,6 +306,24 @@ The "State Attention Economy" - enemy AI as information processing:
 - **Police State Spiral:** More surveillance → more resistance → more surveillance
 
 This is where the enemy becomes exploitable. The State can see everything but process only fragments. The player wins by overwhelming cognition, not defeating force.
+
+### Slice 2.10: The Epistemic Horizon
+
+**Spec:** `ai-docs/fog-of-war.yaml`
+
+The "Fish in Water" intelligence system - dialectical fog of war:
+- **Core Thesis:** Intelligence flows through social relationships, not technical means
+- **Mass Receptivity:** Willingness of locals to share info = f(desperation, alignment, class)
+- **Three Vision States:** Desert (hostile, masked data), Mud (contested, approximate), Water (base area, full intel)
+- **The Trap:** In hostile territory, data may be FALSIFIED - you walk into ambushes
+
+Key mechanics:
+- **Intel Formula:** `Confidence = Base_Observation + (Cadre_Presence × Mass_Receptivity)`
+- **Mass Work Prerequisite:** You cannot scout, you must WORK to earn intel
+- **Fish Out of Water:** Cadre in hostile territory generate State Attention and risk capture
+- **Intel Decay:** Information becomes stale faster in hostile territory
+
+This complements the Panopticon (Slice 2.9): State sees everywhere but understands nothing; Player understands but only where they've built relationships. "Win the people, know the terrain."
 
 ---
 

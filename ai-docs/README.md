@@ -31,6 +31,7 @@ This directory helps AI assistants:
 | `kinetic-warfare.yaml` | Slice 2.7 spec - Asymmetric Logistics, System Disruption | YAML |
 | `doctrine-tree.yaml` | Slice 2.8 spec - Ideological Tech Tree, Line Struggle | YAML |
 | `state-attention-economy.yaml` | Slice 2.9 spec - Panopticon, State AI Threads | YAML |
+| `fog-of-war.yaml` | Slice 2.10 spec - Epistemic Horizon, Fish in Water Intel | YAML |
 | `formulas-spec.yaml` | All 16 mathematical formulas with signatures | YAML |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor | YAML |
 | **ARCHITECTURE** |||
@@ -85,6 +86,7 @@ For implementation work:
 - **Slice 2.7** (Kinetic Warfare): See `ai-docs/kinetic-warfare.yaml`
 - **Slice 2.8** (Doctrine System): See `ai-docs/doctrine-tree.yaml`
 - **Slice 2.9** (The Panopticon): See `ai-docs/state-attention-economy.yaml`
+- **Slice 2.10** (Epistemic Horizon): See `ai-docs/fog-of-war.yaml`
 
 ## Maintenance
 

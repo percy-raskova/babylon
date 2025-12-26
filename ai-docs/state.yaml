@@ -122,7 +122,8 @@ epoch_status:
         "2.7": "Kinetic Warfare - System Disruption (ai-docs/kinetic-warfare.yaml)"
         "2.8": "The Doctrine System - Ideological Line Struggle (ai-docs/doctrine-tree.yaml)"
         "2.9": "The Panopticon - State Attention Economy (ai-docs/state-attention-economy.yaml)"
-        "2.10": "Multiple Scenarios"
+        "2.10": "The Epistemic Horizon - Fish in Water Intel (ai-docs/fog-of-war.yaml)"
+        "2.11": "Multiple Scenarios"
     epoch_3:
       name: "The Platform"
       thesis: "Others can build on this. Modding, custom scenarios, educational tools."

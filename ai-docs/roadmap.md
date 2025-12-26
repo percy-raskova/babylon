@@ -255,7 +255,7 @@
 
 ## The Horizontal Guarantee
 
-We can add **System A**, **System B**, and **System C** without breaking the existing MVP because:
+We can add **System A**, **System B**, **System C**, and **System D** without breaking the existing MVP because:
 
 1. **Shared State:** They read/write to the same `WorldState` graph
 2. **Event Coupling:** They communicate via the `EventBus` (e.g., `SabotageEvent` triggers `EconomicSystem` recalc)
@@ -291,11 +291,44 @@ SimulationEngine.run_tick(graph, services, context)
 - `StruggleSystem` Uprising event *inside* the sink node
 - External `KineticWarfare` breach of the node's defenses
 
+### System D: Reproductive Labor (Social Reproduction)
+
+*Based on: `brainstorm/reproductive-labor-theory.md`, `ai-docs/reproductive-labor.yaml`*
+
+**Concept:** Model the invisible labor that reproduces labor power.
+
+**Theoretical Basis:** Marx (Capital Vol I), Engels (Origin of Family), Marxist Feminist Theory (Federici, Combahee River Collective)
+
+**Key Insight:** "Women's unpaid domestic labor, emotional labor, and reproductive labor subsidizes capital accumulation by reproducing labor power at NO COST to capital."
+
+**Three-Tier Implementation:**
+
+| Tier | Components | Status |
+|------|------------|--------|
+| 1 | Subsistence floor, regeneration rate, capped extraction | PLANNED |
+| 2 | Debt mechanism, extraction efficiency, reproduction pressure metric | PLANNED |
+| 3 | Gendered sub-agents, State mediator, household units | DEFERRED |
+
+**Mechanic (Tier 1):**
+- Workers have a `subsistence_floor` below which extraction is capped
+- Workers regenerate wealth up to floor via `regeneration_rate`
+- SOLIDARITY edges provide `solidarity_regeneration_bonus`
+- Atomized workers regenerate slower (no community mutual aid)
+
+**System Position:**
+```
+SimulationEngine.run_tick(graph, services, context)
+     +-- 1. ImperialRentSystem      (extraction with subsistence cap)
+     +-- 2. ReproductionSystem      (NEW: regeneration via reproductive labor)
+     +-- 3. SolidaritySystem        (consciousness transmission)
+     ...
+```
+
 ---
 
 ## The Horizontal Guarantee
 
-We can add **System A**, **System B**, and **System C** without breaking the existing MVP because:
+We can add **System A**, **System B**, **System C**, and **System D** without breaking the existing MVP because:
 
 1. **Shared State:** They read/write to the same `WorldState` graph
 2. **Event Coupling:** They communicate via the `EventBus` (e.g., `SabotageEvent` triggers `EconomicSystem` recalc)

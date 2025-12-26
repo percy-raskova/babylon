@@ -25,10 +25,12 @@ This directory helps AI assistants:
 | `demographics-spec.yaml` | Slice 2.1 spec - Demographic Resolution | YAML |
 | `strategy-layer.yaml` | Slice 2.2a spec - External Actions, Resource Traps | YAML |
 | `cohesion-mechanic.yaml` | Slice 2.2b spec - Internal Dynamics, Iron Law of Oligarchy | YAML |
-| `gramscian-wire-vision.yaml` | Slice 2.4 spec - Narrative Warfare, Hegemony (Epoch 2) | YAML |
-| `vanguard-economy.yaml` | Slice 2.5 spec - Cadre/Sympathizer/Reputation Resources | YAML |
-| `kinetic-warfare.yaml` | Slice 2.6 spec - Asymmetric Logistics, System Disruption | YAML |
-| `state-attention-economy.yaml` | Slice 2.8 spec - Panopticon, State AI Threads | YAML |
+| `reactionary-subject.yaml` | Slice 2.3 spec - Class Basis of Fascism, Organizational Traps | YAML |
+| `gramscian-wire-vision.yaml` | Slice 2.5 spec - Narrative Warfare, Hegemony (Epoch 2) | YAML |
+| `vanguard-economy.yaml` | Slice 2.6 spec - Cadre/Sympathizer/Reputation Resources | YAML |
+| `kinetic-warfare.yaml` | Slice 2.7 spec - Asymmetric Logistics, System Disruption | YAML |
+| `doctrine-tree.yaml` | Slice 2.8 spec - Ideological Tech Tree, Line Struggle | YAML |
+| `state-attention-economy.yaml` | Slice 2.9 spec - Panopticon, State AI Threads | YAML |
 | `formulas-spec.yaml` | All 16 mathematical formulas with signatures | YAML |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor | YAML |
 | **ARCHITECTURE** |||
@@ -77,10 +79,12 @@ For implementation work:
 - **Slice 2.1** (Demographics): See `ai-docs/demographics-spec.yaml`
 - **Slice 2.2a** (Strategy Layer): See `ai-docs/strategy-layer.yaml`
 - **Slice 2.2b** (The Vanguard): See `ai-docs/cohesion-mechanic.yaml`
-- **Slice 2.4** (The Wire): See `ai-docs/gramscian-wire-vision.yaml`
-- **Slice 2.5** (Resource Economy): See `ai-docs/vanguard-economy.yaml`
-- **Slice 2.6** (Kinetic Warfare): See `ai-docs/kinetic-warfare.yaml`
-- **Slice 2.8** (The Panopticon): See `ai-docs/state-attention-economy.yaml`
+- **Slice 2.3** (The Reactionary Subject): See `ai-docs/reactionary-subject.yaml`
+- **Slice 2.5** (The Wire): See `ai-docs/gramscian-wire-vision.yaml`
+- **Slice 2.6** (Resource Economy): See `ai-docs/vanguard-economy.yaml`
+- **Slice 2.7** (Kinetic Warfare): See `ai-docs/kinetic-warfare.yaml`
+- **Slice 2.8** (Doctrine System): See `ai-docs/doctrine-tree.yaml`
+- **Slice 2.9** (The Panopticon): See `ai-docs/state-attention-economy.yaml`
 
 ## Maintenance
 

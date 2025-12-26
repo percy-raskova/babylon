@@ -47,8 +47,8 @@ class TestRefreshUIControlDeck:
         """refresh_ui() calls control_deck.update_tick() with current tick."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.control_deck = mock_control_deck
+        main._state.simulation = mock_simulation
+        main._state.control_deck = mock_control_deck
         mock_simulation.current_state = WorldState(tick=42)
 
         main.refresh_ui()
@@ -63,8 +63,8 @@ class TestRefreshUIControlDeck:
         """refresh_ui() handles None control_deck gracefully."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.control_deck = None
+        main._state.simulation = mock_simulation
+        main._state.control_deck = None
 
         # Should not raise
         main.refresh_ui()
@@ -87,8 +87,8 @@ class TestRefreshUITrendPlotter:
         """refresh_ui() pushes imperial_rent_pool to TrendPlotter."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.trend_plotter = mock_trend_plotter
+        main._state.simulation = mock_simulation
+        main._state.trend_plotter = mock_trend_plotter
 
         # Set up state with known rent value (use custom economy since frozen)
         economy = GlobalEconomy(imperial_rent_pool=150.0)
@@ -112,8 +112,8 @@ class TestRefreshUITrendPlotter:
         """refresh_ui() calculates and pushes global tension to TrendPlotter."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.trend_plotter = mock_trend_plotter
+        main._state.simulation = mock_simulation
+        main._state.trend_plotter = mock_trend_plotter
 
         # Create entities
         worker = SocialClass(
@@ -165,8 +165,8 @@ class TestRefreshUITrendPlotter:
         """refresh_ui() returns 0.0 tension when no relationships exist."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.trend_plotter = mock_trend_plotter
+        main._state.simulation = mock_simulation
+        main._state.trend_plotter = mock_trend_plotter
 
         state = WorldState(tick=1, relationships=[])
         mock_simulation.current_state = state
@@ -184,8 +184,8 @@ class TestRefreshUITrendPlotter:
         """refresh_ui() handles None trend_plotter gracefully."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.trend_plotter = None
+        main._state.simulation = mock_simulation
+        main._state.trend_plotter = None
 
         # Should not raise
         main.refresh_ui()
@@ -208,8 +208,8 @@ class TestRefreshUIStateInspector:
         """refresh_ui() calls state_inspector.refresh() with C001 entity data."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.state_inspector = mock_state_inspector
+        main._state.simulation = mock_simulation
+        main._state.state_inspector = mock_state_inspector
 
         # Create C001 entity
         worker = SocialClass(
@@ -240,8 +240,8 @@ class TestRefreshUIStateInspector:
         """refresh_ui() handles missing C001 entity gracefully."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.state_inspector = mock_state_inspector
+        main._state.simulation = mock_simulation
+        main._state.state_inspector = mock_state_inspector
 
         # State with no C001
         state = WorldState(tick=1, entities={})
@@ -260,8 +260,8 @@ class TestRefreshUIStateInspector:
         """refresh_ui() handles None state_inspector gracefully."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.state_inspector = None
+        main._state.simulation = mock_simulation
+        main._state.state_inspector = None
 
         # Should not raise
         main.refresh_ui()
@@ -284,9 +284,9 @@ class TestRefreshUISystemLog:
         """refresh_ui() logs new events to system_log."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.system_log = mock_system_log
-        main.last_event_index = 0
+        main._state.simulation = mock_simulation
+        main._state.system_log = mock_system_log
+        main._state.last_event_index = 0
 
         # Create extraction event
         event = ExtractionEvent(
@@ -316,9 +316,9 @@ class TestRefreshUISystemLog:
         """refresh_ui() only logs NEW events (index tracking)."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.system_log = mock_system_log
-        main.last_event_index = 2  # Already processed 2 events
+        main._state.simulation = mock_simulation
+        main._state.system_log = mock_system_log
+        main._state.last_event_index = 2  # Already processed 2 events
 
         # Create 3 events, but only event 3 is new
         event1 = ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=10.0)
@@ -332,7 +332,7 @@ class TestRefreshUISystemLog:
 
         # Only event3 should be logged (index 2 onwards)
         mock_system_log.log.assert_called_once()
-        assert main.last_event_index == 3
+        assert main._state.last_event_index == 3
 
     def test_refresh_ui_maps_crisis_to_error_level(
         self,
@@ -343,9 +343,9 @@ class TestRefreshUISystemLog:
         """refresh_ui() maps ECONOMIC_CRISIS events to ERROR log level."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.system_log = mock_system_log
-        main.last_event_index = 0
+        main._state.simulation = mock_simulation
+        main._state.system_log = mock_system_log
+        main._state.last_event_index = 0
 
         crisis_event = CrisisEvent(
             tick=10,
@@ -372,9 +372,9 @@ class TestRefreshUISystemLog:
         """refresh_ui() maps EXCESSIVE_FORCE events to WARN log level."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.system_log = mock_system_log
-        main.last_event_index = 0
+        main._state.simulation = mock_simulation
+        main._state.system_log = mock_system_log
+        main._state.last_event_index = 0
 
         spark_event = SparkEvent(
             tick=5,
@@ -399,8 +399,8 @@ class TestRefreshUISystemLog:
         """refresh_ui() handles None system_log gracefully."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.system_log = None
+        main._state.simulation = mock_simulation
+        main._state.system_log = None
 
         event = ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=10.0)
         state = WorldState(tick=1, events=[event])
@@ -430,12 +430,12 @@ class TestRefreshUIFullCycle:
         """refresh_ui() updates all Synopticon panels in single call."""
         import babylon.ui.main as main
 
-        main.simulation = mock_simulation
-        main.control_deck = mock_control_deck
-        main.trend_plotter = mock_trend_plotter
-        main.state_inspector = mock_state_inspector
-        main.system_log = mock_system_log
-        main.last_event_index = 0
+        main._state.simulation = mock_simulation
+        main._state.control_deck = mock_control_deck
+        main._state.trend_plotter = mock_trend_plotter
+        main._state.state_inspector = mock_state_inspector
+        main._state.system_log = mock_system_log
+        main._state.last_event_index = 0
 
         # Create comprehensive state (use custom economy since frozen)
         worker = SocialClass(
@@ -465,7 +465,7 @@ class TestRefreshUIFullCycle:
         """refresh_ui() returns early when simulation is None."""
         import babylon.ui.main as main
 
-        main.simulation = None
+        main._state.simulation = None
 
         # Should not raise
         main.refresh_ui()

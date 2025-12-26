@@ -2,11 +2,153 @@
 # All game entities and their relationships
 
 meta:
-  version: "1.1.0"
-  updated: "2025-12-08"
+  version: "2.0.0"
+  updated: "2025-12-26"
   total_entity_types: 17
   schema_location: "src/babylon/schemas/entities/"
   data_location: "src/babylon/data/game/"
+  epoch_compatibility: "1 → 2 Bridge"
+  status: "APPROVED_ARCHITECTURE"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: EXTENSIBILITY SYSTEM
+# =============================================================================
+# Adds tags and flags to BaseEntity for Epoch 2 properties without schema migration
+
+extensibility_system:
+  name: "Entity Tags and Flags"
+  status: "APPROVED_ARCHITECTURE"
+  created: "2025-12-26"
+
+  rationale: |
+    Epoch 2 introduces many new entity properties:
+    - security_rating, reactionary_latency (Panopticon - Slice 2.9)
+    - entitlement, chauvinism (Reactionary Subject - Slice 2.3)
+    - mass_receptivity, intel_confidence (Epistemic Horizon - Slice 2.10)
+    - cadre_discipline, volatility (multiple systems)
+
+    Rather than constant Pydantic schema migrations (breaking changes),
+    we add EXTENSIBLE CONTAINERS to the base entity model:
+    - tags: Dict[str, Any] - arbitrary key-value pairs
+    - flags: Set[str] - boolean markers
+
+    This allows Epoch 2 systems to attach properties without modifying
+    the core Epoch 1 schema. The Debug UI displays these in a raw JSON
+    viewer for inspection.
+
+  base_entity_extension:
+    fields:
+      tags:
+        type: "Dict[str, Any]"
+        default: "{}"
+        purpose: "Arbitrary key-value pairs for Epoch 2 properties"
+        serialization: "JSON-serializable values only"
+        examples:
+          - 'tags["security_rating"] = 0.7'
+          - 'tags["reactionary_latency"] = 5'
+          - 'tags["entitlement"] = 0.8'
+          - 'tags["chauvinism"] = 0.3'
+          - 'tags["mass_receptivity"] = 0.6'
+          - 'tags["intel_confidence"] = 0.4'
+          - 'tags["cadre_discipline"] = 0.8'
+          - 'tags["volatility"] = 0.5'
+
+      flags:
+        type: "Set[str]"
+        default: "set()"
+        purpose: "Boolean markers for quick checks"
+        examples:
+          - 'flags.add("MASKED")  # This entity shows false data in shadow state'
+          - 'flags.add("HOSTILE")  # Territory is hostile to player'
+          - 'flags.add("BASE_AREA")  # Territory is a revolutionary base'
+          - 'flags.add("UNDER_SURVEILLANCE")  # State is watching this entity'
+          - 'flags.add("DEFECTION_RISK")  # C_la unit may defect to fascism'
+          - 'flags.add("CONTACT_NETWORK")  # Territory has intel infrastructure'
+
+  known_epoch_2_tags:
+    panopticon:
+      slice: "2.9"
+      tags:
+        security_rating: "State attention level (0.0-1.0)"
+        threat_classification: "State's threat assessment"
+        surveillance_threads: "Number of State attention threads allocated"
+      flags:
+        - "UNDER_SURVEILLANCE"
+        - "HIGH_PRIORITY_TARGET"
+        - "INFILTRATED"
+
+    reactionary_subject:
+      slice: "2.3"
+      tags:
+        entitlement: "Investment in status quo (0.0-1.0)"
+        chauvinism: "Accumulated chauvinism debuff (0.0-1.0)"
+        fascist_alignment: "Progress toward fascist faction (0.0-1.0)"
+      flags:
+        - "DEFECTION_RISK"
+        - "FASCIST_DRIFT"
+        - "LABOR_ARISTOCRACY"
+
+    epistemic_horizon:
+      slice: "2.10"
+      tags:
+        mass_receptivity: "Willingness to share intel (0.0-1.0)"
+        intel_confidence: "Accuracy of player's knowledge (0.0-1.0)"
+        intel_decay_rate: "How fast intel becomes stale"
+        last_intel_update: "Tick when intel was last refreshed"
+      flags:
+        - "MASKED"
+        - "APPROXIMATE"
+        - "STALE"
+        - "CONTACT_NETWORK"
+        - "BASE_AREA"
+        - "HOSTILE"
+
+    kinetic_warfare:
+      slice: "2.7"
+      tags:
+        combat_readiness: "Unit's combat effectiveness"
+        operational_security: "Resistance to detection"
+        blowback_accumulated: "Collateral damage consequences"
+      flags:
+        - "GUERILLA_CAPABLE"
+        - "URBAN_GUERILLA"
+        - "COMPROMISED"
+
+    resource_economy:
+      slice: "2.6"
+      tags:
+        cadre_discipline: "Quality of Cadre leadership (0.0-1.0)"
+        sympathizer_count: "Number of Sympathizers"
+        reputation_local: "Local reputation modifier"
+      flags:
+        - "CADRE_PRESENT"
+        - "OVER_MOBILIZED"
+        - "READING_GROUP_TRAP"
+
+  debug_ui_integration:
+    display: "Raw JSON viewer panel"
+    location: "Entity detail sidebar"
+    features:
+      - "Collapsible tags object"
+      - "Flags displayed as chips/badges"
+      - "Edit capability for testing"
+      - "Filter entities by flag"
+    purpose: |
+      The Debug UI (God View) displays tags and flags in a raw JSON viewer.
+      This allows developers to:
+      - Inspect Epoch 2 properties during development
+      - Verify calculations are correct
+      - Manually modify values for testing
+      - Filter entities by specific flags
+
+  implementation:
+    location: "src/babylon/models/entities/base.py (or similar)"
+    changes:
+      - "Add tags: Dict[str, Any] = Field(default_factory=dict)"
+      - "Add flags: Set[str] = Field(default_factory=set)"
+      - "Add helper methods: has_flag(), get_tag(), set_tag()"
+    migration: "None - additive only, existing entities get empty tags/flags"
+    backward_compatible: true
 
 # =============================================================================
 # ENTITY OVERVIEW

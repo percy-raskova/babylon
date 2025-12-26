@@ -5,17 +5,19 @@
 # The State is "what the dice land on." The Engine is "the physics of the throw."
 
 meta:
-  version: "3.1.0"
+  version: "4.0.0"
   created: "2024-12-07"
-  updated: "2025-12-11"
+  updated: "2025-12-26"
   status: "implemented"
   phase: 2
+  epoch_compatibility: "1 → 2 Bridge"
   principle: "State is pure data. Engine is pure transformation. They never mix."
   implementation_status: "1445 tests passing, 7 Systems in modular architecture"
   recent_additions:
     - "StruggleSystem (Agency Layer - George Floyd Dynamic)"
     - "SolidaritySystem (Proletarian Internationalism)"
     - "TerritorySystem (Layer 0 - Territorial Substrate)"
+    - "Interceptor Architecture (Epoch 2 Bridge)"
 
 # =============================================================================
 # THE FUNDAMENTAL SEPARATION
@@ -252,6 +254,168 @@ simulation_engine:
       solidarity_spike: "The Bridge Building - Solidarity infrastructure created"
       # Contradiction events
       rupture: "When tension on an edge reaches 1.0"
+
+# =============================================================================
+# EPOCH 2 BRIDGE: INTERCEPTOR ARCHITECTURE
+# =============================================================================
+# Enables adversarial mechanics (State blocking Player actions) without UI changes
+
+  interceptor_system:
+    name: "Event Interceptors"
+    status: "APPROVED_ARCHITECTURE"
+    epoch_compatibility: "1 → 2 Bridge"
+    created: "2025-12-26"
+
+    rationale: |
+      Epoch 2 introduces adversarial mechanics where the State can BLOCK or
+      MODIFY player actions. Examples:
+      - State blocks AGITATE action in high-surveillance territory
+      - State intercepts SUPPLY_RUN and confiscates resources
+      - Fascist faction disrupts ORGANIZE action in their territory
+
+      The current Event Bus has: Signal → Emit
+      Epoch 2 requires: Signal → Intercept → Emit (or Block)
+
+      This is purely BACKEND LOGIC. The UI does not change.
+      Interceptors are registered per event type and evaluated in priority order.
+
+    current_flow: |
+      ┌─────────────┐     EMIT      ┌─────────────┐
+      │   System    │ ────────────► │  EventBus   │ ────► Subscribers
+      │  (Signal)   │               │             │
+      └─────────────┘               └─────────────┘
+
+    new_flow: |
+      ┌─────────────┐    SIGNAL     ┌─────────────┐   INTERCEPT   ┌─────────────┐
+      │   System    │ ────────────► │  EventBus   │ ────────────► │ Interceptor │
+      │  (Action)   │               │  (Staging)  │               │   Chain     │
+      └─────────────┘               └─────────────┘               └──────┬──────┘
+                                                                         │
+                                           ┌─────────────────────────────┤
+                                           │                             │
+                                           ▼                             ▼
+                                    ┌─────────────┐               ┌─────────────┐
+                                    │   BLOCKED   │               │    EMIT     │
+                                    │  (No emit)  │               │ (Continue)  │
+                                    └─────────────┘               └─────────────┘
+
+    interceptor_protocol:
+      name: "Interceptor"
+      location: "src/babylon/engine/interceptors.py (new)"
+      interface: |
+        class Interceptor(Protocol):
+            priority: int  # Lower = earlier execution (0-100)
+            event_types: Set[EventType]  # Which events to intercept
+
+            def intercept(
+                self,
+                event: Event,
+                context: InterceptContext
+            ) -> InterceptResult:
+                """
+                Evaluate the event and decide whether to allow, block, or modify.
+
+                Returns:
+                    InterceptResult with:
+                    - action: ALLOW | BLOCK | MODIFY
+                    - modified_event: Event (if MODIFY)
+                    - reason: str (for logging/narrative)
+                """
+                ...
+
+    intercept_result:
+      actions:
+        ALLOW: "Event proceeds to next interceptor (or emit if last)"
+        BLOCK: "Event is stopped, not emitted, reason logged"
+        MODIFY: "Event is replaced with modified version, continues chain"
+
+    built_in_interceptors:
+      state_attention_interceptor:
+        priority: 10
+        event_types: ["AGITATE", "ORGANIZE", "SUPPLY_RUN", "STRIKE"]
+        behavior: |
+          Checks if territory has State attention > threshold.
+          If yes, probability of BLOCK based on attention level.
+          On BLOCK: Emit SECURITY_BREACH event instead.
+        integration: "ai-docs/state-attention-economy.yaml (Slice 2.9)"
+
+      fascist_faction_interceptor:
+        priority: 20
+        event_types: ["ORGANIZE", "AGITATE", "ESTABLISH_CONTACT"]
+        behavior: |
+          Checks if territory has fascist_alignment > threshold.
+          If yes, probability of BLOCK or MODIFY (reduced effect).
+          May trigger VIGILANTISM counter-event.
+        integration: "ai-docs/reactionary-subject.yaml (Slice 2.3)"
+
+      resource_interceptor:
+        priority: 30
+        event_types: ["SUPPLY_RUN", "ARM_MILITIA", "RECRUIT"]
+        behavior: |
+          Checks if organization has sufficient resources.
+          If not, BLOCK with reason "Insufficient Cadre Labor" etc.
+        integration: "ai-docs/vanguard-economy.yaml (Slice 2.6)"
+
+      fog_of_war_interceptor:
+        priority: 40
+        event_types: ["SOCIAL_INVESTIGATION", "ESTABLISH_CONTACT"]
+        behavior: |
+          Checks Mass_Receptivity of target territory.
+          If too low (Desert), BLOCK intel-gathering actions.
+          Returns reason "Masses will not speak to you."
+        integration: "ai-docs/fog-of-war.yaml (Slice 2.10)"
+
+    interceptor_chain:
+      execution_order: "Sorted by priority (ascending)"
+      short_circuit: "First BLOCK stops chain"
+      modification_chaining: "MODIFY events pass to next interceptor"
+      example: |
+        Player issues AGITATE action in hostile territory:
+
+        1. StateAttentionInterceptor (priority=10)
+           - Territory surveillance = 0.8 (high)
+           - Roll: 0.6 < 0.8 → BLOCK
+           - Reason: "State security forces detained the organizers"
+           - Emit: SECURITY_BREACH event
+           - Chain STOPS
+
+        2. FascistFactionInterceptor (priority=20)
+           - Never reached (blocked at step 1)
+
+        Player issues AGITATE action in friendly territory:
+
+        1. StateAttentionInterceptor (priority=10)
+           - Territory surveillance = 0.2 (low)
+           - Roll: 0.7 > 0.2 → ALLOW
+           - Chain continues
+
+        2. FascistFactionInterceptor (priority=20)
+           - fascist_alignment = 0.1 (minimal)
+           - → ALLOW
+           - Chain continues
+
+        3. ResourceInterceptor (priority=30)
+           - Cadre Labor available = 5 (sufficient)
+           - → ALLOW
+           - Chain continues
+
+        4. No more interceptors → EMIT original event
+
+    ui_implications:
+      epoch_1: "None - interceptors are pure backend logic"
+      epoch_2: |
+        Game UI may display interceptor results:
+        - "Action blocked: State forces intercepted your organizers"
+        - "Action modified: Reduced effectiveness due to hostile territory"
+        But this is Game UI (Player View), not Debug UI (God View).
+        Debug UI shows interceptor chain execution for debugging.
+
+    implementation_notes:
+      backward_compatible: true
+      existing_events: "Still emit directly if no interceptors registered"
+      new_events: "Pass through interceptor chain"
+      testing: "Interceptors are pure functions, easy to unit test"
+      performance: "Interceptors are synchronous, no async overhead"
 
   formula_registry:
     class: "FormulaRegistry"

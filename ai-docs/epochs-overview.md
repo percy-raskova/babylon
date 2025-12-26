@@ -73,6 +73,7 @@ The Epoch + Slice model fixes this:
 | 1.4 | The Rift | IN_PROGRESS | MetabolismSystem, biocapacity, ECOLOGICAL_OVERSHOOT |
 | 1.5 | The Dashboard | PARTIAL | NiceGUI layout, meaningful metrics, metabolic gauge |
 | 1.6 | The Endgame | NOT_STARTED | Win/lose display, Bondi Algorithm narration |
+| 1.7 | The Graph Bridge | PLANNED | GraphProtocol, NetworkX Adapter, Epoch 2 preparation |
 
 ### Slice 1.1: The Circuit (COMPLETE)
 
@@ -151,6 +152,33 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 - Lose: solidarity < threshold → "Fascist Path"
 - Bondi Algorithm narration of outcome
 
+### Slice 1.7: The Graph Bridge (PLANNED)
+
+**Spec:** `ai-docs/graph-abstraction-spec.yaml`
+
+**Status:** PLANNED
+
+**Purpose:** Graph Abstraction Layer, Protocol definition, NetworkX Adapter.
+
+**Rationale:** Prepares architecture for Epoch 2 scale (Franchise Model) without breaking Epoch 1 demo. Creates the interface boundary between Game Loop and Graph Engine.
+
+**Components:**
+- `GraphProtocol` interface (16 methods: CRUD, traversal, set operations)
+- `GraphNode`, `GraphEdge` Pydantic models (frozen, type-safe)
+- `NetworkXAdapter` reference implementation (InMemoryAdapter)
+- `TraversalQuery`/`TraversalResult` for percolation analysis
+
+**Epoch 2 Bridge:**
+- Defines Franchise Schema node types: `OrganizationUnit`, `PopFragment`, `Territory`
+- Defines new edge types: `COMMAND`, `OPERATES_IN`, `INFLUENCES`, `RESIDES_IN`
+- Documents Action Flow: Agent → Signal → OrganizationUnit → Effect → Graph
+- DuckDB-ready interface (set-oriented queries, SQL translation examples)
+
+**Files (to create):**
+- `src/babylon/models/graph.py` - GraphNode, GraphEdge, TraversalQuery
+- `src/babylon/engine/graph_protocol.py` - GraphProtocol interface
+- `src/babylon/engine/adapters/inmemory_adapter.py` - NetworkXAdapter
+
 ### Epoch 1 Completion Criteria
 
 - [ ] 4-node Imperial Circuit running in dashboard
@@ -158,6 +186,7 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 - [ ] ECOLOGICAL_OVERSHOOT fires at ~30-50 ticks
 - [ ] Dashboard shows rift widening visually
 - [ ] Endgame screen displays outcome based on solidarity
+- [ ] GraphProtocol defined and implemented via NetworkXAdapter
 - [ ] All tests pass (target: 2300+)
 
 ---
@@ -265,6 +294,11 @@ Player choices with meaningful but dangerous traps:
 #### 2.2b: Internal Dynamics (The Vanguard)
 
 **Spec:** `ai-docs/cohesion-mechanic.yaml`
+
+**Architecture:** Uses the **Franchise Model** defined in Slice 1.7 (`ai-docs/graph-abstraction-spec.yaml`):
+- Player's organization is an **Agent** (external to the graph)
+- Chapters, Cells, Brigades are **OrganizationUnits** (graph nodes)
+- Actions flow: Agent → Signal → OrganizationUnit → Effect → Graph
 
 Intra-organizational mechanics based on the Iron Law of Oligarchy:
 - **The Transmission Law:** `Effective_Transmission = min(Solidarity, Cohesion)`
@@ -386,7 +420,10 @@ This complements the Panopticon (Slice 2.9): State sees everywhere but understan
 
 **Status:** PLANNED
 
-**Dependencies:** Sub-Epoch 2A complete
+**Dependencies:**
+- Sub-Epoch 2A complete
+- Slice 1.7 (GraphProtocol) complete - required for Franchise Model
+- DuckDB / DuckPGQ integration (optional but recommended for scale)
 
 **Target:** A playable game where:
 1. Organizational health affects action success
@@ -583,6 +620,7 @@ A Slice is COMPLETE when:
 |----------|---------|
 | `ai-docs/state.yaml` | Current implementation status |
 | `ai-docs/metabolic-slice.yaml` | Slice 1.4 spec |
+| `ai-docs/graph-abstraction-spec.yaml` | Slice 1.7 spec (Graph Bridge) |
 | `ai-docs/demographics-spec.yaml` | Slice 2.1 spec |
 | `ai-docs/architecture.yaml` | System architecture |
 | `ai-docs/formulas-spec.yaml` | Formula inventory |

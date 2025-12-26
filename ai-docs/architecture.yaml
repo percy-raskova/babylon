@@ -47,15 +47,16 @@ core_architecture:
         any System code, as long as they implement the GraphProtocol interface.
       implementations:
         current:
-          adapter: "NetworkXAdapter"
+          adapter: "InMemoryAdapter"
           backing: "NetworkX DiGraph (in-memory)"
-          epoch: "1 and 2 (MVP)"
-          location: "src/babylon/engine/adapters/networkx_adapter.py"
+          epoch: "Epoch 1 (direct access) and Epoch 2 (via interface)"
+          location: "src/babylon/engine/adapters/inmemory_adapter.py"
+          note: "Epoch 1 uses NetworkX directly; Epoch 2 wraps it behind GraphProtocol"
         future:
-          adapter: "DuckDBAdapter"
+          adapter: "ColumnarAdapter"
           backing: "DuckDB + DuckPGQ (persistent, OLAP-optimized)"
-          epoch: "3+ (Platform)"
-          location: "src/babylon/engine/adapters/duckdb_adapter.py (planned)"
+          epoch: "Epoch 3+ (Platform)"
+          location: "src/babylon/engine/adapters/columnar_adapter.py (planned)"
           benefits:
             - "Native Parquet support for large-scale scenarios"
             - "SQL/GQL hybrid queries for analytics"
@@ -75,6 +76,47 @@ core_architecture:
       key_insight: "Graph + Math = History (ADR011)"
       runtime_constraint: "No database queries during tick - pure RAM operations"
       see_also: "ai-docs/topology-system.yaml (GraphProtocol specification)"
+
+  # -------------------------------------------------------------------------
+  # THE FRANCHISE MODEL: Agents vs Infrastructure
+  # -------------------------------------------------------------------------
+  franchise_model:
+    name: "The Franchise Model"
+    status: "DESIGN PRINCIPLE"
+    epoch_compatibility: "Epoch 2+"
+
+    principle: |
+      Strategic Agents (e.g., Revolutionary Organization, State) are DISTINCT
+      from Graph Nodes (e.g., Cells, Territories, SocialClasses). Agents are
+      "CPUs" that MANIPULATE the "Data" (Graph) via the GraphProtocol interface.
+
+      This is like a franchise business:
+      - The Franchise Owner (Agent) manages multiple locations (Nodes)
+      - The Owner is NOT a location - they operate FROM OUTSIDE the graph
+      - Multiple Owners can compete for control of the same Nodes
+
+    separation:
+      agents:
+        description: "Strategic actors with resources, goals, and decision-making"
+        examples:
+          - "Revolutionary Organization (Player) - manages cells, has war_chest"
+          - "State (AI opponent) - controls territories, has legitimacy & budget"
+          - "Rival Organizations (future: multiplayer or AI factions)"
+        location: "NOT in the graph - external entities"
+
+      infrastructure:
+        description: "Material reality represented as graph nodes and edges"
+        examples:
+          - "SocialClass nodes - wealth, ideology, organization"
+          - "Territory nodes - heat, rent_level, profile"
+          - "Edges - SOLIDARITY, EXPLOITATION, TENANCY, ADJACENCY"
+        location: "The Graph (Topology layer)"
+
+    implications:
+      - "Agents query/mutate the graph via GraphProtocol (Epoch 2+)"
+      - "In Epoch 1, this separation is conceptual (no formal Agent class yet)"
+      - "Fog of War applies to Agents, not to the Graph (Graph is Truth)"
+      - "Multiple Agents can have different views of the same Graph"
 
     archive:
       purpose: "Semantic history and theory"

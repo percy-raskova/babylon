@@ -41,9 +41,7 @@ from babylon.engine.observer import SimulationObserver
 from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.models.enums import EventType, GameOutcome
 
-# TDD RED phase marker - these tests intentionally fail until GREEN phase
-# Remove this line when implementing the GREEN phase
-pytestmark = pytest.mark.red_phase
+# TDD GREEN phase - tests now pass with implementation
 
 if TYPE_CHECKING:
     from babylon.models.config import SimulationConfig
@@ -194,9 +192,9 @@ class TestRevolutionaryVictoryDetection:
         2. Ideological clarity: average class_consciousness > 0.8
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.relationship import Relationship
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import EdgeType, SocialRole
-        from babylon.models.relationship import Relationship
 
         # Create entities with high class consciousness (> 0.8)
         entities = {
@@ -204,7 +202,7 @@ class TestRevolutionaryVictoryDetection:
                 id=f"C{i:03d}",
                 name=f"Worker {i}",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
-                class_consciousness=0.9,  # Above 0.8 threshold
+                ideology=IdeologicalProfile(class_consciousness=0.9),  # Above 0.8 threshold
             )
             for i in range(10)
         }
@@ -242,7 +240,7 @@ class TestRevolutionaryVictoryDetection:
         Both conditions must be met simultaneously.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         # High consciousness but isolated entities (no SOLIDARITY edges)
@@ -251,7 +249,7 @@ class TestRevolutionaryVictoryDetection:
                 id=f"C{i:03d}",
                 name=f"Worker {i}",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
-                class_consciousness=0.9,  # Above threshold
+                ideology=IdeologicalProfile(class_consciousness=0.9),  # Above threshold
             )
             for i in range(10)
         }
@@ -274,9 +272,9 @@ class TestRevolutionaryVictoryDetection:
         Both conditions must be met simultaneously.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.relationship import Relationship
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import EdgeType, SocialRole
-        from babylon.models.relationship import Relationship
 
         # Low consciousness entities but well connected
         entities = {
@@ -284,7 +282,7 @@ class TestRevolutionaryVictoryDetection:
                 id=f"C{i:03d}",
                 name=f"Worker {i}",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
-                class_consciousness=0.5,  # Below 0.8 threshold
+                ideology=IdeologicalProfile(class_consciousness=0.5),  # Below 0.8 threshold
             )
             for i in range(10)
         }
@@ -551,7 +549,7 @@ class TestFascistConsolidationDetection:
         dominates over class consciousness in a majority of social classes.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         # Create 5 entities: 4 with fascist consciousness
@@ -562,16 +560,20 @@ class TestFascistConsolidationDetection:
                     id=f"C{i:03d}",
                     name=f"Fascist {i}",
                     role=SocialRole.LABOR_ARISTOCRACY,
-                    national_identity=0.8,  # High
-                    class_consciousness=0.2,  # Low
+                    ideology=IdeologicalProfile(
+                        national_identity=0.8,  # High
+                        class_consciousness=0.2,  # Low
+                    ),
                 )
             else:  # 1 class-conscious node
                 entities[f"C{i:03d}"] = SocialClass(
                     id=f"C{i:03d}",
                     name=f"Revolutionary {i}",
                     role=SocialRole.PERIPHERY_PROLETARIAT,
-                    national_identity=0.2,
-                    class_consciousness=0.8,
+                    ideology=IdeologicalProfile(
+                        national_identity=0.2,
+                        class_consciousness=0.8,
+                    ),
                 )
 
         prev_state = WorldState(tick=0, entities=entities)
@@ -593,7 +595,7 @@ class TestFascistConsolidationDetection:
         The threshold of 3 nodes represents a tipping point.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         # Only 2 fascist nodes (below threshold of 3)
@@ -604,16 +606,20 @@ class TestFascistConsolidationDetection:
                     id=f"C{i:03d}",
                     name=f"Fascist {i}",
                     role=SocialRole.LABOR_ARISTOCRACY,
-                    national_identity=0.8,
-                    class_consciousness=0.2,
+                    ideology=IdeologicalProfile(
+                        national_identity=0.8,
+                        class_consciousness=0.2,
+                    ),
                 )
             else:  # 3 class-conscious
                 entities[f"C{i:03d}"] = SocialClass(
                     id=f"C{i:03d}",
                     name=f"Worker {i}",
                     role=SocialRole.PERIPHERY_PROLETARIAT,
-                    national_identity=0.2,
-                    class_consciousness=0.8,
+                    ideology=IdeologicalProfile(
+                        national_identity=0.2,
+                        class_consciousness=0.8,
+                    ),
                 )
 
         prev_state = WorldState(tick=0, entities=entities)
@@ -634,7 +640,7 @@ class TestFascistConsolidationDetection:
         The boundary condition: >= 3 nodes.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         # Exactly 3 fascist nodes
@@ -645,16 +651,20 @@ class TestFascistConsolidationDetection:
                     id=f"C{i:03d}",
                     name=f"Fascist {i}",
                     role=SocialRole.LABOR_ARISTOCRACY,
-                    national_identity=0.8,
-                    class_consciousness=0.2,
+                    ideology=IdeologicalProfile(
+                        national_identity=0.8,
+                        class_consciousness=0.2,
+                    ),
                 )
             else:  # 2 class-conscious
                 entities[f"C{i:03d}"] = SocialClass(
                     id=f"C{i:03d}",
                     name=f"Worker {i}",
                     role=SocialRole.PERIPHERY_PROLETARIAT,
-                    national_identity=0.2,
-                    class_consciousness=0.8,
+                    ideology=IdeologicalProfile(
+                        national_identity=0.2,
+                        class_consciousness=0.8,
+                    ),
                 )
 
         prev_state = WorldState(tick=0, entities=entities)
@@ -686,7 +696,7 @@ class TestEndgameEventEmission:
         to TopologyMonitor's PHASE_TRANSITION events.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         # Trigger fascist consolidation (quickest to set up)
@@ -695,8 +705,10 @@ class TestEndgameEventEmission:
                 id=f"C{i:03d}",
                 name=f"Fascist {i}",
                 role=SocialRole.LABOR_ARISTOCRACY,
-                national_identity=0.9,
-                class_consciousness=0.1,
+                ideology=IdeologicalProfile(
+                    national_identity=0.9,
+                    class_consciousness=0.1,
+                ),
             )
             for i in range(5)
         }
@@ -715,7 +727,7 @@ class TestEndgameEventEmission:
         assert len(events) == 1
         event = events[0]
         assert event.event_type == EventType.ENDGAME_REACHED
-        assert event.payload["outcome"] == GameOutcome.FASCIST_CONSOLIDATION.value
+        assert event.outcome == GameOutcome.FASCIST_CONSOLIDATION
 
     def test_no_event_when_game_continues(
         self,
@@ -743,7 +755,7 @@ class TestEndgameEventEmission:
         Subsequent ticks should not emit additional events.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         entities = {
@@ -751,8 +763,10 @@ class TestEndgameEventEmission:
                 id=f"C{i:03d}",
                 name=f"Fascist {i}",
                 role=SocialRole.LABOR_ARISTOCRACY,
-                national_identity=0.9,
-                class_consciousness=0.1,
+                ideology=IdeologicalProfile(
+                    national_identity=0.9,
+                    class_consciousness=0.1,
+                ),
             )
             for i in range(5)
         }
@@ -796,7 +810,7 @@ class TestEndgameDetectorLifecycle:
         Allows reuse of detector across multiple simulation runs.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.enums import SocialRole
 
         entities = {
@@ -804,8 +818,10 @@ class TestEndgameDetectorLifecycle:
                 id=f"C{i:03d}",
                 name=f"Fascist {i}",
                 role=SocialRole.LABOR_ARISTOCRACY,
-                national_identity=0.9,
-                class_consciousness=0.1,
+                ideology=IdeologicalProfile(
+                    national_identity=0.9,
+                    class_consciousness=0.1,
+                ),
             )
             for i in range(5)
         }
@@ -857,10 +873,10 @@ class TestEndgamePriority:
         If revolution succeeds, that's the preferred ending - the people won.
         """
         from babylon.models import WorldState
-        from babylon.models.entities.social_class import SocialClass
+        from babylon.models.entities.relationship import Relationship
+        from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
         from babylon.models.entities.territory import Territory
         from babylon.models.enums import EdgeType, SectorType, SocialRole
-        from babylon.models.relationship import Relationship
 
         # Conditions for both revolutionary victory AND fascist consolidation
         # (unlikely in reality, but tests precedence logic)
@@ -872,8 +888,10 @@ class TestEndgamePriority:
                 id=f"C{i:03d}",
                 name=f"Worker {i}",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
-                class_consciousness=0.9,  # High (for revolution)
-                national_identity=0.95,  # Even higher (for fascism check)
+                ideology=IdeologicalProfile(
+                    class_consciousness=0.9,  # High (for revolution)
+                    national_identity=0.95,  # Even higher (for fascism check)
+                ),
             )
 
         entity_ids = list(entities.keys())

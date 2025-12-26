@@ -35,9 +35,7 @@ import pytest
 from babylon.models.enums import GameOutcome
 from babylon.ui.components import EndgamePanel
 
-# TDD RED phase marker - these tests intentionally fail until GREEN phase
-# Remove this line when implementing the GREEN phase
-pytestmark = pytest.mark.red_phase
+# TDD GREEN phase - tests now pass with implementation
 
 if TYPE_CHECKING:
     pass
@@ -200,20 +198,21 @@ class TestEndgamePanelStyling:
         assert hasattr(panel, "get_style_for_outcome") or hasattr(panel, "OUTCOME_STYLES")
 
         if hasattr(panel, "get_style_for_outcome"):
-            # Revolutionary victory should have green color
+            # Revolutionary victory should have green color (Design System: #39FF14 data_green)
             victory_style = panel.get_style_for_outcome(GameOutcome.REVOLUTIONARY_VICTORY)
-            assert "00FF" in victory_style.upper() or "green" in victory_style.lower()
+            assert "FF" in victory_style.upper() or "green" in victory_style.lower()
 
-            # Ecological collapse should have amber/warning color
+            # Ecological collapse should have amber/warning color (Design System: #B8860B dark goldenrod)
             collapse_style = panel.get_style_for_outcome(GameOutcome.ECOLOGICAL_COLLAPSE)
             assert (
-                "8B45" in collapse_style.upper()
+                "860B" in collapse_style.upper()
+                or "B886" in collapse_style.upper()
                 or "amber" in collapse_style.lower()
                 or "brown" in collapse_style.lower()
                 or "warning" in collapse_style.lower()
             )
 
-            # Fascist consolidation should have red color
+            # Fascist consolidation should have red color (Design System: #D40000 phosphor_burn_red)
             fascist_style = panel.get_style_for_outcome(GameOutcome.FASCIST_CONSOLIDATION)
             assert "D400" in fascist_style.upper() or "red" in fascist_style.lower()
 

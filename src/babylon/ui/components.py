@@ -8,6 +8,7 @@ Components:
     TrendPlotter: Real-time EChart line graph for simulation metrics.
     StateInspector: JSON viewer for raw entity state inspection.
     WirePanel: Dual narrative display panel (The Gramscian Wire).
+    EndgamePanel: Game outcome display panel (Slice 1.6: Endgame Detection).
 
 Example:
     >>> from babylon.ui.components import SystemLog, TrendPlotter, StateInspector
@@ -30,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from nicegui import ui
 
+from babylon.models.enums import GameOutcome
 from babylon.models.events import SimulationEvent
 
 if TYPE_CHECKING:
@@ -927,3 +929,231 @@ class WealthTrendPanel:
         self.echart.options["series"][2]["data"] = self._cb_data
         self.echart.options["series"][3]["data"] = self._cw_data
         self.echart.update()
+
+
+class EndgamePanel:
+    """Game outcome display panel (Slice 1.6: Endgame Detection).
+
+    The EndgamePanel displays the game outcome when the simulation terminates.
+    It provides visual feedback for each outcome type with appropriate styling.
+
+    Styling per outcome (Bunker Constructivism design system):
+        - REVOLUTIONARY_VICTORY: Triumph green (#39FF14), victory message
+        - ECOLOGICAL_COLLAPSE: Warning amber (#B8860B), collapse message
+        - FASCIST_CONSOLIDATION: Danger red (#D40000), defeat message
+        - IN_PROGRESS: Panel hidden (no display needed)
+
+    The panel is initially hidden and becomes visible when display_outcome()
+    is called with a non-IN_PROGRESS outcome.
+
+    Attributes:
+        OUTCOME_STYLES: Dict mapping GameOutcome to style configuration.
+        is_visible: Boolean indicating if panel is currently visible.
+        current_outcome: Current GameOutcome being displayed.
+        current_message: Current message text being displayed.
+        current_color: Current color being used for styling.
+        title: Title element for "GAME OVER" header.
+        outcome_label: Label showing the outcome type.
+        message_element: Label showing the detailed outcome message.
+
+    Example:
+        >>> panel = EndgamePanel()
+        >>> panel.is_visible
+        False
+        >>> panel.display_outcome(GameOutcome.REVOLUTIONARY_VICTORY)
+        >>> panel.is_visible
+        True
+        >>> panel.current_color
+        '#39FF14'
+    """
+
+    # Design System colors (from ai-docs/design-system.yaml)
+    TRIUMPH_GREEN: str = "#39FF14"  # data_green - victory
+    WARNING_AMBER: str = "#B8860B"  # dark goldenrod - ecological warning
+    DANGER_RED: str = "#D40000"  # phosphor_burn_red - defeat
+    VOID: str = "#050505"  # background
+    SILVER_DUST: str = "#C0C0C0"  # text
+
+    # Outcome-specific styling configuration
+    OUTCOME_STYLES: dict[GameOutcome, dict[str, str]] = {
+        GameOutcome.REVOLUTIONARY_VICTORY: {
+            "color": "#39FF14",
+            "label": "REVOLUTIONARY VICTORY",
+            "message": (
+                "The workers have triumphed! Through solidarity and class consciousness, "
+                "the masses have liberated themselves from the chains of capital. "
+                "A new world is born."
+            ),
+        },
+        GameOutcome.ECOLOGICAL_COLLAPSE: {
+            "color": "#B8860B",
+            "label": "ECOLOGICAL COLLAPSE",
+            "message": (
+                "The metabolic rift has proven fatal. Capital's relentless extraction "
+                "has pushed the planet beyond recovery. Ecological collapse has rendered "
+                "all other struggles moot."
+            ),
+        },
+        GameOutcome.FASCIST_CONSOLIDATION: {
+            "color": "#D40000",
+            "label": "FASCIST CONSOLIDATION",
+            "message": (
+                "Darkness has fallen. False consciousness has triumphed over class solidarity. "
+                "The fascists have consolidated power, and the workers' movement has been defeated. "
+                "History has taken a tragic turn."
+            ),
+        },
+        GameOutcome.IN_PROGRESS: {
+            "color": "#C0C0C0",
+            "label": "IN PROGRESS",
+            "message": "The struggle continues...",
+        },
+    }
+
+    def __init__(self) -> None:
+        """Initialize EndgamePanel with hidden state."""
+        self._is_visible: bool = False
+        self._current_outcome: GameOutcome = GameOutcome.IN_PROGRESS
+        self._current_message: str = ""
+        self._current_color: str = self.SILVER_DUST
+
+        # UI elements (initialized in _build_ui)
+        self._container: Any = None
+        self.title: Any = None
+        self.outcome_label: Any = None
+        self.message_element: Any = None
+
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        """Construct the UI elements."""
+        # Full-screen overlay container
+        with ui.element("div").classes("hidden") as container:
+            self._container = container
+            # Center the content using nested context managers
+            column = (
+                ui.column()
+                .classes("w-full h-full items-center justify-center")
+                .style(f"background: {self.VOID}; min-height: 100vh;")
+            )
+            card = (
+                ui.card()
+                .classes("p-8 text-center max-w-2xl")
+                .style(f"background: {self.VOID}; border: 2px solid {self.SILVER_DUST};")
+            )
+            with column, card:  # noqa: SIM117
+                self.title = (
+                    ui.label("GAME OVER")
+                    .classes("text-4xl font-bold mb-4")
+                    .style(f"color: {self.SILVER_DUST};")
+                )
+
+                self.outcome_label = (
+                    ui.label("")
+                    .classes("text-2xl font-bold mb-6")
+                    .style(f"color: {self._current_color};")
+                )
+
+                self.message_element = (
+                    ui.label("")
+                    .classes("text-lg leading-relaxed")
+                    .style(f"color: {self.SILVER_DUST};")
+                )
+
+    @property
+    def is_visible(self) -> bool:
+        """Return True if panel is currently visible.
+
+        Returns:
+            Boolean indicating visibility state.
+        """
+        return self._is_visible
+
+    @property
+    def current_outcome(self) -> GameOutcome:
+        """Return current outcome being displayed.
+
+        Returns:
+            GameOutcome enum value.
+        """
+        return self._current_outcome
+
+    @property
+    def current_message(self) -> str:
+        """Return current message text.
+
+        Returns:
+            String message for the current outcome.
+        """
+        return self._current_message
+
+    @property
+    def current_color(self) -> str:
+        """Return current color being used.
+
+        Returns:
+            Hex color string for the current outcome.
+        """
+        return self._current_color
+
+    def display_outcome(self, outcome: GameOutcome) -> None:
+        """Update panel to show the specified outcome.
+
+        If outcome is IN_PROGRESS, the panel is hidden.
+        Otherwise, the panel becomes visible with outcome-specific styling.
+
+        Args:
+            outcome: GameOutcome to display.
+        """
+        self._current_outcome = outcome
+
+        if outcome == GameOutcome.IN_PROGRESS:
+            self.hide()
+            return
+
+        # Get styling for this outcome
+        style = self.OUTCOME_STYLES.get(outcome, self.OUTCOME_STYLES[GameOutcome.IN_PROGRESS])
+        self._current_color = style["color"]
+        self._current_message = style["message"]
+
+        # Update UI elements
+        self.outcome_label.set_text(style["label"])
+        self.outcome_label.style(f"color: {self._current_color};")
+
+        self.message_element.set_text(self._current_message)
+
+        # Show the panel
+        self.show()
+
+    def get_style_for_outcome(self, outcome: GameOutcome) -> str:
+        """Get the color style string for a specific outcome.
+
+        Args:
+            outcome: GameOutcome to get style for.
+
+        Returns:
+            Hex color string for the outcome.
+        """
+        style = self.OUTCOME_STYLES.get(outcome, self.OUTCOME_STYLES[GameOutcome.IN_PROGRESS])
+        return style["color"]
+
+    def show(self) -> None:
+        """Make the panel visible."""
+        self._is_visible = True
+        self._container.classes(remove="hidden")
+
+    def hide(self) -> None:
+        """Hide the panel."""
+        self._is_visible = False
+        self._container.classes(add="hidden")
+
+    def reset(self) -> None:
+        """Reset panel to initial state.
+
+        Hides the panel and sets outcome to IN_PROGRESS.
+        Useful for starting a new game without recreating the panel.
+        """
+        self._current_outcome = GameOutcome.IN_PROGRESS
+        self._current_message = ""
+        self._current_color = self.SILVER_DUST
+        self.hide()

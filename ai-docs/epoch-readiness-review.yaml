@@ -304,14 +304,20 @@ action_items:
     - id: DOCTRINE-001
       issue: "Doctrine overcomplexity"
       action: "Reduce to 2-3 trunks for MVP"
+      status: RESOLVED
+      resolution: "Created ai-docs/doctrine-tree-mvp.yaml with 3 trunks (Scientific, Reformist, Insurrectionist), 3 tags, 15 nodes, simplified mechanics, upgrade path to full system"
 
     - id: PERSIST-001
       issue: "Save/Load unspecified"
       action: "Specify state persistence"
+      status: RESOLVED
+      resolution: "Created ai-docs/persistence-spec.yaml with JSON save format, slots, autosave, version migration, integrity checks, UI integration"
 
     - id: ERROR-001
       issue: "Error recovery unspecified"
       action: "Handle invalid states gracefully"
+      status: RESOLVED
+      resolution: "Created ai-docs/error-recovery-spec.yaml with error categories, validation layers, recovery procedures, logging, user-facing messages"
 
 # ============================================================================
 # FINAL VERDICT

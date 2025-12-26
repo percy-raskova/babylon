@@ -1,3 +1,10 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/carceral-geography.yaml`
+> **Implemented In:** `src/babylon/engine/systems/territory.py`
+> **Archive Note:** This exploratory document is kept for historical context. The Carceral Geography (Necropolitical Triad) was implemented in the TerritorySystem.
+
+---
+
 # Sprint 3.7: The Carceral Geography
 
 ## The Necropolitical Triad

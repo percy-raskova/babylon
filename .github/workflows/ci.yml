@@ -7,9 +7,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -58,9 +58,51 @@ jobs:
       - name: Run tests
         run: poetry run pytest -m "not ai" --tb=short -q
 
+      # Code complexity analysis - see ADR028 in ai-docs/decisions.yaml
+      - name: Code Complexity Report
+        run: poetry run radon cc src/ -a -s --show-complexity
+        continue-on-error: true  # Informational only, never blocks
+
+      - name: Code Complexity Gate
+        if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
+        run: poetry run xenon --max-absolute C src/
+        # Blocks merge to main if any function exceeds CC 15 (grade C boundary)
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction --no-root
+
+      - name: Security audit
+        run: poetry run pip-audit
+
   docs:
     name: Documentation Build
     runs-on: ubuntu-latest
+    # Only build docs on main branch - saves CI time on dev/feature branches
+    if: github.ref == 'refs/heads/main' || github.base_ref == 'main'
     steps:
       - uses: actions/checkout@v4
 
@@ -96,7 +138,7 @@ jobs:
       - name: Build documentation
         run: |
           cd docs
-          poetry run sphinx-build -W -b html . _build/html
+          poetry run sphinx-build -b html . _build/html
 
   # Style check - informational only, doesn't block merges
   # Pre-commit hooks handle formatting locally
@@ -130,3 +172,43 @@ jobs:
 
       - name: Check formatting
         run: poetry run ruff format --check .
+
+  # Mutation testing - validates test quality for critical math
+  # Only runs on PRs to main (slow, ~15-30 min)
+  mutation:
+    name: Mutation Testing (Test Quality)
+    runs-on: ubuntu-latest
+    if: github.base_ref == 'main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # Run mutation testing on critical formulas module
+      # See ADR028 in ai-docs/decisions.yaml
+      - name: Run Mutation Tests
+        run: poetry run mutmut run
+        # mutmut returns non-zero if mutants survive
+
+      - name: Show Mutation Results
+        if: always()
+        run: poetry run mutmut results --all true

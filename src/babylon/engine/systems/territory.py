@@ -18,7 +18,7 @@ Displacement Priority Modes (Sprint 3.7.1):
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 import networkx as nx
 
@@ -31,6 +31,8 @@ from babylon.models.enums import (
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
+
+from babylon.engine.systems.protocol import ContextType
 
 
 class TerritorySystem:
@@ -77,7 +79,7 @@ class TerritorySystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Apply territorial dynamics to the graph.
 
@@ -194,7 +196,7 @@ class TerritorySystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Process eviction pipeline for territories.
 

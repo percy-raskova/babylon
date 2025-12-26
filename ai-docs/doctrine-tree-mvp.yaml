@@ -1,0 +1,480 @@
+# Doctrine Tree MVP Specification
+# Simplified 3-Trunk System for Sub-Epoch 2B
+#
+# "Better a working simple system than a non-working complex one."
+# - MVP Design Principle
+#
+# This document specifies a REDUCED doctrine tree for initial implementation.
+# Full 8-trunk system remains the target; this is the stepping stone.
+
+meta:
+  created: "2025-12-26"
+  purpose: "Simplify doctrine tree to 3 trunks for MVP implementation"
+  issue_id: "DOCTRINE-001"
+  status: "SPEC_COMPLETE"
+  full_spec: "ai-docs/doctrine-tree.yaml"
+  relationship: "MVP subset of full specification"
+
+# =============================================================================
+# MVP SCOPE REDUCTION
+# =============================================================================
+
+scope_reduction:
+  original:
+    trunks: 8  # Scientific, Reformist, Insurrectionist, Autonomist + 4 synthesis
+    tags: 6    # LEGALITY, MILITANCY, MASS_LINK, SECRECY, NATIONALISM, CLASS_ANALYSIS
+    nodes: "50+"
+    degeneration_paths: "Multiple bidirectional"
+    maintenance_system: "Full decay mechanics"
+
+  mvp:
+    trunks: 3  # Scientific (correct), Reformist (trap), Insurrectionist (trap)
+    tags: 3    # MASS_LINK, MILITANCY, CLASS_ANALYSIS
+    nodes: 15  # Core path + 2 trap branches
+    degeneration_paths: "Deferred to 2B+"
+    maintenance_system: "Simplified (no decay, just unlocks)"
+
+  rationale: |
+    The MVP doctrine tree teaches the core lesson:
+    - Scientific Socialism is the balanced path
+    - Reformism is the "too legal" trap
+    - Insurrectionism is the "too militant" trap
+
+    This triangle covers the main strategic dilemma without
+    requiring the full complexity of autonomism, nationalism,
+    synthesis trunks, or degeneration paths.
+
+  deferred_to_later:
+    - "Autonomist trunk (Sub-Epoch 2B+)"
+    - "Synthesis trunks (Sub-Epoch 2C)"
+    - "NATIONALISM/SECRECY/LEGALITY/RESILIENCE tags"
+    - "Degeneration paths (PatSoc Pipeline)"
+    - "Maintenance decay mechanics"
+    - "Party Congress actions (except basic unlock)"
+
+# =============================================================================
+# MVP TAG SYSTEM (3 Tags Only)
+# =============================================================================
+
+mvp_tags:
+  class_analysis:
+    id: "CLASS_ANALYSIS"
+    description: "Clarity of materialist class analysis"
+    range: [0, 10]
+    effect: |
+      High: Correct prioritization, theory bonus
+      Low: Confused strategy, opens traps
+    starting_value: 1
+
+  mass_link:
+    id: "MASS_LINK"
+    description: "Connection to the broad masses"
+    range: [0, 10]
+    effect: |
+      High: Faster sympathizer generation, legitimacy
+      Low: Isolated, actions seen as terrorism
+    starting_value: 1
+
+  militancy:
+    id: "MILITANCY"
+    description: "Capacity for militant action"
+    range: [0, 10]
+    effect: |
+      High: Can execute kinetic actions, deterrence
+      Low: Cannot use force, purely defensive
+    starting_value: 0
+
+# =============================================================================
+# MVP DOCTRINE TREE (15 Nodes)
+# =============================================================================
+
+mvp_doctrine_tree:
+  description: |
+    The MVP doctrine tree is a simplified 3-trunk system with 15 nodes.
+
+    Structure:
+    - ROOT: Class Consciousness -> Trade Unionism
+    - REFORMIST BRANCH: Electoral Socialism -> Coalition Politics -> (TRAP: Liquidationism)
+    - SCIENTIFIC BRANCH: Democratic Centralism -> Mass Line -> United Front (GOAL)
+    - INSURRECTIONIST BRANCH: Armed Vanguard -> Urban Guerrilla -> (TRAP: Adventurism)
+
+    The player starts at Class Consciousness and must navigate to either:
+    - United Front (victory via Scientific path)
+    - A trap ending (Liquidationism or Adventurism)
+
+  nodes:
+    # TIER 0: Root
+    class_consciousness:
+      id: "class_consciousness"
+      name: "Class Consciousness"
+      tier: 0
+      parent: null
+      description: "Recognition that society is divided into classes with opposing interests."
+      provides_tags:
+        CLASS_ANALYSIS: 1
+      cost_tl: 0  # Starting node
+      trunk: null
+
+    # TIER 1: First Branch
+    trade_unionism:
+      id: "trade_unionism"
+      name: "Trade Unionism"
+      tier: 1
+      parent: ["class_consciousness"]
+      description: "Organize workers at the point of production."
+      provides_tags:
+        MASS_LINK: 2
+      cost_tl: 25
+      trunk: null
+      unlocks: ["electoral_socialism", "democratic_centralism", "armed_vanguard"]
+
+    # TIER 2: Three Paths Diverge
+
+    # -- REFORMIST BRANCH --
+    electoral_socialism:
+      id: "electoral_socialism"
+      name: "Electoral Socialism"
+      tier: 2
+      parent: ["trade_unionism"]
+      description: "Win power through the ballot box."
+      provides_tags:
+        MASS_LINK: 2
+      provides_tags_negative:
+        MILITANCY: -2  # Cannot be militant AND electoral
+        CLASS_ANALYSIS: -1  # Compromises for electability
+      cost_tl: 50
+      trunk: "reformist"
+      warning: "This path leads toward the Liberal Trap."
+      unlocks: ["coalition_politics"]
+
+    coalition_politics:
+      id: "coalition_politics"
+      name: "Coalition Politics"
+      tier: 3
+      parent: ["electoral_socialism"]
+      description: "Build broad alliances with liberals and progressives."
+      provides_tags:
+        MASS_LINK: 3
+      provides_tags_negative:
+        CLASS_ANALYSIS: -2
+      cost_tl: 75
+      trunk: "reformist"
+      unlocks: ["liquidationism"]
+
+    liquidationism:
+      id: "liquidationism"
+      name: "Liquidationism"
+      tier: 4
+      parent: ["coalition_politics"]
+      description: "The revolutionary party dissolves into the mass movement."
+      provides_tags:
+        MASS_LINK: 4
+      provides_tags_negative:
+        CLASS_ANALYSIS: -3
+        MILITANCY: -3
+      cost_tl: 0  # Falls into this, doesn't choose it
+      trunk: "reformist"
+      is_trap: true
+      trap_condition: "CLASS_ANALYSIS <= 0 AND MILITANCY <= 0"
+
+      trap_narrative: |
+        "ELECTORAL SOCIALISM: The Managed Decline"
+
+        You won the election. You hold power.
+        And nothing changed.
+
+        The banks are still banks. The police still police.
+        You had power. You just couldn't use it.
+
+        THE APOCALYPSE CONTINUES, BUT NOW YOU MANAGE IT.
+
+    # -- SCIENTIFIC BRANCH --
+    democratic_centralism:
+      id: "democratic_centralism"
+      name: "Democratic Centralism"
+      tier: 2
+      parent: ["trade_unionism"]
+      description: "Freedom of discussion, unity of action."
+      provides_tags:
+        CLASS_ANALYSIS: 2
+        MASS_LINK: 1
+        MILITANCY: 1
+      cost_tl: 75
+      trunk: "scientific"
+      unlocks: ["mass_line"]
+
+    mass_line:
+      id: "mass_line"
+      name: "Mass Line"
+      tier: 3
+      parent: ["democratic_centralism"]
+      description: "From the masses, to the masses."
+      provides_tags:
+        CLASS_ANALYSIS: 1
+        MASS_LINK: 2
+      cost_tl: 100
+      trunk: "scientific"
+      unlocks: ["united_front"]
+
+      special_action: |
+        Unlocks "Mass Investigation" action:
+        Spend TL to learn territory consciousness levels.
+        Reduces Agitation cost in investigated territory.
+
+    united_front:
+      id: "united_front"
+      name: "United Front"
+      tier: 4
+      parent: ["mass_line"]
+      description: "Unity with all progressive forces against the principal enemy."
+      provides_tags:
+        CLASS_ANALYSIS: 2
+        MASS_LINK: 2
+        MILITANCY: 1
+      cost_tl: 150
+      trunk: "scientific"
+      is_goal: true
+
+      victory_bonus: |
+        The Scientific path is complete.
+        All actions receive +10% effectiveness.
+        Traps are no longer accessible (CLASS_ANALYSIS too high).
+
+    # -- INSURRECTIONIST BRANCH --
+    armed_vanguard:
+      id: "armed_vanguard"
+      name: "Armed Vanguard"
+      tier: 2
+      parent: ["trade_unionism"]
+      description: "The revolution will be armed or it will not be."
+      provides_tags:
+        MILITANCY: 3
+      provides_tags_negative:
+        MASS_LINK: -1
+      cost_tl: 50
+      trunk: "insurrectionist"
+      warning: "This path leads toward isolation."
+      unlocks: ["urban_guerrilla"]
+
+    urban_guerrilla:
+      id: "urban_guerrilla"
+      name: "Urban Guerrilla"
+      tier: 3
+      parent: ["armed_vanguard"]
+      description: "The city is the battlefield."
+      provides_tags:
+        MILITANCY: 3
+      provides_tags_negative:
+        MASS_LINK: -2
+        CLASS_ANALYSIS: -1
+      cost_tl: 75
+      trunk: "insurrectionist"
+      unlocks: ["adventurism"]
+
+    adventurism:
+      id: "adventurism"
+      name: "Adventurism"
+      tier: 4
+      parent: ["urban_guerrilla"]
+      description: "Actions become ends in themselves."
+      provides_tags:
+        MILITANCY: 4
+      provides_tags_negative:
+        MASS_LINK: -4
+        CLASS_ANALYSIS: -2
+      cost_tl: 0  # Falls into this
+      trunk: "insurrectionist"
+      is_trap: true
+      trap_condition: "MASS_LINK <= 0"
+
+      trap_narrative: |
+        "PROPAGANDA OF THE DEED: The Spiral"
+
+        You struck. Again and again.
+        And the people watched in horror.
+
+        Not horror at the State. Horror at YOU.
+        Your communiques went unread.
+        The State used your actions to justify everything.
+
+        THE REVOLUTION DIED SO YOUR WAR COULD CONTINUE.
+
+# =============================================================================
+# MVP MECHANICS
+# =============================================================================
+
+mvp_mechanics:
+  acquisition:
+    description: "How players unlock doctrine nodes"
+    process: |
+      1. Player must have required parent node(s)
+      2. Player must have sufficient Theoretical Labor (TL)
+      3. Player clicks "Advance Doctrine" in Doctrine Tree view
+      4. TL is spent, node is acquired, tags are updated
+    no_conflicts: "MVP removes conflict system - always allow acquisition if prereqs met"
+
+  tag_calculation:
+    description: "How tags are computed"
+    formula: |
+      For each tag:
+        total = sum(node.provides_tags[tag] for node in acquired_nodes)
+        total += sum(node.provides_tags_negative[tag] for node in acquired_nodes)
+        total = clamp(total, 0, 10)
+
+    example: |
+      Acquired: class_consciousness, trade_unionism, democratic_centralism
+      CLASS_ANALYSIS = 1 + 0 + 2 = 3
+      MASS_LINK = 0 + 2 + 1 = 3
+      MILITANCY = 0 + 0 + 1 = 1
+
+  trap_detection:
+    description: "How traps trigger"
+    process: |
+      After each doctrine acquisition:
+        1. Recalculate all tags
+        2. Check if any trap_condition is now true
+        3. If true, automatically acquire trap node
+        4. Display trap narrative
+        5. Apply trap effects (usually severe penalties)
+
+    escape: |
+      MVP does NOT include Party Congress escape mechanism.
+      Once trapped, the game effectively ends with that narrative.
+      This is intentional - teaches the lesson hard.
+
+  no_maintenance: |
+    MVP does NOT include doctrine maintenance/decay.
+    Once acquired, a doctrine stays forever.
+    This simplifies bookkeeping for initial implementation.
+
+# =============================================================================
+# UI REQUIREMENTS (MVP)
+# =============================================================================
+
+ui_requirements:
+  doctrine_panel:
+    display: |
+      Simple tree visualization with:
+      - Currently acquired nodes (highlighted)
+      - Available nodes (normal)
+      - Locked nodes (grayed, show cost)
+      - Trap nodes (red warning border)
+
+    ascii_mockup: |
+      ┌─────────────────────────────────────────────┐
+      │  DOCTRINE TREE                    [TL: 45] │
+      ├─────────────────────────────────────────────┤
+      │                                             │
+      │  [●] Class Consciousness (acquired)        │
+      │   │                                         │
+      │  [●] Trade Unionism (acquired)             │
+      │   ├──[○] Electoral Socialism (50 TL)       │
+      │   │   └──[○] Coalition Politics (75 TL)    │
+      │   │       └──[!] Liquidationism (TRAP)     │
+      │   │                                         │
+      │   ├──[◉] Democratic Centralism (YOU)       │
+      │   │   └──[○] Mass Line (100 TL)            │
+      │   │       └──[○] United Front (150 TL)     │
+      │   │                                         │
+      │   └──[○] Armed Vanguard (50 TL)            │
+      │       └──[○] Urban Guerrilla (75 TL)       │
+      │           └──[!] Adventurism (TRAP)        │
+      │                                             │
+      ├─────────────────────────────────────────────┤
+      │  Current Tags:                              │
+      │  CLASS_ANALYSIS: ███░░░░░░░  3             │
+      │  MASS_LINK:      ███░░░░░░░  3             │
+      │  MILITANCY:      █░░░░░░░░░  1             │
+      └─────────────────────────────────────────────┘
+
+  node_detail:
+    on_click: |
+      Show popup with:
+      - Node name and description
+      - Tag effects (positive and negative)
+      - TL cost
+      - Warning if trap-adjacent
+      - [ADVANCE] button if affordable
+
+# =============================================================================
+# IMPLEMENTATION CHECKLIST
+# =============================================================================
+
+implementation:
+  models:
+    - task: "Create DoctrineNode model (simplified)"
+      file: "src/babylon/models/entities/doctrine.py"
+      status: "TODO"
+
+    - task: "Create DoctrineTree model (simplified)"
+      file: "src/babylon/models/entities/doctrine.py"
+      status: "TODO"
+
+    - task: "Create Tag enum (3 tags)"
+      file: "src/babylon/models/enums.py"
+      status: "TODO"
+
+  data:
+    - task: "Define 15-node MVP tree in JSON"
+      file: "src/babylon/data/game/doctrine_tree_mvp.json"
+      status: "TODO"
+
+  system:
+    - task: "Create DoctrineSystem (simplified)"
+      file: "src/babylon/engine/systems/doctrine.py"
+      status: "TODO"
+
+    - task: "Implement tag calculation"
+      status: "TODO"
+
+    - task: "Implement trap detection"
+      status: "TODO"
+
+  testing:
+    - task: "Test tag calculation"
+      file: "tests/unit/models/test_doctrine.py"
+      status: "TODO"
+
+    - task: "Test trap triggering"
+      file: "tests/unit/engine/systems/test_doctrine.py"
+      status: "TODO"
+
+    - task: "Test full tree traversal"
+      status: "TODO"
+
+# =============================================================================
+# UPGRADE PATH TO FULL SYSTEM
+# =============================================================================
+
+upgrade_path:
+  phase_1_mvp:
+    scope: "3 trunks, 3 tags, 15 nodes"
+    deliverable: "Working doctrine system with trap endings"
+
+  phase_2_expansion:
+    adds:
+      - "Autonomist trunk (4th path)"
+      - "SECRECY and LEGALITY tags"
+      - "10 more nodes"
+    total: "4 trunks, 5 tags, 25 nodes"
+
+  phase_3_nationalism:
+    adds:
+      - "NATIONALISM tag"
+      - "National Liberation branch"
+      - "PatSoc Pipeline degeneration"
+      - "Party Congress rectification"
+    total: "4 trunks + degeneration, 6 tags, 35 nodes"
+
+  phase_4_full:
+    adds:
+      - "Synthesis trunks (4 more)"
+      - "Maintenance/decay system"
+      - "Full Party Congress actions"
+      - "Remaining nodes to 50+"
+    total: "8 trunks, 6 tags, 50+ nodes"
+
+  principle: |
+    Each phase must be fully tested and playable before advancing.
+    MVP should teach the core lesson (balance vs traps).
+    Later phases add depth without changing core mechanics.

@@ -127,6 +127,8 @@ class EventType(StrEnum):
         EXCESSIVE_FORCE: State violence "spark" - police brutality event (Agency Layer)
         UPRISING: Mass insurrection triggered by spark + accumulated agitation (Agency Layer)
         SOLIDARITY_SPIKE: Solidarity infrastructure built through shared struggle (Agency Layer)
+        RUPTURE: Contradiction tension reached critical threshold, triggering phase transition
+        PHASE_TRANSITION: Topology percolation threshold crossed (Sprint 3.3)
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -138,6 +140,8 @@ class EventType(StrEnum):
     EXCESSIVE_FORCE = "excessive_force"  # Agency Layer - The Spark (Police Brutality)
     UPRISING = "uprising"  # Agency Layer - The Explosion (Riot/Insurrection)
     SOLIDARITY_SPIKE = "solidarity_spike"  # Agency Layer - The Bridge Building
+    RUPTURE = "rupture"  # Contradiction rupture - tension reached critical threshold
+    PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
 
 
 class OperationalProfile(StrEnum):

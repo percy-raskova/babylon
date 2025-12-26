@@ -35,6 +35,7 @@ from babylon.models.enums import EdgeType, EventType, SocialRole
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.systems.protocol import ContextType
 
 # Social roles that can participate in struggle/uprising
 _STRUGGLING_ROLES: frozenset[SocialRole] = frozenset(
@@ -144,7 +145,7 @@ class StruggleSystem:
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        context: dict[str, Any],
+        context: ContextType,
     ) -> None:
         """Apply struggle dynamics to all eligible entities.
 

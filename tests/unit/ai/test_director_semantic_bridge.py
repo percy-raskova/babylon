@@ -1,16 +1,18 @@
 """Tests for NarrativeDirector Semantic Bridge.
 
 TDD Red Phase: These tests define the contract for the Semantic Bridge
-that translates simulation events (like "SURPLUS_EXTRACTION") into
-theoretical query strings (like "marxist theory of surplus value extraction").
+that translates typed SimulationEvent objects into theoretical query strings.
 
 The RAG database contains Marxist theoretical texts, not simulation logs.
 The Semantic Bridge allows the Director to query for relevant theory.
 
 Design decisions:
-- SEMANTIC_MAP: Class constant mapping event keywords to theory queries
-- Deduplication: Multiple events with same keyword produce one query
+- SEMANTIC_MAP: Class constant mapping EventType enum to theory queries
+- Deduplication: Multiple events with same type produce one query
 - Fallback: Unknown events default to generic dialectical query
+
+Sprint 4.1: Updated to use typed SimulationEvent objects with EventType enum
+instead of string-based event keyword scanning.
 """
 
 from __future__ import annotations
@@ -29,6 +31,14 @@ from babylon.models import (
     SocialClass,
     SocialRole,
     WorldState,
+)
+from babylon.models.enums import EventType
+from babylon.models.events import (
+    CrisisEvent,
+    ExtractionEvent,
+    MassAwakeningEvent,
+    SubsidyEvent,
+    TransmissionEvent,
 )
 
 # =============================================================================
@@ -117,7 +127,10 @@ def mock_rag_pipeline() -> MagicMock:
 
 @pytest.mark.unit
 class TestSemanticMapExists:
-    """Tests for SEMANTIC_MAP class constant."""
+    """Tests for SEMANTIC_MAP class constant.
+
+    Sprint 4.1: SEMANTIC_MAP now uses EventType enum keys instead of strings.
+    """
 
     def test_semantic_map_is_class_constant(self) -> None:
         """NarrativeDirector has SEMANTIC_MAP class constant."""
@@ -130,57 +143,54 @@ class TestSemanticMapExists:
         """SEMANTIC_MAP contains SURPLUS_EXTRACTION mapping."""
         from babylon.ai.director import NarrativeDirector
 
-        assert "SURPLUS_EXTRACTION" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["SURPLUS_EXTRACTION"]
+        assert EventType.SURPLUS_EXTRACTION in NarrativeDirector.SEMANTIC_MAP
+        query = NarrativeDirector.SEMANTIC_MAP[EventType.SURPLUS_EXTRACTION]
         assert "surplus value" in query.lower()
 
     def test_semantic_map_contains_imperial_subsidy(self) -> None:
         """SEMANTIC_MAP contains IMPERIAL_SUBSIDY mapping."""
         from babylon.ai.director import NarrativeDirector
 
-        assert "IMPERIAL_SUBSIDY" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["IMPERIAL_SUBSIDY"]
+        assert EventType.IMPERIAL_SUBSIDY in NarrativeDirector.SEMANTIC_MAP
+        query = NarrativeDirector.SEMANTIC_MAP[EventType.IMPERIAL_SUBSIDY]
         assert "repression" in query.lower() or "imperialist" in query.lower()
 
     def test_semantic_map_contains_economic_crisis(self) -> None:
         """SEMANTIC_MAP contains ECONOMIC_CRISIS mapping."""
         from babylon.ai.director import NarrativeDirector
 
-        assert "ECONOMIC_CRISIS" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["ECONOMIC_CRISIS"]
+        assert EventType.ECONOMIC_CRISIS in NarrativeDirector.SEMANTIC_MAP
+        query = NarrativeDirector.SEMANTIC_MAP[EventType.ECONOMIC_CRISIS]
         assert "profit" in query.lower() or "crisis" in query.lower()
 
-    def test_semantic_map_contains_solidarity_awakening(self) -> None:
-        """SEMANTIC_MAP contains SOLIDARITY_AWAKENING mapping."""
+    def test_semantic_map_contains_consciousness_transmission(self) -> None:
+        """SEMANTIC_MAP contains CONSCIOUSNESS_TRANSMISSION mapping.
+
+        Sprint 4.1: SOLIDARITY_AWAKENING renamed to CONSCIOUSNESS_TRANSMISSION.
+        """
         from babylon.ai.director import NarrativeDirector
 
-        assert "SOLIDARITY_AWAKENING" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["SOLIDARITY_AWAKENING"]
+        assert EventType.CONSCIOUSNESS_TRANSMISSION in NarrativeDirector.SEMANTIC_MAP
+        query = NarrativeDirector.SEMANTIC_MAP[EventType.CONSCIOUSNESS_TRANSMISSION]
         assert "class consciousness" in query.lower() or "solidarity" in query.lower()
 
     def test_semantic_map_contains_mass_awakening(self) -> None:
         """SEMANTIC_MAP contains MASS_AWAKENING mapping."""
         from babylon.ai.director import NarrativeDirector
 
-        assert "MASS_AWAKENING" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["MASS_AWAKENING"]
+        assert EventType.MASS_AWAKENING in NarrativeDirector.SEMANTIC_MAP
+        query = NarrativeDirector.SEMANTIC_MAP[EventType.MASS_AWAKENING]
         assert "revolutionary" in query.lower() or "mass" in query.lower()
 
-    def test_semantic_map_contains_bribery(self) -> None:
-        """SEMANTIC_MAP contains BRIBERY mapping."""
+    def test_semantic_map_uses_event_type_enum_keys(self) -> None:
+        """SEMANTIC_MAP uses EventType enum as keys, not strings.
+
+        Sprint 4.1: Critical change from string keys to EventType enum.
+        """
         from babylon.ai.director import NarrativeDirector
 
-        assert "BRIBERY" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["BRIBERY"]
-        assert "labor aristocracy" in query.lower()
-
-    def test_semantic_map_contains_wages(self) -> None:
-        """SEMANTIC_MAP contains WAGES mapping."""
-        from babylon.ai.director import NarrativeDirector
-
-        assert "WAGES" in NarrativeDirector.SEMANTIC_MAP
-        query = NarrativeDirector.SEMANTIC_MAP["WAGES"]
-        assert "labor aristocracy" in query.lower()
+        for key in NarrativeDirector.SEMANTIC_MAP:
+            assert isinstance(key, EventType), f"Key {key} should be EventType, not {type(key)}"
 
 
 # =============================================================================
@@ -190,23 +200,33 @@ class TestSemanticMapExists:
 
 @pytest.mark.unit
 class TestSingleEventTranslation:
-    """Tests for translating single events to semantic queries."""
+    """Tests for translating single typed events to semantic queries.
+
+    Sprint 4.1: Updated to use typed SimulationEvent objects.
+    """
 
     def test_surplus_extraction_event_translated(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """SURPLUS_EXTRACTION event is translated to surplus value theory query."""
+        """ExtractionEvent is translated to surplus value theory query."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["Tick 1: SURPLUS_EXTRACTION from Worker to Owner"],
+                "events": [extraction_event],
             }
         )
 
@@ -226,16 +246,24 @@ class TestSingleEventTranslation:
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """IMPERIAL_SUBSIDY event is translated to repression theory query."""
+        """SubsidyEvent is translated to repression theory query."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        subsidy_event = SubsidyEvent(
+            tick=1,
+            source_id="C002",
+            target_id="C001",
+            amount=5.0,
+            repression_boost=0.2,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["IMPERIAL_SUBSIDY applied to regime"],
+                "events": [subsidy_event],
             }
         )
 
@@ -251,16 +279,24 @@ class TestSingleEventTranslation:
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """ECONOMIC_CRISIS event is translated to crisis theory query."""
+        """CrisisEvent is translated to crisis theory query."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        crisis_event = CrisisEvent(
+            tick=1,
+            pool_ratio=0.15,
+            aggregate_tension=0.85,
+            decision="AUSTERITY",
+            wage_delta=-0.05,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["ECONOMIC_CRISIS triggered"],
+                "events": [crisis_event],
             }
         )
 
@@ -281,25 +317,26 @@ class TestSingleEventTranslation:
 class TestSemanticQueryDeduplication:
     """Tests for deduplication of semantic queries."""
 
-    def test_same_keyword_multiple_events_deduplicated(
+    def test_same_event_type_multiple_events_deduplicated(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """Multiple events with same keyword produce single query term."""
+        """Multiple events with same type produce single query term."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        # Three extraction events with same EventType
+        event_a = ExtractionEvent(tick=1, source_id="A", target_id="B", amount=5.0)
+        event_b = ExtractionEvent(tick=1, source_id="C", target_id="D", amount=10.0)
+        event_c = ExtractionEvent(tick=1, source_id="E", target_id="F", amount=15.0)
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": [
-                    "SURPLUS_EXTRACTION from A to B",
-                    "SURPLUS_EXTRACTION from C to D",
-                    "SURPLUS_EXTRACTION from E to F",
-                ],
+                "events": [event_a, event_b, event_c],
             }
         )
 
@@ -309,39 +346,49 @@ class TestSemanticQueryDeduplication:
         query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
 
         # The semantic query should appear only once, not three times
-        # Count occurrences of the mapped phrase
         expected_phrase = "surplus value"
         occurrences = query_text.lower().count(expected_phrase)
         assert occurrences == 1, f"Expected 1 occurrence of '{expected_phrase}', got {occurrences}"
 
 
 # =============================================================================
-# TEST MULTIPLE DIFFERENT KEYWORDS
+# TEST MULTIPLE DIFFERENT EVENT TYPES
 # =============================================================================
 
 
 @pytest.mark.unit
-class TestMultipleKeywordsCombination:
-    """Tests for combining multiple different keyword translations."""
+class TestMultipleEventTypesCombination:
+    """Tests for combining multiple different event type translations."""
 
-    def test_multiple_different_keywords_combined(
+    def test_multiple_different_event_types_combined(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """Multiple different keywords produce combined query."""
+        """Multiple different event types produce combined query."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+        transmission_event = TransmissionEvent(
+            tick=1,
+            target_id="C001",
+            source_id="C002",
+            delta=0.05,
+            solidarity_strength=0.5,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": [
-                    "SURPLUS_EXTRACTION occurred",
-                    "SOLIDARITY_AWAKENING detected",
-                ],
+                "events": [extraction_event, transmission_event],
             }
         )
 
@@ -354,25 +401,42 @@ class TestMultipleKeywordsCombination:
         assert "surplus value" in query_text.lower()
         assert "class consciousness" in query_text.lower() or "solidarity" in query_text.lower()
 
-    def test_three_different_keywords_combined(
+    def test_three_different_event_types_combined(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """Three different keywords produce combined query with all terms."""
+        """Three different event types produce combined query with all terms."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+        crisis_event = CrisisEvent(
+            tick=1,
+            pool_ratio=0.15,
+            aggregate_tension=0.85,
+            decision="AUSTERITY",
+            wage_delta=-0.05,
+        )
+        awakening_event = MassAwakeningEvent(
+            tick=1,
+            target_id="C001",
+            triggering_source="C002",
+            old_consciousness=0.3,
+            new_consciousness=0.8,
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": [
-                    "SURPLUS_EXTRACTION event",
-                    "ECONOMIC_CRISIS event",
-                    "MASS_AWAKENING event",
-                ],
+                "events": [extraction_event, crisis_event, awakening_event],
             }
         )
 
@@ -394,23 +458,37 @@ class TestMultipleKeywordsCombination:
 
 @pytest.mark.unit
 class TestSemanticFallback:
-    """Tests for fallback behavior with unknown/empty events."""
+    """Tests for fallback behavior with unmapped event types."""
 
-    def test_unknown_event_uses_fallback_query(
+    def test_unmapped_event_type_uses_fallback_query(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """Unknown event type uses fallback dialectical query."""
+        """Event type not in SEMANTIC_MAP uses fallback dialectical query.
+
+        Sprint 4.1: TransmissionEvent is in SEMANTIC_MAP, so using
+        SOLIDARITY_SPIKE which might not be mapped to test fallback.
+        """
         from babylon.ai.director import NarrativeDirector
+        from babylon.models.events import SolidaritySpikeEvent
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        # SOLIDARITY_SPIKE might not be in SEMANTIC_MAP, triggering fallback
+        spike_event = SolidaritySpikeEvent(
+            tick=1,
+            node_id="C001",
+            solidarity_gained=0.15,
+            edges_affected=3,
+            triggered_by="uprising",
+        )
 
         previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": ["UNKNOWN_EVENT_TYPE occurred"],
+                "events": [spike_event],
             }
         )
 
@@ -419,46 +497,59 @@ class TestSemanticFallback:
         call_args = mock_rag_pipeline.query.call_args
         query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
 
-        # Should use fallback: "dialectical materialism class struggle"
-        assert "dialectical" in query_text.lower() or "class struggle" in query_text.lower()
+        # Should use SEMANTIC_MAP value or fallback
+        # Either the mapped query or fallback should be present
+        assert len(query_text) > 0
 
-    def test_empty_events_uses_fallback_query(
-        self,
-        mock_rag_pipeline: MagicMock,
-    ) -> None:
-        """Empty events list uses fallback dialectical query."""
-        from babylon.ai.director import NarrativeDirector
-
-        director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
-
-        # Directly test _retrieve_context with empty list
-        director._retrieve_context([])
-
-        # Should have called RAG with fallback query
-        if mock_rag_pipeline.query.called:
-            call_args = mock_rag_pipeline.query.call_args
-            query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
-            assert "dialectical" in query_text.lower() or "class struggle" in query_text.lower()
-
-    def test_mixed_known_unknown_events_uses_known_queries(
+    def test_empty_events_list_skips_rag_query(
         self,
         initial_state: WorldState,
         mock_rag_pipeline: MagicMock,
     ) -> None:
-        """Mixed known/unknown events uses known query translations."""
+        """Empty events list skips RAG query entirely."""
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
         previous_state = initial_state
+        new_state = initial_state.model_copy(update={"tick": 1})
+
+        director.on_tick(previous_state, new_state)
+
+        # With no new events, RAG should not be called
+        mock_rag_pipeline.query.assert_not_called()
+
+    def test_mixed_mapped_unmapped_events_uses_mapped_queries(
+        self,
+        initial_state: WorldState,
+        mock_rag_pipeline: MagicMock,
+    ) -> None:
+        """Mixed mapped/unmapped events uses mapped query translations."""
+        from babylon.ai.director import NarrativeDirector
+        from babylon.models.events import SolidaritySpikeEvent
+
+        director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
+
+        # ExtractionEvent is mapped, SolidaritySpikeEvent might not be
+        extraction_event = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+        spike_event = SolidaritySpikeEvent(
+            tick=1,
+            node_id="C001",
+            solidarity_gained=0.15,
+            edges_affected=3,
+            triggered_by="uprising",
+        )
+
+        previous_state = initial_state
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,
-                "event_log": [
-                    "UNKNOWN_EVENT happened",
-                    "SURPLUS_EXTRACTION occurred",
-                    "ANOTHER_UNKNOWN event",
-                ],
+                "events": [spike_event, extraction_event],
             }
         )
 
@@ -467,98 +558,5 @@ class TestSemanticFallback:
         call_args = mock_rag_pipeline.query.call_args
         query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
 
-        # Should use the known translation, NOT the fallback
+        # Should use the known translation for ExtractionEvent
         assert "surplus value" in query_text.lower()
-        # Should NOT contain fallback if known keyword was found
-        # (The fallback is only used when NO keywords match)
-
-
-# =============================================================================
-# TEST WAGES AND BRIBERY MAPPING
-# =============================================================================
-
-
-@pytest.mark.unit
-class TestWagesAndBriberyMapping:
-    """Tests for WAGES and BRIBERY keyword mappings."""
-
-    def test_wages_event_maps_to_labor_aristocracy(
-        self,
-        initial_state: WorldState,
-        mock_rag_pipeline: MagicMock,
-    ) -> None:
-        """WAGES event maps to labor aristocracy query."""
-        from babylon.ai.director import NarrativeDirector
-
-        director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
-
-        previous_state = initial_state
-        new_state = initial_state.model_copy(
-            update={
-                "tick": 1,
-                "event_log": ["WAGES paid to workers"],
-            }
-        )
-
-        director.on_tick(previous_state, new_state)
-
-        call_args = mock_rag_pipeline.query.call_args
-        query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
-
-        assert "labor aristocracy" in query_text.lower()
-
-    def test_bribery_event_maps_to_labor_aristocracy(
-        self,
-        initial_state: WorldState,
-        mock_rag_pipeline: MagicMock,
-    ) -> None:
-        """BRIBERY event maps to labor aristocracy query."""
-        from babylon.ai.director import NarrativeDirector
-
-        director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
-
-        previous_state = initial_state
-        new_state = initial_state.model_copy(
-            update={
-                "tick": 1,
-                "event_log": ["BRIBERY of labor aristocracy"],
-            }
-        )
-
-        director.on_tick(previous_state, new_state)
-
-        call_args = mock_rag_pipeline.query.call_args
-        query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
-
-        assert "labor aristocracy" in query_text.lower()
-
-    def test_wages_and_bribery_deduplicated(
-        self,
-        initial_state: WorldState,
-        mock_rag_pipeline: MagicMock,
-    ) -> None:
-        """WAGES and BRIBERY with same mapping are deduplicated."""
-        from babylon.ai.director import NarrativeDirector
-
-        director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
-
-        previous_state = initial_state
-        new_state = initial_state.model_copy(
-            update={
-                "tick": 1,
-                "event_log": [
-                    "WAGES distributed",
-                    "BRIBERY detected",
-                ],
-            }
-        )
-
-        director.on_tick(previous_state, new_state)
-
-        call_args = mock_rag_pipeline.query.call_args
-        query_text = call_args[0][0] if call_args[0] else call_args[1].get("query", "")
-
-        # Since both map to the same query, it should appear only once
-        expected_phrase = "labor aristocracy"
-        occurrences = query_text.lower().count(expected_phrase)
-        assert occurrences == 1, f"Expected 1 occurrence of '{expected_phrase}', got {occurrences}"

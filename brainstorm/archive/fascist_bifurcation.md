@@ -1,3 +1,10 @@
+> **STATUS: SUPERSEDED**
+> **Current Spec:** `ai-docs/state.yaml` (Sprint 3.4.3)
+> **Implemented In:** `src/babylon/models/entities/ideology.py` (IdeologicalProfile)
+> **Archive Note:** This exploratory document is kept for historical context. The Fascist Bifurcation (George Jackson Refactor) was implemented in Sprint 3.4.3 with multi-dimensional consciousness.
+
+---
+
 # The Fascist Bifurcation: A Design Document
 
 **Sprint 3.4.3 - The George Jackson Refactor**

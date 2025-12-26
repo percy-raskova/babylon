@@ -444,6 +444,8 @@ synopticon_phase3:
 
   bunker_aesthetic_support:
     purpose: "Data structures supporting 'Damp Basement Cyberinsurgency' visual style"
+    design_system_reference: "ai-docs/design-system.yaml"
+    note: "Color values and component styles consolidated in design-system.yaml - use that as source of truth"
 
     gloom_metrics:
       description: "Parameters for flashlight effect"
@@ -505,6 +507,7 @@ synopticon_phase3:
           default: 0.2
 
     color_palette:
+      _deprecated: "See ai-docs/design-system.yaml:palette.semantic for canonical values"
       description: "Colors as light sources, not paint"
       colors:
         wet_concrete:

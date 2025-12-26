@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType
 from babylon.models.events import SimulationEvent
@@ -95,6 +96,11 @@ class WorldState(BaseModel):
         description="Global economic state for dynamic balance (Sprint 3.4.4)",
     )
 
+    state_finances: dict[str, StateFinance] = Field(
+        default_factory=dict,
+        description="Financial state for each sovereign entity (Epoch 1: The Ledger)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -127,6 +133,11 @@ class WorldState(BaseModel):
 
         # Store economy in graph metadata (Sprint 3.4.4)
         G.graph["economy"] = self.economy.model_dump()
+
+        # Store state finances in graph metadata (Epoch 1: The Ledger)
+        G.graph["state_finances"] = {
+            state_id: finance.model_dump() for state_id, finance in self.state_finances.items()
+        }
 
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
@@ -171,6 +182,11 @@ class WorldState(BaseModel):
         # Falls back to default GlobalEconomy if not present (backward compatibility)
         economy_data = G.graph.get("economy")
         economy = GlobalEconomy(**economy_data) if economy_data is not None else GlobalEconomy()
+
+        # Reconstruct state_finances from graph metadata (Epoch 1: The Ledger)
+        # Falls back to empty dict if not present (backward compatibility)
+        sf_data = G.graph.get("state_finances", {})
+        state_finances = {state_id: StateFinance(**data) for state_id, data in sf_data.items()}
 
         # Reconstruct entities and territories from nodes based on _node_type
         entities: dict[str, SocialClass] = {}
@@ -237,6 +253,7 @@ class WorldState(BaseModel):
             event_log=event_log or [],
             events=events or [],
             economy=economy,
+            state_finances=state_finances,
         )
 
     # =========================================================================

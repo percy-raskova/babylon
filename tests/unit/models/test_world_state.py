@@ -998,3 +998,133 @@ class TestWorldStateMetabolicAggregates:
         )
         state = WorldState(territories={"T001": territory})
         assert state.overshoot_ratio == 0.0
+
+
+# =============================================================================
+# STATE FINANCES INTEGRATION TESTS (Epoch 1: Political Economy of Liquidity)
+# =============================================================================
+
+
+@pytest.mark.topology
+class TestStateFinancesIntegration:
+    """Test state_finances field integration with WorldState.
+
+    Epoch 1: The Ledger - Political Economy of Liquidity.
+    StateFinance tracks fiscal capacity of sovereign entities (nation-states).
+    """
+
+    def test_create_with_state_finances(self, worker: SocialClass) -> None:
+        """Can create WorldState with state_finances dict."""
+        from babylon.models.entities.state_finance import StateFinance
+
+        finances = {"USA": StateFinance(treasury=1000.0, debt_level=500.0)}
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            state_finances=finances,
+        )
+        assert "USA" in state.state_finances
+        assert state.state_finances["USA"].treasury == 1000.0
+        assert state.state_finances["USA"].debt_level == 500.0
+
+    def test_default_empty_state_finances(self) -> None:
+        """Default state_finances is empty dict."""
+        state = WorldState(tick=0)
+        assert state.state_finances == {}
+        assert len(state.state_finances) == 0
+
+    def test_to_graph_stores_state_finances_in_metadata(self, worker: SocialClass) -> None:
+        """to_graph() stores state_finances in G.graph['state_finances']."""
+        from babylon.models.entities.state_finance import StateFinance
+
+        finances = {"USA": StateFinance(treasury=500.0, police_budget=20.0)}
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            state_finances=finances,
+        )
+        G = state.to_graph()
+
+        assert "state_finances" in G.graph
+        assert "USA" in G.graph["state_finances"]
+        assert G.graph["state_finances"]["USA"]["treasury"] == 500.0
+        assert G.graph["state_finances"]["USA"]["police_budget"] == 20.0
+
+    def test_from_graph_restores_state_finances(self, worker: SocialClass) -> None:
+        """from_graph() reconstructs state_finances from metadata."""
+        from babylon.models.entities.state_finance import StateFinance
+
+        finances = {
+            "USA": StateFinance(treasury=750.0, tax_rate=0.25),
+            "UK": StateFinance(treasury=300.0, debt_level=100.0),
+        }
+        state = WorldState(
+            tick=0,
+            entities={"C001": worker},
+            state_finances=finances,
+        )
+        G = state.to_graph()
+        restored = WorldState.from_graph(G, tick=1)
+
+        assert len(restored.state_finances) == 2
+        assert "USA" in restored.state_finances
+        assert "UK" in restored.state_finances
+        assert restored.state_finances["USA"].treasury == 750.0
+        assert restored.state_finances["USA"].tax_rate == 0.25
+        assert restored.state_finances["UK"].treasury == 300.0
+        assert restored.state_finances["UK"].debt_level == 100.0
+
+    def test_round_trip_preserves_state_finances(self, worker: SocialClass) -> None:
+        """Full JSON round-trip preserves state_finances data."""
+        from babylon.models.entities.state_finance import StateFinance
+
+        finances = {
+            "USA": StateFinance(
+                treasury=1000.0,
+                police_budget=50.0,
+                social_reproduction_budget=75.0,
+                tax_rate=0.35,
+                tribute_income=25.0,
+                debt_level=200.0,
+                debt_ceiling=800.0,
+            )
+        }
+        state = WorldState(
+            tick=5,
+            entities={"C001": worker},
+            state_finances=finances,
+        )
+
+        # JSON round-trip
+        json_str = state.model_dump_json()
+        restored = WorldState.model_validate_json(json_str)
+
+        assert restored.tick == 5
+        assert "USA" in restored.state_finances
+        usa = restored.state_finances["USA"]
+        assert usa.treasury == 1000.0
+        assert usa.police_budget == 50.0
+        assert usa.social_reproduction_budget == 75.0
+        assert usa.tax_rate == 0.35
+        assert usa.tribute_income == 25.0
+        assert usa.debt_level == 200.0
+        assert usa.debt_ceiling == 800.0
+        # Verify computed field
+        assert usa.burn_rate == 125.0  # 50 + 75
+
+    def test_from_graph_default_when_missing(self) -> None:
+        """from_graph() uses empty dict when state_finances metadata missing.
+
+        This ensures backward compatibility with graphs created before
+        state_finances was added to WorldState.
+        """
+        import networkx as nx
+
+        # Create graph without state_finances in metadata (old format)
+        G: nx.DiGraph[str] = nx.DiGraph()
+        # No state_finances in G.graph
+
+        restored = WorldState.from_graph(G, tick=0)
+
+        assert restored.state_finances == {}
+        assert len(restored.state_finances) == 0

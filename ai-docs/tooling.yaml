@@ -2,8 +2,8 @@
 # How tools are configured and why
 
 meta:
-  version: "1.0.1"
-  updated: "2025-12-12"
+  version: "1.1.0"
+  updated: "2025-12-26"
   purpose: "Document tooling decisions to avoid re-investigation"
 
 # =============================================================================
@@ -213,6 +213,182 @@ linting:
       - "docs/character_sheets/"
       - "ai-docs/"
     reason_for_ai_docs_ignore: "Prose with long lines, not infrastructure config"
+
+# =============================================================================
+# CODE COMPLEXITY ANALYSIS
+# =============================================================================
+
+code_complexity:
+  philosophy: "Guard against unmaintainable code in AI-heavy development (80% AI-written)"
+
+  rationale: |
+    When AI writes 80% of the code, complexity guardrails aren't over-engineering—
+    they're essential. Without gates, AI can produce sprawling functions that pass
+    tests but become debugging nightmares. Cyclomatic complexity catches these
+    before they merge.
+
+  metrics:
+    cyclomatic_complexity:
+      status: "primary"
+      tool: "radon"
+      description: "Count of independent code paths through a function"
+      why_it_matters: |
+        High CC = hard to test, hard to understand, bug-prone.
+        Mathematical formulas should be pure functions with low CC.
+        Orchestration code may legitimately be higher, but has limits.
+      grading_scale:
+        A: "1-5 (simple, low risk)"
+        B: "6-10 (moderate complexity, acceptable)"
+        C: "11-20 (complex, should consider refactoring)"
+        D: "21-30 (very complex, needs attention)"
+        E: "31-40 (untestable, urgent refactoring)"
+        F: "41+ (error-prone, critical issue)"
+
+    maintainability_index:
+      status: "excluded"
+      reason: |
+        MI is a composite score combining CC, Halstead volume, and LOC.
+        Problem: Babylon's mandatory Sphinx docstrings artificially inflate MI.
+        A function could have good MI but still be poorly structured.
+        CC alone is sufficient with our existing 100-line function rule.
+
+    halstead_metrics:
+      status: "excluded"
+      reason: "Too academic, high noise-to-signal ratio. Rarely actionable."
+
+    raw_loc:
+      status: "excluded"
+      reason: "Already enforced via CLAUDE.md 100-line function rule."
+
+  tools:
+    radon:
+      purpose: "Detailed complexity reporting"
+      package: "radon"
+      usage: "poetry run radon cc src/ -a -s"
+      output: "Per-function CC grades, averages, summary"
+      when_used: "All CI runs (informational)"
+
+    xenon:
+      purpose: "Pass/fail complexity gating"
+      package: "xenon"
+      usage: "poetry run xenon --max-absolute C src/"
+      output: "Exit code 0 (pass) or 1 (fail)"
+      when_used: "Blocking gate on main branch only"
+
+    ruff_c901:
+      purpose: "Fast local feedback via pre-commit"
+      package: "ruff (built-in mccabe rule)"
+      usage: "Enabled in ruff config with max-complexity = 15"
+      when_used: "Pre-commit hook (immediate developer feedback)"
+
+  thresholds:
+    warning_level:
+      cc_value: 10
+      grade: "B/C boundary"
+      enforcement: "Informational only, shown in CI logs"
+
+    blocking_level:
+      cc_value: 15
+      grade: "Stricter than Google (10), pragmatic for existing codebase"
+      enforcement: "Blocks merge to main via Xenon"
+      rationale: |
+        Why 15 instead of 10?
+        - Codebase already exists with potential complexity
+        - Starting strict risks false positives that frustrate adoption
+        - Can tighten to 10 after baselining current state
+        - Industry median is 10-15, this is reasonable middle ground
+
+  workflow:
+    feature_branches:
+      complexity_check: "none"
+      rationale: "Active development is messy, allow iteration"
+
+    pull_requests_to_dev:
+      complexity_check: "radon report (informational)"
+      blocks_merge: false
+      rationale: "Visibility without friction, developers see the stats"
+
+    pull_requests_to_main:
+      complexity_check: "xenon gate"
+      blocks_merge: true
+      rationale: "Quality gate before stable releases"
+
+    push_to_main:
+      complexity_check: "xenon gate"
+      blocks_merge: true
+      rationale: "Redundant safety for direct pushes (BD only)"
+
+  ci_integration:
+    all_branches:
+      step_name: "Code Complexity Report"
+      command: "poetry run radon cc src/ -a -s --show-complexity"
+      continue_on_error: true
+      purpose: "Visibility in CI logs"
+
+    main_only:
+      step_name: "Code Complexity Gate"
+      command: "poetry run xenon --max-absolute C src/"
+      continue_on_error: false
+      purpose: "Block merge if any function exceeds CC 15"
+
+  mise_tasks:
+    complexity:
+      command: "poetry run radon cc src/ -a -s --show-complexity"
+      description: "Show full complexity report"
+
+    complexity_check:
+      command: "poetry run xenon --max-absolute C src/"
+      description: "Run xenon gate (test before main PR)"
+
+  pre_commit_integration:
+    rule: "C901"
+    config_location: "pyproject.toml [tool.ruff.lint]"
+    setting: "max-complexity = 15"
+    behavior: "Fails pre-commit if any function exceeds CC 15"
+    rationale: "Immediate local feedback before push"
+
+  scope:
+    included:
+      - "src/babylon/**/*.py"
+    excluded:
+      paths:
+        - "tests/**/*.py"
+      reason: "Test functions are intentionally verbose for clarity"
+
+  known_patterns:
+    acceptable_high_complexity:
+      examples:
+        - "State machines (explicit case handling)"
+        - "Parsers with many grammar rules"
+        - "Factory functions with many entity types"
+      mitigation: |
+        1. Refactor into smaller functions where possible
+        2. If truly unavoidable, document WHY in PR description
+        3. Xenon allows --exclude for specific modules (use sparingly)
+
+    common_causes_of_high_cc:
+      - "Nested if/elif chains (consider lookup tables)"
+      - "Multiple early returns (consolidate conditions)"
+      - "Try/except with many exception types (use base classes)"
+      - "Boolean flag parameters (split into separate functions)"
+
+  future_enhancements:
+    wily:
+      description: "Track complexity OVER TIME (detect regressions)"
+      status: "Not implemented yet"
+      use_case: "Could catch 'this PR increased average CC by 2 points'"
+
+    path_based_thresholds:
+      description: "Different CC limits for different code areas"
+      status: "Not implemented yet"
+      example: |
+        - formulas.py: max CC 10 (pure math, no excuses)
+        - engine/systems/*.py: max CC 15 (some coordination OK)
+
+    cognitive_complexity:
+      description: "Alternative to CC that weights nested structures higher"
+      status: "Blocked - Ruff doesn't support yet"
+      notes: "When Ruff adds cognitive complexity, consider switching"
 
 # =============================================================================
 # PYTHON TOOLING

@@ -12,6 +12,25 @@ meta:
 
 mantras:
 
+  north_star:
+    text: "A teenager picks it up, has fun, thinks it's cool, and learns how the world works."
+    meaning: |
+      This is the ultimate success criterion for Babylon.
+      Not architectural elegance. Not test coverage. Not theoretical rigor.
+
+      A person who hasn't read Marx plays this game and starts asking
+      the right questions about imperial rent, class consciousness,
+      and why revolution happens in the periphery, not the core.
+
+      Political education through storytelling with a complex backend.
+      The backend complexity serves the story. The story serves understanding.
+    applies_to:
+      - "Feature prioritization"
+      - "UI/UX decisions"
+      - "Scope discussions"
+      - "When to ship vs when to polish"
+    added: "2025-12-26"
+
   graph_plus_math:
     text: "Graph + Math = History"
     meaning: |

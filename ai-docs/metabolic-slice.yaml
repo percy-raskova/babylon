@@ -79,7 +79,7 @@ data_model:
 
   territory_additions:
     file: "src/babylon/models/entities/territory.py"
-    status: "REQUIRES IMPLEMENTATION"
+    status: "COMPLETE"  # Sprint 1.4A
 
     new_fields:
       biocapacity:
@@ -119,7 +119,7 @@ data_model:
 
   social_class_additions:
     file: "src/babylon/models/entities/social_class.py"
-    status: "REQUIRES IMPLEMENTATION"
+    status: "COMPLETE"  # Sprint 1.4A
 
     new_fields:
       consumption_needs:
@@ -221,7 +221,7 @@ system_architecture:
   metabolism_system:
     name: "MetabolismSystem"
     file: "src/babylon/engine/systems/metabolism.py"
-    status: "REQUIRES IMPLEMENTATION"
+    status: "COMPLETE"  # Sprint 1.4B
     protocol: "System (step signature)"
 
     purpose: |
@@ -348,7 +348,7 @@ system_architecture:
 
 enum_additions:
   file: "src/babylon/models/enums.py"
-  status: "REQUIRES IMPLEMENTATION"
+  status: "COMPLETE"  # Sprint 1.4A - ECOLOGICAL_OVERSHOOT added
 
   EventType:
     new_value: "ECOLOGICAL_OVERSHOOT"
@@ -558,7 +558,7 @@ formulas:
   biocapacity_update:
     function: "calculate_biocapacity_delta"
     file: "src/babylon/systems/formulas.py"
-    status: "REQUIRES IMPLEMENTATION"
+    status: "COMPLETE"  # Sprint 1.4A - lines 714-758
     equation: "ΔB = R - (E × η)"
     expanded: "ΔB = (regeneration_rate × max_biocapacity) - (extraction_intensity × biocapacity × entropy_factor)"
 
@@ -605,7 +605,7 @@ formulas:
   overshoot_ratio:
     function: "calculate_overshoot_ratio"
     file: "src/babylon/systems/formulas.py"
-    status: "REQUIRES IMPLEMENTATION"
+    status: "COMPLETE"  # Sprint 1.4A - lines 761-788
     equation: "O = C_total / B_total"
 
     inputs:
@@ -725,49 +725,49 @@ implementation_checklist:
   priority: "CRITICAL - Blocks Phase 4.1 completion"
 
   step_1_model_updates:
-    status: "TODO"
+    status: "COMPLETE"  # Sprint 1.4A (2025-12-26)
     files:
       - "src/babylon/models/entities/territory.py"
       - "src/babylon/models/entities/social_class.py"
       - "src/babylon/models/entities/economy.py"
     tasks:
-      - "Add biocapacity, max_biocapacity, regeneration_rate, extraction_intensity to Territory"
-      - "Add s_bio, s_class, consumption_needs to SocialClass"
-      - "Add metabolic aggregate properties to GlobalEconomy"
+      - "[x] Add biocapacity, max_biocapacity, regeneration_rate, extraction_intensity to Territory"
+      - "[x] Add s_bio, s_class, consumption_needs to SocialClass"
+      - "[ ] Add metabolic aggregate properties to GlobalEconomy (deferred - using WorldState)"
 
   step_2_enum_update:
-    status: "TODO"
+    status: "COMPLETE"  # Sprint 1.4A (2025-12-26)
     files:
       - "src/babylon/models/enums.py"
     tasks:
-      - "Add ECOLOGICAL_OVERSHOOT to EventType enum"
+      - "[x] Add ECOLOGICAL_OVERSHOOT to EventType enum"
 
   step_3_formula_implementation:
-    status: "TODO"
+    status: "COMPLETE"  # Sprint 1.4A (2025-12-26)
     files:
       - "src/babylon/systems/formulas.py"
     tasks:
-      - "Implement calculate_biocapacity_delta()"
-      - "Implement calculate_overshoot_ratio()"
-      - "Add tests in tests/unit/formulas/test_metabolism_formulas.py"
+      - "[x] Implement calculate_biocapacity_delta()"
+      - "[x] Implement calculate_overshoot_ratio()"
+      - "[x] Add tests in tests/unit/formulas/test_metabolic_rift.py"
 
   step_4_system_implementation:
-    status: "TODO"
+    status: "COMPLETE"  # Sprint 1.4B (2025-12-26)
     files:
       - "src/babylon/engine/systems/metabolism.py"
     tasks:
-      - "Create MetabolismSystem class implementing System protocol"
-      - "Implement step() with extraction intensity, rift calculation, event emission"
-      - "Add tests in tests/unit/engine/systems/test_metabolism.py"
+      - "[x] Create MetabolismSystem class implementing System protocol"
+      - "[x] Implement step() with biocapacity update, aggregation, event emission"
+      - "[x] Add tests in tests/unit/engine/systems/test_metabolism.py (15 tests)"
 
   step_5_integration:
-    status: "TODO"
+    status: "PARTIAL"
     files:
       - "src/babylon/engine/simulation_engine.py"
       - "src/babylon/engine/systems/economic.py"
     tasks:
-      - "Add MetabolismSystem to DEFAULT_SYSTEMS at position 2.5"
-      - "Update ImperialRentSystem to set extraction_intensity on Territory"
+      - "[ ] Add MetabolismSystem to DEFAULT_SYSTEMS at position 2.5"
+      - "[ ] Update ImperialRentSystem to set extraction_intensity on Territory"
 
   step_6_metrics:
     status: "TODO"
@@ -779,12 +779,12 @@ implementation_checklist:
       - "Update MetricsCollector to capture metabolic state"
 
   step_7_world_state:
-    status: "TODO"
+    status: "COMPLETE"  # Sprint 1.4A (2025-12-26)
     files:
       - "src/babylon/models/world_state.py"
     tasks:
-      - "Add computed properties for metabolic aggregates"
-      - "Ensure to_graph() serializes new Territory fields"
+      - "[x] Add computed properties for metabolic aggregates"
+      - "[x] Ensure to_graph() serializes new Territory fields"
 
   step_8_dashboard:
     status: "TODO"
@@ -796,14 +796,14 @@ implementation_checklist:
       - "Add territory health visualization"
 
   step_9_documentation:
-    status: "TODO"
+    status: "PARTIAL"
     files:
       - "ai-docs/architecture.yaml"
       - "ai-docs/formulas-spec.yaml"
     tasks:
-      - "Add MetabolismSystem to systems list"
-      - "Add new formulas to formula inventory"
-      - "Update CLAUDE.md with metabolic metrics"
+      - "[ ] Add MetabolismSystem to systems list"
+      - "[ ] Add new formulas to formula inventory"
+      - "[x] Update CLAUDE.md with metabolic metrics"
 
 # =============================================================================
 # SUCCESS CRITERIA

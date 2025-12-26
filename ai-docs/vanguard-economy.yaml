@@ -1,0 +1,906 @@
+# Vanguard Economy - The Resource System
+# Epoch 2: The Game
+#
+# "The history of all hitherto existing movements is the history of
+# the contradiction between organization and spontaneity."
+# - Operational Synthesis
+#
+# This system replaces generic "Money/Mana" with a Materialist Resource Model
+# that enforces the Quality (Cadre) vs. Quantity (Sympathizers) dialectic.
+
+meta:
+  epoch: 2
+  slice: "2.5"
+  slice_name: "The Resource Economy"
+  status: PLANNED
+  priority: HIGH
+  version: "1.0.0"
+  created: "2025-12-26"
+  purpose: "Model revolutionary resources as Cadre Labor, Sympathizer Labor, and Reputation"
+
+  theoretical_foundation:
+    primary: "Lenin - What Is To Be Done? (1902) - Professional revolutionaries vs. mass movement"
+    secondary: "Mao - The Mass Line (1943) - From the masses, to the masses"
+    tertiary: "Gramsci - The Modern Prince (1929) - Organic intellectuals"
+    critical: "Rosa Luxemburg - Organizational Questions (1904) - Critique of over-centralization"
+
+  design_principle: |
+    The resource system is NOT about accumulation. It is about BALANCE.
+
+    The game punishes BOTH extremes:
+    - The Populist (all Sympathizers, no Cadre) = The Influencer Trap
+    - The Sectarian (all Cadre, no Sympathizers) = The Reading Group Trap
+
+    Victory requires walking the knife's edge: enough mass to matter,
+    enough discipline to execute. This is the essence of Leninist strategy.
+
+    The "Transmission Belt" (Cadre translating theory into mass action)
+    is the core metaphor. Without it, energy is wasted or misdirected.
+
+# =============================================================================
+# ANTI-PATTERN WARNING
+# =============================================================================
+
+anti_pattern_warning:
+  context: "Resource optimization has TWO failure modes, not one"
+
+  populist_trap: |
+    THE INFLUENCER TRAP:
+    - Player maximizes Reputation (easiest to farm)
+    - Reputation generates massive Sympathizer pool during crises
+    - Player ignores slow, expensive Cadre training
+    - Result: Huge SL volume, near-zero Coherence
+    - When crisis arrives: Mob cannot execute strategic objectives
+    - Spontaneous action replaces directed action
+    - State repression without achieving goals
+    - "You have a million followers and zero soldiers."
+
+  sectarian_trap: |
+    THE READING GROUP TRAP:
+    - Player maximizes Cadre quality (intellectually satisfying)
+    - Perfect discipline, 100% Coherence
+    - But: No Sympathizer base, no mass support
+    - Result: Cannot affect Imperial Circuit (no volume)
+    - Cannot survive state crackdown (no "human shield")
+    - Cadre eliminated one by one
+    - "You have perfect theory and no praxis."
+
+  correct_pattern: |
+    THE DIALECTICAL BALANCE:
+    - Cadre:Sympathizer ratio maintained at COHERENCE_OPTIMAL (0.1-0.2)
+    - Reputation used strategically (not maximized)
+    - Cadre training keeps pace with Sympathizer growth
+    - Result: Controllable mass action with strategic direction
+    - "The masses are the motor; the Party is the steering wheel."
+
+# =============================================================================
+# THE THREE CURRENCIES
+# =============================================================================
+
+currencies:
+  overview: |
+    Revolutionary capacity is measured in THREE distinct currencies,
+    each with different sources, properties, and uses. They are NOT
+    interchangeable, though they interact mathematically.
+
+  cadre_labor:
+    id: "CL"
+    name: "Cadre Labor"
+    description: "The concentrated action-capacity of trained revolutionaries"
+
+    source:
+      primary: "Political Education actions (slow, expensive)"
+      secondary: "Rectification campaigns (converting entropy to discipline)"
+      tertiary: "Experienced sympathizers promoted through vetting"
+
+    properties:
+      determinism: "HIGH - Action success rate approaches 100%"
+      volume: "LOW - Cannot be mass-produced"
+      persistence: "HIGH - Cadre retain training across ticks"
+      convertibility: "ONE-WAY - Cadre can train sympathizers, not reverse"
+
+    uses:
+      structural:
+        - "Building organizational infrastructure (cells, safe houses)"
+        - "Establishing secure communication networks"
+        - "Creating and maintaining logistics chains"
+      operational:
+        - "Surgical strikes (Kinetic Warfare Slice 2.6)"
+        - "Reconnaissance on high-security targets"
+        - "Extraction planning for Realization node attacks"
+      multiplicative:
+        - "Training sympathizers (slow conversion)"
+        - "Leading mass actions (increases Coherence)"
+        - "Reducing organizational Entropy"
+
+    constraints:
+      generation_rate: "1 CL per 10 ticks of Political Education"
+      maximum_pool: "Capped by organizational infrastructure"
+      attrition: "Lost in failed high-risk operations"
+
+    code_type:
+      type: "int"
+      unit: "cadre_units"
+      minimum: 0
+
+  sympathizer_labor:
+    id: "SL"
+    name: "Sympathizer Labor"
+    description: "The volatile mass-capacity of the movement's base"
+
+    source:
+      primary: "Agitation actions (fast, volatile)"
+      secondary: "Crisis events (automatic generation)"
+      tertiary: "Reputation passive generation during upheaval"
+
+    properties:
+      determinism: "LOW - Action success rate = Coherence Factor"
+      volume: "HIGH - Can grow exponentially during crises"
+      persistence: "LOW - Sympathizers demobilize without continuous engagement"
+      volatility: "HIGH - Subject to Consciousness fluctuations"
+
+    uses:
+      mass_actions:
+        - "Protests and demonstrations"
+        - "General strikes (requires Coherence)"
+        - "Riots (spontaneous when Coherence low)"
+        - "Electoral mobilization (if pursuing Liberal path)"
+      defensive:
+        - "Human shield effect (state hesitates to attack popular movements)"
+        - "Information network (passive intelligence on state actions)"
+        - "Resource base for sustained campaigns"
+      overflow:
+        - "When SL exceeds Cadre capacity: Spontaneous action"
+        - "Uncontrolled SL triggers Ultra-Left deviation"
+
+    constraints:
+      generation_rate: "Variable - tied to Reputation * Crisis_Level"
+      decay_rate: "5% per tick without active engagement"
+      maximum_effective: "Capped by Cadre * TRANSMISSION_RATIO"
+
+    code_type:
+      type: "int"
+      unit: "sympathizer_units"
+      minimum: 0
+
+  reputation:
+    id: "REP"
+    name: "Reputation"
+    description: "Public perception multiplier - magnetic attraction to the movement"
+
+    source:
+      primary: "Successful visible actions"
+      secondary: "The Wire narrative victories"
+      tertiary: "Organic growth from demonstrated results"
+
+    properties:
+      function: "MULTIPLIER - Does not act directly, amplifies SL generation"
+      visibility: "PUBLIC - State also tracks your Reputation"
+      fragility: "HIGH - Drops sharply from visible failures or atrocities"
+
+    effects:
+      passive_generation: |
+        During crisis events:
+        SL_Generation = Base_Crisis_SL * (1 + Reputation * REP_MULTIPLIER)
+
+      recruitment_ease: |
+        Reputation reduces cost of Agitation actions:
+        Agitation_Cost = Base_Cost / (1 + Reputation)
+
+      state_attention: |
+        High Reputation increases Heat:
+        Heat_Modifier = Reputation * HEAT_REP_FACTOR
+
+    danger: |
+      Reputation is a TRAP for naive players:
+      - Easy to accumulate (successful visible actions)
+      - Generates "free" Sympathizers during crises
+      - BUT: Without Cadre, those Sympathizers are UNCONTROLLABLE
+      - AND: High Reputation means high State attention
+
+      "Fame without discipline is a death sentence."
+
+    constraints:
+      range: "0.0 - 1.0 (Probability-like)"
+      decay_rate: "Natural decay of 2% per tick (public memory fades)"
+      crash_events: "Drops 50% on visible atrocity or major failure"
+
+    code_type:
+      type: "Probability"
+      unit: "reputation_level"
+      minimum: 0.0
+      maximum: 1.0
+
+# =============================================================================
+# THE TRANSMISSION BELT (Core Mechanic)
+# =============================================================================
+
+transmission_belt:
+  name: "The Transmission Belt"
+  description: |
+    The central metaphor of the Vanguard Economy. Cadre act as the
+    "transmission belt" between revolutionary theory and mass action.
+    Without sufficient Cadre, mass energy is wasted or misdirected.
+
+  theoretical_basis: |
+    From Lenin's organizational theory: the relationship between the
+    conscious vanguard and the spontaneous mass movement is mediated
+    by organizational capacity. The Cadre "translate" between levels.
+
+    This is NOT about control FOR ITS OWN SAKE. It is about EFFECTIVENESS.
+    An unorganized mass cannot achieve strategic objectives, only express anger.
+
+  coherence_factor:
+    name: "Coherence Factor"
+    symbol: "CF"
+    description: "The efficiency of the transmission belt - how much SL can be directed"
+
+    formula: |
+      CF = sigmoid((Cadre_Count / Sympathizer_Count) / K_COHERENCE)
+
+      Where:
+      - sigmoid(x) = 1 / (1 + exp(-x))
+      - K_COHERENCE = 0.1 (optimal Cadre:Sympathizer ratio)
+
+    behavior:
+      at_optimal_ratio: |
+        When Cadre:Sympathizer = 0.1 (1 Cadre per 10 Sympathizers):
+        CF approaches 0.73 (sigmoid(1))
+        Actions have 73% base success rate
+
+      below_optimal: |
+        When Cadre:Sympathizer < 0.05 (1 Cadre per 20+ Sympathizers):
+        CF drops below 0.5
+        Actions fail more often than they succeed
+        Spontaneous deviation likely
+
+      above_optimal: |
+        When Cadre:Sympathizer > 0.2 (1 Cadre per 5 Sympathizers):
+        CF approaches 0.88+
+        Near-perfect execution
+        BUT: Volume is insufficient for impact
+
+      extremes: |
+        At Cadre:Sympathizer = 0.01 (1 Cadre per 100 Sympathizers):
+        CF = sigmoid(0.1) ≈ 0.52 (barely above coin flip)
+
+        At Cadre:Sympathizer = 0.5 (1 Cadre per 2 Sympathizers):
+        CF = sigmoid(5) ≈ 0.99 (near-perfect)
+        BUT: Only 2 Sympathizers per Cadre = tiny army
+
+    thresholds:
+      COHERENCE_CRITICAL: 0.3  # Below this: "Loose" organization
+      COHERENCE_FUNCTIONAL: 0.5  # Minimum for strategic action
+      COHERENCE_OPTIMAL: 0.7  # Sweet spot for mass action
+      COHERENCE_DISCIPLINED: 0.9  # Maximum useful (diminishing returns)
+
+    code_signature: |
+      def calculate_coherence_factor(
+          cadre_count: int,
+          sympathizer_count: int,
+          k_coherence: float = 0.1
+      ) -> Probability:
+          """
+          Calculate the Coherence Factor for the organization.
+
+          Args:
+              cadre_count: Number of active Cadre
+              sympathizer_count: Number of active Sympathizers
+              k_coherence: Optimal Cadre:Sympathizer ratio
+
+          Returns:
+              Coherence Factor (0.0 - 1.0)
+          """
+          if sympathizer_count == 0:
+              return Probability(1.0)  # Perfect coherence, zero mass
+
+          ratio = cadre_count / sympathizer_count
+          normalized = ratio / k_coherence
+          return Probability(1.0 / (1.0 + math.exp(-normalized)))
+
+  effective_output:
+    name: "Effective Output"
+    description: "The actual impact of a mass action"
+
+    formula: |
+      Effective_Output = (Sympathizer_Labor * Reputation_Bonus) * Coherence_Factor
+
+      Where:
+      - Sympathizer_Labor: SL committed to the action
+      - Reputation_Bonus: (1 + Reputation) for visible actions
+      - Coherence_Factor: Transmission efficiency
+
+    example: |
+      Action: General Strike
+      SL Committed: 10,000
+      Reputation: 0.5
+      Coherence Factor: 0.4 (LOW - insufficient Cadre)
+
+      Raw Power = 10,000 * (1 + 0.5) = 15,000
+      Effective Output = 15,000 * 0.4 = 6,000
+
+      60% of the potential is LOST to organizational inefficiency.
+      The remaining 40% may manifest as undirected action (riots, looting).
+
+  wasted_energy:
+    name: "Wasted Energy"
+    description: "The portion of SL that fails to translate into directed action"
+
+    formula: |
+      Wasted_Energy = Sympathizer_Labor * (1 - Coherence_Factor)
+
+    consequences: |
+      Wasted Energy does not simply disappear. It manifests as:
+      1. Spontaneous action (riots, vandalism) - increases Collateral
+      2. Demobilization (sympathizers give up) - SL decay accelerates
+      3. Ultra-Left deviation - triggers State repression
+
+      High Wasted Energy is a PREDICTOR of the Ultra-Left spiral.
+
+# =============================================================================
+# RESOURCE GENERATION
+# =============================================================================
+
+resource_generation:
+  cadre_labor_generation:
+    political_education:
+      description: "The primary method of generating CL"
+      cost:
+        time: "10 ticks per Cadre trained"
+        resources: "Existing Cadre must be allocated to training"
+        opportunity: "Cadre training cannot execute other actions"
+      output: "1 CL per completion"
+      quality: "Highest quality Cadre"
+
+    sympathizer_promotion:
+      description: "Promoting exceptional Sympathizers to Cadre"
+      cost:
+        time: "5 ticks per promotion"
+        resources: "1 CL supervising, 1 SL candidate"
+        vetting: "Probability of success = Candidate_Consciousness * 0.5"
+      output: "1 CL on success, candidate lost on failure"
+      quality: "Variable - depends on source Sympathizer"
+      risk: "Failed vetting may indicate informant"
+
+    crisis_forging:
+      description: "Crisis conditions rapidly politicize individuals"
+      trigger: "Major crisis events (UPRISING, RUPTURE)"
+      effect: "Sympathizers with Consciousness > 0.8 may self-promote"
+      rate: "1% of high-consciousness SL per crisis event"
+      quality: "Variable - 'battlefield promotions' may lack theory"
+
+  sympathizer_labor_generation:
+    agitation:
+      description: "Active recruitment through outreach"
+      cost:
+        cadre_time: "1 CL for 1 tick"
+        resources: "Minor material costs (pamphlets, events)"
+      output: "SL = Base_Agitation * Reputation * Territory_Consciousness"
+      base_agitation: 10
+      example: "1 CL agitating in territory with 0.5 Consciousness, 0.3 Rep = 10 * 0.3 * 0.5 = 1.5 SL"
+
+    passive_crisis_generation:
+      description: "Crises automatically generate Sympathizers"
+      trigger: "Crisis events in territories"
+      formula: |
+        Crisis_SL = Crisis_Intensity * Population * Consciousness * (1 + Reputation)
+      example: |
+        UPRISING in territory with:
+        - Crisis_Intensity: 0.8
+        - Population: 100,000
+        - Consciousness: 0.4
+        - Reputation: 0.5
+        Crisis_SL = 0.8 * 100,000 * 0.4 * 1.5 = 48,000 SL generated
+
+    reputation_passive:
+      description: "High Reputation passively attracts Sympathizers"
+      trigger: "Each tick"
+      formula: |
+        Passive_SL = Total_Population * Reputation^2 * PASSIVE_GENERATION_RATE
+      rate: 0.001  # 0.1% of population * Rep^2 per tick
+      note: "This is the TRAP - easy SL without Cadre growth"
+
+  reputation_generation:
+    visible_success:
+      description: "Successful actions that the public witnesses"
+      effect: "+0.05 to +0.15 Reputation depending on scale"
+      examples:
+        - "Successful strike at Extraction node: +0.05"
+        - "Mass protest with clear demands achieved: +0.10"
+        - "Humiliating state defeat (rare): +0.15"
+
+    wire_victories:
+      description: "Winning narrative battles in The Wire"
+      effect: "+0.02 per narrative victory"
+      mechanism: "Counter-hegemonic narrative reaches mainstream"
+
+    natural_decay:
+      description: "Public memory fades"
+      rate: "-0.02 per tick"
+      mitigation: "Continuous visible activity maintains reputation"
+
+    reputation_crash:
+      description: "Catastrophic reputation loss"
+      triggers:
+        - "Visible atrocity (Collateral damage from Circulation attack)"
+        - "Major operational failure"
+        - "Internal scandal revealed by state"
+      effect: "-0.5 Reputation immediately"
+
+# =============================================================================
+# THE TRAP MECHANICS
+# =============================================================================
+
+trap_mechanics:
+  populist_trap:
+    name: "The Influencer Trap"
+    alternate_names: ["The Popularity Contest", "The Twitter Revolutionary"]
+
+    strategy_profile: |
+      The player optimizes for what is EASY and VISIBLE:
+      - Maximize Reputation (successful visible actions)
+      - Accumulate Sympathizers passively (crisis generation)
+      - Ignore Cadre training (slow, boring, invisible)
+
+    mathematical_consequence: |
+      With 50,000 Sympathizers and 100 Cadre:
+      - Cadre:Sympathizer ratio = 0.002
+      - Coherence Factor = sigmoid(0.002 / 0.1) = sigmoid(0.02) ≈ 0.505
+
+      HALF of all directed actions will FAIL or DEVIATE.
+
+    gameplay_manifestation:
+      trigger: "Player orders strategic mass action (General Strike, Siege)"
+      coherence_check: "Roll against Coherence Factor"
+      failure_outcome:
+        primary: "Action fails to materialize as intended"
+        secondary: "Spontaneous action replaces directed action"
+        tertiary: "Riots, looting, undirected violence"
+        consequence: "State repression WITHOUT strategic gain"
+
+    example_scenario:
+      setup: |
+        Player has built massive following:
+        - Reputation: 0.8 (famous)
+        - Sympathizers: 100,000
+        - Cadre: 200
+        - Coherence: sigmoid(0.002 / 0.1) = 0.505
+
+      action: "Order General Strike against Extraction Node"
+
+      resolution: |
+        Coherence Check: 0.505 (50.5% success)
+        Roll: 0.67 (FAILURE)
+
+        The "General Strike" becomes a riot:
+        - Workers leave jobs but don't picket - they loot
+        - Collateral damage in working-class neighborhoods
+        - Consciousness DROPS (workers blame "the movement")
+        - State deploys QRF with public support
+        - Reputation CRASHES (-0.4 from visible failure)
+        - 15,000 Sympathizers arrested or demobilized
+
+      lesson: "You had an army but no officers. The army became a mob."
+
+  sectarian_trap:
+    name: "The Reading Group Trap"
+    alternate_names: ["The Ivory Tower", "The Perfect Theory"]
+
+    strategy_profile: |
+      The player optimizes for QUALITY and PURITY:
+      - Maximize Cadre training (feels productive)
+      - Maintain theoretical rigor (intellectually satisfying)
+      - Reject "unprepared" Sympathizers (ideological gatekeeping)
+
+    mathematical_consequence: |
+      With 500 Cadre and 1,000 Sympathizers:
+      - Cadre:Sympathizer ratio = 0.5
+      - Coherence Factor = sigmoid(0.5 / 0.1) = sigmoid(5) ≈ 0.993
+
+      NEAR-PERFECT execution... of actions that don't matter.
+
+    gameplay_manifestation:
+      volume_problem: |
+        Actions have maximum impact proportional to SL committed.
+        With only 1,000 Sympathizers:
+        - Cannot affect Imperial Circuit meaningfully
+        - Cannot survive sustained state attention
+        - Cannot generate crisis momentum
+
+      survival_problem: |
+        Low SL = No "human shield" effect
+        State can identify and eliminate Cadre one by one
+        No mass base means no political cost to repression
+
+    example_scenario:
+      setup: |
+        Player has elite organization:
+        - Reputation: 0.2 (obscure)
+        - Sympathizers: 500
+        - Cadre: 200
+        - Coherence: sigmoid(0.4 / 0.1) = 0.98
+
+      action: "Attack Extraction Node with 200 SL, 50 CL"
+
+      resolution: |
+        Attack succeeds with near-perfect execution.
+        Node disabled for 5 ticks.
+        Imperial Rent reduced by 2%.
+
+        BUT:
+        - 2% reduction is MEANINGLESS at system level
+        - State identifies attack pattern (small, precise)
+        - QRF deployed to known Cadre locations
+        - 20 Cadre captured (10% of total)
+        - No mass base to protest arrests
+        - Organization crippled within 10 ticks
+
+      lesson: "You had perfect soldiers but no army. The state picked them off."
+
+  balanced_path:
+    name: "The Dialectical Balance"
+    alternate_names: ["The Transmission Belt", "The Mass Line"]
+
+    strategy_profile: |
+      The player maintains RATIO over absolute numbers:
+      - Cadre:Sympathizer ratio held at 0.08 - 0.15
+      - Growth is SYNCHRONIZED (Cadre training matches SL intake)
+      - Reputation used strategically, not maximized
+
+    mathematical_consequence: |
+      With 10,000 Sympathizers and 1,000 Cadre:
+      - Cadre:Sympathizer ratio = 0.1 (OPTIMAL)
+      - Coherence Factor = sigmoid(0.1 / 0.1) = sigmoid(1) ≈ 0.73
+
+      73% of actions succeed, volume is sufficient for impact.
+
+    gameplay_manifestation:
+      sustainable_growth: |
+        Organization can grow while maintaining effectiveness.
+        Each new wave of Sympathizers is met with Cadre training.
+        Coherence remains stable even during crisis expansion.
+
+      strategic_flexibility: |
+        Enough Coherence for surgical actions (Kinetic Warfare)
+        Enough volume for mass actions (Strikes, Protests)
+        Enough Reputation for passive SL during crises
+
+# =============================================================================
+# INTEGRATION POINTS
+# =============================================================================
+
+integration:
+  cohesion_system:
+    connection: "Cadre_Ratio feeds directly into Cohesion calculations"
+    cross_reference: "ai-docs/cohesion-mechanic.yaml"
+    effects: |
+      Entropy_Growth = base_rate * log(Members) * (1 - cadre_ratio)
+
+      - High Cadre_Ratio dampens Entropy growth
+      - Low Cadre_Ratio accelerates organizational decay
+      - This creates REINFORCING feedback loop:
+        Low Cadre -> High Entropy -> Low Cohesion -> Actions fail -> SL leaves
+
+    rectification_cost: |
+      Rectification actions (reducing Entropy) cost CL.
+      A bloated organization must spend CL on Rectification
+      instead of growth or operations.
+
+  kinetic_warfare:
+    connection: "Target types have RESOURCE REQUIREMENTS"
+    cross_reference: "ai-docs/kinetic-warfare.yaml"
+    requirements:
+      extraction_nodes:
+        minimum_cl: 10
+        sl_optional: true
+        coherence_requirement: 0.3
+        note: "Can be done with Cadre alone"
+
+      circulation_edges:
+        surgical_attack:
+          minimum_cl: 50
+          coherence_requirement: 0.7
+          sl_role: "Diversionary actions only"
+        blind_attack:
+          minimum_sl: 1000
+          coherence_requirement: "N/A (mob action)"
+          consequence: "ALWAYS triggers Blowback"
+
+      realization_nodes:
+        minimum_cl: 200
+        minimum_cohesion: 0.8
+        sl_role: "Cannot participate (security risk)"
+        note: "Pure Cadre operations only"
+
+    key_insight: |
+      You CANNOT send Sympathizers to attack Realization nodes.
+      They will panic, trigger alarms, get captured, reveal the org.
+      High-value targets REQUIRE Cadre Labor.
+
+  the_wire:
+    connection: "Reputation is contested through narrative warfare"
+    cross_reference: "ai-docs/gramscian-wire-vision.yaml"
+    effects: |
+      Wire victories increase Reputation (+0.02 per victory)
+      Wire defeats damage Reputation (variable)
+      Collateral damage events give State propaganda ammunition
+      High Reputation means high visibility (Heat)
+
+  survival_calculus:
+    connection: "Resource levels affect P(S|R)"
+    cross_reference: "src/babylon/systems/formulas.py"
+    effects: |
+      P(S|R) = Organization / Repression
+
+      Where Organization = f(CL, SL, Coherence)
+
+      A large but incoherent movement (high SL, low CF) has LOWER
+      P(S|R) than a smaller but disciplined one (lower SL, high CF).
+
+# =============================================================================
+# TRANSMISSION EXAMPLE
+# =============================================================================
+
+transmission_example:
+  title: "The Failed General Strike"
+  context: |
+    Illustrates the Coherence Factor in action. Player orders a
+    strategic mass action with insufficient Cadre to direct it.
+
+  setup:
+    action: "General Strike against Metro Industrial District"
+    target: "Extraction Nodes (Factories)"
+    objective: "Halt Imperial Rent extraction for 5+ ticks"
+
+    organization_state:
+      sympathizers: 1000
+      cadre: 10
+      reputation: 0.6
+      coherence_factor: "sigmoid(0.01 / 0.1) = sigmoid(0.1) ≈ 0.525"
+
+    resources_committed:
+      sl_committed: 1000
+      cl_committed: 10
+
+  resolution:
+    step_1_coherence_check:
+      description: "Determine if directed action succeeds"
+      formula: "Roll vs. Coherence Factor (0.525)"
+      roll: 0.78
+      result: "FAILURE (0.78 > 0.525)"
+
+    step_2_deviation_determination:
+      description: "What happens when directed action fails?"
+      wasted_energy: "1000 * (1 - 0.525) = 475 SL worth of undirected action"
+      deviation_type: "SPONTANEOUS_ACTION"
+
+    step_3_spontaneous_outcome:
+      description: "The 'strike' becomes something else"
+      narrative: |
+        The workers leave their posts as instructed.
+        But without Cadre to maintain discipline:
+        - Picket lines collapse into crowds
+        - Crowds drift toward commercial district
+        - Looting begins ("we're not getting paid anyway")
+        - Police arrive, violence erupts
+
+      mechanical_effects:
+        - "Strike FAILS to disable Extraction Nodes"
+        - "Collateral Damage in territory (+0.3)"
+        - "Worker Consciousness: -0.15 (they blame the movement)"
+        - "State Repression: +0.2 (public demands order)"
+        - "Reputation: -0.2 (visible failure)"
+        - "Sympathizer Loss: 200 SL arrested, 150 demobilized"
+
+    step_4_aftermath:
+      description: "The morning after"
+      organization_state:
+        sympathizers: 650  # Down from 1000
+        cadre: 8  # 2 Cadre captured trying to restore order
+        reputation: 0.4  # Down from 0.6
+        coherence_factor: "sigmoid(0.012) ≈ 0.503"  # Slightly worse
+
+      lesson: |
+        The player achieved NOTHING strategically.
+        The Imperial Circuit continues uninterrupted.
+        The organization is WEAKER than before.
+        The state is MORE repressive.
+        The workers trust the movement LESS.
+
+        "A general strike requires generals."
+
+  counter_example:
+    title: "The Successful General Strike"
+    setup:
+      sympathizers: 1000
+      cadre: 150  # 15% ratio
+      coherence_factor: "sigmoid(0.15 / 0.1) = sigmoid(1.5) ≈ 0.82"
+
+    resolution: |
+      Roll: 0.78
+      Result: SUCCESS (0.78 < 0.82)
+
+      The strike proceeds as planned:
+      - Disciplined picket lines hold
+      - Cadre prevent deviation into violence
+      - Clear demands communicated to public
+      - Extraction Nodes disabled for 5 ticks
+      - Imperial Rent reduced by 8%
+      - Worker Consciousness: +0.1
+      - Reputation: +0.1
+
+    lesson: "Same 1000 Sympathizers, but with 150 Cadre = SUCCESS."
+
+# =============================================================================
+# ENTITY SCHEMA
+# =============================================================================
+
+entity_schema:
+  organization_resources:
+    location: "src/babylon/models/organization.py"
+    schema: |
+      class OrganizationResources(BaseModel):
+          cadre_labor: int = 0
+          sympathizer_labor: int = 0
+          reputation: Probability = Probability(0.0)
+
+          @property
+          def cadre_ratio(self) -> float:
+              total = self.cadre_labor + self.sympathizer_labor
+              if total == 0:
+                  return 1.0
+              return self.cadre_labor / total
+
+          @property
+          def coherence_factor(self) -> Probability:
+              return calculate_coherence_factor(
+                  self.cadre_labor,
+                  self.sympathizer_labor
+              )
+
+  resource_action:
+    location: "src/babylon/models/actions.py"
+    schema: |
+      class ResourceAction(BaseModel):
+          action_type: ActionType
+          cl_cost: int = 0
+          sl_cost: int = 0
+          rep_cost: Probability = Probability(0.0)
+          coherence_requirement: Optional[Probability] = None
+
+          def can_execute(self, resources: OrganizationResources) -> bool:
+              """Check if organization has resources and coherence."""
+              if resources.cadre_labor < self.cl_cost:
+                  return False
+              if resources.sympathizer_labor < self.sl_cost:
+                  return False
+              if self.coherence_requirement:
+                  if resources.coherence_factor < self.coherence_requirement:
+                      return False
+              return True
+
+# =============================================================================
+# GAME DEFINES CONSTANTS
+# =============================================================================
+
+game_defines:
+  section: "vanguard_economy"
+  constants:
+    # Coherence calculation
+    k_coherence: 0.1  # Optimal Cadre:Sympathizer ratio
+    coherence_critical: 0.3
+    coherence_functional: 0.5
+    coherence_optimal: 0.7
+    coherence_disciplined: 0.9
+
+    # CL generation
+    political_education_ticks: 10
+    sympathizer_promotion_ticks: 5
+    crisis_forging_rate: 0.01
+
+    # SL generation
+    base_agitation: 10
+    passive_generation_rate: 0.001
+    sl_decay_rate: 0.05
+
+    # Reputation
+    rep_decay_rate: 0.02
+    rep_crash_amount: 0.5
+    rep_multiplier: 1.0
+    heat_rep_factor: 0.5
+
+    # Cadre multipliers (for Kinetic)
+    cadre_action_multiplier: 10.0
+    sympathizer_action_multiplier: 1.0
+
+# =============================================================================
+# IMPLEMENTATION CHECKLIST
+# =============================================================================
+
+implementation:
+  priority: "HIGH - Foundation for player agency"
+  estimated_complexity: "MEDIUM - Core mechanics, many integrations"
+
+  checklist:
+    models:
+      - task: "Create OrganizationResources model"
+        file: "src/babylon/models/organization.py"
+        status: "TODO"
+
+      - task: "Create ResourceAction model"
+        file: "src/babylon/models/actions.py"
+        status: "TODO"
+
+      - task: "Add resource fields to Organization entity"
+        status: "TODO"
+
+    formulas:
+      - task: "Implement calculate_coherence_factor()"
+        file: "src/babylon/systems/formulas.py"
+        status: "TODO"
+
+      - task: "Implement calculate_effective_output()"
+        status: "TODO"
+
+      - task: "Implement resource_generation calculations"
+        status: "TODO"
+
+    system:
+      - task: "Create VanguardEconomySystem class"
+        file: "src/babylon/engine/systems/vanguard_economy.py"
+        status: "TODO"
+
+      - task: "Implement CL generation actions"
+        status: "TODO"
+
+      - task: "Implement SL generation and decay"
+        status: "TODO"
+
+      - task: "Implement Reputation dynamics"
+        status: "TODO"
+
+    integration:
+      - task: "Connect Cadre_Ratio to CohesionSystem"
+        status: "TODO"
+
+      - task: "Connect resource requirements to KineticSystem"
+        status: "TODO"
+
+      - task: "Connect Reputation to The Wire"
+        status: "TODO"
+
+    tests:
+      - task: "Test Coherence Factor calculation"
+        status: "TODO"
+
+      - task: "Test Populist Trap scenario"
+        status: "TODO"
+
+      - task: "Test Sectarian Trap scenario"
+        status: "TODO"
+
+      - task: "Test Balanced Path scenario"
+        status: "TODO"
+
+      - task: "Integration test with Kinetic Warfare"
+        status: "TODO"
+
+# =============================================================================
+# CROSS-REFERENCES
+# =============================================================================
+
+cross_references:
+  brainstorm: "brainstorm/mechanics/vanguard_economy.md"
+  related_specs:
+    - "ai-docs/cohesion-mechanic.yaml (Cadre_Ratio drives Entropy)"
+    - "ai-docs/kinetic-warfare.yaml (CL requirements for attacks)"
+    - "ai-docs/gramscian-wire-vision.yaml (Reputation from narrative)"
+    - "ai-docs/strategy-layer.yaml (Resource costs for player actions)"
+  theoretical:
+    - "Lenin - What Is To Be Done? (1902)"
+    - "Mao - The Mass Line (1943)"
+    - "Gramsci - The Modern Prince (1929)"
+  implementation:
+    - "src/babylon/models/organization.py (Organization entity)"
+    - "src/babylon/engine/systems/vanguard_economy.py (VanguardEconomySystem)"
+    - "src/babylon/systems/formulas.py (Coherence calculations)"

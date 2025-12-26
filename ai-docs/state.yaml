@@ -117,8 +117,9 @@ epoch_status:
         "2.2b": "The Vanguard - Internal Dynamics (ai-docs/cohesion-mechanic.yaml)"
         "2.3": "Reproductive Labor"
         "2.4": "The Wire - Narrative Warfare (ai-docs/gramscian-wire-vision.yaml)"
-        "2.5": "Multiple Scenarios"
+        "2.5": "The Resource Economy - Vanguard Efficiency (ai-docs/vanguard-economy.yaml)"
         "2.6": "Kinetic Warfare - System Disruption (ai-docs/kinetic-warfare.yaml)"
+        "2.7": "Multiple Scenarios"
     epoch_3:
       name: "The Platform"
       thesis: "Others can build on this. Modding, custom scenarios, educational tools."

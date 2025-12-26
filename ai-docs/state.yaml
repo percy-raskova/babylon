@@ -2,11 +2,11 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "1.7.0"
+  version: "1.8.0"
   updated: "2025-12-25"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_epoch: "Six-Phase Fractal Evolution"
-  last_audit: "Phase 4 UI Dashboard (2025-12-25)"
+  last_audit: "MetricsCollector Observer (2025-12-25)"
 
 # =============================================================================
 # IMPLEMENTATION STATUS
@@ -181,6 +181,12 @@ implemented:
           - "on_simulation_start(initial_state, config)"
           - "on_tick(previous_state, new_state)"
           - "on_simulation_end(final_state)"
+        implementations:
+          - "NarrativeDirector - AI narrative generation"
+          - "TopologyMonitor - phase transition detection"
+          - "EconomyMonitor - economic crisis detection"
+          - "CausalChainObserver - Shock Doctrine patterns"
+          - "MetricsCollector - unified metrics for dashboard/sweeper (Sprint 4.1)"
 
       narrative_director:
         status: "complete"
@@ -580,6 +586,9 @@ current_focus:
     - "Phase 4 UI: Subcutaneous integration tests for dashboard components"
     - "Phase 4 UI: 4-panel dashboard layout with TrendPlotter, NarrativeTerminal, SystemLog, StateInspector"
     - "Phase 4 UI: CSS Grid/Flexbox width propagation fix (w-full on flex-1 children in grid cells)"
+    - "Phase 4.1: MetricsCollector observer - unified metrics for dashboard/sweeper (TDD: 101 tests)"
+    - "Phase 4.1: Metrics Pydantic models (EntityMetrics, EdgeMetrics, TickMetrics, SweepSummary)"
+    - "Phase 4.1: Dashboard integration - MetricsCollector registered as Simulation observer"
 
   current_phase:
     name: "Phase 3.4: The Imperial Circuit"
@@ -1180,14 +1189,35 @@ current_focus:
   george_jackson_mantra: "Fascism is the defensive form of capitalism."
   integration_mantra: "A flat line on a fancy graph is still a flat line."
   milestone: "PHASE 4 UI: Developer Dashboard MVP - 4-panel layout operational with AsyncSimulationRunner"
-  next_milestone: "Phase 4.1A: Wire the 4-node Imperial Circuit into dashboard"
-  test_count: 1926
-  test_count_note: "Updated 2025-12-25 - UI tests passing (161 UI tests)"
+  next_milestone: "Phase 4.1B: MetricsCollector gap fixes (economy drivers + topology)"
+  test_count: 2210
+  test_count_note: "Updated 2025-12-25 - MetricsCollector observer (+101 tests TDD)"
+
+  metrics_audit:
+    date: "2025-12-25"
+    status: "GAPS IDENTIFIED - 60% coverage"
+    critical_missing:
+      - "current_super_wage_rate (GlobalEconomy) - labor aristocracy driver"
+      - "current_repression_level (GlobalEconomy) - P(S|R) factor"
+      - "percolation_ratio (TopologyMonitor) - phase transition"
+      - "cadre_density (TopologyMonitor) - vanguard detection"
+    implementation_bugs:
+      - "global_tension diluted by non-EXPLOITATION edges"
+      - "edge metrics overwrite when multiple same-type edges"
+      - "TopologyMonitor not registered with dashboard"
+    next_action: "TDD fix Phase 1 critical gaps (~20 tests)"
+    full_audit: "See observer-layer.yaml metrics_collector.audit section"
+
   analysis_insight: |
     2025-12-25: Diagnosed why dashboard is boring.
     Using create_two_node_scenario() instead of create_imperial_circuit_scenario().
     Dashboard shows 1 of 4 classes, misses the whole Imperial Circuit dynamic.
     The dashboard is a LENS - it can't show interesting things if simulation is static.
+
+    2025-12-25: MetricsCollector audit reveals ~60% coverage.
+    Critical missing: economy drivers (wage_rate, repression) and topology (percolation).
+    These are the DIALS that make the simulation interesting to watch.
+    Without them, dashboard shows effects but not causes.
   philosophical_grounding: |
     "The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
     Architecture encodes theory. The code IS the analysis.
@@ -1237,6 +1267,8 @@ tech_debt:
       - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
       - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 30 tests (Sprint 3.3 4-phase model)"
       - "Narrative pipeline tests (tests/integration/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
+      - "MetricsCollector tests (tests/unit/engine/observers/test_metrics_collector.py) - 60 tests (Sprint 4.1 TDD)"
+      - "Metrics model tests (tests/unit/models/test_metrics_models.py) - 41 tests (Sprint 4.1 TDD)"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

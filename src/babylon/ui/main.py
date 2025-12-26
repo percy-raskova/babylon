@@ -31,34 +31,77 @@ from babylon.ui.components import StateInspector, SystemLog, TrendPlotter
 from babylon.ui.controls import ControlDeck
 from babylon.ui.terminal import NarrativeTerminal, find_narrative_director, poll_narrative_director
 
-# Module-level state
-simulation: Simulation | None = None
-runner: AsyncSimulationRunner | None = None  # Replaces is_playing flag
-control_deck: ControlDeck | None = None
-terminal: NarrativeTerminal | None = None
-last_narrative_index: int = 0
 
-# New Synopticon panel state (Sprint 4)
-system_log: SystemLog | None = None
-trend_plotter: TrendPlotter | None = None
-state_inspector: StateInspector | None = None
-last_event_index: int = 0
+class DashboardState:
+    """Encapsulates all mutable state for the Babylon Developer Dashboard.
 
-# Sprint 4.1: Unified metrics collection
-metrics_collector: MetricsCollector | None = None
+    This class manages simulation state, UI components, and tracking indices
+    to avoid module-level mutable state that can cause issues with testing,
+    concurrency, and state management.
+
+    Attributes:
+        simulation: The active Simulation instance.
+        runner: AsyncSimulationRunner for non-blocking execution.
+        control_deck: ControlDeck component for tick display and controls.
+        terminal: NarrativeTerminal component for narrative display.
+        last_narrative_index: Tracking index for narrative polling.
+        system_log: SystemLog component for event logging.
+        trend_plotter: TrendPlotter component for metrics visualization.
+        state_inspector: StateInspector component for entity state display.
+        last_event_index: Tracking index for event logging.
+        metrics_collector: MetricsCollector observer for unified metrics.
+    """
+
+    def __init__(self) -> None:
+        """Initialize DashboardState with all fields set to None or default values."""
+        self.simulation: Simulation | None = None
+        self.runner: AsyncSimulationRunner | None = None
+        self.control_deck: ControlDeck | None = None
+        self.terminal: NarrativeTerminal | None = None
+        self.last_narrative_index: int = 0
+        self.system_log: SystemLog | None = None
+        self.trend_plotter: TrendPlotter | None = None
+        self.state_inspector: StateInspector | None = None
+        self.last_event_index: int = 0
+        self.metrics_collector: MetricsCollector | None = None
+
+
+# Module-level state instance
+_state = DashboardState()
+
+
+def __getattr__(name: str) -> object:
+    """Provide module-level access to DashboardState attributes.
+
+    This enables backward compatibility with tests that access module-level
+    variables like `main.simulation`, `main.trend_plotter`, etc.
+
+    Args:
+        name: The attribute name to get.
+
+    Returns:
+        The attribute value from the _state instance.
+
+    Raises:
+        AttributeError: If the attribute doesn't exist on DashboardState.
+    """
+    if hasattr(_state, name):
+        return getattr(_state, name)
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def init_simulation() -> None:
     """Initialize or reset the simulation and runner."""
-    global simulation, runner, metrics_collector
-    state, config, defines = create_two_node_scenario()
+    scenario_state, config, defines = create_two_node_scenario()
 
     # Sprint 4.1: Create MetricsCollector in interactive mode with rolling window
     # matching TrendPlotter.MAX_POINTS for consistent visualization
-    metrics_collector = MetricsCollector(mode="interactive", rolling_window=50)
+    _state.metrics_collector = MetricsCollector(mode="interactive", rolling_window=50)
 
-    simulation = Simulation(state, config, observers=[metrics_collector], defines=defines)
-    runner = AsyncSimulationRunner(simulation, tick_interval=1.0)
+    _state.simulation = Simulation(
+        scenario_state, config, observers=[_state.metrics_collector], defines=defines
+    )
+    _state.runner = AsyncSimulationRunner(_state.simulation, tick_interval=1.0)
 
 
 async def on_step() -> None:
@@ -67,8 +110,8 @@ async def on_step() -> None:
     Uses AsyncSimulationRunner.step_once() which internally uses asyncio.to_thread()
     to run simulation step in a background thread, preventing GUI freeze.
     """
-    if runner is not None:
-        await runner.step_once()
+    if _state.runner is not None:
+        await _state.runner.step_once()
         refresh_ui()
 
 
@@ -77,8 +120,8 @@ async def on_play() -> None:
 
     Starts the AsyncSimulationRunner background loop.
     """
-    if runner is not None:
-        await runner.start()
+    if _state.runner is not None:
+        await _state.runner.start()
 
 
 async def on_pause() -> None:
@@ -86,8 +129,8 @@ async def on_pause() -> None:
 
     Stops the AsyncSimulationRunner background loop.
     """
-    if runner is not None:
-        await runner.stop()
+    if _state.runner is not None:
+        await _state.runner.stop()
 
 
 async def on_reset() -> None:
@@ -95,11 +138,10 @@ async def on_reset() -> None:
 
     Stops the runner, resets state indices, reinitializes simulation and runner.
     """
-    global last_narrative_index, last_event_index
-    if runner is not None:
-        await runner.stop()
-    last_narrative_index = 0  # Reset narrative polling index
-    last_event_index = 0  # Reset event tracking index
+    if _state.runner is not None:
+        await _state.runner.stop()
+    _state.last_narrative_index = 0  # Reset narrative polling index
+    _state.last_event_index = 0  # Reset event tracking index
     init_simulation()
     refresh_ui()
 
@@ -110,9 +152,9 @@ def _get_narrative_director() -> SimulationObserver | None:
     Returns:
         The NarrativeDirector observer if found, None otherwise.
     """
-    if simulation is None:
+    if _state.simulation is None:
         return None
-    return find_narrative_director(simulation.observers)
+    return find_narrative_director(_state.simulation.observers)
 
 
 def _calculate_global_tension(state: WorldState) -> float:
@@ -173,54 +215,52 @@ def refresh_ui() -> None:
     4. StateInspector: Update with C001 entity state
     5. SystemLog: Log new simulation events with appropriate severity levels
     """
-    global last_narrative_index, last_event_index
-
-    if simulation is None:
+    if _state.simulation is None:
         return
 
-    state = simulation.current_state
+    sim_state = _state.simulation.current_state
 
     # 1. Update tick counter (existing)
-    if control_deck is not None:
-        control_deck.update_tick(state.tick)
+    if _state.control_deck is not None:
+        _state.control_deck.update_tick(sim_state.tick)
 
     # 2. Poll NarrativeDirector -> NarrativeTerminal (existing)
-    if terminal is not None:
+    if _state.terminal is not None:
         director = _get_narrative_director()
         if director is not None:
-            new_entries, last_narrative_index = poll_narrative_director(
-                director, last_narrative_index
+            new_entries, _state.last_narrative_index = poll_narrative_director(
+                director, _state.last_narrative_index
             )
             for entry in new_entries:
-                terminal.log(entry)
+                _state.terminal.log(entry)
 
     # 3. Push metrics -> TrendPlotter via MetricsCollector (Sprint 4.1)
     # Uses unified metrics collection instead of hardcoded extraction
     # Falls back to direct state access if collector hasn't received data yet
-    if trend_plotter is not None:
-        if metrics_collector is not None and metrics_collector.latest is not None:
-            latest = metrics_collector.latest
-            trend_plotter.push_data(latest.tick, latest.imperial_rent_pool, latest.global_tension)
+    if _state.trend_plotter is not None:
+        if _state.metrics_collector is not None and _state.metrics_collector.latest is not None:
+            latest = _state.metrics_collector.latest
+            _state.trend_plotter.push_data(latest.tick, latest.imperial_rent_pool, latest.global_tension)
         else:
             # Fallback for initial render before first step
-            rent = float(state.economy.imperial_rent_pool)
-            tension = _calculate_global_tension(state)
-            trend_plotter.push_data(state.tick, rent, tension)
+            rent = float(sim_state.economy.imperial_rent_pool)
+            tension = _calculate_global_tension(sim_state)
+            _state.trend_plotter.push_data(sim_state.tick, rent, tension)
 
     # 4. Update StateInspector with C001 entity (full entity, not just metrics)
     # StateInspector shows complete entity state including id, name, role etc.
-    if state_inspector is not None:
-        entity = state.entities.get("C001")
+    if _state.state_inspector is not None:
+        entity = sim_state.entities.get("C001")
         if entity is not None:
-            state_inspector.refresh(entity.model_dump())
+            _state.state_inspector.refresh(entity.model_dump())
 
     # 5. Log new events -> SystemLog (NEW)
-    if system_log is not None:
-        new_events = state.events[last_event_index:]
+    if _state.system_log is not None:
+        new_events = sim_state.events[_state.last_event_index:]
         for event in new_events:
             level = _event_to_log_level(event)
-            system_log.log(f"[{event.event_type.value}] tick={event.tick}", level)
-        last_event_index = len(state.events)
+            _state.system_log.log(f"[{event.event_type.value}] tick={event.tick}", level)
+        _state.last_event_index = len(sim_state.events)
 
 
 async def poll_runner() -> None:
@@ -230,14 +270,14 @@ async def poll_runner() -> None:
     the queue for states pushed by the background runner. This decouples
     the UI update from the simulation step execution.
     """
-    if runner is None:
+    if _state.runner is None:
         return
 
     # Drain all available states (usually 0 or 1)
     # Each state triggers a UI refresh
     while True:
-        state = await runner.get_state()
-        if state is None:
+        sim_state = await _state.runner.get_state()
+        if sim_state is None:
             break
         refresh_ui()
 
@@ -266,13 +306,12 @@ def main_page() -> None:
         - grow_light_purple: #9D00FF (title, NARRATIVE label)
         - data_green: #39FF14 (SYSTEM LOG label)
     """
-    global control_deck, terminal, system_log, trend_plotter, state_inspector
     ui.dark_mode().enable()
 
     # Header row: Title + ControlDeck (wet_concrete background)
     with ui.row().classes("w-full items-center justify-between p-4 bg-[#1A1A1A]"):
         ui.label("BABYLON v0.3").classes("text-[#9D00FF] font-mono text-2xl")
-        control_deck = ControlDeck(
+        _state.control_deck = ControlDeck(
             on_step=on_step,
             on_play=on_play,
             on_pause=on_pause,
@@ -292,7 +331,7 @@ def main_page() -> None:
         with ui.column().classes("gap-2 h-full w-full"):
             ui.label("METRICS").classes("text-[#C0C0C0] font-mono uppercase tracking-wider text-xs")
             with ui.element("div").classes("flex-1 min-h-0 w-full"):
-                trend_plotter = TrendPlotter()
+                _state.trend_plotter = TrendPlotter()
 
         # Center panel: NarrativeTerminal (top 50%) + SystemLog (bottom 50%)
         # h-full + w-full stretches to grid cell; children use flex-1 to split evenly
@@ -303,14 +342,14 @@ def main_page() -> None:
                     "text-[#9D00FF] font-mono uppercase tracking-wider text-xs"
                 )
                 with ui.element("div").classes("flex-1 min-h-0 w-full"):
-                    terminal = NarrativeTerminal()
+                    _state.terminal = NarrativeTerminal()
             # System Log panel (bottom half) - flex-1 takes other 50%
             with ui.column().classes("gap-2 flex-1 min-h-0 w-full"):
                 ui.label("SYSTEM LOG").classes(
                     "text-[#39FF14] font-mono uppercase tracking-wider text-xs"
                 )
                 with ui.element("div").classes("flex-1 min-h-0 w-full"):
-                    system_log = SystemLog()
+                    _state.system_log = SystemLog()
 
         # Right panel: StateInspector (full height)
         # h-full + w-full stretches column to fill grid cell; flex-1 fills remaining space
@@ -319,7 +358,7 @@ def main_page() -> None:
                 "text-[#C0C0C0] font-mono uppercase tracking-wider text-xs"
             )
             with ui.element("div").classes("flex-1 min-h-0 w-full"):
-                state_inspector = StateInspector()
+                _state.state_inspector = StateInspector()
 
     # Timer for polling runner queue - MUST be inside root function
     # Poll at 100ms for responsive UI updates (runner controls tick rate)

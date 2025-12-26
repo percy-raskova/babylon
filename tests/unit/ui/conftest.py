@@ -121,29 +121,31 @@ def reset_main_module_state() -> Generator[None, None, None]:
     """
     import babylon.ui.main as main
 
-    # Save original state
-    original_simulation = main.simulation
-    original_runner = main.runner
-    original_control_deck = main.control_deck
-    original_terminal = main.terminal
-    original_system_log = main.system_log
-    original_trend_plotter = main.trend_plotter
-    original_state_inspector = main.state_inspector
-    original_last_narrative_index = main.last_narrative_index
-    original_last_event_index = main.last_event_index
+    # Save original state from DashboardState instance
+    original_simulation = main._state.simulation
+    original_runner = main._state.runner
+    original_control_deck = main._state.control_deck
+    original_terminal = main._state.terminal
+    original_system_log = main._state.system_log
+    original_trend_plotter = main._state.trend_plotter
+    original_state_inspector = main._state.state_inspector
+    original_last_narrative_index = main._state.last_narrative_index
+    original_last_event_index = main._state.last_event_index
+    original_metrics_collector = main._state.metrics_collector
 
     yield
 
-    # Restore original state
-    main.simulation = original_simulation
-    main.runner = original_runner
-    main.control_deck = original_control_deck
-    main.terminal = original_terminal
-    main.system_log = original_system_log
-    main.trend_plotter = original_trend_plotter
-    main.state_inspector = original_state_inspector
-    main.last_narrative_index = original_last_narrative_index
-    main.last_event_index = original_last_event_index
+    # Restore original state to DashboardState instance
+    main._state.simulation = original_simulation
+    main._state.runner = original_runner
+    main._state.control_deck = original_control_deck
+    main._state.terminal = original_terminal
+    main._state.system_log = original_system_log
+    main._state.trend_plotter = original_trend_plotter
+    main._state.state_inspector = original_state_inspector
+    main._state.last_narrative_index = original_last_narrative_index
+    main._state.last_event_index = original_last_event_index
+    main._state.metrics_collector = original_metrics_collector
 
 
 @pytest.fixture
@@ -167,8 +169,8 @@ def main_module_with_mocks(
     """
     import babylon.ui.main as main
 
-    main.simulation = mock_simulation
-    main.runner = mock_runner
+    main._state.simulation = mock_simulation
+    main._state.runner = mock_runner
 
     return main
 

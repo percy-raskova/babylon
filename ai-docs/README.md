@@ -41,6 +41,9 @@ This directory helps AI assistants:
 | `tutorial-design.yaml` | Player learning sequence, progressive disclosure, trap reveals | YAML |
 | `resource-sinks.yaml` | Resource decay/consumption mechanics, equilibrium targets | YAML |
 | `ui-wireframes.yaml` | ASCII wireframes for complex systems (Doctrine, Panopticon, Fog) | YAML |
+| `doctrine-tree-mvp.yaml` | Simplified 3-trunk doctrine tree for MVP implementation | YAML |
+| `persistence-spec.yaml` | Save/load system, file format, version migration | YAML |
+| `error-recovery-spec.yaml` | Error handling, validation, recovery procedures | YAML |
 | **ARCHITECTURE** |||
 | `architecture.yaml` | System structure, directory map, data flow | YAML |
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas | YAML |

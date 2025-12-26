@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import networkx as nx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
@@ -28,6 +28,7 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType
 from babylon.models.events import SimulationEvent
+from babylon.models.types import Currency
 
 if TYPE_CHECKING:
     pass
@@ -175,6 +176,9 @@ class WorldState(BaseModel):
         entities: dict[str, SocialClass] = {}
         territories: dict[str, Territory] = {}
 
+        # Computed fields to exclude during reconstruction (Slice 1.4)
+        social_class_computed = {"consumption_needs"}
+
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
             # Create a copy without _node_type for model construction
@@ -192,7 +196,9 @@ class WorldState(BaseModel):
                 territories[node_id] = Territory(**node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
-                entities[node_id] = SocialClass(**node_data)
+                # Filter out computed fields that shouldn't be passed to constructor
+                entity_data = {k: v for k, v in node_data.items() if k not in social_class_computed}
+                entities[node_id] = SocialClass(**entity_data)
 
         # Reconstruct relationships from edges
         relationships: list[Relationship] = []
@@ -290,3 +296,27 @@ class WorldState(BaseModel):
         """
         new_log = [*self.event_log, event]
         return self.model_copy(update={"event_log": new_log})
+
+    # =========================================================================
+    # Metabolic Aggregates (Slice 1.4)
+    # =========================================================================
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_biocapacity(self) -> Currency:
+        """Global sum of territory biocapacity."""
+        return Currency(sum(t.biocapacity for t in self.territories.values()))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_consumption(self) -> Currency:
+        """Global sum of consumption needs."""
+        return Currency(sum(e.consumption_needs for e in self.entities.values()))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def overshoot_ratio(self) -> float:
+        """Global ecological overshoot ratio."""
+        if self.total_biocapacity <= 0:
+            return 999.0
+        return float(self.total_consumption / self.total_biocapacity)

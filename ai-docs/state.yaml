@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.2"
+  version: "2.0.3"
   updated: "2025-12-26"
-  last_sprint: "1.4C - The Wiring (MetabolismSystem integration)"
+  last_sprint: "1.4D - Parameterization (GameDefines wiring)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -74,6 +74,10 @@ epoch_status:
         - "Ecological metrics in TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
         - "MetricsCollector extracts ecological state from WorldState"
         - "Integration tests proving system runs in engine loop (15 tests)"
+        - "MetabolismDefines in GameDefines (entropy_factor, overshoot_threshold, max_overshoot_ratio)"
+        - "TopologyDefines in GameDefines (gaseous_threshold, condensation_threshold, vanguard_density_threshold)"
+        - "EconomyDefines additions (negligible_rent, negligible_subsidy)"
+        - "All magic numbers wired to GameDefines (no hardcoded thresholds in systems)"
       deliverables_remaining:
         - "Dashboard metabolic gauge (Slice 1.5)"
         - "[DEFERRED] Wire ImperialRentSystem to set extraction_intensity (Epoch 2)"
@@ -85,6 +89,9 @@ epoch_status:
         - "fe7feb1: feat(metabolic): implement MetabolismSystem (TDD Green Phase)"
         - "7563101: test(metabolic): add TDD RED phase tests for Sprint 1.4C"
         - "ce5b888: feat(metabolic): wire MetabolismSystem into simulation engine (TDD Green Phase)"
+        - "8e2009c: refactor(defines): add MetabolismDefines and TopologyDefines"
+        - "e11cf6f: refactor(economic): wire negligible thresholds to GameDefines"
+        - "4609e4f: refactor(topology): wire phase thresholds to GameDefines"
 
     "1.5":
       name: "The Dashboard"

@@ -916,12 +916,28 @@ causal_dag:
     level_1_fundamentals:
       description: "TRUE FUNDAMENTALS - Independent variables, simulation's atoms"
       location: "src/babylon/config/defines.py"
-      examples:
-        - "economy.extraction_efficiency - Determines imperial rent (Phi)"
-        - "economy.initial_rent_pool - Sets economic scale"
-        - "survival.default_subsistence - P(S|A) baseline"
-        - "survival.default_repression - P(S|R) denominator"
-        - "behavioral.loss_aversion_lambda - Kahneman-Tversky constant"
+      categories:
+        economy:
+          - "extraction_efficiency - Determines imperial rent (Phi)"
+          - "initial_rent_pool - Sets economic scale"
+          - "negligible_rent, negligible_subsidy - Noise filtering thresholds"
+        survival:
+          - "default_subsistence - P(S|A) baseline"
+          - "default_repression - P(S|R) denominator"
+        behavioral:
+          - "loss_aversion_lambda - Kahneman-Tversky constant"
+        topology:
+          - "gaseous_threshold (0.1) - Atomized state detection"
+          - "condensation_threshold (0.5) - Phase transition trigger"
+          - "vanguard_density_threshold (0.5) - Liquid→Solid distinction"
+        metabolism:
+          - "entropy_factor (1.2) - Extraction waste multiplier"
+          - "overshoot_threshold (1.0) - ECOLOGICAL_OVERSHOOT trigger"
+          - "max_overshoot_ratio (999.0) - Depleted biocapacity cap"
+        territory:
+          - "heat_decay_rate, eviction_heat_threshold - Carceral geography"
+        struggle:
+          - "spark_probability_scale, resistance_threshold - Agency Layer"
       principle: "ParameterSweeper varies THESE"
 
     level_2_systems:

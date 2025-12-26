@@ -175,12 +175,14 @@ No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-
 | 2.1 | Demographic Resolution | Full necropolitics vs redistribution mechanics |
 | 2.2a | Strategy Layer (External) | Resource traps: Liberal, Ultra-Left, Rightist |
 | 2.2b | The Vanguard (Internal) | Cohesion, entropy, organizational dynamics |
-| 2.3 | Reproductive Labor | L_restore, regeneration via care work |
-| 2.4 | The Wire (Narrative Warfare) | Hegemony mechanics, propaganda actions |
-| 2.5 | The Resource Economy | Cadre Labor, Sympathizer Labor, Reputation |
-| 2.6 | Kinetic Warfare | Asymmetric logistics, system disruption |
-| 2.7 | Multiple Scenarios | Historical scenarios, custom setups |
-| 2.8 | The Panopticon | State attention economy, surveillance costs |
+| 2.3 | The Reactionary Subject | Class basis of fascism, organizational traps |
+| 2.4 | Reproductive Labor | L_restore, regeneration via care work |
+| 2.5 | The Wire (Narrative Warfare) | Hegemony mechanics, propaganda actions |
+| 2.6 | The Resource Economy | Cadre Labor, Sympathizer Labor, Reputation |
+| 2.7 | Kinetic Warfare | Asymmetric logistics, system disruption |
+| 2.8 | The Doctrine System | Ideological tech tree, line struggle, traps |
+| 2.9 | The Panopticon | State attention economy, surveillance costs |
+| 2.10 | Multiple Scenarios | Historical scenarios, custom setups |
 
 ### Slice 2.1: Demographic Resolution
 
@@ -221,7 +223,31 @@ Resources: Cohesion, Entropy, Cadre Ratio
 
 This is where organizational health determines whether external actions succeed or fail.
 
-### Slice 2.4: The Wire (Narrative Warfare)
+### Slice 2.3: The Reactionary Subject
+
+**Spec:** `ai-docs/reactionary-subject.yaml`
+
+The "Class Basis of Fascism" - foundational understanding of allies and enemies:
+- **Fascist Base:** Petty Bourgeoisie (C_pb) + Labor Aristocracy (C_la), driven by "Status Anxiety"
+- **Revolutionary Base:** Proletariat (P_w) + Lumpenproletariat (L_u), driven by "Survival"
+- **The Lumpen Distinction:** L_u are NOT the fascist base (George Jackson model)
+- **Organizational Trap:** Recruiting C_la brings resources but Chauvinism debuff
+
+Key mechanics:
+- **Entitlement metric:** Investment in status quo (high for C_la/C_pb, low for P_w/L_u)
+- **Chauvinism accumulation:** C_la recruits carry debuff that triggers defection during crisis
+- **Fascist Actions:** Pogrom, Lockout, Vigilantism (Strategy of Tension)
+- **RED_BROWN_COUP:** When Chauvinism > Discipline, coalition members defect to fascists
+
+This is foundational because you cannot make strategic decisions about WHO to organize without understanding the class basis of both revolution AND fascism. "Agitation without solidarity produces fascism, not revolution."
+
+### Slice 2.4: Reproductive Labor
+
+**Spec:** *Not yet created*
+
+L_restore mechanics and regeneration via care work. Care labor as the hidden foundation of all economic activity.
+
+### Slice 2.5: The Wire (Narrative Warfare)
 
 **Spec:** `ai-docs/gramscian-wire-vision.yaml`
 
@@ -232,7 +258,7 @@ Full interactive narrative control system based on Gramscian hegemony:
 
 This builds on the Gramscian Wire MVP from Epoch 1 (dual narrative display) by adding player agency over narrative terrain. "The War of Position" becomes playable.
 
-### Slice 2.5: The Resource Economy
+### Slice 2.6: The Resource Economy
 
 **Spec:** `ai-docs/vanguard-economy.yaml`
 
@@ -244,7 +270,7 @@ The "Vanguard Efficiency Equation" - materialist resource model:
 
 This is where "What Is To Be Done?" becomes gameplay. Players must balance quality and quantity - neither extreme wins.
 
-### Slice 2.6: Kinetic Warfare
+### Slice 2.7: Kinetic Warfare
 
 **Spec:** `ai-docs/kinetic-warfare.yaml`
 
@@ -256,7 +282,19 @@ The "Asymmetric Logistics Engine" - combat as system disruption:
 
 This is where the "Ultra-Left Trap" from the Strategy Layer becomes mechanically realized. Players learn that winning battles while losing hearts is the path to defeat.
 
-### Slice 2.8: The Panopticon
+### Slice 2.8: The Doctrine System
+
+**Spec:** `ai-docs/doctrine-tree.yaml`
+
+The "Ideological Line Struggle" - tech tree with mutually exclusive splits:
+- **Four Trunks:** Reformist, Insurrectionist, Autonomist, Scientific (Leninist/Maoist)
+- **Tag System:** LEGALITY, MILITANCY, MASS_LINK, SECRECY, NATIONALISM, CLASS_ANALYSIS
+- **Trap Endings:** Liquidationism, Adventurism, Dissociation
+- **Degeneration Path:** PatSoc → National Syndicalism → Strasserism (Fascism)
+
+This is where ideology becomes gameplay. The player chooses a line and lives its consequences. "The correctness of the ideological line decides everything."
+
+### Slice 2.9: The Panopticon
 
 **Spec:** `ai-docs/state-attention-economy.yaml`
 

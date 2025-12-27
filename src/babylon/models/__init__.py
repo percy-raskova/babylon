@@ -42,6 +42,16 @@ from babylon.models.enums import (
     SocialRole,
 )
 
+# Slice 1.7: Graph Abstraction Layer
+from babylon.models.graph import (
+    EdgeFilter,
+    GraphEdge,
+    GraphNode,
+    NodeFilter,
+    TraversalQuery,
+    TraversalResult,
+)
+
 # Sprint 4.1: Unified Metrics (MetricsCollector observer)
 from babylon.models.metrics import EdgeMetrics, EntityMetrics, SweepSummary, TickMetrics
 
@@ -108,4 +118,11 @@ __all__ = [
     "EdgeMetrics",
     "TickMetrics",
     "SweepSummary",
+    # Slice 1.7: Graph Abstraction Layer
+    "GraphNode",
+    "GraphEdge",
+    "EdgeFilter",
+    "NodeFilter",
+    "TraversalQuery",
+    "TraversalResult",
 ]

@@ -59,7 +59,6 @@ TraversalResult = _graph_module.TraversalResult
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestGraphProtocolDefinition:
     """Test that GraphProtocol is properly defined as a Protocol."""
 
@@ -83,7 +82,6 @@ class TestGraphProtocolDefinition:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestGraphProtocolNodeMethods:
     """Test that GraphProtocol defines required node methods."""
 
@@ -119,7 +117,6 @@ class TestGraphProtocolNodeMethods:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestGraphProtocolEdgeMethods:
     """Test that GraphProtocol defines required edge methods."""
 
@@ -155,7 +152,6 @@ class TestGraphProtocolEdgeMethods:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestGraphProtocolTraversalMethods:
     """Test that GraphProtocol defines required traversal methods."""
 
@@ -187,7 +183,6 @@ class TestGraphProtocolTraversalMethods:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestGraphProtocolSetMethods:
     """Test that GraphProtocol defines required set-oriented methods."""
 
@@ -358,7 +353,6 @@ class MockGraphAdapter:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestProtocolCompliance:
     """Test that classes can satisfy GraphProtocol structurally."""
 

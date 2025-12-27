@@ -101,7 +101,6 @@ def populated_adapter() -> NetworkXAdapter:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterProtocolCompliance:
     """Test that NetworkXAdapter implements GraphProtocol."""
 
@@ -129,7 +128,6 @@ class TestNetworkXAdapterProtocolCompliance:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterAddNode:
     """Test NetworkXAdapter.add_node method."""
 
@@ -169,7 +167,6 @@ class TestNetworkXAdapterAddNode:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterGetNode:
     """Test NetworkXAdapter.get_node method."""
 
@@ -198,7 +195,6 @@ class TestNetworkXAdapterGetNode:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterUpdateNode:
     """Test NetworkXAdapter.update_node method."""
 
@@ -228,7 +224,6 @@ class TestNetworkXAdapterUpdateNode:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterRemoveNode:
     """Test NetworkXAdapter.remove_node method."""
 
@@ -262,7 +257,6 @@ class TestNetworkXAdapterRemoveNode:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterAddEdge:
     """Test NetworkXAdapter.add_edge method."""
 
@@ -311,7 +305,6 @@ class TestNetworkXAdapterAddEdge:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterGetEdge:
     """Test NetworkXAdapter.get_edge method."""
 
@@ -353,7 +346,6 @@ class TestNetworkXAdapterGetEdge:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterUpdateEdge:
     """Test NetworkXAdapter.update_edge method."""
 
@@ -391,7 +383,6 @@ class TestNetworkXAdapterUpdateEdge:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterRemoveEdge:
     """Test NetworkXAdapter.remove_edge method."""
 
@@ -431,7 +422,6 @@ class TestNetworkXAdapterRemoveEdge:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterGetNeighborhood:
     """Test NetworkXAdapter.get_neighborhood method."""
 
@@ -486,7 +476,6 @@ class TestNetworkXAdapterGetNeighborhood:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterShortestPath:
     """Test NetworkXAdapter.shortest_path method."""
 
@@ -515,7 +504,6 @@ class TestNetworkXAdapterShortestPath:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterExecuteTraversal:
     """Test NetworkXAdapter.execute_traversal method."""
 
@@ -584,7 +572,6 @@ class TestNetworkXAdapterExecuteTraversal:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterQueryNodes:
     """Test NetworkXAdapter.query_nodes method."""
 
@@ -628,7 +615,6 @@ class TestNetworkXAdapterQueryNodes:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterQueryEdges:
     """Test NetworkXAdapter.query_edges method."""
 
@@ -660,7 +646,6 @@ class TestNetworkXAdapterQueryEdges:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterCountNodes:
     """Test NetworkXAdapter.count_nodes method."""
 
@@ -681,7 +666,6 @@ class TestNetworkXAdapterCountNodes:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterCountEdges:
     """Test NetworkXAdapter.count_edges method."""
 
@@ -702,7 +686,6 @@ class TestNetworkXAdapterCountEdges:
 
 
 @pytest.mark.topology
-@pytest.mark.red_phase
 class TestNetworkXAdapterAggregate:
     """Test NetworkXAdapter.aggregate method."""
 

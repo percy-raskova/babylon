@@ -55,7 +55,6 @@ TraversalResult = _graph_module.TraversalResult
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestGraphNodeCreation:
     """Test GraphNode instantiation and validation."""
 
@@ -121,7 +120,6 @@ class TestGraphNodeCreation:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestGraphNodeProperties:
     """Test GraphNode convenience properties."""
 
@@ -168,7 +166,6 @@ class TestGraphNodeProperties:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestGraphNodeSerialization:
     """Test GraphNode JSON serialization."""
 
@@ -209,7 +206,6 @@ class TestGraphNodeSerialization:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestGraphEdgeCreation:
     """Test GraphEdge instantiation and validation."""
 
@@ -293,7 +289,6 @@ class TestGraphEdgeCreation:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestGraphEdgeProperties:
     """Test GraphEdge convenience properties."""
 
@@ -334,7 +329,6 @@ class TestGraphEdgeProperties:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestEdgeFilter:
     """Test EdgeFilter specification model."""
 
@@ -373,7 +367,6 @@ class TestEdgeFilter:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestNodeFilter:
     """Test NodeFilter specification model."""
 
@@ -401,7 +394,6 @@ class TestNodeFilter:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestTraversalQueryCreation:
     """Test TraversalQuery instantiation and validation."""
 
@@ -451,7 +443,6 @@ class TestTraversalQueryCreation:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestTraversalQueryParameters:
     """Test TraversalQuery parameter handling."""
 
@@ -507,7 +498,6 @@ class TestTraversalQueryParameters:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestTraversalResultCreation:
     """Test TraversalResult instantiation."""
 
@@ -561,7 +551,6 @@ class TestTraversalResultCreation:
 
 
 @pytest.mark.math
-@pytest.mark.red_phase
 class TestTraversalResultProperties:
     """Test TraversalResult convenience properties."""
 

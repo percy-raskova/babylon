@@ -422,5 +422,10 @@ class TestMissingEdgeFlowDefaults:
 
         # Assert: value_flow should now exist on edge
         assert "value_flow" in graph.edges["worker", "owner"]
-        # With extraction efficiency 0.8, rent = 0.8 * 1.0 * (1-0) = 0.8
-        assert graph.edges["worker", "owner"]["value_flow"] == pytest.approx(0.8, rel=1e-6)
+        # With extraction efficiency 0.8 (annual), weekly rate = 0.8 / 52
+        # rent = (0.8 / 52) * 1.0 * (1-0) = 0.01538...
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_rent = (0.8 / weeks_per_year) * 1.0 * (1 - 0)
+        assert graph.edges["worker", "owner"]["value_flow"] == pytest.approx(
+            expected_rent, rel=1e-6
+        )

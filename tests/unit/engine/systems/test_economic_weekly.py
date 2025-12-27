@@ -176,7 +176,7 @@ class TestWeeklyConversion:
         graph.add_node(
             "owner",
             wealth=0.0,
-            role=SocialRole.COMPRADOR,
+            role=SocialRole.COMPRADOR_BOURGEOISIE,
         )
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
 

@@ -208,61 +208,70 @@ class TestImperialCircuitFlow:
     def test_phase1_extraction_p_w_to_p_c(self) -> None:
         """Phase 1: Imperial rent extracted from C001 (P_w) to C002 (P_c).
 
-        With P_w wealth=100, alpha=0.8, ideology=0 (consciousness=0.5):
-        rent = 0.8 * 100 * (1 - 0.5) = 40
-        C001 -> 60
+        With P_w wealth=100, alpha=0.8 (annual), ideology=0 (consciousness=0.5):
+        Weekly rate = 0.8 / 52 = 0.01538
+        rent = 0.01538 * 100 * (1 - 0.5) = 0.769
+        C001 -> 100 - 0.769 = 99.23
 
         Note: C002 final wealth depends on all 4 phases completing.
-        After full circuit: C002 has 6 (kept 15% cut from 40).
+        After full circuit: C002 has ~0.115 (kept 15% cut from ~0.77).
         """
         state, config, defines = create_imperial_circuit_scenario()
         new_state = step(state, config, defines=defines)
 
-        # C001 (P_w) should have lost 40 to extraction
-        assert new_state.entities["C001"].wealth == pytest.approx(60.0, rel=0.01)
+        # With weekly conversion: extraction = 100 * (0.8/52) * 0.5 = 0.769
+        weeks_per_year = defines.timescale.weeks_per_year
+        expected_extraction = 100.0 * (0.8 / weeks_per_year) * 0.5
+        # C001 (P_w) should have lost weekly extraction amount
+        assert new_state.entities["C001"].wealth == pytest.approx(
+            100.0 - expected_extraction, rel=0.01
+        )
         # C002 (P_c) final wealth after all phases (kept 15% cut)
-        assert new_state.entities["C002"].wealth == pytest.approx(6.0, rel=0.01)
+        expected_cut = expected_extraction * 0.15
+        assert new_state.entities["C002"].wealth == pytest.approx(expected_cut, rel=0.01)
 
     def test_phase2_tribute_p_c_to_c_b(self) -> None:
         """Phase 2: C002 (P_c) sends tribute to C003 (C_b), keeping 15% cut.
 
-        After extraction: C002 has 40
-        Comprador cut: 15% of 40 = 6, keeps 6
-        Tribute: 85% of 40 = 34, sends to C003
+        With weekly conversion:
+        Weekly extraction: 100 * (0.8/52) * 0.5 = 0.769
+        Comprador cut: 15% of 0.769 = 0.115
+        Tribute: 85% of 0.769 = 0.654, sent to C003
 
-        After all 4 phases (BUG FIX: wages/subsidies from tribute, not wealth):
-        - C002 -> 6 (kept cut)
-        - C003 -> 84 (received tribute) -> pays wages from tribute -> pays subsidy from tribute
-        - C003 accumulates more now because wages/subsidies are smaller (from income, not capital)
+        C003 retains its initial wealth (~50) plus small tribute inflow.
         """
         state, config, defines = create_imperial_circuit_scenario()
         new_state = step(state, config, defines=defines)
 
+        # With weekly conversion: extraction = 100 * (0.8/52) * 0.5 = 0.769
+        weeks_per_year = defines.timescale.weeks_per_year
+        expected_extraction = 100.0 * (0.8 / weeks_per_year) * 0.5
+        expected_cut = expected_extraction * 0.15
+
         # C002 (P_c) should have kept 15% cut
-        assert new_state.entities["C002"].wealth == pytest.approx(6.0, rel=0.01)
-        # C003 (C_b) now accumulates more - wages/subsidies are based on tribute, not wealth
-        # This is the CORRECT behavior per MLM-TW theory
-        assert new_state.entities["C003"].wealth > 70.0  # Accumulates instead of draining
+        assert new_state.entities["C002"].wealth == pytest.approx(expected_cut, rel=0.01)
+        # C003 (C_b) retains most of its initial wealth (50) plus small tribute
+        # The exact amount depends on wage/subsidy outflows, but should be close to 50
+        assert new_state.entities["C003"].wealth > 50.0  # Retains wealth plus tribute
 
     def test_phase3_wages_c_b_to_c_w(self) -> None:
         """Phase 3: C003 (C_b) pays super-wages to C004 (C_w).
 
-        BUG FIX: Wages are now calculated from TRIBUTE INFLOW, not accumulated wealth.
-        After tribute: C003 received 34 (tribute_inflow)
-        Super-wages: 20% of 34 (tribute) = 6.8
-        C003 keeps most of the tribute, C004 gets modest wages.
+        With weekly conversion:
+        Weekly tribute: ~0.654 (see Phase 2)
+        Weekly wage rate: 0.2 / 52 = 0.00385
+        Super-wages: 0.654 * 0.00385 = very small
 
-        This is CORRECT per MLM-TW theory - super-wages come from extracted surplus.
+        C003 retains most of its initial wealth, C004 gets very small weekly wages.
         """
         state, config, defines = create_imperial_circuit_scenario()
         new_state = step(state, config, defines=defines)
 
-        # C003 (C_b) accumulates wealth (doesn't drain)
-        assert new_state.entities["C003"].wealth > 70.0
-        # C004 (C_w) should have received MODEST wages (from tribute, not wealth)
-        # Wages = tribute * rate = ~34 * 0.2 = ~6.8
+        # C003 (C_b) retains most of its initial wealth (50)
+        assert new_state.entities["C003"].wealth > 50.0
+        # C004 (C_w) should have received small weekly wages
         assert new_state.entities["C004"].wealth > 0.0  # Received some wages
-        assert new_state.entities["C004"].wealth < 20.0  # But not excessive
+        assert new_state.entities["C004"].wealth < 1.0  # Very small weekly amount
 
     def test_phase4_subsidy_when_client_state_unstable(self) -> None:
         """Phase 4: Subsidy triggered when P(S|R) >= 0.8 * P(S|A).
@@ -387,8 +396,13 @@ class TestImperialSubsidyEvent:
     def test_no_subsidy_event_when_client_stable(self) -> None:
         """No IMPERIAL_SUBSIDY event when client state is stable."""
         # Create scenario where subsidy won't trigger
+        # Need high repression AND sufficient wealth for P(S|A) to dominate
+        # P(S|R) = org/repression = 0.5/0.9 = 0.556
+        # P(S|A) needs to be > 0.556/0.8 = 0.695 to prevent trigger
+        # With wealth=1.0 and subsistence=0.2, sigmoid(0.8) ~ 0.69
         state, config, defines = create_imperial_circuit_scenario(
-            p_c_repression=0.9,  # Very high repression -> stable
+            p_c_repression=0.9,  # Very high repression -> low P(S|R)
+            p_c_wealth=2.0,  # Sufficient wealth -> high P(S|A)
         )
 
         new_state = step(state, config, defines=defines)

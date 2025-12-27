@@ -467,16 +467,18 @@ def get_multiverse_scenarios() -> list[ScenarioConfig]:
 def apply_scenario(
     state: WorldState,
     config: SimulationConfig,
+    defines: GameDefines,
     scenario: ScenarioConfig,
-) -> tuple[WorldState, SimulationConfig]:
-    """Apply scenario modifiers to WorldState and SimulationConfig.
+) -> tuple[WorldState, SimulationConfig, GameDefines]:
+    """Apply scenario modifiers to WorldState, SimulationConfig, and GameDefines.
 
-    This function transforms a base (state, config) pair into a counterfactual
-    scenario by applying the three modifiers:
+    This function transforms a base (state, config, defines) triple into a
+    counterfactual scenario by applying the three modifiers:
 
-    1. superwage_multiplier: Passed to config.superwage_multiplier for PPP calculation.
-       - PPP Model: Affects worker effective wealth, NOT extraction_efficiency.
-       - The wages phase uses this to calculate Purchasing Power Parity bonus.
+    1. superwage_multiplier: Passed to GameDefines.economy.superwage_multiplier.
+       - PPP Model: Affects worker effective wealth via PPP calculation.
+       - Paradox Refactor: Game math lives in GameDefines, not SimulationConfig.
+       - economic.py reads from services.defines.economy.superwage_multiplier.
 
     2. solidarity_index: Sets solidarity_strength on all SOLIDARITY edges.
        - Does not affect EXPLOITATION or other edge types.
@@ -487,30 +489,33 @@ def apply_scenario(
     Args:
         state: Base WorldState to modify (not mutated)
         config: Base SimulationConfig to modify (not mutated)
+        defines: Base GameDefines to modify (not mutated)
         scenario: ScenarioConfig with modifier values
 
     Returns:
-        Tuple of (new_state, new_config) with scenario modifiers applied.
+        Tuple of (new_state, new_config, new_defines) with scenario modifiers applied.
 
     Example:
-        >>> state, config = create_two_node_scenario()
+        >>> state, config, defines = create_two_node_scenario()
         >>> scenario = ScenarioConfig(name="test", superwage_multiplier=1.5)
-        >>> new_state, new_config = apply_scenario(state, config, scenario)
-        >>> new_config.superwage_multiplier  # Will be 1.5 (for PPP calculation)
+        >>> new_state, new_config, new_defines = apply_scenario(state, config, defines, scenario)
+        >>> new_defines.economy.superwage_multiplier  # Will be 1.5 (for PPP calculation)
     """
-    # 1. Apply superwage_multiplier to config for PPP model
-    # PPP Fix: Do NOT multiply extraction_efficiency. Pass superwage_multiplier
-    # directly to config where it will be used in the wages phase.
-    new_superwage_multiplier = scenario.superwage_multiplier
+    # 1. Apply superwage_multiplier to GameDefines.economy (Mikado Refactor)
+    # Paradox Refactor: Game math lives in GameDefines, NOT SimulationConfig.
+    # economic.py reads from services.defines.economy.superwage_multiplier.
+    new_economy = defines.economy.model_copy(
+        update={"superwage_multiplier": scenario.superwage_multiplier}
+    )
+    new_defines = defines.model_copy(update={"economy": new_economy})
 
     # 2. Apply repression_capacity to repression_level
     new_repression_level = scenario.repression_capacity
 
     # Create new config with modified values
-    # Note: extraction_efficiency is NOT modified - it's independent of superwages
+    # Note: superwage_multiplier is NO LONGER set here (moved to GameDefines)
     new_config = config.model_copy(
         update={
-            "superwage_multiplier": new_superwage_multiplier,
             "repression_level": new_repression_level,
         }
     )
@@ -562,4 +567,4 @@ def apply_scenario(
         }
     )
 
-    return new_state, new_config
+    return new_state, new_config, new_defines

@@ -59,17 +59,18 @@ def run_scenario_simulation(
                   owner_wealth, worker_organization, effective_wealth, unearned_increment)
     """
     # Create base scenario
-    base_state, base_config = create_two_node_scenario()
+    base_state, base_config, base_defines = create_two_node_scenario()
 
-    # Apply scenario modifiers
-    state, config = apply_scenario(base_state, base_config, scenario)
+    # Apply scenario modifiers - now returns (state, config, defines) 3-tuple
+    # Mikado Refactor: superwage_multiplier is applied to defines.economy
+    state, config, defines = apply_scenario(base_state, base_config, base_defines, scenario)
 
     # Create persistent context for multi-tick simulation
     persistent_context: dict[str, object] = {}
 
-    # Run simulation for num_ticks
+    # Run simulation for num_ticks - pass modified defines for PPP calculation
     for _ in range(num_ticks):
-        state = step(state, config, persistent_context)
+        state = step(state, config, persistent_context, defines=defines)
 
     # Extract final metrics from worker
     worker = state.entities.get(WORKER_ID)

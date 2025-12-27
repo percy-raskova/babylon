@@ -221,11 +221,8 @@ class SimulationConfig(BaseModel):
     )
 
     # Purchasing Power Parity parameters (PPP Model - Superwage Distribution)
-    superwage_multiplier: float = Field(
-        default=1.0,
-        ge=0.0,
-        description="PPP multiplier for labor aristocracy purchasing power from imperial discount",
-    )
+    # NOTE: superwage_multiplier has been moved to GameDefines.economy (Mikado Refactor)
+    # The PPP model reads from services.defines.economy.superwage_multiplier
 
     superwage_ppp_impact: Coefficient = Field(
         default=0.5,

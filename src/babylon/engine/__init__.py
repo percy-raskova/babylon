@@ -13,15 +13,19 @@ Sprint 3: Central Committee (Dependency Injection)
 Sprint 9: Integration proof with Simulation facade
 """
 
+# Slice 1.7: Graph Abstraction Layer
+from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
 from babylon.engine.database import DatabaseConnection
 from babylon.engine.event_bus import Event, EventBus
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.formula_registry import FormulaRegistry
+from babylon.engine.graph_protocol import GraphProtocol
 from babylon.engine.history_formatter import format_class_struggle_history
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.runner import AsyncSimulationRunner
 from babylon.engine.scenarios import (
     create_high_tension_scenario,
+    create_imperial_circuit_scenario,
     create_labor_aristocracy_scenario,
     create_two_node_scenario,
 )
@@ -43,6 +47,7 @@ __all__ = [
     "format_class_struggle_history",
     # Scenarios
     "create_two_node_scenario",
+    "create_imperial_circuit_scenario",
     "create_high_tension_scenario",
     "create_labor_aristocracy_scenario",
     # Dependency Injection (Sprint 3)
@@ -54,4 +59,7 @@ __all__ = [
     # Observer Pattern (Sprint 3.1)
     "SimulationObserver",
     "TopologyMonitor",
+    # Slice 1.7: Graph Abstraction Layer
+    "GraphProtocol",
+    "NetworkXAdapter",
 ]

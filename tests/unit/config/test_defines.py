@@ -24,7 +24,6 @@ from babylon.config.defines import GameDefines
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.unit
 class TestPrecisionDefines:
     """Tests for precision configuration.
@@ -77,7 +76,6 @@ class TestPrecisionDefines:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.unit
 class TestTimescaleDefines:
     """Tests for timescale configuration.
@@ -152,7 +150,6 @@ class TestTimescaleDefines:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.unit
 class TestDefinesIntegration:
     """Integration tests for new defines with existing structure."""

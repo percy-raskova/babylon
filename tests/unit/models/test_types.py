@@ -384,7 +384,6 @@ class TestRatio:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.math
 class TestTypeQuantization:
     """Test that constrained types apply SnapToGrid quantization.

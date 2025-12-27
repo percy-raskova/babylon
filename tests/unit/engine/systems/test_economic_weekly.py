@@ -33,7 +33,6 @@ from babylon.models.enums import EdgeType, SocialRole
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.topology
 class TestWeeklyConversion:
     """Test that economic flows use weekly tick conversion.
@@ -203,7 +202,6 @@ class TestWeeklyConversion:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.unit
 class TestTimescaleInEconomicSystem:
     """Test that economic system reads timescale from GameDefines."""

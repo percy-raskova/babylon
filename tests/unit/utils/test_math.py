@@ -40,7 +40,6 @@ set_precision = _math_module.set_precision
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.math
 class TestQuantize:
     """Tests for the quantize() function.
@@ -189,7 +188,6 @@ class TestQuantize:
 # =============================================================================
 
 
-@pytest.mark.red_phase
 @pytest.mark.math
 class TestPrecisionConfiguration:
     """Tests for precision configuration functions.

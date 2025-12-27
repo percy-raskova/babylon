@@ -517,6 +517,7 @@ def calculate_solidarity_transmission(
 
 def calculate_ideological_routing(
     wage_change: float,
+    wealth_change: float,
     solidarity_pressure: float,
     current_class_consciousness: float,
     current_national_identity: float,
@@ -528,12 +529,17 @@ def calculate_ideological_routing(
     Sprint 3.4.3 (George Jackson Refactor): This formula implements the
     multi-dimensional consciousness routing mechanic.
 
+    Periphery Dynamics Extension: Now tracks BOTH wage_change AND wealth_change.
+    Periphery workers experience wealth extraction via EXPLOITATION edges,
+    not wage cuts. Both forms of material loss generate agitation.
+
     Key insight: "Fascism is the defensive form of capitalism."
-    - Agitation (from wage fall) + Solidarity -> Class Consciousness
-    - Agitation (from wage fall) + No Solidarity -> National Identity
+    - Agitation (from material loss) + Solidarity -> Class Consciousness
+    - Agitation (from material loss) + No Solidarity -> National Identity
 
     Args:
         wage_change: Change in wages since last tick (negative = crisis)
+        wealth_change: Change in wealth since last tick (negative = extraction)
         solidarity_pressure: Sum of incoming SOLIDARITY edge strengths [0, inf)
         current_class_consciousness: Current class consciousness [0, 1]
         current_national_identity: Current national identity [0, 1]
@@ -548,6 +554,7 @@ def calculate_ideological_routing(
 
             cc, ni, ag = calculate_ideological_routing(
                 wage_change=-20.0,
+                wealth_change=0.0,
                 solidarity_pressure=0.9,
                 current_class_consciousness=0.5,
                 current_national_identity=0.5,
@@ -559,23 +566,46 @@ def calculate_ideological_routing(
 
             cc, ni, ag = calculate_ideological_routing(
                 wage_change=-20.0,
+                wealth_change=0.0,
                 solidarity_pressure=0.0,
                 current_class_consciousness=0.5,
                 current_national_identity=0.5,
                 current_agitation=0.0,
             )
             # ni will increase, cc will stay flat
+
+        Periphery worker with wealth extraction generates agitation::
+
+            cc, ni, ag = calculate_ideological_routing(
+                wage_change=0.0,
+                wealth_change=-0.5,  # Wealth extracted via EXPLOITATION
+                solidarity_pressure=0.0,
+                current_class_consciousness=0.5,
+                current_national_identity=0.5,
+                current_agitation=0.0,
+            )
+            # ni will increase (fascist path due to zero solidarity)
     """
     # Start with current values
     new_class = current_class_consciousness
     new_nation = current_national_identity
     new_agitation = current_agitation
 
-    # Calculate agitation from wage crisis
-    # Only negative wage changes create agitation (crisis conditions)
+    # Calculate agitation from material crisis (wage cuts OR wealth extraction)
+    # Both forms of material loss generate agitation:
+    # - wage_change < 0: Core workers experience wage cuts during austerity
+    # - wealth_change < 0: Periphery workers experience direct extraction via EXPLOITATION
+    total_material_loss = 0.0
+
     if wage_change < 0:
-        # Agitation energy = magnitude of wage loss * loss aversion coefficient
-        agitation_generated = abs(wage_change) * LOSS_AVERSION_COEFFICIENT
+        total_material_loss += abs(wage_change)
+
+    if wealth_change < 0:
+        total_material_loss += abs(wealth_change)
+
+    if total_material_loss > 0:
+        # Agitation energy = magnitude of material loss * loss aversion coefficient
+        agitation_generated = total_material_loss * LOSS_AVERSION_COEFFICIENT
         new_agitation += agitation_generated
 
     # Route accumulated agitation based on solidarity

@@ -22,8 +22,9 @@ if TYPE_CHECKING:
 
 from babylon.engine.systems.protocol import ContextType
 
-# Context key for storing previous wages between ticks
+# Context keys for storing previous values between ticks
 PREVIOUS_WAGES_KEY = "previous_wages"
+PREVIOUS_WEALTH_KEY = "previous_wealth"
 
 
 def _get_ideology_profile_from_node(node_data: dict[str, Any]) -> dict[str, float]:
@@ -97,8 +98,15 @@ class ConsciousnessSystem:
             persistent[PREVIOUS_WAGES_KEY] = {}
         previous_wages: dict[str, float] = persistent[PREVIOUS_WAGES_KEY]
 
-        # Track current wages for next tick comparison
+        # Initialize or retrieve previous wealth tracking from persistent storage
+        # Periphery Dynamics Extension: Track wealth extraction between ticks
+        if PREVIOUS_WEALTH_KEY not in persistent:
+            persistent[PREVIOUS_WEALTH_KEY] = {}
+        previous_wealth: dict[str, float] = persistent[PREVIOUS_WEALTH_KEY]
+
+        # Track current wages and wealth for next tick comparison
         current_wages: dict[str, float] = {}
+        current_wealth_map: dict[str, float] = {}
 
         for node_id in graph.nodes():
             node_data = graph.nodes[node_id]
@@ -123,6 +131,14 @@ class ConsciousnessSystem:
             prev_wage = previous_wages.get(node_id, core_wages)
             wage_change = core_wages - prev_wage
 
+            # Periphery Dynamics Extension: Calculate wealth_change for extraction detection
+            # Periphery workers have wealth extracted via EXPLOITATION edges, not wage cuts
+            current_wealth = float(node_data.get("wealth", 0.0))
+            # Default to current wealth if first tick (no previous baseline)
+            prev_wealth = previous_wealth.get(node_id, current_wealth)
+            wealth_change = current_wealth - prev_wealth
+            current_wealth_map[node_id] = current_wealth
+
             # Calculate solidarity_pressure from incoming SOLIDARITY edges
             # Sum of solidarity_strength from all incoming SOLIDARITY edges
             solidarity_pressure = 0.0
@@ -145,9 +161,10 @@ class ConsciousnessSystem:
             # Get current ideological profile
             current_profile = _get_ideology_profile_from_node(node_data)
 
-            # Apply ideological routing formula (Sprint 3.4.3)
+            # Apply ideological routing formula (Sprint 3.4.3 + Periphery Dynamics)
             new_class, new_nation, new_agitation = calculate_ideological_routing(
                 wage_change=wage_change,
+                wealth_change=wealth_change,  # Periphery Dynamics Extension
                 solidarity_pressure=solidarity_pressure,
                 current_class_consciousness=current_profile["class_consciousness"],
                 current_national_identity=current_profile["national_identity"],
@@ -161,5 +178,6 @@ class ConsciousnessSystem:
                 "agitation": new_agitation,
             }
 
-        # Update previous wages for next tick in persistent storage
+        # Update previous wages and wealth for next tick in persistent storage
         persistent[PREVIOUS_WAGES_KEY] = current_wages
+        persistent[PREVIOUS_WEALTH_KEY] = current_wealth_map

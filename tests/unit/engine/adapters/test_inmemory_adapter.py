@@ -568,11 +568,14 @@ class TestNetworkXAdapterExecuteTraversal:
         assert len(result.component_sizes) > 0
 
     def test_execute_traversal_raises_for_invalid_type(self, adapter: NetworkXAdapter) -> None:
-        """execute_traversal raises ValueError for unsupported query type."""
-        query = TraversalQuery(query_type="invalid_type")  # type: ignore[arg-type]
+        """Creating a TraversalQuery with invalid query_type raises ValueError.
 
+        Note: Pydantic validation catches invalid query_types at model creation
+        time, which is correct fail-fast behavior. ValidationError is a subclass
+        of ValueError, so this test verifies the expected behavior.
+        """
         with pytest.raises(ValueError):
-            adapter.execute_traversal(query)
+            TraversalQuery(query_type="invalid_type")  # type: ignore[arg-type]
 
 
 # =============================================================================

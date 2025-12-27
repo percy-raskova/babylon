@@ -379,6 +379,95 @@ class TestRatio:
 # =============================================================================
 
 
+# =============================================================================
+# QUANTIZATION TESTS (RED PHASE - 10^-5 Grid)
+# =============================================================================
+
+
+@pytest.mark.red_phase
+@pytest.mark.math
+class TestTypeQuantization:
+    """Test that constrained types apply SnapToGrid quantization.
+
+    Epoch 0 Physics Hardening requires all constrained types to snap
+    values to a 10^-5 grid (0.00001 resolution) to prevent floating-point
+    drift accumulation over long simulations.
+
+    This is implemented via Pydantic AfterValidator on each type.
+    """
+
+    def test_probability_quantizes_on_assignment(self) -> None:
+        """Probability values are snapped to 10^-5 grid.
+
+        Input: 0.123456789 (9 decimal places)
+        Expected: 0.12346 (5 decimal places, rounded)
+        """
+        Model = make_model_with_field(Probability, "prob")
+
+        model = Model(prob=0.123456789)
+
+        assert model.prob == 0.12346
+
+    def test_ideology_quantizes_on_assignment(self) -> None:
+        """Ideology values are snapped to 10^-5 grid.
+
+        Ideology ranges from -1 to 1, quantization applies throughout.
+        """
+        Model = make_model_with_field(Ideology, "ideology")
+
+        # Positive value
+        model_pos = Model(ideology=0.567891234)
+        assert model_pos.ideology == 0.56789
+
+        # Negative value
+        model_neg = Model(ideology=-0.567891234)
+        assert model_neg.ideology == -0.56789
+
+    def test_currency_quantizes_on_assignment(self) -> None:
+        """Currency values are snapped to 10^-5 grid.
+
+        Currency can be large values; quantization applies to decimal portion.
+        """
+        Model = make_model_with_field(Currency, "wealth")
+
+        model = Model(wealth=1234.567891)
+
+        assert model.wealth == 1234.56789
+
+    def test_intensity_quantizes_on_assignment(self) -> None:
+        """Intensity values are snapped to 10^-5 grid.
+
+        Intensity [0, 1] used for contradiction tension.
+        """
+        Model = make_model_with_field(Intensity, "tension")
+
+        model = Model(tension=0.999994)
+
+        assert model.tension == 0.99999
+
+    def test_coefficient_quantizes_on_assignment(self) -> None:
+        """Coefficient values are snapped to 10^-5 grid.
+
+        Coefficients [0, 1] used for formula parameters.
+        """
+        Model = make_model_with_field(Coefficient, "alpha")
+
+        model = Model(alpha=0.251234567)
+
+        assert model.alpha == 0.25123
+
+    def test_ratio_quantizes_on_assignment(self) -> None:
+        """Ratio values are snapped to 10^-5 grid.
+
+        Ratio (0, inf) used for exchange ratios.
+        """
+        Model = make_model_with_field(Ratio, "exchange_ratio")
+
+        model = Model(exchange_ratio=2.718281828)
+
+        assert model.exchange_ratio == 2.71828
+
+
 @pytest.mark.math
 class TestTypeSerialization:
     """Test that constrained types serialize correctly to JSON."""

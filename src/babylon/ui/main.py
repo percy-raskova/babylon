@@ -22,7 +22,7 @@ from nicegui import ui
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.observers.metrics import MetricsCollector
 from babylon.engine.runner import AsyncSimulationRunner
-from babylon.engine.scenarios import create_two_node_scenario
+from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.models.enums import EventType
 from babylon.models.events import SimulationEvent
@@ -110,7 +110,7 @@ def __getattr__(name: str) -> object:
 
 def init_simulation() -> None:
     """Initialize or reset the simulation and runner."""
-    scenario_state, config, defines = create_two_node_scenario()
+    scenario_state, config, defines = create_imperial_circuit_scenario()
 
     # Sprint 4.1: Create MetricsCollector in interactive mode with rolling window
     # matching TrendPlotter.MAX_POINTS for consistent visualization

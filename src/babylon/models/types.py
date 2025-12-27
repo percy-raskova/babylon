@@ -21,11 +21,26 @@ Usage:
 
 All types serialize to plain floats in JSON for compatibility with
 the Ledger (SQLite) and NetworkX graph storage.
+
+Epoch 0 Physics Hardening (Gatekeeper Pattern):
+    All constrained types apply SnapToGrid quantization via AfterValidator.
+    Values are snapped to a 10^-5 grid (0.00001 resolution) to prevent
+    floating-point drift accumulation over long simulations.
 """
 
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
+
+from babylon.utils.math import quantize
+
+# =============================================================================
+# QUANTIZATION VALIDATOR (Gatekeeper Pattern)
+# =============================================================================
+
+# Reusable validator - applies quantization after Pydantic's range validation
+# This ensures values are on the precision grid AFTER ge/le/gt validators run
+SnapToGrid = AfterValidator(quantize)
 
 # =============================================================================
 # PROBABILITY TYPE [0.0, 1.0]
@@ -38,6 +53,7 @@ Probability = Annotated[
         le=1.0,
         description="Value in range [0.0, 1.0] representing likelihood",
     ),
+    SnapToGrid,
 ]
 """Probability: [0.0, 1.0]
 
@@ -50,6 +66,8 @@ Used for:
 Boundary values:
 - 0.0 = impossible event
 - 1.0 = certain event
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
 
 # =============================================================================
@@ -63,16 +81,19 @@ Ideology = Annotated[
         le=1.0,
         description="Ideological position from revolutionary (-1) to reactionary (+1)",
     ),
+    SnapToGrid,
 ]
 """Ideology: [-1.0, 1.0]
 
 A class's ideological position on the revolutionary-reactionary spectrum.
-Based on consciousness drift formula: dΨc/dt = k(1 - Wc/Vc) - λΨc
+Based on consciousness drift formula: dPsi_c/dt = k(1 - Wc/Vc) - lambda*Psi_c
 
 Boundary values:
 - -1.0 = fully revolutionary (class conscious, anti-capitalist)
 - +1.0 = fully reactionary (false consciousness, pro-status-quo)
 -  0.0 = neutral/apolitical
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
 
 # =============================================================================
@@ -85,17 +106,20 @@ Currency = Annotated[
         ge=0.0,
         description="Non-negative economic value (wealth, wages, rent, GDP)",
     ),
+    SnapToGrid,
 ]
 """Currency: [0.0, inf)
 
 Economic value that cannot be negative. Used for:
 - wealth: Accumulated resources
 - wages: Payment for labor
-- rent: Imperial rent (Φ)
+- rent: Imperial rent (Phi)
 - GDP: Aggregate output
 
 Note: Debt is not modeled as negative currency but as a separate
 relationship/obligation between entities.
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
 
 # =============================================================================
@@ -109,6 +133,7 @@ Intensity = Annotated[
         le=1.0,
         description="Contradiction intensity from dormant (0) to rupture (1)",
     ),
+    SnapToGrid,
 ]
 """Intensity: [0.0, 1.0]
 
@@ -119,6 +144,8 @@ When intensity reaches 1.0, the contradiction triggers a phase transition
 Boundary values:
 - 0.0 = dormant (contradiction exists but not manifest)
 - 1.0 = rupture threshold (phase transition imminent)
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
 
 # =============================================================================
@@ -132,18 +159,21 @@ Coefficient = Annotated[
         le=1.0,
         description="Formula parameter in range [0, 1]",
     ),
+    SnapToGrid,
 ]
 """Coefficient: [0.0, 1.0]
 
 A parameter that modifies the strength of an effect in formulas.
 Used for:
-- α (alpha): Extraction efficiency in imperial rent
-- λ (lambda): Decay rate in consciousness drift
+- alpha: Extraction efficiency in imperial rent
+- lambda: Decay rate in consciousness drift
 - k: Sensitivity coefficient in survival calculus
 
 Boundary values:
 - 0.0 = no effect
 - 1.0 = maximum effect
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
 
 # =============================================================================
@@ -156,6 +186,7 @@ Ratio = Annotated[
         gt=0.0,
         description="Positive ratio comparing two quantities",
     ),
+    SnapToGrid,
 ]
 """Ratio: (0.0, inf)
 
@@ -164,10 +195,12 @@ typically represent division results.
 
 Used for:
 - Wc/Vc: Labor aristocracy ratio (wages to value produced)
-- ε: Exchange ratio in unequal exchange
+- epsilon: Exchange ratio in unequal exchange
 
 Interpretation:
 - Ratio = 1.0: Equal exchange / fair wages
 - Ratio > 1.0: Core receives more than it gives (exploitation)
 - Ratio < 1.0: Core receives less than it gives
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """

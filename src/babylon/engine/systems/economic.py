@@ -116,16 +116,26 @@ class ImperialRentSystem:
         graph: nx.DiGraph[str],
         services: ServiceContainer,
         context: ContextType,
-        tick_context: dict[str, Any],
+        tick_context: dict[str, Any] | None = None,
     ) -> None:
         """Phase 1: Imperial rent extraction via EXPLOITATION edges.
 
         When extraction targets CORE_BOURGEOISIE directly (2-node scenario
         without comprador intermediary), the extracted rent is tracked as
         tribute_inflow to enable wage calculations.
+
+        Epoch 0 Physics Hardening: Extraction efficiency is annual. Divided by
+        weeks_per_year for per-tick rate (weekly ticks).
         """
         calculate_imperial_rent = services.formulas.get("imperial_rent")
-        extraction_efficiency = services.defines.economy.extraction_efficiency
+        # Epoch 0: Convert annual extraction rate to per-tick (weekly) rate
+        annual_extraction_efficiency = services.defines.economy.extraction_efficiency
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        extraction_efficiency = annual_extraction_efficiency / weeks_per_year
+
+        # Handle optional tick_context for backward compatibility
+        if tick_context is None:
+            tick_context = {"tribute_inflow": 0.0, "current_pool": 0.0}
 
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
@@ -268,10 +278,16 @@ class ImperialRentSystem:
 
         Sprint 3.4.4: Uses dynamic wage_rate from economy, not static config.
         Wages are capped at available pool to enforce scarcity.
+
+        Epoch 0 Physics Hardening: Wage rates are annual. Divided by
+        weeks_per_year for per-tick rate (weekly ticks).
         """
         _ = context  # Unused but kept for API consistency
         # Use dynamic wage rate from economy, not static config
-        super_wage_rate = tick_context["wage_rate"]
+        # Epoch 0: Convert annual rate to per-tick (weekly) rate
+        annual_wage_rate = tick_context["wage_rate"]
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        super_wage_rate = annual_wage_rate / weeks_per_year
 
         # PPP Model parameters
         superwage_multiplier = services.defines.economy.superwage_multiplier

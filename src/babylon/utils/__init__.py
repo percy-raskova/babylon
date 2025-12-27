@@ -12,6 +12,7 @@ from babylon.utils.exceptions import (
     EmbeddingError,
     ValidationError,
 )
+from babylon.utils.math import get_precision, quantize, set_precision
 from babylon.utils.retry import retry_on_exception
 
 __all__ = [
@@ -23,4 +24,7 @@ __all__ = [
     "retry_on_exception",
     "backup_chroma",
     "restore_chroma",
+    "quantize",
+    "get_precision",
+    "set_precision",
 ]

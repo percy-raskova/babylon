@@ -467,6 +467,79 @@ class InitialDefines(BaseModel):
     )
 
 
+class PrecisionDefines(BaseModel):
+    """Numerical precision configuration for deterministic simulation.
+
+    Epoch 0 Physics Hardening:
+    - All floating-point values snap to a 10^-n grid (default n=5)
+    - This prevents drift accumulation over long simulations
+    - ROUND_HALF_UP ensures deterministic cross-platform behavior
+
+    The Gatekeeper Pattern: Quantization is applied at TYPE level
+    (Pydantic AfterValidator), NOT inside formulas.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    decimal_places: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Quantization precision (10^-n). Default 5 = 0.00001",
+    )
+    rounding_mode: str = Field(
+        default="ROUND_HALF_UP",
+        description="Rounding mode for quantization.",
+    )
+
+
+class TimescaleDefines(BaseModel):
+    """Simulation timescale configuration for weekly ticks.
+
+    Epoch 0 Physics Hardening:
+    - 1 tick = 7 days (weekly resolution)
+    - 52 weeks = 1 year (for annual rate conversions)
+
+    This is critical for:
+    - Economic flow rates (annual -> per-tick conversion)
+    - Historical pacing (events per game year)
+    - UI display (showing dates/weeks)
+
+    All annual rates (wage_rate, extraction_efficiency) are divided by
+    weeks_per_year to get per-tick rates.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    tick_duration_days: int = Field(
+        default=7,
+        ge=1,
+        le=365,
+        description="Real-world days per tick. Default 7 = weekly.",
+    )
+    weeks_per_year: int = Field(
+        default=52,
+        ge=1,
+        description="Weeks per year for flow conversion.",
+    )
+
+    @property
+    def ticks_per_year(self) -> int:
+        """Number of ticks per simulation year.
+
+        Since 1 tick = 1 week, this equals weeks_per_year.
+        """
+        return self.weeks_per_year
+
+    @property
+    def days_per_year(self) -> int:
+        """Days per simulation year (ticks * days_per_tick).
+
+        With defaults: 7 * 52 = 364 days (close to actual 365-366).
+        """
+        return self.tick_duration_days * self.weeks_per_year
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -508,6 +581,8 @@ class GameDefines(BaseModel):
     struggle: StruggleDefines = Field(default_factory=StruggleDefines)
     endgame: EndgameDefines = Field(default_factory=EndgameDefines)
     initial: InitialDefines = Field(default_factory=InitialDefines)
+    precision: PrecisionDefines = Field(default_factory=PrecisionDefines)
+    timescale: TimescaleDefines = Field(default_factory=TimescaleDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -599,6 +674,8 @@ class GameDefines(BaseModel):
             struggle=StruggleDefines(**data.get("struggle", {})),
             endgame=EndgameDefines(**data.get("endgame", {})),
             initial=InitialDefines(**data.get("initial", {})),
+            precision=PrecisionDefines(**data.get("precision", {})),
+            timescale=TimescaleDefines(**data.get("timescale", {})),
         )
 
     @classmethod

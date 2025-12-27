@@ -36,9 +36,10 @@ class TestImperialRentSystemEvents:
     @pytest.mark.unit
     def test_rent_extraction_emits_event(self) -> None:
         """SURPLUS_EXTRACTION event emitted when rent > 0.01."""
-        # Arrange
+        # Arrange - need enough wealth for weekly extraction to exceed negligible threshold
+        # With weekly rate = 0.8/52 = 0.0154, need wealth >= 0.01/0.0154 = 0.65
         graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("worker", wealth=0.5, ideology=0.0)
+        graph.add_node("worker", wealth=1.0, ideology=0.0)
         graph.add_node("owner", wealth=0.5)
         graph.add_edge("worker", "owner", edge_type=EdgeType.EXPLOITATION)
 
@@ -233,12 +234,13 @@ class TestPPPWagesModel:
 
         # Assert
         # PPP_mult = 1 + (0.8 * 1.0 * 0.5) = 1.4
-        # Nominal wage = tribute_inflow * wage_rate = 1.0 * 0.5 = 0.5
-        # PPP bonus = 0.5 * (1.4 - 1) = 0.2
-        # effective_wealth = 0.0 + 0.5 + 0.2 = 0.7
+        # Nominal wage = tribute_inflow * (wage_rate / weeks_per_year) = 1.0 * (0.5 / 52)
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_nominal = 1.0 * (0.5 / weeks_per_year)
+        # PPP bonus = expected_nominal * (1.4 - 1)
+        expected_effective = expected_nominal + (expected_nominal * 0.4)
         worker_data = graph.nodes["worker"]
-        assert worker_data["wealth"] == pytest.approx(0.5, rel=1e-6)  # Nominal
-        expected_effective = 0.5 + (0.5 * 0.4)  # 0.5 + 0.2 = 0.7
+        assert worker_data["wealth"] == pytest.approx(expected_nominal, rel=1e-6)  # Nominal
         assert worker_data["effective_wealth"] == pytest.approx(expected_effective, rel=1e-6)
 
     @pytest.mark.unit
@@ -309,9 +311,12 @@ class TestStructuredEventsInWorldState:
 
         The event should be a Pydantic model enabling downstream analysis.
         """
-        # Arrange
+        # Arrange - need enough wealth for weekly extraction to exceed negligible threshold
+        # Weekly rent = wealth * (extraction_efficiency / 52) * (1 - consciousness)
+        # With default consciousness 0.5: rent = wealth * (0.8 / 52) * 0.5
+        # Need rent > 0.01 (negligible threshold), so wealth > 0.01 / 0.0077 = 1.3
         factory = DomainFactory()
-        worker = factory.create_worker(wealth=0.5)
+        worker = factory.create_worker(wealth=2.0)
         owner = factory.create_owner(wealth=0.5)
         relationship = factory.create_relationship(
             source_id=worker.id,
@@ -344,8 +349,9 @@ class TestStructuredEventsInWorldState:
         - Network flow visualization
         """
         # Arrange - Use valid C-prefixed IDs per SocialClass id pattern
+        # Need wealth >= 2.0 for weekly extraction to exceed negligible threshold
         factory = DomainFactory()
-        worker = factory.create_worker(id="C001", wealth=1.0)
+        worker = factory.create_worker(id="C001", wealth=2.0)
         owner = factory.create_owner(id="C002", wealth=5.0)
         relationship = factory.create_relationship(
             source_id=worker.id,
@@ -410,9 +416,11 @@ class TestStructuredEventsInWorldState:
         events list. This allows gradual migration and ensures existing
         code that reads event_log continues to work.
         """
-        # Arrange
+        # Arrange - need enough wealth for weekly extraction to exceed negligible threshold
+        # Weekly rent = wealth * (0.8 / 52) * 0.5, need rent > 0.01
+        # So wealth > 0.01 / 0.0077 = 1.3, use 2.0 to be safe
         factory = DomainFactory()
-        worker = factory.create_worker(wealth=0.5)
+        worker = factory.create_worker(wealth=2.0)
         owner = factory.create_owner(wealth=0.5)
         relationship = factory.create_relationship(
             source_id=worker.id,

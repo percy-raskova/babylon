@@ -10,9 +10,10 @@ Data Models
    :maxdepth: 1
 
    data-models
+   precision
 
 Complete specification of data structures, entity collections, constrained
-types, and graph structure.
+types, graph structure, and the Gatekeeper Pattern for quantization.
 
 Mathematical Formulas
 ---------------------
@@ -43,9 +44,10 @@ Event System
    :maxdepth: 1
 
    events
+   interceptor
 
 Complete reference for the typed event system: 11 EventTypes, 13 event classes,
-event lifecycle, and factory methods for testing.
+event lifecycle, factory methods, and the Interceptor pattern for adversarial mechanics.
 
 Configuration
 -------------

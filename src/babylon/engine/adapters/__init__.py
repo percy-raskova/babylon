@@ -13,7 +13,9 @@ with the backend. This enables backend swapping without changing System code.
 """
 
 from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+from babylon.engine.adapters.subgraph_view import SubgraphView
 
 __all__ = [
     "NetworkXAdapter",
+    "SubgraphView",
 ]

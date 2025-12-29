@@ -18,12 +18,14 @@ DuckDB adapter will be added in Epoch 3 for 1000+ node graphs.
 
 from __future__ import annotations
 
-from collections import defaultdict
-from collections.abc import Callable, Iterator
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import networkx as nx
 
+from babylon.engine.adapters.aggregation_mixin import AggregationMixin
+from babylon.engine.adapters.query_mixin import QueryMixin
+from babylon.engine.adapters.subgraph_filter import SubgraphFilterBuilder
+from babylon.engine.adapters.subgraph_view import SubgraphView
 from babylon.models.graph import (
     GraphEdge,
     GraphNode,
@@ -35,59 +37,15 @@ if TYPE_CHECKING:
     pass
 
 
-class SubgraphView:
-    """Read-only view of a subgraph.
-
-    Provides iteration over nodes in a subgraph returned by neighborhood queries.
-    Wraps the underlying NetworkX subgraph to provide GraphNode iteration.
-
-    Attributes:
-        _subgraph: The underlying NetworkX subgraph.
-    """
-
-    def __init__(self, subgraph: nx.Graph[str]) -> None:
-        """Initialize with a NetworkX subgraph.
-
-        Args:
-            subgraph: The NetworkX subgraph to wrap. Can be DiGraph or subgraph view.
-        """
-        self._subgraph = subgraph
-
-    def nodes(self) -> Iterator[GraphNode]:
-        """Iterate over nodes in the subgraph.
-
-        Yields:
-            GraphNode models for each node in the subgraph.
-        """
-        for node_id in self._subgraph.nodes:
-            data = dict(self._subgraph.nodes[node_id])
-            node_type = data.pop("_node_type", "unknown")
-            yield GraphNode(id=node_id, node_type=node_type, attributes=data)
-
-    def edges(self) -> Iterator[GraphEdge]:
-        """Iterate over edges in the subgraph.
-
-        Yields:
-            GraphEdge models for each edge in the subgraph.
-        """
-        for source, target, data in self._subgraph.edges(data=True):
-            data_copy = dict(data)
-            edge_type = data_copy.pop("_edge_type", "unknown")
-            weight = data_copy.pop("weight", 1.0)
-            yield GraphEdge(
-                source_id=source,
-                target_id=target,
-                edge_type=edge_type,
-                weight=weight,
-                attributes=data_copy,
-            )
-
-
-class NetworkXAdapter:
+class NetworkXAdapter(AggregationMixin, QueryMixin):
     """Reference implementation of GraphProtocol using NetworkX.
 
     Wraps nx.DiGraph and provides all 16 GraphProtocol methods.
     Node types are stored as '_node_type' attribute, edge types as '_edge_type'.
+
+    Inherits from mixins:
+        - AggregationMixin: aggregate()
+        - QueryMixin: query_nodes(), query_edges(), count_nodes(), count_edges()
 
     Example:
         >>> adapter = NetworkXAdapter()
@@ -331,20 +289,18 @@ class NetworkXAdapter:
         Raises:
             ValueError: If query_type is not supported.
         """
-        if query.query_type == "connected_components":
-            return self._execute_components_query(query)
-        elif query.query_type == "percolation":
-            return self._execute_percolation_query(query)
-        elif query.query_type == "shortest_path":
-            return self._execute_shortest_path_query(query)
-        elif query.query_type == "bfs":
-            return self._execute_bfs_query(query)
-        elif query.query_type == "dfs":
-            return self._execute_dfs_query(query)
-        elif query.query_type == "reachability":
-            return self._execute_reachability_query(query)
-        else:
+        strategies = {
+            "connected_components": self._execute_components_query,
+            "percolation": self._execute_percolation_query,
+            "shortest_path": self._execute_shortest_path_query,
+            "bfs": self._execute_bfs_query,
+            "dfs": self._execute_dfs_query,
+            "reachability": self._execute_reachability_query,
+        }
+        strategy = strategies.get(query.query_type)
+        if strategy is None:
             raise ValueError(f"Unsupported query type: {query.query_type}")
+        return strategy(query)
 
     def _build_filtered_subgraph(
         self, query: TraversalQuery, include_all_nodes: bool = False
@@ -360,49 +316,11 @@ class NetworkXAdapter:
         Returns:
             NetworkX DiGraph with filtered nodes and edges.
         """
-        # Start with all nodes, or filter by start_nodes for component-style queries
-        if include_all_nodes or query.start_nodes is None:
-            nodes = set(self._graph.nodes)
-        else:
-            nodes = set(query.start_nodes)
-
-        # Apply node filter
-        if query.node_filter and query.node_filter.node_types:
-            nodes = {
-                n
-                for n in nodes
-                if self._graph.nodes[n].get("_node_type") in query.node_filter.node_types
-            }
-
-        # Build subgraph with edge filtering
-        # Note: copy() preserves the graph type (DiGraph), but mypy doesn't infer this
-        subgraph: nx.DiGraph[str] = cast("nx.DiGraph[str]", self._graph.subgraph(nodes).copy())
-
-        # Remove edges that don't match filter
-        if query.edge_filter:
-            edges_to_remove: list[tuple[str, str]] = []
-            for u, v, data in subgraph.edges(data=True):
-                if (
-                    query.edge_filter.edge_types
-                    and data.get("_edge_type") not in query.edge_filter.edge_types
-                ):
-                    edges_to_remove.append((u, v))
-                    continue
-                if (
-                    query.edge_filter.min_weight is not None
-                    and data.get("weight", 0) < query.edge_filter.min_weight
-                ):
-                    edges_to_remove.append((u, v))
-                    continue
-                if (
-                    query.edge_filter.max_weight is not None
-                    and data.get("weight", 0) > query.edge_filter.max_weight
-                ):
-                    edges_to_remove.append((u, v))
-                    continue
-            subgraph.remove_edges_from(edges_to_remove)
-
-        return subgraph
+        return (
+            SubgraphFilterBuilder(self._graph)
+            .from_query(query, include_all_nodes=include_all_nodes)
+            .build()
+        )
 
     def _execute_components_query(self, query: TraversalQuery) -> TraversalResult:
         """Find connected components.
@@ -607,252 +525,8 @@ class NetworkXAdapter:
         except nx.NodeNotFound:
             return None
 
-    # ─────────────────────────────────────────────────────────────────────
-    # SET-ORIENTED QUERIES
-    # ─────────────────────────────────────────────────────────────────────
+    # Query methods inherited from QueryMixin:
+    # - query_nodes(), query_edges(), count_nodes(), count_edges()
 
-    def query_nodes(
-        self,
-        node_type: str | None = None,
-        predicate: Callable[[GraphNode], bool] | None = None,
-        attributes: dict[str, Any] | None = None,
-    ) -> Iterator[GraphNode]:
-        """Query nodes with optional filtering.
-
-        Args:
-            node_type: Filter by node type (None = all types).
-            predicate: Python callable for complex filtering.
-            attributes: Attribute equality filter.
-
-        Yields:
-            Matching GraphNode models.
-        """
-        for node_id in self._graph.nodes:
-            data = dict(self._graph.nodes[node_id])
-            n_type = data.pop("_node_type", "unknown")
-
-            # Type filter
-            if node_type and n_type != node_type:
-                continue
-
-            # Attribute filter
-            if attributes and not all(data.get(k) == v for k, v in attributes.items()):
-                continue
-
-            node = GraphNode(id=node_id, node_type=n_type, attributes=data)
-
-            # Predicate filter
-            if predicate and not predicate(node):
-                continue
-
-            yield node
-
-    def query_edges(
-        self,
-        edge_type: str | None = None,
-        predicate: Callable[[GraphEdge], bool] | None = None,
-        min_weight: float | None = None,
-        max_weight: float | None = None,
-    ) -> Iterator[GraphEdge]:
-        """Query edges with optional filtering.
-
-        Args:
-            edge_type: Filter by edge type.
-            predicate: Python callable for complex filtering.
-            min_weight: Minimum weight threshold.
-            max_weight: Maximum weight threshold.
-
-        Yields:
-            Matching GraphEdge models.
-        """
-        for source, target, data in self._graph.edges(data=True):
-            data_copy = dict(data)
-            e_type = data_copy.pop("_edge_type", "unknown")
-            weight = data_copy.pop("weight", 1.0)
-
-            # Type filter
-            if edge_type and e_type != edge_type:
-                continue
-
-            # Weight filters
-            if min_weight is not None and weight < min_weight:
-                continue
-            if max_weight is not None and weight > max_weight:
-                continue
-
-            edge = GraphEdge(
-                source_id=source,
-                target_id=target,
-                edge_type=e_type,
-                weight=weight,
-                attributes=data_copy,
-            )
-
-            # Predicate filter
-            if predicate and not predicate(edge):
-                continue
-
-            yield edge
-
-    def count_nodes(self, node_type: str | None = None) -> int:
-        """Count nodes, optionally by type.
-
-        Args:
-            node_type: Filter by node type (None = count all).
-
-        Returns:
-            Number of matching nodes.
-        """
-        if node_type is None:
-            return self._graph.number_of_nodes()
-        return sum(
-            1 for n in self._graph.nodes if self._graph.nodes[n].get("_node_type") == node_type
-        )
-
-    def count_edges(self, edge_type: str | None = None) -> int:
-        """Count edges, optionally by type.
-
-        Args:
-            edge_type: Filter by edge type (None = count all).
-
-        Returns:
-            Number of matching edges.
-        """
-        if edge_type is None:
-            return self._graph.number_of_edges()
-        return sum(
-            1 for _, _, data in self._graph.edges(data=True) if data.get("_edge_type") == edge_type
-        )
-
-    def aggregate(
-        self,
-        target: Literal["nodes", "edges"],
-        group_by: str | None = None,
-        agg_func: Literal["count", "sum", "avg", "min", "max"] = "count",
-        agg_attr: str | None = None,
-    ) -> dict[str, float]:
-        """Aggregate over nodes or edges.
-
-        Args:
-            target: Whether to aggregate nodes or edges.
-            group_by: Attribute to group by (e.g., 'type').
-            agg_func: Aggregation function to apply.
-            agg_attr: Attribute to aggregate (required for sum/avg/min/max).
-
-        Returns:
-            Dict mapping group keys to aggregated values.
-        """
-        if target == "nodes":
-            return self._aggregate_nodes(group_by, agg_func, agg_attr)
-        else:
-            return self._aggregate_edges(group_by, agg_func, agg_attr)
-
-    def _aggregate_nodes(
-        self,
-        group_by: str | None,
-        agg_func: str,
-        agg_attr: str | None,
-    ) -> dict[str, float]:
-        """Aggregate over nodes.
-
-        Args:
-            group_by: Attribute to group by.
-            agg_func: Aggregation function.
-            agg_attr: Attribute to aggregate.
-
-        Returns:
-            Dict mapping group keys to aggregated values.
-        """
-        groups: dict[str, list[float]] = defaultdict(list)
-
-        for node_id in self._graph.nodes:
-            data = self._graph.nodes[node_id]
-
-            # Determine group key
-            if group_by == "type":
-                key = data.get("_node_type", "unknown")
-            elif group_by:
-                key = str(data.get(group_by, "unknown"))
-            else:
-                key = "_all"
-
-            # Get value to aggregate
-            if agg_attr:
-                val = data.get(agg_attr, 0.0)
-                if isinstance(val, (int, float)):
-                    groups[key].append(float(val))
-            else:
-                groups[key].append(1.0)  # For count
-
-        return self._apply_agg_func(groups, agg_func)
-
-    def _aggregate_edges(
-        self,
-        group_by: str | None,
-        agg_func: str,
-        agg_attr: str | None,
-    ) -> dict[str, float]:
-        """Aggregate over edges.
-
-        Args:
-            group_by: Attribute to group by.
-            agg_func: Aggregation function.
-            agg_attr: Attribute to aggregate.
-
-        Returns:
-            Dict mapping group keys to aggregated values.
-        """
-        groups: dict[str, list[float]] = defaultdict(list)
-
-        for _, _, data in self._graph.edges(data=True):
-            # Determine group key
-            if group_by == "type":
-                key = data.get("_edge_type", "unknown")
-            elif group_by:
-                key = str(data.get(group_by, "unknown"))
-            else:
-                key = "_all"
-
-            # Get value to aggregate
-            if agg_attr:
-                val = data.get(agg_attr, 0.0)
-                if isinstance(val, (int, float)):
-                    groups[key].append(float(val))
-            else:
-                groups[key].append(1.0)  # For count
-
-        return self._apply_agg_func(groups, agg_func)
-
-    def _apply_agg_func(
-        self,
-        groups: dict[str, list[float]],
-        agg_func: str,
-    ) -> dict[str, float]:
-        """Apply aggregation function to grouped values.
-
-        Args:
-            groups: Dict mapping group keys to lists of values.
-            agg_func: Aggregation function name.
-
-        Returns:
-            Dict mapping group keys to aggregated values.
-        """
-        result: dict[str, float] = {}
-
-        for key, values in groups.items():
-            if not values:
-                result[key] = 0.0
-            elif agg_func == "count":
-                result[key] = float(len(values))
-            elif agg_func == "sum":
-                result[key] = sum(values)
-            elif agg_func == "avg":
-                result[key] = sum(values) / len(values)
-            elif agg_func == "min":
-                result[key] = min(values)
-            elif agg_func == "max":
-                result[key] = max(values)
-            else:
-                result[key] = float(len(values))  # Default to count
-
-        return result
+    # Aggregation methods inherited from AggregationMixin:
+    # - aggregate(target, group_by, agg_func, agg_attr)

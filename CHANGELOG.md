@@ -1,4 +1,96 @@
-## v0.3.0 (2025-12-12)
+## Unreleased
+
+### Feat
+
+- **ideology**: add wealth extraction as crisis trigger
+- **physics**: implement Epoch 0 quantization and weekly ticks (GREEN phase)
+- **ui**: wire 4-node imperial circuit to dashboard
+- **graph-bridge**: implement Slice 1.7 Graph Bridge (GREEN phase)
+- **endgame**: implement Slice 1.6 Endgame Detection (GREEN phase)
+- **ui**: implement Slice 1.5 gauge and trend panel components
+- **ui**: integrate WirePanel into main.py for Gramscian Wire display
+- **ui**: implement WirePanel component for Gramscian Wire (GREEN phase)
+- **ai**: implement dual narrative system for Gramscian Wire (GREEN phase)
+- **engine**: integrate StateFinance with WorldState and add cost-checking
+- **models**: implement finance models for Political Economy of Liquidity
+- **metabolic**: wire MetabolismSystem into simulation engine (TDD Green Phase)
+- **metabolic**: implement MetabolismSystem (TDD Green Phase)
+- **metabolic**: add Slice 1.4A material basis for Metabolic Rift
+- Epoch 1 specification completion and P0-P3 readiness review (#67)
+- **ci**: add coverage gates and incremental mutation testing
+- **epoch2**: implement Balkanization System with Colonial Stance mechanics (v1.2.0)
+- **architecture**: implement Dynamic Sovereignty refactor (ADR029-A1)
+- **architecture**: add Epoch 2 hybrid graph architecture (ADR029)
+- **phase4**: Developer Dashboard MVP with MetricsCollector (#65)
+- **ai-docs**: implement P1 priorities - balance targets and State AI algorithm
+- **ai-docs**: implement P0 Epoch 2 sub-epoch staging (SCOPE-001)
+- **tooling**: add mutation testing runner with multiprocessing fix
+- **engine**: implement Event Interceptor pattern for Epoch 1→2 Bridge
+- **mise**: add trace commands with optional tick parameter
+- **tools**: add JSON export for causal DAG structure preservation
+- **metrics**: GREEN phase - pass 40 failing tests for Phase 4.1B
+- **metrics**: implement MetricsCollector observer (TDD GREEN phase)
+- **engine**: add AsyncSimulationRunner for non-blocking UI
+- **mise**: add UI launch tasks for Synopticon dashboard
+- **ui**: implement 4-panel Synopticon dashboard layout (TDD)
+- **ui**: add StateInspector component with JSON viewer (TDD)
+- **ui**: add TrendPlotter component with EChart line graphs (TDD)
+- **ui**: add SystemLog component with instant display (TDD)
+- **ui**: add NarrativeTerminal with typewriter animation (TDD)
+- **ui**: add ControlDeck component with TDD methodology
+- **engine**: add mechanical event template system
+- **ai**: add NarrativeCommissar LLM-as-judge for narrative evaluation
+- **ai**: tighten Persephone persona with length and grounding constraints
+- **ai**: rewrite Persephone persona for visceral game narrative
+- **ai**: add logging and markdown transcript to interview_persona
+- **ai**: add interview_persona.py tuning fork for Persephone testing
+- **ai**: implement Persona system for narrative voice customization (Sprint 4.2)
+- **ai**: upgrade NarrativeDirector to consume typed SimulationEvent objects (Sprint 4.1)
+- **docs**: royal purple cover + cream pages for eye comfort
+- **topology**: add solid phase to TopologyMonitor (4-phase model)
+- **topology**: implement phase transition event emission (Sprint 3.3)
+- **events**: expand event type hierarchy for all 10 EventTypes
+- **engine**: create TickContext in step() function
+- **context**: add TickContext model with dict compatibility
+- **events**: add structured Pydantic events to WorldState (Sprint 3.1)
+
+### Fix
+
+- **config**: remove duplicate per-file-ignores in pyproject.toml
+- **tests**: remove brittle exact event count assertions
+- **testing**: add deterministic random seed for test isolation
+- **ci**: add pydantic mypy plugin and format main.py
+- **tests**: isolate random state between tests to prevent flakiness
+- **tests**: update persona tests after content refresh
+- **deps**: update filelock to 3.20.1 for CVE-2025-68146
+- **ui**: add w-full classes to fix Grid/Flexbox width propagation
+- **ui**: use viewport-relative heights for dashboard panel sizing
+- **ui**: add min-height to dashboard panels to prevent collapse
+- **ui**: populate dashboard with initial data at tick 0
+- **ui**: improve Synopticon panel sizing and readability
+- **ui**: properly await async callbacks in ControlDeck
+- **ui**: resolve NiceGUI mode conflict RuntimeError
+- **ai**: improve U-Curve analysis with state-aware prompting
+- **docs**: professional LaTeX/PDF with ToC bookmarks and book styling
+
+### Refactor
+
+- **scenarios**: eliminate superwage_multiplier duplication (Mikado Method)
+- **physics**: remove red_phase markers (REFACTOR phase)
+- **graph-bridge**: cleanup and update exports (REFACTOR phase)
+- **ui**: extract design system and wire endgame thresholds (REFACTOR phase)
+- **topology**: wire phase thresholds to GameDefines
+- **economic**: wire negligible thresholds to GameDefines
+- **defines**: add MetabolismDefines and TopologyDefines to GameDefines
+- **complexity**: add pre-commit complexity check and refactor high-CC functions
+- **tools**: integrate MetricsCollector into parameter_analysis.py
+- **metrics**: polish Phase 4.1B implementation
+- **ui**: integrate MetricsCollector for unified dashboard metrics
+- **ui**: integrate AsyncSimulationRunner for non-blocking UI
+- **protocol**: update System.step to accept ContextType
+- **ideology**: support TickContext for persistent_data
+
+## v0.3.0 (2025-12-29)
 
 ### BREAKING CHANGE
 
@@ -92,68 +184,6 @@
 - Add timedelta import to metrics persistence module
 - Implement metric persistence with SQLite storage and retrieval
 - Enhance performance metrics module with improved validation and documentation
-- Bump version to 0.2.0 with major database and logging improvements
-- Add optional object access tracking to record_metric method
-- Integrate PostgreSQL database for metrics and logging
-- Add error handling and logging documentation to README.md
-- Add import for BabylonError in __main__.py to resolve undefined name error
-- Implement comprehensive exception handling system with custom exceptions
-- Add privacy management system with consent and data collection policies
-- Add comprehensive metrics and logging system with performance tracking
-- Enhance ChromaDB logging and exception handling with structured logging, correlation tracking, and retry mechanisms
-- Enhance ChromaDB backup and restore with compression, metadata, and improved error handling
-- Enhance ChromaDB manager documentation and code comments
-- Improve ChromaDB backup and client management with error handling and logging
-- Add comprehensive ChromaDB integration test suite
-- Implement comprehensive logging solution with structured logging and retry mechanism
-- Add logging configuration and error handling for ChromaDB operations
-- Add ChromaDB restore functionality with user input
-- Add backup mechanism after game loop ends
-- Implement ChromaDB backup system with timestamped directory
-- Initialize ChromaDB with embedding model and persistent storage
-- Add find_similar_entities method for semantic entity search in ChromaDB
-- Implement EntityRegistry for centralized entity lifecycle management
-- Enhance Entity class with robust ChromaDB embedding methods
-- Initialize all_events list to resolve undefined name error
-- Integrate ChromaDB for vector database with entity embeddings
-- Add chromadb and sentence-transformers to requirements
-- Integrate ChromaDB for entity embedding and vector storage
-- Add GitHub Action to sync TODO.md with Kanban board
-- Publish blog page by setting draft to false
-- Initialize Hugo site with Ananke theme and homepage content
-- Update docstrings with more detailed, constructivist-inspired descriptions
-- Enhance test docstrings with detailed verification descriptions
-- Add metrics tracking and datetime imports to contradiction analysis system
-- Add metrics collection to entity registry and contradiction analysis
-- Update OBJECT_TRACKING.md with detailed performance tracking and metrics guidelines
-- Add comprehensive character creation system with design documentation
-- Add aesthetic, narrative, and content documentation for game development
-- Implement constructivist-inspired design for Babylon GUI
-- Add initial GUI implementation with basic Tkinter layout
-- Add GUI development roadmap and library recommendations to TODO.md
-- Implement event triggers and escalation paths in game system
-- Add main function to initialize game loop and system components
-- Add type checking and fix undefined name errors in event and contradiction analysis modules
-- Implement consequence chains for event handling system
-- Add comprehensive type hints to contradiction analysis tests
-- Add type-annotated Contradiction, Entity, Effect, and Attribute classes
-- Add contradiction.py module to project
-- Add EntityRegistry import and fix type hints in contradiction_analysis.py
-- Add type hints to __main__.py for improved type safety
-- Implement procedural event generation for contradiction system
-- Implement resolution options for contradictions with suppression, reform, and revolution methods
-- Implement modular and dynamic contradiction intensity metrics
-- Add missing imports for Entity, Economy, and Politics classes
-- Enhance contradiction detection with economic and political metrics
-- Add network visualization for entity relationships in contradictions
-- Add dialectical mapping visualization for contradictions
-- Implement dynamic event generation for contradiction escalation
-- implement environment configuration system
-- Implement secure environment variable management with .env template
-- Create comprehensive legacy data validation testing module with schema, reference, and naming checks
-- Implement Contradiction Analysis System core modules
-- Add Persephone Raskova character legacy data and update .gitignore
-- add schema definitions for game systems and socially determined objects
 
 ### Fix
 
@@ -222,29 +252,6 @@
 - Resolve unterminated docstring in BackupError class
 - Remove invalid syntax and extra docstrings in exceptions module
 - Close unterminated docstring in BackupError class
-- Remove duplicate docstring and replace ASCII tree with plain text hierarchy
-- Add retry utility and update import path in entity module
-- Update import paths and add utils package __init__.py
-- Update import paths to use full package namespace
-- Add missing uuid import in chroma_manager.py
-- Correct import path in development config and update .env file
-- Update config import paths and add .env configuration
-- Update import path for config module in backup utility
-- Add missing hashlib and tempfile imports to backup module
-- Add missing Any type import in chroma_manager.py
-- Correct docstring syntax in `handle_event` function
-- Convert datetime to ISO format for JSON serialization in metrics saving
-- Ensure contradiction metrics capture multiple object accesses
-- Update test and metrics collection to handle Contradiction initialization and hot object thresholds
-- Import Effect directly in event.py to resolve runtime NameError
-- Update TODO.md with comprehensive vector database and RAG implementation plan
-- Update lambda signature in contradiction test to correctly pass game_state
-- Resolve entity ID and lambda function signature issues in contradiction analysis
-- Add entity_id alias and update_intensity method for tests
-- Update Contradiction class to match test usage
-- Update Entity and Contradiction classes to resolve test failures
-- Update import path for EntityRegistry in contradiction_analysis.py
-- Update Location.legacy schema to allow more flexible location IDs and add ControlledBy element
 
 ### Refactor
 
@@ -294,9 +301,116 @@
 - Enhance BabylonError with type hints, logging, and context details
 - Improve type safety and consistency in metrics collector
 - Add performance thresholds and memory tracking to metrics collection
+
+## v0.2.0 (2025-12-29)
+
+### Feat
+
+- Bump version to 0.2.0 with major database and logging improvements
+- Add optional object access tracking to record_metric method
+- Integrate PostgreSQL database for metrics and logging
+- Add error handling and logging documentation to README.md
+- Add import for BabylonError in __main__.py to resolve undefined name error
+- Implement comprehensive exception handling system with custom exceptions
+- Add privacy management system with consent and data collection policies
+- Add comprehensive metrics and logging system with performance tracking
+- Enhance ChromaDB logging and exception handling with structured logging, correlation tracking, and retry mechanisms
+- Enhance ChromaDB backup and restore with compression, metadata, and improved error handling
+- Enhance ChromaDB manager documentation and code comments
+- Improve ChromaDB backup and client management with error handling and logging
+- Add comprehensive ChromaDB integration test suite
+- Implement comprehensive logging solution with structured logging and retry mechanism
+- Add logging configuration and error handling for ChromaDB operations
+- Add ChromaDB restore functionality with user input
+- Add backup mechanism after game loop ends
+- Implement ChromaDB backup system with timestamped directory
+- Initialize ChromaDB with embedding model and persistent storage
+- Add find_similar_entities method for semantic entity search in ChromaDB
+- Implement EntityRegistry for centralized entity lifecycle management
+- Enhance Entity class with robust ChromaDB embedding methods
+- Initialize all_events list to resolve undefined name error
+- Integrate ChromaDB for vector database with entity embeddings
+- Add chromadb and sentence-transformers to requirements
+- Integrate ChromaDB for entity embedding and vector storage
+- Add GitHub Action to sync TODO.md with Kanban board
+- Publish blog page by setting draft to false
+- Initialize Hugo site with Ananke theme and homepage content
+
+### Fix
+
+- Remove duplicate docstring and replace ASCII tree with plain text hierarchy
+- Add retry utility and update import path in entity module
+- Update import paths and add utils package __init__.py
+- Update import paths to use full package namespace
+- Add missing uuid import in chroma_manager.py
+- Correct import path in development config and update .env file
+- Update config import paths and add .env configuration
+- Update import path for config module in backup utility
+- Add missing hashlib and tempfile imports to backup module
+- Add missing Any type import in chroma_manager.py
+- Correct docstring syntax in `handle_event` function
+
+### Refactor
+
 - Replace hyphenated error code ranges with text ranges
 - Update import paths to use babylon namespace consistently
 - Simplify roadmap structure and formatting in TODO.md
+
+## v0.1.0 (2025-12-29)
+
+### Feat
+
+- Update docstrings with more detailed, constructivist-inspired descriptions
+- Enhance test docstrings with detailed verification descriptions
+- Add metrics tracking and datetime imports to contradiction analysis system
+- Add metrics collection to entity registry and contradiction analysis
+- Update OBJECT_TRACKING.md with detailed performance tracking and metrics guidelines
+- Add comprehensive character creation system with design documentation
+- Add aesthetic, narrative, and content documentation for game development
+- Implement constructivist-inspired design for Babylon GUI
+- Add initial GUI implementation with basic Tkinter layout
+- Add GUI development roadmap and library recommendations to TODO.md
+- Implement event triggers and escalation paths in game system
+- Add main function to initialize game loop and system components
+- Add type checking and fix undefined name errors in event and contradiction analysis modules
+- Implement consequence chains for event handling system
+- Add comprehensive type hints to contradiction analysis tests
+- Add type-annotated Contradiction, Entity, Effect, and Attribute classes
+- Add contradiction.py module to project
+- Add EntityRegistry import and fix type hints in contradiction_analysis.py
+- Add type hints to __main__.py for improved type safety
+- Implement procedural event generation for contradiction system
+- Implement resolution options for contradictions with suppression, reform, and revolution methods
+- Implement modular and dynamic contradiction intensity metrics
+- Add missing imports for Entity, Economy, and Politics classes
+- Enhance contradiction detection with economic and political metrics
+- Add network visualization for entity relationships in contradictions
+- Add dialectical mapping visualization for contradictions
+- Implement dynamic event generation for contradiction escalation
+- implement environment configuration system
+- Implement secure environment variable management with .env template
+- Create comprehensive legacy data validation testing module with schema, reference, and naming checks
+- Implement Contradiction Analysis System core modules
+- Add Persephone Raskova character legacy data and update .gitignore
+- add schema definitions for game systems and socially determined objects
+
+### Fix
+
+- Convert datetime to ISO format for JSON serialization in metrics saving
+- Ensure contradiction metrics capture multiple object accesses
+- Update test and metrics collection to handle Contradiction initialization and hot object thresholds
+- Import Effect directly in event.py to resolve runtime NameError
+- Update TODO.md with comprehensive vector database and RAG implementation plan
+- Update lambda signature in contradiction test to correctly pass game_state
+- Resolve entity ID and lambda function signature issues in contradiction analysis
+- Add entity_id alias and update_intensity method for tests
+- Update Contradiction class to match test usage
+- Update Entity and Contradiction classes to resolve test failures
+- Update import path for EntityRegistry in contradiction_analysis.py
+- Update Location.legacy schema to allow more flexible location IDs and add ControlledBy element
+
+### Refactor
+
 - Streamline project description document, remove redundancy and improve consistency
 - Reorganize TODO.md to align with milestone-based development structure
 - Remove unused main() function and fix Event type hints

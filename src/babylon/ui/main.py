@@ -19,6 +19,9 @@ from __future__ import annotations
 
 from nicegui import ui
 
+from babylon.ai import MockLLM, NarrativeDirector
+from babylon.ai.llm_provider import DeepSeekClient
+from babylon.config import LLMConfig
 from babylon.engine.observer import SimulationObserver
 from babylon.engine.observers.metrics import MetricsCollector
 from babylon.engine.runner import AsyncSimulationRunner
@@ -74,6 +77,7 @@ class DashboardState:
         self.state_inspector: StateInspector | None = None
         self.last_event_index: int = 0
         self.metrics_collector: MetricsCollector | None = None
+        self.narrative_director: NarrativeDirector | None = None
         self.wire_panel: WirePanel | None = None
         self.last_dual_narrative_index: int = 0
         # Slice 1.5: New gauge components (wired but not yet displayed in layout)
@@ -116,8 +120,26 @@ def init_simulation() -> None:
     # matching TrendPlotter.MAX_POINTS for consistent visualization
     _state.metrics_collector = MetricsCollector(mode="interactive", rolling_window=50)
 
+    # Gramscian Wire: Create NarrativeDirector with LLM for dual narrative generation
+    # Use DeepSeekClient if API key available, otherwise MockLLM for development
+    llm: MockLLM | DeepSeekClient
+    if LLMConfig.is_configured():
+        llm = DeepSeekClient()
+    else:
+        # MockLLM generates placeholder text for development without API key
+        llm = MockLLM(
+            responses=[
+                ">>> TRANSMISSION <<<\nWorkers unite against exploitation.",
+                "Authorities maintain order during disturbance.",
+            ]
+        )
+    _state.narrative_director = NarrativeDirector(use_llm=True, llm=llm)
+
     _state.simulation = Simulation(
-        scenario_state, config, observers=[_state.metrics_collector], defines=defines
+        scenario_state,
+        config,
+        observers=[_state.metrics_collector, _state.narrative_director],
+        defines=defines,
     )
     _state.runner = AsyncSimulationRunner(_state.simulation, tick_interval=1.0)
 

@@ -367,3 +367,308 @@ class TestNarrativeDirectorIntegration:
         # Should see start, ticks, and end
         assert "Simulation started" in caplog.text
         assert "Simulation ended" in caplog.text
+
+
+# =============================================================================
+# TEST PER-TICK EVENT SEMANTICS (REGRESSION TESTS)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestNarrativeDirectorPerTickEvents:
+    """Tests for per-tick event semantics (regression for bug fix).
+
+    Bug: Code assumed events accumulated across ticks, but WorldState.events
+    is replaced each tick with only that tick's events.
+
+    Original broken code (director.py:273-279):
+        num_new_events = len(new_state.events) - len(previous_state.events)
+        if num_new_events == 0:
+            return
+        new_events = list(new_state.events[-num_new_events:])
+
+    When prev=1 event and new=0 events, this gave num_new_events=-1,
+    causing incorrect slicing behavior.
+
+    Fix: Changed to recognize all events in new_state are new:
+        new_events = list(new_state.events)
+    """
+
+    def test_events_are_per_tick_not_cumulative(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """Events in new_state are from current tick only, not accumulated.
+
+        Regression test: Verifies the fix for negative event count bug.
+        Previous code gave negative count when prev had more events than new.
+        """
+        from babylon.ai.director import NarrativeDirector
+
+        director = NarrativeDirector()
+
+        # Tick 1: has 1 event
+        event_tick1 = ExtractionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            amount=10.0,
+        )
+        state_tick1 = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [event_tick1],
+            }
+        )
+
+        # Tick 2: has 0 events (events are per-tick, not cumulative)
+        state_tick2 = initial_state.model_copy(
+            update={
+                "tick": 2,
+                "events": [],  # Empty! Events don't accumulate
+            }
+        )
+
+        # Should NOT crash (was crashing with negative slice before fix)
+        director.on_tick(state_tick1, state_tick2)
+
+    def test_all_new_state_events_are_processed(
+        self,
+        initial_state: WorldState,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """All events in new_state should be processed as new events."""
+        from babylon.ai.director import NarrativeDirector
+
+        director = NarrativeDirector()
+
+        # Previous tick: no events
+        prev_state = initial_state.model_copy(update={"tick": 0, "events": []})
+
+        # New tick: 3 events (all new since events are per-tick)
+        events = [
+            ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=1.0),
+            ExtractionEvent(tick=1, source_id="C002", target_id="C001", amount=2.0),
+            TransmissionEvent(
+                tick=1,
+                source_id="C001",
+                target_id="C002",
+                delta=0.05,
+                solidarity_strength=0.5,
+            ),
+        ]
+        new_state = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": events,
+            }
+        )
+
+        # Should process all 3 events without error
+        with caplog.at_level(logging.INFO):
+            director.on_tick(prev_state, new_state)
+
+        # All 3 events should be logged (2 SURPLUS_EXTRACTION, 1 CONSCIOUSNESS_TRANSMISSION)
+        assert caplog.text.count("SURPLUS_EXTRACTION") == 2
+        assert "CONSCIOUSNESS_TRANSMISSION" in caplog.text
+
+    def test_decreasing_event_count_between_ticks_handled(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """Handle case where previous tick had more events than current tick.
+
+        This is the exact scenario that triggered the original bug:
+        prev_state.events had length 3, new_state.events had length 1.
+        Old code: 1 - 3 = -2, then sliced [-(-2):] = last 2 events.
+        """
+        from babylon.ai.director import NarrativeDirector
+
+        director = NarrativeDirector()
+
+        # Previous tick had 3 events
+        prev_events = [
+            ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=1.0),
+            ExtractionEvent(tick=1, source_id="C002", target_id="C001", amount=2.0),
+            ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=3.0),
+        ]
+        prev_state = initial_state.model_copy(update={"tick": 1, "events": prev_events})
+
+        # New tick has only 1 event (events don't carry over)
+        new_events = [
+            TransmissionEvent(
+                tick=2,
+                source_id="C001",
+                target_id="C002",
+                delta=0.05,
+                solidarity_strength=0.5,
+            ),
+        ]
+        new_state = initial_state.model_copy(update={"tick": 2, "events": new_events})
+
+        # Should NOT crash and should process the 1 new event correctly
+        director.on_tick(prev_state, new_state)
+
+
+# =============================================================================
+# TEST DUAL NARRATIVE GENERATION (GRAMSCIAN WIRE MVP)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestNarrativeDirectorDualNarratives:
+    """Tests for dual narrative generation (Gramscian Wire MVP).
+
+    The dual narrative system generates contrasting perspectives:
+    - Corporate: establishment/hegemonic framing
+    - Liberated: revolutionary/counter-hegemonic framing
+
+    Only SIGNIFICANT_EVENT_TYPES trigger dual narrative generation.
+    """
+
+    def test_dual_narratives_generated_for_significant_events(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """Significant events trigger dual narrative generation."""
+        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.models.events import SparkEvent
+
+        llm = MockLLM(responses=["Corporate view", "Liberated view"])
+        director = NarrativeDirector(use_llm=True, llm=llm)
+
+        # EXCESSIVE_FORCE (SparkEvent) is a SIGNIFICANT_EVENT_TYPE
+        spark_event = SparkEvent(
+            tick=1,
+            node_id="C001",
+            repression=0.7,
+            spark_probability=0.35,
+        )
+        new_state = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [spark_event],
+            }
+        )
+
+        director.on_tick(initial_state, new_state)
+
+        assert len(director.dual_narratives) == 1
+        assert 1 in director.dual_narratives
+        assert "corporate" in director.dual_narratives[1]
+        assert "liberated" in director.dual_narratives[1]
+        assert "event" in director.dual_narratives[1]
+
+    def test_non_significant_events_skip_dual_narratives(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """Non-significant events don't trigger LLM calls for dual narratives."""
+        from babylon.ai import MockLLM, NarrativeDirector
+
+        llm = MockLLM(responses=["Should not be called"])
+        director = NarrativeDirector(use_llm=True, llm=llm)
+
+        # TransmissionEvent (CONSCIOUSNESS_TRANSMISSION) is NOT in SIGNIFICANT_EVENT_TYPES
+        event = TransmissionEvent(
+            tick=1,
+            source_id="C001",
+            target_id="C002",
+            delta=0.05,
+            solidarity_strength=0.5,
+        )
+        new_state = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [event],
+            }
+        )
+
+        director.on_tick(initial_state, new_state)
+
+        # No dual narratives generated for transmission events
+        assert len(director.dual_narratives) == 0
+
+    def test_significant_event_types_constant(self) -> None:
+        """SIGNIFICANT_EVENT_TYPES contains expected event types."""
+        from babylon.ai.director import NarrativeDirector
+        from babylon.models.enums import EventType
+
+        expected = frozenset(
+            {
+                EventType.SURPLUS_EXTRACTION,
+                EventType.ECONOMIC_CRISIS,
+                EventType.PHASE_TRANSITION,
+                EventType.UPRISING,
+                EventType.EXCESSIVE_FORCE,
+                EventType.RUPTURE,
+                EventType.MASS_AWAKENING,
+            }
+        )
+
+        assert expected == NarrativeDirector.SIGNIFICANT_EVENT_TYPES
+
+    def test_dual_narratives_contain_both_perspectives(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """Dual narratives contain both corporate and liberated text."""
+        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.models.events import UprisingEvent
+
+        llm = MockLLM(
+            responses=[
+                "Authorities maintained order during civil unrest.",
+                ">>> TRANSMISSION <<< Workers rose against oppression!",
+            ]
+        )
+        director = NarrativeDirector(use_llm=True, llm=llm)
+
+        uprising = UprisingEvent(
+            tick=5,
+            node_id="C001",
+            trigger="spark",
+            agitation=0.8,
+            repression=0.6,
+        )
+        new_state = initial_state.model_copy(
+            update={
+                "tick": 5,
+                "events": [uprising],
+            }
+        )
+
+        director.on_tick(initial_state, new_state)
+
+        narratives = director.dual_narratives[5]
+        assert "Authorities" in narratives["corporate"]
+        assert "TRANSMISSION" in narratives["liberated"]
+
+    def test_dual_narratives_skipped_without_llm(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """Without LLM, dual narratives are not generated.
+
+        The dual narrative system requires an LLM to generate meaningful
+        contrasting perspectives. When no LLM is provided, the system
+        correctly skips dual narrative generation entirely.
+        """
+        from babylon.ai.director import NarrativeDirector
+        from babylon.models.events import RuptureEvent
+
+        # No LLM provided, use_llm=True but _llm=None
+        director = NarrativeDirector(use_llm=True, llm=None)
+
+        rupture = RuptureEvent(tick=1, edge="C001->C002")
+        new_state = initial_state.model_copy(
+            update={
+                "tick": 1,
+                "events": [rupture],
+            }
+        )
+
+        director.on_tick(initial_state, new_state)
+
+        # No dual narratives generated without LLM
+        assert len(director.dual_narratives) == 0

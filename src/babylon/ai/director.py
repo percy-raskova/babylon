@@ -255,7 +255,7 @@ class NarrativeDirector:
 
     def on_tick(
         self,
-        previous_state: WorldState,
+        _previous_state: WorldState,
         new_state: WorldState,
     ) -> None:
         """Analyze state change and log narrative.
@@ -270,13 +270,13 @@ class NarrativeDirector:
             previous_state: WorldState before the tick.
             new_state: WorldState after the tick.
         """
-        # Detect new typed events added this tick (Sprint 4.1)
-        num_new_events = len(new_state.events) - len(previous_state.events)
+        # Events are per-tick (not cumulative) - all events in new_state are new
+        # Fix: Previously assumed events accumulated across ticks, but WorldState.events
+        # is replaced each tick with only that tick's events.
+        new_events: list[SimulationEvent] = list(new_state.events)
 
-        if num_new_events == 0:
+        if not new_events:
             return  # Optimization: skip if no events
-
-        new_events: list[SimulationEvent] = list(new_state.events[-num_new_events:])
 
         # Retrieve historical context (The Materialist Retrieval)
         rag_context = self._retrieve_context_from_typed_events(new_events)

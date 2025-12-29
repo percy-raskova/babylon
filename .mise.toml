@@ -382,9 +382,5 @@ run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""
 # =============================================================================
 
 [tasks.ui]
-description = "Launch the Synopticon debug dashboard (NiceGUI)"
-run = "poetry run python src/babylon/ui/main.py"
-
-[tasks.ui-dev]
-description = "Launch dashboard with auto-reload for development"
-run = "poetry run python -c \"from nicegui import ui; from babylon.ui.main import main_page, init_simulation; init_simulation(); ui.run(main_page, title='Babylon v0.3', dark=True, reload=True, port=6969)\""
+description = "Launch the Synopticon dashboard (Dear PyGui)"
+run = "poetry run python -m babylon.ui.dpg_runner"

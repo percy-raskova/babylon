@@ -1,18 +1,24 @@
-"""Babylon UI components (NiceGUI-based).
+"""Babylon UI components (Dear PyGui-based).
 
 This module provides the user interface components for the Babylon
-simulation engine, built on NiceGUI with a "Cybernetic Terminal" aesthetic.
+simulation engine, built on Dear PyGui with a "Bunker Constructivism" aesthetic.
 
 Components:
-    ControlDeck: Simulation control panel with STEP, PLAY, PAUSE, RESET buttons.
-    NarrativeTerminal: Typewriter-style narrative display with auto-scroll.
-    SystemLog: Raw event log with instant display (NO typewriter animation).
-    TrendPlotter: Real-time EChart line graph for simulation metrics.
-    StateInspector: JSON viewer for raw entity state inspection.
+    dpg_runner: Main dashboard entry point with render loop.
+    design_system: Color palette and styling constants.
+
+Example:
+    Run the dashboard::
+
+        from babylon.ui.dpg_runner import main
+        main()
+
+    Or from command line::
+
+        poetry run python -m babylon.ui.dpg_runner
 """
 
-from babylon.ui.components import StateInspector, SystemLog, TrendPlotter
-from babylon.ui.controls import ControlDeck
-from babylon.ui.terminal import NarrativeTerminal
+from babylon.ui import dpg_runner
+from babylon.ui.design_system import BunkerPalette, DPGColors
 
-__all__ = ["ControlDeck", "NarrativeTerminal", "StateInspector", "SystemLog", "TrendPlotter"]
+__all__ = ["BunkerPalette", "DPGColors", "dpg_runner"]

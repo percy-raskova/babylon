@@ -182,3 +182,66 @@ class BunkerPalette:
             "critical": cls.PHOSPHOR_BURN_RED,
         }
         return severity_map.get(severity.lower(), cls.SILVER_DUST)
+
+
+class DPGColors:
+    """Dear PyGui color constants as RGBA tuples (0-255).
+
+    This class provides the same Bunker Constructivism palette as BunkerPalette,
+    but in RGBA tuple format suitable for Dear PyGui's color parameters.
+
+    All colors are 4-element tuples of integers in the range [0, 255]:
+    (Red, Green, Blue, Alpha).
+
+    Example:
+        >>> from babylon.ui.design_system import DPGColors
+        >>> DPGColors.VOID
+        (5, 5, 5, 255)
+        >>> DPGColors.DATA_GREEN
+        (57, 255, 20, 255)
+    """
+
+    # ==========================================================================
+    # PRIMARY COLORS (RGBA tuples)
+    # ==========================================================================
+
+    VOID: tuple[int, int, int, int] = (5, 5, 5, 255)
+    """Background black - the absolute darkness underlying all UI elements."""
+
+    DARK_METAL: tuple[int, int, int, int] = (64, 64, 64, 255)
+    """Border and grid line color - industrial dark gray."""
+
+    SILVER_DUST: tuple[int, int, int, int] = (192, 192, 192, 255)
+    """Neutral text and label color - terminal gray."""
+
+    DATA_GREEN: tuple[int, int, int, int] = (57, 255, 20, 255)
+    """Positive/healthy metric color - phosphor terminal green."""
+
+    PHOSPHOR_RED: tuple[int, int, int, int] = (212, 0, 0, 255)
+    """Critical/danger state color - alarm red."""
+
+    EXPOSED_COPPER: tuple[int, int, int, int] = (255, 215, 0, 255)
+    """Warning state color - oxidized copper amber."""
+
+    # ==========================================================================
+    # ACCENT COLORS
+    # ==========================================================================
+
+    WET_CONCRETE: tuple[int, int, int, int] = (26, 26, 26, 255)
+    """Header and panel background - wet concrete gray."""
+
+    GROW_PURPLE: tuple[int, int, int, int] = (157, 0, 255, 255)
+    """Narrative and title highlight - grow light purple."""
+
+    ROYAL_BLUE: tuple[int, int, int, int] = (65, 105, 225, 255)
+    """Labor Aristocracy class indicator - royal blue."""
+
+    # ==========================================================================
+    # SEMANTIC ALIASES
+    # ==========================================================================
+
+    TRIUMPH_GREEN: tuple[int, int, int, int] = (57, 255, 20, 255)
+    """Victory state color - same as DATA_GREEN."""
+
+    WARNING_AMBER: tuple[int, int, int, int] = (184, 134, 11, 255)
+    """Ecological warning color - dark goldenrod."""

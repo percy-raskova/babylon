@@ -266,6 +266,16 @@ def calculate_imperial_rent(wages: Currency, value: Currency) -> Currency:
 - Blank line required before and after code blocks
 - Examples should pass `pytest --doctest-modules`
 
+**Maintainability Refactoring Pattern**:
+When refactoring to improve Maintainability Index (MI), move rich theory from function docstrings to RST files:
+
+1. **Module docstring**: Keep theory summary, See Also cross-references
+2. **Function docstring**: One-line summary + Args + Returns + minimal Example
+3. **RST file** (`docs/reference/*.rst`): Full LaTeX formulas, historical context, code examples
+
+This preserves rich documentation in Sphinx output while reducing LOC that penalizes MI scores.
+The `ln(LOC)` term in MI formula treats docstrings and code equally.
+
 **Why This Matters**: Sphinx autodoc generates API documentation from docstrings. Malformed docstrings produce warnings that block CI (we use `-W` flag). See `ai-docs/tooling.yaml` for configuration details.
 
 ## Mathematical Core

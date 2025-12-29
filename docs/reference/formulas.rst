@@ -137,10 +137,25 @@ This energy routes based on solidarity:
 Ideological Routing
 ~~~~~~~~~~~~~~~~~~~
 
-Multi-dimensional consciousness routing from crisis conditions:
+Multi-dimensional consciousness routing from crisis conditions (George Jackson analysis):
 
-- High solidarity + wage fall → Class consciousness increases
-- Low solidarity + wage fall → National identity increases
+.. math::
+
+   E_{agitation} = |W_{change}| \times \lambda_{loss} + |X_{change}| \times \lambda_{loss}
+
+Where:
+
+- :math:`W_{change}` = Wage change (negative = crisis)
+- :math:`X_{change}` = Wealth change (negative = extraction)
+- :math:`\lambda_{loss} = 2.25` (loss aversion coefficient)
+
+Routing based on solidarity infrastructure:
+
+- **High solidarity** + material loss → Class consciousness increases (revolutionary)
+- **Low solidarity** + material loss → National identity increases (fascist)
+
+Historical examples: Germany 1933 (crisis + atomization → fascism) vs
+Russia 1917 (crisis + organization → revolution).
 
 **Implementation:**
 
@@ -150,12 +165,14 @@ Multi-dimensional consciousness routing from crisis conditions:
 
    new_class, new_nation, new_agitation = calculate_ideological_routing(
        wage_change=-20.0,
+       wealth_change=-10.0,  # Wealth extraction compounds crisis
        solidarity_pressure=0.9,
        current_class_consciousness=0.5,
        current_national_identity=0.5,
        current_agitation=0.0,
        agitation_decay=0.1
    )
+   # High solidarity routes agitation to class consciousness
 
 Survival Calculus Formulas
 --------------------------
@@ -469,6 +486,70 @@ Models bourgeoisie policy decisions based on imperial rent pool and tension:
        aggregate_tension=0.2
    )  # Returns ("bribery", 0.05, 0.0)
 
+Metabolic Rift Formulas
+-----------------------
+
+Ecological limits on capital accumulation (Slice 1.4).
+
+Biocapacity Delta
+~~~~~~~~~~~~~~~~~
+
+Models change in ecological carrying capacity:
+
+.. math::
+
+   \Delta B = R - (E \times \eta)
+
+Where:
+
+- :math:`R` = Regeneration (fraction of max restored per tick)
+- :math:`E` = Extraction intensity × current biocapacity
+- :math:`\eta` = Entropy factor (waste multiplier, typically 1.2)
+
+When :math:`\Delta B < 0`, the system is depleting faster than regenerating.
+
+**Implementation:**
+
+.. code-block:: python
+
+   from babylon.systems.formulas import calculate_biocapacity_delta
+
+   delta = calculate_biocapacity_delta(
+       regeneration_rate=0.02,   # 2% max restored per tick
+       max_biocapacity=100.0,
+       extraction_intensity=0.05,
+       current_biocapacity=50.0,
+       entropy_factor=1.2
+   )  # Returns -1.0 (depletion)
+
+Overshoot Ratio
+~~~~~~~~~~~~~~~
+
+Measures ecological overshoot:
+
+.. math::
+
+   O = \frac{C}{B}
+
+Where:
+
+- :math:`C` = Total consumption across all entities
+- :math:`B` = Total biocapacity available
+
+When :math:`O > 1.0`, the system is in ecological overshoot (consuming more
+than the planet can regenerate).
+
+**Implementation:**
+
+.. code-block:: python
+
+   from babylon.systems.formulas import calculate_overshoot_ratio
+
+   ratio = calculate_overshoot_ratio(
+       total_consumption=200.0,
+       total_biocapacity=100.0
+   )  # Returns 2.0 (2x overshoot)
+
 Formula-to-System Mapping
 -------------------------
 
@@ -500,6 +581,9 @@ Formula-to-System Mapping
    * - Bourgeoisie Decision
      - ContradictionSystem
      - ``systems/contradiction.py``
+   * - Metabolic Rift
+     - MetabolicSystem
+     - ``systems/metabolic.py``
 
 See Also
 --------

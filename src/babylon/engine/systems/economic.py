@@ -1,14 +1,6 @@
-"""Economic systems for the Babylon simulation - The Base.
+"""Economic systems: 5-phase Imperial Circuit with pool tracking.
 
-Sprint 3.4.1: Imperial Circuit - 4-node value flow model.
-Sprint 3.4.4: Dynamic Balance - Pool tracking and decision heuristics.
-
-The Imperial Circuit has five phases:
-1. EXPLOITATION: P_w -> P_c (imperial rent extraction)
-2. TRIBUTE: P_c -> C_b (comprador keeps 15% cut) -> FEEDS POOL
-3. WAGES: C_b -> C_w (dynamic rate super-wages to labor aristocracy) -> DRAINS POOL
-4. CLIENT_STATE: C_b -> P_c (subsidy when unstable, converts to repression) -> DRAINS POOL
-5. DECISION: Bourgeoisie heuristics update wage_rate/repression based on pool/tension
+See :doc:`/reference/systems` for full theory (PPP Model, Iron Lung, Decision Matrix).
 """
 
 from __future__ import annotations
@@ -50,21 +42,10 @@ def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
 
 
 class ImperialRentSystem:
-    """Imperial Circuit Economic System - 5-phase value extraction with pool tracking.
+    """5-phase Imperial Circuit: Extraction → Tribute → Wages → Subsidy → Decision.
 
-    Sprint 3.4.4: Dynamic Balance - The Gas Tank and Driver.
-
-    Implements the MLM-TW model of value flow with finite resources:
-    - Phase 1: Extraction (P_w -> P_c via EXPLOITATION)
-    - Phase 2: Tribute (P_c -> C_b via TRIBUTE, minus comprador cut) -> FEEDS POOL
-    - Phase 3: Wages (C_b -> C_w via WAGES, dynamic rate) -> DRAINS POOL
-    - Phase 4: Subsidy (C_b -> P_c via CLIENT_STATE, stabilization) -> DRAINS POOL
-    - Phase 5: Decision (Bourgeoisie heuristics adjust wage_rate/repression)
-
-    The imperial_rent_pool in GlobalEconomy tracks available resources:
-    - Inflow: Tribute received by Core Bourgeoisie (post-comprador cut)
-    - Outflow: Wages paid + Subsidies paid
-    - When pool depletes, bourgeoisie must choose between austerity or repression
+    Pool tracks finite resources (inflow from tribute, outflow to wages/subsidy).
+    See :doc:`/reference/systems` for full theory.
     """
 
     name = "Imperial Rent"
@@ -75,18 +56,7 @@ class ImperialRentSystem:
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Apply the 5-phase Imperial Circuit to the graph.
-
-        Phases execute in sequence, as each depends on the previous:
-        1. Extraction must happen before tribute (P_c needs wealth to send)
-        2. Tribute must happen before wages (C_b needs wealth to pay) - FEEDS POOL
-        3. Wages capped at available pool - DRAINS POOL
-        4. Subsidy capped at available pool after wages - DRAINS POOL
-        5. Decision phase: Bourgeoisie heuristics update economy for next tick
-
-        The economy state is read from graph.graph["economy"] and written back
-        after all phases complete.
-        """
+        """Execute 5-phase circuit. Economy state in graph.graph['economy']."""
         # Load economy from graph metadata (or create default)
         economy = self._load_economy(graph, services)
         initial_pool = services.defines.economy.initial_rent_pool
@@ -118,15 +88,7 @@ class ImperialRentSystem:
         context: ContextType,
         tick_context: dict[str, Any] | None = None,
     ) -> None:
-        """Phase 1: Imperial rent extraction via EXPLOITATION edges.
-
-        When extraction targets CORE_BOURGEOISIE directly (2-node scenario
-        without comprador intermediary), the extracted rent is tracked as
-        tribute_inflow to enable wage calculations.
-
-        Epoch 0 Physics Hardening: Extraction efficiency is annual. Divided by
-        weeks_per_year for per-tick rate (weekly ticks).
-        """
+        """Phase 1: Extract via EXPLOITATION edges. Emits SURPLUS_EXTRACTION."""
         calculate_imperial_rent = services.formulas.get("imperial_rent")
         # Epoch 0: Convert annual extraction rate to per-tick (weekly) rate
         annual_extraction_efficiency = services.defines.economy.extraction_efficiency
@@ -201,14 +163,7 @@ class ImperialRentSystem:
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],  # noqa: ARG002 - Used for pool tracking
     ) -> None:
-        """Phase 2: Comprador tribute via TRIBUTE edges -> FEEDS POOL.
-
-        The comprador class keeps a cut (default 15%) and sends the rest
-        as tribute to the core bourgeoisie.
-
-        Sprint 3.4.4: Tribute to Core Bourgeoisie feeds the imperial_rent_pool.
-        Only tribute reaching CORE_BOURGEOISIE nodes contributes to the pool.
-        """
+        """Phase 2: Comprador tribute via TRIBUTE edges. FEEDS POOL."""
         _ = context  # Unused but kept for API consistency
         comprador_cut = services.defines.economy.comprador_cut
 
@@ -254,34 +209,7 @@ class ImperialRentSystem:
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
     ) -> None:
-        """Phase 3: Super-wages via WAGES edges -> DRAINS POOL.
-
-        The core bourgeoisie pays a fraction of their INCOMING TRIBUTE as super-wages
-        to the labor aristocracy (core workers). This is the bribe that
-        prevents revolution in the core.
-
-        BUG FIX: Wages are calculated from tribute_inflow (income flow), not
-        from bourgeoisie_wealth (accumulated capital). This ensures C_b
-        accumulates wealth over time, matching MLM-TW theory.
-
-        PPP Model (Purchasing Power Parity):
-        Super-wages don't manifest as direct cash transfers. Instead, the
-        labor aristocracy receives nominal wages but enjoys enhanced purchasing
-        power due to cheap commodities from the periphery.
-
-        Formula:
-            PPP Multiplier = 1 + (extraction_efficiency * superwage_multiplier * ppp_impact)
-            Effective Wealth = Nominal Wealth + (Nominal Wage * (PPP Multiplier - 1))
-            Unearned Increment = Effective Wealth - Nominal Wealth
-
-        The "unearned increment" is the material basis of labor aristocracy loyalty.
-
-        Sprint 3.4.4: Uses dynamic wage_rate from economy, not static config.
-        Wages are capped at available pool to enforce scarcity.
-
-        Epoch 0 Physics Hardening: Wage rates are annual. Divided by
-        weeks_per_year for per-tick rate (weekly ticks).
-        """
+        """Phase 3: Super-wages via WAGES edges. DRAINS POOL. Applies PPP Model."""
         _ = context  # Unused but kept for API consistency
         # Use dynamic wage rate from economy, not static config
         # Epoch 0: Convert annual rate to per-tick (weekly) rate
@@ -357,17 +285,7 @@ class ImperialRentSystem:
         context: ContextType,
         tick_context: dict[str, Any],
     ) -> None:
-        """Phase 4: Imperial subsidy via CLIENT_STATE edges (The Iron Lung) -> DRAINS POOL.
-
-        When a client state becomes unstable (P(S|R) >= threshold * P(S|A)),
-        the core provides a subsidy that converts to repression capacity.
-
-        This is the mechanism by which imperial wealth is used to suppress
-        revolution in the periphery. Wealth is NOT conserved - it converts
-        to suppression (military aid, police training, etc.).
-
-        Sprint 3.4.4: Subsidy is capped at available pool after wages.
-        """
+        """Phase 4: CLIENT_STATE subsidy (Iron Lung). DRAINS POOL. Emits IMPERIAL_SUBSIDY."""
         subsidy_trigger_threshold = services.defines.economy.subsidy_trigger_threshold
         subsidy_conversion_rate = services.defines.economy.subsidy_conversion_rate
 
@@ -483,18 +401,7 @@ class ImperialRentSystem:
         tick_context: dict[str, Any],
         initial_pool: float,
     ) -> None:
-        """Phase 5: Bourgeoisie decision heuristics (Sprint 3.4.4).
-
-        Based on pool_ratio and aggregate_tension, the bourgeoisie chooses:
-        - BRIBERY: Increase wages (when prosperous and tension low)
-        - AUSTERITY: Decrease wages (when pool low and tension manageable)
-        - IRON_FIST: Increase repression (when pool low and tension high)
-        - CRISIS: Both wage cuts and repression spike (when pool critical)
-        - NO_CHANGE: Maintain status quo (neutral zone)
-
-        This phase updates tick_context with new wage_rate and repression_level
-        for the NEXT tick. It also emits ECONOMIC_CRISIS event if triggered.
-        """
+        """Phase 5: Bourgeoisie heuristics. Updates wage_rate/repression. Emits ECONOMIC_CRISIS."""
         # Get decision formula
         calculate_decision = services.formulas.get("bourgeoisie_decision")
 

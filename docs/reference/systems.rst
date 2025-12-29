@@ -72,25 +72,156 @@ ImperialRentSystem
 
 :py:class:`babylon.engine.systems.economic.ImperialRentSystem`
 
-**Purpose:** Extract wealth via EXPLOITATION edges.
+**Purpose:** Implement the 5-phase Imperial Circuit with pool-based resource tracking.
+
+The Imperial Circuit (Sprint 3.4.1, 3.4.4)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Imperial Circuit models MLM-TW value extraction as a 5-phase cycle with
+finite resources tracked via an ``imperial_rent_pool`` ("The Gas Tank"):
+
+.. code-block:: text
+
+   Phase 1: EXPLOITATION     Phase 2: TRIBUTE        Phase 3: WAGES
+   P_w ──────────► P_c ──────────► C_b ──────────► C_w
+   (Periphery      (Comprador      (Core           (Labor
+    Worker)         Class)          Bourgeoisie)    Aristocracy)
+        │               │               │
+        │               │               ▼
+        │               │          DRAINS POOL
+        │               │
+        │               ▼
+        │          FEEDS POOL
+        │
+        └──────────────────────────────────────────────┐
+                                                       │
+   Phase 4: CLIENT_STATE (Iron Lung)                   │
+   C_b ──────────► P_c                                 │
+        │          (converts to repression)            │
+        ▼                                              │
+   DRAINS POOL                                         │
+                                                       │
+   Phase 5: DECISION ◄─────────────────────────────────┘
+   (Bourgeoisie heuristics adjust wage_rate/repression)
+
+**Phase Summary:**
 
 .. list-table::
-   :widths: 20 80
+   :header-rows: 1
+   :widths: 10 15 30 20 25
 
-   * - **Inputs**
-     - EXPLOITATION edges, tribute rates
-   * - **Outputs**
-     - Updated wealth values, TRIBUTE edge flows
+   * - Phase
+     - Edge Type
+     - Description
+     - Pool Effect
+     - Formula
+   * - 1
+     - EXPLOITATION
+     - Extract imperial rent from periphery workers
+     - (direct to C_b feeds pool)
+     - :math:`\Phi = \alpha W_p (1 - \Psi_p)`
+   * - 2
+     - TRIBUTE
+     - Comprador sends 85% to core (keeps 15% cut)
+     - **FEEDS** pool
+     - ``tribute = wealth * (1 - comprador_cut)``
+   * - 3
+     - WAGES
+     - Super-wages to labor aristocracy
+     - **DRAINS** pool
+     - ``wages = tribute_inflow * wage_rate``
+   * - 4
+     - CLIENT_STATE
+     - Subsidy converts to repression capacity
+     - **DRAINS** pool
+     - Triggered when :math:`P(S|R) \geq \theta \cdot P(S|A)`
+   * - 5
+     - (internal)
+     - Bourgeoisie decision heuristics
+     - Adjusts rates
+     - See Decision Matrix below
 
-**Logic:**
+The PPP Model (Super-Wages)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Super-wages don't manifest as direct cash transfers. Instead, the labor
+aristocracy receives nominal wages but enjoys enhanced purchasing power
+due to cheap commodities from the periphery. This is **Purchasing Power Parity**:
+
+.. math::
+
+   \text{PPP Multiplier} = 1 + (\alpha \times m_{superwage} \times p_{impact})
+
+.. math::
+
+   \text{Effective Wealth} = W_{nominal} + W_{nominal} \times (\text{PPP Mult} - 1)
+
+.. math::
+
+   \text{Unearned Increment} = \text{Effective Wealth} - W_{nominal}
+
+The "unearned increment" is the material basis of labor aristocracy loyalty -
+they receive more than they produce via imperial rent transfer.
+
+The Iron Lung (Client State Subsidy)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When a client state becomes unstable (:math:`P(S|R) \geq \theta \times P(S|A)`),
+the core provides subsidy that **converts to repression capacity**, not wealth.
+This models military aid, police training, and suppression infrastructure.
+
+Wealth is NOT conserved - it transforms into suppression capability:
 
 .. code-block:: python
 
-   for edge in graph.edges(data=True):
-       if edge["edge_type"] == EdgeType.EXPLOITATION:
-           tribute = edge["rate"] * source_wealth
-           graph.nodes[target]["wealth"] -= tribute
-           graph.nodes[source]["wealth"] += tribute
+   repression_boost = subsidy_amount * conversion_rate
+   target["repression_faced"] = min(1.0, current + repression_boost)
+
+Decision Heuristics (Phase 5)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Based on ``pool_ratio`` and ``aggregate_tension``, the bourgeoisie chooses:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 15 20 20 20
+
+   * - Decision
+     - Pool Ratio
+     - Tension
+     - Wage Delta
+     - Repression Delta
+   * - **BRIBERY**
+     - ≥ 0.7
+     - < 0.3
+     - +5%
+     - 0
+   * - **NO_CHANGE**
+     - 0.3-0.7
+     - any
+     - 0
+     - 0
+   * - **AUSTERITY**
+     - < 0.3
+     - ≤ 0.5
+     - -5%
+     - 0
+   * - **IRON_FIST**
+     - < 0.3
+     - > 0.5
+     - 0
+     - +10%
+   * - **CRISIS**
+     - < 0.1
+     - any
+     - -15%
+     - +20%
+
+**Events Emitted:**
+
+- ``SURPLUS_EXTRACTION``: On each rent extraction (Phase 1)
+- ``IMPERIAL_SUBSIDY``: On client state subsidy (Phase 4)
+- ``ECONOMIC_CRISIS``: When CRISIS decision triggers (Phase 5)
 
 SolidaritySystem
 ----------------

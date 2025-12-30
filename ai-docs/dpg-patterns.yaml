@@ -1,0 +1,516 @@
+# DearPyGui Development Patterns & Quick Reference
+# ================================================
+# Distilled from Babylon DPG development sessions (Dec 2025)
+# Purpose: Prevent repeating past mistakes, provide quick solutions
+#
+# C7 Library ID: /dearpygui/dearpygui (native Python GUI library)
+
+meta:
+  version: "1.0.0"
+  created: "2025-12-30"
+  purpose: |
+    Token-efficient reference for DearPyGui patterns learned during
+    Synopticon dashboard development. Consult when:
+    - Building new UI components
+    - Debugging layout issues
+    - Writing UI tests
+    - Handling state updates
+  cross_references:
+    - "ai-docs/design-system.yaml (colors, aesthetic)"
+    - "ai-docs/ui-wireframes.yaml (layout specification)"
+  source_of_truth: "src/babylon/ui/dpg_runner.py"
+
+# =============================================================================
+# CORE ARCHITECTURE PATTERN
+# =============================================================================
+
+architecture:
+
+  dashboard_state:
+    description: "Centralized state management via dataclass"
+    why: |
+      DPG is immediate-mode GUI. State must be tracked externally
+      and pushed to widgets during update cycles.
+    pattern: |
+      @dataclass
+      class DashboardState:
+          """Mutable state container for dashboard data."""
+
+          # Historical data for plots
+          wealth_history: list[tuple[float, float, float, float]] = field(default_factory=list)
+          telemetry_history: list[tuple[float, float, float]] = field(default_factory=list)
+
+          # Log data for scrollable lists
+          events: list[str] = field(default_factory=list)
+          narratives: list[str] = field(default_factory=list)
+
+          # Current metrics
+          metrics: dict[str, float] = field(default_factory=dict)
+
+          # Simulation state
+          tick: int = 0
+          is_playing: bool = False
+
+          def reset(self) -> None:
+              """Clear all history and reset to initial state."""
+              self.wealth_history.clear()
+              self.events.clear()
+              self.tick = 0
+
+    usage: |
+      # Module-level state (or instance attribute)
+      _state = DashboardState()
+
+      def update_from_simulation(graph: nx.DiGraph) -> None:
+          """Push simulation state to dashboard state."""
+          _state.tick += 1
+          _state.wealth_history.append(extract_wealth(graph))
+          # UI will read from _state on next frame
+
+  build_panel_pattern:
+    description: "Factory function for each dashboard panel"
+    why: |
+      Separates UI construction from state updates.
+      Each panel is self-contained and testable.
+    pattern: |
+      def build_wealth_trend_panel(parent: int) -> int:
+          """Build the wealth trend plot panel.
+
+          Args:
+              parent: DPG parent container ID.
+
+          Returns:
+              The plot widget ID for later updates.
+          """
+          with dpg.child_window(parent=parent, width=480, height=450):
+              with dpg.plot(label="Wealth Trend", width=-1, height=-1) as plot:
+                  dpg.add_plot_axis(dpg.mvXAxis, label="Tick")
+                  with dpg.plot_axis(dpg.mvYAxis, label="Wealth") as y_axis:
+                      # Store series IDs for updates
+                      series_pw = dpg.add_line_series([], [], label="P_w")
+                      series_cb = dpg.add_line_series([], [], label="C_b")
+          return plot
+
+    naming_convention: |
+      build_<panel_name>_panel(parent: int) -> int | None
+      - Always takes parent container ID
+      - Returns widget ID if updates needed, None otherwise
+
+  update_callback_pattern:
+    description: "Per-panel update functions for state synchronization"
+    why: |
+      DPG widgets are updated by ID reference.
+      Each panel has a dedicated update function called per frame.
+    pattern: |
+      def update_wealth_trend(series_ids: dict[str, int]) -> None:
+          """Update wealth trend plot from current state.
+
+          Args:
+              series_ids: Map of class name to line series ID.
+          """
+          if not _state.wealth_history:
+              return
+
+          ticks = list(range(len(_state.wealth_history)))
+
+          # Update each series
+          for i, class_name in enumerate(["P_w", "P_c", "C_b", "C_w"]):
+              values = [row[i] for row in _state.wealth_history]
+              dpg.set_value(series_ids[class_name], [ticks, values])
+
+    best_practices:
+      - "Check for empty state before updating"
+      - "Use dpg.set_value() for data updates"
+      - "Batch updates in single function call"
+      - "Store widget IDs at construction time"
+
+# =============================================================================
+# LAYOUT PATTERNS
+# =============================================================================
+
+layout:
+
+  fixed_viewport:
+    description: "Single-window dashboard with fixed dimensions"
+    pattern: |
+      def main() -> None:
+          dpg.create_context()
+          dpg.create_viewport(title="Babylon", width=1460, height=820)
+
+          with dpg.window(tag="primary_window"):
+              # Layout here
+              pass
+
+          dpg.setup_dearpygui()
+          dpg.set_primary_window("primary_window", True)
+          dpg.show_viewport()
+          dpg.start_dearpygui()
+          dpg.destroy_context()
+
+  two_column_layout:
+    description: "Left/right column split using child windows"
+    pattern: |
+      with dpg.window(tag="primary_window"):
+          with dpg.group(horizontal=True):
+              # Left column (500px)
+              with dpg.child_window(width=500, height=-1):
+                  build_left_panels()
+
+              # Right column (remaining width)
+              with dpg.child_window(width=-1, height=-1):
+                  build_right_panels()
+
+    gotcha: |
+      DPG uses pixels, not CSS percentages.
+      Calculate widths explicitly: right_width = viewport_width - left_width
+
+  stacked_panels:
+    description: "Vertical panel arrangement within a column"
+    pattern: |
+      with dpg.child_window(width=500, height=-1):
+          # Panel 1 (fixed height)
+          with dpg.child_window(height=450):
+              build_wealth_trend_panel()
+
+          # Panel 2 (remaining height)
+          with dpg.child_window(height=-1):
+              build_telemetry_panel()
+
+    height_values:
+      positive: "Fixed pixel height"
+      negative_1: "Fill remaining space (-1)"
+      zero: "Auto-fit to content (0)"
+
+# =============================================================================
+# THEMING PATTERNS
+# =============================================================================
+
+theming:
+
+  global_theme:
+    description: "Apply Bunker Constructivism palette globally"
+    pattern: |
+      def setup_theme() -> None:
+          """Configure DPG theme with Bunker Constructivism palette."""
+          with dpg.theme() as global_theme:
+              with dpg.theme_component(dpg.mvAll):
+                  # Window/panel backgrounds
+                  dpg.add_theme_color(
+                      dpg.mvThemeCol_WindowBg,
+                      DPGColors.VOID,
+                      category=dpg.mvThemeCat_Core,
+                  )
+                  dpg.add_theme_color(
+                      dpg.mvThemeCol_ChildBg,
+                      DPGColors.WET_CONCRETE,
+                      category=dpg.mvThemeCat_Core,
+                  )
+                  # Text
+                  dpg.add_theme_color(
+                      dpg.mvThemeCol_Text,
+                      DPGColors.SILVER_DUST,
+                      category=dpg.mvThemeCat_Core,
+                  )
+                  # Borders
+                  dpg.add_theme_color(
+                      dpg.mvThemeCol_Border,
+                      DPGColors.DARK_METAL,
+                      category=dpg.mvThemeCat_Core,
+                  )
+
+          dpg.bind_theme(global_theme)
+
+  line_series_theme:
+    description: "Per-series color theming for plots"
+    pattern: |
+      def _create_series_theme(color: tuple[int, int, int, int]) -> int:
+          """Create a DPG theme for a line series.
+
+          Args:
+              color: RGBA tuple for the line color.
+
+          Returns:
+              DPG theme ID to bind to a line series.
+          """
+          theme: int = dpg.add_theme()
+          component = dpg.add_theme_component(dpg.mvLineSeries, parent=theme)
+          dpg.add_theme_color(
+              dpg.mvPlotCol_Line,
+              color,
+              category=dpg.mvThemeCat_Plots,
+              parent=component,
+          )
+          return theme
+
+      # Usage
+      series = dpg.add_line_series([], [], label="P_w", parent=y_axis)
+      dpg.bind_item_theme(series, _create_series_theme(DPGColors.DATA_GREEN))
+
+  color_constants:
+    description: "DPGColors class provides RGBA tuples"
+    location: "src/babylon/ui/design_system.py"
+    format: "tuple[int, int, int, int] - (R, G, B, A) where each is 0-255"
+    palette:
+      VOID: "(5, 5, 5, 255)"
+      WET_CONCRETE: "(26, 26, 26, 255)"
+      DARK_METAL: "(64, 64, 64, 255)"
+      SILVER_DUST: "(192, 192, 192, 255)"
+      DATA_GREEN: "(57, 255, 20, 255)"
+      PHOSPHOR_RED: "(212, 0, 0, 255)"
+      EXPOSED_COPPER: "(255, 215, 0, 255)"
+      GROW_PURPLE: "(157, 0, 255, 255)"
+      ROYAL_BLUE: "(65, 105, 225, 255)"
+
+# =============================================================================
+# COMPONENT PATTERNS
+# =============================================================================
+
+components:
+
+  plot_with_multiple_series:
+    description: "Line chart with multiple data series"
+    pattern: |
+      with dpg.plot(label="Wealth Trend", width=-1, height=-1) as plot:
+          # X-axis configuration
+          dpg.add_plot_axis(dpg.mvXAxis, label="Tick", tag="x_axis")
+
+          # Y-axis with series
+          with dpg.plot_axis(dpg.mvYAxis, label="Wealth") as y_axis:
+              series_pw = dpg.add_line_series([], [], label="P_w", parent=y_axis)
+              series_pc = dpg.add_line_series([], [], label="P_c", parent=y_axis)
+              series_cb = dpg.add_line_series([], [], label="C_b", parent=y_axis)
+              series_cw = dpg.add_line_series([], [], label="C_w", parent=y_axis)
+
+          # Optional: legend
+          dpg.add_plot_legend()
+
+      # Store IDs for updates
+      _series_ids = {"P_w": series_pw, "P_c": series_pc, "C_b": series_cb, "C_w": series_cw}
+
+    update: |
+      # Update series data
+      dpg.set_value(series_pw, [x_data, y_data])
+
+  scrollable_text_log:
+    description: "Scrollable log with colored text entries"
+    pattern: |
+      with dpg.child_window(height=-1, border=True) as log_window:
+          # Content will be added dynamically
+          pass
+
+      def add_log_entry(text: str, color: tuple[int, int, int, int]) -> None:
+          """Add a colored text entry to the log."""
+          dpg.add_text(text, color=color, parent=log_window)
+          # Auto-scroll to bottom
+          dpg.set_y_scroll(log_window, dpg.get_y_scroll_max(log_window))
+
+  control_button_group:
+    description: "Horizontal button layout with callbacks"
+    pattern: |
+      with dpg.group(horizontal=True):
+          dpg.add_button(label="STEP", callback=on_step)
+          dpg.add_button(label="PLAY", callback=on_play)
+          dpg.add_button(label="PAUSE", callback=on_pause)
+          dpg.add_button(label="RESET", callback=on_reset)
+
+      def on_step(sender: int, app_data: Any) -> None:
+          """Single step callback."""
+          simulation.step()
+          update_all_panels()
+
+  metrics_display:
+    description: "Key-value metrics panel"
+    pattern: |
+      def build_metrics_panel(parent: int) -> dict[str, int]:
+          """Build metrics display, return label IDs for updates."""
+          label_ids = {}
+
+          with dpg.child_window(parent=parent, width=220, height=-1):
+              dpg.add_text("KEY METRICS", color=DPGColors.GROW_PURPLE)
+              dpg.add_separator()
+
+              for metric in ["Consciousness Gap", "Wealth Gap", "Tension"]:
+                  with dpg.group(horizontal=True):
+                      dpg.add_text(f"{metric}:")
+                      label_ids[metric] = dpg.add_text("0.00")
+
+          return label_ids
+
+      def update_metrics(label_ids: dict[str, int]) -> None:
+          """Update metric values."""
+          dpg.set_value(label_ids["Consciousness Gap"], f"{_state.metrics.get('c_gap', 0):.2f}")
+
+# =============================================================================
+# SIMULATION LOOP PATTERN
+# =============================================================================
+
+simulation_loop:
+
+  play_pause_pattern:
+    description: "Frame callback for auto-advancing simulation"
+    pattern: |
+      def frame_callback() -> None:
+          """Called every frame by DPG."""
+          if _state.is_playing:
+              # Throttle to ~1 tick per second
+              if dpg.get_frame_count() % 60 == 0:
+                  simulation.step()
+                  update_all_panels()
+
+      # Register with DPG
+      dpg.set_frame_callback(frame_callback)
+
+  step_callback:
+    description: "Single-step simulation advance"
+    pattern: |
+      def on_step(sender: int, app_data: Any) -> None:
+          """Advance simulation by one tick."""
+          # 1. Run simulation step
+          graph = simulation.step()
+
+          # 2. Extract state
+          extract_state_to_dashboard(graph)
+
+          # 3. Update all panels
+          update_wealth_trend()
+          update_telemetry()
+          update_events()
+          update_metrics()
+
+# =============================================================================
+# TESTING PATTERNS
+# =============================================================================
+
+testing:
+
+  mock_dpg_context:
+    description: "Testing DPG code without a display"
+    pattern: |
+      import pytest
+      from unittest.mock import patch, MagicMock
+
+      @pytest.fixture
+      def mock_dpg():
+          """Mock DPG for headless testing."""
+          with patch("babylon.ui.dpg_runner.dpg") as mock:
+              # Configure common return values
+              mock.add_theme.return_value = 1
+              mock.add_line_series.return_value = 2
+              yield mock
+
+      def test_build_panel(mock_dpg):
+          """Test panel construction without GPU."""
+          build_wealth_trend_panel(parent=0)
+          mock_dpg.add_plot.assert_called_once()
+
+  state_testing:
+    description: "Testing DashboardState logic"
+    pattern: |
+      def test_state_reset():
+          """Test that reset clears all history."""
+          state = DashboardState()
+          state.wealth_history.append((1.0, 2.0, 3.0, 4.0))
+          state.tick = 10
+
+          state.reset()
+
+          assert state.wealth_history == []
+          assert state.tick == 0
+
+  integration_testing:
+    description: "Testing full dashboard lifecycle"
+    pattern: |
+      @pytest.fixture
+      def dashboard_state():
+          """Fresh dashboard state for each test."""
+          return DashboardState()
+
+      def test_simulation_to_ui_flow(dashboard_state):
+          """Test data flows from simulation to state."""
+          # Simulate step
+          graph = create_test_graph()
+          extract_state_to_dashboard(graph, dashboard_state)
+
+          # Verify state updated
+          assert len(dashboard_state.wealth_history) == 1
+          assert dashboard_state.tick == 1
+
+# =============================================================================
+# GOTCHAS CHECKLIST
+# =============================================================================
+
+gotchas:
+  - issue: "Widget not visible"
+    cause: "Parent container has zero dimensions"
+    fix: "Ensure parent has explicit width/height or uses -1 for fill"
+
+  - issue: "Plot data not updating"
+    cause: "Using wrong data format"
+    fix: "dpg.set_value(series_id, [x_list, y_list]) - both must be lists"
+
+  - issue: "Theme not applying"
+    cause: "Theme bound before widget creation"
+    fix: "Create widget first, then bind theme with dpg.bind_item_theme()"
+
+  - issue: "Scroll position not updating"
+    cause: "Using get_y_scroll before content added"
+    fix: "Call dpg.set_y_scroll() after adding content"
+
+  - issue: "Callback not firing"
+    cause: "Wrong callback signature"
+    fix: "Use (sender: int, app_data: Any) -> None signature"
+
+  - issue: "Import error: dearpygui"
+    cause: "Missing type stubs"
+    fix: "import dearpygui.dearpygui as dpg  # type: ignore[import-not-found]"
+
+  - issue: "Test fails with 'context not created'"
+    cause: "DPG requires context for any operation"
+    fix: "Mock dpg entirely or use dpg.create_context() in test setup"
+
+  - issue: "Colors look wrong"
+    cause: "Using hex instead of RGBA tuple"
+    fix: "DPG uses (R, G, B, A) tuples with 0-255 values, not hex strings"
+
+# =============================================================================
+# PERFORMANCE NOTES
+# =============================================================================
+
+performance:
+
+  update_frequency:
+    description: "DPG renders at 60 FPS by default"
+    recommendation: "Throttle simulation updates to 1/sec for readability"
+    pattern: |
+      if dpg.get_frame_count() % 60 == 0:
+          simulation.step()
+
+  data_limits:
+    description: "Limit historical data for plot performance"
+    recommendation: "Keep last 100 data points for smooth rendering"
+    pattern: |
+      MAX_HISTORY = 100
+
+      if len(_state.wealth_history) > MAX_HISTORY:
+          _state.wealth_history = _state.wealth_history[-MAX_HISTORY:]
+
+  batch_updates:
+    description: "Update all series in single function call"
+    why: "Reduces DPG internal state management overhead"
+    pattern: |
+      def update_all_plots() -> None:
+          """Update all plots in single pass."""
+          for name, series_id in _series_ids.items():
+              dpg.set_value(series_id, [x_data, y_data[name]])
+
+# =============================================================================
+# REFERENCES
+# =============================================================================
+
+references:
+  dearpygui_docs: "https://dearpygui.readthedocs.io/"
+  our_implementation:
+    main: "src/babylon/ui/dpg_runner.py"
+    design: "src/babylon/ui/design_system.py"
+    tests: "tests/unit/ui/test_dpg_runner.py"
+  wireframes: "ai-docs/ui-wireframes.yaml"

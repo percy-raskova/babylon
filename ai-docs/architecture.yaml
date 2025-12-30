@@ -2,14 +2,18 @@
 # How the pieces fit together
 
 meta:
-  version: "4.0.0"
-  updated: "2025-12-26"
+  version: "4.1.0"
+  updated: "2025-12-30"
   status: "Epoch 1 → 2 Bridge architecture defined"
   epoch_compatibility: "1 → 2 Bridge"
+  changes:
+    - "4.1.0: Documented DearPyGui as Presentation Layer technology"
   related_docs:
     - "ai-docs/database-spec.yaml - SQLite schema and DDL"
     - "ai-docs/rag-architecture.yaml - ChromaDB collections"
     - "ai-docs/formulas-spec.yaml - Mathematical formulas"
+    - "ai-docs/ui-wireframes.yaml - DearPyGui layout specification"
+    - "ai-docs/dpg-patterns.yaml - DearPyGui development patterns"
 
 # =============================================================================
 # THE EMBEDDED TRINITY
@@ -154,15 +158,36 @@ dual_pipeline:
   created: "2025-12-26"
 
   principle: |
-    The current Debug UI is a "God View" connected directly to WorldState (Truth).
+    The current Synopticon Dashboard is a "God View" connected directly to WorldState (Truth).
     This MUST remain for Epoch 1 (The Demonstration) to function.
 
     Epoch 2 (The Game) requires a PLAYER VIEW with Fog of War.
     We achieve this by adding a SHADOW LAYER - NOT by refactoring the UI.
 
     Two pipelines run in parallel:
-    - Pipeline A (Truth): Feeds the Debug UI (God View)
+    - Pipeline A (Truth): Feeds the Synopticon Dashboard (God View)
     - Pipeline B (Subjectivity): Feeds the future Game UI (Player View)
+
+  presentation_layer:
+    name: "Synopticon Dashboard"
+    technology: "DearPyGui (native GPU-accelerated desktop)"
+    status: "IMPLEMENTED (Slice 1.5)"
+    implementation:
+      main: "src/babylon/ui/dpg_runner.py"
+      design: "src/babylon/ui/design_system.py"
+      tests: "tests/unit/ui/test_dpg_runner.py"
+    aesthetic: "Bunker Constructivism - Cold War industrial surveillance theme"
+    features:
+      - "Native 1460x820 viewport with 60 FPS updates"
+      - "Real-time telemetry plots (Imperial Rent, LA Stability)"
+      - "4-class wealth trend chart with color-coded series"
+      - "Event log with EventType color coding"
+      - "Narrative feed from NarrativeDirector observer"
+      - "Key metrics panel (consciousness gap, wealth gap, tension)"
+      - "STEP/PLAY/PAUSE/RESET simulation controls"
+    specs:
+      wireframes: "ai-docs/ui-wireframes.yaml"
+      patterns: "ai-docs/dpg-patterns.yaml"
 
   constraint: |
     WorldState is ALWAYS the Source of Truth.
@@ -173,7 +198,7 @@ dual_pipeline:
   pipelines:
     pipeline_a_truth:
       name: "Pipeline A: Truth (God View)"
-      description: "The existing Epoch 1 architecture - unchanged"
+      description: "The existing Epoch 1 architecture - DearPyGui Synopticon Dashboard"
       flow: |
         SimulationEngine
              │
@@ -181,14 +206,16 @@ dual_pipeline:
          WorldState (Source of Truth)
              │
              ▼
-         Debug UI (God View)
+         Synopticon Dashboard (DearPyGui)
       characteristics:
         accuracy: "100% - sees TRUE state of all attributes"
         latency: "0 - instant access to current tick"
         masking: "None - no fog of war"
         purpose: "Development, debugging, demonstration"
       implementation:
+        technology: "DearPyGui (native GPU-accelerated)"
         existing: true
+        location: "src/babylon/ui/dpg_runner.py"
         changes_required: "None - preserve exactly as-is"
 
     pipeline_b_subjectivity:

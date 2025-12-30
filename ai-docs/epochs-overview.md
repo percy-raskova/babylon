@@ -71,7 +71,7 @@ The Epoch + Slice model fixes this:
 | 1.2 | The Struggle | COMPLETE | StruggleSystem, TerritorySystem, George Floyd Dynamic |
 | 1.3 | The Observer | COMPLETE | TopologyMonitor, MetricsCollector, 11 EventTypes |
 | 1.4 | The Rift | IN_PROGRESS | MetabolismSystem, biocapacity, ECOLOGICAL_OVERSHOOT |
-| 1.5 | The Dashboard | PARTIAL | NiceGUI layout, meaningful metrics, metabolic gauge |
+| 1.5 | The Dashboard | 90% COMPLETE | DearPyGui native dashboard, telemetry, narrative feed |
 | 1.6 | The Endgame | NOT_STARTED | Win/lose display, Bondi Algorithm narration |
 | 1.7 | The Graph Bridge | PLANNED | GraphProtocol, NetworkX Adapter, Epoch 2 preparation |
 
@@ -119,29 +119,37 @@ The Epoch + Slice model fixes this:
 
 **Event:** ECOLOGICAL_OVERSHOOT (when consumption > biocapacity)
 
-### Slice 1.5: The Dashboard (PARTIAL)
+### Slice 1.5: The Dashboard (90% COMPLETE)
+
+**Technology:** DearPyGui (native GPU-accelerated desktop)
 
 **Files:**
-- `src/babylon/ui/main.py` - NiceGUI application
+- `src/babylon/ui/dpg_runner.py` - DearPyGui dashboard (1095 lines)
+- `src/babylon/ui/design_system.py` - BunkerPalette + DPGColors
+- `tests/unit/ui/test_dpg_runner.py` - Comprehensive tests (801 lines)
 
-**Remaining Work:**
-- Wire 4-node scenario (currently 2-node)
-- 4 wealth lines color-coded by class
-- Consciousness gap (P_w - C_w)
-- Metabolic gauge showing overshoot_ratio
-- Rift trend chart
-- **Gramscian Wire MVP** - Dual narrative display (see below)
+**Implemented Features:**
+- Native 1460x820 viewport with Bunker Constructivism aesthetic
+- Real-time telemetry plots (Imperial Rent, LA Stability, Wealth Trend)
+- 4-class wealth trend chart (P_w, P_c, C_b, C_w color-coded)
+- Event log with color-coded EventType display
+- Narrative feed from NarrativeDirector observer
+- Key metrics panel (consciousness gap, wealth gap, tension, pool ratio)
+- Status bar with phase state and bifurcation trend indicator
+- STEP/PLAY/PAUSE/RESET simulation controls
 
-#### Gramscian Wire MVP (Slice 1.5 Integration)
+**Remaining Work (10%):**
+- Metabolic gauge showing overshoot_ratio (pending Slice 1.4 completion)
+- Rift trend chart (pending MetabolismSystem integration)
 
-**Spec:** `ai-docs/gramscian-wire-mvp.yaml`
+#### Gramscian Wire MVP (Integrated)
 
-Demonstrates thesis "Neutrality is Hegemony" through dual narrative display:
-- **The State (Corporate Feed):** "Officers restored order amid disturbances"
-- **The Underground (Liberated Signal):** ">>> STATE VIOLENCE - SOLIDARITY REQUIRED <<<"
+The dashboard includes narrative feed panel wired to `NarrativeDirector`:
+- Dual narrative display (Corporate vs Liberated framing)
+- Same event, two framings displayed in real-time
+- No interactive hegemony mechanics yet—that comes in Epoch 2
 
-Same event, two framings. Side-by-side display teaches Gramsci without mechanics.
-No interactive hegemony system yet—that comes in Epoch 2 (see `gramscian-wire-vision.yaml`).
+**Design:** See `ai-docs/ui-wireframes.yaml` for ASCII layout matching implementation.
 
 ### Slice 1.6: The Endgame (NOT STARTED)
 

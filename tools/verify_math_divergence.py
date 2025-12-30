@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verification tool for Multiverse Protocol mathematical divergence.
 
-This tool runs all 8 multiverse scenarios through 10 ticks of simulation
+This tool runs all 8 multiverse scenarios through 52 ticks (1 Imperial Year)
 and produces a markdown table showing the P(S|R) divergence across scenarios.
 
 Expected Results (PPP Model):
@@ -28,6 +28,7 @@ from typing import Final
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import (
     apply_scenario,
     create_two_node_scenario,
@@ -36,8 +37,8 @@ from babylon.engine.scenarios import (
 from babylon.engine.simulation_engine import step
 from babylon.models.scenario import ScenarioConfig
 
-# Number of simulation ticks to run per scenario
-NUM_TICKS: Final[int] = 10
+# Use centralized timescale constant (1 tick = 1 week, 52 ticks = 1 year)
+TICKS_PER_YEAR: Final[int] = GameDefines().timescale.ticks_per_year
 
 # Entity IDs
 WORKER_ID: Final[str] = "C001"  # Periphery worker (exploited)
@@ -46,7 +47,7 @@ OWNER_ID: Final[str] = "C002"  # Core owner (exploiter, receives rent)
 
 def run_scenario_simulation(
     scenario: ScenarioConfig,
-    num_ticks: int = NUM_TICKS,
+    num_ticks: int = TICKS_PER_YEAR,
 ) -> tuple[float, float, float, float, float, float, float]:
     """Run a scenario through simulation and return final metrics.
 
@@ -246,7 +247,7 @@ def main() -> int:
     print("=" * 80)
     print("MULTIVERSE PROTOCOL: PPP Model Mathematical Divergence Verification")
     print("=" * 80)
-    print(f"\nRunning {NUM_TICKS} ticks for each of 8 scenarios...\n")
+    print(f"\nRunning {TICKS_PER_YEAR} ticks (1 Imperial Year) for each of 8 scenarios...\n")
 
     # Get all multiverse scenarios
     scenarios = get_multiverse_scenarios()

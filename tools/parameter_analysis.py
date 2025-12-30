@@ -34,7 +34,8 @@ from babylon.models.world_state import WorldState
 
 # Constants
 ENTITY_IDS: Final[list[str]] = ["C001", "C002", "C003", "C004"]
-DEFAULT_TICKS: Final[int] = 50
+# Use centralized timescale constant (1 tick = 1 week, 52 ticks = 1 year)
+DEFAULT_TICKS: Final[int] = GameDefines().timescale.ticks_per_year
 DEATH_THRESHOLD: Final[float] = 0.001
 PERIPHERY_WORKER_ID: Final[str] = "C001"
 

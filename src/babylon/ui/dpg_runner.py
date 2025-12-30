@@ -36,6 +36,7 @@ from babylon.engine.simulation import Simulation
 from babylon.engine.topology_monitor import TopologyMonitor
 from babylon.models.enums import EventType
 from babylon.ui.design_system import DPGColors
+from babylon.utils.recorder import SessionRecorder
 
 if TYPE_CHECKING:
     pass
@@ -181,9 +182,15 @@ def create_simulation() -> Simulation:
     )
     narrative = NarrativeDirector(use_llm=True, llm=llm)
 
+    # Session recorder for black box debugging
+    recorder = SessionRecorder(
+        metrics_collector=metrics,
+        narrative_director=narrative,
+    )
+
     topology = TopologyMonitor(resilience_test_interval=5)
     return Simulation(
-        initial_state, config, observers=[metrics, narrative, topology], defines=defines
+        initial_state, config, observers=[metrics, recorder, narrative, topology], defines=defines
     )
 
 
@@ -310,6 +317,14 @@ def build_control_panel(pos: tuple[int, int], width: int, height: int) -> None:
     )
     dpg.add_button(
         label="RESET", callback=on_reset, tag="btn_reset", width=70, parent="control_group"
+    )
+    dpg.add_spacer(width=20, parent="control_group")
+    dpg.add_button(
+        label="EXPORT",
+        callback=on_export_logs,
+        tag="btn_export",
+        width=70,
+        parent="control_group",
     )
     dpg.add_spacer(width=20, parent="control_group")
     dpg.add_text("TICK: 0", tag="tick_display", color=DPGColors.DATA_GREEN, parent="control_group")
@@ -574,6 +589,38 @@ def on_reset() -> None:
             tag="event_placeholder",
             color=DPGColors.SILVER_DUST,
         )
+
+
+def on_export_logs() -> None:
+    """Handle EXPORT LOGS button click.
+
+    Finds the SessionRecorder observer and exports the session data
+    to a ZIP archive for debugging and sharing.
+    """
+    state = get_state()
+    if state.simulation is None:
+        log_to_narrative("No simulation running", DPGColors.WARNING_AMBER)
+        return
+
+    # Find SessionRecorder in observers
+    recorder = None
+    for observer in state.simulation._observers:
+        if hasattr(observer, "export_package"):
+            recorder = observer
+            break
+
+    if recorder is None:
+        log_to_narrative("No recorder found", DPGColors.WARNING_AMBER)
+        return
+
+    try:
+        zip_path = recorder.export_package()
+        log_to_narrative(f"Debug logs exported to: {zip_path}", DPGColors.DATA_GREEN)
+        # Show modal with path
+        dpg.set_value("export_path_text", str(zip_path))
+        dpg.configure_item("export_modal", show=True)
+    except Exception as e:
+        log_to_narrative(f"[ERROR] Export failed: {e}", DPGColors.PHOSPHOR_RED)
 
 
 # =============================================================================
@@ -1058,6 +1105,26 @@ def main() -> None:
 
     # Right column - bottom row
     build_event_log(pos=(right_col_x, event_y), width=narrative_w + metrics_w + gap, height=event_h)
+
+    # Export confirmation modal
+    with dpg.window(
+        label="Export Complete",
+        modal=True,
+        show=False,
+        tag="export_modal",
+        width=500,
+        height=120,
+        pos=(viewport_w // 2 - 250, viewport_h // 2 - 60),
+        no_close=True,
+    ):
+        dpg.add_text("Debug logs exported to:", color=DPGColors.SILVER_DUST)
+        dpg.add_text("", tag="export_path_text", color=DPGColors.DATA_GREEN, wrap=480)
+        dpg.add_spacer(height=10)
+        dpg.add_button(
+            label="OK",
+            width=100,
+            callback=lambda: dpg.configure_item("export_modal", show=False),
+        )
 
     # Create viewport
     dpg.create_viewport(title="Babylon Synopticon", width=viewport_w, height=viewport_h)

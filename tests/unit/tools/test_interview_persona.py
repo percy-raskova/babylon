@@ -351,7 +351,7 @@ class TestHardCaseScenario:
         # 3 calls: 2 for dual narratives + 1 for main narrative
         assert mock_llm.call_count == 3
 
-        # Tick 2: The Crash (accumulate previous events)
+        # Tick 2: The Crash (events are per-tick, not accumulated)
         crisis_event = CrisisEvent(
             tick=2,
             pool_ratio=0.12,
@@ -364,14 +364,14 @@ class TestHardCaseScenario:
             entities={worker.id: worker, owner.id: owner},
             relationships=[],
             event_log=[],
-            events=list(state_1.events) + [crisis_event],
+            events=[crisis_event],  # Only this tick's event
         )
 
         director.on_tick(state_1, state_2)
         # 6 calls: 3 from tick 1 + 3 from tick 2
         assert mock_llm.call_count == 6
 
-        # Tick 3: The Reaction (accumulate all events)
+        # Tick 3: The Reaction (events are per-tick, not accumulated)
         phase_event = PhaseTransitionEvent(
             tick=3,
             previous_state="liquid",
@@ -386,7 +386,7 @@ class TestHardCaseScenario:
             entities={worker.id: worker, owner.id: owner},
             relationships=[],
             event_log=[],
-            events=list(state_2.events) + [phase_event],
+            events=[phase_event],  # Only this tick's event
         )
 
         director.on_tick(state_2, state_3)

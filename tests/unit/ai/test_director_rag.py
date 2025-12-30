@@ -246,12 +246,15 @@ class TestDirectorRAGQueryBehavior:
         """on_tick skips RAG query when no new events.
 
         Sprint 4.1: Updated to use typed events.
+        Note: WorldState.events is per-tick (not cumulative), so "no events"
+        means new_state.events is empty.
         """
         from babylon.ai.director import NarrativeDirector
 
         director = NarrativeDirector(rag_pipeline=mock_rag_pipeline)
 
-        # Create a typed event
+        # Previous state had an event, but new state has no events this tick
+        # (events are per-tick, not accumulated)
         old_event = ExtractionEvent(
             tick=0,
             source_id="C001",
@@ -259,9 +262,8 @@ class TestDirectorRAGQueryBehavior:
             amount=5.0,
         )
 
-        # Both states have same events (no new events)
         previous_state = initial_state.model_copy(update={"events": [old_event]})
-        new_state = initial_state.model_copy(update={"tick": 1, "events": [old_event]})
+        new_state = initial_state.model_copy(update={"tick": 1, "events": []})
 
         director.on_tick(previous_state, new_state)
 

@@ -1538,12 +1538,12 @@ class TestPersonaIntegration:
 
         director.on_simulation_start(state, config)
 
-        # Act - Run 3 ticks (events accumulate like in real simulation)
-        accumulated_events: list = []
-        for tick_num, new_events in enumerate(events_per_tick, start=1):
+        # Act - Run 3 ticks (events are per-tick, not accumulated)
+        # Note: WorldState.events contains only that tick's events, not a cumulative list.
+        # The simulation engine creates fresh events each tick.
+        for tick_num, tick_events in enumerate(events_per_tick, start=1):
             prev_state = state
-            accumulated_events = accumulated_events + new_events  # Events accumulate
-            state = state.model_copy(update={"tick": tick_num, "events": accumulated_events})
+            state = state.model_copy(update={"tick": tick_num, "events": tick_events})
             director.on_tick(prev_state, state)
 
         # Assert - 3 narratives generated with consistent persona

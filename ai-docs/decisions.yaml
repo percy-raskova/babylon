@@ -2,7 +2,7 @@
 # Key decisions and their rationale (ADR-style)
 
 meta:
-  version: "1.7.0"
+  version: "1.8.0"
   updated: "2025-12-31"
   format: "decision_id: {status, date, context, decision, rationale, consequences}"
 
@@ -2264,6 +2264,170 @@ pending:
     related_decisions:
       - "ADR020_parameter_tuning_methodology"
       - "ADR016_fascist_bifurcation"
+
+  ADR031_test_constants_architecture:
+    status: "accepted"
+    date: "2025-12-31"
+    title: "Centralized Test Constants with Frozen Dataclasses"
+    context: |
+      During Phase 3-4 development, the test suite accumulated ~1,500+ tests across
+      21 test files with pervasive magic numbers:
+
+      ```python
+      # Before: Magic numbers scattered across tests
+      assert worker.wealth == 10.0  # What does 10.0 mean?
+      assert edge.tension == 0.5    # Threshold? Midpoint? Default?
+      component = VitalityComponent(population=100.0, subsistence_needs=8.0)
+      ```
+
+      Problems with magic numbers:
+      1. **Semantic Opacity**: 0.5 could be probability, ideology, consciousness, ratio
+      2. **Duplicate Definitions**: Same values defined differently across files
+      3. **Maintenance Burden**: Changing a default requires finding all occurrences
+      4. **Test Intent Obscured**: Numbers distract from behavioral testing
+
+      The question: How do we extract these values without over-engineering?
+
+    decision: |
+      **Centralize all test magic numbers in `tests/constants.py` using frozen dataclasses.**
+
+      Structure:
+      ```python
+      @dataclass(frozen=True)
+      class WealthDefaults:
+          """Currency values [0, inf) for test entities."""
+          __test__ = False  # Prevent pytest collection
+          DEFAULT_WEALTH: float = 10.0
+          WORKER_BASELINE: float = 0.5
+          OWNER_BASELINE: float = 10.0
+          SIGNIFICANT: float = 100.0
+          LARGE: float = 1_000_000.0
+
+      @dataclass(frozen=True)
+      class TestConstants:
+          """Single entry point for all test constants."""
+          __test__ = False
+          Wealth: WealthDefaults = field(default_factory=WealthDefaults)
+          Probability: ProbabilityDefaults = field(default_factory=ProbabilityDefaults)
+          # ... other categories
+      ```
+
+      Import pattern:
+      ```python
+      from tests.constants import TestConstants
+      TC = TestConstants
+
+      def test_worker_default_wealth(self) -> None:
+          worker = SocialClass(...)
+          assert worker.wealth == TC.Wealth.DEFAULT_WEALTH  # Semantic!
+      ```
+
+      **Key Distinction: Domain Constants vs Type Boundaries**
+
+      EXTRACT to constants (domain-specific):
+      - Default values (DEFAULT_WEALTH = 10.0)
+      - Threshold values (AWAKENING = 0.7)
+      - Scenario values (PERIPHERY_WORKER = 20.0)
+      - Config defaults (EXTRACTION_EFFICIENCY = 0.8)
+
+      KEEP INLINE (type contract testing):
+      - Boundary values (0.0, 1.0 for Probability type)
+      - Edge cases (-0.001 for "just below zero")
+      - Precision tests (0.123456789 for quantization)
+
+      Rationale: Type boundary tests verify the TYPE DEFINITION itself.
+      The values 0.0 and 1.0 ARE the Probability type contract.
+      Extracting them to constants would reduce clarity.
+
+    rationale:
+      frozen_dataclass:
+        benefit: "Immutable, cannot be accidentally modified during tests"
+        benefit: "IDE autocomplete via dot notation"
+        benefit: "Type hints propagate through"
+
+      value_type_organization:
+        benefit: "Same semantic value used consistently (0.5 = Probability.MIDPOINT)"
+        benefit: "Aligns with production type system (Currency, Probability, Ideology)"
+        benefit: "Reduces conceptual mapping overhead"
+        rejected: "Per-model organization would duplicate values across categories"
+
+      pytest_collection_prevention:
+        pattern: "__test__ = False on all dataclasses"
+        reason: "Pytest auto-collects classes with 'Test' in name"
+        without_it: "TypeError: 'WealthDefaults' object is not iterable"
+
+      tc_alias:
+        pattern: "TC = TestConstants"
+        benefit: "Concise usage: TC.Wealth.DEFAULT vs TestConstants.Wealth.DEFAULT"
+        convention: "Uppercase signals 'constant namespace'"
+
+    implementation:
+      location: "tests/constants.py"
+      test_count: 928 tests migrated across 21 files
+
+      categories_implemented:
+        - "WealthDefaults: Currency values [0, inf)"
+        - "ProbabilityDefaults: Probability values [0, 1]"
+        - "IdeologyDefaults: Ideology values [-1, +1]"
+        - "ConsciousnessDefaults: Consciousness values [0, 1]"
+        - "ThresholdsDefaults: Crossover/rupture thresholds"
+        - "VitalityDefaults: Population and subsistence values"
+        - "OrganizationDefaults: Cohesion and cadre values"
+        - "SpatialDefaults: Mobility values"
+        - "AgitationDefaults: George Jackson model values [0, inf)"
+        - "RevolutionaryFinanceDefaults: War chest, burn rate, income sources"
+        - "EconomicFlowDefaults: Rent pool, extraction flows"
+        - "MetabolicRiftDefaults: Entropy factor values"
+        - "MarxCapitalExamples: Capital Vol. 1 numerical examples"
+        - "TRPFDefaults: Rate of profit fall parameters"
+
+      phases_completed:
+        phase_1: "Formula tests (survival_calculus, bourgeoisie_decision, etc.)"
+        phase_2: "Engine tests (simulation_engine, imperial_circuit)"
+        phase_3: "Component tests (vitality, ideological, material, etc.)"
+        phase_4: "Model tests (metrics, graph_models, revolutionary_finance)"
+
+    consequences:
+      positive:
+        - "Semantic clarity: TC.Consciousness.AWAKENING vs 0.7"
+        - "Single source of truth for test values"
+        - "IDE autocomplete aids discovery"
+        - "Frozen dataclasses prevent accidental mutation"
+        - "Type boundaries remain inline where appropriate"
+        - "Grep-friendly: can find all uses of a constant"
+
+      negative:
+        - "Initial migration effort (~4-6 hours)"
+        - "New contributors must learn constant namespace"
+        - "Some values legitimately belong inline (boundary tests)"
+        - "Import boilerplate in each test file"
+
+    anti_patterns:
+      over_extraction: |
+        DON'T extract type boundary values to constants:
+        ```python
+        # BAD: Obscures what's being tested
+        assert Probability(TC.Probability.BOUNDARY_ZERO) is valid
+
+        # GOOD: Boundary is self-documenting
+        assert Probability(0.0) is valid  # Lower bound of [0, 1]
+        ```
+
+      under_organization: |
+        DON'T create per-test-file constant files:
+        ```python
+        # BAD: Fragments knowledge
+        from tests.unit.models.test_social_class_constants import WORKER_WEALTH
+
+        # GOOD: Centralized, discoverable
+        from tests.constants import TestConstants
+        ```
+
+    related_decisions:
+      - "ADR025_operation_clean_slate (test infrastructure refactor)"
+      - "ADR006_pydantic_models (constrained types)"
+
+    mantra: "Name the number. Test the behavior."
 
 # =============================================================================
 # REJECTED DECISIONS

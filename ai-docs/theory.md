@@ -266,11 +266,120 @@ The outcome depends on whether solidarity infrastructure was built BEFORE the cr
 
 ---
 
+## The Tendency of the Rate of Profit to Fall (Capital Vol. 3)
+
+### Marx's Original Formulation
+
+In Capital Volume 3, Chapters 13-15, Marx identifies capitalism's central economic contradiction: the tendency of the rate of profit to fall.
+
+**The Core Formula:**
+
+```
+Rate of Profit: p' = s / (c + v)
+
+Where:
+  s = Surplus Value (value extracted from labor beyond wages)
+  c = Constant Capital (machinery, materials, buildings - "dead labor")
+  v = Variable Capital (wages - "living labor")
+```
+
+**The Organic Composition of Capital (OCC):**
+
+```
+OCC = c / v
+```
+
+As capitalism develops, capitalists invest in machinery to increase productivity. This raises c relative to v. Since surplus value (s) can ONLY be extracted from living labor (v), the profit RATE falls even as absolute profit MASS may increase.
+
+### Marx's Numerical Example
+
+| Constant Capital (c) | Variable Capital (v) | Surplus Value (s) | Rate of Profit p' = s/(c+v) |
+|---------------------|---------------------|------------------|---------------------------|
+| 50 | 100 | 100 | 66⅔% |
+| 100 | 100 | 100 | 50% |
+| 400 | 100 | 100 | 20% |
+
+As OCC rises from 0.5 to 4.0, the rate of profit falls from 66⅔% to 20%, even with constant exploitation rate (s/v = 100%).
+
+### The Dialectical Contradiction
+
+Marx emphasizes this is not a mechanical decline but a dialectical tendency:
+
+> "These are not two separate developments, taking place side by side; rather it is one and the same development, and this merely expresses itself in these two forms."
+
+The same process that increases productive power (rising OCC) undermines profitability. Crises are "momentary and forcible solutions" - temporary resolutions that deepen the underlying contradiction.
+
+### The Six Counteracting Factors (Capital Vol. 3, Ch. 14)
+
+Marx identifies factors that temporarily offset the falling rate:
+
+1. **Intensifying Exploitation** - longer hours, speed-up (raises s/v)
+2. **Wage Depression** - paying below subsistence (raises s directly)
+3. **Cheapening Constant Capital** - technology makes c cheaper
+4. **Relative Overpopulation** - reserve army enables cheap labor
+5. **Foreign Trade** - cheap imports lower c and subsistence wages
+6. **Interest-Bearing Capital** - infrastructure earns below-average returns
+
+### Critical Theoretical Connection: Imperial Rent IS Factor #5
+
+**This is the key insight connecting TRPF to MLM-TW theory:**
+
+Imperial rent (Φ = W_c - V_c) is the mechanism by which core countries access Foreign Trade benefits. Through imperial extraction, core capitalists gain:
+
+- **Cheap constant capital**: Raw materials and components from periphery at suppressed prices
+- **Global reserve army of labor**: Downward pressure on wages via import competition
+- **Subsidized subsistence**: Cheap food and consumer goods lower reproduction costs
+
+This is why Lenin called imperialism "moribund capitalism" - it extends TRPF's timeline but deepens the eventual crisis. Imperial rent temporarily OFFSETS TRPF for core capitalists while accelerating it for peripheral capital.
+
+**The dialectical unity:**
+- TRPF describes the internal contradiction of capitalist production
+- Imperial rent describes how this contradiction is externalized onto the periphery
+- Together they explain both the stability of core capitalism AND its ultimate unsustainability
+
+### Epoch 1: TRPF Surrogate
+
+For Epoch 1, we model TRPF as time-dependent decay of extraction efficiency:
+
+```python
+# In ImperialRentSystem
+trpf_multiplier = max(0.1, 1.0 - (trpf_coefficient × tick))
+effective_extraction = base_extraction × trpf_multiplier
+```
+
+This produces declining accumulation without full OCC tracking.
+
+**At default coefficient 0.0005:**
+- tick 0: 100% efficiency
+- tick 520 (10 years): 74% efficiency
+- tick 1040 (20 years): 48% efficiency
+- tick 1800+: floors at 10% efficiency
+
+Additionally, rent pool decay models background evaporation of accumulated surplus:
+
+```python
+rent_pool = rent_pool × (1 - rent_pool_decay)  # Default 0.2% per tick
+```
+
+### Epoch 2: Full OCC Implementation (Planned)
+
+Epoch 2 will implement proper organic composition tracking:
+
+1. **Entity Extensions**: Add `constant_capital`/`variable_capital` to Bourgeoisie entities
+2. **Rate of Profit**: Calculate p' = s/(c+v) per entity
+3. **OCC Dynamics**: Model how automation decisions change c/v ratio
+4. **Counteracting Factors**: Explicit mechanics for intensification, wage cuts, foreign trade
+
+See `ai-docs/epoch2-trpf.yaml` for full specification.
+
+---
+
 ## Sources
 
 The theoretical framework draws from:
 
-- Marx's *Capital* (value theory, exploitation)
+- Marx's *Capital* Volume 1 (value theory, exploitation)
+- Marx's *Capital* Volume 3, Chapters 13-15 (TRPF, organic composition)
 - Lenin's *Imperialism* (monopoly capital, labor aristocracy)
 - Mao's *On Contradiction* (dialectical analysis)
 - Gramsci's *Prison Notebooks* (hegemony, civil society)

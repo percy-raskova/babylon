@@ -1439,7 +1439,36 @@ current_focus:
   milestone: "Political Economy of Liquidity Epoch 1 COMPLETE: Finance models + WorldState integration"
   next_milestone: "Slice 1.5: The Dashboard - wire 4-node scenario, metabolic gauge"
   test_count: 2651
-  test_count_note: "Updated 2025-12-26 - Political Economy of Liquidity Epoch 1 complete, 187 new tests"
+  test_count_note: "Updated 2025-12-31 - Magic number refactoring complete"
+
+  magic_number_refactoring:
+    status: "COMPLETE"
+    date: "2025-12-31"
+    scope: "21 test files in tests/unit/models/"
+    pattern: "Centralized frozen dataclass constants"
+    location: "tests/constants.py"
+    adr: "ADR031_test_constants_architecture"
+    categories_added:
+      - "WealthDefaults (10.0, 50.0, 100.0, 500.0, etc.)"
+      - "ProbabilityDefaults (0.0-1.0 semantic values)"
+      - "IdeologyDefaults (-1.0 to +1.0 political spectrum)"
+      - "ConsciousnessDefaults (George Jackson model)"
+      - "TerritoryDefaults (heat, rent, population)"
+      - "EconomicFlowDefaults (extraction, rent pool)"
+      - "RevolutionaryFinanceDefaults (war_chest, income streams)"
+      - "VitalityDefaults (population, subsistence)"
+      - "OrganizationDefaults (cohesion, cadre)"
+      - "SpatialDefaults (mobility)"
+      - "AgitationDefaults (George Jackson agitation)"
+    phases_completed:
+      phase_1: "test_types.py, test_social_class.py, test_config.py, test_territory.py, test_world_state.py"
+      phase_2: "test_relationship.py, test_state_finance.py, test_economy.py, test_events.py, test_precarity_state.py"
+      phase_3: "Component tests (material, ideological, organization, spatial, vitality)"
+      phase_4: "test_revolutionary_finance.py, test_graph_models.py, test_metrics_models.py"
+    key_insight: |
+      Boundary values testing type contracts (0.0, 1.0, -1.0) stay inline.
+      Domain-semantic values (DEFAULT_WEALTH, MIDPOINT, REVOLUTIONARY) use constants.
+      This preserves test readability while eliminating magic numbers.
 
   metrics_audit:
     date: "2025-12-25"

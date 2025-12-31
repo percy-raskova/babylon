@@ -18,6 +18,7 @@ The default state of the simulation is **COLLAPSE**. Stability is a temporary de
 ### The Problem: "Eden Mode"
 
 Previous specifications permitted infinite stability because:
+
 1. **Existence was free**: `base_subsistence = 0.0` meant entities persisted without cost
 2. **Earth was infinite**: No hysteresis in biocapacity degradation
 3. **Zombies were possible**: Entities survived with near-zero wealth indefinitely
@@ -27,6 +28,7 @@ This produced "flatline" simulations where nothing happened. Boring. Unrealistic
 ### The Solution: "Dying World Physics"
 
 Under the new standard:
+
 1. **Existence costs calories**: `base_subsistence > 0.0` always (The Calorie Check)
 2. **Earth remembers wounds**: Extraction causes permanent hysteresis in `max_biocapacity`
 3. **Death is real**: VitalitySystem kills entities when `wealth < consumption_needs`
@@ -37,11 +39,12 @@ Under the new standard:
 
 ### Standard Simulation Duration
 
-| Old Standard | New Standard |
-|--------------|--------------|
+| Old Standard      | New Standard          |
+| ----------------- | --------------------- |
 | 52 ticks (1 year) | 1040 ticks (20 years) |
 
 **Why 20 years?**
+
 - Long enough to observe TRPF (Tendency of the Rate of Profit to Fall)
 - Long enough for ecological degradation to compound
 - Long enough to see generational effects
@@ -50,12 +53,14 @@ Under the new standard:
 ### Success Criteria: Realistic Decay
 
 **OLD: "Success = Survival"**
+
 ```
 BAD:  Entity survives 52 ticks ✓
 GOOD: Entity survives 52 ticks ✓
 ```
 
 **NEW: "Success = Realistic Decay"**
+
 ```
 BAD:  Flatline graph (Zombie State / Eden Mode)
 BAD:  Immediate collapse (tick < 100)
@@ -63,6 +68,7 @@ GOOD: Gentle downward slope intersecting death between tick 800-900
 ```
 
 The ideal simulation produces:
+
 - `p_c_wealth` declining ~0.05% per tick
 - `total_biocapacity` declining ~0.08% per tick
 - `imperial_rent_pool` exhibiting TRPF (declining rate of return)
@@ -155,24 +161,28 @@ def objective_v2(trial):
 ## Anti-Patterns to Detect
 
 ### 1. Zombie State (Flatline)
+
 **Symptom:** Wealth graph is horizontal
 **Cause:** `base_subsistence = 0.0` or consumption_needs too low
 **Detection:** `std(wealth_timeseries) < 0.01`
 **Fix:** Increase consumption_needs, verify Calorie Check
 
 ### 2. Instant Death (Cliff)
+
 **Symptom:** Simulation ends before tick 100
 **Cause:** Extraction too aggressive, initial wealth too low
 **Detection:** `death_tick < 100`
 **Fix:** Reduce extraction_efficiency, increase initial wealth
 
 ### 3. Eternal Empire (Eden Mode)
+
 **Symptom:** Survives 1040 ticks without significant decay
 **Cause:** Extraction perfectly balanced with production
 **Detection:** `wealth[tick_1000] / wealth[tick_0] > 0.9`
 **Fix:** Enable biocapacity hysteresis, increase entropy_factor
 
 ### 4. The Hollow Stability
+
 **Symptom:** Metrics oscillate around stable point
 **Cause:** System finds equilibrium (theoretically impossible under imperialism)
 **Detection:** `mean(wealth[500:1000]) ≈ mean(wealth[0:500])`
@@ -182,18 +192,19 @@ def objective_v2(trial):
 
 ## Hyperband Pruning Rules (Updated for 1040 Ticks)
 
-| Condition | Tick Threshold | Action |
-|-----------|----------------|--------|
-| Flatline detected | Any tick | Prune (invalid) |
-| Death before tick 100 | tick < 100 | Prune (too aggressive) |
-| No decay by tick 500 | tick 500 | Prune (zombie/eden) |
-| Still alive at tick 1040 | tick 1040 | Flag for review |
+| Condition                | Tick Threshold | Action                 |
+| ------------------------ | -------------- | ---------------------- |
+| Flatline detected        | Any tick       | Prune (invalid)        |
+| Death before tick 100    | tick < 100     | Prune (too aggressive) |
+| No decay by tick 500     | tick 500       | Prune (zombie/eden)    |
+| Still alive at tick 1040 | tick 1040      | Flag for review        |
 
 ---
 
 ## Workflow Updates
 
 ### Step 1: Verify Calorie Check
+
 ```bash
 # Before ANY parameter sweep
 poetry run python -c "
@@ -205,12 +216,14 @@ print('Calorie Check: PASSED')
 ```
 
 ### Step 2: Run 20-Year Audit
+
 ```bash
 # New default: 1040 ticks instead of 52
 mise run qa:audit --max-ticks 1040
 ```
 
 ### Step 3: Verify Decay Curve
+
 ```bash
 # Generate time-series for visual inspection
 poetry run python tools/parameter_analysis.py trace \
@@ -219,6 +232,7 @@ poetry run python tools/parameter_analysis.py trace \
 ```
 
 ### Step 4: Check for Anti-Patterns
+
 ```bash
 # Automated detection of Eden Mode / Zombie State
 poetry run python tools/entropy_audit.py \
@@ -233,25 +247,25 @@ poetry run python tools/entropy_audit.py \
 
 ### Entropy Parameters (New)
 
-| Parameter | Range | Purpose |
-|-----------|-------|---------|
-| `economy.base_subsistence` | [0.01, 0.05] | Calorie drain per tick |
-| `metabolism.entropy_factor` | [1.1, 1.5] | Extraction inefficiency |
+| Parameter                    | Range         | Purpose                          |
+| ---------------------------- | ------------- | -------------------------------- |
+| `economy.base_subsistence`   | [0.01, 0.05]  | Calorie drain per tick           |
+| `metabolism.entropy_factor`  | [1.1, 1.5]    | Extraction inefficiency          |
 | `metabolism.hysteresis_rate` | [0.001, 0.01] | Permanent max_biocapacity damage |
 
 ### TRPF Parameters (New)
 
-| Parameter | Range | Purpose |
-|-----------|-------|---------|
-| `economy.trpf_coefficient` | [0.0001, 0.001] | Rate of profit decay |
-| `economy.rent_pool_decay` | [0.001, 0.005] | Background rent evaporation |
+| Parameter                  | Range           | Purpose                     |
+| -------------------------- | --------------- | --------------------------- |
+| `economy.trpf_coefficient` | [0.0001, 0.001] | Rate of profit decay        |
+| `economy.rent_pool_decay`  | [0.001, 0.005]  | Background rent evaporation |
 
 ### Existing Parameters (Recalibrated for 1040 ticks)
 
-| Parameter | Old Range | New Range | Notes |
-|-----------|-----------|-----------|-------|
+| Parameter               | Old Range  | New Range  | Notes                  |
+| ----------------------- | ---------- | ---------- | ---------------------- |
 | `extraction_efficiency` | [0.1, 0.9] | [0.3, 0.7] | Narrower for stability |
-| `comprador_cut` | [0.5, 1.0] | [0.6, 0.9] | Avoid extremes |
+| `comprador_cut`         | [0.5, 1.0] | [0.6, 0.9] | Avoid extremes         |
 
 ---
 

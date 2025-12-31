@@ -128,6 +128,9 @@ class EventType(StrEnum):
         EXCESSIVE_FORCE: State violence "spark" - police brutality event (Agency Layer)
         UPRISING: Mass insurrection triggered by spark + accumulated agitation (Agency Layer)
         SOLIDARITY_SPIKE: Solidarity infrastructure built through shared struggle (Agency Layer)
+        POWER_VACUUM: Comprador insolvency triggers George Jackson Bifurcation
+        REVOLUTIONARY_OFFENSIVE: Organized labor seizes opportunity during power vacuum
+        FASCIST_REVANCHISM: Core workers react with nationalism during power vacuum
         RUPTURE: Contradiction tension reached critical threshold, triggering phase transition
         PHASE_TRANSITION: Topology percolation threshold crossed (Sprint 3.3)
     """
@@ -142,6 +145,11 @@ class EventType(StrEnum):
     EXCESSIVE_FORCE = "excessive_force"  # Agency Layer - The Spark (Police Brutality)
     UPRISING = "uprising"  # Agency Layer - The Explosion (Riot/Insurrection)
     SOLIDARITY_SPIKE = "solidarity_spike"  # Agency Layer - The Bridge Building
+    POWER_VACUUM = "power_vacuum"  # George Jackson Bifurcation - Comprador insolvency
+    REVOLUTIONARY_OFFENSIVE = (
+        "revolutionary_offensive"  # Jackson: Organized labor seizes opportunity
+    )
+    FASCIST_REVANCHISM = "fascist_revanchism"  # Jackson: Core reacts with nationalism
     RUPTURE = "rupture"  # Contradiction rupture - tension reached critical threshold
     PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
     ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)

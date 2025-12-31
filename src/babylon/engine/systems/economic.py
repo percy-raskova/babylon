@@ -72,6 +72,8 @@ class ImperialRentSystem:
         }
 
         # Execute phases with pool tracking
+        # Phase 0: Deduct operational costs (base_subsistence)
+        self._process_subsistence_phase(graph, services)
         self._process_extraction_phase(graph, services, context, tick_context)
         self._process_tribute_phase(graph, services, context, tick_context)
         self._process_wages_phase(graph, services, context, tick_context)
@@ -80,6 +82,32 @@ class ImperialRentSystem:
 
         # Save updated economy back to graph
         self._save_economy(graph, tick_context)
+
+    def _process_subsistence_phase(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+    ) -> None:
+        """Phase 0: Deduct operational costs from all entities.
+
+        Models fixed operating expenses (rent, supplies, maintenance) as a
+        percentage of each entity's wealth, deducted before any other flows.
+        """
+        base_subsistence = services.defines.economy.base_subsistence
+
+        if base_subsistence <= 0:
+            return  # No operational costs configured
+
+        for node_id in graph.nodes():
+            node_data = graph.nodes[node_id]
+            wealth = node_data.get("wealth", 0.0)
+
+            if wealth <= 0:
+                continue
+
+            # Deduct subsistence costs as percentage of wealth
+            cost = wealth * base_subsistence
+            graph.nodes[node_id]["wealth"] = max(0.0, wealth - cost)
 
     def _process_extraction_phase(
         self,

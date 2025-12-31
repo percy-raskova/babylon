@@ -209,7 +209,7 @@ def create_labor_aristocracy_scenario() -> tuple[WorldState, SimulationConfig, G
 def create_imperial_circuit_scenario(
     periphery_wealth: float = 0.1,
     core_wealth: float = 0.9,
-    comprador_cut: float = 0.15,
+    comprador_cut: float = 0.90,  # Calibrated to prevent Comprador Liquidation
     imperial_rent_pool: float = 100.0,
     extraction_efficiency: float = 0.8,
     repression_level: float = 0.5,
@@ -243,7 +243,7 @@ def create_imperial_circuit_scenario(
     Args:
         periphery_wealth: Initial wealth for periphery worker P001 (default 0.1)
         core_wealth: Initial wealth for core bourgeoisie C001 (default 0.9)
-        comprador_cut: Fraction comprador keeps from extracted value (default 0.15)
+        comprador_cut: Fraction comprador keeps from extracted value (default 0.90)
         imperial_rent_pool: Initial imperial rent pool (default 100.0)
         extraction_efficiency: Alpha in imperial rent formula (default 0.8)
         repression_level: Base repression level (default 0.5)

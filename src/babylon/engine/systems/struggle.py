@@ -14,6 +14,13 @@ Key Insight: The explosion is what builds the solidarity bridges that enable
 consciousness transmission in subsequent ticks. Revolution is built through
 shared struggle, not spontaneous awakening.
 
+George Jackson Bifurcation (Power Vacuum):
+When the Comprador becomes insolvent (wealth < subsistence), the Imperial Circuit
+fails and a power vacuum emerges. The outcome depends on the Periphery Proletariat's
+revolutionary capacity (organization * class_consciousness):
+- capacity >= jackson_threshold: Revolutionary Offensive - organized labor seizes opportunity
+- capacity < jackson_threshold: Fascist Revanchism - Core workers react with nationalism
+
 Target Social Roles:
 - PERIPHERY_PROLETARIAT: Exploited workers in the global periphery
 - LUMPENPROLETARIAT: Outside formal economy, precarious existence
@@ -116,6 +123,100 @@ def _update_class_consciousness(
         "national_identity": 0.5,
         "agitation": 0.0,
     }
+
+
+def _update_national_identity(
+    node_data: dict[str, Any],
+    delta: float,
+) -> dict[str, float]:
+    """Update national_identity by delta, clamping to [0, 1].
+
+    Args:
+        node_data: Current graph node data
+        delta: Amount to add to national identity
+
+    Returns:
+        Updated IdeologicalProfile as dict
+    """
+    ideology = node_data.get("ideology")
+
+    if isinstance(ideology, dict):
+        current = ideology.get("national_identity", 0.5)
+        new_value = max(0.0, min(1.0, current + delta))
+        return {
+            "class_consciousness": ideology.get("class_consciousness", 0.0),
+            "national_identity": new_value,
+            "agitation": ideology.get("agitation", 0.0),
+        }
+
+    # Create new profile with updated national identity
+    return {
+        "class_consciousness": 0.0,
+        "national_identity": max(0.0, min(1.0, 0.5 + delta)),
+        "agitation": 0.0,
+    }
+
+
+def _update_agitation(
+    node_data: dict[str, Any],
+    delta: float,
+) -> dict[str, float]:
+    """Update agitation by delta (no upper bound, min 0).
+
+    Args:
+        node_data: Current graph node data
+        delta: Amount to add to agitation
+
+    Returns:
+        Updated IdeologicalProfile as dict
+    """
+    ideology = node_data.get("ideology")
+
+    if isinstance(ideology, dict):
+        current = ideology.get("agitation", 0.0)
+        new_value = max(0.0, current + delta)
+        return {
+            "class_consciousness": ideology.get("class_consciousness", 0.0),
+            "national_identity": ideology.get("national_identity", 0.5),
+            "agitation": new_value,
+        }
+
+    # Create new profile with updated agitation
+    return {
+        "class_consciousness": 0.0,
+        "national_identity": 0.5,
+        "agitation": max(0.0, delta),
+    }
+
+
+def _find_entity_by_role(
+    graph: nx.DiGraph[str],
+    role: SocialRole,
+) -> tuple[str, dict[str, Any]] | None:
+    """Find the first entity with the specified social role.
+
+    Args:
+        graph: The simulation graph
+        role: The SocialRole to search for
+
+    Returns:
+        Tuple of (node_id, node_data) or None if not found
+    """
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") == "territory":
+            continue
+
+        node_role = data.get("role")
+        if isinstance(node_role, str):
+            try:
+                node_role = SocialRole(node_role)
+            except ValueError:
+                continue
+
+        if node_role == role:
+            return (node_id, data)
+
+    return None
 
 
 class StruggleSystem:
@@ -280,3 +381,165 @@ class StruggleSystem:
                         },
                     )
                 )
+
+        # After processing struggling roles, check for power vacuum
+        self._check_power_vacuum(graph, services, context)
+
+    def _check_power_vacuum(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        context: ContextType,
+    ) -> None:
+        """Check for Comprador insolvency and apply George Jackson bifurcation.
+
+        When the Comprador runs out of money (wealth < subsistence), a power
+        vacuum occurs. The outcome depends on the Periphery Proletariat's
+        revolutionary capacity (organization * class_consciousness):
+
+        - capacity >= jackson_threshold: Revolutionary Offensive
+        - capacity < jackson_threshold: Fascist Revanchism
+        """
+        tick = context.get("tick", 0)
+        defines = services.defines.struggle
+
+        # Find comprador
+        comprador = _find_entity_by_role(graph, SocialRole.COMPRADOR_BOURGEOISIE)
+        if comprador is None:
+            return  # No comprador in simulation
+
+        comprador_id, comprador_data = comprador
+        wealth = comprador_data.get("wealth", 0.0)
+        subsistence = comprador_data.get("subsistence_threshold", 5.0)
+
+        # Check trigger: Comprador insolvency
+        if wealth >= subsistence:
+            return  # Comprador is solvent
+
+        # Find periphery proletariat
+        p_w = _find_entity_by_role(graph, SocialRole.PERIPHERY_PROLETARIAT)
+        if p_w is None:
+            return  # No periphery proletariat to fill the vacuum
+
+        p_w_id, p_w_data = p_w
+        organization = p_w_data.get("organization", 0.1)
+        consciousness = _get_class_consciousness_from_node(p_w_data)
+
+        # Calculate revolutionary capacity
+        revolutionary_capacity = organization * consciousness
+
+        # Emit POWER_VACUUM event
+        services.event_bus.publish(
+            Event(
+                type=EventType.POWER_VACUUM,
+                tick=tick,
+                payload={
+                    "comprador_id": comprador_id,
+                    "comprador_wealth": wealth,
+                    "subsistence_threshold": subsistence,
+                    "revolutionary_capacity": revolutionary_capacity,
+                    "jackson_threshold": defines.jackson_threshold,
+                },
+            )
+        )
+
+        # Apply bifurcation
+        if revolutionary_capacity >= defines.jackson_threshold:
+            self._apply_revolutionary_offensive(
+                graph, services, p_w_id, p_w_data, revolutionary_capacity, tick
+            )
+        else:
+            self._apply_fascist_revanchism(graph, services, p_w_id, revolutionary_capacity, tick)
+
+    def _apply_revolutionary_offensive(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        p_w_id: str,
+        p_w_data: dict[str, Any],
+        revolutionary_capacity: float,
+        tick: int,
+    ) -> None:
+        """Apply Revolutionary Offensive outcome when capacity >= threshold.
+
+        Effects:
+        - p_w.p_revolution = 1.0 (full revolutionary potential)
+        - p_w.agitation += revolutionary_agitation_boost
+        """
+        defines = services.defines.struggle
+
+        # Set p_revolution to maximum
+        graph.nodes[p_w_id]["p_revolution"] = 1.0
+
+        # Boost agitation
+        graph.nodes[p_w_id]["ideology"] = _update_agitation(
+            p_w_data, defines.revolutionary_agitation_boost
+        )
+
+        # Emit REVOLUTIONARY_OFFENSIVE event
+        services.event_bus.publish(
+            Event(
+                type=EventType.REVOLUTIONARY_OFFENSIVE,
+                tick=tick,
+                payload={
+                    "periphery_id": p_w_id,
+                    "revolutionary_capacity": revolutionary_capacity,
+                    "agitation_boost": defines.revolutionary_agitation_boost,
+                    "narrative_hint": (
+                        "CRISIS OPPORTUNITY: Organized labor seizes the means of production."
+                    ),
+                },
+            )
+        )
+
+    def _apply_fascist_revanchism(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        p_w_id: str,  # noqa: ARG002 - kept for API consistency
+        revolutionary_capacity: float,
+        tick: int,
+    ) -> None:
+        """Apply Fascist Revanchism outcome when capacity < threshold.
+
+        Effects:
+        - c_w.national_identity += fascist_identity_boost
+        - c_w.p_acquiescence += fascist_acquiescence_boost
+        """
+        defines = services.defines.struggle
+
+        # Find core worker (Labor Aristocracy)
+        c_w = _find_entity_by_role(graph, SocialRole.LABOR_ARISTOCRACY)
+
+        core_worker_id: str | None = None
+
+        if c_w is not None:
+            c_w_id, c_w_data = c_w
+            core_worker_id = c_w_id
+
+            # Boost national identity (clamped)
+            graph.nodes[c_w_id]["ideology"] = _update_national_identity(
+                c_w_data, defines.fascist_identity_boost
+            )
+
+            # Boost acquiescence (clamped)
+            current_acq = c_w_data.get("p_acquiescence", 0.5)
+            new_acq = min(1.0, current_acq + defines.fascist_acquiescence_boost)
+            graph.nodes[c_w_id]["p_acquiescence"] = new_acq
+
+        # Emit FASCIST_REVANCHISM event
+        services.event_bus.publish(
+            Event(
+                type=EventType.FASCIST_REVANCHISM,
+                tick=tick,
+                payload={
+                    "core_worker_id": core_worker_id,
+                    "revolutionary_capacity": revolutionary_capacity,
+                    "identity_boost": defines.fascist_identity_boost,
+                    "acquiescence_boost": defines.fascist_acquiescence_boost,
+                    "narrative_hint": (
+                        "REACTIONARY TURN: Core demands restoration of order amid chaos."
+                    ),
+                },
+            )
+        )

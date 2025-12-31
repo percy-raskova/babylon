@@ -215,10 +215,10 @@ class TestImperialCircuitConfiguration:
         assert defines.economy.superwage_multiplier == pytest.approx(1.5)
 
     def test_default_comprador_cut(self) -> None:
-        """comprador_cut = 0.15 (15%) in GameDefines."""
+        """comprador_cut = 0.90 (90%) in GameDefines - calibrated to prevent Comprador Liquidation."""
         _, _, defines = create_imperial_circuit_scenario()
         # Paradox Refactor: comprador_cut moved from config to defines.economy
-        assert defines.economy.comprador_cut == pytest.approx(0.15)
+        assert defines.economy.comprador_cut == pytest.approx(0.90)
 
     def test_custom_comprador_cut(self) -> None:
         """Custom comprador_cut is applied to GameDefines."""

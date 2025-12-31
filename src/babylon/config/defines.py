@@ -31,10 +31,10 @@ class EconomyDefines(BaseModel):
         description="Alpha - how efficiently core extracts value from periphery",
     )
     comprador_cut: float = Field(
-        default=0.15,
+        default=0.90,
         ge=0.0,
         le=1.0,
-        description="Fraction of tribute kept by comprador class",
+        description="Fraction of wealth kept by comprador class (prevents Comprador Liquidation)",
     )
 
     # Super-wages (PPP Model)
@@ -119,6 +119,14 @@ class EconomyDefines(BaseModel):
         default=0.01,
         ge=0.0,
         description="Subsidy below this threshold skips processing",
+    )
+
+    # Entity operational costs
+    base_subsistence: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=0.5,
+        description="Fixed operational cost deducted from entities per tick as percentage of wealth (disabled by default)",
     )
 
 
@@ -360,6 +368,12 @@ class StruggleDefines(BaseModel):
     - The Spark: State violence (EXCESSIVE_FORCE) triggers insurrection
     - The Combustion: Spark + High Agitation + Low P(S|A) = UPRISING
     - The Result: Uprisings destroy wealth but build solidarity infrastructure
+
+    George Jackson Bifurcation (Power Vacuum):
+    When the Comprador becomes insolvent, a power vacuum occurs. The outcome
+    depends on the Periphery Proletariat's revolutionary capacity:
+    - capacity >= jackson_threshold: Revolutionary Offensive
+    - capacity < jackson_threshold: Fascist Revanchism
     """
 
     model_config = ConfigDict(frozen=True)
@@ -387,6 +401,32 @@ class StruggleDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description="Solidarity strength increase on edges per uprising",
+    )
+
+    # George Jackson Bifurcation parameters
+    jackson_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Revolutionary capacity threshold (org * consciousness) for organized response",
+    )
+    revolutionary_agitation_boost: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=2.0,
+        description="Agitation boost for periphery proletariat during revolutionary offensive",
+    )
+    fascist_identity_boost: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="National identity boost for core workers during fascist turn",
+    )
+    fascist_acquiescence_boost: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Acquiescence boost for core workers during fascist turn",
     )
 
 

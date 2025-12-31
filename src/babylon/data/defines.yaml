@@ -14,7 +14,7 @@
 economy:
   # Imperial rent extraction
   extraction_efficiency: 0.8        # Alpha - how efficiently core extracts value from periphery [0,1]
-  comprador_cut: 0.15               # Fraction of tribute kept by comprador class (15%)
+  comprador_cut: 0.90               # Fraction of wealth kept by comprador class (90%) - prevents Comprador Liquidation
 
   # Super-wages (PPP Model)
   super_wage_rate: 0.20             # Fraction of tribute paid as super-wages (20%)
@@ -34,6 +34,9 @@ economy:
   # Client state subsidy (The Iron Lung)
   subsidy_conversion_rate: 0.1      # Rate at which wealth converts to repression (10%)
   subsidy_trigger_threshold: 0.8    # P(S|R)/P(S|A) ratio threshold for subsidy (80%)
+
+  # Entity operational costs
+  base_subsistence: 0.0             # Fixed operational cost per tick as % of wealth (disabled by default)
 
 survival:
   # Acquiescence probability P(S|A)
@@ -85,6 +88,12 @@ struggle:
   resistance_threshold: 0.1         # Minimum agitation for uprising (10%)
   wealth_destruction_rate: 0.05     # Economic damage from uprising (5% wealth loss)
   solidarity_gain_per_uprising: 0.2 # Solidarity strength increase per uprising
+
+  # George Jackson Bifurcation (Power Vacuum)
+  jackson_threshold: 0.4            # Revolutionary capacity threshold (org * consciousness)
+  revolutionary_agitation_boost: 0.5  # Agitation boost during revolutionary offensive
+  fascist_identity_boost: 0.2       # National identity boost for core workers during fascist turn
+  fascist_acquiescence_boost: 0.2   # Acquiescence boost for core workers during fascist turn
 
 # Initial conditions
 initial:

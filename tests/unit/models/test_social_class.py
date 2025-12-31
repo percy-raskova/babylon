@@ -17,10 +17,14 @@ Tests updated to work with the multi-dimensional consciousness model.
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 # These imports should fail until the model is implemented
 from babylon.models import IdeologicalProfile, SocialClass
 from babylon.models.enums import SocialRole
+
+# Aliases for readability
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -42,10 +46,10 @@ class TestSocialClassCreation:
         assert worker.name == "Periphery Proletariat"
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
         # Check defaults are applied
-        assert worker.wealth == 10.0
+        assert worker.wealth == TC.Wealth.DEFAULT_WEALTH
         # ideology is now IdeologicalProfile (Sprint 3.4.3)
         assert isinstance(worker.ideology, IdeologicalProfile)
-        assert worker.ideology.class_consciousness == 0.0
+        assert worker.ideology.class_consciousness == TC.Consciousness.FALSE_CONSCIOUSNESS
 
     def test_phase1_blueprint_worker(self) -> None:
         """Create the Phase 1 Worker node from the blueprint."""
@@ -53,14 +57,16 @@ class TestSocialClassCreation:
             id="C001",
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
-            wealth=20.0,
-            ideology=-0.3,  # Leaning revolutionary (legacy conversion)
+            wealth=TC.Wealth.PERIPHERY_WORKER,
+            ideology=TC.Ideology.SLIGHT_REVOLUTIONARY,  # Leaning revolutionary (legacy conversion)
         )
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
-        assert worker.wealth == 20.0
+        assert worker.wealth == TC.Wealth.PERIPHERY_WORKER
         # Legacy ideology=-0.3 converts to class_consciousness=0.65
         assert isinstance(worker.ideology, IdeologicalProfile)
-        assert worker.ideology.to_legacy_ideology() == pytest.approx(-0.3, abs=0.01)
+        assert worker.ideology.to_legacy_ideology() == pytest.approx(
+            TC.Ideology.SLIGHT_REVOLUTIONARY, abs=0.01
+        )
 
     def test_phase1_blueprint_owner(self) -> None:
         """Create the Phase 1 Owner node from the blueprint."""
@@ -68,14 +74,16 @@ class TestSocialClassCreation:
             id="C002",
             name="Core Factory Owner",
             role=SocialRole.CORE_BOURGEOISIE,
-            wealth=1000.0,
-            ideology=0.7,  # Leaning reactionary (legacy conversion)
+            wealth=TC.Wealth.CORE_OWNER,
+            ideology=TC.Ideology.STRONG_REACTIONARY,  # Leaning reactionary (legacy conversion)
         )
         assert owner.role == SocialRole.CORE_BOURGEOISIE
-        assert owner.wealth == 1000.0
+        assert owner.wealth == TC.Wealth.CORE_OWNER
         # Legacy ideology=0.7 converts to class_consciousness=0.15
         assert isinstance(owner.ideology, IdeologicalProfile)
-        assert owner.ideology.to_legacy_ideology() == pytest.approx(0.7, abs=0.01)
+        assert owner.ideology.to_legacy_ideology() == pytest.approx(
+            TC.Ideology.STRONG_REACTIONARY, abs=0.01
+        )
 
     def test_all_social_roles_valid(self) -> None:
         """All SocialRole enum values are valid for creating a SocialClass."""
@@ -93,10 +101,10 @@ class TestSocialClassCreation:
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
-            p_acquiescence=0.7,
+            p_acquiescence=TC.Probability.HIGH,
             p_revolution=0.2,
         )
-        assert worker.p_acquiescence == 0.7
+        assert worker.p_acquiescence == TC.Probability.HIGH
         assert worker.p_revolution == 0.2
 
     def test_with_material_conditions(self) -> None:
@@ -105,13 +113,13 @@ class TestSocialClassCreation:
             id="C001",
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
-            subsistence_threshold=5.0,
-            organization=0.3,
-            repression_faced=0.6,
+            subsistence_threshold=5.0,  # Default subsistence threshold
+            organization=TC.Probability.MODERATE,
+            repression_faced=TC.Probability.ELEVATED,
         )
         assert worker.subsistence_threshold == 5.0
-        assert worker.organization == 0.3
-        assert worker.repression_faced == 0.6
+        assert worker.organization == TC.Probability.MODERATE
+        assert worker.repression_faced == TC.Probability.ELEVATED
 
     def test_with_description(self) -> None:
         """Can create with optional description."""
@@ -278,7 +286,7 @@ class TestSocialClassDefaults:
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.wealth == 10.0
+        assert worker.wealth == TC.Wealth.DEFAULT_WEALTH
 
     def test_default_ideology(self) -> None:
         """Default ideology is IdeologicalProfile with neutral defaults."""
@@ -289,9 +297,9 @@ class TestSocialClassDefaults:
         )
         # Sprint 3.4.3: ideology is now IdeologicalProfile
         assert isinstance(worker.ideology, IdeologicalProfile)
-        assert worker.ideology.class_consciousness == 0.0
-        assert worker.ideology.national_identity == 0.5
-        assert worker.ideology.agitation == 0.0
+        assert worker.ideology.class_consciousness == TC.Consciousness.FALSE_CONSCIOUSNESS
+        assert worker.ideology.national_identity == TC.Consciousness.NEUTRAL_IDENTITY
+        assert worker.ideology.agitation == TC.Probability.ZERO
 
     def test_default_probabilities(self) -> None:
         """Default survival probabilities are 0.0 (not yet calculated)."""
@@ -300,8 +308,8 @@ class TestSocialClassDefaults:
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.p_acquiescence == 0.0
-        assert worker.p_revolution == 0.0
+        assert worker.p_acquiescence == TC.Probability.ZERO
+        assert worker.p_revolution == TC.Probability.ZERO
 
     def test_default_subsistence_threshold(self) -> None:
         """Default subsistence threshold is 5.0."""
@@ -310,7 +318,7 @@ class TestSocialClassDefaults:
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.subsistence_threshold == 5.0
+        assert worker.subsistence_threshold == 5.0  # Model default
 
     def test_default_organization(self) -> None:
         """Default organization is 0.1 (10% cohesion)."""
@@ -319,7 +327,7 @@ class TestSocialClassDefaults:
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.organization == 0.1
+        assert worker.organization == TC.Probability.LOW
 
     def test_default_repression(self) -> None:
         """Default repression_faced is 0.5 (moderate)."""
@@ -328,7 +336,7 @@ class TestSocialClassDefaults:
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.repression_faced == 0.5
+        assert worker.repression_faced == TC.Probability.MIDPOINT
 
     def test_default_description(self) -> None:
         """Default description is empty string."""
@@ -355,8 +363,8 @@ class TestSocialClassSerialization:
             id="C001",
             name="Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
-            wealth=50.0,
-            ideology=-0.5,
+            wealth=TC.Wealth.MODEST,
+            ideology=TC.Ideology.LEANING_REVOLUTIONARY,
         )
         json_str = worker.model_dump_json()
         assert '"id":"C001"' in json_str or '"id": "C001"' in json_str
@@ -384,10 +392,12 @@ class TestSocialClassSerialization:
         assert worker.id == "C001"
         assert worker.name == "Mine Worker"
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
-        assert worker.wealth == 50.0
+        assert worker.wealth == TC.Wealth.MODEST
         # Legacy ideology=-0.5 converts to IdeologicalProfile
         assert isinstance(worker.ideology, IdeologicalProfile)
-        assert worker.ideology.to_legacy_ideology() == pytest.approx(-0.5, abs=0.01)
+        assert worker.ideology.to_legacy_ideology() == pytest.approx(
+            TC.Ideology.LEANING_REVOLUTIONARY, abs=0.01
+        )
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
@@ -396,13 +406,13 @@ class TestSocialClassSerialization:
             name="Test Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             description="A test class",
-            wealth=100.0,
-            ideology=-0.7,  # Legacy conversion
-            p_acquiescence=0.6,
-            p_revolution=0.3,
+            wealth=TC.Wealth.SIGNIFICANT,
+            ideology=TC.Ideology.STRONG_REACTIONARY * -1,  # -0.7 Legacy conversion
+            p_acquiescence=TC.Probability.ELEVATED,
+            p_revolution=TC.Probability.MODERATE,
             subsistence_threshold=8.0,
             organization=0.4,
-            repression_faced=0.7,
+            repression_faced=TC.Probability.HIGH,
         )
         json_str = original.model_dump_json()
         restored = SocialClass.model_validate_json(json_str)

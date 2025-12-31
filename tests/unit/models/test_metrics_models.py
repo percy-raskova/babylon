@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.metrics import (
     EdgeMetrics,
@@ -27,6 +28,8 @@ from babylon.models.metrics import (
     SweepSummary,
     TickMetrics,
 )
+
+TC = TestConstants
 
 # All tests in this file are TDD RED phase - intentionally failing
 pytestmark = pytest.mark.red_phase
@@ -219,17 +222,17 @@ class TestEdgeMetrics:
         - solidarity_strength: Probability [0, 1]
         """
         edges = EdgeMetrics(
-            exploitation_tension=0.5,
-            exploitation_rent=10.0,
-            tribute_flow=5.0,
-            wages_paid=3.0,
-            solidarity_strength=0.2,
+            exploitation_tension=TC.Probability.MIDPOINT,
+            exploitation_rent=TC.Wealth.DEFAULT_WEALTH,
+            tribute_flow=TC.RevolutionaryFinance.DEFAULT_WAR_CHEST,
+            wages_paid=TC.RevolutionaryFinance.DUES_INCOME,
+            solidarity_strength=TC.Probability.LOW,
         )
-        assert edges.exploitation_tension == 0.5
-        assert edges.exploitation_rent == 10.0
-        assert edges.tribute_flow == 5.0
-        assert edges.wages_paid == 3.0
-        assert edges.solidarity_strength == 0.2
+        assert edges.exploitation_tension == TC.Probability.MIDPOINT
+        assert edges.exploitation_rent == TC.Wealth.DEFAULT_WEALTH
+        assert edges.tribute_flow == TC.RevolutionaryFinance.DEFAULT_WAR_CHEST
+        assert edges.wages_paid == TC.RevolutionaryFinance.DUES_INCOME
+        assert edges.solidarity_strength == TC.Probability.LOW
 
     def test_tension_must_be_probability(self) -> None:
         """Exploitation tension is bounded [0, 1]."""
@@ -280,14 +283,14 @@ class TestEdgeMetrics:
     def test_model_is_frozen(self) -> None:
         """EdgeMetrics should be immutable (frozen=True)."""
         edges = EdgeMetrics(
-            exploitation_tension=0.5,
-            exploitation_rent=10.0,
-            tribute_flow=5.0,
-            wages_paid=3.0,
-            solidarity_strength=0.2,
+            exploitation_tension=TC.Probability.MIDPOINT,
+            exploitation_rent=TC.Wealth.DEFAULT_WEALTH,
+            tribute_flow=TC.RevolutionaryFinance.DEFAULT_WAR_CHEST,
+            wages_paid=TC.RevolutionaryFinance.DUES_INCOME,
+            solidarity_strength=TC.Probability.LOW,
         )
         with pytest.raises((ValidationError, AttributeError)):
-            edges.exploitation_tension = 0.9  # type: ignore[misc]
+            edges.exploitation_tension = TC.Probability.EXTREME  # type: ignore[misc]
 
 
 # =============================================================================
@@ -346,15 +349,15 @@ class TestTickMetrics:
     def test_accepts_edge_metrics(self) -> None:
         """TickMetrics accepts EdgeMetrics for relationship data."""
         edges = EdgeMetrics(
-            exploitation_tension=0.5,
-            exploitation_rent=10.0,
-            tribute_flow=5.0,
-            wages_paid=3.0,
-            solidarity_strength=0.2,
+            exploitation_tension=TC.Probability.MIDPOINT,
+            exploitation_rent=TC.Wealth.DEFAULT_WEALTH,
+            tribute_flow=TC.RevolutionaryFinance.DEFAULT_WAR_CHEST,
+            wages_paid=TC.RevolutionaryFinance.DUES_INCOME,
+            solidarity_strength=TC.Probability.LOW,
         )
         metrics = TickMetrics(tick=0, edges=edges)
         assert metrics.edges is not None
-        assert metrics.edges.exploitation_tension == 0.5
+        assert metrics.edges.exploitation_tension == TC.Probability.MIDPOINT
 
     def test_edges_defaults_to_empty_edge_metrics(self) -> None:
         """Edge metrics defaults to EdgeMetrics with all zeros."""
@@ -371,11 +374,11 @@ class TestTickMetrics:
         """
         metrics = TickMetrics(
             tick=0,
-            imperial_rent_pool=100.0,
-            global_tension=0.3,
+            imperial_rent_pool=TC.EconomicFlow.INITIAL_RENT_POOL,
+            global_tension=TC.Probability.MODERATE,
         )
-        assert metrics.imperial_rent_pool == 100.0
-        assert metrics.global_tension == 0.3
+        assert metrics.imperial_rent_pool == TC.EconomicFlow.INITIAL_RENT_POOL
+        assert metrics.global_tension == TC.Probability.MODERATE
 
     def test_imperial_rent_pool_must_be_non_negative(self) -> None:
         """Imperial rent pool uses Currency type (>= 0)."""
@@ -402,47 +405,47 @@ class TestTickMetrics:
     def test_full_construction_with_all_entities(self) -> None:
         """TickMetrics can hold all 4 entity metrics simultaneously."""
         p_w = EntityMetrics(
-            wealth=0.1,
-            consciousness=0.5,
-            national_identity=0.2,
-            agitation=0.3,
-            p_acquiescence=0.6,
+            wealth=TC.Probability.LOW,
+            consciousness=TC.Probability.MIDPOINT,
+            national_identity=TC.Probability.LOW,
+            agitation=TC.Probability.MODERATE,
+            p_acquiescence=TC.Probability.ELEVATED,
             p_revolution=0.4,
             organization=0.15,
         )
         p_c = EntityMetrics(
-            wealth=0.2,
-            consciousness=0.3,
+            wealth=TC.Probability.LOW,
+            consciousness=TC.Probability.MODERATE,
             national_identity=0.4,
-            agitation=0.1,
-            p_acquiescence=0.7,
-            p_revolution=0.3,
-            organization=0.2,
+            agitation=TC.Probability.LOW,
+            p_acquiescence=TC.Probability.HIGH,
+            p_revolution=TC.Probability.MODERATE,
+            organization=TC.Probability.LOW,
         )
         c_b = EntityMetrics(
-            wealth=0.9,
-            consciousness=0.1,
-            national_identity=0.8,
+            wealth=TC.Probability.EXTREME,
+            consciousness=TC.Probability.LOW,
+            national_identity=TC.Probability.VERY_HIGH,
             agitation=0.05,
             p_acquiescence=0.95,
             p_revolution=0.05,
-            organization=0.8,
+            organization=TC.Probability.VERY_HIGH,
         )
         c_w = EntityMetrics(
             wealth=0.4,
-            consciousness=0.2,
-            national_identity=0.5,
+            consciousness=TC.Probability.LOW,
+            national_identity=TC.Probability.MIDPOINT,
             agitation=0.15,
-            p_acquiescence=0.8,
-            p_revolution=0.2,
-            organization=0.3,
+            p_acquiescence=TC.Probability.VERY_HIGH,
+            p_revolution=TC.Probability.LOW,
+            organization=TC.Probability.MODERATE,
         )
         edges = EdgeMetrics(
-            exploitation_tension=0.5,
-            exploitation_rent=10.0,
-            tribute_flow=5.0,
-            wages_paid=3.0,
-            solidarity_strength=0.2,
+            exploitation_tension=TC.Probability.MIDPOINT,
+            exploitation_rent=TC.Wealth.DEFAULT_WEALTH,
+            tribute_flow=TC.RevolutionaryFinance.DEFAULT_WAR_CHEST,
+            wages_paid=TC.RevolutionaryFinance.DUES_INCOME,
+            solidarity_strength=TC.Probability.LOW,
         )
 
         metrics = TickMetrics(
@@ -452,21 +455,21 @@ class TestTickMetrics:
             c_b=c_b,
             c_w=c_w,
             edges=edges,
-            imperial_rent_pool=100.0,
+            imperial_rent_pool=TC.EconomicFlow.INITIAL_RENT_POOL,
             global_tension=0.4,
         )
 
         assert metrics.tick == 42
         assert metrics.p_w is not None
-        assert metrics.p_w.wealth == 0.1
+        assert metrics.p_w.wealth == TC.Probability.LOW
         assert metrics.p_c is not None
-        assert metrics.p_c.wealth == 0.2
+        assert metrics.p_c.wealth == TC.Probability.LOW
         assert metrics.c_b is not None
-        assert metrics.c_b.wealth == 0.9
+        assert metrics.c_b.wealth == TC.Probability.EXTREME
         assert metrics.c_w is not None
         assert metrics.c_w.wealth == 0.4
-        assert metrics.edges.exploitation_tension == 0.5
-        assert metrics.imperial_rent_pool == 100.0
+        assert metrics.edges.exploitation_tension == TC.Probability.MIDPOINT
+        assert metrics.imperial_rent_pool == TC.EconomicFlow.INITIAL_RENT_POOL
         assert metrics.global_tension == 0.4
 
 
@@ -751,45 +754,45 @@ class TestMetricsModelsIntegration:
         tick0 = TickMetrics(
             tick=0,
             p_w=EntityMetrics(
-                wealth=0.5,
-                consciousness=0.1,
-                national_identity=0.2,
-                agitation=0.1,
-                p_acquiescence=0.9,
-                p_revolution=0.1,
-                organization=0.1,
+                wealth=TC.Probability.MIDPOINT,
+                consciousness=TC.Probability.LOW,
+                national_identity=TC.Probability.LOW,
+                agitation=TC.Probability.LOW,
+                p_acquiescence=TC.Probability.EXTREME,
+                p_revolution=TC.Probability.LOW,
+                organization=TC.Probability.LOW,
             ),
             edges=EdgeMetrics(
-                exploitation_tension=0.2,
-                exploitation_rent=10.0,
-                tribute_flow=5.0,
-                wages_paid=3.0,
-                solidarity_strength=0.0,
+                exploitation_tension=TC.Probability.LOW,
+                exploitation_rent=TC.Wealth.DEFAULT_WEALTH,
+                tribute_flow=TC.RevolutionaryFinance.DEFAULT_WAR_CHEST,
+                wages_paid=TC.RevolutionaryFinance.DUES_INCOME,
+                solidarity_strength=TC.Probability.ZERO,
             ),
-            imperial_rent_pool=100.0,
-            global_tension=0.2,
+            imperial_rent_pool=TC.EconomicFlow.INITIAL_RENT_POOL,
+            global_tension=TC.Probability.LOW,
         )
 
         tick1 = TickMetrics(
             tick=1,
             p_w=EntityMetrics(
                 wealth=0.4,
-                consciousness=0.2,
-                national_identity=0.2,
-                agitation=0.2,
-                p_acquiescence=0.8,
-                p_revolution=0.2,
+                consciousness=TC.Probability.LOW,
+                national_identity=TC.Probability.LOW,
+                agitation=TC.Probability.LOW,
+                p_acquiescence=TC.Probability.VERY_HIGH,
+                p_revolution=TC.Probability.LOW,
                 organization=0.15,
             ),
             edges=EdgeMetrics(
-                exploitation_tension=0.5,
+                exploitation_tension=TC.Probability.MIDPOINT,
                 exploitation_rent=12.0,
                 tribute_flow=6.0,
                 wages_paid=4.0,
-                solidarity_strength=0.1,
+                solidarity_strength=TC.Probability.LOW,
             ),
             imperial_rent_pool=90.0,
-            global_tension=0.5,
+            global_tension=TC.Probability.MIDPOINT,
         )
 
         # Simulate calculating summary
@@ -805,7 +808,7 @@ class TestMetricsModelsIntegration:
 
         assert ticks_survived == 2
         assert outcome == "SURVIVED"
-        assert max_tension == 0.5
+        assert max_tension == TC.Probability.MIDPOINT
         assert cumulative_rent == 22.0
 
     def test_entity_metrics_extracted_from_world_state_pattern(self) -> None:
@@ -816,21 +819,21 @@ class TestMetricsModelsIntegration:
         """
         # These fields should match SocialClass/IdeologicalProfile
         entity = EntityMetrics(
-            wealth=0.5,  # SocialClass.wealth
-            consciousness=0.3,  # SocialClass.ideology.class_consciousness
-            national_identity=0.2,  # SocialClass.ideology.national_identity
-            agitation=0.1,  # SocialClass.ideology.agitation
-            p_acquiescence=0.8,  # SocialClass.p_acquiescence
-            p_revolution=0.2,  # SocialClass.p_revolution
+            wealth=TC.Probability.MIDPOINT,  # SocialClass.wealth
+            consciousness=TC.Probability.MODERATE,  # SocialClass.ideology.class_consciousness
+            national_identity=TC.Probability.LOW,  # SocialClass.ideology.national_identity
+            agitation=TC.Probability.LOW,  # SocialClass.ideology.agitation
+            p_acquiescence=TC.Probability.VERY_HIGH,  # SocialClass.p_acquiescence
+            p_revolution=TC.Probability.LOW,  # SocialClass.p_revolution
             organization=0.15,  # SocialClass.organization
         )
         # All extractions should succeed
-        assert entity.wealth == 0.5
-        assert entity.consciousness == 0.3
-        assert entity.national_identity == 0.2
-        assert entity.agitation == 0.1
-        assert entity.p_acquiescence == 0.8
-        assert entity.p_revolution == 0.2
+        assert entity.wealth == TC.Probability.MIDPOINT
+        assert entity.consciousness == TC.Probability.MODERATE
+        assert entity.national_identity == TC.Probability.LOW
+        assert entity.agitation == TC.Probability.LOW
+        assert entity.p_acquiescence == TC.Probability.VERY_HIGH
+        assert entity.p_revolution == TC.Probability.LOW
         assert entity.organization == 0.15
 
 
@@ -854,8 +857,8 @@ class TestTickMetricsEconomyDrivers:
         The super-wage rate (Wc/Vc) determines how much core workers receive
         above the value they produce, funded by imperial rent.
         """
-        metrics = TickMetrics(tick=0, current_super_wage_rate=0.3)
-        assert metrics.current_super_wage_rate == 0.3
+        metrics = TickMetrics(tick=0, current_super_wage_rate=TC.Probability.MODERATE)
+        assert metrics.current_super_wage_rate == TC.Probability.MODERATE
         # Verify it's a float (Coefficient type serializes to float)
         assert isinstance(metrics.current_super_wage_rate, float)
 
@@ -882,8 +885,8 @@ class TestTickMetricsEconomyDrivers:
         The repression level represents the intensity of state violence
         directed at the periphery proletariat.
         """
-        metrics = TickMetrics(tick=0, current_repression_level=0.7)
-        assert metrics.current_repression_level == 0.7
+        metrics = TickMetrics(tick=0, current_repression_level=TC.Probability.HIGH)
+        assert metrics.current_repression_level == TC.Probability.HIGH
 
     def test_current_repression_level_defaults_to_zero_point_five(self) -> None:
         """current_repression_level defaults to 0.5.
@@ -912,8 +915,8 @@ class TestTickMetricsEconomyDrivers:
         The pool ratio represents imperial_rent_pool / initial_pool,
         indicating how depleted the rent pool is.
         """
-        metrics = TickMetrics(tick=0, pool_ratio=0.8)
-        assert metrics.pool_ratio == 0.8
+        metrics = TickMetrics(tick=0, pool_ratio=TC.Probability.VERY_HIGH)
+        assert metrics.pool_ratio == TC.Probability.VERY_HIGH
 
     def test_pool_ratio_defaults_to_one(self) -> None:
         """pool_ratio defaults to 1.0.
@@ -951,12 +954,12 @@ class TestTopologySummary:
         from babylon.models.metrics import TopologySummary
 
         topology = TopologySummary(
-            percolation_ratio=0.8,
+            percolation_ratio=TC.Probability.VERY_HIGH,
             cadre_density=0.15,
             num_components=3,
             phase="transitional",
         )
-        assert topology.percolation_ratio == 0.8
+        assert topology.percolation_ratio == TC.Probability.VERY_HIGH
         assert topology.cadre_density == 0.15
         assert topology.num_components == 3
         assert topology.phase == "transitional"
@@ -969,7 +972,7 @@ class TestTopologySummary:
         """
         from babylon.models.metrics import TopologySummary
 
-        # Test upper bound
+        # Test upper bound (invalid boundary values kept inline)
         with pytest.raises(ValidationError):
             TopologySummary(
                 percolation_ratio=1.5,
@@ -977,7 +980,7 @@ class TestTopologySummary:
                 num_components=3,
                 phase="gaseous",
             )
-        # Test lower bound
+        # Test lower bound (invalid boundary values kept inline)
         with pytest.raises(ValidationError):
             TopologySummary(
                 percolation_ratio=-0.1,
@@ -1030,7 +1033,7 @@ class TestTopologySummary:
 
         for phase in ["gaseous", "transitional", "liquid", "solid"]:
             topology = TopologySummary(
-                percolation_ratio=0.5,
+                percolation_ratio=TC.Probability.MIDPOINT,
                 cadre_density=0.15,
                 num_components=3,
                 phase=phase,
@@ -1046,7 +1049,7 @@ class TestTopologySummary:
 
         with pytest.raises(ValidationError):
             TopologySummary(
-                percolation_ratio=0.5,
+                percolation_ratio=TC.Probability.MIDPOINT,
                 cadre_density=0.15,
                 num_components=3,
                 phase="plasma",  # Invalid phase
@@ -1078,7 +1081,7 @@ class TestTopologySummary:
         from babylon.models.metrics import TopologySummary
 
         topology = TopologySummary(
-            percolation_ratio=0.8,
+            percolation_ratio=TC.Probability.VERY_HIGH,
             cadre_density=0.15,
             num_components=3,
             phase="solid",
@@ -1086,7 +1089,7 @@ class TestTopologySummary:
         metrics = TickMetrics(tick=0, topology=topology)
         assert metrics.topology is not None
         assert metrics.topology.phase == "solid"
-        assert metrics.topology.percolation_ratio == 0.8
+        assert metrics.topology.percolation_ratio == TC.Probability.VERY_HIGH
 
         # Also test that it defaults to None
         metrics_no_topology = TickMetrics(tick=0)
@@ -1114,8 +1117,8 @@ class TestTickMetricsDifferentials:
         how far ahead the periphery worker is in class consciousness compared
         to the labor aristocracy.
         """
-        metrics = TickMetrics(tick=0, consciousness_gap=0.3)
-        assert metrics.consciousness_gap == 0.3
+        metrics = TickMetrics(tick=0, consciousness_gap=TC.Probability.MODERATE)
+        assert metrics.consciousness_gap == TC.Probability.MODERATE
 
     def test_consciousness_gap_can_be_negative(self) -> None:
         """consciousness_gap can be negative.
@@ -1123,8 +1126,8 @@ class TestTickMetricsDifferentials:
         Negative gap means labor aristocracy has higher consciousness
         than periphery worker (rare but possible scenario).
         """
-        metrics = TickMetrics(tick=0, consciousness_gap=-0.5)
-        assert metrics.consciousness_gap == -0.5
+        metrics = TickMetrics(tick=0, consciousness_gap=TC.Ideology.LEANING_REVOLUTIONARY)
+        assert metrics.consciousness_gap == TC.Ideology.LEANING_REVOLUTIONARY
 
     def test_consciousness_gap_bounded_minus_one_to_one(self) -> None:
         """consciousness_gap is bounded [-1.0, 1.0].
@@ -1157,8 +1160,8 @@ class TestTickMetricsDifferentials:
         The wealth gap (c_b.wealth - p_w.wealth) measures the wealth
         differential between core bourgeoisie and periphery worker.
         """
-        metrics = TickMetrics(tick=0, wealth_gap=0.8)
-        assert metrics.wealth_gap == 0.8
+        metrics = TickMetrics(tick=0, wealth_gap=TC.Probability.VERY_HIGH)
+        assert metrics.wealth_gap == TC.Probability.VERY_HIGH
 
     def test_wealth_gap_defaults_to_zero(self) -> None:
         """wealth_gap defaults to 0.0.
@@ -1221,11 +1224,13 @@ class TestTickMetricsEcologicalFields:
 
         Overshoot can be > 1.0 (in overshoot) or <= 1.0 (sustainable).
         """
+        # Overshoot scenario (>1.0) - test-specific value
         metrics = TickMetrics(tick=0, overshoot_ratio=1.5)
         assert metrics.overshoot_ratio == 1.5
 
-        metrics_sustainable = TickMetrics(tick=0, overshoot_ratio=0.7)
-        assert metrics_sustainable.overshoot_ratio == 0.7
+        # Sustainable scenario (<=1.0)
+        metrics_sustainable = TickMetrics(tick=0, overshoot_ratio=TC.Probability.HIGH)
+        assert metrics_sustainable.overshoot_ratio == TC.Probability.HIGH
 
     def test_overshoot_ratio_defaults_to_zero(self) -> None:
         """overshoot_ratio should default to 0.0.

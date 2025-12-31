@@ -396,6 +396,8 @@ class TestMissingEdgeFlowDefaults:
         """Extraction phase creates value_flow attribute on edge.
 
         Even if value_flow was missing before, it should be set after.
+
+        Uses tick=0 to get TRPF multiplier of 1.0 for deterministic testing.
         """
         graph: nx.DiGraph[str] = nx.DiGraph()
 
@@ -417,8 +419,8 @@ class TestMissingEdgeFlowDefaults:
 
         system = ImperialRentSystem()
 
-        # Act
-        system._process_extraction_phase(graph, services, {"tick": 1}, tick_context)
+        # Act - use tick=0 so TRPF multiplier is 1.0
+        system._process_extraction_phase(graph, services, {"tick": 0}, tick_context)
 
         # Assert: value_flow should now exist on edge
         assert "value_flow" in graph.edges["worker", "owner"]

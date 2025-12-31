@@ -11,11 +11,15 @@ Sprint 3.5.3: Territory integration for Layer 0.
 import networkx as nx
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import OperationalProfile, SectorType
 from babylon.models.world_state import WorldState
+
+# Aliases for readability
+TC = TestConstants
 
 # =============================================================================
 # FIXTURES
@@ -29,10 +33,10 @@ def worker() -> SocialClass:
         id="C001",
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
-        wealth=0.5,
-        ideology=0.0,
-        organization=0.1,
-        repression_faced=0.5,
+        wealth=TC.Probability.MIDPOINT,
+        ideology=TC.Ideology.NEUTRAL,
+        organization=TC.Probability.LOW,
+        repression_faced=TC.Probability.MIDPOINT,
     )
 
 
@@ -43,10 +47,10 @@ def owner() -> SocialClass:
         id="C002",
         name="Core Owner",
         role=SocialRole.CORE_BOURGEOISIE,
-        wealth=0.5,
-        ideology=0.0,
-        organization=0.8,
-        repression_faced=0.1,
+        wealth=TC.Probability.MIDPOINT,
+        ideology=TC.Ideology.NEUTRAL,
+        organization=TC.Probability.VERY_HIGH,
+        repression_faced=TC.Probability.LOW,
     )
 
 
@@ -57,8 +61,8 @@ def exploitation_edge() -> Relationship:
         source_id="C001",
         target_id="C002",
         edge_type=EdgeType.EXPLOITATION,
-        value_flow=0.0,
-        tension=0.0,
+        value_flow=TC.EconomicFlow.NO_FLOW,
+        tension=TC.EconomicFlow.NO_TENSION,
     )
 
 
@@ -193,7 +197,7 @@ class TestWorldStateToGraph:
         """Graph nodes have entity data as attributes."""
         G = two_node_state.to_graph()
         assert G.nodes["C001"]["name"] == "Periphery Worker"
-        assert G.nodes["C001"]["wealth"] == 0.5
+        assert G.nodes["C001"]["wealth"] == TC.Probability.MIDPOINT
         assert G.nodes["C002"]["name"] == "Core Owner"
 
     def test_to_graph_preserves_edge_direction(self, two_node_state: WorldState) -> None:
@@ -207,8 +211,8 @@ class TestWorldStateToGraph:
         G = two_node_state.to_graph()
         edge_data = G.edges["C001", "C002"]
         assert edge_data["edge_type"] == EdgeType.EXPLOITATION
-        assert edge_data["value_flow"] == 0.0
-        assert edge_data["tension"] == 0.0
+        assert edge_data["value_flow"] == TC.EconomicFlow.NO_FLOW
+        assert edge_data["tension"] == TC.EconomicFlow.NO_TENSION
 
     def test_empty_state_to_graph(self) -> None:
         """Empty state produces empty graph."""
@@ -432,8 +436,8 @@ def university_territory() -> Territory:
         name="University District",
         sector_type=SectorType.UNIVERSITY,
         profile=OperationalProfile.HIGH_PROFILE,
-        heat=0.3,
-        population=5000,
+        heat=TC.Probability.MODERATE,
+        population=TC.Territory.SMALL_POPULATION,
     )
 
 
@@ -445,8 +449,8 @@ def docks_territory() -> Territory:
         name="Docks",
         sector_type=SectorType.DOCKS,
         profile=OperationalProfile.LOW_PROFILE,
-        heat=0.1,
-        population=2000,
+        heat=TC.Probability.LOW,
+        population=2000,  # Smaller population for contrast with university
     )
 
 
@@ -587,8 +591,8 @@ class TestWorldStateToGraphWithTerritories:
         G = state.to_graph()
         assert G.nodes["T001"]["name"] == "University District"
         assert G.nodes["T001"]["sector_type"] == SectorType.UNIVERSITY
-        assert G.nodes["T001"]["heat"] == 0.3
-        assert G.nodes["T001"]["population"] == 5000
+        assert G.nodes["T001"]["heat"] == TC.Probability.MODERATE
+        assert G.nodes["T001"]["population"] == TC.Territory.SMALL_POPULATION
 
     def test_to_graph_mixed_nodes(
         self,
@@ -687,7 +691,7 @@ class TestWorldStateEconomyIntegration:
         state = WorldState()
         assert hasattr(state, "economy")
         assert isinstance(state.economy, GlobalEconomy)
-        assert state.economy.imperial_rent_pool == 100.0
+        assert state.economy.imperial_rent_pool == TC.EconomicFlow.INITIAL_RENT_POOL
 
     def test_world_state_with_custom_economy(
         self,
@@ -767,9 +771,9 @@ class TestWorldStateEconomyIntegration:
         # No economy in G.graph - simulates old graph without economy support
         restored = WorldState.from_graph(G, tick=0)
 
-        assert restored.economy.imperial_rent_pool == 100.0
-        assert restored.economy.current_super_wage_rate == 0.20
-        assert restored.economy.current_repression_level == 0.5
+        assert restored.economy.imperial_rent_pool == TC.EconomicFlow.INITIAL_RENT_POOL
+        assert restored.economy.current_super_wage_rate == 0.20  # Default wage rate
+        assert restored.economy.current_repression_level == TC.Probability.MIDPOINT
 
     def test_economy_round_trip(
         self,
@@ -915,7 +919,7 @@ class TestWorldStateMetabolicAggregates:
             id="T001",
             name="Forest",
             sector_type=SectorType.RESIDENTIAL,
-            biocapacity=100.0,
+            biocapacity=TC.Territory.FULL_BIOCAPACITY,
         )
         worker = SocialClass(
             id="C001",
@@ -994,7 +998,7 @@ class TestWorldStateMetabolicAggregates:
             id="T001",
             name="Pristine",
             sector_type=SectorType.RESIDENTIAL,
-            biocapacity=100.0,
+            biocapacity=TC.Territory.FULL_BIOCAPACITY,
         )
         state = WorldState(territories={"T001": territory})
         assert state.overshoot_ratio == 0.0

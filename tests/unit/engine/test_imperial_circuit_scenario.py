@@ -19,6 +19,7 @@ Topology:
 
 import pytest
 
+from babylon.config.defines import EconomyDefines, GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.enums import EdgeType, SocialRole
@@ -318,16 +319,22 @@ class TestWageCalculationCorrectness:
 
         The labor aristocracy should receive super-wages proportional
         to extracted surplus, not proportional to bourgeoisie capital.
+
+        Uses base_subsistence=0.0 to isolate wage transfer mechanics from
+        subsistence costs (The Calorie Check).
         """
         from babylon.engine.simulation_engine import step
 
-        state, config, defines = create_imperial_circuit_scenario()
+        state, config, _ = create_imperial_circuit_scenario()
         initial_cw = state.entities["C004"].wealth
         initial_cb = state.entities["C003"].wealth
 
+        # Isolate wage mechanics from subsistence deductions
+        no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
+
         # Run 10 ticks
         for _ in range(10):
-            state = step(state, config, defines=defines)
+            state = step(state, config, defines=no_subsistence_defines)
 
         final_cw = state.entities["C004"].wealth
         final_cb = state.entities["C003"].wealth

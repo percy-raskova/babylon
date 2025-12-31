@@ -15,6 +15,7 @@ Key Formulas:
 """
 
 import pytest
+from tests.constants import TestConstants
 
 from babylon.systems.formulas import (
     apply_loss_aversion,
@@ -22,6 +23,9 @@ from babylon.systems.formulas import (
     calculate_crossover_threshold,
     calculate_revolution_probability,
 )
+
+# Alias for readability
+TC = TestConstants.Behavioral
 
 
 @pytest.mark.math
@@ -398,25 +402,23 @@ class TestCrossoverEvent:
 
 @pytest.mark.math
 class TestLossAversion:
-    """Loss aversion coefficient λ = 2.25 (Kahneman-Tversky).
+    """Loss aversion coefficient λ (Kahneman-Tversky).
 
     Losses loom larger than gains in decision-making.
     This affects how agents evaluate revolutionary risk.
     """
 
-    LOSS_AVERSION_COEFFICIENT = 2.25
-
     def test_loss_aversion_coefficient(self) -> None:
-        """λ = 2.25 per prospect theory."""
+        """λ per prospect theory (Kahneman-Tversky)."""
         loss = -10.0
         gain = 10.0
 
         perceived_loss = apply_loss_aversion(loss)
         perceived_gain = apply_loss_aversion(gain)
 
-        # Loss should feel 2.25x as impactful
+        # Loss should feel LOSS_AVERSION times as impactful
         assert abs(perceived_loss) == pytest.approx(
-            abs(perceived_gain) * self.LOSS_AVERSION_COEFFICIENT,
+            abs(perceived_gain) * TC.LOSS_AVERSION,
             abs=0.01,
         )
 
@@ -432,5 +434,5 @@ class TestLossAversion:
         loss = -10.0
         perceived = apply_loss_aversion(loss)
 
-        expected = loss * self.LOSS_AVERSION_COEFFICIENT
+        expected = loss * TC.LOSS_AVERSION
         assert perceived == pytest.approx(expected, abs=0.01)

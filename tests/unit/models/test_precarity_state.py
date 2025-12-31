@@ -29,9 +29,12 @@ import math
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 # This import will fail until model exists - that's the RED phase!
 from babylon.models.entities.precarity_state import PrecarityState
+
+TC = TestConstants
 
 
 def sigmoid(x: float) -> float:
@@ -51,47 +54,47 @@ class TestPrecarityStateCreation:
     def test_minimal_creation(self) -> None:
         """Can create PrecarityState with all defaults."""
         precarity = PrecarityState()
-        assert precarity.nominal_wage == 10.0
+        assert precarity.nominal_wage == TC.Precarity.DEFAULT_WAGE
 
     def test_with_custom_nominal_wage(self) -> None:
         """Can create PrecarityState with custom nominal wage."""
-        precarity = PrecarityState(nominal_wage=20.0)
-        assert precarity.nominal_wage == 20.0
+        precarity = PrecarityState(nominal_wage=TC.Precarity.PERIPHERY_WAGE)
+        assert precarity.nominal_wage == TC.Precarity.PERIPHERY_WAGE
 
     def test_with_custom_ppp_factor(self) -> None:
         """Can create PrecarityState with custom PPP factor."""
-        precarity = PrecarityState(ppp_factor=0.5)
-        assert precarity.ppp_factor == 0.5
+        precarity = PrecarityState(ppp_factor=TC.Precarity.LOW_PPP)
+        assert precarity.ppp_factor == TC.Precarity.LOW_PPP
 
     def test_with_custom_inflation_index(self) -> None:
         """Can create PrecarityState with custom inflation index."""
-        precarity = PrecarityState(inflation_index=2.0)
-        assert precarity.inflation_index == 2.0
+        precarity = PrecarityState(inflation_index=TC.Precarity.DOUBLE_INFLATION)
+        assert precarity.inflation_index == TC.Precarity.DOUBLE_INFLATION
 
     def test_with_custom_subsistence_threshold(self) -> None:
         """Can create PrecarityState with custom subsistence threshold."""
-        precarity = PrecarityState(subsistence_threshold=8.0)
-        assert precarity.subsistence_threshold == 8.0
+        precarity = PrecarityState(subsistence_threshold=TC.Precarity.CUSTOM_SUBSISTENCE)
+        assert precarity.subsistence_threshold == TC.Precarity.CUSTOM_SUBSISTENCE
 
     def test_with_custom_organization(self) -> None:
         """Can create PrecarityState with custom organization."""
-        precarity = PrecarityState(organization=0.7)
-        assert precarity.organization == 0.7
+        precarity = PrecarityState(organization=TC.Probability.HIGH)
+        assert precarity.organization == TC.Probability.HIGH
 
     def test_full_custom_creation(self) -> None:
         """Can create PrecarityState with all custom field values."""
         precarity = PrecarityState(
-            nominal_wage=25.0,
-            ppp_factor=0.8,
-            inflation_index=1.5,
-            subsistence_threshold=7.0,
-            organization=0.6,
+            nominal_wage=TC.Precarity.CUSTOM_WAGE,
+            ppp_factor=TC.Precarity.MODERATE_PPP,
+            inflation_index=TC.Precarity.ELEVATED_INFLATION,
+            subsistence_threshold=TC.Precarity.HIGH_SUBSISTENCE,
+            organization=TC.Probability.ELEVATED,
         )
-        assert precarity.nominal_wage == 25.0
-        assert precarity.ppp_factor == 0.8
-        assert precarity.inflation_index == 1.5
-        assert precarity.subsistence_threshold == 7.0
-        assert precarity.organization == 0.6
+        assert precarity.nominal_wage == TC.Precarity.CUSTOM_WAGE
+        assert precarity.ppp_factor == TC.Precarity.MODERATE_PPP
+        assert precarity.inflation_index == TC.Precarity.ELEVATED_INFLATION
+        assert precarity.subsistence_threshold == TC.Precarity.HIGH_SUBSISTENCE
+        assert precarity.organization == TC.Probability.ELEVATED
 
 
 # =============================================================================
@@ -216,27 +219,27 @@ class TestPrecarityStateDefaults:
     def test_nominal_wage_defaults_to_10(self) -> None:
         """Nominal wage defaults to 10.0."""
         precarity = PrecarityState()
-        assert precarity.nominal_wage == 10.0
+        assert precarity.nominal_wage == TC.Precarity.DEFAULT_WAGE
 
     def test_ppp_factor_defaults_to_1(self) -> None:
         """PPP factor defaults to 1.0 (full purchasing power)."""
         precarity = PrecarityState()
-        assert precarity.ppp_factor == 1.0
+        assert precarity.ppp_factor == TC.Probability.FULL
 
     def test_inflation_index_defaults_to_1(self) -> None:
         """Inflation index defaults to 1.0 (no inflation)."""
         precarity = PrecarityState()
-        assert precarity.inflation_index == 1.0
+        assert precarity.inflation_index == TC.Probability.FULL
 
     def test_subsistence_threshold_defaults_to_5(self) -> None:
         """Subsistence threshold defaults to 5.0."""
         precarity = PrecarityState()
-        assert precarity.subsistence_threshold == 5.0
+        assert precarity.subsistence_threshold == TC.Precarity.DEFAULT_SUBSISTENCE
 
     def test_organization_defaults_to_0_5(self) -> None:
         """Organization defaults to 0.5 (moderate organization)."""
         precarity = PrecarityState()
-        assert precarity.organization == 0.5
+        assert precarity.organization == TC.Probability.MIDPOINT
 
 
 # =============================================================================

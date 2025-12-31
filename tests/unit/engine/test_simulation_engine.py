@@ -145,8 +145,14 @@ class TestStepImperialRent:
         two_node_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """Owner gains wealth from imperial rent extraction."""
-        new_state = step(two_node_state, config)
+        """Owner gains wealth from imperial rent extraction.
+
+        Uses base_subsistence=0.0 to isolate rent transfer mechanics
+        from subsistence costs (The Calorie Check).
+        """
+        # Isolate rent mechanics from subsistence deductions
+        no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
+        new_state = step(two_node_state, config, defines=no_subsistence_defines)
         Assert(new_state).entity("C002").is_richer_than(two_node_state)
 
     def test_step_rent_is_zero_sum(
@@ -154,9 +160,15 @@ class TestStepImperialRent:
         two_node_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """Total wealth is conserved (rent is transferred, not created)."""
+        """Total wealth is conserved when testing rent transfer in isolation.
+
+        Uses base_subsistence=0.0 to test that rent transfer is zero-sum.
+        With subsistence > 0, total wealth decreases each tick (The Calorie Check).
+        """
+        # Isolate rent mechanics from subsistence deductions
+        no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
         initial_total = sum(e.wealth for e in two_node_state.entities.values())
-        new_state = step(two_node_state, config)
+        new_state = step(two_node_state, config, defines=no_subsistence_defines)
         final_total = sum(e.wealth for e in new_state.entities.values())
         assert final_total == pytest.approx(initial_total)
 
@@ -372,15 +384,22 @@ class TestStepEdgeCases:
         owner: SocialClass,
         config: SimulationConfig,
     ) -> None:
-        """step() handles state with entities but no relationships."""
+        """step() handles state with entities but no relationships.
+
+        Uses base_subsistence=0.0 to test that wealth is unchanged without
+        extraction edges. With subsistence > 0, entities lose wealth each tick
+        regardless of relationships (The Calorie Check).
+        """
+        # Isolate relationship mechanics from subsistence deductions
+        no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
         state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
             relationships=[],
         )
-        new_state = step(state, config)
+        new_state = step(state, config, defines=no_subsistence_defines)
         Assert(new_state).tick_is(1)
-        # Wealth unchanged without extraction edges
+        # Wealth unchanged without extraction edges (subsistence disabled)
         Assert(new_state).entity("C001").wealth_unchanged_from(state)
 
     def test_step_wealth_cannot_go_negative(

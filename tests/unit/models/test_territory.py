@@ -8,9 +8,13 @@ Sprint 3.5.2: Layer 0 - The Territorial Substrate.
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import OperationalProfile, SectorType
+
+# Aliases for readability
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -41,17 +45,17 @@ class TestTerritoryCreation:
             host_id="C001",
             occupant_id="C002",
             profile=OperationalProfile.HIGH_PROFILE,
-            heat=0.5,
-            rent_level=2.0,
-            population=1000,
+            heat=TC.Territory.MODERATE_HEAT,
+            rent_level=TC.Territory.ELEVATED_RENT,
+            population=TC.Territory.SMALL_POPULATION,
             under_eviction=True,
         )
         assert territory.host_id == "C001"
         assert territory.occupant_id == "C002"
         assert territory.profile == OperationalProfile.HIGH_PROFILE
-        assert territory.heat == 0.5
-        assert territory.rent_level == 2.0
-        assert territory.population == 1000
+        assert territory.heat == TC.Territory.MODERATE_HEAT
+        assert territory.rent_level == TC.Territory.ELEVATED_RENT
+        assert territory.population == TC.Territory.SMALL_POPULATION
         assert territory.under_eviction is True
 
 
@@ -144,7 +148,7 @@ class TestTerritoryDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.heat == 0.0
+        assert territory.heat == TC.Territory.NO_HEAT
 
     def test_rent_level_defaults_to_one(self) -> None:
         """Rent level defaults to 1.0 (baseline)."""
@@ -153,7 +157,7 @@ class TestTerritoryDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.rent_level == 1.0
+        assert territory.rent_level == TC.Territory.BASELINE_RENT
 
     def test_population_defaults_to_zero(self) -> None:
         """Population defaults to 0."""
@@ -162,7 +166,7 @@ class TestTerritoryDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.population == 0
+        assert territory.population == TC.Territory.EMPTY
 
     def test_host_id_defaults_to_none(self) -> None:
         """Host ID defaults to None (no legal sovereign)."""
@@ -287,9 +291,9 @@ class TestTerritoryConstrainedTypes:
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
-            population=1000000,
+            population=TC.Territory.LARGE_POPULATION,
         )
-        assert territory.population == 1000000
+        assert territory.population == TC.Territory.LARGE_POPULATION
 
     def test_population_rejects_negative(self) -> None:
         """Negative population is invalid."""
@@ -388,9 +392,9 @@ class TestTerritorySerialization:
             host_id="C001",
             occupant_id="C002",
             profile=OperationalProfile.HIGH_PROFILE,
-            heat=0.5,
-            rent_level=1.5,
-            population=5000,
+            heat=TC.Territory.MODERATE_HEAT,
+            rent_level=TC.Territory.ELEVATED_RENT,
+            population=TC.Territory.SMALL_POPULATION,
             under_eviction=True,
         )
         json_str = original.model_dump_json()
@@ -568,7 +572,7 @@ class TestTerritoryMetabolicDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.biocapacity == 100.0
+        assert territory.biocapacity == TC.Territory.FULL_BIOCAPACITY
 
     def test_max_biocapacity_defaults_to_100(self) -> None:
         """Max biocapacity defaults to 100.0 (carrying capacity)."""
@@ -577,7 +581,7 @@ class TestTerritoryMetabolicDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.max_biocapacity == 100.0
+        assert territory.max_biocapacity == TC.Territory.FULL_BIOCAPACITY
 
     def test_regeneration_rate_defaults_to_0_02(self) -> None:
         """Regeneration rate defaults to 2% per tick."""
@@ -586,7 +590,7 @@ class TestTerritoryMetabolicDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.regeneration_rate == 0.02
+        assert territory.regeneration_rate == TC.Territory.DEFAULT_REGENERATION
 
     def test_extraction_intensity_defaults_to_0(self) -> None:
         """Extraction intensity defaults to 0 (no extraction)."""
@@ -595,7 +599,7 @@ class TestTerritoryMetabolicDefaults:
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.extraction_intensity == 0.0
+        assert territory.extraction_intensity == TC.Probability.ZERO
 
 
 @pytest.mark.topology

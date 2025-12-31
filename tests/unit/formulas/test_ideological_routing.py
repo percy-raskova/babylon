@@ -23,8 +23,12 @@ MLM-TW Theory:
 """
 
 import pytest
+from tests.constants import TestConstants
 
 from babylon.systems.formulas import calculate_ideological_routing
+
+# Alias for readability
+TC = TestConstants.Behavioral
 
 
 @pytest.mark.math

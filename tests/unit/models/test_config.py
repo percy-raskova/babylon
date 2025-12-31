@@ -9,8 +9,12 @@ Sprint 3: SimulationConfig model for Phase 2 game loop.
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.config import SimulationConfig
+
+# Aliases for readability
+TC = TestConstants
 
 # =============================================================================
 # DEFAULT VALUES TESTS
@@ -28,42 +32,42 @@ class TestSimulationConfigDefaults:
     def test_extraction_efficiency_default(self) -> None:
         """Alpha (α) defaults to 0.8 for imperial rent calculation."""
         config = SimulationConfig()
-        assert config.extraction_efficiency == 0.8
+        assert config.extraction_efficiency == TC.Probability.VERY_HIGH
 
     def test_consciousness_sensitivity_default(self) -> None:
         """k defaults to 0.5 for consciousness drift calculation."""
         config = SimulationConfig()
-        assert config.consciousness_sensitivity == 0.5
+        assert config.consciousness_sensitivity == TC.Probability.MIDPOINT
 
     def test_subsistence_threshold_default(self) -> None:
         """Poverty line defaults to 0.3 for acquiescence sigmoid."""
         config = SimulationConfig()
-        assert config.subsistence_threshold == 0.3
+        assert config.subsistence_threshold == TC.Probability.MODERATE
 
     def test_survival_steepness_default(self) -> None:
         """Sigmoid sharpness defaults to 10.0."""
         config = SimulationConfig()
-        assert config.survival_steepness == 10.0
+        assert config.survival_steepness == 10.0  # Specific sigmoid parameter
 
     def test_repression_level_default(self) -> None:
         """State violence capacity defaults to 0.5."""
         config = SimulationConfig()
-        assert config.repression_level == 0.5
+        assert config.repression_level == TC.Probability.MIDPOINT
 
     def test_initial_worker_wealth_default(self) -> None:
         """Starting wealth for periphery worker defaults to 0.5."""
         config = SimulationConfig()
-        assert config.initial_worker_wealth == 0.5
+        assert config.initial_worker_wealth == TC.Wealth.WORKER_BASELINE
 
     def test_initial_owner_wealth_default(self) -> None:
         """Starting wealth for core owner defaults to 0.5."""
         config = SimulationConfig()
-        assert config.initial_owner_wealth == 0.5
+        assert config.initial_owner_wealth == TC.Wealth.WORKER_BASELINE
 
     def test_loss_aversion_lambda_default(self) -> None:
         """Kahneman-Tversky lambda defaults to 2.25."""
         config = SimulationConfig()
-        assert config.loss_aversion_lambda == 2.25
+        assert config.loss_aversion_lambda == TC.Behavioral.LOSS_AVERSION
 
     def test_all_defaults_can_create_config(self) -> None:
         """Config can be created with all defaults."""
@@ -229,26 +233,26 @@ class TestSimulationConfigCustomization:
 
     def test_custom_extraction_efficiency(self) -> None:
         """Can set custom extraction efficiency."""
-        config = SimulationConfig(extraction_efficiency=0.3)
-        assert config.extraction_efficiency == 0.3
+        config = SimulationConfig(extraction_efficiency=TC.Probability.MODERATE)
+        assert config.extraction_efficiency == TC.Probability.MODERATE
 
     def test_custom_repression_level(self) -> None:
         """Can set custom repression level."""
-        config = SimulationConfig(repression_level=0.9)
-        assert config.repression_level == 0.9
+        config = SimulationConfig(repression_level=TC.Probability.EXTREME)
+        assert config.repression_level == TC.Probability.EXTREME
 
     def test_multiple_custom_values(self) -> None:
         """Can set multiple custom values at once."""
         config = SimulationConfig(
-            extraction_efficiency=0.6,
-            consciousness_sensitivity=0.3,
-            subsistence_threshold=0.5,
-            repression_level=0.7,
+            extraction_efficiency=TC.Probability.ELEVATED,
+            consciousness_sensitivity=TC.Probability.MODERATE,
+            subsistence_threshold=TC.Probability.MIDPOINT,
+            repression_level=TC.Probability.HIGH,
         )
-        assert config.extraction_efficiency == 0.6
-        assert config.consciousness_sensitivity == 0.3
-        assert config.subsistence_threshold == 0.5
-        assert config.repression_level == 0.7
+        assert config.extraction_efficiency == TC.Probability.ELEVATED
+        assert config.consciousness_sensitivity == TC.Probability.MODERATE
+        assert config.subsistence_threshold == TC.Probability.MIDPOINT
+        assert config.repression_level == TC.Probability.HIGH
 
 
 # =============================================================================
@@ -263,20 +267,20 @@ class TestSimulationConfigSerialization:
     def test_json_round_trip(self) -> None:
         """Config survives JSON round-trip."""
         original = SimulationConfig(
-            extraction_efficiency=0.75,
-            consciousness_sensitivity=0.4,
-            repression_level=0.6,
+            extraction_efficiency=0.75,  # Non-standard value for round-trip test
+            consciousness_sensitivity=0.4,  # Non-standard value
+            repression_level=TC.Probability.ELEVATED,
         )
         json_str = original.model_dump_json()
         restored = SimulationConfig.model_validate_json(json_str)
 
         assert restored.extraction_efficiency == pytest.approx(0.75)
         assert restored.consciousness_sensitivity == pytest.approx(0.4)
-        assert restored.repression_level == pytest.approx(0.6)
+        assert restored.repression_level == pytest.approx(TC.Probability.ELEVATED)
 
     def test_dict_round_trip(self) -> None:
         """Config survives dict round-trip."""
-        original = SimulationConfig(extraction_efficiency=0.9)
+        original = SimulationConfig(extraction_efficiency=TC.Probability.EXTREME)
         data = original.model_dump()
         restored = SimulationConfig.model_validate(data)
 
@@ -285,10 +289,10 @@ class TestSimulationConfigSerialization:
     def test_model_copy_with_update(self) -> None:
         """Config can be copied with updated values."""
         original = SimulationConfig()
-        modified = original.model_copy(update={"repression_level": 0.9})
+        modified = original.model_copy(update={"repression_level": TC.Probability.EXTREME})
 
-        assert original.repression_level == 0.5  # Unchanged
-        assert modified.repression_level == 0.9  # Updated
+        assert original.repression_level == TC.Probability.MIDPOINT  # Unchanged
+        assert modified.repression_level == TC.Probability.EXTREME  # Updated
 
 
 # =============================================================================
@@ -326,7 +330,7 @@ class TestSolidarityTransmissionConfig:
         Source consciousness must be > this threshold for transmission.
         """
         config = SimulationConfig()
-        assert config.solidarity_activation_threshold == 0.3
+        assert config.solidarity_activation_threshold == TC.Solidarity.ACTIVATION_THRESHOLD
 
     def test_mass_awakening_threshold_default(self) -> None:
         """mass_awakening_threshold defaults to 0.6.
@@ -334,7 +338,7 @@ class TestSolidarityTransmissionConfig:
         When target consciousness crosses this threshold, MASS_AWAKENING event fires.
         """
         config = SimulationConfig()
-        assert config.mass_awakening_threshold == 0.6
+        assert config.mass_awakening_threshold == TC.Solidarity.MASS_AWAKENING_THRESHOLD
 
     def test_solidarity_activation_threshold_accepts_zero(self) -> None:
         """Zero threshold means any consciousness transmits."""
@@ -396,7 +400,7 @@ class TestTerritoryDynamicsConfig:
         Rate at which heat decays for LOW_PROFILE territories.
         """
         config = SimulationConfig()
-        assert config.heat_decay_rate == 0.1
+        assert config.heat_decay_rate == TC.Probability.LOW
 
     def test_high_profile_heat_gain_default(self) -> None:
         """high_profile_heat_gain defaults to 0.15.
@@ -404,7 +408,7 @@ class TestTerritoryDynamicsConfig:
         Heat gain per tick for HIGH_PROFILE territories.
         """
         config = SimulationConfig()
-        assert config.high_profile_heat_gain == 0.15
+        assert config.high_profile_heat_gain == 0.15  # Territory-specific rate
 
     def test_eviction_heat_threshold_default(self) -> None:
         """eviction_heat_threshold defaults to 0.8.
@@ -412,7 +416,7 @@ class TestTerritoryDynamicsConfig:
         Heat level at which eviction pipeline is triggered.
         """
         config = SimulationConfig()
-        assert config.eviction_heat_threshold == 0.8
+        assert config.eviction_heat_threshold == TC.Territory.EVICTION_THRESHOLD
 
     def test_rent_spike_multiplier_default(self) -> None:
         """rent_spike_multiplier defaults to 1.5.
@@ -420,7 +424,7 @@ class TestTerritoryDynamicsConfig:
         Rent multiplier during eviction.
         """
         config = SimulationConfig()
-        assert config.rent_spike_multiplier == 1.5
+        assert config.rent_spike_multiplier == 1.5  # Multiplier (not a probability)
 
     def test_displacement_rate_default(self) -> None:
         """displacement_rate defaults to 0.1.
@@ -428,7 +432,7 @@ class TestTerritoryDynamicsConfig:
         Population displacement rate during eviction.
         """
         config = SimulationConfig()
-        assert config.displacement_rate == 0.1
+        assert config.displacement_rate == TC.Probability.LOW
 
     def test_heat_spillover_rate_default(self) -> None:
         """heat_spillover_rate defaults to 0.05.
@@ -436,7 +440,7 @@ class TestTerritoryDynamicsConfig:
         Rate of heat spillover via ADJACENCY edges.
         """
         config = SimulationConfig()
-        assert config.heat_spillover_rate == 0.05
+        assert config.heat_spillover_rate == 0.05  # Territory-specific rate
 
     def test_clarity_profile_coefficient_default(self) -> None:
         """clarity_profile_coefficient defaults to 0.3.
@@ -444,7 +448,7 @@ class TestTerritoryDynamicsConfig:
         Clarity bonus for HIGH_PROFILE territories.
         """
         config = SimulationConfig()
-        assert config.clarity_profile_coefficient == 0.3
+        assert config.clarity_profile_coefficient == TC.Probability.MODERATE
 
     def test_territory_params_accept_custom_values(self) -> None:
         """Can set custom territory dynamics parameters."""

@@ -20,8 +20,12 @@ This implements the Fascist Bifurcation scenario:
 """
 
 import pytest
+from tests.constants import TestConstants
 
 from babylon.systems.formulas import calculate_solidarity_transmission
+
+# Alias for readability
+TC = TestConstants.Solidarity
 
 
 @pytest.mark.math
@@ -46,7 +50,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.9,
             target_consciousness=0.1,
             solidarity_strength=0.8,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 0.8 * (0.9 - 0.1) = 0.64
         assert delta == pytest.approx(0.64, abs=0.001)
@@ -58,7 +62,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.2,
             target_consciousness=0.1,
             solidarity_strength=0.8,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         assert delta == 0.0
 
@@ -70,7 +74,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.3,
             target_consciousness=0.1,
             solidarity_strength=0.8,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # At exactly threshold, no transmission (must be strictly above)
         assert delta == 0.0
@@ -81,7 +85,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.31,
             target_consciousness=0.1,
             solidarity_strength=0.8,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 0.8 * (0.31 - 0.1) = 0.168
         assert delta == pytest.approx(0.168, abs=0.001)
@@ -97,7 +101,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.9,  # Full revolutionary struggle
             target_consciousness=0.1,
             solidarity_strength=0.0,  # No built infrastructure
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         assert delta == 0.0
 
@@ -107,7 +111,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.5,
             target_consciousness=0.5,
             solidarity_strength=0.8,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 0.8 * (0.5 - 0.5) = 0.0
         assert delta == 0.0
@@ -123,7 +127,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=0.4,  # Above threshold
             target_consciousness=0.8,
             solidarity_strength=0.5,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 0.5 * (0.4 - 0.8) = -0.2
         assert delta == pytest.approx(-0.2, abs=0.001)
@@ -134,7 +138,7 @@ class TestSolidarityTransmissionFormula:
             source_consciousness=1.0,  # Full revolutionary consciousness
             target_consciousness=0.0,  # Zero consciousness
             solidarity_strength=1.0,  # Perfect solidarity infrastructure
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 1.0 * (1.0 - 0.0) = 1.0
         assert delta == pytest.approx(1.0, abs=0.001)
@@ -152,7 +156,7 @@ class TestSolidarityTransmissionBoundaries:
                 source_consciousness=0.9,
                 target_consciousness=0.1,
                 solidarity_strength=sigma,
-                activation_threshold=0.3,
+                activation_threshold=TC.ACTIVATION_THRESHOLD,
             )
             # Should not raise
             assert isinstance(delta, float)
@@ -164,7 +168,7 @@ class TestSolidarityTransmissionBoundaries:
             source_consciousness=1.0,
             target_consciousness=0.0,
             solidarity_strength=0.5,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 0.5 * (1.0 - 0.0) = 0.5
         assert delta == pytest.approx(0.5, abs=0.001)
@@ -195,7 +199,7 @@ class TestSolidarityTransmissionScenarios:
             source_consciousness=0.9,
             target_consciousness=0.1,
             solidarity_strength=0.8,
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         assert delta == pytest.approx(0.64, abs=0.001)
         # This delta would push C_w to 0.1 + 0.64 = 0.74 (awakened!)
@@ -210,7 +214,7 @@ class TestSolidarityTransmissionScenarios:
             source_consciousness=0.9,
             target_consciousness=0.1,
             solidarity_strength=0.0,  # Key difference!
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         assert delta == 0.0
         # C_w stays at 0.1, remains passive consumer
@@ -221,7 +225,7 @@ class TestSolidarityTransmissionScenarios:
             source_consciousness=0.6,  # Moderate revolutionary consciousness
             target_consciousness=0.2,  # Low consciousness
             solidarity_strength=0.5,  # Moderate infrastructure
-            activation_threshold=0.3,
+            activation_threshold=TC.ACTIVATION_THRESHOLD,
         )
         # delta = 0.5 * (0.6 - 0.2) = 0.2
         assert delta == pytest.approx(0.2, abs=0.001)

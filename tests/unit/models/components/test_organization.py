@@ -16,9 +16,12 @@ All tests verify:
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.components.base import Component
 from babylon.models.components.organization import OrganizationComponent
+
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -32,29 +35,29 @@ class TestOrganizationComponentCreation:
     def test_creation_with_defaults(self) -> None:
         """Can create OrganizationComponent with default values."""
         component = OrganizationComponent()
-        assert component.cohesion == 0.1
-        assert component.cadre_level == 0.0
+        assert component.cohesion == TC.Organization.DEFAULT_COHESION
+        assert component.cadre_level == TC.Organization.DEFAULT_CADRE
 
     def test_creation_with_custom_cohesion(self) -> None:
         """Can create OrganizationComponent with custom cohesion."""
-        component = OrganizationComponent(cohesion=0.7)
-        assert component.cohesion == 0.7
-        assert component.cadre_level == 0.0
+        component = OrganizationComponent(cohesion=TC.Probability.HIGH)
+        assert component.cohesion == TC.Probability.HIGH
+        assert component.cadre_level == TC.Organization.DEFAULT_CADRE
 
     def test_creation_with_custom_cadre_level(self) -> None:
         """Can create OrganizationComponent with custom cadre_level."""
-        component = OrganizationComponent(cadre_level=0.5)
-        assert component.cohesion == 0.1
-        assert component.cadre_level == 0.5
+        component = OrganizationComponent(cadre_level=TC.Probability.MIDPOINT)
+        assert component.cohesion == TC.Organization.DEFAULT_COHESION
+        assert component.cadre_level == TC.Probability.MIDPOINT
 
     def test_creation_with_all_custom_values(self) -> None:
         """Can create OrganizationComponent with all custom values."""
         component = OrganizationComponent(
-            cohesion=0.8,
-            cadre_level=0.6,
+            cohesion=TC.Probability.VERY_HIGH,
+            cadre_level=TC.Probability.ELEVATED,
         )
-        assert component.cohesion == 0.8
-        assert component.cadre_level == 0.6
+        assert component.cohesion == TC.Probability.VERY_HIGH
+        assert component.cadre_level == TC.Probability.ELEVATED
 
     def test_creation_with_boundary_values_zero(self) -> None:
         """Can create OrganizationComponent at minimum boundaries."""
@@ -76,12 +79,16 @@ class TestOrganizationComponentCreation:
 
     def test_creation_highly_organized(self) -> None:
         """Can create highly organized entity (high cohesion, high cadre)."""
-        component = OrganizationComponent(cohesion=0.9, cadre_level=0.9)
-        assert component.cohesion == 0.9
-        assert component.cadre_level == 0.9
+        component = OrganizationComponent(
+            cohesion=TC.Probability.EXTREME,
+            cadre_level=TC.Probability.EXTREME,
+        )
+        assert component.cohesion == TC.Probability.EXTREME
+        assert component.cadre_level == TC.Probability.EXTREME
 
     def test_creation_atomized(self) -> None:
         """Can create atomized entity (no cohesion, no cadres)."""
+        # Boundary values kept inline (type contract test)
         component = OrganizationComponent(cohesion=0.0, cadre_level=0.0)
         assert component.cohesion == 0.0
         assert component.cadre_level == 0.0
@@ -118,9 +125,12 @@ class TestOrganizationComponentValidation:
 
     def test_accepts_moderate_values(self) -> None:
         """Moderate values for both fields are valid."""
-        component = OrganizationComponent(cohesion=0.3, cadre_level=0.4)
-        assert component.cohesion == 0.3
-        assert component.cadre_level == 0.4
+        component = OrganizationComponent(
+            cohesion=TC.Probability.MODERATE,
+            cadre_level=TC.Probability.BELOW_MIDPOINT,
+        )
+        assert component.cohesion == TC.Probability.MODERATE
+        assert component.cadre_level == TC.Probability.BELOW_MIDPOINT
 
 
 # =============================================================================
@@ -134,15 +144,15 @@ class TestOrganizationComponentImmutability:
 
     def test_cannot_mutate_cohesion(self) -> None:
         """Cannot modify cohesion after creation."""
-        component = OrganizationComponent(cohesion=0.5)
+        component = OrganizationComponent(cohesion=TC.Probability.MIDPOINT)
         with pytest.raises(ValidationError):
-            component.cohesion = 0.9  # type: ignore[misc]
+            component.cohesion = TC.Probability.EXTREME  # type: ignore[misc]
 
     def test_cannot_mutate_cadre_level(self) -> None:
         """Cannot modify cadre_level after creation."""
-        component = OrganizationComponent(cadre_level=0.5)
+        component = OrganizationComponent(cadre_level=TC.Probability.MIDPOINT)
         with pytest.raises(ValidationError):
-            component.cadre_level = 0.9  # type: ignore[misc]
+            component.cadre_level = TC.Probability.EXTREME  # type: ignore[misc]
 
 
 # =============================================================================
@@ -157,8 +167,8 @@ class TestOrganizationComponentSerialization:
     def test_serialize_to_json(self) -> None:
         """OrganizationComponent serializes to valid JSON."""
         component = OrganizationComponent(
-            cohesion=0.5,
-            cadre_level=0.3,
+            cohesion=TC.Probability.MIDPOINT,
+            cadre_level=TC.Probability.MODERATE,
         )
         json_str = component.model_dump_json()
         assert "0.5" in json_str
@@ -166,13 +176,15 @@ class TestOrganizationComponentSerialization:
 
     def test_deserialize_from_json(self) -> None:
         """OrganizationComponent can be restored from JSON."""
+        # JSON string literal with raw values (testing deserialization)
         json_str = '{"cohesion": 0.5, "cadre_level": 0.3}'
         component = OrganizationComponent.model_validate_json(json_str)
-        assert component.cohesion == 0.5
-        assert component.cadre_level == 0.3
+        assert component.cohesion == TC.Probability.MIDPOINT
+        assert component.cadre_level == TC.Probability.MODERATE
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
+        # Precision test values - kept inline to verify exact decimal preservation
         original = OrganizationComponent(
             cohesion=0.42,
             cadre_level=0.67,
@@ -186,13 +198,13 @@ class TestOrganizationComponentSerialization:
     def test_dict_conversion(self) -> None:
         """OrganizationComponent converts to dict for database storage."""
         component = OrganizationComponent(
-            cohesion=0.5,
-            cadre_level=0.3,
+            cohesion=TC.Probability.MIDPOINT,
+            cadre_level=TC.Probability.MODERATE,
         )
         data = component.model_dump()
 
-        assert data["cohesion"] == 0.5
-        assert data["cadre_level"] == 0.3
+        assert data["cohesion"] == TC.Probability.MIDPOINT
+        assert data["cadre_level"] == TC.Probability.MODERATE
 
 
 # =============================================================================

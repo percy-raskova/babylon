@@ -11,6 +11,7 @@ Key Formulas:
 """
 
 import pytest
+from tests.constants import TestConstants
 
 from babylon.systems.formulas import (
     calculate_consciousness_drift,
@@ -18,6 +19,9 @@ from babylon.systems.formulas import (
     calculate_labor_aristocracy_ratio,
     is_labor_aristocracy,
 )
+
+# Alias for readability
+TC = TestConstants.Behavioral
 
 
 @pytest.mark.math
@@ -291,7 +295,7 @@ class TestConsciousnessDriftBifurcation:
         )
 
         # Base drift = k(1 - 1.0) - 0.0*0.3 = 0.0
-        # Agitation energy = |-10| * 2.25 = 22.5
+        # Agitation energy = |-10| * LOSS_AVERSION = 22.5
         # Crisis modifier = 22.5 * min(1.0, 0.5) = 11.25
         # Total drift = 0.0 + 11.25 = 11.25 (positive = revolutionary)
         assert drift > 0.0, "Crisis with solidarity should increase consciousness"
@@ -317,7 +321,7 @@ class TestConsciousnessDriftBifurcation:
         )
 
         # Base drift = k(1 - 1.0) - 0.0*0.3 = 0.0
-        # Agitation energy = |-10| * 2.25 = 22.5
+        # Agitation energy = |-10| * LOSS_AVERSION = 22.5
         # No solidarity -> subtract agitation: drift = 0.0 - 22.5 = -22.5
         # Total drift = -22.5 (negative = fascist/reactionary)
         assert drift < 0.0, "Crisis without solidarity should decrease consciousness"
@@ -355,12 +359,12 @@ class TestConsciousnessDriftBifurcation:
         assert drift_no_change == pytest.approx(drift_rising, abs=0.001)
 
     def test_loss_aversion_coefficient_applied(self) -> None:
-        """Verify the 2.25 loss aversion multiplier is correctly applied.
+        """Verify the loss aversion multiplier is correctly applied.
 
-        Kahneman-Tversky: Losses loom 2.25x larger than equivalent gains.
+        Kahneman-Tversky: Losses loom larger than equivalent gains.
         This amplifies the agitation energy during crisis.
         """
-        # With solidarity: agitation energy = |wage_change| * 2.25
+        # With solidarity: agitation energy = |wage_change| * LOSS_AVERSION
         drift = calculate_consciousness_drift(
             core_wages=50.0,
             value_produced=50.0,
@@ -372,8 +376,8 @@ class TestConsciousnessDriftBifurcation:
         )
 
         # Expected: base_drift (0) + crisis_modifier
-        # crisis_modifier = |(-1)| * 2.25 * min(1.0, 1.0) = 2.25
-        assert drift == pytest.approx(2.25, abs=0.01)
+        # crisis_modifier = |(-1)| * LOSS_AVERSION * min(1.0, 1.0) = LOSS_AVERSION
+        assert drift == pytest.approx(TC.LOSS_AVERSION, abs=0.01)
 
     def test_solidarity_pressure_clamped_to_one(self) -> None:
         """Verify solidarity_pressure is clamped via min(1.0, solidarity_pressure).

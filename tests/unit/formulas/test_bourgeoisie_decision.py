@@ -19,9 +19,13 @@ TDD Red Phase: These tests define the contract for calculate_bourgeoisie_decisio
 from enum import StrEnum
 
 import pytest
+from tests.constants import TestConstants
 
 # Import will fail initially (Red Phase)
 # from babylon.systems.formulas import calculate_bourgeoisie_decision
+
+# Alias for readability
+TC = TestConstants.BourgeoisieDecision
 
 
 class BourgeoisieDecision(StrEnum):
@@ -53,9 +57,9 @@ class TestBourgeoisieDecisionProsperity:
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.8,
             aggregate_tension=0.2,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.BRIBERY
@@ -72,9 +76,9 @@ class TestBourgeoisieDecisionProsperity:
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.8,
             aggregate_tension=0.6,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.NO_CHANGE
@@ -101,9 +105,9 @@ class TestBourgeoisieDecisionAusterity:
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
             aggregate_tension=0.3,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.AUSTERITY
@@ -120,9 +124,9 @@ class TestBourgeoisieDecisionAusterity:
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
             aggregate_tension=0.7,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.IRON_FIST
@@ -149,9 +153,9 @@ class TestBourgeoisieDecisionCrisis:
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.05,
             aggregate_tension=0.3,  # Tension doesn't matter in crisis
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.CRISIS
@@ -165,9 +169,9 @@ class TestBourgeoisieDecisionCrisis:
         decision, _, _ = calculate_bourgeoisie_decision(
             pool_ratio=0.08,
             aggregate_tension=0.9,  # Very high tension
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.CRISIS
@@ -189,9 +193,9 @@ class TestBourgeoisieDecisionNeutral:
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.5,
             aggregate_tension=0.4,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.NO_CHANGE
@@ -213,11 +217,11 @@ class TestBourgeoisieDecisionBoundaries:
         from babylon.systems.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
-            pool_ratio=0.7,  # Exactly at threshold
+            pool_ratio=TC.POOL_HIGH_THRESHOLD,  # Exactly at threshold
             aggregate_tension=0.2,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert decision == BourgeoisieDecision.BRIBERY
@@ -227,11 +231,11 @@ class TestBourgeoisieDecisionBoundaries:
         from babylon.systems.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
-            pool_ratio=0.3,  # Exactly at threshold
+            pool_ratio=TC.POOL_LOW_THRESHOLD,  # Exactly at threshold
             aggregate_tension=0.4,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         # At 0.3, not < 0.3, so it's in neutral zone
@@ -242,11 +246,11 @@ class TestBourgeoisieDecisionBoundaries:
         from babylon.systems.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
-            pool_ratio=0.1,  # Exactly at threshold
+            pool_ratio=TC.POOL_CRITICAL_THRESHOLD,  # Exactly at threshold
             aggregate_tension=0.4,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         # At 0.1, not < 0.1, so it's in austerity zone (low tension)
@@ -269,9 +273,9 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
         _, wage_delta, _ = calculate_bourgeoisie_decision(
             pool_ratio=0.8,
             aggregate_tension=0.2,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert 0.03 <= wage_delta <= 0.07  # ~5% +/- 2%
@@ -283,9 +287,9 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
         _, wage_delta, _ = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
             aggregate_tension=0.3,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert -0.07 <= wage_delta <= -0.03  # ~-5% +/- 2%
@@ -297,9 +301,9 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
         _, _, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
             aggregate_tension=0.7,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert 0.08 <= repression_delta <= 0.12  # ~10% +/- 2%
@@ -311,9 +315,9 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
         _, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.05,
             aggregate_tension=0.5,
-            high_threshold=0.7,
-            low_threshold=0.3,
-            critical_threshold=0.1,
+            high_threshold=TC.POOL_HIGH_THRESHOLD,
+            low_threshold=TC.POOL_LOW_THRESHOLD,
+            critical_threshold=TC.POOL_CRITICAL_THRESHOLD,
         )
 
         assert wage_delta < -0.1  # At least 10% wage cut in crisis

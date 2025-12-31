@@ -17,9 +17,12 @@ All tests verify:
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.components.base import Component
 from babylon.models.components.material import MaterialComponent
+
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -33,41 +36,41 @@ class TestMaterialComponentCreation:
     def test_creation_with_defaults(self) -> None:
         """Can create MaterialComponent with default values."""
         component = MaterialComponent()
-        assert component.wealth == 10.0
-        assert component.resources == 0.0
-        assert component.means_of_production == 0.0
+        assert component.wealth == TC.Wealth.DEFAULT_WEALTH
+        assert component.resources == TC.Wealth.DESTITUTE
+        assert component.means_of_production == TC.Probability.ZERO
 
     def test_creation_with_custom_wealth(self) -> None:
         """Can create MaterialComponent with custom wealth."""
-        component = MaterialComponent(wealth=100.0)
-        assert component.wealth == 100.0
-        assert component.resources == 0.0
-        assert component.means_of_production == 0.0
+        component = MaterialComponent(wealth=TC.Wealth.SIGNIFICANT)
+        assert component.wealth == TC.Wealth.SIGNIFICANT
+        assert component.resources == TC.Wealth.DESTITUTE
+        assert component.means_of_production == TC.Probability.ZERO
 
     def test_creation_with_custom_resources(self) -> None:
         """Can create MaterialComponent with custom resources."""
-        component = MaterialComponent(resources=50.0)
-        assert component.wealth == 10.0
-        assert component.resources == 50.0
-        assert component.means_of_production == 0.0
+        component = MaterialComponent(resources=TC.Wealth.MODEST)
+        assert component.wealth == TC.Wealth.DEFAULT_WEALTH
+        assert component.resources == TC.Wealth.MODEST
+        assert component.means_of_production == TC.Probability.ZERO
 
     def test_creation_with_custom_means_of_production(self) -> None:
         """Can create MaterialComponent with custom means_of_production."""
-        component = MaterialComponent(means_of_production=0.8)
-        assert component.wealth == 10.0
-        assert component.resources == 0.0
-        assert component.means_of_production == 0.8
+        component = MaterialComponent(means_of_production=TC.Probability.VERY_HIGH)
+        assert component.wealth == TC.Wealth.DEFAULT_WEALTH
+        assert component.resources == TC.Wealth.DESTITUTE
+        assert component.means_of_production == TC.Probability.VERY_HIGH
 
     def test_creation_with_all_custom_values(self) -> None:
         """Can create MaterialComponent with all custom values."""
         component = MaterialComponent(
-            wealth=500.0,
-            resources=200.0,
-            means_of_production=0.9,
+            wealth=TC.Wealth.HIGH,
+            resources=TC.Wealth.SUBSTANTIAL,
+            means_of_production=TC.Probability.EXTREME,
         )
-        assert component.wealth == 500.0
-        assert component.resources == 200.0
-        assert component.means_of_production == 0.9
+        assert component.wealth == TC.Wealth.HIGH
+        assert component.resources == TC.Wealth.SUBSTANTIAL
+        assert component.means_of_production == TC.Probability.EXTREME
 
     def test_creation_with_zero_values(self) -> None:
         """Can create MaterialComponent with zero values."""
@@ -122,13 +125,13 @@ class TestMaterialComponentValidation:
 
     def test_accepts_large_wealth(self) -> None:
         """Large wealth values are valid."""
-        component = MaterialComponent(wealth=1_000_000.0)
-        assert component.wealth == 1_000_000.0
+        component = MaterialComponent(wealth=TC.Wealth.LARGE)
+        assert component.wealth == TC.Wealth.LARGE
 
     def test_accepts_large_resources(self) -> None:
         """Large resources values are valid."""
-        component = MaterialComponent(resources=1_000_000.0)
-        assert component.resources == 1_000_000.0
+        component = MaterialComponent(resources=TC.Wealth.LARGE)
+        assert component.resources == TC.Wealth.LARGE
 
 
 # =============================================================================
@@ -142,21 +145,21 @@ class TestMaterialComponentImmutability:
 
     def test_cannot_mutate_wealth(self) -> None:
         """Cannot modify wealth after creation."""
-        component = MaterialComponent(wealth=100.0)
+        component = MaterialComponent(wealth=TC.Wealth.SIGNIFICANT)
         with pytest.raises(ValidationError):
-            component.wealth = 200.0  # type: ignore[misc]
+            component.wealth = TC.Wealth.SUBSTANTIAL  # type: ignore[misc]
 
     def test_cannot_mutate_resources(self) -> None:
         """Cannot modify resources after creation."""
-        component = MaterialComponent(resources=50.0)
+        component = MaterialComponent(resources=TC.Wealth.MODEST)
         with pytest.raises(ValidationError):
-            component.resources = 100.0  # type: ignore[misc]
+            component.resources = TC.Wealth.SIGNIFICANT  # type: ignore[misc]
 
     def test_cannot_mutate_means_of_production(self) -> None:
         """Cannot modify means_of_production after creation."""
-        component = MaterialComponent(means_of_production=0.5)
+        component = MaterialComponent(means_of_production=TC.Probability.MIDPOINT)
         with pytest.raises(ValidationError):
-            component.means_of_production = 0.9  # type: ignore[misc]
+            component.means_of_production = TC.Probability.EXTREME  # type: ignore[misc]
 
 
 # =============================================================================
@@ -171,9 +174,9 @@ class TestMaterialComponentSerialization:
     def test_serialize_to_json(self) -> None:
         """MaterialComponent serializes to valid JSON."""
         component = MaterialComponent(
-            wealth=100.0,
-            resources=50.0,
-            means_of_production=0.7,
+            wealth=TC.Wealth.SIGNIFICANT,
+            resources=TC.Wealth.MODEST,
+            means_of_production=TC.Probability.HIGH,
         )
         json_str = component.model_dump_json()
         assert "100" in json_str
@@ -182,14 +185,16 @@ class TestMaterialComponentSerialization:
 
     def test_deserialize_from_json(self) -> None:
         """MaterialComponent can be restored from JSON."""
+        # JSON string literal with raw values (testing deserialization)
         json_str = '{"wealth": 100.0, "resources": 50.0, "means_of_production": 0.7}'
         component = MaterialComponent.model_validate_json(json_str)
-        assert component.wealth == 100.0
-        assert component.resources == 50.0
-        assert component.means_of_production == 0.7
+        assert component.wealth == TC.Wealth.SIGNIFICANT
+        assert component.resources == TC.Wealth.MODEST
+        assert component.means_of_production == TC.Probability.HIGH
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
+        # Precision test values - kept inline to verify exact decimal preservation
         original = MaterialComponent(
             wealth=123.45,
             resources=67.89,
@@ -205,15 +210,15 @@ class TestMaterialComponentSerialization:
     def test_dict_conversion(self) -> None:
         """MaterialComponent converts to dict for database storage."""
         component = MaterialComponent(
-            wealth=100.0,
-            resources=50.0,
-            means_of_production=0.7,
+            wealth=TC.Wealth.SIGNIFICANT,
+            resources=TC.Wealth.MODEST,
+            means_of_production=TC.Probability.HIGH,
         )
         data = component.model_dump()
 
-        assert data["wealth"] == 100.0
-        assert data["resources"] == 50.0
-        assert data["means_of_production"] == 0.7
+        assert data["wealth"] == TC.Wealth.SIGNIFICANT
+        assert data["resources"] == TC.Wealth.MODEST
+        assert data["means_of_production"] == TC.Probability.HIGH
 
 
 # =============================================================================

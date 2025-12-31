@@ -16,9 +16,12 @@ All tests verify:
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.components.base import Component
 from babylon.models.components.vitality import VitalityComponent
+
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -32,32 +35,33 @@ class TestVitalityComponentCreation:
     def test_creation_with_defaults(self) -> None:
         """Can create VitalityComponent with default values."""
         component = VitalityComponent()
-        assert component.population == 1.0
-        assert component.subsistence_needs == 5.0
+        assert component.population == TC.Vitality.DEFAULT_POPULATION
+        assert component.subsistence_needs == TC.Vitality.DEFAULT_SUBSISTENCE
 
     def test_creation_with_custom_population(self) -> None:
         """Can create VitalityComponent with custom population."""
-        component = VitalityComponent(population=1000.0)
-        assert component.population == 1000.0
-        assert component.subsistence_needs == 5.0
+        component = VitalityComponent(population=TC.Vitality.SMALL)
+        assert component.population == TC.Vitality.SMALL
+        assert component.subsistence_needs == TC.Vitality.DEFAULT_SUBSISTENCE
 
     def test_creation_with_custom_subsistence_needs(self) -> None:
         """Can create VitalityComponent with custom subsistence_needs."""
-        component = VitalityComponent(subsistence_needs=10.0)
-        assert component.population == 1.0
-        assert component.subsistence_needs == 10.0
+        component = VitalityComponent(subsistence_needs=TC.Vitality.HIGH_SUBSISTENCE)
+        assert component.population == TC.Vitality.DEFAULT_POPULATION
+        assert component.subsistence_needs == TC.Vitality.HIGH_SUBSISTENCE
 
     def test_creation_with_all_custom_values(self) -> None:
         """Can create VitalityComponent with all custom values."""
         component = VitalityComponent(
-            population=500.0,
-            subsistence_needs=8.0,
+            population=TC.Vitality.MEDIUM,
+            subsistence_needs=TC.Vitality.ELEVATED_SUBSISTENCE,
         )
-        assert component.population == 500.0
-        assert component.subsistence_needs == 8.0
+        assert component.population == TC.Vitality.MEDIUM
+        assert component.subsistence_needs == TC.Vitality.ELEVATED_SUBSISTENCE
 
     def test_creation_with_zero_values(self) -> None:
         """Can create VitalityComponent with zero values."""
+        # Boundary values kept inline (type contract test)
         component = VitalityComponent(
             population=0.0,
             subsistence_needs=0.0,
@@ -68,11 +72,11 @@ class TestVitalityComponentCreation:
     def test_creation_with_fractional_values(self) -> None:
         """Can create VitalityComponent with fractional values."""
         component = VitalityComponent(
-            population=0.5,
-            subsistence_needs=2.5,
+            population=TC.Vitality.FRACTIONAL,
+            subsistence_needs=TC.Vitality.LOW_SUBSISTENCE,
         )
-        assert component.population == 0.5
-        assert component.subsistence_needs == 2.5
+        assert component.population == TC.Vitality.FRACTIONAL
+        assert component.subsistence_needs == TC.Vitality.LOW_SUBSISTENCE
 
 
 # =============================================================================
@@ -96,13 +100,13 @@ class TestVitalityComponentValidation:
 
     def test_accepts_large_population(self) -> None:
         """Large population values are valid."""
-        component = VitalityComponent(population=1_000_000.0)
-        assert component.population == 1_000_000.0
+        component = VitalityComponent(population=TC.Vitality.LARGE)
+        assert component.population == TC.Vitality.LARGE
 
     def test_accepts_large_subsistence_needs(self) -> None:
         """Large subsistence_needs values are valid."""
-        component = VitalityComponent(subsistence_needs=1_000_000.0)
-        assert component.subsistence_needs == 1_000_000.0
+        component = VitalityComponent(subsistence_needs=TC.Wealth.LARGE)
+        assert component.subsistence_needs == TC.Wealth.LARGE
 
 
 # =============================================================================
@@ -116,15 +120,15 @@ class TestVitalityComponentImmutability:
 
     def test_cannot_mutate_population(self) -> None:
         """Cannot modify population after creation."""
-        component = VitalityComponent(population=100.0)
+        component = VitalityComponent(population=TC.Wealth.SIGNIFICANT)
         with pytest.raises(ValidationError):
-            component.population = 200.0  # type: ignore[misc]
+            component.population = TC.Wealth.SUBSTANTIAL  # type: ignore[misc]
 
     def test_cannot_mutate_subsistence_needs(self) -> None:
         """Cannot modify subsistence_needs after creation."""
-        component = VitalityComponent(subsistence_needs=10.0)
+        component = VitalityComponent(subsistence_needs=TC.Vitality.HIGH_SUBSISTENCE)
         with pytest.raises(ValidationError):
-            component.subsistence_needs = 20.0  # type: ignore[misc]
+            component.subsistence_needs = TC.Vitality.DOUBLED_SUBSISTENCE  # type: ignore[misc]
 
 
 # =============================================================================
@@ -139,8 +143,8 @@ class TestVitalityComponentSerialization:
     def test_serialize_to_json(self) -> None:
         """VitalityComponent serializes to valid JSON."""
         component = VitalityComponent(
-            population=100.0,
-            subsistence_needs=8.0,
+            population=TC.Wealth.SIGNIFICANT,
+            subsistence_needs=TC.Vitality.ELEVATED_SUBSISTENCE,
         )
         json_str = component.model_dump_json()
         assert "100" in json_str
@@ -148,13 +152,15 @@ class TestVitalityComponentSerialization:
 
     def test_deserialize_from_json(self) -> None:
         """VitalityComponent can be restored from JSON."""
+        # JSON string literal with raw values (testing deserialization)
         json_str = '{"population": 100.0, "subsistence_needs": 8.0}'
         component = VitalityComponent.model_validate_json(json_str)
-        assert component.population == 100.0
-        assert component.subsistence_needs == 8.0
+        assert component.population == TC.Wealth.SIGNIFICANT
+        assert component.subsistence_needs == TC.Vitality.ELEVATED_SUBSISTENCE
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
+        # Precision test values - kept inline to verify exact decimal preservation
         original = VitalityComponent(
             population=123.45,
             subsistence_needs=67.89,
@@ -168,13 +174,13 @@ class TestVitalityComponentSerialization:
     def test_dict_conversion(self) -> None:
         """VitalityComponent converts to dict for database storage."""
         component = VitalityComponent(
-            population=100.0,
-            subsistence_needs=8.0,
+            population=TC.Wealth.SIGNIFICANT,
+            subsistence_needs=TC.Vitality.ELEVATED_SUBSISTENCE,
         )
         data = component.model_dump()
 
-        assert data["population"] == 100.0
-        assert data["subsistence_needs"] == 8.0
+        assert data["population"] == TC.Wealth.SIGNIFICANT
+        assert data["subsistence_needs"] == TC.Vitality.ELEVATED_SUBSISTENCE
 
 
 # =============================================================================

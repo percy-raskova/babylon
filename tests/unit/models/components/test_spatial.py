@@ -16,9 +16,12 @@ All tests verify:
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.components.base import Component
 from babylon.models.components.spatial import SpatialComponent
+
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -33,28 +36,28 @@ class TestSpatialComponentCreation:
         """Can create SpatialComponent with default values."""
         component = SpatialComponent()
         assert component.location_id == ""
-        assert component.mobility == 0.5
+        assert component.mobility == TC.Spatial.DEFAULT_MOBILITY
 
     def test_creation_with_custom_location_id(self) -> None:
         """Can create SpatialComponent with custom location_id."""
         component = SpatialComponent(location_id="region_001")
         assert component.location_id == "region_001"
-        assert component.mobility == 0.5
+        assert component.mobility == TC.Spatial.DEFAULT_MOBILITY
 
     def test_creation_with_custom_mobility(self) -> None:
         """Can create SpatialComponent with custom mobility."""
-        component = SpatialComponent(mobility=0.8)
+        component = SpatialComponent(mobility=TC.Spatial.HIGH_MOBILITY)
         assert component.location_id == ""
-        assert component.mobility == 0.8
+        assert component.mobility == TC.Spatial.HIGH_MOBILITY
 
     def test_creation_with_all_custom_values(self) -> None:
         """Can create SpatialComponent with all custom values."""
         component = SpatialComponent(
             location_id="core_industrial_zone",
-            mobility=0.2,
+            mobility=TC.Spatial.LOW_MOBILITY,
         )
         assert component.location_id == "core_industrial_zone"
-        assert component.mobility == 0.2
+        assert component.mobility == TC.Spatial.LOW_MOBILITY
 
     def test_creation_with_boundary_mobility_zero(self) -> None:
         """Can create SpatialComponent with mobility at minimum boundary."""
@@ -128,9 +131,9 @@ class TestSpatialComponentImmutability:
 
     def test_cannot_mutate_mobility(self) -> None:
         """Cannot modify mobility after creation."""
-        component = SpatialComponent(mobility=0.5)
+        component = SpatialComponent(mobility=TC.Spatial.DEFAULT_MOBILITY)
         with pytest.raises(ValidationError):
-            component.mobility = 0.9  # type: ignore[misc]
+            component.mobility = TC.Probability.EXTREME  # type: ignore[misc]
 
 
 # =============================================================================
@@ -146,7 +149,7 @@ class TestSpatialComponentSerialization:
         """SpatialComponent serializes to valid JSON."""
         component = SpatialComponent(
             location_id="region_001",
-            mobility=0.7,
+            mobility=TC.Probability.HIGH,
         )
         json_str = component.model_dump_json()
         assert "region_001" in json_str
@@ -154,13 +157,15 @@ class TestSpatialComponentSerialization:
 
     def test_deserialize_from_json(self) -> None:
         """SpatialComponent can be restored from JSON."""
+        # JSON string literal with raw values (testing deserialization)
         json_str = '{"location_id": "region_001", "mobility": 0.7}'
         component = SpatialComponent.model_validate_json(json_str)
         assert component.location_id == "region_001"
-        assert component.mobility == 0.7
+        assert component.mobility == TC.Probability.HIGH
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
+        # Precision test value - kept inline to verify exact decimal preservation
         original = SpatialComponent(
             location_id="core/industrial/zone_42",
             mobility=0.35,
@@ -175,12 +180,12 @@ class TestSpatialComponentSerialization:
         """SpatialComponent converts to dict for database storage."""
         component = SpatialComponent(
             location_id="region_001",
-            mobility=0.7,
+            mobility=TC.Probability.HIGH,
         )
         data = component.model_dump()
 
         assert data["location_id"] == "region_001"
-        assert data["mobility"] == 0.7
+        assert data["mobility"] == TC.Probability.HIGH
 
 
 # =============================================================================

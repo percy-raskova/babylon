@@ -17,9 +17,12 @@ All tests verify:
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.components.base import Component
 from babylon.models.components.ideological import IdeologicalComponent
+
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -33,41 +36,41 @@ class TestIdeologicalComponentCreation:
     def test_creation_with_defaults(self) -> None:
         """Can create IdeologicalComponent with default values."""
         component = IdeologicalComponent()
-        assert component.class_consciousness == 0.0
-        assert component.national_identity == 0.5
-        assert component.agitation == 0.0
+        assert component.class_consciousness == TC.Consciousness.FALSE_CONSCIOUSNESS
+        assert component.national_identity == TC.Consciousness.NEUTRAL_IDENTITY
+        assert component.agitation == TC.Agitation.ZERO
 
     def test_creation_with_custom_class_consciousness(self) -> None:
         """Can create IdeologicalComponent with custom class_consciousness."""
-        component = IdeologicalComponent(class_consciousness=0.7)
-        assert component.class_consciousness == 0.7
-        assert component.national_identity == 0.5
-        assert component.agitation == 0.0
+        component = IdeologicalComponent(class_consciousness=TC.Consciousness.AWAKENING)
+        assert component.class_consciousness == TC.Consciousness.AWAKENING
+        assert component.national_identity == TC.Consciousness.NEUTRAL_IDENTITY
+        assert component.agitation == TC.Agitation.ZERO
 
     def test_creation_with_custom_national_identity(self) -> None:
         """Can create IdeologicalComponent with custom national_identity."""
-        component = IdeologicalComponent(national_identity=0.9)
-        assert component.class_consciousness == 0.0
-        assert component.national_identity == 0.9
-        assert component.agitation == 0.0
+        component = IdeologicalComponent(national_identity=TC.Consciousness.REVOLUTIONARY)
+        assert component.class_consciousness == TC.Consciousness.FALSE_CONSCIOUSNESS
+        assert component.national_identity == TC.Consciousness.REVOLUTIONARY
+        assert component.agitation == TC.Agitation.ZERO
 
     def test_creation_with_custom_agitation(self) -> None:
         """Can create IdeologicalComponent with custom agitation."""
-        component = IdeologicalComponent(agitation=2.5)
-        assert component.class_consciousness == 0.0
-        assert component.national_identity == 0.5
-        assert component.agitation == 2.5
+        component = IdeologicalComponent(agitation=TC.Agitation.ELEVATED)
+        assert component.class_consciousness == TC.Consciousness.FALSE_CONSCIOUSNESS
+        assert component.national_identity == TC.Consciousness.NEUTRAL_IDENTITY
+        assert component.agitation == TC.Agitation.ELEVATED
 
     def test_creation_with_all_custom_values(self) -> None:
         """Can create IdeologicalComponent with all custom values."""
         component = IdeologicalComponent(
-            class_consciousness=0.8,
-            national_identity=0.3,
-            agitation=1.5,
+            class_consciousness=TC.Consciousness.CLASS_CONSCIOUS,
+            national_identity=TC.Probability.MODERATE,
+            agitation=TC.Agitation.MODERATE,
         )
-        assert component.class_consciousness == 0.8
-        assert component.national_identity == 0.3
-        assert component.agitation == 1.5
+        assert component.class_consciousness == TC.Consciousness.CLASS_CONSCIOUS
+        assert component.national_identity == TC.Probability.MODERATE
+        assert component.agitation == TC.Agitation.MODERATE
 
     def test_creation_revolutionary_boundary(self) -> None:
         """Can create IdeologicalComponent at revolutionary boundary (class_consciousness=1.0)."""
@@ -91,38 +94,40 @@ class TestIdeologicalComponentCreation:
 
     def test_creation_with_agitation_zero(self) -> None:
         """Can create IdeologicalComponent with zero agitation (no crisis energy)."""
-        component = IdeologicalComponent(agitation=0.0)
-        assert component.agitation == 0.0
+        component = IdeologicalComponent(agitation=TC.Agitation.ZERO)
+        assert component.agitation == TC.Agitation.ZERO
 
     def test_creation_with_high_agitation(self) -> None:
         """Can create IdeologicalComponent with high agitation (crisis conditions).
 
         Agitation has NO upper bound - it accumulates during wage crises.
         """
-        component = IdeologicalComponent(agitation=100.0)
-        assert component.agitation == 100.0
+        component = IdeologicalComponent(agitation=TC.Agitation.EXTREME)
+        assert component.agitation == TC.Agitation.EXTREME
 
     def test_creation_full_revolutionary_internationalist(self) -> None:
         """Can create fully revolutionary internationalist profile."""
+        # Boundary values (1.0, 0.0) kept inline as they test type contract limits
         component = IdeologicalComponent(
             class_consciousness=1.0,
             national_identity=0.0,
-            agitation=5.0,
+            agitation=TC.Agitation.CRISIS,
         )
         assert component.class_consciousness == 1.0
         assert component.national_identity == 0.0
-        assert component.agitation == 5.0
+        assert component.agitation == TC.Agitation.CRISIS
 
     def test_creation_false_consciousness_fascist(self) -> None:
         """Can create false consciousness fascist profile."""
+        # Boundary values (0.0, 1.0) kept inline as they test type contract limits
         component = IdeologicalComponent(
             class_consciousness=0.0,
             national_identity=1.0,
-            agitation=3.0,
+            agitation=TC.Agitation.HIGH,
         )
         assert component.class_consciousness == 0.0
         assert component.national_identity == 1.0
-        assert component.agitation == 3.0
+        assert component.agitation == TC.Agitation.HIGH
 
 
 # =============================================================================
@@ -161,24 +166,24 @@ class TestIdeologicalComponentValidation:
 
     def test_accepts_agitation_above_one(self) -> None:
         """agitation CAN exceed 1.0 - it has no upper bound."""
-        component = IdeologicalComponent(agitation=5.0)
-        assert component.agitation == 5.0
+        component = IdeologicalComponent(agitation=TC.Agitation.CRISIS)
+        assert component.agitation == TC.Agitation.CRISIS
 
     def test_accepts_very_high_agitation(self) -> None:
         """agitation can be arbitrarily large (accumulated crisis energy)."""
-        component = IdeologicalComponent(agitation=1000.0)
-        assert component.agitation == 1000.0
+        component = IdeologicalComponent(agitation=TC.Agitation.MAXIMUM_TEST)
+        assert component.agitation == TC.Agitation.MAXIMUM_TEST
 
     def test_accepts_neutral_values(self) -> None:
         """Neutral/moderate values for all fields are valid."""
         component = IdeologicalComponent(
-            class_consciousness=0.5,
-            national_identity=0.5,
-            agitation=0.5,
+            class_consciousness=TC.Consciousness.NEUTRAL_IDENTITY,
+            national_identity=TC.Consciousness.NEUTRAL_IDENTITY,
+            agitation=TC.Agitation.MIDPOINT,
         )
-        assert component.class_consciousness == 0.5
-        assert component.national_identity == 0.5
-        assert component.agitation == 0.5
+        assert component.class_consciousness == TC.Consciousness.NEUTRAL_IDENTITY
+        assert component.national_identity == TC.Consciousness.NEUTRAL_IDENTITY
+        assert component.agitation == TC.Agitation.MIDPOINT
 
 
 # =============================================================================
@@ -192,21 +197,21 @@ class TestIdeologicalComponentImmutability:
 
     def test_cannot_mutate_class_consciousness(self) -> None:
         """Cannot modify class_consciousness after creation."""
-        component = IdeologicalComponent(class_consciousness=0.5)
+        component = IdeologicalComponent(class_consciousness=TC.Consciousness.NEUTRAL_IDENTITY)
         with pytest.raises(ValidationError):
-            component.class_consciousness = 0.9  # type: ignore[misc]
+            component.class_consciousness = TC.Consciousness.REVOLUTIONARY  # type: ignore[misc]
 
     def test_cannot_mutate_national_identity(self) -> None:
         """Cannot modify national_identity after creation."""
-        component = IdeologicalComponent(national_identity=0.5)
+        component = IdeologicalComponent(national_identity=TC.Consciousness.NEUTRAL_IDENTITY)
         with pytest.raises(ValidationError):
-            component.national_identity = 0.9  # type: ignore[misc]
+            component.national_identity = TC.Consciousness.REVOLUTIONARY  # type: ignore[misc]
 
     def test_cannot_mutate_agitation(self) -> None:
         """Cannot modify agitation after creation."""
-        component = IdeologicalComponent(agitation=1.0)
+        component = IdeologicalComponent(agitation=TC.Agitation.FULL)
         with pytest.raises(ValidationError):
-            component.agitation = 5.0  # type: ignore[misc]
+            component.agitation = TC.Agitation.CRISIS  # type: ignore[misc]
 
 
 # =============================================================================
@@ -221,9 +226,9 @@ class TestIdeologicalComponentSerialization:
     def test_serialize_to_json(self) -> None:
         """IdeologicalComponent serializes to valid JSON."""
         component = IdeologicalComponent(
-            class_consciousness=0.8,
-            national_identity=0.3,
-            agitation=2.5,
+            class_consciousness=TC.Consciousness.CLASS_CONSCIOUS,
+            national_identity=TC.Probability.MODERATE,
+            agitation=TC.Agitation.ELEVATED,
         )
         json_str = component.model_dump_json()
         assert "0.8" in json_str
@@ -232,14 +237,16 @@ class TestIdeologicalComponentSerialization:
 
     def test_deserialize_from_json(self) -> None:
         """IdeologicalComponent can be restored from JSON."""
+        # JSON string literal with raw values (testing deserialization)
         json_str = '{"class_consciousness": 0.8, "national_identity": 0.3, "agitation": 2.5}'
         component = IdeologicalComponent.model_validate_json(json_str)
-        assert component.class_consciousness == 0.8
-        assert component.national_identity == 0.3
-        assert component.agitation == 2.5
+        assert component.class_consciousness == TC.Consciousness.CLASS_CONSCIOUS
+        assert component.national_identity == TC.Probability.MODERATE
+        assert component.agitation == TC.Agitation.ELEVATED
 
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
+        # Precision test values - kept inline to verify exact decimal preservation
         original = IdeologicalComponent(
             class_consciousness=0.42,
             national_identity=0.67,
@@ -255,15 +262,15 @@ class TestIdeologicalComponentSerialization:
     def test_dict_conversion(self) -> None:
         """IdeologicalComponent converts to dict for database storage."""
         component = IdeologicalComponent(
-            class_consciousness=0.8,
-            national_identity=0.3,
-            agitation=2.5,
+            class_consciousness=TC.Consciousness.CLASS_CONSCIOUS,
+            national_identity=TC.Probability.MODERATE,
+            agitation=TC.Agitation.ELEVATED,
         )
         data = component.model_dump()
 
-        assert data["class_consciousness"] == 0.8
-        assert data["national_identity"] == 0.3
-        assert data["agitation"] == 2.5
+        assert data["class_consciousness"] == TC.Consciousness.CLASS_CONSCIOUS
+        assert data["national_identity"] == TC.Probability.MODERATE
+        assert data["agitation"] == TC.Agitation.ELEVATED
 
 
 # =============================================================================

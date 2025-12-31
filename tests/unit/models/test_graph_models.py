@@ -29,10 +29,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 if TYPE_CHECKING:
     pass
 
+TC = TestConstants
 
 # Attempt to import - will fail until GREEN phase implementation
 # Use pytest.importorskip to gracefully handle missing module
@@ -105,7 +107,11 @@ class TestGraphNodeCreation:
 
         Attributes are type-specific and validated by application logic.
         """
-        attrs = {"wealth": 100.0, "consciousness": 0.5, "name": "Workers"}
+        attrs = {
+            "wealth": TC.Wealth.SIGNIFICANT,
+            "consciousness": TC.Consciousness.NEUTRAL_IDENTITY,
+            "name": "Workers",
+        }
         node = GraphNode(id="C001", node_type="social_class", attributes=attrs)
         assert node.attributes == attrs
 
@@ -131,9 +137,9 @@ class TestGraphNodeProperties:
         node = GraphNode(
             id="C001",
             node_type="social_class",
-            attributes={"wealth": 100.0},
+            attributes={"wealth": TC.Wealth.SIGNIFICANT},
         )
-        assert node.get_attr("wealth") == 100.0
+        assert node.get_attr("wealth") == TC.Wealth.SIGNIFICANT
 
     def test_graphnode_get_attr_returns_default(self) -> None:
         """get_attr returns default when attribute not present.
@@ -177,7 +183,7 @@ class TestGraphNodeSerialization:
         node = GraphNode(
             id="C001",
             node_type="social_class",
-            attributes={"wealth": 100.0},
+            attributes={"wealth": TC.Wealth.SIGNIFICANT},
         )
         json_str = node.model_dump_json()
         assert "C001" in json_str
@@ -191,7 +197,7 @@ class TestGraphNodeSerialization:
         original = GraphNode(
             id="C001",
             node_type="social_class",
-            attributes={"wealth": 100.0, "name": "Workers"},
+            attributes={"wealth": TC.Wealth.SIGNIFICANT, "name": "Workers"},
         )
         json_str = original.model_dump_json()
         restored = GraphNode.model_validate_json(json_str)
@@ -272,7 +278,7 @@ class TestGraphEdgeCreation:
 
     def test_graphedge_accepts_attributes(self) -> None:
         """GraphEdge accepts arbitrary attributes dict."""
-        attrs = {"tension": 0.5, "value_flow": 100.0}
+        attrs = {"tension": TC.Probability.MIDPOINT, "value_flow": TC.Wealth.SIGNIFICANT}
         edge = GraphEdge(
             source_id="C001",
             target_id="C002",
@@ -298,9 +304,9 @@ class TestGraphEdgeProperties:
             source_id="C001",
             target_id="C002",
             edge_type="EXPLOITATION",
-            attributes={"tension": 0.7},
+            attributes={"tension": TC.Probability.HIGH},
         )
-        assert edge.tension == 0.7
+        assert edge.tension == TC.Probability.HIGH
 
     def test_graphedge_tension_defaults_to_zero(self) -> None:
         """tension property returns 0.0 when not present."""
@@ -313,9 +319,9 @@ class TestGraphEdgeProperties:
             source_id="C001",
             target_id="C002",
             edge_type="EXPLOITATION",
-            attributes={"value_flow": 500.0},
+            attributes={"value_flow": TC.Wealth.HIGH},
         )
-        assert edge.value_flow == 500.0
+        assert edge.value_flow == TC.Wealth.HIGH
 
     def test_graphedge_value_flow_defaults_to_zero(self) -> None:
         """value_flow property returns 0.0 when not present."""
@@ -346,19 +352,19 @@ class TestEdgeFilter:
 
     def test_edgefilter_accepts_min_weight(self) -> None:
         """EdgeFilter can filter by minimum weight."""
-        f = EdgeFilter(min_weight=0.5)
-        assert f.min_weight == 0.5
+        f = EdgeFilter(min_weight=TC.Probability.MIDPOINT)
+        assert f.min_weight == TC.Probability.MIDPOINT
 
     def test_edgefilter_accepts_max_weight(self) -> None:
         """EdgeFilter can filter by maximum weight."""
-        f = EdgeFilter(max_weight=0.9)
-        assert f.max_weight == 0.9
+        f = EdgeFilter(max_weight=TC.Probability.EXTREME)
+        assert f.max_weight == TC.Probability.EXTREME
 
     def test_edgefilter_accepts_weight_range(self) -> None:
         """EdgeFilter can filter by weight range."""
-        f = EdgeFilter(min_weight=0.3, max_weight=0.8)
-        assert f.min_weight == 0.3
-        assert f.max_weight == 0.8
+        f = EdgeFilter(min_weight=TC.Probability.MODERATE, max_weight=TC.Probability.VERY_HIGH)
+        assert f.min_weight == TC.Probability.MODERATE
+        assert f.max_weight == TC.Probability.VERY_HIGH
 
 
 # =============================================================================
@@ -383,7 +389,10 @@ class TestNodeFilter:
 
     def test_nodefilter_accepts_attribute_predicates(self) -> None:
         """NodeFilter can filter by attribute predicates."""
-        predicates = {"wealth": 100.0, "consciousness": 0.5}
+        predicates = {
+            "wealth": TC.Wealth.SIGNIFICANT,
+            "consciousness": TC.Consciousness.NEUTRAL_IDENTITY,
+        }
         f = NodeFilter(attribute_predicates=predicates)
         assert f.attribute_predicates == predicates
 

@@ -9,8 +9,11 @@ forces scarcity and agency into the simulation.
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 from babylon.models.entities.economy import GlobalEconomy
+
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -24,35 +27,35 @@ class TestGlobalEconomyCreation:
     def test_default_creation(self) -> None:
         """Can create GlobalEconomy with all defaults."""
         economy = GlobalEconomy()
-        assert economy.imperial_rent_pool == 100.0
-        assert economy.current_super_wage_rate == 0.20
-        assert economy.current_repression_level == 0.5
+        assert economy.imperial_rent_pool == TC.EconomicFlow.INITIAL_RENT_POOL
+        assert economy.current_super_wage_rate == TC.GlobalEconomy.DEFAULT_WAGE_RATE
+        assert economy.current_repression_level == TC.Probability.MIDPOINT
 
     def test_custom_pool(self) -> None:
         """Can create GlobalEconomy with custom rent pool."""
-        economy = GlobalEconomy(imperial_rent_pool=500.0)
-        assert economy.imperial_rent_pool == 500.0
+        economy = GlobalEconomy(imperial_rent_pool=TC.GlobalEconomy.HEALTHY_POOL)
+        assert economy.imperial_rent_pool == TC.GlobalEconomy.HEALTHY_POOL
 
     def test_custom_wage_rate(self) -> None:
         """Can create GlobalEconomy with custom wage rate."""
-        economy = GlobalEconomy(current_super_wage_rate=0.35)
-        assert economy.current_super_wage_rate == 0.35
+        economy = GlobalEconomy(current_super_wage_rate=TC.GlobalEconomy.HIGH_WAGE_RATE)
+        assert economy.current_super_wage_rate == TC.GlobalEconomy.HIGH_WAGE_RATE
 
     def test_custom_repression_level(self) -> None:
         """Can create GlobalEconomy with custom repression level."""
-        economy = GlobalEconomy(current_repression_level=0.8)
-        assert economy.current_repression_level == 0.8
+        economy = GlobalEconomy(current_repression_level=TC.Probability.VERY_HIGH)
+        assert economy.current_repression_level == TC.Probability.VERY_HIGH
 
     def test_full_custom_creation(self) -> None:
         """Can create GlobalEconomy with all custom values."""
         economy = GlobalEconomy(
-            imperial_rent_pool=200.0,
-            current_super_wage_rate=0.15,
-            current_repression_level=0.7,
+            imperial_rent_pool=TC.GlobalEconomy.DOUBLED_POOL,
+            current_super_wage_rate=TC.GlobalEconomy.LOW_WAGE_RATE,
+            current_repression_level=TC.Probability.HIGH,
         )
-        assert economy.imperial_rent_pool == 200.0
-        assert economy.current_super_wage_rate == 0.15
-        assert economy.current_repression_level == 0.7
+        assert economy.imperial_rent_pool == TC.GlobalEconomy.DOUBLED_POOL
+        assert economy.current_super_wage_rate == TC.GlobalEconomy.LOW_WAGE_RATE
+        assert economy.current_repression_level == TC.Probability.HIGH
 
 
 # =============================================================================
@@ -125,19 +128,19 @@ class TestGlobalEconomyImmutability:
         """imperial_rent_pool cannot be mutated after creation."""
         economy = GlobalEconomy()
         with pytest.raises(ValidationError):
-            economy.imperial_rent_pool = 50.0  # type: ignore
+            economy.imperial_rent_pool = TC.GlobalEconomy.HALF_POOL  # type: ignore
 
     def test_cannot_mutate_wage_rate(self) -> None:
         """current_super_wage_rate cannot be mutated after creation."""
         economy = GlobalEconomy()
         with pytest.raises(ValidationError):
-            economy.current_super_wage_rate = 0.10  # type: ignore
+            economy.current_super_wage_rate = TC.Probability.LOW  # type: ignore
 
     def test_cannot_mutate_repression(self) -> None:
         """current_repression_level cannot be mutated after creation."""
         economy = GlobalEconomy()
         with pytest.raises(ValidationError):
-            economy.current_repression_level = 0.9  # type: ignore
+            economy.current_repression_level = TC.Probability.EXTREME  # type: ignore
 
 
 # =============================================================================
@@ -152,33 +155,33 @@ class TestGlobalEconomySerialization:
     def test_model_dump(self) -> None:
         """Can dump GlobalEconomy to dict."""
         economy = GlobalEconomy(
-            imperial_rent_pool=150.0,
-            current_super_wage_rate=0.25,
-            current_repression_level=0.6,
+            imperial_rent_pool=TC.GlobalEconomy.MODERATE_POOL,
+            current_super_wage_rate=TC.GlobalEconomy.MODERATE_WAGE_RATE,
+            current_repression_level=TC.Probability.ELEVATED,
         )
         data = economy.model_dump()
-        assert data["imperial_rent_pool"] == 150.0
-        assert data["current_super_wage_rate"] == 0.25
-        assert data["current_repression_level"] == 0.6
+        assert data["imperial_rent_pool"] == TC.GlobalEconomy.MODERATE_POOL
+        assert data["current_super_wage_rate"] == TC.GlobalEconomy.MODERATE_WAGE_RATE
+        assert data["current_repression_level"] == TC.Probability.ELEVATED
 
     def test_model_validate(self) -> None:
         """Can reconstruct GlobalEconomy from dict."""
         data = {
-            "imperial_rent_pool": 150.0,
-            "current_super_wage_rate": 0.25,
-            "current_repression_level": 0.6,
+            "imperial_rent_pool": TC.GlobalEconomy.MODERATE_POOL,
+            "current_super_wage_rate": TC.GlobalEconomy.MODERATE_WAGE_RATE,
+            "current_repression_level": TC.Probability.ELEVATED,
         }
         economy = GlobalEconomy.model_validate(data)
-        assert economy.imperial_rent_pool == 150.0
-        assert economy.current_super_wage_rate == 0.25
-        assert economy.current_repression_level == 0.6
+        assert economy.imperial_rent_pool == TC.GlobalEconomy.MODERATE_POOL
+        assert economy.current_super_wage_rate == TC.GlobalEconomy.MODERATE_WAGE_RATE
+        assert economy.current_repression_level == TC.Probability.ELEVATED
 
     def test_json_round_trip(self) -> None:
         """GlobalEconomy survives JSON serialization round trip."""
         original = GlobalEconomy(
-            imperial_rent_pool=175.0,
-            current_super_wage_rate=0.30,
-            current_repression_level=0.4,
+            imperial_rent_pool=TC.GlobalEconomy.ELEVATED_POOL,
+            current_super_wage_rate=TC.GlobalEconomy.ELEVATED_WAGE_RATE,
+            current_repression_level=TC.Probability.BELOW_MIDPOINT,
         )
         json_str = original.model_dump_json()
         restored = GlobalEconomy.model_validate_json(json_str)
@@ -198,25 +201,25 @@ class TestGlobalEconomyPoolRatio:
 
     def test_pool_ratio_calculation(self) -> None:
         """Pool ratio is pool / initial_pool."""
-        # At 50% of initial 100.0
-        economy = GlobalEconomy(imperial_rent_pool=50.0)
-        ratio = economy.imperial_rent_pool / 100.0  # Initial pool from config
-        assert ratio == 0.5
+        # At 50% of initial pool
+        economy = GlobalEconomy(imperial_rent_pool=TC.GlobalEconomy.HALF_POOL)
+        ratio = economy.imperial_rent_pool / TC.EconomicFlow.INITIAL_RENT_POOL
+        assert ratio == TC.Probability.MIDPOINT
 
     def test_pool_ratio_prosperity_threshold(self) -> None:
-        """Pool ratio >= 0.7 indicates prosperity."""
-        economy_high = GlobalEconomy(imperial_rent_pool=70.0)
-        ratio = economy_high.imperial_rent_pool / 100.0
-        assert ratio >= 0.7  # Prosperity zone
+        """Pool ratio >= PROSPERITY_THRESHOLD indicates prosperity."""
+        economy_high = GlobalEconomy(imperial_rent_pool=TC.GlobalEconomy.PROSPERITY_POOL)
+        ratio = economy_high.imperial_rent_pool / TC.EconomicFlow.INITIAL_RENT_POOL
+        assert ratio >= TC.GlobalEconomy.PROSPERITY_THRESHOLD  # Prosperity zone
 
     def test_pool_ratio_austerity_threshold(self) -> None:
-        """Pool ratio < 0.3 indicates austerity."""
-        economy_low = GlobalEconomy(imperial_rent_pool=25.0)
-        ratio = economy_low.imperial_rent_pool / 100.0
-        assert ratio < 0.3  # Austerity zone
+        """Pool ratio < AUSTERITY_THRESHOLD indicates austerity."""
+        economy_low = GlobalEconomy(imperial_rent_pool=TC.GlobalEconomy.AUSTERITY_POOL)
+        ratio = economy_low.imperial_rent_pool / TC.EconomicFlow.INITIAL_RENT_POOL
+        assert ratio < TC.GlobalEconomy.AUSTERITY_THRESHOLD  # Austerity zone
 
     def test_pool_ratio_crisis_threshold(self) -> None:
-        """Pool ratio < 0.1 indicates crisis."""
-        economy_crisis = GlobalEconomy(imperial_rent_pool=5.0)
-        ratio = economy_crisis.imperial_rent_pool / 100.0
-        assert ratio < 0.1  # Crisis zone
+        """Pool ratio < CRISIS_THRESHOLD indicates crisis."""
+        economy_crisis = GlobalEconomy(imperial_rent_pool=TC.GlobalEconomy.CRISIS_POOL)
+        ratio = economy_crisis.imperial_rent_pool / TC.EconomicFlow.INITIAL_RENT_POOL
+        assert ratio < TC.GlobalEconomy.CRISIS_THRESHOLD  # Crisis zone

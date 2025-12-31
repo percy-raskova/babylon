@@ -10,11 +10,15 @@ Key Formulas:
 """
 
 import pytest
+from tests.constants import TestConstants
 
 from babylon.systems.formulas import (
     calculate_biocapacity_delta,
     calculate_overshoot_ratio,
 )
+
+# Alias for readability
+TC = TestConstants.MetabolicRift
 
 
 @pytest.mark.math
@@ -84,12 +88,12 @@ class TestBiocapacityDelta:
             max_biocapacity=100.0,
             extraction_intensity=0.05,
             current_biocapacity=50.0,
-            entropy_factor=1.2,  # Default
+            entropy_factor=TC.ENTROPY_FACTOR,  # Default
         )
 
         regeneration = 0.02 * 100.0  # 2.0
         raw_extraction = 0.05 * 50.0  # 2.5
-        ecological_cost = raw_extraction * 1.2  # 3.0
+        ecological_cost = raw_extraction * TC.ENTROPY_FACTOR  # 3.0
         expected = regeneration - ecological_cost  # 2.0 - 3.0 = -1.0
 
         assert delta == pytest.approx(expected, abs=0.001)
@@ -104,7 +108,7 @@ class TestBiocapacityDelta:
             max_biocapacity=100.0,
             extraction_intensity=0.02,  # 2% extraction
             current_biocapacity=100.0,
-            entropy_factor=1.2,
+            entropy_factor=TC.ENTROPY_FACTOR,
         )
 
         # At max capacity: no regeneration
@@ -118,11 +122,11 @@ class TestBiocapacityDelta:
             max_biocapacity=100.0,
             extraction_intensity=0.02,
             current_biocapacity=50.0,
-            entropy_factor=1.2,
+            entropy_factor=TC.ENTROPY_FACTOR,
         )
 
         regeneration = 0.05 * 100.0  # 5.0
-        extraction = 0.02 * 50.0 * 1.2  # 1.2
+        extraction = 0.02 * 50.0 * TC.ENTROPY_FACTOR  # 1.2
         expected_below = regeneration - extraction  # 3.8
         assert delta_below_max == pytest.approx(expected_below, abs=0.001)
 
@@ -217,7 +221,7 @@ class TestOvershootRatio:
             total_biocapacity=0.0,
         )
 
-        assert ratio == 999.0
+        assert ratio == TC.MAX_OVERSHOOT_RATIO
 
     def test_negative_biocapacity_returns_max_ratio(self) -> None:
         """Negative biocapacity (edge case) also returns max ratio."""
@@ -226,7 +230,7 @@ class TestOvershootRatio:
             total_biocapacity=-50.0,
         )
 
-        assert ratio == 999.0
+        assert ratio == TC.MAX_OVERSHOOT_RATIO
 
     def test_zero_consumption_zero_ratio(self) -> None:
         """When consumption is zero, ratio is zero (no demand)."""

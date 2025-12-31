@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError, create_model
+from tests.constants import TestConstants
 
 from babylon.models.types import (
     Coefficient,
@@ -21,6 +22,9 @@ from babylon.models.types import (
     Probability,
     Ratio,
 )
+
+# Aliases for readability
+TC = TestConstants
 
 # =============================================================================
 # TEST UTILITIES
@@ -403,9 +407,9 @@ class TestTypeQuantization:
         """
         Model = make_model_with_field(Probability, "prob")
 
-        model = Model(prob=0.123456789)
+        model = Model(prob=TC.Quantization.UNQUANTIZED_PROBABILITY)
 
-        assert model.prob == 0.12346
+        assert model.prob == TC.Quantization.QUANTIZED_PROBABILITY
 
     def test_ideology_quantizes_on_assignment(self) -> None:
         """Ideology values are snapped to 10^-5 grid.
@@ -429,9 +433,9 @@ class TestTypeQuantization:
         """
         Model = make_model_with_field(Currency, "wealth")
 
-        model = Model(wealth=1234.567891)
+        model = Model(wealth=TC.Quantization.UNQUANTIZED_CURRENCY)
 
-        assert model.wealth == 1234.56789
+        assert model.wealth == TC.Quantization.QUANTIZED_CURRENCY
 
     def test_intensity_quantizes_on_assignment(self) -> None:
         """Intensity values are snapped to 10^-5 grid.
@@ -462,9 +466,9 @@ class TestTypeQuantization:
         """
         Model = make_model_with_field(Ratio, "exchange_ratio")
 
-        model = Model(exchange_ratio=2.718281828)
+        model = Model(exchange_ratio=TC.Quantization.UNQUANTIZED_RATIO)
 
-        assert model.exchange_ratio == 2.71828
+        assert model.exchange_ratio == TC.Quantization.QUANTIZED_RATIO
 
 
 @pytest.mark.math
@@ -505,12 +509,12 @@ class TestTypeSerialization:
             ratio: Ratio
 
         original = FullModel(
-            prob=0.75,
-            ideology=-0.3,
-            wealth=500.0,
-            tension=0.8,
-            alpha=0.25,
-            ratio=2.5,
+            prob=TC.Probability.HIGH,  # 0.7
+            ideology=TC.Ideology.SLIGHT_REVOLUTIONARY,  # -0.3
+            wealth=TC.Wealth.HIGH,  # 500.0
+            tension=TC.Probability.VERY_HIGH,  # 0.8
+            alpha=TC.Probability.MODERATE,  # 0.3 - coefficient value
+            ratio=2.5,  # Ratio-specific value
         )
 
         json_str = original.model_dump_json()

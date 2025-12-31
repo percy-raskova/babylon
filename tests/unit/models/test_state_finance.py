@@ -19,9 +19,13 @@ Key computed field:
 
 import pytest
 from pydantic import ValidationError
+from tests.constants import TestConstants
 
 # This import will fail until model exists - that's the RED phase!
 from babylon.models.entities.state_finance import StateFinance
+
+# Aliases for readability
+TC = TestConstants
 
 # =============================================================================
 # CREATION TESTS
@@ -35,61 +39,61 @@ class TestStateFinanceCreation:
     def test_minimal_creation(self) -> None:
         """Can create StateFinance with all defaults."""
         finance = StateFinance()
-        assert finance.treasury == 100.0
+        assert finance.treasury == TC.StateFinance.DEFAULT_TREASURY
 
     def test_with_custom_treasury(self) -> None:
         """Can create StateFinance with custom treasury."""
-        finance = StateFinance(treasury=500.0)
-        assert finance.treasury == 500.0
+        finance = StateFinance(treasury=TC.StateFinance.HEALTHY_TREASURY)
+        assert finance.treasury == TC.StateFinance.HEALTHY_TREASURY
 
     def test_with_custom_police_budget(self) -> None:
         """Can create StateFinance with custom police budget."""
-        finance = StateFinance(police_budget=25.0)
-        assert finance.police_budget == 25.0
+        finance = StateFinance(police_budget=TC.StateFinance.ELEVATED_WELFARE_BUDGET)
+        assert finance.police_budget == TC.StateFinance.ELEVATED_WELFARE_BUDGET
 
     def test_with_custom_social_reproduction_budget(self) -> None:
         """Can create StateFinance with custom social reproduction budget."""
-        finance = StateFinance(social_reproduction_budget=30.0)
-        assert finance.social_reproduction_budget == 30.0
+        finance = StateFinance(social_reproduction_budget=TC.StateFinance.HIGH_WELFARE_BUDGET)
+        assert finance.social_reproduction_budget == TC.StateFinance.HIGH_WELFARE_BUDGET
 
     def test_with_custom_tax_rate(self) -> None:
         """Can create StateFinance with custom tax rate."""
-        finance = StateFinance(tax_rate=0.5)
-        assert finance.tax_rate == 0.5
+        finance = StateFinance(tax_rate=TC.StateFinance.CONFISCATORY_TAX_RATE)
+        assert finance.tax_rate == TC.StateFinance.CONFISCATORY_TAX_RATE
 
     def test_with_custom_tribute_income(self) -> None:
         """Can create StateFinance with custom tribute income."""
-        finance = StateFinance(tribute_income=50.0)
-        assert finance.tribute_income == 50.0
+        finance = StateFinance(tribute_income=TC.Wealth.MODEST)
+        assert finance.tribute_income == TC.Wealth.MODEST
 
     def test_with_custom_debt_level(self) -> None:
         """Can create StateFinance with custom debt level."""
-        finance = StateFinance(debt_level=100.0)
-        assert finance.debt_level == 100.0
+        finance = StateFinance(debt_level=TC.Wealth.SIGNIFICANT)
+        assert finance.debt_level == TC.Wealth.SIGNIFICANT
 
     def test_with_custom_debt_ceiling(self) -> None:
         """Can create StateFinance with custom debt ceiling."""
-        finance = StateFinance(debt_ceiling=1000.0)
-        assert finance.debt_ceiling == 1000.0
+        finance = StateFinance(debt_ceiling=TC.StateFinance.HIGH_DEBT_CEILING)
+        assert finance.debt_ceiling == TC.StateFinance.HIGH_DEBT_CEILING
 
     def test_full_custom_creation(self) -> None:
         """Can create StateFinance with all custom field values."""
         finance = StateFinance(
-            treasury=200.0,
-            police_budget=20.0,
-            social_reproduction_budget=30.0,
-            tax_rate=0.5,
-            tribute_income=50.0,
-            debt_level=100.0,
-            debt_ceiling=1000.0,
+            treasury=TC.StateFinance.MODERATE_TREASURY,
+            police_budget=TC.StateFinance.ELEVATED_POLICE_BUDGET,
+            social_reproduction_budget=TC.StateFinance.HIGH_WELFARE_BUDGET,
+            tax_rate=TC.StateFinance.CONFISCATORY_TAX_RATE,
+            tribute_income=TC.Wealth.MODEST,
+            debt_level=TC.Wealth.SIGNIFICANT,
+            debt_ceiling=TC.StateFinance.HIGH_DEBT_CEILING,
         )
-        assert finance.treasury == 200.0
-        assert finance.police_budget == 20.0
-        assert finance.social_reproduction_budget == 30.0
-        assert finance.tax_rate == 0.5
-        assert finance.tribute_income == 50.0
-        assert finance.debt_level == 100.0
-        assert finance.debt_ceiling == 1000.0
+        assert finance.treasury == TC.StateFinance.MODERATE_TREASURY
+        assert finance.police_budget == TC.StateFinance.ELEVATED_POLICE_BUDGET
+        assert finance.social_reproduction_budget == TC.StateFinance.HIGH_WELFARE_BUDGET
+        assert finance.tax_rate == TC.StateFinance.CONFISCATORY_TAX_RATE
+        assert finance.tribute_income == TC.Wealth.MODEST
+        assert finance.debt_level == TC.Wealth.SIGNIFICANT
+        assert finance.debt_ceiling == TC.StateFinance.HIGH_DEBT_CEILING
 
 
 # =============================================================================
@@ -213,37 +217,37 @@ class TestStateFinanceDefaults:
     def test_treasury_defaults_to_100(self) -> None:
         """Treasury defaults to 100.0 (starting liquidity)."""
         finance = StateFinance()
-        assert finance.treasury == 100.0
+        assert finance.treasury == TC.StateFinance.DEFAULT_TREASURY
 
     def test_police_budget_defaults_to_10(self) -> None:
         """Police budget defaults to 10.0 (repression cost per tick)."""
         finance = StateFinance()
-        assert finance.police_budget == 10.0
+        assert finance.police_budget == TC.StateFinance.DEFAULT_POLICE_BUDGET
 
     def test_social_reproduction_budget_defaults_to_15(self) -> None:
         """Social reproduction budget defaults to 15.0 (welfare cost per tick)."""
         finance = StateFinance()
-        assert finance.social_reproduction_budget == 15.0
+        assert finance.social_reproduction_budget == TC.StateFinance.DEFAULT_WELFARE_BUDGET
 
     def test_tax_rate_defaults_to_0_3(self) -> None:
         """Tax rate defaults to 0.3 (30% extraction from bourgeoisie)."""
         finance = StateFinance()
-        assert finance.tax_rate == pytest.approx(0.3)
+        assert finance.tax_rate == pytest.approx(TC.StateFinance.DEFAULT_TAX_RATE)
 
     def test_tribute_income_defaults_to_0(self) -> None:
         """Tribute income defaults to 0.0 (no CLIENT_STATE relationships)."""
         finance = StateFinance()
-        assert finance.tribute_income == 0.0
+        assert finance.tribute_income == TC.EconomicFlow.NO_FLOW
 
     def test_debt_level_defaults_to_0(self) -> None:
         """Debt level defaults to 0.0 (no accumulated debt)."""
         finance = StateFinance()
-        assert finance.debt_level == 0.0
+        assert finance.debt_level == TC.EconomicFlow.NO_FLOW
 
     def test_debt_ceiling_defaults_to_500(self) -> None:
         """Debt ceiling defaults to 500.0 (max sustainable debt)."""
         finance = StateFinance()
-        assert finance.debt_ceiling == 500.0
+        assert finance.debt_ceiling == TC.StateFinance.DEFAULT_DEBT_CEILING
 
 
 # =============================================================================
@@ -261,47 +265,52 @@ class TestStateFinanceComputed:
         With defaults: 10.0 + 15.0 = 25.0
         """
         finance = StateFinance()
-        assert finance.burn_rate == pytest.approx(25.0)
+        expected_burn_rate = (
+            TC.StateFinance.DEFAULT_POLICE_BUDGET + TC.StateFinance.DEFAULT_WELFARE_BUDGET
+        )
+        assert finance.burn_rate == pytest.approx(expected_burn_rate)
 
     def test_burn_rate_with_custom_budgets(self) -> None:
         """burn_rate computed from custom budgets."""
         finance = StateFinance(
-            police_budget=20.0,
-            social_reproduction_budget=30.0,
+            police_budget=TC.StateFinance.ELEVATED_POLICE_BUDGET,
+            social_reproduction_budget=TC.StateFinance.HIGH_WELFARE_BUDGET,
         )
-        assert finance.burn_rate == pytest.approx(50.0)
+        expected = TC.StateFinance.ELEVATED_POLICE_BUDGET + TC.StateFinance.HIGH_WELFARE_BUDGET
+        assert finance.burn_rate == pytest.approx(expected)
 
     def test_burn_rate_with_zero_police(self) -> None:
         """burn_rate when police budget is zero."""
         finance = StateFinance(
-            police_budget=0.0,
-            social_reproduction_budget=15.0,
+            police_budget=TC.Probability.ZERO,
+            social_reproduction_budget=TC.StateFinance.DEFAULT_WELFARE_BUDGET,
         )
-        assert finance.burn_rate == pytest.approx(15.0)
+        assert finance.burn_rate == pytest.approx(TC.StateFinance.DEFAULT_WELFARE_BUDGET)
 
     def test_burn_rate_with_zero_welfare(self) -> None:
         """burn_rate when social reproduction budget is zero."""
         finance = StateFinance(
-            police_budget=10.0,
-            social_reproduction_budget=0.0,
+            police_budget=TC.StateFinance.DEFAULT_POLICE_BUDGET,
+            social_reproduction_budget=TC.Probability.ZERO,
         )
-        assert finance.burn_rate == pytest.approx(10.0)
+        assert finance.burn_rate == pytest.approx(TC.StateFinance.DEFAULT_POLICE_BUDGET)
 
     def test_burn_rate_with_both_zero(self) -> None:
         """burn_rate when both budgets are zero (austerity)."""
         finance = StateFinance(
-            police_budget=0.0,
-            social_reproduction_budget=0.0,
+            police_budget=TC.Probability.ZERO,
+            social_reproduction_budget=TC.Probability.ZERO,
         )
-        assert finance.burn_rate == pytest.approx(0.0)
+        assert finance.burn_rate == pytest.approx(TC.Probability.ZERO)
 
     def test_burn_rate_with_large_budgets(self) -> None:
         """burn_rate with large budget values."""
         finance = StateFinance(
-            police_budget=500.0,
-            social_reproduction_budget=750.0,
+            police_budget=TC.Wealth.HIGH,
+            social_reproduction_budget=750.0,  # Large welfare budget
         )
-        assert finance.burn_rate == pytest.approx(1250.0)
+        expected = TC.Wealth.HIGH + 750.0
+        assert finance.burn_rate == pytest.approx(expected)
 
 
 # =============================================================================
@@ -465,20 +474,26 @@ class TestStateFinanceFiscalHealth:
 
     def test_treasury_can_cover_burn_rate(self) -> None:
         """Treasury should typically cover at least one tick of spending."""
-        finance = StateFinance(treasury=100.0)
+        finance = StateFinance(treasury=TC.StateFinance.DEFAULT_TREASURY)
         # Default burn_rate is 25.0 (10 + 15)
         ticks_sustainable = finance.treasury / finance.burn_rate
         assert ticks_sustainable >= 1.0
 
     def test_debt_level_below_ceiling(self) -> None:
         """Debt level should be below ceiling in healthy state."""
-        finance = StateFinance(debt_level=100.0, debt_ceiling=500.0)
+        finance = StateFinance(
+            debt_level=TC.Wealth.SIGNIFICANT,
+            debt_ceiling=TC.StateFinance.DEFAULT_DEBT_CEILING,
+        )
         debt_ratio = finance.debt_level / finance.debt_ceiling
         assert debt_ratio < 1.0
 
     def test_debt_at_ceiling(self) -> None:
         """Debt at ceiling represents fiscal crisis."""
-        finance = StateFinance(debt_level=500.0, debt_ceiling=500.0)
+        finance = StateFinance(
+            debt_level=TC.StateFinance.DEFAULT_DEBT_CEILING,
+            debt_ceiling=TC.StateFinance.DEFAULT_DEBT_CEILING,
+        )
         debt_ratio = finance.debt_level / finance.debt_ceiling
         assert debt_ratio == pytest.approx(1.0)
 
@@ -488,5 +503,8 @@ class TestStateFinanceFiscalHealth:
         The debt_ceiling is a soft constraint - exceeding it should
         trigger crisis events but is not a validation error.
         """
-        finance = StateFinance(debt_level=600.0, debt_ceiling=500.0)
+        finance = StateFinance(
+            debt_level=600.0,  # Exceeds ceiling
+            debt_ceiling=TC.StateFinance.DEFAULT_DEBT_CEILING,
+        )
         assert finance.debt_level > finance.debt_ceiling

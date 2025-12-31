@@ -44,6 +44,9 @@ def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
 class ImperialRentSystem:
     """5-phase Imperial Circuit: Extraction → Tribute → Wages → Subsidy → Decision.
 
+    ADR032: Subsistence burn moved to VitalitySystem (Phase 1: The Drain).
+    This system now handles only economic extraction phases.
+
     Pool tracks finite resources (inflow from tribute, outflow to wages/subsidy).
     See :doc:`/reference/systems` for full theory.
     """
@@ -72,8 +75,7 @@ class ImperialRentSystem:
         }
 
         # Execute phases with pool tracking
-        # Phase 0: Deduct operational costs (base_subsistence)
-        self._process_subsistence_phase(graph, services)
+        # NOTE: Subsistence phase removed (ADR032) - now in VitalitySystem
         self._process_extraction_phase(graph, services, context, tick_context)
         self._process_tribute_phase(graph, services, context, tick_context)
         self._process_wages_phase(graph, services, context, tick_context)
@@ -88,13 +90,14 @@ class ImperialRentSystem:
         graph: nx.DiGraph[str],
         services: ServiceContainer,
     ) -> None:
-        """Phase 0: Deduct cost of living (LINEAR burn with class multiplier).
+        """DEPRECATED: Subsistence burn moved to VitalitySystem (ADR032).
 
-        Models fixed subsistence costs as a LINEAR deduction per tick, scaled by
-        class-specific multiplier (social reproduction costs). Higher multipliers
-        for elite classes model their dependence on imperial rent to survive.
+        This method is retained for backward compatibility but is no longer
+        called from step(). Use VitalitySystem for subsistence burn.
 
-        Formula: cost = base_subsistence * class_multiplier (NOT percentage!)
+        .. deprecated:: ADR032
+            Subsistence burn now happens in VitalitySystem.step() before
+            economic phases run.
         """
         base_subsistence = services.defines.economy.base_subsistence
 

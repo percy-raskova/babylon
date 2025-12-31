@@ -2,8 +2,8 @@
 # Key decisions and their rationale (ADR-style)
 
 meta:
-  version: "1.6.0"
-  updated: "2025-12-26"
+  version: "1.7.0"
+  updated: "2025-12-31"
   format: "decision_id: {status, date, context, decision, rationale, consequences}"
 
 # =============================================================================
@@ -2129,6 +2129,141 @@ pending:
       - "the_harvest"
       - "the_narrative_assertion"
       - "the_humble_mock"
+
+  ADR030_teleological_pivot:
+    status: "accepted"
+    date: "2025-12-31"
+    title: "The Teleological Pivot: From Stability Testing to Entropy Modeling"
+    context: |
+      The simulation paradigm had a fundamental philosophical error: it treated
+      imperial stability as the default state and tested whether the system could
+      survive. This produced "Eden Mode" simulations where:
+
+      1. **Existence was free**: base_subsistence = 0.0 meant entities persisted
+         without metabolic cost (zombie states)
+      2. **Earth was infinite**: No hysteresis in biocapacity degradation meant
+         extraction had no permanent consequences
+      3. **Success = Survival**: Optimization targeted maximizing ticks_survived
+         rather than realistic decay patterns
+
+      This contradicts historical materialism. Imperialism is inherently unstable;
+      it cannot find equilibrium. The question is not whether the empire survives,
+      but HOW it dies.
+
+      The Material Reality Refactor (VitalitySystem + ProductionSystem) enabled
+      entity death but didn't address the teleological question: what should the
+      simulation demonstrate?
+
+    decision: |
+      **The Tragedy of Inevitability: Default state is COLLAPSE, not stability.**
+
+      1. **The 20-Year Entropy Standard**
+         - Extend simulation horizon from 52 ticks (1 year) to 1040 ticks (20 years)
+         - Success = Realistic Decay, not survival
+         - Ideal death tick: 800-900 (Year 15-17)
+         - Ideal decay shape: gentle downward slope, accelerating in final 200 ticks
+
+      2. **The Calorie Check (Mandatory Invariant)**
+         - base_subsistence > 0.0 ALWAYS
+         - Existence costs calories; free existence is banned
+         - All scenario factories must assert this
+
+      3. **Hysteresis Mechanism**
+         - Extraction causes PERMANENT damage to max_biocapacity
+         - Formula: max_B_new = max_B - (extraction × hysteresis_rate)
+         - The Metabolic Rift is irreversible
+
+      4. **TRPF (Tendency of Rate of Profit to Fall)**
+         - imperial_rent_pool must show declining growth rate over decades
+         - Equilibrium stability is an anti-pattern
+
+      5. **Banned Concepts**
+         - Infinite biocapacity (Eden Mode)
+         - Regeneration > Extraction under capitalism
+         - Free existence (base_subsistence = 0)
+         - Equilibrium stability
+         - Player "victory" through survival
+
+    rationale:
+      historical_materialism: |
+        Marx identified the Metabolic Rift - capitalism's fundamental incompatibility
+        with ecological sustainability. The simulation must embody this: extraction
+        externalizes regeneration costs, widening the rift with each cycle.
+
+      anti_accelerationism: |
+        Players cannot prevent collapse. They can only:
+        1. Accelerate it (revolutionary action)
+        2. Decelerate it (system maintenance - delays inevitable)
+        3. Shape its character (revolutionary vs fascist resolution)
+
+      educational_purpose: |
+        The simulation is not about winning. It is about understanding.
+        When biocapacity falls below consumption needs, someone dies.
+        The choice of WHO is political - socialist vs fascist resolution.
+
+      gameplay_quality: |
+        Eden Mode produced flatline graphs - boring and unrealistic.
+        The 20-Year Entropy Standard ensures visible dynamics:
+        - Wealth lines diverge (periphery impoverishment visible)
+        - Biocapacity depletes (ecological crisis emerges)
+        - Death occurs (stakes are real)
+
+    implementation:
+      documentation_updated:
+        - "ai-docs/tuning-standard.md (v2.0.0 - complete rewrite)"
+        - "ai-docs/theory.md (added Tragedy of Inevitability section)"
+        - "ai-docs/balance-targets.yaml (added entropy_targets section)"
+        - "ai-docs/metabolic-slice.yaml (added hysteresis section)"
+
+      objective_function_v2:
+        components:
+          death_timing: "40% weight - death should occur tick 800-900"
+          decay_smoothness: "30% weight - gentle downward slope"
+          trpf_manifestation: "20% weight - declining rate of profit"
+          biocapacity_exhaustion: "10% weight - near-zero at death"
+
+      anti_patterns_defined:
+        flatline: "std(wealth) < 0.01 - zombie state"
+        cliff: "death_tick < 100 - too aggressive"
+        eternal_empire: "wealth[1000]/wealth[0] > 0.9 - Eden Mode"
+        hollow_stability: "mean(wealth[500:1000]) ≈ mean(wealth[0:500])"
+
+      new_parameters:
+        entropy_factor: "[1.1, 1.5] - extraction inefficiency"
+        hysteresis_rate: "[0.001, 0.01] - permanent max_biocapacity damage"
+        trpf_coefficient: "[0.0001, 0.001] - rate of profit decay"
+        rent_pool_decay: "[0.001, 0.005] - background rent evaporation"
+
+    consequences:
+      positive:
+        - "Simulations now show visible dynamics, not flatlines"
+        - "Ecological crisis emerges naturally from extraction"
+        - "Death creates real stakes and meaningful choices"
+        - "Aligns with historical materialist theory"
+        - "20-year horizon reveals TRPF and generational effects"
+        - "Player agency constrained to realistic options"
+
+      negative:
+        - "Longer simulation runs (~10-20 minutes for full 1040 ticks)"
+        - "Existing parameter tuning must be recalibrated"
+        - "Some tests may need threshold adjustments"
+        - "Players cannot 'win' in traditional sense"
+
+    theoretical_grounding:
+      marx_metabolic_rift: "Capital Vol. 1 - separation of town and country"
+      foster_metabolic_rift: "Marx's Ecology - irreversible ecological damage"
+      trpf: "Capital Vol. 3 - tendency of rate of profit to fall"
+
+    mantra: "The question is not whether the empire falls. The question is how."
+
+    supersedes:
+      - "52-tick (1-year) simulation standard"
+      - "Survival-maximizing objective function"
+      - "Eden Mode parameter configurations"
+
+    related_decisions:
+      - "ADR020_parameter_tuning_methodology"
+      - "ADR016_fascist_bifurcation"
 
 # =============================================================================
 # REJECTED DECISIONS

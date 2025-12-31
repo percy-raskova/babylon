@@ -71,6 +71,50 @@ theory:
 
     trigger: "ECOLOGICAL_OVERSHOOT event emitted"
 
+  # ---------------------------------------------------------------------------
+  # HYSTERESIS: THE EARTH REMEMBERS (Epoch 1 Doctrine Update)
+  # ---------------------------------------------------------------------------
+  hysteresis:
+    doctrine: "The Tragedy of Inevitability"
+    status: "MANDATED"  # Part of 20-Year Entropy Standard
+
+    definition: |
+      Extraction causes PERMANENT damage to Territory.max_biocapacity.
+      Even if extraction stops entirely, the earth cannot fully recover
+      to its original productive capacity. This is the irreversibility
+      of the Metabolic Rift made concrete in simulation mechanics.
+
+    formula: |
+      On each extraction event:
+        biocapacity -= extraction_amount * entropy_factor
+        max_biocapacity -= extraction_amount * hysteresis_rate  # PERMANENT
+
+    parameters:
+      hysteresis_rate:
+        type: "Coefficient"
+        range: "[0.001, 0.01]"
+        default: 0.005
+        description: "Fraction of extraction that permanently damages max capacity"
+
+    implication: |
+      The simulation timeline is FINITE by design.
+      Given any positive extraction rate and any positive hysteresis rate,
+      max_biocapacity WILL eventually reach zero.
+      This is not a bug. This is physics.
+
+    anti_pattern: |
+      If hysteresis_rate = 0.0, the earth has infinite regenerative capacity.
+      This is "Eden Mode" and violates the Tragedy of Inevitability doctrine.
+      All scenarios MUST have hysteresis_rate > 0.0.
+
+    teaching_moment: |
+      The player cannot "fix" the environment. They can only:
+      1. Slow the rate of damage (reduce extraction)
+      2. Accept the damage and prepare for its consequences
+      3. Decide WHO bears the cost when biocapacity is exhausted
+
+      This models the real-world impossibility of "green capitalism."
+
 # =============================================================================
 # DATA MODEL UPDATES (MVP SCOPE)
 # =============================================================================

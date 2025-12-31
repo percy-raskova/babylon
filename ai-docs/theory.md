@@ -277,6 +277,110 @@ The theoretical framework draws from:
 - Zak Cope's *Divided World Divided Class* (modern labor aristocracy thesis)
 - Samir Amin's *Unequal Development* (unequal exchange)
 
+---
+
+## The Tragedy of Inevitability
+
+> **"The question is not whether the empire falls. The question is how."**
+
+### The Core Doctrine
+
+Babylon's simulation operates under a fundamental constraint: **entropy is irreversible**. The player cannot "win" in the traditional sense. They cannot reverse the Metabolic Rift, restore biocapacity to its original state, or create a perpetual motion machine of imperial accumulation.
+
+The player's agency is limited to:
+1. **Accelerating collapse** through revolutionary action
+2. **Decelerating collapse** through system maintenance (but this only delays the inevitable)
+3. **Shaping the character of collapse** (revolutionary vs. fascist resolution)
+
+### The Metabolic Rift is Irreparable
+
+When extraction occurs, it causes **permanent damage** to the earth's productive capacity:
+
+```
+extraction_event:
+    biocapacity -= extraction_amount * entropy_factor
+    max_biocapacity -= extraction_amount * hysteresis_rate  # PERMANENT
+```
+
+The `hysteresis_rate` ensures that even if extraction stops entirely, the earth cannot fully recover. The maximum possible biocapacity has been permanently reduced.
+
+**This is not a bug. This is physics.**
+
+The Metabolic Rift, as theorized by Marx and developed by John Bellamy Foster, describes the fundamental incompatibility between capitalist accumulation and ecological sustainability. Capital externalizes regeneration costs, extracting more than can be renewed. This gap - the rift - widens with each cycle of accumulation.
+
+### The Hollow Stability (Anti-Pattern)
+
+**Definition:** A simulation state where metrics oscillate around a stable equilibrium without secular decline.
+
+**Why it's wrong:**
+- Imperialism is not sustainable. It cannot find equilibrium.
+- Stable extraction requires infinite biocapacity (Eden Mode).
+- History shows empires exhaust their substrate and collapse.
+
+**Detection:**
+```python
+def is_hollow_stability(wealth_timeseries: list[float]) -> bool:
+    """Detect theoretically invalid equilibrium."""
+    first_half = mean(wealth_timeseries[:len(wealth_timeseries)//2])
+    second_half = mean(wealth_timeseries[len(wealth_timeseries)//2:])
+
+    # If second half is within 10% of first half, it's hollow
+    return abs(second_half - first_half) / first_half < 0.1
+```
+
+**If detected:** The simulation parameters are misconfigured. Increase `entropy_factor`, enable `hysteresis_rate`, or verify `base_subsistence > 0.0`.
+
+### The 20-Year Horizon
+
+The simulation models a 20-year timeline (1040 ticks) because this is sufficient to observe:
+
+1. **Compound degradation**: Small per-tick losses accumulate to systemic failure
+2. **TRPF manifestation**: The Tendency of the Rate of Profit to Fall becomes visible
+3. **Generational effects**: The consequences of early extraction play out
+4. **The Fascist Bifurcation**: The endgame crisis and its resolution
+
+Under correct parameters, the simulation should:
+- Show gentle decline in peripheral wealth
+- Show accelerating decline in biocapacity
+- Reach systemic crisis (ECOLOGICAL_OVERSHOOT) around tick 800-900
+- Resolve via either revolutionary or fascist path
+
+### Player Agency Within Constraint
+
+The player cannot prevent collapse. They can only shape it:
+
+| Action | Effect on Collapse |
+|--------|-------------------|
+| Build solidarity infrastructure | Enables revolutionary resolution |
+| Accelerate extraction | Hastens crisis (may benefit if prepared) |
+| Maintain imperial rent flows | Delays crisis (buys time to organize) |
+| Neglect organization | Defaults to fascist resolution |
+
+**The tragedy is not that collapse occurs. The tragedy is that the player must choose who dies.**
+
+When biocapacity falls below aggregate consumption needs, someone's consumption must be eliminated. The choice is political:
+
+- **Socialist resolution**: Reduce S_class (luxury consumption) of wealthy classes
+- **Fascist resolution**: Eliminate S_bio (survival) of "surplus populations"
+
+Without solidarity infrastructure, the default is fascism. This is historical materialism: the outcome depends on material conditions and organization, not morality.
+
+### Banned Concepts
+
+The following concepts are **explicitly forbidden** from future specifications:
+
+| Banned Concept | Why |
+|----------------|-----|
+| Infinite biocapacity | Violates thermodynamics |
+| Regeneration > Extraction | Not possible under capitalism |
+| Free existence (base_subsistence = 0) | Creates zombie states |
+| Equilibrium stability | Violates TRPF |
+| Player "victory" through survival | Wrong teleology |
+
+**The simulation is not about winning. It is about understanding.**
+
+---
+
 ## For AI Assistants
 
 When working on Babylon:

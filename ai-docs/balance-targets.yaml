@@ -142,6 +142,123 @@ epoch_1:
       description: "Biocapacity should deplete toward overshoot"
 
 # =============================================================================
+# ENTROPY TARGETS (20-Year Standard)
+# =============================================================================
+# The Tragedy of Inevitability: Default state is collapse, not stability.
+# These targets define what "realistic decay" looks like over 1040 ticks.
+
+entropy_targets:
+  doctrine: "The Tragedy of Inevitability"
+  standard_duration: 1040  # ticks (20 years)
+  philosophy: |
+    The simulation models HOW the empire dies, not IF it survives.
+    Success is realistic decay, not survival.
+
+  # ---------------------------------------------------------------------------
+  # GLOBAL ENTROPY RATE
+  # ---------------------------------------------------------------------------
+  global_entropy_rate:
+    description: "Background decay rates that ensure systemic decline"
+
+    biocapacity_decay:
+      target_rate: [-0.05%, -0.1%]  # per tick
+      formula: "Delta_B = R - (E * eta) - (H * max_B)"
+      variables:
+        R: "regeneration_rate * max_biocapacity"
+        E: "extraction_amount"
+        eta: "entropy_factor (1.2 default)"
+        H: "hysteresis_rate (0.001 default)"
+      expected_outcome: |
+        total_biocapacity should decline from 100% to ~20% by tick 800.
+        The decline accelerates as max_biocapacity shrinks (compound effect).
+
+    rent_pool_trpf:
+      description: "Tendency of the Rate of Profit to Fall"
+      target_rate: [-0.01%, -0.05%]  # per tick
+      formula: "rent_growth_rate = extraction_rate - trpf_coefficient * tick"
+      explanation: |
+        Even with constant extraction_efficiency, the RATE of profit growth
+        should decline over time. This models Marx's TRPF.
+      expected_outcome: |
+        imperial_rent_pool should show declining growth rate.
+        By tick 500, growth should be near zero.
+        By tick 800, pool should be actively shrinking.
+
+    wealth_decay:
+      target_rate: [-0.02%, -0.08%]  # per tick for periphery
+      explanation: |
+        Peripheral wealth declines faster than core wealth due to
+        extraction drain exceeding production gains.
+
+  # ---------------------------------------------------------------------------
+  # HYSTERESIS MECHANICS
+  # ---------------------------------------------------------------------------
+  hysteresis:
+    description: "Permanent damage from extraction"
+
+    max_biocapacity_damage:
+      rate: [0.001, 0.01]  # fraction of extraction
+      formula: "max_B_new = max_B - (extraction * hysteresis_rate)"
+      explanation: |
+        Each extraction event permanently reduces max_biocapacity.
+        Even if extraction stops, the earth cannot fully recover.
+        This is the Metabolic Rift - it is irreversible.
+      anti_pattern: |
+        If max_biocapacity is constant, the simulation has Eden Mode.
+        Verify hysteresis_rate > 0.0 in all scenarios.
+
+  # ---------------------------------------------------------------------------
+  # DECAY CURVE SHAPE
+  # ---------------------------------------------------------------------------
+  decay_curve:
+    description: "What the 20-year trajectory should look like"
+
+    ideal_death_tick: [800, 900]  # Year 15-17
+    death_cause: "ECOLOGICAL_OVERSHOOT or entity starvation"
+
+    shape_requirements:
+      - "Monotonic decline (no sustained recovery periods)"
+      - "Accelerating decline in final 200 ticks"
+      - "No flatline periods > 50 ticks"
+      - "Biocapacity exhaustion correlates with death"
+
+    anti_patterns:
+      flatline:
+        detection: "std(wealth[t:t+100]) < 0.01"
+        cause: "base_subsistence = 0 or no extraction"
+        severity: "CRITICAL - violates thermodynamics"
+
+      cliff:
+        detection: "death_tick < 100"
+        cause: "extraction too aggressive"
+        severity: "HIGH - not realistic decay"
+
+      eternal_empire:
+        detection: "wealth[1000] / wealth[0] > 0.9"
+        cause: "equilibrium reached (impossible under imperialism)"
+        severity: "CRITICAL - violates TRPF"
+
+      hollow_stability:
+        detection: "mean(wealth[500:1000]) ≈ mean(wealth[0:500])"
+        cause: "oscillation without secular trend"
+        severity: "HIGH - not historical materialism"
+
+  # ---------------------------------------------------------------------------
+  # THE CALORIE CHECK (INVARIANT)
+  # ---------------------------------------------------------------------------
+  calorie_check:
+    description: "Mandatory constraint for all scenarios"
+    invariant: "base_subsistence > 0.0"
+    rationale: |
+      Existence costs calories. If base_subsistence = 0.0, entities
+      can persist indefinitely with zero wealth (zombie state).
+      This violates the most basic thermodynamic constraint.
+    enforcement: |
+      All scenario factories must assert base_subsistence > 0.0.
+      All parameter sweeps must exclude base_subsistence = 0.0.
+      Audit tools should flag violations as CRITICAL.
+
+# =============================================================================
 # EPOCH 2: THE GAME (TARGETS PER SUB-EPOCH)
 # =============================================================================
 

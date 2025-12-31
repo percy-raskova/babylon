@@ -2,16 +2,140 @@
 # Comprehensive simulation analysis for balance tuning and theory validation
 
 meta:
-  version: "1.1.0"
+  version: "2.0.0"
   created: "2025-12-11"
-  updated: "2025-12-11"
+  updated: "2025-12-30"
   purpose: "Define methodology for deep parameter analysis and observation recording"
   status: "ACTIVE"
-  tool: "tools/parameter_analysis.py"
+  primary_tool: "tools/tune_agent.py (Optuna-based Bayesian Optimization)"
+  legacy_tools:
+    - "tools/parameter_analysis.py (trace/sweep commands)"
+    - "tools/tune_parameters.py (manual inspection only)"
+    - "tools/landscape_analysis.py (2D grid search)"
   related:
     - "ai-docs/balance-tuning.yaml (findings registry)"
     - "ai-docs/formulas-spec.yaml (formula definitions)"
+    - "ai-docs/tuning-standard.md (tuning workflow guide)"
     - "brainstorm/plans/parameter-analysis-plan.md (implementation plan)"
+
+# =============================================================================
+# METHODOLOGY EVOLUTION
+# =============================================================================
+
+methodology:
+  current_approach: "Bayesian Optimization"
+  previous_approach: "Grid Search / Parameter Sweep"
+  migration_date: "2025-12-30"
+
+  why_bayesian:
+    problem_with_grid_search: |
+      Grid search is computationally expensive for Babylon's high-dimensional
+      parameter space. A 5-parameter grid with 10 values each requires 100,000
+      simulations. With 52-tick simulations, this becomes impractical.
+
+    babylon_specific_challenges:
+      - name: "Discontinuous Failure States (The Cliff)"
+        description: |
+          Babylon has sudden death mechanics where the Comprador (P_c) can
+          collapse from wealth=8.0 to wealth=0.0 in a single tick. This creates
+          sharp discontinuities in the objective landscape that gradient descent
+          cannot navigate.
+
+      - name: "High-Dimensional Interactions"
+        description: |
+          Parameters interact non-linearly. extraction_efficiency × comprador_cut
+          produces emergent behaviors not predictable from individual sweeps.
+
+      - name: "Computational Cost"
+        description: |
+          Each simulation is O(n) where n=ticks. Running 52-tick simulations
+          at grid-search scale (10^5 evaluations) is prohibitively expensive.
+
+    why_tpe_not_gradient:
+      description: "Tree-structured Parzen Estimator vs Gradient-Based Methods"
+      reasons:
+        - "No gradient available (simulation is a black box)"
+        - "Non-convex landscape with many local minima"
+        - "Discontinuous 'cliff' failures defeat gradient estimation"
+        - "TPE handles mixed continuous/discrete parameters"
+
+  algorithm:
+    name: "Tree-structured Parzen Estimator (TPE)"
+    library: "Optuna"
+    description: |
+      TPE models the objective function as two probability distributions:
+      P(x|y < y*) and P(x|y >= y*) where y* is a threshold. It samples from
+      regions that historically produced good results while exploring.
+
+    hyperparameters:
+      n_trials: 100-500
+      n_startup_trials: 10
+      seed: 42
+      multivariate: true
+
+  pruning:
+    name: "Hyperband Pruning (Successive Halving)"
+    description: |
+      Aggressively terminates unpromising trials early. If a simulation shows
+      Comprador death before tick 10, there's no value in running to tick 52.
+      This provides 5-10x speedup over exhaustive evaluation.
+
+    babylon_specific_rules:
+      - condition: "P_c wealth < 0.01 before tick 10"
+        action: "Prune trial immediately"
+      - condition: "P_w wealth < 0.001 before tick 15"
+        action: "Prune trial immediately"
+      - condition: "Rent pool < 10.0 before tick 20"
+        action: "Prune trial (imperial circuit broken)"
+
+  goal:
+    name: "Maximize Stability + Complexity (The Playable Boundary)"
+    anti_goal: "NOT just maximize wealth or survival time"
+
+    objective_function: |
+      Score = w1 * ticks_survived +
+              w2 * min(rent_pool, initial_pool) +
+              w3 * consciousness_variance +
+              w4 * survival_margin
+
+    components:
+      ticks_survived:
+        weight: 0.4
+        description: "How long the simulation runs before failure"
+
+      rent_pool_health:
+        weight: 0.3
+        description: "Imperial rent pool should stay in 'goldilocks zone' (20-80% of initial)"
+
+      consciousness_variance:
+        weight: 0.2
+        description: "Higher variance = more interesting dynamics (not flat)"
+
+      survival_margin:
+        weight: 0.1
+        description: "How close P_w gets to death threshold (closer = more dramatic)"
+
+    edge_of_chaos: |
+      The "playable boundary" is where the simulation is challenging but not
+      impossible. Too easy = boring. Too hard = frustrating. The objective
+      function is tuned to find this edge.
+
+  computational_efficiency:
+    primary_driver: true
+    description: |
+      The shift to Bayesian Optimization is driven primarily by computational
+      efficiency. TPE + Hyperband can find optimal parameters in 100-200 trials
+      that would require 10,000+ trials with grid search.
+
+    expected_speedup: "10-50x vs exhaustive grid search"
+
+    optuna_dashboard:
+      description: "Visual analysis of optimization history"
+      features:
+        - "Pareto front visualization for multi-objective"
+        - "Parameter importance analysis"
+        - "Slice plots for individual parameter effects"
+        - "Trial history and pruning statistics"
 
 # =============================================================================
 # MOTIVATION

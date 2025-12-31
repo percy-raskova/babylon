@@ -506,6 +506,111 @@ python:
       docs_live: "Live-reload documentation server"
       analyze_trace: "Single sim with full time-series CSV"
       analyze_sweep: "Parameter sweep with summary metrics"
+      "analyze:matrix": "2D parameter landscape grid search"
+      "qa:audit": "Generate simulation health report"
+      tune_agent: "Optuna-based Bayesian optimization (PLANNED)"
+
+# =============================================================================
+# PARAMETER TUNING TOOLING
+# =============================================================================
+
+parameter_tuning:
+  philosophy: "Bayesian Optimization over Grid Search for computational efficiency"
+  migration_date: "2025-12-30"
+
+  primary_tool:
+    name: "tune_agent.py"
+    location: "tools/tune_agent.py"
+    status: "PLANNED"
+    description: |
+      Autonomous tuning agent using Optuna to optimize simulation parameters
+      against defined objective functions. Uses TPE (Tree-structured Parzen
+      Estimator) for sample-efficient optimization and Hyperband pruning to
+      kill non-viable simulations early.
+
+    algorithm: "TPE (Tree-structured Parzen Estimator)"
+    pruning: "Hyperband (Successive Halving)"
+
+    capabilities:
+      - "Multi-objective optimization (stability + complexity)"
+      - "Early termination of failing simulations"
+      - "Parameter importance analysis"
+      - "Pareto front visualization via Optuna Dashboard"
+
+    usage: |
+      # Run optimization study
+      poetry run python tools/tune_agent.py --n-trials 200 --study-name imperial_circuit
+
+      # Resume existing study
+      poetry run python tools/tune_agent.py --study-name imperial_circuit --resume
+
+      # Launch Optuna Dashboard
+      optuna-dashboard sqlite:///optuna.db
+
+    objective_function: |
+      Maximize: w1*ticks_survived + w2*rent_pool_health + w3*consciousness_variance
+      Subject to: No Comprador death before tick 10 (pruning constraint)
+
+  legacy_tools:
+    - name: "tune_parameters.py"
+      location: "tools/tune_parameters.py"
+      status: "LEGACY - Manual Inspection Only"
+      description: |
+        Original parameter sweeping tool. Useful for quick manual inspection
+        but inefficient for systematic optimization. Retained for debugging
+        and understanding individual parameter effects.
+      recommendation: "Use for one-off explorations, not systematic tuning"
+
+    - name: "parameter_analysis.py"
+      location: "tools/parameter_analysis.py"
+      status: "ACTIVE - Trace/Sweep Commands"
+      description: |
+        Detailed time-series analysis tool. trace command produces full
+        CSV of all entity states per tick. sweep command produces summary
+        statistics. Still valuable for deep-dive analysis after Optuna
+        identifies interesting parameter regions.
+      recommendation: "Use for detailed analysis of Optuna-identified optima"
+
+    - name: "landscape_analysis.py"
+      location: "tools/landscape_analysis.py"
+      status: "ACTIVE - 2D Visualization"
+      description: |
+        2D parameter grid search for visualizing interaction effects.
+        Produces matrix CSV suitable for heatmap visualization. Useful
+        for understanding parameter interactions in reduced dimensions.
+      recommendation: "Use for visualizing 2D slices of parameter space"
+
+  dependencies:
+    optuna:
+      package: "optuna"
+      version: "^3.6"
+      purpose: "Bayesian optimization framework"
+      group: "dev"
+
+    optuna_dashboard:
+      package: "optuna-dashboard"
+      version: "^0.15"
+      purpose: "Web-based visualization of optimization studies"
+      group: "dev"
+      usage: "optuna-dashboard sqlite:///optuna.db"
+
+  storage:
+    database: "sqlite:///optuna.db"
+    location: "Project root (gitignored)"
+    purpose: "Persistent storage of optimization studies for resumption"
+
+  mise_tasks_planned:
+    tune:
+      command: "poetry run python tools/tune_agent.py"
+      description: "Run Optuna optimization agent"
+
+    tune_dashboard:
+      command: "optuna-dashboard sqlite:///optuna.db"
+      description: "Launch Optuna Dashboard for study analysis"
+
+    tune_best:
+      command: "poetry run python tools/tune_agent.py --show-best"
+      description: "Show best parameters from completed study"
 
 # =============================================================================
 # TESTING INFRASTRUCTURE

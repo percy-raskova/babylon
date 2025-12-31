@@ -291,6 +291,68 @@ run = "poetry run python tools/narrative_sweep.py"
 description = "Run U-Curve analysis with MockLLM (no API key needed)"
 run = "poetry run python tools/narrative_sweep.py --mock"
 
+[tasks."analyze:matrix"]
+description = "2D parameter landscape analysis (grid search)"
+usage = '''
+arg "[param1]" help="First parameter path" default="economy.extraction_efficiency"
+arg "[range1]" help="Range as start:end:step" default="0.1:0.9:0.1"
+arg "[param2]" help="Second parameter path" default="economy.comprador_cut"
+arg "[range2]" help="Range as start:end:step" default="0.5:1.0:0.1"
+arg "[ticks]" help="Max ticks per simulation" default="52"
+'''
+run = """
+mkdir -p results
+poetry run python tools/landscape_analysis.py \
+  --param1 ${usage_param1} \
+  --range1 ${usage_range1} \
+  --param2 ${usage_param2} \
+  --range2 ${usage_range2} \
+  --max-ticks ${usage_ticks} \
+  --output results/landscape.csv
+"""
+
+[tasks."qa:audit"]
+description = "Generate simulation health report for AI analysis"
+usage = 'arg "[ticks]" help="Max simulation ticks" default="52"'
+run = """
+mkdir -p reports
+poetry run python tools/audit_simulation.py \
+  --max-ticks ${usage_ticks} \
+  --output reports/audit_latest.md
+cat reports/audit_latest.md
+"""
+
+# =============================================================================
+# SIMULATION LAB (Bayesian Optimization)
+# =============================================================================
+
+[tasks.tune]
+description = "Run Optuna Bayesian optimization for parameter tuning"
+usage = '''
+arg "[trials]" help="Number of optimization trials" default="100"
+arg "[name]" help="Study name (for resumption)" default="babylon_tune"
+'''
+run = """
+poetry run python tools/tune_agent.py \
+  --trials ${usage_trials} \
+  --study-name ${usage_name} \
+  --storage sqlite:///optuna.db
+"""
+
+[tasks.map]
+description = "Alias for analyze:matrix (2D parameter landscape)"
+depends = []
+run = "mise run analyze:matrix"
+
+[tasks.audit]
+description = "Alias for qa:audit (health check)"
+depends = []
+run = "mise run qa:audit"
+
+[tasks.dashboard]
+description = "Launch Optuna Dashboard for study visualization"
+run = "optuna-dashboard sqlite:///optuna.db"
+
 # =============================================================================
 # VERSIONING
 # =============================================================================

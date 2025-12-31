@@ -75,6 +75,8 @@ radon = "^6.0.1"
 xenon = "^0.9.3"
 pytest-randomly = "^4.0.1"
 mutmut = "^3.4.0"
+optuna = "^3.6"
+optuna-dashboard = "^0.15"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"

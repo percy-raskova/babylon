@@ -23,6 +23,16 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 from babylon.models.enums import SocialRole
 from babylon.models.types import Currency, Probability
 
+# Class-specific subsistence multipliers (social reproduction costs)
+# Higher multipliers = higher cost of living = faster burn in zero-income scenarios
+# Captures "Principal Contradiction": elites require imperial rent to survive
+_SUBSISTENCE_MULTIPLIERS: dict[SocialRole, float] = {
+    SocialRole.PERIPHERY_PROLETARIAT: 1.5,
+    SocialRole.LABOR_ARISTOCRACY: 5.0,
+    SocialRole.COMPRADOR_BOURGEOISIE: 10.0,
+    SocialRole.CORE_BOURGEOISIE: 20.0,
+}
+
 
 class EconomicComponent(BaseModel):
     """Economic material conditions of a social class."""
@@ -360,6 +370,24 @@ class SocialClass(BaseModel):
         ge=0.0,
         description="Social reproduction requirement (lifestyle maintenance)",
     )
+
+    # Subsistence multiplier (class-specific cost of living)
+    subsistence_multiplier: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=50.0,
+        description="Class-specific multiplier for subsistence burn (social reproduction cost)",
+    )
+
+    @model_validator(mode="after")
+    def _set_subsistence_multiplier_from_role(self) -> "SocialClass":
+        """Auto-assign subsistence multiplier based on role if not explicitly set."""
+        # Only set if still at default value (1.0)
+        if self.subsistence_multiplier == 1.0:
+            default_multiplier = _SUBSISTENCE_MULTIPLIERS.get(self.role, 1.0)
+            if default_multiplier != 1.0:
+                object.__setattr__(self, "subsistence_multiplier", default_multiplier)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

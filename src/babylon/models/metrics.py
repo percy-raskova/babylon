@@ -40,10 +40,9 @@ class EntityMetrics(BaseModel):
         le=1.0,
         description="National identity [0, 1]",
     )
-    agitation: Probability = Field(
+    agitation: float = Field(
         ge=0.0,
-        le=1.0,
-        description="Agitation level [0, 1]",
+        description="Agitation level [0, inf) - raw political energy from crisis",
     )
     p_acquiescence: Probability = Field(
         ge=0.0,

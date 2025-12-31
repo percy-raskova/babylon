@@ -88,10 +88,13 @@ class ImperialRentSystem:
         graph: nx.DiGraph[str],
         services: ServiceContainer,
     ) -> None:
-        """Phase 0: Deduct operational costs from all entities.
+        """Phase 0: Deduct cost of living (LINEAR burn with class multiplier).
 
-        Models fixed operating expenses (rent, supplies, maintenance) as a
-        percentage of each entity's wealth, deducted before any other flows.
+        Models fixed subsistence costs as a LINEAR deduction per tick, scaled by
+        class-specific multiplier (social reproduction costs). Higher multipliers
+        for elite classes model their dependence on imperial rent to survive.
+
+        Formula: cost = base_subsistence * class_multiplier (NOT percentage!)
         """
         base_subsistence = services.defines.economy.base_subsistence
 
@@ -100,6 +103,10 @@ class ImperialRentSystem:
 
         for node_id in graph.nodes():
             node_data = graph.nodes[node_id]
+
+            # Skip non-SocialClass nodes (territories, etc.)
+            if node_data.get("_node_type") != "social_class":
+                continue
 
             # Skip inactive (dead) entities
             if not node_data.get("active", True):
@@ -110,8 +117,10 @@ class ImperialRentSystem:
             if wealth <= 0:
                 continue
 
-            # Deduct subsistence costs as percentage of wealth
-            cost = wealth * base_subsistence
+            # LINEAR burn: base * class_multiplier (not percentage!)
+            # Higher multipliers = faster burn = elites die faster without income
+            multiplier = node_data.get("subsistence_multiplier", 1.0)
+            cost = base_subsistence * multiplier
             graph.nodes[node_id]["wealth"] = max(0.0, wealth - cost)
 
     def _process_extraction_phase(

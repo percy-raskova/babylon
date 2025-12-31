@@ -273,19 +273,25 @@ class TestWageCalculationCorrectness:
 
         With buggy formula: desired_wages = bourgeoisie_wealth * wage_rate
         If wealth >> tribute, wages >> tribute, causing net loss.
+
+        Uses base_subsistence=0.0 to isolate wage transfer mechanics from
+        subsistence costs (The Calorie Check).
         """
         from babylon.engine.simulation_engine import step
 
-        state, config, defines = create_imperial_circuit_scenario(
+        state, config, _ = create_imperial_circuit_scenario(
             periphery_wealth=0.1,
             core_wealth=0.9,
         )
+
+        # Isolate wage mechanics from subsistence deductions
+        no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
 
         initial_cb = state.entities["C003"].wealth
         assert initial_cb == pytest.approx(0.9), "C_b should start at 0.9"
 
         # Run one tick
-        new_state = step(state, config, defines=defines)
+        new_state = step(state, config, defines=no_subsistence_defines)
         final_cb = new_state.entities["C003"].wealth
 
         # Core Bourgeoisie should NOT lose wealth to wages
@@ -300,14 +306,21 @@ class TestWageCalculationCorrectness:
         This is the fundamental test for MLM-TW correctness: the Core
         Bourgeoisie extracts value from the periphery and accumulates
         capital, even after paying super-wages to labor aristocracy.
+
+        Uses base_subsistence=0.0 to isolate wage/tribute mechanics from
+        subsistence costs (The Calorie Check).
         """
         from babylon.engine.simulation_engine import step
 
-        state, config, defines = create_imperial_circuit_scenario()
+        state, config, _ = create_imperial_circuit_scenario()
+
+        # Isolate wage mechanics from subsistence deductions
+        no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
+
         initial_cb = state.entities["C003"].wealth
 
         for _ in range(10):
-            state = step(state, config, defines=defines)
+            state = step(state, config, defines=no_subsistence_defines)
 
         final_cb = state.entities["C003"].wealth
         assert final_cb > initial_cb, (

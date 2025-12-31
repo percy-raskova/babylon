@@ -13,7 +13,8 @@ from babylon.config.defines import EconomyDefines, GameDefines, SurvivalDefines
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
-from babylon.models.enums import EdgeType, SocialRole
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import EdgeType, SectorType, SocialRole
 from babylon.models.scenario import ScenarioConfig
 from babylon.models.world_state import WorldState
 
@@ -117,11 +118,32 @@ def create_two_node_scenario(
         tension=0.0,
     )
 
+    # Material Reality Refactor: Create territory for production
+    # Workers need land (biocapacity) to produce value
+    territory = Territory(
+        id="T001",
+        name="Periphery Land",
+        sector_type=SectorType.INDUSTRIAL,
+        biocapacity=100.0,  # Fully charged at genesis
+        max_biocapacity=100.0,
+    )
+
+    # TENANCY edge: Worker occupies territory (enables production)
+    tenancy = Relationship(
+        source_id="C001",
+        target_id="T001",
+        edge_type=EdgeType.TENANCY,
+        description="Worker land tenancy",
+        value_flow=0.0,
+        tension=0.0,
+    )
+
     # Create world state
     state = WorldState(
         tick=0,
         entities={"C001": worker, "C002": owner},
-        relationships=[exploitation, solidarity, wages],
+        territories={"T001": territory},
+        relationships=[exploitation, solidarity, wages, tenancy],
         event_log=[],
     )
 
@@ -372,7 +394,45 @@ def create_imperial_circuit_scenario(
         solidarity_strength=solidarity_strength,  # Configurable (default 0.0)
     )
 
-    # Create world state with 4 nodes and 5 edges
+    # Material Reality Refactor: Create territories for production
+    # Workers need land (biocapacity) to produce value
+    # Two territories: periphery for C001, core for C004
+    periphery_land = Territory(
+        id="T001",
+        name="Periphery Land",
+        sector_type=SectorType.INDUSTRIAL,
+        biocapacity=100.0,  # Fully charged at genesis
+        max_biocapacity=100.0,
+    )
+    core_land = Territory(
+        id="T002",
+        name="Core Land",
+        sector_type=SectorType.RESIDENTIAL,
+        biocapacity=100.0,  # Fully charged at genesis
+        max_biocapacity=100.0,
+    )
+
+    # TENANCY edges: Workers occupy territories (enables production)
+    # C001 (Periphery Worker) -> T001 (Periphery Land)
+    periphery_tenancy = Relationship(
+        source_id="C001",
+        target_id="T001",
+        edge_type=EdgeType.TENANCY,
+        description="Periphery worker land tenancy",
+        value_flow=0.0,
+        tension=0.0,
+    )
+    # C004 (Labor Aristocracy) -> T002 (Core Land)
+    core_tenancy = Relationship(
+        source_id="C004",
+        target_id="T002",
+        edge_type=EdgeType.TENANCY,
+        description="Labor aristocracy land tenancy",
+        value_flow=0.0,
+        tension=0.0,
+    )
+
+    # Create world state with 4 entities, 2 territories, and 7 edges
     state = WorldState(
         tick=0,
         entities={
@@ -381,7 +441,19 @@ def create_imperial_circuit_scenario(
             "C003": core_bourgeoisie,
             "C004": labor_aristocracy,
         },
-        relationships=[exploitation, tribute, wages, client_state, solidarity],
+        territories={
+            "T001": periphery_land,
+            "T002": core_land,
+        },
+        relationships=[
+            exploitation,
+            tribute,
+            wages,
+            client_state,
+            solidarity,
+            periphery_tenancy,
+            core_tenancy,
+        ],
         event_log=[],
     )
 

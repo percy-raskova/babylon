@@ -129,11 +129,12 @@ class EconomyDefines(BaseModel):
     )
 
     # Entity operational costs (The Calorie Check - must be > 0 to prevent Eden Mode)
+    # LINEAR burn: cost = base_subsistence * class_multiplier (not percentage!)
     base_subsistence: float = Field(
-        default=0.01,
+        default=0.005,
         ge=0.0,
         le=0.5,
-        description="Fixed operational cost deducted from entities per tick as percentage of wealth",
+        description="Biological floor: fixed cost per tick (LINEAR), scaled by class multiplier",
     )
 
     # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)

@@ -80,8 +80,8 @@ class ImperialRentSystem:
         self._process_subsidy_phase(graph, services, context, tick_context)
         self._process_decision_phase(graph, services, context, tick_context, initial_pool)
 
-        # Save updated economy back to graph
-        self._save_economy(graph, tick_context)
+        # Save updated economy back to graph (applies TRPF rent pool decay)
+        self._save_economy(graph, tick_context, services)
 
     def _process_subsistence_phase(
         self,
@@ -121,12 +121,26 @@ class ImperialRentSystem:
         context: ContextType,
         tick_context: dict[str, Any] | None = None,
     ) -> None:
-        """Phase 1: Extract via EXPLOITATION edges. Emits SURPLUS_EXTRACTION."""
+        """Phase 1: Extract via EXPLOITATION edges. Emits SURPLUS_EXTRACTION.
+
+        Applies TRPF Surrogate: extraction efficiency declines over time,
+        modeling Marx's Tendency of the Rate of Profit to Fall (Capital Vol. 3).
+        """
         calculate_imperial_rent = services.formulas.get("imperial_rent")
+
         # Epoch 0: Convert annual extraction rate to per-tick (weekly) rate
         annual_extraction_efficiency = services.defines.economy.extraction_efficiency
         weeks_per_year = services.defines.timescale.weeks_per_year
-        extraction_efficiency = annual_extraction_efficiency / weeks_per_year
+        base_extraction_efficiency = annual_extraction_efficiency / weeks_per_year
+
+        # TRPF Surrogate: Apply time-dependent efficiency decay
+        # Models Marx's Tendency of the Rate of Profit to Fall (Capital Vol. 3)
+        # As organic composition of capital rises, profit rate falls
+        # See ai-docs/epoch2-trpf.yaml for full OCC implementation in Epoch 2
+        tick = context.get("tick", 0)
+        trpf_coefficient = services.defines.economy.trpf_coefficient
+        trpf_multiplier = max(0.1, 1.0 - (trpf_coefficient * tick))
+        extraction_efficiency = base_extraction_efficiency * trpf_multiplier
 
         # Handle optional tick_context for backward compatibility
         if tick_context is None:
@@ -577,15 +591,28 @@ class ImperialRentSystem:
         self,
         graph: nx.DiGraph[str],
         tick_context: dict[str, Any],
+        services: ServiceContainer | None = None,
     ) -> None:
         """Save updated GlobalEconomy back to graph metadata.
+
+        Applies rent pool decay (TRPF effect): background evaporation of
+        accumulated imperial rent, modeling the tendency of surplus to erode.
 
         Args:
             graph: The simulation graph
             tick_context: Dictionary with current_pool, wage_rate, repression_level
+            services: Optional ServiceContainer for rent_pool_decay config
         """
+        current_pool = tick_context["current_pool"]
+
+        # Apply TRPF rent pool decay if services available
+        # Models background erosion of accumulated surplus (Marx, Capital Vol. 3)
+        if services is not None:
+            decay_rate = services.defines.economy.rent_pool_decay
+            current_pool = current_pool * (1.0 - decay_rate)
+
         economy = GlobalEconomy(
-            imperial_rent_pool=max(0.0, tick_context["current_pool"]),
+            imperial_rent_pool=max(0.0, current_pool),
             current_super_wage_rate=tick_context["wage_rate"],
             current_repression_level=tick_context["repression_level"],
         )

@@ -35,8 +35,14 @@ economy:
   subsidy_conversion_rate: 0.1      # Rate at which wealth converts to repression (10%)
   subsidy_trigger_threshold: 0.8    # P(S|R)/P(S|A) ratio threshold for subsidy (80%)
 
-  # Entity operational costs
-  base_subsistence: 0.0             # Fixed operational cost per tick as % of wealth (disabled by default)
+  # Entity operational costs (The Calorie Check - must be > 0 to prevent Eden Mode)
+  base_subsistence: 0.01            # Fixed operational cost per tick as % of wealth
+
+  # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)
+  # Models declining extraction efficiency over time without full OCC tracking
+  # See ai-docs/epoch2-trpf.yaml for full OCC implementation planned for Epoch 2
+  trpf_coefficient: 0.0005          # Extraction efficiency decay per tick (at 1040 ticks: 48% efficiency)
+  rent_pool_decay: 0.002            # Background rent pool evaporation per tick
 
 survival:
   # Acquiescence probability P(S|A)

@@ -61,6 +61,14 @@ from babylon.systems.formulas.survival_calculus import (
     calculate_revolution_probability,
 )
 
+# Re-export TRPF formulas (Marx, Capital Vol. 3)
+from babylon.systems.formulas.trpf import (
+    calculate_organic_composition,
+    calculate_rate_of_profit,
+    calculate_rent_pool_decay,
+    calculate_trpf_multiplier,
+)
+
 # Re-export Unequal Exchange formulas
 from babylon.systems.formulas.unequal_exchange import (
     calculate_exchange_ratio,
@@ -98,4 +106,9 @@ __all__ = [
     # Metabolic Rift
     "calculate_biocapacity_delta",
     "calculate_overshoot_ratio",
+    # TRPF (Marx, Capital Vol. 3)
+    "calculate_organic_composition",
+    "calculate_rate_of_profit",
+    "calculate_rent_pool_decay",
+    "calculate_trpf_multiplier",
 ]

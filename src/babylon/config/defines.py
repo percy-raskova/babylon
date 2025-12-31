@@ -128,12 +128,27 @@ class EconomyDefines(BaseModel):
         description="Subsidy below this threshold skips processing",
     )
 
-    # Entity operational costs
+    # Entity operational costs (The Calorie Check - must be > 0 to prevent Eden Mode)
     base_subsistence: float = Field(
-        default=0.0,
+        default=0.01,
         ge=0.0,
         le=0.5,
-        description="Fixed operational cost deducted from entities per tick as percentage of wealth (disabled by default)",
+        description="Fixed operational cost deducted from entities per tick as percentage of wealth",
+    )
+
+    # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)
+    # See ai-docs/epoch2-trpf.yaml for full OCC implementation planned for Epoch 2
+    trpf_coefficient: float = Field(
+        default=0.0005,
+        ge=0.0,
+        le=0.01,
+        description="Rate at which extraction efficiency declines per tick (TRPF surrogate)",
+    )
+    rent_pool_decay: float = Field(
+        default=0.002,
+        ge=0.0,
+        le=0.01,
+        description="Background evaporation rate of imperial rent pool per tick",
     )
 
 

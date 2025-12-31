@@ -2429,6 +2429,98 @@ pending:
 
     mantra: "Name the number. Test the behavior."
 
+  ADR032_materialist_causality_system_order:
+    status: "accepted"
+    date: "2025-12-31"
+    title: "Materialist Causality System Execution Order"
+    context: |
+      The simulation engine executes systems in sequence, with each system seeing
+      mutations from all previous systems. The original order did not strictly
+      enforce materialist causality:
+
+      Old order (problems):
+      1. VitalitySystem
+      2. ProductionSystem
+      3. ImperialRentSystem
+      4. SolidaritySystem
+      5. ConsciousnessSystem  ← Ideology before material conditions resolved
+      6. SurvivalSystem
+      7. StruggleSystem
+      8. ContradictionSystem
+      9. TerritorySystem    ← Land conditions computed AFTER production!
+      10. MetabolismSystem  ← Ecology at the very end
+
+      Issues:
+      - Territory runs after production (violates: land affects production)
+      - Consciousness runs before survival calculus (ideology before material)
+      - Metabolism runs last (ecological limits should constrain production)
+      - Subsistence burn was embedded in ImperialRentSystem
+
+    decision: |
+      **Reorder systems to enforce strict materialist causality: base before superstructure.**
+
+      New order with rationale:
+
+      **Material Base (biological, spatial, economic):**
+      1. VitalitySystem - Dead entities don't work (The Drain + The Reaper)
+      2. TerritorySystem - Land conditions affect production (Carceral Geography)
+      3. ProductionSystem - Value creation from labor × biocapacity (The Labor)
+      4. SolidaritySystem - Organization affects bargaining power (Political Organization)
+      5. ImperialRentSystem - Value extraction (The Extraction)
+      6. MetabolismSystem - Ecological residue of production (The Consequence)
+
+      **Superstructure (social, ideological):**
+      7. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
+      8. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
+      9. ConsciousnessSystem - Ideology responds to material conditions (Bifurcation)
+      10. ContradictionSystem - Final systemic tension accounting (The Reckoning)
+
+      **Key architectural change:**
+      - Subsistence burn moved from ImperialRentSystem._process_subsistence_phase()
+        to VitalitySystem.step() (two-phase: The Drain + The Reaper)
+
+    rationale:
+      base_before_superstructure:
+        principle: "Material conditions must be computed before social/ideological effects"
+        example: "Dead workers can't produce value; ideology responds to material state"
+
+      territory_before_production:
+        principle: "Land conditions (biocapacity, heat, eviction) affect production capacity"
+        example: "Degraded land produces less value"
+
+      metabolism_after_extraction:
+        principle: "Ecological degradation is the CONSEQUENCE of extraction, not the cause"
+        example: "Extraction depletes biocapacity for next tick"
+
+      subsistence_in_vitality:
+        principle: "Cost of living is biological, not economic"
+        example: "Elites with high multipliers burn faster without income"
+
+    consequences:
+      positive:
+        - "Strict materialist causality in simulation"
+        - "Subsistence burn happens before economic production"
+        - "Territory degradation affects production on same tick"
+        - "Ideology drift responds to fully resolved material state"
+        - "Clear separation: base (1-6) vs superstructure (7-10)"
+      negative:
+        - "TerritorySystem now runs early, may affect performance"
+        - "ConsciousnessSystem runs later, may change behavior"
+        - "Existing tests may need adjustment for new timing"
+
+    tests_added:
+      - "tests/unit/engine/test_system_order.py::TestMaterialistCausalityOrder"
+      - "tests/unit/engine/systems/test_vitality.py::TestVitalitySubsistenceBurn"
+
+    files_modified:
+      - "src/babylon/engine/simulation_engine.py (reordered _DEFAULT_SYSTEMS)"
+      - "src/babylon/engine/systems/vitality.py (added subsistence burn)"
+      - "src/babylon/engine/systems/economic.py (deprecated subsistence phase)"
+
+    related_decisions:
+      - "ADR001_embedded_trinity (base/relations/superstructure)"
+      - "ADR004_system_architecture (modular systems)"
+
 # =============================================================================
 # REJECTED DECISIONS
 # =============================================================================

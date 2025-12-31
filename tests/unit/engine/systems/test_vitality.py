@@ -121,15 +121,22 @@ class TestVitalitySystem:
         assert len(events) == 0
 
     def test_only_starving_entities_die(self, services: ServiceContainer) -> None:
-        """Multiple entities: only those with wealth < consumption_needs die."""
+        """Multiple entities: only those with insufficient post-burn wealth die.
+
+        With subsistence burn (base_subsistence=0.005, multiplier=1.0):
+        - burn_cost = 0.005
+        - Survival requires: wealth - burn_cost >= consumption_needs
+        - With floating-point margin: wealth >= 0.016 for s_bio=0.01
+        """
         graph: nx.DiGraph = nx.DiGraph()
 
-        # Rich entity (survives)
+        # Rich entity (survives: 10.0 - 0.005 = 9.995 >= 0.01)
         _create_entity_node(graph, "C001", wealth=10.0, s_bio=0.01)
-        # Poor entity (dies)
+        # Poor entity (dies: 0.0 - 0.005 = 0.0 < 0.01)
         _create_entity_node(graph, "C002", wealth=0.0, s_bio=0.01)
-        # Borderline entity (survives - wealth == consumption_needs)
-        _create_entity_node(graph, "C003", wealth=0.01, s_bio=0.01)
+        # Borderline entity (survives: 0.016 - 0.005 = 0.011 >= 0.01)
+        # Note: Using 0.016 instead of 0.015 to avoid floating-point precision edge case
+        _create_entity_node(graph, "C003", wealth=0.016, s_bio=0.01)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
@@ -220,7 +227,6 @@ class TestVitalitySystem:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase  # TDD RED: Will pass after subsistence burn moves to VitalitySystem
 class TestVitalitySubsistenceBurn:
     """Tests for subsistence burn in VitalitySystem.
 

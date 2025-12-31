@@ -1,13 +1,16 @@
-"""VitalitySystem - The Reaper.
+"""VitalitySystem - The Drain and The Reaper.
 
-Material Reality Refactor: Entities die when wealth < consumption_needs.
+ADR032: Materialist Causality System Order
 
-This system runs at the START of each tick, before production or extraction.
-When an entity cannot meet its metabolic requirements (s_bio + s_class),
-it is marked as inactive and an ENTITY_DEATH event is emitted.
+This system runs FIRST in the materialist causality chain, implementing:
+1. Phase 1 - The Drain: Linear subsistence burn (cost = base_subsistence * multiplier)
+2. Phase 2 - The Reaper: Death check (wealth < consumption_needs → die)
 
 Historical Materialist Principle:
-    Life requires material sustenance. No wealth = no life.
+    Life requires material sustenance. Living costs wealth. No wealth = no life.
+    Elites with higher subsistence multipliers burn faster when cut off from
+    imperial rent flows - modeling the "Principal Contradiction" where
+    bourgeoisie depends on extraction to maintain their standard of living.
 """
 
 from __future__ import annotations
@@ -26,15 +29,16 @@ from babylon.engine.systems.protocol import ContextType
 
 
 class VitalitySystem:
-    """Phase 0: Death check - The Reaper.
+    """Phase 1: The Drain + The Reaper (ADR032).
 
-    Checks all active entities for starvation.
-    If wealth < consumption_needs (s_bio + s_class), entity dies.
+    Two-phase vitality check for all active entities:
 
-    Args:
-        graph: Mutable world graph with entity nodes.
-        services: ServiceContainer for event publishing.
-        context: TickContext with current tick number.
+    Phase 1 - The Drain (Subsistence Burn):
+        cost = base_subsistence × subsistence_multiplier
+        wealth = max(0, wealth - cost)
+
+    Phase 2 - The Reaper (Death Check):
+        If wealth < consumption_needs (s_bio + s_class), entity dies.
 
     Events:
         ENTITY_DEATH: Emitted when an entity starves.
@@ -52,13 +56,13 @@ class VitalitySystem:
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Check for entity deaths due to starvation.
+        """Execute two-phase vitality check.
 
-        Iterates all social_class nodes. If an active entity has
-        wealth < consumption_needs, it dies (active=False) and
-        an ENTITY_DEATH event is emitted.
+        Phase 1 - The Drain: Burn wealth based on subsistence cost.
+        Phase 2 - The Reaper: Mark dead those who can't afford to live.
         """
         tick: int = context.get("tick", 0)
+        base_subsistence = services.defines.economy.base_subsistence
 
         for node_id, data in graph.nodes(data=True):
             # Skip non-entity nodes (territories, etc.)
@@ -69,12 +73,20 @@ class VitalitySystem:
             if not data.get("active", True):
                 continue
 
+            # Phase 1: The Drain (Subsistence Burn)
+            if base_subsistence > 0:
+                wealth = data.get("wealth", 0.0)
+                multiplier = data.get("subsistence_multiplier", 1.0)
+                cost = base_subsistence * multiplier
+                graph.nodes[node_id]["wealth"] = max(0.0, wealth - cost)
+
+            # Phase 2: The Reaper (Death Check)
             # Calculate consumption needs: s_bio + s_class
             s_bio = data.get("s_bio", 0.0)
             s_class = data.get("s_class", 0.0)
             consumption_needs = s_bio + s_class
 
-            wealth = data.get("wealth", 0.0)
+            wealth = graph.nodes[node_id].get("wealth", 0.0)
 
             # Death check: wealth < consumption_needs
             if wealth < consumption_needs:

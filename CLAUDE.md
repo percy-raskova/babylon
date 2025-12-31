@@ -236,6 +236,58 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 - **Sphinx-Compatible Docstrings**: All public classes/functions require RST-formatted docstrings
 - **No `test_` Prefix in Production Code**: Pytest auto-collects functions starting with `test_`. Use `check_`, `verify_`, or `validate_` instead for production functions that "test" something (e.g., `check_resilience`, not `test_resilience`).
 
+## Test Constants Architecture
+
+Test values are centralized in `tests/constants.py` using frozen dataclasses. See **ADR031** for full rationale.
+
+**Pattern**:
+```python
+from tests.constants import TestConstants
+TC = TestConstants
+
+def test_worker_wealth(self) -> None:
+    worker = create_worker(wealth=TC.Wealth.WORKER_BASELINE)
+    assert worker.wealth == TC.Wealth.WORKER_BASELINE  # Semantic!
+```
+
+**Categories**: `Wealth`, `Probability`, `Ideology`, `Consciousness`, `Thresholds`, `Vitality`, `Organization`, `EconomicFlow`, `RevolutionaryFinance`, `MetabolicRift`, `TRPF`, `MarxCapitalExamples`
+
+**Key Distinction - What to Extract vs Keep Inline**:
+
+| Extract to Constants | Keep Inline |
+|---------------------|-------------|
+| Domain defaults (`DEFAULT_WEALTH = 10.0`) | Type boundaries (`0.0`, `1.0` for Probability) |
+| Thresholds (`AWAKENING = 0.7`) | Edge cases (`-0.001` for "just below zero") |
+| Scenario values (`PERIPHERY_WORKER = 20.0`) | Precision tests (`0.123456789` for quantization) |
+| Theoretical values (`LOSS_AVERSION = 2.25`) | Computed results in assertions |
+
+**Rationale**: Type boundary tests verify the TYPE DEFINITION itself. The values 0.0 and 1.0 ARE the Probability contract. Extracting them reduces clarity.
+
+**Anti-Pattern**: Don't extract boundary values to constants:
+```python
+# BAD: Obscures what's being tested
+assert Probability(TC.Probability.LOWER_BOUND) is valid
+
+# GOOD: Boundary is self-documenting
+assert Probability(0.0) is valid  # Lower bound of [0, 1]
+```
+
+## Test Infrastructure
+
+**Factories** (`tests/factories/`):
+- `DomainFactory`: Creates test entities with sensible defaults
+- Pattern: Override only what matters for the test
+
+**Fixtures** (`conftest.py` hierarchy):
+- Root: Session-scoped infrastructure
+- Per-domain: Domain-specific fixtures
+- Avoid fixture duplication across conftest files
+
+**TDD Markers**:
+```python
+@pytest.mark.red_phase  # Intentionally failing until GREEN phase
+```
+
 ## Docstring Standards
 
 **IMPORTANT**: All public classes, functions, and modules MUST have Sphinx-compatible docstrings.
@@ -351,3 +403,148 @@ Results are stored in `results/` (CSV, JSON) and `optuna.db` (SQLite study stora
 - Anti-patterns documented in `ai-docs/anti-patterns.yaml`
 
 **Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.
+
+## Common Gotchas (from claude-mem)
+
+These lessons emerged from debugging sessions and are preserved to prevent re-learning:
+
+### WorldState.events is Per-Tick, NOT Cumulative
+
+```python
+# WRONG: Accumulating events across ticks
+accumulated_events = accumulated_events + new_events
+new_state = state.model_copy(update={"events": accumulated_events})
+
+# RIGHT: Each tick gets fresh events
+new_state = state.model_copy(update={"events": tick_events})
+```
+
+The simulation engine creates fresh WorldState each tick. `events` contains ONLY that tick's events. "No events this tick" = empty list `[]`, not duplicate events from previous tick.
+
+### Graph Round-Trip Can Lose Mutations
+
+`WorldState.to_graph()` → Systems mutate graph → `WorldState.from_graph()`
+
+**Gotcha**: `from_graph()` excludes computed fields and uses model defaults for missing fields:
+```python
+# In from_graph(), these are excluded:
+social_class_computed = {"consumption_needs"}
+territory_excluded = {"p_acquiescence", "p_revolution"}
+```
+
+If you add a field to SocialClass, ensure `to_graph()` serializes it via `model_dump()` AND `from_graph()` doesn't exclude it.
+
+**Gotcha**: Using `data.get("field", 0.0)` fallback masks missing field bugs:
+```python
+# This silently uses 0.0 if s_bio missing from graph node
+consumption = data.get("s_bio", 0.0) + data.get("s_class", 0.0)
+```
+
+### Systems Mutate Shared Graph In-Place
+
+Systems execute in strict order, each seeing previous systems' mutations:
+```
+ImperialRent → Solidarity → Consciousness → Survival → Struggle → Contradiction → Territory → Metabolism
+```
+
+Access node data via `graph.nodes[node_id]["wealth"]`, not model attributes.
+
+### Mypy Misses Pydantic Attribute Errors
+
+```python
+# This passes mypy but fails at runtime:
+snapshot: TopologySnapshot = monitor.history[-1]
+phase = snapshot.phase  # AttributeError: 'TopologySnapshot' has no attribute 'phase'
+```
+
+Pydantic models use dynamic attributes that bypass static analysis. **Runtime tests are essential.**
+
+### Immutability via model_copy()
+
+WorldState is frozen. ALL mutations return new instances:
+```python
+# WRONG: Trying to mutate
+state.tick = state.tick + 1  # Raises ValidationError
+
+# RIGHT: Copy with updates
+new_state = state.model_copy(update={"tick": state.tick + 1})
+```
+
+### Dependency Injection Over Discovery
+
+```python
+# WRONG: Discovering dependencies at runtime
+def __init__(self):
+    self.metrics = self._find_observer(MetricsCollector)  # Couples to internals
+
+# RIGHT: Explicit injection
+def __init__(self, metrics_collector: MetricsCollector):
+    self.metrics = metrics_collector  # Testable, explicit
+```
+
+## CI Hygiene
+
+**Fix Unrelated Issues When Encountered**: If CI reveals lint/type errors in files you didn't modify, fix them. Don't leave broken windows.
+
+**Import Order Matters**:
+```python
+# Correct order to avoid E402 (module level import not at top)
+from __future__ import annotations
+
+import pytest                          # stdlib first
+from pydantic import ValidationError   # third-party second
+
+from babylon.models import SocialClass # local imports third
+from tests.constants import TestConstants
+TC = TestConstants                      # alias AFTER all imports
+```
+
+**Maintain `__all__` Exports**: When adding public functions to a package, update `__init__.py`:
+```python
+__all__ = [
+    "existing_function",
+    "new_function",  # Add new exports here
+]
+```
+
+**Type Ignore Comments**: Use specific error codes, not blanket ignores:
+```python
+# GOOD: Specific error code
+import dearpygui.dearpygui as dpg  # type: ignore[import-untyped]
+
+# BAD: Blanket ignore
+import something  # type: ignore
+```
+
+## Session Continuity
+
+**claude-mem Integration**: This project uses claude-mem for cross-session memory. Discoveries, decisions, and features are automatically recorded.
+
+**Before Re-investigating**:
+- Search claude-mem for prior work on the topic
+- Check ai-docs/decisions.yaml for relevant ADRs
+- Review ai-docs/state.yaml for current project status
+
+**After Completing Significant Work**:
+1. Update `ai-docs/state.yaml` with new status/test counts
+2. Create ADR in `ai-docs/decisions.yaml` for architectural patterns
+3. Update `ai-docs/roadmap.md` if milestones changed
+
+**ADR Format** (in decisions.yaml):
+```yaml
+ADR0XX_descriptive_name:
+  status: "accepted"
+  date: "YYYY-MM-DD"
+  title: "Short descriptive title"
+  context: |
+    What problem were we solving?
+  decision: |
+    What did we decide?
+  rationale:
+    key_point: "Why this approach?"
+  consequences:
+    positive:
+      - "Benefit 1"
+    negative:
+      - "Tradeoff 1"
+```

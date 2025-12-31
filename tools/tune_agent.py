@@ -138,9 +138,9 @@ def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
                 logger.warning(f"Trial {trial.number}: Simulation crashed at tick {tick}: {e}")
                 return 0.0
 
-            # Check Comprador (P_c) health for early pruning
+            # Check Comprador (P_c) health for early pruning (uses VitalitySystem's active field)
             comprador = state.entities.get(COMPRADOR_ID)
-            if comprador and is_dead(float(comprador.wealth)):
+            if comprador and is_dead(comprador):
                 if tick < EARLY_DEATH_THRESHOLD:
                     # Too early death - prune this trial
                     raise optuna.TrialPruned()
@@ -149,9 +149,9 @@ def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
                 final_rent = float(state.economy.imperial_rent_pool)
                 break
 
-            # Check Periphery Worker health too
+            # Check Periphery Worker health too (uses VitalitySystem's active field)
             worker = state.entities.get(PERIPHERY_WORKER_ID)
-            if worker and is_dead(float(worker.wealth)):
+            if worker and is_dead(worker):
                 ticks_survived = tick + 1
                 final_rent = float(state.economy.imperial_rent_pool)
                 break

@@ -36,7 +36,6 @@ from babylon.models.world_state import WorldState
 ENTITY_IDS: Final[list[str]] = ["C001", "C002", "C003", "C004"]
 # Use centralized timescale constant (1 tick = 1 week, 52 ticks = 1 year)
 DEFAULT_TICKS: Final[int] = GameDefines().timescale.ticks_per_year
-DEATH_THRESHOLD: Final[float] = 0.001
 PERIPHERY_WORKER_ID: Final[str] = "C001"
 
 # Column name mapping for entities
@@ -52,16 +51,21 @@ ENTITY_COLUMN_PREFIX: Final[dict[str, str]] = {
 }
 
 
-def is_dead(wealth: float) -> bool:
-    """Check if an entity's wealth indicates death.
+def is_dead(entity: Any) -> bool:
+    """Check if an entity is dead using VitalitySystem's active field.
+
+    This aligns with VitalitySystem which sets active=False when
+    wealth < consumption_needs (s_bio + s_class).
 
     Args:
-        wealth: Current wealth value
+        entity: SocialClass entity or None
 
     Returns:
-        True if wealth is at or below death threshold
+        True if entity is None or has active=False
     """
-    return wealth <= DEATH_THRESHOLD
+    if entity is None:
+        return True
+    return not getattr(entity, "active", True)
 
 
 def _run_simulation_with_metrics(
@@ -93,9 +97,9 @@ def _run_simulation_with_metrics(
     # To get max_ticks data points: initial (1) + steps (max_ticks - 1) = max_ticks
     for _ in range(max_ticks - 1):
         sim.step()
-        # Check death condition - stop if periphery worker dies
+        # Check death condition - stop if periphery worker dies (uses VitalitySystem's active field)
         worker = sim.current_state.entities.get(PERIPHERY_WORKER_ID)
-        if worker is not None and is_dead(float(worker.wealth)):
+        if worker is not None and is_dead(worker):
             break
 
     sim.end()

@@ -100,9 +100,16 @@ mise run docs-live                                # Live-reload documentation se
 mise run doctest                                  # Run doctest examples in formulas
 mise run clean                                    # Clean build artifacts and caches
 
-# Parameter Analysis
+# Parameter Analysis & Tuning
 mise run analyze-trace                            # Single sim with full time-series CSV
 mise run analyze-sweep                            # Parameter sweep with summary metrics
+mise run tune                                     # Optuna Bayesian optimization (100 trials)
+mise run map                                      # 2D parameter landscape grid search
+mise run audit                                    # Simulation health report (baseline/stress tests)
+mise run dashboard                                # Launch Optuna Dashboard for visualization
+
+# UI
+mise run ui                                       # Launch DearPyGui Synopticon dashboard
 
 # Testing (direct pytest)
 poetry run pytest -m "not ai"                     # All non-AI tests
@@ -170,6 +177,12 @@ SimulationEngine.run_tick(graph, services, context)
 - `src/babylon/engine/systems/territory.py` - Carceral geography, heat dynamics, eviction pipeline
 - `src/babylon/config/defines.py` - GameDefines (all tunable game coefficients)
 
+**Observer System** (`src/babylon/engine/observer.py`):
+- `SimulationObserver` - Protocol for state change notifications
+- `SessionRecorder` - Black box recording for debugging/replay
+- `EndgameDetector` - Detects simulation outcomes (IMPERIAL_COLLAPSE, etc.)
+- `TopologyMonitor` - Phase transition detection via percolation theory
+
 ## Type System
 
 All game entities use Pydantic models with constrained types:
@@ -208,6 +221,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 @pytest.mark.integration # Database/ChromaDB (I/O bound)
 @pytest.mark.ai          # AI/RAG evaluation (slow, non-deterministic)
 @pytest.mark.unit        # Unit tests (default)
+@pytest.mark.red_phase   # TDD RED phase (intentionally failing until GREEN)
 ```
 
 ## Coding Standards
@@ -308,6 +322,25 @@ defines.consciousness.drift_sensitivity_k  # Consciousness drift rate
 ```
 
 Categories: `economy`, `consciousness`, `solidarity`, `survival`, `territory`
+
+## Simulation Lab (Parameter Tuning)
+
+The `tools/` directory contains analysis tooling for parameter optimization:
+
+| Tool | Command | Purpose |
+|------|---------|---------|
+| `tune_agent.py` | `mise run tune` | Bayesian optimization via Optuna TPE with Hyperband pruning |
+| `landscape_analysis.py` | `mise run map` | 2D parameter grid search (extraction × comprador cut) |
+| `audit_simulation.py` | `mise run audit` | Health report with baseline/starvation/glut scenarios |
+| `parameter_analysis.py` | `mise run analyze-trace` | Single simulation with time-series CSV + JSON metadata |
+
+**Optimization Workflow**:
+1. `mise run audit` - Validate simulation health under stress scenarios
+2. `mise run map` - Visualize stability landscape for parameter pairs
+3. `mise run tune` - Run Bayesian optimization to find optimal parameters
+4. `mise run dashboard` - Visualize optimization results in Optuna Dashboard
+
+Results are stored in `results/` (CSV, JSON) and `optuna.db` (SQLite study storage).
 
 ## Documentation
 

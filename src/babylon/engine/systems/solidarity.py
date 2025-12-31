@@ -127,6 +127,12 @@ class SolidaritySystem:
             if edge_type != EdgeType.SOLIDARITY:
                 continue
 
+            # Skip inactive (dead) nodes - dead can't transmit or receive consciousness
+            if not graph.nodes[source_id].get("active", True):
+                continue
+            if not graph.nodes[target_id].get("active", True):
+                continue
+
             # Get solidarity_strength from edge (NOT auto-calculated!)
             solidarity_strength = data.get("solidarity_strength", 0.0)
 

@@ -309,8 +309,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """Exactly 13 event types defined (2 original + 3 solidarity + 1 dynamic balance + 1 metabolic + 3 agency layer + 1 contradiction + 1 topology + 1 endgame)."""
-        assert len(EventType) == 13
+        """Exactly 17 event types defined (13 original + 3 George Jackson + 1 Material Reality)."""
+        assert len(EventType) == 17
 
 
 # =============================================================================

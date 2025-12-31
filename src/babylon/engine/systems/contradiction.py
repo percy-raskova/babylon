@@ -31,6 +31,12 @@ class ContradictionSystem:
         tension_accumulation_rate = services.config.tension_accumulation_rate
 
         for source_id, target_id, data in graph.edges(data=True):
+            # Skip edges involving inactive (dead) entities
+            if not graph.nodes[source_id].get("active", True):
+                continue
+            if not graph.nodes[target_id].get("active", True):
+                continue
+
             source_wealth = graph.nodes[source_id].get("wealth", 0.0)
             target_wealth = graph.nodes[target_id].get("wealth", 0.0)
 

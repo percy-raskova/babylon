@@ -100,6 +100,11 @@ class ImperialRentSystem:
 
         for node_id in graph.nodes():
             node_data = graph.nodes[node_id]
+
+            # Skip inactive (dead) entities
+            if not node_data.get("active", True):
+                continue
+
             wealth = node_data.get("wealth", 0.0)
 
             if wealth <= 0:
@@ -137,6 +142,15 @@ class ImperialRentSystem:
 
             # Get source (worker) data
             worker_data = graph.nodes[source_id]
+
+            # Skip inactive (dead) workers - can't extract from the dead
+            if not worker_data.get("active", True):
+                continue
+
+            # Skip inactive (dead) targets - can't receive extraction
+            if not graph.nodes[target_id].get("active", True):
+                continue
+
             worker_wealth = worker_data.get("wealth", 0.0)
 
             # Extract class consciousness (handles both IdeologicalProfile and legacy)
@@ -203,6 +217,14 @@ class ImperialRentSystem:
             if edge_type != EdgeType.TRIBUTE:
                 continue
 
+            # Skip inactive (dead) compradors - can't pay tribute when dead
+            if not graph.nodes[source_id].get("active", True):
+                continue
+
+            # Skip inactive (dead) targets - can't receive tribute
+            if not graph.nodes[target_id].get("active", True):
+                continue
+
             # Get comprador wealth
             comprador_wealth = graph.nodes[source_id].get("wealth", 0.0)
 
@@ -260,6 +282,14 @@ class ImperialRentSystem:
                 edge_type = EdgeType(edge_type)
 
             if edge_type != EdgeType.WAGES:
+                continue
+
+            # Skip inactive (dead) bourgeoisie - can't pay wages when dead
+            if not graph.nodes[source_id].get("active", True):
+                continue
+
+            # Skip inactive (dead) workers - can't receive wages when dead
+            if not graph.nodes[target_id].get("active", True):
                 continue
 
             # Get bourgeoisie wealth
@@ -327,6 +357,14 @@ class ImperialRentSystem:
                 edge_type = EdgeType(edge_type)
 
             if edge_type != EdgeType.CLIENT_STATE:
+                continue
+
+            # Skip inactive (dead) bourgeoisie - can't provide subsidy when dead
+            if not graph.nodes[source_id].get("active", True):
+                continue
+
+            # Skip inactive (dead) client states - can't receive subsidy when dead
+            if not graph.nodes[target_id].get("active", True):
                 continue
 
             # Get target (client state) data

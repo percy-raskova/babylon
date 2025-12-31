@@ -343,6 +343,12 @@ class SocialClass(BaseModel):
         description="PPP multiplier applied to wages (1.0 = no bonus)",
     )
 
+    # Vitality (Material Reality Refactor)
+    active: bool = Field(
+        default=True,
+        description="Whether entity is alive. False = starved (wealth < consumption_needs)",
+    )
+
     # Metabolic Consumption (Slice 1.4)
     s_bio: Currency = Field(
         default=0.01,

@@ -33,11 +33,13 @@ from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
+from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.survival import SurvivalSystem
 from babylon.engine.systems.territory import TerritorySystem
+from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
 from babylon.models.events import (
@@ -104,6 +106,8 @@ class SimulationEngine:
 
 
 # Initialize the machine with Historical Materialist order
+# VitalitySystem runs FIRST - death check before any economic activity
+# ProductionSystem runs SECOND - value creation from labor × biocapacity
 # SolidaritySystem runs AFTER ImperialRentSystem, BEFORE ConsciousnessSystem
 # This ensures consciousness transmission from solidarity edges
 # modifies ideology BEFORE the general consciousness drift calculation
@@ -112,6 +116,8 @@ class SimulationEngine:
 # TerritorySystem runs LAST before MetabolismSystem - spatial dynamics are superstructure effects
 # MetabolismSystem runs AFTER TerritorySystem - ecological limits are material substrate
 _DEFAULT_SYSTEMS: list[System] = [
+    VitalitySystem(),  # Material Reality: Death check (The Reaper)
+    ProductionSystem(),  # Material Reality: Value creation (The Soil)
     ImperialRentSystem(),
     SolidaritySystem(),  # Sprint 3.4.2: Proletarian Internationalism
     ConsciousnessSystem(),

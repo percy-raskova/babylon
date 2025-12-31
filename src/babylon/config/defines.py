@@ -37,6 +37,13 @@ class EconomyDefines(BaseModel):
         description="Fraction of wealth kept by comprador class (prevents Comprador Liquidation)",
     )
 
+    # Production (Material Reality Refactor)
+    base_labor_power: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="Base value produced per tick by worker with full biocapacity",
+    )
+
     # Super-wages (PPP Model)
     super_wage_rate: float = Field(
         default=0.20,

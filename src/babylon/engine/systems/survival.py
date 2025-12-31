@@ -91,6 +91,10 @@ class SurvivalSystem:
         default_subsistence = services.defines.survival.default_subsistence
 
         for node_id, data in graph.nodes(data=True):
+            # Skip inactive (dead) entities - dead don't calculate survival odds
+            if not data.get("active", True):
+                continue
+
             wealth = data.get("wealth", 0.0)
             base_organization = data.get("organization", services.defines.DEFAULT_ORGANIZATION)
             repression = data.get("repression_faced", services.defines.DEFAULT_REPRESSION_FACED)

@@ -115,6 +115,10 @@ class ConsciousnessSystem:
             if node_data.get("_node_type") == "territory":
                 continue
 
+            # Skip inactive (dead) entities - dead can't develop consciousness
+            if not node_data.get("active", True):
+                continue
+
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0
             for _, _, data in graph.in_edges(node_id, data=True):

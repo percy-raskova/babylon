@@ -37,21 +37,25 @@ from babylon.engine.simulation_engine import step
 from babylon.models.enums import EdgeType
 
 # Constants
-DEATH_THRESHOLD: Final[float] = 0.001
 PERIPHERY_WORKER_ID: Final[str] = "C001"
 MAX_TICKS: Final[int] = 50
 
 
-def is_dead(wealth: float) -> bool:
-    """Check if an entity's wealth indicates death.
+def is_dead(entity: Any) -> bool:
+    """Check if an entity is dead using VitalitySystem's active field.
+
+    This aligns with VitalitySystem which sets active=False when
+    wealth < consumption_needs (s_bio + s_class).
 
     Args:
-        wealth: Current wealth value
+        entity: SocialClass entity or None
 
     Returns:
-        True if wealth is at or below death threshold
+        True if entity is None or has active=False
     """
-    return wealth <= DEATH_THRESHOLD
+    if entity is None:
+        return True
+    return not getattr(entity, "active", True)
 
 
 def inject_parameter(
@@ -139,8 +143,8 @@ def run_simulation(
             if rel.edge_type == EdgeType.EXPLOITATION:
                 max_tension = max(max_tension, rel.tension)
 
-        # Check for death
-        if is_dead(final_wealth):
+        # Check for death (uses VitalitySystem's active field)
+        if is_dead(worker):
             ticks_survived = tick + 1
             return {
                 "ticks_survived": ticks_survived,
@@ -343,7 +347,7 @@ def main() -> int:
     print()
     print(f"Sweeping {args.param} from {args.start} to {args.end} by {args.step}")
     print(f"Running {args.ticks} ticks per simulation")
-    print(f"Death threshold: wealth <= {DEATH_THRESHOLD}")
+    print("Death detection: VitalitySystem active field (wealth < consumption_needs)")
     print()
     print("Running simulations...")
     print()

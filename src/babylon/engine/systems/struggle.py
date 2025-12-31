@@ -206,6 +206,10 @@ def _find_entity_by_role(
         if data.get("_node_type") == "territory":
             continue
 
+        # Skip inactive (dead) entities
+        if not data.get("active", True):
+            continue
+
         node_role = data.get("role")
         if isinstance(node_role, str):
             try:
@@ -267,6 +271,10 @@ class StruggleSystem:
         for node_id, data in graph.nodes(data=True):
             # Skip non-social-class nodes (territories)
             if data.get("_node_type") == "territory":
+                continue
+
+            # Skip inactive (dead) entities - dead don't participate in struggle
+            if not data.get("active", True):
                 continue
 
             # Check if this is a struggling class

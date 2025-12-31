@@ -133,6 +133,7 @@ class EventType(StrEnum):
         FASCIST_REVANCHISM: Core workers react with nationalism during power vacuum
         RUPTURE: Contradiction tension reached critical threshold, triggering phase transition
         PHASE_TRANSITION: Topology percolation threshold crossed (Sprint 3.3)
+        ENTITY_DEATH: Entity starved (wealth < consumption_needs) - Material Reality Refactor
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -153,6 +154,7 @@ class EventType(StrEnum):
     RUPTURE = "rupture"  # Contradiction rupture - tension reached critical threshold
     PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
     ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)
+    ENTITY_DEATH = "entity_death"  # Material Reality: Entity starved (wealth < consumption)
 
 
 class OperationalProfile(StrEnum):

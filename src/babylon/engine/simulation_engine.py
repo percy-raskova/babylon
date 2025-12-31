@@ -1,5 +1,7 @@
 """Simulation engine for the Babylon game loop.
 
+ADR032: Materialist Causality System Order
+
 The step() function is the core of Phase 2. It takes a WorldState and
 SimulationConfig and returns a new WorldState representing one tick of
 simulation time.
@@ -9,15 +11,21 @@ The step function is:
 - **Deterministic**: Same inputs always produce same outputs
 - **Transparent**: Order of operations encodes historical materialism
 
-Turn Order (encodes historical materialism):
-1. Economic Base - Value extraction (imperial rent)
-2. Consciousness - Ideology drift based on material conditions
-3. Survival Calculus - P(S|A) and P(S|R) updates
-4. Contradiction Tension - Accumulated from wealth gaps
-5. Event Logging - Record significant state changes
+Turn Order (materialist causality - base before superstructure):
+1. Vitality - Biological cost + death (dead entities don't work)
+2. Territory - Land state updates (land conditions affect production)
+3. Production - Value creation (value must exist before extraction)
+4. Solidarity - Organization (affects bargaining power)
+5. Imperial Rent - Value extraction (landlord eats after harvest)
+6. Metabolism - Environmental degradation (ecological residue of production)
+7. Survival - Risk assessment (P(S|A), P(S|R) from material state)
+8. Struggle - Action/Revolt (agency responds to survival odds)
+9. Consciousness - Ideological drift (ideology responds to material)
+10. Contradiction - Tension aggregation (final systemic accounting)
 
 Phase 2.1: Refactored to modular System architecture.
 Phase 4a: Refactored to use ServiceContainer for dependency injection.
+ADR032: Reordered systems for materialist causality.
 """
 
 from __future__ import annotations
@@ -67,11 +75,17 @@ class SimulationEngine:
     """Modular engine that advances the simulation by iterating through Systems.
 
     The engine holds a list of systems and executes them in sequence.
-    Order encodes historical materialism:
-    1. Economic Base (imperial rent)
-    2. Consciousness (ideology drift)
-    3. Survival Calculus (probability updates)
-    4. Contradiction (tension dynamics)
+    Order encodes materialist causality (ADR032):
+    1. Vitality (death check)
+    2. Territory (land state)
+    3. Production (value creation)
+    4. Solidarity (organization)
+    5. Imperial Rent (extraction)
+    6. Metabolism (ecology)
+    7. Survival (risk assessment)
+    8. Struggle (agency)
+    9. Consciousness (ideology)
+    10. Contradiction (tension)
     """
 
     def __init__(self, systems: list[System]) -> None:
@@ -105,27 +119,34 @@ class SimulationEngine:
             system.step(graph, services, context)
 
 
-# Initialize the machine with Historical Materialist order
-# VitalitySystem runs FIRST - death check before any economic activity
-# ProductionSystem runs SECOND - value creation from labor × biocapacity
-# SolidaritySystem runs AFTER ImperialRentSystem, BEFORE ConsciousnessSystem
-# This ensures consciousness transmission from solidarity edges
-# modifies ideology BEFORE the general consciousness drift calculation
-# StruggleSystem runs AFTER SurvivalSystem (needs P values), BEFORE ContradictionSystem
-# The solidarity built in Tick N enables SolidaritySystem transmission in Tick N+1
-# TerritorySystem runs LAST before MetabolismSystem - spatial dynamics are superstructure effects
-# MetabolismSystem runs AFTER TerritorySystem - ecological limits are material substrate
+# ADR032: Materialist Causality System Order
+# The order encodes strict materialist causality: base before superstructure.
+# Each system sees mutations from all previous systems in the sequence.
+#
+# Material Base (biological, spatial, economic):
+# 1. VitalitySystem - Dead entities don't work (The Drain + The Reaper)
+# 2. TerritorySystem - Land conditions affect production (Carceral Geography)
+# 3. ProductionSystem - Value creation from labor × biocapacity (The Labor)
+# 4. SolidaritySystem - Organization affects bargaining (Political Organization)
+# 5. ImperialRentSystem - Value extraction (The Extraction)
+# 6. MetabolismSystem - Ecological residue of production (The Consequence)
+#
+# Superstructure (social, ideological):
+# 7. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
+# 8. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
+# 9. ConsciousnessSystem - Ideology responds to material (Bifurcation)
+# 10. ContradictionSystem - Final systemic tension accounting (The Reckoning)
 _DEFAULT_SYSTEMS: list[System] = [
-    VitalitySystem(),  # Material Reality: Death check (The Reaper)
-    ProductionSystem(),  # Material Reality: Value creation (The Soil)
-    ImperialRentSystem(),
-    SolidaritySystem(),  # Sprint 3.4.2: Proletarian Internationalism
-    ConsciousnessSystem(),
-    SurvivalSystem(),
-    StruggleSystem(),  # Agency Layer: George Floyd Dynamic
-    ContradictionSystem(),
-    TerritorySystem(),  # Sprint 3.5.4: Layer 0 - Territorial Substrate
-    MetabolismSystem(),  # Slice 1.4: Metabolic Rift
+    VitalitySystem(),  # 1. Biological cost + death (The Drain + The Reaper)
+    TerritorySystem(),  # 2. Land state updates (Carceral Geography)
+    ProductionSystem(),  # 3. Value creation (The Labor)
+    SolidaritySystem(),  # 4. Organization calculation (Political Organization)
+    ImperialRentSystem(),  # 5. Value extraction (The Extraction)
+    MetabolismSystem(),  # 6. Environmental degradation (The Consequence)
+    SurvivalSystem(),  # 7. Risk assessment (Survival Calculus)
+    StruggleSystem(),  # 8. Action/Revolt (George Floyd Dynamic)
+    ConsciousnessSystem(),  # 9. Ideological drift (Bifurcation)
+    ContradictionSystem(),  # 10. Tension aggregation (The Reckoning)
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)

@@ -15,7 +15,6 @@ from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase  # TDD RED: Will pass after system reorder in GREEN phase
 class TestMaterialistCausalityOrder:
     """Verify systems execute in materialist causal order.
 

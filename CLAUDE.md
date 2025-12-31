@@ -46,9 +46,34 @@ feature/*, fix/*, docs/*, refactor/*
 
 When making commits:
 1. Use conventional commit format: `type(scope): description`
-2. After significant work, commit with the standard footer
+2. **Commit after each unit of work** - Don't let multiple logical changes accumulate
 3. If working on a feature, ensure you're on a feature branch, not `main` or `dev`
 4. See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [SETUP_GUIDE.md](SETUP_GUIDE.md) for full workflow
+
+**Commit Early, Commit Often**: Each logical unit of work should be its own commit. This means:
+- After completing a bug fix → commit immediately
+- After adding a new feature → commit immediately
+- After refactoring → commit immediately
+- After adding tests for a feature → commit with the feature (same unit)
+
+**Why This Matters**: Pre-commit hooks test only staged files. If you accumulate multiple units of work (e.g., Bug A fix + Bug B fix), and Bug B's tests depend on Bug A's code changes, you cannot commit them separately - the hooks will fail. This forces large, intertwined commits that are hard to revert and review.
+
+**Anti-Pattern**:
+```
+# BAD: Multiple units of work in one session without commits
+1. Fix Genesis bug (scenarios.py, test_scenario_initialization.py)
+2. Fix Zombie bug (economic.py, social_class.py, defines.py, test_subsistence.py)
+3. Try to commit Genesis fix alone → FAILS (tests need Zombie fix code)
+4. Forced to make one giant commit with both fixes
+```
+
+**Correct Pattern**:
+```
+# GOOD: Commit after each unit
+1. Fix Genesis bug → commit immediately
+2. Fix Zombie bug → commit immediately
+3. Each fix is independently revertable
+```
 
 ### Documentation Maintenance (ai-docs/)
 

@@ -390,8 +390,9 @@ class StruggleSystem:
                     )
                 )
 
-        # After processing struggling roles, check for power vacuum
+        # After processing struggling roles, check for power vacuum and peripheral revolt
         self._check_power_vacuum(graph, services, context)
+        self._check_peripheral_revolt(graph, services, context)
 
     def _check_power_vacuum(
         self,
@@ -547,6 +548,79 @@ class StruggleSystem:
                     "acquiescence_boost": defines.fascist_acquiescence_boost,
                     "narrative_hint": (
                         "REACTIONARY TURN: Core demands restoration of order amid chaos."
+                    ),
+                },
+            )
+        )
+
+    def _check_peripheral_revolt(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        context: ContextType,
+    ) -> None:
+        """Check for peripheral revolt and sever EXPLOITATION edges.
+
+        Terminal Crisis Dynamics: When P(S|R) > P(S|A) for PERIPHERY_PROLETARIAT,
+        the periphery revolts and severs all EXPLOITATION edges where they are
+        the source (i.e., stops being exploited).
+
+        This models anti-colonial revolution cutting off imperial extraction,
+        triggering the cascade: no extraction → no super-wages → LA decomposition.
+
+        See ai-docs/terminal-crisis-dynamics.md for full theory.
+        """
+        tick = context.get("tick", 0)
+
+        # Find periphery proletariat
+        p_w = _find_entity_by_role(graph, SocialRole.PERIPHERY_PROLETARIAT)
+        if p_w is None:
+            return  # No periphery proletariat in simulation
+
+        p_w_id, p_w_data = p_w
+
+        # Skip if inactive
+        if not p_w_data.get("active", True):
+            return
+
+        # Get survival probabilities
+        p_acq = p_w_data.get("p_acquiescence", 0.5)
+        p_rev = p_w_data.get("p_revolution", 0.0)
+
+        # Revolt requires P(S|R) > P(S|A) (strict inequality)
+        if p_rev <= p_acq:
+            return  # No revolt - acquiescence is rational
+
+        # Revolt triggered! Sever all outgoing EXPLOITATION edges
+        edges_to_remove: list[tuple[str, str]] = []
+
+        for source_id, target_id, edge_data in graph.out_edges(p_w_id, data=True):
+            edge_type = edge_data.get("edge_type")
+            if isinstance(edge_type, str):
+                try:
+                    edge_type = EdgeType(edge_type)
+                except ValueError:
+                    continue
+
+            if edge_type == EdgeType.EXPLOITATION:
+                edges_to_remove.append((source_id, target_id))
+
+        # Remove edges in batch (avoid modifying graph during iteration)
+        graph.remove_edges_from(edges_to_remove)
+
+        # Emit PERIPHERAL_REVOLT event
+        services.event_bus.publish(
+            Event(
+                type=EventType.PERIPHERAL_REVOLT,
+                tick=tick,
+                payload={
+                    "node_id": p_w_id,
+                    "edges_severed": len(edges_to_remove),
+                    "p_acquiescence": p_acq,
+                    "p_revolution": p_rev,
+                    "narrative_hint": (
+                        "PERIPHERAL REVOLT: Colonial extraction ends. "
+                        "The periphery refuses to subsidize the empire."
                     ),
                 },
             )

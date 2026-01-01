@@ -153,10 +153,10 @@ poetry run python tools/monte_carlo.py \
 # =============================================================================
 
 [tasks."tune:optuna"]
-description = "Run Bayesian optimization (Optuna TPE)"
+description = "Run Carceral Equilibrium optimization (Optuna TPE, 100 years)"
 usage = '''
 arg "[trials]" help="Number of optimization trials" default="100"
-arg "[name]" help="Study name (for resumption)" default="babylon_tune"
+arg "[name]" help="Study name (for resumption)" default="babylon_carceral"
 '''
 run = """
 poetry run python tools/tune_agent.py \
@@ -166,13 +166,13 @@ poetry run python tools/tune_agent.py \
 """
 
 [tasks."tune:landscape"]
-description = "2D parameter grid search"
+description = "2D parameter grid search (100-year simulations)"
 usage = '''
 arg "[param1]" help="First parameter path" default="economy.extraction_efficiency"
 arg "[range1]" help="Range as start:end:step" default="0.1:0.9:0.1"
 arg "[param2]" help="Second parameter path" default="economy.comprador_cut"
 arg "[range2]" help="Range as start:end:step" default="0.5:1.0:0.1"
-arg "[ticks]" help="Max ticks per simulation" default="52"
+arg "[ticks]" help="Max ticks per simulation" default="5200"
 '''
 run = """
 mkdir -p results
@@ -233,8 +233,8 @@ poetry run python tools/sensitivity_analysis.py sobol \
 # =============================================================================
 
 [tasks."qa:audit"]
-description = "Simulation health check"
-usage = 'arg "[ticks]" help="Max simulation ticks" default="52"'
+description = "Simulation health check (100-year trajectory)"
+usage = 'arg "[ticks]" help="Max simulation ticks" default="5200"'
 run = """
 mkdir -p reports
 poetry run python tools/audit_simulation.py \

@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, EventType
 
 # =============================================================================
 # ENTITY ID CONSTANTS
@@ -70,10 +70,11 @@ ENTITY_COLUMN_PREFIX: Final[dict[str, str]] = {
 # SIMULATION CONSTANTS
 # =============================================================================
 
-DEFAULT_MAX_TICKS: Final[int] = 3640
-"""Default simulation length: 3640 ticks = 70 years (1 tick = 1 week).
+DEFAULT_MAX_TICKS: Final[int] = 5200
+"""Default simulation length: 5200 ticks = 100 years (1 tick = 1 week).
 
-See ai-docs/carceral-equilibrium.md for the 70-year trajectory:
+Extended from 70-year trajectory to allow full parameter exploration.
+See ai-docs/carceral-equilibrium.md for the phase transition sequence:
 - Years 0-20:  Imperial Extraction
 - Years 15-25: Peripheral Revolt
 - Years 20-30: Superwage Crisis
@@ -232,6 +233,8 @@ def run_simulation(
             - outcome: "SURVIVED" or "DIED"
             - final_wealth: Final wealth of periphery worker
             - final_state: Final WorldState object
+            - phase_milestones: Dict mapping phase name -> tick (or None)
+            - terminal_outcome: "revolution", "genocide", or None
     """
     # Create scenario with default parameters
     state, config, _scenario_defines = create_imperial_circuit_scenario()
@@ -242,8 +245,35 @@ def run_simulation(
     ticks_survived: int = 0
     final_wealth: float = 0.0
 
+    # Phase milestone tracking for Carceral Equilibrium scoring
+    phase_milestones: dict[str, int | None] = {
+        "superwage_crisis": None,
+        "class_decomposition": None,
+        "control_ratio_crisis": None,
+        "terminal_decision": None,
+    }
+    terminal_outcome: str | None = None
+
     for tick in range(max_ticks):
         state = step(state, config, persistent_context, defines)
+
+        # Track phase transition events
+        for event in state.events:
+            if event.event_type == EventType.SUPERWAGE_CRISIS:
+                if phase_milestones["superwage_crisis"] is None:
+                    phase_milestones["superwage_crisis"] = tick
+            elif event.event_type == EventType.CLASS_DECOMPOSITION:
+                if phase_milestones["class_decomposition"] is None:
+                    phase_milestones["class_decomposition"] = tick
+            elif event.event_type == EventType.CONTROL_RATIO_CRISIS:
+                if phase_milestones["control_ratio_crisis"] is None:
+                    phase_milestones["control_ratio_crisis"] = tick
+            elif (
+                event.event_type == EventType.TERMINAL_DECISION
+                and phase_milestones["terminal_decision"] is None
+            ):
+                phase_milestones["terminal_decision"] = tick
+                terminal_outcome = event.data.get("outcome")
 
         # Get periphery worker wealth
         worker = state.entities.get(PERIPHERY_WORKER_ID)
@@ -267,6 +297,8 @@ def run_simulation(
                 "outcome": "DIED",
                 "final_wealth": final_wealth,
                 "final_state": state,
+                "phase_milestones": phase_milestones,
+                "terminal_outcome": terminal_outcome,
             }
 
         ticks_survived = tick + 1
@@ -277,6 +309,8 @@ def run_simulation(
         "outcome": "SURVIVED",
         "final_wealth": final_wealth,
         "final_state": state,
+        "phase_milestones": phase_milestones,
+        "terminal_outcome": terminal_outcome,
     }
 
 

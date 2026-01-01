@@ -624,21 +624,24 @@ class PrecisionDefines(BaseModel):
     """Numerical precision configuration for deterministic simulation.
 
     Epoch 0 Physics Hardening:
-    - All floating-point values snap to a 10^-n grid (default n=5)
-    - This prevents drift accumulation over long simulations
+    - All floating-point values snap to a 10^-n grid (default n=6)
+    - This prevents drift accumulation over long simulations (100+ years)
     - ROUND_HALF_UP ensures deterministic cross-platform behavior
 
     The Gatekeeper Pattern: Quantization is applied at TYPE level
     (Pydantic AfterValidator), NOT inside formulas.
+
+    Note: Increased from 5 to 6 decimal places for 100-year (5200 tick)
+    Carceral Equilibrium simulations to reduce cumulative rounding errors.
     """
 
     model_config = ConfigDict(frozen=True)
 
     decimal_places: int = Field(
-        default=5,
+        default=6,
         ge=1,
         le=10,
-        description="Quantization precision (10^-n). Default 5 = 0.00001",
+        description="Quantization precision (10^-n). Default 6 = 0.000001",
     )
     rounding_mode: str = Field(
         default="ROUND_HALF_UP",

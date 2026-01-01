@@ -55,6 +55,8 @@ from babylon.engine.systems.vitality import VitalitySystem
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import EventType
 from babylon.models.events import (
+    ClassDecompositionEvent,
+    ControlRatioCrisisEvent,
     CrisisEvent,
     ExtractionEvent,
     MassAwakeningEvent,
@@ -64,6 +66,8 @@ from babylon.models.events import (
     SolidaritySpikeEvent,
     SparkEvent,
     SubsidyEvent,
+    SuperwageCrisisEvent,
+    TerminalDecisionEvent,
     TransmissionEvent,
     UprisingEvent,
 )
@@ -162,7 +166,7 @@ _DEFAULT_SYSTEMS: list[System] = [
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
 
 
-def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
+def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # noqa: C901
     """Convert EventBus Event to typed Pydantic SimulationEvent.
 
     Args:
@@ -292,6 +296,45 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:
             largest_component_size=payload.get("largest_component_size", 0),
             cadre_density=payload.get("cadre_density", 0.0),
             is_resilient=payload.get("is_resilient"),
+        )
+
+    # Carceral Equilibrium Events (Sprint 3.4+)
+    if event_type == EventType.SUPERWAGE_CRISIS:
+        return SuperwageCrisisEvent(
+            tick=tick,
+            timestamp=timestamp,
+            payer_id=payload.get("payer_id", ""),
+            receiver_id=payload.get("receiver_id", ""),
+            desired_wages=payload.get("desired_wages", 0.0),
+            available_pool=payload.get("available_pool", 0.0),
+        )
+
+    if event_type == EventType.CLASS_DECOMPOSITION:
+        return ClassDecompositionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            original_id=payload.get("source_class", ""),  # Field name from decomposition.py
+            enforcer_fraction=payload.get("enforcer_fraction", 0.3),
+            proletariat_fraction=payload.get("proletariat_fraction", 0.7),
+        )
+
+    if event_type == EventType.CONTROL_RATIO_CRISIS:
+        return ControlRatioCrisisEvent(
+            tick=tick,
+            timestamp=timestamp,
+            prisoner_population=payload.get("prisoner_population", 0),
+            enforcer_population=payload.get("enforcer_population", 0),
+            control_ratio=payload.get("control_ratio", 0.0),
+            capacity_threshold=payload.get("capacity_threshold", 0.0),
+        )
+
+    if event_type == EventType.TERMINAL_DECISION:
+        return TerminalDecisionEvent(
+            tick=tick,
+            timestamp=timestamp,
+            outcome=payload.get("outcome", "genocide"),
+            avg_organization=payload.get("avg_organization", 0.0),
+            revolution_threshold=payload.get("revolution_threshold", 0.0),
         )
 
     # Unsupported event type (e.g., SOLIDARITY_AWAKENING) - graceful degradation

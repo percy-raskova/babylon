@@ -79,7 +79,8 @@ SEARCH_SPACE: Final[dict[str, tuple[float, float]]] = {
     "economy.super_wage_rate": (0.10, 0.35),  # LA super-wage as fraction of rent
     # Long-term decay drivers (affect when crises occur)
     "economy.trpf_coefficient": (0.0002, 0.002),  # Tendential rate of profit fall
-    "economy.rent_pool_decay": (0.0, 0.005),  # Imperial rent pool depletion rate
+    "economy.trpf_efficiency_floor": (0.0, 0.1),  # CRITICAL: Floor=0 allows full collapse
+    "economy.rent_pool_decay": (0.0, 0.02),  # Imperial rent pool depletion rate (widened)
     # Consciousness and solidarity (affect terminal outcome)
     "consciousness.sensitivity": (0.2, 0.8),  # How responsive to material conditions
     "solidarity.scaling_factor": (0.3, 0.9),  # Solidarity network effectiveness
@@ -147,6 +148,11 @@ def create_objective(max_ticks: int = SIMULATION_LENGTH) -> Any:
             SEARCH_SPACE["economy.trpf_coefficient"][0],
             SEARCH_SPACE["economy.trpf_coefficient"][1],
         )
+        trpf_floor = trial.suggest_float(
+            "trpf_efficiency_floor",
+            SEARCH_SPACE["economy.trpf_efficiency_floor"][0],
+            SEARCH_SPACE["economy.trpf_efficiency_floor"][1],
+        )
         rent_pool_decay = trial.suggest_float(
             "rent_pool_decay",
             SEARCH_SPACE["economy.rent_pool_decay"][0],
@@ -170,6 +176,7 @@ def create_objective(max_ticks: int = SIMULATION_LENGTH) -> Any:
         defines = inject_parameter(defines, "economy.comprador_cut", comprador_cut)
         defines = inject_parameter(defines, "economy.super_wage_rate", super_wage_rate)
         defines = inject_parameter(defines, "economy.trpf_coefficient", trpf_coefficient)
+        defines = inject_parameter(defines, "economy.trpf_efficiency_floor", trpf_floor)
         defines = inject_parameter(defines, "economy.rent_pool_decay", rent_pool_decay)
         defines = inject_parameter(defines, "consciousness.sensitivity", consciousness_sensitivity)
         defines = inject_parameter(defines, "solidarity.scaling_factor", solidarity_scaling)
@@ -312,6 +319,7 @@ def print_results(study: optuna.Study, max_ticks: int = SIMULATION_LENGTH) -> No
                 "comprador_cut": "economy.comprador_cut",
                 "super_wage_rate": "economy.super_wage_rate",
                 "trpf_coefficient": "economy.trpf_coefficient",
+                "trpf_efficiency_floor": "economy.trpf_efficiency_floor",
                 "rent_pool_decay": "economy.rent_pool_decay",
                 "consciousness_sensitivity": "consciousness.sensitivity",
                 "solidarity_scaling": "solidarity.scaling_factor",

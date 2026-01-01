@@ -336,11 +336,15 @@ class ImperialRentSystem:
             available_pool = tick_context["current_pool"]
             nominal_wages = min(desired_wages, available_pool)
 
+            # Check for zero wages (pool exhausted or no tribute)
+            # Note: Uses negligible threshold for pool check because asymptotic
+            # decay approaches but never reaches exactly 0.
+            negligible = services.defines.economy.negligible_rent
             if nominal_wages <= 0:
                 # Terminal Crisis: WAGES infrastructure exists but pool exhausted
                 # This triggers when C_b has capital but no income (tribute stopped)
                 # The crisis is about the TRANSITION from paid to unpaid wages
-                if available_pool <= 0:
+                if available_pool <= negligible:
                     tick = context.get("tick", 0) if isinstance(context, dict) else 0
                     services.event_bus.publish(
                         Event(

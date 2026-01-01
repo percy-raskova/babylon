@@ -257,6 +257,199 @@ class CrisisEvent(SimulationEvent):
 
 
 # =============================================================================
+# Carceral Equilibrium Events (Sprint 3.4+)
+# =============================================================================
+
+
+class SuperwageCrisisEvent(SimulationEvent):
+    """Super-wage crisis event (SUPERWAGE_CRISIS).
+
+    Emitted when the imperial rent pool is exhausted and core bourgeoisie
+    can no longer afford to pay super-wages to the labor aristocracy.
+    This triggers the Carceral Turn phase transition.
+
+    Attributes:
+        event_type: Always SUPERWAGE_CRISIS.
+        payer_id: Entity ID of the bourgeoisie who can't pay.
+        receiver_id: Entity ID of the labor aristocracy not receiving wages.
+        desired_wages: Amount of wages that were needed.
+        available_pool: Amount available in the rent pool (zero or negative).
+
+    Example:
+        >>> event = SuperwageCrisisEvent(
+        ...     tick=1040,
+        ...     payer_id="C003",
+        ...     receiver_id="C004",
+        ...     desired_wages=5.0,
+        ...     available_pool=0.0,
+        ... )
+        >>> event.event_type
+        <EventType.SUPERWAGE_CRISIS: 'superwage_crisis'>
+    """
+
+    event_type: EventType = Field(
+        default=EventType.SUPERWAGE_CRISIS,
+        description="Event type (always SUPERWAGE_CRISIS)",
+    )
+    payer_id: str = Field(
+        ...,
+        min_length=1,
+        description="Entity ID of the bourgeoisie who can't pay",
+    )
+    receiver_id: str = Field(
+        ...,
+        min_length=1,
+        description="Entity ID of the labor aristocracy not receiving wages",
+    )
+    desired_wages: float = Field(
+        ...,
+        ge=0.0,
+        description="Amount of wages that were needed",
+    )
+    available_pool: float = Field(
+        ...,
+        description="Amount available in the rent pool",
+    )
+
+
+class ClassDecompositionEvent(SimulationEvent):
+    """Class decomposition event (CLASS_DECOMPOSITION).
+
+    Emitted when the labor aristocracy splits into CARCERAL_ENFORCER
+    and INTERNAL_PROLETARIAT fractions after a super-wage crisis.
+
+    Attributes:
+        event_type: Always CLASS_DECOMPOSITION.
+        original_id: Entity ID of the labor aristocracy that split.
+        enforcer_fraction: Fraction that became enforcers (default 0.3).
+        proletariat_fraction: Fraction that became internal proletariat (0.7).
+
+    Example:
+        >>> event = ClassDecompositionEvent(
+        ...     tick=1092,
+        ...     original_id="C004",
+        ...     enforcer_fraction=0.3,
+        ...     proletariat_fraction=0.7,
+        ... )
+    """
+
+    event_type: EventType = Field(
+        default=EventType.CLASS_DECOMPOSITION,
+        description="Event type (always CLASS_DECOMPOSITION)",
+    )
+    original_id: str = Field(
+        ...,
+        min_length=1,
+        description="Entity ID of the labor aristocracy that split",
+    )
+    enforcer_fraction: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Fraction that became enforcers",
+    )
+    proletariat_fraction: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Fraction that became internal proletariat",
+    )
+
+
+class ControlRatioCrisisEvent(SimulationEvent):
+    """Control ratio crisis event (CONTROL_RATIO_CRISIS).
+
+    Emitted when the prisoner-to-guard ratio exceeds capacity,
+    meaning the carceral apparatus can no longer contain the surplus population.
+
+    Attributes:
+        event_type: Always CONTROL_RATIO_CRISIS.
+        prisoner_population: Size of the prisoner/surplus population.
+        enforcer_population: Size of the enforcer/guard population.
+        control_ratio: Prisoners per enforcer.
+        capacity_threshold: Maximum ratio enforcers can handle.
+
+    Example:
+        >>> event = ControlRatioCrisisEvent(
+        ...     tick=2340,
+        ...     prisoner_population=1000,
+        ...     enforcer_population=100,
+        ...     control_ratio=10.0,
+        ...     capacity_threshold=5.0,
+        ... )
+    """
+
+    event_type: EventType = Field(
+        default=EventType.CONTROL_RATIO_CRISIS,
+        description="Event type (always CONTROL_RATIO_CRISIS)",
+    )
+    prisoner_population: int = Field(
+        ...,
+        ge=0,
+        description="Size of the prisoner/surplus population",
+    )
+    enforcer_population: int = Field(
+        ...,
+        ge=0,
+        description="Size of the enforcer/guard population",
+    )
+    control_ratio: float = Field(
+        ...,
+        ge=0.0,
+        description="Prisoners per enforcer",
+    )
+    capacity_threshold: float = Field(
+        ...,
+        ge=0.0,
+        description="Maximum ratio enforcers can handle",
+    )
+
+
+class TerminalDecisionEvent(SimulationEvent):
+    """Terminal decision event (TERMINAL_DECISION).
+
+    Emitted when the system bifurcates to either revolution or genocide
+    based on the organization level of the surplus population.
+
+    Attributes:
+        event_type: Always TERMINAL_DECISION.
+        outcome: Either "revolution" or "genocide".
+        avg_organization: Average organization level of prisoners.
+        revolution_threshold: Threshold above which revolution occurs.
+
+    Example:
+        >>> event = TerminalDecisionEvent(
+        ...     tick=2860,
+        ...     outcome="revolution",
+        ...     avg_organization=0.65,
+        ...     revolution_threshold=0.6,
+        ... )
+    """
+
+    event_type: EventType = Field(
+        default=EventType.TERMINAL_DECISION,
+        description="Event type (always TERMINAL_DECISION)",
+    )
+    outcome: str = Field(
+        ...,
+        pattern="^(revolution|genocide)$",
+        description="Terminal outcome: revolution or genocide",
+    )
+    avg_organization: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Average organization level of prisoners",
+    )
+    revolution_threshold: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Threshold above which revolution occurs",
+    )
+
+
+# =============================================================================
 # Consciousness Events
 # =============================================================================
 

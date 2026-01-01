@@ -273,7 +273,8 @@ def run_simulation(
                 and phase_milestones["terminal_decision"] is None
             ):
                 phase_milestones["terminal_decision"] = tick
-                terminal_outcome = event.data.get("outcome")
+                # TerminalDecisionEvent has outcome as a direct attribute
+                terminal_outcome = getattr(event, "outcome", None)
 
         # Get periphery worker wealth
         worker = state.entities.get(PERIPHERY_WORKER_ID)
@@ -339,7 +340,8 @@ def get_tunable_parameters() -> dict[str, tuple[float, float]]:
         "economy.base_subsistence": (0.0001, 0.01),
         "economy.super_wage_rate": (0.05, 0.5),
         "economy.trpf_coefficient": (0.0001, 0.01),
-        "economy.rent_pool_decay": (0.0, 0.01),
+        "economy.trpf_efficiency_floor": (0.0, 0.1),
+        "economy.rent_pool_decay": (0.0, 0.05),
         # Consciousness parameters (ConsciousnessDefines)
         "consciousness.sensitivity": (0.1, 0.9),
         "consciousness.decay_lambda": (0.01, 0.5),

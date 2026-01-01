@@ -199,6 +199,40 @@ class SurvivalDefines(BaseModel):
     )
 
 
+class VitalityDefines(BaseModel):
+    """Mortality coefficients for Mass Line population dynamics.
+
+    The Grinding Attrition Formula models probabilistic mortality based on
+    intra-class inequality:
+    - Even with sufficient average wealth, high inequality kills marginal workers
+    - Deaths reduce population → per-capita wealth increases → equilibrium
+
+    Formula:
+        effective_wealth_per_capita = wealth / population
+        marginal_wealth = effective_wealth_per_capita × (1 - inequality × inequality_impact)
+        mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
+        deaths = floor(population × mortality_rate × base_mortality_factor)
+
+    Malthusian Correction: Population decline increases per-capita wealth,
+    reducing future mortality rates and creating equilibrium dynamics.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    base_mortality_factor: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of at-risk population that dies per tick",
+    )
+    inequality_impact: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=2.0,
+        description="How strongly inequality affects marginal wealth (1.0=full effect)",
+    )
+
+
 class SolidarityDefines(BaseModel):
     """Solidarity and consciousness transmission coefficients."""
 
@@ -636,6 +670,7 @@ class GameDefines(BaseModel):
 
     economy: EconomyDefines = Field(default_factory=EconomyDefines)
     survival: SurvivalDefines = Field(default_factory=SurvivalDefines)
+    vitality: VitalityDefines = Field(default_factory=VitalityDefines)
     solidarity: SolidarityDefines = Field(default_factory=SolidarityDefines)
     behavioral: BehavioralDefines = Field(default_factory=BehavioralDefines)
     tension: TensionDefines = Field(default_factory=TensionDefines)
@@ -729,6 +764,7 @@ class GameDefines(BaseModel):
         return cls(
             economy=EconomyDefines(**data.get("economy", {})),
             survival=SurvivalDefines(**data.get("survival", {})),
+            vitality=VitalityDefines(**data.get("vitality", {})),
             solidarity=SolidarityDefines(**data.get("solidarity", {})),
             behavioral=BehavioralDefines(**data.get("behavioral", {})),
             tension=TensionDefines(**data.get("tension", {})),

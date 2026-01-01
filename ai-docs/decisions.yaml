@@ -2521,6 +2521,82 @@ pending:
       - "ADR001_embedded_trinity (base/relations/superstructure)"
       - "ADR004_system_architecture (modular systems)"
 
+  ADR033_mass_line_refactor:
+    status: "accepted"
+    date: "2025-12-31"
+    title: "Mass Line: Agent-as-Block Population Dynamics"
+    context: |
+      The original simulation modeled each SocialClass as a single entity with
+      binary alive/dead states. This prevented modeling of:
+      - Intra-class inequality (some workers starving while others survive)
+      - Gradual population decline (grinding attrition vs sudden death)
+      - Demographic dynamics (Malthusian equilibrium)
+
+      The "Hump Shape" crisis of social reproduction requires modeling how
+      inequality within a class causes marginal workers to starve even when
+      average wealth is sufficient.
+
+    decision: |
+      **Transform simulation from Agent-as-Person to Agent-as-Block.**
+
+      Add two new fields to SocialClass:
+      - `population: int` - Block size (default=1 for backward compatibility)
+      - `inequality: Gini` - Intra-class inequality coefficient [0,1]
+
+      Implement "Grinding Attrition Formula" in VitalitySystem Phase 2:
+      ```
+      per_capita_wealth = wealth / population
+      marginal_wealth = per_capita_wealth × (1 - inequality)
+      mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
+      deaths = floor(population × mortality_rate × base_mortality_factor)
+      ```
+
+      **Malthusian Correction**: Deaths reduce population → per-capita wealth
+      increases → future mortality decreases → equilibrium at carrying capacity.
+
+    rationale:
+      backward_compat:
+        principle: "Default population=1, inequality=0 preserves old behavior"
+        example: "Existing scenarios continue to work without modification"
+
+      theoretical_basis:
+        principle: "Intra-class inequality affects survival differentially"
+        example: "High Gini means marginal workers starve even with sufficient avg wealth"
+
+      malthusian_dynamics:
+        principle: "Natural equilibrium as population adjusts to carrying capacity"
+        example: "Deaths relieve per-capita scarcity, reducing future mortality"
+
+      crisis_modeling:
+        principle: "Enables 'Hump Shape' crisis of social reproduction"
+        example: "Growing inequality eventually causes population decline"
+
+    consequences:
+      positive:
+        - "Richer demographic modeling"
+        - "Enables scenarios with population growth/decline"
+        - "More realistic inequality effects"
+        - "Malthusian equilibrium dynamics"
+        - "Backward compatible with existing scenarios"
+      negative:
+        - "Additional complexity in VitalitySystem"
+        - "New event type (POPULATION_DEATH) requires observer updates"
+        - "Tests marked @pytest.mark.red_phase during development"
+
+    tests_added:
+      - "tests/unit/engine/systems/test_vitality.py::TestGrindingAttrition"
+
+    files_modified:
+      - "src/babylon/models/types.py (added Gini type)"
+      - "src/babylon/models/entities/social_class.py (added population, inequality)"
+      - "src/babylon/config/defines.py (added VitalityDefines)"
+      - "src/babylon/models/enums.py (added POPULATION_DEATH event)"
+      - "src/babylon/engine/systems/vitality.py (3-phase with Grinding Attrition)"
+
+    related_decisions:
+      - "ADR032_materialist_system_order (VitalitySystem runs first)"
+      - "ADR001_embedded_trinity (material conditions determine survival)"
+
 # =============================================================================
 # REJECTED DECISIONS
 # =============================================================================

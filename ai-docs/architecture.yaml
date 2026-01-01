@@ -805,14 +805,32 @@ data_flows:
         - "6. Return new immutable WorldState (old state unchanged)"
 
     systems_execution:
-      order: "Historical materialist causality"
+      order: "Historical materialist causality (ADR032)"
       systems:
-        - "1. ImperialRentSystem: Extract surplus value along EXPLOITATION edges"
-        - "2. SolidaritySystem: Transmit consciousness along SOLIDARITY edges"
-        - "3. ConsciousnessSystem: Apply ideological routing (agitation → consciousness/identity)"
-        - "4. SurvivalSystem: Calculate P(S|A) and P(S|R)"
-        - "5. ContradictionSystem: Accumulate tension, check rupture thresholds"
-        - "6. TerritorySystem: Update heat, check eviction thresholds"
+        - "1. VitalitySystem: The Drain (subsistence burn) + Grinding Attrition (probabilistic mortality) + The Reaper (extinction)"
+        - "2. TerritorySystem: Update heat, check eviction thresholds"
+        - "3. ProductionSystem: Generate value from labor and biocapacity"
+        - "4. SolidaritySystem: Transmit consciousness along SOLIDARITY edges"
+        - "5. ImperialRentSystem: Extract surplus value along EXPLOITATION edges"
+        - "6. MetabolismSystem: Ecological depletion and regeneration"
+        - "7. SurvivalSystem: Calculate P(S|A) and P(S|R)"
+        - "8. StruggleSystem: Agency layer (George Floyd Dynamic)"
+        - "9. ConsciousnessSystem: Apply ideological routing (agitation → consciousness/identity)"
+        - "10. ContradictionSystem: Accumulate tension, check rupture thresholds"
+
+    # Mass Line Refactor: Agent-as-Block Population Dynamics
+    mass_line_refactor:
+      description: "1 agent = 1 demographic block (not 1 person)"
+      new_fields:
+        population: "int - Block size (default=1 for backward compat)"
+        inequality: "Gini [0,1] - Intra-class inequality coefficient"
+      grinding_attrition_formula: |
+        marginal_wealth = per_capita_wealth × (1 - inequality)
+        mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
+        deaths = floor(population × mortality_rate × base_mortality_factor)
+      events:
+        - "POPULATION_DEATH: Probabilistic deaths from inequality"
+        - "ENTITY_DEATH: Full extinction (population=0)"
 
     physics_calculations:
       pure_math: |

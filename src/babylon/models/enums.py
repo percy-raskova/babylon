@@ -134,6 +134,7 @@ class EventType(StrEnum):
         RUPTURE: Contradiction tension reached critical threshold, triggering phase transition
         PHASE_TRANSITION: Topology percolation threshold crossed (Sprint 3.3)
         ENTITY_DEATH: Entity starved (wealth < consumption_needs) - Material Reality Refactor
+        POPULATION_DEATH: Probabilistic mortality from inequality (Mass Line Refactor)
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -155,6 +156,7 @@ class EventType(StrEnum):
     PHASE_TRANSITION = "phase_transition"  # Topology: percolation threshold crossed
     ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)
     ENTITY_DEATH = "entity_death"  # Material Reality: Entity starved (wealth < consumption)
+    POPULATION_DEATH = "population_death"  # Mass Line: Probabilistic mortality from inequality
 
 
 class OperationalProfile(StrEnum):

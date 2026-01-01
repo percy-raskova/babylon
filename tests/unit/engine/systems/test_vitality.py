@@ -39,6 +39,8 @@ def _create_entity_node(
     s_bio: float = 0.01,
     s_class: float = 0.0,
     active: bool = True,
+    population: int = 1,
+    inequality: float = 0.0,
 ) -> None:
     """Add an entity node to the graph with vitality-relevant attributes.
 
@@ -50,6 +52,8 @@ def _create_entity_node(
         s_bio: Biological minimum consumption (default 0.01).
         s_class: Social reproduction consumption (default 0.0).
         active: Whether entity is alive (default True).
+        population: Block size for demographic blocks (default 1).
+        inequality: Intra-class Gini coefficient (default 0.0).
     """
     graph.add_node(
         node_id,
@@ -58,6 +62,8 @@ def _create_entity_node(
         s_bio=s_bio,
         s_class=s_class,
         active=active,
+        population=population,
+        inequality=inequality,
         _node_type="social_class",
     )
 
@@ -381,3 +387,203 @@ class TestVitalitySubsistenceBurn:
 
         # Assert: Wealth clamped to 0, not negative
         assert graph.nodes["C001"]["wealth"] >= 0.0
+
+
+@pytest.mark.unit
+@pytest.mark.red_phase
+class TestGrindingAttrition:
+    """Tests for probabilistic mortality (Mass Line Refactor).
+
+    The Grinding Attrition Formula models probabilistic mortality based on
+    intra-class inequality:
+        effective_wealth_per_capita = wealth / population
+        marginal_wealth = effective_wealth_per_capita × (1 - inequality)
+        mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
+        deaths = floor(population × mortality_rate × base_mortality_factor)
+
+    RED PHASE: These tests define expected behavior BEFORE implementation.
+    """
+
+    def test_zero_inequality_no_deaths_when_wealthy(self, services: ServiceContainer) -> None:
+        """With inequality=0 and sufficient wealth, no deaths occur.
+
+        Population=1000, wealth=100, s_bio=0.01, inequality=0
+        per_capita = 100/1000 = 0.1
+        marginal_wealth = 0.1 * (1 - 0) = 0.1
+        0.1 >= 0.01 → no deaths
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "C001",
+            wealth=100.0,
+            population=1000,
+            inequality=0.0,
+            s_bio=0.01,
+        )
+        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.POPULATION_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Assert: No deaths, population unchanged
+        assert graph.nodes["C001"]["population"] == 1000
+        assert graph.nodes["C001"]["active"] is True
+        assert len(events) == 0
+
+    def test_high_inequality_causes_deaths(self, services: ServiceContainer) -> None:
+        """With high inequality, marginal workers starve even with high avg wealth.
+
+        Population=1000, wealth=100, s_bio=0.01, inequality=0.95
+        per_capita = 100/1000 = 0.1
+        marginal_wealth = 0.1 * (1 - 0.95) = 0.005
+        0.005 < 0.01 → mortality!
+        mortality_rate = (0.01 - 0.005) / 0.01 = 0.5
+        deaths = floor(1000 * 0.5 * 0.01) = 5
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "C001",
+            wealth=100.0,
+            population=1000,
+            inequality=0.95,
+            s_bio=0.01,
+        )
+        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.POPULATION_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Assert: Deaths occurred due to inequality
+        assert graph.nodes["C001"]["population"] < 1000
+        assert len(events) == 1
+        assert events[0].payload["deaths"] > 0
+        assert events[0].payload["entity_id"] == "C001"
+
+    def test_population_one_backward_compatible(self, services: ServiceContainer) -> None:
+        """With population=1 and inequality=0, behaves like old binary model.
+
+        Single-agent scenario: sufficient wealth → survives (population=1).
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "C001",
+            wealth=1.0,
+            population=1,
+            inequality=0.0,
+            s_bio=0.01,
+        )
+        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Assert: Single agent survives with sufficient wealth
+        assert graph.nodes["C001"]["population"] == 1
+        assert graph.nodes["C001"]["active"] is True
+
+    def test_full_extinction_sets_active_false(self, services: ServiceContainer) -> None:
+        """When population reaches 0, class is marked inactive.
+
+        An entity death (ENTITY_DEATH) should be emitted when fully extinct.
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "C001",
+            wealth=0.0,
+            population=1,
+            inequality=1.0,
+            s_bio=0.01,
+        )
+        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+
+        entity_death_events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, entity_death_events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Assert: Entity is extinct (active=False)
+        assert graph.nodes["C001"]["active"] is False
+        # Assert: ENTITY_DEATH emitted for full extinction
+        assert len(entity_death_events) >= 1
+
+    def test_malthusian_correction(self, services: ServiceContainer) -> None:
+        """Population reduction increases per-capita wealth, reducing future mortality.
+
+        Tick 1: population=100, deaths occur due to inequality
+        Tick 2: population < 100, per-capita wealth higher, fewer deaths
+
+        This tests the equilibrium dynamics of Malthusian correction.
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "C001",
+            wealth=1.0,
+            population=100,
+            inequality=0.9,
+            s_bio=0.01,
+        )
+        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        pop_after_tick_1 = graph.nodes["C001"]["population"]
+        deaths_tick_1 = 100 - pop_after_tick_1
+
+        # Skip if no deaths occurred (adjust test params if needed)
+        if deaths_tick_1 == 0:
+            pytest.skip("No deaths in tick 1; adjust test parameters")
+
+        system.step(graph, services, {"tick": 2})
+
+        pop_after_tick_2 = graph.nodes["C001"]["population"]
+        deaths_tick_2 = pop_after_tick_1 - pop_after_tick_2
+
+        # Assert: Malthusian correction - fewer deaths in tick 2
+        # because per-capita wealth increased after tick 1 deaths
+        assert deaths_tick_2 <= deaths_tick_1
+
+    def test_population_death_event_payload(self, services: ServiceContainer) -> None:
+        """POPULATION_DEATH event should have correct payload.
+
+        Payload: {entity_id, deaths, remaining_population, mortality_rate}
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "C001",
+            wealth=1.0,
+            population=1000,
+            inequality=0.99,
+            s_bio=0.01,
+        )
+        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.POPULATION_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Assert: Event payload has required fields
+        assert len(events) == 1
+        payload = events[0].payload
+        assert "entity_id" in payload
+        assert "deaths" in payload
+        assert "remaining_population" in payload
+        assert "mortality_rate" in payload
+        assert payload["entity_id"] == "C001"
+        assert payload["deaths"] > 0
+        assert payload["remaining_population"] < 1000

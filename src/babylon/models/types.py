@@ -204,3 +204,37 @@ Interpretation:
 
 Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
+
+# =============================================================================
+# GINI TYPE [0.0, 1.0] (Mass Line Refactor)
+# =============================================================================
+
+Gini = Annotated[
+    float,
+    Field(
+        ge=0.0,
+        le=1.0,
+        description="Gini coefficient measuring intra-class inequality",
+    ),
+    SnapToGrid,
+]
+"""Gini: [0.0, 1.0]
+
+Intra-class inequality coefficient (Mass Line Refactor).
+Determines what fraction of wealth the marginal worker (bottom 40%) receives.
+
+Used for:
+- inequality: Intra-class wealth distribution within a demographic block
+
+Boundary values:
+- 0.0 = Perfect equality (mean = median, everyone gets equal share)
+- 1.0 = Maximum tyranny (Pareto extreme: bottom majority has nothing)
+
+The Grinding Attrition Formula uses this to calculate marginal wealth:
+    marginal_wealth = per_capita_wealth × (1 - gini)
+
+At gini=0: marginal_wealth = average (all survive if average suffices)
+At gini=1: marginal_wealth = 0 (marginal workers always starve)
+
+Note: Values are quantized to 10^-5 precision via SnapToGrid.
+"""

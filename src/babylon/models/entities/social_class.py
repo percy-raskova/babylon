@@ -21,7 +21,7 @@ from typing import Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from babylon.models.enums import SocialRole
-from babylon.models.types import Currency, Probability
+from babylon.models.types import Currency, Gini, Probability
 
 # Class-specific subsistence multipliers (social reproduction costs)
 # Higher multipliers = higher cost of living = faster burn in zero-income scenarios
@@ -377,6 +377,17 @@ class SocialClass(BaseModel):
         ge=0.1,
         le=50.0,
         description="Class-specific multiplier for subsistence burn (social reproduction cost)",
+    )
+
+    # Demographic fields (Mass Line Refactor)
+    population: int = Field(
+        default=1,
+        ge=0,
+        description="Block size - number of individuals in this demographic block",
+    )
+    inequality: Gini = Field(
+        default=0.0,
+        description="Intra-class Gini coefficient. 0=equality, 1=tyranny (bottom gets nothing)",
     )
 
     @model_validator(mode="after")

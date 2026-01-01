@@ -400,10 +400,10 @@ class TestTypeQuantization:
     """
 
     def test_probability_quantizes_on_assignment(self) -> None:
-        """Probability values are snapped to 10^-5 grid.
+        """Probability values are snapped to 10^-6 grid.
 
         Input: 0.123456789 (9 decimal places)
-        Expected: 0.12346 (5 decimal places, rounded)
+        Expected: 0.123457 (6 decimal places, rounded)
         """
         Model = make_model_with_field(Probability, "prob")
 
@@ -412,22 +412,22 @@ class TestTypeQuantization:
         assert model.prob == TC.Quantization.QUANTIZED_PROBABILITY
 
     def test_ideology_quantizes_on_assignment(self) -> None:
-        """Ideology values are snapped to 10^-5 grid.
+        """Ideology values are snapped to 10^-6 grid.
 
         Ideology ranges from -1 to 1, quantization applies throughout.
         """
         Model = make_model_with_field(Ideology, "ideology")
 
         # Positive value
-        model_pos = Model(ideology=0.567891234)
-        assert model_pos.ideology == 0.56789
+        model_pos = Model(ideology=0.5678912345)
+        assert model_pos.ideology == 0.567891
 
         # Negative value
-        model_neg = Model(ideology=-0.567891234)
-        assert model_neg.ideology == -0.56789
+        model_neg = Model(ideology=-0.5678912345)
+        assert model_neg.ideology == -0.567891
 
     def test_currency_quantizes_on_assignment(self) -> None:
-        """Currency values are snapped to 10^-5 grid.
+        """Currency values are snapped to 10^-6 grid.
 
         Currency can be large values; quantization applies to decimal portion.
         """
@@ -438,29 +438,29 @@ class TestTypeQuantization:
         assert model.wealth == TC.Quantization.QUANTIZED_CURRENCY
 
     def test_intensity_quantizes_on_assignment(self) -> None:
-        """Intensity values are snapped to 10^-5 grid.
+        """Intensity values are snapped to 10^-6 grid.
 
         Intensity [0, 1] used for contradiction tension.
         """
         Model = make_model_with_field(Intensity, "tension")
 
-        model = Model(tension=0.999994)
+        model = Model(tension=0.9999994)
 
-        assert model.tension == 0.99999
+        assert model.tension == 0.999999
 
     def test_coefficient_quantizes_on_assignment(self) -> None:
-        """Coefficient values are snapped to 10^-5 grid.
+        """Coefficient values are snapped to 10^-6 grid.
 
         Coefficients [0, 1] used for formula parameters.
         """
         Model = make_model_with_field(Coefficient, "alpha")
 
-        model = Model(alpha=0.251234567)
+        model = Model(alpha=0.2512345678)
 
-        assert model.alpha == 0.25123
+        assert model.alpha == 0.251235
 
     def test_ratio_quantizes_on_assignment(self) -> None:
-        """Ratio values are snapped to 10^-5 grid.
+        """Ratio values are snapped to 10^-6 grid.
 
         Ratio (0, inf) used for exchange ratios.
         """

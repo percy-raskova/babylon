@@ -46,23 +46,23 @@ class TestPrecisionDefines:
         assert hasattr(defines, "precision")
 
     def test_precision_decimal_places_default(self) -> None:
-        """Default decimal_places is 5.
+        """Default decimal_places is 6.
 
-        5 decimal places = 10^-5 = 0.00001 grid resolution.
+        6 decimal places = 10^-6 = 0.000001 grid resolution.
         This provides sub-penny precision for economic calculations
-        while preventing drift accumulation.
+        while preventing drift accumulation in 100-year simulations.
         """
         defines = GameDefines()
 
-        assert defines.precision.decimal_places == 5
+        assert defines.precision.decimal_places == 6
 
     def test_precision_rounding_mode_default(self) -> None:
         """Default rounding_mode is ROUND_HALF_UP.
 
         ROUND_HALF_UP (also called ROUND_HALF_AWAY_FROM_ZERO) rounds
         ties away from zero:
-        - 0.000005 -> 0.00001
-        - -0.000005 -> -0.00001
+        - 0.0000005 -> 0.000001
+        - -0.0000005 -> -0.000001
 
         This is the standard banker's rounding variant.
         """

@@ -1,11 +1,11 @@
 """Tests for babylon.utils.math - Quantization utilities.
 
 TDD Red Phase: These tests define the contract for the quantize() function
-that will provide 10^-5 precision quantization for all economic calculations.
+that will provide 10^-6 precision quantization for all economic calculations.
 
 Epoch 0 Physics Hardening:
-- All floating-point values in the simulation snap to a 10^-5 grid
-- This prevents drift accumulation over long simulations
+- All floating-point values in the simulation snap to a 10^-6 grid
+- This prevents drift accumulation over long (100-year) simulations
 - Quantization uses ROUND_HALF_UP (banker's rounding variant: away from zero)
 
 The quantize() function will be used by:
@@ -45,21 +45,21 @@ class TestQuantize:
     """Tests for the quantize() function.
 
     The quantize function snaps floating-point values to a fixed grid
-    (default 10^-5 = 0.00001) to prevent drift accumulation.
+    (default 10^-6 = 0.000001) to prevent drift accumulation.
 
     Rounding mode: ROUND_HALF_UP (ties round away from zero)
-    - 0.000005 -> 0.00001 (positive, round up)
-    - -0.000005 -> -0.00001 (negative, round away from zero = down)
+    - 0.0000005 -> 0.000001 (positive, round up)
+    - -0.0000005 -> -0.000001 (negative, round away from zero = down)
     """
 
-    def test_quantize_rounds_to_5_decimals(self) -> None:
-        """quantize(0.123456789) -> 0.12346 with default precision=5.
+    def test_quantize_rounds_to_6_decimals(self) -> None:
+        """quantize(0.123456789) -> 0.123457 with default precision=6.
 
-        The sixth digit (7) causes round-up of the fifth digit (5 -> 6).
+        The seventh digit (8) causes round-up of the sixth digit (6 -> 7).
         """
         result = quantize(0.123456789)
 
-        assert result == 0.12346
+        assert result == 0.123457
 
     def test_quantize_zero_returns_zero(self) -> None:
         """quantize(0.0) -> 0.0 (no floating point drift).
@@ -83,50 +83,50 @@ class TestQuantize:
         assert result == 0.0
 
     def test_quantize_negative_values(self) -> None:
-        """quantize(-0.123456789) -> -0.12346.
+        """quantize(-0.123456789) -> -0.123457.
 
         Negative values are quantized symmetrically to positive values.
         """
         result = quantize(-0.123456789)
 
-        assert result == -0.12346
+        assert result == -0.123457
 
     def test_quantize_rounds_half_up(self) -> None:
-        """quantize(0.000005) -> 0.00001 (round half away from zero).
+        """quantize(0.0000005) -> 0.000001 (round half away from zero).
 
         When exactly at the midpoint (5 in the next digit position),
         we round AWAY from zero (up for positive numbers).
         """
-        result = quantize(0.000005)
+        result = quantize(0.0000005)
 
-        assert result == 0.00001
+        assert result == 0.000001
 
     def test_quantize_rounds_half_down_for_negative(self) -> None:
-        """quantize(-0.000005) -> -0.00001 (round half away from zero).
+        """quantize(-0.0000005) -> -0.000001 (round half away from zero).
 
         For negative numbers, "away from zero" means rounding down
         (more negative).
         """
-        result = quantize(-0.000005)
+        result = quantize(-0.0000005)
 
-        assert result == -0.00001
+        assert result == -0.000001
 
     def test_quantize_preserves_exact_grid_values(self) -> None:
-        """quantize(0.12345) -> 0.12345 (already on grid).
+        """quantize(0.123456) -> 0.123456 (already on grid).
 
         Values that are already on the grid are preserved exactly.
         """
-        result = quantize(0.12345)
+        result = quantize(0.123456)
 
-        assert result == 0.12345
+        assert result == 0.123456
 
     def test_quantize_very_small_values(self) -> None:
-        """quantize(0.000001) -> 0.0 (below grid resolution).
+        """quantize(0.0000001) -> 0.0 (below grid resolution).
 
         Values smaller than half the grid step round to zero.
-        Grid step is 0.00001, so 0.000001 < 0.000005 -> rounds to 0.
+        Grid step is 0.000001, so 0.0000001 < 0.0000005 -> rounds to 0.
         """
-        result = quantize(0.000001)
+        result = quantize(0.0000001)
 
         assert result == 0.0
 
@@ -172,13 +172,13 @@ class TestQuantize:
 
         assert once == twice
 
-    def test_quantize_edge_case_0_999995(self) -> None:
-        """quantize(0.999995) -> 1.0 (rounds up to boundary).
+    def test_quantize_edge_case_0_9999995(self) -> None:
+        """quantize(0.9999995) -> 1.0 (rounds up to boundary).
 
         Values near 1.0 that round up should reach exactly 1.0.
         This is important for Probability type which has max=1.0.
         """
-        result = quantize(0.999995)
+        result = quantize(0.9999995)
 
         assert result == 1.0
 
@@ -196,16 +196,17 @@ class TestPrecisionConfiguration:
     get_precision() returns the current precision setting.
     """
 
-    def test_get_precision_returns_default_5(self) -> None:
-        """get_precision() returns 5 by default.
+    def test_get_precision_returns_default_6(self) -> None:
+        """get_precision() returns 6 by default.
 
-        The default precision is 5 decimal places (10^-5 grid).
+        The default precision is 6 decimal places (10^-6 grid).
+        This was increased from 5 to support 100-year simulations.
         """
         get_precision = _math_module.get_precision
 
         result = get_precision()
 
-        assert result == 5
+        assert result == 6
 
     def test_set_precision_accepts_valid_range(self) -> None:
         """set_precision accepts values 1-10.

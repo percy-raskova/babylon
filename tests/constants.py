@@ -312,22 +312,23 @@ class EconomicFlowDefaults:
 
 @dataclass(frozen=True)
 class QuantizationDefaults:
-    """Precision values for type tests (Epoch 0 Physics: 10^-5 grid).
+    """Precision values for type tests (Epoch 0 Physics: 10^-6 grid).
 
     Source: src/babylon/systems/formulas/math.py quantization system.
-    All constrained types quantize to 5 decimal places for determinism.
+    All constrained types quantize to 6 decimal places for determinism.
+    Increased from 5 to support 100-year Carceral Equilibrium simulations.
     """
 
-    GRID_PRECISION: float = 0.00001  # 10^-5
-    DECIMAL_PLACES: int = 5
+    GRID_PRECISION: float = 0.000001  # 10^-6
+    DECIMAL_PLACES: int = 6
 
     # Test values for quantization validation
     UNQUANTIZED_PROBABILITY: float = 0.123456789
-    QUANTIZED_PROBABILITY: float = 0.12346  # Rounded to 5 decimals
+    QUANTIZED_PROBABILITY: float = 0.123457  # Rounded to 6 decimals
     UNQUANTIZED_CURRENCY: float = 1234.567891
-    QUANTIZED_CURRENCY: float = 1234.56789
+    QUANTIZED_CURRENCY: float = 1234.567891  # Rounded to 6 decimals
     UNQUANTIZED_RATIO: float = 2.718281828
-    QUANTIZED_RATIO: float = 2.71828
+    QUANTIZED_RATIO: float = 2.718282  # Rounded to 6 decimals
 
 
 @dataclass(frozen=True)

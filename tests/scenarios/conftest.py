@@ -52,6 +52,8 @@ def create_imperial_circuit_state() -> WorldState:
         C002: Labor Aristocracy - receives super-wages (will decompose)
         C003: Periphery Proletariat - exploited, source of value
         C004: Comprador Bourgeoisie - intermediary, passes tribute
+        C005: Carceral Enforcer - dormant, activates on CLASS_DECOMPOSITION
+        C006: Internal Proletariat - dormant, activates on CLASS_DECOMPOSITION
 
     Edges:
         EXPLOITATION: C001 -> C003 (Core extracts from Periphery)
@@ -141,11 +143,55 @@ def create_imperial_circuit_state() -> WorldState:
         s_class=3.0,
     )
 
+    # Dormant Carceral Enforcer - activated during CLASS_DECOMPOSITION
+    # Receives portion of LA population when super-wages collapse
+    carceral_enforcer = SocialClass(
+        id="C005",
+        name="Carceral Enforcer",
+        role=SocialRole.CARCERAL_ENFORCER,
+        wealth=0.0,
+        ideology=IdeologicalProfile(
+            class_consciousness=0.1,
+            national_identity=0.8,  # High nationalism (guard mentality)
+            agitation=0.0,
+        ),
+        organization=0.0,
+        repression_faced=0.1,
+        subsistence_threshold=1.0,
+        population=0,  # Dormant - no population until decomposition
+        active=False,  # Dormant
+        s_bio=2.0,
+        s_class=3.0,
+    )
+
+    # Dormant Internal Proletariat - activated during CLASS_DECOMPOSITION
+    # Receives majority of LA population when super-wages collapse
+    internal_proletariat = SocialClass(
+        id="C006",
+        name="Internal Proletariat",
+        role=SocialRole.INTERNAL_PROLETARIAT,
+        wealth=0.0,
+        ideology=IdeologicalProfile(
+            class_consciousness=0.3,
+            national_identity=0.2,  # Low nationalism
+            agitation=0.0,
+        ),
+        organization=0.0,  # KEY: No organization (null hypothesis)
+        repression_faced=0.9,  # Heavy repression
+        subsistence_threshold=0.5,
+        population=0,  # Dormant - no population until decomposition
+        active=False,  # Dormant
+        s_bio=0.5,
+        s_class=0.5,
+    )
+
     entities = {
         "C001": core_bourgeoisie,
         "C002": labor_aristocracy,
         "C003": periphery_proletariat,
         "C004": comprador,
+        "C005": carceral_enforcer,
+        "C006": internal_proletariat,
     }
 
     # Territory with depletable biocapacity

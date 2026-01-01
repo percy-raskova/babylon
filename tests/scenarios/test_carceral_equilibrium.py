@@ -39,7 +39,13 @@ from babylon.models.enums import EventType, SocialRole
 
 from .conftest import create_imperial_circuit_state
 
-MAX_TICKS = 2600  # ~50 years, sufficient for full trajectory
+MAX_TICKS = 5200  # 100 years (52 ticks/year)
+
+# Phase staggering requirements (RED phase TDD)
+# Imperial collapse is a process, not an instant. Phases must be temporally separated.
+TICKS_PER_YEAR = 52
+MIN_PHASE_SPREAD_TICKS = 104  # 2 years minimum between first and last carceral phase
+MIN_PHASE_GAP_TICKS = 1  # Each phase transition must have at least 1 tick gap
 
 
 @pytest.mark.slow
@@ -211,11 +217,74 @@ class TestCarceralEquilibrium:
             f"INTERNAL_PROLETARIAT entities. Found roles: {roles}"
         )
 
+    def _run_and_collect_milestones(
+        self,
+        config: SimulationConfig,
+        batch_metrics_collector: MetricsCollector,
+    ) -> dict[str, int | None]:
+        """Run simulation and collect phase milestone ticks.
+
+        Returns:
+            Dictionary mapping phase names to the tick when first detected,
+            or None if phase did not occur.
+        """
+        state = create_imperial_circuit_state()
+        sim = Simulation(state, config, observers=[batch_metrics_collector])
+
+        milestones: dict[str, int | None] = {
+            "metabolic_rift_opened": None,
+            "superwage_crisis": None,
+            "class_decomposition": None,
+            "control_ratio_crisis": None,
+            "terminal_decision": None,
+        }
+
+        for tick in range(MAX_TICKS):
+            current_state = sim.step()
+            latest = batch_metrics_collector.latest
+
+            # Metabolic rift detection
+            if (
+                milestones["metabolic_rift_opened"] is None
+                and latest is not None
+                and latest.overshoot_ratio > 1.0
+            ):
+                milestones["metabolic_rift_opened"] = tick
+
+            # Event-based phase detection
+            for event in current_state.events:
+                if (
+                    event.event_type == EventType.SUPERWAGE_CRISIS
+                    and milestones["superwage_crisis"] is None
+                ):
+                    milestones["superwage_crisis"] = tick
+                elif (
+                    event.event_type == EventType.CLASS_DECOMPOSITION
+                    and milestones["class_decomposition"] is None
+                ):
+                    milestones["class_decomposition"] = tick
+                elif (
+                    event.event_type == EventType.CONTROL_RATIO_CRISIS
+                    and milestones["control_ratio_crisis"] is None
+                ):
+                    milestones["control_ratio_crisis"] = tick
+                elif (
+                    event.event_type == EventType.TERMINAL_DECISION
+                    and milestones["terminal_decision"] is None
+                ):
+                    milestones["terminal_decision"] = tick
+
+            # Early exit on terminal decision
+            if milestones["terminal_decision"] is not None:
+                break
+
+        return milestones
+
     def test_imperial_circuit_initial_state_validity(self) -> None:
         """Verify the imperial circuit initial state is valid.
 
         The initial state should have:
-        - 4 entities: Core Bourgeoisie, Labor Aristocracy, Periphery, Comprador
+        - 6 entities: 4 active + 2 dormant carceral (for CLASS_DECOMPOSITION)
         - EXPLOITATION, WAGES, TRIBUTE edges
         - No SOLIDARITY edges (null hypothesis)
         - A territory with biocapacity
@@ -223,8 +292,8 @@ class TestCarceralEquilibrium:
         """
         state = create_imperial_circuit_state()
 
-        # Verify entities
-        assert len(state.entities) == 4, f"Expected 4 entities, got {len(state.entities)}"
+        # Verify entities (4 active + 2 dormant)
+        assert len(state.entities) == 6, f"Expected 6 entities, got {len(state.entities)}"
 
         roles = {entity.role for entity in state.entities.values()}
         expected_roles = {
@@ -232,8 +301,17 @@ class TestCarceralEquilibrium:
             SocialRole.LABOR_ARISTOCRACY,
             SocialRole.PERIPHERY_PROLETARIAT,
             SocialRole.COMPRADOR_BOURGEOISIE,
+            SocialRole.CARCERAL_ENFORCER,
+            SocialRole.INTERNAL_PROLETARIAT,
         }
         assert roles == expected_roles, f"Expected roles {expected_roles}, got {roles}"
+
+        # Verify dormant entities are inactive
+        dormant_ids = {"C005", "C006"}
+        for entity_id in dormant_ids:
+            assert not state.entities[entity_id].active, (
+                f"Entity {entity_id} should be dormant (active=False)"
+            )
 
         # Verify no solidarity edges (null hypothesis)
         solidarity_edges = [r for r in state.relationships if r.edge_type.value == "solidarity"]
@@ -259,3 +337,101 @@ class TestCarceralEquilibrium:
         assert len(state.territories) > 0, "Expected at least one territory"
         territory = list(state.territories.values())[0]
         assert territory.biocapacity > 0, "Territory should have biocapacity"
+
+    # =========================================================================
+    # Phase Staggering Tests (RED phase TDD)
+    # =========================================================================
+
+    @pytest.mark.red_phase
+    def test_phase_spread_minimum_two_years(
+        self,
+        config: SimulationConfig,
+        batch_metrics_collector: MetricsCollector,
+    ) -> None:
+        """Carceral phases should span at least 2 years of simulation time.
+
+        Imperial collapse is a process, not an instant. The phases represent
+        distinct historical moments that unfold over years, not weeks.
+
+        Specifically, the time between SUPERWAGE_CRISIS (first carceral phase)
+        and TERMINAL_DECISION (last carceral phase) must be >= 104 ticks.
+        """
+        milestones = self._run_and_collect_milestones(config, batch_metrics_collector)
+
+        # Get carceral phase ticks (excluding metabolic rift which is pre-carceral)
+        carceral_phases = [
+            milestones["superwage_crisis"],
+            milestones["class_decomposition"],
+            milestones["control_ratio_crisis"],
+            milestones["terminal_decision"],
+        ]
+
+        # Filter out None values (phases that didn't occur)
+        occurred_ticks = [t for t in carceral_phases if t is not None]
+
+        # Need at least 2 phases to measure spread
+        assert len(occurred_ticks) >= 2, (
+            f"Need at least 2 carceral phases to measure spread. Got: {milestones}"
+        )
+
+        first_phase = min(occurred_ticks)
+        last_phase = max(occurred_ticks)
+        spread = last_phase - first_phase
+
+        assert spread >= MIN_PHASE_SPREAD_TICKS, (
+            f"Carceral phases should span at least {MIN_PHASE_SPREAD_TICKS} ticks "
+            f"({MIN_PHASE_SPREAD_TICKS / TICKS_PER_YEAR:.0f} years), "
+            f"got {spread} ticks ({spread / TICKS_PER_YEAR:.1f} years). "
+            f"All phases on same tick is unrealistic. "
+            f"Milestones: {milestones}"
+        )
+
+    @pytest.mark.red_phase
+    def test_each_phase_pair_has_gap(
+        self,
+        config: SimulationConfig,
+        batch_metrics_collector: MetricsCollector,
+    ) -> None:
+        """Each phase transition must have at least 1 tick gap.
+
+        Even tightly coupled phases (like crisis -> terminal decision) should
+        have temporal separation representing social/political response time.
+
+        Phase sequence:
+        SUPERWAGE_CRISIS -> CLASS_DECOMPOSITION -> CONTROL_RATIO_CRISIS -> TERMINAL_DECISION
+        """
+        milestones = self._run_and_collect_milestones(config, batch_metrics_collector)
+
+        # All 4 carceral phases must occur for this test to be meaningful
+        required_phases = [
+            "superwage_crisis",
+            "class_decomposition",
+            "control_ratio_crisis",
+            "terminal_decision",
+        ]
+        for phase in required_phases:
+            assert milestones[phase] is not None, (
+                f"Phase '{phase}' must occur for staggering test. Milestones: {milestones}"
+            )
+
+        # Define the canonical phase sequence (carceral phases only)
+        phase_sequence = [
+            ("superwage_crisis", "class_decomposition"),
+            ("class_decomposition", "control_ratio_crisis"),
+            ("control_ratio_crisis", "terminal_decision"),
+        ]
+
+        for earlier, later in phase_sequence:
+            earlier_tick = milestones[earlier]
+            later_tick = milestones[later]
+
+            # Both must be non-None at this point (checked above)
+            assert earlier_tick is not None and later_tick is not None
+
+            gap = later_tick - earlier_tick
+
+            assert gap >= MIN_PHASE_GAP_TICKS, (
+                f"{earlier} -> {later} must have at least {MIN_PHASE_GAP_TICKS} tick gap, "
+                f"got {gap} ticks. Phases should not cascade instantly. "
+                f"{earlier}={earlier_tick}, {later}={later_tick}"
+            )

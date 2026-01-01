@@ -69,8 +69,30 @@ class TestSocialRole:
         assert role == "core_bourgeoisie"
 
     def test_role_count(self) -> None:
-        """Exactly 6 social roles defined (includes COMPRADOR_BOURGEOISIE)."""
-        assert len(SocialRole) == 6
+        """Exactly 8 social roles defined (6 original + 2 carceral turn)."""
+        assert len(SocialRole) == 8
+
+    def test_carceral_turn_roles_exist(self) -> None:
+        """Terminal Crisis Dynamics: Carceral turn introduces new class positions.
+
+        When super-wages fail, LA decomposes into:
+        - INTERNAL_PROLETARIAT: Core workers outside LA (precariat, lumpen, unemployed)
+        - CARCERAL_ENFORCER: Guards, cops, prison staff (repressive apparatus)
+
+        See ai-docs/terminal-crisis-dynamics.md for full theory.
+        """
+        assert hasattr(SocialRole, "INTERNAL_PROLETARIAT")
+        assert hasattr(SocialRole, "CARCERAL_ENFORCER")
+
+    def test_carceral_turn_roles_serialize(self) -> None:
+        """Carceral turn roles serialize to snake_case for JSON."""
+        assert SocialRole.INTERNAL_PROLETARIAT.value == "internal_proletariat"
+        assert SocialRole.CARCERAL_ENFORCER.value == "carceral_enforcer"
+
+    def test_carceral_turn_roles_constructible(self) -> None:
+        """Carceral turn roles can be constructed from strings."""
+        assert SocialRole("internal_proletariat") == SocialRole.INTERNAL_PROLETARIAT
+        assert SocialRole("carceral_enforcer") == SocialRole.CARCERAL_ENFORCER
 
 
 @pytest.mark.math
@@ -309,8 +331,42 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """Exactly 18 event types defined (13 original + 3 George Jackson + 1 Material Reality + 1 Mass Line)."""
-        assert len(EventType) == 18
+        """Exactly 24 event types defined (19 original + 5 Terminal Crisis Dynamics)."""
+        assert len(EventType) == 24
+
+    def test_terminal_crisis_event_types_exist(self) -> None:
+        """Terminal Crisis Dynamics: Events for endgame arc.
+
+        The plantation → prison → concentration camp → death camp sequence:
+        - PERIPHERAL_REVOLT: Periphery severs EXPLOITATION edges
+        - SUPERWAGE_CRISIS: C_b can't afford super-wages
+        - CLASS_DECOMPOSITION: LA splits into enforcers + proletariat
+        - CONTROL_RATIO_CRISIS: Prisoners exceed guard capacity
+        - TERMINAL_DECISION: Revolution or genocide bifurcation
+
+        See ai-docs/terminal-crisis-dynamics.md for full theory.
+        """
+        assert hasattr(EventType, "PERIPHERAL_REVOLT")
+        assert hasattr(EventType, "SUPERWAGE_CRISIS")
+        assert hasattr(EventType, "CLASS_DECOMPOSITION")
+        assert hasattr(EventType, "CONTROL_RATIO_CRISIS")
+        assert hasattr(EventType, "TERMINAL_DECISION")
+
+    def test_terminal_crisis_event_types_serialize(self) -> None:
+        """Terminal Crisis Dynamics event types serialize to snake_case."""
+        assert EventType.PERIPHERAL_REVOLT.value == "peripheral_revolt"
+        assert EventType.SUPERWAGE_CRISIS.value == "superwage_crisis"
+        assert EventType.CLASS_DECOMPOSITION.value == "class_decomposition"
+        assert EventType.CONTROL_RATIO_CRISIS.value == "control_ratio_crisis"
+        assert EventType.TERMINAL_DECISION.value == "terminal_decision"
+
+    def test_terminal_crisis_event_types_constructible(self) -> None:
+        """Terminal Crisis Dynamics event types can be constructed from strings."""
+        assert EventType("peripheral_revolt") == EventType.PERIPHERAL_REVOLT
+        assert EventType("superwage_crisis") == EventType.SUPERWAGE_CRISIS
+        assert EventType("class_decomposition") == EventType.CLASS_DECOMPOSITION
+        assert EventType("control_ratio_crisis") == EventType.CONTROL_RATIO_CRISIS
+        assert EventType("terminal_decision") == EventType.TERMINAL_DECISION
 
 
 # =============================================================================

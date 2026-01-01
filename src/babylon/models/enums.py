@@ -31,6 +31,13 @@ class SocialRole(StrEnum):
         PETTY_BOURGEOISIE: Small owners, professionals, shopkeepers
         LUMPENPROLETARIAT: Outside formal economy, precarious existence
         COMPRADOR_BOURGEOISIE: Intermediary class in periphery, collaborates with imperial core
+        INTERNAL_PROLETARIAT: Core workers outside LA (precariat, unemployed, incarcerated)
+        CARCERAL_ENFORCER: Guards, cops, prison staff (repressive apparatus)
+
+    Terminal Crisis Dynamics (ai-docs/terminal-crisis-dynamics.md):
+        When peripheral extraction fails and super-wages deplete, the Labor
+        Aristocracy decomposes into CARCERAL_ENFORCER (30%) and INTERNAL_PROLETARIAT
+        (70%). This models the carceral turn from productive to coercive labor.
     """
 
     CORE_BOURGEOISIE = "core_bourgeoisie"
@@ -39,6 +46,9 @@ class SocialRole(StrEnum):
     PETTY_BOURGEOISIE = "petty_bourgeoisie"
     LUMPENPROLETARIAT = "lumpenproletariat"
     COMPRADOR_BOURGEOISIE = "comprador_bourgeoisie"
+    # Terminal Crisis Dynamics - Carceral Turn
+    INTERNAL_PROLETARIAT = "internal_proletariat"
+    CARCERAL_ENFORCER = "carceral_enforcer"
 
 
 class EdgeType(StrEnum):
@@ -136,6 +146,13 @@ class EventType(StrEnum):
         ENTITY_DEATH: Entity starved (wealth < consumption_needs) - Material Reality Refactor
         POPULATION_DEATH: Probabilistic mortality from inequality (Mass Line Refactor)
         POPULATION_ATTRITION: Grinding Attrition deaths from coverage deficit (Mass Line Phase 3)
+
+    Terminal Crisis Dynamics (ai-docs/terminal-crisis-dynamics.md):
+        PERIPHERAL_REVOLT: Periphery severs EXPLOITATION edges when P(S|R) > P(S|A)
+        SUPERWAGE_CRISIS: Core bourgeoisie can't afford super-wages (pool exhausted)
+        CLASS_DECOMPOSITION: Labor aristocracy splits into enforcers + internal proletariat
+        CONTROL_RATIO_CRISIS: Prisoners exceed guard capacity (ratio inverted)
+        TERMINAL_DECISION: System bifurcates to revolution or genocide
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -159,6 +176,12 @@ class EventType(StrEnum):
     ENTITY_DEATH = "entity_death"  # Material Reality: Entity starved (wealth < consumption)
     POPULATION_DEATH = "population_death"  # Mass Line: Probabilistic mortality from inequality
     POPULATION_ATTRITION = "population_attrition"  # Mass Line Phase 3: Coverage deficit deaths
+    # Terminal Crisis Dynamics - Endgame Arc
+    PERIPHERAL_REVOLT = "peripheral_revolt"  # Periphery severs EXPLOITATION edges
+    SUPERWAGE_CRISIS = "superwage_crisis"  # C_b can't afford super-wages
+    CLASS_DECOMPOSITION = "class_decomposition"  # LA splits into enforcers + proletariat
+    CONTROL_RATIO_CRISIS = "control_ratio_crisis"  # Prisoners > guards × capacity
+    TERMINAL_DECISION = "terminal_decision"  # Revolution or genocide bifurcation
 
 
 class OperationalProfile(StrEnum):

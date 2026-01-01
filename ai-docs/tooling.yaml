@@ -2,8 +2,8 @@
 # How tools are configured and why
 
 meta:
-  version: "1.2.0"
-  updated: "2025-12-26"
+  version: "1.3.0"
+  updated: "2026-01-01"
   purpose: "Document tooling decisions to avoid re-investigation"
 
 # =============================================================================
@@ -428,23 +428,27 @@ mutation_testing:
       ensures tests catch off-by-one errors, boundary issues, etc.
 
   mise_tasks:
-    mutate:
+    "mutate:full":
+      command: "poetry run python tools/run_mutmut.py"
+      description: "Run full mutation testing (overnight run)"
+
+    "mutate:critical":
+      command: "poetry run python tools/run_mutmut.py --critical"
+      description: "Run mutation testing on critical formulas (~30 min)"
+
+    "mutate:formulas":
       command: "poetry run mutmut run --paths-to-mutate=src/babylon/systems/formulas.py"
-      description: "Run mutation testing on core formulas (~15-30 min)"
+      description: "Run mutation testing on formulas only (~5-10 min)"
 
-    mutate_critical:
-      command: "poetry run mutmut run --paths-to-mutate=..."
-      description: "Run mutation testing on critical engine systems"
-
-    mutate_results:
+    "mutate:results":
       command: "poetry run mutmut results"
       description: "Show mutation testing results summary"
 
-    mutate_show:
+    "mutate:show":
       command: "poetry run mutmut show <id>"
       description: "Show specific mutant details"
 
-    mutate_html:
+    "mutate:html":
       command: "poetry run mutmut html"
       description: "Generate HTML report"
 
@@ -496,19 +500,35 @@ python:
     asyncio_mode: "strict"
 
   mise:
-    config_file: "mise.toml"
-    purpose: "Task runner"
+    config_file: ".mise.toml"
+    purpose: "Task runner (namespace-driven - see ADR035)"
+    convention: |
+      Tasks use colon-namespaced naming for discoverability:
+        test:*   - Testing by scope (unit, int, scenario)
+        sim:*    - Simulation execution and analysis
+        tune:*   - Parameter optimization
+        qa:*     - Quality assurance and verification
+        demo:*   - Integration demos
+        data:*   - Data pipeline operations
+        docs:*   - Documentation building
+        mutate:* - Mutation testing
+        midi:*   - Music generation
     key_tasks:
-      ci: "Quick CI: lint + format + typecheck + test-fast"
-      test: "Run all non-AI tests"
-      test_fast: "Fast math/engine tests only"
-      typecheck: "MyPy strict mode"
-      docs_live: "Live-reload documentation server"
-      analyze_trace: "Single sim with full time-series CSV"
-      analyze_sweep: "Parameter sweep with summary metrics"
-      "analyze:matrix": "2D parameter landscape grid search"
-      "qa:audit": "Generate simulation health report"
-      tune_agent: "Optuna-based Bayesian optimization (PLANNED)"
+      check: "Fast CI gate: lint + format + typecheck + test:unit"
+      "test:unit": "Run unit tests only (fast)"
+      "test:int": "Run integration tests (mechanics & systems)"
+      "test:scenario": "Run scenario tests (slow, full arcs)"
+      "test:all": "Run all non-AI tests"
+      "sim:run": "Main simulation entry point"
+      "sim:trace": "Time-series CSV + JSON output"
+      "sim:profile": "cProfile performance analysis"
+      "tune:optuna": "Bayesian optimization (Optuna TPE)"
+      "tune:landscape": "2D parameter grid search"
+      "tune:dashboard": "Optuna Dashboard visualization"
+      "qa:audit": "Simulation health check"
+      "qa:verify": "Formula correctness verification"
+      "demo:slice": "Full pipeline demo (Engine->RAG->LLM)"
+      "docs:live": "Live-reload documentation server"
 
 # =============================================================================
 # PARAMETER TUNING TOOLING
@@ -599,18 +619,22 @@ parameter_tuning:
     location: "Project root (gitignored)"
     purpose: "Persistent storage of optimization studies for resumption"
 
-  mise_tasks_planned:
-    tune:
+  mise_tasks:
+    "tune:optuna":
       command: "poetry run python tools/tune_agent.py"
-      description: "Run Optuna optimization agent"
+      description: "Run Bayesian optimization (Optuna TPE)"
 
-    tune_dashboard:
+    "tune:landscape":
+      command: "poetry run python tools/landscape_analysis.py"
+      description: "2D parameter grid search"
+
+    "tune:params":
+      command: "poetry run python tools/tune_parameters.py"
+      description: "1D parameter sensitivity sweep"
+
+    "tune:dashboard":
       command: "optuna-dashboard sqlite:///optuna.db"
-      description: "Launch Optuna Dashboard for study analysis"
-
-    tune_best:
-      command: "poetry run python tools/tune_agent.py --show-best"
-      description: "Show best parameters from completed study"
+      description: "Launch Optuna Dashboard for visualization"
 
 # =============================================================================
 # TESTING INFRASTRUCTURE

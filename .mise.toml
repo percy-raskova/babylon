@@ -1,5 +1,17 @@
 # Mise Task Runner Configuration for Babylon
 # https://mise.jdx.dev/
+#
+# Task Namespace Convention (ADR035):
+#   check         - Fast CI gate (lint + format + typecheck + unit tests)
+#   test:*        - Test runners by scope
+#   sim:*         - Simulation execution and analysis
+#   tune:*        - Parameter optimization
+#   qa:*          - Quality assurance and verification
+#   demo:*        - Integration demos and persona testing
+#   data:*        - Data pipeline operations
+#   docs:*        - Documentation building
+#   mutate:*      - Mutation testing
+#   midi:*        - Music generation
 
 [tools]
 python = "3.12"
@@ -36,205 +48,67 @@ run = "poetry run ruff format src tests"
 description = "Run mypy type checker"
 run = "poetry run mypy src"
 
-[tasks.lint-yaml]
+[tasks."lint:yaml"]
 description = "Lint YAML files"
 run = "poetry run yamllint -c .yamllint.yaml ."
 
-[tasks.lint-md]
+[tasks."lint:md"]
 description = "Lint Markdown files"
 run = "npx markdownlint --config .markdownlint.yaml '**/*.md' --ignore 'CHANGELOG.md' --ignore 'brainstorm/**' --ignore '.venv/**'"
 
-[tasks.complexity]
+[tasks."lint:complexity"]
 description = "Show code complexity report (radon)"
 run = "poetry run radon cc src/ -a -s --show-complexity"
 
-[tasks.complexity-check]
+[tasks."lint:complexity-check"]
 description = "Run complexity gate (xenon) - fails if CC > 15"
 run = "poetry run xenon --max-absolute C src/"
 
-[tasks.complexity-grade]
-description = "Show complexity grades summary"
-run = "poetry run radon cc src/ -a -s"
-
 [tasks.check]
-description = "Run all quality checks (lint, format, typecheck, test-fast)"
-depends = ["lint", "format", "typecheck", "test-fast"]
+description = "Fast CI gate: lint + format + typecheck + unit tests"
+depends = ["lint", "format", "typecheck", "test:unit"]
 
 # =============================================================================
-# TESTING
+# TESTING (Namespaced)
 # =============================================================================
 
-[tasks.test]
+[tasks."test:unit"]
+description = "Run unit tests only (fast)"
+run = "poetry run pytest tests/unit -v --tb=short"
+
+[tasks."test:int"]
+description = "Run integration tests (mechanics & systems)"
+run = "poetry run pytest tests/integration -v --tb=short"
+
+[tasks."test:scenario"]
+description = "Run scenario tests (slow, full arcs)"
+run = "poetry run pytest tests/scenarios -v --tb=short"
+
+[tasks."test:all"]
 description = "Run all non-AI tests"
 run = "poetry run pytest -m 'not ai' --tb=short"
 
-[tasks.test-fast]
-description = "Run fast math/engine tests only"
-run = "poetry run pytest tests/unit/formulas tests/unit/engine -v"
+[tasks."test:ai"]
+description = "Run AI/narrative evaluation tests (slow)"
+run = "poetry run pytest -m 'ai' --tb=short"
 
-[tasks.test-cov]
+[tasks."test:cov"]
 description = "Run tests with coverage report"
 run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
 
-[tasks.test-all]
-description = "Run all tests including AI evals"
-run = "poetry run pytest --tb=short"
-
-[tasks.doctest]
+[tasks."test:doctest"]
 description = "Run doctest examples in formulas module"
 run = "poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v"
 
 # =============================================================================
-# DOCUMENTATION
+# SIMULATION (Namespaced)
 # =============================================================================
 
-[tasks.docs]
-description = "Build Sphinx documentation"
-run = "cd docs && poetry run sphinx-build -b html . _build/html"
+[tasks."sim:run"]
+description = "Run main simulation entry point"
+run = "poetry run python -m babylon"
 
-[tasks.docs-strict]
-description = "Build docs with warnings as errors (CI mode)"
-run = "cd docs && poetry run sphinx-build -W -b html . _build/html"
-
-[tasks.docs-live]
-description = "Live-reload documentation server"
-run = "cd docs && poetry run sphinx-autobuild . _build/html --open-browser"
-
-[tasks.docs-clean]
-description = "Clean documentation build artifacts"
-run = "rm -rf docs/_build docs/api/_autosummary"
-
-[tasks.docs-build]
-description = "Clean and build Sphinx documentation"
-depends = ["docs-clean", "docs"]
-
-[tasks.docs-pdf]
-description = "Build PDF documentation (babylon-docs.pdf + babylon-commentary.pdf)"
-run = """
-cd docs && \
-poetry run sphinx-build -b latex . _build/latex && \
-cd _build/latex && \
-make all-pdf
-"""
-
-[tasks.docs-pdf-single]
-description = "Build a single PDF book (usage: mise run docs-pdf-single babylon-docs)"
-run = """
-cd docs && \
-poetry run sphinx-build -b latex . _build/latex && \
-cd _build/latex && \
-latexmk -pdf -interaction=nonstopmode ${1:-babylon-docs}.tex
-"""
-
-# =============================================================================
-# SECURITY & COVERAGE
-# =============================================================================
-
-[tasks.security]
-description = "Run security audit on dependencies"
-run = "poetry run pip-audit"
-
-[tasks.coverage]
-description = "Run tests with coverage report"
-run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
-
-# =============================================================================
-# MUTATION TESTING (Test Quality Verification)
-# =============================================================================
-
-[tasks.mutation]
-description = "Run mutation testing on simulation-critical code (~15-30 min)"
-run = """
-echo "🧬 Running mutation testing on critical simulation code..."
-echo "   Target: src/babylon/engine/systems/ and src/babylon/systems/"
-echo ""
-poetry run mutmut run \
-  --paths-to-mutate=src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py,src/babylon/systems/formulas.py \
-  --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
-echo ""
-echo "📊 Results:"
-poetry run mutmut results
-"""
-
-[tasks.mutation-fast]
-description = "Run mutation testing on formulas only (~5-10 min)"
-run = """
-echo "🧬 Running mutation testing on formulas..."
-poetry run mutmut run \
-  --paths-to-mutate=src/babylon/systems/formulas.py \
-  --runner="poetry run pytest tests/unit/formulas -x -q --tb=no"
-poetry run mutmut results
-"""
-
-[tasks.mutation-file]
-description = "Run mutation testing on a specific file (usage: mise run mutation-file src/babylon/foo.py)"
-run = """
-if [ -z "$1" ]; then
-  echo "Usage: mise run mutation-file <path/to/file.py>"
-  exit 1
-fi
-echo "🧬 Running mutation testing on $1..."
-poetry run mutmut run --paths-to-mutate="$1"
-poetry run mutmut results
-"""
-
-[tasks.mutate]
-description = "Run full mutation testing (entire src/babylon/, overnight run)"
-run = "poetry run python tools/run_mutmut.py"
-
-[tasks.mutate-critical]
-description = "Run mutation testing on critical formulas only (faster, ~30 min)"
-run = "poetry run python tools/run_mutmut.py --critical"
-
-[tasks.mutate-results]
-description = "Show mutation testing results summary"
-run = "poetry run mutmut results"
-
-[tasks.mutate-show]
-description = "Show specific mutant details (usage: mise run mutate-show 42)"
-run = "poetry run mutmut show ${1:-1}"
-
-[tasks.mutate-html]
-description = "Generate HTML report of mutation testing results"
-run = "poetry run mutmut html && echo 'Report: html/index.html'"
-
-# =============================================================================
-# DATA / RAG
-# =============================================================================
-
-[tasks.ingest-corpus]
-description = "Ingest Marxist corpus into ChromaDB"
-run = "poetry run python tools/ingest_corpus.py"
-
-[tasks.ingest-corpus-reset]
-description = "Reset and re-ingest corpus"
-run = "poetry run python tools/ingest_corpus.py --reset"
-
-[tasks.validate-schemas]
-description = "Validate JSON schemas against data files"
-run = "poetry run python tools/validate_schemas.py"
-
-[tasks.db-init]
-description = "Initialize SQLite database"
-run = "poetry run python tools/init_db.py"
-
-# =============================================================================
-# INTEGRATION / VERIFICATION
-# =============================================================================
-
-[tasks.vertical-slice]
-description = "Run vertical slice integration test"
-run = "poetry run python tools/vertical_slice.py"
-
-[tasks.interview-persona]
-description = "Test Persephone's narrative voice with Hard Case scenarios"
-run = "poetry run python tools/interview_persona.py"
-
-[tasks.verify-formulas]
-description = "Verify math formula divergence"
-run = "poetry run python tools/verify_math_divergence.py"
-
-[tasks.analyze-trace]
+[tasks."sim:trace"]
 description = "Run simulation trace with CSV + JSON output"
 usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
 run = """
@@ -245,54 +119,40 @@ poetry run python tools/parameter_analysis.py trace \
   --ticks ${usage_ticks}
 """
 
-[tasks.analyze-trace-csv]
-description = "Run simulation trace with CSV only"
-usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
+[tasks."sim:sweep"]
+description = "Run parameter sweep analysis"
 run = """
 mkdir -p results
-poetry run python tools/parameter_analysis.py trace \
-  --csv results/trace.csv \
-  --ticks ${usage_ticks}
-"""
-
-[tasks.analyze-trace-json]
-description = "Run simulation trace with JSON metadata only"
-usage = 'arg "[ticks]" help="Number of ticks to simulate" default="200"'
-run = """
-mkdir -p results
-poetry run python tools/parameter_analysis.py trace \
-  --csv /dev/null \
-  --json results/trace.json \
-  --ticks ${usage_ticks}
-"""
-
-[tasks.analyze-sweep]
-description = "Run parameter sweep with rich summary metrics"
-run = """
 poetry run python tools/parameter_analysis.py sweep \
   --param economy.extraction_efficiency \
   --start 0.05 --end 0.50 --step 0.05 \
   --csv results/sweep.csv
 """
 
-[tasks.tune-params]
-description = "Run parameter sensitivity analysis (sweep extraction_efficiency)"
-run = "poetry run python tools/tune_parameters.py"
+[tasks."sim:profile"]
+description = "Profile simulation with cProfile"
+usage = 'arg "[ticks]" help="Number of ticks to profile" default="100"'
+run = "poetry run python tools/profiler.py --ticks ${usage_ticks}"
 
-[tasks.tune-params-custom]
-description = "Run parameter sweep with custom range (usage: mise run tune-params-custom 0.1 0.5 0.05)"
-run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-0.50} --step ${3:-0.05}"
+# =============================================================================
+# TUNING (Namespaced)
+# =============================================================================
 
-[tasks.narrative-sweep]
-description = "Run 5-point Dialectical U-Curve analysis"
-run = "poetry run python tools/narrative_sweep.py"
+[tasks."tune:optuna"]
+description = "Run Bayesian optimization (Optuna TPE)"
+usage = '''
+arg "[trials]" help="Number of optimization trials" default="100"
+arg "[name]" help="Study name (for resumption)" default="babylon_tune"
+'''
+run = """
+poetry run python tools/tune_agent.py \
+  --trials ${usage_trials} \
+  --study-name ${usage_name} \
+  --storage sqlite:///optuna.db
+"""
 
-[tasks.narrative-sweep-mock]
-description = "Run U-Curve analysis with MockLLM (no API key needed)"
-run = "poetry run python tools/narrative_sweep.py --mock"
-
-[tasks."analyze:matrix"]
-description = "2D parameter landscape analysis (grid search)"
+[tasks."tune:landscape"]
+description = "2D parameter grid search"
 usage = '''
 arg "[param1]" help="First parameter path" default="economy.extraction_efficiency"
 arg "[range1]" help="Range as start:end:step" default="0.1:0.9:0.1"
@@ -311,8 +171,24 @@ poetry run python tools/landscape_analysis.py \
   --output results/landscape.csv
 """
 
+[tasks."tune:params"]
+description = "1D parameter sensitivity sweep"
+run = "poetry run python tools/tune_parameters.py"
+
+[tasks."tune:params-custom"]
+description = "Run parameter sweep with custom range"
+run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-0.50} --step ${3:-0.05}"
+
+[tasks."tune:dashboard"]
+description = "Launch Optuna Dashboard for visualization"
+run = "optuna-dashboard sqlite:///optuna.db"
+
+# =============================================================================
+# QA (Namespaced)
+# =============================================================================
+
 [tasks."qa:audit"]
-description = "Generate simulation health report for AI analysis"
+description = "Simulation health check"
 usage = 'arg "[ticks]" help="Max simulation ticks" default="52"'
 run = """
 mkdir -p reports
@@ -322,36 +198,158 @@ poetry run python tools/audit_simulation.py \
 cat reports/audit_latest.md
 """
 
+[tasks."qa:verify"]
+description = "Verify formula correctness"
+run = "poetry run python tools/verify_math_divergence.py"
+
+[tasks."qa:schemas"]
+description = "Validate JSON schemas"
+run = "poetry run python tools/validate_schemas.py"
+
+[tasks."qa:security"]
+description = "Run security audit on dependencies"
+run = "poetry run pip-audit"
+
 # =============================================================================
-# SIMULATION LAB (Bayesian Optimization)
+# DEMO (Namespaced)
 # =============================================================================
 
-[tasks.tune]
-description = "Run Optuna Bayesian optimization for parameter tuning"
-usage = '''
-arg "[trials]" help="Number of optimization trials" default="100"
-arg "[name]" help="Study name (for resumption)" default="babylon_tune"
-'''
+[tasks."demo:slice"]
+description = "Full pipeline demo (Engine -> RAG -> LLM)"
+run = "poetry run python tools/vertical_slice.py"
+
+[tasks."demo:persona"]
+description = "Test Persephone persona voice"
+run = "poetry run python tools/interview_persona.py"
+
+[tasks."demo:narrative"]
+description = "Narrative U-curve sweep"
+run = "poetry run python tools/narrative_sweep.py"
+
+[tasks."demo:narrative-mock"]
+description = "Narrative U-curve sweep with MockLLM"
+run = "poetry run python tools/narrative_sweep.py --mock"
+
+# =============================================================================
+# DATA (Namespaced)
+# =============================================================================
+
+[tasks."data:ingest"]
+description = "Ingest Marxist corpus into ChromaDB"
+run = "poetry run python tools/ingest_corpus.py"
+
+[tasks."data:ingest-reset"]
+description = "Reset and re-ingest corpus"
+run = "poetry run python tools/ingest_corpus.py --reset"
+
+[tasks."data:db-init"]
+description = "Initialize SQLite database"
+run = "poetry run python tools/init_db.py"
+
+# =============================================================================
+# DOCUMENTATION (Namespaced)
+# =============================================================================
+
+[tasks."docs:build"]
+description = "Build Sphinx documentation"
+run = "cd docs && poetry run sphinx-build -b html . _build/html"
+
+[tasks."docs:strict"]
+description = "Build docs with warnings as errors (CI mode)"
+run = "cd docs && poetry run sphinx-build -W -b html . _build/html"
+
+[tasks."docs:live"]
+description = "Live-reload documentation server"
+run = "cd docs && poetry run sphinx-autobuild . _build/html --open-browser"
+
+[tasks."docs:clean"]
+description = "Clean documentation build artifacts"
+run = "rm -rf docs/_build docs/api/_autosummary"
+
+[tasks."docs:rebuild"]
+description = "Clean and rebuild documentation"
+depends = ["docs:clean", "docs:build"]
+
+[tasks."docs:pdf"]
+description = "Build PDF documentation"
 run = """
-poetry run python tools/tune_agent.py \
-  --trials ${usage_trials} \
-  --study-name ${usage_name} \
-  --storage sqlite:///optuna.db
+cd docs && \
+poetry run sphinx-build -b latex . _build/latex && \
+cd _build/latex && \
+make all-pdf
 """
 
-[tasks.map]
-description = "Alias for analyze:matrix (2D parameter landscape)"
-depends = []
-run = "mise run analyze:matrix"
+# =============================================================================
+# MUTATION TESTING (Namespaced)
+# =============================================================================
 
-[tasks.audit]
-description = "Alias for qa:audit (health check)"
-depends = []
-run = "mise run qa:audit"
+[tasks."mutate:full"]
+description = "Run full mutation testing (overnight run)"
+run = "poetry run python tools/run_mutmut.py"
 
-[tasks.dashboard]
-description = "Launch Optuna Dashboard for study visualization"
-run = "optuna-dashboard sqlite:///optuna.db"
+[tasks."mutate:critical"]
+description = "Run mutation testing on critical formulas only (~30 min)"
+run = "poetry run python tools/run_mutmut.py --critical"
+
+[tasks."mutate:formulas"]
+description = "Run mutation testing on formulas only (~5-10 min)"
+run = """
+echo "Running mutation testing on formulas..."
+poetry run mutmut run \
+  --paths-to-mutate=src/babylon/systems/formulas.py \
+  --runner="poetry run pytest tests/unit/formulas -x -q --tb=no"
+poetry run mutmut results
+"""
+
+[tasks."mutate:systems"]
+description = "Run mutation testing on simulation systems (~15-30 min)"
+run = """
+echo "Running mutation testing on simulation systems..."
+poetry run mutmut run \
+  --paths-to-mutate=src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py,src/babylon/systems/formulas.py \
+  --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
+poetry run mutmut results
+"""
+
+[tasks."mutate:file"]
+description = "Run mutation testing on a specific file"
+run = """
+if [ -z "$1" ]; then
+  echo "Usage: mise run mutate:file <path/to/file.py>"
+  exit 1
+fi
+echo "Running mutation testing on $1..."
+poetry run mutmut run --paths-to-mutate="$1"
+poetry run mutmut results
+"""
+
+[tasks."mutate:results"]
+description = "Show mutation testing results summary"
+run = "poetry run mutmut results"
+
+[tasks."mutate:show"]
+description = "Show specific mutant details (usage: mise run mutate:show 42)"
+run = "poetry run mutmut show ${1:-1}"
+
+[tasks."mutate:html"]
+description = "Generate HTML report of mutation testing results"
+run = "poetry run mutmut html && echo 'Report: html/index.html'"
+
+# =============================================================================
+# CI / HOOKS
+# =============================================================================
+
+[tasks.ci]
+description = "Full CI check (same as check)"
+depends = ["check"]
+
+[tasks.hooks]
+description = "Install pre-commit hooks"
+run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit"
+
+[tasks."hooks:run"]
+description = "Run all pre-commit hooks on all files"
+run = "poetry run pre-commit run --all-files"
 
 # =============================================================================
 # VERSIONING
@@ -361,25 +359,9 @@ run = "optuna-dashboard sqlite:///optuna.db"
 description = "Bump version with commitizen"
 run = "poetry run cz bump --changelog"
 
-[tasks.bump-dry]
+[tasks."bump:dry"]
 description = "Preview version bump without changes"
 run = "poetry run cz bump --dry-run"
-
-# =============================================================================
-# CI / HOOKS
-# =============================================================================
-
-[tasks.ci]
-description = "Quick CI check (lint, typecheck, fast tests)"
-depends = ["lint", "format", "typecheck", "test-fast"]
-
-[tasks.hooks]
-description = "Install pre-commit hooks"
-run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit"
-
-[tasks.hooks-run]
-description = "Run all pre-commit hooks on all files"
-run = "poetry run pre-commit run --all-files"
 
 # =============================================================================
 # UTILITIES
@@ -396,46 +378,42 @@ echo "Cleaned!"
 """
 
 # =============================================================================
-# MUSIC GENERATION & CONVERSION
+# MUSIC GENERATION (Namespaced)
 # =============================================================================
 
-[tasks.midi-to-wav]
+[tasks."midi:to-wav"]
 description = "Convert a MIDI file to WAV using FluidSynth"
 run = "tools/scripts/midi-to-wav.sh"
 
-[tasks.midi-to-mp3]
+[tasks."midi:to-mp3"]
 description = "Convert a MIDI file to MP3 (requires ffmpeg)"
 run = "tools/scripts/midi-to-mp3.sh"
 
-[tasks.midi-to-ogg]
+[tasks."midi:to-ogg"]
 description = "Convert a MIDI file to OGG Vorbis (good for games)"
 run = "tools/scripts/midi-to-ogg.sh"
 
-[tasks.midi-convert-all]
+[tasks."midi:convert-all"]
 description = "Convert all MIDI files to specified format (wav|mp3|ogg)"
 run = "tools/scripts/midi-convert-all.sh"
 
-[tasks.midi-play]
+[tasks."midi:play"]
 description = "Play a MIDI file through speakers using FluidSynth"
 run = "tools/scripts/midi-play.sh"
 
-[tasks.midi-list]
+[tasks."midi:list"]
 description = "List all MIDI files in the music directory"
 run = "find $MUSIC_DIR -name '*.mid' -printf '  %P\\n' | sort && echo '' && echo \"Total: $(find $MUSIC_DIR -name '*.mid' | wc -l) files\""
 
-[tasks.midi-generate-fascist]
+[tasks."midi:generate-fascist"]
 description = "Generate all fascist faction MIDI tracks"
 run = "cd tools/fascist_soundtrack && for f in generate_*.py; do echo \"Generating: $f\"; poetry run python \"$f\"; done"
 
-# =============================================================================
-# SOUNDFONT
-# =============================================================================
-
-[tasks.soundfont-list]
+[tasks."midi:soundfont-list"]
 description = "List available soundfonts on the system"
 run = "find /usr/share/sounds -name '*.sf2' -o -name '*.sf3' 2>/dev/null"
 
-[tasks.soundfont-info]
+[tasks."midi:soundfont-info"]
 description = "Show info about the current soundfont"
 run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""
 

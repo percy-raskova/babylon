@@ -115,42 +115,63 @@ When making commits:
 poetry install
 poetry run pre-commit install
 
-# Task Runner (preferred - use mise for all tasks)
+# Task Runner (namespace-driven - see ADR035)
 mise tasks                                        # List all available tasks
-mise run ci                                       # Quick CI: lint + format + typecheck + test-fast
-mise run test                                     # Run all non-AI tests (~1500 tests)
-mise run test-fast                                # Fast math/engine tests only
-mise run typecheck                                # MyPy strict mode
-mise run docs-live                                # Live-reload documentation server
-mise run doctest                                  # Run doctest examples in formulas
-mise run clean                                    # Clean build artifacts and caches
 
-# Parameter Analysis & Tuning
-mise run analyze-trace                            # Single sim with full time-series CSV
-mise run analyze-sweep                            # Parameter sweep with summary metrics
-mise run tune                                     # Optuna Bayesian optimization (100 trials)
-mise run map                                      # 2D parameter landscape grid search
-mise run audit                                    # Simulation health report (baseline/stress tests)
-mise run dashboard                                # Launch Optuna Dashboard for visualization
+# CI & Quality (fast gate)
+mise run check                                    # lint + format + typecheck + test:unit
+mise run ci                                       # Same as check
+mise run lint                                     # Run ruff linter
+mise run format                                   # Run ruff formatter
+mise run typecheck                                # MyPy strict mode
+mise run clean                                    # Clean build artifacts
+
+# Testing (test:* namespace)
+mise run test:unit                                # Unit tests only (fast)
+mise run test:int                                 # Integration tests (mechanics & systems)
+mise run test:scenario                            # Scenario tests (slow, full arcs)
+mise run test:all                                 # All non-AI tests
+mise run test:cov                                 # Tests with coverage report
+mise run test:doctest                             # Doctest examples in formulas
+
+# Simulation (sim:* namespace)
+mise run sim:run                                  # Main simulation entry point
+mise run sim:trace                                # Time-series CSV + JSON output
+mise run sim:sweep                                # Parameter sweep analysis
+mise run sim:profile                              # cProfile performance analysis
+
+# Tuning (tune:* namespace)
+mise run tune:optuna                              # Bayesian optimization (Optuna TPE)
+mise run tune:landscape                           # 2D parameter grid search
+mise run tune:params                              # 1D sensitivity sweep
+mise run tune:dashboard                           # Optuna Dashboard visualization
+
+# QA (qa:* namespace)
+mise run qa:audit                                 # Simulation health check
+mise run qa:verify                                # Formula correctness verification
+mise run qa:schemas                               # JSON schema validation
+mise run qa:security                              # Dependency security audit
+
+# Demo (demo:* namespace)
+mise run demo:slice                               # Full pipeline demo (Engine->RAG->LLM)
+mise run demo:persona                             # Persephone persona voice test
+mise run demo:narrative                           # Narrative U-curve sweep
+
+# Data (data:* namespace)
+mise run data:ingest                              # Ingest Marxist corpus into ChromaDB
+mise run data:db-init                             # Initialize SQLite database
+
+# Documentation (docs:* namespace)
+mise run docs:build                               # Build Sphinx documentation
+mise run docs:live                                # Live-reload documentation server
+mise run docs:strict                              # Build with warnings as errors
 
 # UI
 mise run ui                                       # Launch DearPyGui Synopticon dashboard
 
-# Testing (direct pytest)
-poetry run pytest -m "not ai"                     # All non-AI tests
-poetry run pytest -m "ai"                         # Slow AI/narrative evals
+# Direct pytest (for specific tests)
 poetry run pytest tests/unit/test_foo.py::test_specific    # Single test
-poetry run pytest -k "test_name_pattern"          # Pattern matching
-
-# Linting & Type Checking (ruff replaces black/isort/flake8)
-poetry run ruff check src tests --fix
-poetry run ruff format src tests
-poetry run mypy src                               # Strict mode
-
-# Data/RAG Operations
-mise run ingest-corpus                            # Ingest Marxist corpus into ChromaDB
-mise run validate-schemas                         # Validate JSON schemas
-mise run vertical-slice                           # Run integration test
+poetry run pytest -k "test_name_pattern"                   # Pattern matching
 ```
 
 ## Architecture: The Embedded Trinity

@@ -2680,6 +2680,73 @@ pending:
       - "ADR001_embedded_trinity (theory docs as architectural source of truth)"
       - "ADR003_ai_as_observer (deterministic mechanics for reproducible outcomes)"
 
+  ADR035_namespace_driven_mise_tasks:
+    status: "accepted"
+    date: "2026-01-01"
+    title: "Namespace-Driven Mise Task Convention"
+    context: |
+      The .mise.toml task configuration had grown organically with inconsistent naming:
+      - Some tasks used hyphens: test-fast, analyze-trace
+      - Some used colons: qa:audit, analyze:matrix
+      - Some had no namespace: tune, map, dashboard
+      - Duplicate aliases existed for the same functionality
+
+      This made task discovery difficult and the interface inconsistent. Phase 3
+      cleanup required a systematic approach to task organization.
+
+    decision: |
+      Adopt a colon-namespaced task naming convention:
+        check         - Fast CI gate (lint + format + typecheck + test:unit)
+        test:*        - Test runners by scope (unit, int, scenario, all)
+        sim:*         - Simulation execution and analysis
+        tune:*        - Parameter optimization tools
+        qa:*          - Quality assurance and verification
+        demo:*        - Integration demos and persona testing
+        data:*        - Data pipeline operations
+        docs:*        - Documentation building
+        mutate:*      - Mutation testing
+        midi:*        - Music generation
+
+      Clean break from old names (no backward-compatible aliases).
+      Update CLAUDE.md and ai-docs/tooling.yaml to document new structure.
+
+    rationale:
+      discoverability:
+        principle: "Namespaces group related functionality"
+        example: "'mise tasks' shows logical groupings, 'mise run test:' tab-completes"
+
+      consistency:
+        principle: "Single naming convention reduces cognitive load"
+        example: "All test tasks start with test:, all tune tasks start with tune:"
+
+      clean_interface:
+        principle: "Remove duplicate aliases and legacy names"
+        example: "No 'map' alias for 'tune:landscape', no 'audit' alias for 'qa:audit'"
+
+    consequences:
+      positive:
+        - "Clear discoverability via namespace prefixes"
+        - "Tab completion works naturally (mise run test:<tab>)"
+        - "Documentation accurately reflects available commands"
+        - "No confusion from multiple names for same task"
+      negative:
+        - "Breaking change for muscle memory (old names won't work)"
+        - "CI workflows may need updating if referencing old task names"
+
+    files_created:
+      - "tools/profiler.py (cProfile wrapper for sim:profile)"
+
+    files_deleted:
+      - "tools/init_epoch2_db.py (legacy Epoch 2 database init)"
+
+    files_modified:
+      - ".mise.toml (complete rewrite with namespace structure)"
+      - "CLAUDE.md (Commands section updated)"
+      - "ai-docs/tooling.yaml (mise section updated)"
+
+    related_decisions:
+      - "ADR034_scenario_layer_test_taxonomy (introduced test:scenario namespace)"
+
 # =============================================================================
 # REJECTED DECISIONS
 # =============================================================================

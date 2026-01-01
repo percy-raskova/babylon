@@ -9,10 +9,13 @@ Usage:
     poetry run python tools/tune_agent.py --study-name imperial_v1 --trials 200
     poetry run python tools/tune_agent.py --study-name imperial_v1  # resumes
 
-The objective function maximizes a composite score:
-    Score = (ticks_survived * 10) + (final_rent_pool / 10)
+The objective function maximizes a "Hump Shape" score (0-100):
+    - Growth (0-30): C_b wealth increases in Years 0-2
+    - Peak (0-20): Peak wealth occurs in Years 2-10
+    - Decay (0-30): C_b wealth declines in Years 10-20
+    - Survival (0-20): Bonus for completing full 1040 ticks
 
-This balances survival duration with economic health of the imperial circuit.
+This models the rise and fall of imperial hegemony over 20 simulated years.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 
 # Import reusable functions from tune_parameters
-from tune_parameters import inject_parameter, is_dead
+from tune_parameters import inject_parameter
 
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
@@ -40,22 +43,33 @@ from babylon.engine.simulation_engine import step
 # Configure Optuna logging
 optuna.logging.set_verbosity(optuna.logging.INFO)
 
-# Constants
+# Entity IDs
 COMPRADOR_ID: Final[str] = "C002"
+CORE_BOURGEOISIE_ID: Final[str] = "C003"
 PERIPHERY_WORKER_ID: Final[str] = "C001"
-DEFAULT_MAX_TICKS: Final[int] = 52
-EARLY_DEATH_THRESHOLD: Final[int] = 10  # Prune if Comprador dies before this tick
-DEFAULT_STUDY_NAME: Final[str] = "babylon_tune"
+
+# Hump Shape phase boundaries (ticks)
+GROWTH_END: Final[int] = 104  # Year 2
+PLATEAU_END: Final[int] = 520  # Year 10
+SIMULATION_END: Final[int] = 1040  # Year 20
+
+# Optimization settings
+DEFAULT_MAX_TICKS: Final[int] = SIMULATION_END
+EARLY_DEATH_THRESHOLD: Final[int] = 52  # Prune if death before 1 year (more lenient)
+DEFAULT_STUDY_NAME: Final[str] = "babylon_hump"
 DEFAULT_STORAGE: Final[str] = "sqlite:///optuna.db"
 DEFAULT_N_TRIALS: Final[int] = 100
 
-# Search space definition (5 parameters - extended)
+# Search space definition (6 parameters for Hump Shape dynamics)
 SEARCH_SPACE: Final[dict[str, tuple[float, float]]] = {
-    "economy.extraction_efficiency": (0.1, 0.9),
-    "economy.comprador_cut": (0.5, 1.0),
-    "economy.super_wage_rate": (0.05, 0.35),
-    "survival.default_subsistence": (0.1, 0.5),
-    "survival.steepness_k": (1.0, 10.0),
+    # Core economic balance
+    "economy.base_subsistence": (0.0002, 0.001),  # CRITICAL: tighter range for viability
+    "economy.extraction_efficiency": (0.5, 0.9),  # Minimum viable extraction
+    "economy.comprador_cut": (0.80, 0.95),
+    "economy.super_wage_rate": (0.10, 0.30),
+    # Long-term decay drivers
+    "economy.trpf_coefficient": (0.0003, 0.001),  # Controls extraction decay
+    "metabolism.entropy_factor": (1.1, 1.5),  # Higher = faster biocapacity depletion
 }
 
 # Set up logging
@@ -64,6 +78,77 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def calculate_hump_shape_score(wealth_history: list[float]) -> float:
+    """Score how well the simulation exhibits Hump Shape dynamics.
+
+    Components:
+    1. Growth Score (0-30): Did wealth grow in Years 0-2?
+    2. Peak Score (0-20): Is there a clear peak in Years 2-10?
+    3. Decay Score (0-30): Did wealth decline in Years 10-20?
+    4. Survival Score (0-20): Bonus for surviving all 1040 ticks
+
+    Args:
+        wealth_history: List of C_b wealth values at each tick
+
+    Returns:
+        Score from 0-100 (higher = better Hump Shape)
+    """
+    if len(wealth_history) < GROWTH_END:
+        return 0.0  # Failed in growth phase
+
+    # 1. Growth Score: Compare end of growth phase to start
+    growth_start = wealth_history[0]
+    growth_end_idx = min(GROWTH_END - 1, len(wealth_history) - 1)
+    growth_end_wealth = wealth_history[growth_end_idx]
+    growth_ratio = growth_end_wealth / max(growth_start, 0.01)
+
+    if growth_ratio < 1.0:
+        growth_score = 0.0
+    elif growth_ratio < 1.5:
+        growth_score = 15.0 * (growth_ratio - 1.0) / 0.5
+    else:
+        growth_score = 15.0 + 15.0 * min(1.0, (growth_ratio - 1.5) / 0.5)
+
+    # 2. Peak Score: Find peak and verify it's in plateau phase
+    peak_idx = max(range(len(wealth_history)), key=lambda i: wealth_history[i])
+    peak_value = wealth_history[peak_idx]
+
+    if GROWTH_END <= peak_idx <= min(PLATEAU_END, len(wealth_history) - 1):
+        peak_score = 20.0  # Peak in correct phase
+    elif peak_idx < GROWTH_END:
+        peak_score = 5.0  # Peak too early
+    else:
+        peak_score = 10.0  # Peak too late
+
+    # 3. Decay Score: Compare end of simulation to peak
+    if len(wealth_history) >= SIMULATION_END:
+        final_wealth = wealth_history[-1]
+        decay_ratio = final_wealth / max(peak_value, 0.01)
+        if decay_ratio > 0.9:
+            decay_score = 0.0
+        elif decay_ratio > 0.5:
+            decay_score = 15.0 * (0.9 - decay_ratio) / 0.4
+        elif decay_ratio > 0.1:
+            decay_score = 15.0 + 15.0 * (0.5 - decay_ratio) / 0.4
+        else:
+            decay_score = 30.0
+    else:
+        # Partial decay score based on progress
+        decay_score = 15.0 * len(wealth_history) / SIMULATION_END
+
+    # 4. Survival Score
+    survival_ticks = len(wealth_history)
+    if survival_ticks >= SIMULATION_END:
+        survival_score = 20.0
+    elif survival_ticks >= PLATEAU_END:
+        progress = (survival_ticks - PLATEAU_END) / (SIMULATION_END - PLATEAU_END)
+        survival_score = 10.0 + 10.0 * progress
+    else:
+        survival_score = 10.0 * survival_ticks / PLATEAU_END
+
+    return growth_score + peak_score + decay_score + survival_score
 
 
 def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
@@ -79,6 +164,11 @@ def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
     def objective(trial: optuna.Trial) -> float:
         """Optuna objective function for parameter optimization.
 
+        Optimizes for "Hump Shape" dynamics over 20 years (1040 ticks):
+        - Growth (Years 0-2): C_b wealth increases
+        - Stagnation (Years 2-10): Wealth plateaus
+        - Decay (Years 10-20): Wealth declines, natural collapse near end
+
         Args:
             trial: Optuna trial object for parameter suggestion
 
@@ -88,7 +178,12 @@ def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
         Raises:
             optuna.TrialPruned: When simulation shows early failure
         """
-        # 1. Sample parameters from search space
+        # 1. Sample parameters from search space (6 parameters for Hump Shape)
+        base_subsistence = trial.suggest_float(
+            "base_subsistence",
+            SEARCH_SPACE["economy.base_subsistence"][0],
+            SEARCH_SPACE["economy.base_subsistence"][1],
+        )
         extraction = trial.suggest_float(
             "extraction_efficiency",
             SEARCH_SPACE["economy.extraction_efficiency"][0],
@@ -104,31 +199,32 @@ def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
             SEARCH_SPACE["economy.super_wage_rate"][0],
             SEARCH_SPACE["economy.super_wage_rate"][1],
         )
-        subsistence = trial.suggest_float(
-            "default_subsistence",
-            SEARCH_SPACE["survival.default_subsistence"][0],
-            SEARCH_SPACE["survival.default_subsistence"][1],
+        trpf_coefficient = trial.suggest_float(
+            "trpf_coefficient",
+            SEARCH_SPACE["economy.trpf_coefficient"][0],
+            SEARCH_SPACE["economy.trpf_coefficient"][1],
         )
-        steepness = trial.suggest_float(
-            "steepness_k",
-            SEARCH_SPACE["survival.steepness_k"][0],
-            SEARCH_SPACE["survival.steepness_k"][1],
+        entropy_factor = trial.suggest_float(
+            "entropy_factor",
+            SEARCH_SPACE["metabolism.entropy_factor"][0],
+            SEARCH_SPACE["metabolism.entropy_factor"][1],
         )
 
         # 2. Inject parameters into GameDefines
         defines = GameDefines()
+        defines = inject_parameter(defines, "economy.base_subsistence", base_subsistence)
         defines = inject_parameter(defines, "economy.extraction_efficiency", extraction)
         defines = inject_parameter(defines, "economy.comprador_cut", comprador_cut)
         defines = inject_parameter(defines, "economy.super_wage_rate", super_wage_rate)
-        defines = inject_parameter(defines, "survival.default_subsistence", subsistence)
-        defines = inject_parameter(defines, "survival.steepness_k", steepness)
+        defines = inject_parameter(defines, "economy.trpf_coefficient", trpf_coefficient)
+        defines = inject_parameter(defines, "metabolism.entropy_factor", entropy_factor)
 
         # 3. Create scenario and run simulation tick-by-tick
         state, config, _ = create_imperial_circuit_scenario()
         persistent_context: dict[str, Any] = {}
 
-        ticks_survived = 0
-        final_rent = 0.0
+        # Track C_b wealth history for Hump Shape scoring
+        c_b_wealth_history: list[float] = []
 
         for tick in range(max_ticks):
             try:
@@ -138,39 +234,31 @@ def create_objective(max_ticks: int = DEFAULT_MAX_TICKS) -> Any:
                 logger.warning(f"Trial {trial.number}: Simulation crashed at tick {tick}: {e}")
                 return 0.0
 
-            # Check Comprador (P_c) health for early pruning (uses VitalitySystem's active field)
-            comprador = state.entities.get(COMPRADOR_ID)
-            if comprador and is_dead(comprador):
+            # Track C_b (Core Bourgeoisie) wealth
+            c_b = state.entities.get(CORE_BOURGEOISIE_ID)
+            if c_b and getattr(c_b, "active", True):
+                c_b_wealth_history.append(float(c_b.wealth))
+            else:
+                # C_b died - end simulation
                 if tick < EARLY_DEATH_THRESHOLD:
-                    # Too early death - prune this trial
                     raise optuna.TrialPruned()
-                # Comprador died after threshold - end simulation but don't prune
-                ticks_survived = tick + 1
-                final_rent = float(state.economy.imperial_rent_pool)
                 break
 
-            # Check Periphery Worker health too (uses VitalitySystem's active field)
-            worker = state.entities.get(PERIPHERY_WORKER_ID)
-            if worker and is_dead(worker):
-                ticks_survived = tick + 1
-                final_rent = float(state.economy.imperial_rent_pool)
-                break
+            # Note: P_c (Comprador) and P_w (Worker) deaths are expected dynamics
+            # We only care about C_b (Core Bourgeoisie) for Hump Shape scoring
+            # Those deaths will end data collection but don't trigger pruning
 
-            # Report intermediate metric for Hyperband pruner
-            rent_pool = float(state.economy.imperial_rent_pool)
-            intermediate_value = tick + (rent_pool / 100.0)
-            trial.report(intermediate_value, tick)
+            # Report intermediate Hump Shape score for Hyperband pruner
+            # Only report at phase boundaries to reduce overhead
+            if tick in (GROWTH_END, PLATEAU_END) or tick == max_ticks - 1:
+                intermediate_score = calculate_hump_shape_score(c_b_wealth_history)
+                trial.report(intermediate_score, tick)
 
-            # Check if Hyperband wants to prune
-            if trial.should_prune():
-                raise optuna.TrialPruned()
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
 
-            ticks_survived = tick + 1
-            final_rent = rent_pool
-
-        # 4. Calculate composite score
-        # Higher score = better (more ticks survived + healthier rent pool)
-        score = (ticks_survived * 10.0) + (final_rent / 10.0)
+        # 4. Calculate final Hump Shape score
+        score = calculate_hump_shape_score(c_b_wealth_history)
 
         return score
 
@@ -200,14 +288,15 @@ def run_optimization(
     logger.info(f"Max ticks per trial: {max_ticks}")
 
     # Create study with TPE sampler and Hyperband pruner
+    # Less aggressive pruning: keep 50% (not 33%), don't prune before 1 year
     study = optuna.create_study(
         study_name=study_name,
         storage=storage,
         sampler=TPESampler(seed=42, multivariate=True),
         pruner=HyperbandPruner(
-            min_resource=1,
+            min_resource=52,  # Don't prune before 1 year (52 ticks)
             max_resource=max_ticks,
-            reduction_factor=3,
+            reduction_factor=2,  # Keep 50% at each stage (not 33%)
         ),
         direction="maximize",
         load_if_exists=True,  # Resume capability
@@ -248,18 +337,40 @@ def print_results(study: optuna.Study) -> None:
     print(f"  - Pruned: {pruned}")
     print(f"  - Failed: {failed}")
 
-    if study.best_trial:
-        print(f"\nBest Score: {study.best_value:.2f}")
+    # Handle case where no trials completed (all pruned)
+    if completed == 0:
+        print("\n⚠️  WARNING: No trials completed!")
+        print(f"   All trials were pruned (entities died before tick {EARLY_DEATH_THRESHOLD}).")
+        print("   This indicates the simulation parameters are fundamentally broken.")
+        print("\n   Likely causes:")
+        print("   - Subsistence burn rate too high relative to income")
+        print("   - Initial wealth insufficient for survival")
+        print("   - Production/extraction balance broken")
+        print("\n   Try running: mise run audit")
+        print("   Or manually testing with: poetry run python tools/audit_simulation.py")
+    elif study.best_trial:
+        print(f"\nBest Hump Shape Score: {study.best_value:.2f}/100")
         print("\nBest Parameters:")
         for key, value in study.best_params.items():
-            print(f"  {key}: {value:.4f}")
+            print(f"  {key}: {value:.6f}")
 
-        # Decode the score
-        ticks_component = study.best_value // 10
-        rent_component = (study.best_value % 10) * 10
-        print("\nScore Breakdown:")
-        print(f"  ~Ticks survived: {int(ticks_component)}")
-        print(f"  ~Rent pool contribution: {rent_component:.1f}")
+        # Explain Hump Shape score components
+        print("\nScore Components (max 100):")
+        print("  Growth (0-30): Wealth increase in Years 0-2")
+        print("  Peak (0-20):   Peak occurs in Years 2-10")
+        print("  Decay (0-30):  Wealth decline in Years 10-20")
+        print("  Survival (0-20): Complete 1040 ticks")
+
+        # Classify the result
+        score = study.best_value
+        if score >= 80:
+            print("\n✅ EXCELLENT: Strong Hump Shape dynamics achieved!")
+        elif score >= 60:
+            print("\n🔶 GOOD: Reasonable Hump Shape, some tuning may help")
+        elif score >= 40:
+            print("\n⚠️  PARTIAL: Some phase characteristics present")
+        else:
+            print("\n❌ WEAK: Hump Shape not achieved, parameters need adjustment")
 
     print("\n" + "=" * 70)
     print("To visualize results, run:")

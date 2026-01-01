@@ -130,8 +130,10 @@ class EconomyDefines(BaseModel):
 
     # Entity operational costs (The Calorie Check - must be > 0 to prevent Eden Mode)
     # LINEAR burn: cost = base_subsistence * class_multiplier (not percentage!)
+    # Calibrated for 20-year (1040 tick) Hump Shape dynamics:
+    #   At 0.0005: C_b burns 0.01/tick, allowing growth phase before metabolic collapse
     base_subsistence: float = Field(
-        default=0.005,
+        default=0.0005,
         ge=0.0,
         le=0.5,
         description="Biological floor: fixed cost per tick (LINEAR), scaled by class multiplier",

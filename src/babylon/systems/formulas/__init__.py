@@ -77,6 +77,9 @@ from babylon.systems.formulas.unequal_exchange import (
     prebisch_singer_effect,
 )
 
+# Re-export Vitality formulas (Mass Line Refactor)
+from babylon.systems.formulas.vitality import calculate_mortality_rate
+
 __all__ = [
     # Constants
     "LOSS_AVERSION_COEFFICIENT",
@@ -111,4 +114,6 @@ __all__ = [
     "calculate_rate_of_profit",
     "calculate_rent_pool_decay",
     "calculate_trpf_multiplier",
+    # Vitality (Mass Line Refactor)
+    "calculate_mortality_rate",
 ]

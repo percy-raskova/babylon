@@ -390,27 +390,26 @@ class TestVitalitySubsistenceBurn:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestGrindingAttrition:
-    """Tests for probabilistic mortality (Mass Line Refactor).
+    """Tests for probabilistic mortality (Mass Line Refactor Phase 3).
 
-    The Grinding Attrition Formula models probabilistic mortality based on
-    intra-class inequality:
-        effective_wealth_per_capita = wealth / population
-        marginal_wealth = effective_wealth_per_capita × (1 - inequality)
-        mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
-        deaths = floor(population × mortality_rate × base_mortality_factor)
+    The Coverage Ratio Threshold Formula (Phase 3):
+        coverage_ratio = wealth_per_capita / subsistence_needs
+        threshold = 1.0 + inequality
+        deficit = max(0, threshold - coverage_ratio)
+        attrition_rate = clamp(deficit × (0.5 + inequality), 0, 1)
+        deaths = floor(population × attrition_rate)
 
-    RED PHASE: These tests define expected behavior BEFORE implementation.
+    Updated from Phase 1 (marginal_wealth) to Phase 3 (coverage_ratio).
     """
 
     def test_zero_inequality_no_deaths_when_wealthy(self, services: ServiceContainer) -> None:
         """With inequality=0 and sufficient wealth, no deaths occur.
 
-        Population=1000, wealth=100, s_bio=0.01, inequality=0
-        per_capita = 100/1000 = 0.1
-        marginal_wealth = 0.1 * (1 - 0) = 0.1
-        0.1 >= 0.01 → no deaths
+        Phase 3 formula:
+        coverage_ratio = (100/1000) / 0.01 = 10.0
+        threshold = 1.0 + 0.0 = 1.0
+        10.0 >= 1.0 → no deaths
         """
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
@@ -424,7 +423,7 @@ class TestGrindingAttrition:
         graph.nodes["C001"]["subsistence_multiplier"] = 1.0
 
         events: list[Event] = []
-        services.event_bus.subscribe(EventType.POPULATION_DEATH, events.append)
+        services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
@@ -435,33 +434,35 @@ class TestGrindingAttrition:
         assert len(events) == 0
 
     def test_high_inequality_causes_deaths(self, services: ServiceContainer) -> None:
-        """With high inequality, marginal workers starve even with high avg wealth.
+        """With high inequality, need more coverage to prevent deaths.
 
-        Population=1000, wealth=100, s_bio=0.01, inequality=0.95
-        per_capita = 100/1000 = 0.1
-        marginal_wealth = 0.1 * (1 - 0.95) = 0.005
-        0.005 < 0.01 → mortality!
-        mortality_rate = (0.01 - 0.005) / 0.01 = 0.5
-        deaths = floor(1000 * 0.5 * 0.01) = 5
+        Phase 3 formula: Need coverage >= (1 + inequality) to prevent deaths.
+        Population=1000, wealth=10, s_bio=0.01, inequality=0.8
+        wealth_per_capita = 10/1000 = 0.01
+        coverage_ratio = 0.01 / 0.01 = 1.0
+        threshold = 1.0 + 0.8 = 1.8
+        1.0 < 1.8 → deficit = 0.8
+        attrition = 0.8 × 1.3 = 1.04 → clamped to 1.0
+        deaths = 1000 × 1.0 = 1000 (full attrition)
         """
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
             "C001",
-            wealth=100.0,
+            wealth=10.0,  # Exactly 1× coverage when divided by pop
             population=1000,
-            inequality=0.95,
+            inequality=0.8,  # High inequality means threshold = 1.8
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+        graph.nodes["C001"]["subsistence_multiplier"] = 0.0  # Disable burn
 
         events: list[Event] = []
-        services.event_bus.subscribe(EventType.POPULATION_DEATH, events.append)
+        services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
-        # Assert: Deaths occurred due to inequality
+        # Assert: Deaths occurred due to inequality (coverage < threshold)
         assert graph.nodes["C001"]["population"] < 1000
         assert len(events) == 1
         assert events[0].payload["deaths"] > 0
@@ -555,24 +556,27 @@ class TestGrindingAttrition:
         # because per-capita wealth increased after tick 1 deaths
         assert deaths_tick_2 <= deaths_tick_1
 
-    def test_population_death_event_payload(self, services: ServiceContainer) -> None:
-        """POPULATION_DEATH event should have correct payload.
+    def test_population_attrition_event_payload(self, services: ServiceContainer) -> None:
+        """POPULATION_ATTRITION event should have correct payload.
 
-        Payload: {entity_id, deaths, remaining_population, mortality_rate}
+        Payload: {entity_id, deaths, remaining_population, attrition_rate}
+
+        Phase 3: coverage=1.0/0.01=100, threshold=1.99, coverage >> threshold → no deaths.
+        We need a scenario where coverage < threshold to trigger attrition.
         """
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
             "C001",
-            wealth=1.0,
+            wealth=10.0,  # wealth_per_capita = 0.01
             population=1000,
-            inequality=0.99,
+            inequality=0.8,  # threshold = 1.8, coverage = 1.0 < 1.8
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+        graph.nodes["C001"]["subsistence_multiplier"] = 0.0  # Disable burn
 
         events: list[Event] = []
-        services.event_bus.subscribe(EventType.POPULATION_DEATH, events.append)
+        services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
@@ -583,7 +587,7 @@ class TestGrindingAttrition:
         assert "entity_id" in payload
         assert "deaths" in payload
         assert "remaining_population" in payload
-        assert "mortality_rate" in payload
+        assert "attrition_rate" in payload
         assert payload["entity_id"] == "C001"
         assert payload["deaths"] > 0
         assert payload["remaining_population"] < 1000

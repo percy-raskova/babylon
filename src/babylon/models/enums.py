@@ -135,6 +135,7 @@ class EventType(StrEnum):
         PHASE_TRANSITION: Topology percolation threshold crossed (Sprint 3.3)
         ENTITY_DEATH: Entity starved (wealth < consumption_needs) - Material Reality Refactor
         POPULATION_DEATH: Probabilistic mortality from inequality (Mass Line Refactor)
+        POPULATION_ATTRITION: Grinding Attrition deaths from coverage deficit (Mass Line Phase 3)
     """
 
     SURPLUS_EXTRACTION = "surplus_extraction"
@@ -157,6 +158,7 @@ class EventType(StrEnum):
     ENDGAME_REACHED = "endgame_reached"  # Game ended (victory/defeat condition met)
     ENTITY_DEATH = "entity_death"  # Material Reality: Entity starved (wealth < consumption)
     POPULATION_DEATH = "population_death"  # Mass Line: Probabilistic mortality from inequality
+    POPULATION_ATTRITION = "population_attrition"  # Mass Line Phase 3: Coverage deficit deaths
 
 
 class OperationalProfile(StrEnum):

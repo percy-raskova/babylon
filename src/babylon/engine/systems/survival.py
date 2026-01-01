@@ -3,6 +3,9 @@
 Sprint 3.4.2: Fixed Bug 1 - Organization is now dynamic based on SOLIDARITY edges.
 P(S|R) = (base_organization + solidarity_bonus) / repression
 
+Mass Line Phase 4: P(S|A) now uses per-capita wealth, not aggregate.
+A block of 50,000 workers with $1000 total sees wealth_per_capita=$0.02 (impoverished).
+
 The solidarity_bonus is the sum of incoming SOLIDARITY edge weights (solidarity_strength).
 This makes organization a function of class solidarity infrastructure, not just a static value.
 """
@@ -65,6 +68,9 @@ class SurvivalSystem:
     Bug Fix (Sprint 3.4.2): Organization is now DYNAMIC.
     organization = base_organization + solidarity_bonus
 
+    Mass Line Phase 4: P(S|A) uses per-capita wealth.
+    wealth_per_capita = wealth / population
+
     Where solidarity_bonus = sum of incoming SOLIDARITY edge weights.
     This ensures that High Solidarity scenarios produce higher P(S|R).
     """
@@ -79,10 +85,13 @@ class SurvivalSystem:
     ) -> None:
         """Update P(S|A) and P(S|R) for all entities.
 
-        Organization is calculated as:
-            effective_org = base_org + solidarity_bonus
+        Mass Line Phase 4: P(S|A) uses wealth_per_capita, not aggregate wealth.
+        This ensures demographic blocks are evaluated per-person, not as monolith.
 
-        Where solidarity_bonus = sum(solidarity_strength for incoming SOLIDARITY edges)
+        Organization is calculated as:
+            effective_org = base_org * solidarity_multiplier
+
+        Where solidarity_multiplier = 1.0 + sum(solidarity_strength for incoming SOLIDARITY edges)
         """
         # Get formulas from registry
         calculate_acquiescence_probability = services.formulas.get("acquiescence_probability")
@@ -96,9 +105,14 @@ class SurvivalSystem:
                 continue
 
             wealth = data.get("wealth", 0.0)
+            population = data.get("population", 1)  # Mass Line Phase 4
             base_organization = data.get("organization", services.defines.DEFAULT_ORGANIZATION)
             repression = data.get("repression_faced", services.defines.DEFAULT_REPRESSION_FACED)
             subsistence = data.get("subsistence_threshold", default_subsistence)
+
+            # Mass Line Phase 4: Normalize wealth to per-capita
+            # A block of 50k workers with $1000 total has $0.02 each (impoverished)
+            wealth_per_capita = wealth / population if population > 0 else 0.0
 
             # Bug Fix: Calculate solidarity MULTIPLIER from incoming SOLIDARITY edges
             # Multiplicative (not additive) to preserve scale for P(S|R) formula
@@ -110,7 +124,7 @@ class SurvivalSystem:
             effective_organization = min(1.0, base_organization * solidarity_multiplier)
 
             p_acq = calculate_acquiescence_probability(
-                wealth=wealth,
+                wealth=wealth_per_capita,  # Mass Line Phase 4: per-capita, not aggregate
                 subsistence_threshold=subsistence,
                 steepness_k=survival_steepness,
             )

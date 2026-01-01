@@ -33,54 +33,60 @@ The `inequality` field is a Gini coefficient [0, 1] measuring wealth distributio
 
 | Value | Meaning | Effect |
 |-------|---------|--------|
-| 0.0 | Perfect equality | Mean = Median, everyone survives if average does |
-| 0.5 | Moderate inequality | Middle-class conditions |
-| 1.0 | Maximum tyranny | Bottom majority has nothing, guaranteed deaths |
+| 0.0 | Perfect equality | Coverage threshold = 1.0× (exact subsistence suffices) |
+| 0.5 | Moderate inequality | Coverage threshold = 1.5× (50% surplus required) |
+| 0.8 | High inequality | Coverage threshold = 1.8× (80% surplus required) |
+| 1.0 | Maximum tyranny | Coverage threshold = 2.0× (impossible to prevent deaths) |
 
-**Interpretation**: The inequality coefficient determines what fraction of per-capita wealth the **marginal worker** (bottom 40%) receives:
+**Interpretation (Phase 3 Formula)**: The inequality coefficient determines how much **surplus coverage** is required to prevent ANY deaths:
 
 ```
-marginal_wealth = per_capita_wealth × (1 - inequality)
+threshold = 1.0 + inequality
 ```
 
 At `inequality=0.8`:
-- Per-capita wealth = 0.10
-- Marginal wealth = 0.10 × (1 - 0.8) = 0.02
-- If consumption_needs = 0.05, marginal workers starve
+- Coverage threshold = 1.8× subsistence needs
+- Even with 1.5× coverage, deficit = 0.3, attrition occurs
+- Requires 1.8× coverage to keep everyone alive
 
 ## The Grinding Attrition Formula
 
-The VitalitySystem now implements three phases instead of two:
+The VitalitySystem now implements three phases:
 
-### Phase 1: The Drain (Unchanged)
-Linear subsistence burn based on class lifestyle:
+### Phase 1: The Drain (Population-Scaled)
+Linear subsistence burn scaled by population:
 ```
-cost = base_subsistence × subsistence_multiplier
+cost = (base_subsistence × population) × subsistence_multiplier
 wealth = max(0, wealth - cost)
 ```
 
-### Phase 2: Grinding Attrition (NEW)
-Probabilistic mortality based on inequality:
+A block of 100 workers burns 100× what a single worker burns.
+
+### Phase 2: Grinding Attrition (Coverage Ratio Threshold)
+Probabilistic mortality based on coverage deficit:
 
 ```python
-# Step 1: Calculate per-capita and marginal wealth
-effective_wealth_per_capita = wealth / population
-marginal_wealth = effective_wealth_per_capita × (1 - inequality × inequality_impact)
+# Step 1: Calculate coverage ratio
+wealth_per_capita = wealth / population
+subsistence_needs = s_bio + s_class
+coverage_ratio = wealth_per_capita / subsistence_needs
 
-# Step 2: Calculate mortality rate
-if marginal_wealth >= consumption_needs:
-    mortality_rate = 0
+# Step 2: Calculate threshold (increases with inequality)
+threshold = 1.0 + inequality
+
+# Step 3: Calculate attrition rate
+if coverage_ratio >= threshold:
+    attrition_rate = 0  # Everyone survives
 else:
-    mortality_rate = (consumption_needs - marginal_wealth) / consumption_needs
+    deficit = threshold - coverage_ratio
+    attrition_rate = clamp(deficit × (0.5 + inequality), 0, 1)
 
-# Step 3: Calculate deaths
-deaths = floor(population × mortality_rate × base_mortality_factor)
-
-# Step 4: Update population
+# Step 4: Calculate deaths
+deaths = floor(population × attrition_rate)
 population -= deaths
 ```
 
-**Key insight**: Even with sufficient *average* wealth, high inequality means some workers lack access to that wealth and die.
+**Key insight**: High inequality raises the coverage threshold. With inequality=0.8, you need 1.8× subsistence coverage to prevent deaths, not just 1.0×.
 
 ### Phase 3: The Reaper (Extended)
 Full extinction check:
@@ -91,32 +97,30 @@ Full extinction check:
 
 The formula creates natural equilibrium dynamics:
 
-1. **Deaths occur** due to inequality → population decreases
+1. **Deaths occur** due to coverage deficit → population decreases
 2. **Per-capita wealth increases** (same wealth, fewer people)
-3. **Marginal wealth increases** → fewer future deaths
+3. **Coverage ratio increases** → fewer future deaths
 4. **Population stabilizes** at carrying capacity
 
-This models how populations historically adjusted to resource constraints through mortality, creating a "carrying capacity" based on available wealth.
+**Key**: Wealth is NOT reduced when people die (the poor die with 0 wealth). This means per-capita wealth automatically rises for survivors.
 
-**Example equilibrium**:
+**Example equilibrium** (inequality=0.5, subsistence_needs=0.01):
 ```
-Tick 1: pop=1000, wealth=50, per_capita=0.05, marginal=0.01 → 10 deaths
-Tick 2: pop=990,  wealth=50, per_capita=0.0505, marginal=0.0101 → 9 deaths
-Tick 3: pop=981,  wealth=50, per_capita=0.051, marginal=0.0102 → 8 deaths
-...
-Tick N: equilibrium reached where marginal_wealth ≈ consumption_needs
+Tick 1: pop=1000, wealth=10, coverage=1.0, threshold=1.5 → deficit=0.5, deaths=500
+Tick 2: pop=500,  wealth=10, coverage=2.0, threshold=1.5 → deficit=0, deaths=0
+Equilibrium: coverage exceeds threshold, no more deaths
 ```
 
 ## Events
 
-### POPULATION_DEATH
-Emitted when probabilistic deaths occur:
+### POPULATION_ATTRITION (Phase 3)
+Emitted when coverage deficit causes deaths:
 ```python
 {
     "entity_id": "C001",
-    "deaths": 5,
-    "remaining_population": 995,
-    "mortality_rate": 0.005
+    "deaths": 500,
+    "remaining_population": 500,
+    "attrition_rate": 0.5
 }
 ```
 
@@ -133,12 +137,13 @@ Emitted on full extinction (population = 0):
 
 ## Configuration
 
-```python
-# In GameDefines.vitality
-class VitalityDefines:
-    base_mortality_factor: float = 0.01   # 1% of at-risk population dies per tick
-    inequality_impact: float = 1.0        # Full inequality effect (can tune down)
-```
+The Phase 3 formula uses direct mathematical relationships without tuning parameters:
+
+- **Threshold**: `1.0 + inequality` (no configuration needed)
+- **Attrition multiplier**: `0.5 + inequality` (built into formula)
+- **base_subsistence**: From `GameDefines.economy.base_subsistence` (scaled by population)
+
+The VitalityDefines section (`base_mortality_factor`, `inequality_impact`) is now unused in Phase 3.
 
 ## Backward Compatibility
 
@@ -203,12 +208,37 @@ total_consumption = (s_bio + s_class) * population
 - **Inactive (dead) entities do not consume** - dead blocks don't eat
 - This creates natural carrying capacity dynamics: overshoot triggers when population consumption exceeds biocapacity
 
+### SurvivalSystem (The Calculus of Living) - Phase 4
+P(Acquiescence) now uses per-capita wealth:
+```python
+wealth_per_capita = wealth / population if population > 0 else 0.0
+p_acquiescence = calculate_acquiescence_probability(
+    wealth=wealth_per_capita,  # Per-capita, not aggregate
+    subsistence_threshold=threshold,
+    steepness_k=k,
+)
+```
+
+**Before Phase 4**: A block of 50,000 workers with $1000 total (aggregate) looked "wealthy" to the formula.
+
+**After Phase 4**: The formula sees $0.02 per capita - correctly identifying an impoverished population unlikely to survive via acquiescence.
+
 ### Causal Chain
 The systems interact in materialist causality order:
 1. **VitalitySystem**: Deaths reduce population → per-capita wealth rises
 2. **ProductionSystem**: Smaller population produces less total wealth
 3. **MetabolismSystem**: Smaller population consumes less biocapacity
-4. **Equilibrium**: Population stabilizes at carrying capacity
+4. **SurvivalSystem**: Lower per-capita wealth → lower P(S|A)
+5. **Equilibrium**: Population stabilizes at carrying capacity
+
+### Per-Capita vs Aggregate Summary
+
+| System | Metric | Treatment |
+|--------|--------|-----------|
+| VitalitySystem | Mortality | Per-capita (coverage ratio) |
+| ProductionSystem | Output | Aggregate × population |
+| MetabolismSystem | Consumption | Aggregate × population |
+| SurvivalSystem | P(S\|A) | **Per-capita** (Phase 4) |
 
 ---
 
@@ -232,13 +262,30 @@ The name "Mass Line" references the Maoist principle of learning from the masses
 | `src/babylon/models/entities/social_class.py` | Added `population`, `inequality` fields |
 | `src/babylon/config/defines.py` | Added `VitalityDefines` section |
 | `src/babylon/models/enums.py` | Added `POPULATION_DEATH` event type |
-| `src/babylon/engine/systems/vitality.py` | Implemented 3-phase vitality with Grinding Attrition |
+| `src/babylon/engine/systems/vitality.py` | Implemented 3-phase vitality with initial formula |
 
 ### Phase 2: Production & Metabolism Scaling
 | File | Change |
 |------|--------|
 | `src/babylon/engine/systems/production.py` | Scale production by `population` |
 | `src/babylon/engine/systems/metabolism.py` | Scale consumption by `population`, skip inactive entities |
+
+### Phase 3: Coverage Ratio Threshold Formula
+| File | Change |
+|------|--------|
+| `src/babylon/systems/formulas/vitality.py` | NEW: `calculate_mortality_rate()` formula |
+| `src/babylon/systems/formulas/__init__.py` | Export `calculate_mortality_rate` |
+| `src/babylon/models/enums.py` | Added `POPULATION_ATTRITION` event type |
+| `src/babylon/engine/systems/vitality.py` | Replaced formula, scale Drain by population |
+| `tests/unit/formulas/test_vitality.py` | NEW: Formula unit tests |
+| `tests/unit/engine/systems/test_demographic_dynamics.py` | NEW: System integration tests |
+| `tests/constants.py` | Added `AttritionDefaults` constants |
+
+### Phase 4: Survival Layer Normalization
+| File | Change |
+|------|--------|
+| `src/babylon/engine/systems/survival.py` | P(S\|A) now uses `wealth_per_capita` |
+| `tests/unit/engine/systems/test_survival.py` | NEW: Population normalization tests |
 
 ## See Also
 

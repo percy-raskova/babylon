@@ -448,6 +448,39 @@ class VitalityDefaults:
 
 
 @dataclass(frozen=True)
+class AttritionDefaults:
+    """Grinding Attrition formula constants (Mass Line Refactor Phase 3).
+
+    Source: Coverage ratio threshold model for demographic mortality.
+    The formula ensures high inequality requires more wealth to prevent deaths.
+
+    Formula: threshold = 1 + inequality
+             deficit = max(0, threshold - coverage_ratio)
+             attrition_rate = clamp(deficit × (0.5 + inequality), 0, 1)
+    """
+
+    # Inequality values (Gini coefficient [0, 1])
+    ZERO_INEQUALITY: float = 0.0  # Perfect equality
+    LOW_INEQUALITY: float = 0.2  # Low inequality
+    MODERATE_INEQUALITY: float = 0.5  # Moderate inequality
+    HIGH_INEQUALITY: float = 0.8  # High inequality (requires 1.8× coverage)
+    EXTREME_INEQUALITY: float = 0.95  # Near-maximum inequality
+
+    # Coverage thresholds (1 + inequality)
+    THRESHOLD_ZERO_INEQUALITY: float = 1.0  # 1 + 0.0
+    THRESHOLD_HIGH_INEQUALITY: float = 1.8  # 1 + 0.8
+
+    # Test scenario values
+    POP_100: int = 100  # Standard test population
+    WEALTH_100: float = 100.0  # Standard test wealth
+    NEEDS_1: float = 1.0  # Unit subsistence needs
+
+    # Attrition rate multipliers
+    MULTIPLIER_ZERO_INEQUALITY: float = 0.5  # 0.5 + 0.0
+    MULTIPLIER_HIGH_INEQUALITY: float = 1.3  # 0.5 + 0.8
+
+
+@dataclass(frozen=True)
 class OrganizationDefaults:
     """OrganizationComponent model default values.
 
@@ -680,6 +713,7 @@ class Thresholds:
     Agitation: type[AgitationDefaults] = AgitationDefaults
     Event: type[EventDefaults] = EventDefaults
     RevolutionaryFinance: type[RevolutionaryFinanceDefaults] = RevolutionaryFinanceDefaults
+    Attrition: type[AttritionDefaults] = AttritionDefaults
 
 
 # Alias for backwards compatibility and shorter imports

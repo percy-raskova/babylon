@@ -490,6 +490,71 @@ The following concepts are **explicitly forbidden** from future specifications:
 
 ---
 
+## Terminal Crisis Dynamics
+
+### The Carceral Turn
+
+When the rent pool is exhausted and super-wages can no longer be paid, the Labor Aristocracy decomposes. This is the **carceral turn**: the shift from productive exploitation to carceral management.
+
+```
+SUPERWAGE_CRISIS triggers:
+  Labor Aristocracy → 30% Carceral Enforcers + 70% Internal Proletariat
+```
+
+The empire can no longer afford to bribe core workers. Instead, it must **contain** them. The 30% who become enforcers (guards, cops, prison staff) represent the carceral apparatus. The 70% who fall into the internal proletariat represent the surplus population to be managed.
+
+### The Control Ratio
+
+The carceral state has finite capacity. One guard can control approximately 20 prisoners (1:20 ratio). When the prisoner population exceeds this capacity, a **control ratio crisis** occurs.
+
+```
+if prisoners > enforcers × CONTROL_CAPACITY:
+    CONTROL_RATIO_CRISIS
+    → TERMINAL_DECISION
+```
+
+This is the arithmetic limit of internal colonization. You cannot indefinitely incarcerate your own population. The crisis forces a terminal decision.
+
+### The Terminal Bifurcation
+
+The same bifurcation logic from the Fascist Trap applies at the terminal phase. The outcome depends on prisoner organization:
+
+```
+if avg_organization >= 0.5:
+    outcome = REVOLUTION
+    # Prisoners and radicalized guards unite
+    # The carceral apparatus turns against capital
+else:
+    outcome = GENOCIDE
+    # Atomized surplus population cannot resist
+    # The system eliminates what it cannot exploit or control
+```
+
+This is the **plantation → prison → death camp** arc: when exploitation fails, control is attempted; when control fails, elimination begins.
+
+### Historical Pattern
+
+| Phase | Institution | Relation | Limit |
+|-------|-------------|----------|-------|
+| Exploitation | Plantation/Factory | Productive extraction | TRPF, peripheral revolt |
+| Control | Prison/Ghetto | Surplus management | Control ratio |
+| Elimination | Death Camp | Population reduction | — |
+
+The empire must either find new populations to exploit (impossible once peripheral extraction fails) or begin eliminating its internal surplus. The only escape is revolutionary rupture before the genocidal threshold.
+
+### In-Game Implementation
+
+Two systems model this arc:
+
+1. **DecompositionSystem**: Triggers on SUPERWAGE_CRISIS, splits LA into enforcers + internal proletariat
+2. **ControlRatioSystem**: Tracks guard:prisoner ratio, emits TERMINAL_DECISION when capacity exceeded
+
+The player's task is to build sufficient organization (solidarity infrastructure) to reach the revolution threshold (0.5) before the system resolves toward genocide.
+
+**See also**: `ai-docs/terminal-crisis-dynamics.md` for full theoretical development.
+
+---
+
 ## For AI Assistants
 
 When working on Babylon:

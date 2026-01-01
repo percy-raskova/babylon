@@ -17,11 +17,13 @@ Turn Order (materialist causality - base before superstructure):
 3. Production - Value creation (value must exist before extraction)
 4. Solidarity - Organization (affects bargaining power)
 5. Imperial Rent - Value extraction (landlord eats after harvest)
-6. Metabolism - Environmental degradation (ecological residue of production)
-7. Survival - Risk assessment (P(S|A), P(S|R) from material state)
-8. Struggle - Action/Revolt (agency responds to survival odds)
-9. Consciousness - Ideological drift (ideology responds to material)
-10. Contradiction - Tension aggregation (final systemic accounting)
+6. Decomposition - LA decomposes on super-wage crisis (Terminal Crisis)
+7. Control Ratio - Guard:prisoner ratio + terminal decision (Terminal Crisis)
+8. Metabolism - Environmental degradation (ecological residue of production)
+9. Survival - Risk assessment (P(S|A), P(S|R) from material state)
+10. Struggle - Action/Revolt (agency responds to survival odds)
+11. Consciousness - Ideological drift (ideology responds to material)
+12. Contradiction - Tension aggregation (final systemic accounting)
 
 Phase 2.1: Refactored to modular System architecture.
 Phase 4a: Refactored to use ServiceContainer for dependency injection.
@@ -38,6 +40,8 @@ from babylon.engine.context import TickContext
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
+from babylon.engine.systems.control_ratio import ControlRatioSystem
+from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
@@ -81,11 +85,13 @@ class SimulationEngine:
     3. Production (value creation)
     4. Solidarity (organization)
     5. Imperial Rent (extraction)
-    6. Metabolism (ecology)
-    7. Survival (risk assessment)
-    8. Struggle (agency)
-    9. Consciousness (ideology)
-    10. Contradiction (tension)
+    6. Decomposition (LA crisis)
+    7. Control Ratio (terminal decision)
+    8. Metabolism (ecology)
+    9. Survival (risk assessment)
+    10. Struggle (agency)
+    11. Consciousness (ideology)
+    12. Contradiction (tension)
     """
 
     def __init__(self, systems: list[System]) -> None:
@@ -129,24 +135,28 @@ class SimulationEngine:
 # 3. ProductionSystem - Value creation from labor × biocapacity (The Labor)
 # 4. SolidaritySystem - Organization affects bargaining (Political Organization)
 # 5. ImperialRentSystem - Value extraction (The Extraction)
-# 6. MetabolismSystem - Ecological residue of production (The Consequence)
+# 6. DecompositionSystem - LA decomposes on super-wage crisis (Terminal Crisis)
+# 7. ControlRatioSystem - Guard:prisoner ratio + terminal decision (Terminal Crisis)
+# 8. MetabolismSystem - Ecological residue of production (The Consequence)
 #
 # Superstructure (social, ideological):
-# 7. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
-# 8. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
-# 9. ConsciousnessSystem - Ideology responds to material (Bifurcation)
-# 10. ContradictionSystem - Final systemic tension accounting (The Reckoning)
+# 9. SurvivalSystem - Risk assessment from material state (P(S|A), P(S|R))
+# 10. StruggleSystem - Agency responds to survival odds (George Floyd Dynamic)
+# 11. ConsciousnessSystem - Ideology responds to material (Bifurcation)
+# 12. ContradictionSystem - Final systemic tension accounting (The Reckoning)
 _DEFAULT_SYSTEMS: list[System] = [
     VitalitySystem(),  # 1. Biological cost + death (The Drain + The Reaper)
     TerritorySystem(),  # 2. Land state updates (Carceral Geography)
     ProductionSystem(),  # 3. Value creation (The Labor)
     SolidaritySystem(),  # 4. Organization calculation (Political Organization)
     ImperialRentSystem(),  # 5. Value extraction (The Extraction)
-    MetabolismSystem(),  # 6. Environmental degradation (The Consequence)
-    SurvivalSystem(),  # 7. Risk assessment (Survival Calculus)
-    StruggleSystem(),  # 8. Action/Revolt (George Floyd Dynamic)
-    ConsciousnessSystem(),  # 9. Ideological drift (Bifurcation)
-    ContradictionSystem(),  # 10. Tension aggregation (The Reckoning)
+    DecompositionSystem(),  # 6. LA decomposition (Terminal Crisis Dynamics)
+    ControlRatioSystem(),  # 7. Guard:prisoner ratio (Terminal Crisis Dynamics)
+    MetabolismSystem(),  # 8. Environmental degradation (The Consequence)
+    SurvivalSystem(),  # 9. Risk assessment (Survival Calculus)
+    StruggleSystem(),  # 10. Action/Revolt (George Floyd Dynamic)
+    ConsciousnessSystem(),  # 11. Ideological drift (Bifurcation)
+    ContradictionSystem(),  # 12. Tension aggregation (The Reckoning)
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)

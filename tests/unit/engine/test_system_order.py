@@ -25,11 +25,13 @@ class TestMaterialistCausalityOrder:
     3. Production (value creation) - Value must exist before extraction
     4. Solidarity (organization) - Organization affects bargaining
     5. ImperialRent (extraction) - Landlord eats after harvest
-    6. Metabolism (environment) - Ecological residue of production
-    7. Survival (risk assessment) - P(S|A), P(S|R) from material state
-    8. Struggle (action/revolt) - Agency responds to survival odds
-    9. Consciousness (ideology drift) - Ideology responds to material
-    10. Contradiction (tension) - Final systemic accounting
+    6. Decomposition (LA crisis) - Class breakdown on super-wage crisis
+    7. ControlRatio (terminal decision) - Guard:prisoner ratio + bifurcation
+    8. Metabolism (environment) - Ecological residue of production
+    9. Survival (risk assessment) - P(S|A), P(S|R) from material state
+    10. Struggle (action/revolt) - Agency responds to survival odds
+    11. Consciousness (ideology drift) - Ideology responds to material
+    12. Contradiction (tension) - Final systemic accounting
     """
 
     def test_system_order_is_materialist(self) -> None:
@@ -41,6 +43,8 @@ class TestMaterialistCausalityOrder:
             "production",  # ProductionSystem
             "Solidarity",  # SolidaritySystem
             "Imperial Rent",  # ImperialRentSystem
+            "Decomposition",  # DecompositionSystem (Terminal Crisis)
+            "ControlRatio",  # ControlRatioSystem (Terminal Crisis)
             "Metabolism",  # MetabolismSystem
             "Survival Calculus",  # SurvivalSystem
             "Struggle",  # StruggleSystem
@@ -126,6 +130,6 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must run last - systemic tension aggregates all effects"
         )
 
-    def test_all_ten_systems_present(self) -> None:
-        """All 10 core systems must be registered."""
-        assert len(_DEFAULT_SYSTEMS) == 10, f"Expected 10 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_twelve_systems_present(self) -> None:
+        """All 12 core systems must be registered."""
+        assert len(_DEFAULT_SYSTEMS) == 12, f"Expected 12 systems, got {len(_DEFAULT_SYSTEMS)}"

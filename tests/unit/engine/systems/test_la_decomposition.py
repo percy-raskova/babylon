@@ -130,11 +130,10 @@ class TestLADecomposition:
         la_pop_before = graph.nodes["C_w"]["population"]
         enforcer_pop_before = graph.nodes["Enforcer"]["population"]
 
-        # Create system and wire up to event bus
+        # Create system and trigger crisis (event published to bus history)
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
 
-        # Trigger crisis
+        # Trigger crisis - event goes to bus history
         _trigger_superwage_crisis(services)
 
         # Process decomposition
@@ -167,7 +166,6 @@ class TestLADecomposition:
         )
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
         _trigger_superwage_crisis(services)
         system.step(graph, services, {"tick": 1})
 
@@ -187,9 +185,8 @@ class TestLADecomposition:
         enforcer_pop_before = graph.nodes["Enforcer"]["population"]
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
 
-        # Step WITHOUT triggering crisis
+        # Step WITHOUT triggering crisis (no event in bus history)
         system.step(graph, services, {"tick": 1})
 
         # Populations unchanged
@@ -204,7 +201,6 @@ class TestLADecomposition:
         _create_pre_crisis_circuit(graph)
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
 
         # First crisis - decomposition happens
         _trigger_superwage_crisis(services)
@@ -234,7 +230,6 @@ class TestLADecomposition:
         graph.remove_node("Enforcer")
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
         _trigger_superwage_crisis(services)
         system.step(graph, services, {"tick": 1})
 
@@ -259,7 +254,6 @@ class TestLADecomposition:
         graph.remove_node("Int_P")
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
         _trigger_superwage_crisis(services)
         system.step(graph, services, {"tick": 1})
 
@@ -280,7 +274,6 @@ class TestLADecomposition:
         enforcer_wealth_before = graph.nodes["Enforcer"]["wealth"]  # 100.0
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
         _trigger_superwage_crisis(services)
         system.step(graph, services, {"tick": 1})
 
@@ -304,7 +297,6 @@ class TestLADecomposition:
         )
 
         system = DecompositionSystem()
-        system.register_handlers(services.event_bus)
         _trigger_superwage_crisis(services)
         system.step(graph, services, {"tick": 1})
 

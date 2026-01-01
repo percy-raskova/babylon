@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
-from babylon.engine.event_bus import Event, EventBus
+from babylon.engine.event_bus import Event
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -70,36 +70,15 @@ class DecompositionSystem:
     """Handles class decomposition during terminal crisis.
 
     The Labor Aristocracy decomposes when super-wages can't be paid:
-    - Listens for SUPERWAGE_CRISIS events
+    - Checks event bus history for SUPERWAGE_CRISIS events
     - Splits LA population: 30% enforcer / 70% internal proletariat
     - Transfers wealth proportionally
     - Emits CLASS_DECOMPOSITION event
+
+    Must run AFTER ImperialRentSystem (which emits SUPERWAGE_CRISIS).
     """
 
     name = "Decomposition"
-
-    def __init__(self) -> None:
-        """Initialize with empty crisis queue."""
-        self._pending_crises: list[Event] = []
-
-    def register_handlers(self, event_bus: EventBus) -> None:
-        """Register event handlers with the event bus.
-
-        Args:
-            event_bus: The event bus to subscribe to
-        """
-        event_bus.subscribe(
-            EventType.SUPERWAGE_CRISIS,
-            self._on_superwage_crisis,
-        )
-
-    def _on_superwage_crisis(self, event: Event) -> None:
-        """Queue a SUPERWAGE_CRISIS for processing in next step.
-
-        Args:
-            event: The SUPERWAGE_CRISIS event
-        """
-        self._pending_crises.append(event)
 
     def step(
         self,
@@ -107,21 +86,24 @@ class DecompositionSystem:
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Process any pending LA decomposition.
+        """Check for SUPERWAGE_CRISIS and execute LA decomposition.
 
-        Checks for queued SUPERWAGE_CRISIS events and executes decomposition.
+        Scans event bus history for SUPERWAGE_CRISIS events emitted by
+        ImperialRentSystem earlier in this tick.
         """
-        if not self._pending_crises:
-            return
-
         tick = context.get("tick", 0)
 
-        # Process all pending crises (typically just one)
-        for crisis_event in self._pending_crises:
-            self._execute_decomposition(graph, services, crisis_event, tick)
+        # Check event bus history for SUPERWAGE_CRISIS events this tick
+        crisis_events = [
+            e for e in services.event_bus.get_history() if e.type == EventType.SUPERWAGE_CRISIS
+        ]
 
-        # Clear processed crises
-        self._pending_crises.clear()
+        if not crisis_events:
+            return
+
+        # Process each crisis (typically just one)
+        for crisis_event in crisis_events:
+            self._execute_decomposition(graph, services, crisis_event, tick)
 
     def _execute_decomposition(
         self,

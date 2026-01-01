@@ -43,6 +43,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import from centralized shared module (ADR036)
+# Import Carceral Equilibrium scoring for meaningful output variance
+from carceral_scoring import calculate_carceral_equilibrium_score
 from shared import (
     DEFAULT_MAX_TICKS,
     get_tunable_parameters,
@@ -68,17 +70,12 @@ DEFAULT_MORRIS_TRAJECTORIES: Final[int] = 10
 DEFAULT_SOBOL_SAMPLES: Final[int] = 256
 DEFAULT_OUTPUT_DIR: Final[str] = "results"
 
-# Default parameters for sensitivity analysis (most impactful subset)
-DEFAULT_PARAMS: Final[list[str]] = [
-    "economy.extraction_efficiency",
-    "economy.comprador_cut",
-    "economy.base_subsistence",
-    "economy.super_wage_rate",
-    "economy.trpf_coefficient",
-    "survival.steepness_k",
-    "consciousness.sensitivity",
-    "solidarity.scaling_factor",
-]
+
+# Get all tunable parameters from shared module (ADR036)
+# This ensures sensitivity analysis covers the complete parameter space
+def get_default_params() -> list[str]:
+    """Get all tunable parameter names for sensitivity analysis."""
+    return list(get_tunable_parameters().keys())
 
 
 def create_problem(param_names: list[str]) -> dict[str, Any]:
@@ -122,7 +119,7 @@ def evaluate_simulation(
         max_ticks: Maximum ticks per simulation
 
     Returns:
-        List of N output values (ticks_survived)
+        List of N output values (Carceral Equilibrium score 0-100)
     """
     n_samples = len(param_values)
     outputs: list[float] = []
@@ -138,7 +135,15 @@ def evaluate_simulation(
 
         # Run simulation
         result = run_simulation(defines, max_ticks=max_ticks)
-        outputs.append(float(result["ticks_survived"]))
+
+        # Calculate Carceral Equilibrium score (0-100)
+        # This gives meaningful variance even when all simulations survive
+        score = calculate_carceral_equilibrium_score(
+            phase_milestones=result["phase_milestones"],
+            terminal_outcome=result["terminal_outcome"],
+            max_ticks=max_ticks,
+        )
+        outputs.append(score)
 
         # Progress indicator
         if (i + 1) % max(1, n_samples // 20) == 0 or i == n_samples - 1:
@@ -485,7 +490,7 @@ Examples:
 
     if args.command == "morris":
         results = run_morris_analysis(
-            DEFAULT_PARAMS,
+            get_default_params(),
             args.trajectories,
             args.max_ticks,
         )
@@ -496,7 +501,7 @@ Examples:
 
     elif args.command == "sobol":
         results = run_sobol_analysis(
-            DEFAULT_PARAMS,
+            get_default_params(),
             args.samples,
             args.max_ticks,
         )
@@ -511,7 +516,7 @@ Examples:
         print("PHASE 1: Morris Screening")
         print("=" * 60)
         morris_results = run_morris_analysis(
-            DEFAULT_PARAMS,
+            get_default_params(),
             args.trajectories,
             args.max_ticks,
         )
@@ -525,7 +530,7 @@ Examples:
         print("PHASE 2: Sobol Analysis")
         print("=" * 60)
         sobol_results = run_sobol_analysis(
-            DEFAULT_PARAMS,
+            get_default_params(),
             args.samples,
             args.max_ticks,
         )

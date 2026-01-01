@@ -340,6 +340,43 @@ def create_imperial_circuit_scenario(
         subsistence_threshold=0.1,  # Low vulnerability due to super-wages
         p_acquiescence=0.0,
         p_revolution=0.0,
+        population=1000,  # Population for decomposition tracking
+    )
+
+    # C005: Carceral Enforcer - DORMANT until CLASS_DECOMPOSITION
+    # Receives 30% of Labor Aristocracy during decomposition (guards, cops)
+    carceral_enforcer = SocialClass(
+        id="C005",
+        name="Carceral Enforcer",
+        role=SocialRole.CARCERAL_ENFORCER,
+        description="Guards and police managing surplus population",
+        wealth=0.0,
+        ideology=0.6,  # type: ignore[arg-type]  # Reactionary
+        organization=0.7,  # Well-organized state apparatus
+        repression_faced=0.0,  # They ARE the repression
+        subsistence_threshold=0.1,
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+        population=0,  # DORMANT - populated during decomposition
+        active=False,  # DORMANT - activated during decomposition
+    )
+
+    # C006: Internal Proletariat - DORMANT until CLASS_DECOMPOSITION
+    # Receives 70% of Labor Aristocracy during decomposition (precariat, prisoners)
+    internal_proletariat = SocialClass(
+        id="C006",
+        name="Internal Proletariat",
+        role=SocialRole.INTERNAL_PROLETARIAT,
+        description="Surplus population managed by carceral state",
+        wealth=0.0,
+        ideology=-0.2,  # type: ignore[arg-type]  # Potentially revolutionary
+        organization=0.1,  # Atomized, disorganized
+        repression_faced=0.9,  # Maximum repression
+        subsistence_threshold=0.5,  # High vulnerability
+        p_acquiescence=0.0,
+        p_revolution=0.0,
+        population=0,  # DORMANT - populated during decomposition
+        active=False,  # DORMANT - activated during decomposition
     )
 
     # Edge 1: EXPLOITATION - P_w (C001) -> P_c (C002)
@@ -432,7 +469,7 @@ def create_imperial_circuit_scenario(
         tension=0.0,
     )
 
-    # Create world state with 4 entities, 2 territories, and 7 edges
+    # Create world state with 6 entities (4 active + 2 dormant), 2 territories, and 7 edges
     state = WorldState(
         tick=0,
         entities={
@@ -440,6 +477,8 @@ def create_imperial_circuit_scenario(
             "C002": comprador,
             "C003": core_bourgeoisie,
             "C004": labor_aristocracy,
+            "C005": carceral_enforcer,  # DORMANT - activated during CLASS_DECOMPOSITION
+            "C006": internal_proletariat,  # DORMANT - activated during CLASS_DECOMPOSITION
         },
         territories={
             "T001": periphery_land,

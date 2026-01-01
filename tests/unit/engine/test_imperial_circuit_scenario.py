@@ -37,15 +37,15 @@ class TestImperialCircuitScenarioStructure:
         assert isinstance(result[0], WorldState)
         assert isinstance(result[1], SimulationConfig)
 
-    def test_creates_four_entities(self) -> None:
-        """Scenario must have exactly 4 social class entities."""
+    def test_creates_six_entities(self) -> None:
+        """Scenario must have 6 entities: 4 active + 2 dormant carceral."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert len(state.entities) == 4
+        assert len(state.entities) == 6
 
     def test_entity_ids_follow_pattern(self) -> None:
-        """Entity IDs: C001-C004 (matches ^C[0-9]{3}$ pattern)."""
+        """Entity IDs: C001-C006 (matches ^C[0-9]{3}$ pattern)."""
         state, _, _ = create_imperial_circuit_scenario()
-        expected_ids = {"C001", "C002", "C003", "C004"}
+        expected_ids = {"C001", "C002", "C003", "C004", "C005", "C006"}
         actual_ids = set(state.entities.keys())
         assert actual_ids == expected_ids
 

@@ -303,6 +303,9 @@ class ImperialRentSystem:
         # PPP_mult = 1 + (extraction_efficiency * superwage_multiplier * ppp_impact)
         ppp_multiplier = 1.0 + (extraction_efficiency * superwage_multiplier * superwage_ppp_impact)
 
+        negligible = services.defines.economy.negligible_rent
+        available_pool = tick_context["current_pool"]
+
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
             if isinstance(edge_type, str):
@@ -311,12 +314,45 @@ class ImperialRentSystem:
             if edge_type != EdgeType.WAGES:
                 continue
 
-            # Skip inactive (dead) bourgeoisie - can't pay wages when dead
-            if not graph.nodes[source_id].get("active", True):
+            # Check for SUPERWAGE_CRISIS BEFORE skipping inactive entities
+            # The crisis is about the SYSTEM'S inability to pay wages, not individual status
+            # This fixes the race condition where bourgeoisie dies before crisis is emitted
+            bourgeoisie_active = graph.nodes[source_id].get("active", True)
+            worker_active = graph.nodes[target_id].get("active", True)
+
+            if available_pool <= negligible:
+                # Terminal Crisis: Pool exhausted, wages can't be paid
+                # Emit once per WAGES edge when pool first becomes negligible
+                tick = context.get("tick", 0) if isinstance(context, dict) else 0
+                bourgeoisie_wealth = graph.nodes[source_id].get("wealth", 0.0)
+                tribute_inflow = tick_context.get("tribute_inflow", 0.0)
+                desired_wages = tribute_inflow * super_wage_rate
+
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.SUPERWAGE_CRISIS,
+                        tick=tick,
+                        payload={
+                            "payer_id": source_id,
+                            "receiver_id": target_id,
+                            "desired_wages": desired_wages,
+                            "available_pool": available_pool,
+                            "bourgeoisie_wealth": bourgeoisie_wealth,
+                            "bourgeoisie_active": bourgeoisie_active,
+                            "narrative_hint": (
+                                "SUPERWAGE CRISIS: Imperial rent pool exhausted. "
+                                "Core bourgeoisie cannot afford to bribe labor aristocracy."
+                            ),
+                        },
+                    )
+                )
+                continue  # Can't pay wages, skip to next edge
+
+            # Skip inactive (dead) entities for actual wage transfers
+            if not bourgeoisie_active:
                 continue
 
-            # Skip inactive (dead) workers - can't receive wages when dead
-            if not graph.nodes[target_id].get("active", True):
+            if not worker_active:
                 continue
 
             # Get bourgeoisie wealth
@@ -333,37 +369,7 @@ class ImperialRentSystem:
             desired_wages = min(desired_wages, bourgeoisie_wealth)
 
             # Sprint 3.4.4: Cap wages at available pool
-            available_pool = tick_context["current_pool"]
             nominal_wages = min(desired_wages, available_pool)
-
-            # Check for zero wages (pool exhausted or no tribute)
-            # Note: Uses negligible threshold for pool check because asymptotic
-            # decay approaches but never reaches exactly 0.
-            negligible = services.defines.economy.negligible_rent
-            if nominal_wages <= 0:
-                # Terminal Crisis: WAGES infrastructure exists but pool exhausted
-                # This triggers when C_b has capital but no income (tribute stopped)
-                # The crisis is about the TRANSITION from paid to unpaid wages
-                if available_pool <= negligible:
-                    tick = context.get("tick", 0) if isinstance(context, dict) else 0
-                    services.event_bus.publish(
-                        Event(
-                            type=EventType.SUPERWAGE_CRISIS,
-                            tick=tick,
-                            payload={
-                                "payer_id": source_id,
-                                "receiver_id": target_id,
-                                "desired_wages": desired_wages,
-                                "available_pool": available_pool,
-                                "bourgeoisie_wealth": bourgeoisie_wealth,
-                                "narrative_hint": (
-                                    "SUPERWAGE CRISIS: Imperial rent pool exhausted. "
-                                    "Core bourgeoisie cannot afford to bribe labor aristocracy."
-                                ),
-                            },
-                        )
-                    )
-                continue
 
             # Transfer nominal wages (actual cash transfer)
             graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - nominal_wages

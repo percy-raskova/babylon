@@ -153,6 +153,7 @@ class DecompositionSystem:
             current_wealth = enforcer_data.get("wealth", 0.0)
             graph.nodes[enforcer_id]["population"] = current_pop + enforcer_pop_gain
             graph.nodes[enforcer_id]["wealth"] = current_wealth + enforcer_wealth_gain
+            graph.nodes[enforcer_id]["active"] = True  # Activate dormant entity
 
         # Transfer to INTERNAL_PROLETARIAT
         if internal_proletariat is not None:

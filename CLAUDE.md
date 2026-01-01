@@ -421,24 +421,76 @@ defines.consciousness.drift_sensitivity_k  # Consciousness drift rate
 
 Categories: `economy`, `consciousness`, `solidarity`, `survival`, `territory`
 
-## Simulation Lab (Parameter Tuning)
+## Simulation Lab (Complete Task Reference)
 
-The `tools/` directory contains analysis tooling for parameter optimization:
+The `tools/` directory contains a comprehensive suite for simulation analysis, parameter optimization, and quality assurance. All tools import from `tools/shared.py` (ADR036).
 
-| Tool | Command | Purpose |
-|------|---------|---------|
-| `tune_agent.py` | `mise run tune` | Bayesian optimization via Optuna TPE with Hyperband pruning |
-| `landscape_analysis.py` | `mise run map` | 2D parameter grid search (extraction × comprador cut) |
-| `audit_simulation.py` | `mise run audit` | Health report with baseline/starvation/glut scenarios |
-| `parameter_analysis.py` | `mise run analyze-trace` | Single simulation with time-series CSV + JSON metadata |
+### sim:* - Simulation Execution
 
-**Optimization Workflow**:
-1. `mise run audit` - Validate simulation health under stress scenarios
-2. `mise run map` - Visualize stability landscape for parameter pairs
-3. `mise run tune` - Run Bayesian optimization to find optimal parameters
-4. `mise run dashboard` - Visualize optimization results in Optuna Dashboard
+| Task | Description | Output |
+|------|-------------|--------|
+| `mise run sim:run` | Main simulation entry point | Console |
+| `mise run sim:trace` | Time-series CSV + JSON | results/trace.csv |
+| `mise run sim:sweep` | 1D parameter sweep | results/sweep.csv |
+| `mise run sim:profile` | cProfile performance analysis | Console + .prof |
+| `mise run sim:monte-carlo` | Monte Carlo UQ (N-sample) | results/monte_carlo.csv |
 
-Results are stored in `results/` (CSV, JSON) and `optuna.db` (SQLite study storage).
+### tune:* - Parameter Optimization
+
+| Task | Description | Output |
+|------|-------------|--------|
+| `mise run tune:optuna` | Bayesian optimization (TPE) | optuna.db |
+| `mise run tune:landscape` | 2D parameter grid search | results/landscape.csv |
+| `mise run tune:params` | 1D sensitivity sweep | Console |
+| `mise run tune:sensitivity` | Morris + Sobol SA (both) | results/*.json |
+| `mise run tune:morris` | Morris screening (fast) | results/morris.json |
+| `mise run tune:sobol` | Sobol variance decomposition | results/sobol.json |
+| `mise run tune:dashboard` | Optuna web UI | Browser |
+
+### qa:* - Quality Assurance
+
+| Task | Description | Output |
+|------|-------------|--------|
+| `mise run qa:audit` | Health check (3 scenarios) | reports/audit_latest.md |
+| `mise run qa:verify` | Formula correctness verification | Console |
+| `mise run qa:schemas` | JSON schema validation | Console |
+| `mise run qa:security` | Dependency security audit | Console |
+| `mise run qa:regression` | Baseline comparison (CI) | Console |
+| `mise run qa:regression-generate` | Create regression baselines | tests/baselines/*.json |
+
+### Recommended Workflows
+
+**Parameter Discovery (Which parameters matter?)**:
+```bash
+mise run tune:morris 20              # Fast screening by importance (mu*)
+mise run tune:landscape p1 r1 p2 r2  # Visualize 2D interactions
+mise run tune:sobol 512              # Quantify variance decomposition
+mise run tune:optuna 200             # Optimize important parameters
+```
+
+**Uncertainty Quantification (How much variance?)**:
+```bash
+mise run sim:monte-carlo 1000 42     # 1000 replications, seed=42
+# Review 95% CI for ticks_survived
+```
+
+**Regression Testing (CI protection)**:
+```bash
+# After intentional formula changes:
+mise run qa:regression-generate      # Create new baselines
+# Commit baselines with code changes
+
+# In CI pipeline:
+mise run qa:regression               # Compare against baselines
+```
+
+**Sensitivity Analysis Interpretation**:
+- **Morris mu***: Mean absolute effect (higher = more important)
+- **Morris sigma/mu***: Non-linearity indicator (>1 = interactive)
+- **Sobol S1**: First-order variance (main effect alone)
+- **Sobol ST**: Total-order variance (main + interactions)
+
+Results are stored in `results/` (CSV, JSON), `reports/` (Markdown), `tests/baselines/` (regression), and `optuna.db` (SQLite).
 
 ## Documentation
 

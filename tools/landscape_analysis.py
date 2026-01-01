@@ -23,11 +23,12 @@ import sys
 from pathlib import Path
 from typing import Final
 
-# Add src to path for imports
+# Add src and tools to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
-# Import reusable functions from tune_parameters (no duplication)
-from tune_parameters import inject_parameter, run_simulation
+# Import from centralized shared module (ADR036)
+from shared import inject_parameter, run_simulation
 
 from babylon.config.defines import GameDefines
 

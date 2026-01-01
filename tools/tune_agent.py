@@ -26,15 +26,19 @@ import sys
 from pathlib import Path
 from typing import Any, Final
 
-# Add src to path for imports
+# Add src and tools to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
 import optuna
 from optuna.pruners import HyperbandPruner
 from optuna.samplers import TPESampler
 
-# Import reusable functions from tune_parameters
-from tune_parameters import inject_parameter
+# Import from centralized shared module (ADR036)
+from shared import (
+    CORE_BOURGEOISIE_ID,
+    inject_parameter,
+)
 
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
@@ -42,11 +46,6 @@ from babylon.engine.simulation_engine import step
 
 # Configure Optuna logging
 optuna.logging.set_verbosity(optuna.logging.INFO)
-
-# Entity IDs
-COMPRADOR_ID: Final[str] = "C002"
-CORE_BOURGEOISIE_ID: Final[str] = "C003"
-PERIPHERY_WORKER_ID: Final[str] = "C001"
 
 # Hump Shape phase boundaries (ticks)
 GROWTH_END: Final[int] = 104  # Year 2

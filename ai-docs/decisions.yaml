@@ -2747,6 +2747,78 @@ pending:
     related_decisions:
       - "ADR034_scenario_layer_test_taxonomy (introduced test:scenario namespace)"
 
+  ADR036_shared_utilities_module:
+    status: "accepted"
+    date: "2026-01-01"
+    title: "Centralized tools/shared.py for simulation utilities"
+
+    context: |
+      Multiple tools duplicated inject_parameter() and is_dead() functions.
+      parameter_analysis.py re-implemented utilities instead of importing from
+      tune_parameters.py. Entity ID constants (C001, C002, etc.) were defined
+      redundantly across multiple files. This created maintenance burden and
+      divergence risk - a fix in one file wouldn't propagate to others.
+
+    decision: |
+      Create tools/shared.py as single source of truth for:
+      - inject_parameter(), inject_parameters(): Parameter injection into GameDefines
+      - is_dead(), is_dead_by_wealth(): VitalitySystem-aligned death detection
+      - run_simulation(): Standard simulation runner returning metrics dict
+      - get_tunable_parameters(): Parameter enumeration for SALib/Optuna
+      - Entity ID constants: PERIPHERY_WORKER_ID, COMPRADOR_ID, etc.
+      - Column prefix mappings: ENTITY_COLUMN_PREFIX for CSV output
+
+      All tools must import from shared.py, never re-implement or duplicate.
+      tune_parameters.py re-exports for backwards compatibility.
+
+    rationale:
+      DRY:
+        principle: "Don't Repeat Yourself"
+        benefit: "One place to update death detection logic, parameter injection, etc."
+
+      testability:
+        principle: "Shared module can have dedicated unit tests"
+        benefit: "Core utilities verified once, not duplicated test coverage"
+
+      discoverability:
+        principle: "New tools find utilities in one place"
+        benefit: "Lower barrier to creating new analysis tools"
+
+      consistency:
+        principle: "All tools use identical implementations"
+        benefit: "No subtle behavioral differences across tools"
+
+    consequences:
+      positive:
+        - "Single source of truth for simulation utilities"
+        - "Easier to add new shared functionality (e.g., inject_parameters for batch)"
+        - "Consistent behavior across all tools"
+        - "Clear import hierarchy: shared.py <- all other tools"
+      negative:
+        - "Circular import risk (mitigated by clean dependency order)"
+        - "One more file to maintain (but net reduction in total code)"
+
+    files_created:
+      - "tools/shared.py (centralized utilities)"
+      - "tools/monte_carlo.py (Monte Carlo UQ)"
+      - "tools/sensitivity_analysis.py (SALib Morris/Sobol)"
+      - "tools/regression_test.py (baseline comparison)"
+      - "tests/baselines/ (regression baseline directory)"
+
+    files_modified:
+      - "tools/tune_parameters.py (imports from shared, re-exports for compat)"
+      - "tools/parameter_analysis.py (removed duplicated functions)"
+      - "tools/landscape_analysis.py (import from shared)"
+      - "tools/audit_simulation.py (import from shared)"
+      - "tools/tune_agent.py (import from shared)"
+      - ".mise.toml (6 new tasks added)"
+      - "pyproject.toml (scipy, SALib dependencies)"
+      - "CLAUDE.md (Simulation Lab section expanded)"
+
+    related_decisions:
+      - "ADR031_test_constants_centralized (similar pattern for test values)"
+      - "ADR035_namespace_driven_mise_tasks (task organization)"
+
 # =============================================================================
 # REJECTED DECISIONS
 # =============================================================================

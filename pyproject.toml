@@ -77,6 +77,8 @@ pytest-randomly = "^4.0.1"
 mutmut = "^3.4.0"
 optuna = "^3.6"
 optuna-dashboard = "^0.15"
+scipy = ">=1.11.0"
+SALib = ">=1.4.7"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -113,6 +115,9 @@ markers = [
     "ai: AI/RAG evaluation tests (slow, non-deterministic)",
     "red_phase: TDD RED phase tests (intentionally failing until GREEN phase)",
     "slow: Long-running scenario tests (2000+ ticks, multi-minute runtime)",
+    "theory_rent: Imperial rent and unequal exchange mechanics",
+    "theory_rift: Metabolic rift and ecological limits mechanics",
+    "theory_solidarity: Solidarity transmission and consciousness mechanics",
 ]
 
 [tool.ruff]

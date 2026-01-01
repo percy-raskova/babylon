@@ -637,6 +637,273 @@ parameter_tuning:
       description: "Launch Optuna Dashboard for visualization"
 
 # =============================================================================
+# SHARED UTILITIES MODULE (ADR036)
+# =============================================================================
+
+shared_utilities:
+  philosophy: "Single source of truth for simulation tooling utilities"
+  location: "tools/shared.py"
+  added: "2026-01-01"
+  adr: "ADR036"
+
+  purpose: |
+    Centralizes reusable functions that multiple tools need. Eliminates
+    code duplication (parameter_analysis.py previously duplicated utilities).
+    All tools must import from shared.py, never re-implement.
+
+  functions:
+    inject_parameter:
+      signature: "(base_defines: GameDefines, param_path: str, value: float) -> GameDefines"
+      purpose: "Create immutable copy of GameDefines with single parameter override"
+      usage: "inject_parameter(defines, 'economy.extraction_efficiency', 0.5)"
+
+    inject_parameters:
+      signature: "(base_defines: GameDefines, params: dict[str, float]) -> GameDefines"
+      purpose: "Batch parameter injection for Monte Carlo / sensitivity analysis"
+      usage: "inject_parameters(defines, {'economy.extraction_efficiency': 0.5, 'economy.comprador_cut': 0.8})"
+
+    is_dead:
+      signature: "(entity: Any) -> bool"
+      purpose: "Check VitalitySystem's active field (standard death detection)"
+      aligns_with: "VitalitySystem sets active=False when wealth < consumption_needs"
+
+    is_dead_by_wealth:
+      signature: "(wealth: float) -> bool"
+      purpose: "Legacy wealth-threshold check (for compatibility)"
+      threshold: "DEATH_THRESHOLD = 0.001"
+
+    run_simulation:
+      signature: "(defines: GameDefines, max_ticks: int = 52) -> dict[str, Any]"
+      purpose: "Run single simulation, return metrics dict"
+      returns: "ticks_survived, max_tension, outcome, final_wealth, final_state"
+
+    run_simulation_with_collector:
+      signature: "(state, config, defines, max_ticks, mode='batch') -> MetricsCollector"
+      purpose: "Run simulation with MetricsCollector observer for detailed tracing"
+
+    get_tunable_parameters:
+      signature: "() -> dict[str, tuple[float, float]]"
+      purpose: "Enumerate all GameDefines parameters with (min, max) bounds"
+      usage: "For SALib problem specification and Optuna search space"
+
+  constants:
+    PERIPHERY_WORKER_ID: "C001"
+    COMPRADOR_ID: "C002"
+    CORE_BOURGEOISIE_ID: "C003"
+    LABOR_ARISTOCRACY_ID: "C004"
+    DEFAULT_MAX_TICKS: 52
+    DEATH_THRESHOLD: 0.001
+
+  importers:
+    - "tools/parameter_analysis.py"
+    - "tools/landscape_analysis.py"
+    - "tools/audit_simulation.py"
+    - "tools/tune_agent.py"
+    - "tools/monte_carlo.py"
+    - "tools/sensitivity_analysis.py"
+    - "tools/regression_test.py"
+
+# =============================================================================
+# MONTE CARLO UNCERTAINTY QUANTIFICATION
+# =============================================================================
+
+monte_carlo:
+  philosophy: "Capture stochastic variance via N-sample replication"
+  location: "tools/monte_carlo.py"
+  added: "2026-01-01"
+  mise_task: "sim:monte-carlo"
+
+  purpose: |
+    StruggleSystem has stochastic EXCESSIVE_FORCE probability. Single
+    simulation runs don't capture variance. Monte Carlo replication
+    provides confidence intervals on outcomes.
+
+  features:
+    - "N-sample replication with configurable seed"
+    - "Sequential execution (simpler code per user preference)"
+    - "Per-sample metrics: ticks_survived, outcome, max_tension, final_wealth"
+    - "Aggregate statistics: mean, std, 95% CI via t-distribution"
+    - "CSV output + markdown report"
+
+  cli_usage:
+    basic: "mise run sim:monte-carlo 100"
+    with_seed: "mise run sim:monte-carlo 1000 42"
+    with_param: "poetry run python tools/monte_carlo.py --param economy.extraction_efficiency=0.5"
+
+  statistics:
+    confidence_interval:
+      method: "t-distribution"
+      level: 0.95
+      requires: "scipy>=1.11.0"
+
+    reported_metrics:
+      - "n_samples, n_survived, n_died, survival_rate"
+      - "ticks_mean, ticks_std, ticks_ci_lower, ticks_ci_upper"
+      - "tension_mean, tension_std"
+      - "wealth_mean, wealth_std"
+
+  output:
+    csv: "results/monte_carlo.csv"
+    columns: "sample_id, seed, ticks_survived, outcome, max_tension, final_wealth"
+
+  sample_size_guidance:
+    exploratory: "100 samples (fast, rough estimate)"
+    standard: "1000 samples (good precision)"
+    publication: "10000+ samples (NIST recommended)"
+
+  references:
+    - "NIST Monte Carlo Guidelines"
+    - "Modern Monte Carlo Methods for Efficient Uncertainty Quantification (Zhang 2021)"
+
+# =============================================================================
+# GLOBAL SENSITIVITY ANALYSIS (SALib)
+# =============================================================================
+
+sensitivity_analysis:
+  philosophy: "Quantify parameter importance via variance decomposition"
+  location: "tools/sensitivity_analysis.py"
+  added: "2026-01-01"
+  mise_tasks:
+    - "tune:sensitivity"
+    - "tune:morris"
+    - "tune:sobol"
+
+  purpose: |
+    Identify which GameDefines parameters most strongly affect simulation
+    outcomes. Uses two-stage protocol from JASSS best practices:
+    1. Morris screening (fast) - rank parameters by importance
+    2. Sobol analysis (thorough) - quantify variance decomposition
+
+  methods:
+    morris:
+      name: "Morris Elementary Effects"
+      purpose: "Fast screening for parameter importance ranking"
+      outputs:
+        mu_star: "Mean absolute elementary effect (importance)"
+        sigma: "Std dev of effects (non-linearity/interaction indicator)"
+      samples: "~100-200 (fast)"
+      usage: "mise run tune:morris 20"
+      interpretation: |
+        High mu* = important parameter
+        High sigma / mu* = non-linear or interacts with others
+
+    sobol:
+      name: "Sobol Variance Decomposition"
+      purpose: "Quantitative variance attribution"
+      outputs:
+        S1: "First-order index (main effect of single parameter)"
+        ST: "Total-order index (main + all interaction effects)"
+        S2: "Second-order index (pairwise interactions)"
+      samples: "~1000-10000 (slow)"
+      usage: "mise run tune:sobol 512"
+      interpretation: |
+        Sum(S1) = variance explained by main effects
+        Sum(ST) - Sum(S1) = variance from interactions
+
+  default_parameters:
+    - "economy.extraction_efficiency"
+    - "economy.comprador_cut"
+    - "economy.base_subsistence"
+    - "economy.super_wage_rate"
+    - "economy.trpf_coefficient"
+    - "survival.steepness_k"
+    - "consciousness.drift_sensitivity_k"
+    - "solidarity.transmission_rate"
+
+  workflow:
+    discovery: |
+      1. Run Morris screening: mise run tune:morris 20
+      2. Identify top 5-10 parameters by mu*
+      3. Run Sobol on subset: modify DEFAULT_PARAMS, mise run tune:sobol 512
+      4. Use S1/ST to quantify main vs interaction effects
+      5. Focus Optuna tuning on high-ST parameters
+
+  output:
+    morris: "results/morris.json"
+    sobol: "results/sobol.json"
+
+  dependencies:
+    SALib:
+      package: "SALib"
+      version: ">=1.4.7"
+      group: "dev"
+      methods_used: "morris.sample, saltelli.sample, morris.analyze, sobol.analyze"
+
+  references:
+    - "SALib Documentation: https://salib.readthedocs.io/"
+    - "JASSS: Which Sensitivity Analysis Method Should I Use?"
+    - "Saltelli et al., Global Sensitivity Analysis: The Primer (2008)"
+
+# =============================================================================
+# REGRESSION TESTING
+# =============================================================================
+
+regression_testing:
+  philosophy: "Detect formula drift via baseline comparison"
+  location: "tools/regression_test.py"
+  added: "2026-01-01"
+  mise_tasks:
+    - "qa:regression"
+    - "qa:regression-generate"
+
+  purpose: |
+    Store expected simulation outputs as JSON baselines. After code
+    changes, compare current output against baselines to detect
+    unintended formula drift. Critical for maintaining mathematical
+    correctness during refactoring.
+
+  scenarios:
+    imperial_circuit:
+      description: "4-node default scenario"
+      file: "tests/baselines/imperial_circuit.json"
+    two_node:
+      description: "Minimal worker vs owner"
+      file: "tests/baselines/two_node.json"
+    starvation:
+      description: "Low extraction efficiency stress"
+      file: "tests/baselines/starvation.json"
+    glut:
+      description: "High extraction with metabolic overshoot"
+      file: "tests/baselines/glut.json"
+    fascist_bifurcation:
+      description: "Consciousness routing to national identity"
+      file: "tests/baselines/fascist_bifurcation.json"
+
+  checkpointed_metrics:
+    per_tick:
+      - "p_w_wealth, p_c_wealth, c_b_wealth, c_w_wealth"
+      - "imperial_rent_pool"
+      - "exploitation_tension"
+      - "p_w_consciousness"
+      - "p_w_p_revolution"
+    checkpoint_interval: 10
+    final: "outcome (SURVIVED/DIED/etc.)"
+
+  tolerance: 1e-5
+
+  workflow:
+    after_intentional_changes: |
+      1. Make intentional formula changes
+      2. Run: mise run qa:regression-generate
+      3. Review generated baselines
+      4. Commit baselines with code changes
+
+    in_ci: |
+      1. CI runs: mise run qa:regression
+      2. If baselines differ, CI fails
+      3. Developer investigates: intentional or bug?
+
+    investigating_drift: |
+      1. Review failing baseline comparison
+      2. If intentional: regenerate baselines
+      3. If unintentional: fix the regression
+
+  defines_hash:
+    purpose: "Detect GameDefines parameter changes"
+    algorithm: "SHA256 of JSON-serialized defines"
+    warning: "Baseline may need regeneration if defines changed"
+
+# =============================================================================
 # TESTING INFRASTRUCTURE
 # =============================================================================
 

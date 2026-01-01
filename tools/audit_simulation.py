@@ -23,19 +23,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-# Add src to path for imports
+# Add src and tools to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
-# Import reusable functions from tune_parameters (no duplication)
-from tune_parameters import PERIPHERY_WORKER_ID, inject_parameter, is_dead
+# Import from centralized shared module (ADR036)
+from shared import COMPRADOR_ID, PERIPHERY_WORKER_ID, inject_parameter, is_dead
 
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
 from babylon.models.world_state import WorldState
 
-# Constants
-COMPRADOR_ID: Final[str] = "C002"
+# Constants (COMPRADOR_ID imported from shared)
 DEFAULT_OUTPUT: Final[str] = "reports/audit_latest.md"
 DEFAULT_MAX_TICKS: Final[int] = 52
 

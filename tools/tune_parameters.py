@@ -26,141 +26,36 @@ import sys
 from pathlib import Path
 from typing import Any, Final
 
-# Add src to path for imports
+# Add src and tools to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from babylon.config.defines import (
-    GameDefines,
+# Import from centralized shared module (ADR036)
+from shared import (
+    DEATH_THRESHOLD,
+    DEFAULT_MAX_TICKS,
+    PERIPHERY_WORKER_ID,
+    inject_parameter,
+    is_dead,
+    is_dead_by_wealth,
+    run_simulation,
 )
-from babylon.engine.scenarios import create_imperial_circuit_scenario
-from babylon.engine.simulation_engine import step
-from babylon.models.enums import EdgeType
 
-# Constants
-PERIPHERY_WORKER_ID: Final[str] = "C001"
-MAX_TICKS: Final[int] = 50
+from babylon.config.defines import GameDefines
 
+# Re-export for backwards compatibility with tools that import from here
+__all__ = [
+    "PERIPHERY_WORKER_ID",
+    "MAX_TICKS",
+    "DEATH_THRESHOLD",
+    "is_dead_by_wealth",
+    "is_dead",
+    "inject_parameter",
+    "run_simulation",
+]
 
-def is_dead(entity: Any) -> bool:
-    """Check if an entity is dead using VitalitySystem's active field.
-
-    This aligns with VitalitySystem which sets active=False when
-    wealth < consumption_needs (s_bio + s_class).
-
-    Args:
-        entity: SocialClass entity or None
-
-    Returns:
-        True if entity is None or has active=False
-    """
-    if entity is None:
-        return True
-    return not getattr(entity, "active", True)
-
-
-def inject_parameter(
-    base_defines: GameDefines,
-    param_path: str,
-    value: float,
-) -> GameDefines:
-    """Create a new GameDefines with a nested parameter overridden.
-
-    Uses Pydantic's model_copy(update=...) to create an immutable copy
-    with the specified parameter changed.
-
-    Args:
-        base_defines: Original GameDefines (not mutated)
-        param_path: Dot-separated path like "economy.extraction_efficiency"
-        value: New value to set
-
-    Returns:
-        New GameDefines with the parameter updated
-
-    Raises:
-        ValueError: If param_path is invalid
-    """
-    parts = param_path.split(".")
-    if len(parts) != 2:
-        raise ValueError(f"param_path must be 'category.field', got: {param_path}")
-
-    category, field = parts
-
-    # Get the current category model
-    category_model = getattr(base_defines, category, None)
-    if category_model is None:
-        raise ValueError(f"Unknown category: {category}")
-
-    # Verify the field exists
-    if not hasattr(category_model, field):
-        raise ValueError(f"Unknown field '{field}' in category '{category}'")
-
-    # Create new category model with updated field
-    new_category = category_model.model_copy(update={field: value})
-
-    # Create new GameDefines with updated category
-    return base_defines.model_copy(update={category: new_category})
-
-
-def run_simulation(
-    defines: GameDefines,
-    max_ticks: int = MAX_TICKS,
-) -> dict[str, Any]:
-    """Run a single simulation with the given GameDefines.
-
-    Args:
-        defines: GameDefines to use for this simulation
-        max_ticks: Maximum number of ticks to run
-
-    Returns:
-        Dictionary with:
-            - ticks_survived: Number of ticks before death (or max_ticks)
-            - max_tension: Maximum tension observed on any edge
-            - outcome: "SURVIVED" or "DIED"
-            - final_wealth: Final wealth of periphery worker
-    """
-    # Create scenario with default parameters
-    state, config, _scenario_defines = create_imperial_circuit_scenario()
-
-    # We use our injected defines instead of scenario_defines
-    persistent_context: dict[str, Any] = {}
-    max_tension: float = 0.0
-    ticks_survived: int = 0
-    final_wealth: float = 0.0
-
-    for tick in range(max_ticks):
-        state = step(state, config, persistent_context, defines)
-
-        # Get periphery worker wealth
-        worker = state.entities.get(PERIPHERY_WORKER_ID)
-        if worker is None:
-            # Unexpected state - worker entity missing
-            break
-
-        final_wealth = worker.wealth
-
-        # Track maximum tension across all edges
-        for rel in state.relationships:
-            if rel.edge_type == EdgeType.EXPLOITATION:
-                max_tension = max(max_tension, rel.tension)
-
-        # Check for death (uses VitalitySystem's active field)
-        if is_dead(worker):
-            ticks_survived = tick + 1
-            return {
-                "ticks_survived": ticks_survived,
-                "max_tension": max_tension,
-                "outcome": "DIED",
-                "final_wealth": final_wealth,
-            }
-
-        ticks_survived = tick + 1
-
-    return {
-        "ticks_survived": ticks_survived,
-        "max_tension": max_tension,
-        "outcome": "SURVIVED",
-        "final_wealth": final_wealth,
-    }
+# Alias for backwards compatibility
+MAX_TICKS: Final[int] = DEFAULT_MAX_TICKS
 
 
 def format_results(results: list[dict[str, Any]]) -> str:

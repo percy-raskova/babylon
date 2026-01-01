@@ -483,6 +483,62 @@ implemented:
         status: "configured"
         details: "Ruff + MyPy strict"
 
+      shared_utilities:
+        status: "complete"
+        location: "tools/shared.py"
+        adr: "ADR036"
+        date: "2026-01-01"
+        description: "Centralized utilities for simulation tooling (DRY)"
+        provides:
+          - "inject_parameter(), inject_parameters()"
+          - "is_dead(), is_dead_by_wealth()"
+          - "run_simulation(), get_tunable_parameters()"
+          - "Entity ID constants"
+        importers:
+          - "tools/parameter_analysis.py"
+          - "tools/landscape_analysis.py"
+          - "tools/audit_simulation.py"
+          - "tools/tune_agent.py"
+          - "tools/monte_carlo.py"
+          - "tools/sensitivity_analysis.py"
+          - "tools/regression_test.py"
+
+      monte_carlo:
+        status: "complete"
+        location: "tools/monte_carlo.py"
+        date: "2026-01-01"
+        mise_task: "sim:monte-carlo"
+        description: "Monte Carlo uncertainty quantification (N-sample replication)"
+        provides:
+          - "N-sample replication with configurable seed"
+          - "t-distribution 95% confidence intervals"
+          - "CSV output + markdown report"
+        dependencies: ["scipy>=1.11.0"]
+
+      sensitivity_analysis:
+        status: "complete"
+        location: "tools/sensitivity_analysis.py"
+        date: "2026-01-01"
+        mise_tasks: ["tune:sensitivity", "tune:morris", "tune:sobol"]
+        description: "Global sensitivity analysis via SALib (Morris + Sobol)"
+        provides:
+          - "Morris elementary effects screening"
+          - "Sobol variance decomposition"
+          - "Parameter importance ranking"
+        dependencies: ["SALib>=1.4.7"]
+
+      regression_testing:
+        status: "complete"
+        location: "tools/regression_test.py"
+        date: "2026-01-01"
+        mise_tasks: ["qa:regression", "qa:regression-generate"]
+        description: "Regression testing via baseline comparison"
+        provides:
+          - "5 regression scenarios"
+          - "JSON baseline generation/comparison"
+          - "Formula drift detection"
+        baselines: "tests/baselines/"
+
 # =============================================================================
 # NOT YET IMPLEMENTED
 # =============================================================================

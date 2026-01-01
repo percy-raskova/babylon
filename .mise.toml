@@ -134,6 +134,20 @@ description = "Profile simulation with cProfile"
 usage = 'arg "[ticks]" help="Number of ticks to profile" default="100"'
 run = "poetry run python tools/profiler.py --ticks ${usage_ticks}"
 
+[tasks."sim:monte-carlo"]
+description = "Monte Carlo uncertainty quantification"
+usage = '''
+arg "[samples]" help="Number of samples" default="100"
+arg "[seed]" help="Random seed (optional)"
+'''
+run = """
+mkdir -p results
+poetry run python tools/monte_carlo.py \
+  --samples ${usage_samples} \
+  ${usage_seed:+--seed ${usage_seed}} \
+  --csv results/monte_carlo.csv
+"""
+
 # =============================================================================
 # TUNING (Namespaced)
 # =============================================================================
@@ -183,6 +197,37 @@ run = "poetry run python tools/tune_parameters.py --start ${1:-0.05} --end ${2:-
 description = "Launch Optuna Dashboard for visualization"
 run = "optuna-dashboard sqlite:///optuna.db"
 
+[tasks."tune:sensitivity"]
+description = "Global sensitivity analysis (Morris + Sobol)"
+run = """
+mkdir -p results
+echo "Running Morris screening..."
+poetry run python tools/sensitivity_analysis.py morris --trajectories 10
+echo ""
+echo "Running Sobol analysis..."
+poetry run python tools/sensitivity_analysis.py sobol --samples 256
+"""
+
+[tasks."tune:morris"]
+description = "Morris elementary effects screening (fast)"
+usage = 'arg "[trajectories]" help="Number of trajectories" default="10"'
+run = """
+mkdir -p results
+poetry run python tools/sensitivity_analysis.py morris \
+  --trajectories ${usage_trajectories} \
+  --output results/morris.json
+"""
+
+[tasks."tune:sobol"]
+description = "Sobol variance decomposition (slow)"
+usage = 'arg "[samples]" help="Base sample size" default="256"'
+run = """
+mkdir -p results
+poetry run python tools/sensitivity_analysis.py sobol \
+  --samples ${usage_samples} \
+  --output results/sobol.json
+"""
+
 # =============================================================================
 # QA (Namespaced)
 # =============================================================================
@@ -209,6 +254,14 @@ run = "poetry run python tools/validate_schemas.py"
 [tasks."qa:security"]
 description = "Run security audit on dependencies"
 run = "poetry run pip-audit"
+
+[tasks."qa:regression"]
+description = "Regression test against stored baselines"
+run = "poetry run python tools/regression_test.py compare"
+
+[tasks."qa:regression-generate"]
+description = "Generate regression baselines (after intentional changes)"
+run = "poetry run python tools/regression_test.py generate --force"
 
 # =============================================================================
 # DEMO (Namespaced)

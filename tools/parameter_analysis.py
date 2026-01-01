@@ -22,8 +22,17 @@ import sys
 from pathlib import Path
 from typing import Any, Final
 
-# Add src to path for imports
+# Add src and tools to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Import from centralized shared module (ADR036)
+from shared import (
+    DEFAULT_MAX_TICKS,
+    PERIPHERY_WORKER_ID,
+    inject_parameter,
+    is_dead,
+)
 
 from babylon.config.defines import GameDefines
 from babylon.engine.observers.metrics import MetricsCollector
@@ -32,40 +41,8 @@ from babylon.engine.simulation import Simulation
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
 
-# Constants
-ENTITY_IDS: Final[list[str]] = ["C001", "C002", "C003", "C004"]
-# Use centralized timescale constant (1 tick = 1 week, 52 ticks = 1 year)
-DEFAULT_TICKS: Final[int] = GameDefines().timescale.ticks_per_year
-PERIPHERY_WORKER_ID: Final[str] = "C001"
-
-# Column name mapping for entities
-# p_w = Periphery Worker (C001)
-# p_c = Comprador (C002)
-# c_b = Core Bourgeoisie (C003)
-# c_w = Labor Aristocracy (C004)
-ENTITY_COLUMN_PREFIX: Final[dict[str, str]] = {
-    "C001": "p_w",  # Periphery Worker
-    "C002": "p_c",  # Comprador
-    "C003": "c_b",  # Core Bourgeoisie
-    "C004": "c_w",  # Labor Aristocracy (Core Worker)
-}
-
-
-def is_dead(entity: Any) -> bool:
-    """Check if an entity is dead using VitalitySystem's active field.
-
-    This aligns with VitalitySystem which sets active=False when
-    wealth < consumption_needs (s_bio + s_class).
-
-    Args:
-        entity: SocialClass entity or None
-
-    Returns:
-        True if entity is None or has active=False
-    """
-    if entity is None:
-        return True
-    return not getattr(entity, "active", True)
+# Use centralized constant
+DEFAULT_TICKS: Final[int] = DEFAULT_MAX_TICKS
 
 
 def _run_simulation_with_metrics(
@@ -104,49 +81,6 @@ def _run_simulation_with_metrics(
 
     sim.end()
     return collector
-
-
-def inject_parameter(
-    base_defines: GameDefines,
-    param_path: str,
-    value: float,
-) -> GameDefines:
-    """Create a new GameDefines with a nested parameter overridden.
-
-    Uses Pydantic's model_copy(update=...) to create an immutable copy
-    with the specified parameter changed.
-
-    Args:
-        base_defines: Original GameDefines (not mutated)
-        param_path: Dot-separated path like "economy.extraction_efficiency"
-        value: New value to set
-
-    Returns:
-        New GameDefines with the parameter updated
-
-    Raises:
-        ValueError: If param_path is invalid
-    """
-    parts = param_path.split(".")
-    if len(parts) != 2:
-        raise ValueError(f"param_path must be 'category.field', got: {param_path}")
-
-    category, field = parts
-
-    # Get the current category model
-    category_model = getattr(base_defines, category, None)
-    if category_model is None:
-        raise ValueError(f"Unknown category: {category}")
-
-    # Verify the field exists
-    if not hasattr(category_model, field):
-        raise ValueError(f"Unknown field '{field}' in category '{category}'")
-
-    # Create new category model with updated field
-    new_category = category_model.model_copy(update={field: value})
-
-    # Create new GameDefines with updated category
-    return base_defines.model_copy(update={category: new_category})
 
 
 def run_trace(

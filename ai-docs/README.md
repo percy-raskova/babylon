@@ -57,7 +57,7 @@ This directory helps AI assistants:
 | `mantras.yaml` | Guiding principles as memorable phrases | YAML |
 | `documentation-standards.yaml` | Diataxis, RST format, docstrings, accuracy rules | YAML |
 | **TOOLING & CI** |||
-| `tooling.yaml` | CI/CD, Sphinx, linting, mutation testing | YAML |
+| `tooling.yaml` | CI/CD, Sphinx, linting, mutation testing, **parameter tuning, Monte Carlo UQ, sensitivity analysis, regression testing** | YAML |
 | `ci-workflow.yaml` | GitHub Actions, branch protection, contributor workflow | YAML |
 | **DESIGN & THEORY** |||
 | `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism | YAML |

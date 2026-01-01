@@ -158,14 +158,14 @@ class TestImperialCircuitWealthCalculations:
     """Test that wealth values are correctly derived from parameters."""
 
     def test_default_periphery_worker_wealth(self) -> None:
-        """C001 (P_w) wealth = periphery_wealth (default 0.1)."""
+        """C001 (P_w) wealth = periphery_wealth (default 0.6, calibrated for P(S|A) > P(S|R))."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C001"].wealth == pytest.approx(0.1)
+        assert state.entities["C001"].wealth == pytest.approx(0.6)
 
     def test_default_comprador_wealth(self) -> None:
-        """C002 (P_c) wealth = periphery_wealth * 2 (default 0.2)."""
+        """C002 (P_c) wealth = periphery_wealth * 2 (default 1.2)."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C002"].wealth == pytest.approx(0.2)
+        assert state.entities["C002"].wealth == pytest.approx(1.2)
 
     def test_default_core_bourgeoisie_wealth(self) -> None:
         """C003 (C_b) wealth = core_wealth (default 0.9)."""

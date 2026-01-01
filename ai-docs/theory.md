@@ -1,6 +1,6 @@
 # Theoretical Foundation
 
-Babylon's mechanics are grounded in Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory. This document explains the theory so AI assistants can understand *why* the game works the way it does.
+Babylon's mechanics are grounded in Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory. This document explains the theory so AI assistants can understand _why_ the game works the way it does.
 
 ## Core Thesis
 
@@ -15,6 +15,7 @@ If W_c > V_c, then P(Revolution in Core) → 0
 ```
 
 Where:
+
 - **W_c** = Wages paid to core (First World) workers
 - **V_c** = Value produced by core workers
 - **Φ = W_c - V_c** = Imperial Rent
@@ -23,7 +24,7 @@ When Φ > 0, core workers receive more value than they produce. The difference c
 
 ### Implications
 
-1. Core workers have *material interest* in maintaining imperialism
+1. Core workers have _material interest_ in maintaining imperialism
 2. This creates the **labor aristocracy**—workers whose class interest aligns with capital against the global proletariat
 3. Revolutionary potential is concentrated in the periphery, not the core
 
@@ -31,13 +32,13 @@ When Φ > 0, core workers receive more value than they produce. The difference c
 
 ### Imperial Rent (Φ)
 
-The mechanism by which value flows from periphery to core. Not just exploitation of peripheral workers, but a transfer that *elevates* core workers above subsistence.
+The mechanism by which value flows from periphery to core. Not just exploitation of peripheral workers, but a transfer that _elevates_ core workers above subsistence.
 
 **In-game**: Determines which regions can achieve revolutionary rupture. High Φ → low revolutionary potential.
 
 ### Labor Aristocracy
 
-Workers in the imperial core who benefit from imperial rent. They are exploited by *their own* capitalists but receive net benefit from global exploitation.
+Workers in the imperial core who benefit from imperial rent. They are exploited by _their own_ capitalists but receive net benefit from global exploitation.
 
 **In-game**: A class category with high wages, high consumption, low revolutionary potential. Can be allies of capital against global proletariat.
 
@@ -49,9 +50,10 @@ The systematic undervaluation of peripheral labor relative to core labor. An hou
 
 ### Contradiction
 
-A dialectical tension between opposing forces. Not a "problem" but a *dynamic* that drives historical change.
+A dialectical tension between opposing forces. Not a "problem" but a _dynamic_ that drives historical change.
 
 Types:
+
 - **Antagonistic**: Cannot be resolved within the current system (capital vs. labor)
 - **Non-antagonistic**: Can be resolved through reform (tactical disagreements)
 
@@ -62,6 +64,7 @@ Types:
 Revolutionary break with the existing order. Not inevitable—requires both conditions (material) and organization (subjective).
 
 **Formula**:
+
 ```
 P(Rupture) when: P(S|R) > P(S|A)
 
@@ -89,14 +92,14 @@ Destruction of organic social bonds, replaced by market relations. Workers isola
 
 ## Class Categories
 
-| Class | Relation to Production | Revolutionary Potential |
-|-------|----------------------|------------------------|
-| Bourgeoisie | Owns means of production | Counter-revolutionary |
-| Proletariat | Sells labor power | High (in periphery) |
-| Petty Bourgeoisie | Small owners, professionals | Vacillating |
-| Peasantry | Agricultural producers | Variable by context |
-| Labor Aristocracy | Core workers with Φ benefit | Low |
-| Lumpenproletariat | Outside formal economy | Unreliable |
+| Class             | Relation to Production      | Revolutionary Potential |
+| ----------------- | --------------------------- | ----------------------- |
+| Bourgeoisie       | Owns means of production    | Counter-revolutionary   |
+| Proletariat       | Sells labor power           | High (in periphery)     |
+| Petty Bourgeoisie | Small owners, professionals | Vacillating             |
+| Peasantry         | Agricultural producers      | Variable by context     |
+| Labor Aristocracy | Core workers with Φ benefit | Low                     |
+| Lumpenproletariat | Outside formal economy      | Unreliable              |
 
 ## Why This Matters for Game Design
 
@@ -115,7 +118,8 @@ The game doesn't preach. It models. If the mathematics say revolution in the cor
 
 ### Educational Through Play
 
-Players learn materialist analysis by *doing* it:
+Players learn materialist analysis by _doing_ it:
+
 - Why does this region revolt and not that one? (Check Φ)
 - Why do workers vote against their interests? (Check hegemony)
 - Why does reform fail? (Check antagonistic vs. non-antagonistic contradictions)
@@ -165,10 +169,10 @@ These are not "false consciousness" - they are **rational responses** to materia
 
 ### Historical Examples
 
-| Case | Material Conditions | Solidarity Infrastructure | Outcome |
-|------|--------------------|-----------------------------|---------|
-| Weimar Germany 1929-1933 | Economic collapse | Weak (divided left) | Fascism |
-| Russia 1917 | War exhaustion, food shortages | Strong (Zimmerwald movement) | Revolution |
+| Case                     | Material Conditions            | Solidarity Infrastructure    | Outcome    |
+| ------------------------ | ------------------------------ | ---------------------------- | ---------- |
+| Weimar Germany 1929-1933 | Economic collapse              | Weak (divided left)          | Fascism    |
+| Russia 1917              | War exhaustion, food shortages | Strong (Zimmerwald movement) | Revolution |
 
 ### Game Implementation (Sprint 3.4.2)
 
@@ -294,10 +298,10 @@ As capitalism develops, capitalists invest in machinery to increase productivity
 ### Marx's Numerical Example
 
 | Constant Capital (c) | Variable Capital (v) | Surplus Value (s) | Rate of Profit p' = s/(c+v) |
-|---------------------|---------------------|------------------|---------------------------|
-| 50 | 100 | 100 | 66⅔% |
-| 100 | 100 | 100 | 50% |
-| 400 | 100 | 100 | 20% |
+| -------------------- | -------------------- | ----------------- | --------------------------- |
+| 50                   | 100                  | 100               | 66⅔%                        |
+| 100                  | 100                  | 100               | 50%                         |
+| 400                  | 100                  | 100               | 20%                         |
 
 As OCC rises from 0.5 to 4.0, the rate of profit falls from 66⅔% to 20%, even with constant exploitation rate (s/v = 100%).
 
@@ -333,6 +337,7 @@ Imperial rent (Φ = W_c - V_c) is the mechanism by which core countries access F
 This is why Lenin called imperialism "moribund capitalism" - it extends TRPF's timeline but deepens the eventual crisis. Imperial rent temporarily OFFSETS TRPF for core capitalists while accelerating it for peripheral capital.
 
 **The dialectical unity:**
+
 - TRPF describes the internal contradiction of capitalist production
 - Imperial rent describes how this contradiction is externalized onto the periphery
 - Together they explain both the stability of core capitalism AND its ultimate unsustainability
@@ -350,6 +355,7 @@ effective_extraction = base_extraction × trpf_multiplier
 This produces declining accumulation without full OCC tracking.
 
 **At default coefficient 0.0005:**
+
 - tick 0: 100% efficiency
 - tick 520 (10 years): 74% efficiency
 - tick 1040 (20 years): 48% efficiency
@@ -378,13 +384,13 @@ See `ai-docs/epoch2-trpf.yaml` for full specification.
 
 The theoretical framework draws from:
 
-- Marx's *Capital* Volume 1 (value theory, exploitation)
-- Marx's *Capital* Volume 3, Chapters 13-15 (TRPF, organic composition)
-- Lenin's *Imperialism* (monopoly capital, labor aristocracy)
-- Mao's *On Contradiction* (dialectical analysis)
-- Gramsci's *Prison Notebooks* (hegemony, civil society)
-- Zak Cope's *Divided World Divided Class* (modern labor aristocracy thesis)
-- Samir Amin's *Unequal Development* (unequal exchange)
+- Marx's _Capital_ Volume 1 (value theory, exploitation)
+- Marx's _Capital_ Volume 3, Chapters 13-15 (TRPF, organic composition)
+- Lenin's _Imperialism_ (monopoly capital, labor aristocracy)
+- Mao's _On Contradiction_ (dialectical analysis)
+- Gramsci's _Prison Notebooks_ (hegemony, civil society)
+- Zak Cope's _Divided World Divided Class_ (modern labor aristocracy thesis)
+- Samir Amin's _Unequal Development_ (unequal exchange)
 
 ---
 
@@ -397,6 +403,7 @@ The theoretical framework draws from:
 Babylon's simulation operates under a fundamental constraint: **entropy is irreversible**. The player cannot "win" in the traditional sense. They cannot reverse the Metabolic Rift, restore biocapacity to its original state, or create a perpetual motion machine of imperial accumulation.
 
 The player's agency is limited to:
+
 1. **Accelerating collapse** through revolutionary action
 2. **Decelerating collapse** through system maintenance (but this only delays the inevitable)
 3. **Shaping the character of collapse** (revolutionary vs. fascist resolution)
@@ -422,11 +429,13 @@ The Metabolic Rift, as theorized by Marx and developed by John Bellamy Foster, d
 **Definition:** A simulation state where metrics oscillate around a stable equilibrium without secular decline.
 
 **Why it's wrong:**
+
 - Imperialism is not sustainable. It cannot find equilibrium.
 - Stable extraction requires infinite biocapacity (Eden Mode).
 - History shows empires exhaust their substrate and collapse.
 
 **Detection:**
+
 ```python
 def is_hollow_stability(wealth_timeseries: list[float]) -> bool:
     """Detect theoretically invalid equilibrium."""
@@ -449,6 +458,7 @@ The simulation models a 20-year timeline (1040 ticks) because this is sufficient
 4. **The Fascist Bifurcation**: The endgame crisis and its resolution
 
 Under correct parameters, the simulation should:
+
 - Show gentle decline in peripheral wealth
 - Show accelerating decline in biocapacity
 - Reach systemic crisis (ECOLOGICAL_OVERSHOOT) around tick 800-900
@@ -458,12 +468,12 @@ Under correct parameters, the simulation should:
 
 The player cannot prevent collapse. They can only shape it:
 
-| Action | Effect on Collapse |
-|--------|-------------------|
-| Build solidarity infrastructure | Enables revolutionary resolution |
-| Accelerate extraction | Hastens crisis (may benefit if prepared) |
-| Maintain imperial rent flows | Delays crisis (buys time to organize) |
-| Neglect organization | Defaults to fascist resolution |
+| Action                          | Effect on Collapse                       |
+| ------------------------------- | ---------------------------------------- |
+| Build solidarity infrastructure | Enables revolutionary resolution         |
+| Accelerate extraction           | Hastens crisis (may benefit if prepared) |
+| Maintain imperial rent flows    | Delays crisis (buys time to organize)    |
+| Neglect organization            | Defaults to fascist resolution           |
 
 **The tragedy is not that collapse occurs. The tragedy is that the player must choose who dies.**
 
@@ -478,13 +488,13 @@ Without solidarity infrastructure, the default is fascism. This is historical ma
 
 The following concepts are **explicitly forbidden** from future specifications:
 
-| Banned Concept | Why |
-|----------------|-----|
-| Infinite biocapacity | Violates thermodynamics |
-| Regeneration > Extraction | Not possible under capitalism |
-| Free existence (base_subsistence = 0) | Creates zombie states |
-| Equilibrium stability | Violates TRPF |
-| Player "victory" through survival | Wrong teleology |
+| Banned Concept                        | Why                           |
+| ------------------------------------- | ----------------------------- |
+| Infinite biocapacity                  | Violates thermodynamics       |
+| Regeneration > Extraction             | Not possible under capitalism |
+| Free existence (base_subsistence = 0) | Creates zombie states         |
+| Equilibrium stability                 | Violates TRPF                 |
+| Player "victory" through survival     | Wrong teleology               |
 
 **The simulation is not about winning. It is about understanding.**
 
@@ -534,11 +544,11 @@ This is the **plantation → prison → death camp** arc: when exploitation fail
 
 ### Historical Pattern
 
-| Phase | Institution | Relation | Limit |
-|-------|-------------|----------|-------|
+| Phase        | Institution        | Relation              | Limit                   |
+| ------------ | ------------------ | --------------------- | ----------------------- |
 | Exploitation | Plantation/Factory | Productive extraction | TRPF, peripheral revolt |
-| Control | Prison/Ghetto | Surplus management | Control ratio |
-| Elimination | Death Camp | Population reduction | — |
+| Control      | Prison/Ghetto      | Surplus management    | Control ratio           |
+| Elimination  | Death Camp         | Population reduction  | —                       |
 
 The empire must either find new populations to exploit (impossible once peripheral extraction fails) or begin eliminating its internal surplus. The only escape is revolutionary rupture before the genocidal threshold.
 

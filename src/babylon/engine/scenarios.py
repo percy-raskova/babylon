@@ -229,7 +229,7 @@ def create_labor_aristocracy_scenario() -> tuple[WorldState, SimulationConfig, G
 
 
 def create_imperial_circuit_scenario(
-    periphery_wealth: float = 0.1,
+    periphery_wealth: float = 0.6,  # Calibrated: P(S|A) > P(S|R) prevents immediate revolt
     core_wealth: float = 0.9,
     comprador_cut: float = 0.90,  # Calibrated to prevent Comprador Liquidation
     imperial_rent_pool: float = 100.0,

@@ -1,9 +1,9 @@
 """Tests for LA Decomposition - Terminal Crisis Dynamics Phase 4.
 
 When SUPERWAGE_CRISIS occurs (C_b can't afford wages), the Labor Aristocracy
-decomposes into two fractions:
-- 30% become CARCERAL_ENFORCER (guards, cops, prison staff)
-- 70% fall into INTERNAL_PROLETARIAT (precariat, unemployed, incarcerated)
+decomposes into two fractions (tunable via GameDefines.carceral):
+- 15% become CARCERAL_ENFORCER (guards, cops, prison staff) [default]
+- 85% fall into INTERNAL_PROLETARIAT (precariat, unemployed, incarcerated) [default]
 
 This models the shift from productive jobs to carceral jobs as the imperial
 economy contracts. The enforcers exist at genesis (not dormant) - they consume
@@ -46,7 +46,7 @@ def _create_pre_crisis_circuit(graph: nx.DiGraph[str]) -> None:
         "C_w",
         role=SocialRole.LABOR_ARISTOCRACY,
         wealth=500.0,
-        population=1000,  # Will split: 300 enforcer, 700 proletariat
+        population=1000,  # Will split: 150 enforcer, 850 proletariat (15/85 default)
         active=True,
         _node_type="social_class",
     )
@@ -115,12 +115,12 @@ def _trigger_superwage_crisis(
 class TestLADecomposition:
     """LA decomposes into enforcers + internal proletariat on crisis."""
 
-    def test_decomposition_splits_population_30_70(self, services: ServiceContainer) -> None:
-        """LA population splits 30% enforcer / 70% proletariat.
+    def test_decomposition_splits_population_15_85(self, services: ServiceContainer) -> None:
+        """LA population splits 15% enforcer / 85% proletariat (default).
 
         Given LA with population=1000:
-        - 300 go to CARCERAL_ENFORCER (added to existing 50 = 350 total)
-        - 700 go to INTERNAL_PROLETARIAT (was dormant at 0 = 700 total)
+        - 150 go to CARCERAL_ENFORCER (added to existing 50 = 200 total)
+        - 850 go to INTERNAL_PROLETARIAT (was dormant at 0 = 850 total)
         - LA becomes inactive (pop remains but entity dead)
         """
         graph: nx.DiGraph[str] = nx.DiGraph()
@@ -142,13 +142,13 @@ class TestLADecomposition:
         # Verify LA is now inactive
         assert graph.nodes["C_w"]["active"] is False, "LA should be deactivated"
 
-        # Verify enforcer population grew by 30% of LA
-        expected_enforcer_gain = int(la_pop_before * 0.3)
+        # Verify enforcer population grew by 15% of LA (default from GameDefines)
+        expected_enforcer_gain = int(la_pop_before * 0.15)
         expected_enforcer_total = enforcer_pop_before + expected_enforcer_gain
         assert graph.nodes["Enforcer"]["population"] == expected_enforcer_total
 
-        # Verify internal proletariat activated with 70% of LA
-        expected_proletariat = int(la_pop_before * 0.7)
+        # Verify internal proletariat activated with 85% of LA (default from GameDefines)
+        expected_proletariat = int(la_pop_before * 0.85)
         assert graph.nodes["Int_P"]["active"] is True
         assert graph.nodes["Int_P"]["population"] == expected_proletariat
 
@@ -172,8 +172,8 @@ class TestLADecomposition:
         assert len(captured_events) == 1, "Should emit CLASS_DECOMPOSITION"
         event = captured_events[0]
         assert event.payload["source_class"] == "C_w"
-        assert event.payload["enforcer_fraction"] == 0.3
-        assert event.payload["proletariat_fraction"] == 0.7
+        assert event.payload["enforcer_fraction"] == 0.15  # GameDefines default
+        assert event.payload["proletariat_fraction"] == 0.85  # GameDefines default
         assert "population_transferred" in event.payload
 
     def test_no_decomposition_without_crisis(self, services: ServiceContainer) -> None:
@@ -221,7 +221,7 @@ class TestLADecomposition:
         """If no CARCERAL_ENFORCER exists, decomposition still works.
 
         LA still decomposes, but enforcer population is lost (no target).
-        Internal proletariat still receives 70%.
+        Internal proletariat still receives 85% (default from GameDefines).
         """
         graph: nx.DiGraph[str] = nx.DiGraph()
         _create_pre_crisis_circuit(graph)
@@ -238,14 +238,14 @@ class TestLADecomposition:
 
         # Internal proletariat still activated
         assert graph.nodes["Int_P"]["active"] is True
-        assert graph.nodes["Int_P"]["population"] == 700  # 70% of 1000
+        assert graph.nodes["Int_P"]["population"] == 850  # 85% of 1000
 
     def test_decomposition_handles_missing_internal_proletariat(
         self, services: ServiceContainer
     ) -> None:
         """If no INTERNAL_PROLETARIAT exists, decomposition still works.
 
-        Enforcers get their 30%, proletariat portion is lost.
+        Enforcers get their 15% (default from GameDefines), proletariat portion is lost.
         """
         graph: nx.DiGraph[str] = nx.DiGraph()
         _create_pre_crisis_circuit(graph)
@@ -261,7 +261,7 @@ class TestLADecomposition:
         assert graph.nodes["C_w"]["active"] is False
 
         # Enforcers get their share
-        assert graph.nodes["Enforcer"]["population"] == 350  # 50 + 30% of 1000
+        assert graph.nodes["Enforcer"]["population"] == 200  # 50 + 15% of 1000
 
     def test_decomposition_transfers_wealth_proportionally(
         self, services: ServiceContainer
@@ -277,12 +277,12 @@ class TestLADecomposition:
         _trigger_superwage_crisis(services)
         system.step(graph, services, {"tick": 1})
 
-        # Enforcer gets 30% of LA wealth added to existing
-        expected_enforcer_wealth = enforcer_wealth_before + (la_wealth_before * 0.3)
+        # Enforcer gets 15% of LA wealth added to existing (default from GameDefines)
+        expected_enforcer_wealth = enforcer_wealth_before + (la_wealth_before * 0.15)
         assert graph.nodes["Enforcer"]["wealth"] == pytest.approx(expected_enforcer_wealth)
 
-        # Internal proletariat gets 70% of LA wealth
-        expected_proletariat_wealth = la_wealth_before * 0.7
+        # Internal proletariat gets 85% of LA wealth (default from GameDefines)
+        expected_proletariat_wealth = la_wealth_before * 0.85
         assert graph.nodes["Int_P"]["wealth"] == pytest.approx(expected_proletariat_wealth)
 
     def test_decomposition_includes_narrative_hint(self, services: ServiceContainer) -> None:

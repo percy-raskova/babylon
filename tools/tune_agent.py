@@ -84,6 +84,11 @@ SEARCH_SPACE: Final[dict[str, tuple[float, float]]] = {
     # Consciousness and solidarity (affect terminal outcome)
     "consciousness.sensitivity": (0.2, 0.8),  # How responsive to material conditions
     "solidarity.scaling_factor": (0.3, 0.9),  # Solidarity network effectiveness
+    # Carceral parameters (affect control ratio crisis and terminal decision)
+    # After SUPERWAGE_CRISIS, LA decomposes: some → guards, rest → prisoners
+    # Based on real-world prison staffing: US average ~4:1, crisis >15:1
+    "carceral.control_capacity": (1, 10),  # Prisoners per guard (int, cast in objective)
+    "carceral.enforcer_fraction": (0.05, 0.30),  # % of former LA → guards
 }
 
 # Set up logging
@@ -168,6 +173,17 @@ def create_objective(max_ticks: int = SIMULATION_LENGTH) -> Any:
             SEARCH_SPACE["solidarity.scaling_factor"][0],
             SEARCH_SPACE["solidarity.scaling_factor"][1],
         )
+        # Carceral parameters (critical for later phase transitions)
+        control_capacity = trial.suggest_int(
+            "control_capacity",
+            int(SEARCH_SPACE["carceral.control_capacity"][0]),
+            int(SEARCH_SPACE["carceral.control_capacity"][1]),
+        )
+        enforcer_fraction = trial.suggest_float(
+            "enforcer_fraction",
+            SEARCH_SPACE["carceral.enforcer_fraction"][0],
+            SEARCH_SPACE["carceral.enforcer_fraction"][1],
+        )
 
         # 2. Inject parameters into GameDefines
         defines = GameDefines()
@@ -180,6 +196,12 @@ def create_objective(max_ticks: int = SIMULATION_LENGTH) -> Any:
         defines = inject_parameter(defines, "economy.rent_pool_decay", rent_pool_decay)
         defines = inject_parameter(defines, "consciousness.sensitivity", consciousness_sensitivity)
         defines = inject_parameter(defines, "solidarity.scaling_factor", solidarity_scaling)
+        defines = inject_parameter(defines, "carceral.control_capacity", control_capacity)
+        defines = inject_parameter(defines, "carceral.enforcer_fraction", enforcer_fraction)
+        # proletariat_fraction = 1 - enforcer_fraction (implicit constraint)
+        defines = inject_parameter(
+            defines, "carceral.proletariat_fraction", 1.0 - enforcer_fraction
+        )
 
         # 3. Run simulation with phase milestone tracking
         try:
@@ -323,9 +345,16 @@ def print_results(study: optuna.Study, max_ticks: int = SIMULATION_LENGTH) -> No
                 "rent_pool_decay": "economy.rent_pool_decay",
                 "consciousness_sensitivity": "consciousness.sensitivity",
                 "solidarity_scaling": "solidarity.scaling_factor",
+                "control_capacity": "carceral.control_capacity",
+                "enforcer_fraction": "carceral.enforcer_fraction",
             }
             if key in param_map:
                 defines = inject_parameter(defines, param_map[key], value)
+                # Derive proletariat_fraction from enforcer_fraction
+                if key == "enforcer_fraction":
+                    defines = inject_parameter(
+                        defines, "carceral.proletariat_fraction", 1.0 - value
+                    )
 
         try:
             result = run_simulation(defines, max_ticks=max_ticks)

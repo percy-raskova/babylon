@@ -24,10 +24,6 @@ if TYPE_CHECKING:
 
 from babylon.engine.systems.protocol import ContextType
 
-# Decomposition ratios from user specification
-ENFORCER_FRACTION = 0.3  # 30% become guards/cops
-PROLETARIAT_FRACTION = 0.7  # 70% fall into precariat
-
 
 def _find_entity_by_role(
     graph: nx.DiGraph[str],
@@ -112,7 +108,7 @@ class DecompositionSystem:
         crisis_event: Event,
         tick: int,
     ) -> None:
-        """Execute LA decomposition: 30% enforcer / 70% proletariat.
+        """Execute LA decomposition based on carceral defines.
 
         Args:
             graph: The simulation graph
@@ -134,11 +130,15 @@ class DecompositionSystem:
         if la_population <= 0:
             return  # Nothing to decompose
 
+        # Get decomposition fractions from defines (tunable parameters)
+        enforcer_fraction = services.defines.carceral.enforcer_fraction
+        proletariat_fraction = services.defines.carceral.proletariat_fraction
+
         # Calculate splits
-        enforcer_pop_gain = int(la_population * ENFORCER_FRACTION)
-        proletariat_pop = int(la_population * PROLETARIAT_FRACTION)
-        enforcer_wealth_gain = la_wealth * ENFORCER_FRACTION
-        proletariat_wealth = la_wealth * PROLETARIAT_FRACTION
+        enforcer_pop_gain = int(la_population * enforcer_fraction)
+        proletariat_pop = int(la_population * proletariat_fraction)
+        enforcer_wealth_gain = la_wealth * enforcer_fraction
+        proletariat_wealth = la_wealth * proletariat_fraction
 
         # Find target entities
         enforcer = _find_entity_by_role(graph, SocialRole.CARCERAL_ENFORCER, include_inactive=True)
@@ -173,8 +173,8 @@ class DecompositionSystem:
                     "source_class": la_id,
                     "source_population": la_population,
                     "source_wealth": la_wealth,
-                    "enforcer_fraction": ENFORCER_FRACTION,
-                    "proletariat_fraction": PROLETARIAT_FRACTION,
+                    "enforcer_fraction": enforcer_fraction,
+                    "proletariat_fraction": proletariat_fraction,
                     "population_transferred": {
                         "to_enforcer": enforcer_pop_gain,
                         "to_proletariat": proletariat_pop,

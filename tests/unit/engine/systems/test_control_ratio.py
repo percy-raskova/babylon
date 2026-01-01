@@ -1,10 +1,11 @@
 """Tests for ControlRatioSystem - Terminal Crisis Dynamics Phase 5.
 
 The Control Ratio tracks the guard:prisoner ratio. When enforcers can't
-control the prisoner population (prisoners > enforcers × CONTROL_CAPACITY),
+control the prisoner population (prisoners > enforcers × control_capacity),
 a CONTROL_RATIO_CRISIS occurs, triggering the terminal decision.
 
-User specification: 1:20 ratio (1 guard can control 20 prisoners).
+Default: 1:4 ratio (tunable via GameDefines.carceral.control_capacity).
+Real-world: US average ~4:1, Federal baseline 15:1, crisis >200:1.
 
 This models the mathematical limit of incarceration as surplus population
 management. When the carceral state can't contain the surplus, the system
@@ -37,9 +38,9 @@ def services() -> Generator[ServiceContainer, None, None]:
 def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
     """Create a carceral state where enforcers control the population.
 
-    With CONTROL_CAPACITY = 20:
-    - 100 enforcers can control 2000 prisoners
-    - We'll have 100 enforcers and 1500 prisoners (within capacity)
+    With default control_capacity = 4 (from GameDefines):
+    - 100 enforcers can control 400 prisoners
+    - We'll have 100 enforcers and 350 prisoners (within capacity)
     """
     # Carceral enforcers
     graph.add_node(
@@ -57,7 +58,7 @@ def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
         "Int_P",
         role=SocialRole.INTERNAL_PROLETARIAT,
         wealth=50.0,
-        population=1500,  # 100 * 20 = 2000 capacity, 1500 is within
+        population=250,  # 100 * 4 = 400 capacity, 250 is within
         active=True,
         organization=0.3,
         _node_type="social_class",
@@ -68,7 +69,7 @@ def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
         "Lumpen",
         role=SocialRole.LUMPENPROLETARIAT,
         wealth=20.0,
-        population=300,  # Total prisoners = 1500 + 300 = 1800, still < 2000
+        population=100,  # Total prisoners = 250 + 100 = 350, still < 400
         active=True,
         organization=0.1,
         _node_type="social_class",
@@ -78,9 +79,9 @@ def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
 def _create_unstable_carceral_state(graph: nx.DiGraph[str]) -> None:
     """Create a carceral state where prisoners exceed control capacity.
 
-    With CONTROL_CAPACITY = 20:
-    - 100 enforcers can control 2000 prisoners
-    - We'll have 100 enforcers and 2500 prisoners (exceeds capacity)
+    With default control_capacity = 4 (from GameDefines):
+    - 100 enforcers can control 400 prisoners
+    - We'll have 100 enforcers and 500 prisoners (exceeds capacity)
     """
     # Carceral enforcers
     graph.add_node(
@@ -98,7 +99,7 @@ def _create_unstable_carceral_state(graph: nx.DiGraph[str]) -> None:
         "Int_P",
         role=SocialRole.INTERNAL_PROLETARIAT,
         wealth=50.0,
-        population=2000,  # 100 * 20 = 2000 capacity, we have more
+        population=350,  # 100 * 4 = 400 capacity, we exceed that
         active=True,
         organization=0.3,  # Medium organization
         _node_type="social_class",
@@ -109,7 +110,7 @@ def _create_unstable_carceral_state(graph: nx.DiGraph[str]) -> None:
         "Lumpen",
         role=SocialRole.LUMPENPROLETARIAT,
         wealth=20.0,
-        population=500,  # Total prisoners = 2000 + 500 = 2500, exceeds 2000
+        population=150,  # Total prisoners = 350 + 150 = 500, exceeds 400
         active=True,
         organization=0.2,
         _node_type="social_class",
@@ -153,9 +154,9 @@ class TestControlRatioSystem:
         assert len(captured_events) == 1, "Should emit CONTROL_RATIO_CRISIS"
         event = captured_events[0]
         assert event.payload["enforcer_population"] == 100
-        assert event.payload["prisoner_population"] == 2500
-        assert event.payload["control_capacity"] == 20
-        assert event.payload["max_controllable"] == 2000  # 100 * 20
+        assert event.payload["prisoner_population"] == 500  # 350 Int_P + 150 Lumpen
+        assert event.payload["control_capacity"] == 4  # GameDefines default
+        assert event.payload["max_controllable"] == 400  # 100 * 4
 
     def test_crisis_includes_ratio_calculation(self, services: ServiceContainer) -> None:
         """Crisis event includes the actual ratio for narrative layer."""
@@ -172,9 +173,9 @@ class TestControlRatioSystem:
         system.step(graph, services, {"tick": 1})
 
         event = captured_events[0]
-        # Actual ratio: 2500 / 100 = 25:1 (capacity is 20:1)
-        assert event.payload["actual_ratio"] == pytest.approx(25.0)
-        assert event.payload["over_capacity_by"] == 500  # 2500 - 2000
+        # Actual ratio: 500 / 100 = 5:1 (capacity is 4:1)
+        assert event.payload["actual_ratio"] == pytest.approx(5.0)
+        assert event.payload["over_capacity_by"] == 100  # 500 - 400
 
     def test_inactive_entities_not_counted(self, services: ServiceContainer) -> None:
         """Inactive (dead) entities don't count toward population."""
@@ -184,8 +185,8 @@ class TestControlRatioSystem:
         # Mark the lumpen as inactive
         graph.nodes["Lumpen"]["active"] = False
 
-        # Now we have 2000 prisoners, 100 enforcers
-        # Capacity = 100 * 20 = 2000, exactly at capacity (no crisis)
+        # Now we have 350 prisoners, 100 enforcers
+        # Capacity = 100 * 4 = 400, 350 < 400 (no crisis)
 
         captured_events: list[Event] = []
         services.event_bus.subscribe(
@@ -226,7 +227,7 @@ class TestControlRatioSystem:
         assert len(captured_events) == 1
         event = captured_events[0]
         assert event.payload["enforcer_population"] == 0
-        assert event.payload["control_capacity"] == 20
+        assert event.payload["control_capacity"] == 4  # GameDefines default
 
     def test_no_prisoners_no_crisis(self, services: ServiceContainer) -> None:
         """No crisis if there are no prisoners to control."""
@@ -435,7 +436,7 @@ class TestTerminalDecision:
             _node_type="social_class",
         )
 
-        # Total prisoners: 2500 (exceeds 100 * 20 = 2000 capacity)
+        # Total prisoners: 2500 (exceeds 100 * 4 = 400 capacity)
         # Weighted avg org: (1200 + 100) / 2500 = 0.52 (revolution!)
 
         captured_events: list[Event] = []

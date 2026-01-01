@@ -543,6 +543,56 @@ class StruggleDefines(BaseModel):
     )
 
 
+class CarceralDefines(BaseModel):
+    """Carceral equilibrium coefficients (Terminal Crisis Dynamics).
+
+    The carceral system models the transition from wage suppression to
+    outright incarceration as the imperial rent pool exhausts:
+
+    1. SUPERWAGE_CRISIS: Rent pool can't sustain LA wages
+    2. CLASS_DECOMPOSITION: LA splits into enforcers + prisoners
+    3. CONTROL_RATIO_CRISIS: Prisoners exceed control capacity
+    4. TERMINAL_DECISION: Revolution vs genocide based on organization
+
+    Real-world staffing ratios (sources: BJS, Marshall Project 2024):
+    - 1:1 = Maximum control (Massachusetts, best-staffed)
+    - 4:1 = US national jail average (2022)
+    - 15:1 = Federal DOJ theoretical baseline
+    - 200:1 = Crisis/collapse (Georgia, 2024)
+
+    With 70/30 decomposition, prisoner/enforcer = 2.33:1, so:
+    - control_capacity <= 2: Crisis triggers immediately
+    - control_capacity >= 3: No crisis (stable carceral state)
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    control_capacity: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        description="Prisoners one enforcer can control (1:N). US average ~4, crisis >15.",
+    )
+    enforcer_fraction: float = Field(
+        default=0.15,
+        ge=0.05,
+        le=0.50,
+        description="After SUPERWAGE_CRISIS: % of former LA who BECOME guards/cops",
+    )
+    proletariat_fraction: float = Field(
+        default=0.85,
+        ge=0.50,
+        le=0.95,
+        description="After SUPERWAGE_CRISIS: % of former LA who BECOME prisoners",
+    )
+    revolution_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Average prisoner organization threshold for revolution (vs genocide)",
+    )
+
+
 class EndgameDefines(BaseModel):
     """Configuration for endgame detection thresholds (Slice 1.6).
 
@@ -719,6 +769,7 @@ class GameDefines(BaseModel):
     - topology: Phase transition thresholds (gaseous/liquid/solid)
     - metabolism: Metabolic rift (ecological limits)
     - struggle: Struggle dynamics (Agency Layer)
+    - carceral: Carceral equilibrium (Terminal Crisis Dynamics)
     - endgame: Endgame detection thresholds
     - initial: Initial conditions
     """
@@ -736,6 +787,7 @@ class GameDefines(BaseModel):
     topology: TopologyDefines = Field(default_factory=TopologyDefines)
     metabolism: MetabolismDefines = Field(default_factory=MetabolismDefines)
     struggle: StruggleDefines = Field(default_factory=StruggleDefines)
+    carceral: CarceralDefines = Field(default_factory=CarceralDefines)
     endgame: EndgameDefines = Field(default_factory=EndgameDefines)
     initial: InitialDefines = Field(default_factory=InitialDefines)
     precision: PrecisionDefines = Field(default_factory=PrecisionDefines)

@@ -359,6 +359,14 @@ def get_tunable_parameters() -> dict[str, tuple[float, float]]:
         # Vitality parameters (VitalityDefines)
         "vitality.base_mortality_factor": (0.001, 0.05),
         "vitality.inequality_impact": (0.5, 2.0),
+        # Carceral parameters (CarceralDefines) - Terminal Crisis Dynamics
+        # After SUPERWAGE_CRISIS, the Labor Aristocracy DECOMPOSES into:
+        #   - Enforcers (guards/cops who maintain status through repression)
+        #   - Prisoners (former LA who fall into incarcerated class)
+        "carceral.control_capacity": (1, 20),  # Prisoners per guard (US avg ~4, crisis >15)
+        "carceral.enforcer_fraction": (0.05, 0.50),  # % of former LA → guards
+        "carceral.proletariat_fraction": (0.50, 0.95),  # % of former LA → prisoners
+        "carceral.revolution_threshold": (0.3, 0.7),  # Prisoner org level for revolution
     }
 
 

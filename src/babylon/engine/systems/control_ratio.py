@@ -27,12 +27,6 @@ if TYPE_CHECKING:
 
 from babylon.engine.systems.protocol import ContextType
 
-# Control capacity: 1 guard can control 20 prisoners
-CONTROL_CAPACITY = 20
-
-# Organization threshold for revolution (vs genocide)
-REVOLUTION_THRESHOLD = 0.5
-
 # Prisoner classes (internal proletariat + lumpen)
 _PRISONER_ROLES: frozenset[SocialRole] = frozenset(
     {
@@ -119,15 +113,19 @@ class ControlRatioSystem:
         if prisoner_pop == 0:
             return
 
-        # Calculate control capacity
-        max_controllable = enforcer_pop * CONTROL_CAPACITY
+        # Get control capacity from defines (tunable parameter)
+        # Real-world ratios: US average ~4:1, Federal baseline 15:1, crisis >20:1
+        control_capacity = services.defines.carceral.control_capacity
+        max_controllable = enforcer_pop * control_capacity
 
         # Check if control ratio is exceeded
         if prisoner_pop <= max_controllable:
             return  # Within capacity, no crisis
 
         # CONTROL_RATIO_CRISIS!
-        self._emit_crisis(services, tick, enforcer_pop, prisoner_pop, max_controllable)
+        self._emit_crisis(
+            services, tick, enforcer_pop, prisoner_pop, max_controllable, control_capacity
+        )
 
         # Terminal decision based on prisoner organization
         avg_organization = prisoner_org_sum / prisoner_pop if prisoner_pop > 0 else 0.0
@@ -140,6 +138,7 @@ class ControlRatioSystem:
         enforcer_pop: int,
         prisoner_pop: int,
         max_controllable: int,
+        control_capacity: int,
     ) -> None:
         """Emit CONTROL_RATIO_CRISIS event."""
         actual_ratio = prisoner_pop / enforcer_pop if enforcer_pop > 0 else float("inf")
@@ -152,13 +151,15 @@ class ControlRatioSystem:
                 payload={
                     "enforcer_population": enforcer_pop,
                     "prisoner_population": prisoner_pop,
-                    "control_capacity": CONTROL_CAPACITY,
+                    "control_capacity": control_capacity,
                     "max_controllable": max_controllable,
                     "actual_ratio": actual_ratio,
                     "over_capacity_by": over_capacity_by,
+                    "control_ratio": actual_ratio,
+                    "capacity_threshold": float(control_capacity),
                     "narrative_hint": (
                         f"CONTROL RATIO CRISIS: {prisoner_pop} prisoners exceed "
-                        f"{max_controllable} control capacity. "
+                        f"{max_controllable} control capacity (1:{control_capacity} ratio). "
                         f"The carceral state cannot contain the surplus."
                     ),
                 },
@@ -174,7 +175,9 @@ class ControlRatioSystem:
         enforcer_pop: int,
     ) -> None:
         """Emit TERMINAL_DECISION event based on organization level."""
-        if avg_organization >= REVOLUTION_THRESHOLD:
+        revolution_threshold = services.defines.carceral.revolution_threshold
+
+        if avg_organization >= revolution_threshold:
             outcome = "revolution"
             narrative = (
                 "REVOLUTION: Organized prisoners and radicalized guards unite. "
@@ -194,7 +197,7 @@ class ControlRatioSystem:
                 payload={
                     "outcome": outcome,
                     "avg_organization": avg_organization,
-                    "revolution_threshold": REVOLUTION_THRESHOLD,
+                    "revolution_threshold": revolution_threshold,
                     "prisoner_population": prisoner_pop,
                     "enforcer_population": enforcer_pop,
                     "narrative_hint": narrative,

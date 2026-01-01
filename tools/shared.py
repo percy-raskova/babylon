@@ -70,8 +70,18 @@ ENTITY_COLUMN_PREFIX: Final[dict[str, str]] = {
 # SIMULATION CONSTANTS
 # =============================================================================
 
-DEFAULT_MAX_TICKS: Final[int] = 52
-"""Default simulation length: 52 ticks = 1 year (1 tick = 1 week)."""
+DEFAULT_MAX_TICKS: Final[int] = 3640
+"""Default simulation length: 3640 ticks = 70 years (1 tick = 1 week).
+
+See ai-docs/carceral-equilibrium.md for the 70-year trajectory:
+- Years 0-20:  Imperial Extraction
+- Years 15-25: Peripheral Revolt
+- Years 20-30: Superwage Crisis
+- Years 25-40: Carceral Turn
+- Years 35-50: Control Ratio Crisis
+- Years 45-65: Genocide Phase
+- Years 60-70: Stable Necropolis
+"""
 
 DEATH_THRESHOLD: Final[float] = 0.001
 """Wealth threshold for legacy death detection (use is_dead() instead)."""
@@ -289,27 +299,30 @@ def get_tunable_parameters() -> dict[str, tuple[float, float]]:
         physically meaningful ranges (e.g., Probability must be [0, 1]).
     """
     return {
-        # Economy parameters
+        # Economy parameters (EconomyDefines)
         "economy.extraction_efficiency": (0.1, 0.99),
         "economy.comprador_cut": (0.5, 0.99),
         "economy.base_subsistence": (0.0001, 0.01),
         "economy.super_wage_rate": (0.05, 0.5),
         "economy.trpf_coefficient": (0.0001, 0.01),
-        "economy.rent_pool_decay_rate": (0.0, 0.2),
-        # Consciousness parameters
-        "consciousness.drift_sensitivity_k": (0.01, 0.5),
-        "consciousness.solidarity_weight": (0.1, 1.0),
-        "consciousness.material_weight": (0.1, 1.0),
-        # Solidarity parameters
-        "solidarity.transmission_rate": (0.01, 0.5),
-        "solidarity.distance_decay": (0.1, 2.0),
-        # Survival parameters
+        "economy.rent_pool_decay": (0.0, 0.01),
+        # Consciousness parameters (ConsciousnessDefines)
+        "consciousness.sensitivity": (0.1, 0.9),
+        "consciousness.decay_lambda": (0.01, 0.5),
+        # Solidarity parameters (SolidarityDefines)
+        "solidarity.scaling_factor": (0.1, 1.0),
+        "solidarity.activation_threshold": (0.1, 0.6),
+        # Survival parameters (SurvivalDefines)
         "survival.steepness_k": (1.0, 20.0),
-        "survival.default_subsistence": (0.0, 0.1),
-        "survival.loss_aversion_lambda": (1.0, 3.0),
-        # Metabolism parameters
+        "survival.default_subsistence": (0.1, 0.5),
+        # Behavioral parameters (BehavioralDefines)
+        "behavioral.loss_aversion_lambda": (1.5, 3.0),
+        # Metabolism parameters (MetabolismDefines)
         "metabolism.entropy_factor": (1.0, 2.0),
-        "metabolism.regeneration_rate": (0.01, 0.2),
+        "metabolism.overshoot_threshold": (0.5, 2.0),
+        # Vitality parameters (VitalityDefines)
+        "vitality.base_mortality_factor": (0.001, 0.05),
+        "vitality.inequality_impact": (0.5, 2.0),
     }
 
 

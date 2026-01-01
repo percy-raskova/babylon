@@ -36,6 +36,8 @@ import sys
 from pathlib import Path
 from typing import Any, Final
 
+import numpy as np
+
 # Add src and tools to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 sys.path.insert(0, str(Path(__file__).parent))
@@ -74,8 +76,8 @@ DEFAULT_PARAMS: Final[list[str]] = [
     "economy.super_wage_rate",
     "economy.trpf_coefficient",
     "survival.steepness_k",
-    "consciousness.drift_sensitivity_k",
-    "solidarity.transmission_rate",
+    "consciousness.sensitivity",
+    "solidarity.scaling_factor",
 ]
 
 
@@ -181,8 +183,8 @@ def run_morris_analysis(
     # Evaluate simulations
     outputs = evaluate_simulation(param_values, problem["names"], max_ticks)
 
-    # Analyze Morris results
-    result = morris_analyze.analyze(problem, param_values, outputs)
+    # Analyze Morris results (SALib requires numpy arrays)
+    result = morris_analyze.analyze(problem, param_values, np.array(outputs))
 
     # Format results
     return {
@@ -241,8 +243,8 @@ def run_sobol_analysis(
     # Evaluate simulations
     outputs = evaluate_simulation(param_values, problem["names"], max_ticks)
 
-    # Analyze Sobol results
-    result = sobol_analyze.analyze(problem, outputs, calc_second_order=True)
+    # Analyze Sobol results (SALib requires numpy arrays)
+    result = sobol_analyze.analyze(problem, np.array(outputs), calc_second_order=True)
 
     # Format results
     param_results = {}

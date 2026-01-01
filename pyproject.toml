@@ -50,6 +50,7 @@ aiohttp = "^3.13.2"
 openai = "^2.9.0"
 filelock = ">=3.20.1"
 dearpygui = "^2.1.1"
+salib = "^1.5.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

@@ -181,6 +181,37 @@ rural_commune = SocialClass(
 # No deaths - marginal wealth exceeds needs
 ```
 
+## Population-Scaled Systems
+
+The Mass Line paradigm extends beyond VitalitySystem to all systems that depend on population:
+
+### ProductionSystem (The Soil)
+Production scales linearly with population:
+```python
+produced_value = (base_labor_power * population) * bio_ratio
+```
+
+A demographic block of 1000 workers produces 1000× what a single worker produces. This models the collective labor power of a working class.
+
+### MetabolismSystem (The Metabolic Rift)
+Consumption scales linearly with population:
+```python
+total_consumption = (s_bio + s_class) * population
+```
+
+- Active entities consume resources proportional to their population
+- **Inactive (dead) entities do not consume** - dead blocks don't eat
+- This creates natural carrying capacity dynamics: overshoot triggers when population consumption exceeds biocapacity
+
+### Causal Chain
+The systems interact in materialist causality order:
+1. **VitalitySystem**: Deaths reduce population → per-capita wealth rises
+2. **ProductionSystem**: Smaller population produces less total wealth
+3. **MetabolismSystem**: Smaller population consumes less biocapacity
+4. **Equilibrium**: Population stabilizes at carrying capacity
+
+---
+
 ## Theoretical Basis
 
 The Mass Line refactor implements key Marxist concepts:
@@ -194,6 +225,7 @@ The name "Mass Line" references the Maoist principle of learning from the masses
 
 ## Files Modified
 
+### Phase 1: Schema & VitalitySystem
 | File | Change |
 |------|--------|
 | `src/babylon/models/types.py` | Added `Gini` constrained type [0,1] |
@@ -201,6 +233,12 @@ The name "Mass Line" references the Maoist principle of learning from the masses
 | `src/babylon/config/defines.py` | Added `VitalityDefines` section |
 | `src/babylon/models/enums.py` | Added `POPULATION_DEATH` event type |
 | `src/babylon/engine/systems/vitality.py` | Implemented 3-phase vitality with Grinding Attrition |
+
+### Phase 2: Production & Metabolism Scaling
+| File | Change |
+|------|--------|
+| `src/babylon/engine/systems/production.py` | Scale production by `population` |
+| `src/babylon/engine/systems/metabolism.py` | Scale consumption by `population`, skip inactive entities |
 
 ## See Also
 

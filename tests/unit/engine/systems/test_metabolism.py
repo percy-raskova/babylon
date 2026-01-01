@@ -613,3 +613,142 @@ class TestMetabolismSystemEdgeCases:
         events = services.event_bus.get_history()
         overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
         assert len(overshoot_events) == 0
+
+
+@pytest.mark.unit
+class TestMetabolismPopulationScaling:
+    """Tests for Mass Line population scaling in MetabolismSystem."""
+
+    def test_consumption_scales_by_population(self) -> None:
+        """Consumption scales linearly with population.
+
+        A block of 100 workers consumes 100× what a single worker consumes.
+        total_consumption = (s_bio + s_class) * population
+        """
+        # Arrange
+        graph: nx.DiGraph[str] = nx.DiGraph()
+
+        # Territory with low biocapacity (will trigger overshoot with population=100)
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=50.0,  # After regen: 50 + 2 = 52
+            max_biocapacity=100.0,
+            regeneration_rate=0.02,
+            extraction_intensity=0.0,
+        )
+
+        # Single class with small per-capita consumption but large population
+        # consumption_needs = (0.5 + 0.5) * 100 = 100
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            s_bio=0.5,
+            s_class=0.5,
+            population=100,  # Mass Line: 100 workers
+        )
+
+        services = ServiceContainer.create()
+        context: dict[str, int] = {"tick": 1}
+        system = MetabolismSystem()
+
+        # Act
+        system.step(graph, services, context)
+
+        # Assert: Overshoot event (consumption=100 vs biocapacity=52 → ratio ≈ 1.92)
+        events = services.event_bus.get_history()
+        overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
+        assert len(overshoot_events) == 1
+
+        event = overshoot_events[0]
+        assert event.payload["total_consumption"] == pytest.approx(100.0, abs=0.01)
+        # After regeneration: 50 + 2 = 52
+        assert event.payload["total_biocapacity"] == pytest.approx(52.0, abs=0.01)
+
+    def test_population_one_backward_compatible(self) -> None:
+        """Population=1 behaves same as original implementation.
+
+        This ensures backward compatibility for existing scenarios.
+        """
+        # Arrange
+        graph: nx.DiGraph[str] = nx.DiGraph()
+
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+            regeneration_rate=0.02,
+            extraction_intensity=0.0,
+        )
+
+        # consumption = (5 + 5) * 1 = 10
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            s_bio=5.0,
+            s_class=5.0,
+            population=1,
+        )
+
+        services = ServiceContainer.create()
+        context: dict[str, int] = {"tick": 1}
+        system = MetabolismSystem()
+
+        # Act
+        system.step(graph, services, context)
+
+        # Assert: No overshoot (10/100 = 0.1 < 1.0)
+        events = services.event_bus.get_history()
+        overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
+        assert len(overshoot_events) == 0
+
+    def test_inactive_entities_not_counted(self) -> None:
+        """Inactive (dead) entities do not contribute to consumption.
+
+        Dead blocks don't eat - they're dead.
+        """
+        # Arrange
+        graph: nx.DiGraph[str] = nx.DiGraph()
+
+        # Small territory
+        graph.add_node(
+            "T001",
+            _node_type="territory",
+            biocapacity=10.0,  # After regen: 10 + 2 = 12
+            max_biocapacity=100.0,
+            regeneration_rate=0.02,
+            extraction_intensity=0.0,
+        )
+
+        # Active class with tiny consumption
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            s_bio=1.0,
+            s_class=1.0,  # Total = 2 per capita
+            population=1,
+            active=True,
+        )
+
+        # Dead class with huge consumption that would cause overshoot if counted
+        graph.add_node(
+            "C002",
+            _node_type="social_class",
+            s_bio=100.0,
+            s_class=100.0,  # Total = 200 (would cause massive overshoot)
+            population=1000,
+            active=False,  # Dead block
+        )
+
+        services = ServiceContainer.create()
+        context: dict[str, int] = {"tick": 1}
+        system = MetabolismSystem()
+
+        # Act
+        system.step(graph, services, context)
+
+        # Assert: No overshoot (only C001 counted: 2/12 = 0.17 < 1.0)
+        events = services.event_bus.get_history()
+        overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
+        assert len(overshoot_events) == 0

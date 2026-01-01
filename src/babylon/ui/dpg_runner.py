@@ -26,7 +26,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import dearpygui.dearpygui as dpg  # type: ignore[import-not-found]
+import dearpygui.dearpygui as dpg  # type: ignore
 
 from babylon.ai.director import NarrativeDirector
 from babylon.ai.llm_provider import MockLLM

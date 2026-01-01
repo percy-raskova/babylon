@@ -809,10 +809,10 @@ data_flows:
       systems:
         - "1. VitalitySystem: The Drain (subsistence burn) + Grinding Attrition (probabilistic mortality) + The Reaper (extinction)"
         - "2. TerritorySystem: Update heat, check eviction thresholds"
-        - "3. ProductionSystem: Generate value from labor and biocapacity"
+        - "3. ProductionSystem: Generate value from labor and biocapacity (scales by population)"
         - "4. SolidaritySystem: Transmit consciousness along SOLIDARITY edges"
         - "5. ImperialRentSystem: Extract surplus value along EXPLOITATION edges"
-        - "6. MetabolismSystem: Ecological depletion and regeneration"
+        - "6. MetabolismSystem: Ecological depletion and regeneration (consumption scales by population)"
         - "7. SurvivalSystem: Calculate P(S|A) and P(S|R)"
         - "8. StruggleSystem: Agency layer (George Floyd Dynamic)"
         - "9. ConsciousnessSystem: Apply ideological routing (agitation → consciousness/identity)"
@@ -824,13 +824,26 @@ data_flows:
       new_fields:
         population: "int - Block size (default=1 for backward compat)"
         inequality: "Gini [0,1] - Intra-class inequality coefficient"
-      grinding_attrition_formula: |
-        marginal_wealth = per_capita_wealth × (1 - inequality)
-        mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
-        deaths = floor(population × mortality_rate × base_mortality_factor)
-      events:
-        - "POPULATION_DEATH: Probabilistic deaths from inequality"
-        - "ENTITY_DEATH: Full extinction (population=0)"
+      phase_1_vitality:
+        grinding_attrition_formula: |
+          marginal_wealth = per_capita_wealth × (1 - inequality)
+          mortality_rate = max(0, (consumption_needs - marginal_wealth) / consumption_needs)
+          deaths = floor(population × mortality_rate × base_mortality_factor)
+        events:
+          - "POPULATION_DEATH: Probabilistic deaths from inequality"
+          - "ENTITY_DEATH: Full extinction (population=0)"
+      phase_2_physics:
+        production_scaling: |
+          produced_value = (base_labor_power × population) × bio_ratio
+          # 1000 workers produce 1000× what 1 worker produces
+        metabolism_scaling: |
+          total_consumption = (s_bio + s_class) × population
+          # Only active entities count (dead blocks don't consume)
+        causal_chain:
+          - "VitalitySystem: Deaths reduce population"
+          - "ProductionSystem: Smaller population = less production"
+          - "MetabolismSystem: Smaller population = less consumption"
+          - "Equilibrium: Population stabilizes at carrying capacity"
 
     physics_calculations:
       pure_math: |

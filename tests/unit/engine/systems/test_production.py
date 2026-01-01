@@ -33,6 +33,7 @@ def _create_worker_node(
     role: SocialRole = SocialRole.PERIPHERY_PROLETARIAT,
     wealth: float = 0.0,
     active: bool = True,
+    population: int = 1,
 ) -> None:
     """Add a worker node to the graph."""
     graph.add_node(
@@ -40,6 +41,7 @@ def _create_worker_node(
         role=role,
         wealth=wealth,
         active=active,
+        population=population,
         _node_type="social_class",
     )
 
@@ -234,3 +236,62 @@ class TestProductionSystem:
         """ProductionSystem should have correct name property."""
         system = ProductionSystem()
         assert system.name == "production"
+
+
+@pytest.mark.unit
+class TestProductionPopulationScaling:
+    """Tests for Mass Line population scaling in ProductionSystem."""
+
+    def test_population_scales_production(self, services: ServiceContainer) -> None:
+        """Production scales linearly with population.
+
+        A block of 100 workers produces 100× what a single worker produces.
+        production = (base_labor_power * population) * bio_ratio
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_worker_node(graph, "C001", wealth=0.0, population=100)
+        _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
+        _create_tenancy_edge(graph, "C001", "T001")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Expected: (base_labor_power / weeks_per_year) * population * bio_ratio
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_production = (annual_labor_power / weeks_per_year) * 100 * 1.0
+        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+
+    def test_population_one_backward_compatible(self, services: ServiceContainer) -> None:
+        """Population=1 produces same as original implementation.
+
+        This ensures backward compatibility for existing scenarios.
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_worker_node(graph, "C001", wealth=0.0, population=1)
+        _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
+        _create_tenancy_edge(graph, "C001", "T001")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 1})
+
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_production = (annual_labor_power / weeks_per_year) * 1.0
+        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+
+    def test_population_zero_no_production(self, services: ServiceContainer) -> None:
+        """Population=0 produces nothing (extinct block).
+
+        Zero workers means zero production, regardless of territory health.
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_worker_node(graph, "C001", wealth=5.0, population=0)
+        _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
+        _create_tenancy_edge(graph, "C001", "T001")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Wealth unchanged (0 population = 0 production)
+        assert graph.nodes["C001"]["wealth"] == pytest.approx(5.0)

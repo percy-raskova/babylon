@@ -69,7 +69,7 @@ epoch_status:
         - "WorldState computed properties (total_biocapacity, total_consumption, overshoot_ratio)"
         - "calculate_biocapacity_delta() and calculate_overshoot_ratio() formulas"
         - "ECOLOGICAL_OVERSHOOT EventType"
-        - "MetabolismSystem with 15 unit tests"
+        - "MetabolismSystem with 18 unit tests (includes population scaling)"
         - "MetabolismSystem registered in DEFAULT_SYSTEMS (after TerritorySystem)"
         - "Ecological metrics in TickMetrics (overshoot_ratio, total_biocapacity, total_consumption)"
         - "MetricsCollector extracts ecological state from WorldState"

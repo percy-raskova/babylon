@@ -105,8 +105,11 @@ class ProductionSystem:
             # Calculate biocapacity ratio (avoid division by zero)
             bio_ratio = 0.0 if max_biocapacity <= 0 else biocapacity / max_biocapacity
 
+            # Mass Line: Scale production by population (demographic block size)
+            population = data.get("population", 1)
+
             # Calculate and add production to wealth
-            produced_value = base_labor_power * bio_ratio
+            produced_value = (base_labor_power * population) * bio_ratio
             current_wealth = data.get("wealth", 0.0)
             graph.nodes[node_id]["wealth"] = current_wealth + produced_value
 

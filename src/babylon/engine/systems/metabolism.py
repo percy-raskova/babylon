@@ -94,10 +94,11 @@ class MetabolismSystem:
             if data.get("_node_type") == "territory"
         )
 
+        # Mass Line: Scale consumption by population, skip inactive (dead) entities
         total_consumption = sum(
-            data.get("s_bio", 0.0) + data.get("s_class", 0.0)
+            (data.get("s_bio", 0.0) + data.get("s_class", 0.0)) * data.get("population", 1)
             for _, data in graph.nodes(data=True)
-            if data.get("_node_type") == "social_class"
+            if data.get("_node_type") == "social_class" and data.get("active", True)
         )
 
         # Phase 3: Check overshoot and emit event if ratio exceeds threshold

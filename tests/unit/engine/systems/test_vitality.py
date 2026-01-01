@@ -258,9 +258,10 @@ class TestVitalitySubsistenceBurn:
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
-        # Assert: Linear deduction
-        expected_cost = 0.005 * 1.5  # 0.0075
-        expected_wealth = 1.0 - expected_cost  # 0.9925
+        # Assert: Linear deduction using actual base_subsistence from defines
+        base_sub = services.defines.economy.base_subsistence
+        expected_cost = base_sub * 1.5
+        expected_wealth = 1.0 - expected_cost
         assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth)
 
     def test_burn_uses_class_multiplier(self, services: ServiceContainer) -> None:
@@ -281,9 +282,10 @@ class TestVitalitySubsistenceBurn:
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
-        # Assert: Core bourgeoisie burns faster
-        periphery_cost = 0.005 * 1.5  # 0.0075
-        bourgeoisie_cost = 0.005 * 20.0  # 0.10
+        # Assert: Core bourgeoisie burns faster (use actual base_subsistence from defines)
+        base_sub = services.defines.economy.base_subsistence
+        periphery_cost = base_sub * 1.5
+        bourgeoisie_cost = base_sub * 20.0
 
         assert graph.nodes["C001"]["wealth"] == pytest.approx(1.0 - periphery_cost)
         assert graph.nodes["C003"]["wealth"] == pytest.approx(1.0 - bourgeoisie_cost)

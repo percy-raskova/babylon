@@ -7,8 +7,12 @@ Workers (PERIPHERY_PROLETARIAT, LABOR_ARISTOCRACY) produce value based on:
 - Their territory's biocapacity ratio (biocapacity / max_biocapacity)
 - The base_labor_power configuration parameter
 
+After calculating production, this system sets extraction_intensity on each
+territory, enabling MetabolismSystem to calculate biocapacity depletion.
+
 Historical Materialist Principle:
     Value comes from labor applied to nature. Dead land = no production.
+    Production depletes nature. The metabolic rift is the ecological cost.
 """
 
 from __future__ import annotations
@@ -56,13 +60,23 @@ class ProductionSystem:
         services: ServiceContainer,
         _context: ContextType,
     ) -> None:
-        """Generate wealth for workers based on territory biocapacity.
+        """Generate wealth for workers and set extraction_intensity.
 
         Iterates all social_class nodes. For active workers with TENANCY
         edges, calculates production based on territory health and adds
-        it to their wealth.
+        it to their wealth. Also accumulates production per territory
+        to set extraction_intensity for MetabolismSystem.
+
+        NOTE: base_labor_power is an annual rate, converted to weekly here
+        to match ImperialRentSystem's timescale conversion.
         """
-        base_labor_power = services.defines.economy.base_labor_power
+        # Convert annual production to weekly (same as extraction_efficiency)
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        base_labor_power = annual_labor_power / weeks_per_year
+
+        # Track production per territory for extraction_intensity
+        territory_production: dict[str, float] = {}
 
         for node_id, data in graph.nodes(data=True):
             # Skip non-entity nodes (territories, etc.)
@@ -96,6 +110,15 @@ class ProductionSystem:
             current_wealth = data.get("wealth", 0.0)
             graph.nodes[node_id]["wealth"] = current_wealth + produced_value
 
+            # Accumulate production by territory for extraction_intensity
+            if territory_id and produced_value > 0:
+                territory_production[territory_id] = (
+                    territory_production.get(territory_id, 0.0) + produced_value
+                )
+
+        # Set extraction_intensity on all territories
+        self._update_extraction_intensities(graph, territory_production)
+
     def _find_tenancy_target(self, graph: nx.DiGraph[str], worker_id: str) -> str | None:
         """Find the territory a worker occupies via TENANCY edge.
 
@@ -110,3 +133,29 @@ class ProductionSystem:
             if edge_data.get("edge_type") == EdgeType.TENANCY:
                 return target_id
         return None
+
+    def _update_extraction_intensities(
+        self,
+        graph: nx.DiGraph[str],
+        territory_production: dict[str, float],
+    ) -> None:
+        """Update extraction_intensity on territory nodes.
+
+        Sets extraction_intensity based on total production on each territory.
+        Territories with no production this tick get intensity = 0.0.
+
+        Formula: intensity = min(1.0, total_production / max_biocapacity)
+
+        Args:
+            graph: The world graph with territory nodes.
+            territory_production: Map of territory_id -> total production this tick.
+        """
+        for node_id, data in graph.nodes(data=True):
+            if data.get("_node_type") != "territory":
+                continue
+
+            total_production = territory_production.get(node_id, 0.0)
+            max_biocapacity = data.get("max_biocapacity", 100.0)
+
+            intensity = min(1.0, total_production / max_biocapacity) if max_biocapacity > 0 else 0.0
+            graph.nodes[node_id]["extraction_intensity"] = intensity

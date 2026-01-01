@@ -79,10 +79,10 @@ class TestProductionSystem:
     def test_worker_in_full_biocapacity_territory_gains_full_labor_power(
         self, services: ServiceContainer
     ) -> None:
-        """Worker in territory with 100% biocapacity gains base_labor_power.
+        """Worker in territory with 100% biocapacity gains weekly labor power.
 
-        production = base_labor_power * (biocapacity / max_biocapacity)
-        production = 1.0 * (100 / 100) = 1.0
+        production = (base_labor_power / weeks_per_year) * (biocapacity / max_biocapacity)
+        production = (1.0 / 52) * (100 / 100) = 0.0192
         """
         graph: nx.DiGraph = nx.DiGraph()
         _create_worker_node(graph, "C001", wealth=0.0)
@@ -92,8 +92,10 @@ class TestProductionSystem:
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
-        # base_labor_power defaults to 1.0
-        expected_production = services.defines.economy.base_labor_power * 1.0
+        # base_labor_power is annual, converted to weekly
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_production = (annual_labor_power / weeks_per_year) * 1.0
         assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
 
     def test_worker_in_half_biocapacity_territory_gains_half_labor_power(
@@ -101,7 +103,7 @@ class TestProductionSystem:
     ) -> None:
         """Worker in territory with 50% biocapacity gains half production.
 
-        production = 1.0 * (50 / 100) = 0.5
+        production = (1.0 / 52) * (50 / 100) = 0.0096
         """
         graph: nx.DiGraph = nx.DiGraph()
         _create_worker_node(graph, "C001", wealth=0.0)
@@ -111,7 +113,9 @@ class TestProductionSystem:
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
-        expected_production = services.defines.economy.base_labor_power * 0.5
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_production = (annual_labor_power / weeks_per_year) * 0.5
         assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
 
     def test_worker_in_depleted_territory_gains_nothing(self, services: ServiceContainer) -> None:
@@ -191,7 +195,9 @@ class TestProductionSystem:
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
-        expected_production = services.defines.economy.base_labor_power * 1.0
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_production = (annual_labor_power / weeks_per_year) * 1.0
         assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
 
     def test_periphery_proletariat_produces(self, services: ServiceContainer) -> None:
@@ -204,7 +210,9 @@ class TestProductionSystem:
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
-        expected_production = services.defines.economy.base_labor_power * 1.0
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_production = (annual_labor_power / weeks_per_year) * 1.0
         assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
 
     def test_production_accumulates_with_existing_wealth(self, services: ServiceContainer) -> None:
@@ -217,7 +225,9 @@ class TestProductionSystem:
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
-        expected_wealth = 10.0 + services.defines.economy.base_labor_power
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+        expected_wealth = 10.0 + (annual_labor_power / weeks_per_year)
         assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth)
 
     def test_production_system_name(self) -> None:

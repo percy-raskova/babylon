@@ -140,6 +140,12 @@ class MetabolicRiftConstants:
     # Matches GameDefines.metabolism.max_overshoot_ratio
     MAX_OVERSHOOT_RATIO: float = 999.0
 
+    # Breakeven intensity where regeneration equals extraction
+    # Formula: regeneration_rate / entropy_factor = 0.02 / 1.2 = 0.0167
+    # When intensity > 0.0167, biocapacity depletes
+    # When intensity < 0.0167, biocapacity regenerates
+    BREAKEVEN_INTENSITY: float = 0.0167
+
 
 # =============================================================================
 # MODEL TEST CONSTANTS (Value-Type Organization)

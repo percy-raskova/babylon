@@ -71,7 +71,7 @@ class SolidarityConstants:
 
 @dataclass(frozen=True)
 class BourgeoisieDecisionConstants:
-    """Pool threshold constants for bourgeoisie decision system.
+    """Pool threshold and policy delta constants for bourgeoisie decision system.
 
     These encode the decision matrix for Dynamic Balance (Sprint 3.4.4):
     - pool_ratio >= HIGH -> BRIBERY (if low tension)
@@ -79,14 +79,25 @@ class BourgeoisieDecisionConstants:
     - pool_ratio < CRITICAL -> CRISIS
 
     All thresholds match GameDefines.economy.pool_*_threshold
+    Policy deltas match GameDefines.economy.*_delta
     """
 
+    # Pool ratio thresholds
     POOL_HIGH_THRESHOLD: float = 0.7
     POOL_LOW_THRESHOLD: float = 0.3
     POOL_CRITICAL_THRESHOLD: float = 0.1
 
-    # Tension threshold for IRON_FIST vs AUSTERITY decision
-    TENSION_THRESHOLD: float = 0.5
+    # Tension thresholds for decision branching
+    BRIBERY_TENSION_THRESHOLD: float = 0.3  # Max tension for bribery
+    IRON_FIST_TENSION_THRESHOLD: float = 0.5  # Min tension for iron fist
+    TENSION_THRESHOLD: float = 0.5  # Legacy alias for iron_fist threshold
+
+    # Policy deltas (wage and repression changes per decision)
+    BRIBERY_WAGE_DELTA: float = 0.05  # Wage increase during prosperity
+    AUSTERITY_WAGE_DELTA: float = -0.05  # Wage cut during low pool
+    IRON_FIST_REPRESSION_DELTA: float = 0.10  # Repression boost during high tension
+    CRISIS_WAGE_DELTA: float = -0.15  # Emergency wage slash
+    CRISIS_REPRESSION_DELTA: float = 0.20  # Emergency repression spike
 
 
 @dataclass(frozen=True)

@@ -20,6 +20,8 @@ from babylon.models.entities import Relationship, SocialClass, Territory
 from babylon.models.enums import EdgeType, SectorType, SocialRole
 from babylon.models.world_state import WorldState
 
+pytestmark = [pytest.mark.integration, pytest.mark.theory_rent]
+
 
 def _create_minimal_world(
     entities: dict[str, SocialClass],

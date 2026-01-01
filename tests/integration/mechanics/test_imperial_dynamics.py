@@ -25,6 +25,8 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.enums import EdgeType, SocialRole
 from babylon.models.world_state import WorldState
 
+pytestmark = [pytest.mark.integration, pytest.mark.theory_rent]
+
 
 def create_imperial_circuit_scenario(
     p_w_wealth: float = 100.0,

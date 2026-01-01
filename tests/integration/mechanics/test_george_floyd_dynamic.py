@@ -28,6 +28,8 @@ from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.enums import SocialRole
 
+pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
+
 
 @pytest.mark.integration
 class TestGeorgeFloydDynamic:

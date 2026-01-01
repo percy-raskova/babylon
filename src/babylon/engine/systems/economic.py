@@ -151,7 +151,8 @@ class ImperialRentSystem:
         # See ai-docs/epoch2-trpf.yaml for full OCC implementation in Epoch 2
         tick = context.get("tick", 0)
         trpf_coefficient = services.defines.economy.trpf_coefficient
-        trpf_multiplier = max(0.1, 1.0 - (trpf_coefficient * tick))
+        trpf_floor = services.defines.economy.trpf_efficiency_floor
+        trpf_multiplier = max(trpf_floor, 1.0 - (trpf_coefficient * tick))
         extraction_efficiency = base_extraction_efficiency * trpf_multiplier
 
         # Handle optional tick_context for backward compatibility
@@ -531,6 +532,16 @@ class ImperialRentSystem:
         low_threshold = services.defines.economy.pool_low_threshold
         critical_threshold = services.defines.economy.pool_critical_threshold
 
+        # Get policy deltas and tension thresholds from defines
+        economy = services.defines.economy
+        bribery_wage_delta = economy.bribery_wage_delta
+        austerity_wage_delta = economy.austerity_wage_delta
+        iron_fist_repression_delta = economy.iron_fist_repression_delta
+        crisis_wage_delta = economy.crisis_wage_delta
+        crisis_repression_delta = economy.crisis_repression_delta
+        bribery_tension_threshold = economy.bribery_tension_threshold
+        iron_fist_tension_threshold = economy.iron_fist_tension_threshold
+
         # Call decision formula
         decision, wage_delta, repression_delta = calculate_decision(
             pool_ratio=pool_ratio,
@@ -538,6 +549,13 @@ class ImperialRentSystem:
             high_threshold=high_threshold,
             low_threshold=low_threshold,
             critical_threshold=critical_threshold,
+            bribery_wage_delta=bribery_wage_delta,
+            austerity_wage_delta=austerity_wage_delta,
+            iron_fist_repression_delta=iron_fist_repression_delta,
+            crisis_wage_delta=crisis_wage_delta,
+            crisis_repression_delta=crisis_repression_delta,
+            bribery_tension_threshold=bribery_tension_threshold,
+            iron_fist_tension_threshold=iron_fist_tension_threshold,
         )
 
         # Apply deltas to tick_context (will be saved to economy)

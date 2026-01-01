@@ -41,8 +41,8 @@ class TestPhaseTransitionEventType:
         assert EventType("phase_transition") == EventType.PHASE_TRANSITION
 
     def test_event_type_count_updated(self) -> None:
-        """EventType count is 17 (includes ENTITY_DEATH from Material Reality + 3 George Jackson)."""
-        assert len(EventType) == 17
+        """EventType count is 24 (includes Terminal Crisis Dynamics events)."""
+        assert len(EventType) == 24
 
 
 # =============================================================================

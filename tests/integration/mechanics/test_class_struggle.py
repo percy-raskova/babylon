@@ -12,9 +12,7 @@ This is the capstone integration test that proves:
 
 import pytest
 
-# =============================================================================
-# TEST 100-TICK WEALTH TRANSFER
-# =============================================================================
+pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 
 
 @pytest.mark.integration

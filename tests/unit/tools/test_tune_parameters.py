@@ -213,17 +213,21 @@ class TestDeathDetection:
         )
 
     def test_is_dead_function_exists(self) -> None:
-        """Verify is_dead or check_death function exists."""
+        """Verify death detection function exists."""
         module = load_tune_parameters_module()
-        has_death_check = hasattr(module, "is_dead") or hasattr(module, "check_death")
-        assert has_death_check, "Module needs death detection function (is_dead or check_death)"
+        has_death_check = (
+            hasattr(module, "is_dead_by_wealth")
+            or hasattr(module, "is_dead")
+            or hasattr(module, "check_death")
+        )
+        assert has_death_check, "Module needs death detection function"
 
     def test_death_detection_at_threshold(self) -> None:
         """Verify death is detected when wealth <= DEATH_THRESHOLD."""
         module = load_tune_parameters_module()
 
         check_fn: Callable[..., bool] | None = None
-        for name in ["is_dead", "check_death"]:
+        for name in ["is_dead_by_wealth", "is_dead", "check_death"]:
             if hasattr(module, name):
                 check_fn = getattr(module, name)
                 break

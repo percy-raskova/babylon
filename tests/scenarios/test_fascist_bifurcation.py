@@ -17,6 +17,8 @@ from babylon.engine.simulation import Simulation
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
 from babylon.models.entities.social_class import IdeologicalProfile
 
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 
 @pytest.mark.integration
 class TestFascistBifurcationMultiDimensional:

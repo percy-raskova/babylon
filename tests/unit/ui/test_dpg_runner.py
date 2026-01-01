@@ -633,7 +633,8 @@ class TestImperialCircuitWealthDataFlow:
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
 
-        state, config, defines = create_imperial_circuit_scenario()
+        # Use higher initial wealth so extraction visibly dominates production
+        state, config, defines = create_imperial_circuit_scenario(periphery_wealth=100.0)
         metrics = MetricsCollector(mode="batch")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 

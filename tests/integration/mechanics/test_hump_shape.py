@@ -25,6 +25,8 @@ from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
 
+pytestmark = [pytest.mark.integration, pytest.mark.theory_rift]
+
 # Phase boundaries in ticks (1 tick = 1 week, 52 ticks = 1 year)
 GROWTH_END = 104  # Year 2
 PLATEAU_END = 520  # Year 10

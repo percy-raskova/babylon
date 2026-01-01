@@ -29,10 +29,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Import from centralized shared module (ADR036)
 from shared import (
     DEFAULT_MAX_TICKS,
+    ENTITY_IDS,
     PERIPHERY_WORKER_ID,
     inject_parameter,
     is_dead,
 )
+
+# Re-export for backwards compatibility
+__all__ = ["ENTITY_IDS"]
 
 from babylon.config.defines import GameDefines
 from babylon.engine.observers.metrics import MetricsCollector

@@ -154,6 +154,60 @@ class EconomyDefines(BaseModel):
         description="Background evaporation rate of imperial rent pool per tick",
     )
 
+    # Bourgeoisie decision policy deltas (Dynamic Balance - Sprint 3.4.4)
+    bribery_wage_delta: float = Field(
+        default=0.05,
+        ge=-1.0,
+        le=1.0,
+        description="Wage increase during prosperity (BRIBERY policy)",
+    )
+    austerity_wage_delta: float = Field(
+        default=-0.05,
+        ge=-1.0,
+        le=1.0,
+        description="Wage cut during low pool (AUSTERITY policy)",
+    )
+    iron_fist_repression_delta: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description="Repression increase during high tension (IRON_FIST policy)",
+    )
+    crisis_wage_delta: float = Field(
+        default=-0.15,
+        ge=-1.0,
+        le=1.0,
+        description="Emergency wage cut during crisis",
+    )
+    crisis_repression_delta: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="Emergency repression spike during crisis",
+    )
+
+    # Tension thresholds for bourgeoisie decisions
+    bribery_tension_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Maximum aggregate tension for bribery policy",
+    )
+    iron_fist_tension_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum aggregate tension for iron fist policy",
+    )
+
+    # TRPF efficiency floor
+    trpf_efficiency_floor: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum extraction efficiency after TRPF decay",
+    )
+
 
 class SurvivalDefines(BaseModel):
     """Survival calculus coefficients."""

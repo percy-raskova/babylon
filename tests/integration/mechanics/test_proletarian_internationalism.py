@@ -18,6 +18,8 @@ from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.simulation import Simulation
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
 
+pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
+
 
 @pytest.mark.integration
 class TestProletarianInternationalism:

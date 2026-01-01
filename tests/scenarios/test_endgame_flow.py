@@ -32,6 +32,8 @@ from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, GameOutcome, SectorType, SocialRole
 
+pytestmark = [pytest.mark.integration, pytest.mark.slow]
+
 # TDD GREEN phase - tests now pass with implementation
 
 # =============================================================================

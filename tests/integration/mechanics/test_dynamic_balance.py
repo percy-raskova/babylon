@@ -20,6 +20,8 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.enums import EdgeType, SocialRole
 from babylon.models.world_state import WorldState
 
+pytestmark = [pytest.mark.integration, pytest.mark.theory_rent]
+
 
 def create_dynamic_balance_scenario(
     initial_pool: float = 100.0,
@@ -212,14 +214,20 @@ class TestDynamicBalanceDrain:
     """
 
     def test_pool_grows_with_extraction(self) -> None:
-        """Pool should grow when extraction feeds tribute.
+        """Pool should grow when extraction feeds tribute faster than decay.
 
         BUG FIX: With wages calculated from tribute (not wealth), the pool
         accumulates over time. wages = tribute * rate < tribute always.
+
+        NOTE: rent_pool_decay (0.2% per tick) requires extraction_efficiency > 0.41
+        for pool growth. With p_w_wealth=50, comprador_cut=0.15, wage_rate=0.40:
+        - Net inflow = (50 * efficiency/52) * 0.85 * 0.60 = 0.49 * efficiency
+        - Decay = 100 * 0.002 = 0.2
+        - Breakeven: 0.49 * efficiency = 0.2 → efficiency ≈ 0.41
         """
         state, config, defines = create_dynamic_balance_scenario(
             initial_pool=100.0,
-            extraction_efficiency=0.3,  # Extraction rate
+            extraction_efficiency=0.5,  # Above decay breakeven (~0.41)
             super_wage_rate=0.40,  # Wages as fraction of tribute
         )
 

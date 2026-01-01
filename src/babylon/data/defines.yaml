@@ -42,7 +42,20 @@ economy:
   # Models declining extraction efficiency over time without full OCC tracking
   # See ai-docs/epoch2-trpf.yaml for full OCC implementation planned for Epoch 2
   trpf_coefficient: 0.0005          # Extraction efficiency decay per tick (at 1040 ticks: 48% efficiency)
+  trpf_efficiency_floor: 0.1        # Minimum extraction efficiency after TRPF decay (10%)
   rent_pool_decay: 0.002            # Background rent pool evaporation per tick
+
+  # Bourgeoisie Decision Policy Deltas (Dynamic Balance - Sprint 3.4.4)
+  # These control wage/repression changes based on imperial rent pool level and tension
+  bribery_wage_delta: 0.05          # Wage increase during prosperity (BRIBERY)
+  austerity_wage_delta: -0.05       # Wage cut during low pool (AUSTERITY)
+  iron_fist_repression_delta: 0.10  # Repression boost during high tension (IRON_FIST)
+  crisis_wage_delta: -0.15          # Emergency wage slash (CRISIS)
+  crisis_repression_delta: 0.20     # Emergency repression spike (CRISIS)
+
+  # Tension Thresholds for Bourgeoisie Decisions
+  bribery_tension_threshold: 0.3    # Maximum tension for bribery policy (30%)
+  iron_fist_tension_threshold: 0.5  # Minimum tension for iron fist policy (50%)
 
 survival:
   # Acquiescence probability P(S|A)

@@ -30,7 +30,7 @@ from babylon.models.enums import SectorType, SocialRole
 
 # TDD RED phase marker - these tests intentionally fail until GREEN phase
 # Remove this line when implementing the GREEN phase
-pytestmark = pytest.mark.red_phase
+pytestmark = [pytest.mark.integration, pytest.mark.theory_rift, pytest.mark.red_phase]
 
 # =============================================================================
 # FIXTURES

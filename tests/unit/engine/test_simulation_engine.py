@@ -786,7 +786,6 @@ class TestStepTensionRate:
 # =============================================================================
 
 
-@pytest.mark.red_phase  # TDD RED phase - intentionally failing until GREEN phase
 class TestMetabolismSystemRegistration:
     """Test that MetabolismSystem is registered in DEFAULT_SYSTEMS.
 

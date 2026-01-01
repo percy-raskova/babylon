@@ -103,7 +103,6 @@ def _create_tenancy_edge(
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestProductionSetsExtractionIntensity:
     """Verify ProductionSystem sets extraction_intensity on territories."""
 
@@ -282,7 +281,6 @@ class TestProductionSetsExtractionIntensity:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestExtractionIntensityCausesDepletion:
     """Integration: Production → extraction_intensity → Metabolism → depletion."""
 
@@ -379,7 +377,6 @@ class TestExtractionIntensityCausesDepletion:
 
 
 @pytest.mark.integration
-@pytest.mark.red_phase
 class TestHumpShapeDecay:
     """Verify decay phase in long simulations."""
 

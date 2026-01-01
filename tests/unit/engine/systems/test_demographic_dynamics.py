@@ -71,7 +71,6 @@ def _create_entity_node(
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestPopulationScaledDrain:
     """Tests for population-scaled subsistence burn (The Drain).
 
@@ -156,7 +155,6 @@ class TestPopulationScaledDrain:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestCoverageRatioFormula:
     """Tests for the coverage_ratio threshold formula.
 
@@ -293,7 +291,6 @@ class TestCoverageRatioFormula:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestMalthusianCorrection:
     """Tests for the Malthusian Correction dynamics.
 
@@ -389,7 +386,6 @@ class TestMalthusianCorrection:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestAttritionEventPayload:
     """Tests for POPULATION_ATTRITION event payload structure."""
 
@@ -451,7 +447,6 @@ class TestAttritionEventPayload:
 
 
 @pytest.mark.unit
-@pytest.mark.red_phase
 class TestBackwardCompatibility:
     """Tests for backward compatibility with Phase 1 behavior."""
 

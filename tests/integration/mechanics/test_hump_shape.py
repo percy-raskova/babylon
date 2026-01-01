@@ -229,7 +229,6 @@ class TestHumpShapeDecayPhase:
 
 
 @pytest.mark.integration
-@pytest.mark.red_phase
 class TestHumpShapeScoring:
     """Tests for the Hump Shape scoring function.
 
@@ -275,6 +274,7 @@ class TestHumpShapeScoring:
 
         assert score == 0.0, f"Early death should score 0, got {score:.1f}"
 
+    @pytest.mark.red_phase  # Calibration: scoring function needs adjustment
     def test_monotonic_decline_scores_low(self) -> None:
         """A trajectory that only declines should score poorly."""
         decline = [1.0 - (i / SIMULATION_END) * 0.9 for i in range(SIMULATION_END)]

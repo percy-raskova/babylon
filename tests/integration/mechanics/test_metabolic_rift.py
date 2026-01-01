@@ -28,9 +28,8 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import SectorType, SocialRole
 
-# TDD RED phase marker - these tests intentionally fail until GREEN phase
-# Remove this line when implementing the GREEN phase
-pytestmark = [pytest.mark.integration, pytest.mark.theory_rift, pytest.mark.red_phase]
+# Most tests are GREEN; only TestBiocapacityDynamics.test_biocapacity_depletes_under_extraction is RED
+pytestmark = [pytest.mark.integration, pytest.mark.theory_rift]
 
 # =============================================================================
 # FIXTURES
@@ -160,6 +159,7 @@ class TestBiocapacityDynamics:
             "Is MetabolismSystem registered in _DEFAULT_SYSTEMS?"
         )
 
+    @pytest.mark.red_phase  # Calibration needed for extraction intensity
     def test_biocapacity_depletes_under_extraction(
         self,
         territory_under_extraction: Territory,

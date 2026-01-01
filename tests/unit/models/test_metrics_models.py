@@ -12,8 +12,7 @@ The metrics models capture simulation state for analysis and visualization:
 These models mirror the data structures in tools/parameter_analysis.py
 but with proper Pydantic validation for dashboard integration.
 
-NOTE: All test classes are marked with @pytest.mark.red_phase to exclude them
-from pre-commit fast tests. Remove this marker when implementing GREEN phase.
+TDD GREEN Phase: All tests pass with implementation.
 """
 
 from __future__ import annotations
@@ -31,8 +30,7 @@ from babylon.models.metrics import (
 
 TC = TestConstants
 
-# All tests in this file are TDD RED phase - intentionally failing
-pytestmark = pytest.mark.red_phase
+# TDD GREEN phase - all tests now pass with implementation
 
 
 # =============================================================================
@@ -1177,7 +1175,6 @@ class TestTickMetricsDifferentials:
 # =============================================================================
 
 
-@pytest.mark.red_phase  # TDD RED phase - intentionally failing until GREEN phase
 class TestTickMetricsEcologicalFields:
     """Tests for TickMetrics ecological metric fields.
 

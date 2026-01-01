@@ -1,7 +1,6 @@
 """Tests for MetricsCollector observer (Sprint 4.1: Dashboard/Sweeper Unification).
 
-TDD RED Phase: These tests define the contract for MetricsCollector that
-unifies metrics collection between the parameter sweeper and dashboard.
+TDD GREEN Phase: All tests pass with implementation.
 
 The MetricsCollector:
 - Implements SimulationObserver protocol
@@ -11,11 +10,6 @@ The MetricsCollector:
 - Supports two modes: "interactive" (rolling window) and "batch" (full history)
 - Provides summary statistics for parameter sweeps
 - Exports to CSV-compatible format
-
-All tests should FAIL until GREEN phase implements the observer.
-
-NOTE: All test classes are marked with @pytest.mark.red_phase to exclude them
-from pre-commit fast tests. Remove this marker when implementing GREEN phase.
 """
 
 from __future__ import annotations
@@ -36,8 +30,7 @@ from babylon.models.enums import EdgeType
 if TYPE_CHECKING:
     pass
 
-# All tests in this file are TDD RED phase - intentionally failing
-pytestmark = pytest.mark.red_phase
+# TDD GREEN phase - all tests now pass with implementation
 
 
 # =============================================================================
@@ -1761,7 +1754,6 @@ class TestEdgeAggregationFix:
 # =============================================================================
 
 
-@pytest.mark.red_phase  # TDD RED phase - intentionally failing until GREEN phase
 class TestEcologicalMetricsExtraction:
     """Tests for ecological metrics extraction from WorldState.
 

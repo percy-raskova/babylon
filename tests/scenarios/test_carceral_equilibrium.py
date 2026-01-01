@@ -44,7 +44,6 @@ MAX_TICKS = 2600  # ~50 years, sufficient for full trajectory
 
 @pytest.mark.slow
 @pytest.mark.integration
-@pytest.mark.red_phase  # TDD RED: Defines expected null hypothesis trajectory
 class TestCarceralEquilibrium:
     """Tests for the 70-Year Arc (Default - No Player Intervention).
 
@@ -58,6 +57,7 @@ class TestCarceralEquilibrium:
     revolution (which requires organization >= 0.5).
     """
 
+    @pytest.mark.red_phase  # TDD RED: Trajectory not yet producing all phase events
     def test_default_trajectory_phases(
         self,
         config: SimulationConfig,

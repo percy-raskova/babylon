@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.4"
-  updated: "2025-12-26"
-  last_sprint: "Political Economy of Liquidity - Epoch 1 (The Ledger)"
+  version: "2.0.5"
+  updated: "2026-01-01"
+  last_sprint: "Scenario Layer - Carceral Equilibrium Test (ADR034)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -1559,9 +1559,25 @@ tech_debt:
       - "Event model tests (tests/unit/models/test_events.py) - 44 tests"
       - "Event conversion tests (tests/unit/engine/test_event_conversion.py) - 13 tests"
       - "Phase transition tests (tests/unit/topology/test_phase_transition.py) - 30 tests (Sprint 3.3 4-phase model)"
-      - "Narrative pipeline tests (tests/integration/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
+      - "Narrative pipeline tests (tests/integration/system/test_narrative_pipeline.py) - 9 tests (Sprint 4.1)"
       - "MetricsCollector tests (tests/unit/engine/observers/test_metrics_collector.py) - 60 tests (Sprint 4.1 TDD)"
       - "Metrics model tests (tests/unit/models/test_metrics_models.py) - 41 tests (Sprint 4.1 TDD)"
+      - "Scenario tests (tests/scenarios/) - long-trajectory validation (ADR034)"
+
+    scenario_layer:
+      status: "NEW (2026-01-01)"
+      adr: "ADR034_scenario_layer_test_taxonomy"
+      purpose: "Validate 70-year arc null hypothesis from carceral-equilibrium.md"
+      directory: "tests/scenarios/"
+      files:
+        - "test_endgame_flow.py (14 tests) - moved from integration/system/"
+        - "test_fascist_bifurcation.py (4 tests) - moved from integration/mechanics/"
+        - "test_carceral_equilibrium.py (2 tests) - NEW, TDD RED phase"
+      markers:
+        - "@pytest.mark.slow - Long-running (2600+ ticks)"
+        - "@pytest.mark.integration - Full engine integration"
+        - "@pytest.mark.red_phase - TDD RED (trajectory test pending GREEN)"
+      note: "Scenario tests verify theoretical outcomes, not implementation correctness"
 
   documentation_drift:
     issue: "README.md still references PostgreSQL, old structure"

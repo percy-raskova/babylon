@@ -2,8 +2,8 @@
 # Key decisions and their rationale (ADR-style)
 
 meta:
-  version: "1.8.0"
-  updated: "2025-12-31"
+  version: "1.9.0"
+  updated: "2026-01-01"
   format: "decision_id: {status, date, context, decision, rationale, consequences}"
 
 # =============================================================================
@@ -2596,6 +2596,89 @@ pending:
     related_decisions:
       - "ADR032_materialist_system_order (VitalitySystem runs first)"
       - "ADR001_embedded_trinity (material conditions determine survival)"
+
+  ADR034_scenario_layer_test_taxonomy:
+    status: "accepted"
+    date: "2026-01-01"
+    title: "Scenario Layer for Long-Trajectory Tests"
+    context: |
+      Integration tests were organized into mechanics/, system/, and ui/ subdirectories
+      (per the 2025-01-01 taxonomy refactor). However, tests validating long-term
+      simulation trajectories (50-70 year timescales) require distinct treatment:
+
+      - They test theoretical outcomes, not implementation correctness
+      - They run for thousands of ticks (slow, multi-minute runtime)
+      - They validate the "null hypothesis" (default trajectory without player intervention)
+      - They demonstrate adherence to ai-docs/carceral-equilibrium.md and ai-docs/theory.md
+
+      The existing test categories (mechanics, system, ui) don't adequately capture
+      this distinction between "does the code work?" and "does the simulation
+      produce theoretically expected trajectories?"
+
+    decision: |
+      Create a dedicated `tests/scenarios/` directory for trajectory validation tests.
+
+      These tests:
+      1. Focus on phase sequence ordering, not exact tick timing
+      2. Validate canonical outcomes from theoretical documents
+      3. Are marked with @pytest.mark.slow for CI exclusion from fast feedback loops
+      4. Test the MVP: simulation behavior in absence of player intervention
+
+      Move existing trajectory-focused tests from integration/:
+      - test_endgame_flow.py → tests/scenarios/
+      - test_fascist_bifurcation.py → tests/scenarios/
+
+      Add new @pytest.mark.slow marker for long-running scenario tests.
+
+    rationale:
+      separation_of_concerns:
+        principle: "Scenario tests verify theory, not implementation"
+        example: "Carceral equilibrium test validates 70-year arc from theory docs"
+
+      ci_performance:
+        principle: "Long tests excluded from fast CI feedback loop"
+        example: "@pytest.mark.slow skipped by default, run nightly"
+
+      documentation_alignment:
+        principle: "Tests serve as executable specification of theory docs"
+        example: "test_carceral_equilibrium.py validates ai-docs/carceral-equilibrium.md"
+
+      taxonomy_clarity:
+        principle: "Four-tier test structure maps to distinct concerns"
+        example: |
+          - mechanics/: MLM-TW game theory verification
+          - system/: Engine architecture validation
+          - ui/: Presentation layer testing
+          - scenarios/: Long-term trajectory validation
+
+    consequences:
+      positive:
+        - "Clear taxonomy: mechanics (theory), system (plumbing), ui (presentation), scenarios (trajectories)"
+        - "Slow tests isolated with dedicated marker"
+        - "Theoretical claims become testable assertions"
+        - "MVP defined as verifiable behavior (null hypothesis trajectory)"
+      negative:
+        - "Additional test category to maintain"
+        - "Scenario tests may need retuning if parameters change"
+        - "Long test runs require dedicated CI time"
+
+    tests_added:
+      - "tests/scenarios/test_carceral_equilibrium.py::TestCarceralEquilibrium"
+      - "@pytest.mark.slow marker registered in pyproject.toml"
+
+    files_modified:
+      - "pyproject.toml (added 'slow' marker)"
+      - "tests/scenarios/__init__.py (new directory)"
+      - "tests/scenarios/conftest.py (imperial circuit fixtures)"
+      - "tests/scenarios/test_carceral_equilibrium.py (70-year arc test)"
+
+    files_moved:
+      - "tests/integration/system/test_endgame_flow.py → tests/scenarios/"
+      - "tests/integration/mechanics/test_fascist_bifurcation.py → tests/scenarios/"
+
+    related_decisions:
+      - "ADR001_embedded_trinity (theory docs as architectural source of truth)"
+      - "ADR003_ai_as_observer (deterministic mechanics for reproducible outcomes)"
 
 # =============================================================================
 # REJECTED DECISIONS

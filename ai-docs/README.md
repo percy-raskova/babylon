@@ -62,6 +62,8 @@ This directory helps AI assistants:
 | **DESIGN & THEORY** |||
 | `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism | YAML |
 | `theory.md` | MLM-TW theoretical foundation | Markdown |
+| `terminal-crisis-dynamics.md` | Endgame arc: plantation→prison→concentration camp→genocide | Markdown |
+| `demographics_and_mortality.md` | Mass Line Refactor: population blocks, grinding attrition | Markdown |
 | `rag-architecture.yaml` | RAG as permission system, validation pipeline | YAML |
 | **UI PATTERNS** |||
 | `synopticon-spec.yaml` | Observer system architecture, Lens filter, SynopticView | YAML |

@@ -336,6 +336,28 @@ class ImperialRentSystem:
             nominal_wages = min(desired_wages, available_pool)
 
             if nominal_wages <= 0:
+                # Terminal Crisis: WAGES infrastructure exists but pool exhausted
+                # This triggers when C_b has capital but no income (tribute stopped)
+                # The crisis is about the TRANSITION from paid to unpaid wages
+                if available_pool <= 0:
+                    tick = context.get("tick", 0) if isinstance(context, dict) else 0
+                    services.event_bus.publish(
+                        Event(
+                            type=EventType.SUPERWAGE_CRISIS,
+                            tick=tick,
+                            payload={
+                                "payer_id": source_id,
+                                "receiver_id": target_id,
+                                "desired_wages": desired_wages,
+                                "available_pool": available_pool,
+                                "bourgeoisie_wealth": bourgeoisie_wealth,
+                                "narrative_hint": (
+                                    "SUPERWAGE CRISIS: Imperial rent pool exhausted. "
+                                    "Core bourgeoisie cannot afford to bribe labor aristocracy."
+                                ),
+                            },
+                        )
+                    )
                 continue
 
             # Transfer nominal wages (actual cash transfer)

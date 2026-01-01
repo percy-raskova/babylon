@@ -88,11 +88,13 @@ def create_imperial_circuit_state() -> WorldState:
     )
 
     # Labor Aristocracy - bribed workers, will decompose
+    # High starting wealth ensures LA survives until SUPERWAGE_CRISIS
+    # triggers decomposition (rent pool must exhaust first)
     labor_aristocracy = SocialClass(
         id="C002",
         name="Labor Aristocracy",
         role=SocialRole.LABOR_ARISTOCRACY,
-        wealth=100.0,
+        wealth=50000.0,  # High wealth to survive until rent pool exhausts
         ideology=IdeologicalProfile(
             class_consciousness=0.2,  # Low (sedated by super-wages)
             national_identity=0.6,  # Moderate nationalism

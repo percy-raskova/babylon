@@ -323,7 +323,7 @@ class ImperialRentSystem:
             if available_pool <= negligible:
                 # Terminal Crisis: Pool exhausted, wages can't be paid
                 # Emit once per WAGES edge when pool first becomes negligible
-                tick = context.get("tick", 0) if isinstance(context, dict) else 0
+                tick = context.get("tick", 0)  # TickContext supports .get()
                 bourgeoisie_wealth = graph.nodes[source_id].get("wealth", 0.0)
                 tribute_inflow = tick_context.get("tribute_inflow", 0.0)
                 desired_wages = tribute_inflow * super_wage_rate

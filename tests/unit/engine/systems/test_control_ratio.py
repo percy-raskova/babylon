@@ -35,6 +35,36 @@ def services() -> Generator[ServiceContainer, None, None]:
     container.database.close()
 
 
+def _create_test_context(
+    tick: int = 1,
+    *,
+    include_crisis_tick: bool = False,
+) -> dict[str, object]:
+    """Create a test context with required persistent data.
+
+    The ControlRatioSystem requires _class_decomposition_tick to know when
+    to start checking the control ratio. For raw dict contexts, persistent
+    data is stored directly in the dict (not nested).
+
+    We set _class_decomposition_tick to a tick in the past so the system
+    runs immediately (control_ratio_delay default is 52).
+
+    Args:
+        tick: Current tick number.
+        include_crisis_tick: If True, also set _control_ratio_crisis_tick
+            so TERMINAL_DECISION fires immediately.
+    """
+    context: dict[str, object] = {
+        "tick": tick,
+        "_class_decomposition_tick": tick - 100,  # Decomposition happened 100 ticks ago
+    }
+    if include_crisis_tick:
+        # Crisis happened in the past, so terminal decision can fire now
+        context["_control_ratio_crisis_tick"] = tick - 10
+        context["_control_crisis_emitted"] = True  # Prevent re-emitting crisis
+    return context
+
+
 def _create_stable_carceral_state(graph: nx.DiGraph[str]) -> None:
     """Create a carceral state where enforcers control the population.
 
@@ -133,7 +163,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 0, "No crisis when within capacity"
 
@@ -149,7 +179,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 1, "Should emit CONTROL_RATIO_CRISIS"
         event = captured_events[0]
@@ -170,7 +200,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         event = captured_events[0]
         # Actual ratio: 500 / 100 = 5:1 (capacity is 4:1)
@@ -195,7 +225,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         # At exactly capacity - no crisis (need to EXCEED)
         assert len(captured_events) == 0
@@ -222,7 +252,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 1
         event = captured_events[0]
@@ -250,7 +280,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 0, "No prisoners = no crisis"
 
@@ -266,7 +296,7 @@ class TestControlRatioSystem:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 1
         assert "narrative_hint" in captured_events[0].payload
@@ -313,7 +343,7 @@ class TestTerminalDecision:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context(include_crisis_tick=True))
 
         assert len(captured_events) == 1
         event = captured_events[0]
@@ -357,7 +387,7 @@ class TestTerminalDecision:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context(include_crisis_tick=True))
 
         assert len(captured_events) == 1
         event = captured_events[0]
@@ -376,7 +406,7 @@ class TestTerminalDecision:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context(include_crisis_tick=True))
 
         assert len(captured_events) == 1
         assert "narrative_hint" in captured_events[0].payload
@@ -393,7 +423,7 @@ class TestTerminalDecision:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 0, "No crisis = no terminal decision"
 
@@ -446,7 +476,7 @@ class TestTerminalDecision:
         )
 
         system = ControlRatioSystem()
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context(include_crisis_tick=True))
 
         event = captured_events[0]
         assert event.payload["outcome"] == "revolution"

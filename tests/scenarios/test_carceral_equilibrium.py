@@ -138,7 +138,8 @@ class TestCarceralEquilibrium:
                     and milestones["terminal_decision"] is None
                 ):
                     milestones["terminal_decision"] = tick
-                    terminal_outcome = event.payload.get("outcome")
+                    # TerminalDecisionEvent has outcome as direct attribute
+                    terminal_outcome = event.outcome
 
             # Early exit if terminal decision reached
             if milestones["terminal_decision"] is not None:
@@ -203,7 +204,7 @@ class TestCarceralEquilibrium:
         Args:
             state: WorldState after decomposition event
         """
-        roles = {entity.role for entity in state.entities.values() if entity.is_active}
+        roles = {entity.role for entity in state.entities.values() if entity.active}
 
         # Check for enforcer role
         has_enforcers = SocialRole.CARCERAL_ENFORCER in roles

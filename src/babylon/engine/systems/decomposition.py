@@ -82,44 +82,137 @@ class DecompositionSystem:
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Check for SUPERWAGE_CRISIS and execute LA decomposition.
+        """Check for SUPERWAGE_CRISIS and execute LA decomposition with delay.
 
-        Scans event bus history for SUPERWAGE_CRISIS events emitted by
-        ImperialRentSystem earlier in this tick.
+        Uses persistent_data to track when SUPERWAGE_CRISIS was detected
+        and delays CLASS_DECOMPOSITION by the configured number of ticks.
+        This ensures phase staggering (temporal separation between phases).
         """
         tick = context.get("tick", 0)
+        # Handle both TickContext (with persistent_data) and raw dict
+        if hasattr(context, "persistent_data"):
+            persistent: dict[str, Any] = context.persistent_data
+        else:
+            persistent = context
 
-        # Check event bus history for SUPERWAGE_CRISIS events this tick
-        crisis_events = [
-            e for e in services.event_bus.get_history() if e.type == EventType.SUPERWAGE_CRISIS
-        ]
-
-        if not crisis_events:
+        # Check if already decomposed (one-time event)
+        if persistent.get("_decomposition_complete"):
             return
 
-        # Process each crisis (typically just one)
-        for crisis_event in crisis_events:
-            self._execute_decomposition(graph, services, crisis_event, tick)
+        # Check trigger conditions:
+        # 1. SUPERWAGE_CRISIS has been detected + delay elapsed
+        # 2. LA is about to die (wealth below subsistence) - fallback trigger
+        #
+        # The fallback ensures decomposition happens before LA dies naturally,
+        # which would prevent the carceral phase from executing properly.
+
+        # Check for LA about to die (fallback trigger)
+        # We use two thresholds:
+        # - "approaching subsistence": emit SUPERWAGE_CRISIS early
+        # - "below subsistence": execute CLASS_DECOMPOSITION
+        # This ensures at least 1 tick gap between the events
+        la = _find_entity_by_role(graph, SocialRole.LABOR_ARISTOCRACY)
+        la_approaching_death = False
+        la_about_to_die = False
+        la_id = None
+        if la is not None:
+            la_id, la_data = la
+            la_wealth = la_data.get("wealth", 0.0)
+            subsistence = la_data.get("subsistence_threshold", 0.0)
+            la_pop = la_data.get("population", 0)
+            # Estimate per-tick consumption (s_bio + s_class)
+            consumption = la_data.get("s_bio", 0.0) + la_data.get("s_class", 0.0)
+            # "Approaching": within 2 ticks of subsistence
+            if la_wealth < subsistence + (2 * consumption) and la_pop > 0:
+                la_approaching_death = True
+            # "About to die": below subsistence
+            if la_wealth < subsistence and la_pop > 0:
+                la_about_to_die = True
+
+        # Check if SUPERWAGE_CRISIS has been detected
+        superwage_tick = persistent.get("_superwage_crisis_tick")
+
+        if superwage_tick is None:
+            # Look for SUPERWAGE_CRISIS events in history
+            # Use explicit .value for robust string comparison
+            crisis_events = [
+                e
+                for e in services.event_bus.get_history()
+                if e.type == EventType.SUPERWAGE_CRISIS.value
+            ]
+            if crisis_events:
+                # Record the tick when crisis was first detected
+                superwage_tick = min(e.tick for e in crisis_events)
+                persistent["_superwage_crisis_tick"] = superwage_tick
+
+        # Early warning: emit SUPERWAGE_CRISIS when LA is approaching death
+        # This ensures at least 1 tick gap before CLASS_DECOMPOSITION
+        if la_approaching_death and superwage_tick is None and la_id is not None:
+            services.event_bus.publish(
+                Event(
+                    type=EventType.SUPERWAGE_CRISIS,
+                    tick=tick,
+                    payload={
+                        "payer_id": "C001",  # Core bourgeoisie (conventional)
+                        "receiver_id": la_id,
+                        "desired_wages": 0.0,
+                        "available_pool": 0.0,
+                        "narrative_hint": (
+                            "SUPERWAGE CRISIS: Labor aristocracy wealth collapsing. "
+                            "Super-wages cannot sustain the privileged stratum."
+                        ),
+                    },
+                )
+            )
+            persistent["_superwage_crisis_tick"] = tick
+            superwage_tick = tick  # Update local variable for delay check
+
+        # Determine if we should decompose now
+        should_decompose = False
+        if la_about_to_die:
+            # Fallback: LA is dying, decompose immediately to prevent loss
+            should_decompose = True
+        elif superwage_tick is not None:
+            # Normal path: check if delay has elapsed
+            delay = services.defines.carceral.decomposition_delay
+            if tick >= superwage_tick + delay:
+                should_decompose = True
+
+        if not should_decompose:
+            return
+
+        # Execute decomposition
+        # Note: We don't re-fetch the crisis event from EventBus because
+        # EventBus is recreated each tick (ephemeral). The trigger event
+        # type is always SUPERWAGE_CRISIS when this code path executes.
+        success = self._execute_decomposition(graph, services, tick)
+
+        # Mark as complete and record tick for ControlRatioSystem
+        # Only mark complete if decomposition actually happened
+        if success:
+            persistent["_decomposition_complete"] = True
+            persistent["_class_decomposition_tick"] = tick
 
     def _execute_decomposition(
         self,
         graph: nx.DiGraph[str],
         services: ServiceContainer,
-        crisis_event: Event,
         tick: int,
-    ) -> None:
+    ) -> bool:
         """Execute LA decomposition based on carceral defines.
 
         Args:
             graph: The simulation graph
             services: Service container
-            crisis_event: The triggering SUPERWAGE_CRISIS event
             tick: Current simulation tick
+
+        Returns:
+            True if decomposition happened, False otherwise.
         """
         # Find Labor Aristocracy
         la = _find_entity_by_role(graph, SocialRole.LABOR_ARISTOCRACY)
         if la is None:
-            return  # No LA to decompose (or already decomposed)
+            return False  # No LA to decompose (or already decomposed)
 
         la_id, la_data = la
 
@@ -128,7 +221,7 @@ class DecompositionSystem:
         la_wealth = la_data.get("wealth", 0.0)
 
         if la_population <= 0:
-            return  # Nothing to decompose
+            return False  # Nothing to decompose
 
         # Get decomposition fractions from defines (tunable parameters)
         enforcer_fraction = services.defines.carceral.enforcer_fraction
@@ -184,7 +277,7 @@ class DecompositionSystem:
                         "to_enforcer": enforcer_wealth_gain,
                         "to_proletariat": proletariat_wealth,
                     },
-                    "trigger_event": crisis_event.type,
+                    "trigger_event": EventType.SUPERWAGE_CRISIS.value,
                     "narrative_hint": (
                         "CLASS DECOMPOSITION: Labor aristocracy collapses. "
                         f"{enforcer_pop_gain} become guards/cops. "
@@ -193,3 +286,4 @@ class DecompositionSystem:
                 },
             )
         )
+        return True

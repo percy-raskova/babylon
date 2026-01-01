@@ -592,6 +592,26 @@ class CarceralDefines(BaseModel):
         description="Average prisoner organization threshold for revolution (vs genocide)",
     )
 
+    # Phase staggering delays (ticks) - ensures temporal separation between phases
+    decomposition_delay: int = Field(
+        default=52,
+        ge=0,
+        le=520,
+        description="Ticks to wait after SUPERWAGE_CRISIS before CLASS_DECOMPOSITION (1 year default)",
+    )
+    control_ratio_delay: int = Field(
+        default=52,
+        ge=0,
+        le=520,
+        description="Ticks to wait after CLASS_DECOMPOSITION before checking control ratio (1 year default)",
+    )
+    terminal_decision_delay: int = Field(
+        default=1,
+        ge=0,
+        le=52,
+        description="Ticks to wait after CONTROL_RATIO_CRISIS before TERMINAL_DECISION",
+    )
+
 
 class EndgameDefines(BaseModel):
     """Configuration for endgame detection thresholds (Slice 1.6).

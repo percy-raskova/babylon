@@ -103,9 +103,34 @@ class ControlRatioSystem:
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
-        """Check control ratio and emit crisis/terminal decision events."""
-        tick = context.get("tick", 0)
+        """Check control ratio and emit crisis/terminal decision events with delays.
 
+        Uses persistent_data to track phase timing:
+        - Waits for _class_decomposition_tick + control_ratio_delay before checking
+        - Emits CONTROL_RATIO_CRISIS when prisoners exceed capacity
+        - Waits terminal_decision_delay before emitting TERMINAL_DECISION
+        """
+        tick = context.get("tick", 0)
+        # Handle both TickContext (with persistent_data) and raw dict
+        if hasattr(context, "persistent_data"):
+            persistent: dict[str, Any] = context.persistent_data
+        else:
+            persistent = context
+
+        # Check if terminal decision already made (one-time event)
+        if persistent.get("_terminal_decision_emitted"):
+            return
+
+        # Wait for CLASS_DECOMPOSITION + delay before checking control ratio
+        decomposition_tick = persistent.get("_class_decomposition_tick")
+        if decomposition_tick is None:
+            return  # Decomposition hasn't happened yet
+
+        delay = services.defines.carceral.control_ratio_delay
+        if tick < decomposition_tick + delay:
+            return  # Not ready yet - waiting for delay
+
+        # Count populations
         enforcer_pop = _count_enforcer_population(graph)
         prisoner_pop, prisoner_org_sum = _count_prisoner_population_and_org(graph)
 
@@ -122,14 +147,27 @@ class ControlRatioSystem:
         if prisoner_pop <= max_controllable:
             return  # Within capacity, no crisis
 
-        # CONTROL_RATIO_CRISIS!
-        self._emit_crisis(
-            services, tick, enforcer_pop, prisoner_pop, max_controllable, control_capacity
-        )
+        # Emit CONTROL_RATIO_CRISIS if not already emitted
+        if not persistent.get("_control_crisis_emitted"):
+            self._emit_crisis(
+                services, tick, enforcer_pop, prisoner_pop, max_controllable, control_capacity
+            )
+            persistent["_control_crisis_emitted"] = True
+            persistent["_control_ratio_crisis_tick"] = tick
 
-        # Terminal decision based on prisoner organization
+        # Check if delay has elapsed for terminal decision
+        crisis_tick = persistent.get("_control_ratio_crisis_tick")
+        if crisis_tick is None:
+            return  # Shouldn't happen, but safety check
+
+        terminal_delay = services.defines.carceral.terminal_decision_delay
+        if tick < crisis_tick + terminal_delay:
+            return  # Not ready yet - waiting for terminal delay
+
+        # Emit TERMINAL_DECISION
         avg_organization = prisoner_org_sum / prisoner_pop if prisoner_pop > 0 else 0.0
         self._emit_terminal_decision(services, tick, avg_organization, prisoner_pop, enforcer_pop)
+        persistent["_terminal_decision_emitted"] = True
 
     def _emit_crisis(
         self,

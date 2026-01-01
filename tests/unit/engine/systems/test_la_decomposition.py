@@ -33,6 +33,31 @@ def services() -> Generator[ServiceContainer, None, None]:
     container.database.close()
 
 
+def _create_test_context(
+    tick: int = 1,
+    *,
+    include_superwage_tick: bool = True,
+) -> dict[str, object]:
+    """Create a test context with required persistent data.
+
+    The DecompositionSystem requires _superwage_crisis_tick to know when
+    SUPERWAGE_CRISIS occurred so it can enforce the decomposition_delay.
+    For unit tests, we set this to a tick far enough in the past that
+    the delay (52 ticks default) has already elapsed.
+
+    Args:
+        tick: Current tick number.
+        include_superwage_tick: If True, set _superwage_crisis_tick so
+            decomposition fires immediately. Set False to test behavior
+            when no crisis has occurred.
+    """
+    context: dict[str, object] = {"tick": tick}
+    if include_superwage_tick:
+        # Crisis happened 100 ticks ago, well past the 52-tick delay
+        context["_superwage_crisis_tick"] = tick - 100
+    return context
+
+
 def _create_pre_crisis_circuit(graph: nx.DiGraph[str]) -> None:
     """Create circuit BEFORE LA decomposition.
 
@@ -90,27 +115,6 @@ def _create_pre_crisis_circuit(graph: nx.DiGraph[str]) -> None:
     )
 
 
-def _trigger_superwage_crisis(
-    services: ServiceContainer,
-    la_id: str = "C_w",
-) -> None:
-    """Simulate SUPERWAGE_CRISIS event emission."""
-    services.event_bus.publish(
-        Event(
-            type=EventType.SUPERWAGE_CRISIS,
-            tick=1,
-            payload={
-                "payer_id": "C_b",
-                "receiver_id": la_id,
-                "desired_wages": 100.0,
-                "available_pool": 0.0,
-                "bourgeoisie_wealth": 5000.0,
-                "narrative_hint": "Test crisis",
-            },
-        )
-    )
-
-
 @pytest.mark.unit
 class TestLADecomposition:
     """LA decomposes into enforcers + internal proletariat on crisis."""
@@ -130,14 +134,11 @@ class TestLADecomposition:
         la_pop_before = graph.nodes["C_w"]["population"]
         enforcer_pop_before = graph.nodes["Enforcer"]["population"]
 
-        # Create system and trigger crisis (event published to bus history)
+        # Create system - context indicates crisis already happened and delay elapsed
         system = DecompositionSystem()
 
-        # Trigger crisis - event goes to bus history
-        _trigger_superwage_crisis(services)
-
-        # Process decomposition
-        system.step(graph, services, {"tick": 1})
+        # Process decomposition (no need to trigger event, context has _superwage_crisis_tick)
+        system.step(graph, services, _create_test_context())
 
         # Verify LA is now inactive
         assert graph.nodes["C_w"]["active"] is False, "LA should be deactivated"
@@ -166,8 +167,7 @@ class TestLADecomposition:
         )
 
         system = DecompositionSystem()
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 1, "Should emit CLASS_DECOMPOSITION"
         event = captured_events[0]
@@ -186,8 +186,8 @@ class TestLADecomposition:
 
         system = DecompositionSystem()
 
-        # Step WITHOUT triggering crisis (no event in bus history)
-        system.step(graph, services, {"tick": 1})
+        # Step WITHOUT crisis (no _superwage_crisis_tick in context)
+        system.step(graph, services, _create_test_context(include_superwage_tick=False))
 
         # Populations unchanged
         assert graph.nodes["C_w"]["population"] == la_pop_before
@@ -202,16 +202,16 @@ class TestLADecomposition:
 
         system = DecompositionSystem()
 
-        # First crisis - decomposition happens
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 1})
+        # First crisis - decomposition happens (context tracks completion)
+        context = _create_test_context(tick=1)
+        system.step(graph, services, context)
 
         enforcer_after_first = graph.nodes["Enforcer"]["population"]
         proletariat_after_first = graph.nodes["Int_P"]["population"]
 
-        # Second crisis - should NOT decompose again (LA is inactive)
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 2})
+        # Second step - should NOT decompose again (_decomposition_complete is set)
+        context["tick"] = 2  # type: ignore[typeddict-unknown-key]
+        system.step(graph, services, context)
 
         # Populations unchanged from first decomposition
         assert graph.nodes["Enforcer"]["population"] == enforcer_after_first
@@ -230,8 +230,7 @@ class TestLADecomposition:
         graph.remove_node("Enforcer")
 
         system = DecompositionSystem()
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         # LA still decomposes
         assert graph.nodes["C_w"]["active"] is False
@@ -254,8 +253,7 @@ class TestLADecomposition:
         graph.remove_node("Int_P")
 
         system = DecompositionSystem()
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         # LA still decomposes
         assert graph.nodes["C_w"]["active"] is False
@@ -274,8 +272,7 @@ class TestLADecomposition:
         enforcer_wealth_before = graph.nodes["Enforcer"]["wealth"]  # 100.0
 
         system = DecompositionSystem()
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         # Enforcer gets 15% of LA wealth added to existing (default from GameDefines)
         expected_enforcer_wealth = enforcer_wealth_before + (la_wealth_before * 0.15)
@@ -297,8 +294,7 @@ class TestLADecomposition:
         )
 
         system = DecompositionSystem()
-        _trigger_superwage_crisis(services)
-        system.step(graph, services, {"tick": 1})
+        system.step(graph, services, _create_test_context())
 
         assert len(captured_events) == 1
         assert "narrative_hint" in captured_events[0].payload

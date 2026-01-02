@@ -1,0 +1,24 @@
+meta:
+  id: ADR005_json_schema_2020
+  version: 1.0.0
+ADR005_json_schema_2020:
+  status: accepted
+  date: '2024-12-07'
+  title: JSON Schema Draft 2020-12
+  context: 'Need schema validation for game data. Multiple JSON Schema
+
+    versions exist.
+
+    '
+  decision: Use Draft 2020-12, the latest stable version
+  rationale:
+  - Best $ref resolution
+  - Dynamic references support
+  - Active development
+  - referencing library support
+  consequences:
+    positive:
+    - Modern features available
+    - Good library support
+    negative:
+    - Some older tools may not support

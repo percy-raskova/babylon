@@ -1,0 +1,104 @@
+meta:
+  id: ADR016_fascist_bifurcation
+  version: 1.0.0
+ADR016_fascist_bifurcation:
+  status: accepted
+  date: '2025-12-09'
+  title: 'The Fascist Bifurcation: Solidarity as Infrastructure'
+  context: 'Sprint 3.4.2 implemented Proletarian Internationalism, but a critical design
+
+    question emerged: should solidarity_strength be auto-calculated from source
+
+    organization, or stored as a persistent edge attribute?
+
+
+    Historical observation: Accelerationist strategies (crash the economy to
+
+    trigger revolution) consistently produce fascism, not socialism. Germany 1933,
+
+    Italy 1922, Spain 1936. Why?
+
+
+    Answer: Material disruption (wage decline) creates "agitation energy" that
+
+    has NO INHERENT DIRECTION. It can flow toward class consciousness OR toward
+
+    national chauvinism/scapegoating. The direction depends on PRE-EXISTING
+
+    solidarity infrastructure (unions, internationals, worker organizations).
+
+
+    If solidarity infrastructure exists: agitation → class awakening → revolution
+
+    If solidarity infrastructure absent: agitation → fascist turn → reaction
+
+
+    This is the core insight of anti-accelerationism in MLM-TW theory.
+
+    '
+  decision: 'Store solidarity_strength as a PERSISTENT EDGE ATTRIBUTE, not auto-calculated.
+
+
+    Field: Relationship.solidarity_strength: Coefficient = Field(default=0.0)
+
+
+    Key semantics:
+
+    - solidarity_strength = 0.0 means NO solidarity infrastructure
+
+    - Must be BUILT through player/system actions (like the 3rd International)
+
+    - High organization without solidarity infrastructure = Fascist Bifurcation risk
+
+
+    Formula: dΨ_target = σ_edge × (Ψ_source - Ψ_target)
+
+    - σ_edge is READ FROM EDGE DATA, not calculated from source
+
+    - If σ_edge = 0: no transmission even if source is revolutionary
+
+    - This creates the Fascist Bifurcation branch point
+
+    '
+  rationale:
+  - Encodes anti-accelerationist theory into mechanics
+  - Enables emergent Fascist vs Revolutionary outcomes from same starting conditions
+  - 'Player agency: must choose to BUILD solidarity before crisis'
+  - 'Historical accuracy: 3rd International had to be ORGANIZED'
+  - Same code produces both outcomes based on prior state
+  implementation:
+    location: src/babylon/models/entities/relationship.py
+    formula: src/babylon/systems/formulas.py:calculate_solidarity_transmission()
+    system: src/babylon/engine/systems/solidarity.py
+    tests: tests/unit/engine/systems/test_solidarity_system.py
+  scenarios:
+    revolutionary_outcome: 'Setup: P_w (Ψ=0.9), C_w (Ψ=0.1), SOLIDARITY edge (σ=0.8)
+
+      Transmission: delta = 0.8 × (0.9 - 0.1) = 0.64
+
+      Result: C_w awakens, revolutionary consciousness spreads
+
+      Historical analogue: International solidarity during 1917-1919
+
+      '
+    fascist_outcome: 'Setup: P_w (Ψ=0.9), C_w (Ψ=0.1), SOLIDARITY edge (σ=0.0)
+
+      Transmission: delta = 0.0 × (0.9 - 0.1) = 0.0
+
+      Result: C_w loses wages but has no class explanation
+
+      Scapegoating fills the void → Fascist turn
+
+      Historical analogue: Germany 1929-1933
+
+      '
+  consequences:
+    positive:
+    - Emergent political outcomes from same economic crisis
+    - Player must invest in solidarity BEFORE crisis
+    - Encodes 'accelerationism produces fascism' as game mechanic
+    - 'Historically accurate: internationals were BUILT, not automatic'
+    negative:
+    - More edge state to manage
+    - Requires UI to show solidarity infrastructure status
+  mantra: Agitation without solidarity produces fascism, not revolution.

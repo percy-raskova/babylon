@@ -1,0 +1,37 @@
+meta:
+  id: ADR003_ai_as_observer
+  version: 1.0.0
+ADR003_ai_as_observer:
+  status: accepted
+  date: 2024-12
+  title: AI generates narrative, never controls mechanics
+  context: 'LLMs are non-deterministic. Game mechanics must be
+
+    reproducible and testable.
+
+    '
+  decision: 'AI sits in Archive layer only. It can:
+
+    - Query state and history
+
+    - Generate narrative text
+
+    It cannot:
+
+    - Modify game state
+
+    - Determine mechanical outcomes
+
+    '
+  rationale:
+  - Deterministic mechanics enable testing
+  - Reproducible gameplay
+  - AI failures don't break game
+  - Separation of narration from simulation
+  consequences:
+    positive:
+    - Game works without AI
+    - Testable mechanics
+    negative:
+    - Less emergent AI behavior
+    - More explicit mechanics required

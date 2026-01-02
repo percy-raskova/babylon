@@ -1,0 +1,87 @@
+meta:
+  id: ADR019_exception_hierarchy
+  version: 1.0.0
+ADR019_exception_hierarchy:
+  status: accepted
+  date: '2025-12-09'
+  title: Unified exception hierarchy (33 → 10 classes)
+  context: 'Original codebase had 33 exception classes across multiple modules with:
+
+    - Unclear inheritance relationships
+
+    - Inconsistent error code usage
+
+    - No structured serialization
+
+    - Proliferating special-case exceptions
+
+
+    Needed: Clear hierarchy aligned with architectural layers (Embedded Trinity)
+
+    that supports machine-parseable error codes and structured logging.
+
+    '
+  decision: "Consolidate to 10 core exception classes using Mikado Method refactoring:\n\nBabylonError (base)\n├── InfrastructureError\
+    \ (retryable I/O)\n│   ├── DatabaseError\n│   └── StorageError → CheckpointIOError → 3 children\n├── ValidationError (bad\
+    \ input)\n│   └── ConfigurationError\n├── SimulationError (fatal engine)\n│   └── TopologyError\n└── ObserverError (non-fatal\
+    \ AI/RAG)\n    ├── LLMError\n    └── RagError → 15 aliases for backwards compatibility\n\nAll exceptions have:\n- message:\
+    \ Human-readable description\n- error_code: PREFIX_NNN format (e.g., LLM_002, RAG_401)\n- details: dict for structured\
+    \ context\n- to_dict(): JSON-serializable representation\n"
+  rationale:
+  - 'Layer alignment: Exceptions match Embedded Trinity architecture'
+  - 'Semantic codes: PREFIX_NNN enables machine parsing and filtering'
+  - 'Catch hierarchy: ''except ObserverError'' catches all AI/RAG errors'
+  - 'Non-fatal observers: AI failures never crash simulation (ADR003)'
+  - 'Backwards compatibility: 15 aliases preserve old exception names'
+  - 'Structured logging: to_dict() integrates with JSONFormatter'
+  error_code_prefixes:
+    SYS: System-level / base errors
+    INFRA: Infrastructure errors
+    STOR: Storage/file errors
+    DB: Database errors
+    VAL: Validation errors
+    CFG: Configuration errors
+    SIM: Simulation errors
+    TOP: Topology/graph errors
+    OBS: Observer layer errors
+    LLM: LLM generation errors
+    RAG: RAG system errors (100-599 ranges)
+  key_principle: 'Log at the HANDLING boundary, not at the raise site.
+
+    The caller knows if an exception is worth logging.
+
+    Use exception.to_dict() for structured context.
+
+    '
+  test_coverage:
+    file: tests/unit/utils/test_exceptions.py
+    count: 93
+    categories:
+    - Hierarchy inheritance
+    - Default error codes
+    - Custom error codes
+    - Constructor behavior
+    - Serialization (to_dict, __str__, __repr__)
+    - Backwards compatibility aliases
+    - Exception propagation
+    - Import path consistency
+    - Edge cases (pickle, unicode, chaining)
+  files_modified:
+  - src/babylon/utils/exceptions.py (core hierarchy)
+  - src/babylon/exceptions.py (re-exports)
+  - src/babylon/rag/exceptions.py (RagError + aliases)
+  - src/babylon/rag/context_window/__init__.py (aliases)
+  - src/babylon/engine/history/io.py (checkpoint exceptions)
+  consequences:
+    positive:
+    - Clear 4-layer hierarchy matches architecture
+    - Machine-parseable error codes for log analysis
+    - Structured to_dict() for JSON logging
+    - Single catch point per layer (e.g., ObserverError)
+    - 93 tests lock down behavior
+    - Backwards compatible via aliases
+    negative:
+    - Must remember to use appropriate error_code
+    - Aliases may confuse new developers
+    - Some module-specific exceptions still exist (CheckpointIOError)
+  detailed_spec: ai-docs/exceptions-architecture.yaml

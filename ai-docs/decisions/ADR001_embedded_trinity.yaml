@@ -1,0 +1,32 @@
+meta:
+  id: ADR001_embedded_trinity
+  version: 1.0.0
+ADR001_embedded_trinity:
+  status: accepted
+  date: 2024-12
+  title: Three-layer local architecture (Ledger/Topology/Archive)
+  context: 'Game needs to handle rigid state (economics), fluid state (relationships),
+
+    and semantic memory (history/narrative) differently.
+
+    '
+  decision: 'Separate into three architectural layers:
+
+    - Ledger: SQLite/Pydantic for material state
+
+    - Topology: NetworkX for relational state
+
+    - Archive: ChromaDB for semantic memory
+
+    '
+  rationale:
+  - Each layer has different consistency/mutability requirements
+  - Separation enables independent testing and evolution
+  - 'Mirrors materialist distinction: base/relations/superstructure'
+  consequences:
+    positive:
+    - Clear separation of concerns
+    - Can swap implementations per layer
+    negative:
+    - More complexity than single-store approach
+    - Cross-layer queries require coordination

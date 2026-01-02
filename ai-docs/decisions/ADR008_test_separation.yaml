@@ -1,0 +1,29 @@
+meta:
+  id: ADR008_test_separation
+  version: 1.0.0
+ADR008_test_separation:
+  status: accepted
+  date: 2024-12
+  title: Separate fast tests from AI tests
+  context: 'AI tests are slow and non-deterministic.
+
+    Logic tests should be fast and reliable.
+
+    '
+  decision: 'Use pytest markers to separate:
+
+    - math, ledger, topology: fast, deterministic
+
+    - ai: slow, can be flaky
+
+    '
+  rationale:
+  - Fast feedback loop for logic changes
+  - CI can run fast tests on every commit
+  - AI tests run less frequently
+  consequences:
+    positive:
+    - Fast TDD cycle
+    - Clear test categories
+    negative:
+    - Must remember to run both

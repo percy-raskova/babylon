@@ -1,0 +1,81 @@
+meta:
+  id: ADR009_networkx_topology
+  version: 1.0.0
+ADR009_networkx_topology:
+  status: accepted
+  date: '2024-12-07'
+  title: NetworkX for Topology layer graph storage
+  context: 'The Embedded Trinity architecture (ADR001) specifies a Topology layer for
+
+    fluid relational state: class solidarity networks, dialectical relationships,
+
+    supply chains, tension flows. This requires a graph data structure.
+
+
+    Options evaluated:
+
+    - NetworkX: Pure Python, rich algorithms, in-memory
+
+    - igraph: C-based, faster, less Pythonic API
+
+    - graph-tool: C++ core, fastest, complex installation
+
+    - Neo4j: Full graph DB, requires external server
+
+    - SQLite edge tables: DIY graph, no built-in algorithms
+
+    - RDFLib: Semantic web focus, overkill for game state
+
+    '
+  decision: 'Use NetworkX as the graph engine for the Topology layer.
+
+    Graph state persists to SQLite (Ledger) for save/load.
+
+    At startup, build NetworkX graph from SQLite edge data.
+
+    During gameplay, mutate graph in-memory.
+
+    On save, serialize graph back to SQLite.
+
+    '
+  rationale:
+  - 'Pure Python: no external servers, matches ''no external dependencies'' principle'
+  - 'Rich algorithm library: centrality, paths, community detection built-in'
+  - 'Sufficient performance: game will have ~1000-10000 nodes max, not millions'
+  - 'Pythonic API: easy to test, integrates well with Pydantic models'
+  - 'Serializable: nx.node_link_data() exports to JSON for SQLite storage'
+  - 'Phase 1 scope: 2 nodes, 1 edge - any graph library works, pick simplest'
+  - 'TDD-friendly: graph operations are pure functions, easy to unit test'
+  alternatives_rejected:
+    igraph:
+      reason: C dependency complicates installation; performance gain unnecessary at our scale
+    graph_tool:
+      reason: Difficult to install (needs C++ compilation); overkill for game-sized graphs
+    neo4j:
+      reason: Violates 'no external servers' principle; adds operational complexity
+    sqlite_edges:
+      reason: Would require implementing graph algorithms from scratch; NetworkX provides them
+  consequences:
+    positive:
+    - Zero external dependencies beyond Python package
+    - Rich built-in algorithms for atomization metrics, hub detection, path analysis
+    - Easy serialization to SQLite for game saves
+    - Well-documented, mature library with active maintenance
+    - Trivial to test graph logic in isolation
+    negative:
+    - Pure Python slower than C-based alternatives (acceptable at our scale)
+    - 'In-memory only: requires explicit save/load logic to persist state'
+    - No concurrent write safety (not needed for single-player turn-based game)
+  performance_notes: 'NetworkX handles 10,000+ nodes efficiently for in-memory operations.
+
+    Phase 4 projection: 17 entity types × ~100 instances = ~1,700 nodes.
+
+    This is well within NetworkX''s comfortable range.
+
+    If future requirements exceed 100,000 nodes, reconsider igraph migration.
+
+    '
+  integration_pattern: "SQLite (Ledger)         NetworkX (Topology)        ChromaDB (Archive)\n  ┌──────────┐           ┌───────────────┐\
+    \           ┌──────────┐\n  │ entities │──startup──▶│ G = nx.DiGraph│◀──query───│ semantic │\n  │ edges    │         \
+    \  │ nodes + edges │           │ embeddings│\n  └──────────┘           └───────────────┘           └──────────┘\n    \
+    \   ▲                        │\n       │                        │\n       └───────save game────────┘\n"

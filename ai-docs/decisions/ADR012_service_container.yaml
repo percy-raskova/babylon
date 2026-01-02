@@ -1,0 +1,43 @@
+meta:
+  id: ADR012_service_container
+  version: 1.0.0
+ADR012_service_container:
+  status: accepted
+  date: '2025-12-08'
+  title: ServiceContainer for Dependency Injection
+  context: 'Phase 2 introduced modular Systems (ImperialRentSystem, ConsciousnessSystem,
+
+    SurvivalSystem, ContradictionSystem). Each System needs access to:
+
+    - SimulationConfig (formula coefficients)
+
+    - FormulaRegistry (hot-swappable formulas)
+
+    - EventBus (publish events like rupture)
+
+    - DatabaseConnection (persistence)
+
+
+    Passing these as individual parameters would require 4+ parameters per
+
+    System.step() call, making signatures unwieldy and changes difficult.
+
+    '
+  decision: "Create ServiceContainer dataclass that aggregates all services.\nSystems receive a single ServiceContainer instance\
+    \ instead of\nmultiple individual dependencies.\n\n@dataclass\nclass ServiceContainer:\n    config: SimulationConfig\n\
+    \    database: DatabaseConnection\n    event_bus: EventBus\n    formulas: FormulaRegistry\n"
+  rationale:
+  - Single parameter simplifies System.step() signatures
+  - Adding new services doesn't change existing signatures
+  - Container is frozen/immutable - thread-safe if needed later
+  - Easy to mock for testing - replace container with test version
+  - Follows Dependency Injection pattern
+  location: src/babylon/engine/services.py
+  consequences:
+    positive:
+    - 'Clean System signatures: step(graph, services, context)'
+    - Easy to extend with new services
+    - Testable via mock containers
+    negative:
+    - One more abstraction layer
+    - Services accessed via container.config vs directly

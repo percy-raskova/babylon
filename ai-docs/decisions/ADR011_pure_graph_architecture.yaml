@@ -1,0 +1,151 @@
+meta:
+  id: ADR011_pure_graph_architecture
+  version: 1.0.0
+ADR011_pure_graph_architecture:
+  status: accepted
+  date: '2024-12-07'
+  title: 'Pure Graph Architecture: Graph + Math = History'
+  context: "Following ADR010 (bypass Economy/Politics), a deeper architectural review\nwas conducted with multi-AI consensus\
+    \ (Claude + Gemini + User).\n\nKey insight from Gemini:\n\"The previous architecture was trying to simulate INSTITUTIONS.\n\
+    \ The new architecture simulates MATERIAL RELATIONS.\n This is the shift from Liberalism to Materialism.\"\n\nThe Economy\
+    \ class modeled \"the economy\" as a liberal abstraction.\nIn MLM-TW, \"the economy\" doesn't exist as a thing - it's\
+    \ the name we give\nto the totality of production relations. The graph makes this explicit.\n"
+  decisions:
+    delete_legacy_classes:
+      action: Delete Economy and Politics classes immediately
+      rationale: '- Not "preserve for future" - that''s hoarding technical debt
+
+        - If patterns needed later, write fresh with correct architecture
+
+        - git log is the museum for old code
+
+        '
+      files_to_delete:
+      - src/babylon/core/economy.py
+      - src/babylon/core/politics.py
+    pure_graph_option_c:
+      action: Everything is nodes and edges (Option C)
+      rationale: '- Geography is just another relation type
+
+        - Hierarchy exists as CONTAINS edges, doesn''t constrain other edges
+
+        - A neighborhood in Global South can have direct edge to hedge fund in NYC
+
+        - Imperialism doesn''t respect administrative boundaries - neither should our graph
+
+        '
+      edge_types:
+      - CONTAINS (geographic hierarchy)
+      - EXTRACTS_FROM (economic exploitation)
+      - REPRESSES (political violence)
+      - PRODUCES (labor value)
+      - ORGANIZES (class solidarity)
+      example: 'USA --[CONTAINS]--> Kansas_City
+
+        Proletariat_KC --[EXTRACTS_FROM]--> Bourgeoisie_NY
+
+        Police_KC --[REPRESSES]--> Proletariat_KC
+
+        '
+    hybrid_state_management:
+      action: Snapshots for Engine, Events for Archive
+      rationale: '- Engine needs current state to calculate next state (Snapshots)
+
+        - AI narrative needs history of what happened (Events)
+
+        - Math and Story have different data needs - don''t confuse them
+
+        - Testing is cleaner: Engine tests are pure functions on snapshots
+
+        '
+      structure:
+        engine: Immutable WorldState snapshots
+        archive: Event log for narrative generation
+    networkx_from_day_one:
+      action: Use NetworkX immediately, not deferred
+      rationale: '- If concept is "everything is a graph," implementation should be a graph
+
+        - Using dict for 2 nodes then switching later is chosen technical debt
+
+        - NetworkX is lightweight - no cost for small graphs
+
+        - Built-in algorithms available when needed (centrality, paths)
+
+        - Keeps implementation honest to architecture
+
+        '
+      revision: Supersedes ADR010 recommendation to defer NetworkX
+    simulation_config_is_core:
+      action: SimulationConfig is part of irreducible kernel
+      rationale: '- Formulas are parameterized (α, λ, S, k)
+
+        - Without coefficients, formulas are abstract math, not simulation
+
+        - Config is as essential as State and Engine
+
+        '
+  the_true_kernel:
+    description: The irreducible core of the simulation
+    components:
+      world_state:
+        purpose: The Data
+        contains:
+        - 'Graph (Nodes: entities)'
+        - 'Graph (Edges: relations)'
+        - 'tick: current turn'
+      simulation_config:
+        purpose: The Constants
+        contains:
+        - α (extraction_efficiency)
+        - λ (loss_aversion = 2.25)
+        - S (subsistence_threshold)
+        - k (consciousness_sensitivity)
+        - repression_level
+      formula_library:
+        purpose: The Laws
+        pattern: f(data, config) → value
+        location: babylon.systems.formulas
+      simulation_engine:
+        purpose: The Time
+        pattern: step(state, config) → new_state
+    equation: Graph + Math = History
+  philosophical_grounding:
+    insight: '"The Economy is not a class; it is the sum of all EXTRACTS_FROM edges."
+
+      "Politics is not a class; it is the sum of all REPRESSES edges."
+
+
+      In materialist analysis, abstractions like "the economy" or "politics"
+
+      don''t exist as things. They are names for the totality of material relations.
+
+      The graph architecture makes this explicit:
+
+      - No Economy node exists
+
+      - Only relations of extraction, production, exchange
+
+      - "The economy" is a QUERY over those edges, not an entity
+
+      '
+    alignment: Architecture encodes theory. The code IS the analysis.
+  consequences:
+    positive:
+    - Code matches MLM-TW theoretical framework
+    - No liberal abstractions hiding material relations
+    - 'Flexible: any node can relate to any other node'
+    - 'Queryable: ''total extraction'' is sum of EXTRACTS_FROM edges'
+    - 'Testable: graph operations are well-understood'
+    - 'Scalable: NetworkX handles large graphs efficiently'
+    negative:
+    - Requires deleting existing code (minimal loss)
+    - Slightly more abstract than class-based approach
+    - Team must understand graph thinking
+  consensus:
+    participants:
+    - Claude (Opus 4.5)
+    - Gemini (via user)
+    - User (Persephone)
+    mantra: Graph + Math = History
+    supersedes:
+    - ADR010 NetworkX deferral recommendation

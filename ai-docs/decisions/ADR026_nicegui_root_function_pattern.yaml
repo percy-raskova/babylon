@@ -1,0 +1,39 @@
+meta:
+  id: ADR026_nicegui_root_function_pattern
+  version: 1.0.0
+ADR026_nicegui_root_function_pattern:
+  status: accepted
+  date: '2025-12-14'
+  title: NiceGUI Root Function Pattern (No @ui.page decorator)
+  context: "NiceGUI has two mutually exclusive modes that cannot be mixed:\n\n1. **Script Mode**: UI elements in global scope,\
+    \ no decorators\n   - ui.label(\"Hello\")\n   - ui.run()\n\n2. **Page Mode**: @ui.page decorators OR ui.run(root_func)\n\
+    \   - @ui.page(\"/\")\n   - def index(): ui.label(\"Hello\")\n   - ui.run()\n\nInitial implementation mixed @ui.page(\"\
+    /\") decorator with ui.timer() at\nglobal scope, causing RuntimeError at startup:\n\"ui.page cannot be used in NiceGUI\
+    \ scripts when UI is defined in the global scope.\"\n"
+  decision: "Use Root Function Pattern for single-page applications:\n\ndef main_page() -> None:\n    ui.dark_mode().enable()\n\
+    \    # All UI elements inside root function\n    ui.timer(interval=1.0, callback=run_loop)  # Timer inside!\n\nui.run(main_page,\
+    \ title=\"...\", port=6969)\n\nKey rules:\n1. NO @ui.page decorator for single-page apps\n2. ALL UI elements inside the\
+    \ root function\n3. ui.timer() must be inside root function, not global scope\n4. Pass root function to ui.run() as first\
+    \ positional argument\n"
+  rationale:
+  - Single-page MVP doesn't need multi-page routing
+  - Root function pattern is cleaner and more testable
+  - Prevents mode conflict RuntimeError
+  - NiceGUI docs recommend this for simple applications
+  - Timer inside root ensures proper page context
+  implementation:
+    main_file: src/babylon/ui/main.py
+    tests: tests/unit/ui/test_main.py
+    test_approach: AST-based detection of @ui.page decorator and ui.run() pattern
+  consequences:
+    positive:
+    - No RuntimeError at startup
+    - 'Clear separation: root function owns all UI'
+    - 'Testable: can verify patterns via AST parsing'
+    - 'Simple: no routing complexity for MVP'
+    negative:
+    - Cannot use @ui.page for additional routes without refactoring
+    - Must remember timer goes INSIDE root function
+  related_docs:
+  - docs/how-to/gui-development.rst
+  - brainstorm/ui/digital-grow-room.md

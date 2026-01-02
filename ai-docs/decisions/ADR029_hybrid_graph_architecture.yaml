@@ -1,0 +1,180 @@
+meta:
+  id: ADR029_hybrid_graph_architecture
+  version: 1.0.0
+ADR029_hybrid_graph_architecture:
+  status: accepted
+  date: '2025-12-26'
+  title: 'Hybrid Graph Architecture: NetworkX (Tactical) + KuzuDB (Strategic)'
+  context: "Epoch 2 (\"The War\") requires continental-scale simulation with the full US\nadministrative hierarchy (~74,000\
+    \ Territory nodes) and complex historical\nqueries (\"The Chronicle\") that exceed RAM limits of pure NetworkX.\n\nKey\
+    \ requirements driving this decision:\n1. **Scale**: 74k nodes = ~50 States + ~3,000 Counties + ~70,000 Cities/Townships\n\
+    2. **Dual Topology**: Must model \"Land as Material\" (physical mesh) AND\n   \"State as Hierarchy\" (administrative DAG)\
+    \ simultaneously\n3. **Historical Queries**: \"The Chronicle\" needs to answer \"what was California's\n   state in tick\
+    \ 50?\" - requires efficient disk-backed storage with time travel\n4. **Front Line Queries**: Finding territories adjacent\
+    \ to enemy-controlled land\n   is O(N) iteration with NetworkX but O(1) with graph query language\n\nEpoch 1 (\"The Skirmish\"\
+    ) works fine with pure NetworkX + SQLite because:\n- Small scale (4-node Imperial Circuit)\n- No historical queries needed\n\
+    - All state fits in RAM\n\nThe question: How do we scale to Epoch 2 without abandoning the working Epoch 1?\n"
+  decision: "Adopt **KuzuDB** (embedded columnar graph database) for Epoch 2 persistence\nwhile keeping NetworkX for active\
+    \ simulation. This creates a two-tier architecture:\n\n**Tier 1: KuzuDB (\"Strategic Map\")**\n- Stores the complete World\
+    \ Graph (all ~74k Territory nodes)\n- Stores historical snapshots (\"The Chronicle\")\n- Handles complex graph queries\
+    \ in Cypher-like syntax\n- Disk-backed columnar storage (infinite scale potential)\n- File: data/epoch2_world.kuzu (embedded,\
+    \ no server)\n\n**Tier 2: NetworkX (\"Tactical Cache\")**\n- Holds active simulation \"Sector\" (subset of nodes being\
+    \ simulated)\n- Fast in-memory operations for tick calculations\n- Same engine code as Epoch 1 (no rewrite needed)\n-\
+    \ Hydrated from KuzuDB at sector boundaries\n\n**Dual-Graph Schema in KuzuDB:**\n1. `:ADMINISTERS` edges (DAG): Federal\
+    \ → State → County → City\n   - Represents legal/administrative hierarchy\n   - Properties: control_level, legal_status\n\
+    2. `:ADJACENT_TO` edges (Mesh): Physical adjacency between territories\n   - Represents geographic reality (borders)\n\
+    \   - Properties: barrier_type, permeability\n\n**Hydration Protocol:**\n- Engine loads \"Sector\" (N-hop neighborhood\
+    \ around conflict zone) into NetworkX\n- Simulation runs on NetworkX cache (existing Systems unchanged)\n- At tick boundary,\
+    \ flush changes back to KuzuDB\n- Write historical snapshot to Chronicle tables\n\nEpoch 1 code remains **100% unchanged**.\
+    \ This is strictly additive infrastructure.\n"
+  rationale:
+    embedded_trinity_preserved:
+      principle: No external servers
+      solution: KuzuDB is embedded like SQLite - single file, no daemon
+    front_line_query_problem:
+      problem: Find all territories adjacent to enemy-controlled land
+      networkx_solution: O(N) iteration over all edges
+      kuzu_solution: 'MATCH (friendly:Territory)-[:ADJACENT_TO]-(hostile:Territory)
+
+        WHERE friendly.controller = ''PLAYER'' AND hostile.controller = ''STATE''
+
+        RETURN friendly
+
+        '
+      improvement: O(1) graph traversal vs O(N) iteration
+    land_is_material:
+      principle: Territory is material base, not abstract container
+      solution: Disk-backed columnar storage allows massive scale without RAM pressure
+    the_chronicle:
+      requirement: Query historical states for narrative and analysis
+      solution: Append-only history tables in KuzuDB enable time-travel queries
+    incremental_adoption:
+      principle: Don't break what works
+      solution: Epoch 1 untouched; Epoch 2 adds new persistence layer
+  implementation:
+    new_files:
+    - ai-docs/epoch2-persistence.yaml (specification)
+    - tools/init_epoch2_db.py (schema initialization)
+    - 'src/babylon/data/kuzu_manager.py (future: hydration logic)'
+    new_dependency:
+      package: kuzu
+      version: '>=0.4.0'
+      install: poetry add kuzu
+      rationale: Embedded graph DB, pip-installable, active development
+    node_schema:
+      Territory:
+        id: str (e.g., 'US-CA-037' for LA County)
+        name: str
+        type: enum (OGV, OPC)
+        area_sq_km: float
+        bioregion: str
+        habitability: float [0-1]
+        heat: float [0-1]
+    edge_schemas:
+      ADMINISTERS:
+        from: Territory
+        to: Territory
+        properties:
+          control_level: float [0-1]
+          legal_status: enum (DE_JURE, DE_FACTO, CONTESTED, SUBVERSIVE)
+      ADJACENT_TO:
+        from: Territory
+        to: Territory
+        properties:
+          barrier_type: enum (NONE, RIVER, MOUNTAIN, HIGHWAY, BORDER)
+          permeability: float [0-1]
+  consequences:
+    positive:
+    - Infinite scale potential - 74k nodes trivial for KuzuDB
+    - Enables 'The Chronicle' historical query engine
+    - Front Line queries become O(1) graph traversal
+    - Embedded Trinity preserved (no external servers)
+    - Epoch 1 code 100% unchanged
+    - Dual-graph schema models both hierarchy AND adjacency
+    - Cypher-like query language is expressive and readable
+    negative:
+    - New dependency (kuzu package)
+    - Sync complexity between Tactical Cache and Strategic Map
+    - Learning curve for KuzuDB/Cypher syntax
+    - Potential consistency issues if flush fails mid-tick
+  mitigation:
+    sync_complexity: Create HydrationManager class encapsulating all Kuzu interaction
+    consistency: Use KuzuDB transactions for atomic flush operations
+    testing: Pytest fixtures for in-memory Kuzu instance
+  related_decisions:
+  - ADR001_embedded_trinity (architecture principle)
+  - ADR009_networkx_topology (Epoch 1 graph choice)
+  - ADR002_sqlite_over_postgres (embedded database preference)
+  supersedes: null
+  mantra: Strategic Map stores the world. Tactical Cache runs the war.
+  amendments:
+  - id: ADR029-A1
+    date: '2025-12-26'
+    title: Dynamic Sovereignty Refactor
+    status: accepted
+    context: 'The original ADR029 schema represented territory control via a `controller`
+
+      property on Territory nodes (e.g., controller="STATE"). This is insufficient
+
+      for Epoch 3 requirements:
+
+      - Civil wars (multiple competing sovereignty claims)
+
+      - Secession/Balkanization (new nations emerging)
+
+      - Dual power situations (revolutionary control without legal recognition)
+
+
+      Property-based sovereignty requires O(N) updates to change borders and
+
+      cannot model contested territories or multiple claimants.
+
+      '
+    decision: "**Sovereignty is a Node, not a Property.**\n\nRefactor the schema to treat sovereignty as first-class graph\
+      \ entities:\n\n1. **New Node Type: `Sovereign`**\n   - Represents political entities capable of claiming territory\n\
+      \   - Properties: id, name, sovereignty_type, legitimacy, color_hex\n   - Examples: \"United States Federal Government\"\
+      , \"Provisional Revolutionary Command\"\n\n2. **New Edge Type: `CLAIMS` (Sovereign → Territory)**\n   - Represents sovereignty\
+      \ assertions over territory\n   - Properties: control_level (0-1), fiscal_status, legal_status\n   - Multiple CLAIMS\
+      \ edges can exist for contested territories\n\n3. **Removed: `controller` property from Territory**\n   - Sovereignty\
+      \ now determined by incoming CLAIMS edges\n   - Effective controller = Sovereign with highest control_level\n\n**The\
+      \ Fracture Operation:**\nSovereignty transfers are now O(1) edge operations:\n```cypher\n// Transfer LA from USA to\
+      \ Revolutionary Command\nMATCH (usa:Sovereign {id: 'SOV_USA_FED'})-[c:CLAIMS]->(la:Territory)\nSET c.control_level =\
+      \ 0.0\n\nMATCH (prc:Sovereign {id: 'SOV_PRC'})-[c:CLAIMS]->(la:Territory)\nSET c.control_level = 1.0\n```\n"
+    rationale:
+      o1_border_changes:
+        problem: Secession requires updating controller property on many territories
+        solution: Edge rewiring is O(1) - delete old CLAIMS, create new CLAIMS
+      civil_war_modeling:
+        problem: Cannot represent multiple competing sovereignty claims
+        solution: Multiple CLAIMS edges with different control_levels
+      dual_power:
+        problem: Cannot distinguish legal authority from actual control
+        solution: CLAIMS edge has both legal_status and control_level properties
+      layer_independence:
+        principle: Land (geography) and State (politics) are independent
+        solution: ADJACENT_TO edges (Land) are unaffected by CLAIMS changes (State)
+    consequences:
+      positive:
+      - O(1) border changes via edge rewiring
+      - Civil war modeling with competing sovereignty claims
+      - Dual power situations (de jure vs de facto control)
+      - New nations can emerge dynamically (create Sovereign node)
+      - Legitimacy tracking per sovereign entity
+      - Land/State layer separation preserved
+      negative:
+      - More complex queries (must traverse CLAIMS edges)
+      - Schema migration required from v1.0.0
+      - Additional validation needed (control_level sum constraints)
+    implementation:
+      spec_file: ai-docs/epoch2-persistence.yaml (v1.1.0)
+      init_script: tools/init_epoch2_db.py (updated)
+      new_schemas:
+      - Sovereign node table
+      - CLAIMS edge table (Sovereign → Territory)
+      - ClaimsSnapshot table (Chronicle)
+      removed:
+      - Territory.controller property
+      - controller index on Territory
+    related:
+    - ai-docs/epoch2-persistence.yaml
+    - tools/init_epoch2_db.py

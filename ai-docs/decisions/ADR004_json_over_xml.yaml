@@ -1,0 +1,25 @@
+meta:
+  id: ADR004_json_over_xml
+  version: 1.0.0
+ADR004_json_over_xml:
+  status: accepted
+  date: '2024-12-07'
+  title: JSON for game data instead of XML
+  context: 'Legacy data was in XML. Need machine-readable format
+
+    that''s easy to validate and work with.
+
+    '
+  decision: Migrate all game data to JSON with JSON Schema validation
+  rationale:
+  - Native Python support (json module)
+  - JSON Schema provides validation
+  - Easier to read/write programmatically
+  - Better tooling ecosystem
+  consequences:
+    positive:
+    - Schema validation catches errors early
+    - Cleaner data structures
+    negative:
+    - Migration effort (completed)
+    - XML kept as reference (minor storage cost)

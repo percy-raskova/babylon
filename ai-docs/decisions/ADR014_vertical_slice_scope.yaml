@@ -1,0 +1,108 @@
+meta:
+  id: ADR014_vertical_slice_scope
+  version: 1.0.0
+ADR014_vertical_slice_scope:
+  status: accepted
+  date: '2025-12-08'
+  title: Vertical Slice Scope for Phase 3 Completion
+  context: 'Phase 3 aims to add AI narrative generation to the simulation. Before
+
+    horizontal expansion (more entities, locations, phenomena), we need a
+
+    complete vertical slice proving the full data flow works:
+
+
+    Simulation → Events → RAG Context → LLM Prompt → Narrative Output
+
+
+    The question is: what is the minimum scope for this vertical slice?
+
+    '
+  decision: 'Vertical slice scope:
+
+    - Entities: Factory worker (proletariat) vs Capitalist (bourgeoisie) - 2 nodes
+
+    - Location: One city (implicit, not modeled as separate entity)
+
+    - Phenomenon: Wealth transfer via Imperial Rent - single economic mechanism
+
+    - LLM: DeepSeek API (OpenAI-compatible, cost-effective)
+
+    - RAG: MVP corpus from Marxists.org (5 curated texts)
+
+    - Verification: Integration tests (not CLI runner)
+
+
+    Explicitly deferred:
+
+    - Full RAG corpus ingestion (MVP uses 5 texts only)
+
+    - NiceGUI frontend (Phase 4)
+
+    - Multiple scenarios/entity types
+
+    - Save/load game state with narrative
+
+    - Multiple cities or geographic hierarchy
+
+    - Alternative LLM providers (Ollama, Claude)
+
+    '
+  rationale:
+  - Proves complete data flow with minimal complexity
+  - Two-node scenario already proven in Phase 2 integration tests
+  - Imperial Rent is the core MLM-TW mechanic - wealth extraction
+  - DeepSeek is cost-effective and OpenAI-compatible (easy integration)
+  - Marxists.org corpus provides authentic theoretical grounding
+  - Integration tests enable CI/CD and programmatic verification
+  - Deferred features can be added after vertical slice validates approach
+  implementation:
+    sprint_3_3_deliverables:
+    - LLM Provider protocol + DeepSeek implementation
+    - Event generation in ImperialRentSystem (exploitation events)
+    - RAG corpus ingestion script (5 texts from Marxists.org)
+    - Integration tests proving full narrative pipeline
+    estimated_code: ~400-500 lines
+    estimated_tests: ~20 tests
+    rag_corpus:
+      source: Marxists.org archive
+      texts:
+      - Wage Labour and Capital (Marx, 1847)
+      - Value, Price and Profit (Marx, 1865)
+      - Principles of Communism (Engels, 1847)
+      - Imperialism, the Highest Stage of Capitalism Ch.1-4 (Lenin, 1917)
+      - The Wretched of the Earth Ch.1 (Fanon, 1961)
+      estimated_chunks: 200-500
+  gaps_addressed:
+    gap_1: No LLM client → DeepSeek Provider implementation
+    gap_2: No events until rupture → ImperialRentSystem event generation
+    gap_3: Empty RAG corpus → 5 texts from Marxists.org
+    gap_4: No verification → Integration tests with assertions
+  consequences:
+    positive:
+    - Clear, achievable scope for Sprint 3.3
+    - Validates architecture before horizontal expansion
+    - Real theoretical content in RAG (not just static quotes)
+    - Programmatic testing enables CI/CD
+    - Deferred features remain possible without rework
+    negative:
+    - Not a 'complete game' - just proves the tech stack
+    - DeepSeek API requires internet and API key
+    - Limited corpus may not cover all narrative scenarios
+  success_criteria: 'Run integration tests, verify:
+
+    1. Simulation advances (tick increases)
+
+    2. Wealth transfers (worker impoverished)
+
+    3. Exploitation events generated and logged
+
+    4. RAG retrieves relevant Marxist theory
+
+    5. DeepSeek API called with proper context
+
+    6. Narrative text generated and captured
+
+    7. All assertions pass in pytest
+
+    '

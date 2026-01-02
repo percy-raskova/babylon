@@ -1,0 +1,126 @@
+meta:
+  version: 1.10.0
+  updated: '2026-01-01'
+  description: Architecture Decision Records Index
+  format: See individual ADR files in this directory
+decisions:
+  ADR001_embedded_trinity:
+    title: Three-layer local architecture (Ledger/Topology/Archive)
+    status: accepted
+    date: 2024-12
+    file: ADR001_embedded_trinity.yaml
+  ADR002_sqlite_over_postgres:
+    title: SQLite instead of PostgreSQL
+    status: accepted
+    date: '2024-12-07'
+    file: ADR002_sqlite_over_postgres.yaml
+  ADR003_ai_as_observer:
+    title: AI generates narrative, never controls mechanics
+    status: accepted
+    date: 2024-12
+    file: ADR003_ai_as_observer.yaml
+  ADR004_json_over_xml:
+    title: JSON for game data instead of XML
+    status: accepted
+    date: '2024-12-07'
+    file: ADR004_json_over_xml.yaml
+  ADR005_json_schema_2020:
+    title: JSON Schema Draft 2020-12
+    status: accepted
+    date: '2024-12-07'
+    file: ADR005_json_schema_2020.yaml
+  ADR006_pydantic_models:
+    title: Pydantic for all game objects
+    status: accepted
+    date: 2024-12
+    file: ADR006_pydantic_models.yaml
+  ADR007_data_driven_design:
+    title: Game logic in data, not code
+    status: accepted
+    date: 2024-12
+    file: ADR007_data_driven_design.yaml
+  ADR008_test_separation:
+    title: Separate fast tests from AI tests
+    status: accepted
+    date: 2024-12
+    file: ADR008_test_separation.yaml
+  ADR009_networkx_topology:
+    title: NetworkX for Topology layer graph storage
+    status: accepted
+    date: '2024-12-07'
+    file: ADR009_networkx_topology.yaml
+  ADR011_pure_graph_architecture:
+    title: 'Pure Graph Architecture: Graph + Math = History'
+    status: accepted
+    date: '2024-12-07'
+    file: ADR011_pure_graph_architecture.yaml
+  ADR010_direct_formula_architecture:
+    title: Direct Entities + Formulas architecture (bypass Economy/Politics classes)
+    status: accepted
+    date: '2024-12-07'
+    file: ADR010_direct_formula_architecture.yaml
+  ADR012_service_container:
+    title: ServiceContainer for Dependency Injection
+    status: accepted
+    date: '2025-12-08'
+    file: ADR012_service_container.yaml
+  ADR013_system_protocol:
+    title: System Protocol for Modular Engine Architecture
+    status: accepted
+    date: '2025-12-08'
+    file: ADR013_system_protocol.yaml
+  ADR014_vertical_slice_scope:
+    title: Vertical Slice Scope for Phase 3 Completion
+    status: accepted
+    date: '2025-12-08'
+    file: ADR014_vertical_slice_scope.yaml
+  ADR015_llm_provider_abstraction:
+    title: LLM Provider Protocol with DeepSeek as Primary
+    status: accepted
+    date: '2025-12-08'
+    file: ADR015_llm_provider_abstraction.yaml
+  ADR016_fascist_bifurcation:
+    title: 'The Fascist Bifurcation: Solidarity as Infrastructure'
+    status: accepted
+    date: '2025-12-09'
+    file: ADR016_fascist_bifurcation.yaml
+  ADR017_fractal_topology:
+    title: Fractal Topology for Internal Colonies
+    status: proposed
+    date: '2025-12-09'
+    file: ADR017_fractal_topology.yaml
+  ADR018_logging_strategy:
+    title: Python stdlib logging with custom enhancements
+    status: accepted
+    date: '2025-12-09'
+    file: ADR018_logging_strategy.yaml
+  ADR019_exception_hierarchy:
+    title: Unified exception hierarchy (33 → 10 classes)
+    status: accepted
+    date: '2025-12-09'
+    file: ADR019_exception_hierarchy.yaml
+  ADR020_parameter_tuning_methodology:
+    title: Sensitivity Analysis for GameDefines Tuning
+    status: accepted
+    date: '2025-12-11'
+    file: ADR020_parameter_tuning_methodology.yaml
+  ADR026_nicegui_root_function_pattern:
+    title: NiceGUI Root Function Pattern (No @ui.page decorator)
+    status: accepted
+    date: '2025-12-14'
+    file: ADR026_nicegui_root_function_pattern.yaml
+  ADR027_frontend_stack:
+    title: NiceGUI (Native Mode) with Tailwind CSS
+    status: accepted
+    date: '2025-12-14'
+    file: ADR027_frontend_stack.yaml
+  ADR028_code_complexity_gating:
+    title: Cyclomatic Complexity Gating for AI-Heavy Development
+    status: accepted
+    date: '2025-12-26'
+    file: ADR028_code_complexity_gating.yaml
+  ADR029_hybrid_graph_architecture:
+    title: 'Hybrid Graph Architecture: NetworkX (Tactical) + KuzuDB (Strategic)'
+    status: accepted
+    date: '2025-12-26'
+    file: ADR029_hybrid_graph_architecture.yaml

@@ -1,0 +1,93 @@
+meta:
+  id: ADR017_fractal_topology
+  version: 1.0.0
+ADR017_fractal_topology:
+  status: proposed
+  date: '2025-12-09'
+  title: Fractal Topology for Internal Colonies
+  context: 'The 4-node Imperial Circuit (P_w, P_c, C_b, C_w) models Core-Periphery
+
+    dynamics but treats the Core as monolithic. In reality, the Core contains
+
+    "Internal Colonies" - stratified populations with different relationships
+
+    to imperial rent.
+
+
+    Examples:
+
+    - Black Americans: super-exploitation within Core, lower access to imperial rent
+
+    - Women workers: gendered wage gap, unpaid reproductive labor
+
+    - Rural workers: geographic stratification, deindustrialized regions
+
+    - Immigrant workers: legal precarity, wage depression
+
+
+    These groups experience "Periphery-like" conditions within the Core.
+
+    The graph needs to model this without code explosion.
+
+    '
+  decision: 'Use Composite/Graph pattern for fractal topology:
+
+    1. C_w node can be EXPANDED into sub-graph when needed
+
+    2. Sub-nodes (C_w_black, C_w_white, C_w_immigrant, etc.) inherit from parent
+
+    3. Edges can cross fractal levels (C_b → C_w_black)
+
+    4. Aggregation: collapsed C_w = weighted sum of sub-nodes
+
+
+    Pattern:
+
+    - Phase 3.4: Single C_w node (current)
+
+    - Phase 5: Expand C_w into Internal Colony sub-graph
+
+    - Same engine code works at any fractal level
+
+    '
+  rationale:
+  - Models real stratification without monolithic code changes
+  - Enables 'zoom in' mechanics for UI
+  - Same formulas apply at every fractal level
+  - Captures 'internal colonization' of oppressed groups
+  - 'Graph-native: NetworkX supports subgraphs naturally'
+  implementation_sketch:
+    pattern: Composite Design Pattern + NetworkX subgraph
+    expansion: "# Phase 5 implementation\nC_w_expanded = {\n  \"C_w_white\": {..., parent: \"C_w\", weight: 0.6},\n  \"C_w_black\"\
+      : {..., parent: \"C_w\", weight: 0.13},\n  \"C_w_latino\": {..., parent: \"C_w\", weight: 0.19},\n  \"C_w_immigrant\"\
+      : {..., parent: \"C_w\", weight: 0.08},\n}\n"
+    aggregation: 'C_w_aggregate = Σ(sub_node.wealth × sub_node.weight)
+
+      '
+  blockers:
+  - Phase 3.4 Multi-Dimensional Consciousness must be complete
+  - Phase 4 UI needed to visualize fractal zoom
+  consequences:
+    positive:
+    - Models Internal Colonies without special-casing
+    - Same engine handles any fractal depth
+    - Enables future complexity scaling
+    - Graph is already the right data structure
+    negative:
+    - Aggregation complexity increases
+    - UI must handle variable graph depth
+    - Testing surface grows with fractal levels
+  theoretical_basis:
+    sources:
+    - 'Settlers: The Mythology of the White Proletariat (J. Sakai)'
+    - Black Reconstruction in America (W.E.B. Du Bois)
+    - Caliban and the Witch (Silvia Federici)
+    insight: 'The white working class in America has historically been granted
+
+      "psychological wage" (Du Bois) - a sense of superiority that
+
+      compensates for economic exploitation. This is the "internal
+
+      stratification" that fractal topology must model.
+
+      '

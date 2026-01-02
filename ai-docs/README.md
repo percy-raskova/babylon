@@ -37,6 +37,7 @@ This directory helps AI assistants understand context, use correct terminology, 
 | Directory | Purpose |
 |-----------|---------|
 | `archive/pre_necropolis/` | Old specs from Phase-era nomenclature (pre-2025 pivot) |
+| `archive/pre_necropolis/decisions_monolith.yaml` | Original monolithic ADR file (now split into decisions/) |
 
 ---
 
@@ -53,18 +54,20 @@ This directory helps AI assistants understand context, use correct terminology, 
 
 ### Epoch 2 (The Game) - PLANNED
 
+All Epoch 2 specs are in `epoch2/` subdirectory:
+
 | Slice | File | Purpose |
 |-------|------|---------|
-| 2.1 Demographics | `demographics-spec.yaml` | Demographic Resolution |
-| 2.2a Strategy Layer | `strategy-layer.yaml` | External Actions, Resource Traps |
-| 2.2b The Vanguard | `cohesion-mechanic.yaml` | Internal Dynamics, Iron Law of Oligarchy |
-| 2.3 Reactionary Subject | `reactionary-subject.yaml` | Class Basis of Fascism |
-| 2.5 The Wire | `gramscian-wire-vision.yaml` | Narrative Warfare, Hegemony |
-| 2.6 Vanguard Economy | `vanguard-economy.yaml` | Cadre/Sympathizer/Reputation Resources |
-| 2.7 Kinetic Warfare | `kinetic-warfare.yaml` | Asymmetric Logistics, System Disruption |
-| 2.8 Doctrine System | `doctrine-tree.yaml` | Ideological Tech Tree, Line Struggle |
-| 2.9 The Panopticon | `state-attention-economy.yaml` | State AI Threads |
-| 2.10 Epistemic Horizon | `fog-of-war.yaml` | Fish in Water Intel |
+| 2.1 Demographics | `epoch2/demographics-spec.yaml` | Demographic Resolution |
+| 2.2a Strategy Layer | `epoch2/strategy-layer.yaml` | External Actions, Resource Traps |
+| 2.2b The Vanguard | `epoch2/cohesion-mechanic.yaml` | Internal Dynamics, Iron Law of Oligarchy |
+| 2.3 Reactionary Subject | `epoch2/reactionary-subject.yaml` | Class Basis of Fascism |
+| 2.5 The Wire | `epoch2/gramscian-wire-vision.yaml` | Narrative Warfare, Hegemony |
+| 2.6 Vanguard Economy | `epoch2/vanguard-economy.yaml` | Cadre/Sympathizer/Reputation Resources |
+| 2.7 Kinetic Warfare | `epoch2/kinetic-warfare.yaml` | Asymmetric Logistics, System Disruption |
+| 2.8 Doctrine System | `epoch2/doctrine-tree.yaml` | Ideological Tech Tree, Line Struggle |
+| 2.9 The Panopticon | `epoch2/state-attention-economy.yaml` | State AI Threads |
+| 2.10 Epistemic Horizon | `epoch2/fog-of-war.yaml` | Fish in Water Intel |
 
 ---
 
@@ -74,13 +77,15 @@ This directory helps AI assistants understand context, use correct terminology, 
 |------|---------|
 | `game-loop-architecture.yaml` | Engine/State separation, Systems, formulas |
 | `entities.yaml` | 17 game entity types and relationships |
-| `decisions.yaml` | Architecture Decision Records (ADR001-ADR039+) |
+| `decisions/index.yaml` | Architecture Decision Records index (24 ADRs) |
 | `ontology.yaml` | Domain terms (MLM-TW, architecture, game) |
 | `patterns.yaml` | How to do things here |
 | `anti-patterns.yaml` | What NOT to do |
 | `mantras.yaml` | Guiding principles as memorable phrases |
 | `pydantic-patterns.yaml` | Pydantic V2 models, validators, serialization |
 | `documentation-standards.yaml` | Diataxis, RST format, docstrings |
+
+**ADR Files:** Individual ADRs are in `decisions/` directory (e.g., `decisions/ADR001_embedded_trinity.yaml`)
 
 ---
 

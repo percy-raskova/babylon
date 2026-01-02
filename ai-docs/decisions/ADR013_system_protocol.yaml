@@ -1,0 +1,56 @@
+meta:
+  id: ADR013_system_protocol
+  version: 1.0.0
+ADR013_system_protocol:
+  status: accepted
+  date: '2025-12-08'
+  title: System Protocol for Modular Engine Architecture
+  context: 'ADR010/ADR011 established Direct Entities + Formulas architecture.
+
+    As the engine grew, step() function became monolithic with
+
+    multiple concerns: rent extraction, consciousness drift, survival
+
+    probabilities, tension accumulation.
+
+
+    Need modular approach where each concern is isolated but can be
+
+    composed into a single game loop.
+
+    '
+  decision: "Define System protocol with single method:\n  step(graph: nx.DiGraph, services: ServiceContainer, context: dict)\
+    \ -> None\n\nEach System mutates the graph in place following \"historical materialist order\":\n1. ImperialRentSystem\
+    \ - Economic base (extraction, wealth transfer)\n2. ConsciousnessSystem - Ideological superstructure (consciousness drift)\n\
+    3. SurvivalSystem - Political calculation (P(S|A), P(S|R))\n4. ContradictionSystem - Dialectical evolution (tension, rupture)\n\
+    \nSimulationEngine orchestrates Systems via run_tick().\n"
+  rationale:
+  - 'Single Responsibility: each System handles one concern'
+  - 'Open/Closed: add new Systems without modifying Engine'
+  - 'Testable: each System can be unit tested in isolation'
+  - 'Order encodes theory: base before superstructure'
+  - 'Flexible composition: can run subsets for testing'
+  location: src/babylon/engine/systems/protocol.py
+  systems_implemented:
+  - name: ImperialRentSystem
+    file: economic.py
+    purpose: Extract imperial rent from exploitation edges
+  - name: ConsciousnessSystem
+    file: ideology.py
+    purpose: Apply consciousness drift based on material conditions
+  - name: SurvivalSystem
+    file: survival.py
+    purpose: Update P(S|A) and P(S|R) survival probabilities
+  - name: ContradictionSystem
+    file: contradiction.py
+    purpose: Accumulate tension, publish rupture events
+  consequences:
+    positive:
+    - Clean separation of concerns
+    - Easy to add new Systems (e.g., RepresentationSystem for Phase 3)
+    - Each System independently testable
+    - Clear execution order documents historical materialist order
+    negative:
+    - Graph mutations must be coordinated (Systems see each other's changes)
+    - More files to navigate
+  test_count_impact: Added 17+ tests for System implementations (704 total)

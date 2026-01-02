@@ -1,0 +1,29 @@
+meta:
+  id: ADR007_data_driven_design
+  version: 1.0.0
+ADR007_data_driven_design:
+  status: accepted
+  date: 2024-12
+  title: Game logic in data, not code
+  context: 'Game has many entities with varying behaviors. Hardcoding
+
+    each case leads to unmaintainable code.
+
+    '
+  decision: 'Define game rules in data files (JSON/TOML).
+
+    Code provides engine, data provides content.
+
+    '
+  rationale:
+  - Easy content modification
+  - Modding support
+  - Clear separation of concerns
+  - Non-programmers can adjust balance
+  consequences:
+    positive:
+    - Flexible content
+    - Moddable
+    negative:
+    - More complex data structures
+    - Data validation critical

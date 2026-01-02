@@ -1,0 +1,82 @@
+meta:
+  id: ADR010_direct_formula_architecture
+  version: 1.0.0
+ADR010_direct_formula_architecture:
+  status: accepted
+  date: '2024-12-07'
+  title: Direct Entities + Formulas architecture (bypass Economy/Politics classes)
+  context: "During Phase 2 design review, discovered THREE disconnected math systems:\n\n1. formulas.py (349 lines, 40 tests)\n\
+    \   - MLM-TW formulas: imperial rent, survival calculus, consciousness drift\n   - Pure functions, theoretically grounded,\
+    \ TESTED\n\n2. Economy class (core/economy.py, 148 lines, 0 tests)\n   - Generic economic simulation with its own internal\
+    \ formulas\n   - Has update() method but doesn't use formulas.py\n   - UNTESTED\n\n3. Politics class (core/politics.py,\
+    \ 164 lines, 0 tests)\n   - Generic political simulation with its own internal formulas\n   - Has update() method but\
+    \ doesn't use formulas.py\n   - UNTESTED\n\n4. ContradictionAnalysis (systems/contradiction_analysis.py, 20 tests)\n \
+    \  - Tension tracking and phase transitions\n   - Works well but doesn't call formulas.py either\n\nThese systems are\
+    \ completely disconnected. Economy._update_class_relations()\nuses generic formulas, not the MLM-TW formulas we carefully\
+    \ designed and tested.\n\nOptions evaluated:\nA. Replace Economy/Politics entirely with new subsystems\nB. Refactor Economy/Politics\
+    \ to use formulas.py internally\nC. Direct Entities + Formulas (no subsystems)\n"
+  decision: "Option C: Direct Entities + Formulas architecture for Phase 2.\n\nSimulationEngine.step() calls formulas directly\
+    \ on entities:\n\n1. For each Relationship:\n   - Call calculate_imperial_rent()\n   - Update entity wealth\n\n2. For\
+    \ each SocialClass:\n   - Call calculate_consciousness_drift()\n   - Call calculate_acquiescence_probability()\n   - Call\
+    \ calculate_revolution_probability()\n   - Update entity state\n\n3. For each Contradiction:\n   - Update tension based\
+    \ on entity states\n   - Check for rupture/synthesis via ContradictionAnalysis\n\nNo Economy class. No Politics class\
+    \ in the game loop.\nJust: Entities (data) + Formulas (math) + Engine (orchestration)\n"
+  rationale:
+  - Simplest possible architecture for 2-node Phase 2
+  - formulas.py has 40 tests; Economy/Politics have 0 tests
+  - Avoids two layers of abstraction
+  - MLM-TW formulas ARE the theory; generic subsystems obscure it
+  - Single source of truth for calculations
+  - 'Easier to trace: entity field -> formula -> new value'
+  - 'YAGNI: Economy/Politics may be useful later, but not needed now'
+  alternatives_rejected:
+    replace_economy_politics:
+      reason: Throws away existing code; may be useful for future complexity
+    refactor_to_use_formulas:
+      reason: Adds abstraction layer without benefit for 2-node simulation
+  consequences:
+    positive:
+    - Direct traceability from entity to formula to result
+    - No untested code in critical path
+    - 'Simpler debugging: fewer layers'
+    - Engine logic matches theoretical documentation
+    negative:
+    - Economy/Politics classes deleted (see ADR011)
+    - May need to introduce subsystems when scaling to many entities
+    - Engine.step() may grow complex (mitigate with clear sections)
+  related_gap_analysis:
+    gap_1: 'Entity-to-Aggregate: Aggregates computed from entities, not stored'
+    gap_2: 'Formula-to-Entity wiring: Explicit mapping required (see game-loop-architecture.yaml)'
+    gap_3: This decision resolves the disconnected systems gap
+    gap_4: 'Initialization: Factory function for test scenarios'
+    gap_5: 'Phase transitions: ContradictionAnalysis handles rupture/synthesis'
+    gap_6: 'Coefficients: SimulationConfig object holds global constants'
+    gap_7: 'NetworkX: Used from day one per ADR011 (supersedes original ADR010 recommendation)'
+    gap_8: 'Testing: Property-based tests for feedback loop verification'
+  future_considerations: 'When scaling beyond Phase 2 (many entities, multiple countries),
+
+    may introduce subsystem layer for:
+
+    - Aggregate calculations (GDP computed from all entities)
+
+    - Batch updates (process all entities of a type together)
+
+    - Performance optimization (cache intermediate results)
+
+
+    Note: Economy/Politics classes were DELETED per ADR011.
+
+    If subsystems are needed in future, write fresh with correct architecture.
+
+    git log preserves the old code for reference if needed.
+
+    '
+  implementation_status: 'IMPLEMENTED in Phase 2 with 704 tests proving:
+
+    - Direct formula wiring works
+
+    - Feedback loops produce emergent behavior
+
+    - No subsystem layer needed for 2-node simulation
+
+    '

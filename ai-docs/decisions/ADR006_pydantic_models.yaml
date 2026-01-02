@@ -1,0 +1,23 @@
+meta:
+  id: ADR006_pydantic_models
+  version: 1.0.0
+ADR006_pydantic_models:
+  status: accepted
+  date: 2024-12
+  title: Pydantic for all game objects
+  context: 'Need runtime validation and type safety for game entities.
+
+    '
+  decision: All game objects are Pydantic BaseModel subclasses
+  rationale:
+  - Runtime validation
+  - Automatic serialization
+  - IDE support
+  - Clear schema definition
+  consequences:
+    positive:
+    - Type safety
+    - Self-documenting models
+    negative:
+    - Slight performance overhead
+    - Learning curve

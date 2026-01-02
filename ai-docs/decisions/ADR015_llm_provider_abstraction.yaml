@@ -1,0 +1,50 @@
+meta:
+  id: ADR015_llm_provider_abstraction
+  version: 1.0.0
+ADR015_llm_provider_abstraction:
+  status: accepted
+  date: '2025-12-08'
+  title: LLM Provider Protocol with DeepSeek as Primary
+  context: 'The NarrativeDirector needs to call an LLM to generate narrative. Multiple
+
+    LLM options exist with different tradeoffs:
+
+    - DeepSeek: Cost-effective, OpenAI-compatible API, good quality
+
+    - Ollama: Local, free, variable quality, no API key needed
+
+    - Claude (Anthropic): Highest quality, higher API costs
+
+
+    Need abstraction to support all without coupling Director to specific provider.
+
+    '
+  decision: "Create LLMProvider protocol with DeepSeek as primary implementation:\n\n@runtime_checkable\nclass LLMProvider(Protocol):\n\
+    \    def generate(self, prompt: str, system: str | None = None) -> str:\n        '''Generate text from prompt.'''\n  \
+    \      ...\n\nPrimary implementation (Sprint 3.3):\n- DeepSeekProvider (OpenAI-compatible API)\n\nFuture implementations\
+    \ (as needed):\n- OllamaProvider (HTTP API)\n- ClaudeProvider (Anthropic SDK)\n\nNarrativeDirector accepts optional LLMProvider\
+    \ in constructor.\nIf None, narrative is logged but not generated (backward compat).\n"
+  rationale:
+  - DeepSeek is cost-effective for development/testing
+  - OpenAI-compatible API means we can use openai Python package
+  - Protocol pattern matches existing SimulationObserver design
+  - Optional injection maintains backward compatibility with tests
+  - Easy to add new providers without modifying Director
+  - Sync API matches Observer pattern (not async)
+  location: src/babylon/ai/llm_provider.py
+  deepseek_integration:
+    api_base: https://api.deepseek.com
+    model: deepseek-chat
+    package: openai (with custom base_url)
+    env_var: DEEPSEEK_API_KEY
+  consequences:
+    positive:
+    - Cost-effective development and testing
+    - Flexible provider selection for future
+    - Easy testing with mock providers
+    - No vendor lock-in
+    - OpenAI SDK provides robust client implementation
+    negative:
+    - Requires API key and internet connection
+    - One more abstraction layer
+    - Rate limits and API costs (though minimal with DeepSeek)

@@ -1,0 +1,115 @@
+meta:
+  id: ADR028_code_complexity_gating
+  version: 1.0.0
+ADR028_code_complexity_gating:
+  status: accepted
+  date: '2025-12-26'
+  title: Cyclomatic Complexity Gating for AI-Heavy Development
+  context: 'Babylon is developed with ~80% AI-written code. This creates a unique quality
+
+    challenge: AI can produce code that passes tests but has sprawling complexity
+
+    that becomes a debugging nightmare.
+
+
+    Earlier in Phase 3, we encountered code smells and maintainability issues that
+
+    prompted investigation into static analysis tooling. The question arose:
+
+    "What guardrails prevent AI from generating unmaintainable code?"
+
+
+    Key constraints:
+
+    - Must not block local development velocity
+
+    - Must catch problems before main branch
+
+    - Should integrate with existing tooling (Ruff, pre-commit, Mise, GitHub Actions)
+
+    - Thresholds must be pragmatic for existing codebase
+
+
+    Options evaluated:
+
+    - Radon: Full complexity metrics, detailed reporting
+
+    - Xenon: Radon wrapper with CI-friendly thresholds
+
+    - Ruff C901: McCabe complexity rule, fast pre-commit integration
+
+    - SonarQube: Heavy, enterprise-focused (overkill)
+
+    - wily: Trend tracking over time (future enhancement)
+
+    '
+  decision: "Implement three-layer complexity checking:\n\n1. **Pre-commit (Ruff C901)**: Fast local feedback\n   - Rule:\
+    \ max-complexity = 15\n   - Blocks commit if any function exceeds CC 15\n   - Immediate developer feedback\n\n2. **CI\
+    \ Report (Radon)**: Visibility on all branches\n   - Command: poetry run radon cc src/ -a -s\n   - Shows per-function\
+    \ grades in CI logs\n   - Never blocks, informational only\n\n3. **CI Gate (Xenon)**: Blocking on main only\n   - Command:\
+    \ poetry run xenon --max-absolute C src/\n   - Fails merge if any function exceeds CC 15 (grade C boundary)\n   - Quality\
+    \ gate before stable releases\n\nThresholds:\n- Warning: CC > 10 (shown in reports)\n- Blocking: CC > 15 (fails CI on\
+    \ main)\n\nScope:\n- Included: src/babylon/**/*.py\n- Excluded: tests/**/*.py (test functions intentionally verbose)\n\
+    \nMetrics selected:\n- Cyclomatic Complexity: YES (primary, actionable)\n- Maintainability Index: NO (docstrings inflate\
+    \ it artificially)\n- Halstead metrics: NO (too academic, high noise)\n- Raw LOC: NO (already have 100-line rule in CLAUDE.md)\n"
+  rationale:
+  - 80% AI-written code needs guardrails humans wouldn't require
+  - CC > 15 is stricter than some enterprises but pragmatic for existing codebase
+  - Google uses 10, Microsoft uses 15 - we're in the reasonable middle
+  - Three layers give fast feedback + visibility + final gate
+  - Ruff C901 in pre-commit catches issues before they leave developer machine
+  - Radon reports enable 'seeing the stats' without blocking velocity
+  - Xenon on main ensures releases meet quality bar
+  - Excluding tests prevents false positives from verbose test setups
+  - Can tighten to CC 10 later after baselining current state
+  alternatives_rejected:
+    maintainability_index:
+      reason: Mandatory Sphinx docstrings inflate MI artificially
+    sonarqube:
+      reason: Enterprise-focused, requires server, overkill for game project
+    blocking_on_dev:
+      reason: Would slow velocity during sprint work; warnings sufficient for integration branch
+    cc_threshold_10:
+      reason: Too strict for existing codebase; start at 15, tighten later
+  implementation:
+    packages:
+    - radon (poetry add --group dev radon)
+    - xenon (poetry add --group dev xenon)
+    config_changes:
+    - 'pyproject.toml: [tool.ruff.lint] extend-select = [''C901''], max-complexity = 15'
+    - '.github/workflows/ci.yml: Add radon report step (all branches)'
+    - '.github/workflows/ci.yml: Add xenon gate step (main only)'
+    mise_tasks:
+    - 'complexity: Show full radon report'
+    - 'complexity-check: Run xenon gate locally'
+    pre_commit:
+    - Ruff C901 rule enabled via existing ruff hook
+  workflow_diagram: "Developer writes code\n        │\n        ▼\nPre-commit (Ruff C901) ──► Fails locally if CC > 15\n  \
+    \      │\n        ▼\nPush to feature/*\n        │\n        ▼\nPR to dev ──► Radon report (visible, never blocks)\n   \
+    \     │\n        ▼\nMerge to dev ──► Same (warnings only)\n        │\n        ▼\nPR to main ──► Xenon gate (BLOCKS if\
+    \ CC > 15)\n        │\n        ▼\nMerge to main (clean)\n"
+  industry_context:
+    google: CC ≤ 10 recommended
+    microsoft: CC ≤ 15 for maintainable code
+    nasa_power_of_10: Implies CC around 10
+    sonarqube_default: 10 (cognitive complexity variant)
+    babylon_choice: 15 (pragmatic, can tighten later)
+  consequences:
+    positive:
+    - AI cannot merge sprawling functions to main
+    - Immediate feedback via pre-commit catches issues early
+    - CI visibility enables informed discussions in PRs
+    - Pragmatic threshold prevents false positive fatigue
+    - Future tightening possible without architectural change
+    - Aligns with existing 100-line function rule
+    negative:
+    - Two new dev dependencies (radon, xenon)
+    - Slight CI time increase (~2-3 seconds)
+    - Must baseline existing code before enabling gate
+    - Some legitimate high-CC code may need exclusions
+  detailed_spec: ai-docs/tooling.yaml (code_complexity section)
+  related:
+  - ADR021_cicd_philosophy
+  - CLAUDE.md 100-line function rule
+  - ai-docs/anti-patterns.yaml
+  mantra: When AI writes the code, machines must also guard the quality.

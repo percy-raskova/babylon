@@ -1,0 +1,25 @@
+meta:
+  id: ADR002_sqlite_over_postgres
+  version: 1.0.0
+ADR002_sqlite_over_postgres:
+  status: accepted
+  date: '2024-12-07'
+  title: SQLite instead of PostgreSQL
+  context: 'Initially configured PostgreSQL, but this is a local game
+
+    with no multi-user requirements.
+
+    '
+  decision: Use SQLite for all persistent storage
+  rationale:
+  - No server to manage
+  - Zero configuration
+  - Portable game saves (single file)
+  - Sufficient performance for single-player
+  consequences:
+    positive:
+    - Simpler deployment
+    - No external dependencies
+    negative:
+    - Can't easily add multiplayer later
+    - No concurrent writes (not needed)

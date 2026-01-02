@@ -2820,11 +2820,41 @@ pending:
       - "ADR035_namespace_driven_mise_tasks (task organization)"
 
   ADR037_bourgeoisie_wealth_concentration:
-    status: "proposed"
+    status: "deferred"
+    deferred_to: "Epoch 2"
     date: "2026-01-01"
-    title: "Fix inverted wealth dynamics: Bourgeoisie must accumulate, not disappear"
-    severity: "CRITICAL BUG"
+    title: "Branching trajectories: Classical Concentration vs Warlord Coup"
+    original_severity: "CRITICAL BUG"
     discovered_during: "Epoch 1 MVP - necropolis_viewer.py 100-year simulation"
+
+    key_insight: |
+      The current math IS fundamentally flawed (bourgeoisie should accumulate).
+      BUT the observed dynamics ALSO model a valid historical trajectory where
+      enforcers seize power from a dying bourgeoisie.
+
+      Epoch 2 will implement BOTH as branching trajectories:
+      - Trajectory A: Fix the math → Classical Concentration (bourgeoisie survives)
+      - Trajectory B: Keep the dynamics → Warlord Coup (enforcers seize power)
+
+      The branch depends on enforcer loyalty, which depends on payment consistency.
+
+    warlord_trajectory: |
+      The "bug" models enforcers seizing power when bourgeoisie can no longer pay.
+      Key insight: Bourgeoisie control means of violence BY PROXY through money.
+
+      - C_b pays enforcers → enforcers control tanks, drones, helicopters
+      - When C_b's money runs out → enforcers still have the weapons
+      - Coup opportunity: Enforcers become the new ruling class (warlords)
+
+      Historical parallels:
+      - Roman Praetorian Guard (killed emperors, installed own candidates)
+      - Chile 1973 (Pinochet), Argentina 1976 (Videla), Myanmar 2021
+      - Every military junta in history
+
+      Branching condition:
+        enforcer_loyalty = f(C_b_wealth, payment_consistency, ideology)
+        If C_b can pay → loyal → Trajectory A (necropolis ruled by capitalists)
+        If C_b cannot pay → coup → Trajectory B (necropolis ruled by warlords)
 
     context: |
       Running the 100-year Carceral Equilibrium simulation revealed a fundamental

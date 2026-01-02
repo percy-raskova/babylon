@@ -139,6 +139,13 @@ class EconomyDefines(BaseModel):
         description="Biological floor: fixed cost per tick (LINEAR), scaled by class multiplier",
     )
 
+    # Zombie prevention (Sprint 1.X D2: High-Fidelity State)
+    death_threshold: float = Field(
+        default=0.001,
+        ge=0.0,
+        description="Wealth threshold below which entities die (zombie prevention failsafe)",
+    )
+
     # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)
     # See ai-docs/epoch2-trpf.yaml for full OCC implementation planned for Epoch 2
     trpf_coefficient: float = Field(
@@ -687,6 +694,11 @@ class InitialDefines(BaseModel):
         default=0.5,
         ge=0.0,
         description="Starting wealth for core owner",
+    )
+    default_population: int = Field(
+        default=1,
+        ge=1,
+        description="Default population for test entities. pop=1 ensures per-capita survival mechanics are tested without large denominators masking issues.",
     )
 
 

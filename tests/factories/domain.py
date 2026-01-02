@@ -32,6 +32,8 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import SectorType
 from babylon.models.events import (
     CrisisEvent,
     ExtractionEvent,
@@ -192,6 +194,56 @@ class DomainFactory:
             value_flow=value_flow,
             tension=tension,
             solidarity_strength=solidarity_strength,
+        )
+
+    def create_test_territory(
+        self,
+        *,
+        id: str = "T001",
+        name: str = "Test Territory",
+        sector_type: SectorType = SectorType.INDUSTRIAL,
+        biocapacity: float = 100.0,
+        max_biocapacity: float = 100.0,
+    ) -> Territory:
+        """Create a territory for integration tests.
+
+        Args:
+            id: Territory identifier (default: "T001").
+            name: Human-readable name (default: "Test Territory").
+            sector_type: Economic sector type (default: INDUSTRIAL).
+            biocapacity: Current extractable resources (default: 100.0).
+            max_biocapacity: Maximum biocapacity (default: 100.0).
+
+        Returns:
+            Territory configured for testing with sufficient biocapacity.
+        """
+        return Territory(
+            id=id,
+            name=name,
+            sector_type=sector_type,
+            biocapacity=biocapacity,
+            max_biocapacity=max_biocapacity,
+        )
+
+    def create_tenancy(
+        self,
+        *,
+        source_id: str,
+        target_id: str = "T001",
+    ) -> Relationship:
+        """Create a TENANCY edge connecting an entity to a territory.
+
+        Args:
+            source_id: Entity ID (SocialClass) connecting to territory.
+            target_id: Territory ID (default: "T001").
+
+        Returns:
+            Relationship with edge_type=TENANCY.
+        """
+        return Relationship(
+            source_id=source_id,
+            target_id=target_id,
+            edge_type=EdgeType.TENANCY,
         )
 
     def create_world_state(

@@ -182,6 +182,10 @@ class WealthDefaults:
     PERIPHERY_WORKER: float = 20.0  # Periphery proletariat
     CORE_OWNER: float = 1000.0  # Core bourgeoisie
 
+    # Safe wealth for integration tests (survives per-capita survival mechanics)
+    # 5× default_subsistence (0.3) = 1.5, but we use 5.0 for extra margin
+    SAFE_WEALTH: float = 5.0
+
     # Common test ranges
     DESTITUTE: float = 0.0
     MODEST: float = 50.0
@@ -442,15 +446,19 @@ class VitalityDefaults:
     Represents population size and subsistence requirements.
     """
 
-    # Default values
-    DEFAULT_POPULATION: float = 1.0  # Single entity
-    DEFAULT_SUBSISTENCE: float = 5.0  # Base subsistence needs
+    # Default population for test entities
+    # MUST match GameDefines.initial.default_population to avoid magic numbers
+    # pop=1 ensures per-capita survival mechanics are tested without large denominators
+    DEFAULT_POPULATION: int = 1
 
-    # Population scales
+    # Base subsistence needs
+    DEFAULT_SUBSISTENCE: float = 5.0
+
+    # Population scales (for scenario tests with multi-actor dynamics)
     FRACTIONAL: float = 0.5  # Fractional population
-    SMALL: float = 1000.0  # Small population
-    MEDIUM: float = 500.0  # Medium population
-    LARGE: float = 1_000_000.0  # Large population
+    SMALL: int = 1000  # Small population
+    MEDIUM: int = 500  # Medium population
+    LARGE: int = 1_000_000  # Large population
 
     # Subsistence scales
     LOW_SUBSISTENCE: float = 2.5  # Low needs

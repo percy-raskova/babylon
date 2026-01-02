@@ -352,3 +352,11 @@ The model is not prescriptive (this SHOULD happen) but descriptive (this is what
 > **"Collapse is certain. Revolution is possible. Organization is the difference."**
 
 The player cannot prevent imperial collapse. They can only determine whether it resolves through revolutionary transformation or genocidal stabilization. Every tick is a choice: organize or accept the necropolis.
+
+---
+
+## See Also
+
+- **[warlord-trajectory.md](warlord-trajectory.md)**: Epoch 2 branching trajectories - Classical Concentration vs Warlord Coup. When bourgeoisie cannot pay enforcers, a different endgame emerges.
+- **[terminal-crisis-dynamics.md](terminal-crisis-dynamics.md)**: The full endgame arc from plantation to genocide.
+- **[theory.md](theory.md)**: The MLM-TW theoretical foundation underlying the simulation.

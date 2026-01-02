@@ -28,7 +28,7 @@ from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType
-from babylon.models.events import SimulationEvent
+from babylon.models.events import SimulationEvent, deserialize_event
 from babylon.models.types import Currency
 
 if TYPE_CHECKING:
@@ -139,6 +139,10 @@ class WorldState(BaseModel):
             state_id: finance.model_dump() for state_id, finance in self.state_finances.items()
         }
 
+        # Store events in graph metadata for lossless round-trip (Sprint 1.X D2)
+        G.graph["events"] = [e.model_dump() for e in self.events]
+        G.graph["event_log"] = list(self.event_log)
+
         # Add entity nodes with _node_type marker
         for entity_id, entity in self.entities.items():
             G.add_node(entity_id, _node_type="social_class", **entity.model_dump())
@@ -187,6 +191,20 @@ class WorldState(BaseModel):
         # Falls back to empty dict if not present (backward compatibility)
         sf_data = G.graph.get("state_finances", {})
         state_finances = {state_id: StateFinance(**data) for state_id, data in sf_data.items()}
+
+        # Reconstruct events from graph metadata (Sprint 1.X D2: Lossless Round-Trip)
+        # Only use graph metadata if events parameter was not explicitly provided
+        if events is None:
+            events_data = G.graph.get("events", [])
+            if events_data:
+                events = [deserialize_event(e) for e in events_data]
+
+        # Reconstruct event_log from graph metadata (Sprint 1.X D2)
+        # Only use graph metadata if event_log parameter was not explicitly provided
+        if event_log is None:
+            event_log_data = G.graph.get("event_log", [])
+            if event_log_data:
+                event_log = list(event_log_data)
 
         # Reconstruct entities and territories from nodes based on _node_type
         entities: dict[str, SocialClass] = {}

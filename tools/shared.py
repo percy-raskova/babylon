@@ -33,6 +33,7 @@ from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
 from babylon.models.enums import EdgeType, EventType
+from babylon.models.types import EntityProtocol
 
 # =============================================================================
 # ENTITY ID CONSTANTS
@@ -93,21 +94,32 @@ DEATH_THRESHOLD: Final[float] = 0.001
 # =============================================================================
 
 
-def is_dead(entity: Any) -> bool:
+def is_dead(entity: EntityProtocol | None) -> bool:
     """Check if an entity is dead using VitalitySystem's active field.
 
     This aligns with VitalitySystem which sets active=False when
     wealth < consumption_needs (s_bio + s_class).
 
+    Sprint 1.X D2: Now enforces EntityProtocol for type safety.
+    Use is_dead_by_wealth() for float-based wealth threshold checks.
+
     Args:
-        entity: SocialClass entity or None
+        entity: Object implementing EntityProtocol, or None.
 
     Returns:
-        True if entity is None or has active=False
+        True if entity is None or has active=False.
+
+    Raises:
+        TypeError: If entity does not implement EntityProtocol.
     """
     if entity is None:
         return True
-    return not getattr(entity, "active", True)
+    if not isinstance(entity, EntityProtocol):
+        raise TypeError(
+            f"is_dead() requires EntityProtocol, got {type(entity).__name__}. "
+            "Use is_dead_by_wealth() for float values."
+        )
+    return not entity.active
 
 
 def is_dead_by_wealth(wealth: float) -> bool:

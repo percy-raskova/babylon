@@ -148,14 +148,30 @@ class VitalitySystem:
             s_class = data.get("s_class", 0.0)
             consumption_needs = s_bio + s_class
 
-            # Full extinction: population=0 OR (population=1 AND starving)
+            # Zombie Prevention Failsafe (Sprint 1.X D2: High-Fidelity State)
+            # Only for population=1: prevents asymptotic decay without death.
+            # For population>1, attrition naturally reduces to 1 before this triggers.
+            death_threshold = services.defines.economy.death_threshold
+            is_zombie_trapped = wealth < death_threshold and current_population == 1
+
+            # Full extinction: population=0 OR (population=1 AND starving) OR zombie trap
             is_extinct = current_population <= 0
             is_starving = current_population == 1 and wealth < consumption_needs
 
-            if is_extinct or is_starving:
+            if is_extinct or is_starving or is_zombie_trapped:
                 graph.nodes[node_id]["active"] = False
                 if is_starving and current_population == 1:
                     graph.nodes[node_id]["population"] = 0
+                if is_zombie_trapped:
+                    graph.nodes[node_id]["population"] = 0
+
+                # Determine cause of death
+                if is_extinct:
+                    cause = "extinction"
+                elif is_zombie_trapped:
+                    cause = "wealth_threshold"
+                else:
+                    cause = "starvation"
 
                 # Emit ENTITY_DEATH event for full extinction
                 services.event_bus.publish(
@@ -168,7 +184,7 @@ class VitalitySystem:
                             "consumption_needs": consumption_needs,
                             "s_bio": s_bio,
                             "s_class": s_class,
-                            "cause": "extinction" if is_extinct else "starvation",
+                            "cause": cause,
                         },
                     )
                 )

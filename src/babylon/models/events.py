@@ -887,3 +887,65 @@ class EndgameEvent(SimulationEvent):
         ...,
         description="The game outcome that ended the simulation",
     )
+
+
+# =============================================================================
+# Event Deserialization (Sprint 1.X Deliverable 2)
+# =============================================================================
+
+# Registry mapping EventType values to their event classes
+EVENT_CLASS_MAP: dict[str, type[SimulationEvent]] = {
+    EventType.SURPLUS_EXTRACTION.value: ExtractionEvent,
+    EventType.IMPERIAL_SUBSIDY.value: SubsidyEvent,
+    EventType.ECONOMIC_CRISIS.value: CrisisEvent,
+    EventType.SUPERWAGE_CRISIS.value: SuperwageCrisisEvent,
+    EventType.CLASS_DECOMPOSITION.value: ClassDecompositionEvent,
+    EventType.CONTROL_RATIO_CRISIS.value: ControlRatioCrisisEvent,
+    EventType.TERMINAL_DECISION.value: TerminalDecisionEvent,
+    EventType.CONSCIOUSNESS_TRANSMISSION.value: TransmissionEvent,
+    EventType.MASS_AWAKENING.value: MassAwakeningEvent,
+    EventType.EXCESSIVE_FORCE.value: SparkEvent,
+    EventType.UPRISING.value: UprisingEvent,
+    EventType.SOLIDARITY_SPIKE.value: SolidaritySpikeEvent,
+    EventType.RUPTURE.value: RuptureEvent,
+    EventType.PHASE_TRANSITION.value: PhaseTransitionEvent,
+    EventType.ENDGAME_REACHED.value: EndgameEvent,
+}
+
+
+def deserialize_event(data: dict[str, object]) -> SimulationEvent:
+    """Deserialize an event from a dict to the appropriate SimulationEvent subclass.
+
+    This is used by WorldState.from_graph() to restore events from graph metadata.
+    The event_type field determines which subclass to use for deserialization.
+
+    Args:
+        data: Dict containing event data, must have "event_type" key.
+
+    Returns:
+        The appropriate SimulationEvent subclass instance.
+
+    Raises:
+        ValueError: If event_type is missing or unrecognized.
+
+    Example:
+        >>> data = {"event_type": "surplus_extraction", "tick": 5, ...}
+        >>> event = deserialize_event(data)
+        >>> isinstance(event, ExtractionEvent)
+        True
+    """
+    event_type = data.get("event_type")
+
+    # Handle EventType enum or string
+    if isinstance(event_type, EventType):
+        event_type_str = event_type.value
+    elif isinstance(event_type, str):
+        event_type_str = event_type
+    else:
+        raise ValueError(f"Missing or invalid event_type in event data: {data}")
+
+    # Look up the appropriate class
+    event_class = EVENT_CLASS_MAP.get(event_type_str, SimulationEvent)
+
+    # Deserialize using Pydantic's model_validate
+    return event_class.model_validate(data)

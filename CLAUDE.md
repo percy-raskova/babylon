@@ -101,10 +101,9 @@ When making commits:
 1. Keep status markers accurate (COMPLETE, IN PROGRESS, PLANNED)
 2. Update test counts when they significantly change
 3. Add new issues/TODOs discovered during work
-4. Document any deferred work in `brainstorm/deferred-ideas.md`
-5. Break large changes into discrete, trackable items
-6. Reference file paths for implemented features
-7. Add cross-references between related documents
+4. Break large changes into discrete, trackable items
+5. Reference file paths for implemented features
+6. Add cross-references between related documents
 
 **Anti-Pattern**: Do NOT mark features as implemented without verifying the code exists.
 
@@ -495,9 +494,7 @@ Results are stored in `results/` (CSV, JSON), `reports/` (Markdown), `tests/base
 ## Documentation
 
 - Sphinx docs: `mise run docs-live` for development, `mise run docs` to build
-- Design specs in `brainstorm/mechanics/`
 - AI-readable specs in `ai-docs/` (YAML format) - **read `ai-docs/README.md` for catalog**
-- Deferred ideas go to `brainstorm/deferred-ideas.md`
 - Anti-patterns documented in `ai-docs/anti-patterns.yaml`
 
 **Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.

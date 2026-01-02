@@ -118,3 +118,4 @@ struggle:
 initial:
   worker_wealth: 0.5                # Starting wealth for periphery worker
   owner_wealth: 0.5                 # Starting wealth for core owner
+  default_population: 1             # Default population for test entities (per-capita survival testing)

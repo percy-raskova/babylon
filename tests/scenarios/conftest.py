@@ -257,8 +257,9 @@ def create_imperial_circuit_state() -> WorldState:
     ]
 
     # Global economy with rent pool
+    # 1000.0 allows phases to cascade over 100+ ticks for proper staggering
     economy = GlobalEconomy(
-        imperial_rent_pool=200.0,  # Starting rent pool (will deplete)
+        imperial_rent_pool=1000.0,  # Increased for phase staggering (was 200.0)
         current_super_wage_rate=0.25,  # 25% wage rate
         current_repression_level=0.4,  # Moderate repression
     )

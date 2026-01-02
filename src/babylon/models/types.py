@@ -11,6 +11,7 @@ Types defined:
     Intensity: [0.0, 1.0] - contradiction intensity
     Coefficient: [0.0, 1.0] - formula parameters (alpha, lambda, k)
     Ratio: (0.0, inf) - wage ratios, exchange ratios
+    EntityProtocol: Protocol for entities with lifecycle state (Sprint 1.X D2)
 
 Usage:
     from babylon.models.types import Probability, Currency
@@ -28,7 +29,7 @@ Epoch 0 Physics Hardening (Gatekeeper Pattern):
     floating-point drift accumulation over long simulations.
 """
 
-from typing import Annotated
+from typing import Annotated, Protocol, runtime_checkable
 
 from pydantic import AfterValidator, Field
 
@@ -238,3 +239,43 @@ At gini=1: marginal_wealth = 0 (marginal workers always starve)
 
 Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
+
+# =============================================================================
+# ENTITY PROTOCOL (Sprint 1.X Deliverable 2: Strict Typing)
+# =============================================================================
+
+
+@runtime_checkable
+class EntityProtocol(Protocol):
+    """Protocol for entities with lifecycle state.
+
+    Any object implementing this protocol can be checked for death
+    using is_dead() or similar lifecycle functions. This prevents
+    type errors where floats, dicts, or other non-entity types are
+    accidentally passed to lifecycle functions.
+
+    Implementors:
+        - SocialClass: Has active field (True = alive, False = dead)
+
+    Sprint 1.X D2 Pain Point #3: Loose typing allowed bugs like
+    is_dead(float) instead of is_dead(Entity).
+
+    Example:
+        >>> from babylon.models.types import EntityProtocol
+        >>> from babylon.models import SocialClass
+        >>>
+        >>> worker = SocialClass(id="C001", name="Worker", ...)
+        >>> isinstance(worker, EntityProtocol)  # True
+        >>> is_dead(worker)  # Works
+        >>>
+        >>> is_dead(0.5)  # TypeError: expected EntityProtocol
+    """
+
+    @property
+    def active(self) -> bool:
+        """Whether the entity is alive/active.
+
+        Returns:
+            True if the entity is alive, False if dead.
+        """
+        ...

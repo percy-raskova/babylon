@@ -8,9 +8,20 @@ This is the capstone integration test that proves:
 2. Simulation facade manages state correctly
 3. Wealth transfers from Worker (exploited) to Owner (exploiter)
 4. History is preserved for narrative generation
+
+Sprint 1.X: Refactored for Material Reality physics:
+- Population=1 for per-capita survival mechanics
+- SAFE_WEALTH (5.0) ensures entities survive VitalitySystem
+- Territory + TENANCY edges enable production
 """
 
 import pytest
+
+from babylon.models.entities.territory import Territory
+from babylon.models.enums import SectorType
+from tests.constants import TestConstants
+
+TC = TestConstants
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 
@@ -25,13 +36,43 @@ class TestHistoryOfClassStruggle:
         This is the fundamental theorem of imperial rent in action:
         value flows from the exploited (Proletariat) to the exploiter (Bourgeoisie).
         """
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
-        # Create entities using factory functions
-        worker = create_proletariat(id="C001", wealth=0.5)
-        owner = create_bourgeoisie(id="C002", wealth=0.5)
+        # Create entities with default population for per-capita survival mechanics
+        # Worker has moderate wealth for extraction; Owner has high wealth to survive 100 ticks
+        worker = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=100.0,  # High wealth as extraction source
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=50.0,  # High starting wealth to survive subsistence over 100 ticks
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for worker production
+        # Worker produces via TENANCY; Owner extracts but doesn't produce
+        # This models the fundamental MLM-TW dynamic: workers produce, owners extract
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         # Create exploitation relationship
         exploitation = Relationship(
@@ -42,11 +83,20 @@ class TestHistoryOfClassStruggle:
             tension=0.0,
         )
 
-        # Create initial state
+        # ONLY worker has TENANCY - Owner is pure extractor (no production)
+        # This is the fundamental class relationship: workers produce, owners extract
+        tenancy_worker = Relationship(
+            source_id="C001",
+            target_id="T001",
+            edge_type=EdgeType.TENANCY,
+        )
+
+        # Create initial state with territory
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            territories={"T001": territory},
+            relationships=[exploitation, tenancy_worker],  # No owner tenancy
         )
 
         # Create config with default parameters
@@ -56,29 +106,29 @@ class TestHistoryOfClassStruggle:
         sim = Simulation(initial_state, config)
         final_state = sim.run(100)
 
-        # ASSERT: Worker lost wealth, Owner gained wealth
-        initial_worker_wealth = worker.wealth
-        initial_owner_wealth = owner.wealth
+        # ASSERT: Wealth flows from Worker to Owner (class struggle dynamics)
+        initial_worker_wealth = 100.0  # Explicitly set above
+        initial_owner_wealth = 50.0  # Explicitly set above
 
         final_worker_wealth = final_state.entities["C001"].wealth
         final_owner_wealth = final_state.entities["C002"].wealth
 
-        # Worker should have lost wealth (extracted by owner)
+        # Worker should have lost wealth to extraction
+        # (even with production, high extraction should dominate)
         assert final_worker_wealth < initial_worker_wealth, (
             f"Worker wealth should decrease: {initial_worker_wealth} -> {final_worker_wealth}"
         )
 
-        # Owner should have gained wealth (from extraction)
+        # Owner accumulates extraction despite no production (pure extraction model)
+        # Note: Owner survives on initial wealth + extraction, minus subsistence burn
+        # At 100 ticks, owner should still have more than initial if extraction > subsistence
         assert final_owner_wealth > initial_owner_wealth, (
             f"Owner wealth should increase: {initial_owner_wealth} -> {final_owner_wealth}"
         )
 
-        # Total wealth should be conserved (zero-sum extraction)
-        initial_total = initial_worker_wealth + initial_owner_wealth
-        final_total = final_worker_wealth + final_owner_wealth
-        assert final_total == pytest.approx(initial_total, rel=0.01), (
-            f"Total wealth not conserved: {initial_total} -> {final_total}"
-        )
+        # Wealth redistribution check: verify extraction happened
+        worker_loss = initial_worker_wealth - final_worker_wealth
+        assert worker_loss > 0, "Worker should have lost wealth to extraction"
 
     def test_component_values_stay_in_valid_ranges(self) -> None:
         """All component values stay within their valid ranges over 100 ticks.
@@ -89,12 +139,39 @@ class TestHistoryOfClassStruggle:
         - Probability: [0, 1]
         - Tension: [0, 1]
         """
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
-        worker = create_proletariat(id="C001", wealth=0.5)
-        owner = create_bourgeoisie(id="C002", wealth=0.5)
+        worker = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for production
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         exploitation = Relationship(
             source_id="C001",
@@ -104,10 +181,23 @@ class TestHistoryOfClassStruggle:
             tension=0.0,
         )
 
+        # TENANCY edges
+        tenancy_worker = Relationship(
+            source_id="C001",
+            target_id="T001",
+            edge_type=EdgeType.TENANCY,
+        )
+        tenancy_owner = Relationship(
+            source_id="C002",
+            target_id="T001",
+            edge_type=EdgeType.TENANCY,
+        )
+
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            territories={"T001": territory},
+            relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
 
         config = SimulationConfig()
@@ -160,18 +250,51 @@ class TestHistoryOfClassStruggle:
         A core worker with solidarity connection to a revolutionary periphery worker
         will gain class consciousness over time.
         """
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
         # Core worker starts at neutral consciousness (0.5)
-        worker = create_proletariat(id="C001", wealth=0.5, ideology=0.0)
-        owner = create_bourgeoisie(id="C002", wealth=0.5)
+        worker = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            ideology=0.0,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
 
         # Add a revolutionary periphery worker to transmit consciousness
-        periphery_worker = create_proletariat(
-            id="C003", wealth=0.3, ideology=-0.8
-        )  # consciousness 0.9
+        periphery_worker = SocialClass(
+            id="C003",
+            name="Revolutionary",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            ideology=-0.8,  # consciousness 0.9
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for production
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         exploitation = Relationship(
             source_id="C001",
@@ -189,10 +312,26 @@ class TestHistoryOfClassStruggle:
             solidarity_strength=0.3,
         )
 
+        # TENANCY edges for all entities
+        tenancy_worker = Relationship(
+            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+        )
+        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+        tenancy_periphery = Relationship(
+            source_id="C003", target_id="T001", edge_type=EdgeType.TENANCY
+        )
+
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner, "C003": periphery_worker},
-            relationships=[exploitation, solidarity],
+            territories={"T001": territory},
+            relationships=[
+                exploitation,
+                solidarity,
+                tenancy_worker,
+                tenancy_owner,
+                tenancy_periphery,
+            ],
         )
 
         config = SimulationConfig()
@@ -210,12 +349,39 @@ class TestHistoryOfClassStruggle:
 
         As wealth is extracted, contradiction tension builds on the edge.
         """
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
-        worker = create_proletariat(id="C001", wealth=0.5)
-        owner = create_bourgeoisie(id="C002", wealth=0.5)
+        worker = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for production
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         exploitation = Relationship(
             source_id="C001",
@@ -225,10 +391,17 @@ class TestHistoryOfClassStruggle:
             tension=0.0,  # Start with no tension
         )
 
+        # TENANCY edges
+        tenancy_worker = Relationship(
+            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+        )
+        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            territories={"T001": territory},
+            relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
 
         config = SimulationConfig()
@@ -242,13 +415,40 @@ class TestHistoryOfClassStruggle:
 
     def test_simulation_is_deterministic(self) -> None:
         """Same initial state and config produces identical results."""
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
         def run_simulation() -> WorldState:
-            worker = create_proletariat(id="C001", wealth=0.5)
-            owner = create_bourgeoisie(id="C002", wealth=0.5)
+            worker = SocialClass(
+                id="C001",
+                name="Proletariat",
+                role=SocialRole.PERIPHERY_PROLETARIAT,
+                wealth=TC.Wealth.SAFE_WEALTH,
+                population=TC.Vitality.DEFAULT_POPULATION,
+            )
+            owner = SocialClass(
+                id="C002",
+                name="Bourgeoisie",
+                role=SocialRole.CORE_BOURGEOISIE,
+                wealth=TC.Wealth.SAFE_WEALTH,
+                population=TC.Vitality.DEFAULT_POPULATION,
+            )
+
+            # Create territory for production
+            territory = Territory(
+                id="T001",
+                name="Test Territory",
+                sector_type=SectorType.INDUSTRIAL,
+                biocapacity=100.0,
+                max_biocapacity=100.0,
+            )
 
             exploitation = Relationship(
                 source_id="C001",
@@ -258,10 +458,19 @@ class TestHistoryOfClassStruggle:
                 tension=0.0,
             )
 
+            # TENANCY edges
+            tenancy_worker = Relationship(
+                source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+            )
+            tenancy_owner = Relationship(
+                source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY
+            )
+
             initial_state = WorldState(
                 tick=0,
                 entities={"C001": worker, "C002": owner},
-                relationships=[exploitation],
+                territories={"T001": territory},
+                relationships=[exploitation, tenancy_worker, tenancy_owner],
             )
 
             config = SimulationConfig()
@@ -290,13 +499,40 @@ class TestHistoryFormatter:
 
     def test_format_class_struggle_history(self) -> None:
         """format_class_struggle_history() produces readable narrative."""
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.history_formatter import format_class_struggle_history
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
-        worker = create_proletariat(id="C001", name="Worker", wealth=0.5)
-        owner = create_bourgeoisie(id="C002", name="Owner", wealth=0.5)
+        worker = SocialClass(
+            id="C001",
+            name="Worker",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Owner",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for production
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         exploitation = Relationship(
             source_id="C001",
@@ -306,10 +542,17 @@ class TestHistoryFormatter:
             tension=0.0,
         )
 
+        # TENANCY edges
+        tenancy_worker = Relationship(
+            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+        )
+        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            territories={"T001": territory},
+            relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
 
         config = SimulationConfig()
@@ -329,13 +572,40 @@ class TestHistoryFormatter:
 
     def test_format_includes_wealth_changes(self) -> None:
         """Formatted history includes wealth change information."""
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.history_formatter import format_class_struggle_history
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
-        worker = create_proletariat(id="C001", wealth=0.5)
-        owner = create_bourgeoisie(id="C002", wealth=0.5)
+        worker = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for production
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         exploitation = Relationship(
             source_id="C001",
@@ -345,10 +615,17 @@ class TestHistoryFormatter:
             tension=0.0,
         )
 
+        # TENANCY edges
+        tenancy_worker = Relationship(
+            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+        )
+        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            territories={"T001": territory},
+            relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
 
         config = SimulationConfig()
@@ -366,13 +643,40 @@ class TestHistoryFormatter:
 
     def test_format_includes_tick_information(self) -> None:
         """Formatted history includes tick/turn information."""
-        from babylon.engine.factories import create_bourgeoisie, create_proletariat
         from babylon.engine.history_formatter import format_class_struggle_history
         from babylon.engine.simulation import Simulation
-        from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+        from babylon.models import (
+            EdgeType,
+            Relationship,
+            SimulationConfig,
+            SocialClass,
+            SocialRole,
+            WorldState,
+        )
 
-        worker = create_proletariat(id="C001", wealth=0.5)
-        owner = create_bourgeoisie(id="C002", wealth=0.5)
+        worker = SocialClass(
+            id="C001",
+            name="Proletariat",
+            role=SocialRole.PERIPHERY_PROLETARIAT,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+        owner = SocialClass(
+            id="C002",
+            name="Bourgeoisie",
+            role=SocialRole.CORE_BOURGEOISIE,
+            wealth=TC.Wealth.SAFE_WEALTH,
+            population=TC.Vitality.DEFAULT_POPULATION,
+        )
+
+        # Create territory for production
+        territory = Territory(
+            id="T001",
+            name="Test Territory",
+            sector_type=SectorType.INDUSTRIAL,
+            biocapacity=100.0,
+            max_biocapacity=100.0,
+        )
 
         exploitation = Relationship(
             source_id="C001",
@@ -382,10 +686,17 @@ class TestHistoryFormatter:
             tension=0.0,
         )
 
+        # TENANCY edges
+        tenancy_worker = Relationship(
+            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+        )
+        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+
         initial_state = WorldState(
             tick=0,
             entities={"C001": worker, "C002": owner},
-            relationships=[exploitation],
+            territories={"T001": territory},
+            relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
 
         config = SimulationConfig()

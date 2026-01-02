@@ -46,7 +46,8 @@ from optuna.samplers import TPESampler
 # Import from centralized shared module (ADR036)
 from shared import (
     DEFAULT_MAX_TICKS,
-    inject_parameter,
+    get_parameter_type,
+    inject_parameters,
     run_simulation,
 )
 
@@ -69,26 +70,29 @@ DEFAULT_STUDY_NAME: Final[str] = "babylon_carceral"
 DEFAULT_STORAGE: Final[str] = "sqlite:///optuna.db"
 DEFAULT_N_TRIALS: Final[int] = 100
 
-# Search space definition for Carceral Equilibrium dynamics
-# These parameters influence the 100-year trajectory phase transitions
-SEARCH_SPACE: Final[dict[str, tuple[float, float]]] = {
+# Categories to optimize for Carceral Equilibrium trajectory
+# These are passed to get_tunable_parameters() for dynamic enumeration
+TUNING_CATEGORIES: Final[list[str]] = ["economy", "consciousness", "solidarity", "carceral"]
+
+# Custom optimization bounds (tighter than Field constraints for efficient search)
+# Only parameters we want to actively tune - others use GameDefines defaults
+# Keys must match GameDefines paths exactly (validated at runtime)
+OPTIMIZATION_BOUNDS: Final[dict[str, tuple[float, float]]] = {
     # Core economic parameters (affect accumulation and crisis timing)
-    "economy.base_subsistence": (0.0002, 0.002),  # Calorie check - subsistence burn rate
-    "economy.extraction_efficiency": (0.5, 0.95),  # Alpha - how much surplus is captured
-    "economy.comprador_cut": (0.75, 0.95),  # How much comprador keeps (rest to C_b)
-    "economy.super_wage_rate": (0.10, 0.35),  # LA super-wage as fraction of rent
+    "economy.base_subsistence": (0.0002, 0.002),
+    "economy.extraction_efficiency": (0.5, 0.95),
+    "economy.comprador_cut": (0.75, 0.95),
+    "economy.super_wage_rate": (0.10, 0.35),
     # Long-term decay drivers (affect when crises occur)
-    "economy.trpf_coefficient": (0.0002, 0.002),  # Tendential rate of profit fall
-    "economy.trpf_efficiency_floor": (0.0, 0.1),  # CRITICAL: Floor=0 allows full collapse
-    "economy.rent_pool_decay": (0.0, 0.02),  # Imperial rent pool depletion rate (widened)
+    "economy.trpf_coefficient": (0.0002, 0.002),
+    "economy.trpf_efficiency_floor": (0.0, 0.1),
+    "economy.rent_pool_decay": (0.0, 0.02),
     # Consciousness and solidarity (affect terminal outcome)
-    "consciousness.sensitivity": (0.2, 0.8),  # How responsive to material conditions
-    "solidarity.scaling_factor": (0.3, 0.9),  # Solidarity network effectiveness
+    "consciousness.sensitivity": (0.2, 0.8),
+    "solidarity.scaling_factor": (0.3, 0.9),
     # Carceral parameters (affect control ratio crisis and terminal decision)
-    # After SUPERWAGE_CRISIS, LA decomposes: some → guards, rest → prisoners
-    # Based on real-world prison staffing: US average ~4:1, crisis >15:1
-    "carceral.control_capacity": (1, 10),  # Prisoners per guard (int, cast in objective)
-    "carceral.enforcer_fraction": (0.05, 0.30),  # % of former LA → guards
+    "carceral.control_capacity": (1, 10),
+    "carceral.enforcer_fraction": (0.05, 0.30),
 }
 
 # Set up logging
@@ -118,6 +122,9 @@ def create_objective(max_ticks: int = SIMULATION_LENGTH) -> Any:
         - Years 35-60:  Control Ratio Crisis (prison capacity exceeded)
         - Years 45-100: Terminal Decision (revolution vs genocide)
 
+        Uses Pydantic introspection (ADR038) for parameter enumeration.
+        OPTIMIZATION_BOUNDS defines tighter search ranges than Field constraints.
+
         Args:
             trial: Optuna trial object for parameter suggestion
 
@@ -127,81 +134,27 @@ def create_objective(max_ticks: int = SIMULATION_LENGTH) -> Any:
         Raises:
             optuna.TrialPruned: When simulation shows early failure
         """
-        # 1. Sample parameters from search space
-        base_subsistence = trial.suggest_float(
-            "base_subsistence",
-            SEARCH_SPACE["economy.base_subsistence"][0],
-            SEARCH_SPACE["economy.base_subsistence"][1],
-        )
-        extraction = trial.suggest_float(
-            "extraction_efficiency",
-            SEARCH_SPACE["economy.extraction_efficiency"][0],
-            SEARCH_SPACE["economy.extraction_efficiency"][1],
-        )
-        comprador_cut = trial.suggest_float(
-            "comprador_cut",
-            SEARCH_SPACE["economy.comprador_cut"][0],
-            SEARCH_SPACE["economy.comprador_cut"][1],
-        )
-        super_wage_rate = trial.suggest_float(
-            "super_wage_rate",
-            SEARCH_SPACE["economy.super_wage_rate"][0],
-            SEARCH_SPACE["economy.super_wage_rate"][1],
-        )
-        trpf_coefficient = trial.suggest_float(
-            "trpf_coefficient",
-            SEARCH_SPACE["economy.trpf_coefficient"][0],
-            SEARCH_SPACE["economy.trpf_coefficient"][1],
-        )
-        trpf_floor = trial.suggest_float(
-            "trpf_efficiency_floor",
-            SEARCH_SPACE["economy.trpf_efficiency_floor"][0],
-            SEARCH_SPACE["economy.trpf_efficiency_floor"][1],
-        )
-        rent_pool_decay = trial.suggest_float(
-            "rent_pool_decay",
-            SEARCH_SPACE["economy.rent_pool_decay"][0],
-            SEARCH_SPACE["economy.rent_pool_decay"][1],
-        )
-        consciousness_sensitivity = trial.suggest_float(
-            "consciousness_sensitivity",
-            SEARCH_SPACE["consciousness.sensitivity"][0],
-            SEARCH_SPACE["consciousness.sensitivity"][1],
-        )
-        solidarity_scaling = trial.suggest_float(
-            "solidarity_scaling",
-            SEARCH_SPACE["solidarity.scaling_factor"][0],
-            SEARCH_SPACE["solidarity.scaling_factor"][1],
-        )
-        # Carceral parameters (critical for later phase transitions)
-        control_capacity = trial.suggest_int(
-            "control_capacity",
-            int(SEARCH_SPACE["carceral.control_capacity"][0]),
-            int(SEARCH_SPACE["carceral.control_capacity"][1]),
-        )
-        enforcer_fraction = trial.suggest_float(
-            "enforcer_fraction",
-            SEARCH_SPACE["carceral.enforcer_fraction"][0],
-            SEARCH_SPACE["carceral.enforcer_fraction"][1],
-        )
+        # 1. Sample parameters using introspection + optimization bounds
+        params: dict[str, float | int] = {}
 
-        # 2. Inject parameters into GameDefines
-        defines = GameDefines()
-        defines = inject_parameter(defines, "economy.base_subsistence", base_subsistence)
-        defines = inject_parameter(defines, "economy.extraction_efficiency", extraction)
-        defines = inject_parameter(defines, "economy.comprador_cut", comprador_cut)
-        defines = inject_parameter(defines, "economy.super_wage_rate", super_wage_rate)
-        defines = inject_parameter(defines, "economy.trpf_coefficient", trpf_coefficient)
-        defines = inject_parameter(defines, "economy.trpf_efficiency_floor", trpf_floor)
-        defines = inject_parameter(defines, "economy.rent_pool_decay", rent_pool_decay)
-        defines = inject_parameter(defines, "consciousness.sensitivity", consciousness_sensitivity)
-        defines = inject_parameter(defines, "solidarity.scaling_factor", solidarity_scaling)
-        defines = inject_parameter(defines, "carceral.control_capacity", control_capacity)
-        defines = inject_parameter(defines, "carceral.enforcer_fraction", enforcer_fraction)
-        # proletariat_fraction = 1 - enforcer_fraction (implicit constraint)
-        defines = inject_parameter(
-            defines, "carceral.proletariat_fraction", 1.0 - enforcer_fraction
-        )
+        for param_path, (min_val, max_val) in OPTIMIZATION_BOUNDS.items():
+            # Use get_parameter_type to select suggest_int vs suggest_float
+            param_type = get_parameter_type(param_path)
+            # Use short name for Optuna (strip category prefix)
+            short_name = param_path.split(".")[-1]
+
+            if param_type is int:
+                params[param_path] = trial.suggest_int(short_name, int(min_val), int(max_val))
+            else:
+                params[param_path] = trial.suggest_float(short_name, min_val, max_val)
+
+        # Derive proletariat_fraction from enforcer_fraction (implicit constraint)
+        if "carceral.enforcer_fraction" in params:
+            enforcer = params["carceral.enforcer_fraction"]
+            params["carceral.proletariat_fraction"] = 1.0 - float(enforcer)
+
+        # 2. Inject all parameters at once using batch injection
+        defines = inject_parameters(GameDefines(), params)
 
         # 3. Run simulation with phase milestone tracking
         try:
@@ -332,29 +285,20 @@ def print_results(study: optuna.Study, max_ticks: int = SIMULATION_LENGTH) -> No
         print("\n" + "-" * 70)
         print("Running best parameters to show phase timing...")
 
-        defines = GameDefines()
-        for key, value in study.best_params.items():
-            # Map Optuna parameter names back to GameDefines paths
-            param_map = {
-                "base_subsistence": "economy.base_subsistence",
-                "extraction_efficiency": "economy.extraction_efficiency",
-                "comprador_cut": "economy.comprador_cut",
-                "super_wage_rate": "economy.super_wage_rate",
-                "trpf_coefficient": "economy.trpf_coefficient",
-                "trpf_efficiency_floor": "economy.trpf_efficiency_floor",
-                "rent_pool_decay": "economy.rent_pool_decay",
-                "consciousness_sensitivity": "consciousness.sensitivity",
-                "solidarity_scaling": "solidarity.scaling_factor",
-                "control_capacity": "carceral.control_capacity",
-                "enforcer_fraction": "carceral.enforcer_fraction",
-            }
-            if key in param_map:
-                defines = inject_parameter(defines, param_map[key], value)
-                # Derive proletariat_fraction from enforcer_fraction
-                if key == "enforcer_fraction":
-                    defines = inject_parameter(
-                        defines, "carceral.proletariat_fraction", 1.0 - value
-                    )
+        # Map Optuna short names back to GameDefines paths
+        params: dict[str, float] = {}
+        for short_name, value in study.best_params.items():
+            # Find full path in OPTIMIZATION_BOUNDS
+            for full_path in OPTIMIZATION_BOUNDS:
+                if full_path.endswith(f".{short_name}"):
+                    params[full_path] = value
+                    break
+
+        # Derive proletariat_fraction from enforcer_fraction
+        if "carceral.enforcer_fraction" in params:
+            params["carceral.proletariat_fraction"] = 1.0 - params["carceral.enforcer_fraction"]
+
+        defines = inject_parameters(GameDefines(), params)
 
         try:
             result = run_simulation(defines, max_ticks=max_ticks)

@@ -316,58 +316,145 @@ def run_simulation(
 
 
 # =============================================================================
-# PARAMETER ENUMERATION
+# PARAMETER ENUMERATION (Pydantic Introspection - ADR038)
 # =============================================================================
 
 
-def get_tunable_parameters() -> dict[str, tuple[float, float]]:
-    """Get all tunable GameDefines parameters with (min, max) bounds.
+def _extract_bounds(field_info: Any) -> tuple[float | None, float | None]:
+    """Extract min/max bounds from Pydantic FieldInfo metadata.
 
-    Returns a dictionary mapping parameter paths to their valid ranges.
-    Used by SALib for problem specification and Optuna for search space.
+    Searches for Ge, Gt (lower bounds) and Le, Lt (upper bounds) in metadata.
+
+    Args:
+        field_info: Pydantic FieldInfo object
+
+    Returns:
+        Tuple of (lower_bound, upper_bound), either may be None if not specified
+    """
+    lower: float | None = None
+    upper: float | None = None
+
+    for constraint in field_info.metadata:
+        constraint_name = type(constraint).__name__
+        if constraint_name == "Ge" and hasattr(constraint, "ge"):
+            lower = constraint.ge
+        elif constraint_name == "Gt" and hasattr(constraint, "gt"):
+            # For strict greater-than, use the value as lower bound
+            lower = constraint.gt
+        elif constraint_name == "Le" and hasattr(constraint, "le"):
+            upper = constraint.le
+        elif constraint_name == "Lt" and hasattr(constraint, "lt"):
+            # For strict less-than, use the value as upper bound
+            upper = constraint.lt
+
+    return lower, upper
+
+
+def get_tunable_parameters(
+    categories: list[str] | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Introspect GameDefines for all tunable float/int fields.
+
+    Recursively walks nested Pydantic models, extracting Field constraints
+    (ge, le, gt, lt) as bounds. Falls back to 10x default for unbounded fields.
+
+    This is the single source of truth for parameter enumeration. All tools
+    should use this function instead of maintaining hardcoded parameter lists.
+
+    Args:
+        categories: Optional list of category names to filter
+            (e.g., ["economy", "carceral"]). If None, returns all categories.
 
     Returns:
         Dict mapping "category.field" -> (min_value, max_value)
 
-    Note:
-        Bounds are heuristic defaults. Some parameters have tighter
-        physically meaningful ranges (e.g., Probability must be [0, 1]).
+    Example:
+        >>> params = get_tunable_parameters()
+        >>> len(params) >= 70
+        True
+        >>> params = get_tunable_parameters(categories=["economy"])
+        >>> all(k.startswith("economy.") for k in params)
+        True
     """
-    return {
-        # Economy parameters (EconomyDefines)
-        "economy.extraction_efficiency": (0.1, 0.99),
-        "economy.comprador_cut": (0.5, 0.99),
-        "economy.base_subsistence": (0.0001, 0.01),
-        "economy.super_wage_rate": (0.05, 0.5),
-        "economy.trpf_coefficient": (0.0001, 0.01),
-        "economy.trpf_efficiency_floor": (0.0, 0.1),
-        "economy.rent_pool_decay": (0.0, 0.05),
-        # Consciousness parameters (ConsciousnessDefines)
-        "consciousness.sensitivity": (0.1, 0.9),
-        "consciousness.decay_lambda": (0.01, 0.5),
-        # Solidarity parameters (SolidarityDefines)
-        "solidarity.scaling_factor": (0.1, 1.0),
-        "solidarity.activation_threshold": (0.1, 0.6),
-        # Survival parameters (SurvivalDefines)
-        "survival.steepness_k": (1.0, 20.0),
-        "survival.default_subsistence": (0.1, 0.5),
-        # Behavioral parameters (BehavioralDefines)
-        "behavioral.loss_aversion_lambda": (1.5, 3.0),
-        # Metabolism parameters (MetabolismDefines)
-        "metabolism.entropy_factor": (1.0, 2.0),
-        "metabolism.overshoot_threshold": (0.5, 2.0),
-        # Vitality parameters (VitalityDefines)
-        "vitality.base_mortality_factor": (0.001, 0.05),
-        "vitality.inequality_impact": (0.5, 2.0),
-        # Carceral parameters (CarceralDefines) - Terminal Crisis Dynamics
-        # After SUPERWAGE_CRISIS, the Labor Aristocracy DECOMPOSES into:
-        #   - Enforcers (guards/cops who maintain status through repression)
-        #   - Prisoners (former LA who fall into incarcerated class)
-        "carceral.control_capacity": (1, 20),  # Prisoners per guard (US avg ~4, crisis >15)
-        "carceral.enforcer_fraction": (0.05, 0.50),  # % of former LA → guards
-        "carceral.proletariat_fraction": (0.50, 0.95),  # % of former LA → prisoners
-        "carceral.revolution_threshold": (0.3, 0.7),  # Prisoner org level for revolution
-    }
+    result: dict[str, tuple[float, float]] = {}
+
+    # Iterate over GameDefines categories (economy, consciousness, etc.)
+    for category_name, category_field in GameDefines.model_fields.items():
+        # Skip if filtering and category not in list
+        if categories is not None and category_name not in categories:
+            continue
+
+        # Get the nested model class
+        category_model = category_field.annotation
+        if not hasattr(category_model, "model_fields"):
+            continue  # Skip if not a Pydantic model
+
+        # Iterate over fields in the category
+        for field_name, field_info in category_model.model_fields.items():
+            # Only include numeric types (int, float)
+            annotation = field_info.annotation
+            if annotation not in (int, float):
+                continue
+
+            # Extract bounds from metadata
+            lower, upper = _extract_bounds(field_info)
+            default = field_info.default
+
+            # Apply fallback bounds
+            if lower is None:
+                lower = 0.0
+            if upper is None:
+                # Use 10x default as upper bound if no explicit constraint
+                upper = default * 10.0 if default > 0 else 10.0
+
+            param_path = f"{category_name}.{field_name}"
+            result[param_path] = (float(lower), float(upper))
+
+    return result
+
+
+def get_parameter_type(param_path: str) -> type[int] | type[float]:
+    """Return whether a parameter is int or float.
+
+    Used by Optuna to select suggest_int vs suggest_float.
+
+    Args:
+        param_path: Dot-separated path like "carceral.control_capacity"
+
+    Returns:
+        int or float type
+
+    Raises:
+        ValueError: If param_path is invalid
+
+    Example:
+        >>> get_parameter_type("carceral.control_capacity")
+        <class 'int'>
+        >>> get_parameter_type("economy.extraction_efficiency")
+        <class 'float'>
+    """
+    parts = param_path.split(".")
+    if len(parts) != 2:
+        raise ValueError(f"param_path must be 'category.field', got: {param_path}")
+
+    category_name, field_name = parts
+
+    # Get category model
+    if category_name not in GameDefines.model_fields:
+        raise ValueError(f"Unknown category: {category_name}")
+
+    category_model = GameDefines.model_fields[category_name].annotation
+    if not hasattr(category_model, "model_fields"):
+        raise ValueError(f"Category {category_name} is not a Pydantic model")
+
+    # Get field annotation
+    if field_name not in category_model.model_fields:
+        raise ValueError(f"Unknown field '{field_name}' in category '{category_name}'")
+
+    annotation = category_model.model_fields[field_name].annotation
+    if annotation is int:
+        return int
+    return float
 
 
 # =============================================================================
@@ -395,4 +482,5 @@ __all__ = [
     "run_simulation",
     # Parameter enumeration
     "get_tunable_parameters",
+    "get_parameter_type",
 ]

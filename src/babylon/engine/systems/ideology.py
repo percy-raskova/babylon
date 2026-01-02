@@ -146,7 +146,7 @@ class ConsciousnessSystem:
             # Calculate solidarity_pressure from incoming SOLIDARITY edges
             # Sum of solidarity_strength from all incoming SOLIDARITY edges
             solidarity_pressure = 0.0
-            activation_threshold = getattr(services.config, "solidarity_activation_threshold", 0.3)
+            activation_threshold = services.defines.solidarity.activation_threshold
 
             for source_id, _, data in graph.in_edges(node_id, data=True):
                 edge_type = data.get("edge_type")

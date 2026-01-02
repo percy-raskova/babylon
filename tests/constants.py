@@ -34,6 +34,66 @@ from dataclasses import dataclass
 from typing import Final
 
 # =============================================================================
+# CANONICAL CONSTANTS (Single Source of Truth)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class CanonicalThresholds:
+    """Universal threshold values used across multiple test domains.
+
+    These are the canonical "source of truth" for commonly-used values.
+    Domain-specific dataclasses should reference these rather than
+    redefining the same values.
+
+    Source: GameDefines (src/babylon/config/defines.py) and Probability type bounds.
+    """
+
+    # -------------------------------------------------------------------------
+    # Pool Ratio Thresholds (from GameDefines.economy.pool_*_threshold)
+    # Used for bourgeoisie decision heuristics in Dynamic Balance
+    # -------------------------------------------------------------------------
+    POOL_HIGH: float = 0.7  # Prosperity threshold (bribery viable)
+    POOL_LOW: float = 0.3  # Austerity threshold (wage cuts)
+    POOL_CRITICAL: float = 0.1  # Crisis threshold (emergency measures)
+
+    # -------------------------------------------------------------------------
+    # Economic Baselines (from GameDefines)
+    # -------------------------------------------------------------------------
+    INITIAL_RENT_POOL: float = 100.0  # GlobalEconomy default imperial rent pool
+    DEFAULT_REPRESSION: float = 0.5  # Standard repression level
+    DEFAULT_EXTRACTION: float = 0.8  # Standard extraction efficiency (alpha)
+
+    # -------------------------------------------------------------------------
+    # Probability Bands [0.0, 1.0]
+    # Universal threshold levels for probability-based fields
+    # -------------------------------------------------------------------------
+    P_ZERO: float = 0.0  # Minimum probability / none
+    P_LOW: float = 0.1  # Low threshold
+    P_MODERATE: float = 0.3  # Moderate-low threshold
+    P_MIDPOINT: float = 0.5  # Middle value / default
+    P_ELEVATED: float = 0.6  # Elevated threshold
+    P_HIGH: float = 0.7  # High threshold
+    P_VERY_HIGH: float = 0.8  # Very high threshold
+    P_EXTREME: float = 0.9  # Near-maximum
+    P_FULL: float = 1.0  # Maximum probability
+
+    # -------------------------------------------------------------------------
+    # Tick Counts (standard simulation durations)
+    # -------------------------------------------------------------------------
+    TICKS_SHORT: int = 5  # Quick comparison tests
+    TICKS_FEEDBACK: int = 10  # Feedback loop tests
+    TICKS_MEDIUM: int = 50  # Economic flow tests
+    TICKS_STANDARD: int = 100  # Standard success criteria
+    TICKS_CROSSOVER: int = 200  # P(S|R) > P(S|A) detection
+    TICKS_LONG: int = 1000  # Long-run stability
+
+
+# Shorthand alias for referencing canonical values
+Canon = CanonicalThresholds
+
+
+# =============================================================================
 # DOMAIN-SPECIFIC CONSTANTS
 # =============================================================================
 
@@ -82,15 +142,15 @@ class BourgeoisieDecisionConstants:
     Policy deltas match GameDefines.economy.*_delta
     """
 
-    # Pool ratio thresholds
-    POOL_HIGH_THRESHOLD: float = 0.7
-    POOL_LOW_THRESHOLD: float = 0.3
-    POOL_CRITICAL_THRESHOLD: float = 0.1
+    # Pool ratio thresholds (reference canonical values)
+    POOL_HIGH_THRESHOLD: float = Canon.POOL_HIGH
+    POOL_LOW_THRESHOLD: float = Canon.POOL_LOW
+    POOL_CRITICAL_THRESHOLD: float = Canon.POOL_CRITICAL
 
     # Tension thresholds for decision branching
-    BRIBERY_TENSION_THRESHOLD: float = 0.3  # Max tension for bribery
-    IRON_FIST_TENSION_THRESHOLD: float = 0.5  # Min tension for iron fist
-    TENSION_THRESHOLD: float = 0.5  # Legacy alias for iron_fist threshold
+    BRIBERY_TENSION_THRESHOLD: float = Canon.P_MODERATE  # Max tension for bribery
+    IRON_FIST_TENSION_THRESHOLD: float = Canon.P_MIDPOINT  # Min tension for iron fist
+    TENSION_THRESHOLD: float = Canon.P_MIDPOINT  # Legacy alias for iron_fist threshold
 
     # Policy deltas (wage and repression changes per decision)
     BRIBERY_WAGE_DELTA: float = 0.05  # Wage increase during prosperity
@@ -296,22 +356,22 @@ class EconomicFlowDefaults:
     value_flow represents imperial rent extracted via EXPLOITATION edges.
     """
 
-    NO_FLOW: float = 0.0
+    NO_FLOW: float = Canon.P_ZERO
     PHASE1_EXTRACTION: float = 80.0  # Phi = 100 - 20 (Phase 1 blueprint)
-    INITIAL_RENT_POOL: float = 100.0  # GlobalEconomy default
+    INITIAL_RENT_POOL: float = Canon.INITIAL_RENT_POOL  # Reference canonical
 
-    # Tension values
-    NO_TENSION: float = 0.0
-    LOW_TENSION: float = 0.3
-    MODERATE_TENSION: float = 0.5
-    HIGH_TENSION: float = 0.7
-    CRITICAL_TENSION: float = 0.9
+    # Tension values (reference canonical probability bands)
+    NO_TENSION: float = Canon.P_ZERO
+    LOW_TENSION: float = Canon.P_MODERATE
+    MODERATE_TENSION: float = Canon.P_MIDPOINT
+    HIGH_TENSION: float = Canon.P_HIGH
+    CRITICAL_TENSION: float = Canon.P_EXTREME
 
     # Solidarity strength (from topology tests)
     WEAK_SOLIDARITY: float = 0.05
-    POTENTIAL_SOLIDARITY: float = 0.3  # > 0.1 to count as potential
-    ACTUAL_SOLIDARITY: float = 0.5  # > 0.5 to count as actual
-    STRONG_SOLIDARITY: float = 0.8
+    POTENTIAL_SOLIDARITY: float = Canon.P_MODERATE  # > 0.1 to count as potential
+    ACTUAL_SOLIDARITY: float = Canon.P_MIDPOINT  # > 0.5 to count as actual
+    STRONG_SOLIDARITY: float = Canon.P_VERY_HIGH
 
 
 @dataclass(frozen=True)
@@ -381,12 +441,12 @@ class GlobalEconomyDefaults:
     ELEVATED_WAGE_RATE: float = 0.30  # Increased bribery
     HIGH_WAGE_RATE: float = 0.35  # High bribery level
 
-    # Pool thresholds for decision heuristics (match GameDefines)
-    PROSPERITY_THRESHOLD: float = 0.7  # Pool ratio >= 0.7 = prosperity
-    AUSTERITY_THRESHOLD: float = 0.3  # Pool ratio < 0.3 = austerity
-    CRISIS_THRESHOLD: float = 0.1  # Pool ratio < 0.1 = crisis
+    # Pool thresholds for decision heuristics (reference canonical values)
+    PROSPERITY_THRESHOLD: float = Canon.POOL_HIGH
+    AUSTERITY_THRESHOLD: float = Canon.POOL_LOW
+    CRISIS_THRESHOLD: float = Canon.POOL_CRITICAL
 
-    # Pool values for test scenarios (relative to INITIAL_RENT_POOL=100)
+    # Pool values for test scenarios (relative to Canon.INITIAL_RENT_POOL)
     CRISIS_POOL: float = 5.0  # 5% of initial (crisis scenario)
     AUSTERITY_POOL: float = 25.0  # 25% of initial (below austerity)
     HALF_POOL: float = 50.0  # 50% of initial
@@ -599,6 +659,163 @@ class EventDefaults:
 
 
 @dataclass(frozen=True)
+class Phase2GameLoopDefaults:
+    """Phase 2 Game Loop integration test defaults.
+
+    Source: Phase 2 integration tests (Sprint 6).
+    Tests verify feedback loops work correctly over multiple ticks.
+
+    Sprint 1.5: Added constants to eliminate magic numbers.
+    Consolidated: Now references CanonicalThresholds where applicable.
+    """
+
+    # Entity wealth values (reference canonical midpoint)
+    WORKER_BASELINE: float = Canon.P_MIDPOINT  # Default worker wealth
+    OWNER_BASELINE: float = Canon.P_MIDPOINT  # Default owner wealth
+    CUSTOM_WORKER_WEALTH: float = Canon.P_MODERATE  # Custom parameter test
+    CUSTOM_OWNER_WEALTH: float = Canon.P_HIGH  # Custom parameter test
+    LABOR_ARISTOCRACY_WEALTH: float = Canon.P_HIGH  # Wealthy worker scenario
+
+    # Extraction efficiency (reference canonical values)
+    CUSTOM_EXTRACTION: float = Canon.P_ELEVATED  # Custom parameter test
+    LOW_EXTRACTION: float = Canon.P_MODERATE  # Low extraction for comparison
+    HIGH_EXTRACTION: float = Canon.P_EXTREME  # High extraction for comparison
+    DEFAULT_EXTRACTION: float = Canon.DEFAULT_EXTRACTION  # Reference canonical
+
+    # Repression levels (reference canonical probability bands)
+    LOW_REPRESSION: float = Canon.P_LOW  # Allows high P(S|R)
+    MODERATE_REPRESSION: float = 0.2  # Moderate repression (between LOW and MODERATE)
+    DEFAULT_REPRESSION: float = Canon.DEFAULT_REPRESSION  # Reference canonical
+    HIGH_REPRESSION: float = Canon.P_VERY_HIGH  # Delays crossover
+    VERY_HIGH_REPRESSION: float = Canon.P_EXTREME  # Keeps P(S|R) low
+
+    # Organization levels (reference canonical probability bands)
+    LOW_ORGANIZATION: float = Canon.P_MODERATE  # Low organization
+    MODERATE_ORGANIZATION: float = Canon.P_MIDPOINT  # Better organized
+
+    # P(S|R) thresholds (reference canonical probability bands)
+    LOW_P_REVOLUTION: float = Canon.P_MODERATE  # Low revolution probability
+    HIGH_P_REVOLUTION: float = Canon.P_MIDPOINT  # High revolution probability
+
+    # Tension thresholds (reference canonical probability bands)
+    MIN_TENSION_INCREASE: float = Canon.P_LOW  # Minimum tension for wealth gap test
+    HIGH_TENSION_START: float = Canon.P_HIGH  # High tension scenario start
+    NEAR_RUPTURE_TENSION: float = Canon.P_EXTREME  # Near rupture threshold
+    RUPTURE_TENSION: float = Canon.P_FULL  # Rupture threshold
+
+    # Ideology values (bipolar scale [-1, 1]) - unique to Phase2, keep as-is
+    REVOLUTIONARY_IDEOLOGY: float = -0.9  # Near full revolutionary
+    REACTIONARY_IDEOLOGY: float = 0.9  # Near full reactionary
+
+    # Growth cap for stability test
+    MAX_GROWTH_MULTIPLIER: float = Canon.INITIAL_RENT_POOL  # 100x growth cap
+
+    # Tick counts (reference canonical tick values)
+    SHORT_FEEDBACK_TICKS: int = Canon.TICKS_SHORT
+    FEEDBACK_TICKS: int = Canon.TICKS_FEEDBACK
+    MEDIUM_FEEDBACK_TICKS: int = Canon.TICKS_MEDIUM
+    CROSSOVER_DETECTION_TICKS: int = Canon.TICKS_CROSSOVER
+    LONG_RUN_TICKS: int = Canon.TICKS_LONG
+    RUPTURE_TICKS: int = Canon.TICKS_STANDARD
+    SUCCESS_CRITERIA_TICKS: int = Canon.TICKS_STANDARD
+
+
+@dataclass(frozen=True)
+class DynamicBalanceDefaults:
+    """Dynamic Balance scenario defaults (pool drain/growth tests).
+
+    Source: Dynamic Balance integration tests (Sprint 3.4.4).
+    Tests verify the "Gas Tank" behavior: finite imperial rent pools
+    force bourgeoisie agency and eventually trigger economic crisis.
+
+    Sprint 1.5: Tolerances relaxed to account for subsistence entropy.
+    """
+
+    # Initial pool (reference canonical value)
+    INITIAL_POOL: float = Canon.INITIAL_RENT_POOL
+
+    # Entity wealth (for drain scenarios)
+    P_W_WEALTH: float = 50.0  # Extraction source
+    P_C_WEALTH: float = Canon.P_ZERO  # Start empty
+    C_B_WEALTH: float = 50.0  # Bourgeoisie baseline
+    C_W_WEALTH: float = Canon.P_ZERO  # Start empty
+
+    # Extraction parameters for drain scenario
+    EXTRACTION_EFFICIENCY_DRAIN: float = Canon.P_MODERATE  # Low extraction = less inflow
+    EXTRACTION_EFFICIENCY_GROWTH: float = Canon.P_MIDPOINT  # Above decay breakeven (~0.41)
+    EXTRACTION_EFFICIENCY_CRISIS: float = Canon.P_LOW  # Very low (crisis scenario)
+
+    # Wage rates
+    DRAIN_WAGE_RATE: float = 0.40  # High wages = faster drain (above max_wage_rate)
+    MAX_WAGE_RATE: float = 0.35  # Maximum wage rate (GameDefines default)
+    MODERATE_WAGE_RATE: float = 0.25  # Moderate wage level
+    LOW_WAGE_RATE: float = 0.20  # Low wage level
+
+    # Pool levels for crisis/policy tests
+    CRISIS_POOL: float = 5.0  # Below 10% critical threshold
+    AUSTERITY_POOL: float = 20.0  # Below 30% low threshold
+    PROSPERITY_POOL: float = 80.0  # Above 70% high threshold
+    EMPTY_POOL: float = Canon.P_ZERO  # Empty pool (extreme crisis)
+    MODERATE_POOL: float = 75.0  # For serialization tests
+
+    # Repression levels
+    LOW_REPRESSION: float = 0.4  # Below default
+    DEFAULT_REPRESSION: float = Canon.DEFAULT_REPRESSION  # Reference canonical
+
+    # Tension values for policy tests
+    VERY_LOW_TENSION: float = 0.2  # For bribery trigger
+    HIGH_TENSION: float = Canon.P_HIGH  # For iron fist trigger
+
+    # Tolerance constants for entropy (VitalitySystem subsistence burn)
+    # Pool may shrink slightly due to rent_pool_decay and outflows
+    ENTROPY_TOLERANCE_TIGHT: float = 0.95  # 5% tolerance
+    ENTROPY_TOLERANCE_LOOSE: float = 0.90  # 10% tolerance
+
+    # Assertion tolerances
+    APPROX_REL_TOLERANCE: float = 0.01  # 1% relative tolerance for approx
+
+
+@dataclass(frozen=True)
+class ImperialCircuitDefaults:
+    """Imperial Circuit scenario defaults (4-node extraction model).
+
+    Source: Imperial Circuit integration tests (Sprint 3.4.1).
+    Models the 5-phase extraction loop:
+    - Phase 1: EXPLOITATION (P_w -> P_c)
+    - Phase 2: TRIBUTE (P_c -> C_b, comprador keeps cut)
+    - Phase 3: WAGES (C_b -> C_w, super-wages)
+    - Phase 4: SUBSIDY (C_b -> P_c, client state stabilization)
+    - Phase 5: DECISION (adjust wages/repression)
+
+    Sprint 1.5: Wealth values increased to 100.0 to survive subsistence burn.
+    """
+
+    # Entity initial wealth (increased from 5.0/50.0 to survive subsistence burn)
+    # All classes now start with SIGNIFICANT wealth buffer
+    P_W_WEALTH: float = 100.0  # Periphery Worker (PERIPHERY_PROLETARIAT)
+    P_C_WEALTH: float = 100.0  # Periphery Comprador (COMPRADOR_BOURGEOISIE, 10x burn)
+    C_B_WEALTH: float = 100.0  # Core Bourgeoisie (CORE_BOURGEOISIE, 20x burn)
+    C_W_WEALTH: float = 100.0  # Core Worker (LABOR_ARISTOCRACY, 5x burn)
+
+    # Extraction parameters (from GameDefines.economy)
+    EXTRACTION_EFFICIENCY: float = 0.8  # Alpha: annual extraction rate
+    COMPRADOR_CUT: float = 0.15  # 15% tribute retained by comprador
+    TRIBUTE_RATIO: float = 0.85  # 85% forwarded to C_b (1 - COMPRADOR_CUT)
+
+    # Repression levels
+    REPRESSION_LOW: float = 0.3  # Default P_c repression
+    REPRESSION_HIGH: float = 0.9  # Stable client state (no subsidy trigger)
+
+    # Subsidy parameters
+    SUBSIDY_TRIGGER_THRESHOLD: float = 0.8  # P(S|R) >= 0.8 * P(S|A) triggers subsidy
+    SUBSIDY_CONVERSION_RATE: float = 0.1  # Wealth-to-repression conversion
+    SUBSIDY_CAP: float = 10.0  # Maximum subsidy per tick
+
+    # Biocapacity (territory)
+    TERRITORY_BIOCAPACITY: float = 100.0
+
+
+@dataclass(frozen=True)
 class RevolutionaryFinanceDefaults:
     """RevolutionaryFinance model default values.
 
@@ -681,6 +898,9 @@ class Thresholds:
         assert tension == TC.EconomicFlow.MODERATE_TENSION
 
     Attributes:
+        Canonical Thresholds (Source of Truth):
+            Canon: Universal threshold values (pool ratios, probability bands, tick counts)
+
         Domain-Specific Constants:
             Behavioral: Kahneman-Tversky prospect theory constants
             Solidarity: MLM-TW solidarity transmission constants
@@ -708,6 +928,9 @@ class Thresholds:
             RevolutionaryFinance: Revolutionary organization fiscal capacity values
     """
 
+    # Canonical thresholds (source of truth for commonly-used values)
+    Canon: type[CanonicalThresholds] = CanonicalThresholds
+
     # Domain-specific constants (existing)
     Behavioral: type[BehavioralConstants] = BehavioralConstants
     Solidarity: type[SolidarityConstants] = SolidarityConstants
@@ -734,6 +957,9 @@ class Thresholds:
     Event: type[EventDefaults] = EventDefaults
     RevolutionaryFinance: type[RevolutionaryFinanceDefaults] = RevolutionaryFinanceDefaults
     Attrition: type[AttritionDefaults] = AttritionDefaults
+    DynamicBalance: type[DynamicBalanceDefaults] = DynamicBalanceDefaults
+    ImperialCircuit: type[ImperialCircuitDefaults] = ImperialCircuitDefaults
+    Phase2: type[Phase2GameLoopDefaults] = Phase2GameLoopDefaults
 
 
 # Alias for backwards compatibility and shorter imports

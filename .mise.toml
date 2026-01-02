@@ -307,6 +307,14 @@ run = "poetry run python tools/load_census.py"
 description = "Reset and reload Census data (drops existing tables)"
 run = "poetry run python tools/load_census.py --reset"
 
+[tasks."data:census-api"]
+description = "Load Census ACS data from Census Bureau API (county-level)"
+run = "poetry run python tools/load_census.py --from-api"
+
+[tasks."data:census-api-reset"]
+description = "Reset and load Census data from API (drops existing census tables)"
+run = "poetry run python tools/load_census.py --from-api --reset"
+
 [tasks."data:census-query"]
 description = "Open SQLite CLI for research database (census + trade)"
 run = "sqlite3 data/sqlite/research.sqlite"
@@ -330,6 +338,34 @@ run = "poetry run python tools/load_qcew.py"
 [tasks."data:qcew-reset"]
 description = "Reset and reload QCEW data (preserves census/trade tables)"
 run = "poetry run python tools/load_qcew.py --reset"
+
+[tasks."data:qcew-raw"]
+description = "Load raw QCEW 2022 single-file CSV (3.6M rows) for class composition"
+run = "poetry run python tools/ingest_qcew_full.py"
+
+[tasks."data:qcew-raw-reset"]
+description = "Reset and reload raw QCEW 2022 data"
+run = "poetry run python tools/ingest_qcew_full.py --reset"
+
+[tasks."data:qcew-raw-full"]
+description = "Load raw QCEW 2022 CSV + Excel labor hours files"
+run = "poetry run python tools/ingest_qcew_full.py --xlsx"
+
+[tasks."data:qcew-class-composition"]
+description = "Print class composition from existing QCEW 2022 data"
+run = "poetry run python tools/ingest_qcew_full.py --validate-only"
+
+[tasks."data:productivity-load"]
+description = "Load BLS productivity data into SQLite research database (2022)"
+run = "poetry run python tools/load_productivity.py"
+
+[tasks."data:productivity-reset"]
+description = "Reset and reload productivity data (drops existing tables)"
+run = "poetry run python tools/load_productivity.py --reset"
+
+[tasks."data:productivity-all"]
+description = "Load all years of productivity data (1987-2024)"
+run = "poetry run python tools/load_productivity.py --all-years --reset"
 
 # =============================================================================
 # DOCUMENTATION (Namespaced)

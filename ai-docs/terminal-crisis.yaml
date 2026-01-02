@@ -1,0 +1,218 @@
+meta:
+  name: "Terminal Crisis Dynamics"
+  version: "1.1.0"
+  updated: "2026-01-01"
+  purpose: "Complete arc from plantation to death camp - the endgame mechanics"
+  references:
+    rst: "docs/concepts/terminal-crisis.rst"
+    related:
+      - "ai-docs/carceral-equilibrium.yaml"
+      - "ai-docs/theory.yaml"
+
+overview: |
+  The complete arc of imperial system collapse: from peripheral extraction through
+  internal colonization to the terminal decision point between revolution and genocide.
+  When exploitation becomes unprofitable and repression unsustainable, elimination
+  becomes the "solution."
+
+imperial_circuit_at_height:
+  description: "Stable imperial extraction structure"
+  flow:
+    - source: "Periphery (1 billion)"
+      edge: "EXPLOITATION"
+      target: "Comprador"
+    - source: "Comprador"
+      edge: "TRIBUTE"
+      target: "Core Bourgeoisie (10 million)"
+    - source: "Core Bourgeoisie"
+      edge: "SUPER-WAGES"
+      target: "Labor Aristocracy (100 million)"
+  key_ratios:
+    exploited_bribed_owners: "100:10:1"
+    conditions:
+      - "Extraction exceeds super-wage costs → C_b accumulates"
+      - "LA is bribed into complicity → social peace in core"
+      - "Periphery is distant → exploitation invisible"
+
+phases:
+  peripheral_revolt:
+    number: 1
+    triggers:
+      - "Ecological collapse (metabolic rift exhausts biocapacity)"
+      - "Peripheral organization (P(S|R) exceeds P(S|A))"
+      - "Anti-colonial revolution severs extraction edges"
+    effects:
+      - "Imperial rent stops flowing"
+      - "C_b loses tribute inflow"
+      - "Super-wage budget depletes"
+      - "LA begins proletarianization"
+
+  carceral_turn:
+    number: 2
+    description: "C_b attempts internal colonization to replace peripheral extraction"
+    la_transformation:
+      enforcers: "Guards, cops, jailers"
+      internal_proletariat: "Lumpen, precariat"
+    role_examples:
+      - from: "Software developer"
+        to: "Prison guard"
+      - from: "Graphic artist"
+        to: "Surveillance technician"
+      - from: "White collar manager"
+        to: "Probation officer"
+    insight: "Coercion replaces creation"
+
+  arithmetic_failure:
+    number: 3
+    fundamental_contradiction: "Internal colonization cannot scale"
+    ratio_comparison:
+      imperial_model: "1 guard : 100 periphery workers (distance + military power)"
+      carceral_model: "1 guard : 10 prisoners (proximity + constant surveillance)"
+    progression:
+      - phase: "Early carceral"
+        guards: "10M"
+        prisoners: "5M"
+        ratio: "2:1"
+        stability: "Stable"
+      - phase: "Mid carceral"
+        guards: "8M"
+        prisoners: "20M"
+        ratio: "1:2.5"
+        stability: "Stressed"
+      - phase: "Late carceral"
+        guards: "5M"
+        prisoners: "50M"
+        ratio: "1:10"
+        stability: "Revolt imminent"
+    breakpoint: "prisoners > guards × control_capacity"
+
+  terminal_decision:
+    number: 4
+    description: "System faces bifurcation between revolution and genocide"
+    outcomes:
+      revolution:
+        condition: "Prisoners + guards unite against C_b"
+        result: "C_b wealth → 0, system ends"
+      genocide:
+        condition: "Eliminate surplus population"
+        result: "C_b costs → 0 (temporarily)"
+
+institutional_progression:
+  stages:
+    - name: "Plantation"
+      function: "Extract labor"
+      value_extracted: "High"
+      violence_level: "Targeted"
+      population_status: "Asset (labor power)"
+
+    - name: "Prison"
+      function: "Extract labor + warehouse"
+      value_extracted: "Medium"
+      violence_level: "Systematic"
+      population_status: "Break-even (some labor, high costs)"
+
+    - name: "Concentration Camp"
+      function: "Pure warehousing"
+      value_extracted: "Zero"
+      violence_level: "Mass"
+      population_status: "Liability (pure cost)"
+
+    - name: "Death Camp"
+      function: "Elimination"
+      value_extracted: "Negative (saves costs)"
+      violence_level: "Genocidal"
+      population_status: "Eliminated (liability removed)"
+
+genocidal_logic:
+  pseudocode: |
+    cost_of_warehousing = prisoners × (food + shelter + guards + infrastructure)
+    value_of_labor = prisoners × (productivity × extraction_rate)
+    risk_of_revolt = prisoners / (guards × control_capacity)
+
+    if cost_of_warehousing > value_of_labor:
+        if risk_of_revolt > acceptable_threshold:
+            decision = GENOCIDE
+  insight: "When exploitation unprofitable and repression unsustainable, elimination becomes 'solution'"
+
+historical_parallels:
+  nazi_germany:
+    - "Lost colonies (WWI) → imperial extraction ended"
+    - "Economic crisis → LA proletarianization"
+    - "Internal colonization → target Jews, Roma, disabled, communists"
+    - "Concentration camps → warehousing + some labor"
+    - "Death camps → Final Solution when warehousing costs exceeded value"
+
+  american_trajectory:
+    - "Deindustrialization → LA begins shrinking"
+    - "War on Drugs → mass incarceration begins"
+    - "Prison-industrial complex → extraction from prison labor"
+    - "Private prisons → cost optimization pressure"
+    - "Conditions worsen → approaching concentration camp logic"
+
+entities:
+  genesis_entities:
+    - name: "PERIPHERY_PROLETARIAT"
+      role: "Extraction source"
+    - name: "COMPRADOR_BOURGEOISIE"
+      role: "Intermediary"
+    - name: "CORE_BOURGEOISIE"
+      role: "Accumulator"
+    - name: "LABOR_ARISTOCRACY"
+      role: "Bribed buffer"
+
+  carceral_turn_entities:
+    - name: "INTERNAL_PROLETARIAT"
+      role: "Post-LA lumpen"
+      appears_when: "LA decomposition"
+    - name: "CARCERAL_ENFORCER"
+      role: "Guards/cops"
+      appears_when: "Carceral turn"
+
+key_mechanics:
+  - name: "Peripheral Revolt"
+    trigger: "P(S|R) > P(S|A) for periphery"
+    effect: "Cut EXPLOITATION edges"
+    implemented_in: "src/babylon/engine/systems/struggle.py"
+
+  - name: "LA Decomposition"
+    trigger: "Super-wages stop (SUPERWAGE_CRISIS)"
+    effect: "Split LA into enforcers + lumpen"
+    parameters:
+      enforcer_fraction: 0.15
+      proletariat_fraction: 0.85
+    implemented_in: "src/babylon/engine/systems/decomposition.py"
+
+  - name: "Control Ratio"
+    formula: "guards / prisoners"
+    parameter: "carceral.control_capacity"
+    default: 4
+    trigger: "Inverted ratio → CONTROL_RATIO_CRISIS"
+    implemented_in: "src/babylon/engine/systems/control_ratio.py"
+
+  - name: "Terminal Decision"
+    trigger: "CONTROL_RATIO_CRISIS"
+    bifurcation:
+      revolution: "organization >= 0.5"
+      genocide: "organization < 0.5"
+    parameter: "carceral.revolution_threshold"
+
+theoretical_sources:
+  - author: "Marx"
+    concepts: "Reserve army of labor, primitive accumulation, TRPF"
+  - author: "Lenin"
+    concepts: "Imperialism as highest stage, labor aristocracy theory"
+  - author: "Fanon"
+    concepts: "Colonial violence, the wretched of the earth"
+  - author: "Angela Davis"
+    concepts: "Prison-industrial complex, abolition democracy"
+  - author: "Ruth Wilson Gilmore"
+    concepts: "Golden gulag, organized abandonment"
+  - author: "Cedric Robinson"
+    concepts: "Racial capitalism, Black Marxism"
+
+synthesis: "When imperial extraction fails, capital turns genocidal rather than accept revolution."
+
+see_also:
+  - "ai-docs/carceral-equilibrium.yaml"
+  - "ai-docs/warlord-trajectory.yaml"
+  - "ai-docs/theory.yaml"

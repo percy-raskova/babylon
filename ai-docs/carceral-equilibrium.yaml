@@ -1,0 +1,186 @@
+meta:
+  name: "Carceral Equilibrium"
+  version: "1.1.0"
+  updated: "2026-01-01"
+  purpose: "Default 70-year trajectory - the stable necropolis baseline"
+  status: "VALIDATED"
+  validation_date: "2026-01-01"
+  optimization_score: 88.87
+  test_file: "tests/scenarios/test_carceral_equilibrium.py"
+  references:
+    rst: "docs/concepts/carceral-equilibrium.rst"
+    related:
+      - "ai-docs/terminal-crisis-dynamics.md"
+      - "ai-docs/warlord-trajectory.md"
+
+overview: |
+  The baseline trajectory when player never organizes. Collapse is inevitable
+  (TRPF, peripheral revolt, metabolic rift). The question is HOW it resolves:
+  revolutionary transformation or genocidal stabilization.
+
+timeline:
+  total_years: 70
+  total_ticks: 3640
+  phases:
+    - name: "IMPERIAL_EXTRACTION"
+      years: "0-20"
+      ticks: "0-1040"
+      description: "Peripheral exploitation, super-wages to LA, system appears stable"
+      key_events: []
+
+    - name: "PERIPHERAL_REVOLT"
+      years: "15-25"
+      ticks: "780-1300"
+      description: "TRPF erodes efficiency, peripheral consciousness rises, EXPLOITATION edges severed"
+      key_events: ["EXPLOITATION edges severed"]
+
+    - name: "SUPERWAGE_CRISIS"
+      years: "20-30"
+      ticks: "1040-1560"
+      description: "Rent pool exhausted, C_b cannot pay super-wages"
+      key_events: ["SUPERWAGE_CRISIS"]
+
+    - name: "CARCERAL_TURN"
+      years: "25-40"
+      ticks: "1300-2080"
+      description: "LA decomposes into enforcers + internal proletariat"
+      key_events: ["CLASS_DECOMPOSITION"]
+      # NOTE: Ratios updated to match GameDefines
+      parameters:
+        enforcer_fraction: 0.15  # 15% become guards
+        proletariat_fraction: 0.85  # 85% become prisoners
+
+    - name: "CONTROL_RATIO_CRISIS"
+      years: "35-50"
+      ticks: "1820-2600"
+      description: "Prisoner population exceeds control capacity"
+      key_events: ["CONTROL_RATIO_CRISIS", "TERMINAL_DECISION"]
+      # NOTE: Updated to match GameDefines
+      parameters:
+        control_capacity: 4  # 1:4 ratio (US average), not 1:20
+
+    - name: "GENOCIDE_PHASE"
+      years: "45-65"
+      ticks: "2340-3380"
+      description: "Active population reduction to restore control ratio"
+      key_events: ["TERMINAL_DECISION(genocide)"]
+
+    - name: "STABLE_NECROPOLIS"
+      years: "60-70+"
+      ticks: "3120+"
+      description: "Equilibrium through elimination - 'Thousand-year Reich' stable state"
+      key_events: []
+
+revolution_windows:
+  key_insight: "Window doesn't CLOSE, it NARROWS. Even Phase 6 allows revolution if organization >= 0.5"
+  by_phase:
+    - phase: 1
+      difficulty: "Easy"
+      probability: "High (if org exists)"
+      notes: "LA sedated but not surveilled"
+    - phase: 2
+      difficulty: "Easy"
+      probability: "High"
+      notes: "Peripheral revolt creates opening"
+    - phase: 3
+      difficulty: "Medium"
+      probability: "Medium"
+      notes: "Crisis creates desperation AND surveillance"
+    - phase: 4
+      difficulty: "Hard"
+      probability: "Medium-Low"
+      notes: "Prison conditions, atomization"
+    - phase: 5
+      difficulty: "Very Hard"
+      probability: "Low"
+      notes: "Control apparatus at peak strength"
+    - phase: 6
+      difficulty: "Extremely Hard"
+      probability: "Very Low"
+      notes: "Death camp conditions, but desperation maximal"
+    - phase: 7
+      difficulty: "Nearly Impossible"
+      probability: "Minimal"
+      notes: "Equilibrium, resistance crushed"
+
+warsaw_ghetto_dynamic:
+  principle: "When prisoners learn genocide is certain, P(S|A) → 0"
+  before_knowledge:
+    p_s_a: "Some positive value (compliance might work)"
+    p_s_r: "Organization / Repression (risky)"
+  after_knowledge:
+    p_s_a: "→ 0 (compliance = certain death)"
+    p_s_r: "Organization / Repression (ONLY chance)"
+  implication: "Even atomized prisoners may revolt when facing certain death"
+  historical_examples:
+    - "Warsaw Ghetto Uprising (1943)"
+    - "Sobibor revolt (1943)"
+    - "Auschwitz Sonderkommando revolt (1944)"
+    - "Treblinka revolt (1943)"
+
+control_ratio_mechanics:
+  definition: "Ratio of prisoners to enforcers that guards can maintain control"
+  social_not_physical: "Control is maintained through surveillance, atomization, despair, divide-and-conquer"
+  current_implementation:
+    parameter: "carceral.control_capacity"
+    default: 4  # 1:4 ratio
+    description: "US national average (BJS data)"
+  breakpoint: "When organization >= 0.5, control mechanisms fail"
+  implemented_in: "src/babylon/engine/systems/control_ratio.py"
+
+enforcer_radicalization:
+  description: "Guards are former LA members, not ideologically committed. Moral injury accumulates."
+  pathway:
+    - "Guard witnesses atrocities"
+    - "Cognitive dissonance accumulates"
+    - "Contact with organized prisoners (solidarity transmission)"
+    - "Guard flips: provides intel, opens doors, joins revolt"
+  historical_examples:
+    - "Schindler, Wallenberg"
+    - "Prison guard unions supporting prisoner rights"
+    - "Fragging in Vietnam"
+  status: "EPOCH 2 - enforcer consciousness mechanic planned"
+
+economics:
+  costs_per_tick:
+    - "enforcer_wages = enforcers × wage_rate"
+    - "prisoner_subsistence = prisoners × minimal_rations"
+    - "infrastructure = fixed_overhead"
+  income_per_tick:
+    - "prison_labor = prisoners × labor_productivity × hours (minimal)"
+  sustainability: "C_b initial wealth + cumulative income >= cumulative costs"
+  equilibrium_state:
+    - "prisoners = enforcers × CONTROL_CAPACITY (at limit)"
+    - "costs ≈ income (slow drain)"
+    - "organization < 0.5 (no revolt)"
+    - "Periodic culling when ratio exceeds capacity"
+
+theoretical_sources:
+  - author: "Marx"
+    work: "Capital Vol. 3"
+    concept: "TRPF creates systemic crisis"
+  - author: "Lenin"
+    work: "Imperialism"
+    concept: "Imperial rent as temporary stabilizer"
+  - author: "Fanon"
+    work: "Wretched of the Earth"
+    concept: "Colonized consciousness and violence"
+  - author: "Angela Davis"
+    work: "Are Prisons Obsolete?"
+    concept: "Prison-industrial complex as successor to slavery"
+  - author: "Ruth Wilson Gilmore"
+    work: "Golden Gulag"
+    concept: "Carceral state as crisis management"
+  - author: "Achille Mbembe"
+    work: "Necropolitics"
+    concept: "Sovereignty as power over death"
+  - author: "Hannah Arendt"
+    work: "Origins of Totalitarianism"
+    concept: "Death camps as logical endpoint"
+
+mantra: "Collapse is certain. Revolution is possible. Organization is the difference."
+
+see_also:
+  - "ai-docs/warlord-trajectory.yaml"
+  - "ai-docs/terminal-crisis.yaml"
+  - "ai-docs/theory.yaml"

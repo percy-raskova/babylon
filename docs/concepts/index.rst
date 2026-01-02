@@ -21,6 +21,17 @@ Understanding the Embedded Trinity architecture (Ledger, Topology, Archive),
 how the seven simulation systems work together, the event system that enables
 AI observation, and how data flows through the simulation engine.
 
+Theoretical Foundation
+----------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   theory
+
+The comprehensive MLM-TW theoretical grounding that explains *why* the
+simulation mechanics work the way they do.
+
 Economic Theory
 ---------------
 
@@ -52,10 +63,13 @@ State Repression
 .. toctree::
    :maxdepth: 1
 
+   carceral-equilibrium
+   terminal-crisis
+   warlord-trajectory
    carceral-geography
 
-The spatial dimensions of class management: detention, displacement,
-and elimination pipelines.
+The default trajectory toward necropolis, terminal crisis phases,
+warlord coup branching, and carceral geography.
 
 AI & RAG Systems
 ----------------

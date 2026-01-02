@@ -33,9 +33,10 @@ Simulation Systems
    :maxdepth: 1
 
    systems
+   demographics
 
-API reference for the seven core simulation systems (ImperialRent, Solidarity,
-Consciousness, Survival, Contradiction, Territory, Struggle).
+API reference for the seven core simulation systems, and demographics
+mechanics including the Mass Line population block paradigm.
 
 Event System
 ------------
@@ -56,9 +57,10 @@ Configuration
    :maxdepth: 1
 
    configuration
+   tuning
 
-Configuration system documentation, environment variables, and GameDefines
-parameter tables.
+Configuration system documentation, environment variables, GameDefines
+parameter tables, and the 20-Year Entropy Standard for parameter tuning.
 
 Topology System
 ---------------

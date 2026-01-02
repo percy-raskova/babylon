@@ -1,0 +1,195 @@
+meta:
+  name: "Demographics and Mortality"
+  version: "1.0.0"
+  updated: "2026-01-01"
+  purpose: "Mass Line Refactor - Agent-as-Block population mechanics"
+  status: "IMPLEMENTED"
+  adr: "ADR033"
+  references:
+    rst: "docs/reference/demographics.rst"
+    related:
+      - "ai-docs/metabolic-slice.yaml"
+      - "ai-docs/epoch2/demographics-spec.yaml"
+
+overview: |
+  The Mass Line Refactor transforms from Agent-as-Person (1 agent = 1 individual)
+  to Agent-as-Block (1 agent = 1 demographic block with population). This enables
+  scalable demographics, intra-class inequality, Malthusian dynamics, and
+  grinding attrition replacing binary alive/dead checks.
+
+agent_as_block:
+  before: "Each SocialClass entity = 1 person with binary survival"
+  after: "Each SocialClass entity = 1 demographic block with population"
+  fields_added:
+    - name: "population"
+      type: "int"
+      default: 1
+      purpose: "Block size (default=1 for backward compat)"
+    - name: "inequality"
+      type: "Gini"
+      range: "[0, 1]"
+      default: 0.0
+      purpose: "Intra-class inequality coefficient"
+
+inequality_coefficient:
+  description: "Gini coefficient measuring wealth distribution within the class"
+  effect_formula: "threshold = 1.0 + inequality"
+  examples:
+    - value: 0.0
+      meaning: "Perfect equality"
+      effect: "Coverage threshold = 1.0× (exact subsistence suffices)"
+    - value: 0.5
+      meaning: "Moderate inequality"
+      effect: "Coverage threshold = 1.5× (50% surplus required)"
+    - value: 0.8
+      meaning: "High inequality"
+      effect: "Coverage threshold = 1.8× (80% surplus required)"
+    - value: 1.0
+      meaning: "Maximum tyranny"
+      effect: "Coverage threshold = 2.0× (impossible to prevent deaths)"
+
+grinding_attrition_formula:
+  phase_1_drain:
+    name: "The Drain (Population-Scaled)"
+    formula: "cost = (base_subsistence × population) × subsistence_multiplier"
+    effect: "wealth = max(0, wealth - cost)"
+    insight: "Block of 100 workers burns 100× what single worker burns"
+
+  phase_2_attrition:
+    name: "Grinding Attrition (Coverage Ratio Threshold)"
+    steps:
+      - "coverage_ratio = wealth_per_capita / subsistence_needs"
+      - "threshold = 1.0 + inequality"
+      - "if coverage_ratio >= threshold: attrition_rate = 0"
+      - "else: deficit = threshold - coverage_ratio; attrition_rate = clamp(deficit × (0.5 + inequality), 0, 1)"
+      - "deaths = floor(population × attrition_rate)"
+    key_insight: "High inequality raises coverage threshold"
+
+  phase_3_reaper:
+    name: "The Reaper (Extended)"
+    conditions:
+      - "If population = 0: Mark active = False, emit ENTITY_DEATH"
+      - "If population = 1 AND wealth < consumption_needs: Traditional binary death"
+
+  implemented_in: "src/babylon/engine/systems/vitality.py"
+
+malthusian_correction:
+  description: "Natural equilibrium dynamics through population dynamics"
+  mechanism:
+    - "Deaths occur due to coverage deficit → population decreases"
+    - "Per-capita wealth increases (same wealth, fewer people)"
+    - "Coverage ratio increases → fewer future deaths"
+    - "Population stabilizes at carrying capacity"
+  key: "Wealth NOT reduced when people die - per-capita wealth rises for survivors"
+  example:
+    tick_1: "pop=1000, wealth=10, coverage=1.0, threshold=1.5 → deficit=0.5, deaths=500"
+    tick_2: "pop=500, wealth=10, coverage=2.0, threshold=1.5 → deficit=0, deaths=0"
+    result: "Equilibrium: coverage exceeds threshold"
+
+events:
+  population_attrition:
+    type: "POPULATION_ATTRITION"
+    trigger: "Coverage deficit causes deaths"
+    payload:
+      - "entity_id"
+      - "deaths"
+      - "remaining_population"
+      - "attrition_rate"
+    implemented_in: "src/babylon/models/enums.py"
+
+  entity_death:
+    type: "ENTITY_DEATH"
+    trigger: "Full extinction (population = 0)"
+    payload:
+      - "entity_id"
+      - "wealth"
+      - "consumption_needs"
+      - "cause: extinction | starvation"
+
+population_scaled_systems:
+  production:
+    formula: "produced_value = (base_labor_power × population) × bio_ratio"
+    meaning: "Block of 1000 workers produces 1000× single worker"
+    implemented_in: "src/babylon/engine/systems/production.py"
+
+  metabolism:
+    formula: "total_consumption = (s_bio + s_class) × population"
+    notes:
+      - "Active entities consume proportional to population"
+      - "Inactive (dead) entities do not consume"
+    implemented_in: "src/babylon/engine/systems/metabolism.py"
+
+  survival:
+    formula: "P(S|A) uses wealth_per_capita = wealth / population"
+    before: "Block of 50k workers with $1000 total looked wealthy"
+    after: "Formula sees $0.02 per capita - correctly identifies impoverished population"
+    implemented_in: "src/babylon/engine/systems/survival.py"
+
+causal_chain:
+  - system: "VitalitySystem"
+    effect: "Deaths reduce population → per-capita wealth rises"
+  - system: "ProductionSystem"
+    effect: "Smaller population produces less total wealth"
+  - system: "MetabolismSystem"
+    effect: "Smaller population consumes less biocapacity"
+  - system: "SurvivalSystem"
+    effect: "Lower per-capita wealth → lower P(S|A)"
+  - result: "Population stabilizes at carrying capacity"
+
+per_capita_vs_aggregate:
+  - system: "VitalitySystem"
+    metric: "Mortality"
+    treatment: "Per-capita (coverage ratio)"
+  - system: "ProductionSystem"
+    metric: "Output"
+    treatment: "Aggregate × population"
+  - system: "MetabolismSystem"
+    metric: "Consumption"
+    treatment: "Aggregate × population"
+  - system: "SurvivalSystem"
+    metric: "P(S|A)"
+    treatment: "Per-capita"
+
+backward_compatibility:
+  preserved:
+    - "population = 1: Single-agent scenarios unchanged"
+    - "inequality = 0.0: Marginal wealth = average wealth"
+    - "Binary death check preserved for population = 1"
+  note: "Existing scenarios continue to work without modification"
+
+theoretical_basis:
+  concepts:
+    - concept: "Primitive Accumulation"
+      implementation: "High inequality reflects dispossession"
+    - concept: "Reserve Army of Labor"
+      implementation: "Deaths create downward wage pressure"
+    - concept: "Crisis of Social Reproduction"
+      implementation: "Marginal workers can't reproduce themselves"
+    - concept: "Metabolic Rift"
+      implementation: "Ecological limits manifest through population dynamics"
+  name_origin: "Mass Line references Maoist principle of learning from the masses"
+
+files_modified:
+  phase_1:
+    - "src/babylon/models/types.py - Added Gini constrained type"
+    - "src/babylon/models/entities/social_class.py - Added population, inequality fields"
+    - "src/babylon/config/defines.py - Added VitalityDefines section"
+    - "src/babylon/models/enums.py - Added POPULATION_DEATH event type"
+    - "src/babylon/engine/systems/vitality.py - Implemented 3-phase vitality"
+
+  phase_2:
+    - "src/babylon/engine/systems/production.py - Scale by population"
+    - "src/babylon/engine/systems/metabolism.py - Scale consumption, skip inactive"
+
+  phase_3:
+    - "src/babylon/systems/formulas/vitality.py - calculate_mortality_rate()"
+    - "src/babylon/models/enums.py - Added POPULATION_ATTRITION event type"
+    - "tests/unit/formulas/test_vitality.py - Formula unit tests"
+    - "tests/unit/engine/systems/test_demographic_dynamics.py - Integration tests"
+
+  phase_4:
+    - "src/babylon/engine/systems/survival.py - P(S|A) uses wealth_per_capita"
+
+see_also:
+  - "ai-docs/metabolic-slice.yaml"
+  - "ai-docs/epoch2/demographics-spec.yaml"

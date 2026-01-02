@@ -1,0 +1,147 @@
+meta:
+  name: "The Warlord Trajectory"
+  version: "1.0.0"
+  updated: "2026-01-01"
+  purpose: "Epoch 2 branching - when enforcers seize power from weakened bourgeoisie"
+  status: "DEFERRED - Epoch 2"
+  discovery_session: "#S139"
+  references:
+    rst: "docs/concepts/warlord-trajectory.rst"
+    adr: "ai-docs/decisions/ADR037 (deferred)"
+
+overview: |
+  During 100-year Carceral Equilibrium simulations, bourgeoisie wealth collapsed
+  to near-zero while Labor Aristocracy accumulated massively. Initially flagged as
+  a bug (ADR037), this represents a historically valid trajectory: the Warlord Coup.
+  When bourgeoisie cannot pay enforcers, those who control the actual means of
+  violence can seize power.
+
+discovery:
+  simulation_results:
+    year_0:
+      c_b_wealth: 1.10
+      la_wealth: 9.62
+    year_100:
+      c_b_wealth: 0.01
+      la_wealth: 15954.87
+  initial_interpretation: "Bug - contradicts Marxist political economy"
+  key_insight: "Bourgeoisie control violence BY PROXY through money"
+
+power_chain:
+  normal_operation: |
+    C_b (bourgeoisie)
+        ├──[PAYMENT]──► Enforcers ──[CONTROL]──► Means of Violence
+        │                                            ├── Tanks
+        │                                            ├── Helicopters
+        │                                            ├── Drones
+        │                                            ├── Machine guns
+        │                                            └── Prisons
+        └──[PROFIT]──► C_b accumulates wealth
+  when_payment_stops: "Enforcers still have weapons. Chain of command depends on continued payment."
+
+two_interpretations:
+  bug_classical:
+    name: "Bug (Classical Political Economy)"
+    argument:
+      - "Capital should concentrate upward during crisis"
+      - "Bourgeoisie should thrive while workers suffer"
+      - "This is how capitalism has historically functioned"
+    fix: "Add EXPLOITATION edge from LA to C_b"
+
+  feature_warlord:
+    name: "Feature (Warlord Trajectory)"
+    argument:
+      - "When bourgeoisie can't pay enforcers, coup becomes possible"
+      - "Enforcers control the actual means of violence"
+      - "Historically accurate for failed states and military juntas"
+    fix: "Model enforcer class consciousness and loyalty"
+
+resolution: "Both trajectories are valid. Epoch 2 implements branching based on material conditions."
+
+historical_parallels:
+  praetorian_guard:
+    description: "Roman Praetorian Guard realized their power over emperors"
+    examples:
+      - "41 CE: Assassinated Caligula, installed Claudius"
+      - "193 CE: Auctioned the empire to the highest bidder"
+      - "235-284 CE: Crisis of the Third Century (50 years, 26 emperors)"
+    lesson: "When emperors couldn't pay, guards made new emperors"
+
+  modern_juntas:
+    examples:
+      - country: "Chile"
+        year: 1973
+        pattern: "Pinochet's coup against Allende"
+      - country: "Argentina"
+        year: 1976
+        pattern: "Videla's junta against Peron"
+      - country: "Myanmar"
+        year: 2021
+        pattern: "Min Aung Hlaing against civilian government"
+      - country: "Egypt"
+        year: 2013
+        pattern: "Sisi against Morsi"
+    common_pattern: "Military/police seize power when civilian leadership loses control"
+
+  private_prison_industry:
+    context: "American trajectory"
+    difference: "Enforcers may not stage coup but become new capitalist class"
+    mechanism:
+      - "CoreCivic and GEO Group executives"
+      - "Prison labor extraction as surplus value source"
+      - "Lobbying for criminalization (more prisoners = more profit)"
+      - "Revolving door between corrections and government"
+    insight: "Enforcers don't need coup - they become new bourgeoisie through carceral apparatus"
+
+epoch2_design:
+  trajectory_a:
+    name: "Classical Concentration"
+    flow: "C_b → maintains payment → Enforcers → control → Prisoners"
+    condition: "Bourgeoisie can fix payment (through extreme extraction)"
+    result: "Pure necropolis ruled by capitalists"
+
+  trajectory_b:
+    name: "Warlord Coup"
+    flow: "Enforcers (warlords) → control directly → Prisoners"
+    condition: "Enforcers seize power when payment fails"
+    result: "Military junta ruling necropolis directly"
+    note: "C_b eliminated or subordinated"
+
+  branching_condition:
+    pseudocode: |
+      enforcer_loyalty = f(C_b_wealth, payment_consistency, enforcer_consciousness)
+
+      IF can_pay:
+          → TRAJECTORY_A: Classical Concentration
+      ELSE IF enforcer_consciousness > COUP_THRESHOLD:
+          → TRAJECTORY_B: Warlord Coup
+      ELSE:
+          → FAILED_STATE: System collapses into chaos
+
+player_agency:
+  accelerate_warlord_coup:
+    - "Reduce C_b wealth through sabotage"
+    - "Disrupt payment channels"
+    - "Raise enforcer class consciousness"
+
+  prevent_both_trajectories:
+    - "Organize prisoners despite conditions"
+    - "Flip enforcers to revolutionary side"
+    - "Build solidarity networks spanning class lines"
+    - "Exploit transition chaos"
+
+  note: "Warsaw Ghetto Dynamic still applies: when P(S|A) → 0, revolution becomes the only rational choice"
+
+mantras:
+  original: "Collapse is certain. Revolution is possible. Organization is the difference."
+  extended: "And if revolution fails, even the victors change."
+  insight: "Necropolis may be ruled by capitalists or warlords. Either way, only escape is revolutionary organization."
+
+status:
+  discovered: "2026-01-01 (Session #139)"
+  status: "Deferred to Epoch 2"
+  priority: "Before player agency systems"
+
+see_also:
+  - "ai-docs/carceral-equilibrium.yaml"
+  - "ai-docs/terminal-crisis.yaml"

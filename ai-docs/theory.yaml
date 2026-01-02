@@ -1,0 +1,212 @@
+meta:
+  name: "MLM-TW Theoretical Foundation"
+  version: "1.0.0"
+  updated: "2026-01-01"
+  purpose: "Machine-readable theoretical grounding for Babylon simulation"
+  references:
+    rst: "docs/concepts/theory.rst"
+    related:
+      - "docs/concepts/imperial-rent.rst"
+      - "docs/concepts/survival-calculus.rst"
+      - "docs/concepts/george-jackson-model.rst"
+
+overview: |
+  Babylon models the collapse of American hegemony through MLM-TW theory.
+  Revolution in the imperial core is structurally impossible while imperial
+  rent extraction continues. This is a mechanical constraint, not a moral claim.
+
+fundamental_theorem:
+  statement: "If W_c > V_c, then P(Revolution in Core) → 0"
+  variables:
+    W_c: "Wages paid to core (First World) workers"
+    V_c: "Value produced by core workers"
+    Phi: "Imperial Rent (Φ = W_c - V_c)"
+  implications:
+    - "Core workers have material interest in maintaining imperialism"
+    - "This creates the labor aristocracy whose class interest aligns with capital"
+    - "Revolutionary potential is concentrated in the periphery, not the core"
+  implemented_in: "src/babylon/systems/formulas/imperial_rent.py"
+
+key_concepts:
+  imperial_rent:
+    definition: "Value flowing from periphery to core that elevates core workers above subsistence"
+    formula: "Φ = W_c - V_c"
+    game_effect: "High Φ → low revolutionary potential in region"
+    see_also: "docs/concepts/imperial-rent.rst"
+
+  labor_aristocracy:
+    definition: "Core workers who benefit from imperial rent, exploited by own capitalists but receiving net benefit from global exploitation"
+    threshold: "W_c / V_c > 1"
+    game_effect: "High wages, high consumption, low revolutionary potential"
+    implemented_in: "src/babylon/systems/formulas/imperial_rent.py::is_labor_aristocracy"
+
+  unequal_exchange:
+    definition: "Systematic undervaluation of peripheral labor relative to core labor"
+    effect: "An hour of work in periphery exchanges for less than an hour in core"
+    implemented_in: "src/babylon/systems/formulas/unequal_exchange.py"
+
+  contradiction:
+    definition: "Dialectical tension between opposing forces that drives historical change"
+    types:
+      antagonistic: "Cannot be resolved within current system (capital vs labor)"
+      non_antagonistic: "Can be resolved through reform (tactical disagreements)"
+    game_effect: "Intensity reaches critical threshold → rupture becomes possible"
+    implemented_in: "src/babylon/engine/systems/contradiction.py"
+
+  rupture:
+    definition: "Revolutionary break with existing order - requires both material conditions and organization"
+    formula: "P(Rupture) when P(S|R) > P(S|A)"
+    see_also: "docs/concepts/survival-calculus.rst"
+
+  hegemony:
+    definition: "Ruling class power maintained through cultural/ideological control (Gramsci)"
+    status: "EPOCH 2 - wiki control mechanic planned"
+    see_also: "ai-docs/epoch2/gramscian-wire-vision.yaml"
+
+  atomization:
+    definition: "Destruction of organic social bonds replaced by market relations"
+    game_effect: "Reduces organization capacity, increases rupture threshold"
+
+survival_calculus:
+  p_acquiescence:
+    formula: "P(S|A) = Sigmoid(Wealth - Subsistence)"
+    meaning: "Probability of survival by working within system"
+  p_revolution:
+    formula: "P(S|R) = Organization / Repression"
+    meaning: "Probability of survival by revolutionary action"
+  rupture_condition: "P(S|R) > P(S|A)"
+  implemented_in: "src/babylon/systems/formulas/survival.py"
+
+class_categories:
+  - name: "Bourgeoisie"
+    relation: "Owns means of production"
+    potential: "Counter-revolutionary"
+  - name: "Proletariat"
+    relation: "Sells labor power"
+    potential: "High (in periphery)"
+  - name: "Petty Bourgeoisie"
+    relation: "Small owners, professionals"
+    potential: "Vacillating"
+  - name: "Peasantry"
+    relation: "Agricultural producers"
+    potential: "Variable by context"
+  - name: "Labor Aristocracy"
+    relation: "Core workers with Φ benefit"
+    potential: "Low"
+  - name: "Lumpenproletariat"
+    relation: "Outside formal economy"
+    potential: "Unreliable"
+
+fascist_bifurcation:
+  adr: "ADR016"
+  core_insight: "Economic crisis does NOT automatically produce revolutionary consciousness"
+  formula: "Agitation_Energy = |ΔW| × loss_aversion"
+  bifurcation_logic: |
+    if solidarity_strength > 0:
+        direction = class_consciousness
+    else:
+        direction = national_identity
+  mantra: "Agitation without solidarity produces fascism, not revolution"
+  historical_examples:
+    - case: "Weimar Germany 1929-1933"
+      conditions: "Economic collapse"
+      solidarity: "Weak (divided left)"
+      outcome: "Fascism"
+    - case: "Russia 1917"
+      conditions: "War exhaustion, food shortages"
+      solidarity: "Strong (Zimmerwald movement)"
+      outcome: "Revolution"
+  implemented_in: "src/babylon/engine/systems/ideology.py"
+  see_also: "ai-docs/decisions/ADR016_fascist_bifurcation.yaml"
+
+proletarian_internationalism:
+  dialectic: "dΨ/dt = k(1 - W_c/V_c) - λΨ + σ_edge × (Ψ_periphery - Ψ_core)"
+  forces:
+    material: "When W_c > V_c, material term is negative (sedative)"
+    solidarity: "Consciousness transmits FROM periphery TO core through SOLIDARITY edges"
+  victory_condition: "Solidarity Force > |Material Force|"
+  key_insight: "Consciousness flows unidirectionally FROM periphery TO core in current epoch"
+  implemented_in: "src/babylon/engine/systems/solidarity.py"
+
+trpf:
+  name: "Tendency of the Rate of Profit to Fall"
+  source: "Marx, Capital Vol. 3, Chapters 13-15"
+  formula: "Rate of Profit: p' = s / (c + v)"
+  variables:
+    s: "Surplus Value"
+    c: "Constant Capital (machinery, materials - 'dead labor')"
+    v: "Variable Capital (wages - 'living labor')"
+  organic_composition: "OCC = c / v"
+  mechanism: "Rising OCC reduces profit rate even as absolute profit may increase"
+  connection_to_mlm_tw: "Imperial rent (Factor #5 - Foreign Trade) temporarily offsets TRPF for core"
+  epoch1_surrogate:
+    formula: "trpf_multiplier = max(0.1, 1.0 - (trpf_coefficient × tick))"
+    parameter: "economy.trpf_coefficient"
+    default: 0.0005
+    timeline:
+      tick_0: "100% efficiency"
+      tick_520: "74% efficiency (10 years)"
+      tick_1040: "48% efficiency (20 years)"
+      tick_1800_plus: "floors at 10%"
+  epoch2_plan: "ai-docs/epoch2/epoch2-trpf.yaml"
+  implemented_in: "src/babylon/systems/formulas/trpf.py"
+
+metabolic_rift:
+  definition: "Fundamental incompatibility between capitalist accumulation and ecological sustainability"
+  formula: "biocapacity -= extraction_amount × entropy_factor"
+  parameters:
+    entropy_factor:
+      location: "metabolism.entropy_factor"
+      default: 1.2
+      meaning: "Extraction costs more than it yields (thermodynamic inefficiency)"
+    # NOTE: hysteresis_rate is THEORETICAL ONLY - not yet implemented
+  consequence: "Capital externalizes regeneration costs, extracting more than can be renewed"
+  implemented_in: "src/babylon/engine/systems/metabolism.py"
+
+tragedy_of_inevitability:
+  core_doctrine: "Entropy is irreversible. The player cannot 'win' in traditional sense."
+  player_agency:
+    - "Accelerating collapse through revolutionary action"
+    - "Decelerating collapse through system maintenance (only delays inevitable)"
+    - "Shaping the character of collapse (revolutionary vs fascist resolution)"
+  twenty_year_horizon: "1040 ticks models compound degradation, TRPF, and generational effects"
+  banned_concepts:
+    - name: "Infinite biocapacity"
+      reason: "Violates thermodynamics"
+    - name: "Regeneration > Extraction"
+      reason: "Not possible under capitalism"
+    - name: "Free existence (base_subsistence = 0)"
+      reason: "Creates zombie states"
+    - name: "Equilibrium stability"
+      reason: "Violates TRPF"
+    - name: "Player 'victory' through survival"
+      reason: "Wrong teleology"
+
+terminal_crisis:
+  carceral_turn: "When rent pool exhausted, Labor Aristocracy decomposes into enforcers + prisoners"
+  decomposition: "LA → 15% Carceral Enforcers + 85% Internal Proletariat"
+  control_ratio: "One guard controls ~4 prisoners (US average). When exceeded → crisis"
+  terminal_bifurcation:
+    revolution_threshold: "avg_organization >= 0.5"
+    genocide_threshold: "avg_organization < 0.5"
+  arc: "plantation → prison → death camp"
+  implemented_in:
+    - "src/babylon/engine/systems/decomposition.py"
+    - "src/babylon/engine/systems/control_ratio.py"
+  see_also: "ai-docs/terminal-crisis-dynamics.md"
+
+sources:
+  - "Marx, Capital Vol. 1 (value theory, exploitation)"
+  - "Marx, Capital Vol. 3, Ch. 13-15 (TRPF, organic composition)"
+  - "Lenin, Imperialism (monopoly capital, labor aristocracy)"
+  - "Mao, On Contradiction (dialectical analysis)"
+  - "Gramsci, Prison Notebooks (hegemony, civil society)"
+  - "Zak Cope, Divided World Divided Class (modern labor aristocracy thesis)"
+  - "Samir Amin, Unequal Development (unequal exchange)"
+
+ai_assistant_guidelines:
+  - "Ground mechanics in theory: ask 'which theoretical concept does this model?'"
+  - "Avoid idealism: material conditions are primary, ideas secondary"
+  - "Class analysis first: ask 'which class benefits?' before designing features"
+  - "Dialectical thinking: look for contradictions, not just states"
+  - "No both-sides-ism: oppressor and oppressed are not equivalent"

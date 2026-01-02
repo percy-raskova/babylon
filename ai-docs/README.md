@@ -20,15 +20,16 @@ This directory helps AI assistants understand context, use correct terminology, 
 
 ---
 
-## THEORETICAL REFERENCE
+## THEORETICAL REFERENCE (YAML + RST)
 
-| File | Purpose |
-|------|---------|
-| `theory.md` | MLM-TW / Necropolitics theoretical grounding |
-| `carceral-equilibrium.md` | Default 70-year trajectory, revolution windows, necropolis equilibrium |
-| `warlord-trajectory.md` | Epoch 2 branching: Classical Concentration vs Warlord Coup endgames |
-| `terminal-crisis-dynamics.md` | Crisis phase mechanics: plantation -> prison -> concentration -> genocide |
-| `demographics_and_mortality.md` | Mass Line Refactor: population blocks, grinding attrition |
+| YAML | RST | Purpose |
+|------|-----|---------|
+| `theory.yaml` | `docs/concepts/theory.rst` | MLM-TW theoretical grounding |
+| `carceral-equilibrium.yaml` | `docs/concepts/carceral-equilibrium.rst` | 70-year trajectory, revolution windows |
+| `warlord-trajectory.yaml` | `docs/concepts/warlord-trajectory.rst` | Epoch 2 branching endgames |
+| `terminal-crisis.yaml` | `docs/concepts/terminal-crisis.rst` | Crisis phases: plantation → death camp |
+| `demographics.yaml` | `docs/reference/demographics.rst` | Mass Line: population blocks |
+| `tuning-standard.yaml` | `docs/reference/tuning.rst` | 20-Year Entropy Standard |
 
 ---
 
@@ -108,7 +109,7 @@ When starting a session, an AI assistant should:
 2. Read `ai-docs/state.yaml` for current slice status and test counts
 3. Reference `ai-docs/ontology.yaml` when encountering domain terms
 4. Check `ai-docs/patterns.yaml` before implementing new features
-5. Consult `ai-docs/decisions.yaml` to understand why things are the way they are
+5. Consult `ai-docs/decisions/index.yaml` to understand why things are the way they are
 
 ## Maintenance
 

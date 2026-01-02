@@ -603,6 +603,8 @@ class TestNarrativeDirectorDualNarratives:
                 EventType.EXCESSIVE_FORCE,
                 EventType.RUPTURE,
                 EventType.MASS_AWAKENING,
+                EventType.SUPERWAGE_CRISIS,
+                EventType.TERMINAL_DECISION,
             }
         )
 
@@ -672,3 +674,16 @@ class TestNarrativeDirectorDualNarratives:
 
         # No dual narratives generated without LLM
         assert len(director.dual_narratives) == 0
+
+    def test_significant_event_types_includes_terminal_crisis_events(self) -> None:
+        """SIGNIFICANT_EVENT_TYPES includes terminal crisis event types.
+
+        Phase 2 Dashboard: SUPERWAGE_CRISIS and TERMINAL_DECISION events
+        should trigger narrative generation for the narrative feed.
+        """
+        from babylon.ai.director import NarrativeDirector
+        from babylon.models.enums import EventType
+
+        # Terminal Crisis events should be significant
+        assert EventType.SUPERWAGE_CRISIS in NarrativeDirector.SIGNIFICANT_EVENT_TYPES
+        assert EventType.TERMINAL_DECISION in NarrativeDirector.SIGNIFICANT_EVENT_TYPES

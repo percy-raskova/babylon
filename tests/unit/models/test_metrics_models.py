@@ -195,6 +195,69 @@ class TestEntityMetrics:
         assert "0.5" in json_str  # wealth
         assert "0.3" in json_str  # consciousness
 
+    def test_has_population_field(self) -> None:
+        """EntityMetrics has population field for per-capita calculations.
+
+        Phase 2 Dashboard: The population field enables calculating per-capita
+        wealth for survival analysis visualization.
+        """
+        entity = EntityMetrics(
+            wealth=100.0,
+            consciousness=0.3,
+            national_identity=0.2,
+            agitation=0.1,
+            p_acquiescence=0.8,
+            p_revolution=0.2,
+            organization=0.15,
+            population=1000,  # Block population count
+        )
+        assert entity.population == 1000
+
+    def test_population_defaults_to_one(self) -> None:
+        """Population defaults to 1 (single agent representation).
+
+        Default of 1 maintains backward compatibility - a single agent
+        represents one unit of the social class.
+        """
+        entity = EntityMetrics(
+            wealth=0.5,
+            consciousness=0.3,
+            national_identity=0.2,
+            agitation=0.1,
+            p_acquiescence=0.8,
+            p_revolution=0.2,
+            organization=0.15,
+        )
+        assert entity.population == 1
+
+    def test_population_must_be_non_negative(self) -> None:
+        """Population must be >= 0 (cannot have negative people)."""
+        with pytest.raises(ValidationError):
+            EntityMetrics(
+                wealth=0.5,
+                consciousness=0.3,
+                national_identity=0.2,
+                agitation=0.1,
+                p_acquiescence=0.8,
+                p_revolution=0.2,
+                organization=0.15,
+                population=-1,  # Invalid: negative
+            )
+
+    def test_population_accepts_zero(self) -> None:
+        """Population can be zero (extinct class)."""
+        entity = EntityMetrics(
+            wealth=0.0,
+            consciousness=0.0,
+            national_identity=0.0,
+            agitation=0.0,
+            p_acquiescence=0.0,
+            p_revolution=0.0,
+            organization=0.0,
+            population=0,  # Extinct
+        )
+        assert entity.population == 0
+
 
 # =============================================================================
 # EDGE METRICS TESTS

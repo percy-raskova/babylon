@@ -59,6 +59,11 @@ class EntityMetrics(BaseModel):
         le=1.0,
         description="Organization level [0, 1]",
     )
+    population: int = Field(
+        default=1,
+        ge=0,
+        description="Block population count (for per-capita calculations)",
+    )
 
 
 class EdgeMetrics(BaseModel):

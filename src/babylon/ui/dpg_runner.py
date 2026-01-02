@@ -120,7 +120,7 @@ class DashboardState:
     la_data_x: list[float] = field(default_factory=list)
     la_data_y: list[float] = field(default_factory=list)
 
-    # Wealth trend data (4 classes)
+    # Wealth trend data (4 classes) - now stores per-capita values
     pw_wealth_x: list[float] = field(default_factory=list)
     pw_wealth_y: list[float] = field(default_factory=list)
     pc_wealth_x: list[float] = field(default_factory=list)
@@ -129,6 +129,12 @@ class DashboardState:
     cb_wealth_y: list[float] = field(default_factory=list)
     cw_wealth_x: list[float] = field(default_factory=list)
     cw_wealth_y: list[float] = field(default_factory=list)
+
+    # Population history (for per-capita calculations)
+    pw_pop_y: list[int] = field(default_factory=list)
+    pc_pop_y: list[int] = field(default_factory=list)
+    cb_pop_y: list[int] = field(default_factory=list)
+    cw_pop_y: list[int] = field(default_factory=list)
 
     # Event log tracking
     last_event_idx: int = 0
@@ -333,8 +339,10 @@ def build_control_panel(pos: tuple[int, int], width: int, height: int) -> None:
 def build_status_bar(pos: tuple[int, int], width: int, height: int) -> None:
     """Build the Status Bar window.
 
-    Displays phase state, pool ratio, and bifurcation trend.
+    Displays phase state, pool ratio, bifurcation trend, and ecological overshoot.
     The status bar provides at-a-glance system state information.
+
+    Phase 2 Dashboard: Added OVERSHOOT indicator with color-coded thresholds.
 
     Args:
         pos: (x, y) position for the window.
@@ -362,6 +370,10 @@ def build_status_bar(pos: tuple[int, int], width: int, height: int) -> None:
     dpg.add_spacer(width=40, parent="status_group")
     dpg.add_text("TREND: ", color=DPGColors.SILVER_DUST, parent="status_group")
     dpg.add_text("STABLE", tag="trend_display", color=DPGColors.SILVER_DUST, parent="status_group")
+    dpg.add_spacer(width=40, parent="status_group")
+    # Metabolic Rift indicator (Phase 2 Dashboard)
+    dpg.add_text("OVERSHOOT: ", color=DPGColors.SILVER_DUST, parent="status_group")
+    dpg.add_text("0.00", tag="overshoot_display", color=DPGColors.DATA_GREEN, parent="status_group")
 
 
 def build_event_log(pos: tuple[int, int], width: int, height: int) -> None:
@@ -392,23 +404,37 @@ def build_event_log(pos: tuple[int, int], width: int, height: int) -> None:
 
 
 def build_wealth_trend_panel(pos: tuple[int, int], width: int, height: int) -> None:
-    """Build the Wealth Trend panel with 4-line plot.
+    """Build the Survival Analysis panel with per-capita wealth plot.
 
-    Displays wealth over time for all four social classes:
+    Displays per-capita wealth over time for all four social classes:
     P_w (Periphery Worker), P_c (Comprador), C_b (Core Bourgeoisie), C_w (Labor Aristocracy).
+
+    Phase 2 Dashboard: Renamed from "Wealth Trend" to "Survival Analysis (Per Capita)"
+    and shows wealth/population instead of aggregate wealth. Includes subsistence
+    threshold line (0.3) to visualize starvation risk.
 
     Args:
         pos: (x, y) position for the window.
         width: Window width in pixels.
         height: Window height in pixels.
     """
-    dpg.add_window(label="Wealth Trend", tag="wealth_window", width=width, height=height, pos=pos)
+    dpg.add_window(
+        label="Survival Analysis (Per Capita)",
+        tag="wealth_window",
+        width=width,
+        height=height,
+        pos=pos,
+    )
     dpg.add_plot(
-        label="Class Wealth", height=-1, width=-1, tag="wealth_plot", parent="wealth_window"
+        label="Per-Capita Wealth",
+        height=-1,
+        width=-1,
+        tag="wealth_plot",
+        parent="wealth_window",
     )
     dpg.add_plot_legend(parent="wealth_plot")
     dpg.add_plot_axis(dpg.mvXAxis, label="Tick", tag="wealth_x", parent="wealth_plot")
-    dpg.add_plot_axis(dpg.mvYAxis, label="Wealth", tag="wealth_y", parent="wealth_plot")
+    dpg.add_plot_axis(dpg.mvYAxis, label="Wealth/Capita", tag="wealth_y", parent="wealth_plot")
 
     # Create line series with explicit colors from WEALTH_COLORS
     dpg.add_line_series([], [], label="P_w (Worker)", tag="pw_series", parent="wealth_y")
@@ -422,6 +448,16 @@ def build_wealth_trend_panel(pos: tuple[int, int], width: int, height: int) -> N
 
     dpg.add_line_series([], [], label="C_w (Labor Arist.)", tag="cw_series", parent="wealth_y")
     dpg.bind_item_theme("cw_series", _create_series_theme(WEALTH_COLORS["c_w"]))
+
+    # Subsistence threshold line (default 0.3 from GameDefines.survival.default_subsistence)
+    dpg.add_inf_line_series(
+        [0.3],  # Horizontal line at y=0.3
+        label="Subsistence",
+        tag="subsistence_line",
+        parent="wealth_y",
+        horizontal=True,
+    )
+    dpg.bind_item_theme("subsistence_line", _create_series_theme(DPGColors.WARNING_AMBER))
 
 
 def build_key_metrics_panel(pos: tuple[int, int], width: int, height: int) -> None:
@@ -736,9 +772,14 @@ def update_tick_display() -> None:
 
 
 def update_status_bar() -> None:
-    """Update status bar with current phase and metrics.
+    """Update status bar with current phase, metrics, and overshoot.
 
-    Fetches phase state from TopologyMonitor and pool ratio from MetricsCollector.
+    Fetches phase state from TopologyMonitor and pool ratio/overshoot from MetricsCollector.
+
+    Phase 2 Dashboard: Added overshoot ratio with color-coded thresholds:
+    - < 1.0: DATA_GREEN (sustainable)
+    - 1.0 - 1.5: WARNING_AMBER (stressed)
+    - > 1.5: PHOSPHOR_RED (critical/overshoot)
     """
     state = get_state()
     if state.simulation is None:
@@ -771,7 +812,7 @@ def update_status_bar() -> None:
                 trend = "FALLING"
         dpg.set_value("trend_display", trend)
 
-    # Find MetricsCollector for pool ratio
+    # Find MetricsCollector for pool ratio and overshoot
     metrics_collector = None
     for observer in state.simulation._observers:
         if isinstance(observer, MetricsCollector):
@@ -779,8 +820,25 @@ def update_status_bar() -> None:
             break
 
     if metrics_collector is not None and metrics_collector.latest is not None:
-        pool_ratio = float(metrics_collector.latest.pool_ratio)
+        tick_metrics = metrics_collector.latest
+
+        # Pool ratio (existing)
+        pool_ratio = float(tick_metrics.pool_ratio)
         dpg.set_value("pool_ratio_display", f"{pool_ratio:.2f}")
+
+        # Overshoot ratio (Phase 2 Dashboard - Metabolic Rift)
+        overshoot = float(tick_metrics.overshoot_ratio)
+
+        # Color logic based on overshoot thresholds
+        if overshoot < 1.0:
+            overshoot_color = DPGColors.DATA_GREEN  # Sustainable
+        elif overshoot < 1.5:
+            overshoot_color = DPGColors.WARNING_AMBER  # Stressed
+        else:
+            overshoot_color = DPGColors.PHOSPHOR_RED  # Critical overshoot
+
+        dpg.set_value("overshoot_display", f"{overshoot:.2f}")
+        dpg.configure_item("overshoot_display", color=overshoot_color)
 
 
 def log_event(event_type: EventType, message: str) -> None:
@@ -827,10 +885,13 @@ def update_event_log() -> None:
 
 
 def update_wealth_trend() -> None:
-    """Update wealth trend plot with latest class wealth data.
+    """Update Survival Analysis plot with per-capita wealth data.
 
-    Pulls wealth from EntityMetrics for all four classes and updates
-    the 4-line plot.
+    Phase 2 Dashboard: Now displays wealth/population instead of raw wealth
+    to reveal mass starvation events that aggregate wealth hides.
+
+    Pulls wealth and population from EntityMetrics for all four classes,
+    calculates per-capita values, and updates the 4-line plot.
     """
     state = get_state()
     if state.simulation is None:
@@ -849,30 +910,50 @@ def update_wealth_trend() -> None:
     tick_metrics = metrics_collector.latest
     tick = float(tick_metrics.tick)
 
-    # Extract wealth from entity metrics
+    # Extract wealth and population, calculate per-capita
+    # Division by zero safety: max(population, 1)
     if tick_metrics.p_w is not None:
+        pop = max(tick_metrics.p_w.population, 1)
+        per_capita = float(tick_metrics.p_w.wealth) / pop
         state.pw_wealth_x.append(tick)
-        state.pw_wealth_y.append(float(tick_metrics.p_w.wealth))
+        state.pw_wealth_y.append(per_capita)
+        state.pw_pop_y.append(tick_metrics.p_w.population)
+
     if tick_metrics.p_c is not None:
+        pop = max(tick_metrics.p_c.population, 1)
+        per_capita = float(tick_metrics.p_c.wealth) / pop
         state.pc_wealth_x.append(tick)
-        state.pc_wealth_y.append(float(tick_metrics.p_c.wealth))
+        state.pc_wealth_y.append(per_capita)
+        state.pc_pop_y.append(tick_metrics.p_c.population)
+
     if tick_metrics.c_b is not None:
+        pop = max(tick_metrics.c_b.population, 1)
+        per_capita = float(tick_metrics.c_b.wealth) / pop
         state.cb_wealth_x.append(tick)
-        state.cb_wealth_y.append(float(tick_metrics.c_b.wealth))
+        state.cb_wealth_y.append(per_capita)
+        state.cb_pop_y.append(tick_metrics.c_b.population)
+
     if tick_metrics.c_w is not None:
+        pop = max(tick_metrics.c_w.population, 1)
+        per_capita = float(tick_metrics.c_w.wealth) / pop
         state.cw_wealth_x.append(tick)
-        state.cw_wealth_y.append(float(tick_metrics.c_w.wealth))
+        state.cw_wealth_y.append(per_capita)
+        state.cw_pop_y.append(tick_metrics.c_w.population)
 
     # Keep only last ROLLING_WINDOW points
     if len(state.pw_wealth_x) > ROLLING_WINDOW:
         state.pw_wealth_x = state.pw_wealth_x[-ROLLING_WINDOW:]
         state.pw_wealth_y = state.pw_wealth_y[-ROLLING_WINDOW:]
+        state.pw_pop_y = state.pw_pop_y[-ROLLING_WINDOW:]
         state.pc_wealth_x = state.pc_wealth_x[-ROLLING_WINDOW:]
         state.pc_wealth_y = state.pc_wealth_y[-ROLLING_WINDOW:]
+        state.pc_pop_y = state.pc_pop_y[-ROLLING_WINDOW:]
         state.cb_wealth_x = state.cb_wealth_x[-ROLLING_WINDOW:]
         state.cb_wealth_y = state.cb_wealth_y[-ROLLING_WINDOW:]
+        state.cb_pop_y = state.cb_pop_y[-ROLLING_WINDOW:]
         state.cw_wealth_x = state.cw_wealth_x[-ROLLING_WINDOW:]
         state.cw_wealth_y = state.cw_wealth_y[-ROLLING_WINDOW:]
+        state.cw_pop_y = state.cw_pop_y[-ROLLING_WINDOW:]
 
     # Update plot series
     dpg.set_value("pw_series", [state.pw_wealth_x, state.pw_wealth_y])

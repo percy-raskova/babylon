@@ -434,6 +434,36 @@ class TestEntityExtraction:
         assert latest.p_w.p_acquiescence == float(entity.p_acquiescence)
         assert latest.p_w.p_revolution == float(entity.p_revolution)
 
+    def test_extracts_population_from_entity(
+        self,
+        four_node_state: WorldState,
+        config: SimulationConfig,
+    ) -> None:
+        """Extracts population from entity for per-capita calculations.
+
+        Phase 2 Dashboard: Population tracking enables per-capita wealth
+        visualization in the Survival Analysis panel.
+
+        Uses a non-default population (1000) to ensure actual extraction,
+        not coincidental default matching.
+        """
+        # Create state with explicit non-default population
+        entity = four_node_state.entities["C001"]
+        entity_with_pop = entity.model_copy(update={"population": 1000})
+        state = four_node_state.model_copy(
+            update={"entities": {**four_node_state.entities, "C001": entity_with_pop}}
+        )
+
+        collector = MetricsCollector()
+        collector.on_simulation_start(state, config)
+
+        latest = collector.latest
+        assert latest is not None
+        assert latest.p_w is not None
+
+        # Verify non-default population is extracted
+        assert latest.p_w.population == 1000
+
 
 # =============================================================================
 # TEST EDGE EXTRACTION

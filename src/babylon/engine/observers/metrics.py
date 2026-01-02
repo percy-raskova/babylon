@@ -313,6 +313,7 @@ class MetricsCollector:
             p_acquiescence=float(entity.p_acquiescence),
             p_revolution=float(entity.p_revolution),
             organization=float(entity.organization),
+            population=entity.population,
         )
 
     def _extract_edge_metrics(self, state: WorldState) -> EdgeMetrics:

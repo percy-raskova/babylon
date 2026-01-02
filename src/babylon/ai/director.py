@@ -127,6 +127,7 @@ class NarrativeDirector:
 
     # Event types that should trigger narrative generation (significant events)
     # Sprint 4.1: Expanded to include all dramatic narrative-worthy events
+    # Phase 2 Dashboard: Added terminal crisis events (SUPERWAGE_CRISIS, TERMINAL_DECISION)
     SIGNIFICANT_EVENT_TYPES: frozenset[EventType] = frozenset(
         {
             EventType.SURPLUS_EXTRACTION,
@@ -136,6 +137,8 @@ class NarrativeDirector:
             EventType.EXCESSIVE_FORCE,
             EventType.RUPTURE,
             EventType.MASS_AWAKENING,
+            EventType.SUPERWAGE_CRISIS,
+            EventType.TERMINAL_DECISION,
         }
     )
 

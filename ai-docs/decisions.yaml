@@ -2,7 +2,7 @@
 # Key decisions and their rationale (ADR-style)
 
 meta:
-  version: "1.9.0"
+  version: "1.10.0"
   updated: "2026-01-01"
   format: "decision_id: {status, date, context, decision, rationale, consequences}"
 
@@ -2818,6 +2818,142 @@ pending:
     related_decisions:
       - "ADR031_test_constants_centralized (similar pattern for test values)"
       - "ADR035_namespace_driven_mise_tasks (task organization)"
+
+  ADR037_bourgeoisie_wealth_concentration:
+    status: "proposed"
+    date: "2026-01-01"
+    title: "Fix inverted wealth dynamics: Bourgeoisie must accumulate, not disappear"
+    severity: "CRITICAL BUG"
+    discovered_during: "Epoch 1 MVP - necropolis_viewer.py 100-year simulation"
+
+    context: |
+      Running the 100-year Carceral Equilibrium simulation revealed a fundamental
+      flaw in wealth dynamics. The simulation shows:
+
+        Year 0:   C_b wealth = 1.10    LA wealth = 9.62
+        Year 100: C_b wealth = 0.01    LA wealth = 15,954.87
+
+      This is backwards. The bourgeoisie should CONCENTRATE wealth during crisis,
+      not disappear. The Labor Aristocracy should be SQUEEZED, not accumulate.
+
+      The current model treats LA as the accumulating class, which contradicts
+      basic Marxist political economy. Capital concentrates upward, not outward.
+
+    the_correct_model: |
+      The bourgeoisie (C_b) and Labor Aristocracy (LA) form an ALLIANCE based on
+      shared exploitation of the periphery. Think of it as a mob organization:
+
+        - C_b = The Boss (Tony Soprano)
+          Owns the means of production, extracts surplus value from everyone,
+          takes the lion's share of imperial plunder.
+
+        - LA = The Underboss / Made Men
+          Junior partners who get a generous cut in exchange for:
+          - Political loyalty (voting for imperialist parties)
+          - Cultural hegemony (reproducing bourgeois ideology)
+          - Enforcement (cops, soldiers, prison guards, scabs)
+
+        - Enforcers = The Soldiers
+          Former LA who become the enforcement arm when crisis hits.
+          Loyal henchmen who maintain their status through violence.
+
+        - Internal Proletariat = Those who get whacked
+          Former LA who fall out of favor, marked for elimination.
+
+      The alliance holds as long as imperial rent flows. When it stops, the
+      Boss (C_b) betrays the Underboss (LA) to maintain profit rates.
+
+    current_bug: |
+      The ImperialRentSystem treats C_b as a pass-through, not an accumulator:
+
+        Periphery → [EXPLOITATION] → Comprador → [TRIBUTE] → C_b → [WAGES] → LA
+                                                                ↓
+                                                          (rent pool)
+
+      C_b pays super-wages from a "rent pool" until exhausted, then... dies?
+      Meanwhile LA accumulates the wages without any extraction flowing back up.
+
+      Missing: EXPLOITATION edge from LA to C_b (surplus value extraction).
+
+    required_fix: |
+      1. ADD: EXPLOITATION edge (LA → C_b)
+         Every tick, C_b extracts surplus value from LA labor:
+           surplus = (LA.population × labor_productivity) - wages_paid
+           C_b.wealth += surplus
+
+      2. MODIFY: Super-wages as SHARE, not FULL VALUE
+         Super-wages mean LA gets paid ABOVE SUBSISTENCE, not above value.
+         The bourgeoisie ALWAYS extracts surplus, even from privileged workers.
+
+      3. ADD: Concentration dynamics during crisis
+         When imperial rent stops:
+           - C_b squeezes LA harder (wage cuts, union busting)
+           - C_b wealth ACCELERATES (crisis = concentration)
+           - LA wealth DECLINES (middle class death spiral)
+
+      4. ADD: C_b funds carceral apparatus
+         Enforcers are paid BY C_b, not self-sustaining.
+         C_b extracts prison labor value from Internal Proletariat.
+
+    expected_dynamics: |
+      Phase 1: Imperial Extraction (Years 0-40)
+        C_b: GROWS (imperial rent + domestic surplus extraction)
+        LA:  GROWS SLOWLY (super-wages, but still exploited)
+
+      Phase 2: Peripheral Revolt (Years 20-30)
+        C_b: STILL GROWS (squeezes LA harder)
+        LA:  STAGNATES then DECLINES
+
+      Phase 3: Crisis (Years 30-50)
+        C_b: ACCELERATES (crisis = concentration)
+        LA:  COLLAPSES (wage cuts, unemployment, debt)
+
+      Phase 4: Carceral Turn (Years 40-60)
+        C_b: CONTINUES GROWING (prison labor extraction)
+        Enforcers: STABLE (bribed guards)
+        Prisoners: ZERO WEALTH (pure extraction)
+
+      Phase 5: Stable Necropolis (Years 60+)
+        C_b: MAXIMUM CONCENTRATION
+        Reduced population serves concentrated capital.
+
+    rationale:
+      marxist_theory: |
+        - Capital concentrates (Marx, Capital Vol. 1)
+        - Crisis accelerates concentration, not dispersal
+        - The bourgeoisie is the LAST class to suffer, not the first
+      mlm_tw_theory: |
+        - LA are junior partners, not independent accumulators
+        - Super-wages are bribes from imperial rent, not ownership
+        - When rent stops, the alliance breaks and LA gets squeezed
+      historical_evidence: |
+        - 2008 crisis: Banks got bailouts, workers got foreclosures
+        - COVID: Billionaires doubled wealth, workers died
+        - Every crisis: Wealth concentrates upward, not outward
+
+    consequences:
+      positive:
+        - "Correct materialist dynamics: capital concentrates"
+        - "Accurate class alliance model (boss + underboss)"
+        - "Realistic crisis dynamics (LA squeezed, C_b thrives)"
+        - "Enforcers as bought loyalty, not self-sustaining class"
+      negative:
+        - "Requires rework of ImperialRentSystem edge structure"
+        - "May affect tuned parameters (Optuna results)"
+        - "More complex wealth flow calculations"
+
+    implementation_priority: "Epoch 2 (before player agency)"
+
+    files_to_modify:
+      - "src/babylon/engine/systems/economic.py (add EXPLOITATION LA→C_b)"
+      - "src/babylon/engine/scenarios.py (update edge structure)"
+      - "src/babylon/models/enums.py (may need new EdgeType)"
+      - "tests/scenarios/test_carceral_equilibrium.py (update expectations)"
+      - "tools/carceral_scoring.py (add wealth concentration metrics)"
+
+    related_decisions:
+      - "ADR001_embedded_trinity (material base determines outcomes)"
+      - "ADR032_materialist_causality_system_order (systems run in order)"
 
 # =============================================================================
 # REJECTED DECISIONS

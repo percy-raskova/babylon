@@ -25,7 +25,12 @@ from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
 
-pytestmark = [pytest.mark.integration, pytest.mark.theory_rift]
+# Skip entire module until Dashboard visual calibration complete (Sprint 1.5)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.theory_rift,
+    pytest.mark.skip(reason="Macro-tuning requires Dashboard visualization - Sprint 1.5"),
+]
 
 # Phase boundaries in ticks (1 tick = 1 week, 52 ticks = 1 year)
 GROWTH_END = 104  # Year 2

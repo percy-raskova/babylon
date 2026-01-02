@@ -176,10 +176,10 @@ LaTeX Elements
        "preamble": "...",  # See Bunker Constructivism Theme below
    }
 
-Bunker Constructivism Theme
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Necropolis Codex Theme
+~~~~~~~~~~~~~~~~~~~~~~
 
-Complete LaTeX preamble for PDF styling:
+Complete LaTeX preamble for PDF styling (see ``docs/conf.py``):
 
 .. code-block:: latex
 
@@ -187,40 +187,49 @@ Complete LaTeX preamble for PDF styling:
    \usepackage{fontspec}
    \setmainfont{TeX Gyre Termes}
    \setsansfont{TeX Gyre Heros}
-   \setmonofont{TeX Gyre Cursor}
+   \setmonofont{DejaVu Sans Mono}
 
-   % Color definitions
-   \usepackage{xcolor}
-   \definecolor{PhosphorBurn}{HTML}{D40000}
-   \definecolor{WetConcrete}{HTML}{1A1A1A}
-   \definecolor{TerminalGlare}{HTML}{F5F5F5}
-   \definecolor{ExposedCircuitry}{HTML}{FFD700}
-   \definecolor{ThermalWarning}{HTML}{8B0000}
-   \definecolor{TheChassis}{HTML}{404040}
-   \definecolor{TheDust}{HTML}{C0C0C0}
+   % Color definitions - Necropolis Codex Palette
+   \definecolor{AbsoluteVoid}{HTML}{0A0707}    % Cover top gradient
+   \definecolor{DriedBlood}{HTML}{4A1818}      % Chapter headings
+   \definecolor{Rust}{HTML}{6B4A3A}            % Section headings
+   \definecolor{AshPaper}{HTML}{D4C9B8}        % Page backgrounds
+   \definecolor{AshInk}{HTML}{3D3A36}          % Body text
+   \definecolor{Bone}{HTML}{8B7B6B}            % Cover title, page numbers
+
+   % Accent Colors (Buried Hope)
+   \definecolor{BuriedHope}{HTML}{1A3A1A}      % Cover line
+   \definecolor{ForestDim}{HTML}{2A6B2A}       % Revolutionary headings
+   \definecolor{PhosphorGreen}{HTML}{39FF14}   % Key phrases
+
+   % Revolutionary hope commands
+   \newcommand{\hope}[1]{{\color{PhosphorGreen}#1}}
+   \newcommand{\hopedim}[1]{{\color{ForestDim}#1}}
 
    % Hyperlink styling
    \hypersetup{
        colorlinks=true,
-       linkcolor=ThermalWarning,
-       urlcolor=PhosphorBurn,
-       citecolor=TheChassis,
+       linkcolor=Rust,
+       urlcolor=Bone,
+       citecolor=AshInk,
    }
 
    % Section heading colors
    \usepackage{sectsty}
-   \chapterfont{\color{PhosphorBurn}}
-   \sectionfont{\color{ThermalWarning}}
-   \subsectionfont{\color{TheChassis}}
+   \chapterfont{\color{DriedBlood}}
+   \sectionfont{\color{Rust}}
+   \subsectionfont{\color{AshInk}}
 
-   % Code block styling
-   \usepackage{mdframed}
-   \surroundwithmdframed[
-       backgroundcolor=WetConcrete,
-       fontcolor=TerminalGlare,
-       linecolor=TheChassis,
-       linewidth=1pt,
-   ]{Verbatim}
+Custom RST Role
+~~~~~~~~~~~~~~~
+
+The ``:hope:`` role is defined in ``docs/_ext/hope_roles.py``:
+
+.. code-block:: rst
+
+   :hope:`Organization is the difference.`
+
+Use only for content about revolutionary organization.
 
 Autodoc Configuration
 ---------------------
@@ -347,8 +356,9 @@ text. For critical diagrams, use ASCII art or embed static images.
 Emoji Support
 ~~~~~~~~~~~~~
 
-Emoji characters (🟣, ✅) require font fallback configuration not
-currently implemented. They appear in HTML but may be missing in PDF.
+Emoji and special Unicode symbols are not used in documentation.
+The TeX Gyre fonts do not include emoji glyphs, so all content uses
+text-based alternatives for cross-platform compatibility.
 
 See Also
 --------

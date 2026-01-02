@@ -16,15 +16,32 @@ Babylon uses the **Benevolent Dictator (BD)** governance model:
 Branch Structure
 ----------------
 
-.. code-block:: text
+.. mermaid::
 
-   main ────► stable releases (BD merges only)
-     │              ▲
-     ▼              │
-   dev ─────► integration (PRs welcome here)
-     │    ▲
-     ▼    │
-   feature/*, fix/*, docs/*, refactor/*, test/*
+   flowchart TB
+       subgraph protected["Protected Branches"]
+           MAIN["main<br/>(stable releases)"]
+           DEV["dev<br/>(integration)"]
+       end
+
+       subgraph work["Working Branches"]
+           FEAT["feature/*"]
+           FIX["fix/*"]
+           DOCS["docs/*"]
+           REFACT["refactor/*"]
+           TEST["test/*"]
+       end
+
+       FEAT & FIX & DOCS & REFACT & TEST -->|"PR"| DEV
+       DEV -->|"BD merge"| MAIN
+       MAIN -.->|"hotfix backport"| DEV
+
+   %% Necropolis Codex styling
+   classDef protected fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   classDef work fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
+
+   class MAIN,DEV protected
+   class FEAT,FIX,DOCS,REFACT,TEST work
 
 .. list-table::
    :widths: 15 20 65

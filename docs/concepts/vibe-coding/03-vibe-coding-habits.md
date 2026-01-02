@@ -96,7 +96,7 @@ Over 100+ sessions, the memory has accumulated thousands of observations. When s
 Here's a sample of what gets captured:
 
 ```
-**#6270** 11:58 AM 🟣 **Created Comprehensive Architecture Documentation**
+**#6270** 11:58 AM [FEAT] **Created Comprehensive Architecture Documentation**
 The architecture.rst documentation was created for the Babylon project's
 Sphinx documentation system. This file provides a comprehensive overview
 of the "Embedded Trinity" architecture consisting of three integrated layers:

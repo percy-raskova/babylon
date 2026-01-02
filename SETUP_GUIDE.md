@@ -2,32 +2,33 @@
 
 Welcome! This guide will walk you through everything you need to contribute to Babylon. No prior open source experience required.
 
----
+______________________________________________________________________
 
 ## Prerequisites
 
 Before you start, make sure you have these installed:
 
-| Tool | Version | Check with |
-|------|---------|------------|
+| Tool   | Version        | Check with         |
+| ------ | -------------- | ------------------ |
 | Python | 3.12 or higher | `python --version` |
-| Poetry | Any recent | `poetry --version` |
-| Git | Any recent | `git --version` |
+| Poetry | Any recent     | `poetry --version` |
+| Git    | Any recent     | `git --version`    |
 
 **Don't have these?**
+
 - Python: [python.org/downloads](https://python.org/downloads)
 - Poetry: `curl -sSL https://install.python-poetry.org | python3 -`
 - Git: [git-scm.com/downloads](https://git-scm.com/downloads)
 
----
+______________________________________________________________________
 
 ## Step 1: Get the Code
 
 ### Option A: Fork (Recommended for First-Time Contributors)
 
 1. Go to [github.com/percy-raskova/babylon](https://github.com/percy-raskova/babylon)
-2. Click the **Fork** button (top right)
-3. Clone YOUR fork:
+1. Click the **Fork** button (top right)
+1. Clone YOUR fork:
 
 ```bash
 git clone https://github.com/YOUR-USERNAME/babylon.git
@@ -47,6 +48,7 @@ git remote -v
 ```
 
 You should see:
+
 ```
 origin    https://github.com/YOUR-USERNAME/babylon.git (fetch)
 origin    https://github.com/YOUR-USERNAME/babylon.git (push)
@@ -61,7 +63,7 @@ git clone https://github.com/percy-raskova/babylon.git
 cd babylon
 ```
 
----
+______________________________________________________________________
 
 ## Step 2: Set Up Your Environment
 
@@ -89,7 +91,7 @@ poetry run pytest -m "not ai" -x -q
 
 You should see tests passing. If not, ask for help (see Step 8).
 
----
+______________________________________________________________________
 
 ## Step 3: Understand the Branches
 
@@ -108,11 +110,12 @@ feature/your-feature ────────────► Your work
 ```
 
 **The Golden Rules:**
-1. **NEVER** commit directly to `main` or `dev`
-2. **ALWAYS** create a branch from `dev`
-3. **ALWAYS** open PRs to `dev` (not `main`)
 
----
+1. **NEVER** commit directly to `main` or `dev`
+1. **ALWAYS** create a branch from `dev`
+1. **ALWAYS** open PRs to `dev` (not `main`)
+
+______________________________________________________________________
 
 ## Step 4: Create Your Branch
 
@@ -134,33 +137,35 @@ git checkout -b feature/your-feature-name
 
 Use this format: `type/short-description`
 
-| Type | When to Use | Example |
-|------|-------------|---------|
-| `feature/` | Adding something new | `feature/add-territory-system` |
-| `fix/` | Fixing a bug | `fix/rent-calculation-error` |
-| `docs/` | Documentation only | `docs/update-readme` |
-| `refactor/` | Improving code (no behavior change) | `refactor/simplify-formulas` |
-| `test/` | Adding/fixing tests | `test/add-survival-tests` |
+| Type        | When to Use                         | Example                        |
+| ----------- | ----------------------------------- | ------------------------------ |
+| `feature/`  | Adding something new                | `feature/add-territory-system` |
+| `fix/`      | Fixing a bug                        | `fix/rent-calculation-error`   |
+| `docs/`     | Documentation only                  | `docs/update-readme`           |
+| `refactor/` | Improving code (no behavior change) | `refactor/simplify-formulas`   |
+| `test/`     | Adding/fixing tests                 | `test/add-survival-tests`      |
 
 **Good names:**
+
 - `feature/add-consciousness-drift`
 - `fix/123-overflow-error` (references issue #123)
 - `docs/improve-quickstart`
 
 **Bad names:**
+
 - `my-branch` (not descriptive)
 - `fix` (too vague)
 - `Feature/Add_Thing` (wrong format)
 
----
+______________________________________________________________________
 
 ## Step 5: Make Your Changes
 
 ### Writing Code
 
 1. Make your changes
-2. Follow the coding standards in [CLAUDE.md](CLAUDE.md)
-3. Add tests for new functionality
+1. Follow the coding standards in [CLAUDE.md](CLAUDE.md)
+1. Add tests for new functionality
 
 ### Commit Messages
 
@@ -173,6 +178,7 @@ type(scope): description
 ```
 
 **Types:**
+
 - `feat:` - New feature
 - `fix:` - Bug fix
 - `docs:` - Documentation
@@ -181,6 +187,7 @@ type(scope): description
 - `chore:` - Maintenance tasks
 
 **Examples:**
+
 ```bash
 git commit -m "feat(engine): add territory heat system"
 git commit -m "fix(survival): correct probability calculation"
@@ -209,7 +216,7 @@ Or use the shortcut:
 mise run ci
 ```
 
----
+______________________________________________________________________
 
 ## Step 6: Submit a Pull Request
 
@@ -224,7 +231,7 @@ git push -u origin feature/your-feature-name
 ```
 
 2. Go to GitHub and you'll see a prompt to create a PR
-3. **IMPORTANT:** Set the base branch to `dev` (not `main`!)
+1. **IMPORTANT:** Set the base branch to `dev` (not `main`!)
 
 ```
 base: dev  <--  YOUR BRANCH MERGES INTO THIS
@@ -232,12 +239,14 @@ compare: feature/your-feature-name
 ```
 
 4. Fill out the PR description:
+
    - What does this change?
    - Why is it needed?
    - How was it tested?
    - Reference any related issues: `Fixes #123`
 
-5. Submit and wait for:
+1. Submit and wait for:
+
    - CI checks to pass (automatic)
    - Code review (from maintainer)
 
@@ -247,7 +256,7 @@ compare: feature/your-feature-name
 - **CI fails:** Check the logs, fix the issues, push again
 - **Changes requested:** Make the requested changes, push again
 
----
+______________________________________________________________________
 
 ## Step 7: After Your PR is Merged
 
@@ -275,26 +284,26 @@ git push origin --delete feature/your-feature-name
 
 4. Celebrate! You're now a contributor!
 
----
+______________________________________________________________________
 
 ## Step 8: Getting Help
 
 **Stuck? Have questions?**
 
 1. **GitHub Issues:** [Open an issue](https://github.com/percy-raskova/babylon/issues)
-2. **GitHub Discussions:** For general questions
-3. **Code questions:** Tag `@percy-raskova` in your PR
+1. **GitHub Discussions:** For general questions
+1. **Code questions:** Tag `@percy-raskova` in your PR
 
 **Common Problems:**
 
-| Problem | Solution |
-|---------|----------|
-| Tests failing locally | Run `poetry install` again |
-| Pre-commit hook fails | Run `poetry run ruff check . --fix` |
-| Can't push to dev/main | You need to create a branch first! |
-| Merge conflicts | Ask for help in your PR |
+| Problem                | Solution                            |
+| ---------------------- | ----------------------------------- |
+| Tests failing locally  | Run `poetry install` again          |
+| Pre-commit hook fails  | Run `poetry run ruff check . --fix` |
+| Can't push to dev/main | You need to create a branch first!  |
+| Merge conflicts        | Ask for help in your PR             |
 
----
+______________________________________________________________________
 
 ## Quick Reference Card
 
@@ -319,6 +328,6 @@ git pull upstream dev
 git branch -d feature/my-feature
 ```
 
----
+______________________________________________________________________
 
 **Thank you for contributing to Babylon!**

@@ -16,6 +16,7 @@ The RAG system integrates ChromaDB as a vector database with OpenAI embeddings t
 ## Key Components
 
 ### 1. RagPipeline
+
 The main orchestrator that provides high-level APIs for ingestion and querying.
 
 ```python
@@ -34,6 +35,7 @@ context = response.get_combined_context(max_length=2000)
 ```
 
 ### 2. Document Processing
+
 Handles text preprocessing and intelligent chunking.
 
 ```python
@@ -45,6 +47,7 @@ chunks = processor.process_file("path/to/document.txt")
 ```
 
 ### 3. Embedding Management
+
 Generates embeddings using OpenAI API with caching and rate limiting.
 
 ```python
@@ -55,6 +58,7 @@ embedded_chunks = await embedding_manager.aembed_batch(chunks)
 ```
 
 ### 4. Vector Storage & Retrieval
+
 ChromaDB-based storage with similarity search capabilities.
 
 ```python
@@ -95,6 +99,7 @@ config = RagConfig(
 ### Dependencies
 
 The RAG system requires:
+
 - `chromadb>=1.0.0` - Vector database
 - OpenAI API access for embeddings (configured via existing `OpenAIConfig`)
 - All existing Babylon dependencies
@@ -102,6 +107,7 @@ The RAG system requires:
 ### Environment Variables
 
 Ensure the following environment variables are set:
+
 - `OPENAI_API_KEY` - Your OpenAI API key for embeddings
 - `CHROMADB_DIR` - Directory for ChromaDB persistence (optional, defaults to `data/chromadb`)
 
@@ -185,17 +191,20 @@ async with RagPipeline() as pipeline:
 ## Performance Considerations
 
 ### Chunking Strategy
+
 - **Chunk Size**: Balance between context preservation and retrieval precision
 - **Overlap**: Prevents information loss at chunk boundaries
 - **Preserve Boundaries**: Respects sentence and paragraph structure
 
 ### Embedding Efficiency
+
 - **Batch Processing**: Process multiple chunks simultaneously
 - **Caching**: LRU cache prevents re-computing embeddings
 - **Rate Limiting**: Respects OpenAI API limits
 - **Concurrent Requests**: Parallel embedding generation
 
 ### Storage Optimization
+
 - **Metadata Indexing**: Enable efficient filtering
 - **Collection Organization**: Separate collections by domain
 - **Persistence**: Data survives application restarts
@@ -243,13 +252,14 @@ pipeline = RagPipeline(config=config)
 ### Scaling Considerations
 
 1. **Database**: Consider ChromaDB clustering for large deployments
-2. **Embeddings**: Monitor OpenAI API usage and costs
-3. **Memory**: Tune cache sizes based on available RAM
-4. **Concurrency**: Adjust batch sizes and concurrent limits
+1. **Embeddings**: Monitor OpenAI API usage and costs
+1. **Memory**: Tune cache sizes based on available RAM
+1. **Concurrency**: Adjust batch sizes and concurrent limits
 
 ### Monitoring
 
 Key metrics to monitor:
+
 - Embedding generation times
 - Query response times
 - Cache hit ratios
@@ -271,9 +281,9 @@ from babylon.config.chromadb_config import ChromaDBConfig
 ### Common Issues
 
 1. **Import Errors**: Ensure ChromaDB is installed
-2. **API Errors**: Check OpenAI API key configuration
-3. **Storage Issues**: Verify ChromaDB directory permissions
-4. **Memory Issues**: Reduce batch sizes and cache limits
+1. **API Errors**: Check OpenAI API key configuration
+1. **Storage Issues**: Verify ChromaDB directory permissions
+1. **Memory Issues**: Reduce batch sizes and cache limits
 
 ### Debug Logging
 
@@ -285,6 +295,7 @@ logging.getLogger('babylon.rag').setLevel(logging.DEBUG)
 ## Future Enhancements
 
 Planned improvements include:
+
 - Support for additional embedding providers (Cohere, HuggingFace)
 - Advanced chunking strategies (semantic segmentation)
 - Hybrid search (vector + keyword)

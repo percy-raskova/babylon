@@ -14,12 +14,14 @@ This is a Python-based repository for Babylon, a geopolitical simulation engine 
 ### Dependency Management
 
 Use Poetry for dependency management and packaging:
+
 - Install dependencies: `poetry install`
 - Add a dependency: `poetry add <package>`
 
 ### Task Runner (Preferred)
 
 Use mise for all tasks:
+
 ```bash
 mise tasks                    # List all available tasks
 mise run ci                   # Quick CI: lint + format + typecheck + test-fast
@@ -32,6 +34,7 @@ mise run docs-live            # Live-reload documentation server
 ### Testing
 
 Use the Pytest suite for all tests:
+
 ```bash
 poetry run pytest -m "not ai"                     # All non-AI tests
 poetry run pytest -m "ai"                         # Slow AI/narrative evals
@@ -40,6 +43,7 @@ poetry run pytest -k "test_name_pattern"          # Pattern matching
 ```
 
 **Pytest Markers:**
+
 - `@pytest.mark.math` - Deterministic formulas (fast, pure)
 - `@pytest.mark.ledger` - Economic/political state
 - `@pytest.mark.topology` - Graph/network operations
@@ -49,6 +53,7 @@ poetry run pytest -k "test_name_pattern"          # Pattern matching
 ### Formatting & Linting
 
 Ruff handles all linting and formatting (replaces black/isort/flake8):
+
 ```bash
 poetry run ruff check src tests --fix    # Lint with auto-fix
 poetry run ruff format src tests         # Format code
@@ -67,16 +72,16 @@ poetry run mypy src                      # Type checking (strict mode)
 **The Embedded Trinity** (three-layer local system, no external servers):
 
 1. **The Ledger** (SQLite/Pydantic) - Rigid material state
-2. **The Topology** (NetworkX) - Fluid relational state via graphs
-3. **The Archive** (ChromaDB) - Semantic history for AI narrative
+1. **The Topology** (NetworkX) - Fluid relational state via graphs
+1. **The Archive** (ChromaDB) - Semantic history for AI narrative
 
 **Key Principle:** State is pure data. Engine is pure transformation. They never mix.
 
 ## Key Guidelines
 
 1. Use Poetry for all dependency and environment management
-2. Write or update Pytest-based tests for every new feature or bugfix (TDD preferred)
-3. Format, lint, and type-check before submitting code
-4. Document your code with Sphinx-compatible RST docstrings
-5. Use conventional commit messages (`feat:`, `fix:`, `docs:`, `refactor:`)
-6. See `CLAUDE.md` for comprehensive development guidelines
+1. Write or update Pytest-based tests for every new feature or bugfix (TDD preferred)
+1. Format, lint, and type-check before submitting code
+1. Document your code with Sphinx-compatible RST docstrings
+1. Use conventional commit messages (`feat:`, `fix:`, `docs:`, `refactor:`)
+1. See `CLAUDE.md` for comprehensive development guidelines

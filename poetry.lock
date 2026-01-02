@@ -6380,6 +6380,18 @@ shellingham = ">=1.3.0"
 typing-extensions = ">=3.7.4.3"
 
 [[package]]
+name = "types-docutils"
+version = "0.22.3.20251115"
+description = "Typing stubs for docutils"
+optional = false
+python-versions = ">=3.9"
+groups = ["dev"]
+files = [
+    {file = "types_docutils-0.22.3.20251115-py3-none-any.whl", hash = "sha256:c6e53715b65395d00a75a3a8a74e352c669bc63959e65a207dffaa22f4a2ad6e"},
+    {file = "types_docutils-0.22.3.20251115.tar.gz", hash = "sha256:0f79ea6a7bd4d12d56c9f824a0090ffae0ea4204203eb0006392906850913e16"},
+]
+
+[[package]]
 name = "types-jsonschema"
 version = "4.25.1.20251009"
 description = "Typing stubs for jsonschema"
@@ -7172,4 +7184,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "dc7a6b2a0b8cd6d45deee5191b576c6ad6ee840115b1b605d6937fcbd2e60459"
+content-hash = "586b1e9fcb963262ac490aaae29c8abe7eec06201eca87bb656392234f266e6e"

@@ -1,0 +1,10 @@
+# mdformat configuration
+# https://mdformat.readthedocs.io/en/stable/users/configuration_file.html
+
+wrap = "keep"           # Preserve existing line wrapping
+number = false          # Don't renumber ordered lists
+end_of_line = "lf"      # Unix line endings
+validate = true         # Ensure output parses identically
+
+# Note: exclude patterns require Python 3.13+
+# Use pre-commit hook's exclude regex instead (see .pre-commit-config.yaml)

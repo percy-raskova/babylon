@@ -6,10 +6,17 @@ through Marxist-Leninist-Maoist Third Worldist (MLM-TW) theory.
 
 **Graph + Math = History**
 
+   *"Collapse is certain. Revolution is possible.*
+   :hope:`Organization is the difference.`\ *"*
+
 .. note::
 
    This PDF contains the complete Babylon documentation: tutorials, how-to
    guides, concepts, and reference material.
+
+   The Necropolis Codex aesthetic reflects the grim machinery of imperial
+   collapse---institutional, archival, stained with historical violence.
+   Green text illuminates only content about revolutionary organization.
 
 .. toctree::
    :maxdepth: 3

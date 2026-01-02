@@ -1,7 +1,7 @@
 Simulation Systems Reference
 ============================
 
-API reference for Babylon's seven core simulation systems.
+API reference for Babylon's twelve core simulation systems.
 
 System Protocol
 ---------------
@@ -35,37 +35,242 @@ All systems implement this protocol:
    * - ``context``
      - Mutable dict with ``"tick"`` key and any persistent state
 
-System Execution Order
-----------------------
+System Execution Order (ADR032)
+-------------------------------
+
+Systems execute in strict **materialist causality** order: material base before
+superstructure. This ensures physical reality (life, space, production) determines
+social responses (consciousness, struggle), not vice versa.
 
 .. list-table::
    :header-rows: 1
-   :widths: 5 25 70
+   :widths: 5 25 10 60
 
    * - #
      - System
+     - Phase
      - Purpose
    * - 1
-     - ImperialRentSystem
-     - Extract wealth via EXPLOITATION edges
+     - VitalitySystem
+     - Base
+     - The Drain + Grinding Attrition + The Reaper
    * - 2
-     - SolidaritySystem
-     - Transmit consciousness via SOLIDARITY edges
-   * - 3
-     - ConsciousnessSystem
-     - Apply George Jackson bifurcation to ideology
-   * - 4
-     - SurvivalSystem
-     - Calculate P(S|A) and P(S|R)
-   * - 5
-     - StruggleSystem
-     - Handle agency responses (EXCESSIVE_FORCE → UPRISING)
-   * - 6
-     - ContradictionSystem
-     - Accumulate tension, flag ruptures
-   * - 7
      - TerritorySystem
-     - Process heat, eviction, displacement
+     - Base
+     - Heat dynamics, eviction pipeline, necropolitics
+   * - 3
+     - ProductionSystem
+     - Base
+     - Value creation from labor × biocapacity
+   * - 4
+     - SolidaritySystem
+     - Base
+     - Transmit consciousness via SOLIDARITY edges
+   * - 5
+     - ImperialRentSystem
+     - Base
+     - 5-phase Imperial Circuit with pool tracking
+   * - 6
+     - DecompositionSystem
+     - Crisis
+     - LA decomposition during super-wage crisis
+   * - 7
+     - ControlRatioSystem
+     - Crisis
+     - Guard:prisoner ratio + terminal decision
+   * - 8
+     - MetabolismSystem
+     - Base
+     - Biocapacity depletion + ecological overshoot
+   * - 9
+     - SurvivalSystem
+     - Super
+     - Calculate P(S|A) and P(S|R)
+   * - 10
+     - StruggleSystem
+     - Super
+     - George Floyd Dynamic (agency layer)
+   * - 11
+     - ConsciousnessSystem
+     - Super
+     - Ideological drift + George Jackson bifurcation
+   * - 12
+     - ContradictionSystem
+     - Super
+     - Accumulate tension, flag ruptures
+
+**Phase Legend:**
+
+- **Base**: Material base systems (physical reality, production, extraction)
+- **Crisis**: Terminal crisis systems (class decomposition, carceral dynamics)
+- **Super**: Superstructure systems (consciousness, ideology, struggle)
+
+VitalitySystem
+--------------
+
+:py:class:`babylon.engine.systems.vitality.VitalitySystem`
+
+**Purpose:** The Drain, The Attrition, and The Reaper - three-phase mortality check.
+
+This system runs **FIRST** in the materialist causality chain. Life requires material
+sustenance. Living costs wealth. No wealth = no life.
+
+Three-Phase Mortality
+~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 25 60
+
+   * - Phase
+     - Name
+     - Logic
+   * - 1
+     - The Drain
+     - Population-scaled subsistence burn: ``cost = (base_subsistence × population) × multiplier``
+   * - 2
+     - Grinding Attrition
+     - Coverage ratio threshold mortality (see formula below)
+   * - 3
+     - The Reaper
+     - Extinction check: ``active = False`` when population reaches zero
+
+**Coverage Ratio Threshold Formula (Phase 2):**
+
+.. math::
+
+   \text{coverage\_ratio} = \frac{W_{pc}}{S}
+
+   \text{threshold} = 1 + I
+
+   \text{deficit} = \max(0, \text{threshold} - \text{coverage\_ratio})
+
+   \text{attrition\_rate} = \text{clamp}(\text{deficit} \times (0.5 + I), 0, 1)
+
+   \text{deaths} = \lfloor \text{population} \times \text{attrition\_rate} \rfloor
+
+Where:
+
+- :math:`W_{pc}` = Wealth per capita (wealth / population)
+- :math:`S` = Subsistence needs (s_bio + s_class)
+- :math:`I` = Inequality coefficient [0, 1]
+
+**Malthusian Correction:** When deaths occur, population decreases → per-capita wealth
+increases → future mortality decreases → equilibrium. Wealth is NOT reduced when people
+die (the poor die with 0 wealth).
+
+**Events Emitted:**
+
+- ``POPULATION_ATTRITION``: Coverage deficit deaths from inequality
+- ``ENTITY_DEATH``: Full extinction of a demographic block
+
+TerritorySystem
+---------------
+
+:py:class:`babylon.engine.systems.territory.TerritorySystem`
+
+**Purpose:** Process territorial heat, eviction, displacement, and necropolitics.
+
+.. list-table::
+   :widths: 20 80
+
+   * - **Inputs**
+     - Territory heat, operational profiles, TENANCY edges
+   * - **Outputs**
+     - Updated heat, displaced classes, detention states
+
+Sub-Phases
+~~~~~~~~~~
+
+1. **Heat Dynamics**: HIGH_PROFILE gains heat, LOW_PROFILE decays
+2. **Eviction Pipeline**: Triggered when heat ≥ threshold, routes population to sinks
+3. **Spillover**: Heat spreads via ADJACENCY edges
+4. **Necropolitics**: CONCENTRATION_CAMP elimination, PENAL_COLONY suppression
+
+**Displacement Priority Modes:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Mode
+     - Sink Priority Order
+   * - EXTRACTION
+     - Prison → Reservation → Camp
+   * - CONTAINMENT
+     - Reservation → Prison → Camp
+   * - ELIMINATION
+     - Camp → Prison → Reservation
+
+**Operational Profiles:**
+
+- ``HIGH_PROFILE``: Visible activity, generates heat
+- ``LOW_PROFILE``: Covert activity, heat decays naturally
+
+ProductionSystem
+----------------
+
+:py:class:`babylon.engine.systems.production.ProductionSystem`
+
+**Purpose:** Value creation - The Soil. Workers generate wealth from labor × biocapacity.
+
+Historical Materialist Principle: Value comes from labor applied to nature.
+Dead land = no production. Production depletes nature.
+
+**Producer Roles:** ``PERIPHERY_PROLETARIAT``, ``LABOR_ARISTOCRACY``
+
+**Production Formula:**
+
+.. math::
+
+   \text{produced\_value} = (\text{base\_labor\_power} \times \text{population}) \times \frac{B}{B_{max}}
+
+Where:
+
+- :math:`B` = Current biocapacity
+- :math:`B_{max}` = Maximum biocapacity
+
+**Extraction Intensity:**
+
+After production, sets ``extraction_intensity`` on each territory for MetabolismSystem:
+
+.. math::
+
+   \text{intensity} = \min(1.0, \frac{\text{total\_production}}{B_{max}})
+
+SolidaritySystem
+----------------
+
+:py:class:`babylon.engine.systems.solidarity.SolidaritySystem`
+
+**Purpose:** Transmit class consciousness via SOLIDARITY edges.
+
+.. list-table::
+   :widths: 20 80
+
+   * - **Inputs**
+     - SOLIDARITY edges, consciousness values
+   * - **Outputs**
+     - Updated consciousness, decayed solidarity strengths
+
+**Key Design:** ``solidarity_strength`` is **PERSISTENT ON EDGE**, not auto-calculated.
+
+**Transmission Formula:**
+
+.. math::
+
+   \Delta\Psi_{target} = \sigma \times (\Psi_{source} - \Psi_{target})
+
+**Activation Condition:**
+
+.. code-block:: text
+
+   source_consciousness > activation_threshold AND solidarity_strength > 0
+
+**Events Emitted:**
+
+- ``CONSCIOUSNESS_TRANSMISSION``: Consciousness delta transmitted
+- ``MASS_AWAKENING``: When target crosses ``mass_awakening_threshold``
 
 ImperialRentSystem
 ------------------
@@ -80,29 +285,40 @@ The Imperial Circuit (Sprint 3.4.1, 3.4.4)
 The Imperial Circuit models MLM-TW value extraction as a 5-phase cycle with
 finite resources tracked via an ``imperial_rent_pool`` ("The Gas Tank"):
 
-.. code-block:: text
+.. mermaid::
 
-   Phase 1: EXPLOITATION     Phase 2: TRIBUTE        Phase 3: WAGES
-   P_w ──────────► P_c ──────────► C_b ──────────► C_w
-   (Periphery      (Comprador      (Core           (Labor
-    Worker)         Class)          Bourgeoisie)    Aristocracy)
-        │               │               │
-        │               │               ▼
-        │               │          DRAINS POOL
-        │               │
-        │               ▼
-        │          FEEDS POOL
-        │
-        └──────────────────────────────────────────────┐
-                                                       │
-   Phase 4: CLIENT_STATE (Iron Lung)                   │
-   C_b ──────────► P_c                                 │
-        │          (converts to repression)            │
-        ▼                                              │
-   DRAINS POOL                                         │
-                                                       │
-   Phase 5: DECISION ◄─────────────────────────────────┘
-   (Bourgeoisie heuristics adjust wage_rate/repression)
+   flowchart LR
+       subgraph extraction["Value Extraction"]
+           P_w["P_w<br/>(Periphery Worker)"]
+           P_c["P_c<br/>(Comprador Class)"]
+       end
+
+       subgraph core["Core Distribution"]
+           C_b["C_b<br/>(Core Bourgeoisie)"]
+           C_w["C_w<br/>(Labor Aristocracy)"]
+       end
+
+       subgraph pool["Imperial Rent Pool"]
+           POOL[("The Gas Tank")]
+       end
+
+       P_w -->|"Phase 1: EXPLOITATION"| P_c
+       P_c -->|"Phase 2: TRIBUTE"| C_b
+       P_c -.->|"FEEDS"| POOL
+       C_b -->|"Phase 3: WAGES"| C_w
+       C_b -.->|"DRAINS"| POOL
+       C_b -->|"Phase 4: CLIENT_STATE<br/>(Iron Lung)"| P_c
+       C_b -.->|"DRAINS"| POOL
+       POOL -->|"Phase 5: DECISION"| C_b
+
+   %% Necropolis Codex styling
+   classDef periphery fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   classDef core fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   classDef pool fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
+
+   class P_w,P_c periphery
+   class C_b,C_w core
+   class POOL pool
 
 **Phase Summary:**
 
@@ -222,70 +438,118 @@ Based on ``pool_ratio`` and ``aggregate_tension``, the bourgeoisie chooses:
 - ``SURPLUS_EXTRACTION``: On each rent extraction (Phase 1)
 - ``IMPERIAL_SUBSIDY``: On client state subsidy (Phase 4)
 - ``ECONOMIC_CRISIS``: When CRISIS decision triggers (Phase 5)
+- ``SUPERWAGE_CRISIS``: When pool cannot pay super-wages (triggers decomposition)
 
-SolidaritySystem
-----------------
-
-:py:class:`babylon.engine.systems.solidarity.SolidaritySystem`
-
-**Purpose:** Transmit class consciousness via SOLIDARITY edges.
-
-.. list-table::
-   :widths: 20 80
-
-   * - **Inputs**
-     - SOLIDARITY edges, consciousness values
-   * - **Outputs**
-     - Updated consciousness, decayed solidarity strengths
-
-**Logic:**
-
-.. code-block:: python
-
-   # Consciousness spreads along SOLIDARITY edges
-   for edge in solidarity_edges:
-       source_consciousness = graph.nodes[source]["consciousness"]
-       transmission = source_consciousness * transmission_rate
-       graph.nodes[target]["consciousness"] += transmission
-
-   # Solidarity edges decay over time
-   for edge in solidarity_edges:
-       edge["solidarity_strength"] *= decay_rate
-
-ConsciousnessSystem
+DecompositionSystem
 -------------------
 
-:py:class:`babylon.engine.systems.ideology.ConsciousnessSystem`
+:py:class:`babylon.engine.systems.decomposition.DecompositionSystem`
 
-**Purpose:** Apply George Jackson bifurcation to ideology.
+**Purpose:** Handle Labor Aristocracy decomposition during terminal crisis.
+
+When the imperial rent pool cannot sustain super-wages, the Labor Aristocracy
+decomposes into two fractions:
 
 .. list-table::
-   :widths: 20 80
+   :header-rows: 1
+   :widths: 20 20 60
 
-   * - **Inputs**
-     - Agitation levels, SOLIDARITY presence
-   * - **Outputs**
-     - Updated ideology values (-1 to +1)
+   * - Fraction
+     - Default
+     - Destination
+   * - Enforcer
+     - 15%
+     - CARCERAL_ENFORCER (guards, cops, prison staff)
+   * - Proletariat
+     - 85%
+     - INTERNAL_PROLETARIAT (precariat, unemployed)
 
-**Logic:**
+**Trigger:** ``SUPERWAGE_CRISIS`` event + configurable delay (``decomposition_delay``)
 
-.. code-block:: python
+**Fallback Trigger:** If LA wealth falls below subsistence, decomposition happens
+immediately to prevent the class from dying before the carceral phase can execute.
 
-   # Determine direction from solidarity network
-   has_solidarity = any(
-       e for e in graph.edges(node)
-       if e["edge_type"] == EdgeType.SOLIDARITY
-   )
-   direction = -1 if has_solidarity else +1
+**Events Emitted:**
 
-   # Apply consciousness drift
-   drift = drift_sensitivity * agitation * direction
-   graph.nodes[node]["ideology"] = clamp(ideology + drift, -1, 1)
+- ``CLASS_DECOMPOSITION``: LA splits into enforcer and proletariat fractions
 
-**Bifurcation:**
+ControlRatioSystem
+------------------
 
-- With solidarity: drift toward -1 (revolutionary)
-- Without solidarity: drift toward +1 (fascist)
+:py:class:`babylon.engine.systems.control_ratio.ControlRatioSystem`
+
+**Purpose:** Track guard:prisoner ratio and trigger terminal decision.
+
+When the carceral state cannot control its surplus population, a terminal
+decision bifurcation occurs based on prisoner organization levels.
+
+**Prisoner Classes:** ``INTERNAL_PROLETARIAT``, ``LUMPENPROLETARIAT``
+
+**Control Capacity:**
+
+.. math::
+
+   \text{max\_controllable} = \text{enforcer\_population} \times \text{control\_capacity}
+
+Default control capacity: 1:4 (1 guard controls 4 prisoners).
+Historical reference: US average ~4:1, Federal baseline 15:1, crisis >20:1.
+
+**Terminal Decision Bifurcation:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - Condition
+     - Outcome
+     - Meaning
+   * - avg_organization ≥ 0.5
+     - **REVOLUTION**
+     - Organized prisoners + radicalized guards unite
+   * - avg_organization < 0.5
+     - **GENOCIDE**
+     - Atomized surplus cannot resist elimination
+
+**Events Emitted:**
+
+- ``CONTROL_RATIO_CRISIS``: Prisoners exceed control capacity
+- ``TERMINAL_DECISION``: Final outcome (revolution or genocide)
+
+MetabolismSystem
+----------------
+
+:py:class:`babylon.engine.systems.metabolism.MetabolismSystem`
+
+**Purpose:** Track the metabolic rift between extraction and regeneration.
+
+The metabolic rift is the core dynamic of imperial accumulation: extraction
+systematically exceeds regeneration because profit requires externalizing
+regeneration costs.
+
+**Biocapacity Delta Formula:**
+
+.. math::
+
+   \Delta B = R - (E \times \eta)
+
+Where:
+
+- :math:`R` = Regeneration (``regeneration_rate × max_biocapacity``)
+- :math:`E` = Extraction (``extraction_intensity × current_biocapacity``)
+- :math:`\eta` = Entropy factor (default 1.2, models waste/inefficiency)
+
+**Overshoot Ratio:**
+
+.. math::
+
+   O = \frac{C}{B}
+
+Where :math:`C` = total consumption, :math:`B` = total biocapacity.
+When :math:`O > 1.0`, the system is in ecological overshoot.
+
+**Events Emitted:**
+
+- ``ECOLOGICAL_OVERSHOOT``: When overshoot ratio exceeds threshold
 
 SurvivalSystem
 --------------
@@ -302,20 +566,110 @@ SurvivalSystem
    * - **Outputs**
      - Updated P_acquiescence, P_revolution values
 
-**Logic:**
+**Per-Capita Normalization (Mass Line Phase 4):**
 
 .. code-block:: python
 
-   # Survival by acquiescence
-   P_S_A = sigmoid(wealth - subsistence_threshold)
+   wealth_per_capita = wealth / population  # Not aggregate wealth
 
-   # Survival by revolution
-   P_S_R = organization / max(repression, epsilon)
+**Dynamic Organization:**
 
-   graph.nodes[node]["P_acquiescence"] = P_S_A
-   graph.nodes[node]["P_revolution"] = P_S_R
+Organization is amplified by incoming SOLIDARITY edges:
+
+.. code-block:: text
+
+   solidarity_multiplier = 1.0 + sum(strength for incoming SOLIDARITY edges)
+   effective_organization = min(1.0, base_organization * solidarity_multiplier)
+
+**Formulas:**
+
+.. math::
+
+   P(S|A) = \frac{1}{1 + e^{-k(W_{pc} - S_{min})}}
+
+.. math::
+
+   P(S|R) = \frac{O_{effective}}{R + \epsilon}
 
 **Rupture condition:** When P(S|R) > P(S|A), revolution is rational.
+
+StruggleSystem
+--------------
+
+:py:class:`babylon.engine.systems.struggle.StruggleSystem`
+
+**Purpose:** Implement the George Floyd Dynamic - agency responses to state action.
+
+.. list-table::
+   :widths: 20 80
+
+   * - **Inputs**
+     - Repression events, organization levels
+   * - **Outputs**
+     - Uprising events, changed class states
+
+**Target Roles:** ``PERIPHERY_PROLETARIAT``, ``LUMPENPROLETARIAT``
+
+**The George Floyd Dynamic:**
+
+1. **The Spark:** Police brutality (EXCESSIVE_FORCE) is stochastic function of repression
+2. **The Combustion:** Spark becomes UPRISING if population is agitated and hopeless
+3. **The Result:** Uprisings destroy wealth, permanently increase solidarity infrastructure
+
+**Events Emitted:**
+
+- ``EXCESSIVE_FORCE``: State violence spark event
+- ``UPRISING``: Mass revolt triggered
+- ``SOLIDARITY_SPIKE``: Solidarity infrastructure permanently built
+
+**Key insight:** Repression can backfire when directed at organized classes.
+
+ConsciousnessSystem
+-------------------
+
+:py:class:`babylon.engine.systems.ideology.ConsciousnessSystem`
+
+**Purpose:** Apply George Jackson bifurcation to ideology.
+
+.. list-table::
+   :widths: 20 80
+
+   * - **Inputs**
+     - Agitation levels, SOLIDARITY presence, wage/wealth changes
+   * - **Outputs**
+     - Updated ideology values (three-dimensional IdeologicalProfile)
+
+**Three-Dimensional IdeologicalProfile:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Dimension
+     - Range
+     - Meaning
+   * - class_consciousness
+     - [0, 1]
+     - Relationship to Capital (0=False, 1=Revolutionary)
+   * - national_identity
+     - [0, 1]
+     - Relationship to State (0=Internationalist, 1=Fascist)
+   * - agitation
+     - [0, ∞)
+     - Raw political energy from crisis
+
+**Ideological Routing Formula:**
+
+.. math::
+
+   E_{agitation} = (|W_{change}| + |X_{change}|) \times \lambda_{loss}
+
+Where :math:`\lambda_{loss} = 2.25` (Kahneman-Tversky loss aversion).
+
+**George Jackson Bifurcation:**
+
+- With solidarity: Agitation routes to class_consciousness (→ revolution)
+- Without solidarity: Agitation routes to national_identity (→ fascism)
 
 ContradictionSystem
 -------------------
@@ -328,85 +682,22 @@ ContradictionSystem
    :widths: 20 80
 
    * - **Inputs**
-     - Class attributes, contradiction definitions
+     - Class attributes, wealth gaps
    * - **Outputs**
      - Updated tension values, potential rupture flags
 
-**Logic:**
+**Tension Accumulation:**
 
 .. code-block:: python
 
-   for contradiction in active_contradictions:
-       tension_delta = calculate_tension_increase(contradiction, graph)
-       graph.nodes[node]["tension"] += tension_delta
+   wealth_gap = abs(target_wealth - source_wealth)
+   tension_delta = wealth_gap * tension_accumulation_rate
+   new_tension = min(1.0, current_tension + tension_delta)
 
-       if graph.nodes[node]["tension"] > rupture_threshold:
-           flag_potential_rupture(node, graph)
+**Rupture Event:**
 
-TerritorySystem
----------------
-
-:py:class:`babylon.engine.systems.territory.TerritorySystem`
-
-**Purpose:** Process territorial heat, eviction, and displacement.
-
-.. list-table::
-   :widths: 20 80
-
-   * - **Inputs**
-     - Territory heat, operational profiles, TENANCY edges
-   * - **Outputs**
-     - Updated heat, displaced classes, detention states
-
-**Logic:**
-
-.. code-block:: python
-
-   for territory in territories:
-       # Decay heat
-       territory["heat"] *= (1 - heat_decay)
-
-       # Add heat from activities
-       territory["heat"] += calculate_activity_heat(territory)
-
-       # Trigger eviction if above threshold
-       if territory["heat"] >= heat_threshold:
-           evict_classes(territory, graph)
-
-**Operational profiles:**
-
-- ``HIGH_PROFILE``: Visible activity, generates heat
-- ``LOW_PROFILE``: Covert activity, heat decays naturally
-
-StruggleSystem
---------------
-
-:py:class:`babylon.engine.systems.struggle.StruggleSystem`
-
-**Purpose:** Implement agency responses to state action.
-
-.. list-table::
-   :widths: 20 80
-
-   * - **Inputs**
-     - Repression events, organization levels
-   * - **Outputs**
-     - Uprising events, changed class states
-
-**Logic:**
-
-.. code-block:: python
-
-   # When state uses EXCESSIVE_FORCE
-   if excessive_force_event:
-       affected_class = event.target
-
-       # High organization + excessive force = uprising
-       if graph.nodes[affected_class]["organization"] > uprising_threshold:
-           trigger_uprising(affected_class, graph)
-           services.event_bus.emit(UprisingEvent(class_id=affected_class))
-
-**Key insight:** Repression can backfire when directed at organized classes.
+Emitted when ``new_tension >= 1.0`` AND ``current_tension < 1.0``
+(i.e., the moment tension reaches maximum).
 
 See Also
 --------

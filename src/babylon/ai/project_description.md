@@ -16,16 +16,19 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
 ### Base Structures
 
 - **Economic System**
+
   - Production units (factories, farms, mines)
   - Resources and commodities
   - Labor and capital relations
 
 - **Social Classes**
+
   - Class definitions and relationships
   - Class consciousness and mobility
   - Faction dynamics and alliances
 
 - **Geographic Elements**
+
   - Cities and regions
   - Resource distribution
   - Population demographics
@@ -33,11 +36,13 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
 ### Superstructure Elements
 
 - **Ideological Framework**
+
   - Political philosophies
   - Cultural values
   - Religious beliefs
 
 - **Institutions**
+
   - Government bodies
   - Educational systems
   - Legal frameworks
@@ -46,16 +51,19 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
 ### Contradiction System
 
 - **Types**
+
   - Antagonistic vs non-antagonistic
   - Principal vs secondary
   - Internal vs external
 
 - **Properties**
+
   - Intensity levels
   - Resolution conditions
   - Transformation paths
 
 - **Effects**
+
   - Crisis generation
   - Social changes
   - Historical developments
@@ -65,12 +73,14 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
 ### Data Architecture
 
 - **XML Schemas**
+
   - Entity definitions
   - Relationship mappings
   - State transitions
   - Event triggers
 
 - **Vector Database**
+
   - Game object embeddings
   - Efficient retrieval
   - Context management
@@ -78,11 +88,13 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
 ### AI Integration
 
 - **Behavior Generation**
+
   - NPC decision making
   - Event creation
   - Narrative development
 
 - **System Management**
+
   - State tracking
   - Balance adjustment
   - Content generation
@@ -90,21 +102,25 @@ The Fall of Babylon is a text-based role-playing game that simulates complex soc
 ## Development Roadmap
 
 1. **Core Systems**
+
    - Schema finalization
    - Basic game loop
    - State management
 
-2. **Content Creation**
+1. **Content Creation**
+
    - Entity population
    - Event scripting
    - Relationship mapping
 
-3. **AI Development**
+1. **AI Development**
+
    - Behavior models
    - Content generation
    - Security measures
 
-4. **Testing & Balance**
+1. **Testing & Balance**
+
    - System integration
    - Gameplay tuning
    - Performance optimization

@@ -9,6 +9,7 @@ A geopolitical simulation engine modeling the collapse of American hegemony thro
 Babylon models class struggle as a deterministic output of material conditions within a compact topological phase space. It simulates imperial rent extraction, consciousness drift, solidarity transmission, and revolutionary rupture using NetworkX graphs and Pydantic-validated state.
 
 The simulation runs locally without external servers, using the "Embedded Trinity" architecture:
+
 - **The Ledger** (SQLite/Pydantic): Rigid material state
 - **The Topology** (NetworkX): Fluid relational state
 - **The Archive** (ChromaDB): Semantic history for AI narrative
@@ -51,6 +52,7 @@ brainstorm/          # Design documents and mechanics specs
 ## Development
 
 See [`CLAUDE.md`](CLAUDE.md) for comprehensive development guidelines including:
+
 - Available commands (mise tasks, pytest markers)
 - Architecture details
 - Coding standards
@@ -67,17 +69,18 @@ mise run analyze-sweep   # Parameter sweep analysis
 
 ## Documentation
 
-| Location | Content |
-|----------|---------|
-| [`ai-docs/`](ai-docs/) | YAML specs for engine systems, formulas, architecture |
-| [`brainstorm/`](brainstorm/) | Design documents, mechanics specifications |
-| [`docs/`](docs/) | Sphinx documentation (API reference) |
+| Location                     | Content                                               |
+| ---------------------------- | ----------------------------------------------------- |
+| [`ai-docs/`](ai-docs/)       | YAML specs for engine systems, formulas, architecture |
+| [`brainstorm/`](brainstorm/) | Design documents, mechanics specifications            |
+| [`docs/`](docs/)             | Sphinx documentation (API reference)                  |
 
 ## Current State
 
 **Phase 3: Narrative Layer** - Observer system implemented
 
 Completed systems:
+
 - Imperial Rent extraction (EXPLOITATION edges)
 - Consciousness drift and bifurcation (George Jackson model)
 - Solidarity transmission (SOLIDARITY edges)
@@ -90,13 +93,14 @@ Completed systems:
 
 We welcome contributions! This project uses the [Benevolent Dictator](https://producingoss.com/en/benevolent-dictator.html) governance model.
 
-| Resource | Description |
-|----------|-------------|
-| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Step-by-step setup for new contributors |
-| [CONTRIBUTORS.md](CONTRIBUTORS.md) | Governance model and git workflow |
-| [CLAUDE.md](CLAUDE.md) | Coding standards and architecture |
+| Resource                           | Description                             |
+| ---------------------------------- | --------------------------------------- |
+| [SETUP_GUIDE.md](SETUP_GUIDE.md)   | Step-by-step setup for new contributors |
+| [CONTRIBUTORS.md](CONTRIBUTORS.md) | Governance model and git workflow       |
+| [CLAUDE.md](CLAUDE.md)             | Coding standards and architecture       |
 
 **Quick Start for Contributors:**
+
 ```bash
 git checkout dev
 git checkout -b feature/your-feature
@@ -107,7 +111,7 @@ git checkout -b feature/your-feature
 
 MIT License - see [LICENSE](LICENSE).
 
----
+______________________________________________________________________
 
 **Built With**
 

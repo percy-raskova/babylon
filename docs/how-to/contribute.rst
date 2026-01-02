@@ -151,9 +151,9 @@ What Happens Next
 
 2. **Review CI results**:
 
-   - Green ✓ = all checks pass
-   - Red ✗ = something needs fixing (see logs)
-   - Yellow ⚠ = advisory only (style suggestions)
+   - Green ``PASS`` = all checks pass
+   - Red ``FAIL`` = something needs fixing (see logs)
+   - Yellow ``WARN`` = advisory only (style suggestions)
 
 3. **Maintainer reviews** and may:
 
@@ -161,7 +161,7 @@ What Happens Next
    - Request changes
    - Fix minor issues during merge
 
-4. **Celebrate** when merged! 🎉
+4. **Celebrate** when merged!
 
 Handling CI Failures
 --------------------

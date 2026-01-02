@@ -18,6 +18,6 @@ Don't stress about the checklist - it's just a guide!
 
 <!-- Anything you're unsure about? Ask here! -->
 
----
+______________________________________________________________________
 
 **First time contributing?** Welcome! Check out [CONTRIBUTORS.md](CONTRIBUTORS.md) for help getting started. Don't hesitate to ask questions in the comments.

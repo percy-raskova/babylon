@@ -7,6 +7,9 @@ import sys
 # Add source directory to path for autodoc
 sys.path.insert(0, os.path.abspath("../src"))
 
+# Add _ext directory for custom extensions
+sys.path.insert(0, os.path.abspath("_ext"))
+
 # -- Project information -----------------------------------------------------
 project = "Babylon"
 copyright = "2025, Babylon Project Contributors"
@@ -29,6 +32,7 @@ extensions = [
     "sphinx_autodoc_typehints",
     "myst_parser",
     "sphinxcontrib.mermaid",  # Mermaid diagram support
+    "hope_roles",  # Necropolis Codex :hope: role
 ]
 
 # Templates path
@@ -68,7 +72,7 @@ master_doc = "index"
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = "sphinx_rtd_theme"
-html_static_path: list[str] = []  # No static files needed
+html_static_path = ["_static"]  # Necropolis styling
 
 html_theme_options = {
     "navigation_depth": 4,
@@ -169,13 +173,45 @@ suppress_warnings = [
     "docutils",
 ]
 
-# Mermaid configuration (sphinxcontrib-mermaid v1.2.3)
+# Mermaid configuration (sphinxcontrib-mermaid)
 # See: https://github.com/mgaitan/sphinxcontrib-mermaid
 mermaid_version = "11.4.1"  # Latest stable from jsdelivr CDN
-mermaid_init_config = {
-    "startOnLoad": True,
-    "theme": "neutral",  # Options: default, forest, dark, neutral
-}
+mermaid_init_js = """
+mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    themeVariables: {
+        primaryColor: '#4A1818',
+        primaryTextColor: '#3D3A36',
+        primaryBorderColor: '#6B4A3A',
+        lineColor: '#6B4A3A',
+        secondaryColor: '#D4C9B8',
+        tertiaryColor: '#8B7B6B'
+    }
+});
+"""
+
+# HTML output: use 'raw' for browser-side JavaScript rendering (fast, no mmdc needed)
+# LaTeX/PDF output: sphinxcontrib-mermaid automatically uses mmdc for LaTeX regardless
+mermaid_output_format = "raw"
+
+# PDF/LaTeX builds require mermaid-cli (mmdc) with Puppeteer
+# Install: npm install -g @mermaid-js/mermaid-cli
+# Then: npx puppeteer browsers install chrome-headless-shell
+mermaid_cmd = "mmdc"
+mermaid_cmd_shell = True
+mermaid_params = [
+    "-p",
+    "puppeteer-config.json",  # Puppeteer config for headless Chrome
+    "--theme",
+    "neutral",
+    "--backgroundColor",
+    "transparent",
+    "--width",
+    "800",
+]
+# Enable verbose output to debug mmdc issues
+mermaid_verbose = True
 
 # Enable mermaid fences in MyST markdown files
 myst_fence_as_directive = ["mermaid"]
@@ -223,49 +259,54 @@ latex_elements = {
     # Custom preamble: Bunker Constructivism Professional Book Edition
     "preamble": r"""
 % ============================================================================
-% BUNKER CONSTRUCTIVISM THEME - Professional Book Edition
-% "Damp Basement Cyberinsurgency" - CRT aesthetic for PDF output
+% NECROPOLIS CODEX THEME - The Machinery of Death Made Visible
+% "Leaked documents from the collapsing apparatus" - institutional, archival,
+% stained with historical violence. Hope appears only where organization is discussed.
+% See docs/concepts/aesthetics.rst
 % ============================================================================
 
 % Better typography - subtle kerning and spacing improvements
 \usepackage{microtype}
+
+% Fix overfull hbox warnings - allow flexible line breaking
+% Long function names in API docs cause strict width violations
+\sloppy
+\emergencystretch=2em
 
 % Fix fancyhdr headheight warning
 \setlength{\headheight}{24pt}
 \addtolength{\topmargin}{-12pt}
 
 % ============================================================================
-% COLOR DEFINITIONS - Bunker Constructivism Palette
-% Colors are LIGHT EMISSIONS in a dark room, not paint on surfaces.
-% The UI is a CRT monitor in a concrete bunker. See docs/concepts/aesthetics.rst
+% COLOR DEFINITIONS - Necropolis Codex Palette
+% The grim machinery of death made visible. Institutional archive colors.
+% See: /home/user/.claude/plans/splendid-inventing-sutton.md
 % ============================================================================
 
-% PRIMARY COLORS (Light Emissions)
-\definecolor{PhosphorBurn}{HTML}{D40000}    % The Laser - alerts, critical thresholds, rupture
-                                            % "When red appears, it burns" - chapters, titles
-\definecolor{WetConcrete}{HTML}{1A1A1A}     % The Void - the Room itself, darkness is information
-\definecolor{TerminalGlare}{HTML}{F5F5F5}   % High intensity text (60-80% opacity in UI)
-\definecolor{ExposedCircuitry}{HTML}{FFD700} % The Circuit - truth data, verified connections,
-                                            % SOLIDARITY EDGES - the real infrastructure
+% PRIMARY COLORS (The Machinery of Death)
+\definecolor{AbsoluteVoid}{HTML}{0A0707}    % Cover top - deepest darkness, death camp night
+\definecolor{DriedBlood}{HTML}{4A1818}      % Chapter headings - oxidized, historical violence
+\definecolor{Rust}{HTML}{6B4A3A}            % Section headings - decaying infrastructure
+\definecolor{Bone}{HTML}{8B7B6B}            % Grave markers, monuments - cover title text
+\definecolor{AshPaper}{HTML}{D4C9B8}        % Page backgrounds - cold institutional archive
+\definecolor{AshInk}{HTML}{3D3A36}          % Body text - charcoal, readable but grim
 
-% SECONDARY COLORS
-\definecolor{ThermalWarning}{HTML}{8B0000}  % Overheating indicators, system stress, hot paths
-\definecolor{TheChassis}{HTML}{404040}      % Inactive panels, server racks, cold metal
-\definecolor{TheDust}{HTML}{C0C0C0}         % Terminal prompts, secondary text, the dust that settles
+% ACCENT COLORS (Buried Hope - Conditional on Organization)
+\definecolor{BuriedHope}{HTML}{1A3A1A}      % Cover line - barely visible seed underground
+\definecolor{ForestDim}{HTML}{2A6B2A}       % Section headings in revolutionary content
+\definecolor{PhosphorGreen}{HTML}{39FF14}   % Key phrases only - "Organization is the difference"
 
-% ============================================================================
-% COVER PAGE COLORS - Royal purple void with phosphor green CRT text
-% ============================================================================
-\definecolor{RoyalVoid}{HTML}{1E1033}       % Deep royal purple - the command bunker
-\definecolor{PhosphorGreen}{HTML}{39FF14}   % Neon CRT green - terminal awakening
-\definecolor{PhosphorGreenDim}{HTML}{2AAE0F} % Dimmer green for subtitles
+% LEGACY COLORS (For compatibility during transition)
+\definecolor{ThermalWarning}{HTML}{4A1818}  % Alias to DriedBlood for existing refs
+\definecolor{TheChassis}{HTML}{6B4A3A}      % Alias to Rust
+\definecolor{TheDust}{HTML}{8B7B6B}         % Alias to Bone
 
 % ============================================================================
-% PAGE COLORS - Quasi-dark mode for eye comfort
-% Not harsh white, not full dark - the amber glow of aged paper in bunker light
+% PAGE COLORS - Cold institutional archive aesthetic
+% Documents from the apparatus - under fluorescent light, stained with history
 % ============================================================================
-\definecolor{BunkerPaper}{HTML}{F5F0E8}     % Warm cream - aged paper under dim light
-\definecolor{BunkerInk}{HTML}{2D2A26}       % Warm dark gray - softer than pure black
+\definecolor{BunkerPaper}{HTML}{D4C9B8}     % Alias to AshPaper for compatibility
+\definecolor{BunkerInk}{HTML}{3D3A36}       % Alias to AshInk for compatibility
 
 % ============================================================================
 % PAGE STYLING - Quasi-dark mode for comfortable reading
@@ -280,53 +321,60 @@ latex_elements = {
 \usepackage{tikz}
 
 % ============================================================================
-% CUSTOM COVER PAGE - Royal purple void with phosphor green terminal text
-% Overrides Sphinx's default maketitle
+% CUSTOM COVER PAGE - Necropolis Codex
+% Black-to-Rust gradient, institutional archive aesthetic
+% Hope appears only in the mantra - "The only escape is revolutionary organization."
 % ============================================================================
 \makeatletter
 \renewcommand{\sphinxmaketitle}{%
-  % Set purple background for title page
-  \pagecolor{RoyalVoid}%
   \begin{titlepage}%
-    % Title content on purple background
-    \vspace*{4cm}%
+    % Full-page TikZ gradient background: AbsoluteVoid at top → DriedBlood at bottom
+    \begin{tikzpicture}[remember picture,overlay]
+      \fill[top color=AbsoluteVoid, bottom color=DriedBlood]
+        (current page.north west) rectangle (current page.south east);
+    \end{tikzpicture}%
+    % Title content on gradient background
+    \vspace*{3cm}%
     \begin{center}%
-      % Main title in phosphor green
-      {\fontsize{48}{56}\selectfont\bfseries\color{PhosphorGreen}\@title\par}%
-      \vspace{2cm}%
-      % Subtitle/tagline
-      {\Large\color{PhosphorGreenDim}A Geopolitical Simulation Engine\par}%
-      \vspace{0.8cm}%
-      {\large\color{PhosphorGreenDim}Modeling Imperial Collapse Through Material Conditions\par}%
-      \vspace{4cm}%
-      % Decorative line
-      {\color{PhosphorGreen}\rule{0.5\textwidth}{2pt}\par}%
+      % Main title in Bone (grave marker, monument)
+      {\fontsize{48}{56}\selectfont\bfseries\color{Bone}\@title\par}%
+      \vspace{1.8cm}%
+      % Subtitle in AshInk (documents of the system)
+      {\Large\color{AshInk}A Simulation of Imperial Collapse\par}%
+      \vspace{0.6cm}%
+      {\large\color{AshInk}The Necropolitical Prison-Plantation\par}%
       \vspace{3cm}%
-      % Author
-      {\Large\color{PhosphorGreenDim}\@author\par}%
+      % Decorative line - BuriedHope (thin, barely visible - the seed underground)
+      {\color{BuriedHope}\rule{0.6\textwidth}{0.3pt}\par}%
       \vspace{1.5cm}%
-      % Version/date
-      {\normalsize\color{TheDust}Version \py@release\par}%
+      % The Mantra - ForestDim italic (conditional hope, only for those who read)
+      {\large\itshape\color{ForestDim}``The only escape is revolutionary organization.''\par}%
+      \vspace{3cm}%
+      % Author in Bone
+      {\Large\color{Bone}\@author\par}%
+      \vspace{1.2cm}%
+      % Version in Bone (dimmer)
+      {\normalsize\color{Bone!70}Version \py@release\par}%
     \end{center}%
   \end{titlepage}%
-  % Reset to cream background for all content pages
-  \pagecolor{BunkerPaper}%
+  % Reset to AshPaper background for all content pages
+  \pagecolor{AshPaper}%
   \clearpage%
 }
 \makeatother
 
 % ============================================================================
-% HYPERLINK STYLING - Thematic Color Assignment
+% HYPERLINK STYLING - Necropolis Navigation
+% Internal paths through the apparatus (Rust), external connections to knowledge (Bone)
 % ============================================================================
 \hypersetup{
     colorlinks=true,
-    % Internal links (linkcolor): ThermalWarning - "hot paths" through the document
-    linkcolor=ThermalWarning,
-    % External URLs (urlcolor): ExposedCircuitry - "solidarity edges to external truth"
-    % Gold represents verified connections to outside knowledge infrastructure
-    urlcolor=ExposedCircuitry,
-    % Citations: TheChassis - supporting material, inactive reference
-    citecolor=TheChassis,
+    % Internal links (linkcolor): Rust - hot paths through the decaying apparatus
+    linkcolor=Rust,
+    % External URLs (urlcolor): Bone - connections to outside knowledge
+    urlcolor=Bone,
+    % Citations: AshInk - supporting material
+    citecolor=AshInk,
     % PDF bookmarks and metadata
     bookmarks=true,
     bookmarksnumbered=true,
@@ -336,37 +384,38 @@ latex_elements = {
 }
 
 % ============================================================================
-% HEADING COLORS - Hierarchy through light intensity
-% PhosphorBurn (chapters) → ThermalWarning (sections) → TheChassis (subsections)
+% HEADING COLORS - Necropolis Codex Hierarchy
+% DriedBlood (chapters) → Rust (sections) → AshInk (subsections)
+% Historical violence burns into memory, decaying infrastructure guides navigation
 % ============================================================================
 \usepackage{sectsty}
-\chapterfont{\color{PhosphorBurn}}      % Critical thresholds - burns into attention
-\sectionfont{\color{ThermalWarning}}    % System stress - navigating deeper
-\subsectionfont{\color{TheChassis}}     % Inactive panels - lower intensity
+\chapterfont{\color{DriedBlood}}        % Historical violence - burns into memory
+\sectionfont{\color{Rust}}              % Decaying infrastructure - navigating the apparatus
+\subsectionfont{\color{AshInk}}         % The fine print - details of the machinery
 
 % ============================================================================
-% TABLE OF CONTENTS - Same color hierarchy
+% TABLE OF CONTENTS - Same hierarchical palette
 % ============================================================================
 \usepackage[titles]{tocloft}
-\renewcommand{\cftchapfont}{\bfseries\color{PhosphorBurn}}
-\renewcommand{\cftsecfont}{\color{ThermalWarning}}
-\renewcommand{\cftsubsecfont}{\color{TheChassis}}
-\renewcommand{\cftchappagefont}{\bfseries\color{TheChassis}}
-\renewcommand{\cftsecpagefont}{\color{TheChassis}}
-\renewcommand{\cftsubsecpagefont}{\color{TheDust}}
+\renewcommand{\cftchapfont}{\bfseries\color{DriedBlood}}
+\renewcommand{\cftsecfont}{\color{Rust}}
+\renewcommand{\cftsubsecfont}{\color{AshInk}}
+\renewcommand{\cftchappagefont}{\bfseries\color{Bone}}
+\renewcommand{\cftsecpagefont}{\color{Bone}}
+\renewcommand{\cftsubsecpagefont}{\color{Bone!70}}
 
 % ============================================================================
-% FANCY HEADERS - Book feel with softer colors
+% FANCY HEADERS - Necropolis archive aesthetic
 % ============================================================================
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[LE,RO]{\color{TheChassis}\thepage}
-\fancyhead[RE]{\color{TheChassis}\nouppercase{\leftmark}}
-\fancyhead[LO]{\color{TheChassis}\nouppercase{\rightmark}}
+\fancyhead[LE,RO]{\color{Bone}\thepage}
+\fancyhead[RE]{\color{Rust}\nouppercase{\leftmark}}
+\fancyhead[LO]{\color{Rust}\nouppercase{\rightmark}}
 \renewcommand{\headrulewidth}{0.4pt}
 \renewcommand{\headrule}{\hbox to\headwidth{%
-    \color{TheChassis!50}\leaders\hrule height \headrulewidth\hfill}}
+    \color{Bone!30}\leaders\hrule height \headrulewidth\hfill}}
 
 % Admonition styling
 \usepackage{tcolorbox}
@@ -375,19 +424,29 @@ latex_elements = {
 % Custom title page elements
 \newcommand{\babylonsubtitle}[1]{%
     \vspace{0.5em}%
-    {\Large\color{TheDust}#1}%
+    {\Large\color{Bone}#1}%
 }
+
+% ============================================================================
+% REVOLUTIONARY HOPE STYLING - Conditional hope for content about organization
+% Use \hope{text} for PhosphorGreen text - only for:
+% - "Organization is the difference"
+% - P(S|R) > P(S|A) / Warsaw Ghetto Dynamic
+% - Solidarity transmission, critical window, enforcer radicalization
+% ============================================================================
+\newcommand{\hope}[1]{{\color{PhosphorGreen}#1}}
+\newcommand{\hopedim}[1]{{\color{ForestDim}#1}}
 """,
     # Chapter heading style - Bjornstrup is professional book-like
     "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
-    # Sphinx-specific styling (matches preamble colors)
-    # TitleColor: PhosphorBurn (212,0,0) - critical thresholds
-    # InnerLinkColor: ThermalWarning (139,0,0) - hot paths
-    # OuterLinkColor: ExposedCircuitry (255,215,0) - solidarity edges to external truth
+    # Sphinx-specific styling (matches Necropolis Codex preamble colors)
+    # TitleColor: DriedBlood (74,24,24) - historical violence
+    # InnerLinkColor: Rust (107,74,58) - hot paths through apparatus
+    # OuterLinkColor: Bone (139,123,107) - connections to external knowledge
     "sphinxsetup": r"""
-        TitleColor={RGB}{212,0,0},
-        InnerLinkColor={RGB}{139,0,0},
-        OuterLinkColor={RGB}{255,215,0},
+        TitleColor={RGB}{74,24,24},
+        InnerLinkColor={RGB}{107,74,58},
+        OuterLinkColor={RGB}{139,123,107},
     """,
     # Index formatting
     "printindex": r"\footnotesize\raggedright\printindex",
@@ -398,3 +457,9 @@ latex_engine = "xelatex"
 
 # Use makeindex instead of xindy to avoid encoding issues
 latex_use_xindy = False
+
+
+# -- Custom RST Roles for Necropolis Codex -----------------------------------
+# The :hope: and :hopedim: roles are defined in _ext/hope_roles.py
+# They render as \hope{} and \hopedim{} in LaTeX (PhosphorGreen/ForestDim)
+# See that module for usage instructions.

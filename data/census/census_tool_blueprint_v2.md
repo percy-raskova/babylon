@@ -1,6 +1,7 @@
 # Census ACS Query Tool Blueprint - Version 2
 
 ## Overview
+
 This document outlines the design for a Claude tool that enables querying of Census American Community Survey (ACS) data through the Census API, with specific handling of ACS subject definitions and data quality measures.
 
 ## Tool Definition
@@ -23,18 +24,21 @@ This document outlines the design for a Claude tool that enables querying of Cen
 ### 1. Variable Handling
 
 #### Subject Categories
+
 - Housing Variables (e.g. BEDROOMS, ROOMS, TENURE)
 - Population Variables (e.g. AGE, SEX, RACE)
 - Economic Variables (e.g. INCOME, EMPLOYMENT)
 - Social Variables (e.g. EDUCATION, LANGUAGE)
 
 #### Data Quality Measures
+
 - Coverage Rates
 - Response Rates
 - Allocation Rates
 - Sample Size Information
 
 #### Derived Measures
+
 - Medians
 - Means
 - Aggregates
@@ -44,6 +48,7 @@ This document outlines the design for a Claude tool that enables querying of Cen
 ### 2. Geography Handling
 
 #### Geographic Hierarchy
+
 - Nation
 - State
 - County
@@ -52,6 +57,7 @@ This document outlines the design for a Claude tool that enables querying of Cen
 - Block Group
 
 #### Geographic Components
+
 - Urban/Rural
 - Metropolitan/Micropolitan
 - Inside/Outside Principal Cities
@@ -59,6 +65,7 @@ This document outlines the design for a Claude tool that enables querying of Cen
 ### 3. API Integration
 
 #### Query Construction
+
 ```python
 def construct_query(params):
     # Validate parameters
@@ -82,6 +89,7 @@ def construct_query(params):
 ```
 
 #### Response Processing
+
 ```python
 def process_response(response, params):
     """Process Census API response and apply quality checks"""
@@ -107,6 +115,7 @@ def process_response(response, params):
 ### 4. Data Quality Handling
 
 #### Coverage Rate Calculation
+
 ```python
 def calculate_coverage_rate(data, independent_estimate):
     """Calculate coverage rate against independent population estimate"""
@@ -115,6 +124,7 @@ def calculate_coverage_rate(data, independent_estimate):
 ```
 
 #### Response Rate Calculation
+
 ```python
 def calculate_response_rate(data):
     """Calculate unit response rate"""
@@ -122,6 +132,7 @@ def calculate_response_rate(data):
 ```
 
 #### Allocation Rate Tracking
+
 ```python
 def track_allocation_rates(data):
     """Track item allocation rates for quality assessment"""
@@ -133,6 +144,7 @@ def track_allocation_rates(data):
 ## Error Handling
 
 ### Census API Specific Errors
+
 ```python
 class CensusAPIError(Exception):
     """Base class for Census API errors"""
@@ -152,6 +164,7 @@ class QualityError(CensusAPIError):
 ```
 
 ### Error Response Format
+
 ```json
 {
     "error": {
@@ -168,6 +181,7 @@ class QualityError(CensusAPIError):
 ## Usage Examples
 
 ### Basic Population Query
+
 ```python
 query = {
     "year": "2023",
@@ -178,6 +192,7 @@ query = {
 ```
 
 ### Housing Characteristics with Quality Measures
+
 ```python
 query = {
     "year": "2023",
@@ -189,6 +204,7 @@ query = {
 ```
 
 ### Income Data with Derived Measures
+
 ```python
 query = {
     "year": "2023",
@@ -202,6 +218,7 @@ query = {
 ## Subject Definitions
 
 ### Housing Variables
+
 ```python
 HOUSING_VARIABLES = {
     'UNITS': {
@@ -218,6 +235,7 @@ HOUSING_VARIABLES = {
 ```
 
 ### Population Variables
+
 ```python
 POPULATION_VARIABLES = {
     'AGE': {
@@ -259,21 +277,25 @@ QUALITY_THRESHOLDS = {
 ## Best Practices
 
 1. Variable Selection
+
    - Use detailed tables for granular data
    - Consider allocation rates when selecting variables
    - Check for data quality flags
 
-2. Geography Selection
+1. Geography Selection
+
    - Start with larger geographies for testing
    - Consider margin of error for small areas
    - Check coverage rates for selected areas
 
-3. Data Quality
+1. Data Quality
+
    - Always check response rates
    - Monitor allocation rates
    - Verify against published tables when possible
 
-4. Performance
+1. Performance
+
    - Batch related queries
    - Cache frequently used data
    - Use appropriate geographic summary levels
@@ -281,16 +303,19 @@ QUALITY_THRESHOLDS = {
 ## Limitations
 
 1. Data Availability
+
    - Not all variables available for all geographies
    - Some data suppressed for privacy
    - Vintage differences between geographies
 
-2. Quality Issues
+1. Quality Issues
+
    - Higher margins of error for small geographies
    - Some areas may have low response rates
    - Allocation rates may affect certain variables
 
-3. API Constraints
+1. API Constraints
+
    - Rate limits
    - Query complexity limits
    - Response size limits
@@ -298,16 +323,19 @@ QUALITY_THRESHOLDS = {
 ## Future Enhancements
 
 1. Additional Features
+
    - Support for ACS microdata (PUMS)
    - Time series analysis
    - Cross-survey comparisons
 
-2. Quality Improvements
+1. Quality Improvements
+
    - Enhanced validation rules
    - Automated quality checking
    - Improved error messages
 
-3. Performance Optimizations
+1. Performance Optimizations
+
    - Query optimization
    - Response caching
    - Parallel processing
@@ -315,6 +343,6 @@ QUALITY_THRESHOLDS = {
 ## References
 
 1. Census API Documentation
-2. ACS Technical Documentation
-3. Statistical Testing Documentation
-4. Geography Program Documentation
+1. ACS Technical Documentation
+1. Statistical Testing Documentation
+1. Geography Program Documentation

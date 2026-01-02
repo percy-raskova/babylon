@@ -221,7 +221,7 @@ calculate_liquidity
    - If ``potential > actual * 2``: Movement is broad but brittle
 
 check_resilience
-~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~
 
 .. py:function:: check_resilience(G, removal_rate=0.2, survival_threshold=0.4, seed=None)
 

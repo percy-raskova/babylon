@@ -1,0 +1,48 @@
+# Build outputs
+build/
+dist/
+.venv/
+node_modules/
+
+# AI documentation (YAML-based specs)
+ai-docs/
+
+# Generated files
+docs/api/
+docs/_build/
+reports/
+
+# Project root files (various formatting conventions)
+CHANGELOG.md
+CLAUDE.md
+CONTRIBUTORS.md
+CONTRIBUTING.md
+COMMERCIAL-LICENSE.md
+LICENSE_CHOICE.md
+README.md
+SETUP_GUIDE.md
+SECURITY.md
+TODO.md
+
+# Claude Code configuration (agent prompts, not documentation)
+.claude/
+
+# GitHub templates and project files
+.github/
+
+# Vibe-coding docs with intentionally long lines (prose)
+docs/concepts/vibe-coding/
+
+# Marxist corpus - historical texts, preserve original formatting
+src/babylon/data/corpus/
+
+# Data templates and README files in source
+src/babylon/data/template/
+src/babylon/rag/README.md
+
+# AI subsystem documentation (generated/reference)
+src/babylon/ai/
+src/babylon/docs/
+
+# Census data documentation (external reference material)
+data/census/

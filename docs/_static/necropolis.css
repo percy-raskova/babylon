@@ -1,0 +1,12 @@
+/* Necropolis Codex - Revolutionary Hope Styling for HTML output */
+
+/* :hope: role - PhosphorGreen for revolutionary organization content */
+.hope {
+    color: #39FF14;
+    font-weight: 500;
+}
+
+/* :hopedim: role - ForestDim for secondary hope content */
+.hopedim {
+    color: #2A6B2A;
+}

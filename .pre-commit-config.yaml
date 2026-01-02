@@ -7,7 +7,7 @@ repos:
   # RUFF - Linting and Formatting
   # ==========================================================================
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.8
+    rev: v0.14.10
     hooks:
       - id: ruff
         name: ruff (lint)
@@ -19,7 +19,7 @@ repos:
   # MYPY - Type Checking
   # ==========================================================================
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.0
+    rev: v1.19.1
     hooks:
       - id: mypy
         name: mypy (typecheck)
@@ -30,6 +30,7 @@ repos:
           - types-PyYAML
           - types-jsonschema
           - types-ratelimit
+          - types-docutils
           - sqlalchemy>=2.0
           - chromadb>=1.0
           - python-dotenv>=1.0
@@ -38,6 +39,7 @@ repos:
           - ratelimit>=2.0
           - openai>=2.0
           - nicegui>=2.0
+          - sphinx>=7
         args: [--config-file=pyproject.toml]
         exclude: ^tests/|^examples/|^src/babylon/rag/|^src/babylon/__main__.py|^src/babylon/metrics/|^tools/|^assets/music/
 
@@ -71,7 +73,7 @@ repos:
   # COMMITIZEN - Conventional Commits
   # ==========================================================================
   - repo: https://github.com/commitizen-tools/commitizen
-    rev: v4.10.0
+    rev: v4.11.0
     hooks:
       - id: commitizen
         name: commitizen (commit message)
@@ -102,3 +104,54 @@ repos:
       - id: yamllint
         name: yamllint (yaml lint)
         args: [-c, .yamllint.yaml]
+
+  # ==========================================================================
+  # DOCUMENTATION LINTING - RST and Markdown
+  # ==========================================================================
+  - repo: https://github.com/rstcheck/rstcheck
+    rev: v6.2.5
+    hooks:
+      - id: rstcheck
+        name: rstcheck (rst syntax)
+        additional_dependencies:
+          - rstcheck[sphinx,toml]
+        args: [--config, pyproject.toml]
+
+  - repo: https://github.com/PyCQA/doc8
+    rev: v2.0.0
+    hooks:
+      - id: doc8
+        name: doc8 (rst style)
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.47.0
+    hooks:
+      - id: markdownlint
+        name: markdownlint (md lint)
+        args: [--config, .markdownlint.yaml]
+
+  - repo: https://github.com/hukkin/mdformat
+    rev: 0.7.22  # Pinned: plugins not yet compatible with 1.0.0
+    hooks:
+      - id: mdformat
+        name: mdformat (md format)
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat-frontmatter
+          - mdformat-footnote
+        exclude: |
+          (?x)^(
+            ai-docs/.*|
+            CHANGELOG\.md|
+            CLAUDE\.md|
+            CONTRIBUTORS\.md|
+            \.venv/.*|
+            build/.*|
+            docs/_build/.*|
+            docs/api/.*|
+            reports/.*|
+            \.claude/.*|
+            \.github/project/.*|
+            docs/concepts/vibe-coding/.*|
+            src/babylon/data/corpus/.*
+          )$

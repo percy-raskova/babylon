@@ -253,21 +253,21 @@ RAG + Vector Database Architecture
 
 With RAG and vector database integration:
 
-.. code-block:: text
+.. mermaid::
 
-   Game Objects in Vector DB
-            |
-            v
-   Query for Relevant Objects
-            |
-            v
-   Load only needed objects into context
-            |
-            v
-   Keep frequently accessed objects in context
-            |
-            v
-   Periodically flush less relevant objects back to vector DB
+   flowchart TB
+       A["Game Objects in Vector DB<br/>(50k total)"] --> B["Query for Relevant Objects<br/>(~1000 embeddings)"]
+       B --> C["Load only needed objects into context<br/>(100-200 most relevant)"]
+       C --> D["Keep frequently accessed objects<br/>(20-30 working memory)"]
+       D --> E["Periodically flush less relevant<br/>back to Vector DB"]
+       E -.-> A
+
+   %% Necropolis Codex styling
+   classDef storage fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   classDef process fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+
+   class A,E storage
+   class B,C,D process
 
 This architecture allows:
 

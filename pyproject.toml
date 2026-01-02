@@ -80,6 +80,7 @@ optuna = "^3.6"
 optuna-dashboard = "^0.15"
 scipy = ">=1.11.0"
 SALib = ">=1.4.7"
+types-docutils = "^0.22.3.20251115"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -218,6 +219,27 @@ also_copy = [
     "tools/",
 ]
 debug = false
+
+[tool.rstcheck]
+report_level = "WARNING"
+ignore_roles = [
+    "hope",      # Custom Necropolis Codex role (docs/_ext/hope_roles.py)
+    "hopedim",   # Custom Necropolis Codex role (docs/_ext/hope_roles.py)
+]
+ignore_directives = [
+    "mermaid",           # sphinxcontrib-mermaid
+    "todo",              # sphinx.ext.todo
+    "automodule",        # sphinx.ext.autodoc
+    "autoclass",         # sphinx.ext.autodoc
+    "autofunction",      # sphinx.ext.autodoc
+    "autosummary",       # sphinx.ext.autosummary
+    "toctree",           # Sphinx core
+    "only",              # Sphinx core (conditional)
+]
+ignore_substitutions = [
+    "release",
+    "version",
+]
 
 [tool.babylon.logging]
 default_level = "INFO"

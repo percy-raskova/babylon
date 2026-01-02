@@ -12,26 +12,36 @@ The Observer Pattern
 
 The event system implements the Observer pattern at the architecture level:
 
-.. code-block:: text
+.. mermaid::
 
-   +------------------+     publishes      +-------------+
-   |   Systems        | -----------------> |  EventBus   |
-   | (ImperialRent,   |                    |  (pub/sub)  |
-   |  Struggle, etc.) |                    +-------------+
-   +------------------+                           |
-                                                  | collects
-                                                  v
-   +------------------+     conversion     +-------------+
-   |   WorldState     | <----------------- | step()      |
-   |   .events[]      |                    | function    |
-   +------------------+                    +-------------+
-           |
-           | reads
-           v
-   +------------------+
-   |   AI Narrative   |
-   |   Layer          |
-   +------------------+
+   flowchart LR
+       subgraph engine["Simulation Engine"]
+           SYS["Systems<br/>(ImperialRent,<br/>Struggle, etc.)"]
+           BUS["EventBus<br/>(pub/sub)"]
+           STEP["step()<br/>function"]
+       end
+
+       subgraph state["State Layer"]
+           WS["WorldState<br/>.events[]"]
+       end
+
+       subgraph observer["Observer Layer"]
+           AI["AI Narrative<br/>Layer"]
+       end
+
+       SYS -->|"publishes"| BUS
+       BUS -->|"collects"| STEP
+       STEP -->|"conversion"| WS
+       WS -->|"reads"| AI
+
+   %% Necropolis Codex styling
+   classDef engine fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   classDef state fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   classDef observer fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
+
+   class SYS,BUS,STEP engine
+   class WS state
+   class AI observer
 
 **Key Principle:** The AI narrative layer observes but never controls. Events
 flow from simulation to observer, never the reverse. This follows ADR003:
@@ -129,24 +139,23 @@ The Conversion Pipeline
 
 Events undergo conversion from internal format to typed models:
 
-.. code-block:: text
+.. mermaid::
 
-   1. System.step()
-      |
-      v
-   2. event_bus.publish(EventType.SURPLUS_EXTRACTION, tick, payload)
-      |
-      v
-   3. EventBus stores Event(type, tick, timestamp, payload)
-      |
-      v
-   4. step() calls _convert_bus_event_to_pydantic(event)
-      |
-      v
-   5. Returns ExtractionEvent(tick=..., source_id=..., ...)
-      |
-      v
-   6. WorldState.events.append(extraction_event)
+   flowchart TB
+       A["1. System.step()"] --> B["2. event_bus.publish()<br/>EventType.SURPLUS_EXTRACTION"]
+       B --> C["3. EventBus stores<br/>Event(type, tick, timestamp, payload)"]
+       C --> D["4. step() calls<br/>_convert_bus_event_to_pydantic()"]
+       D --> E["5. Returns<br/>ExtractionEvent(tick=..., source_id=...)"]
+       E --> F["6. WorldState.events.append()<br/>extraction_event"]
+
+   %% Necropolis Codex styling
+   classDef system fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   classDef bus fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   classDef state fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
+
+   class A system
+   class B,C,D bus
+   class E,F state
 
 **The Conversion Function:**
 
@@ -174,20 +183,34 @@ for the current tick. They cannot add events to the current tick's state.
 
 **Solution:** Observer events are injected into the *next* tick:
 
-.. code-block:: text
+.. mermaid::
 
-   Tick N:
-   1. step() produces new WorldState (frozen)
-   2. Simulation.step() notifies observers
-   3. TopologyMonitor.on_tick() detects phase transition
-   4. TopologyMonitor stores event in _pending_events
-   5. Simulation._collect_observer_events() reads pending events
-   6. Events stored in persistent_context['_observer_events']
+   flowchart TB
+       subgraph tickN["Tick N"]
+           N1["1. step() produces<br/>new WorldState (frozen)"]
+           N2["2. Simulation.step()<br/>notifies observers"]
+           N3["3. TopologyMonitor.on_tick()<br/>detects phase transition"]
+           N4["4. TopologyMonitor stores<br/>event in _pending_events"]
+           N5["5. _collect_observer_events()<br/>reads pending events"]
+           N6["6. Events stored in<br/>persistent_context"]
+       end
 
-   Tick N+1:
-   7. step() reads persistent_context['_observer_events']
-   8. Observer events appended to WorldState.events
-   9. persistent_context['_observer_events'] cleared
+       subgraph tickN1["Tick N+1"]
+           N7["7. step() reads<br/>persistent_context"]
+           N8["8. Observer events<br/>appended to WorldState.events"]
+           N9["9. persistent_context<br/>cleared"]
+       end
+
+       N1 --> N2 --> N3 --> N4 --> N5 --> N6
+       N6 -.->|"next tick"| N7
+       N7 --> N8 --> N9
+
+   %% Necropolis Codex styling
+   classDef tickN fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   classDef tickN1 fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
+
+   class N1,N2,N3,N4,N5,N6 tickN
+   class N7,N8,N9 tickN1
 
 This design ensures:
 

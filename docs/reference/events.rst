@@ -18,86 +18,192 @@ in :attr:`WorldState.events`. This enables:
 
 **Key Components:**
 
-- :py:mod:`babylon.models.events` - Pydantic event models (13 classes)
-- :py:mod:`babylon.models.enums` - EventType enum (11 types)
+- :py:mod:`babylon.models.events` - Pydantic event models (20+ classes)
+- :py:mod:`babylon.models.enums` - EventType enum (24 types)
 - :py:mod:`babylon.engine.event_bus` - Pub/sub event bus
 - :py:mod:`babylon.engine.simulation_engine` - Event conversion
 
 EventType Enum
 --------------
 
-All events are categorized by type. The :class:`EventType` enum defines 11
-distinct event types:
+All events are categorized by type. The :class:`EventType` enum defines 24
+distinct event types organized by category:
+
+**Economic Events:**
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 20 50
+   :widths: 30 70
 
    * - EventType
-     - Category
      - Description
    * - ``SURPLUS_EXTRACTION``
-     - Economic
-     - Imperial rent extracted from worker
+     - Imperial rent extracted from worker via EXPLOITATION edge
    * - ``IMPERIAL_SUBSIDY``
-     - Economic
-     - Subsidy paid to comprador state
+     - Subsidy paid to comprador state (converts to repression)
    * - ``ECONOMIC_CRISIS``
-     - Economic
-     - Crisis event triggered
+     - Pool depleted below critical threshold, triggers crisis response
+   * - ``SUPERWAGE_CRISIS``
+     - Core cannot afford super-wages (triggers LA decomposition)
+   * - ``PERIPHERAL_REVOLT``
+     - Periphery severs EXPLOITATION edges when P(S|R) > P(S|A)
+
+**Consciousness Events:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
    * - ``CONSCIOUSNESS_TRANSMISSION``
-     - Consciousness
-     - Ideology transmitted via solidarity edge
+     - Consciousness flows via SOLIDARITY edge
    * - ``MASS_AWAKENING``
-     - Consciousness
      - Class consciousness crosses threshold
    * - ``SOLIDARITY_AWAKENING``
-     - Consciousness
-     - Source enters active struggle
+     - Entity enters active struggle (deprecated, use MASS_AWAKENING)
+
+**Struggle Events (George Floyd Dynamic):**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
    * - ``EXCESSIVE_FORCE``
-     - Struggle
-     - Spark event (George Floyd Dynamic)
+     - State violence spark event (stochastic police brutality)
    * - ``UPRISING``
-     - Struggle
-     - Revolt triggered
+     - Mass insurrection triggered by spark + agitation
    * - ``SOLIDARITY_SPIKE``
-     - Struggle
-     - Solidarity infrastructure built
+     - Solidarity infrastructure built through shared struggle
+   * - ``POWER_VACUUM``
+     - Comprador insolvency triggers George Jackson bifurcation
+   * - ``REVOLUTIONARY_OFFENSIVE``
+     - Organized labor seizes opportunity during power vacuum
+   * - ``FASCIST_REVANCHISM``
+     - Core workers react with nationalism during power vacuum
+
+**Vitality Events:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
+   * - ``ENTITY_DEATH``
+     - Entity starved (wealth < consumption_needs)
+   * - ``POPULATION_DEATH``
+     - Probabilistic mortality from inequality
+   * - ``POPULATION_ATTRITION``
+     - Grinding Attrition deaths from coverage deficit
+
+**Terminal Crisis Events:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
+   * - ``CLASS_DECOMPOSITION``
+     - Labor aristocracy splits into enforcers + internal proletariat
+   * - ``CONTROL_RATIO_CRISIS``
+     - Prisoners exceed guard capacity (ratio inverted)
+   * - ``TERMINAL_DECISION``
+     - System bifurcates to revolution or genocide
+
+**Topology Events:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
    * - ``RUPTURE``
-     - Contradiction
-     - Tension reaches 1.0
+     - Contradiction tension reached 1.0
    * - ``PHASE_TRANSITION``
-     - Topology
-     - Percolation state changes
+     - Percolation threshold crossed (gaseous/transitional/liquid/solid)
+
+**Metabolism Events:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
+   * - ``ECOLOGICAL_OVERSHOOT``
+     - Consumption exceeds biocapacity (O > 1.0)
+
+**Endgame Events:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - EventType
+     - Description
+   * - ``ENDGAME_REACHED``
+     - Game-ending condition met (victory, collapse, or fascism)
 
 Event Class Hierarchy
 ---------------------
 
 Events form a type hierarchy with shared base classes:
 
-.. code-block:: text
+.. mermaid::
 
-   SimulationEvent (base - frozen)
-   |
-   +-- EconomicEvent (amount: Currency)
-   |   +-- ExtractionEvent (SURPLUS_EXTRACTION)
-   |   +-- SubsidyEvent (IMPERIAL_SUBSIDY)
-   |   +-- CrisisEvent (ECONOMIC_CRISIS)
-   |
-   +-- ConsciousnessEvent (target_id: str)
-   |   +-- TransmissionEvent (CONSCIOUSNESS_TRANSMISSION)
-   |   +-- MassAwakeningEvent (MASS_AWAKENING)
-   |
-   +-- StruggleEvent (node_id: str)
-   |   +-- SparkEvent (EXCESSIVE_FORCE)
-   |   +-- UprisingEvent (UPRISING)
-   |   +-- SolidaritySpikeEvent (SOLIDARITY_SPIKE)
-   |
-   +-- ContradictionEvent (edge: str)
-   |   +-- RuptureEvent (RUPTURE)
-   |
-   +-- TopologyEvent (percolation_ratio, num_components)
-       +-- PhaseTransitionEvent (PHASE_TRANSITION)
+   classDiagram
+       SimulationEvent <|-- EconomicEvent
+       SimulationEvent <|-- SuperwageCrisisEvent
+       SimulationEvent <|-- ClassDecompositionEvent
+       SimulationEvent <|-- ControlRatioCrisisEvent
+       SimulationEvent <|-- TerminalDecisionEvent
+       SimulationEvent <|-- ConsciousnessEvent
+       SimulationEvent <|-- StruggleEvent
+       SimulationEvent <|-- ContradictionEvent
+       SimulationEvent <|-- TopologyEvent
+       SimulationEvent <|-- EndgameEvent
+
+       EconomicEvent <|-- ExtractionEvent
+       EconomicEvent <|-- SubsidyEvent
+       EconomicEvent <|-- CrisisEvent
+
+       ConsciousnessEvent <|-- TransmissionEvent
+       ConsciousnessEvent <|-- MassAwakeningEvent
+
+       StruggleEvent <|-- SparkEvent
+       StruggleEvent <|-- UprisingEvent
+       StruggleEvent <|-- SolidaritySpikeEvent
+
+       ContradictionEvent <|-- RuptureEvent
+
+       TopologyEvent <|-- PhaseTransitionEvent
+
+       class SimulationEvent {
+           <<frozen>>
+           +tick: int
+           +timestamp: datetime
+       }
+       class EconomicEvent {
+           +amount: Currency
+       }
+       class ConsciousnessEvent {
+           +target_id: str
+       }
+       class StruggleEvent {
+           +node_id: str
+       }
+       class ContradictionEvent {
+           +edge: str
+       }
+       class TopologyEvent {
+           +percolation_ratio: float
+           +num_components: int
+       }
 
 Base Event Model
 ----------------
@@ -176,22 +282,6 @@ Emitted when imperial rent is extracted via EXPLOITATION edge.
      - ``str``
      - Extraction mechanism (default: "imperial_rent")
 
-**Example:**
-
-.. code-block:: python
-
-   from babylon.models.events import ExtractionEvent
-   from babylon.models.enums import EventType
-
-   event = ExtractionEvent(
-       tick=5,
-       source_id="C001",
-       target_id="C002",
-       amount=0.15,
-       mechanism="imperial_rent",
-   )
-   assert event.event_type == EventType.SURPLUS_EXTRACTION
-
 SubsidyEvent
 ~~~~~~~~~~~~
 
@@ -247,6 +337,117 @@ Emitted when economic crisis conditions are detected.
    * - ``wage_delta``
      - ``float``
      - Change in wage rates
+
+Terminal Crisis Events
+----------------------
+
+Events from the Carceral Equilibrium (Terminal Crisis Dynamics).
+
+SuperwageCrisisEvent
+~~~~~~~~~~~~~~~~~~~~
+
+Emitted when the imperial rent pool cannot pay super-wages.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Field
+     - Type
+     - Description
+   * - ``event_type``
+     - ``EventType``
+     - Always ``SUPERWAGE_CRISIS``
+   * - ``payer_id``
+     - ``str``
+     - Core bourgeoisie who can't pay
+   * - ``receiver_id``
+     - ``str``
+     - Labor aristocracy not receiving wages
+   * - ``desired_wages``
+     - ``float``
+     - Amount of wages that were needed
+   * - ``available_pool``
+     - ``float``
+     - Amount available (zero or negative)
+
+ClassDecompositionEvent
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Emitted when Labor Aristocracy splits into two fractions.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Field
+     - Type
+     - Description
+   * - ``event_type``
+     - ``EventType``
+     - Always ``CLASS_DECOMPOSITION``
+   * - ``original_id``
+     - ``str``
+     - Labor aristocracy entity that split
+   * - ``enforcer_fraction``
+     - ``float``
+     - Fraction that became enforcers (default 0.15)
+   * - ``proletariat_fraction``
+     - ``float``
+     - Fraction that became internal proletariat (0.85)
+
+ControlRatioCrisisEvent
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Emitted when prisoners exceed guard control capacity.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Field
+     - Type
+     - Description
+   * - ``event_type``
+     - ``EventType``
+     - Always ``CONTROL_RATIO_CRISIS``
+   * - ``prisoner_population``
+     - ``int``
+     - Size of prisoner/surplus population
+   * - ``enforcer_population``
+     - ``int``
+     - Size of enforcer/guard population
+   * - ``control_ratio``
+     - ``float``
+     - Prisoners per enforcer
+   * - ``capacity_threshold``
+     - ``float``
+     - Maximum ratio enforcers can handle
+
+TerminalDecisionEvent
+~~~~~~~~~~~~~~~~~~~~~
+
+Emitted when system bifurcates to final outcome.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Field
+     - Type
+     - Description
+   * - ``event_type``
+     - ``EventType``
+     - Always ``TERMINAL_DECISION``
+   * - ``outcome``
+     - ``str``
+     - Either "revolution" or "genocide"
+   * - ``avg_organization``
+     - ``float``
+     - Average organization level of prisoners
+   * - ``revolution_threshold``
+     - ``float``
+     - Threshold above which revolution occurs
 
 Consciousness Events
 --------------------
@@ -423,6 +624,33 @@ Emitted when solidarity infrastructure is built during uprising.
      - ``str``
      - Cause (e.g., "uprising")
 
+Vitality Events
+---------------
+
+Events from the VitalitySystem (mortality and extinction).
+
+.. note::
+
+   These events currently have EventType enum values but no dedicated
+   Pydantic model classes. They are emitted as raw Event objects.
+
+**ENTITY_DEATH:**
+
+Emitted when an entity is fully extinct (population = 0 or starvation).
+
+Payload fields: ``entity_id``, ``wealth``, ``consumption_needs``, ``s_bio``,
+``s_class``, ``cause`` ("extinction", "starvation", or "wealth_threshold")
+
+**POPULATION_ATTRITION:**
+
+Emitted when deaths occur from coverage deficit (Grinding Attrition phase).
+
+Payload fields: ``entity_id``, ``deaths``, ``remaining_population``, ``attrition_rate``
+
+**POPULATION_DEATH:**
+
+Emitted for probabilistic mortality from inequality (deprecated, use POPULATION_ATTRITION).
+
 Contradiction Events
 --------------------
 
@@ -500,18 +728,21 @@ Emitted when percolation ratio crosses a threshold boundary.
      - Always ``PHASE_TRANSITION``
    * - ``previous_state``
      - ``str``
-     - Previous phase ("gaseous", "transitional", "liquid")
+     - Previous phase ("gaseous", "transitional", "liquid", "solid")
    * - ``new_state``
      - ``str``
      - New phase after transition
    * - ``largest_component_size``
      - ``int``
      - Size of giant component (L_max)
+   * - ``cadre_density``
+     - ``float``
+     - Ratio of cadre to sympathizers [0, 1]
    * - ``is_resilient``
      - ``bool | None``
      - Resilience test result (if available)
 
-**Phase State Thresholds:**
+**4-Phase State Model:**
 
 .. list-table::
    :header-rows: 1
@@ -527,8 +758,53 @@ Emitted when percolation ratio crosses a threshold boundary.
      - ``0.1 <= ratio < 0.5``
      - Emerging structure, unstable
    * - Liquid
-     - ``ratio >= 0.5``
-     - Giant component, vanguard formation
+     - ``ratio >= 0.5, cadre < 0.5``
+     - Mass movement (weak ties)
+   * - Solid
+     - ``ratio >= 0.5, cadre >= 0.5``
+     - Vanguard party (strong ties)
+
+Metabolism Events
+-----------------
+
+Events from the MetabolismSystem (ecological overshoot).
+
+**ECOLOGICAL_OVERSHOOT:**
+
+Emitted when consumption exceeds biocapacity (overshoot ratio > 1.0).
+
+Payload fields: ``overshoot_ratio``, ``total_consumption``, ``total_biocapacity``
+
+Endgame Events
+--------------
+
+Events signaling game-ending conditions.
+
+EndgameEvent
+~~~~~~~~~~~~
+
+Emitted when a game-ending condition is met.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Field
+     - Type
+     - Description
+   * - ``event_type``
+     - ``EventType``
+     - Always ``ENDGAME_REACHED``
+   * - ``outcome``
+     - ``GameOutcome``
+     - The outcome that ended the simulation
+
+**GameOutcome Values:**
+
+- ``REVOLUTIONARY_VICTORY``: Proletarian revolution succeeded
+- ``ECOLOGICAL_COLLAPSE``: Metabolic rift has become fatal
+- ``FASCIST_CONSOLIDATION``: Fascism has consolidated power
+- ``IN_PROGRESS``: Simulation still running (not an endgame)
 
 Event Lifecycle
 ---------------

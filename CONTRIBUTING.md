@@ -62,12 +62,14 @@ poetry run pytest tests/unit/formulas/test_fundamental_theorem.py -v
 ### Making Commits
 
 Pre-commit hooks run automatically:
+
 1. **Ruff** - Lint and format
-2. **Mypy** - Type check (src/ only)
-3. **Pytest** - Fast tests (formulas + engine)
-4. **Commitizen** - Validate commit message format
+1. **Mypy** - Type check (src/ only)
+1. **Pytest** - Fast tests (formulas + engine)
+1. **Commitizen** - Validate commit message format
 
 Use conventional commits:
+
 ```bash
 # Interactive commit (recommended)
 poetry run cz commit
@@ -94,6 +96,7 @@ mise run bump
 ### Type Hints
 
 All code must be fully typed:
+
 ```python
 def calculate_rent(alpha: float, wages: float) -> float:
     return alpha * wages
@@ -102,8 +105,8 @@ def calculate_rent(alpha: float, wages: float) -> float:
 ### Testing (TDD)
 
 1. Write failing test first (Red)
-2. Implement minimum code to pass (Green)
-3. Refactor for clarity (Refactor)
+1. Implement minimum code to pass (Green)
+1. Refactor for clarity (Refactor)
 
 ```python
 @pytest.mark.math
@@ -142,16 +145,16 @@ babylon/
 
 ## Available Mise Tasks
 
-| Task | Description |
-|------|-------------|
-| `mise run install` | Install all dependencies |
-| `mise run check` | Run all quality checks |
-| `mise run lint` | Run ruff linter |
-| `mise run format` | Run ruff formatter |
-| `mise run typecheck` | Run mypy |
-| `mise run test` | Run non-AI tests |
-| `mise run test-fast` | Run fast math tests |
-| `mise run test-cov` | Run tests with coverage |
-| `mise run bump` | Bump version with changelog |
-| `mise run clean` | Clean build artifacts |
-| `mise run hooks` | Install pre-commit hooks |
+| Task                 | Description                 |
+| -------------------- | --------------------------- |
+| `mise run install`   | Install all dependencies    |
+| `mise run check`     | Run all quality checks      |
+| `mise run lint`      | Run ruff linter             |
+| `mise run format`    | Run ruff formatter          |
+| `mise run typecheck` | Run mypy                    |
+| `mise run test`      | Run non-AI tests            |
+| `mise run test-fast` | Run fast math tests         |
+| `mise run test-cov`  | Run tests with coverage     |
+| `mise run bump`      | Bump version with changelog |
+| `mise run clean`     | Clean build artifacts       |
+| `mise run hooks`     | Install pre-commit hooks    |

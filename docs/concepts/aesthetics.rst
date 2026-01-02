@@ -127,26 +127,93 @@ Secondary Colors
      - Terminal prompts, secondary text, inactive elements. The dust that
        settles on everything in the bunker.
 
+Necropolis Codex (PDF Palette)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The PDF output uses a distinct "Necropolis Codex" palette---leaked documents
+from the collapsing apparatus. Institutional, archival, stained with historical
+violence. :hope:`Hope appears only where organization is discussed.`
+
+**Primary Colors (The Machinery of Death)**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 25 60
+
+   * - Hex
+     - Name
+     - Role
+   * - ``#0A0707``
+     - **AbsoluteVoid**
+     - Cover top gradient. Deepest darkness, the death camp night.
+   * - ``#4A1818``
+     - **DriedBlood**
+     - Chapter headings, cover bottom. Oxidized, historical violence.
+   * - ``#6B4A3A``
+     - **Rust**
+     - Section headings, internal links. Decaying infrastructure.
+   * - ``#D4C9B8``
+     - **AshPaper**
+     - Page backgrounds. Cold institutional archive under fluorescent light.
+   * - ``#8B7B6B``
+     - **Bone**
+     - Cover title, page numbers. Grave markers, monuments.
+   * - ``#3D3A36``
+     - **AshInk**
+     - Body text. Charcoal with slight warmth for readability.
+
+**Accent Colors (Buried Hope)**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 25 60
+
+   * - Hex
+     - Name
+     - Role
+   * - ``#1A3A1A``
+     - **BuriedHope**
+     - Cover decorative line. Barely visible---the seed underground.
+   * - ``#2A6B2A``
+     - **ForestDim**
+     - Revolutionary section headings. Hope emerging from darkness.
+   * - ``#39FF14``
+     - **PhosphorGreen**
+     - Key phrases only: "Organization is the difference." Conditional hope.
+
+**When Green Appears**
+
+Green illuminates only content about revolutionary organization:
+
+- The mantra: :hope:`Organization is the difference.`
+- P(S|R) > P(S|A) / Warsaw Ghetto Dynamic
+- Solidarity transmission, critical window, enforcer radicalization
+- Trajectory C: Revolutionary Rupture
+
+This creates a reading experience where most of the document feels oppressive,
+but specific sections light up with possibility.
+
 Textures & Lighting
 -------------------
 
 The interface is layered with atmospheric effects that simulate hardware decay:
 
-.. code-block:: text
+.. mermaid::
 
-   +-------------------------------------+
-   | LAYER 4: Vignette (damp glass)      |
-   | +--------------------------------+  |
-   | | LAYER 3: Scanlines (CRT)       |  |
-   | | +---------------------------+  |  |
-   | | | LAYER 2: Film grain       |  |  |
-   | | | +----------------------+  |  |  |
-   | | | | LAYER 1: Content     |  |  |  |
-   | | | | (text, graphs, data) |  |  |  |
-   | | | +----------------------+  |  |  |
-   | | +---------------------------+  |  |
-   | +--------------------------------+  |
-   +-------------------------------------+
+   flowchart TB
+       subgraph L4["LAYER 4: Vignette (damp glass)"]
+           subgraph L3["LAYER 3: Scanlines (CRT)"]
+               subgraph L2["LAYER 2: Film grain"]
+                   L1["LAYER 1: Content<br/>(text, graphs, data)"]
+               end
+           end
+       end
+
+   %% Necropolis Codex styling - layers from outer to inner
+   style L4 fill:#0A0707,stroke:#4A1818,color:#D4C9B8
+   style L3 fill:#1A1A1A,stroke:#404040,color:#C0C0C0
+   style L2 fill:#2D2A26,stroke:#6B4A3A,color:#D4C9B8
+   style L1 fill:#1A1A1A,stroke:#D40000,color:#F5F5F5
 
 Scanlines
 ~~~~~~~~~
@@ -223,16 +290,20 @@ screen**, phosphor-burned into the display.
 The primary icon represents the Tower of Babylon motif with dialectical
 splits and the suggestion of collapse/transformation:
 
-.. code-block:: text
+.. mermaid::
 
-      +-------------+
-      |     A       |
-      |    / \      |
-      |   /   \     |
-      |  /_____\    |
-      |     |       |
-      |  V  |  V    |
-      +-------------+
+   flowchart TB
+       A["▲<br/>Tower Summit"]
+       A --> SPLIT
+       SPLIT{"│<br/>Dialectical<br/>Split"}
+       SPLIT --> V1["▼<br/>Collapse"]
+       SPLIT --> V2["▼<br/>Transform"]
+
+   %% Necropolis Codex styling - vector traces on CRT
+   style A fill:#0A0707,stroke:#FFD700,color:#FFD700
+   style SPLIT fill:#0A0707,stroke:#D40000,color:#D40000
+   style V1 fill:#0A0707,stroke:#FFD700,color:#FFD700
+   style V2 fill:#0A0707,stroke:#39FF14,color:#39FF14
 
 Rendered as glowing lines against The Void, with subtle bloom on vertices.
 

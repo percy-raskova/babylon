@@ -5,9 +5,9 @@
 The session begins with context loading. The memory system provides:
 
 ```
-**Legend:** 🔴 bugfix | 🟣 feature | 🔄 refactor | ✅ change | 🔵 discovery | ⚖️ decision
+**Legend:** [BUG] bugfix | [FEAT] feature | [REFACT] refactor | [CHG] change | [DISC] discovery | [DEC] decision
 
-📊 **Context Economics**:
+**Context Economics**:
 - Loading: 50 observations (23,999 tokens to read)
 - Work investment: 136,622 tokens spent on research, building, and decisions
 - Your savings: 112,623 tokens (82% reduction from reuse)

@@ -143,13 +143,13 @@ When future sessions encounter this code, they can read why it was designed this
 The claude-mem system provides continuity between sessions. Recent observations, decisions, and learnings are available at session start:
 
 ```
-**Legend:** 🔴 bugfix | 🟣 feature | 🔄 refactor | ✅ change | 🔵 discovery | ⚖️ decision
+**Legend:** [BUG] bugfix | [FEAT] feature | [REFACT] refactor | [CHG] change | [DISC] discovery | [DEC] decision
 
 | ID | Time | T | Title |
 |----|------|---|-------|
-| #6270 | 11:58 AM | 🟣 | Created Comprehensive Architecture Documentation |
-| #6271 | 11:58 AM | 🟣 | Created George Jackson Bifurcation Model Documentation |
-| #6279 | 12:03 PM | ✅ | Committed Comprehensive RST Documentation to Git |
+| #6270 | 11:58 AM | [FEAT] | Created Comprehensive Architecture Documentation |
+| #6271 | 11:58 AM | [FEAT] | Created George Jackson Bifurcation Model Documentation |
+| #6279 | 12:03 PM | [CHG] | Committed Comprehensive RST Documentation to Git |
 ```
 
 This is organizational memory externalized. The AI's context window is ephemeral; the memory system is persistent. Knowledge survives session boundaries.

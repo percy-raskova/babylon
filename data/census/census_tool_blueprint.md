@@ -1,6 +1,7 @@
 # Census ACS Query Tool Blueprint
 
 ## Overview
+
 This document outlines the design for a Claude tool that enables querying of Census American Community Survey (ACS) data through the Census API.
 
 ## Tool Definition
@@ -19,25 +20,30 @@ This document outlines the design for a Claude tool that enables querying of Cen
 ## Implementation Components
 
 ### 1. Query Construction
+
 - Base URL formation: https://api.census.gov/data/[year]/acs/acs1/pums
 - Parameter validation and formatting
 - URL encoding of special characters
 - Query type handling (raw vs tabulated data)
 
 ### 2. API Integration
+
 - HTTP request handling
 - Authentication if required
 - Rate limiting compliance
 - Response parsing (JSON)
 
 ### 3. Error Handling
+
 - Invalid parameter validation
 - API error responses
 - Network issues
 - Data validation
 
 ### 4. Response Formatting
+
 - Raw data format:
+
 ```json
 {
   "records": [
@@ -54,6 +60,7 @@ This document outlines the design for a Claude tool that enables querying of Cen
 ```
 
 - Tabulated data format:
+
 ```json
 {
   "data": [
@@ -73,6 +80,7 @@ This document outlines the design for a Claude tool that enables querying of Cen
 ## Usage Examples
 
 ### Raw Data Query
+
 ```python
 # Example raw data query
 query = {
@@ -85,6 +93,7 @@ query = {
 ```
 
 ### Tabulated Query
+
 ```python
 # Example tabulated query
 query = {
@@ -99,17 +108,18 @@ query = {
 
 ## Error Codes
 
-| Code | Description |
-|------|-------------|
-| 400  | Invalid parameters |
+| Code | Description          |
+| ---- | -------------------- |
+| 400  | Invalid parameters   |
 | 401  | Authentication error |
-| 404  | Data not found |
-| 429  | Rate limit exceeded |
-| 500  | Census API error |
+| 404  | Data not found       |
+| 429  | Rate limit exceeded  |
+| 500  | Census API error     |
 
 ## Implementation Steps
 
 1. Parameter Validation
+
 ```python
 def validate_parameters(params):
     # Validate required fields
@@ -126,6 +136,7 @@ def validate_parameters(params):
 ```
 
 2. Query Construction
+
 ```python
 def construct_query(params):
     base_url = f"https://api.census.gov/data/{params['year']}/acs/acs1/pums"
@@ -146,6 +157,7 @@ def construct_query(params):
 ```
 
 3. Response Processing
+
 ```python
 def process_response(response, query_type):
     data = response.json()
@@ -165,19 +177,23 @@ def process_response(response, query_type):
 ## Best Practices
 
 1. Cache Commonly Used Data
+
 - Implement caching for frequently accessed data
 - Cache variable definitions and geographic codes
 
 2. Rate Limiting
+
 - Implement exponential backoff for retries
 - Track API usage to stay within limits
 
 3. Error Handling
+
 - Provide clear error messages
 - Include suggestions for fixing common issues
 - Log errors for debugging
 
 4. Documentation
+
 - Document all supported variables
 - Provide usage examples
 - Include common query patterns
@@ -185,16 +201,19 @@ def process_response(response, query_type):
 ## Limitations
 
 1. Data Availability
+
 - Limited to ACS PUMS data
 - Geographic coverage restrictions
 - Variable availability by year
 
 2. Performance
+
 - Large queries may timeout
 - Rate limits may apply
 - Response size limitations
 
 3. Functionality
+
 - No direct median calculations
 - Limited statistical functions
 - No time series in single query
@@ -202,16 +221,19 @@ def process_response(response, query_type):
 ## Future Enhancements
 
 1. Additional Features
+
 - Support for other Census datasets
 - Advanced statistical calculations
 - Time series analysis
 
 2. Performance Improvements
+
 - Query optimization
 - Response caching
 - Parallel processing
 
 3. User Experience
+
 - Variable discovery
 - Query builder interface
 - Result visualization
@@ -219,6 +241,6 @@ def process_response(response, query_type):
 ## References
 
 1. Census API Documentation
-2. ACS Technical Documentation
-3. PUMS Data Dictionary
-4. Geographic Reference Files
+1. ACS Technical Documentation
+1. PUMS Data Dictionary
+1. Geographic Reference Files

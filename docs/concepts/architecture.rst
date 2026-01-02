@@ -110,13 +110,27 @@ and multiple edge types:
 
 **Node Types:**
 
-.. code-block:: text
+.. mermaid::
 
-   social_class (C001, C002, ...)
-   └── Attributes: wealth, organization, ideology, consciousness
+   classDiagram
+       class social_class {
+           +id: C001, C002, ...
+           +wealth: Currency
+           +organization: Intensity
+           +ideology: Ideology
+           +consciousness: float
+       }
 
-   territory (T001, T002, ...)
-   └── Attributes: heat, profile, sector_type, territory_type
+       class territory {
+           +id: T001, T002, ...
+           +heat: float
+           +profile: OperationalProfile
+           +sector_type: SectorType
+           +territory_type: TerritoryType
+       }
+
+       social_class --|> Node : is-a
+       territory --|> Node : is-a
 
 **Edge Types:**
 
@@ -224,16 +238,27 @@ The simulation engine orchestrates the three layers:
        WS --> step["step()"]
        SC --> step
        step -->|"to_graph()"| G[NetworkX DiGraph]
-       subgraph Engine["SimulationEngine.run_tick()"]
-           G --> S1[1. ImperialRentSystem]
-           S1 --> S2[2. SolidaritySystem]
-           S2 --> S3[3. ConsciousnessSystem]
-           S3 --> S4[4. SurvivalSystem]
-           S4 --> S5[5. StruggleSystem]
-           S5 --> S6[6. ContradictionSystem]
-           S6 --> S7[7. TerritorySystem]
+       subgraph Engine["SimulationEngine.run_tick() - ADR032 Materialist Causality"]
+           subgraph Base["Base Layer (Material Reality)"]
+               G --> S1[1. VitalitySystem]
+               S1 --> S2[2. TerritorySystem]
+               S2 --> S3[3. ProductionSystem]
+               S3 --> S4[4. SolidaritySystem]
+               S4 --> S5[5. ImperialRentSystem]
+           end
+           subgraph Crisis["Crisis Layer (Terminal Dynamics)"]
+               S5 --> S6[6. DecompositionSystem]
+               S6 --> S7[7. ControlRatioSystem]
+               S7 --> S8[8. MetabolismSystem]
+           end
+           subgraph Super["Superstructure Layer (Agency)"]
+               S8 --> S9[9. SurvivalSystem]
+               S9 --> S10[10. StruggleSystem]
+               S10 --> S11[11. ConsciousnessSystem]
+               S11 --> S12[12. ContradictionSystem]
+           end
        end
-       S7 --> OBS[Observers]
+       S12 --> OBS[Observers]
        OBS -->|"from_graph()"| WS2[New WorldState]
 
 Dependency Injection

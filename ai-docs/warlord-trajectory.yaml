@@ -1,20 +1,22 @@
 meta:
   name: "The Warlord Trajectory"
-  version: "1.0.0"
-  updated: "2026-01-01"
-  purpose: "Epoch 2 branching - when enforcers seize power from weakened bourgeoisie"
+  version: "2.0.0"
+  updated: "2026-01-02"
+  purpose: "Epoch 2 branching - necropolitical prison-plantation as emergent mode of production"
   status: "DEFERRED - Epoch 2"
   discovery_session: "#S139"
+  revision_session: "#S149"
   references:
     rst: "docs/concepts/warlord-trajectory.rst"
     adr: "ai-docs/decisions/ADR037 (deferred)"
 
 overview: |
-  During 100-year Carceral Equilibrium simulations, bourgeoisie wealth collapsed
-  to near-zero while Labor Aristocracy accumulated massively. Initially flagged as
-  a bug (ADR037), this represents a historically valid trajectory: the Warlord Coup.
-  When bourgeoisie cannot pay enforcers, those who control the actual means of
-  violence can seize power.
+  When imperial rent extraction fails, a NEW MODE OF PRODUCTION emerges from the
+  collapse. This is not merely a political change (who holds power) but a transition
+  in the relations of production themselves. The revanchist coalition - cops,
+  petit-bourgeoisie remnants, decomposed labor aristocracy - establishes the
+  necropolitical prison-plantation: rule through the administration of death,
+  extraction through direct violence.
 
 discovery:
   simulation_results:
@@ -25,123 +27,188 @@ discovery:
       c_b_wealth: 0.01
       la_wealth: 15954.87
   initial_interpretation: "Bug - contradicts Marxist political economy"
-  key_insight: "Bourgeoisie control violence BY PROXY through money"
+  revised_interpretation: "Feature - new mode of production emergence"
+  key_insight: "Apparatus of violence outlives its economic base"
 
-power_chain:
-  normal_operation: |
-    C_b (bourgeoisie)
-        ├──[PAYMENT]──► Enforcers ──[CONTROL]──► Means of Violence
-        │                                            ├── Tanks
-        │                                            ├── Helicopters
-        │                                            ├── Drones
-        │                                            ├── Machine guns
-        │                                            └── Prisons
-        └──[PROFIT]──► C_b accumulates wealth
-  when_payment_stops: "Enforcers still have weapons. Chain of command depends on continued payment."
+theoretical_foundation:
+  mode_of_production_transition:
+    description: |
+      The necropolitical prison-plantation is a REGRESSIVE mode of production
+      transition - what happens when capitalism cannot reproduce itself but
+      the apparatus of violence remains.
+    unlike_capitalism:
+      - "No wage labor (violence replaces wages as extraction mechanism)"
+      - "No commodity production for exchange (subsistence, not accumulation)"
+      - "No value extraction through exploitation (direct appropriation through force)"
+    unlike_slavery:
+      - "Slaves were valuable property (incentive to preserve)"
+      - "This captive population is a LIABILITY (incentive to eliminate)"
+    definition: "Necropolitics as mode of production: rule through administration of death"
 
-two_interpretations:
-  bug_classical:
-    name: "Bug (Classical Political Economy)"
-    argument:
-      - "Capital should concentrate upward during crisis"
-      - "Bourgeoisie should thrive while workers suffer"
-      - "This is how capitalism has historically functioned"
-    fix: "Add EXPLOITATION edge from LA to C_b"
+  settler_colonial_foundation:
+    description: |
+      The warlord trajectory doesn't CREATE settler colonial violence - it REMOVES
+      the economic structures that obscured it. The ideology of racial hierarchy,
+      elimination of 'surplus' populations, and local enforcement power has always
+      been present. Imperial rent collapse drops the pretense.
+    always_present:
+      - "Chattel slavery and its afterlives"
+      - "Indigenous genocide and land theft"
+      - "Convict leasing as slavery's successor"
+      - "Mass incarceration as social control"
 
-  feature_warlord:
-    name: "Feature (Warlord Trajectory)"
-    argument:
-      - "When bourgeoisie can't pay enforcers, coup becomes possible"
-      - "Enforcers control the actual means of violence"
-      - "Historically accurate for failed states and military juntas"
-    fix: "Model enforcer class consciousness and loyalty"
+revanchist_coalition:
+  description: "New ruling class formation, not just 'enforcers who want pay'"
+  components:
+    - name: "Revanchist cops"
+      description: "Local police, sheriffs, prison guards (NOT federal military)"
+      power_base: "Decentralized, territorial, local loyalty"
+    - name: "Petit-bourgeoisie remnants"
+      description: "Small business owners, local managers, squeezed out"
+      role: "Minor faction, vacillating like peasants in capitalist transition"
+    - name: "Decomposed Labor Aristocracy"
+      description: "The 15% who became enforcers + those aligned with police power"
+      origin: "CLASS_DECOMPOSITION event"
 
-resolution: "Both trajectories are valid. Epoch 2 implements branching based on material conditions."
+institutional_fracture:
+  description: "The key split is between traditional military and local police"
+  traditional_military:
+    loyalty: "Nation-state ideology (duty, honor, chain of command)"
+    allegiance: "Bourgeoisie (federal legitimacy)"
+    power_base: "Central, hierarchical"
+  local_police:
+    loyalty: "Territorial, settler colonial"
+    allegiance: "Own coalition (no federal loyalty)"
+    power_base: "Decentralized, local"
+  insight: "Military stays with bourgeoisie, police form revanchist coalition"
+
+motivation:
+  not_economic_grievance: true
+  actual_motivation: |
+    Settler colonial consciousness dropping pretense when economic mediation fails:
+    "We have the guns. We have the prisons. Why are we paying these lazy [slurs]
+    when we could eliminate them and take it all?"
+  ideology_source: "Pre-existing foundation of American racial capitalism"
+  trigger: "Collapse of economic structures (wages, rights, due process)"
 
 historical_parallels:
-  praetorian_guard:
-    description: "Roman Praetorian Guard realized their power over emperors"
-    examples:
-      - "41 CE: Assassinated Caligula, installed Claudius"
-      - "193 CE: Auctioned the empire to the highest bidder"
-      - "235-284 CE: Crisis of the Third Century (50 years, 26 emperors)"
-    lesson: "When emperors couldn't pay, guards made new emperors"
+  mode_transitions:
+    - transition: "Post-Reconstruction South"
+      pattern: "Slavery abolished → convict leasing + sharecropping"
+      parallel: "New unfree labor system from collapse of old"
+    - transition: "Late Roman Empire"
+      pattern: "Commerce collapsed → latifundia to serfdom"
+      parallel: "Bound labor replaces market relations"
+    - transition: "Nazi Concentration Camps"
+      pattern: "Warehousing → labor camps → death camps"
+      parallel: "Elimination when labor unprofitable"
 
-  modern_juntas:
+  failed_state_dynamics:
+    description: "Decentralized collapse, not single junta"
     examples:
-      - country: "Chile"
-        year: 1973
-        pattern: "Pinochet's coup against Allende"
-      - country: "Argentina"
-        year: 1976
-        pattern: "Videla's junta against Peron"
-      - country: "Myanmar"
-        year: 2021
-        pattern: "Min Aung Hlaing against civilian government"
-      - country: "Egypt"
-        year: 2013
-        pattern: "Sisi against Morsi"
-    common_pattern: "Military/police seize power when civilian leadership loses control"
+      - example: "Somalia post-Barre"
+        pattern: "Clan militias control territory, no central state"
+      - example: "Libya post-Gaddafi"
+        pattern: "Competing armed factions, city-states"
+      - example: "Post-Reconstruction South"
+        pattern: "Sheriffs as local warlords, convict labor as economic base"
 
-  private_prison_industry:
-    context: "American trajectory"
-    difference: "Enforcers may not stage coup but become new capitalist class"
-    mechanism:
-      - "CoreCivic and GEO Group executives"
-      - "Prison labor extraction as surplus value source"
-      - "Lobbying for criminalization (more prisoners = more profit)"
-      - "Revolving door between corrections and government"
-    insight: "Enforcers don't need coup - they become new bourgeoisie through carceral apparatus"
+  private_prison_precursor:
+    description: "Current PIC as transitional form pointing toward necropolitical mode"
+    features:
+      - "CoreCivic and GEO Group as proto-warlord enterprises"
+      - "Prison labor extraction as primitive accumulation"
+      - "Lobbying for criminalization (expanding captive population)"
+      - "Revolving door creating enforcer class"
 
 epoch2_design:
   trajectory_a:
-    name: "Classical Concentration"
-    flow: "C_b → maintains payment → Enforcers → control → Prisoners"
-    condition: "Bourgeoisie can fix payment (through extreme extraction)"
-    result: "Pure necropolis ruled by capitalists"
+    name: "Classical Concentration (Bourgeois Necropolis)"
+    description: "Bourgeoisie + traditional military maintain federal control"
+    flow: "C_b + Military → federal authority → enforcers → prisoners"
+    condition: "Bourgeois solvency AND military loyalty"
+    mode_of_production: "Capitalist (diminished)"
+    result: "Pure necropolis, pretense of law maintained"
 
   trajectory_b:
-    name: "Warlord Coup"
-    flow: "Enforcers (warlords) → control directly → Prisoners"
-    condition: "Enforcers seize power when payment fails"
-    result: "Military junta ruling necropolis directly"
-    note: "C_b eliminated or subordinated"
+    name: "Necropolitical Prison-Plantation (Warlord Era)"
+    description: "Revanchist coalition seizes territorial control"
+    flow: "Cops + Petit-B + LA remnants → police armies → prison-plantations"
+    condition: "Revanchist cohesion AND settler consciousness activation"
+    mode_of_production: "Necropolitical (regressive)"
+    result: "Decentralized warlordism, competing fiefdoms"
+    note: "C_b + Military retain federal shell, lose territorial control"
+
+  trajectory_c:
+    name: "Revolutionary Rupture"
+    description: "Organized prisoners + flipped enforcers seize production"
+    flow: "Prisoners + enforcers + periphery → P(S|R) > P(S|A) → revolution"
+    condition: "prisoner_organization >= 0.5 OR enforcer_radicalization > threshold"
+    mode_of_production: "Revolutionary transition"
+    result: "Seizure of means of production"
 
   branching_condition:
     pseudocode: |
-      enforcer_loyalty = f(C_b_wealth, payment_consistency, enforcer_consciousness)
+      # Material conditions
+      bourgeois_solvency = C_b_wealth > payment_threshold
+      military_loyalty = f(ideology_strength, payment_history)
 
-      IF can_pay:
+      # Coalition formation
+      revanchist_cohesion = f(police_organization, petitb_alignment, la_decomposition)
+      settler_consciousness = f(territory_heat, racial_hierarchy_strength)
+
+      # Revolutionary potential
+      prisoner_organization = avg(organization for prisoners)
+      enforcer_radicalization = solidarity_transmission(enforcers, prisoners)
+
+      IF bourgeois_solvency AND military_loyalty > threshold:
           → TRAJECTORY_A: Classical Concentration
-      ELSE IF enforcer_consciousness > COUP_THRESHOLD:
-          → TRAJECTORY_B: Warlord Coup
+      ELIF revanchist_cohesion > threshold AND settler_consciousness > threshold:
+          → TRAJECTORY_B: Necropolitical Prison-Plantation
+      ELIF prisoner_organization >= 0.5 OR enforcer_radicalization > flip_threshold:
+          → TRAJECTORY_C: Revolutionary Rupture
       ELSE:
-          → FAILED_STATE: System collapses into chaos
+          → CONTESTED_COLLAPSE: Ongoing factional struggle
 
 player_agency:
-  accelerate_warlord_coup:
-    - "Reduce C_b wealth through sabotage"
-    - "Disrupt payment channels"
-    - "Raise enforcer class consciousness"
+  accelerate_warlord:
+    description: "Destabilization tactics (risky but creates opportunities)"
+    tactics:
+      - "Reduce C_b wealth through sabotage (weakens bourgeois faction)"
+      - "Disrupt federal payment channels (fractures military loyalty)"
+      - "Expose contradictions between military and police"
+      - "Amplify settler colonial tensions (accelerates coalition formation)"
+    note: "Transition chaos creates revolutionary opportunities, but risks severe"
 
-  prevent_both_trajectories:
-    - "Organize prisoners despite conditions"
-    - "Flip enforcers to revolutionary side"
-    - "Build solidarity networks spanning class lines"
-    - "Exploit transition chaos"
+  prevent_warlord:
+    description: "Revolutionary victory path"
+    tactics:
+      - "Organize prisoners despite conditions (raise organization above 0.5)"
+      - "Flip enforcers to revolutionary side (solidarity transmission)"
+      - "Build solidarity networks spanning prisoner/enforcer divide"
+      - "Connect to periphery revolutionary movements (international solidarity)"
+      - "Exploit military/police fracture (neither faction trusts the other)"
 
-  note: "Warsaw Ghetto Dynamic still applies: when P(S|A) → 0, revolution becomes the only rational choice"
+  critical_window:
+    description: "Transition period is most volatile AND most opportune"
+    conditions:
+      - "Neither faction has consolidated power"
+      - "Captive population desperate (P(S|A) → 0)"
+      - "Enforcers face moral injury from role"
+    principle: "Warsaw Ghetto Dynamic: when P(S|A) → 0, revolution is only rational choice"
 
 mantras:
   original: "Collapse is certain. Revolution is possible. Organization is the difference."
-  extended: "And if revolution fails, even the victors change."
-  insight: "Necropolis may be ruled by capitalists or warlords. Either way, only escape is revolutionary organization."
+  extended: "And if revolution fails, the apparatus of death finds new masters."
+  final: "The collapse of American hegemony is not the end of history. It is the revelation of what was always underneath."
 
 status:
   discovered: "2026-01-01 (Session #139)"
+  revised: "2026-01-02 (Session #149)"
   status: "Deferred to Epoch 2"
   priority: "Before player agency systems"
 
 see_also:
   - "ai-docs/carceral-equilibrium.yaml"
   - "ai-docs/terminal-crisis.yaml"
+  - "ai-docs/theory.yaml"

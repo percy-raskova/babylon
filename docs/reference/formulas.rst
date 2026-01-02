@@ -288,16 +288,17 @@ Quantifies value extraction via trade:
 
 .. math::
 
-   \epsilon = \frac{L_p}{L_c} \times \frac{W_c}{W_p}
+   \rho = \frac{L_p}{L_c} \times \frac{W_c}{W_p}
 
 Where:
 
+- :math:`\rho` = Exchange ratio (uses rho to avoid collision with epsilon constant)
 - :math:`L_p` = Periphery labor hours
 - :math:`L_c` = Core labor hours (same product)
 - :math:`W_c` = Core wage rate
 - :math:`W_p` = Periphery wage rate
 
-When :math:`\epsilon > 1`, periphery gives more value than it receives.
+When :math:`\rho > 1`, periphery gives more value than it receives.
 
 **Implementation:**
 
@@ -319,7 +320,7 @@ Converts exchange ratio to percentage:
 
 .. math::
 
-   \text{Exploitation Rate} = (\epsilon - 1) \times 100\%
+   \text{Exploitation Rate} = (\rho - 1) \times 100\%
 
 **Implementation:**
 
@@ -336,7 +337,7 @@ Calculates actual value transferred:
 
 .. math::
 
-   \text{Transfer} = V_{production} \times (1 - \frac{1}{\epsilon})
+   \text{Transfer} = V_{production} \times (1 - \frac{1}{\rho})
 
 **Implementation:**
 
@@ -550,6 +551,139 @@ than the planet can regenerate).
        total_biocapacity=100.0
    )  # Returns 2.0 (2x overshoot)
 
+Vitality Formulas
+-----------------
+
+Mortality rate calculations for population attrition (Mass Line Refactor Phase 3).
+
+Mortality Rate (Coverage Ratio Threshold)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Calculates population attrition based on wealth coverage and inequality:
+
+.. math::
+
+   \text{coverage\_ratio} = \frac{W_{pc}}{S}
+
+   \text{threshold} = 1 + I
+
+   \text{attrition\_rate} = \begin{cases}
+   0 & \text{if coverage\_ratio} \geq \text{threshold} \\
+   (\text{threshold} - \text{coverage\_ratio}) \times (0.5 + I) & \text{otherwise}
+   \end{cases}
+
+Where:
+
+- :math:`W_{pc}` = Wealth per capita
+- :math:`S` = Subsistence needs (s_bio + s_class)
+- :math:`I` = Inequality coefficient [0, 1]
+
+**Mechanic:** High inequality raises the survival floor, causing mortality
+even when average wealth appears sufficient. This models how wealth
+concentration exposes marginal workers to attrition.
+
+**Implementation:**
+
+.. code-block:: python
+
+   from babylon.systems.formulas import calculate_mortality_rate
+
+   attrition = calculate_mortality_rate(
+       wealth_per_capita=0.5,
+       subsistence_needs=0.4,
+       inequality=0.3
+   )  # Returns attrition rate [0, 1]
+
+TRPF Formulas (Tendency of the Rate of Profit to Fall)
+------------------------------------------------------
+
+Marx's rate of profit formulas (Capital Vol. 3). Currently used as surrogate
+for organic composition via extraction efficiency decay.
+
+TRPF Multiplier (Surrogate)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Models declining extraction efficiency over time:
+
+.. math::
+
+   \text{multiplier} = \max(\text{floor}, 1 - (\text{coefficient} \times \text{tick}))
+
+Where:
+
+- :math:`\text{coefficient}` = TRPF decay rate (default 0.0005)
+- :math:`\text{floor}` = Minimum efficiency (default 0.1)
+
+**Implementation:**
+
+.. code-block:: python
+
+   from babylon.systems.formulas import calculate_trpf_multiplier
+
+   mult = calculate_trpf_multiplier(
+       tick=1000,
+       trpf_coefficient=0.0005,
+       floor=0.1
+   )  # Returns 0.5
+
+Rent Pool Decay
+~~~~~~~~~~~~~~~
+
+Models imperial rent pool depletion:
+
+.. math::
+
+   \text{new\_pool} = \text{current\_pool} \times (1 - \text{decay\_rate})
+
+**Implementation:**
+
+.. code-block:: python
+
+   from babylon.systems.formulas import calculate_rent_pool_decay
+
+   new_pool = calculate_rent_pool_decay(
+       current_pool=100.0,
+       decay_rate=0.002
+   )  # Returns 99.8
+
+Rate of Profit (Epoch 2 Placeholder)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Full Marx formula for rate of profit:
+
+.. math::
+
+   r = \frac{s}{c + v}
+
+Where:
+
+- :math:`s` = Surplus value
+- :math:`c` = Constant capital (machinery, materials)
+- :math:`v` = Variable capital (wages)
+
+**Implementation:**
+
+.. code-block:: python
+
+   from babylon.systems.formulas import calculate_rate_of_profit
+
+   rate = calculate_rate_of_profit(
+       surplus_value=100.0,
+       constant_capital=200.0,
+       variable_capital=100.0
+   )  # Returns 0.333
+
+Organic Composition (Epoch 2 Placeholder)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ratio of constant to variable capital:
+
+.. math::
+
+   \text{OCC} = \frac{c}{v}
+
+Rising OCC is the mechanism behind the tendential fall in profit rate.
+
 Formula-to-System Mapping
 -------------------------
 
@@ -560,30 +694,48 @@ Formula-to-System Mapping
    * - Formula
      - System
      - Module
+   * - Mortality Rate (Coverage Ratio)
+     - VitalitySystem
+     - ``engine/systems/vitality.py``
+   * - Production (Labor × Biocapacity)
+     - ProductionSystem
+     - ``engine/systems/production.py``
    * - Imperial Rent
      - ImperialRentSystem
-     - ``systems/economic.py``
+     - ``engine/systems/economic.py``
+   * - TRPF Multiplier
+     - ImperialRentSystem
+     - ``engine/systems/economic.py``
+   * - Rent Pool Decay
+     - ImperialRentSystem
+     - ``engine/systems/economic.py``
    * - Consciousness Drift
      - ConsciousnessSystem
-     - ``systems/ideology.py``
+     - ``engine/systems/ideology.py``
    * - Ideological Routing
      - ConsciousnessSystem
-     - ``systems/ideology.py``
+     - ``engine/systems/ideology.py``
    * - Survival Calculus
      - SurvivalSystem
-     - ``systems/survival.py``
+     - ``engine/systems/survival.py``
    * - Solidarity Transmission
      - SolidaritySystem
-     - ``systems/solidarity.py``
+     - ``engine/systems/solidarity.py``
    * - Territory Heat
      - TerritorySystem
-     - ``systems/territory.py``
+     - ``engine/systems/territory.py``
    * - Bourgeoisie Decision
      - ContradictionSystem
-     - ``systems/contradiction.py``
+     - ``engine/systems/contradiction.py``
+   * - LA Decomposition (15%/85% split)
+     - DecompositionSystem
+     - ``engine/systems/decomposition.py``
+   * - Control Ratio (Guard:Prisoner)
+     - ControlRatioSystem
+     - ``engine/systems/control_ratio.py``
    * - Metabolic Rift
-     - MetabolicSystem
-     - ``systems/metabolic.py``
+     - MetabolismSystem
+     - ``engine/systems/metabolism.py``
 
 See Also
 --------

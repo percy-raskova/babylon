@@ -134,11 +134,14 @@ Build Commands
    # Live-reload development server
    mise run docs-live
 
-Bunker Constructivism Theme
----------------------------
+Necropolis Codex Theme
+----------------------
 
-The PDF output applies the "Damp Basement Cyberinsurgency" aesthetic
-defined in :doc:`aesthetics`.
+The PDF output applies the "Necropolis Codex" aesthetic---leaked documents
+from the collapsing apparatus. See :doc:`aesthetics` for the full design system.
+
+   *"The collapse of American hegemony is not the end of history.
+   It is the revelation of what was always underneath."*
 
 Color Palette (LaTeX)
 ~~~~~~~~~~~~~~~~~~~~~
@@ -150,35 +153,52 @@ Color Palette (LaTeX)
    * - Name
      - Hex
      - Usage
-   * - Phosphor Burn
-     - ``#D40000``
-     - Chapter headings, alerts, active elements
-   * - Thermal Warning
-     - ``#8B0000``
-     - Section headings, internal links
-   * - Wet Concrete
-     - ``#1A1A1A``
-     - Code block backgrounds
-   * - Terminal Glare
-     - ``#F5F5F5``
-     - Code block text
-   * - The Chassis
-     - ``#404040``
-     - Subsection headings, citations
-   * - Exposed Circuitry
-     - ``#FFD700``
-     - Not yet implemented (reserved for highlights)
-   * - The Dust
-     - ``#C0C0C0``
-     - Secondary text, prompts
+   * - AbsoluteVoid
+     - ``#0A0707``
+     - Cover top gradient (deepest darkness)
+   * - DriedBlood
+     - ``#4A1818``
+     - Chapter headings, cover bottom (historical violence)
+   * - Rust
+     - ``#6B4A3A``
+     - Section headings, internal links (decaying infrastructure)
+   * - AshPaper
+     - ``#D4C9B8``
+     - Page backgrounds (cold institutional archive)
+   * - AshInk
+     - ``#3D3A36``
+     - Body text (charcoal, readable)
+   * - Bone
+     - ``#8B7B6B``
+     - Cover title, page numbers (grave markers)
+   * - BuriedHope
+     - ``#1A3A1A``
+     - Cover line (barely visible seed)
+   * - ForestDim
+     - ``#2A6B2A``
+     - Revolutionary section headings
+   * - PhosphorGreen
+     - ``#39FF14``
+     - Key phrases: :hope:`Organization is the difference.`
+
+Custom RST Roles
+~~~~~~~~~~~~~~~~
+
+The ``:hope:`` role renders text in PhosphorGreen (PDF) or bright green (HTML):
+
+.. code-block:: rst
+
+   :hope:`Organization is the difference.`
+
+Use only for revolutionary organization content.
 
 Typography
 ~~~~~~~~~~
 
 - **Main text**: TeX Gyre Termes (Times-like serif)
 - **Headings**: TeX Gyre Heros (Helvetica-like sans)
-- **Code**: TeX Gyre Cursor (Courier-like mono)
-- **Chapter style**: Sonny (bold industrial aesthetic)
+- **Code**: DejaVu Sans Mono (Unicode coverage)
+- **Chapter style**: Bjornstrup (professional book aesthetic)
 
 These TeX Gyre fonts are included in TeX Live and provide consistent
 cross-platform rendering.

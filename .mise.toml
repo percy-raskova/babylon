@@ -299,6 +299,38 @@ run = "poetry run python tools/ingest_corpus.py --reset"
 description = "Initialize SQLite database"
 run = "poetry run python tools/init_db.py"
 
+[tasks."data:census-load"]
+description = "Load Census ACS data into SQLite research database"
+run = "poetry run python tools/load_census.py"
+
+[tasks."data:census-reset"]
+description = "Reset and reload Census data (drops existing tables)"
+run = "poetry run python tools/load_census.py --reset"
+
+[tasks."data:census-query"]
+description = "Open SQLite CLI for research database (census + trade)"
+run = "sqlite3 data/sqlite/research.sqlite"
+
+[tasks."data:trade-load"]
+description = "Load UN trade data into SQLite research database"
+run = "poetry run python tools/load_trade.py"
+
+[tasks."data:trade-reset"]
+description = "Reset and reload trade data (preserves census tables)"
+run = "poetry run python tools/load_trade.py --reset"
+
+[tasks."data:research-query"]
+description = "Open SQLite CLI for research database (census + trade + qcew)"
+run = "sqlite3 data/sqlite/research.sqlite"
+
+[tasks."data:qcew-load"]
+description = "Load BLS QCEW employment/wage data into SQLite research database"
+run = "poetry run python tools/load_qcew.py"
+
+[tasks."data:qcew-reset"]
+description = "Reset and reload QCEW data (preserves census/trade tables)"
+run = "poetry run python tools/load_qcew.py --reset"
+
 # =============================================================================
 # DOCUMENTATION (Namespaced)
 # =============================================================================

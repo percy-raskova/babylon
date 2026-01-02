@@ -477,3 +477,19 @@ run = "echo \"Current: $SOUNDFONT\" && ls -lh \"$SOUNDFONT\""
 [tasks.ui]
 description = "Launch the Synopticon dashboard (Dear PyGui)"
 run = "poetry run python -m babylon.ui.dpg_runner"
+
+# =============================================================================
+# VISUALIZATION (Namespaced)
+# =============================================================================
+
+[tasks."viz:necropolis"]
+description = "Watch the 100-year trajectory into stable necropolis (The Red Pill)"
+usage = '''
+arg "[years]" help="Simulation length in years" default="100"
+arg "[interval]" help="Report interval in years" default="10"
+'''
+run = """
+poetry run python tools/necropolis_viewer.py \
+  --years ${usage_years} \
+  --interval ${usage_interval}
+"""

@@ -117,10 +117,149 @@ class QcewAnnual(CensusBase):
     )
 
 
+# =============================================================================
+# RAW DATA TABLES (Denormalized for direct analysis)
+# =============================================================================
+
+
+class QcewRaw2022(CensusBase):
+    """Raw QCEW 2022 annual data - flat denormalized structure.
+
+    Unlike QcewAnnual which uses normalized dimension tables,
+    this table stores raw BLS data as-is for direct querying.
+    Optimized for class composition analysis queries.
+
+    Key Fields:
+        area_fips: Geographic identifier (state/county/MSA FIPS)
+        own_code: Ownership sector (0=Total, 1=Fed, 2=State, 3=Local, 5=Private)
+        industry_code: NAICS code or BLS aggregation (10, 101, 102, 1011-1029, etc.)
+        annual_avg_emplvl: The mass of humans (employment level)
+        total_annual_wages: The mass of variable capital (USD)
+    """
+
+    __tablename__ = "qcew_raw_2022"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Geographic (indexed for fast filtering)
+    area_fips: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    agglvl_code: Mapped[int] = mapped_column(nullable=False)
+    size_code: Mapped[int] = mapped_column(nullable=False)
+
+    # Classification (indexed for class composition queries)
+    own_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    industry_code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+
+    # Time
+    year: Mapped[int] = mapped_column(nullable=False)
+    qtr: Mapped[str] = mapped_column(String(1), nullable=False)  # "A" for annual
+
+    # Core employment/wage metrics
+    annual_avg_estabs: Mapped[int | None] = mapped_column()
+    annual_avg_emplvl: Mapped[int | None] = mapped_column()  # PRIMARY: Mass of humans
+    total_annual_wages: Mapped[float | None] = mapped_column()  # PRIMARY: Variable capital
+    taxable_annual_wages: Mapped[float | None] = mapped_column()  # Fiscal capacity
+    annual_contributions: Mapped[float | None] = mapped_column()
+    annual_avg_wkly_wage: Mapped[int | None] = mapped_column()  # Standard of living
+    avg_annual_pay: Mapped[int | None] = mapped_column()
+
+    # Location quotients (useful for geographic analysis)
+    lq_disclosure_code: Mapped[str | None] = mapped_column(String(5))
+    lq_annual_avg_estabs: Mapped[float | None] = mapped_column()
+    lq_annual_avg_emplvl: Mapped[float | None] = mapped_column()
+    lq_total_annual_wages: Mapped[float | None] = mapped_column()
+    lq_taxable_annual_wages: Mapped[float | None] = mapped_column()
+    lq_annual_contributions: Mapped[float | None] = mapped_column()
+    lq_annual_avg_wkly_wage: Mapped[float | None] = mapped_column()
+    lq_avg_annual_pay: Mapped[float | None] = mapped_column()
+
+    # Year-over-year changes
+    oty_disclosure_code: Mapped[str | None] = mapped_column(String(5))
+    oty_annual_avg_estabs_chg: Mapped[int | None] = mapped_column()
+    oty_annual_avg_estabs_pct_chg: Mapped[float | None] = mapped_column()
+    oty_annual_avg_emplvl_chg: Mapped[int | None] = mapped_column()
+    oty_annual_avg_emplvl_pct_chg: Mapped[float | None] = mapped_column()
+    oty_total_annual_wages_chg: Mapped[float | None] = mapped_column()
+    oty_total_annual_wages_pct_chg: Mapped[float | None] = mapped_column()
+    oty_taxable_annual_wages_chg: Mapped[float | None] = mapped_column()
+    oty_taxable_annual_wages_pct_chg: Mapped[float | None] = mapped_column()
+    oty_annual_contributions_chg: Mapped[float | None] = mapped_column()
+    oty_annual_contributions_pct_chg: Mapped[float | None] = mapped_column()
+    oty_annual_avg_wkly_wage_chg: Mapped[int | None] = mapped_column()
+    oty_annual_avg_wkly_wage_pct_chg: Mapped[float | None] = mapped_column()
+    oty_avg_annual_pay_chg: Mapped[int | None] = mapped_column()
+    oty_avg_annual_pay_pct_chg: Mapped[float | None] = mapped_column()
+
+    # Metadata
+    disclosure_code: Mapped[str | None] = mapped_column(String(5))
+
+    __table_args__ = (
+        Index("idx_raw2022_area_industry", "area_fips", "industry_code"),
+        Index("idx_raw2022_own_industry", "own_code", "industry_code"),
+        Index("idx_raw2022_industry_own", "industry_code", "own_code"),
+    )
+
+
+class LaborHours2022(CensusBase):
+    """BLS labor hours data from Excel files - includes quarterly granularity.
+
+    This table captures the same QCEW data in a formatted Excel structure
+    with additional quarterly breakdowns (Q1-Q4) beyond annual aggregates.
+
+    Key Fields:
+        area_code: Geographic identifier (US000, state, county)
+        naics: Industry code (NAICS or BLS aggregation)
+        qtr: Period ("A"=annual, "1"/"2"/"3"/"4"=quarterly)
+        employment: Average employment level
+        total_wages: Total wages (USD)
+    """
+
+    __tablename__ = "labor_hours_2022"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+
+    # Geographic
+    area_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    state: Mapped[str | None] = mapped_column(String(2))  # "US", "01", etc.
+    county: Mapped[str | None] = mapped_column(String(3))  # "000", "001", etc.
+    area_type: Mapped[str | None] = mapped_column(String(20))  # Nation, State, County, MSA
+    state_name: Mapped[str | None] = mapped_column(String(50))
+    area_name: Mapped[str | None] = mapped_column(String(200))
+
+    # Classification
+    own_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    naics: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    ownership_label: Mapped[str | None] = mapped_column(String(50))
+    industry_label: Mapped[str | None] = mapped_column(String(200))
+
+    # Time
+    year: Mapped[int] = mapped_column(nullable=False)
+    qtr: Mapped[str] = mapped_column(String(1), nullable=False)  # "A", "1", "2", "3", "4"
+
+    # Core metrics
+    status_code: Mapped[str | None] = mapped_column(String(5))
+    establishments: Mapped[int | None] = mapped_column()
+    employment: Mapped[int | None] = mapped_column()  # PRIMARY
+    total_wages: Mapped[float | None] = mapped_column()  # PRIMARY
+    avg_weekly_wage: Mapped[int | None] = mapped_column()
+    avg_annual_pay: Mapped[int | None] = mapped_column()
+
+    # Location quotients
+    employment_lq: Mapped[float | None] = mapped_column()
+    wage_lq: Mapped[float | None] = mapped_column()
+
+    __table_args__ = (
+        Index("idx_hours2022_area_naics", "area_code", "naics"),
+        Index("idx_hours2022_qtr", "qtr"),
+    )
+
+
 # Export all models
 __all__ = [
     "QcewArea",
     "QcewIndustry",
     "QcewOwnership",
     "QcewAnnual",
+    "QcewRaw2022",
+    "LaborHours2022",
 ]

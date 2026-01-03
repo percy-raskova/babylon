@@ -26,12 +26,16 @@ from babylon.data.qcew.parser import (
     determine_naics_level,
     extract_state_fips,
     parse_all_area_files,
+    parse_all_labor_hours_files,
+    parse_raw_csv_chunked,
 )
 from babylon.data.qcew.schema import (
+    LaborHours2022,
     QcewAnnual,
     QcewArea,
     QcewIndustry,
     QcewOwnership,
+    QcewRaw2022,
 )
 
 if TYPE_CHECKING:
@@ -322,9 +326,288 @@ def load_qcew_data(
         session.close()
 
 
+# =============================================================================
+# RAW DATA LOADERS (Denormalized bulk ingestion)
+# =============================================================================
+
+
+def load_raw_2022_data(
+    csv_path: Path,
+    reset: bool = False,
+    verbose: bool = True,
+    chunk_size: int = 100_000,
+) -> dict[str, int]:
+    """Load raw QCEW 2022 CSV into qcew_raw_2022 table.
+
+    Uses pandas to_sql() for fast bulk insertion (not row-by-row).
+
+    Args:
+        csv_path: Path to 2022.annual.singlefile.csv
+        reset: If True, drop and recreate table
+        verbose: Print progress
+        chunk_size: Rows per chunk for pandas read_csv
+
+    Returns:
+        Dict with statistics (total_rows, chunks_processed)
+    """
+
+    if verbose:
+        print(f"Loading raw QCEW 2022 data from {csv_path}")
+
+    # Reset table if requested
+    if reset:
+        if verbose:
+            print("Dropping qcew_raw_2022 table...")
+        QcewRaw2022.__table__.drop(bind=census_engine, checkfirst=True)  # type: ignore[attr-defined]
+
+    # Ensure table exists
+    init_census_db()
+
+    total_rows = 0
+    chunks_processed = 0
+
+    try:
+        for chunk in parse_raw_csv_chunked(csv_path, chunk_size=chunk_size):
+            chunks_processed += 1
+
+            # Rename columns to match DB schema (most are same)
+            # Fill NaN strings with empty string for text columns
+            chunk["disclosure_code"] = chunk["disclosure_code"].fillna("")
+            chunk["lq_disclosure_code"] = chunk["lq_disclosure_code"].fillna("")
+            chunk["oty_disclosure_code"] = chunk["oty_disclosure_code"].fillna("")
+            chunk["area_fips"] = chunk["area_fips"].fillna("")
+            chunk["own_code"] = chunk["own_code"].fillna("0")
+            chunk["industry_code"] = chunk["industry_code"].fillna("10")
+            chunk["qtr"] = chunk["qtr"].fillna("A")
+
+            # Fill NaN integers with 0 for required fields
+            chunk["agglvl_code"] = chunk["agglvl_code"].fillna(0)
+            chunk["size_code"] = chunk["size_code"].fillna(0)
+            chunk["year"] = chunk["year"].fillna(2022)
+
+            # Use pandas to_sql for bulk insert (executemany is fast enough for SQLite)
+            chunk.to_sql(
+                "qcew_raw_2022",
+                census_engine,
+                if_exists="append",
+                index=False,
+                # Don't use method="multi" - SQLite has variable limit (999)
+            )
+
+            total_rows += len(chunk)
+
+            if verbose:
+                print(
+                    f"  Chunk {chunks_processed}: Loaded {len(chunk):,} rows (total: {total_rows:,})"
+                )
+
+        if verbose:
+            print(f"Completed: {total_rows:,} rows in {chunks_processed} chunks")
+
+        return {
+            "total_rows": total_rows,
+            "chunks_processed": chunks_processed,
+        }
+
+    except Exception as e:
+        raise RuntimeError(f"Failed to load raw QCEW 2022 data: {e}") from e
+
+
+def load_labor_hours_data(
+    data_dir: Path,
+    reset: bool = False,
+    verbose: bool = True,
+    batch_size: int = 10_000,
+) -> dict[str, int]:
+    """Load labor hours Excel data into labor_hours_2022 table.
+
+    Args:
+        data_dir: Path to data/mass_labor_hours/
+        reset: If True, drop and recreate table
+        verbose: Print progress
+        batch_size: Commit every N records
+
+    Returns:
+        Dict with statistics (total_rows, files_processed)
+    """
+    if verbose:
+        print(f"Loading labor hours data from {data_dir}")
+
+    # Reset table if requested
+    if reset:
+        if verbose:
+            print("Dropping labor_hours_2022 table...")
+        LaborHours2022.__table__.drop(bind=census_engine, checkfirst=True)  # type: ignore[attr-defined]
+
+    # Ensure table exists
+    init_census_db()
+
+    session = CensusSessionLocal()
+    total_rows = 0
+    files_processed = 0
+
+    try:
+        xlsx_files = sorted(data_dir.glob("allhlcn*.xlsx"))
+        files_processed = len(xlsx_files)
+
+        for rec in parse_all_labor_hours_files(data_dir):
+            record = LaborHours2022(
+                area_code=rec.area_code,
+                state=rec.state,
+                county=rec.county,
+                area_type=rec.area_type,
+                state_name=rec.state_name,
+                area_name=rec.area_name,
+                own_code=rec.own_code,
+                naics=rec.naics,
+                ownership_label=rec.ownership_label,
+                industry_label=rec.industry_label,
+                year=rec.year,
+                qtr=rec.qtr,
+                status_code=rec.status_code,
+                establishments=rec.establishments,
+                employment=rec.employment,
+                total_wages=rec.total_wages,
+                avg_weekly_wage=rec.avg_weekly_wage,
+                avg_annual_pay=rec.avg_annual_pay,
+                employment_lq=rec.employment_lq,
+                wage_lq=rec.wage_lq,
+            )
+            session.add(record)
+            total_rows += 1
+
+            # Batch commit
+            if total_rows % batch_size == 0:
+                session.commit()
+                if verbose:
+                    print(f"  Loaded {total_rows:,} records...")
+
+        session.commit()
+
+        if verbose:
+            print(f"Completed: {total_rows:,} rows from {files_processed} files")
+
+        return {
+            "total_rows": total_rows,
+            "files_processed": files_processed,
+        }
+
+    except Exception as e:
+        session.rollback()
+        raise RuntimeError(f"Failed to load labor hours data: {e}") from e
+    finally:
+        session.close()
+
+
+def print_class_composition(verbose: bool = True) -> dict[str, int | float]:
+    """Print class composition validation after ingestion.
+
+    Queries the raw 2022 data to show:
+    - Total Employment in "Goods Producing" (industry_code 101)
+    - Total Employment in "Service Providing" (industry_code 102)
+    - Total Government Employment (own_code != 5)
+
+    Uses national-level data (agglvl_code < 20) to avoid double-counting.
+
+    Args:
+        verbose: Print results
+
+    Returns:
+        Dict with employment totals by category
+    """
+    from sqlalchemy import func
+
+    session = CensusSessionLocal()
+
+    try:
+        # Check if data exists
+        total_count = session.query(func.count(QcewRaw2022.id)).scalar()
+        if total_count == 0:
+            if verbose:
+                print("No data in qcew_raw_2022 table - run ingestion first")
+            return {}
+
+        # National level, Private, Goods Producing (101)
+        goods_employment = (
+            session.query(func.sum(QcewRaw2022.annual_avg_emplvl))
+            .filter(
+                QcewRaw2022.industry_code == "101",
+                QcewRaw2022.own_code == "5",  # Private
+                QcewRaw2022.agglvl_code < 20,  # National level
+            )
+            .scalar()
+            or 0
+        )
+
+        # National level, Private, Service Providing (102)
+        service_employment = (
+            session.query(func.sum(QcewRaw2022.annual_avg_emplvl))
+            .filter(
+                QcewRaw2022.industry_code == "102",
+                QcewRaw2022.own_code == "5",  # Private
+                QcewRaw2022.agglvl_code < 20,  # National level
+            )
+            .scalar()
+            or 0
+        )
+
+        # National level, Government (own_code 1, 2, 3), Total Industry (10)
+        gov_employment = (
+            session.query(func.sum(QcewRaw2022.annual_avg_emplvl))
+            .filter(
+                QcewRaw2022.industry_code == "10",  # Total all industries
+                QcewRaw2022.own_code.in_(["1", "2", "3"]),  # Fed, State, Local
+                QcewRaw2022.agglvl_code < 20,  # National level
+            )
+            .scalar()
+            or 0
+        )
+
+        # National level, Total Covered (own_code 0)
+        total_employment = (
+            session.query(func.sum(QcewRaw2022.annual_avg_emplvl))
+            .filter(
+                QcewRaw2022.industry_code == "10",  # Total all industries
+                QcewRaw2022.own_code == "0",  # Total Covered
+                QcewRaw2022.agglvl_code < 20,  # National level
+            )
+            .scalar()
+            or 0
+        )
+
+        # Calculate ratios
+        parasitism_index = service_employment / goods_employment if goods_employment > 0 else 0
+
+        if verbose:
+            print("\n" + "=" * 50)
+            print("CLASS COMPOSITION (2022)")
+            print("=" * 50)
+            print(f"Goods Producing (Private):     {goods_employment:>12,}")
+            print(f"Service Providing (Private):  {service_employment:>12,}")
+            print(f"Government (Fed+State+Local): {gov_employment:>12,}")
+            print(f"Total Covered Employment:     {total_employment:>12,}")
+            print("-" * 50)
+            print(f"Parasitism Index (Service/Goods): {parasitism_index:.2f}")
+            print("=" * 50)
+
+        return {
+            "goods_producing": int(goods_employment),
+            "service_providing": int(service_employment),
+            "government": int(gov_employment),
+            "total_covered": int(total_employment),
+            "parasitism_index": parasitism_index,
+        }
+
+    finally:
+        session.close()
+
+
 __all__ = [
     "load_qcew_data",
     "load_ownership_dimension",
     "load_dimensions_from_records",
     "load_annual_facts",
+    "load_raw_2022_data",
+    "load_labor_hours_data",
+    "print_class_composition",
 ]

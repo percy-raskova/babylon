@@ -1,0 +1,336 @@
+# FRED (Federal Reserve Economic Data) API Integration
+# https://fred.stlouisfed.org/docs/api/fred/
+#
+# This document describes the FRED API integration for Babylon's
+# FiscalSystem and PrecaritySystem. FRED provides macroeconomic time
+# series data from the Federal Reserve Bank of St. Louis.
+
+overview:
+  name: "Federal Reserve Economic Data (FRED)"
+  provider: "Federal Reserve Bank of St. Louis"
+  api_docs: "https://fred.stlouisfed.org/docs/api/fred/"
+  registration: "https://fredaccount.stlouisfed.org/apikeys"
+  description: |
+    FRED is a comprehensive database of 800,000+ economic time series
+    from 100+ sources. For Babylon, we use FRED to provide:
+    - Real wage calculations (CPI + nominal wages)
+    - Reserve army of labor proxy (unemployment)
+    - Fiscal state indicators (federal debt, money supply)
+    - Imperial bribe metrics (PPP-adjusted income)
+
+api_configuration:
+  base_url: "https://api.stlouisfed.org/fred"
+  authentication:
+    type: "api_key"
+    env_var: "FRED_API_KEY"
+    registration_url: "https://fredaccount.stlouisfed.org/apikeys"
+
+  rate_limits:
+    requests_per_minute: 120
+    implementation: "0.5s delay between requests"
+
+  retry_policy:
+    max_retries: 3
+    backoff_factor: 2.0
+    retry_on:
+      - 429  # Rate limited
+      - 500  # Server error
+      - 502  # Bad gateway
+      - 503  # Service unavailable
+
+  endpoints:
+    series:
+      path: "/series"
+      description: "Get metadata for a series"
+      params:
+        - series_id (required)
+        - file_type (json/xml)
+
+    series_observations:
+      path: "/series/observations"
+      description: "Get data values for a series"
+      params:
+        - series_id (required)
+        - observation_start (YYYY-MM-DD)
+        - observation_end (YYYY-MM-DD)
+        - frequency (a=annual, q=quarterly, m=monthly)
+        - units (lin=raw, pch=percent change)
+        - file_type (json/xml/csv)
+
+series_catalog:
+  national_series:
+    CPIAUCSL:
+      title: "Consumer Price Index for All Urban Consumers"
+      units: "Index 1982-1984=100"
+      frequency: "Monthly"
+      marxian_use: |
+        Essential for calculating Real Wages in the PrecaritySystem.
+        Without CPI, we cannot model inflation eroding the Labor
+        Aristocracy's buying power. The formula:
+          Real_Wage = Nominal_Wage / (CPI / 100)
+
+    AHETPI:
+      title: "Average Hourly Earnings of All Employees, Total Private"
+      units: "Dollars per Hour"
+      frequency: "Monthly"
+      marxian_use: |
+        The Nominal Wage input for wage calculations. Combined with
+        CPI to compute real wages. This is the wage component of
+        variable capital (v) in the rate of exploitation formula:
+          s/v = (value produced - wages paid) / wages paid
+
+    UNRATE:
+      title: "Unemployment Rate"
+      units: "Percent"
+      frequency: "Monthly"
+      marxian_use: |
+        Proxies the size of the Reserve Army of Labor (Lumpenproletariat
+        pressure). Higher unemployment disciplines the working class
+        and suppresses wage demands. The reserve army serves capital by:
+        - Keeping wages low through labor surplus
+        - Providing flexible labor supply for accumulation cycles
+        - Fragmenting working class solidarity
+
+    GFDEBTN:
+      title: "Federal Debt: Total Public Debt"
+      units: "Millions of Dollars"
+      frequency: "Quarterly"
+      marxian_use: |
+        Feeds the StateFinance module for modeling the Fiscal Trilemma.
+        National debt represents:
+        - Fictitious capital claims on future surplus value
+        - State capacity constraints under crisis
+        - Debt ceiling politics as class conflict
+
+    GINIALLRF:
+      title: "GINI Index for the United States"
+      units: "Ratio (0-1)"
+      frequency: "Annual"
+      marxian_use: |
+        Useful for initializing class tension levels. Higher Gini
+        indicates greater inequality, which correlates with:
+        - Intensified class contradictions
+        - Potential for revolutionary consciousness
+        - Weakened social cohesion
+
+    M2SL:
+      title: "M2 Money Stock"
+      units: "Billions of Dollars"
+      frequency: "Monthly"
+      marxian_use: |
+        A proxy for Fictitious Capital creation. M2 expansion indicates:
+        - Credit bubble formation
+        - Financialization of the economy
+        - Deferred crisis through monetary policy
+        The gap between M2 and real production signals overaccumulation.
+
+    PPPTTLUSA618NUPN:
+      title: "Purchasing Power Parity over GDP"
+      units: "National Currency Units per US Dollar"
+      frequency: "Annual"
+      note: "Penn World Tables data - typically lags 2-3 years"
+      marxian_use: |
+        Essential for calculating Unequal Exchange between core and
+        periphery. PPP reveals:
+        - Value transfer in international trade
+        - Super-exploitation of peripheral labor
+        - Imperial rent extraction mechanisms
+
+    RGDPCHUSA625NUPN:
+      title: "Real GDP per Capita (PPP)"
+      units: "2005 International Dollars per Person"
+      frequency: "Annual"
+      note: "Penn World Tables data - typically lags 2-3 years"
+      marxian_use: |
+        Measures the Imperial Bribe / Superwages paid to core workers.
+        The gap between core and periphery PPP-adjusted income represents
+        the material basis for:
+        - Labor aristocracy formation
+        - Class collaboration in imperial centers
+        - Dampened revolutionary potential in the core
+
+  state_unemployment:
+    pattern: "LAUST{FIPS}0000000000003A"
+    example: "LAUST120000000000003A"  # Florida
+    count: 51  # 50 states + DC
+    frequency: "Annual (not seasonally adjusted)"
+    marxian_use: |
+      Geographic distribution of the reserve army allows analysis of:
+      - Uneven development within the core
+      - Regional class composition
+      - Spatial concentration of precarity
+      Joins with Census county data via state FIPS prefix.
+
+  industry_unemployment:
+    series:
+      LNU04032231:
+        industry: "Construction"
+        naics: "23"
+      LNU04032232:
+        industry: "Manufacturing"
+        naics: "31-33"
+      LNU04032236:
+        industry: "Transportation and Utilities"
+        naics: "48-49"
+      LNU04032237:
+        industry: "Information"
+        naics: "51"
+      LNU04032238:
+        industry: "Financial Activities"
+        naics: "52-53"
+      LNU04032239:
+        industry: "Professional and Business Services"
+        naics: "54-56"
+      LNU04032240:
+        industry: "Education and Health Services"
+        naics: "61-62"
+      LNU04032241:
+        industry: "Leisure and Hospitality"
+        naics: "71-72"
+    marxian_use: |
+      Industry-level unemployment reveals sectoral class composition:
+      - Productive vs unproductive labor concentration
+      - Deindustrialization patterns
+      - Service sector proletarianization
+      Joins with QCEW data via NAICS sector codes.
+
+database_schema:
+  location: "data/sqlite/research.sqlite"
+
+  dimension_tables:
+    fred_series:
+      description: "Metadata for each time series"
+      columns:
+        - "id: INTEGER PRIMARY KEY"
+        - "series_id: TEXT UNIQUE (e.g., 'CPIAUCSL')"
+        - "title: TEXT"
+        - "units: TEXT"
+        - "frequency: TEXT"
+        - "seasonal_adjustment: TEXT"
+        - "source: TEXT"
+        - "last_updated: TEXT"
+
+    fred_states:
+      description: "US states for state-level unemployment"
+      columns:
+        - "id: INTEGER PRIMARY KEY"
+        - "fips_code: TEXT UNIQUE (e.g., '12' for Florida)"
+        - "name: TEXT"
+        - "abbreviation: TEXT (e.g., 'FL')"
+
+    fred_industries:
+      description: "Industry sectors for industry unemployment"
+      columns:
+        - "id: INTEGER PRIMARY KEY"
+        - "lnu_code: TEXT UNIQUE (e.g., 'LNU04032232')"
+        - "name: TEXT"
+        - "naics_sector: TEXT (for QCEW joins)"
+
+  fact_tables:
+    fred_national:
+      description: "National time series observations"
+      columns:
+        - "id: INTEGER PRIMARY KEY"
+        - "series_id: INTEGER FK(fred_series)"
+        - "date: TEXT (YYYY-MM-DD)"
+        - "year: INTEGER"
+        - "month: INTEGER"
+        - "quarter: INTEGER"
+        - "value: REAL"
+      indices:
+        - "ix_fred_national_year (year)"
+        - "ix_fred_national_series_year (series_id, year)"
+
+    fred_state_unemployment:
+      description: "State-level unemployment observations"
+      columns:
+        - "id: INTEGER PRIMARY KEY"
+        - "state_id: INTEGER FK(fred_states)"
+        - "date: TEXT"
+        - "year: INTEGER"
+        - "month: INTEGER"
+        - "unemployment_rate: REAL"
+      indices:
+        - "ix_fred_state_unemp_year (year)"
+
+    fred_industry_unemployment:
+      description: "Industry-level unemployment observations"
+      columns:
+        - "id: INTEGER PRIMARY KEY"
+        - "industry_id: INTEGER FK(fred_industries)"
+        - "date: TEXT"
+        - "year: INTEGER"
+        - "month: INTEGER"
+        - "unemployment_rate: REAL"
+      indices:
+        - "ix_fred_industry_unemp_year (year)"
+
+usage:
+  cli_commands:
+    basic_load: "mise run data:fred-load"
+    reset_reload: "mise run data:fred-reset"
+    national_only: "mise run data:fred-national"
+
+  python_api: |
+    from babylon.data.fred import load_fred_data, FredNational, FredSeries
+
+    # Load all data
+    stats = load_fred_data(year=2022, reset=True)
+
+    # Query CPI data
+    from babylon.data.census import get_census_db
+    db = next(get_census_db())
+    cpi = db.query(FredNational).join(FredSeries).filter(
+        FredSeries.series_id == "CPIAUCSL"
+    ).all()
+
+  query_examples:
+    real_wage_calculation: |
+      SELECT
+          f_wage.value / (f_cpi.value / 100) as real_hourly_wage,
+          f_wage.date
+      FROM fred_national f_wage
+      JOIN fred_series s_wage ON f_wage.series_id = s_wage.id
+      JOIN fred_national f_cpi ON f_wage.date = f_cpi.date
+      JOIN fred_series s_cpi ON f_cpi.series_id = s_cpi.id
+      WHERE s_wage.series_id = 'AHETPI'
+        AND s_cpi.series_id = 'CPIAUCSL'
+        AND f_wage.year = 2022;
+
+    state_unemployment_with_qcew: |
+      SELECT
+          fs.name as state,
+          fu.unemployment_rate,
+          SUM(qa.employment) as total_employment
+      FROM fred_state_unemployment fu
+      JOIN fred_states fs ON fu.state_id = fs.id
+      JOIN qcew_areas qa ON qa.area_fips LIKE fs.fips_code || '%'
+      WHERE fu.year = 2022
+      GROUP BY fs.name;
+
+    reserve_army_trend: |
+      SELECT year, month, value as unemployment_rate
+      FROM fred_national fn
+      JOIN fred_series fs ON fn.series_id = fs.id
+      WHERE fs.series_id = 'UNRATE'
+      ORDER BY date;
+
+integration_notes:
+  joins_with_other_tables:
+    census:
+      - "fred_states.fips_code -> census_counties.state_fips (aggregate)"
+      - "Common: year = 2022"
+    qcew:
+      - "fred_industries.naics_sector -> qcew_industries.industry_code"
+      - "fred_states.fips_code -> qcew_areas.area_fips (2-char prefix)"
+    productivity:
+      - "fred_industries.naics_sector -> productivity_industries.naics_code"
+    trade:
+      - "PPPTTLUSD for unequal exchange calculations"
+
+  data_consistency:
+    year: 2022
+    note: |
+      All FRED data is loaded for 2022 to match Census, QCEW, and
+      Productivity data. Trade data spans 1985-2025 for historical
+      imperial rent analysis.

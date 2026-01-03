@@ -1,0 +1,720 @@
+# Census Data Insights for Babylon Game Design
+# Machine-readable analysis of 2017-2021 ACS 5-Year Estimates
+# Source: data/sqlite/census.sqlite (104,150 records across 392 metros)
+
+metadata:
+  analysis_date: "2026-01-02"
+  data_source: "US Census Bureau ACS 5-Year Estimates 2017-2021"
+  tables_analyzed:
+    - B19001: Household Income Distribution (17 brackets)
+    - B19013: Median Household Income
+    - B23025: Employment Status
+    - B24080: Class of Worker by Gender
+    - B25003: Housing Tenure (Owner/Renter)
+    - B25064: Median Gross Rent
+    - B25070: Rent Burden Distribution
+    - C24010: Occupation by Gender
+  metro_count: 392
+  variants:
+    - ACSDT5Y2021 (Main population)
+    - ACSDT5YAIAN2021 (American Indian/Alaska Native)
+
+#==============================================================================
+# KEY FINDING 1: The Labor Aristocracy is Geographically Concentrated
+#==============================================================================
+labor_aristocracy_metros:
+  description: |
+    Metros with highest median incomes represent the geographic concentration
+    of the labor aristocracy - workers whose wages exceed the value they produce
+    due to imperial rent extraction. These are the "bomb factory" towns where
+    workers have the highest material stake in system preservation.
+
+  top_20:
+    - metro: "San Jose-Sunnyvale-Santa Clara, CA"
+      median_income: 138370
+      income_to_rent_ratio: 4.59
+      notes: "Tech capital - highest incomes but also high rent burden"
+    - metro: "San Francisco-Oakland-Berkeley, CA"
+      median_income: 118547
+      income_to_rent_ratio: 4.58
+    - metro: "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+      median_income: 111252
+      income_to_rent_ratio: 5.20
+      notes: "Government/contractor economy"
+    - metro: "California-Lexington Park, MD"
+      median_income: 102859
+      income_to_rent_ratio: 5.75
+      notes: "Naval Air Station Patuxent River - military economy"
+    - metro: "Bridgeport-Stamford-Norwalk, CT"
+      median_income: 101194
+      income_to_rent_ratio: 5.29
+      notes: "Finance/hedge fund corridor"
+    - metro: "Boston-Cambridge-Newton, MA-NH"
+      median_income: 99039
+      income_to_rent_ratio: 4.97
+    - metro: "Seattle-Tacoma-Bellevue, WA"
+      median_income: 97675
+      income_to_rent_ratio: 4.79
+      notes: "Tech + Boeing aerospace"
+    - metro: "Minneapolis-St. Paul-Bloomington, MN-WI"
+      median_income: 87397
+      income_to_rent_ratio: 6.03
+      notes: "Most favorable income-to-rent ratio among top metros"
+
+  game_implication: |
+    These metros should have highest super_wage_rate values and strongest
+    fascist_bifurcation tendencies when crisis hits. Workers here have the
+    most to lose from system collapse - they will defend imperialism.
+
+#==============================================================================
+# KEY FINDING 2: Rent Burden WITHOUT Solidarity = Fascism Fuel (NOT Revolution)
+#==============================================================================
+rent_burden_crisis:
+  description: |
+    CRITICAL MLM-TW CORRECTION: High rent burden does NOT automatically create
+    revolutionary potential. The fascist bifurcation formula is explicit:
+    "Agitation without solidarity produces fascism, not revolution."
+
+    Rent burden in atomized populations (college towns, transient workers)
+    produces: DSA membership, Bernie votes, lifestyle leftism, and when
+    crisis intensifies - scapegoating and reaction. NOT revolutionary
+    organization.
+
+  severe_burden_leaders:  # 50%+ of income on rent
+    - metro: "Ithaca, NY"
+      pct_severe_burden: 37.9
+      median_income: 64260
+      mlm_tw_analysis: |
+        COUNTER-REVOLUTIONARY despite rent burden. Students are aspirational
+        labor aristocracy - they FORESEE survival within the system. P(S|A)
+        is high because they expect professional-managerial integration.
+        Transience = no organic community bonds = atomization.
+    - metro: "Vineland-Bridgeton, NJ"
+      pct_severe_burden: 37.3
+      median_income: 58397
+      mlm_tw_analysis: |
+        POTENTIAL revolutionary base - agricultural workers with stable
+        residence, non-aspirational class position. But requires solidarity
+        infrastructure assessment.
+    - metro: "Bloomington, IN"
+      pct_severe_burden: 37.1
+      median_income: 54060
+      mlm_tw_analysis: "Same as Ithaca - aspirational LA, atomized, transient."
+    - metro: "Miami-Fort Lauderdale-Pompano Beach, FL"
+      pct_severe_burden: 33.4
+      median_income: 62870
+      mlm_tw_analysis: |
+        COMPLEX - large Latino working class with non-transient roots vs.
+        service workers for tourism. Requires local solidarity assessment.
+        Cuban exile community creates counter-revolutionary bloc.
+    - metro: "New York-Newark-Jersey City, NY-NJ-PA"
+      pct_severe_burden: 27.5
+      median_income: 86445
+      mlm_tw_analysis: |
+        VELVET GLOVE LIBERALISM - gripped by reformist ideology. High rent
+        burden produces DSA chapters and tenant organizing that explicitly
+        rejects revolutionary politics. Manhattan is particularly counter-
+        revolutionary despite material conditions. The "non-profit industrial
+        complex" channels grievance into system-preserving reformism.
+
+  pattern_analysis: |
+    College towns dominate rent burden metrics because:
+    1. Student populations are TRANSIENT = high atomization
+    2. Students FORESEE professional-managerial class integration
+    3. No organic community bonds to transmit class consciousness
+    4. Exception: Palestinian solidarity (2024 encampments) shows that
+       SPECIFIC international solidarity CAN briefly penetrate the bubble
+
+    THE KEY INSIGHT: Rent burden is AGITATION ENERGY. Where it routes
+    depends entirely on SOLIDARITY INFRASTRUCTURE presence:
+    - WITH solidarity → class consciousness
+    - WITHOUT solidarity → national identity / reaction
+
+  game_implication: |
+    Rent burden should increase AGITATION_ENERGY, not revolutionary potential.
+    The routing depends on solidarity_edge presence:
+
+    if solidarity_strength > 0:
+        consciousness_drift += agitation_energy * k
+    else:
+        ideology_drift_toward_nationalism += agitation_energy * k
+
+    College towns should have NEGATIVE solidarity_baseline due to transience.
+    This makes them fascism-prone despite high agitation.
+
+#==============================================================================
+# KEY FINDING 3: The Contradiction - High Income ≠ Material Security
+#==============================================================================
+contradiction_metros:
+  description: |
+    Some high-income metros STILL have severe housing burden. This is the
+    "California Contradiction" - nominal wages high but real purchasing power
+    eroded. These workers are labor aristocracy by income but proletariat by
+    material conditions. This creates revolutionary potential in unexpected places.
+
+  top_cases:
+    - metro: "Boulder, CO"
+      median_income: 92466
+      pct_50plus_burden: 31.7
+      analysis: "Tech workers facing housing crisis"
+    - metro: "Los Angeles-Long Beach-Anaheim, CA"
+      median_income: 81652
+      pct_50plus_burden: 30.0
+      analysis: "Entertainment/aerospace workers, largest renter population"
+    - metro: "San Diego-Chula Vista-Carlsbad, CA"
+      median_income: 88240
+      pct_50plus_burden: 29.1
+    - metro: "Santa Cruz-Watsonville, CA"
+      median_income: 96093
+      pct_50plus_burden: 29.1
+    - metro: "Bridgeport-Stamford-Norwalk, CT"
+      median_income: 101194
+      pct_50plus_burden: 28.7
+      analysis: "Finance workers - high nominal income, high costs"
+    - metro: "New York-Newark-Jersey City, NY-NJ-PA"
+      median_income: 86445
+      pct_50plus_burden: 27.5
+      analysis: "Largest absolute population with severe burden"
+
+  game_implication: |
+    Create a "real_wage_ratio" mechanic: nominal_income / housing_cost
+    Workers with high nominal income but low real_wage_ratio should have
+    HIGHER consciousness_drift sensitivity than low-income workers who
+    never expected prosperity. The "betrayed middle class" is historically
+    key to both fascism AND revolution.
+
+#==============================================================================
+# KEY FINDING 4: Government Worker Concentration = State Dependency
+#==============================================================================
+government_worker_metros:
+  description: |
+    CRITICAL MLM-TW INSIGHT: Military and federal installations are THE
+    dominant factor determining counter-revolutionary stability. This
+    overwhelms other economic factors (including rent burden).
+
+    Military towns with adjacent universities are NOT "contradiction zones"
+    - the military/federal influence far outweighs student population effects.
+    From firsthand experience: organizing is effectively impossible in these
+    environments because the majority population has DIRECT material stake
+    in imperial apparatus continuation.
+
+  top_20_pct_government:
+    - metro: "California-Lexington Park, MD"
+      pct_govt: 12.3
+      breakdown:
+        federal: 11330
+        state: 2067
+        local: 4235
+      mlm_tw_analysis: |
+        HARD COUNTER-REVOLUTIONARY. Naval Air Station Patuxent River
+        creates labor aristocracy with direct imperial military stake.
+        Surrounding service economy serves military families.
+    - metro: "Manhattan, KS"
+      pct_govt: 11.7
+      mlm_tw_analysis: |
+        Fort Riley (1st Infantry Division) + Kansas State University.
+        CRITICAL CORRECTION: Military influence DOMINATES despite student
+        population. The university serves as military feeder institution.
+        Counter-revolutionary stronghold despite high renter %.
+    - metro: "Sierra Vista-Douglas, AZ"
+      pct_govt: 11.0
+      mlm_tw_analysis: |
+        Fort Huachuca - US Army Intelligence Center. NSA/CIA contractor
+        presence. Maximum state integration. Organizing target for
+        COINTELPRO observation, not revolutionary work.
+    - metro: "Bremerton-Silverdale-Port Orchard, WA"
+      pct_govt: 11.0
+      mlm_tw_analysis: |
+        Naval Base Kitsap - nuclear submarine base. Pacific Fleet logistics.
+        Workers have TOP SECRET clearances requiring ideological conformity.
+        Self-selecting for system loyalty.
+    - metro: "Hinesville, GA"
+      pct_govt: 9.8
+      mlm_tw_analysis: |
+        Fort Stewart - 3rd Infantry Division. Majority population is military
+        or military-dependent. Local economy entirely parasitic on base.
+        Revolutionary work here is suicide.
+
+  pattern_analysis: |
+    MILITARY TOWNS are THE primary counter-revolutionary formations:
+    1. Direct material stake in imperial apparatus
+    2. Self-selection for ideological conformity (clearances)
+    3. Concentrated state violence capacity (QRF always available)
+    4. Cultural hegemony of military values in surrounding community
+    5. Adjacent universities become MILITARY FEEDERS, not opposition
+
+    University towns adjacent to bases are NOT contradiction zones -
+    the military influence is hegemonic.
+
+  game_implication: |
+    MILITARY_PRESENCE should be the DOMINANT territory modifier:
+    - Sets consciousness_ceiling (cannot exceed 0.3 even with crisis)
+    - Reduces solidarity_edge formation by 80%
+    - Increases COINTELPRO effectiveness by 200%
+    - Provides instant QRF deployment (zero response time)
+    - Creates "informant culture" multiplier on organization exposure
+
+    State capitals have weaker but still significant effect.
+    University employment alone (without military) has minimal effect.
+
+#==============================================================================
+# KEY FINDING 5: Atomization Index - Renters vs Owners
+#==============================================================================
+atomization_patterns:
+  description: |
+    Renter concentration is a proxy for atomization - renters are more mobile,
+    have less stake in local property values, and are more easily organized
+    (or more easily displaced). High renter % = potential organizing base
+    but also potential fascist mob base if no solidarity infrastructure.
+
+  highest_renter_metros:
+    - metro: "Los Angeles-Long Beach-Anaheim, CA"
+      pct_renter: 51.2
+      renter_count: 2252034
+      notes: "Only major metro with renter majority"
+    - metro: "Lawrence, KS"
+      pct_renter: 49.9
+      notes: "University of Kansas"
+    - metro: "Manhattan, KS"
+      pct_renter: 49.0
+      notes: "Kansas State + Fort Riley"
+    - metro: "New York-Newark-Jersey City, NY-NJ-PA"
+      pct_renter: 48.2
+      renter_count: 3495249
+      notes: "Largest absolute renter population"
+    - metro: "San Francisco-Oakland-Berkeley, CA"
+      pct_renter: 44.8
+
+  lowest_renter_metros:
+    - metro: "The Villages, FL"
+      pct_renter: 12.9
+      notes: "Retirement community - property-owning counter-revolutionary base"
+    - metro: "Homosassa Springs, FL"
+      pct_renter: 16.3
+      notes: "Retirement community"
+    - metro: "Punta Gorda, FL"
+      pct_renter: 17.9
+    - metro: "Barnstable Town, MA"
+      pct_renter: 19.2
+      notes: "Cape Cod - wealthy retirees and vacation homes"
+
+  game_implication: |
+    Use renter_ratio to modify:
+    - Organization capacity (high renter = easier to organize but also disperse)
+    - Heat decay rate (renters leave when evicted, owners stay and fight)
+    - Fascist mob formation (rootless renters can be mobilized for violence)
+    - Gentrification displacement mechanics
+
+#==============================================================================
+# KEY FINDING 6: Production Worker Heartlands
+#==============================================================================
+production_worker_analysis:
+  description: |
+    Traditional proletariat - production, transportation, material moving -
+    concentrated in specific industrial metros. These workers have historical
+    organizing traditions (unions) and concentrated workplaces. Key targets
+    for revolutionary organizing but also for fascist nationalism.
+
+  top_production_metros:
+    - metro: "Dalton, GA"
+      pct_production: 20.5
+      median_income: 52898
+      notes: "Carpet manufacturing capital of the world"
+    - metro: "Elkhart-Goshen, IN"
+      pct_production: 17.1
+      median_income: 61182
+      notes: "RV manufacturing center"
+    - metro: "Hickory-Lenoir-Morganton, NC"
+      pct_production: 15.2
+      median_income: 53163
+      notes: "Furniture manufacturing"
+    - metro: "Sheboygan, WI"
+      pct_production: 15.1
+      median_income: 65352
+      notes: "Manufacturing - cheese, plastics, furniture"
+    - metro: "Muskegon, MI"
+      pct_production: 15.0
+      notes: "Former heavy industry"
+
+  service_worker_dominated:
+    - metro: "Guayama, PR"
+      pct_service: 19.1
+      notes: "Colonial service economy"
+    - metro: "El Centro, CA"
+      pct_service: 18.1
+      notes: "Agricultural processing"
+    - metro: "Las Vegas-Henderson-Paradise, NV"
+      pct_service: 16.9
+      notes: "Casino/hospitality economy"
+
+  game_implication: |
+    Production worker concentration should affect:
+    - Strike effectiveness (concentrated workplaces = higher impact)
+    - Base organization stat (union traditions)
+    - Vulnerability to automation narrative (fascist scapegoating)
+    - Consciousness routing (class identity vs national identity)
+
+#==============================================================================
+# KEY FINDING 7: Income Inequality Distribution
+#==============================================================================
+income_inequality:
+  description: |
+    Top-to-bottom income ratio (households earning $100k+ vs under $25k)
+    reveals class stratification within metros. High ratios = stark inequality
+    (visible mansions next to poverty). Low ratios = uniform poverty.
+
+  most_unequal:
+    - metro: "San Jose-Sunnyvale-Santa Clara, CA"
+      top_bottom_ratio: 7.53
+      notes: "Tech billionaires next to service workers"
+    - metro: "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+      top_bottom_ratio: 5.91
+      notes: "Contractors and lobbyists vs service workers"
+    - metro: "San Francisco-Oakland-Berkeley, CA"
+      top_bottom_ratio: 5.16
+
+  most_equal_non_pr:
+    - metro: "Beckley, WV"
+      top_bottom_ratio: 0.55
+      median_income: 44466
+      notes: "Uniformly poor - coal country decline"
+    - metro: "Pine Bluff, AR"
+      top_bottom_ratio: 0.58
+      median_income: 44756
+    - metro: "Brownsville-Harlingen, TX"
+      top_bottom_ratio: 0.56
+      median_income: 43057
+      notes: "Border town - uniform poverty"
+
+  puerto_rico_special_case:
+    note: |
+      Puerto Rico metros have ratios of 0.02-0.13 because almost everyone
+      is poor. This is colonial extraction - the "equality of poverty."
+    metros:
+      - metro: "Yauco, PR"
+        top_bottom_ratio: 0.02
+        median_income: 16749
+      - metro: "Mayagüez, PR"
+        top_bottom_ratio: 0.06
+        median_income: 16456
+
+  game_implication: |
+    High inequality should:
+    - Increase agitation generation (visible injustice)
+    - Enable fascist scapegoating (someone to blame)
+    - Require solidarity_edges for revolutionary routing
+
+    Low inequality (uniform poverty) should:
+    - Reduce internal class divisions
+    - Enable faster consciousness development
+    - Make revolutionary organization easier (no labor aristocracy buffer)
+
+#==============================================================================
+# KEY FINDING 8: Colonial Extraction - Puerto Rico
+#==============================================================================
+puerto_rico_analysis:
+  description: |
+    Puerto Rico metros consistently show the clearest colonial patterns:
+    highest unemployment, lowest incomes, highest rent burden, lowest inequality
+    (everyone poor). This is imperial rent extraction in its purest form.
+
+  unemployment_crisis:
+    - metro: "Mayagüez, PR"
+      unemployment_rate: 22.7
+      median_income: 16456
+    - metro: "Yauco, PR"
+      unemployment_rate: 20.7
+    - metro: "Ponce, PR"
+      unemployment_rate: 16.2
+    - metro: "San Juan-Bayamón-Caguas, PR"
+      unemployment_rate: 14.3
+      note: "Capital city - 120k unemployed"
+
+  comparison_to_mainland:
+    - US average unemployment (2021): ~5%
+    - PR average unemployment: 15-22%
+    - US median income: ~$70,000
+    - PR median income: ~$17,000-$25,000
+
+  game_implication: |
+    Puerto Rico should be modeled as INTERNAL PERIPHERY:
+    - Zero or negative imperial rent receipt
+    - Maximum extraction_rate from mainland
+    - Territory type: COLONIAL_POSSESSION
+    - High revolutionary_potential but LOW organization capacity (colonial suppression)
+
+#==============================================================================
+# COMPOSITE INDEX 1: Revolutionary Potential Score (CORRECTED MLM-TW FORMULA)
+#==============================================================================
+revolutionary_potential_index:
+  description: |
+    CRITICAL REVISION: The original formula was FUNDAMENTALLY FLAWED because
+    it treated rent burden and renter % as positive indicators of revolutionary
+    potential. This is ORTHODOX MARXIST ECONOMISM, not MLM-TW analysis.
+
+    The corrected formula must account for:
+    1. ATOMIZATION (transience, lack of organic community) as NEGATIVE
+    2. MILITARY/FEDERAL PRESENCE as DOMINANT NEGATIVE
+    3. ASPIRATIONAL CLASS POSITION (students) as NEGATIVE
+    4. EXISTING SOLIDARITY INFRASTRUCTURE as PREREQUISITE
+
+    Census data CANNOT directly measure solidarity infrastructure - this is
+    a limitation of quantitative analysis. Revolutionary potential requires
+    LOCAL ASSESSMENT of organizing history, union presence, mutual aid networks.
+
+  flawed_original_formula: |
+    # DO NOT USE - preserved for documentation of error
+    RPI = (pct_severe_rent_burden × 0.30) +
+          (pct_renter × 0.25) +
+          (pct_production × 0.25) +
+          ((100 - income/1000) × 0.20)
+
+  corrected_formula: |
+    # Agitation Energy (what census CAN measure)
+    AE = (pct_severe_rent_burden × 0.40) +
+         (inequality_ratio × 0.30) +
+         ((100 - income/1000) × 0.30)
+
+    # Counter-Revolutionary Factors (census-measurable)
+    CRF = (military_federal_pct × 3.0) +     # DOMINANT factor
+          (pct_owner × 0.20) +                # Property stake
+          (retirement_age_pct × 0.15)         # No future horizon
+
+    # Atomization Factor (REDUCES routing to class consciousness)
+    AF = transience_proxy × 0.5   # High renter in college town = atomized
+
+    # Actual Revolutionary Potential requires NON-CENSUS data:
+    RP = (AE - CRF) × solidarity_infrastructure_score × (1 - AF)
+
+  metros_with_genuine_potential:
+    - metro: "Vineland-Bridgeton, NJ"
+      analysis: |
+        Agricultural workers with stable residence, non-aspirational class
+        position. Farmworker organizing history. POTENTIAL base but requires
+        solidarity infrastructure assessment.
+    - metro: "El Centro, CA"
+      analysis: |
+        Imperial Valley - agricultural proletariat. UFW organizing history.
+        Latino working class with community roots. POTENTIAL base.
+    - metro: "Dalton, GA"
+      analysis: |
+        Carpet manufacturing - concentrated industrial proletariat.
+        Production workers with union potential. Stable residence.
+    - metro: "Brownsville-Harlingen, TX"
+      analysis: |
+        Border community - uniform poverty, Latino working class with
+        organic community bonds. Colonias organizing history.
+
+  metros_INCORRECTLY_rated_high_in_original:
+    - metro: "College Station-Bryan, TX"
+      correction: "Texas A&M is MILITARY FEEDER - Corps of Cadets is largest outside academies"
+    - metro: "Bloomington, IN"
+      correction: "Aspirational LA, transient, no organic bonds"
+    - metro: "Athens-Clarke County, GA"
+      correction: "Student transience, service economy for students"
+    - metro: "Hinesville, GA"
+      correction: "FORT STEWART - military base, organizing suicide"
+    - metro: "Gainesville, FL"
+      correction: "Transient students, aspirational LA, liberal bubble"
+    - metro: "Ithaca, NY"
+      correction: "Cornell/professional-managerial aspiration, velvet glove liberalism"
+
+  puerto_rico_exception:
+    note: |
+      Puerto Rico metros DO have genuine revolutionary potential because:
+      1. Colonial extraction = W_c/V_c ratio BELOW 1 (true periphery)
+      2. Non-transient population with community roots
+      3. Historical independence organizing tradition
+      4. No labor aristocracy buffer (uniform poverty)
+
+      Puerto Rico is INTERNAL PERIPHERY within US territory.
+
+  key_insight: |
+    Census data measures AGITATION ENERGY, not revolutionary potential.
+    Agitation energy routes through the fascist bifurcation:
+
+    WITH solidarity infrastructure → class consciousness
+    WITHOUT solidarity infrastructure → national identity / reaction
+
+    College towns have HIGH agitation but LOW solidarity (atomization).
+    Military towns have NEGATIVE potential regardless of other factors.
+    Genuine revolutionary potential exists in:
+    - Stable working-class communities with organizing history
+    - Agricultural labor with farmworker movement ties
+    - Industrial proletariat with union traditions
+    - Colonial territories (Puerto Rico) with independence history
+
+#==============================================================================
+# COMPOSITE INDEX 2: Stability Index (Counter-Revolutionary Strongholds)
+#==============================================================================
+stability_index:
+  description: |
+    Composite score combining: income (35%), low rent burden (30%),
+    ownership % (35%). Higher = more stable, counter-revolutionary.
+    These metros will resist system change most fiercely.
+
+  formula: |
+    SI = (income/1000 × 0.35) +
+         ((100 - pct_severe_burden) × 0.30) +
+         (pct_owner × 0.35)
+
+  top_25:
+    - metro: "San Jose-Sunnyvale-Santa Clara, CA"
+      score: 91.9
+      notes: "Tech capital - highest stability"
+    - metro: "Washington-Arlington-Alexandria, DC-VA-MD-WV"
+      score: 84.5
+      notes: "Government economy - state dependency"
+    - metro: "California-Lexington Park, MD"
+      score: 84.4
+      notes: "Military base - federal dependency"
+    - metro: "San Francisco-Oakland-Berkeley, CA"
+      score: 83.9
+    - metro: "Ogden-Clearfield, UT"
+      score: 80.4
+      notes: "Utah - high ownership, religious stability"
+    - metro: "Minneapolis-St. Paul-Bloomington, MN-WI"
+      score: 78.8
+      notes: "Corporate HQs + high ownership"
+    - metro: "Barnstable Town, MA"
+      score: 78.5
+      notes: "Cape Cod - wealthy retirees"
+    - metro: "Appleton, WI"
+      score: 77.3
+      notes: "Manufacturing + high ownership"
+    - metro: "Midland, TX"
+      score: 77.3
+      notes: "Oil industry"
+
+  key_insight: |
+    UTAH METROS appear repeatedly (Ogden, Provo, Salt Lake) because:
+    1. High home ownership (LDS culture emphasizes property)
+    2. Strong community ties (reduces atomization)
+    3. Lower rent burden (less speculation than coastal cities)
+    4. Conservative ideology (national identity routing guaranteed)
+
+    These are FASCIST STRONGHOLD candidates in crisis scenarios.
+
+#==============================================================================
+# GAME DESIGN RECOMMENDATIONS (CORRECTED MLM-TW FRAMEWORK)
+#==============================================================================
+game_design_recommendations:
+
+  territory_initialization:
+    description: |
+      Use census data to initialize territory attributes. CRITICAL: Census data
+      measures AGITATION ENERGY and COUNTER-REVOLUTIONARY FACTORS. It CANNOT
+      measure solidarity infrastructure - that requires separate modeling.
+    mappings:
+      - census_field: median_income
+        game_field: base_wage
+        transform: "median_income / 1000"
+        notes: "Higher wage = more to lose = higher P(S|A)"
+      - census_field: pct_severe_burden
+        game_field: agitation_energy_baseline
+        transform: "pct_severe_burden / 100"
+        notes: "This is AGITATION, not revolutionary potential"
+      - census_field: pct_renter
+        game_field: atomization_factor
+        transform: "pct_renter / 100 IF college_town ELSE pct_renter / 200"
+        notes: "College town renters = atomized, industrial renters = potential"
+      - census_field: pct_production
+        game_field: industrial_proletariat_base
+        transform: "pct_production / 10"
+        notes: "Concentrated workplace = strike potential"
+      - census_field: pct_federal_military
+        game_field: imperial_apparatus_integration
+        transform: "pct_federal_military × 3.0"
+        notes: "DOMINANT factor - overrides other considerations"
+      - census_field: pct_retirement_age
+        game_field: no_future_horizon_factor
+        transform: "pct_retirement_age / 100"
+        notes: "No stake in future = counter-revolutionary"
+
+  consciousness_dynamics:
+    - rule: "High inequality (>4.0 ratio) increases AGITATION_GENERATION by 50%"
+      note: "Not consciousness - agitation routes through bifurcation"
+    - rule: "High rent burden (>30%) increases AGITATION_ENERGY by 25%"
+      note: "Corrected from 'consciousness_drift' - energy must route through solidarity"
+    - rule: "High military/federal (>5%) sets consciousness_ceiling at 0.3"
+      note: "DOMINANT - cannot organize in occupied territory"
+    - rule: "High production workers (>12%) provides +20% solidarity_edge_formation_potential"
+      note: "Potential only realized with organizer presence"
+    - rule: "College town modifier: solidarity_baseline = -0.3"
+      note: "Transience destroys organic bonds"
+
+  fascist_bifurcation_modifiers:
+    - condition: "agitation_energy > 50 AND solidarity_infrastructure < 0.2"
+      effect: "national_identity routing probability = 80%"
+      note: "The core MLM-TW insight: crisis without solidarity = fascism"
+    - condition: "military_federal_pct > 8%"
+      effect: "consciousness_routing_blocked = true"
+      note: "Cannot organize in imperial apparatus territory"
+    - condition: "college_town = true AND rent_burden > 30%"
+      effect: "DSA_membership_increase but revolutionary_potential = 0"
+      note: "Velvet glove liberalism captures grievance"
+    - condition: "pct_owner > 75 AND median_age > 55"
+      effect: "counter_revolutionary_mobilization_ready = true"
+      note: "Property + no future = defend system at all costs"
+
+  strategic_value:
+    genuine_organizing_targets:
+      - pattern: "Agricultural proletariat + Latino community + UFW history"
+        examples: ["El Centro CA", "Vineland-Bridgeton NJ", "Brownsville TX"]
+        reason: "Stable population, non-aspirational, organizing traditions, organic bonds"
+      - pattern: "Industrial proletariat + Union history + Midwest"
+        examples: ["Dalton GA", "Elkhart IN", "Sheboygan WI"]
+        reason: "Concentrated workplace, production workers, potential strike leverage"
+      - pattern: "Colonial territory with independence tradition"
+        examples: ["Mayagüez PR", "San Juan PR", "Ponce PR"]
+        reason: "True periphery - W_c/V_c < 1, no labor aristocracy buffer"
+
+    INCORRECTLY_targeted_in_original_analysis:
+      - pattern: "College town + High rent burden"
+        examples: ["Gainesville FL", "Athens GA", "Ithaca NY", "Bloomington IN"]
+        correction: |
+          These are COUNTER-REVOLUTIONARY despite material conditions:
+          1. Aspirational labor aristocracy (students expect PMC integration)
+          2. Transience destroys organic community bonds
+          3. Liberal reformism captures grievance (velvet glove)
+          4. Service workers atomized, serving student/professional class
+      - pattern: "Military-adjacent college town"
+        examples: ["Manhattan KS", "College Station TX", "Hinesville GA"]
+        correction: |
+          Military influence is HEGEMONIC. University becomes military feeder.
+          Organizing here is suicide - maximum COINTELPRO exposure.
+
+    avoid_completely:
+      - pattern: "Military base + Any other factors"
+        examples: ["Sierra Vista AZ", "Bremerton WA", "California-Lexington Park MD"]
+        reason: "Imperial apparatus HQ - organizing = arrest/infiltration"
+      - pattern: "Retirement community + High ownership"
+        examples: ["The Villages FL", "Naples FL", "Barnstable MA"]
+        reason: "Maximum counter-revolutionary mobilization - fascist base"
+      - pattern: "Finance/tech hub + Liberal politics"
+        examples: ["San Francisco CA", "Manhattan NY", "Seattle WA"]
+        reason: "Velvet glove liberalism - captures all grievance into reformism"
+
+#==============================================================================
+# DATA QUALITY NOTES
+#==============================================================================
+data_quality:
+
+  aian_variant_limitation: |
+    The ACSDT5YAIAN2021 variant appears to contain identical values to the
+    main variant in our loaded data. This may be because the data files
+    contain POPGROUP columns that were not properly parsed to filter by
+    race/ethnicity. Future work should investigate the raw CSV structure
+    to properly extract AIAN-specific demographic data for settler
+    colonialism analysis.
+
+  census_data_age: |
+    2017-2021 5-year estimates predate COVID-19 economic impacts and the
+    2020s housing crisis acceleration. Real-time rent burden has likely
+    increased significantly since this data was collected.
+
+  puerto_rico_coverage: |
+    Puerto Rico metros are included in the dataset, enabling colonial
+    extraction analysis. However, Puerto Rico is NOT a U.S. state and
+    has different legal/economic frameworks that should be considered
+    when modeling.

@@ -38,6 +38,20 @@ Simulation Systems
 API reference for the seven core simulation systems, and demographics
 mechanics including the Mass Line population block paradigm.
 
+Economic Data Sources
+---------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   census-analysis
+   fred-data
+
+Empirical data sources for Marxian analysis:
+
+- **Census ACS**: Labor aristocracy identification, rent burden, class composition
+- **FRED**: CPI, wages, unemployment, fiscal indicators, PPP metrics
+
 Event System
 ------------
 

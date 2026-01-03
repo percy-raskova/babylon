@@ -383,6 +383,26 @@ run = "poetry run python tools/load_fred.py --national-only"
 description = "Reset and reload FRED national series only"
 run = "poetry run python tools/load_fred.py --national-only --reset"
 
+[tasks."data:energy-load"]
+description = "Load EIA energy data into SQLite (1949-2024 annual)"
+run = "poetry run python tools/load_energy.py"
+
+[tasks."data:energy-reset"]
+description = "Reset and reload EIA energy data"
+run = "poetry run python tools/load_energy.py --reset"
+
+[tasks."data:energy-all"]
+description = "Load all EIA tables (not just priority)"
+run = "poetry run python tools/load_energy.py --all"
+
+[tasks."data:materials-load"]
+description = "Load USGS mineral data into SQLite (2020-2024)"
+run = "poetry run python tools/load_materials.py"
+
+[tasks."data:materials-reset"]
+description = "Reset and reload USGS materials data"
+run = "poetry run python tools/load_materials.py --reset"
+
 # =============================================================================
 # DOCUMENTATION (Namespaced)
 # =============================================================================

@@ -403,6 +403,18 @@ run = "poetry run python tools/load_materials.py"
 description = "Reset and reload USGS materials data"
 run = "poetry run python tools/load_materials.py --reset"
 
+[tasks."data:normalize"]
+description = "Create normalized 3NF database from research.sqlite"
+run = "poetry run python tools/normalize_research_db.py"
+
+[tasks."data:normalize-reset"]
+description = "Reset and recreate normalized 3NF database"
+run = "poetry run python tools/normalize_research_db.py --reset"
+
+[tasks."data:normalize-views"]
+description = "Recreate analytical views only"
+run = "poetry run python tools/normalize_research_db.py --views-only"
+
 # =============================================================================
 # DOCUMENTATION (Namespaced)
 # =============================================================================

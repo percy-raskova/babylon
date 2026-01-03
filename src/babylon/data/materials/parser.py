@@ -61,6 +61,15 @@ class StateRecord:
     principal_commodities: str | None
 
 
+@dataclass
+class ImportSourceRecord:
+    """Parsed import source country."""
+
+    country: str
+    commodity_count: int
+    map_class: str | None
+
+
 def parse_value(raw: str | None) -> tuple[float | None, str | None]:
     """Parse raw value, handling USGS special cases.
 
@@ -372,6 +381,48 @@ def parse_state_csv(file_path: Path) -> list[StateRecord]:
                     rank=rank,
                     percent_total=percent_total,
                     principal_commodities=principal if principal else None,
+                )
+            )
+
+    return records
+
+
+def parse_import_sources_csv(file_path: Path) -> list[ImportSourceRecord]:
+    """Parse major import sources CSV.
+
+    CSV structure:
+        Source,Country,Commodity_Count,Map_Class
+        MCS2024,Australia,6,4 to 6
+        ...
+
+    Args:
+        file_path: Path to MCS2025_Fig3_Major_Import_Sources.csv
+
+    Returns:
+        List of ImportSourceRecord objects.
+    """
+    records: list[ImportSourceRecord] = []
+
+    with file_path.open(newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+
+        for row in reader:
+            country = row.get("Country", "").strip()
+            if not country:
+                continue
+
+            try:
+                commodity_count = int(row.get("Commodity_Count", "0"))
+            except ValueError:
+                commodity_count = 0
+
+            map_class = row.get("Map_Class", "").strip() or None
+
+            records.append(
+                ImportSourceRecord(
+                    country=country,
+                    commodity_count=commodity_count,
+                    map_class=map_class,
                 )
             )
 

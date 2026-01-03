@@ -23,12 +23,14 @@ from sqlalchemy.orm import Session
 from babylon.data.census.database import CensusBase, census_engine, get_census_db
 from babylon.data.materials.parser import (
     CommodityRecord,
+    ImportSourceRecord,
     StateRecord,
     TrendRecord,
     discover_aggregate_files,
     discover_commodity_files,
     get_metric_category,
     parse_commodity_csv,
+    parse_import_sources_csv,
     parse_state_csv,
     parse_trends_csv,
 )
@@ -426,6 +428,36 @@ def _load_trends(
     return count
 
 
+def _load_import_sources(
+    db: Session,
+    records: list[ImportSourceRecord],
+    _verbose: bool = True,
+) -> int:
+    """Load import source countries.
+
+    Args:
+        db: Database session.
+        records: List of parsed import source records.
+        verbose: Print progress.
+
+    Returns:
+        Number of import source records loaded.
+    """
+    count = 0
+
+    for record in records:
+        source = ImportSource(
+            country=record.country,
+            commodity_count=record.commodity_count,
+            map_class=record.map_class,
+        )
+        db.add(source)
+        count += 1
+
+    db.flush()
+    return count
+
+
 def load_materials_data(  # noqa: C901
     materials_dir: Path,
     reset: bool = False,
@@ -542,6 +574,15 @@ def load_materials_data(  # noqa: C901
             stats.trends_loaded = trend_count
             db.commit()
 
+        # Import sources
+        if aggregate_files["import_sources"]:
+            if verbose:
+                print(f"\nLoading import sources from {aggregate_files['import_sources'].name}...")
+            import_records = parse_import_sources_csv(aggregate_files["import_sources"])
+            import_count = _load_import_sources(db, import_records, verbose)
+            stats.import_sources_loaded = import_count
+            db.commit()
+
     except Exception as e:
         stats.errors.append(f"Database error: {e}")
         db.rollback()
@@ -557,6 +598,7 @@ def load_materials_data(  # noqa: C901
         print(f"  States: {stats.states_loaded}")
         print(f"  State minerals: {stats.state_minerals_loaded}")
         print(f"  Trends: {stats.trends_loaded}")
+        print(f"  Import sources: {stats.import_sources_loaded}")
         if stats.errors:
             print(f"  Errors: {len(stats.errors)}")
 

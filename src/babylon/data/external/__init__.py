@@ -17,6 +17,6 @@ Submodules:
     bls: Bureau of Labor Statistics data ingestion
 """
 
-from babylon.data.external.base import DataIngester, IngestResult
+from babylon.data.external.base import DataIngester, IngestResult, validate_year
 
-__all__ = ["DataIngester", "IngestResult"]
+__all__ = ["DataIngester", "IngestResult", "validate_year"]

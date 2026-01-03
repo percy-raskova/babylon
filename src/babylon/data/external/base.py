@@ -257,3 +257,35 @@ def parse_float(value: str | None, default: float | None = None) -> float | None
         return float(value.replace(",", ""))
     except ValueError:
         return default
+
+
+def validate_year(
+    value: str | None,
+    field_name: str = "year",
+    min_year: int = 1900,
+    max_year: int = 2100,
+) -> list[str]:
+    """Validate a year value and return any errors.
+
+    Args:
+        value: Year value to validate
+        field_name: Name of the field for error messages
+        min_year: Minimum valid year (default 1900)
+        max_year: Maximum valid year (default 2100)
+
+    Returns:
+        List of error messages (empty if valid)
+    """
+    errors: list[str] = []
+
+    if not value:
+        errors.append(f"Missing required field: {field_name}")
+    else:
+        try:
+            year = int(value)
+            if year < min_year or year > max_year:
+                errors.append(f"Year out of range: {year}")
+        except ValueError:
+            errors.append(f"Invalid {field_name}: {value}")
+
+    return errors

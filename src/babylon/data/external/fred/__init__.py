@@ -15,7 +15,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from babylon.data.external.base import DataIngester, IngestResult, parse_float
+from babylon.data.external.base import DataIngester, IngestResult, parse_float, validate_year
 from babylon.data.schema import FredIndicator
 
 if TYPE_CHECKING:
@@ -49,17 +49,7 @@ class FredIndicatorIngester(DataIngester[FredIndicator]):
         Returns:
             List of validation error messages (empty if valid)
         """
-        errors: list[str] = []
-
-        if not row.get("year"):
-            errors.append("Missing required field: year")
-        else:
-            try:
-                year = int(row["year"])
-                if year < 1900 or year > 2100:
-                    errors.append(f"Year out of range: {year}")
-            except ValueError:
-                errors.append(f"Invalid year: {row['year']}")
+        errors = validate_year(row.get("year"))
 
         # Validate quarter if provided
         quarter_str = row.get("quarter", "").strip()

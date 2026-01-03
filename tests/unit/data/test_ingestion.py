@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from babylon.data.database import Base
-from babylon.data.external.base import IngestResult, parse_float, parse_int
+from babylon.data.external.base import IngestResult, parse_float, parse_int, validate_year
 from babylon.data.external.bls import (
     StrategicResourceIngester,
     UnionMembershipIngester,
@@ -104,6 +104,46 @@ class TestParseUtilities:
         """Return default for invalid strings."""
         assert parse_float("abc") is None
         assert parse_float("abc", default=0.0) == 0.0
+
+    def test_validate_year_valid(self) -> None:
+        """Validate valid year values."""
+        assert validate_year("2023") == []
+        assert validate_year("1900") == []
+        assert validate_year("2100") == []
+
+    def test_validate_year_missing(self) -> None:
+        """Validation fails for missing year."""
+        errors = validate_year(None)
+        assert len(errors) == 1
+        assert "Missing required field: year" in errors[0]
+
+        errors = validate_year("")
+        assert len(errors) == 1
+
+    def test_validate_year_out_of_range(self) -> None:
+        """Validation fails for out-of-range years."""
+        errors = validate_year("1800")  # Before default min 1900
+        assert len(errors) == 1
+        assert "out of range" in errors[0].lower()
+
+        errors = validate_year("2200")  # After default max 2100
+        assert len(errors) == 1
+        assert "out of range" in errors[0].lower()
+
+    def test_validate_year_invalid(self) -> None:
+        """Validation fails for non-numeric years."""
+        errors = validate_year("abc")
+        assert len(errors) == 1
+        assert "invalid" in errors[0].lower()
+
+    def test_validate_year_custom_range(self) -> None:
+        """Validation uses custom min/max years."""
+        # Census data can go back to 1790
+        errors = validate_year("1800", min_year=1790)
+        assert len(errors) == 0  # 1800 is valid with 1790 min
+
+        errors = validate_year("1750", min_year=1790)
+        assert len(errors) == 1  # 1750 is out of range
 
 
 # =============================================================================

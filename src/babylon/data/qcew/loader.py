@@ -26,11 +26,9 @@ from babylon.data.qcew.parser import (
     determine_naics_level,
     extract_state_fips,
     parse_all_area_files,
-    parse_all_labor_hours_files,
     parse_raw_csv_chunked,
 )
 from babylon.data.qcew.schema import (
-    LaborHours2022,
     QcewAnnual,
     QcewArea,
     QcewIndustry,
@@ -413,92 +411,6 @@ def load_raw_2022_data(
         raise RuntimeError(f"Failed to load raw QCEW 2022 data: {e}") from e
 
 
-def load_labor_hours_data(
-    data_dir: Path,
-    reset: bool = False,
-    verbose: bool = True,
-    batch_size: int = 10_000,
-) -> dict[str, int]:
-    """Load labor hours Excel data into labor_hours_2022 table.
-
-    Args:
-        data_dir: Path to data/mass_labor_hours/
-        reset: If True, drop and recreate table
-        verbose: Print progress
-        batch_size: Commit every N records
-
-    Returns:
-        Dict with statistics (total_rows, files_processed)
-    """
-    if verbose:
-        print(f"Loading labor hours data from {data_dir}")
-
-    # Reset table if requested
-    if reset:
-        if verbose:
-            print("Dropping labor_hours_2022 table...")
-        LaborHours2022.__table__.drop(bind=census_engine, checkfirst=True)  # type: ignore[attr-defined]
-
-    # Ensure table exists
-    init_census_db()
-
-    session = CensusSessionLocal()
-    total_rows = 0
-    files_processed = 0
-
-    try:
-        xlsx_files = sorted(data_dir.glob("allhlcn*.xlsx"))
-        files_processed = len(xlsx_files)
-
-        for rec in parse_all_labor_hours_files(data_dir):
-            record = LaborHours2022(
-                area_code=rec.area_code,
-                state=rec.state,
-                county=rec.county,
-                area_type=rec.area_type,
-                state_name=rec.state_name,
-                area_name=rec.area_name,
-                own_code=rec.own_code,
-                naics=rec.naics,
-                ownership_label=rec.ownership_label,
-                industry_label=rec.industry_label,
-                year=rec.year,
-                qtr=rec.qtr,
-                status_code=rec.status_code,
-                establishments=rec.establishments,
-                employment=rec.employment,
-                total_wages=rec.total_wages,
-                avg_weekly_wage=rec.avg_weekly_wage,
-                avg_annual_pay=rec.avg_annual_pay,
-                employment_lq=rec.employment_lq,
-                wage_lq=rec.wage_lq,
-            )
-            session.add(record)
-            total_rows += 1
-
-            # Batch commit
-            if total_rows % batch_size == 0:
-                session.commit()
-                if verbose:
-                    print(f"  Loaded {total_rows:,} records...")
-
-        session.commit()
-
-        if verbose:
-            print(f"Completed: {total_rows:,} rows from {files_processed} files")
-
-        return {
-            "total_rows": total_rows,
-            "files_processed": files_processed,
-        }
-
-    except Exception as e:
-        session.rollback()
-        raise RuntimeError(f"Failed to load labor hours data: {e}") from e
-    finally:
-        session.close()
-
-
 def print_class_composition(verbose: bool = True) -> dict[str, int | float]:
     """Print class composition validation after ingestion.
 
@@ -608,6 +520,5 @@ __all__ = [
     "load_dimensions_from_records",
     "load_annual_facts",
     "load_raw_2022_data",
-    "load_labor_hours_data",
     "print_class_composition",
 ]

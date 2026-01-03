@@ -367,6 +367,22 @@ run = "poetry run python tools/load_productivity.py --reset"
 description = "Load all years of productivity data (1987-2024)"
 run = "poetry run python tools/load_productivity.py --all-years --reset"
 
+[tasks."data:fred-load"]
+description = "Load FRED macroeconomic data into SQLite (national + state + industry, 2022)"
+run = "poetry run python tools/load_fred.py"
+
+[tasks."data:fred-reset"]
+description = "Reset and reload all FRED data"
+run = "poetry run python tools/load_fred.py --reset"
+
+[tasks."data:fred-national"]
+description = "Load FRED national series only (CPI, wages, unemployment, etc.)"
+run = "poetry run python tools/load_fred.py --national-only"
+
+[tasks."data:fred-national-reset"]
+description = "Reset and reload FRED national series only"
+run = "poetry run python tools/load_fred.py --national-only --reset"
+
 # =============================================================================
 # DOCUMENTATION (Namespaced)
 # =============================================================================

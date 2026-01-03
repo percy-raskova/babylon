@@ -1,0 +1,73 @@
+# Copilot Coding Agent Setup
+# Pre-installs dependencies for GitHub Copilot's ephemeral environment
+# Docs: docs.github.com/en/copilot/customizing-copilot/
+#       customizing-the-development-environment-for-copilot-coding-agent
+
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: copilot-venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Install mise (task runner)
+        uses: jdx/mise-action@v2
+        with:
+          install: true
+
+      - name: Install pre-commit hooks
+        run: poetry run pre-commit install --install-hooks
+
+      - name: Verify environment
+        run: |
+          echo "=== Python version ==="
+          python --version
+          echo "=== Poetry version ==="
+          poetry --version
+          echo "=== Installed packages ==="
+          poetry show --tree | head -50
+          echo "=== Available mise tasks ==="
+          mise tasks 2>/dev/null || echo "mise tasks not available"
+          echo "=== Quick sanity check ==="
+          poetry run python -c "import babylon; print(f'babylon version: {babylon.__version__}')"

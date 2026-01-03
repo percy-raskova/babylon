@@ -22,6 +22,17 @@ Key Formulas:
 """
 
 # Re-export constants
+# Re-export Class Dynamics formulas (FRED DFA-derived)
+from babylon.systems.formulas.class_dynamics import (
+    ClassDynamicsParams,
+    SecondOrderParams,
+    calculate_class_dynamics_derivative,
+    calculate_equilibrium_deviation,
+    calculate_full_dynamics,
+    calculate_wealth_acceleration,
+    calculate_wealth_flow,
+    invert_wealth_to_population,
+)
 from babylon.systems.formulas.constants import (
     EPSILON,
     LOSS_AVERSION_COEFFICIENT,
@@ -116,4 +127,13 @@ __all__ = [
     "calculate_trpf_multiplier",
     # Vitality (Mass Line Refactor)
     "calculate_mortality_rate",
+    # Class Dynamics (FRED DFA-derived)
+    "ClassDynamicsParams",
+    "SecondOrderParams",
+    "calculate_class_dynamics_derivative",
+    "calculate_equilibrium_deviation",
+    "calculate_full_dynamics",
+    "calculate_wealth_acceleration",
+    "calculate_wealth_flow",
+    "invert_wealth_to_population",
 ]

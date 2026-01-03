@@ -22,9 +22,10 @@ Mathematical Formulas
    :maxdepth: 1
 
    formulas
+   class-dynamics
 
 All simulation formulas: imperial rent, survival calculus, consciousness
-drift, solidarity transmission, and dynamic balance.
+drift, solidarity transmission, dynamic balance, and class wealth dynamics ODEs.
 
 Simulation Systems
 ------------------

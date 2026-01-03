@@ -3,17 +3,20 @@
 # Source: ~/projects/game/notes/manifesto.md
 
 meta:
-  version: "2.3.0"
+  version: "2.4.0"
   created: "2024-12-07"
-  updated: "2025-12-26"
+  updated: "2026-01-02"
   purpose: "Document the implemented mathematical formulas that transform types into behavior"
   principle: "Types are nouns, formulas are verbs"
-  status: "IMPLEMENTED (15 formulas) + CONCEPTUAL (1 distribution pattern)"
-  location: "src/babylon/systems/formulas.py"
-  tests: "tests/unit/formulas/ (40+ tests, ALL PASSING)"
-  formula_count: 16
+  status: "IMPLEMENTED (21 formulas) + CONCEPTUAL (1 distribution pattern)"
+  location: "src/babylon/systems/formulas/"
+  tests: "tests/unit/formulas/ (80+ tests, ALL PASSING)"
+  formula_count: 22
   note: "This spec documents the complete formula inventory driving the simulation."
   sprint_3_4_3_update: "Added calculate_ideological_routing() for George Jackson Refactor"
+  class_dynamics_update: |
+    Added 6 class wealth dynamics formulas from FRED DFA analysis (2026-01-02).
+    See ai-docs/class-dynamics.yaml for full specification.
 
 # =============================================================================
 # FORMULA INVENTORY (12 FORMULAS, ALL IMPLEMENTED)

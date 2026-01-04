@@ -51,6 +51,7 @@ from babylon.data.census.database import (
     init_census_db,
 )
 from babylon.data.census.loader import load_census_data
+from babylon.data.census.loader_3nf import CensusLoader
 from babylon.data.census.schema import (
     CensusColumnMetadata,
     CensusCommute,
@@ -88,7 +89,8 @@ __all__ = [
     "VariableMetadata",
     "fetch_county_table",
     # Loaders
-    "load_census_from_api",
+    "CensusLoader",  # 3NF direct loader (recommended)
+    "load_census_from_api",  # Legacy API loader (writes to research.sqlite)
     "load_census_data",  # Legacy CSV loader
     # Table constants
     "ALL_TABLES",

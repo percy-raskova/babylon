@@ -112,6 +112,11 @@ from babylon.data.fred.loader import (
     load_fred_data,
     reset_fred_tables,
 )
+from babylon.data.fred.loader_3nf import (
+    ALL_NATIONAL_SERIES,
+    PRODUCTIVITY_SERIES,
+    FredLoader,
+)
 from babylon.data.fred.parser import (
     IndustryUnemploymentRecord,
     NationalRecord,
@@ -157,9 +162,12 @@ __all__ = [
     "DFA_ASSET_CATEGORIES",
     "DFA_WEALTH_LEVEL_SERIES",
     "DFA_WEALTH_SHARE_SERIES",
-    # Loader
-    "LoadStats",
-    "load_fred_data",
+    # Loaders
+    "FredLoader",  # 3NF direct loader (recommended)
+    "ALL_NATIONAL_SERIES",  # National + Productivity series
+    "PRODUCTIVITY_SERIES",  # Productivity series only
+    "LoadStats",  # Legacy loader stats
+    "load_fred_data",  # Legacy API loader (writes to research.sqlite)
     "init_fred_tables",
     "reset_fred_tables",
     # Parser

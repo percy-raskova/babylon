@@ -6,31 +6,45 @@ for imperial economics analysis in Babylon simulation.
 This module ingests data from the USGS Mineral Commodity Summaries (MCS),
 which provides annual U.S. and global statistics for ~85 mineral commodities.
 
-Tables:
-    commodities: Mineral/material dimension (~85 commodities)
-    commodity_metrics: Measurement type dimension (~15 metrics)
-    commodity_observations: Annual observations (EAV pattern, 2020-2024)
-    materials_states: US state dimension for geographic joins
-    state_minerals: State-level production values
-    mineral_trends: Industry aggregate trends
-    import_sources: Major import countries
+Two ingestion paths are available:
 
-Join keys:
-    year: For temporal joins with Census, QCEW, FRED, Energy data
-    fips_code: For geographic joins with Census counties via materials_states
+1. **3NF Direct (recommended)**: Uses MaterialsLoader with DataLoader base class
+   - Direct 3NF schema population (marxist-data-3NF.sqlite)
+   - Parameterized via LoaderConfig (materials_start_year, materials_end_year)
+   - Parses CSV files from USGS MCS data
+
+2. **Legacy**: Uses load_materials_data
+   - Writes to research.sqlite
+   - Requires local CSV files in data/raw_mats/
+
+Tables (3NF schema):
+    dim_commodity: Mineral/material dimension with critical flags
+    dim_commodity_metric: Measurement type dimension
+    fact_commodity_observation: Annual observations
 
 Key Marxian metric:
     NIR_pct (Net Import Reliance) = imperial vulnerability index.
     NIR >50% means the US is dependent on periphery extraction
     for strategic materials (lithium, cobalt, rare earths, etc.).
 
-Example:
+Example (3NF Direct):
+    from babylon.data.materials import MaterialsLoader
+    from babylon.data.loader_base import LoaderConfig
+    from babylon.data.normalize.database import get_normalized_session
+
+    config = LoaderConfig(materials_years=list(range(2015, 2025)))
+    loader = MaterialsLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=True)
+        print(f"Loaded {stats.facts_loaded} observations")
+
+Example (Legacy):
     from pathlib import Path
     from babylon.data.materials import load_materials_data
 
     stats = load_materials_data(Path("data/raw_mats"), reset=True)
-    print(f"Loaded {stats.observations_loaded} observations "
-          f"for {stats.commodities_loaded} commodities")
+    print(f"Loaded {stats.observations_loaded} observations")
 """
 
 from babylon.data.materials.loader import (
@@ -39,6 +53,7 @@ from babylon.data.materials.loader import (
     load_materials_data,
     reset_materials_tables,
 )
+from babylon.data.materials.loader_3nf import MaterialsLoader
 from babylon.data.materials.parser import (
     CommodityRecord,
     StateRecord,
@@ -63,7 +78,9 @@ from babylon.data.materials.schema import (
 )
 
 __all__ = [
-    # Schema models
+    # 3NF Loader (recommended)
+    "MaterialsLoader",
+    # Legacy schema models
     "Commodity",
     "CommodityMetric",
     "CommodityObservation",
@@ -84,7 +101,7 @@ __all__ = [
     "parse_trends_csv",
     "discover_commodity_files",
     "discover_aggregate_files",
-    # Loader
+    # Legacy loader
     "MaterialsLoadStats",
     "init_materials_tables",
     "reset_materials_tables",

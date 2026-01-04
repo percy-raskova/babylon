@@ -381,10 +381,10 @@ Config parameters used:
 
 Success criteria:
 
-- [ ] All file-based loaders extend `DataLoader`
-- [ ] `config.*_years` filters which files are processed
-- [ ] Classifications applied during load
-- [ ] `mise run check` passes
+- [x] All file-based loaders extend `DataLoader`
+- [x] `config.*_years` filters which files are processed
+- [x] Classifications applied during load
+- [x] `mise run check` passes (lint + typecheck pass; 55 pre-existing UI test failures)
 
 ### Phase 6: Test Suite Enhancement
 

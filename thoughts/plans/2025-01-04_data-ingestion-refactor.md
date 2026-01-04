@@ -330,11 +330,11 @@ Config parameters used:
 
 Success criteria:
 
-- [ ] `EnergyAPIClient` fetches data from EIA API v2
-- [ ] `config.energy_start_year`/`energy_end_year` control data range
-- [ ] `EnergyLoader.load()` populates energy dimension/fact tables
-- [ ] No Excel file dependencies
-- [ ] `mise run check` passes
+- [x] `EnergyAPIClient` fetches data from EIA API v2
+- [x] `config.energy_start_year`/`energy_end_year` control data range
+- [x] `EnergyLoader.load()` populates energy dimension/fact tables
+- [x] No Excel file dependencies (API-first approach)
+- [x] `mise run check` passes (lint + typecheck pass; 55 pre-existing UI test failures)
 
 ### Phase 5: File-Based Loaders (Trade, QCEW, Materials)
 

@@ -474,6 +474,46 @@ class DimDataSource(NormalizedBase):
 
 
 # =============================================================================
+# COERCIVE INFRASTRUCTURE DIMENSION TABLES
+# =============================================================================
+
+
+class DimCoerciveType(NormalizedBase):
+    """Coercive infrastructure type classification.
+
+    Categorizes state power apparatus by function and command chain:
+    - Carceral: prisons, jails, detention centers
+    - Enforcement: police stations, sheriff offices
+    - Military: bases, armories, installations
+    """
+
+    __tablename__ = "dim_coercive_type"
+
+    coercive_type_id: Mapped[int] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    category: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # carceral, enforcement, military
+    command_chain: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # federal, state, local, mixed
+
+    __table_args__ = (
+        Index("idx_coercive_category", "category"),
+        Index("idx_coercive_command", "command_chain"),
+        CheckConstraint(
+            "category IN ('carceral', 'enforcement', 'military')",
+            name="ck_coercive_category",
+        ),
+        CheckConstraint(
+            "command_chain IN ('federal', 'state', 'local', 'mixed')",
+            name="ck_coercive_command_chain",
+        ),
+    )
+
+
+# =============================================================================
 # CENSUS FACT TABLES
 # =============================================================================
 
@@ -927,6 +967,75 @@ class FactMineralEmployment(NormalizedBase):
 
 
 # =============================================================================
+# CIRCULATORY SYSTEM FACT TABLES
+# =============================================================================
+
+
+class FactCoerciveInfrastructure(NormalizedBase):
+    """County-level coercive infrastructure capacity.
+
+    Aggregates facility-level data from HIFLD (prisons, police) and MIRTA
+    (military) to county-level counts and capacity metrics.
+    """
+
+    __tablename__ = "fact_coercive_infrastructure"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    coercive_type_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_coercive_type.coercive_type_id"), primary_key=True
+    )
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_data_source.source_id"), primary_key=True
+    )
+    facility_count: Mapped[int] = mapped_column(default=0)
+    total_capacity: Mapped[int | None] = mapped_column()  # beds, personnel, etc.
+
+    __table_args__ = (
+        Index("idx_coercive_county", "county_id"),
+        Index("idx_coercive_type_fact", "coercive_type_id"),
+    )
+
+
+class FactBroadbandCoverage(NormalizedBase):
+    """County-level broadband coverage metrics from FCC BDC.
+
+    Tracks broadband access at multiple speed tiers for digital divide analysis.
+    """
+
+    __tablename__ = "fact_broadband_coverage"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_data_source.source_id"), primary_key=True
+    )
+    pct_25_3: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # % with 25/3 Mbps
+    pct_100_20: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # % with 100/20 Mbps
+    pct_1000_100: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))  # % with gigabit
+    provider_count: Mapped[int | None] = mapped_column()
+
+    __table_args__ = (Index("idx_broadband_county", "county_id"),)
+
+
+class FactElectricGrid(NormalizedBase):
+    """County-level electric grid infrastructure from HIFLD.
+
+    Tracks power infrastructure capacity for critical infrastructure modeling.
+    """
+
+    __tablename__ = "fact_electric_grid"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_data_source.source_id"), primary_key=True
+    )
+    substation_count: Mapped[int] = mapped_column(default=0)
+    total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    transmission_line_miles: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+    __table_args__ = (Index("idx_electric_county", "county_id"),)
+
+
+# =============================================================================
 # EXPORTS
 # =============================================================================
 
@@ -966,6 +1075,8 @@ __all__ = [
     "DimTime",
     "DimGender",
     "DimDataSource",
+    # Dimensions - Coercive Infrastructure
+    "DimCoerciveType",
     # Facts - Census
     "FactCensusIncome",
     "FactCensusMedianIncome",
@@ -1000,4 +1111,8 @@ __all__ = [
     "FactStateMinerals",
     "FactMineralProduction",
     "FactMineralEmployment",
+    # Facts - Circulatory System
+    "FactCoerciveInfrastructure",
+    "FactBroadbandCoverage",
+    "FactElectricGrid",
 ]

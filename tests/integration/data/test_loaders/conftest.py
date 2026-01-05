@@ -152,6 +152,35 @@ def get_all_loader_classes() -> list[type[DataLoader]]:
     except ImportError:
         pass
 
+    # Circulatory System Loaders (HIFLD/MIRTA/FCC)
+    try:
+        from babylon.data.hifld.prisons import HIFLDPrisonsLoader
+
+        loaders.append(HIFLDPrisonsLoader)
+    except ImportError:
+        pass
+
+    try:
+        from babylon.data.hifld.police import HIFLDPoliceLoader
+
+        loaders.append(HIFLDPoliceLoader)
+    except ImportError:
+        pass
+
+    try:
+        from babylon.data.hifld.electric import HIFLDElectricLoader
+
+        loaders.append(HIFLDElectricLoader)
+    except ImportError:
+        pass
+
+    try:
+        from babylon.data.mirta.loader import MIRTAMilitaryLoader
+
+        loaders.append(MIRTAMilitaryLoader)
+    except ImportError:
+        pass
+
     return loaders
 
 

@@ -442,3 +442,250 @@ class TestDataLoaderInterface:
         for table in tables:
             assert isinstance(table, type)
             assert hasattr(table, "__tablename__")
+
+
+# =============================================================================
+# FK-SAFE CLEAR_TABLES TESTS
+# =============================================================================
+
+
+class FKTestLoader(DataLoader):
+    """Loader that handles tables with FK dependencies for testing."""
+
+    def __init__(
+        self,
+        config: LoaderConfig | None = None,
+        wrong_order: bool = False,
+    ) -> None:
+        """Initialize with FK ordering control.
+
+        Args:
+            config: Optional loader configuration
+            wrong_order: If True, return tables in wrong FK order (will fail)
+        """
+        super().__init__(config)
+        self._wrong_order = wrong_order
+
+    def load(
+        self,
+        session: Session,
+        reset: bool = True,
+        verbose: bool = True,
+        **kwargs: object,
+    ) -> LoadStats:
+        """Test load implementation."""
+        stats = LoadStats(source="fk_test")
+        if reset:
+            self.clear_tables(session)
+        return stats
+
+    def get_dimension_tables(self) -> list[type]:
+        """Return dimension tables - order depends on wrong_order flag."""
+        from babylon.data.normalize.schema import DimCounty, DimState
+
+        if self._wrong_order:
+            # WRONG: DimState before DimCounty violates FK constraint
+            return [DimState, DimCounty]
+        else:
+            # CORRECT: DimCounty before DimState respects FK
+            return [DimCounty, DimState]
+
+    def get_fact_tables(self) -> list[type]:
+        """Return empty list (no facts in test)."""
+        return []
+
+
+@pytest.fixture
+def fk_session() -> Session:
+    """Create session with FK enforcement enabled."""
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    NormalizedBase.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
+    yield session
+    session.close()
+
+
+class TestFKSafeClearTables:
+    """Tests for FK-safe clear_tables behavior.
+
+    These tests verify that clear_tables() respects foreign key constraints
+    by deleting child tables before parent tables.
+    """
+
+    def test_correct_fk_order_succeeds(self, fk_session: Session) -> None:
+        """clear_tables() with correct FK order should succeed."""
+        from babylon.data.normalize.schema import DimCounty, DimState
+
+        # Add parent state
+        state = DimState(state_fips="06", state_name="California", state_abbrev="CA")
+        fk_session.add(state)
+        fk_session.flush()
+
+        # Add child county referencing state
+        county = DimCounty(
+            fips="06001",
+            state_id=state.state_id,
+            county_fips="001",
+            county_name="Alameda County",
+        )
+        fk_session.add(county)
+        fk_session.commit()
+
+        # Verify data exists
+        assert fk_session.query(DimState).count() == 1
+        assert fk_session.query(DimCounty).count() == 1
+
+        # Clear with correct order (DimCounty before DimState)
+        loader = FKTestLoader(wrong_order=False)
+        loader.clear_tables(fk_session)
+        fk_session.commit()
+
+        # Both should be cleared
+        assert fk_session.query(DimState).count() == 0
+        assert fk_session.query(DimCounty).count() == 0
+
+    def test_wrong_fk_order_fails(self, fk_session: Session) -> None:
+        """clear_tables() with wrong FK order should fail with constraint error."""
+        from sqlalchemy.exc import IntegrityError
+
+        from babylon.data.normalize.schema import DimCounty, DimState
+
+        # Add parent state
+        state = DimState(state_fips="06", state_name="California", state_abbrev="CA")
+        fk_session.add(state)
+        fk_session.flush()
+
+        # Add child county referencing state
+        county = DimCounty(
+            fips="06001",
+            state_id=state.state_id,
+            county_fips="001",
+            county_name="Alameda County",
+        )
+        fk_session.add(county)
+        fk_session.commit()
+
+        # Clear with wrong order (DimState before DimCounty)
+        loader = FKTestLoader(wrong_order=True)
+
+        with pytest.raises(IntegrityError) as exc_info:
+            loader.clear_tables(fk_session)
+            fk_session.commit()
+
+        # Should be FK constraint violation
+        assert "FOREIGN KEY constraint failed" in str(exc_info.value)
+
+    def test_census_loader_has_correct_fk_order(self) -> None:
+        """CensusLoader.get_dimension_tables() should have correct FK order."""
+        from babylon.data.census.loader_3nf import CensusLoader
+        from babylon.data.normalize.schema import DimCounty, DimState
+
+        loader = CensusLoader()
+        tables = loader.get_dimension_tables()
+
+        # DimCounty must come before DimState (child before parent)
+        county_idx = tables.index(DimCounty)
+        state_idx = tables.index(DimState)
+
+        assert county_idx < state_idx, (
+            f"DimCounty (index {county_idx}) must come before "
+            f"DimState (index {state_idx}) for FK-safe deletion"
+        )
+
+
+# =============================================================================
+# DIMDATASOURCE SOURCE_URL TESTS
+# =============================================================================
+
+
+class TestDimDataSourceFields:
+    """Tests for DimDataSource schema including source_url field."""
+
+    def test_source_url_field_exists(self) -> None:
+        """DimDataSource should have source_url field."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        # Check column exists in table
+        columns = DimDataSource.__table__.columns
+        assert "source_url" in columns
+
+    def test_source_url_is_nullable(self) -> None:
+        """source_url should be nullable (optional field)."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        source_url_col = DimDataSource.__table__.columns["source_url"]
+        assert source_url_col.nullable is True
+
+    def test_can_create_with_source_url(self, test_session: Session) -> None:
+        """DimDataSource should accept source_url parameter."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        source = DimDataSource(
+            source_code="TEST",
+            source_name="Test Data Source",
+            source_url="https://example.com/data",
+            source_agency="Test Agency",
+        )
+        test_session.add(source)
+        test_session.flush()
+
+        # Verify it was saved
+        saved = test_session.query(DimDataSource).filter_by(source_code="TEST").first()
+        assert saved is not None
+        assert saved.source_url == "https://example.com/data"
+
+    def test_can_create_without_source_url(self, test_session: Session) -> None:
+        """DimDataSource should work without source_url (nullable)."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        source = DimDataSource(
+            source_code="NO_URL",
+            source_name="Source Without URL",
+        )
+        test_session.add(source)
+        test_session.flush()
+
+        saved = test_session.query(DimDataSource).filter_by(source_code="NO_URL").first()
+        assert saved is not None
+        assert saved.source_url is None
+
+    def test_source_url_max_length(self) -> None:
+        """source_url should have sufficient length for URLs (500 chars)."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        source_url_col = DimDataSource.__table__.columns["source_url"]
+        # SQLAlchemy String type has length attribute
+        assert source_url_col.type.length == 500
+
+    def test_description_field_exists(self) -> None:
+        """DimDataSource should have description field."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        columns = DimDataSource.__table__.columns
+        assert "description" in columns
+
+    def test_can_create_with_description(self, test_session: Session) -> None:
+        """DimDataSource should accept description parameter."""
+        from babylon.data.normalize.schema import DimDataSource
+
+        source = DimDataSource(
+            source_code="DESC_TEST",
+            source_name="Test Source With Description",
+            description="This is a test description for provenance tracking.",
+        )
+        test_session.add(source)
+        test_session.flush()
+
+        saved = test_session.query(DimDataSource).filter_by(source_code="DESC_TEST").first()
+        assert saved is not None
+        assert saved.description == "This is a test description for provenance tracking."

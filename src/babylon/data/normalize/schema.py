@@ -465,6 +465,8 @@ class DimDataSource(NormalizedBase):
     source_id: Mapped[int] = mapped_column(primary_key=True)
     source_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     source_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_url: Mapped[str | None] = mapped_column(String(500))
+    description: Mapped[str | None] = mapped_column(Text)
     source_year: Mapped[int | None] = mapped_column()
     source_agency: Mapped[str | None] = mapped_column(String(100))
     coverage_start_year: Mapped[int | None] = mapped_column()

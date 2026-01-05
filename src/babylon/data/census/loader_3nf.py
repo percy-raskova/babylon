@@ -217,11 +217,17 @@ class CensusLoader(DataLoader):
         self._source_id: int | None = None
 
     def get_dimension_tables(self) -> list[type]:
-        """Return dimension table models this loader populates."""
+        """Return dimension table models this loader populates.
+
+        Order matters for FK constraints: child tables must be listed before
+        parent tables they reference (e.g., DimCounty before DimState).
+        """
         return [
-            DimState,
-            DimCounty,
+            # Shared dimensions - order respects FK dependencies
+            DimCounty,  # References DimState, must be deleted first
+            DimState,  # Parent of DimCounty
             DimDataSource,
+            # Census-specific dimensions
             DimGender,
             DimIncomeBracket,
             DimEmploymentStatus,

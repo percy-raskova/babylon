@@ -142,6 +142,7 @@ repos:
         exclude: |
           (?x)^(
             ai-docs/.*|
+            thoughts/.*|
             CHANGELOG\.md|
             CLAUDE\.md|
             CONTRIBUTORS\.md|

@@ -339,6 +339,14 @@ run = "poetry run python -m babylon.data.cli fcc-download"
 description = "Load FCC broadband coverage into 3NF database"
 run = "poetry run python -m babylon.data.cli fcc"
 
+[tasks."data:geography"]
+description = "Load geographic hierarchy (state-to-county allocation weights)"
+run = "poetry run python -m babylon.data.cli geography"
+
+[tasks."data:cfs"]
+description = "Load Census Commodity Flow Survey data"
+run = "poetry run python -m babylon.data.cli cfs"
+
 [tasks."data:query"]
 description = "Open SQLite CLI for 3NF database"
 run = "sqlite3 data/sqlite/marxist-data-3NF.sqlite"

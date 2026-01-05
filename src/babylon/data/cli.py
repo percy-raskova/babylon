@@ -109,6 +109,8 @@ ALL_LOADERS = [
     "hifld_electric",
     "mirta",
     "fcc",
+    "geography",
+    "cfs",
 ]
 
 
@@ -302,6 +304,18 @@ def _run_loader(
         from babylon.data.mirta import MIRTAMilitaryLoader
 
         loader = MIRTAMilitaryLoader(config)
+    elif name == "geography":
+        from babylon.data.geography import GeographicHierarchyLoader
+
+        loader = GeographicHierarchyLoader(config)
+    elif name == "cfs":
+        from babylon.data.cfs import CFSLoader
+
+        loader = CFSLoader(config)
+    elif name == "fcc":
+        from babylon.data.fcc import FCCBroadbandLoader
+
+        loader = FCCBroadbandLoader(config)
     else:
         raise ValueError(f"Unknown loader: {name}")
 

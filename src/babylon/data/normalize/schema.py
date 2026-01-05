@@ -4,20 +4,23 @@ Provides properly normalized dimension and fact tables populated via ETL
 from research.sqlite. Optimized for imperial rent, surplus value, labor
 aristocracy, and unequal exchange analysis.
 
-Dimensions (28 tables):
-    Geographic: dim_state, dim_county, dim_metro_area, dim_country, dim_import_source
+Dimensions (32 tables):
+    Geographic: dim_state, dim_county, dim_metro_area, dim_geographic_hierarchy,
+                dim_cfs_area, dim_country, dim_import_source
+    Bridge: bridge_county_metro, bridge_cfs_county
     Industry: dim_industry, dim_sector, dim_ownership
     Census Codes: dim_income_bracket, dim_employment_status, dim_worker_class,
                   dim_occupation, dim_education_level, dim_housing_tenure,
                   dim_rent_burden, dim_commute_mode, dim_poverty_category
     Energy: dim_energy_table, dim_energy_series
     FRED: dim_wealth_class, dim_asset_category, dim_fred_series
-    Commodities: dim_commodity, dim_commodity_metric
+    Commodities: dim_commodity, dim_commodity_metric, dim_sctg_commodity
     Metadata: dim_time, dim_gender, dim_data_source
+    Coercive: dim_coercive_type
 
-Facts (27 tables):
+Facts (28 tables):
     Census (14), QCEW/Productivity (2), Trade (1), Energy (1),
-    FRED (5), Commodities (1), Materials (3)
+    FRED (5), Commodities (1), Materials (3), Circulatory (4)
 """
 
 from decimal import Decimal
@@ -89,6 +92,115 @@ class BridgeCountyMetro(NormalizedBase):
         ForeignKey("dim_metro_area.metro_area_id"), primary_key=True
     )
     is_principal_city: Mapped[bool] = mapped_column(default=False)
+
+
+class DimGeographicHierarchy(NormalizedBase):
+    """State-to-county geographic hierarchy with allocation weights.
+
+    Enables disaggregation of state-level external data (e.g., Census CFS)
+    to county-level internal schema representation. Each county row contains
+    weights for distributing state-level flows proportionally.
+
+    Allocation weight types:
+        - population_weight: Share of state population in county
+        - employment_weight: Share of state employment in county
+        - gdp_weight: Share of state GDP in county (proxy via employment + wages)
+
+    Example usage::
+
+        # Get all counties for California with weights
+        SELECT c.county_name, h.population_weight, h.employment_weight
+        FROM dim_geographic_hierarchy h
+        JOIN dim_county c ON h.county_id = c.county_id
+        JOIN dim_state s ON h.state_id = s.state_id
+        WHERE s.state_fips = '06'
+        ORDER BY h.population_weight DESC
+    """
+
+    __tablename__ = "dim_geographic_hierarchy"
+
+    hierarchy_id: Mapped[int] = mapped_column(primary_key=True)
+    state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    population_weight: Mapped[Decimal] = mapped_column(
+        Numeric(10, 8), nullable=False
+    )  # 0.0 to 1.0, sum to 1.0 per state
+    employment_weight: Mapped[Decimal] = mapped_column(
+        Numeric(10, 8), nullable=False
+    )  # 0.0 to 1.0, sum to 1.0 per state
+    gdp_weight: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 8)
+    )  # Optional, derived from employment+wages
+    source_year: Mapped[int] = mapped_column(nullable=False)  # Year of weight calculation
+
+    __table_args__ = (
+        Index("idx_geo_hierarchy_state", "state_id"),
+        Index("idx_geo_hierarchy_county", "county_id"),
+        # Ensure unique state-county pairing per year
+        Index("idx_geo_hierarchy_unique", "state_id", "county_id", "source_year", unique=True),
+        CheckConstraint(
+            "population_weight >= 0 AND population_weight <= 1",
+            name="ck_population_weight_range",
+        ),
+        CheckConstraint(
+            "employment_weight >= 0 AND employment_weight <= 1",
+            name="ck_employment_weight_range",
+        ),
+    )
+
+
+class DimCFSArea(NormalizedBase):
+    """Census Commodity Flow Survey geographic areas (132 FAF zones).
+
+    CFS areas are aggregations of counties used by the Census Bureau for
+    commodity flow analysis. Each CFS area maps to one or more counties.
+    """
+
+    __tablename__ = "dim_cfs_area"
+
+    cfs_area_id: Mapped[int] = mapped_column(primary_key=True)
+    cfs_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
+    cfs_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    state_id: Mapped[int | None] = mapped_column(ForeignKey("dim_state.state_id"))
+
+    __table_args__ = (Index("idx_cfs_area_state", "state_id"),)
+
+
+class BridgeCFSCounty(NormalizedBase):
+    """Many-to-many CFS area to county mapping with allocation weights."""
+
+    __tablename__ = "bridge_cfs_county"
+
+    cfs_area_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_cfs_area.cfs_area_id"), primary_key=True
+    )
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    allocation_weight: Mapped[Decimal] = mapped_column(
+        Numeric(10, 8), nullable=False
+    )  # Share of CFS area in this county
+
+
+class DimSCTGCommodity(NormalizedBase):
+    """Standard Classification of Transported Goods (SCTG) commodity codes.
+
+    42 two-digit SCTG codes used by Census CFS for commodity classification.
+    """
+
+    __tablename__ = "dim_sctg_commodity"
+
+    sctg_id: Mapped[int] = mapped_column(primary_key=True)
+    sctg_code: Mapped[str] = mapped_column(String(5), unique=True, nullable=False)
+    sctg_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(50))  # agriculture, mining, manufacturing
+    strategic_value: Mapped[str | None] = mapped_column(String(20))  # critical, high, medium, low
+
+    __table_args__ = (
+        Index("idx_sctg_category", "category"),
+        CheckConstraint(
+            "strategic_value IN ('critical', 'high', 'medium', 'low') OR strategic_value IS NULL",
+            name="ck_sctg_strategic_value",
+        ),
+    )
 
 
 class DimCountry(NormalizedBase):
@@ -1035,6 +1147,39 @@ class FactElectricGrid(NormalizedBase):
     __table_args__ = (Index("idx_electric_county", "county_id"),)
 
 
+class FactCommodityFlow(NormalizedBase):
+    """State-level commodity flows from Census CFS, allocated to counties.
+
+    Stores origin-destination commodity flow data from the Commodity Flow Survey.
+    State-level CFS data is disaggregated to county level using allocation weights
+    from DimGeographicHierarchy.
+
+    Flow values are in millions USD (value_millions) and thousands of tons (tons_thousands).
+    """
+
+    __tablename__ = "fact_commodity_flow"
+
+    flow_id: Mapped[int] = mapped_column(primary_key=True)
+    origin_county_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_county.county_id"), nullable=False
+    )
+    dest_county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    sctg_id: Mapped[int] = mapped_column(ForeignKey("dim_sctg_commodity.sctg_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+    year: Mapped[int] = mapped_column(nullable=False)
+    value_millions: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # USD millions
+    tons_thousands: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # Thousands of tons
+    ton_miles_millions: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # Millions ton-miles
+    mode_code: Mapped[str | None] = mapped_column(String(10))  # Transport mode
+
+    __table_args__ = (
+        Index("idx_commodity_flow_origin", "origin_county_id"),
+        Index("idx_commodity_flow_dest", "dest_county_id"),
+        Index("idx_commodity_flow_sctg", "sctg_id"),
+        Index("idx_commodity_flow_year", "year"),
+    )
+
+
 # =============================================================================
 # EXPORTS
 # =============================================================================
@@ -1045,6 +1190,10 @@ __all__ = [
     "DimCounty",
     "DimMetroArea",
     "BridgeCountyMetro",
+    "DimGeographicHierarchy",
+    "DimCFSArea",
+    "BridgeCFSCounty",
+    "DimSCTGCommodity",
     "DimCountry",
     "DimImportSource",
     # Dimensions - Industry
@@ -1115,4 +1264,5 @@ __all__ = [
     "FactCoerciveInfrastructure",
     "FactBroadbandCoverage",
     "FactElectricGrid",
+    "FactCommodityFlow",
 ]

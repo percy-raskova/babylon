@@ -108,6 +108,7 @@ ALL_LOADERS = [
     "hifld_police",
     "hifld_electric",
     "mirta",
+    "fcc",
 ]
 
 
@@ -691,6 +692,48 @@ def mirta(
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def fcc(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+    as_of_date: Annotated[
+        str | None,
+        typer.Option("--as-of-date", "-d", help="FCC data date (e.g., 2025-06-30)"),
+    ] = None,
+) -> None:
+    """Load FCC Broadband Coverage data into 3NF database.
+
+    Loads FCC BDC (Broadband Data Collection) county-level broadband
+    coverage metrics from pre-downloaded CSV files.
+
+    Requires data to be downloaded first via fcc-download command:
+        mise run data:fcc-download --national
+    """
+    from babylon.data.fcc import FCCBroadbandLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading FCC Broadband Coverage from downloaded CSVs...")
+
+    init_normalized_db()
+    loader = FCCBroadbandLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet, as_of_date=as_of_date)
 
     print_stats(stats)
     if stats.has_errors:

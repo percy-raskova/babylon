@@ -605,6 +605,7 @@ class TestNarrativeDirectorDualNarratives:
                 EventType.MASS_AWAKENING,
                 EventType.SUPERWAGE_CRISIS,
                 EventType.TERMINAL_DECISION,
+                EventType.ENDGAME_REACHED,  # Epoch 1 Gap 2: Endgame narrative support
             }
         )
 

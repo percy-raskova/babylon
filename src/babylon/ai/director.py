@@ -120,6 +120,7 @@ class NarrativeDirector:
         EventType.SOLIDARITY_SPIKE: "solidarity networks mutual aid class organization",
         EventType.RUPTURE: "dialectical contradiction rupture revolutionary crisis",
         EventType.PHASE_TRANSITION: "phase transition revolutionary organization vanguard party",
+        EventType.ENDGAME_REACHED: "historical materialism dialectical resolution revolutionary victory ecological crisis fascism",
     }
 
     # Fallback query when no event keywords are recognized
@@ -139,6 +140,7 @@ class NarrativeDirector:
             EventType.MASS_AWAKENING,
             EventType.SUPERWAGE_CRISIS,
             EventType.TERMINAL_DECISION,
+            EventType.ENDGAME_REACHED,
         }
     )
 

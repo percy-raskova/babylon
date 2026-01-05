@@ -31,6 +31,7 @@ import dearpygui.dearpygui as dpg  # type: ignore
 from babylon.ai.director import NarrativeDirector
 from babylon.ai.llm_provider import MockLLM
 from babylon.engine.observers import MetricsCollector
+from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.engine.topology_monitor import TopologyMonitor
@@ -80,6 +81,29 @@ WEALTH_COLORS: dict[str, tuple[int, int, int, int]] = {
     "p_c": DPGColors.EXPOSED_COPPER,  # Comprador
     "c_b": DPGColors.PHOSPHOR_RED,  # Core Bourgeoisie (exploiter)
     "c_w": DPGColors.ROYAL_BLUE,  # Labor Aristocracy
+}
+
+# Endgame outcome descriptions
+ENDGAME_DESCRIPTIONS: dict[str, str] = {
+    "revolutionary_victory": (
+        "The workers have achieved critical organization and ideological clarity.\n"
+        "The proletarian revolution has succeeded. A new world is possible."
+    ),
+    "ecological_collapse": (
+        "Sustained ecological overshoot has led to irreversible collapse.\n"
+        "Capital's metabolic rift with nature has become fatal."
+    ),
+    "fascist_consolidation": (
+        "Fascist ideology has captured the majority of the population.\n"
+        "False consciousness prevents class-based organization."
+    ),
+}
+
+# Endgame outcome colors
+ENDGAME_COLORS: dict[str, tuple[int, int, int, int]] = {
+    "revolutionary_victory": DPGColors.TRIUMPH_GREEN,
+    "ecological_collapse": DPGColors.WARNING_AMBER,
+    "fascist_consolidation": DPGColors.PHOSPHOR_RED,
 }
 
 
@@ -139,6 +163,13 @@ class DashboardState:
     # Event log tracking
     last_event_idx: int = 0
 
+    # Endgame tracking
+    endgame_shown: bool = False
+
+    # Rift trend (overshoot) data
+    rift_data_x: list[float] = field(default_factory=list)
+    rift_data_y: list[float] = field(default_factory=list)
+
 
 # Global state instance (initialized in main())
 _state: DashboardState | None = None
@@ -195,8 +226,12 @@ def create_simulation() -> Simulation:
     )
 
     topology = TopologyMonitor(resilience_test_interval=5)
+    endgame = EndgameDetector(defines=defines)
     return Simulation(
-        initial_state, config, observers=[metrics, recorder, narrative, topology], defines=defines
+        initial_state,
+        config,
+        observers=[metrics, recorder, narrative, topology, endgame],
+        defines=defines,
     )
 
 
@@ -509,6 +544,87 @@ def build_key_metrics_panel(pos: tuple[int, int], width: int, height: int) -> No
     )
 
 
+def build_endgame_modal(viewport_w: int, viewport_h: int) -> None:
+    """Build the Endgame modal overlay (hidden by default).
+
+    Displays outcome name, description, final tick, and New Game button.
+    The modal appears when the simulation reaches an endgame condition.
+
+    Args:
+        viewport_w: Viewport width for centering.
+        viewport_h: Viewport height for centering.
+    """
+    modal_w, modal_h = 500, 320
+    with dpg.window(
+        label="SIMULATION ENDED",
+        modal=True,
+        show=False,
+        tag="endgame_modal",
+        width=modal_w,
+        height=modal_h,
+        pos=(viewport_w // 2 - modal_w // 2, viewport_h // 2 - modal_h // 2),
+        no_close=True,
+        no_resize=True,
+        no_move=True,
+    ):
+        dpg.add_spacer(height=10)
+        dpg.add_text("OUTCOME:", color=DPGColors.SILVER_DUST)
+        dpg.add_text("", tag="endgame_outcome_text", color=DPGColors.TRIUMPH_GREEN)
+        dpg.add_spacer(height=15)
+        dpg.add_text("", tag="endgame_description_text", color=DPGColors.SILVER_DUST, wrap=480)
+        dpg.add_spacer(height=15)
+        dpg.add_text("Final Tick: 0", tag="endgame_tick_text", color=DPGColors.SILVER_DUST)
+        dpg.add_spacer(height=25)
+        dpg.add_button(label="NEW GAME", width=150, callback=on_new_game)
+
+
+def build_rift_trend_panel(pos: tuple[int, int], width: int, height: int) -> None:
+    """Build the Metabolic Rift Trend sparkline.
+
+    Displays overshoot ratio over time as a compact sparkline chart.
+    Color thresholds: <1.0 green, 1.0-1.5 amber, >1.5 red.
+
+    Args:
+        pos: (x, y) position for the window.
+        width: Window width in pixels.
+        height: Window height in pixels (recommend 100-150px).
+    """
+    dpg.add_window(
+        label="Metabolic Rift",
+        tag="rift_window",
+        width=width,
+        height=height,
+        pos=pos,
+        no_close=True,
+    )
+    dpg.add_plot(
+        label="##rift_sparkline",
+        height=-1,
+        width=-1,
+        tag="rift_plot",
+        parent="rift_window",
+        no_title=True,
+        no_menus=True,
+        no_box_select=True,
+        no_mouse_pos=True,
+    )
+    dpg.add_plot_axis(dpg.mvXAxis, label="", tag="rift_x", parent="rift_plot", no_tick_labels=True)
+    dpg.add_plot_axis(dpg.mvYAxis, label="", tag="rift_y", parent="rift_plot")
+
+    dpg.add_line_series([], [], label="Overshoot", tag="rift_series", parent="rift_y")
+    dpg.bind_item_theme("rift_series", _create_series_theme(DPGColors.WARNING_AMBER))
+
+    # Threshold line at y=1.0 (ecological overshoot boundary)
+    dpg.add_inf_line_series(
+        [1.0],
+        label="Threshold",
+        tag="rift_threshold_line",
+        parent="rift_y",
+        horizontal=True,
+    )
+    dpg.bind_item_theme("rift_threshold_line", _create_series_theme(DPGColors.PHOSPHOR_RED))
+
+
 # =============================================================================
 # CALLBACKS
 # =============================================================================
@@ -578,6 +694,13 @@ def on_reset() -> None:
     state.cw_wealth_x.clear()
     state.cw_wealth_y.clear()
 
+    # Clear rift trend data (Epoch 1 Gap 3)
+    state.rift_data_x.clear()
+    state.rift_data_y.clear()
+
+    # Reset endgame state (Epoch 1 Gap 1)
+    state.endgame_shown = False
+
     # Update plots with empty data
     dpg.set_value("rent_series", [[], []])
     dpg.set_value("la_series", [[], []])
@@ -585,6 +708,10 @@ def on_reset() -> None:
     dpg.set_value("pc_series", [[], []])
     dpg.set_value("cb_series", [[], []])
     dpg.set_value("cw_series", [[], []])
+
+    # Reset rift trend plot (Epoch 1 Gap 3)
+    if dpg.does_item_exist("rift_series"):
+        dpg.set_value("rift_series", [[], []])
 
     # Reset tick display
     dpg.set_value("tick_display", "TICK: 0")
@@ -626,6 +753,10 @@ def on_reset() -> None:
             color=DPGColors.SILVER_DUST,
         )
 
+    # Hide endgame modal if visible (Epoch 1 Gap 1)
+    if dpg.does_item_exist("endgame_modal"):
+        dpg.configure_item("endgame_modal", show=False)
+
 
 def on_export_logs() -> None:
     """Handle EXPORT LOGS button click.
@@ -657,6 +788,17 @@ def on_export_logs() -> None:
         dpg.configure_item("export_modal", show=True)
     except Exception as e:
         log_to_narrative(f"[ERROR] Export failed: {e}", DPGColors.PHOSPHOR_RED)
+
+
+def on_new_game() -> None:
+    """Handle NEW GAME button click from endgame modal.
+
+    Hides the endgame modal and resets the simulation to start fresh.
+    """
+    dpg.configure_item("endgame_modal", show=False)
+    state = get_state()
+    state.endgame_shown = False
+    on_reset()
 
 
 # =============================================================================
@@ -996,6 +1138,96 @@ def update_key_metrics() -> None:
     dpg.set_value("repression_value", f"{tick_metrics.current_repression_level:.3f}")
 
 
+def update_rift_trend() -> None:
+    """Update Metabolic Rift sparkline with latest overshoot data.
+
+    Changes line color based on current overshoot level:
+    - <1.0: DATA_GREEN (sustainable)
+    - 1.0-1.5: WARNING_AMBER (stressed)
+    - >1.5: PHOSPHOR_RED (critical)
+    """
+    state = get_state()
+    if state.simulation is None:
+        return
+
+    # Find MetricsCollector observer
+    metrics_collector = None
+    for observer in state.simulation._observers:
+        if isinstance(observer, MetricsCollector):
+            metrics_collector = observer
+            break
+
+    if metrics_collector is None or metrics_collector.latest is None:
+        return
+
+    tick_metrics = metrics_collector.latest
+    tick = float(tick_metrics.tick)
+    overshoot = float(tick_metrics.overshoot_ratio)
+
+    state.rift_data_x.append(tick)
+    state.rift_data_y.append(overshoot)
+
+    # Maintain rolling window
+    if len(state.rift_data_x) > ROLLING_WINDOW:
+        state.rift_data_x = state.rift_data_x[-ROLLING_WINDOW:]
+        state.rift_data_y = state.rift_data_y[-ROLLING_WINDOW:]
+
+    dpg.set_value("rift_series", [state.rift_data_x, state.rift_data_y])
+
+    # Color based on overshoot level
+    if overshoot < 1.0:
+        line_color = DPGColors.DATA_GREEN
+    elif overshoot < 1.5:
+        line_color = DPGColors.WARNING_AMBER
+    else:
+        line_color = DPGColors.PHOSPHOR_RED
+
+    new_theme = _create_series_theme(line_color)
+    dpg.bind_item_theme("rift_series", new_theme)
+
+    # Auto-fit axes
+    dpg.fit_axis_data("rift_x")
+    dpg.fit_axis_data("rift_y")
+
+
+def check_endgame() -> None:
+    """Check for endgame condition and display modal if game ended.
+
+    Polls the EndgameDetector observer for game ending status.
+    Shows the endgame modal once when game ends.
+    """
+    state = get_state()
+    if state.simulation is None or state.endgame_shown:
+        return
+
+    # Find EndgameDetector observer
+    detector = None
+    for observer in state.simulation._observers:
+        if isinstance(observer, EndgameDetector):
+            detector = observer
+            break
+
+    if detector is None or not detector.is_game_over:
+        return
+
+    # Game has ended - display modal
+    outcome = detector.outcome
+    outcome_value = outcome.value
+    outcome_display = outcome_value.replace("_", " ").upper()
+
+    description = ENDGAME_DESCRIPTIONS.get(outcome_value, "The simulation has ended.")
+    color = ENDGAME_COLORS.get(outcome_value, DPGColors.SILVER_DUST)
+
+    dpg.set_value("endgame_outcome_text", outcome_display)
+    dpg.configure_item("endgame_outcome_text", color=color)
+    dpg.set_value("endgame_description_text", description)
+    dpg.set_value("endgame_tick_text", f"Final Tick: {state.tick}")
+
+    dpg.configure_item("endgame_modal", show=True)
+    state.simulation_running = False
+    state.endgame_shown = True
+
+
 def update_all_ui() -> None:
     """Update all UI components after a simulation step."""
     update_tick_display()
@@ -1005,6 +1237,8 @@ def update_all_ui() -> None:
     update_event_log()
     update_wealth_trend()
     update_key_metrics()
+    update_rift_trend()
+    check_endgame()
 
 
 # =============================================================================
@@ -1151,8 +1385,9 @@ def main() -> None:
     gap = 5  # Small gap between windows
 
     # Left column dimensions
-    wealth_h = 460
-    telemetry_h = viewport_h - wealth_h - gap
+    wealth_h = 380  # Reduced to make room for rift panel
+    rift_h = 100  # Sparkline height for metabolic rift
+    telemetry_h = viewport_h - wealth_h - rift_h - (gap * 2)  # Account for both gaps
 
     # Right column top row (Status + Controls)
     top_row_h = 80
@@ -1172,7 +1407,9 @@ def main() -> None:
     # Build UI windows with explicit positions
     # Left column
     build_wealth_trend_panel(pos=(0, 0), width=left_col_w, height=wealth_h)
-    build_telemetry_panel(pos=(0, wealth_h + gap), width=left_col_w, height=telemetry_h)
+    build_rift_trend_panel(pos=(0, wealth_h + gap), width=left_col_w, height=rift_h)
+    telemetry_y = wealth_h + rift_h + (gap * 2)
+    build_telemetry_panel(pos=(0, telemetry_y), width=left_col_w, height=telemetry_h)
 
     # Right column - top row
     build_status_bar(pos=(right_col_x, 0), width=status_w, height=top_row_h)
@@ -1206,6 +1443,9 @@ def main() -> None:
             width=100,
             callback=lambda: dpg.configure_item("export_modal", show=False),
         )
+
+    # Endgame outcome modal (Epoch 1 Gap 1)
+    build_endgame_modal(viewport_w, viewport_h)
 
     # Create viewport
     dpg.create_viewport(title="Babylon Synopticon", width=viewport_w, height=viewport_h)

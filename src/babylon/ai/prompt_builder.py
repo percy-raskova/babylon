@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from babylon.models.events import (
     CrisisEvent,
+    EndgameEvent,
     ExtractionEvent,
     MassAwakeningEvent,
     PhaseTransitionEvent,
@@ -251,6 +252,12 @@ class DialecticalPromptBuilder:
                     f"{event.new_state} phase. Percolation ratio: {event.percolation_ratio:.2f}, "
                     f"Cadre density: {event.cadre_density:.2f}, "
                     f"Largest component: {event.largest_component_size} nodes"
+                )
+            case EndgameEvent():
+                outcome_display = event.outcome.value.replace("_", " ").title()
+                return (
+                    f"ENDGAME_REACHED: Simulation ended with outcome {outcome_display} "
+                    f"at tick {event.tick}"
                 )
             case _:
                 # Fallback for any unknown event types

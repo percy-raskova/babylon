@@ -697,6 +697,30 @@ def mirta(
         raise typer.Exit(1)
 
 
+def _parse_state_fips_list(state_fips: str) -> list[str]:
+    """Parse state FIPS input into list of 2-digit codes.
+
+    Supports:
+    - Single state: "06"
+    - Comma-separated: "06,36,48"
+    - Range: "01-10"
+    - Mixed: "01-05,06,10-15"
+
+    Returns:
+        List of 2-digit zero-padded FIPS codes.
+    """
+    states: list[str] = []
+    for part in state_fips.split(","):
+        part = part.strip()
+        if "-" in part:
+            start, end = part.split("-", 1)
+            for i in range(int(start), int(end) + 1):
+                states.append(f"{i:02d}")
+        else:
+            states.append(part.zfill(2))
+    return sorted(set(states))
+
+
 def _fcc_download_files(
     national: bool,
     hexagon: bool,
@@ -733,7 +757,9 @@ def fcc_download(
     state_fips: Annotated[
         str | None,
         typer.Option(
-            "--state-fips", "-s", help="2-digit state FIPS code (e.g., 06 for California)"
+            "--state-fips",
+            "-s",
+            help="State FIPS: single (06), comma-separated (06,36), or range (01-56)",
         ),
     ] = None,
     as_of_date: Annotated[
@@ -783,30 +809,61 @@ def fcc_download(
     Examples:
         mise run data:fcc-download -- --national                   # County-level national data
         mise run data:fcc-download -- --state-fips 06              # CA Census Place summary
-        mise run data:fcc-download -- -s 06 --hexagon -t mobile    # CA mobile hexagon H3 data
+        mise run data:fcc-download -- -s 01-56                     # All 50 states + DC + territories
+        mise run data:fcc-download -- -s 06,36,48 --hexagon        # CA, NY, TX hexagon data
     """
     if national and hexagon:
         typer.secho("Cannot use --national with --hexagon", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    effective_state = state_fips if state_fips else "06"
     tech_map = {"fixed": "Fixed Broadband", "mobile": "Mobile Broadband"}
     technology_type = tech_map.get(technology.lower(), technology)
 
-    if not quiet:
-        _print_fcc_download_info(
-            national, hexagon, effective_state, technology_type, as_of_date, output_dir
-        )
-
-    try:
-        extracted = _fcc_download_files(
-            national, hexagon, effective_state, output_dir, as_of_date, technology_type
-        )
+    # Handle national mode (no state iteration)
+    if national:
         if not quiet:
-            _print_extracted_files(extracted)
-    except ValueError as e:
-        typer.secho(f"Configuration error: {e}", fg=typer.colors.RED)
-        raise typer.Exit(1) from e
+            typer.echo("Downloading FCC BDC national summary data...")
+            typer.echo(f"As-of date: {as_of_date or 'latest'}")
+            typer.echo(f"Output directory: {output_dir}")
+        try:
+            extracted = _fcc_download_files(
+                national, hexagon, "", output_dir, as_of_date, technology_type
+            )
+            if not quiet:
+                _print_extracted_files(extracted)
+        except ValueError as e:
+            typer.secho(f"Configuration error: {e}", fg=typer.colors.RED)
+            raise typer.Exit(1) from e
+        return
+
+    # Parse state list (supports ranges like 01-56)
+    state_input = state_fips if state_fips else "06"
+    states = _parse_state_fips_list(state_input)
+
+    if not quiet:
+        data_type = "hexagon (H3)" if hexagon else "summary (Census Place)"
+        typer.echo(f"Downloading FCC BDC {data_type} data for {len(states)} state(s)...")
+        if hexagon:
+            typer.echo(f"Technology: {technology_type}")
+        typer.echo(f"As-of date: {as_of_date or 'latest'}")
+        typer.echo(f"Output directory: {output_dir}")
+
+    all_extracted: list[Path] = []
+    for state in states:
+        if not quiet:
+            typer.echo(f"\n[{state}] Downloading...")
+        try:
+            extracted = _fcc_download_files(
+                national, hexagon, state, output_dir, as_of_date, technology_type
+            )
+            all_extracted.extend(extracted)
+            if not quiet:
+                typer.echo(f"[{state}] Downloaded {len(extracted)} files")
+        except ValueError as e:
+            typer.secho(f"[{state}] Error: {e}", fg=typer.colors.RED)
+
+    if not quiet:
+        typer.secho(f"\nTotal: {len(all_extracted)} files downloaded", fg=typer.colors.GREEN)
 
 
 def _print_fcc_download_info(

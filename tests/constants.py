@@ -4,19 +4,24 @@ This module provides a single source of truth for magic numbers used across
 the test suite. Constants are organized by theoretical domain and documented
 with their sources.
 
+YAML-First Architecture:
+    Shared constants are imported from GameDefines, which loads from defines.yaml.
+    This ensures test constants stay in sync with production configuration.
+
 Design Principles:
-    1. Test-specific constants that appear in 2+ test files
-    2. Theoretical validation data (Marx's Capital, Kahneman-Tversky)
+    1. Shared constants: Import from GameDefines (single source of truth)
+    2. Test-only constants: Defined here (scenarios, edge cases, theoretical validation)
     3. Computed values (e.g., 20-year horizon = 52 ticks/year * 20 = 1040)
 
-For production constants, see:
-    - src/babylon/systems/formulas/constants.py (LOSS_AVERSION_COEFFICIENT, EPSILON)
-    - src/babylon/config/defines.py (GameDefines with all tunable coefficients)
+Canonical Source:
+    - src/babylon/data/defines.yaml (YAML configuration)
+    - src/babylon/config/defines.py (GameDefines Pydantic model)
+    - src/babylon/systems/formulas/constants.py (EPSILON, LOSS_AVERSION_COEFFICIENT)
 
 Example:
     from tests.constants import TestConstants, MarxCapitalExamples
 
-    # Use behavioral economics constant
+    # Use behavioral economics constant (from GameDefines)
     assert loss == TestConstants.Behavioral.LOSS_AVERSION * principal
 
     # Parametrized test with Marx's examples
@@ -33,6 +38,15 @@ Example:
 from dataclasses import dataclass
 from typing import Final
 
+from babylon.config.defines import GameDefines
+
+# =============================================================================
+# GAMEDEFINES INSTANCE (Single Source of Truth)
+# =============================================================================
+# All shared constants reference this instance, which loads from defines.yaml.
+# This ensures test values stay in sync with production configuration.
+_DEFINES: Final[GameDefines] = GameDefines.load_default()
+
 # =============================================================================
 # CANONICAL CONSTANTS (Single Source of Truth)
 # =============================================================================
@@ -46,23 +60,23 @@ class CanonicalThresholds:
     Domain-specific dataclasses should reference these rather than
     redefining the same values.
 
-    Source: GameDefines (src/babylon/config/defines.py) and Probability type bounds.
+    Source: GameDefines (loads from src/babylon/data/defines.yaml).
     """
 
     # -------------------------------------------------------------------------
     # Pool Ratio Thresholds (from GameDefines.economy.pool_*_threshold)
     # Used for bourgeoisie decision heuristics in Dynamic Balance
     # -------------------------------------------------------------------------
-    POOL_HIGH: float = 0.7  # Prosperity threshold (bribery viable)
-    POOL_LOW: float = 0.3  # Austerity threshold (wage cuts)
-    POOL_CRITICAL: float = 0.1  # Crisis threshold (emergency measures)
+    POOL_HIGH: float = _DEFINES.economy.pool_high_threshold
+    POOL_LOW: float = _DEFINES.economy.pool_low_threshold
+    POOL_CRITICAL: float = _DEFINES.economy.pool_critical_threshold
 
     # -------------------------------------------------------------------------
     # Economic Baselines (from GameDefines)
     # -------------------------------------------------------------------------
-    INITIAL_RENT_POOL: float = 100.0  # GlobalEconomy default imperial rent pool
-    DEFAULT_REPRESSION: float = 0.5  # Standard repression level
-    DEFAULT_EXTRACTION: float = 0.8  # Standard extraction efficiency (alpha)
+    INITIAL_RENT_POOL: float = _DEFINES.economy.initial_rent_pool
+    DEFAULT_REPRESSION: float = _DEFINES.survival.default_repression
+    DEFAULT_EXTRACTION: float = _DEFINES.economy.extraction_efficiency
 
     # -------------------------------------------------------------------------
     # Probability Bands [0.0, 1.0]
@@ -104,11 +118,11 @@ class BehavioralConstants:
 
     Source: Kahneman & Tversky (1979), "Prospect Theory: An Analysis of
     Decision under Risk", Econometrica 47(2): 263-292.
+    Loaded from: GameDefines.behavioral.loss_aversion_lambda
     """
 
     # Losses are perceived as 2.25x more impactful than equivalent gains
-    # This matches src/babylon/systems/formulas/constants.py:LOSS_AVERSION_COEFFICIENT
-    LOSS_AVERSION: float = 2.25
+    LOSS_AVERSION: float = _DEFINES.behavioral.loss_aversion_lambda
 
 
 @dataclass(frozen=True)
@@ -118,15 +132,14 @@ class SolidarityConstants:
     The activation threshold encodes the theoretical requirement that
     consciousness must exceed a minimum level before it can transmit
     through solidarity networks.
+    Loaded from: GameDefines.solidarity.*
     """
 
     # Minimum source consciousness for transmission
-    # Matches GameDefines.solidarity.activation_threshold
-    ACTIVATION_THRESHOLD: float = 0.3
+    ACTIVATION_THRESHOLD: float = _DEFINES.solidarity.activation_threshold
 
     # Consciousness level for MASS_AWAKENING event
-    # Matches GameDefines.solidarity.mass_awakening_threshold
-    MASS_AWAKENING_THRESHOLD: float = 0.6
+    MASS_AWAKENING_THRESHOLD: float = _DEFINES.solidarity.mass_awakening_threshold
 
 
 @dataclass(frozen=True)
@@ -138,8 +151,7 @@ class BourgeoisieDecisionConstants:
     - pool_ratio < LOW -> AUSTERITY/IRON_FIST
     - pool_ratio < CRITICAL -> CRISIS
 
-    All thresholds match GameDefines.economy.pool_*_threshold
-    Policy deltas match GameDefines.economy.*_delta
+    Loaded from: GameDefines.economy.*
     """
 
     # Pool ratio thresholds (reference canonical values)
@@ -148,16 +160,16 @@ class BourgeoisieDecisionConstants:
     POOL_CRITICAL_THRESHOLD: float = Canon.POOL_CRITICAL
 
     # Tension thresholds for decision branching
-    BRIBERY_TENSION_THRESHOLD: float = Canon.P_MODERATE  # Max tension for bribery
-    IRON_FIST_TENSION_THRESHOLD: float = Canon.P_MIDPOINT  # Min tension for iron fist
-    TENSION_THRESHOLD: float = Canon.P_MIDPOINT  # Legacy alias for iron_fist threshold
+    BRIBERY_TENSION_THRESHOLD: float = _DEFINES.economy.bribery_tension_threshold
+    IRON_FIST_TENSION_THRESHOLD: float = _DEFINES.economy.iron_fist_tension_threshold
+    TENSION_THRESHOLD: float = _DEFINES.economy.iron_fist_tension_threshold  # Legacy alias
 
     # Policy deltas (wage and repression changes per decision)
-    BRIBERY_WAGE_DELTA: float = 0.05  # Wage increase during prosperity
-    AUSTERITY_WAGE_DELTA: float = -0.05  # Wage cut during low pool
-    IRON_FIST_REPRESSION_DELTA: float = 0.10  # Repression boost during high tension
-    CRISIS_WAGE_DELTA: float = -0.15  # Emergency wage slash
-    CRISIS_REPRESSION_DELTA: float = 0.20  # Emergency repression spike
+    BRIBERY_WAGE_DELTA: float = _DEFINES.economy.bribery_wage_delta
+    AUSTERITY_WAGE_DELTA: float = _DEFINES.economy.austerity_wage_delta
+    IRON_FIST_REPRESSION_DELTA: float = _DEFINES.economy.iron_fist_repression_delta
+    CRISIS_WAGE_DELTA: float = _DEFINES.economy.crisis_wage_delta
+    CRISIS_REPRESSION_DELTA: float = _DEFINES.economy.crisis_repression_delta
 
 
 @dataclass(frozen=True)
@@ -166,18 +178,17 @@ class TRPFConstants:
 
     Source: Marx, Capital Volume 3, Chapters 13-15.
     The TRPF surrogate models profit rate decline as time-dependent decay.
+    Loaded from: GameDefines.economy.trpf_*
     """
 
     # TRPF decay coefficient per tick
-    # Matches GameDefines.economy.trpf_coefficient
-    TRPF_COEFFICIENT: float = 0.0005
+    TRPF_COEFFICIENT: float = _DEFINES.economy.trpf_coefficient
 
     # Rent pool background evaporation rate
-    # Matches GameDefines.economy.rent_pool_decay
-    RENT_POOL_DECAY: float = 0.002
+    RENT_POOL_DECAY: float = _DEFINES.economy.rent_pool_decay
 
     # Minimum extraction efficiency (floor for TRPF multiplier)
-    EFFICIENCY_FLOOR: float = 0.1
+    EFFICIENCY_FLOOR: float = _DEFINES.economy.trpf_efficiency_floor
 
 
 @dataclass(frozen=True)
@@ -185,14 +196,14 @@ class TimescaleConstants:
     """Simulation timescale constants.
 
     1 tick = 1 week, 52 weeks = 1 year.
-    These match GameDefines.timescale.
+    Loaded from: GameDefines.timescale.*
     """
 
-    TICKS_PER_YEAR: int = 52
-    DAYS_PER_TICK: int = 7
+    TICKS_PER_YEAR: int = _DEFINES.timescale.weeks_per_year
+    DAYS_PER_TICK: int = _DEFINES.timescale.tick_duration_days
 
     # Derived: 20-year simulation horizon (Epoch 1 standard)
-    TWENTY_YEAR_HORIZON: int = 52 * 20  # 1040 ticks
+    TWENTY_YEAR_HORIZON: int = _DEFINES.timescale.weeks_per_year * 20  # 1040 ticks
 
 
 @dataclass(frozen=True)
@@ -201,21 +212,20 @@ class MetabolicRiftConstants:
 
     The metabolic rift encodes thermodynamic inefficiency in extraction
     and the cap for overshoot ratio when biocapacity is depleted.
+    Loaded from: GameDefines.metabolism.*
     """
 
     # Extraction costs more than it yields (thermodynamic waste)
-    # Matches GameDefines.metabolism.entropy_factor
-    ENTROPY_FACTOR: float = 1.2
+    ENTROPY_FACTOR: float = _DEFINES.metabolism.entropy_factor
 
     # Cap for overshoot ratio when biocapacity is zero/negative
-    # Matches GameDefines.metabolism.max_overshoot_ratio
-    MAX_OVERSHOOT_RATIO: float = 999.0
+    MAX_OVERSHOOT_RATIO: float = _DEFINES.metabolism.max_overshoot_ratio
 
     # Breakeven intensity where regeneration equals extraction
     # Formula: regeneration_rate / entropy_factor = 0.02 / 1.2 = 0.0167
     # When intensity > 0.0167, biocapacity depletes
     # When intensity < 0.0167, biocapacity regenerates
-    BREAKEVEN_INTENSITY: float = 0.0167
+    BREAKEVEN_INTENSITY: float = 0.0167  # Test-specific computed value
 
 
 # =============================================================================
@@ -378,13 +388,20 @@ class EconomicFlowDefaults:
 class QuantizationDefaults:
     """Precision values for type tests (Epoch 0 Physics: 10^-6 grid).
 
-    Source: src/babylon/systems/formulas/math.py quantization system.
+    Loaded from: GameDefines.precision.*
     All constrained types quantize to 6 decimal places for determinism.
     Increased from 5 to support 100-year Carceral Equilibrium simulations.
     """
 
-    GRID_PRECISION: float = 0.000001  # 10^-6
-    DECIMAL_PLACES: int = 6
+    DECIMAL_PLACES: int = _DEFINES.precision.decimal_places
+    GRID_PRECISION: float = 10 ** (-_DEFINES.precision.decimal_places)
+
+    # Division-by-zero guard (from GameDefines.precision.epsilon)
+    EPSILON: float = _DEFINES.precision.epsilon
+
+    # Comparison epsilon for floating-point tests (more lenient than grid)
+    # Used in property-based tests where tiny differences don't matter
+    COMPARISON_EPSILON: float = 10 ** (-(_DEFINES.precision.decimal_places + 4))
 
     # Test values for quantization validation
     UNQUANTIZED_PROBABILITY: float = 0.123456789

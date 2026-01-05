@@ -729,6 +729,12 @@ class PrecisionDefines(BaseModel):
         default="ROUND_HALF_UP",
         description="Rounding mode for quantization.",
     )
+    epsilon: float = Field(
+        default=1e-6,
+        gt=0.0,
+        le=1e-3,
+        description="Division-by-zero guard for formulas. Default 1e-6 matches quantization.",
+    )
 
 
 class TimescaleDefines(BaseModel):
@@ -914,6 +920,7 @@ class GameDefines(BaseModel):
             topology=TopologyDefines(**data.get("topology", {})),
             metabolism=MetabolismDefines(**data.get("metabolism", {})),
             struggle=StruggleDefines(**data.get("struggle", {})),
+            carceral=CarceralDefines(**data.get("carceral", {})),
             endgame=EndgameDefines(**data.get("endgame", {})),
             initial=InitialDefines(**data.get("initial", {})),
             precision=PrecisionDefines(**data.get("precision", {})),

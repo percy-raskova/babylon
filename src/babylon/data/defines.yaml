@@ -36,7 +36,17 @@ economy:
   subsidy_trigger_threshold: 0.8    # P(S|R)/P(S|A) ratio threshold for subsidy (80%)
 
   # Entity operational costs (The Calorie Check - must be > 0 to prevent Eden Mode)
-  base_subsistence: 0.01            # Fixed operational cost per tick as % of wealth
+  # LINEAR burn: cost = base_subsistence * class_multiplier (not percentage!)
+  # Calibrated for 20-year (1040 tick) Hump Shape dynamics
+  base_subsistence: 0.0005          # Biological floor: fixed cost per tick, scaled by class multiplier
+  base_labor_power: 1.0             # Base value produced per tick by worker with full biocapacity
+
+  # Zombie prevention (Sprint 1.X D2: High-Fidelity State)
+  death_threshold: 0.001            # Wealth threshold below which entities die (failsafe)
+
+  # Negligible value thresholds (noise filtering)
+  negligible_rent: 0.01             # Rent below this threshold skips event emission
+  negligible_subsidy: 0.01          # Subsidy below this threshold skips processing
 
   # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)
   # Models declining extraction efficiency over time without full OCC tracking
@@ -119,3 +129,51 @@ initial:
   worker_wealth: 0.5                # Starting wealth for periphery worker
   owner_wealth: 0.5                 # Starting wealth for core owner
   default_population: 1             # Default population for test entities (per-capita survival testing)
+
+# Vitality coefficients (Mass Line population dynamics)
+vitality:
+  base_mortality_factor: 0.01       # Fraction of at-risk population that dies per tick
+  inequality_impact: 1.0            # How strongly inequality affects marginal wealth (1.0=full effect)
+
+# Topology coefficients (solidarity network phase transitions)
+topology:
+  gaseous_threshold: 0.1            # Percolation ratio below this = atomized (no collective action)
+  condensation_threshold: 0.5       # Percolation ratio for phase transition (gaseous→liquid/solid)
+  vanguard_density_threshold: 0.5   # Cadre density threshold for vanguard party (liquid→solid)
+
+# Metabolism coefficients (Metabolic Rift - ecological limits)
+metabolism:
+  entropy_factor: 1.2               # Extraction costs more than it yields (thermodynamic inefficiency)
+  overshoot_threshold: 1.0          # Consumption/biocapacity ratio triggering ECOLOGICAL_OVERSHOOT
+  max_overshoot_ratio: 999.0        # Cap for overshoot ratio when biocapacity depleted
+
+# Carceral equilibrium coefficients (Terminal Crisis Dynamics)
+# Models transition from wage suppression to incarceration as rent pool exhausts
+carceral:
+  control_capacity: 4               # Prisoners one enforcer can control (1:N). US average ~4
+  enforcer_fraction: 0.15           # After SUPERWAGE_CRISIS: % of former LA who become guards/cops
+  proletariat_fraction: 0.85        # After SUPERWAGE_CRISIS: % of former LA who become prisoners
+  revolution_threshold: 0.5         # Average prisoner organization threshold for revolution (vs genocide)
+  # Phase staggering delays (ticks) - ensures temporal separation between phases
+  decomposition_delay: 52           # Ticks after SUPERWAGE_CRISIS before CLASS_DECOMPOSITION (1 year)
+  control_ratio_delay: 52           # Ticks after CLASS_DECOMPOSITION before checking control ratio
+  terminal_decision_delay: 1        # Ticks after CONTROL_RATIO_CRISIS before TERMINAL_DECISION
+
+# Endgame detection thresholds
+endgame:
+  revolutionary_percolation_threshold: 0.7    # Percolation ratio for revolutionary victory (70%)
+  revolutionary_consciousness_threshold: 0.8  # Average consciousness for revolutionary victory (80%)
+  ecological_overshoot_threshold: 2.0         # Overshoot ratio threshold for collapse tracking
+  ecological_sustained_ticks: 5               # Consecutive ticks of overshoot before collapse
+  fascist_majority_threshold: 3               # Nodes with national_identity > class_consciousness
+
+# Precision configuration (deterministic simulation)
+precision:
+  decimal_places: 6                 # Quantization precision (10^-n). Default 6 = 0.000001
+  rounding_mode: "ROUND_HALF_UP"    # Rounding mode for quantization
+  epsilon: 0.000001                 # Division-by-zero guard (1e-6)
+
+# Timescale configuration (weekly ticks)
+timescale:
+  tick_duration_days: 7             # Real-world days per tick. Default 7 = weekly
+  weeks_per_year: 52                # Weeks per year for flow conversion

@@ -10,12 +10,11 @@
 | 4. HIFLD Police & Military Loaders | COMPLETE | 2026-01-05 |
 | 5. HIFLD Electric Grid Loader | COMPLETE | 2026-01-05 |
 | 6. Census CFS Loader | DEFERRED | - |
-| 7. FCC Broadband Loader | DEFERRED | - |
+| 7. FCC Broadband Loader | COMPLETE | 2026-01-05 |
 | 8. CLI Integration | COMPLETE | 2026-01-05 |
 
 **Deferred Items:**
 - **CFS Loader**: Census CFS API only provides state-level and CFS-area data, NOT county-level. Requires county mapping table infrastructure to distribute state-level flows to counties.
-- **FCC Loader**: BDC API is file-download oriented (not direct query). Requires account registration and investigation of downloaded file format for county extraction.
 
 ## Overview
 
@@ -876,38 +875,72 @@ This is planned for future work when we build the geographic hierarchy infrastru
 
 ---
 
-## Phase 7: FCC Broadband Loader [DEFERRED]
+## Phase 7: FCC Broadband Loader
 
 ### Overview
-Implement loader for FCC Broadband Data Collection (BDC) API.
+Implement loader for FCC Broadband Data Collection (BDC) data via file-download API.
 
-### Changes Required:
+### Implementation Summary:
 
-#### 1. FCC API Client
-**File**: `src/babylon/data/external/fcc/bdc_client.py`
-**Changes**: New file
+The FCC BDC API is file-download oriented (not direct query). We implemented a two-stage workflow:
+1. **Download stage**: `fcc-download` command fetches and extracts ZIP files from FCC API
+2. **Load stage**: `fcc` command parses downloaded CSVs and loads into database
 
-API spec: https://www.fcc.gov/sites/default/files/bdc-public-data-api-spec.pdf
-Requires: Registration for username/token
-Rate limit: 10 calls/minute
+### Files Created:
 
-#### 2. FCC Loader
+#### 1. FCC Download Client
+**File**: `src/babylon/data/fcc/downloader.py`
+- `FCCBDCClient` class with rate limiting (6s between calls)
+- Authentication via `FCC_USERNAME` and `FCC_API_KEY` environment variables
+- Functions: `download_state_summaries()`, `download_national_summaries()`, `download_state_hexagons()`
+- Multi-state support via range notation (e.g., `--state-fips 01-56`)
+
+#### 2. FCC CSV Parser
+**File**: `src/babylon/data/fcc/parser.py`
+- `FCCBroadbandRecord` dataclass for typed county records
+- `parse_fcc_summary_csv()` with filters for area_data_type, geography_type, biz_res, technology
+- Default filters: Total, County, Residential, Any Technology
+
+#### 3. FCC Loader
 **File**: `src/babylon/data/fcc/loader.py`
-**Changes**: New file
+- `FCCBroadbandLoader` DataLoader implementation
+- Populates `FactBroadbandCoverage` with county-level metrics
+- Converts decimal (0.0-1.0) to percentage (0.00-100.00) format
+
+#### 4. CLI Commands
+**File**: `src/babylon/data/cli.py`
+- `fcc-download`: Download FCC BDC data (national, state summary, or hexagon)
+- `fcc`: Load downloaded CSVs into database
+
+#### 5. Mise Tasks
+**File**: `.mise.toml`
+- `data:fcc-download`: Download FCC data
+- `data:fcc`: Load FCC data
 
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] FCC loader imports and loads successfully
-- [ ] Broadband coverage queryable by county
+- [x] FCC loader imports and loads successfully
+- [x] Broadband coverage queryable by county
+- [x] Successfully loaded 3,213 county records from national summary CSV
 
-**Status: DEFERRED** - The FCC BDC API is file-download oriented rather than direct query:
-1. Requires FCC account registration to get username + hash_value token
-2. API downloads availability data files (CSV/GIS), not direct data query
-3. Rate limit: 10 calls/minute
-4. Downloaded files have `state_fips` field; need to investigate county extraction
+#### Manual Verification:
+```bash
+# Download national summary
+mise run data:fcc-download -- --national
 
-API spec available at: `data/fcc/bdc-public-data-api-spec.pdf`
+# Load into database
+mise run data:fcc
+
+# Query results
+sqlite3 data/sqlite/marxist-data-3NF.sqlite \
+  "SELECT county_name, pct_25_3, pct_1000_100
+   FROM fact_broadband_coverage f
+   JOIN dim_county c ON f.county_id = c.county_id
+   LIMIT 5"
+```
+
+**Status: COMPLETE** - FCC loader implemented with download + parse + load workflow
 
 ---
 

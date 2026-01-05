@@ -6,23 +6,21 @@ Separate from main babylon.db to keep research data isolated from game state.
 Modules:
     database: Census SQLite engine and session management
     schema: SQLAlchemy ORM models for census tables
-    parser: CSV parsing utilities for ACS data files (legacy)
-    loader: Batch ingestion logic for census CSV data (legacy)
     api_client: Census Bureau API client
-    api_loader: API-based ingestion for county-level data
+    loader_3nf: Direct 3NF loader (recommended)
 
 Usage:
-    # Load from Census API (recommended)
-    from babylon.data.census import load_census_from_api
+    # Load directly to 3NF (recommended)
+    from babylon.data.census import CensusLoader
+    from babylon.data.loader_base import LoaderConfig
+    from babylon.data.normalize.database import get_normalized_session
 
-    stats = load_census_from_api(year=2022, reset=True)
+    config = LoaderConfig(census_year=2022)
+    loader = CensusLoader(config)
 
-    # Legacy: Load from CSV files
-    from babylon.data.census import load_census_data
-    from pathlib import Path
-
-    census_dir = Path("data/census")
-    stats = load_census_data(census_dir, reset=True)
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=True)
+        print(f"Loaded {stats.facts_loaded} facts")
 
     # Query the database
     from babylon.data.census import get_census_db, CensusCounty
@@ -37,12 +35,6 @@ from babylon.data.census.api_client import (
     VariableMetadata,
     fetch_county_table,
 )
-from babylon.data.census.api_loader import (
-    ALL_TABLES,
-    MARXIAN_TABLES,
-    ORIGINAL_TABLES,
-    load_census_from_api,
-)
 from babylon.data.census.database import (
     CENSUS_DB_PATH,
     CensusBase,
@@ -50,8 +42,12 @@ from babylon.data.census.database import (
     get_census_db,
     init_census_db,
 )
-from babylon.data.census.loader import load_census_data
-from babylon.data.census.loader_3nf import CensusLoader
+from babylon.data.census.loader_3nf import (
+    ALL_TABLES,
+    MARXIAN_TABLES,
+    ORIGINAL_TABLES,
+    CensusLoader,
+)
 from babylon.data.census.schema import (
     CensusColumnMetadata,
     CensusCommute,
@@ -90,8 +86,6 @@ __all__ = [
     "fetch_county_table",
     # Loaders
     "CensusLoader",  # 3NF direct loader (recommended)
-    "load_census_from_api",  # Legacy API loader (writes to research.sqlite)
-    "load_census_data",  # Legacy CSV loader
     # Table constants
     "ALL_TABLES",
     "ORIGINAL_TABLES",

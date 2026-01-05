@@ -7,6 +7,7 @@ Located at data/sqlite/marxist-data-3NF.sqlite.
 """
 
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, event
@@ -101,7 +102,7 @@ def get_normalized_session_factory() -> sessionmaker[Session]:
 
 
 def get_normalized_db() -> Iterator[Session]:
-    """Get a normalized database session.
+    """Get a normalized database session (generator for dependency injection).
 
     Yields:
         Session: SQLAlchemy database session
@@ -112,6 +113,30 @@ def get_normalized_db() -> Iterator[Session]:
         yield db
     finally:
         db.close()
+
+
+@contextmanager
+def get_normalized_session() -> Iterator[Session]:
+    """Get a normalized database session as a context manager.
+
+    Usage:
+        with get_normalized_session() as session:
+            session.add(obj)
+            session.commit()
+
+    Yields:
+        Session: SQLAlchemy database session
+    """
+    session_factory = get_normalized_session_factory()
+    session = session_factory()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def init_normalized_db() -> None:

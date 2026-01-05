@@ -1,17 +1,25 @@
 """Normalized 3NF research database module.
 
 Provides a properly normalized database for Marxian economic analysis,
-populated via ETL from the denormalized research.sqlite.
+populated directly by DataLoader implementations.
 
 Database location: data/sqlite/marxist-data-3NF.sqlite
 
 Usage:
-    from babylon.data.normalize import run_etl
-    stats = run_etl(reset=True)
-    print(stats)
+    from babylon.data import DataLoader, LoaderConfig
+    from babylon.data.normalize import get_normalized_db
+    from babylon.data.census import CensusLoader
+
+    config = LoaderConfig(census_year=2022)
+    loader = CensusLoader(config)
+
+    with get_normalized_db() as session:
+        stats = loader.load(session, reset=True)
+        print(stats)
 
 Or via CLI:
-    poetry run python -m babylon.data.normalize --reset
+    mise run data:load
+    mise run data:census -- --year 2022
 """
 
 from __future__ import annotations
@@ -34,7 +42,6 @@ from babylon.data.normalize.database import (
     init_normalized_db,
     normalized_engine,
 )
-from babylon.data.normalize.etl import ETLStats, run_etl
 from babylon.data.normalize.views import VIEWS, create_views, drop_views
 
 __all__ = [
@@ -46,9 +53,6 @@ __all__ = [
     "get_normalized_engine",
     "init_normalized_db",
     "normalized_engine",
-    # ETL
-    "ETLStats",
-    "run_etl",
     # Views
     "VIEWS",
     "create_views",

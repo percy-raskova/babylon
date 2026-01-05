@@ -284,136 +284,48 @@ description = "Narrative U-curve sweep with MockLLM"
 run = "poetry run python tools/narrative_sweep.py --mock"
 
 # =============================================================================
-# DATA (Namespaced)
+# DATA (Namespaced) - Unified 3NF Loaders
 # =============================================================================
+
+[tasks."data:load"]
+description = "Load all data sources into 3NF database"
+run = "poetry run python -m babylon.data.cli load"
+
+[tasks."data:census"]
+description = "Load Census ACS data into 3NF database"
+run = "poetry run python -m babylon.data.cli census"
+
+[tasks."data:fred"]
+description = "Load FRED macroeconomic data into 3NF database"
+run = "poetry run python -m babylon.data.cli fred"
+
+[tasks."data:energy"]
+description = "Load EIA energy data into 3NF database"
+run = "poetry run python -m babylon.data.cli energy"
+
+[tasks."data:qcew"]
+description = "Load BLS QCEW employment data into 3NF database"
+run = "poetry run python -m babylon.data.cli qcew"
+
+[tasks."data:trade"]
+description = "Load UN trade data into 3NF database"
+run = "poetry run python -m babylon.data.cli trade"
+
+[tasks."data:materials"]
+description = "Load USGS materials data into 3NF database"
+run = "poetry run python -m babylon.data.cli materials"
+
+[tasks."data:query"]
+description = "Open SQLite CLI for 3NF database"
+run = "sqlite3 data/sqlite/marxist-data-3NF.sqlite"
 
 [tasks."data:ingest"]
 description = "Ingest Marxist corpus into ChromaDB"
 run = "poetry run python tools/ingest_corpus.py"
 
-[tasks."data:ingest-reset"]
-description = "Reset and re-ingest corpus"
-run = "poetry run python tools/ingest_corpus.py --reset"
-
 [tasks."data:db-init"]
-description = "Initialize SQLite database"
+description = "Initialize SQLite database schema"
 run = "poetry run python tools/init_db.py"
-
-[tasks."data:census-load"]
-description = "Load Census ACS data into SQLite research database"
-run = "poetry run python tools/load_census.py"
-
-[tasks."data:census-reset"]
-description = "Reset and reload Census data (drops existing tables)"
-run = "poetry run python tools/load_census.py --reset"
-
-[tasks."data:census-api"]
-description = "Load Census ACS data from Census Bureau API (county-level)"
-run = "poetry run python tools/load_census.py --from-api"
-
-[tasks."data:census-api-reset"]
-description = "Reset and load Census data from API (drops existing census tables)"
-run = "poetry run python tools/load_census.py --from-api --reset"
-
-[tasks."data:census-query"]
-description = "Open SQLite CLI for research database (census + trade)"
-run = "sqlite3 data/sqlite/research.sqlite"
-
-[tasks."data:trade-load"]
-description = "Load UN trade data into SQLite research database"
-run = "poetry run python tools/load_trade.py"
-
-[tasks."data:trade-reset"]
-description = "Reset and reload trade data (preserves census tables)"
-run = "poetry run python tools/load_trade.py --reset"
-
-[tasks."data:research-query"]
-description = "Open SQLite CLI for research database (census + trade + qcew)"
-run = "sqlite3 data/sqlite/research.sqlite"
-
-[tasks."data:qcew-load"]
-description = "Load BLS QCEW employment/wage data into SQLite research database"
-run = "poetry run python tools/load_qcew.py"
-
-[tasks."data:qcew-reset"]
-description = "Reset and reload QCEW data (preserves census/trade tables)"
-run = "poetry run python tools/load_qcew.py --reset"
-
-[tasks."data:qcew-raw"]
-description = "Load raw QCEW 2022 single-file CSV (3.6M rows) for class composition"
-run = "poetry run python tools/ingest_qcew_full.py"
-
-[tasks."data:qcew-raw-reset"]
-description = "Reset and reload raw QCEW 2022 data"
-run = "poetry run python tools/ingest_qcew_full.py --reset"
-
-[tasks."data:qcew-raw-full"]
-description = "Load raw QCEW 2022 CSV + Excel labor hours files"
-run = "poetry run python tools/ingest_qcew_full.py --xlsx"
-
-[tasks."data:qcew-class-composition"]
-description = "Print class composition from existing QCEW 2022 data"
-run = "poetry run python tools/ingest_qcew_full.py --validate-only"
-
-[tasks."data:productivity-load"]
-description = "Load BLS productivity data into SQLite research database (2022)"
-run = "poetry run python tools/load_productivity.py"
-
-[tasks."data:productivity-reset"]
-description = "Reset and reload productivity data (drops existing tables)"
-run = "poetry run python tools/load_productivity.py --reset"
-
-[tasks."data:productivity-all"]
-description = "Load all years of productivity data (1987-2024)"
-run = "poetry run python tools/load_productivity.py --all-years --reset"
-
-[tasks."data:fred-load"]
-description = "Load FRED macroeconomic data into SQLite (national + state + industry, 2022)"
-run = "poetry run python tools/load_fred.py"
-
-[tasks."data:fred-reset"]
-description = "Reset and reload all FRED data"
-run = "poetry run python tools/load_fred.py --reset"
-
-[tasks."data:fred-national"]
-description = "Load FRED national series only (CPI, wages, unemployment, etc.)"
-run = "poetry run python tools/load_fred.py --national-only"
-
-[tasks."data:fred-national-reset"]
-description = "Reset and reload FRED national series only"
-run = "poetry run python tools/load_fred.py --national-only --reset"
-
-[tasks."data:energy-load"]
-description = "Load EIA energy data into SQLite (1949-2024 annual)"
-run = "poetry run python tools/load_energy.py"
-
-[tasks."data:energy-reset"]
-description = "Reset and reload EIA energy data"
-run = "poetry run python tools/load_energy.py --reset"
-
-[tasks."data:energy-all"]
-description = "Load all EIA tables (not just priority)"
-run = "poetry run python tools/load_energy.py --all"
-
-[tasks."data:materials-load"]
-description = "Load USGS mineral data into SQLite (2020-2024)"
-run = "poetry run python tools/load_materials.py"
-
-[tasks."data:materials-reset"]
-description = "Reset and reload USGS materials data"
-run = "poetry run python tools/load_materials.py --reset"
-
-[tasks."data:normalize"]
-description = "Create normalized 3NF database from research.sqlite"
-run = "poetry run python tools/normalize_research_db.py"
-
-[tasks."data:normalize-reset"]
-description = "Reset and recreate normalized 3NF database"
-run = "poetry run python tools/normalize_research_db.py --reset"
-
-[tasks."data:normalize-views"]
-description = "Recreate analytical views only"
-run = "poetry run python tools/normalize_research_db.py --views-only"
 
 # =============================================================================
 # DOCUMENTATION (Namespaced)

@@ -730,10 +730,16 @@ class PrecisionDefines(BaseModel):
         description="Rounding mode for quantization.",
     )
     epsilon: float = Field(
-        default=1e-6,
+        default=1e-9,
         gt=0.0,
         le=1e-3,
-        description="Division-by-zero guard for formulas. Default 1e-6 matches quantization.",
+        description="Division-by-zero guard for formulas. Must be < grid precision (1e-9 < 1e-6).",
+    )
+    comparison_epsilon: float = Field(
+        default=1e-10,
+        gt=0.0,
+        le=1e-6,
+        description="Float equality tolerance for tests (1e-10). Used with pytest.approx.",
     )
 
 

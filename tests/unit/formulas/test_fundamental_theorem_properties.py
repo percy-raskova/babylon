@@ -7,6 +7,11 @@ Properties Verified:
 - Imperial Rent: Non-negativity, boundedness, monotonicity
 - Labor Aristocracy Ratio: Positivity for positive inputs
 - Consciousness Drift: Bounded output, correct sign under material conditions
+
+Precision Notes:
+- Currency/wage strategies use min_value=GRID_PRECISION (1e-6) to avoid subnormal floats
+- Values below the quantization grid are effectively zero in the simulation
+- See defines.yaml precision section for the epsilon hierarchy
 """
 
 from __future__ import annotations
@@ -24,6 +29,9 @@ from babylon.systems.formulas import (
 )
 
 TC = TestConstants
+
+# Quantization grid precision - values below this snap to 0.0
+GRID = TC.Quantization.GRID_PRECISION  # 1e-6
 
 # =============================================================================
 # IMPERIAL RENT PROPERTIES
@@ -202,10 +210,10 @@ class TestLaborAristocracyRatioProperties:
             assert is_aristocracy is False
 
     @given(
-        wages1=st.floats(min_value=0.0, max_value=1e5, allow_nan=False, allow_infinity=False),
-        wages2=st.floats(min_value=0.0, max_value=1e5, allow_nan=False, allow_infinity=False),
+        wages1=st.floats(min_value=GRID, max_value=1e5, allow_nan=False, allow_infinity=False),
+        wages2=st.floats(min_value=GRID, max_value=1e5, allow_nan=False, allow_infinity=False),
         value_produced=st.floats(
-            min_value=0.01, max_value=1e6, allow_nan=False, allow_infinity=False
+            min_value=GRID, max_value=1e6, allow_nan=False, allow_infinity=False
         ),
     )
     def test_higher_wages_higher_ratio(

@@ -106,6 +106,9 @@ class TestConstantsSync:
         assert defines.precision.decimal_places == TC.Quantization.DECIMAL_PLACES
         assert defines.precision.epsilon == TC.Quantization.EPSILON
         assert 10 ** (-defines.precision.decimal_places) == TC.Quantization.GRID_PRECISION
+        # Verify epsilon hierarchy: GRID (1e-6) > EPSILON (1e-9) > COMPARISON (1e-10)
+        assert defines.precision.epsilon < TC.Quantization.GRID_PRECISION
+        assert defines.precision.epsilon > defines.precision.comparison_epsilon
 
 
 @pytest.mark.unit

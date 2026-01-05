@@ -52,6 +52,7 @@ filelock = ">=3.20.1"
 dearpygui = "^2.1.1"
 salib = "^1.5.2"
 openpyxl = "^3.1.5"
+hypothesis = "^6.149.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
@@ -121,6 +122,7 @@ markers = [
     "theory_rent: Imperial rent and unequal exchange mechanics",
     "theory_rift: Metabolic rift and ecological limits mechanics",
     "theory_solidarity: Solidarity transmission and consciousness mechanics",
+    "property: Property-based tests using Hypothesis",
 ]
 
 [tool.ruff]
@@ -241,6 +243,10 @@ ignore_substitutions = [
     "release",
     "version",
 ]
+
+[tool.hypothesis]
+deadline = 500  # ms - allow time for complex formulas
+max_examples = 100  # balance thoroughness vs speed
 
 [tool.babylon.logging]
 default_level = "INFO"

@@ -168,10 +168,12 @@ endgame:
   fascist_majority_threshold: 3               # Nodes with national_identity > class_consciousness
 
 # Precision configuration (deterministic simulation)
+# Epsilon Hierarchy: GRID (1e-6) > DIVISION (1e-9) > COMPARISON (1e-10) > MACHINE (2e-16)
 precision:
   decimal_places: 6                 # Quantization precision (10^-n). Default 6 = 0.000001
   rounding_mode: "ROUND_HALF_UP"    # Rounding mode for quantization
-  epsilon: 0.000001                 # Division-by-zero guard (1e-6)
+  epsilon: 0.000000001              # Division-by-zero guard (1e-9, must be < grid)
+  comparison_epsilon: 0.0000000001  # Float equality tolerance (1e-10, for pytest.approx)
 
 # Timescale configuration (weekly ticks)
 timescale:

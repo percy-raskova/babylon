@@ -315,6 +315,22 @@ run = "poetry run python -m babylon.data.cli trade"
 description = "Load USGS materials data into 3NF database"
 run = "poetry run python -m babylon.data.cli materials"
 
+[tasks."data:hifld-prisons"]
+description = "Load HIFLD Prison Boundaries into 3NF database"
+run = "poetry run python -m babylon.data.cli hifld-prisons"
+
+[tasks."data:hifld-police"]
+description = "Load HIFLD Local Law Enforcement Locations into 3NF database"
+run = "poetry run python -m babylon.data.cli hifld-police"
+
+[tasks."data:hifld-electric"]
+description = "Load HIFLD Electric Substations into 3NF database"
+run = "poetry run python -m babylon.data.cli hifld-electric"
+
+[tasks."data:mirta"]
+description = "Load MIRTA Military Installations into 3NF database"
+run = "poetry run python -m babylon.data.cli mirta"
+
 [tasks."data:query"]
 description = "Open SQLite CLI for 3NF database"
 run = "sqlite3 data/sqlite/marxist-data-3NF.sqlite"

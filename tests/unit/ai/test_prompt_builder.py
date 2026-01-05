@@ -269,6 +269,35 @@ class TestContextBlock:
         assert "surplus_extraction" in context.lower() or "extraction" in context.lower()
         assert "force" in context.lower() or "repression" in context.lower()
 
+    def test_context_block_includes_endgame_event(
+        self,
+        state_with_entities: WorldState,
+    ) -> None:
+        """Context block includes formatted EndgameEvent in recent events section.
+
+        EndgameEvent should appear in the RECENT EVENTS section with the
+        outcome type clearly displayed for AI narrative generation.
+        """
+        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.models.enums import GameOutcome
+        from babylon.models.events import EndgameEvent
+
+        builder = DialecticalPromptBuilder()
+        endgame_event = EndgameEvent(
+            tick=100,
+            outcome=GameOutcome.ECOLOGICAL_COLLAPSE,
+        )
+
+        context = builder.build_context_block(
+            state=state_with_entities,
+            rag_context=["Marx on ecological crisis"],
+            events=[endgame_event],
+        )
+
+        assert "RECENT EVENTS" in context
+        assert "ENDGAME_REACHED" in context
+        assert "ecological" in context.lower() or "collapse" in context.lower()
+
     def test_context_block_handles_empty_rag_context(
         self,
         state_with_entities: WorldState,
@@ -395,3 +424,69 @@ class TestTensionCalculation:
         tension_level = builder._calculate_tension(state_with_low_tension)
 
         assert tension_level == "Low"
+
+
+# =============================================================================
+# TEST EVENT FORMATTING
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestEventFormatting:
+    """Tests for _format_event() method on typed events.
+
+    The _format_event method uses match/case to format each SimulationEvent
+    subclass into a human-readable string for AI narrative generation.
+    """
+
+    def test_format_endgame_event_contains_outcome(self) -> None:
+        """_format_event(EndgameEvent) includes outcome in output."""
+        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.models.enums import GameOutcome
+        from babylon.models.events import EndgameEvent
+
+        builder = DialecticalPromptBuilder()
+        event = EndgameEvent(
+            tick=100,
+            outcome=GameOutcome.REVOLUTIONARY_VICTORY,
+        )
+
+        formatted = builder._format_event(event)
+
+        assert "ENDGAME_REACHED" in formatted
+        assert "Revolutionary Victory" in formatted or "revolutionary_victory" in formatted.lower()
+        assert "100" in formatted  # tick number
+
+    def test_format_endgame_event_ecological_collapse(self) -> None:
+        """_format_event handles ECOLOGICAL_COLLAPSE outcome."""
+        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.models.enums import GameOutcome
+        from babylon.models.events import EndgameEvent
+
+        builder = DialecticalPromptBuilder()
+        event = EndgameEvent(
+            tick=50,
+            outcome=GameOutcome.ECOLOGICAL_COLLAPSE,
+        )
+
+        formatted = builder._format_event(event)
+
+        assert "ENDGAME_REACHED" in formatted
+        assert "Ecological Collapse" in formatted or "ecological_collapse" in formatted.lower()
+
+    def test_format_endgame_event_fascist_consolidation(self) -> None:
+        """_format_event handles FASCIST_CONSOLIDATION outcome."""
+        from babylon.ai.prompt_builder import DialecticalPromptBuilder
+        from babylon.models.enums import GameOutcome
+        from babylon.models.events import EndgameEvent
+
+        builder = DialecticalPromptBuilder()
+        event = EndgameEvent(
+            tick=75,
+            outcome=GameOutcome.FASCIST_CONSOLIDATION,
+        )
+
+        formatted = builder._format_event(event)
+
+        assert "ENDGAME_REACHED" in formatted
+        assert "Fascist Consolidation" in formatted or "fascist_consolidation" in formatted.lower()

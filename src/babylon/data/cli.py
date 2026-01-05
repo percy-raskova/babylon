@@ -97,7 +97,18 @@ def print_stats(stats: LoadStats) -> None:
             typer.echo(f"  ... and {len(stats.errors) - 10} more")
 
 
-ALL_LOADERS = ["census", "fred", "energy", "qcew", "trade", "materials"]
+ALL_LOADERS = [
+    "census",
+    "fred",
+    "energy",
+    "qcew",
+    "trade",
+    "materials",
+    "hifld_prisons",
+    "hifld_police",
+    "hifld_electric",
+    "mirta",
+]
 
 
 def _build_config(
@@ -274,6 +285,22 @@ def _run_loader(
         from babylon.data.materials import MaterialsLoader
 
         loader = MaterialsLoader(config)
+    elif name == "hifld_prisons":
+        from babylon.data.hifld import HIFLDPrisonsLoader
+
+        loader = HIFLDPrisonsLoader(config)
+    elif name == "hifld_police":
+        from babylon.data.hifld import HIFLDPoliceLoader
+
+        loader = HIFLDPoliceLoader(config)
+    elif name == "hifld_electric":
+        from babylon.data.hifld import HIFLDElectricLoader
+
+        loader = HIFLDElectricLoader(config)
+    elif name == "mirta":
+        from babylon.data.mirta import MIRTAMilitaryLoader
+
+        loader = MIRTAMilitaryLoader(config)
     else:
         raise ValueError(f"Unknown loader: {name}")
 
@@ -521,6 +548,146 @@ def materials(
 
     init_normalized_db()
     loader = MaterialsLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def hifld_prisons(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load HIFLD Prison Boundaries into 3NF database.
+
+    Loads ~7,000 prison/correctional facilities from HIFLD ArcGIS Feature Service
+    and aggregates to county-level coercive infrastructure metrics.
+    """
+    from babylon.data.hifld import HIFLDPrisonsLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading HIFLD Prison Boundaries from ArcGIS...")
+
+    init_normalized_db()
+    loader = HIFLDPrisonsLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def hifld_police(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load HIFLD Local Law Enforcement Locations into 3NF database.
+
+    Loads ~18,000 police stations/law enforcement facilities from HIFLD ArcGIS
+    Feature Service and aggregates to county-level coercive infrastructure metrics.
+    """
+    from babylon.data.hifld import HIFLDPoliceLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading HIFLD Local Law Enforcement Locations from ArcGIS...")
+
+    init_normalized_db()
+    loader = HIFLDPoliceLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def hifld_electric(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load HIFLD Electric Substations into 3NF database.
+
+    Loads electric substation data from HIFLD ArcGIS Feature Service
+    and aggregates to county-level electric grid metrics.
+    """
+    from babylon.data.hifld import HIFLDElectricLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading HIFLD Electric Substations from ArcGIS...")
+
+    init_normalized_db()
+    loader = HIFLDElectricLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def mirta(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load MIRTA Military Installations into 3NF database.
+
+    Loads military installation data from DoD MIRTA ArcGIS Feature Service
+    and aggregates to county-level coercive infrastructure metrics.
+    """
+    from babylon.data.mirta import MIRTAMilitaryLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading MIRTA Military Installations from ArcGIS...")
+
+    init_normalized_db()
+    loader = MIRTAMilitaryLoader(config)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)

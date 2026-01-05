@@ -611,6 +611,21 @@ class TestNarrativeDirectorDualNarratives:
 
         assert expected == NarrativeDirector.SIGNIFICANT_EVENT_TYPES
 
+    def test_semantic_map_contains_endgame_reached(self) -> None:
+        """SEMANTIC_MAP has query string for ENDGAME_REACHED events.
+
+        The SEMANTIC_MAP translates event types into theoretical query strings
+        for RAG retrieval. ENDGAME_REACHED needs a mapping to enable historical
+        context retrieval for endgame narratives.
+        """
+        from babylon.ai.director import NarrativeDirector
+        from babylon.models.enums import EventType
+
+        assert EventType.ENDGAME_REACHED in NarrativeDirector.SEMANTIC_MAP
+        query = NarrativeDirector.SEMANTIC_MAP[EventType.ENDGAME_REACHED]
+        # Query should contain relevant theoretical keywords
+        assert "historical materialism" in query.lower() or "revolutionary" in query.lower()
+
     def test_dual_narratives_contain_both_perspectives(
         self,
         initial_state: WorldState,
@@ -646,6 +661,43 @@ class TestNarrativeDirectorDualNarratives:
         narratives = director.dual_narratives[5]
         assert "Authorities" in narratives["corporate"]
         assert "TRANSMISSION" in narratives["liberated"]
+
+    def test_endgame_event_triggers_dual_narratives(
+        self,
+        initial_state: WorldState,
+    ) -> None:
+        """ENDGAME_REACHED events trigger dual narrative generation.
+
+        EndgameEvent is a significant event type that should produce both
+        corporate (status quo) and liberated (revolutionary) perspectives
+        for the game's conclusion.
+        """
+        from babylon.ai import MockLLM, NarrativeDirector
+        from babylon.models.enums import GameOutcome
+        from babylon.models.events import EndgameEvent
+
+        llm = MockLLM(
+            responses=[
+                "Order has been restored after a period of instability.",
+                ">>> TRANSMISSION <<< The workers have seized the means!",
+            ]
+        )
+        director = NarrativeDirector(use_llm=True, llm=llm)
+
+        endgame_event = EndgameEvent(
+            tick=100,
+            outcome=GameOutcome.REVOLUTIONARY_VICTORY,
+        )
+        new_state = initial_state.model_copy(update={"tick": 100, "events": [endgame_event]})
+
+        director.on_tick(initial_state, new_state)
+
+        # Dual narratives should be generated for significant events
+        assert len(director.dual_narratives) == 1
+        assert 100 in director.dual_narratives
+        assert "corporate" in director.dual_narratives[100]
+        assert "liberated" in director.dual_narratives[100]
+        assert "event" in director.dual_narratives[100]
 
     def test_dual_narratives_skipped_without_llm(
         self,

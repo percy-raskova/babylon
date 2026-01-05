@@ -697,6 +697,144 @@ def mirta(
         raise typer.Exit(1)
 
 
+def _fcc_download_files(
+    national: bool,
+    hexagon: bool,
+    state_fips: str,
+    output_dir: Path,
+    as_of_date: str | None,
+    technology_type: str,
+) -> list[Path]:
+    """Execute FCC download based on mode."""
+    from babylon.data.fcc import (
+        download_national_summaries,
+        download_state_hexagons,
+        download_state_summaries,
+    )
+
+    if national:
+        return download_national_summaries(output_dir=output_dir, as_of_date=as_of_date)
+    if hexagon:
+        return download_state_hexagons(
+            state_fips=state_fips,
+            output_dir=output_dir,
+            as_of_date=as_of_date,
+            technology_type=technology_type,
+        )
+    return download_state_summaries(
+        state_fips=state_fips,
+        output_dir=output_dir,
+        as_of_date=as_of_date,
+    )
+
+
+@app.command()
+def fcc_download(
+    state_fips: Annotated[
+        str | None,
+        typer.Option(
+            "--state-fips", "-s", help="2-digit state FIPS code (e.g., 06 for California)"
+        ),
+    ] = None,
+    as_of_date: Annotated[
+        str | None,
+        typer.Option(
+            "--as-of-date",
+            "-d",
+            help="Data vintage date (YYYY-MM-DD). Uses latest if not specified.",
+        ),
+    ] = None,
+    output_dir: Annotated[
+        Path,
+        typer.Option("--output-dir", "-o", help="Output directory for downloaded files"),
+    ] = Path("data/fcc/downloads"),
+    hexagon: Annotated[
+        bool,
+        typer.Option(
+            "--hexagon", help="Download H3 hexagon coverage data (GIS) instead of summary (CSV)"
+        ),
+    ] = False,
+    national: Annotated[
+        bool,
+        typer.Option(
+            "--national", "-n", help="Download national summary (includes county-level data)"
+        ),
+    ] = False,
+    technology: Annotated[
+        str,
+        typer.Option(
+            "--technology", "-t", help="Technology type: 'fixed' or 'mobile' (for hexagon mode)"
+        ),
+    ] = "fixed",
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Download FCC BDC broadband availability data.
+
+    Downloads broadband data from the FCC BDC API.
+    - Default: State summary by Census Place (CSV)
+    - --national: National summary with county-level data (CSV)
+    - --hexagon: State H3 hexagon coverage data (GIS)
+
+    Requires FCC_USERNAME and FCC_API_KEY environment variables.
+
+    Examples:
+        mise run data:fcc-download -- --national                   # County-level national data
+        mise run data:fcc-download -- --state-fips 06              # CA Census Place summary
+        mise run data:fcc-download -- -s 06 --hexagon -t mobile    # CA mobile hexagon H3 data
+    """
+    if national and hexagon:
+        typer.secho("Cannot use --national with --hexagon", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
+    effective_state = state_fips if state_fips else "06"
+    tech_map = {"fixed": "Fixed Broadband", "mobile": "Mobile Broadband"}
+    technology_type = tech_map.get(technology.lower(), technology)
+
+    if not quiet:
+        _print_fcc_download_info(
+            national, hexagon, effective_state, technology_type, as_of_date, output_dir
+        )
+
+    try:
+        extracted = _fcc_download_files(
+            national, hexagon, effective_state, output_dir, as_of_date, technology_type
+        )
+        if not quiet:
+            _print_extracted_files(extracted)
+    except ValueError as e:
+        typer.secho(f"Configuration error: {e}", fg=typer.colors.RED)
+        raise typer.Exit(1) from e
+
+
+def _print_fcc_download_info(
+    national: bool, hexagon: bool, state: str, tech: str, date: str | None, output: Path
+) -> None:
+    """Print FCC download information."""
+    data_type = (
+        "national summary"
+        if national
+        else ("hexagon (H3)" if hexagon else "summary (Census Place)")
+    )
+    scope = "" if national else f" for state {state}"
+    typer.echo(f"Downloading FCC BDC {data_type} data{scope}...")
+    if hexagon:
+        typer.echo(f"Technology: {tech}")
+    typer.echo(f"As-of date: {date or 'latest'}")
+    typer.echo(f"Output directory: {output}")
+
+
+def _print_extracted_files(files: list[Path]) -> None:
+    """Print extracted files summary."""
+    typer.secho(f"\nDownloaded and extracted {len(files)} files:", fg=typer.colors.GREEN)
+    for f in files[:10]:
+        typer.echo(f"  - {f}")
+    if len(files) > 10:
+        typer.echo(f"  ... and {len(files) - 10} more")
+
+
 def main() -> int:
     """Main entry point for CLI."""
     try:

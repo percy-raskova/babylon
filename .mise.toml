@@ -331,6 +331,10 @@ run = "poetry run python -m babylon.data.cli hifld-electric"
 description = "Load MIRTA Military Installations into 3NF database"
 run = "poetry run python -m babylon.data.cli mirta"
 
+[tasks."data:fcc-download"]
+description = "Download FCC BDC broadband data for a state"
+run = "poetry run python -m babylon.data.cli fcc-download"
+
 [tasks."data:query"]
 description = "Open SQLite CLI for 3NF database"
 run = "sqlite3 data/sqlite/marxist-data-3NF.sqlite"

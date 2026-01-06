@@ -1,0 +1,682 @@
+# ==============================================================================
+# Slice 2.3: The Reactionary Subject
+# "The Class Basis of Fascism"
+# ==============================================================================
+#
+# POSITIONING RATIONALE:
+# This slice is placed early in Epoch 2 because it answers the foundational
+# question: WHO are the player's potential allies vs. enemies?
+#
+# You cannot make meaningful strategic decisions about:
+# - Resource Economy (2.5) - who you organize determines resources
+# - Kinetic Warfare (2.6) - who fights for you depends on class
+# - Doctrine Tree (2.7) - ideological choices depend on class composition
+#
+# ...without first understanding the CLASS BASIS of both revolution AND fascism.
+#
+# The Reactionary Subject defines:
+# 1. Which classes form the revolutionary base (P_w, L_u)
+# 2. Which classes form the fascist base (C_pb, C_la)
+# 3. The organizational traps of recruiting from the wrong class
+# 4. The Lumpen distinction (George Jackson model)
+#
+# ==============================================================================
+
+meta:
+  epoch: 2
+  sub_epoch: "2B"
+  slice: "2.3"
+  name: "The Reactionary Subject"
+  subtitle: "The Class Basis of Fascism"
+  status: "SPEC_COMPLETE"
+  created: "2025-12-26"
+  theory_sources:
+    - author: "Joseph Stalin"
+      work: "Foundations of Leninism (1924)"
+      relevance: "Social fascism thesis, petty bourgeois nature of fascism"
+    - author: "George Jackson"
+      work: "Blood in My Eye (1971)"
+      relevance: "Lumpenproletariat as revolutionary force, prison as class war"
+    - author: "J. Sakai"
+      work: "Settlers: The Mythology of the White Proletariat (1983)"
+      relevance: "Labor aristocracy thesis, settler-colonial class formation"
+    - author: "Clara Zetkin"
+      work: "The Struggle Against Fascism (1923)"
+      relevance: "Fascism as mass movement of the disillusioned petty bourgeoisie"
+
+  mantra: "Fascism is capitalism in decay, seeking mass support from the declassed middle."
+
+# ==============================================================================
+# CORE THESIS
+# ==============================================================================
+
+thesis:
+  statement: |
+    Fascism is not a random evil or a psychological aberration. It is the DEFENSIVE
+    FORM of capitalism, emerging when the ruling class can no longer rule in the old
+    way and requires a mass base to crush the revolutionary movement.
+
+    That mass base comes from specific class positions:
+    - The PETTY BOURGEOISIE (C_pb): Small capitalists squeezed by monopoly capital
+    - The LABOR ARISTOCRACY (C_la): Workers bribed by imperial spoils
+
+    These classes share "STATUS ANXIETY" - they have something to LOSE. When crisis
+    hits, their agitation routes to fascism (protection of privilege) rather than
+    revolution (abolition of class).
+
+    The LUMPENPROLETARIAT (L_u), despite their volatility, NEVER form the fascist
+    base because they have ZERO investment in the system. The police are their
+    natural enemy. They may disintegrate into chaos, but they do not join the
+    fascist side.
+
+  liberal_trap: |
+    Liberalism misunderstands fascism as "hatred" or "irrationality." This leads to:
+    - Appeals to reason (which cannot address material interests)
+    - Alliances with the "reasonable right" (who fund fascism)
+    - Neglect of the class basis (which continues to produce fascists)
+
+    The game teaches: You cannot defeat fascism by persuasion. You defeat it by
+    changing the material conditions that produce it, and by building solidarity
+    infrastructure BEFORE the crisis hits.
+
+# ==============================================================================
+# CLASS TAXONOMY
+# ==============================================================================
+
+classes:
+  # --------------------------------------------------------------------------
+  # REVOLUTIONARY BASE
+  # --------------------------------------------------------------------------
+  proletariat:
+    symbol: "P_w"
+    name: "Proletariat"
+    territory_type: "SLUMS, FACTORY_ZONES, PERIPHERY"
+    defining_trait: "Sells labor power; wages < value produced (exploited)"
+    entitlement: 0.2  # Low - little to lose
+    volatility: 0.3   # Moderate - can be mobilized or demoralized
+    potential:
+      revolutionary: "HIGH - direct experience of exploitation breeds consciousness"
+      fascist: "LOW - but can be atomized into passive acquiescence"
+    recruitment_cost: "MEDIUM - requires sustained organizing, political education"
+    combat_value: "MEDIUM - numbers, but limited training"
+    special_traits:
+      - "EXPLOITED: Generates imperial rent for extraction"
+      - "SOLIDARITY_RECEIVER: Can receive consciousness transmission"
+      - "STRIKE_CAPABLE: Can halt production"
+
+  lumpenproletariat:
+    symbol: "L_u"
+    name: "Lumpenproletariat"
+    territory_type: "SLUMS, RESERVATIONS, PRISON_ADJACENT"
+    defining_trait: "Outside formal wage-labor; surplus population"
+    entitlement: 0.0  # Zero - nothing to lose, no investment in system
+    volatility: 0.8   # Very high - no institutional ties, pure survival
+    potential:
+      revolutionary: "HIGHEST (if disciplined) - zero system investment"
+      fascist: "ZERO - police are natural enemy, never defects"
+    recruitment_cost: "LOW (initial) / HIGH (discipline) - easy to recruit, hard to train"
+    combat_value: "HIGHEST (if disciplined) - urban guerillas, no territory to defend"
+    special_traits:
+      - "VOLATILITY: High risk of SPONTANEOUS_RIOT without Cadre leadership"
+      - "POLICE_ENEMY: Immune to fascist recruitment (police are enemy)"
+      - "GUERILLA_POTENTIAL: Best combat units if Discipline > threshold"
+      - "NO_DEFECTION: Never joins fascist faction (may disintegrate, but not defect)"
+    george_jackson_insight: |
+      "The lumpen are the most dangerous class in the struggle, because they have
+      the least to lose. They have no stake in the system. This makes them volatile
+      but also makes them the most reliable revolutionaries when properly organized.
+      The police are their natural enemy - there is no path to fascism for them."
+
+  # --------------------------------------------------------------------------
+  # FASCIST BASE
+  # --------------------------------------------------------------------------
+  petty_bourgeoisie:
+    symbol: "C_pb"
+    name: "Petty Bourgeoisie"
+    territory_type: "SMALL_BUSINESS_DISTRICT, SUBURBS, RURAL"
+    defining_trait: "Owns means of production but works it themselves"
+    entitlement: 0.7  # High - "earned it myself", small property
+    volatility: 0.5   # Moderate - swings with economic conditions
+    potential:
+      revolutionary: "LOW - property ownership creates investment in capitalism"
+      fascist: "HIGH - squeezed by monopoly capital, blames workers"
+    recruitment_cost: "LOW - responds to economic anxiety, easy to mobilize"
+    combat_value: "MEDIUM - motivated but disorganized"
+    special_traits:
+      - "STATUS_ANXIETY: Triggered by economic crisis"
+      - "LOCKOUT_CAPABLE: Can shut down production to starve revolution"
+      - "SWING_CLASS: Routes to fascism OR reaction based on solidarity presence"
+    squeeze_dynamic: |
+      The petty bourgeoisie is squeezed from BOTH directions:
+      - FROM ABOVE: Monopoly capital (C_b) drives them out of business
+      - FROM BELOW: Organized workers (P_w) threaten their small privilege
+
+      This squeeze produces intense AGITATION but without class consciousness.
+      Their rage seeks a target that preserves capitalism: immigrants, minorities,
+      communists - anyone except the actual source of their decline.
+
+  labor_aristocracy:
+    symbol: "C_la"
+    name: "Labor Aristocracy"
+    territory_type: "SUBURBS, DEFENSE_INDUSTRY, IMPERIAL_CORE"
+    defining_trait: "Workers whose wages > value produced (super-wages)"
+    entitlement: 0.8  # Very high - "earned" imperial privilege
+    volatility: 0.3   # Low - stable employment, union benefits
+    potential:
+      revolutionary: "VERY LOW - material interest in imperialism"
+      fascist: "HIGH - defends imperial spoils when threatened"
+    recruitment_cost: "VERY LOW - has resources, legitimacy, organization"
+    combat_value: "LOW - not willing to risk comfortable position"
+    special_traits:
+      - "IMPERIAL_BENEFICIARY: Receives super-wages funded by peripheral extraction"
+      - "CHAUVINISM: Carries debuff that accumulates over time"
+      - "DEFECTION_RISK: May defect to fascism during CRISIS event"
+      - "RESOURCE_RICH: Brings money and infrastructure to organization"
+    trap_mechanism: |
+      The Labor Aristocracy is the ORGANIZATIONAL TRAP of the revolutionary movement.
+
+      They are attractive recruits because:
+      - They have money (union dues, stable income)
+      - They have legitimacy (respectable, organized)
+      - They have infrastructure (union halls, media)
+
+      But they carry CHAUVINISM: investment in imperial privilege that manifests as:
+      - Opposition to immigrant workers
+      - Support for imperialist foreign policy
+      - Prioritization of "domestic" issues over international solidarity
+
+      During a CRISIS, if Chauvinism > Discipline, they DEFECT to the fascist faction,
+      taking their resources with them.
+
+# ==============================================================================
+# NEW METRIC: ENTITLEMENT
+# ==============================================================================
+
+entitlement_metric:
+  name: "Entitlement"
+  symbol: "E"
+  range: [0.0, 1.0]
+  description: |
+    Measures investment in status quo and expectation of privilege.
+    High Entitlement + High Agitation = Fascist potential.
+    Low Entitlement + High Agitation = Revolutionary potential.
+
+  base_values:
+    P_w: 0.2   # Low - little stake in current system
+    L_u: 0.0   # Zero - completely outside system
+    C_pb: 0.7  # High - small property, "self-made" mythology
+    C_la: 0.8  # Very high - super-wages, imperial lifestyle
+
+  modifiers:
+    time_in_labor_aristocracy: "+0.01 per tick (accumulates)"
+    wage_ratio_above_value: "+0.1 per 10% excess (W/V > 1.0)"
+    imperial_benefit_share: "+0.05 per unit of tribute received"
+    political_education: "-0.02 per tick under rectification"
+    crisis_exposure: "+0.1 during CRISIS (fear of loss)"
+
+  formula: |
+    E_effective = E_base + Σ(modifiers)
+    E_effective = clamp(E_effective, 0.0, 1.0)
+
+# ==============================================================================
+# CHAUVINISM MECHANIC
+# ==============================================================================
+
+chauvinism_mechanic:
+  name: "Chauvinism"
+  symbol: "χ"
+  range: [0.0, 1.0]
+  applies_to: ["C_la"]  # Only Labor Aristocracy carries this debuff
+  description: |
+    Chauvinism is the DEBUFF carried by Labor Aristocracy recruits.
+    It represents investment in imperial privilege and national chauvinism.
+    When Chauvinism exceeds Discipline during a CRISIS, units DEFECT.
+
+  accumulation:
+    base_rate: 0.01  # Per tick while in organization
+    wage_bonus: "+0.02 per tick if receiving super-wages"
+    imperial_benefit: "+0.01 per unit of imperial rent benefit"
+
+  reduction:
+    political_education: "-0.03 per tick under active education"
+    rectification_campaign: "-0.1 per RECTIFICATION action (costly)"
+    international_solidarity_action: "-0.02 per SOLIDARITY action with P_w"
+
+  defection_check:
+    trigger: "CRISIS event (ECONOMIC_CRISIS, ECOLOGICAL_OVERSHOOT, etc.)"
+    formula: |
+      Defection_Probability = sigmoid(χ - D)
+      where:
+        χ = average Chauvinism of C_la units in organization
+        D = average Discipline of organization
+
+      If random() < Defection_Probability:
+        - Fire ORGANIZATIONAL_FRACTURE event
+        - C_la units leave organization
+        - Resources (money, infrastructure) go with them
+        - If majority defects: RED_BROWN_COUP (leadership attacked)
+
+  narrative_example: |
+    "The Trade Union Federation, built over decades with resources from the
+    Labor Aristocracy, has voted 72-28 to exclude undocumented workers from
+    membership and endorse the National Security candidate. The union hall
+    you built is now flying nationalist flags."
+
+# ==============================================================================
+# FASCIST RECRUITMENT ENGINE
+# ==============================================================================
+
+fascist_recruitment:
+  name: "The Fascist Pull"
+  description: |
+    The Fascist faction is not player-controlled but emerges from class dynamics.
+    It recruits from C_pb and C_la when conditions are right.
+
+  target_classes:
+    - C_pb  # Petty Bourgeoisie (small business)
+    - C_la  # Labor Aristocracy (super-wage workers)
+
+  never_recruits:
+    - L_u  # Lumpenproletariat (police are enemy)
+    - P_w  # Proletariat (can be atomized but not fascistized)
+
+  trigger_conditions:
+    agitation: ">= 0.6"  # High discontent
+    entitlement: ">= 0.5"  # Investment in status quo
+    solidarity: "< 0.3"  # Low solidarity infrastructure
+
+  recruitment_formula: |
+    Fascist_Pull = Agitation × (Entitlement / (Solidarity + 0.1))
+
+    If Fascist_Pull > 1.0:
+      - Target node begins FASCIST_DRIFT
+      - +0.05 fascist_alignment per tick
+      - At fascist_alignment >= 1.0: Node joins Fascist faction
+
+  blocking_solidarity: |
+    Solidarity infrastructure BLOCKS fascist recruitment.
+    If Solidarity >= 0.5:
+      - Fascist_Pull is halved
+      - Agitation routes to class consciousness instead
+
+    This is why solidarity must be built BEFORE crisis:
+    "Agitation without solidarity produces fascism, not revolution."
+
+# ==============================================================================
+# LUMPENPROLETARIAT MECHANICS
+# ==============================================================================
+
+lumpen_mechanics:
+  name: "The George Jackson Dynamic"
+  description: |
+    The Lumpenproletariat are the most volatile but potentially most valuable class.
+    They have zero investment in the system (police are enemy).
+    With discipline, they become the best fighters.
+    Without discipline, they become ultra-left adventurists.
+
+  volatility_trait:
+    name: "Volatility"
+    symbol: "V"
+    range: [0.0, 1.0]
+    base_value: 0.8  # Very high baseline
+    description: "Probability of uncontrolled action without Cadre leadership"
+
+  without_discipline:
+    threshold: "Cadre_Discipline < 0.5"
+    risk: "SPONTANEOUS_RIOT"
+    probability: "V × (1 - Cadre_Discipline)"
+    effects:
+      - "Fire SPONTANEOUS_RIOT event"
+      - "Alienate mass base (-0.2 Reputation)"
+      - "Give State pretext for repression (+0.3 Repression in territory)"
+      - "Ultra-Left Deviation: Political defeat despite tactical 'success'"
+
+  with_discipline:
+    threshold: "Cadre_Discipline >= 0.5"
+    transformation: "URBAN_GUERILLA"
+    effects:
+      - "Combat_Effectiveness: HIGHEST in game"
+      - "Operating_Terrain: Can operate in HIGH_HEAT territories"
+      - "Police_Immunity: Never compromised by informants (mutual enemy)"
+      - "Defection_Risk: ZERO (unlike C_la)"
+
+  integration_path:
+    actions_required:
+      - "Assign Cadre to L_u territory (costs Cadre Labor)"
+      - "Maintain Political Education (ongoing cost)"
+      - "Avoid premature actions (patience required)"
+    success_criteria: "Volatility drops below 0.4 AND Discipline >= 0.6"
+    failure_mode: "Premature action triggers SPONTANEOUS_RIOT"
+
+  police_enemy_trait: |
+    The Lumpenproletariat are STRUCTURALLY incapable of fascism.
+    The police are their natural enemy - not ideologically, but materially.
+    They are criminalized, surveilled, incarcerated.
+
+    This means:
+    - They never defect to fascist faction (unlike C_la)
+    - They may disintegrate (atomization) but not join the enemy
+    - With proper organization, this makes them the MOST RELIABLE revolutionary force
+
+# ==============================================================================
+# FASCIST ACTIONS (STRATEGY OF TENSION)
+# ==============================================================================
+
+fascist_actions:
+  description: |
+    The Fascist faction executes actions that serve capital while appearing
+    to be "popular rage." These actions follow the "Strategy of Tension."
+
+  pogrom:
+    name: "POGROM"
+    target: ["P_w", "L_u"]  # Attack proletariat or lumpen territories
+    cost:
+      legitimacy: 0.1  # Small cost (State often turns blind eye)
+      fascist_cadre: 5  # Requires mobilized fascist units
+    effects:
+      target_biocapacity: -0.2  # Material destruction
+      target_solidarity: -0.3  # Fear breaks networks
+      target_fear: +0.4  # Psychological terror
+      state_response: "MINIMAL (tacit approval)"
+    narrative: |
+      "Armed groups attacked the worker housing district last night. Three dead,
+      dozens injured. Police arrived after the attackers had left. The Mayor
+      called for 'calm on all sides.'"
+
+  lockout:
+    name: "LOCKOUT"
+    actor: "C_pb"  # Petty Bourgeoisie executes this
+    target: "Production nodes controlled by C_pb"
+    cost:
+      c_pb_wealth: -0.1  # Hurts them too
+      legitimacy: 0.0  # "Property rights"
+    effects:
+      revolutionary_resources: -0.3  # Starve revolution of materials
+      worker_wages: 0  # Workers receive nothing
+      agitation: +0.2  # Increased discontent (but without organization)
+    narrative: |
+      "The Small Business Association has announced an indefinite closure of all
+      member enterprises until 'radical elements' are removed from the city council.
+      Workers face starvation while owners cite 'uncertainty' in the business climate."
+
+  vigilantism:
+    name: "VIGILANTISM"
+    target: "Contested territories"
+    cost:
+      fascist_cadre: 3
+      legitimacy: 0.05  # Small cost
+    effects:
+      safety_cost_for_player: +0.5  # Organizing becomes dangerous
+      cadre_attrition: 0.1  # Player loses Cadre to attacks
+      territory_control: "CONTESTED → HOSTILE"
+    narrative: |
+      "Organizers report being followed and photographed. Two activists were
+      hospitalized after a 'random' attack outside the union hall. The police
+      'have no leads.' The neighborhood has become a no-go zone for open organizing."
+
+  red_brown_coup:
+    name: "RED_BROWN_COUP"
+    trigger: "ORGANIZATIONAL_FRACTURE where defectors > 50%"
+    actor: "Defecting C_la units"
+    target: "Player leadership / organization"
+    effects:
+      leadership_casualties: "30% of player Cadre eliminated"
+      resources_seized: "50% of organization wealth goes to fascists"
+      reputation: -0.5  # Catastrophic legitimacy loss
+      game_state: "POTENTIAL_GAME_OVER"
+    narrative: |
+      "The emergency meeting of the coalition was interrupted by armed members of
+      the 'Patriotic Workers' faction. Three central committee members were detained
+      'for their own safety.' The organization's accounts have been frozen pending
+      'financial review.' The revolution has been betrayed from within."
+
+# ==============================================================================
+# DEVIATION EXAMPLES
+# ==============================================================================
+
+deviation_examples:
+  broad_left_coalition:
+    name: "The Broad Left Coalition Trap"
+    description: |
+      Player attempts to build a "big tent" coalition including the Middle Class.
+
+    phase_1_building:
+      player_actions:
+        - "Recruit from C_la (Labor Aristocracy) - brings money, legitimacy"
+        - "Recruit from C_pb (Small Business) - brings resources, respectability"
+        - "Downplay revolutionary rhetoric to appeal to 'moderates'"
+      initial_benefits:
+        - "+50% starting resources (union dues, business donations)"
+        - "+30% Reputation (seen as 'responsible' opposition)"
+        - "Electoral victories in local races"
+      hidden_costs:
+        - "Chauvinism accumulates in C_la recruits (+0.02/tick)"
+        - "Entitlement of coalition rises (average E > 0.6)"
+        - "Revolutionary consciousness diluted"
+
+    phase_2_crisis:
+      trigger: "ECONOMIC_CRISIS event (recession, austerity)"
+      dynamics:
+        - "Entitlement spikes (+0.2) as middle class fears losing status"
+        - "Agitation spikes (+0.3) as conditions worsen"
+        - "Fascist_Pull calculation exceeds 1.0 for C_pb and C_la"
+
+    phase_3_fracture:
+      check: "Average(Chauvinism) vs Average(Discipline)"
+      outcome_a:
+        condition: "Chauvinism > Discipline"
+        result: "ORGANIZATIONAL_FRACTURE"
+        narrative: |
+          "The coalition's 'Moderate Wing' has announced a split, citing
+          'extremist elements' in leadership. They're taking the union pension
+          fund and the mailing list. Their new platform emphasizes 'national
+          workers first.'"
+      outcome_b:
+        condition: "Discipline >= Chauvinism"
+        result: "Coalition holds but weakened"
+        narrative: |
+          "The rectification campaign was painful, but the coalition survived.
+          The Labor Aristocracy faction grumbled but stayed. The political
+          education investment paid off - barely."
+
+    phase_4_red_brown:
+      trigger: "ORGANIZATIONAL_FRACTURE with defectors > 50%"
+      result: "RED_BROWN_COUP"
+      narrative: |
+        "You built a coalition to win elections. You won elections. Then the
+        crisis came, and the coalition voted to exclude migrants, ally with
+        nationalists, and expel 'foreign influences' (meaning you). The
+        movement you built has become the movement that destroys you."
+
+    lesson: |
+      "You cannot shortcut class struggle by recruiting the wrong classes.
+      The Labor Aristocracy has material interests opposed to revolution.
+      Their money and legitimacy come with a price: Chauvinism.
+      When crisis hits, they will choose fascism over revolution -
+      unless you have invested heavily in political education and discipline."
+
+  ultra_left_lumpen:
+    name: "The Spontaneous Riot Trap"
+    description: |
+      Player recruits from Lumpen without investing in Cadre discipline.
+
+    phase_1_recruitment:
+      player_actions:
+        - "Recruit heavily from L_u (easy, low cost)"
+        - "Skip political education (too slow, boring)"
+        - "Celebrate 'direct action' without discipline"
+      initial_benefits:
+        - "Rapid growth in membership"
+        - "High combat potential (on paper)"
+        - "Revolutionary aesthetic and energy"
+      hidden_costs:
+        - "Volatility remains high (V > 0.7)"
+        - "Cadre ratio drops (mostly Sympathizers, few Cadre)"
+        - "Discipline low (D < 0.4)"
+
+    phase_2_spontaneous_riot:
+      trigger: "Spark event (police violence, eviction, etc.)"
+      check: "Volatility × (1 - Discipline) > random()"
+      outcome: "SPONTANEOUS_RIOT"
+      effects:
+        - "Property destruction, looting, random violence"
+        - "Mass base alienated (-0.3 Reputation)"
+        - "State repression justified (+0.5 Repression)"
+        - "Cadre arrested or killed (attrition)"
+      narrative: |
+        "The funeral march exploded into a riot. Shop windows smashed, cars
+        burned. The news shows footage of masked youth attacking a grocery
+        store owned by an immigrant family. The police chief announces a
+        'crackdown on extremism.' Your organization is blamed for the chaos."
+
+    phase_3_aftermath:
+      result: "Ultra-Left Deviation"
+      effects:
+        - "Political isolation (seen as 'thugs')"
+        - "State repression intensified"
+        - "L_u units scattered (atomization)"
+        - "Organization discredited"
+      narrative: |
+        "Military victory, political defeat. The State got what it wanted:
+        justification for repression and a divided opposition. The Lumpen
+        are back in survival mode. The organization has collapsed. You won
+        the battle and lost the war."
+
+    lesson: |
+      "The Lumpenproletariat are the most valuable revolutionary force -
+      IF properly organized. Their zero investment in the system makes them
+      immune to fascism, but also volatile. Without Cadre discipline, their
+      energy becomes destructive rather than revolutionary. The patient work
+      of political education is not optional."
+
+# ==============================================================================
+# INTEGRATION WITH OTHER SYSTEMS
+# ==============================================================================
+
+integration:
+  resource_economy:
+    slice: "2.5"
+    connection: |
+      The class composition of your organization determines resource access:
+      - C_la brings Sympathizer Labor + Money (but Chauvinism)
+      - L_u brings Combat Potential (but requires Cadre investment)
+      - P_w brings stable base (moderate all resources)
+      The Reactionary Subject defines WHO you organize; Resource Economy defines
+      WHAT you get from them.
+
+  kinetic_warfare:
+    slice: "2.6"
+    connection: |
+      Class determines combat effectiveness:
+      - L_u with discipline = URBAN_GUERILLA (best units)
+      - P_w = MILITIA (numbers, moderate skill)
+      - C_la = UNRELIABLE (may defect mid-battle if Chauvinism high)
+      The Reactionary Subject defines WHO fights; Kinetic Warfare defines HOW.
+
+  doctrine_tree:
+    slice: "2.7"
+    connection: |
+      Class composition constrains ideological choices:
+      - Heavy C_la presence → Reformist/PatSoc pressure
+      - Heavy L_u presence → Insurrectionist pressure
+      - Pure P_w → Scientific Socialism possible
+      The Reactionary Subject defines WHO you have; Doctrine Tree defines WHAT
+      ideological lines are viable.
+
+  state_attention:
+    slice: "2.8"
+    connection: |
+      Class determines State targeting:
+      - C_la organizing draws less attention (legitimate)
+      - L_u organizing draws maximum attention (criminalized)
+      - P_w organizing draws moderate attention
+      The Reactionary Subject defines WHO is organized; State Attention defines
+      HOW the State responds.
+
+  cohesion_mechanic:
+    slice: "2.2b"
+    connection: |
+      Class diversity affects organizational Cohesion:
+      - Homogeneous class base → higher baseline Cohesion
+      - C_la + L_u mix → high Entropy (conflicting interests)
+      - C_pb in organization → Entitlement infection spreads
+      The Reactionary Subject defines WHO is in organization; Cohesion defines
+      HOW well they work together.
+
+# ==============================================================================
+# IMPLEMENTATION NOTES
+# ==============================================================================
+
+implementation:
+  new_models:
+    entitlement_field:
+      location: "SocialClass model"
+      type: "Intensity (constrained float 0.0-1.0)"
+      description: "Base entitlement value for the class"
+
+    chauvinism_field:
+      location: "Organization member tracking"
+      type: "Intensity"
+      description: "Accumulated chauvinism of C_la recruits"
+
+    volatility_field:
+      location: "L_u class tracking"
+      type: "Intensity"
+      description: "Risk of spontaneous action"
+
+    fascist_alignment:
+      location: "SocialClass model"
+      type: "Intensity"
+      description: "Progress toward fascist faction (0.0 = neutral, 1.0 = fascist)"
+
+  new_events:
+    - "FASCIST_DRIFT: Node begins moving toward fascist faction"
+    - "ORGANIZATIONAL_FRACTURE: Coalition splits due to Chauvinism > Discipline"
+    - "RED_BROWN_COUP: Defectors attack remaining leadership"
+    - "SPONTANEOUS_RIOT: Undisciplined L_u action"
+    - "POGROM: Fascist attack on P_w/L_u territory"
+    - "LOCKOUT: C_pb shuts down production"
+    - "VIGILANTISM: Fascist paramilitary presence increases"
+
+  new_formulas:
+    calculate_fascist_pull:
+      inputs: ["agitation", "entitlement", "solidarity"]
+      formula: "Agitation × (Entitlement / (Solidarity + 0.1))"
+      returns: "float"
+
+    calculate_defection_probability:
+      inputs: ["average_chauvinism", "average_discipline"]
+      formula: "sigmoid(chauvinism - discipline)"
+      returns: "Probability"
+
+    calculate_spontaneous_riot_risk:
+      inputs: ["volatility", "cadre_discipline"]
+      formula: "volatility × (1 - cadre_discipline)"
+      returns: "Probability"
+
+  system_required:
+    name: "FascistFactionSystem"
+    responsibilities:
+      - "Track fascist_alignment of C_pb and C_la nodes"
+      - "Execute fascist recruitment when conditions met"
+      - "Manage fascist faction actions (POGROM, LOCKOUT, VIGILANTISM)"
+      - "Check for ORGANIZATIONAL_FRACTURE during CRISIS"
+      - "Execute RED_BROWN_COUP if fracture conditions met"
+
+# ==============================================================================
+# CROSS-REFERENCES
+# ==============================================================================
+
+cross_references:
+  - file: "ai-docs/cohesion-mechanic.yaml"
+    relevance: "Organizational dynamics, Entropy accumulation"
+  - file: "ai-docs/vanguard-economy.yaml"
+    relevance: "Resource flows from different class recruits"
+  - file: "ai-docs/kinetic-warfare.yaml"
+    relevance: "Combat effectiveness by class"
+  - file: "ai-docs/doctrine-tree.yaml"
+    relevance: "Ideological constraints from class composition"
+  - file: "ai-docs/state-attention-economy.yaml"
+    relevance: "State targeting by class type"
+  - file: "ai-docs/strategy-layer.yaml"
+    relevance: "Player actions that interact with class dynamics"

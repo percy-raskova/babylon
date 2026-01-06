@@ -1,0 +1,467 @@
+# Census Data Loader Architecture (v2)
+# Documentation for the enhanced Census data loading infrastructure
+#
+# Related Files:
+#   - src/babylon/data/census/loader_3nf.py (main loader implementation)
+#   - src/babylon/data/normalize/schema.py (SQLAlchemy ORM models)
+#   - tests/unit/data/test_normalize/test_dim_race.py (unit tests)
+#   - tests/integration/data/test_census_enhanced.py (integration tests)
+
+metadata:
+  version: "2.0.0"
+  created: "2026-01-05"
+  updated: "2026-01-05"
+  purpose: "Document the enhanced Census data loading infrastructure"
+  contents:
+    - "Data-driven FactTableSpec architecture"
+    - "Multi-year loading configuration"
+    - "Race disaggregation via DimRace"
+    - "Metro area population with bridge tables"
+  related_docs:
+    - "ai-docs/census-insights.yaml - MLM-TW analysis of Census data"
+    - "ai-docs/database-spec.yaml - Game simulation Ledger layer"
+
+# =============================================================================
+# ARCHITECTURE OVERVIEW
+# =============================================================================
+
+architecture_overview:
+  description: |
+    The Census data loader uses a 3NF (Third Normal Form) normalized schema
+    to store American Community Survey (ACS) data. This enables:
+    1. Multi-year time series analysis
+    2. Race-disaggregated demographic insights
+    3. Metropolitan area aggregation
+    4. Efficient storage with dimension tables
+
+  layer_distinction:
+    note: |
+      The Census data layer is SEPARATE from the game simulation's Ledger layer.
+      - Census Layer: Real-world demographic data for scenario initialization
+      - Ledger Layer: Game state (SocialClass, Territory, Relationship entities)
+
+  technology:
+    orm: "SQLAlchemy 2.0 with DeclarativeBase"
+    database: "SQLite with foreign key enforcement"
+    validation: "Pydantic models with constrained types"
+
+# =============================================================================
+# DATA-DRIVEN LOADER PATTERN (FactTableSpec)
+# =============================================================================
+
+fact_table_spec:
+  description: |
+    The Census loader uses a data-driven architecture via the FactTableSpec
+    frozen dataclass. Each Census table is defined declaratively, and the
+    loader iterates over specifications to load data uniformly.
+
+  dataclass_definition:
+    location: "src/babylon/data/census/loader_3nf.py:174"
+    fields:
+      table_id:
+        type: "str"
+        description: "Census API table ID (e.g., 'B19001', 'B19013')"
+        example: "B19001"
+      fact_class:
+        type: "type[NormalizedBase]"
+        description: "SQLAlchemy ORM model class for the fact table"
+        example: "FactIncomeDistribution"
+      label:
+        type: "str"
+        description: "Human-readable label for logging/display"
+        example: "Income Distribution"
+      value_field:
+        type: "str"
+        description: "Column name for the primary value in fact table"
+        example: "household_count"
+      race_suffixes:
+        type: "tuple[str, ...]"
+        description: |
+          Race iteration suffixes (A-I). Empty tuple for tables without
+          race disaggregation (e.g., Gini index B19083).
+        example: "('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I')"
+      variable_prefix:
+        type: "str | None"
+        description: "Prefix for API variable names if different from table_id"
+        example: null
+      bracket_count:
+        type: "int | None"
+        description: "Number of income brackets for distribution tables"
+        example: 17
+
+  immutability:
+    frozen: true
+    rationale: |
+      FactTableSpec is frozen (immutable) to ensure table specifications
+      cannot be modified at runtime. This guarantees deterministic behavior
+      and enables safe concurrent access.
+
+  current_specs:
+    location: "src/babylon/data/census/loader_3nf.py:231"
+    tables:
+      - table_id: "B19001"
+        label: "Income Distribution"
+        race_suffixes: "FULL_RACE_SUFFIXES (A-I)"
+        notes: "17 income brackets by race"
+      - table_id: "B19013"
+        label: "Median Income"
+        race_suffixes: "FULL_RACE_SUFFIXES (A-I)"
+        notes: "Median household income by race"
+      - table_id: "B23025"
+        label: "Employment Status"
+        race_suffixes: "()"
+        notes: "Employment status (no race iteration)"
+      - table_id: "B19083"
+        label: "Gini Index"
+        race_suffixes: "()"
+        notes: "Income inequality measure (no race iteration)"
+
+# =============================================================================
+# MULTI-YEAR LOADING
+# =============================================================================
+
+multi_year_loading:
+  description: |
+    The Census loader supports loading multiple years of ACS data into
+    the same database, enabling time-series analysis. Years are tracked
+    via the DimTime dimension table.
+
+  configuration:
+    location: "src/babylon/data/normalize/loader_config.py"
+    field: "census_years"
+    type: "list[int]"
+    default: "[2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]"
+    notes: |
+      The default range covers all available ACS 5-year estimates.
+      Users can customize to load only specific years.
+
+  dim_time_schema:
+    location: "src/babylon/data/normalize/schema.py"
+    table: "dim_time"
+    columns:
+      time_id:
+        type: "INTEGER"
+        constraints: "PRIMARY KEY AUTOINCREMENT"
+      year:
+        type: "INTEGER"
+        constraints: "NOT NULL UNIQUE, CHECK(year >= 2005)"
+        notes: "ACS 5-year estimates started in 2005"
+
+  fact_table_integration:
+    description: |
+      Census fact tables include time_id as part of their composite
+      primary key, enabling per-year storage of the same county/race data.
+    composite_pk_pattern: "(county_fips, time_id, race_id, bracket_id)"
+
+# =============================================================================
+# RACE DISAGGREGATION (DimRace)
+# =============================================================================
+
+race_disaggregation:
+  description: |
+    The DimRace dimension table enables race-disaggregated analysis of
+    Census data following the ACS A-I suffix scheme.
+
+  dim_race_schema:
+    location: "src/babylon/data/normalize/schema.py:598"
+    table: "dim_race"
+    columns:
+      race_id:
+        type: "INTEGER"
+        constraints: "PRIMARY KEY AUTOINCREMENT"
+      race_code:
+        type: "VARCHAR(1)"
+        constraints: "NOT NULL UNIQUE"
+        check: "race_code IN ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'T')"
+      race_name:
+        type: "VARCHAR(100)"
+        constraints: "NOT NULL"
+      race_short_name:
+        type: "VARCHAR(20)"
+        constraints: "NOT NULL"
+      is_hispanic_ethnicity:
+        type: "BOOLEAN"
+        constraints: "DEFAULT FALSE"
+        notes: "True for code 'I' (Hispanic or Latino)"
+      is_indigenous:
+        type: "BOOLEAN"
+        constraints: "DEFAULT FALSE"
+        notes: "True for code 'C' (AIAN)"
+      display_order:
+        type: "INTEGER"
+        constraints: "DEFAULT 0"
+        notes: "For UI ordering purposes"
+
+  race_codes:
+    location: "src/babylon/data/census/loader_3nf.py:89"
+    constant: "RACE_CODES"
+    entries:
+      T:
+        name: "Total Population"
+        short: "Total"
+        hispanic: false
+        indigenous: false
+        notes: "Aggregate across all race categories"
+      A:
+        name: "White alone"
+        short: "White"
+        hispanic: false
+        indigenous: false
+      B:
+        name: "Black or African American alone"
+        short: "Black"
+        hispanic: false
+        indigenous: false
+      C:
+        name: "American Indian and Alaska Native alone"
+        short: "AIAN"
+        hispanic: false
+        indigenous: true
+        notes: "Settler colonialism analysis via is_indigenous flag"
+      D:
+        name: "Asian alone"
+        short: "Asian"
+        hispanic: false
+        indigenous: false
+      E:
+        name: "Native Hawaiian and Other Pacific Islander alone"
+        short: "NHOPI"
+        hispanic: false
+        indigenous: false
+      F:
+        name: "Some other race alone"
+        short: "Other"
+        hispanic: false
+        indigenous: false
+      G:
+        name: "Two or more races"
+        short: "Multiracial"
+        hispanic: false
+        indigenous: false
+      H:
+        name: "White alone, not Hispanic or Latino"
+        short: "NH White"
+        hispanic: false
+        indigenous: false
+        notes: "Distinct from 'A' which includes Hispanic White"
+      I:
+        name: "Hispanic or Latino"
+        short: "Hispanic"
+        hispanic: true
+        indigenous: false
+        notes: "Ethnicity category (overlaps with race codes A-G)"
+
+  full_race_suffixes:
+    location: "src/babylon/data/census/loader_3nf.py:227"
+    constant: "FULL_RACE_SUFFIXES"
+    value: "('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I')"
+    notes: |
+      9 elements (excludes 'T' for Total). Used in FactTableSpec.race_suffixes
+      for tables that have race iterations. The base table (without suffix)
+      typically contains Total population data, assigned race_code='T'.
+
+  mlm_tw_integration:
+    description: |
+      Race disaggregation enables analysis of national oppression patterns
+      critical to MLM-TW theory. Key applications:
+      1. Imperial rent extraction by race (who benefits from super-wages?)
+      2. Colonial extraction from indigenous territories (AIAN data)
+      3. Class composition by race (labor aristocracy demographics)
+      4. Fascist bifurcation analysis (national identity routing by race)
+
+# =============================================================================
+# METRO AREA POPULATION
+# =============================================================================
+
+metro_area_population:
+  description: |
+    The metro area dimension enables aggregation of county-level Census
+    data to metropolitan statistical areas (MSAs), micropolitan areas,
+    and combined statistical areas (CSAs).
+
+  dim_metro_area_schema:
+    location: "src/babylon/data/normalize/schema.py"
+    table: "dim_metro_area"
+    columns:
+      metro_id:
+        type: "INTEGER"
+        constraints: "PRIMARY KEY AUTOINCREMENT"
+      cbsa_code:
+        type: "VARCHAR(5)"
+        constraints: "NOT NULL UNIQUE"
+        notes: "Core Based Statistical Area code from Census"
+      metro_name:
+        type: "VARCHAR(255)"
+        constraints: "NOT NULL"
+      metro_type:
+        type: "VARCHAR(20)"
+        constraints: "NOT NULL"
+        check: "metro_type IN ('msa', 'micropolitan', 'csa')"
+        enum_values:
+          msa: "Metropolitan Statistical Area (pop >= 50,000)"
+          micropolitan: "Micropolitan Statistical Area (pop 10,000-49,999)"
+          csa: "Combined Statistical Area (multiple adjacent CBSAs)"
+      population_estimate:
+        type: "INTEGER"
+        constraints: "DEFAULT 0"
+      primary_state_fips:
+        type: "VARCHAR(2)"
+        constraints: "NULLABLE"
+        notes: "FIPS code of the primary state for the metro"
+
+  bridge_county_metro_schema:
+    location: "src/babylon/data/normalize/schema.py"
+    table: "bridge_county_metro"
+    description: |
+      Many-to-many bridge table connecting counties to metro areas.
+      A county may belong to multiple overlapping metro areas (e.g.,
+      a county in both an MSA and a CSA).
+    columns:
+      county_fips:
+        type: "VARCHAR(5)"
+        constraints: "NOT NULL, FOREIGN KEY -> dim_county(fips_code)"
+      metro_id:
+        type: "INTEGER"
+        constraints: "NOT NULL, FOREIGN KEY -> dim_metro_area(metro_id)"
+      is_central_county:
+        type: "BOOLEAN"
+        constraints: "DEFAULT FALSE"
+        notes: "True if county contains the metro's central city"
+    composite_pk: "(county_fips, metro_id)"
+
+  query_patterns:
+    aggregate_by_metro:
+      description: "Sum fact data across all counties in a metro area"
+      sql: |
+        SELECT m.metro_name, SUM(f.household_count) as total_households
+        FROM fact_income_distribution f
+        JOIN bridge_county_metro b ON f.county_fips = b.county_fips
+        JOIN dim_metro_area m ON b.metro_id = m.metro_id
+        WHERE m.metro_type = 'msa'
+        GROUP BY m.metro_id, m.metro_name
+        ORDER BY total_households DESC
+
+    race_by_metro:
+      description: "Analyze race composition at metro level"
+      sql: |
+        SELECT m.metro_name, r.race_short_name, SUM(f.population_count) as pop
+        FROM fact_population f
+        JOIN bridge_county_metro b ON f.county_fips = b.county_fips
+        JOIN dim_metro_area m ON b.metro_id = m.metro_id
+        JOIN dim_race r ON f.race_id = r.race_id
+        GROUP BY m.metro_id, r.race_id
+        ORDER BY m.metro_name, pop DESC
+
+# =============================================================================
+# TESTING STRATEGY
+# =============================================================================
+
+testing_strategy:
+  description: |
+    The Census data loader has comprehensive test coverage across unit
+    and integration tests.
+
+  unit_tests:
+    location: "tests/unit/data/test_normalize/test_dim_race.py"
+    coverage:
+      - "DimRace schema structure and constraints"
+      - "Race code CHECK constraint validation"
+      - "Boolean flags (is_hispanic_ethnicity, is_indigenous)"
+      - "FactTableSpec frozen dataclass behavior"
+      - "FactTableSpec required fields validation"
+      - "RACE_CODES constant structure and content"
+      - "FULL_RACE_SUFFIXES constant validation"
+
+  integration_tests:
+    location: "tests/integration/data/test_census_enhanced.py"
+    coverage:
+      - "LoaderConfig multi-year configuration"
+      - "DimTime year constraint validation"
+      - "DimRace population and unique constraints"
+      - "Fact table composite PK with time_id and race_id"
+      - "DimMetroArea schema (msa, micropolitan, csa types)"
+      - "BridgeCountyMetro county-metro mappings"
+      - "Metro area aggregation query patterns"
+      - "Race disaggregation query patterns"
+
+  test_patterns:
+    isolation: "In-memory SQLite with FK enforcement"
+    fixtures: "Session-scoped engine, function-scoped sessions"
+    rollback: "Automatic rollback after each test function"
+
+# =============================================================================
+# USAGE EXAMPLES
+# =============================================================================
+
+usage_examples:
+  basic_loading:
+    description: "Load Census data for specific years"
+    code: |
+      from babylon.data.census.loader_3nf import CensusLoader3NF
+      from babylon.data.normalize.loader_config import LoaderConfig
+
+      config = LoaderConfig(census_years=[2020, 2021, 2022])
+      loader = CensusLoader3NF(config)
+      loader.load_all()
+
+  custom_fact_tables:
+    description: "Load only specific Census tables"
+    code: |
+      from babylon.data.census.loader_3nf import (
+          CensusLoader3NF,
+          FACT_TABLE_SPECS,
+      )
+
+      # Filter to only income-related tables
+      income_specs = [s for s in FACT_TABLE_SPECS if 'B19' in s.table_id]
+      loader = CensusLoader3NF(config)
+      for spec in income_specs:
+          loader.load_fact_table(spec)
+
+  race_analysis:
+    description: "Query race-disaggregated income data"
+    code: |
+      from babylon.data.normalize.schema import (
+          FactMedianIncome,
+          DimRace,
+          DimCounty,
+      )
+
+      # Median income by race for a specific county
+      results = (
+          session.query(
+              DimRace.race_short_name,
+              FactMedianIncome.median_income,
+          )
+          .join(DimRace, FactMedianIncome.race_id == DimRace.race_id)
+          .join(DimCounty, FactMedianIncome.county_fips == DimCounty.fips_code)
+          .filter(DimCounty.county_name.like('Los Angeles%'))
+          .all()
+      )
+
+# =============================================================================
+# FUTURE ENHANCEMENTS
+# =============================================================================
+
+future_enhancements:
+  planned:
+    - description: "AIAN-specific variant data extraction"
+      notes: |
+        The ACSDT5YAIAN variant contains American Indian/Alaska Native
+        specific data that requires special POPGROUP filtering. This
+        would enhance settler colonialism analysis capabilities.
+
+    - description: "Multi-state metro handling"
+      notes: |
+        Some metros span multiple states (e.g., NYC-Newark-Jersey City).
+        Enhanced handling for multi-state aggregation queries.
+
+    - description: "Incremental loading"
+      notes: |
+        Currently the loader does full loads. Incremental loading would
+        enable updating only new years without reloading all data.
+
+    - description: "Data validation layer"
+      notes: |
+        Add validation checks for data quality (missing counties,
+        population consistency, temporal continuity).

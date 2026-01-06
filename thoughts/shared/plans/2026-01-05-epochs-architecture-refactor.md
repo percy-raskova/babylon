@@ -203,9 +203,9 @@ rmdir ai-docs/epoch2
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] New directory exists: `ls ai-docs/epochs/epoch3/`
-- [ ] Original epoch2/ removed: `! test -d ai-docs/epoch2`
-- [ ] Archive contains backup: `ls ai-docs/archive/epoch2-original/`
+- [x] New directory exists: `ls ai-docs/epochs/epoch3/`
+- [x] Original epoch2/ removed: `! test -d ai-docs/epoch2`
+- [x] Archive contains backup: `ls ai-docs/archive/epoch2-original/`
 
 ---
 

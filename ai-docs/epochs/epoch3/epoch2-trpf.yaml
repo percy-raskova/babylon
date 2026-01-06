@@ -1,0 +1,351 @@
+# Epoch 2 TRPF Specification
+# Full Organic Composition of Capital Implementation
+#
+# Theoretical Basis: Marx, Capital Volume 3, Chapters 13-15
+# "The Law of the Tendency of the Rate of Profit to Fall"
+
+meta:
+  status: PLANNED
+  target_epoch: 2
+  created: "2025-12-31"
+  author: "Claude Opus 4.5"
+  theoretical_basis: "Marx, Capital Vol. 3, Chapters 13-15"
+
+overview:
+  description: |
+    Epoch 2 will implement proper organic composition of capital (OCC)
+    tracking, enabling calculation of the true rate of profit and modeling
+    the dialectical contradiction at the heart of capitalist accumulation.
+
+    Epoch 1 uses a TRPF surrogate (time-based decay of extraction efficiency).
+    Epoch 2 will model the actual mechanism: rising OCC causing falling profit rates.
+
+  why_this_matters: |
+    Without proper OCC tracking, the simulation cannot model:
+    - Automation decisions that shift c/v ratio
+    - The contradiction between productivity and profitability
+    - Counteracting factors as explicit mechanics
+    - Per-entity differentiation in profit rates
+
+    The TRPF surrogate is theoretically incomplete but mechanically sufficient
+    for Epoch 1's scope. Epoch 2 requires the full implementation for:
+    - Bourgeoisie decision trees (automate vs. intensify vs. cut wages)
+    - Crisis mechanics (profit crisis triggers)
+    - Counteracting factor gameplay (player choices offset TRPF)
+
+# Core Formulas from Marx, Capital Vol. 3
+
+marxian_formulas:
+  rate_of_profit:
+    formula: "p' = s / (c + v)"
+    description: "The fundamental law. Profit rate as surplus over total capital."
+    variables:
+      s: "Surplus value - value extracted from labor beyond wages"
+      c: "Constant capital - machinery, materials, buildings (dead labor)"
+      v: "Variable capital - wages paid (living labor)"
+
+  organic_composition:
+    formula: "OCC = c / v"
+    description: "Ratio of dead labor to living labor in production"
+    interpretation: |
+      - OCC = 0.5: Early capitalism, labor-intensive (Marx's first example)
+      - OCC = 1.0: Balanced composition
+      - OCC = 4.0: Advanced capitalism, capital-intensive (Marx's third example)
+
+  exploitation_rate:
+    formula: "s/v"
+    description: "Rate of surplus-value extraction from living labor"
+    note: "Can remain constant while profit rate falls, because c rises faster"
+
+  marxs_numerical_example:
+    description: "From Capital Vol. 3, Chapter 13"
+    table:
+      - { c: 50, v: 100, s: 100, occ: 0.5, profit_rate: "66.67%" }
+      - { c: 100, v: 100, s: 100, occ: 1.0, profit_rate: "50.00%" }
+      - { c: 400, v: 100, s: 100, occ: 4.0, profit_rate: "20.00%" }
+
+# The Six Counteracting Factors (Capital Vol. 3, Chapter 14)
+
+counteracting_factors:
+  description: |
+    Marx identifies six factors that temporarily offset the falling rate.
+    These become explicit gameplay mechanics in Epoch 2.
+
+  factors:
+    1_intensification:
+      name: "Intensifying Exploitation"
+      mechanism: "Longer hours, speed-up, increased labor intensity"
+      effect: "Raises s/v ratio, temporarily increases s without raising c"
+      in_game:
+        trigger: "Bourgeoisie action: INTENSIFY_EXPLOITATION"
+        result: "s/v increases, worker consciousness increases, health decreases"
+        tradeoff: "Short-term profit vs. long-term instability"
+
+    2_wage_depression:
+      name: "Wage Depression"
+      mechanism: "Paying below subsistence, cutting benefits"
+      effect: "Directly increases s by reducing v"
+      in_game:
+        trigger: "Bourgeoisie action: CUT_WAGES or when repression_level > threshold"
+        result: "s increases, worker consciousness increases, risk of REVOLT"
+        tradeoff: "Immediate profit vs. revolutionary potential"
+
+    3_cheapening_constant_capital:
+      name: "Cheapening Constant Capital"
+      mechanism: "Technological progress makes machinery and materials cheaper"
+      effect: "Lowers absolute c even as physical quantity increases"
+      in_game:
+        trigger: "Technological advancement events"
+        result: "c decreases, profit rate temporarily stabilizes"
+        note: "This is a systemic factor, not a player choice"
+
+    4_relative_overpopulation:
+      name: "Relative Overpopulation (Reserve Army of Labor)"
+      mechanism: "Unemployment enables cheap labor in new industries"
+      effect: "New industries start with high s/v before mechanization"
+      in_game:
+        trigger: "Unemployment rate > threshold"
+        result: "New enterprises can hire at below-average wages"
+        note: "Interacts with Territory system (industrial reserve army)"
+
+    5_foreign_trade:
+      name: "Foreign Trade (Imperial Rent)"
+      mechanism: "Cheap imports lower c and subsistence wages"
+      effect: "Core capitalists access cheaper inputs, higher s/v"
+      in_game:
+        implementation: "ALREADY IMPLEMENTED as Imperial Rent System"
+        formula: "Phi = W_c - V_c"
+        note: |
+          This is the critical connection between TRPF and MLM-TW theory.
+          Imperial rent IS Counteracting Factor #5.
+          It extends TRPF's timeline for core capitalism while accelerating
+          it for peripheral capitalism.
+
+    6_interest_bearing_capital:
+      name: "Interest-Bearing Capital"
+      mechanism: "Infrastructure investments earn below-average returns"
+      effect: "Don't participate in profit-rate equalization"
+      in_game:
+        trigger: "Large-scale infrastructure investments"
+        result: "Some capital excluded from average profit rate calculation"
+        note: "Lower priority for Epoch 2, may defer to Epoch 3"
+
+# Entity Extensions for Epoch 2
+
+entity_extensions:
+  bourgeoisie:
+    description: "Add capital composition tracking to Bourgeoisie entities"
+    new_fields:
+      constant_capital:
+        type: Currency
+        description: "Investment in machinery, materials, buildings (dead labor)"
+        initial_value: "Calculated from wealth and default OCC ratio"
+
+      variable_capital:
+        type: Currency
+        description: "Wages paid to workers (living labor)"
+        initial_value: "Calculated from wealth and default OCC ratio"
+
+      surplus_extracted:
+        type: Currency
+        description: "Surplus value extracted this tick"
+        computed: true
+
+    computed_properties:
+      organic_composition:
+        formula: "constant_capital / variable_capital"
+        type: "Ratio (float, unbounded)"
+
+      rate_of_profit:
+        formula: "surplus_extracted / (constant_capital + variable_capital)"
+        type: "Probability (0.0 to 1.0+)"
+
+    migrations:
+      from_epoch1: |
+        - Initialize constant_capital = wealth * default_occ / (1 + default_occ)
+        - Initialize variable_capital = wealth / (1 + default_occ)
+        - Where default_occ = 1.0 (balanced composition at start)
+
+# New Formulas for Epoch 2
+
+formulas:
+  calculate_rate_of_profit:
+    signature: "(surplus: Currency, constant_capital: Currency, variable_capital: Currency) -> Probability"
+    formula: "s / (c + v)"
+    implementation: |
+      def calculate_rate_of_profit(
+          surplus_value: float,
+          constant_capital: float,
+          variable_capital: float,
+      ) -> float:
+          total_capital = constant_capital + variable_capital
+          if total_capital <= 0:
+              return 0.0
+          return surplus_value / total_capital
+    notes: "Returns 0.0 if total capital is zero (bankruptcy)"
+
+  calculate_organic_composition:
+    signature: "(constant_capital: Currency, variable_capital: Currency) -> float"
+    formula: "c / v"
+    implementation: |
+      def calculate_organic_composition(
+          constant_capital: float,
+          variable_capital: float,
+      ) -> float:
+          if variable_capital <= 0:
+              return float('inf')  # Fully automated
+          return constant_capital / variable_capital
+    notes: "Infinity represents fully automated production (no living labor)"
+
+  calculate_occ_change_from_automation:
+    signature: "(automation_investment: Currency, current_c: Currency, current_v: Currency, displacement_rate: float) -> tuple[Currency, Currency]"
+    formula: |
+      new_c = current_c + automation_investment
+      displaced_v = automation_investment * displacement_rate
+      new_v = max(0, current_v - displaced_v)
+      return (new_c, new_v)
+    notes: "Models how automation shifts capital composition"
+    default_displacement_rate: 0.5  # Each $1 of automation displaces $0.50 of wages
+
+# Crisis Mechanics
+
+crisis_mechanics:
+  profit_crisis:
+    trigger: "Entity rate_of_profit < profit_crisis_threshold for N consecutive ticks"
+    default_threshold: 0.05  # 5% profit rate
+    default_consecutive_ticks: 10
+
+    effects:
+      - "PROFIT_CRISIS event emitted"
+      - "Bourgeoisie decision tree activated: INTENSIFY, CUT_WAGES, AUTOMATE, or BANKRUPTCY"
+      - "System enters unstable state"
+
+    bifurcation:
+      with_high_solidarity: |
+        Workers resist intensification/wage cuts.
+        Crisis cannot be resolved on workers' backs.
+        Revolutionary potential increases.
+        May trigger REVOLUTIONARY_RUPTURE if P(S|R) > P(S|A).
+
+      with_low_solidarity: |
+        Workers cannot resist.
+        Crisis resolved through wage cuts or "surplus population" elimination.
+        Fascist resolution becomes path of least resistance.
+        May trigger FASCIST_TURN event.
+
+  aggregate_crisis:
+    description: "System-wide crisis when average profit rate falls critically"
+    trigger: "Average profit rate across all Bourgeoisie < system_crisis_threshold"
+    default_threshold: 0.03  # 3% average profit rate
+    effects:
+      - "ECONOMIC_CRISIS event (existing)"
+      - "Austerity mode activates"
+      - "Imperial extraction intensifies (desperation)"
+
+# Integration with Existing Systems
+
+integration:
+  imperial_rent_system:
+    role: "Counteracting Factor #5 (Foreign Trade)"
+    mechanism: |
+      Imperial rent provides:
+      1. Cheap constant capital (raw materials from periphery)
+      2. Downward pressure on core wages via import competition
+      3. Super-profits that mask falling domestic profit rate
+
+    modification: |
+      Epoch 2 will track HOW imperial rent affects OCC:
+      - Cheap imports reduce effective c for core capitalists
+      - This temporarily stabilizes profit rates
+      - But accelerates OCC rise in periphery (they must mechanize to compete)
+
+  vitality_system:
+    interaction: |
+      Intensification (Counteracting Factor #1) affects worker health:
+      - Higher exploitation intensity -> faster s_bio depletion
+      - Links economic system to mortality outcomes
+
+  consciousness_system:
+    interaction: |
+      Wage cuts and intensification increase consciousness:
+      - Material conditions worsen -> agitation energy rises
+      - Feeds into Fascist Bifurcation logic
+      - The "Bomb Factory pays well" dynamic weakens
+
+# Testing Requirements
+
+testing:
+  unit_tests:
+    - "test_rate_of_profit_calculation: Verify p' = s/(c+v)"
+    - "test_occ_calculation: Verify OCC = c/v"
+    - "test_automation_shifts_occ: Verify automation increases c, decreases v"
+    - "test_profit_crisis_triggers: Verify crisis fires at threshold"
+
+  integration_tests:
+    - "test_occ_rises_over_1040_ticks: OCC should increase over 20 years"
+    - "test_profit_rate_falls_with_rising_occ: TRPF should manifest"
+    - "test_imperial_rent_offsets_trpf: Core profit rates should be more stable"
+    - "test_counteracting_factors_delay_crisis: Each factor should buy time"
+
+  scenario_tests:
+    - "test_1929_depression: High OCC + crisis should produce bifurcation"
+    - "test_2008_crisis: Financial sector OCC dynamics"
+
+# Timeline and Dependencies
+
+timeline:
+  dependencies:
+    - "Epoch 1 TRPF surrogate (COMPLETE)"
+    - "VitalitySystem (COMPLETE)"
+    - "ProductionSystem (COMPLETE)"
+    - "Entity model extensions (requires database migration)"
+
+  phases:
+    phase_1:
+      name: "Entity Extensions"
+      work:
+        - "Add c/v fields to Bourgeoisie model"
+        - "Database migration for new fields"
+        - "Scenario file updates"
+
+    phase_2:
+      name: "Formula Implementation"
+      work:
+        - "Implement calculate_rate_of_profit in production"
+        - "Implement calculate_organic_composition"
+        - "Implement OCC change from automation"
+
+    phase_3:
+      name: "System Integration"
+      work:
+        - "Modify ImperialRentSystem to track c/v effects"
+        - "Add profit crisis triggers"
+        - "Implement Bourgeoisie decision tree"
+
+    phase_4:
+      name: "Counteracting Factors"
+      work:
+        - "Implement INTENSIFY_EXPLOITATION action"
+        - "Implement wage cut mechanics"
+        - "Link to existing imperial rent as Factor #5"
+
+# Notes
+
+notes:
+  on_simplification: |
+    The Epoch 2 implementation is still a simplification of Marx's full theory.
+    We do not model:
+    - Turnover time of capital
+    - Fixed vs. circulating capital distinctions
+    - Rent (ground rent, not imperial rent) as a category
+    - Credit and fictitious capital
+
+    These may be considered for Epoch 3 or later.
+
+  on_gameplay: |
+    The goal is not theoretical completeness but dialectical fidelity.
+    Players should experience:
+    - The contradiction between productivity and profitability
+    - The temporary nature of counteracting factors
+    - The inevitability of crisis under capitalist logic
+    - The choice between socialist and fascist resolutions

@@ -1,0 +1,1229 @@
+# Babylon Music System
+# Procedural MIDI soundtrack generation
+
+metadata:
+  updated: 2025-12-10
+  status: active
+  phase: 3
+  libraries:
+    midiutil: "1.2.1"  # Current - file generation
+    mido: "1.3.3"      # Added - more expressive control
+
+# =============================================================================
+# MIDO LIBRARY REFERENCE (NEW)
+# Sources:
+#   - https://mido.readthedocs.io/en/latest/
+#   - https://mido.readthedocs.io/en/latest/message_types.html
+#   - https://mido.readthedocs.io/en/latest/meta_message_types.html
+#   - https://anotherproducer.com/online-tools-for-musicians/midi-cc-list/
+# =============================================================================
+
+mido_reference:
+  description: |
+    Mido provides more granular control than midiutil, especially for:
+    - Real-time message creation and manipulation
+    - Control change (CC) messages for expression
+    - Pitch bend for tension effects
+    - Meta messages for tempo/key changes mid-track
+
+  channel_messages:
+    note_on: { params: [channel, note, velocity], note: "velocity 0-127, 64=default" }
+    note_off: { params: [channel, note, velocity] }
+    control_change: { params: [channel, control, value], note: "CC for expression - see cc_numbers" }
+    program_change: { params: [channel, program], note: "GM instrument 0-127" }
+    pitchwheel: { params: [channel, pitch], range: [-8192, 8191], note: "Tension/instability" }
+    aftertouch: { params: [channel, value], note: "Channel pressure for swells" }
+    polytouch: { params: [channel, note, value], note: "Per-note pressure (rare)" }
+
+  # CRITICAL FOR EXPRESSIVE COMPOSITION
+  cc_numbers:
+    expression_essential:
+      CC1:
+        name: "Modulation Wheel"
+        babylon_use: "Vibrato, consciousness oscillation, ideological instability"
+      CC7:
+        name: "Volume"
+        babylon_use: "Track level - set once, use CC11 for dynamics"
+      CC10:
+        name: "Pan"
+        range_note: "64=center, 0=left, 127=right"
+        babylon_use: "Core vs periphery spatial positioning"
+      CC11:
+        name: "Expression"
+        babylon_use: "PRIMARY dynamics control - crescendo/diminuendo for tension"
+        critical: true
+
+    pedals:
+      CC64: { name: "Sustain", babylon_use: "Legato, sustained struggle" }
+      CC65: { name: "Portamento", babylon_use: "Glide - phase transitions" }
+      CC67: { name: "Soft Pedal", babylon_use: "Underground, subversive tenancy" }
+
+    timbre:
+      CC71: { name: "Resonance", babylon_use: "Repression intensity (harsh at high)" }
+      CC73: { name: "Attack Time", babylon_use: "Rupture speed - fast=sudden revolution" }
+      CC74: { name: "Brightness", babylon_use: "Clarity of class consciousness" }
+
+    effects:
+      CC91: { name: "Reverb", babylon_use: "Historical resonance, echoes of past" }
+      CC93: { name: "Chorus", babylon_use: "Solidarity strength - more=more unity" }
+      CC94: { name: "Detune", babylon_use: "Atomization - detuned=fragmented" }
+
+  meta_messages:
+    set_tempo:
+      param: "tempo (microseconds per beat)"
+      conversion: "BPM = 60,000,000 / tempo"
+      babylon_use:
+        slow: "Grinding exploitation"
+        fast: "Rupture, crisis peak"
+        accelerando: "Tension building toward bifurcation"
+
+    time_signature:
+      params: [numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat]
+      babylon_use:
+        "4/4": "Stability, grinding routine"
+        "3/4": "Bourgeois decadence, instability"
+        "5/4": "Revolutionary irregularity"
+        "7/8": "Crisis asymmetry"
+
+    key_signature:
+      params: [key, mode]
+      babylon_use:
+        minor: "Crisis, oppression, struggle"
+        major: "Resolution, victory, solidarity"
+        no_resolution: "Fascist outcome - stays minor"
+
+    track_name:
+      convention: "Instrument - Thematic Role"
+      examples: ["Cello - The Masses", "Brass - State Violence", "Piano - Observer"]
+
+    marker:
+      babylon_use: ["Crisis Onset", "Bifurcation Point", "Resolution"]
+
+  # Expression techniques for capturing Babylon vibes
+  expression_techniques:
+    crescendo:
+      method: "Gradual CC11 increase"
+      babylon_use: "Building tension, approaching bifurcation"
+      code: |
+        for i in range(64):
+            track.append(Message('control_change', control=11, value=64+i, time=ticks))
+
+    pitch_bend_tension:
+      method: "Pitchwheel sweeps"
+      babylon_use: "Instability, ideological drift"
+      code: |
+        for i in range(0, 4096, 128):
+            track.append(Message('pitchwheel', pitch=i, time=10))
+
+    modulation_anxiety:
+      method: "CC1 for vibrato/tremolo"
+      babylon_use: "Uncertainty, consciousness oscillation"
+
+    accelerando:
+      method: "set_tempo meta messages"
+      babylon_use: "Crisis intensifying, revolution approaching"
+      code: |
+        for i in range(16):
+            new_bpm = 90 + (i * 3)  # 90 -> 135 BPM
+            track.append(MetaMessage('set_tempo', tempo=mido.bpm2tempo(new_bpm), time=ticks))
+
+  harmonic_techniques:
+    minor_to_major:
+      description: "Resolution from struggle to victory"
+      babylon_use: "Revolutionary outcome"
+      example: "E minor -> G major (relative major)"
+
+    staying_minor:
+      description: "No resolution"
+      babylon_use: "Fascist outcome - crisis without class resolution"
+
+    tritone:
+      notes: "6 semitones apart (e.g., E and Bb)"
+      babylon_use: "Maximum instability, the devil's interval"
+
+    call_and_response:
+      description: "One instrument states, another answers"
+      babylon_use: "Solidarity forming, dialogue between classes"
+
+    unison_vs_harmony:
+      unison: "Conformity, fascist mob, false unity"
+      harmony: "True solidarity, diversity within unity"
+
+# =============================================================================
+# LESSONS LEARNED (December 2025)
+# =============================================================================
+#
+# These are critical pitfalls discovered during fascist soundtrack generation.
+# ALWAYS reference this section before writing new MIDI generators.
+
+lessons_learned:
+
+  # ---------------------------------------------------------------------------
+  # MIDIUTIL API GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  track_vs_channel:
+    severity: critical
+    error: "IndexError: list index out of range"
+    cause: |
+      midiutil.addNote(track, channel, pitch, time, duration, velocity)
+      The FIRST parameter is TRACK NUMBER (0-indexed into MIDIFile's track list).
+      The SECOND parameter is MIDI CHANNEL (0-15).
+      These are DIFFERENT concepts that are often confused!
+    solution: |
+      # WRONG - using channel 9 as track number
+      midi = MIDIFile(5)  # Only 5 tracks (0-4)
+      midi.addNote(9, 9, 36, 0, 1, 80)  # ERROR: track 9 doesn't exist!
+
+      # CORRECT - separate track and channel constants
+      TRACK_DRUMS = 5           # Track index in our MIDIFile
+      MIDI_DRUM_CHANNEL = 9     # Standard GM percussion channel
+      midi = MIDIFile(6)        # Create 6 tracks (0-5)
+      midi.addNote(TRACK_DRUMS, MIDI_DRUM_CHANNEL, 36, 0, 1, 80)  # Works!
+
+  deinterleave_false:
+    severity: high
+    issue: "Notes not playing correctly or overlapping strangely"
+    solution: |
+      Always create MIDIFile with deinterleave=False:
+      midi = MIDIFile(num_tracks, deinterleave=False)
+      This prevents midiutil from reordering note events.
+
+  # ---------------------------------------------------------------------------
+  # MODULE STRUCTURE GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  relative_imports:
+    severity: critical
+    error: "ImportError: attempted relative import with no known parent package"
+    cause: |
+      Python relative imports (from . import X) only work when:
+      1. The file is part of a proper package (has __init__.py)
+      2. The file is imported as a module, not run directly
+      Running `python tools/fascist_soundtrack/generate_01.py` directly FAILS.
+    solutions:
+      option_1_module: |
+        # Run as module from project root
+        cd babylon
+        poetry run python -m tools.fascist_soundtrack.generate_01
+
+      option_2_standalone: |
+        # Create standalone script with all code inline
+        # No imports from sibling modules
+        # Put shared constants directly in the file
+
+      option_3_path_hack: |
+        # Add parent to path (less clean but works)
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent))
+        from __init__ import *  # Now works as absolute import
+
+    recommendation: |
+      For tools that users run directly, use standalone scripts.
+      Modular structure is cleaner but harder to execute.
+      The fascist soundtrack uses a single generate_fascist_soundtrack.py
+      with all code inline to avoid import issues.
+
+  __file__in_exec:
+    severity: medium
+    error: "NameError: name '__file__' is not defined"
+    cause: |
+      Using exec(open('file.py').read()) loses __file__ context.
+      Any code using __file__ for path resolution will fail.
+    solution: |
+      Don't use exec() for testing. Run the file directly:
+      poetry run python tools/generate_fascist_soundtrack.py
+
+  # ---------------------------------------------------------------------------
+  # NOTE DEFINITION GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  missing_notes:
+    severity: high
+    error: "NameError: name 'Eb5' is not defined"
+    cause: |
+      When defining chromatic notes, easy to miss octaves.
+      Defined Eb3, Eb4 but forgot Eb5.
+    solution: |
+      Define ALL chromatic notes across ALL octaves you'll use:
+
+      # Chromatic notes - BE EXHAUSTIVE
+      Bb1, Bb2, Bb3, Bb4, Bb5 = 34, 46, 58, 70, 82
+      Db2, Db3, Db4, Db5 = 37, 49, 61, 73
+      Eb2, Eb3, Eb4, Eb5 = 39, 51, 63, 75
+      # etc.
+
+      Or use a helper function:
+      def note(name, octave):
+          base = {'C':0,'Db':1,'D':2,'Eb':3,'E':4,'F':5,'Gb':6,'G':7,'Ab':8,'A':9,'Bb':10,'B':11}
+          return base[name] + (octave + 1) * 12
+
+  # ---------------------------------------------------------------------------
+  # FILE SIZE / CONTENT GOTCHAS
+  # ---------------------------------------------------------------------------
+
+  sparse_tracks:
+    severity: medium
+    symptom: "MIDI file suspiciously small (< 1KB for a 5-minute track)"
+    causes:
+      - "Ambient/sparse tracks ARE legitimately small"
+      - "Notes outside valid time range (beat > total_bars * 4)"
+      - "Velocity = 0 (silent notes)"
+      - "Duration = 0 (no sound)"
+    diagnosis: |
+      # Quick note count check
+      poetry run python -c "
+      import struct
+      with open('track.mid', 'rb') as f:
+          data = f.read()
+      note_ons = sum(1 for i in range(len(data)-2) if 0x90 <= data[i] <= 0x9F)
+      print(f'Note-on events: {note_ons}')
+      "
+    reference: |
+      Dense tracks (mechanical patterns): 2000+ notes, 15-30KB
+      Moderate tracks: 500-1500 notes, 8-15KB
+      Sparse/ambient tracks: 50-200 notes, 1-3KB (INTENTIONAL)
+
+  # ---------------------------------------------------------------------------
+  # GENERAL BEST PRACTICES
+  # ---------------------------------------------------------------------------
+
+  best_practices:
+    - "Always verify track count matches highest track index + 1"
+    - "Use named constants for both tracks AND channels"
+    - "Test each track generator individually before batch run"
+    - "Check file sizes after generation - sparse isn't always wrong"
+    - "Run from project root with poetry run python path/to/script.py"
+    - "For standalone scripts, inline all dependencies"
+
+# =============================================================================
+# OVERVIEW
+# =============================================================================
+#
+# Babylon uses procedural MIDI generation to create thematic music that
+# reflects the game's MLM-TW theoretical framework. Each piece encodes
+# dialectical concepts through musical structure.
+#
+# Philosophy: Music is ideology made audible. The soundtrack should make
+# players FEEL the theory before they understand it intellectually.
+
+# =============================================================================
+# TECHNOLOGY STACK
+# =============================================================================
+
+dependencies:
+  midiutil: "1.2.1"  # Core MIDI file generation
+  description: |
+    MIDIFile class provides low-level MIDI file creation.
+    No external synthesizers required - outputs standard .mid files.
+    Players use system MIDI playback or DAW software.
+
+playback_options:
+  - fluidsynth: "Command-line synthesizer, requires SoundFont"
+  - vlc: "Plays MIDI directly (quality varies)"
+  - daw: "Import into any DAW for high-quality rendering"
+  - browser: "Web MIDI API for in-game playback"
+
+# =============================================================================
+# GENERATION PATTERN
+# =============================================================================
+
+file_structure:
+  location: "tools/generate_*.py"
+  output: "assets/music/*.mid"
+
+code_pattern: |
+  # 1. Define constants
+  TEMPO = 76          # BPM - narrative meaning in tempo choice
+  TOTAL_BARS = 32     # Structure length
+
+  # 2. Define MIDI channels (one per instrument voice)
+  CH_PIANO = 0
+  CH_BASS = 1
+  # ... etc
+
+  # 3. Define GM program numbers
+  PROG_PIANO = 0      # General MIDI instrument codes
+  PROG_CELLO = 42
+
+  # 4. Define scale/mode as named note constants
+  D2, E2, F2, G2 = 38, 40, 41, 43   # MIDI note numbers
+
+  # 5. Create MIDIFile with track count
+  midi = MIDIFile(4, deinterleave=False)
+
+  # 6. Configure tracks
+  midi.addTrackName(CH_PIANO, 0, "Piano - Observer")
+  midi.addTempo(CH_PIANO, 0, TEMPO)
+  midi.addProgramChange(CH_PIANO, CH_PIANO, 0, PROG_PIANO)
+
+  # 7. Add notes with: addNote(track, channel, pitch, time, duration, velocity)
+  midi.addNote(CH_PIANO, CH_PIANO, D4, time=0, duration=1, velocity=80)
+
+  # 8. Write file
+  with open(output_path, "wb") as f:
+      midi.writeFile(f)
+
+# =============================================================================
+# THEORETICAL FRAMEWORK
+# =============================================================================
+
+musical_dialectics:
+  description: |
+    Each musical element maps to a theoretical concept.
+    The music should embody contradictions, not just accompany gameplay.
+
+  mappings:
+    instruments:
+      piano: "The Observer - documenting, commenting, witnessing"
+      cello_bass: "The Material Base - extraction, economic foundation"
+      strings: "The Masses - class consciousness, collective movement"
+      brass: "The State Apparatus - repression, coercion, violence"
+      organ: "False Grandeur - ideological mystification"
+      harpsichord: "The Machine - cold bureaucracy, surveillance"
+      timpani: "The Clock - time, inevitability, the march of history"
+
+    modes_and_keys:
+      d_minor: "Melancholy, determination - the worker's struggle"
+      d_dorian: "Hope within darkness - the raised 6th suggests possibility"
+      e_phrygian: "Dread, otherness - the flat 2nd is pure anxiety"
+      tritone: "The devil's interval - unresolved contradiction"
+
+    tempo:
+      slow_70s: "Inevitability, the grinding pace of exploitation"
+      medium_100s: "Anxiety, barely-controlled panic"
+      fast_120s: "Crisis, rupture, revolutionary moment"
+
+    dynamics:
+      crescendo: "Consciousness rising, organization building"
+      decrescendo: "Co-optation, defeat, exhaustion"
+      sforzando: "State violence, sudden repression"
+      pianissimo: "The periphery, distant hope, survival"
+
+# =============================================================================
+# EXISTING THEMES
+# =============================================================================
+
+themes:
+  phi_imperial_rent:
+    file: "babylon_theme_phi.mid"
+    generator: "tools/generate_theme.py"
+    concept: "Φ > 0 - Imperial Rent flows from periphery to core"
+    duration: "~1:41"
+    tempo: 76
+    key: "D minor / Dorian"
+    tracks:
+      - name: "Piano - Observer"
+        program: 0
+        role: "Documents history, sparse commentary"
+      - name: "Cello - Material Base"
+        program: 42
+        role: "Relentless ostinato - extraction never stops"
+      - name: "Strings - The Masses"
+        program: 48
+        role: "Melody emerges, reaches upward, is pushed down"
+      - name: "Brass - State Apparatus"
+        program: 61
+        role: "Distant threat, then overwhelming repression"
+
+    structure:
+      - section: "A - The Material Base"
+        bars: "1-8"
+        description: "Deep bass ostinato establishes extraction cycle"
+        musical_idea: "D-A-D-F pattern = imperial rent loop"
+
+      - section: "B - Consciousness Stirs"
+        bars: "9-16"
+        description: "Strings melody emerges, tentative, questioning"
+        musical_idea: "Dorian mode B natural = hope; falls back to minor"
+
+      - section: "C - The Contradiction Sharpens"
+        bars: "17-24"
+        description: "Dissonance increases, brass responds with force"
+        musical_idea: "Tritone (Ab against D) = peak contradiction"
+
+      - section: "D - Resolution?"
+        bars: "25-32"
+        description: "Co-optation, but distant echo remains"
+        musical_idea: "Ends on dominant (A) = unresolved, waiting"
+
+  panopticon:
+    file: "babylon_theme_panopticon.mid"
+    generator: "tools/generate_fascist_theme.py"
+    concept: "Anxious evil - the exhaustion of maintaining oppression"
+    duration: "~1:29"
+    tempo: 108
+    key: "E Phrygian"
+    tracks:
+      - name: "Harpsichord - The Machine"
+        program: 6
+        role: "Cold baroque patterns, surveillance pings"
+      - name: "Strings - Anxiety"
+        program: 44  # Tremolo strings
+        role: "Constant underlying tension, never rests"
+      - name: "Brass - State Violence"
+        program: 61
+        role: "Sudden stabs, overwhelming force"
+      - name: "Timpani - The Clock"
+        program: 47
+        role: "Relentless ticking, the jackboot rhythm"
+      - name: "Organ - False Grandeur"
+        program: 19
+        role: "Hollow majesty masking the void"
+
+    structure:
+      - section: "A - The Apparatus"
+        bars: "1-8"
+        description: "Machine state established - ticking, watching"
+        musical_idea: "Mechanical 8th notes, surveillance pings"
+
+      - section: "B - The Juggling"
+        bars: "9-20"
+        description: "Multiple plates spinning, irregular meters"
+        musical_idea: "7/8 and 5/4 feels = barely controlled chaos"
+
+      - section: "C - The Mirror"
+        bars: "21-28"
+        description: "Self-awareness - staring into what they are"
+        musical_idea: "Chromatic descent = looking into the abyss"
+
+      - section: "D - The Void / Return"
+        bars: "29-40"
+        description: "Near-collapse, then desperate reassertion"
+        musical_idea: "Silence threatens, machine restarts frantically"
+
+  fascist_soundtrack:
+    location: "assets/music/fascist/"
+    generator: "tools/generate_fascist_soundtrack.py"
+    concept: "~63 minutes exploring two faces of fascism"
+    total_duration: "~63:00"
+    track_count: 12
+
+    musical_dna:
+      key: "E Phrygian (flat 2nd = dread)"
+      tempo_range: "66-120 BPM"
+      tritone: "E to Bb (devil's interval) - unresolved contradiction"
+      instruments:
+        harpsichord: "The Machine / Surveillance (program 6)"
+        tremolo_strings: "Anxiety - never rests (program 44)"
+        brass: "State Violence - sudden overwhelming force (program 61)"
+        timpani: "The Clock / The Jackboot (program 47)"
+        organ: "False Grandeur / Propaganda (program 19)"
+
+    tracks:
+      menacing_public_face:
+        description: "The strongman image - power, control, threat"
+        tracks:
+          - number: 1
+            title: "The Apparatus"
+            duration: "5:00"
+            tempo: 108
+            concept: "Cold surveillance state at peak operation"
+            file: "01_the_apparatus.mid"
+
+          - number: 2
+            title: "Viktor's March"
+            duration: "4:30"
+            tempo: 100
+            concept: "The leader's theme - military precision"
+            file: "02_viktors_march.mid"
+
+          - number: 3
+            title: "The Nationalist Guard"
+            duration: "6:00"
+            tempo: 112
+            concept: "Paramilitary violence, street-level intimidation"
+            file: "03_nationalist_guard.mid"
+
+          - number: 4
+            title: "Repression Protocol"
+            duration: "6:00"
+            tempo: 116
+            concept: "State violence crushing dissent"
+            file: "04_repression_protocol.mid"
+
+          - number: 5
+            title: "National Revival"
+            duration: "6:00"
+            tempo: 104
+            concept: "The hollow anthem - almost beautiful, almost heroic"
+            file: "05_national_revival.mid"
+
+      anxious_private_reality:
+        description: "The exhausted truth - desperation, dread, emptiness"
+        tracks:
+          - number: 6
+            title: "Economic Crisis"
+            duration: "5:30"
+            tempo: 110
+            concept: "The chaos that birthed fascism"
+            file: "06_economic_crisis.mid"
+
+          - number: 7
+            title: "The Corporate State"
+            duration: "4:00"
+            tempo: 96
+            concept: "Cold bureaucratic evil - capitalism's marriage to authoritarianism"
+            file: "07_corporate_state.mid"
+
+          - number: 8
+            title: "Propaganda Broadcast"
+            duration: "7:00"
+            tempo: 100
+            concept: "The beautiful lie - seductive then disturbing"
+            file: "08_propaganda_broadcast.mid"
+
+          - number: 9
+            title: "The Juggling Act"
+            duration: "5:30"
+            tempo: 120
+            concept: "Spinning plates - the regime barely holding together"
+            file: "09_juggling_act.mid"
+
+          - number: 10
+            title: "The Mirror"
+            duration: "4:30"
+            tempo: 72
+            concept: "Self-awareness - staring at what they've become"
+            file: "10_the_mirror.mid"
+            note: "Intentionally sparse/ambient"
+
+          - number: 11
+            title: "The Void Beneath"
+            duration: "5:00"
+            tempo: 66
+            concept: "The abyss under everything - Nietzschean horror"
+            file: "11_the_void_beneath.mid"
+            note: "Most ambient track - extended silences"
+
+          - number: 12
+            title: "Desperate Return"
+            duration: "4:00"
+            tempo: 116
+            concept: "The machine reasserts - they cannot stop"
+            file: "12_desperate_return.mid"
+            note: "Abrupt non-ending (machine continues forever)"
+
+    thematic_arc: |
+      The soundtrack tells a story:
+      1-5: Public displays of power and control
+      6-9: Private chaos and desperation
+      10-11: Existential dread and the void
+      12: The machine must continue - no escape
+
+# =============================================================================
+# BIFURCATION SUITE ARCHITECTURE (NEW - December 2025)
+# =============================================================================
+#
+# The music system mirrors the Fascist Bifurcation mechanic:
+# Same crisis energy → different routing based on solidarity infrastructure
+#
+#                     MATERIAL CRISIS
+#                          │
+#                     Agitation Energy
+#                          │
+#               ┌──────────┴──────────┐
+#               │                     │
+#         WITH SOLIDARITY       WITHOUT SOLIDARITY
+#               │                     │
+#               ▼                     ▼
+#       REVOLUTIONARY SUITE     FASCIST SUITE
+#       (class consciousness)   (national identity)
+#
+# Mantra: "Same crisis, different music - based on solidarity infrastructure."
+
+bifurcation_suites:
+
+  crisis_suite:
+    purpose: "Neutral agitation energy BEFORE bifurcation routing"
+    location: "assets/music/crisis/"
+    tracks:
+      - file: "01_wages_falling.mid"
+        title: "Wages Falling"
+        concept: "Descending motifs, loss aversion tension"
+        tempo: 75
+        key: "F# minor"
+        instruments:
+          - "Piano - Descent"
+          - "Low Strings - The Base Crumbling"
+          - "Synth Pad - Uncertainty"
+          - "Timpani - Distant Thunder"
+      - file: "02_the_squeeze.mid"
+        title: "The Squeeze"
+        concept: "Compression, breathing harder - imperial rent intensifying"
+        tempo: 80
+        key: "Bb minor"
+      - file: "03_material_disruption.mid"
+        title: "Material Disruption"
+        concept: "Instability, ground shifting"
+        tempo: 85
+        key: "Ambiguous"
+    musical_character:
+      tempo_range: [75, 100]
+      keys: ["minor", "ambiguous"]
+      dynamics: "building"
+      resolution: "NONE - bifurcation pending"
+    trigger: "wage_change < 0 AND tension > 0.3"
+
+  revolutionary_suite:
+    purpose: "When solidarity_pressure > 0, agitation → class consciousness"
+    location: "assets/music/revolutionary/"
+    tracks:
+      - file: "01_the_spark.mid"
+        title: "The Spark"
+        concept: "First recognition of shared class condition"
+        tempo: 90
+        key: "E minor → G major"
+        instruments:
+          - "Cello - The Masses"
+          - "Piano - Individual Awakening"
+          - "Strings - Rising Tide"
+          - "Timpani - The Heartbeat"
+        arc: "Isolation → Recognition → First connection"
+
+      - file: "02_solidarity_rising.mid"
+        title: "Solidarity Rising"
+        concept: "Connections forming, strength in numbers"
+        tempo: 105
+        key: "A minor → C major"
+        instruments:
+          - "Cello - Call melody"
+          - "Violin - Response (call and response!)"
+          - "French Horn - Collective Power"
+          - "Strings - Unity"
+          - "Timpani - March"
+        arc: "Individual voices → Dialogue → Unified chorus"
+
+      - file: "03_class_awakening.mid"
+        title: "Class Awakening"
+        concept: "Full consciousness - seeing through ideology"
+        tempo: 120
+        key: "D minor → D major (Picardy third)"
+        instruments:
+          - "Choir Aahs - The Awakened"
+          - "Brass Section - Clarity"
+          - "Piano - Individual Transformed"
+          - "Strings - The Collective"
+          - "Timpani - Determination"
+        arc: "Revelation → Understanding → Determination"
+
+      - file: "04_the_internationale.mid"
+        title: "The Internationale"
+        concept: "Peak organization, international unity"
+        tempo: 130
+        key: "F major"
+        instruments:
+          - "Brass Section - Victory"
+          - "Choir Aahs - United Voices"
+          - "Strings - The March"
+          - "French Horn - Solidarity Forever"
+          - "Timpani - The People's March"
+          - "Snare - Organization"
+        arc: "Assembly → March → Victory"
+
+      - file: "05_rupture.mid"
+        title: "Rupture"
+        concept: "P(S|R) > P(S|A) - the breakthrough"
+        tempo: "140 → 160"
+        key: "C minor → C major"
+        instruments:
+          - "Full Orchestra Strings"
+          - "Brass - The Break"
+          - "Timpani - Rupture"
+          - "Choir - Liberation"
+          - "Piano - New Dawn"
+        arc: "Tension Peak → Breaking Point → Liberation → New Dawn"
+
+    musical_character:
+      tempo_range: [90, 160]  # Accelerating through suite
+      keys: ["minor → major"]  # RESOLUTION
+      dynamics: "crescendo toward rupture"
+      key_techniques:
+        - "Call and response (solidarity forming)"
+        - "Harmony, not unison (diversity in unity)"
+        - "Accelerando (building momentum)"
+        - "Minor to major resolution"
+    trigger: "solidarity_pressure > 0 AND agitation > 0.3"
+
+  fascist_suite_redesign:
+    purpose: "When solidarity_pressure = 0, agitation → national identity"
+    location: "assets/music/fascist/"
+    design_principle: |
+      DARK MIRROR of Revolutionary Suite:
+      - Same crisis energy, same tempo ranges
+      - Different DIRECTION of musical motion
+      - Revolutionary: Ascending, opening, breathing
+      - Fascist: Descending, closing, suffocating
+      - NO MAJOR KEY RESOLUTION (stays minor)
+    tracks:
+      - file: "01_the_void.mid"
+        title: "The Void"
+        concept: "Atomization - alone in the crowd"
+        tempo: 85
+        key: "B minor (NO resolution)"
+        instruments:
+          - "Solo Violin - The Atomized"
+          - "Low Strings - The Abyss"
+          - "Piano - Isolation"
+          - "Timpani - Hollow"
+        arc: "Isolation → Searching → Still alone"
+        mirrors: "revolutionary_01_the_spark.mid"
+
+      - file: "02_scapegoat.mid"
+        title: "The Scapegoat"
+        concept: "Anger seeking a target - blaming 'the other'"
+        tempo: 95
+        key: "G minor"
+        instruments:
+          - "Strings - Hunting"
+          - "Low Brass - Accusation"
+          - "Snare - Mob Heartbeat"
+          - "Piano - Paranoia"
+        arc: "Searching → Finding target → Accusation"
+
+      - file: "03_the_rally.mid"
+        title: "The Rally"
+        concept: "False solidarity - mob energy, national identity"
+        tempo: 115
+        key: "E minor (stays minor!)"
+        instruments:
+          - "Brass - False Triumph"
+          - "Snare - The March (regimented)"
+          - "Timpani - Blood and Soil"
+          - "Strings - The Mob (UNISON, not harmony)"
+          - "Organ - Twisted Grandeur"
+        arc: "Assembly → Chanting → False unity"
+        mirrors: "revolutionary_04_the_internationale.mid"
+        key_difference: "UNISON (conformity) not HARMONY (solidarity)"
+
+      - file: "04_blood_and_soil.mid"
+        title: "Blood and Soil"
+        concept: "National identity triumphant"
+        tempo: 120
+        key: "D minor"
+
+      - file: "05_the_purge.mid"
+        title: "The Purge"
+        concept: "Violence against the 'other'"
+        tempo: 130
+        key: "C minor"
+
+      - file: "06_false_order.mid"
+        title: "False Order"
+        concept: "Stability through oppression - the grinding continues"
+        tempo: 100
+        key: "E minor → E minor (NO RESOLUTION)"
+        arc: "Order established → Cracks show → Order reasserts"
+
+    musical_character:
+      tempo_range: [85, 130]  # Similar to Revolutionary
+      keys: ["minor"]  # NO MAJOR RESOLUTION
+      dynamics: "building but hollow"
+      key_techniques:
+        - "Unison (conformity, mob)"
+        - "Military snare (regimented)"
+        - "Tritones (instability persists)"
+        - "No major resolution (false victory)"
+    trigger: "solidarity_pressure = 0 AND agitation > 0.3"
+
+# =============================================================================
+# PLANNED THEMES (LEGACY)
+# =============================================================================
+
+planned:
+  workers_anthem:
+    concept: "Solidarity rising - from atomization to organization"
+    key: "C major → G major (circle of fifths = building)"
+    instruments: ["Accordion", "Brass ensemble", "Snare drum"]
+    structure: "Fragmented → unison → polyphony → triumphant"
+    status: "SUPERSEDED by revolutionary_suite"
+
+  bourgeois_waltz:
+    concept: "Elegant decay - Viennese sophistication hiding rot"
+    key: "A major with chromatic slides"
+    instruments: ["Strings", "Harp", "Clarinet"]
+    structure: "Beautiful → dissonant → beautiful (denial)"
+
+  crisis_event:
+    concept: "Rupture - when P(S|R) > P(S|A)"
+    key: "Polytonal / Atonal"
+    instruments: ["Full orchestra", "Prepared piano"]
+    structure: "Chaos → silence → single voice emerges"
+    status: "SUPERSEDED by revolutionary_05_rupture.mid"
+
+  periphery_lament:
+    concept: "The global south - exploitation made musical"
+    key: "Modal (Mixolydian, Lydian)"
+    instruments: ["Oud", "Strings", "Frame drum"]
+    structure: "Traditional melody crushed by industrial sounds"
+
+  menu_ambient:
+    concept: "The world map - history breathing"
+    key: "Ambiguous (drone-based)"
+    instruments: ["Synth pad", "Distant strings", "Radio static"]
+    structure: "Non-linear, generative, responds to game state"
+
+# =============================================================================
+# DYNAMIC MUSIC SYSTEM (Future)
+# =============================================================================
+
+dynamic_layers:
+  description: |
+    Future system: Music changes based on game state.
+    Layers fade in/out based on tension, ideology, events.
+
+  proposed_layers:
+    base: "Always playing - the material base drone"
+    consciousness: "Fades in as worker ideology drifts left"
+    repression: "Brass swells when state apparatus strengthens"
+    hope: "Dorian mode shifts when organization increases"
+    crisis: "Dissonance builds as tension approaches rupture"
+
+  triggers:
+    - condition: "tension > 0.7"
+      action: "Add tritone bass layer"
+    - condition: "ideology < -0.5"  # Revolutionary
+      action: "Strings melody becomes prominent"
+    - condition: "rupture_event"
+      action: "Full crisis theme, then silence"
+
+# =============================================================================
+# GENERATION GUIDELINES
+# =============================================================================
+
+composition_rules:
+  theoretical_consistency:
+    - "Every musical choice must have theoretical justification"
+    - "Instruments = class actors, not just timbres"
+    - "Key/mode = emotional-political state"
+    - "Structure = dialectical movement"
+
+  technical_rules:
+    - "Use General MIDI programs for portability"
+    - "Velocity 0-127 maps to dynamics"
+    - "Time in beats (quarter notes)"
+    - "Channel = Track for simplicity"
+    - "Named note constants for readability"
+
+  avoid:
+    - "Happy resolutions (the contradictions continue)"
+    - "Triumphalist endings (no permanent victories)"
+    - "Pure chaos without structure (dialectics has logic)"
+    - "Pastiche without meaning (every note must work)"
+
+# =============================================================================
+# COMMANDS
+# =============================================================================
+
+commands:
+  generate_phi: "poetry run python tools/generate_theme.py"
+  generate_panopticon: "poetry run python tools/generate_fascist_theme.py"
+  generate_fascist_soundtrack: "poetry run python tools/generate_fascist_soundtrack.py"
+  play_with_fluidsynth: "fluidsynth -a alsa /usr/share/sounds/sf2/FluidR3_GM.sf2 assets/music/*.mid"
+  play_fascist_tracks: "fluidsynth -a alsa /usr/share/sounds/sf2/FluidR3_GM.sf2 assets/music/fascist/*.mid"
+  convert_to_wav: "fluidsynth -F output.wav /path/to/soundfont.sf2 input.mid"
+
+# =============================================================================
+# MIDI 1.0 SPECIFICATION REFERENCE
+# Source: https://midi.org/summary-of-midi-1-0-messages
+# =============================================================================
+
+midi_1_0_spec:
+  description: |
+    MIDI 1.0 is a hardware and software specification enabling exchange of
+    musical information (notes, program changes, expression control) between
+    different instruments and devices. Established 1983, still foundational.
+
+  channels:
+    range: "0-15 (displayed as 1-16)"
+    percussion: "Channel 9 (displayed as 10) - reserved for drums in GM"
+    melodic: "Channels 0-8, 10-15 (displayed as 1-9, 11-16)"
+
+  message_types:
+    note_off:
+      status_byte: "0x80-0x8F (1000nnnn)"
+      data: "key (0-127), velocity (0-127)"
+
+    note_on:
+      status_byte: "0x90-0x9F (1001nnnn)"
+      data: "key (0-127), velocity (0-127)"
+      note: "velocity 0 = note off"
+
+    control_change:
+      status_byte: "0xB0-0xBF (1011nnnn)"
+      data: "controller (0-119), value (0-127)"
+      reserved: "120-127 are Channel Mode Messages"
+
+    program_change:
+      status_byte: "0xC0-0xCF (1100nnnn)"
+      data: "program number (0-127)"
+
+    pitch_bend:
+      status_byte: "0xE0-0xEF (1110nnnn)"
+      data: "LSB (0-127), MSB (0-127)"
+      center: "0x2000 (8192)"
+      range: "0-16383 (14-bit resolution)"
+
+  timing:
+    clock: "24 MIDI clocks per quarter note"
+    active_sensing: "300ms max between messages"
+
+  value_ranges:
+    velocity: "0-127 (0=note off, 1=softest, 127=loudest)"
+    note_number: "0-127 (C-1 to G9)"
+    program: "0-127 (GM assigns specific instruments)"
+    controller: "0-127 (0-119 for CC, 120-127 for mode)"
+
+# =============================================================================
+# GENERAL MIDI (GM) SPECIFICATION
+# Source: https://midi.org/general-midi-level-1
+# =============================================================================
+
+general_midi:
+  description: |
+    General MIDI defines a standard sound set so MIDI files are portable
+    across different synthesizers. Without GM, a file made on one device
+    might sound completely different on another.
+
+  requirements:
+    voices: "24 fully dynamic, OR 16 melodic + 8 percussion"
+    channels: "All 16 channels supported"
+    instruments: "128 presets conforming to GM Sound Set"
+    percussion: "47 preset sounds on Channel 10"
+
+  # Program numbers 0-127 (displayed as 1-128)
+  # Grouped into 16 families of 8 instruments each
+  instrument_families:
+    piano: "0-7: Acoustic Grand, Bright, Electric Grand, Honky-tonk, EP1, EP2, Harpsichord, Clavinet"
+    chromatic: "8-15: Celesta, Glockenspiel, Music Box, Vibraphone, Marimba, Xylophone, Tubular Bells, Dulcimer"
+    organ: "16-23: Drawbar, Percussive, Rock, Church, Reed, Accordion, Harmonica, Tango Accordion"
+    guitar: "24-31: Nylon, Steel, Jazz, Clean, Muted, Overdriven, Distortion, Harmonics"
+    bass: "32-39: Acoustic, Finger, Pick, Fretless, Slap1, Slap2, Synth1, Synth2"
+    strings: "40-47: Violin, Viola, Cello, Contrabass, Tremolo, Pizzicato, Orchestral, Timpani"
+    ensemble: "48-55: Strings1, Strings2, SynthStrings1, SynthStrings2, Choir Aahs, Voice Oohs, Synth Voice"
+    brass: "56-63: Trumpet, Trombone, Tuba, Muted Trumpet, French Horn, Brass Section, SynthBrass1, SynthBrass2"
+    reed: "64-71: Soprano Sax, Alto Sax, Tenor Sax, Baritone Sax, Oboe, English Horn, Bassoon, Clarinet"
+    pipe: "72-79: Piccolo, Flute, Recorder, Pan Flute, Blown Bottle, Shakuhachi, Whistle, Ocarina"
+    synth_lead: "80-87: Square, Sawtooth, Calliope, Chiff, Charang, Voice, Fifths, Bass+Lead"
+    synth_pad: "88-95: New Age, Warm, Polysynth, Choir, Bowed, Metallic, Halo, Sweep"
+    synth_fx: "96-103: Rain, Soundtrack, Crystal, Atmosphere, Brightness, Goblins, Echoes, Sci-Fi"
+    ethnic: "104-111: Sitar, Banjo, Shamisen, Koto, Kalimba, Bagpipe, Fiddle, Shanai"
+    percussive: "112-119: Tinkle Bell, Agogo, Steel Drums, Woodblock, Taiko, Tom, Synth Drum, Reverse Cymbal"
+    sound_fx: "120-127: Guitar Fret, Breath, Seashore, Bird, Telephone, Helicopter, Applause, Gunshot"
+
+  # Programs used in Babylon (0-indexed)
+  babylon_programs:
+    harpsichord: 6         # The Machine / Surveillance
+    rock_organ: 19         # False Grandeur (Church=20 for more majesty)
+    church_organ: 20       # Maximum grandeur
+    cello: 42              # Deep foreboding
+    tremolo_strings: 44    # Anxiety (never rests)
+    orchestral_strings: 47 # Rich ensemble
+    timpani: 47            # The Clock / Jackboot (NOTE: same as strings!)
+    string_ensemble: 48    # The Masses
+    trombone: 57           # Heavy brass
+    tuba: 58               # Deepest brass
+    french_horn: 60        # Military authority
+    brass_section: 61      # State Violence
+
+  # Percussion on Channel 9 (Channel 10 in 1-indexed)
+  # Note numbers 35-81 (GM1), 27-87 (GM2)
+  percussion_map:
+    # Kick drums
+    35: "Acoustic Bass Drum"
+    36: "Bass Drum 1 (standard kick)"
+
+    # Snares
+    37: "Side Stick (rim shot)"
+    38: "Acoustic Snare"
+    39: "Hand Clap"
+    40: "Electric Snare"
+
+    # Toms (low to high)
+    41: "Low Floor Tom"
+    43: "High Floor Tom"
+    45: "Low Tom"
+    47: "Low Mid Tom"
+    48: "High Mid Tom"
+    50: "High Tom"
+
+    # Hi-hats
+    42: "Closed Hi-hat"
+    44: "Pedal Hi-hat"
+    46: "Open Hi-hat"
+
+    # Cymbals
+    49: "Crash Cymbal 1"
+    51: "Ride Cymbal 1"
+    52: "Chinese Cymbal"
+    53: "Ride Bell"
+    55: "Splash Cymbal"
+    57: "Crash Cymbal 2"
+    59: "Ride Cymbal 2"
+
+    # Latin percussion
+    54: "Tambourine"
+    56: "Cowbell"
+    58: "Vibraslap"
+    60: "High Bongo"
+    61: "Low Bongo"
+    62: "Mute High Conga"
+    63: "Open High Conga"
+    64: "Low Conga"
+    65: "High Timbale"
+    66: "Low Timbale"
+    67: "High Agogo"
+    68: "Low Agogo"
+    69: "Cabasa"
+    70: "Maracas"
+    75: "Claves"
+    76: "High Wood Block"
+    77: "Low Wood Block"
+
+    # Other
+    71: "Short Whistle"
+    72: "Long Whistle"
+    73: "Short Guiro"
+    74: "Long Guiro"
+    78: "Mute Cuica"
+    79: "Open Cuica"
+    80: "Mute Triangle"
+    81: "Open Triangle"
+
+# =============================================================================
+# MIDI NOTE NUMBER REFERENCE
+# Source: https://newt.phys.unsw.edu.au/jw/notes.html
+# =============================================================================
+
+note_reference:
+  description: |
+    MIDI note numbers 0-127 span from C-1 (8.18 Hz) to G9 (12543.85 Hz).
+    A4 = note 69 = 440 Hz is the standard reference pitch.
+
+  formula:
+    note_to_freq: "f = 440 × 2^((n - 69) / 12)"
+    freq_to_note: "n = 69 + 12 × log2(f / 440)"
+
+  reference_points:
+    C_minus1: { note: 0, freq: 8.18 }
+    C0: { note: 12, freq: 16.35 }
+    C1: { note: 24, freq: 32.70 }
+    C2: { note: 36, freq: 65.41 }
+    C3: { note: 48, freq: 130.81, name: "Tenor C" }
+    C4: { note: 60, freq: 261.63, name: "Middle C" }
+    A4: { note: 69, freq: 440.00, name: "Concert A (tuning reference)" }
+    C5: { note: 72, freq: 523.25 }
+    C6: { note: 84, freq: 1046.50 }
+    C7: { note: 96, freq: 2093.00 }
+    C8: { note: 108, freq: 4186.01, name: "Top of piano" }
+
+  # Complete chromatic scale for octaves used in Babylon
+  babylon_notes:
+    octave_2:  # Bass register
+      C2: 36
+      Db2: 37
+      D2: 38
+      Eb2: 39
+      E2: 40    # Babylon root note
+      F2: 41    # Phrygian flat 2 (dread)
+      Gb2: 42
+      G2: 43
+      Ab2: 44
+      A2: 45
+      Bb2: 46   # Tritone from E (devil's interval)
+      B2: 47
+
+    octave_3:  # Tenor register
+      C3: 48
+      Db3: 49
+      D3: 50
+      Eb3: 51
+      E3: 52
+      F3: 53
+      Gb3: 54
+      G3: 55
+      Ab3: 56
+      A3: 57
+      Bb3: 58
+      B3: 59
+
+    octave_4:  # Alto register (contains middle C)
+      C4: 60    # Middle C
+      Db4: 61
+      D4: 62
+      Eb4: 63
+      E4: 64
+      F4: 65
+      Gb4: 66
+      G4: 67
+      Ab4: 68
+      A4: 69    # Concert A = 440 Hz
+      Bb4: 70
+      B4: 71
+
+    octave_5:  # Soprano register
+      C5: 72
+      Db5: 73
+      D5: 74
+      Eb5: 75
+      E5: 76
+      F5: 77
+      Gb5: 78
+      G5: 79
+      Ab5: 80
+      A5: 81
+      Bb5: 82
+      B5: 83
+
+  intervals:
+    description: "Semitone distances from root (E)"
+    unison: 0
+    minor_2nd: 1      # F in E Phrygian (the dread note)
+    major_2nd: 2
+    minor_3rd: 3      # G in E minor
+    major_3rd: 4
+    perfect_4th: 5    # A
+    tritone: 6        # Bb - the devil's interval, maximum tension
+    perfect_5th: 7    # B
+    minor_6th: 8
+    major_6th: 9
+    minor_7th: 10     # D
+    major_7th: 11
+    octave: 12
+
+# =============================================================================
+# QUICK REFERENCE: MIDIUTIL API
+# =============================================================================
+
+midiutil_api:
+  create_file: |
+    midi = MIDIFile(num_tracks, deinterleave=False)
+
+  add_track_info: |
+    midi.addTrackName(track, time, name)
+    midi.addTempo(track, time, bpm)
+    midi.addProgramChange(track, channel, time, program)
+
+  add_note: |
+    midi.addNote(track, channel, pitch, time, duration, velocity)
+    #           ^^^^^  ^^^^^^^
+    #           |      |
+    #           |      +-- MIDI channel (0-15), percussion = 9
+    #           +--------- Track INDEX in MIDIFile (0 to num_tracks-1)
+
+  write_file: |
+    with open(path, "wb") as f:
+        midi.writeFile(f)
+
+  # Common Control Change numbers
+  control_changes:
+    modulation: 1
+    breath: 2
+    volume: 7
+    pan: 10
+    expression: 11
+    sustain: 64
+    soft_pedal: 67
+    all_sound_off: 120
+    all_notes_off: 123

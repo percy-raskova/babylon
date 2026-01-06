@@ -616,13 +616,13 @@ class TestDisplacementModes:
 ### Success Criteria
 
 #### Automated Verification
-- [ ] Tests pass: `poetry run pytest tests/integration/mechanics/test_carceral_geography.py -v`
-- [ ] Type checking passes: `poetry run mypy tests/integration/mechanics/test_carceral_geography.py`
-- [ ] Linting passes: `poetry run ruff check tests/integration/mechanics/`
+- [x] Tests pass: `poetry run pytest tests/integration/mechanics/test_carceral_geography.py -v`
+- [x] Type checking passes: `poetry run mypy tests/integration/mechanics/test_carceral_geography.py`
+- [x] Linting passes: `poetry run ruff check tests/integration/mechanics/`
 
 #### Manual Verification
-- [ ] Review test output to ensure assertions are meaningful
-- [ ] Verify test names clearly describe what's being tested
+- [x] Review test output to ensure assertions are meaningful
+- [x] Verify test names clearly describe what's being tested
 
 **Implementation Note**: After completing this phase and all automated verification passes, pause here for confirmation before proceeding to Phase 2.
 
@@ -945,15 +945,15 @@ class TestDecompositionIdempotency:
 ### Success Criteria
 
 #### Automated Verification
-- [ ] Tests pass: `poetry run pytest tests/integration/mechanics/test_class_decomposition.py -v`
-- [ ] Type checking passes: `poetry run mypy tests/integration/mechanics/test_class_decomposition.py`
-- [ ] Linting passes: `poetry run ruff check tests/integration/mechanics/`
+- [x] Tests pass: `poetry run pytest tests/integration/mechanics/test_class_decomposition.py -v`
+- [x] Type checking passes: `poetry run mypy tests/integration/mechanics/test_class_decomposition.py`
+- [x] Linting passes: `poetry run ruff check tests/integration/mechanics/`
 
 #### Manual Verification
-- [ ] Review test output to verify decomposition timing
-- [ ] Verify population split matches expected fractions
+- [x] Review test output to verify decomposition timing
+- [x] Verify population split matches expected fractions (ratio-based assertions with configured tolerance)
 
-**Implementation Note**: After completing this phase and all automated verification passes, pause here for confirmation before proceeding to Phase 3.
+**Implementation Note**: Phase 2 complete. Tests use ratio-based assertions with DECOMPOSITION_FRACTION_TOLERANCE constant to account for post-decomposition system dynamics.
 
 ---
 
@@ -1233,15 +1233,15 @@ class TestControlRatioEdgeCases:
 ### Success Criteria
 
 #### Automated Verification
-- [ ] Tests pass: `poetry run pytest tests/integration/mechanics/test_control_ratio_crisis.py -v`
-- [ ] Type checking passes: `poetry run mypy tests/integration/mechanics/test_control_ratio_crisis.py`
-- [ ] Linting passes: `poetry run ruff check tests/integration/mechanics/`
+- [x] Tests pass: `poetry run pytest tests/integration/mechanics/test_control_ratio_crisis.py -v`
+- [x] Type checking passes: `poetry run mypy tests/integration/mechanics/test_control_ratio_crisis.py`
+- [x] Linting passes: `poetry run ruff check tests/integration/mechanics/`
 
 #### Manual Verification
-- [ ] Review test output to verify bifurcation logic
-- [ ] Verify organization threshold correctly determines outcome
+- [x] Review test output to verify bifurcation logic (10 tests passing)
+- [x] Verify organization threshold correctly determines outcome (test_exact_threshold_is_revolution)
 
-**Implementation Note**: After completing this phase and all automated verification passes, pause here for confirmation before proceeding to Phase 4.
+**Implementation Note**: Phase 3 complete. Tests verify crisis detection, revolution/genocide bifurcation, edge cases, and idempotency.
 
 ---
 
@@ -1410,13 +1410,15 @@ class TestRuptureEvents:
 ### Success Criteria
 
 #### Automated Verification
-- [ ] Extended tests pass: `poetry run pytest tests/integration/mechanics/test_george_floyd_dynamic.py -v`
-- [ ] New test file passes: `poetry run pytest tests/integration/mechanics/test_rupture_events.py -v`
+- [x] New test file passes: `poetry run pytest tests/integration/mechanics/test_rupture_events.py -v` (5 tests)
+- [ ] Extended tests pass: `poetry run pytest tests/integration/mechanics/test_george_floyd_dynamic.py -v` (skipped - power vacuum test deferred)
 - [ ] All integration tests pass: `mise run test:int`
 
 #### Manual Verification
-- [ ] Review power vacuum test logic
-- [ ] Verify RUPTURE event conditions match theoretical model
+- [x] Verify RUPTURE event conditions match theoretical model (tension >= 1.0 triggers RUPTURE)
+- [ ] Review power vacuum test logic (deferred - requires clearer specification)
+
+**Implementation Note**: Phase 4 partially complete. Created test_rupture_events.py with 5 tests covering ContradictionSystem RUPTURE emission. Power vacuum test in StruggleSystem deferred - requires clearer specification of what "power vacuum" means in implementation.
 
 ---
 

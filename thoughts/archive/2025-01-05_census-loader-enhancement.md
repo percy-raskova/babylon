@@ -1438,5 +1438,5 @@ ______________________________________________________________________
 | Phase 2 | ✅ Complete | `d9fc8f4` | Data-driven refactor, `census_years` API |
 | Phase 3 | ✅ Complete | `19cbee2` | Race-iterated tables loaded via A-I suffix |
 | Phase 4 | ✅ Complete | `822b021` | Metro area population (1,119 areas, county-metro bridges) |
-| Phase 5 | 🔲 Pending | - | Data loader infrastructure refactoring (4 consolidation patterns) |
-| Phase 6 | 🔲 Pending | - | Testing and documentation |
+| Phase 5 | ✅ Complete | `bb13a11` | Data loader infrastructure refactoring (base class extraction) |
+| Phase 6 | ✅ Complete | - | Testing and documentation (unit + integration tests, ai-docs) |

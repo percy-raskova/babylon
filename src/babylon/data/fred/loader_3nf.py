@@ -30,7 +30,7 @@ import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from tqdm import tqdm  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from babylon.data.exceptions import FredAPIError
 from babylon.data.fred.api_client import (
@@ -64,11 +64,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Productivity series to add to national data (available via FRED)
+# Note: PRS85006033 and PRS85006103 do not exist in FRED; replaced with valid alternatives
 PRODUCTIVITY_SERIES = {
     "OPHNFB": "Nonfarm Business Sector: Real Output Per Hour of All Persons",
-    "PRS85006092": "Nonfarm Business Sector: Real Output",
-    "PRS85006033": "Nonfarm Business Sector: Hours of All Persons",
-    "PRS85006103": "Nonfarm Business Sector: Labor Productivity",
+    "HOANBS": "Nonfarm Business Sector: Hours Worked for All Workers",
 }
 
 # All national series including productivity

@@ -182,10 +182,19 @@ class CensusAPIClient:
             table: Census table code (e.g., "B19001").
 
         Returns:
-            Dict mapping variable codes to metadata.
+            Dict mapping variable codes to metadata. Returns empty dict if
+            the table doesn't exist for this year (404 response).
         """
         endpoint = f"{self.base_endpoint}/groups/{table}.json"
-        data = self._request(endpoint)
+
+        try:
+            data = self._request(endpoint)
+        except CensusAPIError as e:
+            if e.status_code == 404:
+                # Table doesn't exist for this year - return empty dict
+                logger.info(f"Table {table} not available for year {self.year}")
+                return {}
+            raise
 
         variables: dict[str, VariableMetadata] = {}
         for code, info in data.get("variables", {}).items():
@@ -215,6 +224,7 @@ class CensusAPIClient:
 
         Returns:
             List of CountyData objects with values for each county.
+            Returns empty list if data is unavailable (404 response).
         """
         # Build variable list (NAME is always included)
         var_string = ",".join(["NAME"] + variables)
@@ -229,7 +239,14 @@ class CensusAPIClient:
             params["for"] = "county:*"
             params["in"] = "state:*"
 
-        data = self._request(self.base_endpoint, params)
+        try:
+            data = self._request(self.base_endpoint, params)
+        except CensusAPIError as e:
+            if e.status_code == 404:
+                # Data not available for this year/geography - return empty list
+                logger.info(f"County data not available for state {state_fips}, year {self.year}")
+                return []
+            raise
 
         if not data or len(data) < 2:
             return []
@@ -278,6 +295,7 @@ class CensusAPIClient:
 
         Returns:
             List of CountyData objects with all table values.
+            Returns empty list if the table is unavailable (404 response).
         """
         params: dict[str, str] = {"get": f"NAME,group({table})"}
 
@@ -288,7 +306,14 @@ class CensusAPIClient:
             params["for"] = "county:*"
             params["in"] = "state:*"
 
-        data = self._request(self.base_endpoint, params)
+        try:
+            data = self._request(self.base_endpoint, params)
+        except CensusAPIError as e:
+            if e.status_code == 404:
+                # Table not available for this year - return empty list
+                logger.info(f"Table {table} not available for state {state_fips}, year {self.year}")
+                return []
+            raise
 
         if not data or len(data) < 2:
             return []

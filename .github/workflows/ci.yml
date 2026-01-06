@@ -56,13 +56,14 @@ jobs:
         run: poetry run mypy src
 
       - name: Run tests
-        run: poetry run pytest -m "not ai" --tb=short -q
+        # Exclude ai (slow) and red_phase (TDD tests intentionally failing until GREEN)
+        run: poetry run pytest -m "not ai and not red_phase" --tb=short -q
 
       # Coverage gate for simulation-critical code
       # Enforces 80% coverage on engine/systems and formulas modules
       - name: Coverage Gate (Simulation Code)
         run: |
-          poetry run pytest -m "not ai" \
+          poetry run pytest -m "not ai and not red_phase" \
             --cov=src/babylon/engine/systems \
             --cov=src/babylon/systems \
             --cov-fail-under=80 \

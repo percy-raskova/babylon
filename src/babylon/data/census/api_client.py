@@ -190,8 +190,9 @@ class CensusAPIClient:
         try:
             data = self._request(endpoint)
         except CensusAPIError as e:
-            if e.status_code == 404:
-                # Table doesn't exist for this year - return empty dict
+            # Handle both 404 (not found) and 400 (group does not exist)
+            # Census API returns 400 with "Group 'X' does not exist" for missing tables
+            if e.status_code == 404 or (e.status_code == 400 and "does not exist" in e.message):
                 logger.info(f"Table {table} not available for year {self.year}")
                 return {}
             raise
@@ -309,8 +310,9 @@ class CensusAPIClient:
         try:
             data = self._request(self.base_endpoint, params)
         except CensusAPIError as e:
-            if e.status_code == 404:
-                # Table not available for this year - return empty list
+            # Handle both 404 (not found) and 400 (group does not exist)
+            # Census API returns 400 with "Group 'X' does not exist" for missing tables
+            if e.status_code == 404 or (e.status_code == 400 and "does not exist" in e.message):
                 logger.info(f"Table {table} not available for state {state_fips}, year {self.year}")
                 return []
             raise

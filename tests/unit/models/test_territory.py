@@ -4,6 +4,8 @@ TDD Red Phase: These tests define the contract for the Territory entity.
 Territory is the Phase 3.5 node type - the spatial substrate of the simulation.
 
 Sprint 3.5.2: Layer 0 - The Territorial Substrate.
+
+Refactored with pytest.parametrize for Phase 4 of Unit Test Health Improvement Plan.
 """
 
 import pytest
@@ -11,7 +13,7 @@ from pydantic import ValidationError
 from tests.constants import TestConstants
 
 from babylon.models.entities.territory import Territory
-from babylon.models.enums import OperationalProfile, SectorType
+from babylon.models.enums import OperationalProfile, SectorType, TerritoryType
 
 # Aliases for readability
 TC = TestConstants
@@ -68,56 +70,35 @@ class TestTerritoryCreation:
 class TestTerritoryIdValidation:
     """Territory ID must match pattern ^T[0-9]{3}$."""
 
-    def test_valid_id_t001(self) -> None:
-        """T001 is a valid territory ID."""
+    @pytest.mark.parametrize(
+        "valid_id",
+        ["T001", "T999", "T000", "T123"],
+        ids=["t001", "t999", "t000", "t123"],
+    )
+    def test_valid_id(self, valid_id: str) -> None:
+        """Valid territory IDs are accepted."""
         territory = Territory(
-            id="T001",
+            id=valid_id,
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.id == "T001"
+        assert territory.id == valid_id
 
-    def test_valid_id_t999(self) -> None:
-        """T999 is a valid territory ID."""
-        territory = Territory(
-            id="T999",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.id == "T999"
-
-    def test_invalid_id_lowercase(self) -> None:
-        """Lowercase 't' is invalid."""
+    @pytest.mark.parametrize(
+        "invalid_id,reason",
+        [
+            ("t001", "lowercase"),
+            ("C001", "wrong_prefix"),
+            ("T01", "too_short"),
+            ("T0001", "too_long"),
+        ],
+        ids=["lowercase", "wrong_prefix", "too_short", "too_long"],
+    )
+    def test_invalid_id(self, invalid_id: str, reason: str) -> None:
+        """Invalid territory IDs are rejected: {reason}."""
         with pytest.raises(ValidationError):
             Territory(
-                id="t001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-            )
-
-    def test_invalid_id_wrong_prefix(self) -> None:
-        """Wrong prefix is invalid (must be T, not C)."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="C001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-            )
-
-    def test_invalid_id_too_short(self) -> None:
-        """Too few digits is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T01",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-            )
-
-    def test_invalid_id_too_long(self) -> None:
-        """Too many digits is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T0001",
+                id=invalid_id,
                 name="Test",
                 sector_type=SectorType.RESIDENTIAL,
             )
@@ -132,68 +113,35 @@ class TestTerritoryIdValidation:
 class TestTerritoryDefaults:
     """Territory should have sensible default values."""
 
-    def test_profile_defaults_to_low(self) -> None:
-        """Profile defaults to LOW_PROFILE (safe, low recruitment)."""
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("profile", OperationalProfile.LOW_PROFILE),
+            ("heat", TC.Territory.NO_HEAT),
+            ("rent_level", TC.Territory.BASELINE_RENT),
+            ("population", TC.Territory.EMPTY),
+            ("host_id", None),
+            ("occupant_id", None),
+            ("under_eviction", False),
+        ],
+        ids=[
+            "profile_low",
+            "heat_zero",
+            "rent_baseline",
+            "population_zero",
+            "host_none",
+            "occupant_none",
+            "not_under_eviction",
+        ],
+    )
+    def test_defaults(self, attr: str, expected: object) -> None:
+        """Territory has correct default values."""
         territory = Territory(
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.profile == OperationalProfile.LOW_PROFILE
-
-    def test_heat_defaults_to_zero(self) -> None:
-        """Heat defaults to 0.0 (no state attention)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.heat == TC.Territory.NO_HEAT
-
-    def test_rent_level_defaults_to_one(self) -> None:
-        """Rent level defaults to 1.0 (baseline)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.rent_level == TC.Territory.BASELINE_RENT
-
-    def test_population_defaults_to_zero(self) -> None:
-        """Population defaults to 0."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.population == TC.Territory.EMPTY
-
-    def test_host_id_defaults_to_none(self) -> None:
-        """Host ID defaults to None (no legal sovereign)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.host_id is None
-
-    def test_occupant_id_defaults_to_none(self) -> None:
-        """Occupant ID defaults to None (no de facto occupant)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.occupant_id is None
-
-    def test_under_eviction_defaults_to_false(self) -> None:
-        """Under eviction defaults to False."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.under_eviction is False
+        assert getattr(territory, attr) == expected
 
 
 # =============================================================================
@@ -205,104 +153,58 @@ class TestTerritoryDefaults:
 class TestTerritoryConstrainedTypes:
     """Territory should validate constrained types."""
 
-    def test_heat_accepts_zero(self) -> None:
-        """Heat of 0.0 is valid (no attention)."""
+    @pytest.mark.parametrize(
+        "field,valid_value",
+        [
+            ("heat", 0.0),
+            ("heat", 1.0),
+            ("rent_level", 0.0),
+            ("rent_level", 100.0),
+            ("population", 0),
+            ("population", TC.Territory.LARGE_POPULATION),
+        ],
+        ids=[
+            "heat_zero",
+            "heat_one",
+            "rent_zero",
+            "rent_large",
+            "population_zero",
+            "population_large",
+        ],
+    )
+    def test_accepts_valid_value(self, field: str, valid_value: object) -> None:
+        """Territory accepts valid {field} value."""
         territory = Territory(
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
-            heat=0.0,
+            **{field: valid_value},
         )
-        assert territory.heat == 0.0
+        assert getattr(territory, field) == valid_value
 
-    def test_heat_accepts_one(self) -> None:
-        """Heat of 1.0 is valid (maximum attention)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            heat=1.0,
-        )
-        assert territory.heat == 1.0
-
-    def test_heat_rejects_negative(self) -> None:
-        """Negative heat is invalid."""
+    @pytest.mark.parametrize(
+        "field,invalid_value",
+        [
+            ("heat", -0.1),
+            ("heat", 1.1),
+            ("rent_level", -1.0),
+            ("population", -1),
+        ],
+        ids=[
+            "heat_negative",
+            "heat_over_one",
+            "rent_negative",
+            "population_negative",
+        ],
+    )
+    def test_rejects_invalid_value(self, field: str, invalid_value: object) -> None:
+        """Territory rejects invalid {field} value."""
         with pytest.raises(ValidationError):
             Territory(
                 id="T001",
                 name="Test",
                 sector_type=SectorType.RESIDENTIAL,
-                heat=-0.1,
-            )
-
-    def test_heat_rejects_greater_than_one(self) -> None:
-        """Heat > 1.0 is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                heat=1.1,
-            )
-
-    def test_rent_level_accepts_zero(self) -> None:
-        """Rent level of 0.0 is valid (free)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            rent_level=0.0,
-        )
-        assert territory.rent_level == 0.0
-
-    def test_rent_level_accepts_large(self) -> None:
-        """Large rent level is valid."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            rent_level=100.0,
-        )
-        assert territory.rent_level == 100.0
-
-    def test_rent_level_rejects_negative(self) -> None:
-        """Negative rent level is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                rent_level=-1.0,
-            )
-
-    def test_population_accepts_zero(self) -> None:
-        """Population of 0 is valid (empty)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            population=0,
-        )
-        assert territory.population == 0
-
-    def test_population_accepts_large(self) -> None:
-        """Large population is valid."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            population=TC.Territory.LARGE_POPULATION,
-        )
-        assert territory.population == TC.Territory.LARGE_POPULATION
-
-    def test_population_rejects_negative(self) -> None:
-        """Negative population is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                population=-1,
+                **{field: invalid_value},
             )
 
 
@@ -315,63 +217,50 @@ class TestTerritoryConstrainedTypes:
 class TestTerritoryClarityBonus:
     """Territory clarity_bonus property for recruitment effects."""
 
-    def test_low_profile_no_clarity_bonus(self) -> None:
-        """LOW_PROFILE gives 0.0 clarity bonus (safe but boring)."""
+    @pytest.mark.parametrize(
+        "profile,expected_bonus",
+        [
+            (OperationalProfile.LOW_PROFILE, 0.0),
+            (OperationalProfile.HIGH_PROFILE, 0.3),
+        ],
+        ids=["low_profile_no_bonus", "high_profile_bonus"],
+    )
+    def test_clarity_bonus(self, profile: OperationalProfile, expected_bonus: float) -> None:
+        """Profile {profile} gives {expected_bonus} clarity bonus."""
         territory = Territory(
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
-            profile=OperationalProfile.LOW_PROFILE,
+            profile=profile,
         )
-        assert territory.clarity_bonus == 0.0
-
-    def test_high_profile_clarity_bonus(self) -> None:
-        """HIGH_PROFILE gives 0.3 clarity bonus (attracts cadre)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            profile=OperationalProfile.HIGH_PROFILE,
-        )
-        assert territory.clarity_bonus == 0.3
+        assert territory.clarity_bonus == expected_bonus
 
 
 @pytest.mark.topology
 class TestTerritoryLiberation:
     """Territory is_liberated property for sovereign status."""
 
-    def test_unoccupied_not_liberated(self) -> None:
-        """Territory with no occupant is not liberated."""
+    @pytest.mark.parametrize(
+        "host_id,occupant_id,expected",
+        [
+            (None, None, False),
+            ("C001", "C002", False),
+            (None, "C002", True),
+        ],
+        ids=["unoccupied", "with_host", "occupant_no_host_liberated"],
+    )
+    def test_is_liberated(
+        self, host_id: str | None, occupant_id: str | None, expected: bool
+    ) -> None:
+        """Territory liberation status is correct."""
         territory = Territory(
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
-            host_id=None,
-            occupant_id=None,
+            host_id=host_id,
+            occupant_id=occupant_id,
         )
-        assert territory.is_liberated is False
-
-    def test_with_host_not_liberated(self) -> None:
-        """Territory with host is not liberated (still under sovereignty)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            host_id="C001",
-            occupant_id="C002",
-        )
-        assert territory.is_liberated is False
-
-    def test_occupant_no_host_is_liberated(self) -> None:
-        """Territory with occupant but no host IS liberated."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            host_id=None,
-            occupant_id="C002",
-        )
-        assert territory.is_liberated is True
+        assert territory.is_liberated is expected
 
 
 # =============================================================================
@@ -461,8 +350,6 @@ class TestTerritoryTypeDefault:
             name="Suburbs",
             sector_type=SectorType.RESIDENTIAL,
         )
-        from babylon.models.enums import TerritoryType
-
         assert territory.territory_type == TerritoryType.CORE
 
 
@@ -475,85 +362,32 @@ class TestTerritorySinkNode:
     They have no economic value - only containment/elimination function.
     """
 
-    def test_is_sink_node_true_for_reservation(self) -> None:
-        """RESERVATION territories are sink nodes (containment).
-
-        Reservations are containment zones with high subsistence cost
-        but no labor value. Population can enter but cannot leave easily.
-        """
-        from babylon.models.enums import TerritoryType
-
+    @pytest.mark.parametrize(
+        "territory_type,is_sink",
+        [
+            (TerritoryType.RESERVATION, True),
+            (TerritoryType.PENAL_COLONY, True),
+            (TerritoryType.CONCENTRATION_CAMP, True),
+            (TerritoryType.CORE, False),
+            (TerritoryType.PERIPHERY, False),
+        ],
+        ids=[
+            "reservation_sink",
+            "penal_colony_sink",
+            "concentration_camp_sink",
+            "core_not_sink",
+            "periphery_not_sink",
+        ],
+    )
+    def test_is_sink_node(self, territory_type: TerritoryType, is_sink: bool) -> None:
+        """Territory type {territory_type} is_sink_node={is_sink}."""
         territory = Territory(
             id="T001",
-            name="Pine Ridge",
+            name="Test",
             sector_type=SectorType.RESIDENTIAL,
-            territory_type=TerritoryType.RESERVATION,
+            territory_type=territory_type,
         )
-        assert territory.is_sink_node is True
-
-    def test_is_sink_node_true_for_penal_colony(self) -> None:
-        """PENAL_COLONY territories are sink nodes (extraction).
-
-        Penal colonies extract forced labor and suppress organization.
-        The prison-industrial complex as carceral geography.
-        """
-        from babylon.models.enums import TerritoryType
-
-        territory = Territory(
-            id="T002",
-            name="Angola Prison Farm",
-            sector_type=SectorType.INDUSTRIAL,
-            territory_type=TerritoryType.PENAL_COLONY,
-        )
-        assert territory.is_sink_node is True
-
-    def test_is_sink_node_true_for_concentration_camp(self) -> None:
-        """CONCENTRATION_CAMP territories are sink nodes (elimination).
-
-        Concentration camps are elimination zones with high population decay.
-        They generate Terror as a byproduct.
-        """
-        from babylon.models.enums import TerritoryType
-
-        territory = Territory(
-            id="T003",
-            name="Internment Zone",
-            sector_type=SectorType.GOVERNMENT,
-            territory_type=TerritoryType.CONCENTRATION_CAMP,
-        )
-        assert territory.is_sink_node is True
-
-    def test_is_sink_node_false_for_core(self) -> None:
-        """CORE territories are NOT sink nodes.
-
-        Core territories are destinations for labor aristocracy.
-        High value, low heat - not containment zones.
-        """
-        from babylon.models.enums import TerritoryType
-
-        territory = Territory(
-            id="T004",
-            name="Downtown Financial District",
-            sector_type=SectorType.COMMERCIAL,
-            territory_type=TerritoryType.CORE,
-        )
-        assert territory.is_sink_node is False
-
-    def test_is_sink_node_false_for_periphery(self) -> None:
-        """PERIPHERY territories are NOT sink nodes.
-
-        Periphery territories are sources of cheap labor.
-        High heat, low value - but not containment zones.
-        """
-        from babylon.models.enums import TerritoryType
-
-        territory = Territory(
-            id="T005",
-            name="Favela",
-            sector_type=SectorType.RESIDENTIAL,
-            territory_type=TerritoryType.PERIPHERY,
-        )
-        assert territory.is_sink_node is False
+        assert territory.is_sink_node is is_sink
 
 
 # =============================================================================
@@ -565,163 +399,89 @@ class TestTerritorySinkNode:
 class TestTerritoryMetabolicDefaults:
     """Territory metabolic fields should have sensible defaults."""
 
-    def test_biocapacity_defaults_to_100(self) -> None:
-        """Biocapacity defaults to 100.0 (full stock)."""
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("biocapacity", TC.Territory.FULL_BIOCAPACITY),
+            ("max_biocapacity", TC.Territory.FULL_BIOCAPACITY),
+            ("regeneration_rate", TC.Territory.DEFAULT_REGENERATION),
+            ("extraction_intensity", TC.Probability.ZERO),
+        ],
+        ids=[
+            "biocapacity_full",
+            "max_biocapacity_full",
+            "regeneration_2pct",
+            "extraction_zero",
+        ],
+    )
+    def test_metabolic_defaults(self, attr: str, expected: object) -> None:
+        """Territory has correct metabolic default values."""
         territory = Territory(
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
         )
-        assert territory.biocapacity == TC.Territory.FULL_BIOCAPACITY
-
-    def test_max_biocapacity_defaults_to_100(self) -> None:
-        """Max biocapacity defaults to 100.0 (carrying capacity)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.max_biocapacity == TC.Territory.FULL_BIOCAPACITY
-
-    def test_regeneration_rate_defaults_to_0_02(self) -> None:
-        """Regeneration rate defaults to 2% per tick."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.regeneration_rate == TC.Territory.DEFAULT_REGENERATION
-
-    def test_extraction_intensity_defaults_to_0(self) -> None:
-        """Extraction intensity defaults to 0 (no extraction)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-        )
-        assert territory.extraction_intensity == TC.Probability.ZERO
+        assert getattr(territory, attr) == expected
 
 
 @pytest.mark.topology
 class TestTerritoryMetabolicConstraints:
     """Territory metabolic fields should be properly constrained."""
 
-    def test_biocapacity_accepts_zero(self) -> None:
-        """Zero biocapacity is valid (depleted ecosystem)."""
+    @pytest.mark.parametrize(
+        "field,valid_value",
+        [
+            ("biocapacity", 0.0),
+            ("max_biocapacity", 0.0),
+            ("regeneration_rate", 0.0),
+            ("regeneration_rate", 1.0),
+            ("extraction_intensity", 0.0),
+            ("extraction_intensity", 1.0),
+        ],
+        ids=[
+            "biocapacity_zero",
+            "max_biocapacity_zero",
+            "regeneration_zero",
+            "regeneration_one",
+            "extraction_zero",
+            "extraction_one",
+        ],
+    )
+    def test_accepts_valid_metabolic_value(self, field: str, valid_value: float) -> None:
+        """Territory accepts valid {field} value."""
         territory = Territory(
             id="T001",
             name="Test",
             sector_type=SectorType.RESIDENTIAL,
-            biocapacity=0.0,
+            **{field: valid_value},
         )
-        assert territory.biocapacity == 0.0
+        assert getattr(territory, field) == valid_value
 
-    def test_biocapacity_rejects_negative(self) -> None:
-        """Negative biocapacity is invalid."""
+    @pytest.mark.parametrize(
+        "field,invalid_value",
+        [
+            ("biocapacity", -10.0),
+            ("max_biocapacity", -50.0),
+            ("regeneration_rate", -0.01),
+            ("regeneration_rate", 1.1),
+            ("extraction_intensity", -0.1),
+            ("extraction_intensity", 1.5),
+        ],
+        ids=[
+            "biocapacity_negative",
+            "max_biocapacity_negative",
+            "regeneration_negative",
+            "regeneration_over_one",
+            "extraction_negative",
+            "extraction_over_one",
+        ],
+    )
+    def test_rejects_invalid_metabolic_value(self, field: str, invalid_value: float) -> None:
+        """Territory rejects invalid {field} value."""
         with pytest.raises(ValidationError):
             Territory(
                 id="T001",
                 name="Test",
                 sector_type=SectorType.RESIDENTIAL,
-                biocapacity=-10.0,
-            )
-
-    def test_max_biocapacity_accepts_zero(self) -> None:
-        """Zero max biocapacity is valid (barren land)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            max_biocapacity=0.0,
-        )
-        assert territory.max_biocapacity == 0.0
-
-    def test_max_biocapacity_rejects_negative(self) -> None:
-        """Negative max biocapacity is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                max_biocapacity=-50.0,
-            )
-
-    def test_regeneration_rate_accepts_zero(self) -> None:
-        """Zero regeneration rate is valid (dead ecosystem)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            regeneration_rate=0.0,
-        )
-        assert territory.regeneration_rate == 0.0
-
-    def test_regeneration_rate_accepts_one(self) -> None:
-        """100% regeneration rate is valid (edge case)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            regeneration_rate=1.0,
-        )
-        assert territory.regeneration_rate == 1.0
-
-    def test_regeneration_rate_rejects_negative(self) -> None:
-        """Negative regeneration rate is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                regeneration_rate=-0.01,
-            )
-
-    def test_regeneration_rate_rejects_greater_than_one(self) -> None:
-        """Regeneration rate > 1.0 is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                regeneration_rate=1.1,
-            )
-
-    def test_extraction_intensity_accepts_zero(self) -> None:
-        """Zero extraction intensity is valid (no extraction)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            extraction_intensity=0.0,
-        )
-        assert territory.extraction_intensity == 0.0
-
-    def test_extraction_intensity_accepts_one(self) -> None:
-        """100% extraction intensity is valid (maximum exploitation)."""
-        territory = Territory(
-            id="T001",
-            name="Test",
-            sector_type=SectorType.RESIDENTIAL,
-            extraction_intensity=1.0,
-        )
-        assert territory.extraction_intensity == 1.0
-
-    def test_extraction_intensity_rejects_negative(self) -> None:
-        """Negative extraction intensity is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                extraction_intensity=-0.1,
-            )
-
-    def test_extraction_intensity_rejects_greater_than_one(self) -> None:
-        """Extraction intensity > 1.0 is invalid."""
-        with pytest.raises(ValidationError):
-            Territory(
-                id="T001",
-                name="Test",
-                sector_type=SectorType.RESIDENTIAL,
-                extraction_intensity=1.5,
+                **{field: invalid_value},
             )

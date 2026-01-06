@@ -2,6 +2,8 @@
 
 TDD tests verifying the DomainFactory creates domain objects with correct defaults
 and supports keyword argument overrides.
+
+Refactored with pytest.parametrize for Phase 4 of Unit Test Health Improvement Plan.
 """
 
 import pytest
@@ -19,25 +21,33 @@ class TestDomainFactoryWorker:
         """Create a DomainFactory instance."""
         return DomainFactory()
 
-    def test_create_worker_default_id(self, factory: DomainFactory) -> None:
-        """Worker has default id 'C001'."""
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("id", "C001"),
+            ("name", "Test Worker"),
+            ("role", SocialRole.PERIPHERY_PROLETARIAT),
+            ("wealth", 0.5),
+            ("organization", 0.1),
+            ("repression_faced", 0.5),
+            ("subsistence_threshold", 0.3),
+        ],
+        ids=[
+            "default_id",
+            "default_name",
+            "default_role",
+            "default_wealth",
+            "default_organization",
+            "default_repression",
+            "default_subsistence",
+        ],
+    )
+    def test_create_worker_defaults(
+        self, factory: DomainFactory, attr: str, expected: object
+    ) -> None:
+        """Worker has correct default values."""
         worker = factory.create_worker()
-        assert worker.id == "C001"
-
-    def test_create_worker_default_name(self, factory: DomainFactory) -> None:
-        """Worker has default name 'Test Worker'."""
-        worker = factory.create_worker()
-        assert worker.name == "Test Worker"
-
-    def test_create_worker_default_role(self, factory: DomainFactory) -> None:
-        """Worker has default role PERIPHERY_PROLETARIAT."""
-        worker = factory.create_worker()
-        assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
-
-    def test_create_worker_default_wealth(self, factory: DomainFactory) -> None:
-        """Worker has default wealth 0.5."""
-        worker = factory.create_worker()
-        assert worker.wealth == 0.5
+        assert getattr(worker, attr) == expected
 
     def test_create_worker_default_ideology(self, factory: DomainFactory) -> None:
         """Worker has default ideology 0.0 (converted to IdeologicalProfile)."""
@@ -46,30 +56,20 @@ class TestDomainFactoryWorker:
         expected = IdeologicalProfile.from_legacy_ideology(0.0)
         assert worker.ideology == expected
 
-    def test_create_worker_default_organization(self, factory: DomainFactory) -> None:
-        """Worker has default organization 0.1."""
-        worker = factory.create_worker()
-        assert worker.organization == 0.1
-
-    def test_create_worker_default_repression(self, factory: DomainFactory) -> None:
-        """Worker has default repression_faced 0.5."""
-        worker = factory.create_worker()
-        assert worker.repression_faced == 0.5
-
-    def test_create_worker_default_subsistence(self, factory: DomainFactory) -> None:
-        """Worker has default subsistence_threshold 0.3."""
-        worker = factory.create_worker()
-        assert worker.subsistence_threshold == 0.3
-
-    def test_create_worker_override_wealth(self, factory: DomainFactory) -> None:
-        """Worker wealth can be overridden."""
-        worker = factory.create_worker(wealth=100.0)
-        assert worker.wealth == 100.0
-
-    def test_create_worker_override_id(self, factory: DomainFactory) -> None:
-        """Worker id can be overridden."""
-        worker = factory.create_worker(id="C999")
-        assert worker.id == "C999"
+    @pytest.mark.parametrize(
+        "kwarg,value,attr",
+        [
+            ({"wealth": 100.0}, 100.0, "wealth"),
+            ({"id": "C999"}, "C999", "id"),
+        ],
+        ids=["override_wealth", "override_id"],
+    )
+    def test_create_worker_override(
+        self, factory: DomainFactory, kwarg: dict, value: object, attr: str
+    ) -> None:
+        """Worker attributes can be overridden."""
+        worker = factory.create_worker(**kwarg)
+        assert getattr(worker, attr) == value
 
     def test_create_worker_override_ideology(self, factory: DomainFactory) -> None:
         """Worker ideology can be overridden."""
@@ -86,25 +86,33 @@ class TestDomainFactoryOwner:
         """Create a DomainFactory instance."""
         return DomainFactory()
 
-    def test_create_owner_default_id(self, factory: DomainFactory) -> None:
-        """Owner has default id 'C002'."""
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("id", "C002"),
+            ("name", "Test Owner"),
+            ("role", SocialRole.CORE_BOURGEOISIE),
+            ("wealth", 10.0),
+            ("organization", 0.7),
+            ("repression_faced", 0.1),
+            ("subsistence_threshold", 0.1),
+        ],
+        ids=[
+            "default_id",
+            "default_name",
+            "default_role",
+            "default_wealth",
+            "default_organization",
+            "default_repression",
+            "default_subsistence",
+        ],
+    )
+    def test_create_owner_defaults(
+        self, factory: DomainFactory, attr: str, expected: object
+    ) -> None:
+        """Owner has correct default values."""
         owner = factory.create_owner()
-        assert owner.id == "C002"
-
-    def test_create_owner_default_name(self, factory: DomainFactory) -> None:
-        """Owner has default name 'Test Owner'."""
-        owner = factory.create_owner()
-        assert owner.name == "Test Owner"
-
-    def test_create_owner_default_role(self, factory: DomainFactory) -> None:
-        """Owner has default role CORE_BOURGEOISIE."""
-        owner = factory.create_owner()
-        assert owner.role == SocialRole.CORE_BOURGEOISIE
-
-    def test_create_owner_default_wealth(self, factory: DomainFactory) -> None:
-        """Owner has default wealth 10.0."""
-        owner = factory.create_owner()
-        assert owner.wealth == 10.0
+        assert getattr(owner, attr) == expected
 
     def test_create_owner_default_ideology(self, factory: DomainFactory) -> None:
         """Owner has default ideology 0.5 (converted to IdeologicalProfile)."""
@@ -112,30 +120,20 @@ class TestDomainFactoryOwner:
         expected = IdeologicalProfile.from_legacy_ideology(0.5)
         assert owner.ideology == expected
 
-    def test_create_owner_default_organization(self, factory: DomainFactory) -> None:
-        """Owner has default organization 0.7."""
-        owner = factory.create_owner()
-        assert owner.organization == 0.7
-
-    def test_create_owner_default_repression(self, factory: DomainFactory) -> None:
-        """Owner has default repression_faced 0.1."""
-        owner = factory.create_owner()
-        assert owner.repression_faced == 0.1
-
-    def test_create_owner_default_subsistence(self, factory: DomainFactory) -> None:
-        """Owner has default subsistence_threshold 0.1."""
-        owner = factory.create_owner()
-        assert owner.subsistence_threshold == 0.1
-
-    def test_create_owner_override_wealth(self, factory: DomainFactory) -> None:
-        """Owner wealth can be overridden."""
-        owner = factory.create_owner(wealth=0.5)
-        assert owner.wealth == 0.5
-
-    def test_create_owner_override_organization(self, factory: DomainFactory) -> None:
-        """Owner organization can be overridden."""
-        owner = factory.create_owner(organization=0.8)
-        assert owner.organization == 0.8
+    @pytest.mark.parametrize(
+        "kwarg,value,attr",
+        [
+            ({"wealth": 0.5}, 0.5, "wealth"),
+            ({"organization": 0.8}, 0.8, "organization"),
+        ],
+        ids=["override_wealth", "override_organization"],
+    )
+    def test_create_owner_override(
+        self, factory: DomainFactory, kwarg: dict, value: object, attr: str
+    ) -> None:
+        """Owner attributes can be overridden."""
+        owner = factory.create_owner(**kwarg)
+        assert getattr(owner, attr) == value
 
 
 class TestDomainFactoryRelationship:
@@ -146,30 +144,29 @@ class TestDomainFactoryRelationship:
         """Create a DomainFactory instance."""
         return DomainFactory()
 
-    def test_create_relationship_default_source(self, factory: DomainFactory) -> None:
-        """Relationship has default source_id 'C001'."""
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("source_id", "C001"),
+            ("target_id", "C002"),
+            ("edge_type", EdgeType.EXPLOITATION),
+            ("value_flow", 0.0),
+            ("tension", 0.0),
+        ],
+        ids=[
+            "default_source",
+            "default_target",
+            "default_type",
+            "default_value_flow",
+            "default_tension",
+        ],
+    )
+    def test_create_relationship_defaults(
+        self, factory: DomainFactory, attr: str, expected: object
+    ) -> None:
+        """Relationship has correct default values."""
         rel = factory.create_relationship()
-        assert rel.source_id == "C001"
-
-    def test_create_relationship_default_target(self, factory: DomainFactory) -> None:
-        """Relationship has default target_id 'C002'."""
-        rel = factory.create_relationship()
-        assert rel.target_id == "C002"
-
-    def test_create_relationship_default_type(self, factory: DomainFactory) -> None:
-        """Relationship has default edge_type EXPLOITATION."""
-        rel = factory.create_relationship()
-        assert rel.edge_type == EdgeType.EXPLOITATION
-
-    def test_create_relationship_default_value_flow(self, factory: DomainFactory) -> None:
-        """Relationship has default value_flow 0.0."""
-        rel = factory.create_relationship()
-        assert rel.value_flow == 0.0
-
-    def test_create_relationship_default_tension(self, factory: DomainFactory) -> None:
-        """Relationship has default tension 0.0."""
-        rel = factory.create_relationship()
-        assert rel.tension == 0.0
+        assert getattr(rel, attr) == expected
 
     def test_create_relationship_override_type(self, factory: DomainFactory) -> None:
         """Relationship edge_type can be overridden."""
@@ -185,25 +182,22 @@ class TestDomainFactoryWorldState:
         """Create a DomainFactory instance."""
         return DomainFactory()
 
-    def test_create_world_state_default_tick(self, factory: DomainFactory) -> None:
-        """WorldState has default tick 0."""
+    @pytest.mark.parametrize(
+        "attr,expected",
+        [
+            ("tick", 0),
+            ("entities", {}),
+            ("relationships", []),
+            ("event_log", []),
+        ],
+        ids=["default_tick", "default_entities", "default_relationships", "default_event_log"],
+    )
+    def test_create_world_state_defaults(
+        self, factory: DomainFactory, attr: str, expected: object
+    ) -> None:
+        """WorldState has correct default values."""
         state = factory.create_world_state()
-        assert state.tick == 0
-
-    def test_create_world_state_default_entities(self, factory: DomainFactory) -> None:
-        """WorldState has default empty entities dict."""
-        state = factory.create_world_state()
-        assert state.entities == {}
-
-    def test_create_world_state_default_relationships(self, factory: DomainFactory) -> None:
-        """WorldState has default empty relationships list."""
-        state = factory.create_world_state()
-        assert state.relationships == []
-
-    def test_create_world_state_default_event_log(self, factory: DomainFactory) -> None:
-        """WorldState has default empty event_log."""
-        state = factory.create_world_state()
-        assert state.event_log == []
+        assert getattr(state, attr) == expected
 
     def test_create_world_state_with_entities(self, factory: DomainFactory) -> None:
         """WorldState accepts entities dict."""

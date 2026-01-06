@@ -41,6 +41,9 @@ chromadb/
 
 .coverage
 
+# Hypothesis property-based testing cache
+.hypothesis/
+
 # Compiled Audio (generated from MIDI via FluidSynth)
 # Commit MIDI source files, not compiled audio
 assets/audio/

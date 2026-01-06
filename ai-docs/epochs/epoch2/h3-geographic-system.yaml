@@ -1,0 +1,41 @@
+# Epoch 2: H3 Hexagonal Coordinate System
+
+meta:
+  epoch: 2
+  slice: "2.5"
+  status: PLANNED
+  purpose: "Replace abstract territory IDs with H3 hexagonal coordinates"
+  research: "thoughts/shared/research/2026-01-05-h3-hexagonal-integration.md"
+
+overview:
+  what: "Uber H3 discrete global grid system"
+  why: |
+    - Equidistant neighbors (all 6 neighbors same distance)
+    - Optimal tessellation (no gaps, no overlaps)
+    - Hierarchical (aperture 7: each cell has 7 children)
+    - Matches county grain at resolution 4 (~1,770 km^2)
+
+resolution_strategy:
+  epoch2: "Resolution 4 (~county scale, 288,000 cells for continental US)"
+  epoch3: "Resolution 5-6 (~city/township scale)"
+  epoch4: "Resolution 7-9 (~neighborhood/block scale)"
+
+integration_points:
+  territory_model:
+    current: "id pattern ^T[0-9]{3}$ (abstract)"
+    target: "h3_index: 15-character hex string"
+
+  adjacency_edges:
+    current: "Manual edge creation"
+    target: "Auto-generate via h3.grid_ring(cell, 1)"
+
+  database:
+    current: "dim_county with FIPS codes"
+    target: "Add h3_res4 column, bridge to Territory"
+
+implementation_tasks:
+  - Add h3-py dependency to pyproject.toml
+  - Add h3_index field to Territory model
+  - Create county_fips to h3_res4 mapping table
+  - Update WorldState.to_graph() to use H3 as node IDs
+  - Implement adjacency edge generation via H3 neighbors

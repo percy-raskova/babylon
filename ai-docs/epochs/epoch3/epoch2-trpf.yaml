@@ -6,7 +6,7 @@
 
 meta:
   status: PLANNED
-  target_epoch: 2
+  target_epoch: 3
   created: "2025-12-31"
   author: "Claude Opus 4.5"
   theoretical_basis: "Marx, Capital Vol. 3, Chapters 13-15"

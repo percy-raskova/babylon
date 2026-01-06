@@ -8,9 +8,9 @@
 # - Marx & Engels, Communist Manifesto (1848)
 
 meta:
-  epoch: 2
-  sub_epoch: "2C"
-  slice: "2.5"
+  epoch: 3
+  sub_epoch: "3C"
+  slice: "3.5"
   slice_name: "The Wire (Narrative Warfare)"
   status: PLANNED
   version: "1.0.0"

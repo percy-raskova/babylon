@@ -61,7 +61,7 @@ key_concepts:
   hegemony:
     definition: "Ruling class power maintained through cultural/ideological control (Gramsci)"
     status: "EPOCH 2 - wiki control mechanic planned"
-    see_also: "ai-docs/epoch2/gramscian-wire-vision.yaml"
+    see_also: "ai-docs/epochs/epoch3/gramscian-wire-vision.yaml"
 
   atomization:
     definition: "Destruction of organic social bonds replaced by market relations"
@@ -148,7 +148,7 @@ trpf:
       tick_520: "74% efficiency (10 years)"
       tick_1040: "48% efficiency (20 years)"
       tick_1800_plus: "floors at 10%"
-  epoch2_plan: "ai-docs/epoch2/epoch2-trpf.yaml"
+  epoch3_plan: "ai-docs/epochs/epoch3/epoch2-trpf.yaml"
   implemented_in: "src/babylon/systems/formulas/trpf.py"
 
 metabolic_rift:

@@ -4,9 +4,9 @@
 # "Every revolutionary movement contains within it the seeds of its own betrayal."
 
 meta:
-  epoch: 2
-  sub_epoch: "2A"
-  slice: "2.2a"
+  epoch: 3
+  sub_epoch: "3A"
+  slice: "3.2a"
   slice_name: "Player Controls (External Actions)"
   status: PLANNED
   version: "1.0.0"

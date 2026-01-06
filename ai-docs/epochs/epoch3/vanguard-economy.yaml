@@ -9,9 +9,9 @@
 # that enforces the Quality (Cadre) vs. Quantity (Sympathizers) dialectic.
 
 meta:
-  epoch: 2
-  sub_epoch: "2A"
-  slice: "2.6"
+  epoch: 3
+  sub_epoch: "3A"
+  slice: "3.6"
   slice_name: "The Resource Economy"
   status: PLANNED
   priority: HIGH

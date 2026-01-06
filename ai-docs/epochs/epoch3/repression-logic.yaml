@@ -15,9 +15,9 @@ meta:
     - "state.yaml"
     - "observer-layer.yaml"
   implements:
-    epoch: 2
-    sub_epoch: "2C"
-    slice: "2.9"
+    epoch: 3
+    sub_epoch: "3C"
+    slice: "3.9"
     name: "The Panopticon"
 
 overview:

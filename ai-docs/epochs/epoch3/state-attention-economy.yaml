@@ -9,9 +9,9 @@
 # Expanding this capacity generates Systemic Fragility.
 
 meta:
-  epoch: 2
-  sub_epoch: "2C"
-  slice: "2.9"
+  epoch: 3
+  sub_epoch: "3C"
+  slice: "3.9"
   slice_name: "The Panopticon"
   status: PLANNED
   priority: HIGH

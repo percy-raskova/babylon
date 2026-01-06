@@ -10,12 +10,15 @@ This directory helps AI assistants understand context, use correct terminology, 
 
 | File | Purpose |
 |------|---------|
-| `epochs-overview.md` | **CANONICAL ROADMAP** - Epoch + Slice model (Epoch 1-5) |
-| `epoch1-mvp-complete.md` | Current System State & Physics (Material Reality) |
+| `epochs/overview.md` | **CANONICAL ROADMAP** - Four Epochs (Engine, Foundation, Game, Platform) |
+| `epochs/epoch1-complete.md` | Epoch 1 completion record (13 Systems, 25 EventTypes, 4646 tests) |
+| `epochs/epoch2/` | Epoch 2: The Foundation - data infrastructure, H3, PyQt |
+| `epochs/epoch3/` | Epoch 3: The Game - game features (17 specs, renumbered from epoch2/) |
+| `epochs/epoch4/` | Epoch 4: The Platform - DuckDB, RAG, API |
 | `state.yaml` | Current project state, test counts, slice status |
 | `architecture.yaml` | Technical Stack (Embedded Trinity: Ledger, Topology, Archive) |
 | `tooling.yaml` | CI/CD, Testing, Parameter Tuning, Monte Carlo UQ |
-| `formulas-spec.yaml` | All 16 mathematical formulas with signatures |
+| `formulas-spec.yaml` | All 31 mathematical formulas with signatures |
 | `observer-layer.yaml` | Observer system, EventTypes, TopologyMonitor |
 
 ---
@@ -42,33 +45,59 @@ This directory helps AI assistants understand context, use correct terminology, 
 
 ---
 
-## Quick Reference by Slice
+## Quick Reference by Epoch
 
-### Epoch 1 (The Demonstration) - MVP COMPLETE
+### Epoch 1: The Engine - COMPLETE
 
-| Slice | File | Status |
+See `epochs/epoch1-complete.md` for full completion record.
+
+| Slice | Name | Status |
 |-------|------|--------|
-| 1.4 The Rift | `metabolic-slice.yaml` | VALIDATED |
-| 1.5 Gramscian Wire MVP | `gramscian-wire-mvp.yaml` | 90% |
-| 1.6 Endgame Detector | (in epochs-overview.md) | PLANNED |
-| 1.7 Graph Bridge | (in epochs-overview.md) | PLANNED |
+| 1.1 | Core Types | COMPLETE |
+| 1.2 | Economic Flow | COMPLETE |
+| 1.3 | Survival Calculus | COMPLETE |
+| 1.4 | Consciousness Drift | COMPLETE |
+| 1.5 | Synopticon Dashboard | COMPLETE |
+| 1.6 | Endgame Resolution | COMPLETE |
+| 1.7 | Graph Bridge | COMPLETE |
+| 1.8 | Carceral Geography | COMPLETE |
 
-### Epoch 2 (The Game) - PLANNED
+### Epoch 2: The Foundation - IN PROGRESS
 
-All Epoch 2 specs are in `epoch2/` subdirectory:
+See `epochs/epoch2/overview.md` for specifications.
+
+| Slice | Name | Status |
+|-------|------|--------|
+| 2.1 | 3NF Schema | COMPLETE |
+| 2.2 | Census Loaders | COMPLETE |
+| 2.3 | Economic Loaders | COMPLETE |
+| 2.4 | Circulatory Loaders | COMPLETE |
+| 2.5 | H3 Geographic System | PLANNED |
+| 2.6 | PyQt Visualization | PLANNED |
+| 2.7 | Schema Integration | PLANNED |
+
+### Epoch 3: The Game - PLANNED
+
+See `epochs/epoch3/overview.md` for specifications. All specs in `epochs/epoch3/`:
 
 | Slice | File | Purpose |
 |-------|------|---------|
-| 2.1 Demographics | `epoch2/demographics-spec.yaml` | Demographic Resolution |
-| 2.2a Strategy Layer | `epoch2/strategy-layer.yaml` | External Actions, Resource Traps |
-| 2.2b The Vanguard | `epoch2/cohesion-mechanic.yaml` | Internal Dynamics, Iron Law of Oligarchy |
-| 2.3 Reactionary Subject | `epoch2/reactionary-subject.yaml` | Class Basis of Fascism |
-| 2.5 The Wire | `epoch2/gramscian-wire-vision.yaml` | Narrative Warfare, Hegemony |
-| 2.6 Vanguard Economy | `epoch2/vanguard-economy.yaml` | Cadre/Sympathizer/Reputation Resources |
-| 2.7 Kinetic Warfare | `epoch2/kinetic-warfare.yaml` | Asymmetric Logistics, System Disruption |
-| 2.8 Doctrine System | `epoch2/doctrine-tree.yaml` | Ideological Tech Tree, Line Struggle |
-| 2.9 The Panopticon | `epoch2/state-attention-economy.yaml` | State AI Threads |
-| 2.10 Epistemic Horizon | `epoch2/fog-of-war.yaml` | Fish in Water Intel |
+| 3.1 | demographics-spec.yaml | Demographic Resolution |
+| 3.2 | vanguard-economy.yaml | Cadre/Sympathizer/Reputation Resources |
+| 3.3 | cohesion-mechanic.yaml | Internal Dynamics, Iron Law of Oligarchy |
+| 3.4 | fog-of-war.yaml | Fish in Water Intel |
+| 3.5 | gramscian-wire-vision.yaml | Narrative Warfare, Hegemony |
+| 3.6 | repression-logic.yaml | State Repression Mechanics |
+| 3.7 | state-attention-economy.yaml | State AI Threads |
+| 3.8 | kinetic-warfare.yaml | Asymmetric Logistics, System Disruption |
+| 3.9 | balkanization-spec.yaml | Territorial Fracture |
+| 3.10 | doctrine-tree.yaml | Ideological Tech Tree, Line Struggle |
+| 3.11 | strategy-layer.yaml | External Actions, Resource Traps |
+| 3.12 | reactionary-subject.yaml | Class Basis of Fascism |
+
+### Epoch 4: The Platform - VISION
+
+See `epochs/epoch4/overview.md` for specifications.
 
 ---
 
@@ -105,7 +134,7 @@ All Epoch 2 specs are in `epoch2/` subdirectory:
 ## Usage
 
 When starting a session, an AI assistant should:
-1. Read `ai-docs/epochs-overview.md` for current roadmap (Epoch + Slice model)
+1. Read `ai-docs/epochs/overview.md` for current roadmap (Four Epochs)
 2. Read `ai-docs/state.yaml` for current slice status and test counts
 3. Reference `ai-docs/ontology.yaml` when encountering domain terms
 4. Check `ai-docs/patterns.yaml` before implementing new features

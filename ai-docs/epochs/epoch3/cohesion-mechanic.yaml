@@ -5,9 +5,9 @@
 # - Robert Michels, Political Parties (1911)
 
 meta:
-  epoch: 2
-  sub_epoch: "2B"
-  slice: "2.2b"
+  epoch: 3
+  sub_epoch: "3B"
+  slice: "3.2b"
   slice_name: "The Vanguard (Internal Dynamics)"
   status: PLANNED
   version: "1.0.0"

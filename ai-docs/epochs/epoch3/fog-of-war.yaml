@@ -21,9 +21,9 @@
 # ==============================================================================
 
 meta:
-  epoch: 2
-  sub_epoch: "2C"
-  slice: "2.10"
+  epoch: 3
+  sub_epoch: "3C"
+  slice: "3.10"
   name: "The Epistemic Horizon"
   subtitle: "Dialectical Intelligence (Fog of War)"
   status: "SPEC_COMPLETE"
@@ -527,7 +527,7 @@ actions:
 
 integration:
   state_attention:
-    slice: "2.9"
+    slice: "3.9"
     connection: |
       The Panopticon and Epistemic Horizon are COMPLEMENTARY systems:
       - Panopticon: How the STATE sees the PLAYER
@@ -550,7 +550,7 @@ integration:
       ```
 
   reactionary_subject:
-    slice: "2.3"
+    slice: "3.3"
     connection: |
       The Reactionary Subject defines CLASS COMPOSITION which determines
       the baseline Class Factor (C_f) for Mass Receptivity.
@@ -566,7 +566,7 @@ integration:
       (which may not be possible).
 
   kinetic_warfare:
-    slice: "2.7"
+    slice: "3.7"
     connection: |
       Intel Confidence directly affects combat outcomes.
 
@@ -586,7 +586,7 @@ integration:
       Win the terrain before you fight on it.
 
   resource_economy:
-    slice: "2.6"
+    slice: "3.6"
     connection: |
       Intelligence work requires Cadre Labor:
       - Agitation: 5 CL per tick

@@ -9,7 +9,7 @@ meta:
     rst: "docs/reference/demographics.rst"
     related:
       - "ai-docs/metabolic-slice.yaml"
-      - "ai-docs/epoch2/demographics-spec.yaml"
+      - "ai-docs/epochs/epoch3/demographics-spec.yaml"
 
 overview: |
   The Mass Line Refactor transforms from Agent-as-Person (1 agent = 1 individual)
@@ -192,4 +192,4 @@ files_modified:
 
 see_also:
   - "ai-docs/metabolic-slice.yaml"
-  - "ai-docs/epoch2/demographics-spec.yaml"
+  - "ai-docs/epochs/epoch3/demographics-spec.yaml"

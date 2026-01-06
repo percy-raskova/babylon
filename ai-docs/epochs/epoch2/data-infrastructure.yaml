@@ -1,0 +1,50 @@
+# Epoch 2: Data Infrastructure Specification
+
+meta:
+  epoch: 2
+  slice: "2.1-2.4"
+  status: COMPLETE
+  purpose: "3NF database schema and API loaders for real-world data"
+
+schema:
+  location: "src/babylon/data/normalize/schema.py"
+
+  dimensions:
+    - DimState: "50 US states + territories"
+    - DimCounty: "3,200+ counties via 5-digit FIPS"
+    - DimMetroArea: "MSA/CSA codes"
+    - DimIndustry: "NAICS codes"
+    - DimCommodity: "HS codes for trade"
+    - DimCoerciveType: "Prison, police, military categories"
+    - DimDataSource: "Provenance tracking"
+
+  facts:
+    - FactEmployment: "QCEW employment by county/industry"
+    - FactGDP: "FRED GDP time series"
+    - FactEnergy: "EIA energy production/consumption"
+    - FactTrade: "Census trade flows"
+    - FactCoerciveInfrastructure: "Prison beds, police stations"
+    - FactBroadbandCoverage: "FCC broadband metrics"
+    - FactElectricGrid: "Substations, transmission lines"
+
+loaders:
+  complete:
+    - census_qcew: "Quarterly Census of Employment & Wages"
+    - census_cbp: "County Business Patterns"
+    - fred: "Federal Reserve Economic Data"
+    - energy: "EIA energy statistics"
+    - trade: "Census foreign trade"
+    - materials: "USGS materials flow"
+    - hifld_prisons: "DHS prison boundaries"
+    - hifld_police: "DHS law enforcement locations"
+    - hifld_electric: "DHS electric grid"
+    - mirta: "DoD military installations"
+    - fcc: "FCC broadband coverage"
+
+  deferred:
+    - census_cfs: "Commodity Flow Survey - needs geographic hierarchy"
+
+cli_commands:
+  - "mise run data:load --loaders=census,fred,energy"
+  - "mise run data:hifld-prisons"
+  - "mise run data:fcc-download && mise run data:fcc"

@@ -6,7 +6,7 @@
 meta:
   version: "1.2.0"
   status: "specification"
-  epoch: 2
+  epoch: 3
   codename: "The War"
   purpose: "Define the hybrid graph architecture for continental-scale simulation"
   amendments:

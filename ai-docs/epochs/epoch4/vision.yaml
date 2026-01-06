@@ -1,0 +1,42 @@
+# Epoch 4: The Platform - Vision Specification
+
+meta:
+  epoch: 4
+  status: VISION
+  purpose: "Scale Babylon from game to reusable simulation platform"
+
+duckdb_migration:
+  rationale: |
+    DuckDB + DuckPGQ enables both relational queries (Ledger) AND
+    graph queries (Topology) in a single embedded database.
+
+  benefits:
+    - Single database file for entire game state
+    - Native graph algorithms (shortest path, centrality)
+    - SQL + GQL in same query
+    - Better performance for 74,000+ nodes
+    - Simplified persistence (no hydration/dehydration)
+
+  migration_path:
+    - "4.1.1: Implement GraphProtocol.DuckDBAdapter"
+    - "4.1.2: Migrate dim/fact tables to DuckDB"
+    - "4.1.3: Enable DuckPGQ for Topology queries"
+    - "4.1.4: Deprecate SQLite, remove NetworkX"
+
+rag_integration:
+  location: "src/babylon/rag/"
+  corpus: "Marxist theoretical texts in ChromaDB"
+  purpose: "Generate narrative responses to simulation events"
+
+  components:
+    - NarrativeDirector: "Orchestrates RAG queries"
+    - BondiAlgorithm: "Dramatic arc generation"
+    - TheoryMatcher: "Map events to theoretical concepts"
+
+api_layer:
+  purpose: "Expose simulation as service for tooling/education"
+  endpoints:
+    - "POST /simulation/create"
+    - "POST /simulation/{id}/tick"
+    - "GET /simulation/{id}/state"
+    - "GET /simulation/{id}/events"

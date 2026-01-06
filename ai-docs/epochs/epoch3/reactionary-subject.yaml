@@ -23,9 +23,9 @@
 # ==============================================================================
 
 meta:
-  epoch: 2
-  sub_epoch: "2B"
-  slice: "2.3"
+  epoch: 3
+  sub_epoch: "3B"
+  slice: "3.3"
   name: "The Reactionary Subject"
   subtitle: "The Class Basis of Fascism"
   status: "SPEC_COMPLETE"
@@ -555,7 +555,7 @@ deviation_examples:
 
 integration:
   resource_economy:
-    slice: "2.5"
+    slice: "3.5"
     connection: |
       The class composition of your organization determines resource access:
       - C_la brings Sympathizer Labor + Money (but Chauvinism)
@@ -565,7 +565,7 @@ integration:
       WHAT you get from them.
 
   kinetic_warfare:
-    slice: "2.6"
+    slice: "3.6"
     connection: |
       Class determines combat effectiveness:
       - L_u with discipline = URBAN_GUERILLA (best units)
@@ -574,7 +574,7 @@ integration:
       The Reactionary Subject defines WHO fights; Kinetic Warfare defines HOW.
 
   doctrine_tree:
-    slice: "2.7"
+    slice: "3.7"
     connection: |
       Class composition constrains ideological choices:
       - Heavy C_la presence → Reformist/PatSoc pressure
@@ -584,7 +584,7 @@ integration:
       ideological lines are viable.
 
   state_attention:
-    slice: "2.8"
+    slice: "3.8"
     connection: |
       Class determines State targeting:
       - C_la organizing draws less attention (legitimate)
@@ -594,7 +594,7 @@ integration:
       HOW the State responds.
 
   cohesion_mechanic:
-    slice: "2.2b"
+    slice: "3.2b"
     connection: |
       Class diversity affects organizational Cohesion:
       - Homogeneous class base → higher baseline Cohesion

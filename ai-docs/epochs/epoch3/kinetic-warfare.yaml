@@ -8,9 +8,9 @@
 # of the Imperial Circuit. The ultimate test of strategy vs. Ultra-Left Deviation.
 
 meta:
-  epoch: 2
-  sub_epoch: "2D"
-  slice: "2.7"
+  epoch: 3
+  sub_epoch: "3D"
+  slice: "3.7"
   slice_name: "Kinetic Warfare"
   status: PLANNED
   priority: MEDIUM

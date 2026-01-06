@@ -1,0 +1,45 @@
+# Epoch 2: PyQt + pydeck Visualization System
+
+meta:
+  epoch: 2
+  slice: "2.6"
+  status: PLANNED
+  purpose: "Replace DearPyGui with PyQt6 + QWebEngineView + pydeck"
+  research: "thoughts/shared/research/2026-01-05-pyqt-pydeck-integration.md"
+
+rationale:
+  problem: "DearPyGui canvas cannot render 74,000+ territories"
+  solution: "Embed deck.gl via QWebEngineView for WebGL-accelerated hexagons"
+
+architecture:
+  layers:
+    - PyQt6: "Native Qt widgets for panels, controls, status"
+    - QWebEngineView: "Chromium-based web view for map"
+    - pydeck: "Python to deck.gl HTML generation"
+    - deck.gl: "WebGL hexagon rendering (H3HexagonLayer)"
+
+key_patterns:
+  html_generation: |
+    # Generate pydeck HTML
+    deck = pydeck.Deck(layers=[H3HexagonLayer(data=h3_cells)])
+    html = deck.to_html(as_string=True)
+
+    # Load into QWebEngineView
+    self.map_view.setHtml(html)
+
+  event_bridge: |
+    # QWebChannel for Python<->JavaScript communication
+    channel = QWebChannel(self.map_view.page())
+    channel.registerObject("bridge", self.bridge_object)
+
+  threading: |
+    # Simulation in QThreadPool, GUI updates via signals
+    worker.signals.map_updated.connect(self.on_map_update)
+
+implementation_tasks:
+  - Add PyQt6, PyQt6-WebEngine, pydeck to dependencies
+  - Create MapWidget(QWebEngineView) component
+  - Implement DashboardWindow with Qt layout
+  - Create H3HexagonLayer renderer
+  - Port DearPyGui panels to Qt widgets
+  - Implement simulation to map signal bridge

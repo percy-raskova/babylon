@@ -10,9 +10,9 @@
 # It determines what you CAN do and what you WILL BECOME.
 
 meta:
-  epoch: 2
-  sub_epoch: "2B"
-  slice: "2.8"
+  epoch: 3
+  sub_epoch: "3B"
+  slice: "3.8"
   slice_name: "The Doctrine System"
   status: PLANNED
   priority: MEDIUM

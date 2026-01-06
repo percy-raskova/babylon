@@ -468,8 +468,16 @@ def energy(
 def qcew(
     years: Annotated[
         str | None,
-        typer.Option("--years", help="Years to load (e.g., 2020,2021,2022 or 2020-2023)"),
+        typer.Option("--years", help="Years to load (e.g., 2020,2021,2022 or 2013-2025)"),
     ] = None,
+    force_api: Annotated[
+        bool,
+        typer.Option("--force-api", help="Use API for all years (may fail for old years)"),
+    ] = False,
+    force_files: Annotated[
+        bool,
+        typer.Option("--force-files", help="Use files for all years (requires CSV downloads)"),
+    ] = False,
     reset: Annotated[
         bool,
         typer.Option("--reset/--no-reset", help="Clear tables before loading"),
@@ -479,23 +487,52 @@ def qcew(
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
     ] = False,
 ) -> None:
-    """Load BLS QCEW employment data into 3NF database."""
+    """Load BLS QCEW employment data into 3NF database.
+
+    Uses hybrid loading strategy:
+    - API for recent years (2021+): Fetches from BLS QCEW Open Data API
+    - Files for historical years (2013-2020): Reads from data/qcew/ CSV files
+
+    Supports three geographic levels:
+    - County (fact_qcew_annual)
+    - State (fact_qcew_state_annual)
+    - Metro/Micropolitan/CSA (fact_qcew_metro_annual)
+
+    Examples:
+        mise run data:qcew                           # Default years with hybrid loading
+        mise run data:qcew -- --years 2021-2025      # Recent years via API
+        mise run data:qcew -- --years 2015-2020 --force-files  # Historical via files
+        mise run data:qcew -- --force-api            # Force API for all years
+    """
     from babylon.data.normalize.database import get_normalized_session, init_normalized_db
     from babylon.data.qcew import QcewLoader
 
+    # Default years: 2013-2025 (hybrid: 2013-2020 files, 2021-2025 API)
     config = LoaderConfig(
-        qcew_years=parse_years(years) or list(range(2015, 2024)),
+        qcew_years=parse_years(years) or list(range(2013, 2026)),
         verbose=not quiet,
     )
 
     if not quiet:
         typer.echo(f"Loading QCEW data for years: {config.qcew_years}")
+        if force_api:
+            typer.echo("Mode: Force API for all years")
+        elif force_files:
+            typer.echo("Mode: Force files for all years")
+        else:
+            typer.echo("Mode: Hybrid (API for 2021+, files for 2013-2020)")
 
     init_normalized_db()
     loader = QcewLoader(config)
 
     with get_normalized_session() as session:
-        stats = loader.load(session, reset=reset, verbose=not quiet)
+        stats = loader.load(
+            session,
+            reset=reset,
+            verbose=not quiet,
+            force_api=force_api,
+            force_files=force_files,
+        )
 
     print_stats(stats)
     if stats.has_errors:

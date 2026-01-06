@@ -47,11 +47,13 @@ Economic Data Sources
 
    census-analysis
    fred-data
+   qcew-data
 
 Empirical data sources for Marxian analysis:
 
 - **Census ACS**: Labor aristocracy identification, rent burden, class composition
 - **FRED**: CPI, wages, unemployment, fiscal indicators, PPP metrics
+- **QCEW**: Employment/wages by county, state, and metro area with hybrid API/file loading
 
 Event System
 ------------

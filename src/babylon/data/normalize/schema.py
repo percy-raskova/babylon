@@ -1015,6 +1015,86 @@ class FactQcewAnnual(NormalizedBase):
     )
 
 
+class FactQcewStateAnnual(NormalizedBase):
+    """State-level QCEW employment/wage aggregates.
+
+    Stores annual aggregates at the state level (agglvl_code 20-28).
+    Complements county-level data with higher-level geographic patterns.
+    """
+
+    __tablename__ = "fact_qcew_state_annual"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
+    industry_id: Mapped[int] = mapped_column(ForeignKey("dim_industry.industry_id"), nullable=False)
+    ownership_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_ownership.ownership_id"), nullable=False
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+
+    # Core metrics
+    establishments: Mapped[int | None] = mapped_column()
+    employment: Mapped[int | None] = mapped_column()
+    total_wages_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    avg_weekly_wage_usd: Mapped[int | None] = mapped_column()
+    avg_annual_pay_usd: Mapped[int | None] = mapped_column()
+
+    # Location quotients
+    lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+
+    # Metadata
+    disclosure_code: Mapped[str | None] = mapped_column(String(5))
+    agglvl_code: Mapped[int | None] = mapped_column()  # Specific aggregation level
+
+    __table_args__ = (
+        Index("idx_qcew_state_time", "state_id", "time_id"),
+        Index("idx_qcew_state_industry", "industry_id"),
+    )
+
+
+class FactQcewMetroAnnual(NormalizedBase):
+    """Metro-area-level QCEW employment/wage aggregates.
+
+    Stores annual aggregates at MSA/Micropolitan/CSA levels (agglvl_code 30-58).
+    Links to DimMetroArea for geographic identification.
+    """
+
+    __tablename__ = "fact_qcew_metro_annual"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    metro_area_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_metro_area.metro_area_id"), nullable=False
+    )
+    industry_id: Mapped[int] = mapped_column(ForeignKey("dim_industry.industry_id"), nullable=False)
+    ownership_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_ownership.ownership_id"), nullable=False
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+
+    # Core metrics
+    establishments: Mapped[int | None] = mapped_column()
+    employment: Mapped[int | None] = mapped_column()
+    total_wages_usd: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    avg_weekly_wage_usd: Mapped[int | None] = mapped_column()
+    avg_annual_pay_usd: Mapped[int | None] = mapped_column()
+
+    # Location quotients
+    lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+
+    # Metadata
+    disclosure_code: Mapped[str | None] = mapped_column(String(5))
+    agglvl_code: Mapped[int | None] = mapped_column()  # 30-38=MSA, 40-48=Micro, 50-58=CSA
+    area_type: Mapped[str | None] = mapped_column(String(15))  # msa/micropolitan/csa
+
+    __table_args__ = (
+        Index("idx_qcew_metro_time", "metro_area_id", "time_id"),
+        Index("idx_qcew_metro_industry", "industry_id"),
+        Index("idx_qcew_metro_type", "area_type"),
+    )
+
+
 class FactProductivityAnnual(NormalizedBase):
     """BLS productivity data for surplus value analysis."""
 
@@ -1385,6 +1465,8 @@ __all__ = [
     "FactCensusIncomeSources",
     # Facts - QCEW/Productivity
     "FactQcewAnnual",
+    "FactQcewStateAnnual",
+    "FactQcewMetroAnnual",
     "FactProductivityAnnual",
     # Facts - Trade
     "FactTradeMonthly",

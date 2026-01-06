@@ -13,7 +13,7 @@ Implement all recommendations from the [Unit Test Health Assessment](../research
 | Phase 3: Data Loader Tests | ✅ COMPLETE | 17 test files created (1079 data tests) |
 | Phase 4: Parametrization | ✅ COMPLETE | 147+ markers across 4 refactored files |
 | Phase 5: Mock Patterns | ✅ COMPLETE | tests/README.md created, fixtures added |
-| Phase 6: Import Errors | ❌ NOT STARTED | 2 integration tests still broken |
+| Phase 6: Import Errors | ✅ COMPLETE | Deleted 2 obsolete tests (ETL module removed in Phase 7 refactor) |
 
 ### YAML-First Constants Architecture (2026-01-05)
 
@@ -1019,42 +1019,41 @@ def test_something(mock_llm_provider):
 ### Overview
 Fix the 2 integration test files with broken imports to `babylon.data.normalize.etl` module.
 
-### Status: NOT STARTED
-**Verified**: Import errors still exist as of 2026-01-05:
-```
-ModuleNotFoundError: No module named 'babylon.data.normalize.etl'
-```
-Both `test_dimension_loading.py` and `test_fact_loading.py` fail to collect.
+### Status: ✅ COMPLETE
+
+**Resolution** (2026-01-05):
+The `babylon.data.normalize.etl` module (2392 lines) was intentionally removed in commit `1c93f65` as part of the Phase 7 data refactor. The new architecture uses DataLoader implementations that write directly to 3NF, bypassing the old research.sqlite → 3NF ETL pipeline.
+
+**What was done**:
+- Deleted `tests/integration/data/test_normalize/test_dimension_loading.py` (426 lines)
+- Deleted `tests/integration/data/test_normalize/test_fact_loading.py` (359 lines)
+- Deleted `tests/integration/data/test_normalize/__init__.py` (empty directory)
+- Removed stale bytecode cache `src/babylon/data/normalize/__pycache__/etl.cpython-313.pyc`
+
+**Why deletion was correct**:
+1. The ETL module was deliberately removed, not renamed
+2. The new loader architecture is fundamentally different
+3. New data loaders are tested in `tests/unit/data/` (Phase 3)
+4. Rewriting tests for deleted code provides no value
 
 ### Changes Required:
 
-#### 1. Investigate Missing Module
+#### 1. ~~Investigate Missing Module~~ ✅ DONE
 
-**Files with errors**:
-- `tests/integration/data/test_normalize/test_dimension_loading.py:15`
-- `tests/integration/data/test_normalize/test_fact_loading.py:15`
+**Files with errors** (now deleted):
+- ~~`tests/integration/data/test_normalize/test_dimension_loading.py:15`~~
+- ~~`tests/integration/data/test_normalize/test_fact_loading.py:15`~~
 
-Both import from `babylon.data.normalize.etl` which doesn't exist.
+Both imported from `babylon.data.normalize.etl` which was removed in Phase 7 refactor (commit `1c93f65`).
 
-**Options**:
-1. If module was removed: Delete or update tests
-2. If module was renamed: Update import paths
-3. If module planned: Mark tests as `@pytest.mark.skip("Module not yet implemented")`
-
-#### 2. Determine Correct Action
-
-```bash
-# Check if module exists under different path
-find src -name "etl*"
-```
-
-If module was part of legacy cleanup (Phase 7 refactor), update tests to use new loader architecture.
+**Decision**: Delete tests - they tested code that no longer exists.
 
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] `poetry run pytest --collect-only` shows no collection errors
-- [ ] All tests can be collected (may still fail/skip, but no import errors)
+- [x] `poetry run pytest --collect-only` shows no collection errors → **4474 tests collected**
+- [x] All tests can be collected (no import errors) → **Verified**
+- [x] All unit tests pass: `poetry run pytest tests/unit -m "not ai and not slow"` → **4009 passed**
 
 ---
 

@@ -125,7 +125,7 @@ The Epoch + Slice model fixes this:
 
 **Carceral Equilibrium Integration:**
 
-The Rift slice now includes the complete **70-year null hypothesis trajectory**:
+The Rift slice now includes the complete **100-year null hypothesis trajectory**:
 
 1. **SUPERWAGE_CRISIS** (Year ~42.9): Imperial rent exhausted, super-wages stop
 2. **CLASS_DECOMPOSITION** (Year ~43.3): LA splits into Enforcers/Internal Proletariat

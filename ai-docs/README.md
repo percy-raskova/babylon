@@ -28,7 +28,7 @@ This directory helps AI assistants understand context, use correct terminology, 
 | YAML | RST | Purpose |
 |------|-----|---------|
 | `theory.yaml` | `docs/concepts/theory.rst` | MLM-TW theoretical grounding |
-| `carceral-equilibrium.yaml` | `docs/concepts/carceral-equilibrium.rst` | 70-year trajectory, revolution windows |
+| `carceral-equilibrium.yaml` | `docs/concepts/carceral-equilibrium.rst` | 100-year trajectory, revolution windows |
 | `epochs/epoch3/warlord-trajectory.yaml` | `docs/concepts/warlord-trajectory.rst` | Epoch 3 branching endgames |
 | `terminal-crisis.yaml` | `docs/concepts/terminal-crisis.rst` | Crisis phases: plantation → death camp |
 | `epochs/epoch1/demographics.yaml` | `docs/reference/demographics.rst` | Mass Line: population blocks |

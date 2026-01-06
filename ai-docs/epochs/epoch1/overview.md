@@ -5,7 +5,7 @@
 
 ## Summary
 
-Epoch 1 delivered the core simulation engine that validates MLM-TW theory through deterministic mechanics. The 70-year Carceral Equilibrium trajectory demonstrates that revolution in the Imperial Core is impossible when W_c > V_c (wages exceed value produced).
+Epoch 1 delivered the core simulation engine that validates MLM-TW theory through deterministic mechanics. The 100-year Carceral Equilibrium trajectory demonstrates that revolution in the Imperial Core is impossible when W_c > V_c (wages exceed value produced).
 
 ## Completion Record
 
@@ -13,7 +13,7 @@ See `epoch1-complete.md` for the full completion record including:
 - 13 Systems (ImperialRent, Solidarity, Consciousness, Survival, Struggle, Contradiction, Territory, Metabolism, etc.)
 - 25 EventTypes
 - 4646 tests passing
-- Carceral Equilibrium validation (70-year trajectory)
+- Carceral Equilibrium validation (100-year trajectory)
 
 ## Slices
 
@@ -52,7 +52,7 @@ See `epoch1-complete.md` for the full completion record including:
 
 2. **George Floyd Dynamic**: The agency layer shows how excessive force events can trigger mass mobilization when P(S|R) exceeds threshold.
 
-3. **Carceral Equilibrium**: 70-year trajectory shows stable extraction followed by crisis phases:
+3. **Carceral Equilibrium**: 100-year trajectory shows stable extraction followed by crisis phases:
    - SUPERWAGE_CRISIS at ~42.9 years
    - CLASS_DECOMPOSITION at ~43.3 years
    - CONTROL_RATIO_CRISIS at ~44.1 years

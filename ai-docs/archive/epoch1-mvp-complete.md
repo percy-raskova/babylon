@@ -13,7 +13,7 @@
 
 ## The Achievement
 
-The Babylon simulation engine has achieved its Epoch 1 MVP milestone. The **Carceral Equilibrium trajectory** - the 70-year null hypothesis of imperial collapse - is now fully implemented and validated.
+The Babylon simulation engine has achieved its Epoch 1 MVP milestone. The **Carceral Equilibrium trajectory** - the 100-year null hypothesis of imperial collapse - is now fully implemented and validated.
 
 **What this means:** The simulation can now model the complete arc from imperial extraction through genocidal stabilization. The theoretical framework of Marxist-Leninist-Maoist Third Worldist analysis has been encoded into deterministic mathematics. Graph + Math = History.
 
@@ -142,7 +142,7 @@ Only **dashboard integration** remains:
 | Dashboard wire-up | REMAINING |
 | Metabolic gauge display | REMAINING |
 
-The simulation is **alive**. It runs the 70-year trajectory correctly. The dashboard work is visualization, not mechanics.
+The simulation is **alive**. It runs the 100-year trajectory correctly. The dashboard work is visualization, not mechanics.
 
 ---
 

@@ -1,0 +1,127 @@
+# Epoch 2: Data Quality Specification (Slices 2.1-2.4)
+
+meta:
+  epoch: 2
+  slice: "2.1-2.4"
+  status: COMPLETE
+  purpose: "Data quality, error handling, and validation patterns"
+  note: "Documents patterns established across all loaders"
+
+api_error_handling:
+  http_errors:
+    "400":
+      action: "Log warning, skip record, continue"
+      example: "Census API returns 400 for missing table groups in early years"
+      implementation: "Log county FIPS, continue to next county"
+
+    "404":
+      action: "Skip silently (expected for some data)"
+      example: "Some counties lack QCEW data (suppressed for privacy)"
+
+    "429":
+      action: "Rate limit hit - exponential backoff retry"
+      implementation: |
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url)
+                response.raise_for_status()
+                return response.json()
+            except requests.HTTPError as e:
+                if e.response.status_code == 429:
+                    sleep(backoff_factor ** attempt)
+                else:
+                    raise
+
+    "500":
+      action: "Server error - retry with backoff, fail after 3 attempts"
+      rationale: "Federal APIs sometimes have transient errors"
+
+  timeouts:
+    default_seconds: 30
+    retry_count: 3
+    backoff_factor: 2.0
+    implementation: "requests.get(url, timeout=30)"
+
+missing_data:
+  county_level:
+    strategy: "Mark as NULL, do not impute"
+    rationale: |
+      Some rural counties lack QCEW data (suppressed for privacy).
+      Imputing would introduce bias. Better to have honest NULL.
+    affected_counties: "~200 counties (mostly rural)"
+
+  time_gaps:
+    strategy: "Load available years only"
+    examples:
+      - "ACS 5-year estimates start 2009"
+      - "FRED series have varying start dates"
+      - "Some QCEW data suppressed year-over-year"
+    implementation: "Only insert records where data exists"
+
+  race_disaggregation:
+    strategy: "Load where available, NULL otherwise"
+    notes: |
+      Race-disaggregated income data not available for all counties.
+      Small population counties often have margin of error warnings.
+
+validation:
+  schema_validation:
+    tool: "Pydantic models with Field constraints"
+    location: "src/babylon/data/normalize/schema.py"
+    examples:
+      - "FIPS codes: constr(pattern=r'^[0-9]{5}$')"
+      - "Percentages: confloat(ge=0, le=100)"
+      - "Counts: conint(ge=0)"
+
+  foreign_key_validation:
+    strategy: "Validate references exist before insert"
+    implementation: |
+      # Check county exists before inserting fact
+      if not session.query(DimCounty).filter_by(fips_code=fips).first():
+          log.warning(f"Unknown FIPS {fips}, skipping")
+          continue
+
+  sanity_checks:
+    - check: "Employment counts > 0"
+      rationale: "Zero employment indicates data issue, not reality"
+
+    - check: "FIPS codes match dim_county"
+      rationale: "Orphan facts break joins"
+
+    - check: "Time IDs exist in dim_time"
+      rationale: "Temporal integrity"
+
+    - check: "Reasonable value ranges"
+      examples:
+        - "Median income < $1,000,000"
+        - "Gini coefficient in [0, 1]"
+        - "Employment < county population"
+
+incremental_loading:
+  strategy: "Check existing records before API call"
+  implementation: |
+    # Build set of (county_fips, year) tuples already loaded
+    existing = {(r.county_fips, r.year) for r in session.query(FactEmployment)}
+
+    for county in counties:
+        for year in years:
+            if (county.fips, year) in existing:
+                continue  # Already have this data
+            # Make API call...
+
+  benefits:
+    - "Resume interrupted loads"
+    - "Avoid duplicate API calls"
+    - "Idempotent loader execution"
+
+logging:
+  pattern: "Structured logging with county/year context"
+  example: |
+    log.info("Loading QCEW", extra={"county": fips, "year": year})
+    log.warning("Missing data", extra={"county": fips, "table": "B23025"})
+    log.error("API error", extra={"status": 500, "url": url})
+
+see_also:
+  - "data-infrastructure.yaml: Loader list and schema"
+  - "census-data-loader.yaml: Census-specific patterns"
+  - "fred-api.yaml: FRED rate limits and retry logic"

@@ -43,3 +43,38 @@ implementation_tasks:
   - Create H3HexagonLayer renderer
   - Port DearPyGui panels to Qt widgets
   - Implement simulation to map signal bridge
+
+migration_from_dpg:
+  reference: "epochs/epoch1/dpg-patterns.yaml"
+  component_mapping:
+    - dpg: "dpg.add_plot()"
+      pyqt: "QCustomPlot or QWebEngineView + ECharts"
+      notes: "Use ECharts for rich interactivity, see echarts-patterns.yaml"
+    - dpg: "dpg.add_child_window()"
+      pyqt: "QScrollArea"
+    - dpg: "dpg.add_button()"
+      pyqt: "QPushButton"
+    - dpg: "dpg.add_text()"
+      pyqt: "QLabel or QTextEdit (rich text for event logs)"
+    - dpg: "dpg.draw_rect()"
+      pyqt: "QProgressBar or custom QPainter"
+    - dpg: "dpg.theme()"
+      pyqt: "Qt Stylesheets (QSS)"
+
+  theming:
+    reference: "ai-docs/design-system.yaml"
+    note: "Convert RGBA tuples to hex for QSS (e.g., [0.2, 0.0, 0.0, 0.8] → #330000CC)"
+    bunker_constructivism:
+      background: "#1a1a1a"
+      highlight: "#3d0000"
+      text_primary: "#00ff00"
+      text_secondary: "#666666"
+
+  layout:
+    reference: "epochs/epoch1/ui-wireframes.yaml"
+    note: "Maintain 1460×820 viewport, two-column split (30% controls, 70% map)"
+    qt_pattern: "QSplitter with QVBoxLayout for each panel"
+
+see_also:
+  - "echarts-patterns.yaml: Chart patterns for QWebEngineView embedding"
+  - "ai-docs/design-system.yaml: Color palette and typography"

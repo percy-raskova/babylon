@@ -31,6 +31,7 @@ loaders:
   complete:
     - census_qcew: "Quarterly Census of Employment & Wages"
     - census_cbp: "County Business Patterns"
+    - census_acs: "American Community Survey (income, demographics, race)"
     - fred: "Federal Reserve Economic Data"
     - energy: "EIA energy statistics"
     - trade: "Census foreign trade"
@@ -43,6 +44,26 @@ loaders:
 
   deferred:
     - census_cfs: "Commodity Flow Survey - needs geographic hierarchy"
+
+api_keys:
+  required:
+    - name: CENSUS_API_KEY
+      registration: "https://api.census.gov/data/key_signup.html"
+      used_by: [census_qcew, census_cbp, census_acs]
+    - name: FRED_API_KEY
+      registration: "https://fred.stlouisfed.org/docs/api/api_key.html"
+      used_by: [fred]
+    - name: ENERGY_API_KEY
+      registration: "https://www.eia.gov/opendata/register.php"
+      used_by: [energy]
+  optional:
+    - name: FCC credentials
+      notes: "Username/password for apps2.fcc.gov bulk download"
+
+see_also:
+  - "census-data-loader.yaml: ACS loader with DimRace, DimMetroArea"
+  - "fred-api.yaml: FRED API patterns and rate limits"
+  - "data-quality.yaml: Error handling and validation patterns"
 
 cli_commands:
   - "mise run data:load --loaders=census,fred,energy"

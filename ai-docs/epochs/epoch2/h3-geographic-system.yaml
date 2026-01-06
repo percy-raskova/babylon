@@ -39,3 +39,16 @@ implementation_tasks:
   - Create county_fips to h3_res4 mapping table
   - Update WorldState.to_graph() to use H3 as node IDs
   - Implement adjacency edge generation via H3 neighbors
+
+graph_integration:
+  reference: "ai-docs/graph-abstraction-spec.yaml"
+  touchpoints:
+    territory_id: "T[0-9]{3} pattern → H3 hex string (8928308280fffff)"
+    adjacency_generation: "h3.grid_ring(h3_index, 1) replaces manual EdgeType.ADJACENCY"
+    data_bridge: "dim_county.fips_code → h3_res4 mapping"
+    multi_resolution: "res4 (county) → res7 (neighborhood) for Epoch 3 Franchise schema"
+  protocol_impact: |
+    GraphProtocol interface abstracts H3 details:
+    - get_node_by_h3(h3_index) → GraphNode
+    - get_neighbors(node_id) → Uses h3.grid_ring() internally
+    - Enables backend swap (NetworkX → DuckDB) without system changes

@@ -29,9 +29,9 @@ This directory helps AI assistants understand context, use correct terminology, 
 |------|-----|---------|
 | `theory.yaml` | `docs/concepts/theory.rst` | MLM-TW theoretical grounding |
 | `carceral-equilibrium.yaml` | `docs/concepts/carceral-equilibrium.rst` | 70-year trajectory, revolution windows |
-| `warlord-trajectory.yaml` | `docs/concepts/warlord-trajectory.rst` | Epoch 2 branching endgames |
+| `epochs/epoch3/warlord-trajectory.yaml` | `docs/concepts/warlord-trajectory.rst` | Epoch 3 branching endgames |
 | `terminal-crisis.yaml` | `docs/concepts/terminal-crisis.rst` | Crisis phases: plantation → death camp |
-| `demographics.yaml` | `docs/reference/demographics.rst` | Mass Line: population blocks |
+| `epochs/epoch1/demographics.yaml` | `docs/reference/demographics.rst` | Mass Line: population blocks |
 | `tuning-standard.yaml` | `docs/reference/tuning.rst` | 20-Year Entropy Standard |
 
 ---
@@ -75,6 +75,17 @@ See `epochs/epoch2/overview.md` for specifications.
 | 2.5 | H3 Geographic System | PLANNED |
 | 2.6 | PyQt Visualization | PLANNED |
 | 2.7 | Schema Integration | PLANNED |
+| 2.8 | LODES & Freight Flows | PLANNED |
+| 2.9 | Ideological Cartography | PLANNED |
+
+**Epoch 2 Spec Files**: `epochs/epoch2/`
+- `data-infrastructure.yaml`, `data-quality.yaml` (2.1-2.4)
+- `census-data-loader.yaml`, `fred-api.yaml`, `census-insights.yaml` (detail specs)
+- `h3-geographic-system.yaml` (2.5)
+- `pyqt-visualization.yaml`, `echarts-patterns.yaml` (2.6)
+- `schema-integration.yaml`, `graph-protocol.yaml` (2.7)
+- `lodes-freight-flows.yaml` (2.8)
+- `ideological-geography.yaml` (2.9)
 
 ### Epoch 3: The Game - PLANNED
 
@@ -123,11 +134,12 @@ See `epochs/epoch4/overview.md` for specifications.
 
 | File | Purpose |
 |------|---------|
-| `synopticon-spec.yaml` | Observer system architecture, Lens filter |
 | `design-system.yaml` | Visual design: colors, typography, Bunker Constructivism |
-| `ui-wireframes.yaml` | ASCII wireframes for complex systems |
-| `echarts-patterns.yaml` | Apache ECharts chart configuration |
-| `dpg-patterns.yaml` | DearPyGui patterns |
+| `epochs/epoch1/synopticon-spec.yaml` | Epoch 1 Observer system architecture, Lens filter |
+| `epochs/epoch1/ui-wireframes.yaml` | ASCII wireframes (Epoch 1 DearPyGui layout) |
+| `epochs/epoch1/dpg-patterns.yaml` | DearPyGui patterns (Epoch 1 reference) |
+| `epochs/epoch2/pyqt-visualization.yaml` | Epoch 2 PyQt + pydeck visualization |
+| `epochs/epoch2/echarts-patterns.yaml` | Apache ECharts chart configuration |
 
 ---
 

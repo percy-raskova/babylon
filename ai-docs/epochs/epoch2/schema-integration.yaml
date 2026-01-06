@@ -1,0 +1,76 @@
+# Epoch 2: Schema Integration Specification (Slice 2.7)
+
+meta:
+  epoch: 2
+  slice: "2.7"
+  status: PLANNED
+  purpose: "Bridge 3NF research data to simulation WorldState"
+
+overview:
+  what: "Hydration patterns from SQLite dim/fact tables to Pydantic models"
+  why: |
+    - Research database (marxist-data-3NF.sqlite) contains real-world data
+    - Simulation needs this data to initialize WorldState entities
+    - Need deterministic mapping: Census demographics -> SocialClass fields
+    - Enable scenarios backed by empirical data
+
+hydration_patterns:
+  territory_initialization:
+    source: "dim_county + fact_coercive + fact_employment"
+    target: "Territory model"
+    mappings:
+      - source: "dim_county.fips_code"
+        target: "territory_id (or h3_index via h3_res4 mapping)"
+        notes: "Epoch 2.5 adds H3, until then use FIPS"
+      - source: "fact_employment.total_employment"
+        target: "population proxy (until ACS demographics loaded)"
+      - source: "fact_coercive.prison_beds"
+        target: "carceral_capacity"
+      - source: "fact_coercive.police_stations"
+        target: "repression_infrastructure"
+
+  social_class_initialization:
+    source: "fact_income + fact_employment + fact_race_income"
+    target: "SocialClass model"
+    mappings:
+      - source: "fact_income.median_income"
+        target: "base_wage"
+      - source: "fact_income.gini_index"
+        target: "inequality coefficient (Agent-as-Block)"
+      - source: "fact_employment.employment_by_industry"
+        target: "sector_composition"
+      - source: "fact_race_income.median_income_by_race"
+        target: "race-disaggregated wage initialization"
+
+time_dimension:
+  strategy: "Select single year for scenario initialization"
+  default_year: 2022
+  rationale: |
+    - 2022 has most complete data coverage across all loaders
+    - ACS 5-year estimates (2018-2022) provide smoothed values
+    - QCEW data available through Q4 2022
+    - FRED macroeconomic data complete
+  implementation: "WHERE dim_time.year = :scenario_year"
+
+implementation:
+  location: "src/babylon/data/scenario_loader.py (PLANNED)"
+  pattern: |
+    class ScenarioLoader:
+        def load_territory(self, fips: str, year: int) -> Territory:
+            # Query dim_county, fact_coercive, fact_employment
+            # Hydrate Territory model
+            pass
+
+        def load_social_class(self, territory_id: str, role: SocialRole) -> SocialClass:
+            # Query fact_income, fact_employment
+            # Hydrate SocialClass with demographics
+            pass
+
+        def create_scenario(self, year: int = 2022) -> WorldState:
+            # Full scenario from database
+            pass
+
+see_also:
+  - "data-infrastructure.yaml: 3NF schema definition"
+  - "census-data-loader.yaml: ACS demographic fields"
+  - "graph-protocol.yaml: How hydrated entities become graph nodes"

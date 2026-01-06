@@ -1,0 +1,155 @@
+# Synopticon Specification
+# Specification for the Algorithmic State Apparatus (The "Lavender" Mechanic)
+
+meta:
+  epoch: 3
+  sub_epoch: "3C"
+  slice: "3.13"
+  slice_name: "Algorithmic Targeting"
+  status: "SPECIFICATION"
+  version: "1.0.0"
+  created: "2025-12-28"
+  purpose: "Define the F2T2EA Kill Chain and Algorithmic Targeting logic"
+  principle: "The State does not hate you. The State processes you."
+  inspiration: "IDF 'Lavender' and 'Gospel' systems, NSA 'SKYNET'"
+
+# =============================================================================
+# THEORETICAL MODEL
+# =============================================================================
+
+theory:
+  name: "Algorithmic Counter-Insurgency"
+  core_concept: |
+    The State AI does not see the 'True World State'.
+    It sees a 'Legible Projection' derived from metadata.
+    It targets nodes based on statistical anomalies, not confirmed guilt.
+
+  the_kill_chain: "F2T2EA"
+  steps:
+    - Find: Ingest topology and resource flow data.
+    - Fix: Geolocate nodes to Territories.
+    - Track: Build 'Pattern of Life' (POL) over N ticks.
+    - Target: Assign 'Risk Score' (0.0 - 1.0).
+    - Engage: Execute Repression if Risk > Threshold.
+    - Assess: Measure change in Agitation (often misinterprets blowback as success).
+
+# =============================================================================
+# DATA STRUCTURES
+# =============================================================================
+
+data_structures:
+
+  # What the State THINKS exists
+  LegibleGraph:
+    description: "A subgraph of the WorldState visible to the State"
+    inclusions:
+      - "Nodes with Visibility > 0.1"
+      - "Edges where at least one node is a known Informant"
+      - "Territories with State Control > 50%"
+
+  # The File on You
+  DigitalDossier:
+    fields:
+      entity_id: "string"
+      pol_vector: "Vector[movement, spending, communication]"
+      risk_score: "float [0.0 - 1.0]"
+      status: "enum [UNKNOWN, SUSPECT, TARGET, ELIMINATED]"
+      collateral_estimate: "int (projected civilian impact)"
+
+# =============================================================================
+# THE "LAVENDER" ALGORITHM (Risk Scoring)
+# =============================================================================
+
+algorithms:
+  risk_scoring:
+    name: "Lavender_V1"
+    trigger: "Every Tick"
+    inputs: "LegibleGraph, PatternOfLifeLog"
+
+    features:
+      centrality_score:
+        metric: "Betweenness Centrality"
+        logic: "High score = Courier/Connector. Risk +0.4"
+
+      association_score:
+        metric: "Neighbor Risk Average"
+        logic: "Guilt by Association. Risk +0.2 per high-risk neighbor"
+
+      velocity_anomaly:
+        metric: "Resource_Flow / Visible_Income"
+        logic: "Spending more than you earn = Illicit Funding. Risk +0.3"
+
+      geo_signature:
+        metric: "Visits to 'Heat' Territories"
+        logic: "Presence in insurrectionary zones. Risk +0.2"
+
+    thresholds:
+      monitor: 0.4
+      suppress: 0.7
+      eliminate: 0.9 (The "Kill List")
+
+# =============================================================================
+# THE "GOSPEL" ALGORITHM (Targeting Queue)
+# =============================================================================
+
+algorithms:
+  targeting:
+    name: "The Gospel"
+    trigger: "After Risk Scoring"
+
+    sorting_logic:
+      primary: "Risk Score (Descending)"
+      secondary: "Opportunity (Target is in Low-Defense Territory)"
+
+    constraints:
+      budget: "Repression Resources (Threads)"
+      policy: "Current Collateral Damage Tolerance (CDE)"
+
+    execution:
+      - "Select Top N targets where CDE < Policy_Limit"
+      - "If Target is 'Decoy', generate BLOWBACK event"
+      - "If Target is 'Cadre', generate ATTRITION event"
+
+# =============================================================================
+# PLAYER COUNTER-MEASURES (Asymmetric Warfare)
+# =============================================================================
+
+counter_measures:
+
+  topological_hygiene:
+    action: "ACT_ORGANIZE_CELLS"
+    effect: "Sever edges to reduce Centrality Score. Lowers Efficiency, lowers Risk."
+
+  pattern_mimicry:
+    action: "ACT_GO_DARK"
+    effect: "Stop resource flow. Velocity Anomaly -> 0. Risk decays over time."
+
+  data_poisoning:
+    action: "ACT_CREATE_DECOY"
+    effect: "Spawn high-velocity, high-centrality node with NO revolutionary value."
+    trap: "If State strikes Decoy -> Legitimacy -0.3, Agitation +0.5."
+
+  human_shielding:
+    action: "ACT_EMBED_POPULATION"
+    effect: "Move Cadre to High-Density Territory."
+    result: "Raises CDE (Collateral Estimate). Gospel may skip targeting due to Policy."
+
+# =============================================================================
+# IMPLEMENTATION STEPS
+# =============================================================================
+
+implementation:
+  step_1:
+    name: "The Digital Panopticon"
+    goal: "Ingest data and build the LegibleGraph"
+    deliverable: "StateSystem.scan_topology()"
+
+  step_2:
+    name: "The Classifier"
+    goal: "Implement Risk Scoring Formula"
+    deliverable: "StateSystem.update_risk_scores()"
+
+  step_3:
+    name: "The Automaton"
+    goal: "Implement Automated Strike Logic"
+    deliverable: "StateSystem.execute_gospel_queue()"

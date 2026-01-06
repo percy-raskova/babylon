@@ -1,0 +1,59 @@
+# Epoch 2: Ideological Cartography (ISA Mapping)
+
+meta:
+  epoch: 2
+  slice: "2.9"
+  status: PLANNED
+  purpose: "Map the material infrastructure of ideology (ISA) to H3 tiles"
+  theoretical_basis: "Althusser's Ideological State Apparatuses (ISA)"
+
+overview:
+  what: "Load and map locations of schools, universities, religious institutions, and media hubs."
+  why: |
+    - "Ideology has a material existence." (Althusser)
+    - To simulate where hegemony is reproduced (Schools/Media) vs where it is contested.
+    - To distinguish "Red Belts" (Revolutionary) from "Bible Belts" (Reactionary) based on material density of institutions.
+    - To provide targets for the "Gramscian Wire" (e.g., specific university strikes).
+
+data_sources:
+  hifld_schools:
+    name: "Public Schools (HIFLD)"
+    url: "https://hifld-geoplatform.opendata.arcgis.com/datasets/public-schools"
+    mapping: "ISA_EDUCATIONAL"
+
+  hifld_colleges:
+    name: "Colleges and Universities (HIFLD)"
+    url: "https://hifld-geoplatform.opendata.arcgis.com/datasets/colleges-and-universities"
+    mapping: "ISA_ACADEMIC"
+
+  hifld_worship:
+    name: "All Places of Worship (HIFLD)"
+    url: "https://hifld-geoplatform.opendata.arcgis.com/datasets/all-places-of-worship"
+    mapping: "ISA_RELIGIOUS"
+
+  fcc_broadcasting:
+    name: "FCC FM/AM/TV Tower Locations"
+    url: "https://www.fcc.gov/media/radio/fm-query"
+    mapping: "ISA_MEDIA"
+
+integration_logic:
+  h3_mapping:
+    - "Point-in-polygon check for each facility -> H3 Res 4 cell"
+    - "Aggregated density score per cell (e.g., schools_per_capita, churches_per_capita)"
+
+  territory_attributes:
+    - "isa_density: float (Total institutional weight)"
+    - "dominant_isa: Enum (RELIGIOUS | ACADEMIC | MEDIA)"
+    - "hegemony_index: float (Derived from ISA density + historic voting/union data)"
+
+  simulation_impact:
+    - "High School Density -> Slower consciousness drift (Standardization)"
+    - "High University Density -> Volatile consciousness (Radicalization potential)"
+    - "High Religious Density -> High Solidarity (but direction depends on denomination)"
+
+tasks:
+  - "Download HIFLD datasets for Schools, Colleges, Worship"
+  - "Implement ISALoader in src/babylon/data/loaders/isa.py"
+  - "Update 3NF schema with FactInstitution"
+  - "Calculate ISA density metrics per H3 cell"
+  - "Visualize 'Ideological Terrain' layer in PyQt dashboard"

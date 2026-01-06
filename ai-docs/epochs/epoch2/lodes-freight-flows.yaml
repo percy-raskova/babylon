@@ -1,0 +1,75 @@
+# Epoch 2: LODES & Freight Flow Integration
+
+meta:
+  epoch: 2
+  slice: "2.8"
+  status: PLANNED
+  purpose: "Map labor commuting (LODES) and commodity movements (FAF/CAS) to geographic edges"
+
+overview:
+  what: "Integration of origin-destination (O-D) data for labor and commodities"
+  why: |
+    - LODES: Tracks the metabolic link between residential 'reproduction' zones and industrial 'production' zones.
+    - FAF/CAS: Tracks the material circulation of commodities (surplus realization) across the national grid.
+    - Rejects liberal 'electoral' mapping in favor of materialist 'flow' mapping.
+
+data_sources:
+  lodes:
+    url: "https://lehd.ces.census.gov/data/lodes/LODES8/"
+    tables:
+      - od: "Origin-Destination (Workplace-Home flow)"
+      - rac: "Residence Area Characteristics (Where workers live)"
+      - wac: "Workplace Area Characteristics (Where workers work)"
+    granularity: "Census Block (can be aggregated to H3 Resolution 4/County)"
+
+  faf:
+    name: "Freight Analysis Framework (FAF5)"
+    source: "Bureau of Transportation Statistics (BTS)"
+    purpose: "Commodity flows between 132 domestic regions by mode (truck, rail, etc.)"
+
+  cas:
+    name: "Commodity Attribute Statistics"
+    source: "FAF component"
+    purpose: "Value-to-weight ratios for surplus value calculation"
+
+integration_logic:
+  labor_flows:
+    - "Map LODES OD pairs to H3 Res 4 cells"
+    - "Generate EdgeType.COMMUTE edges with 'volume' attribute"
+    - "Calculate 'Reproductive Distance' (energy cost of labor reproduction)"
+
+  commodity_flows:
+    - "Map FAF regions to H3 clusters"
+    - "Generate EdgeType.CIRCULATION edges for freight corridors"
+    - "Assign commodity types (NAICS/SCTG) to edges"
+
+tasks:
+  - "Download LODES8 us_xwalk and state-level OD files"
+  - "Download FAF5 regional flow database"
+  - "Create crosswalk between FAF regions and H3 Res 4 cells"
+  - "Implement LODESLoader in src/babylon/data/loaders/lodes.py"
+  - "Implement FAFLoader in src/babylon/data/loaders/faf.py"
+  - "Update 3NF schema to include FactCommute and FactFreightFlow"
+
+theoretical_basis:
+  imperial_circuit:
+    reference: "epochs/epoch1/imperial-circuit.yaml"
+    connection: "FAF freight flows operationalize TRIBUTE edges (value extraction paths)"
+    mapping:
+      - "FAF outbound flows from periphery → TRIBUTE edge weights"
+      - "Value-to-weight ratios (CAS) → Unequal exchange calculations"
+
+  metabolic_rift:
+    reference: "epochs/epoch1/metabolic-slice.yaml"
+    connection: "FAF tonnage → extraction_intensity parameter"
+    mapping:
+      - "Total commodity tonnage extracted per territory → biocapacity depletion"
+      - "Net importer/exporter status → metabolic rift accumulation"
+
+  class_dynamics:
+    reference: "ai-docs/class-dynamics.yaml"
+    connection: "LODES geography → class-territory mapping"
+    mapping:
+      - "Worker residence locations (RAC) → SocialClass.territory_id"
+      - "Commute distance → reproductive labor costs"
+      - "Employment concentration (WAC) → exploitation geography"

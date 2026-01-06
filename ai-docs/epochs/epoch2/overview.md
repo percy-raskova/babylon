@@ -36,10 +36,26 @@ This requires:
 | 2.6 | PyQt Visualization | PLANNED | Replace DearPyGui |
 | 2.7 | Schema Integration | PLANNED | Bridge data layer to simulation |
 
+| 2.8 | LODES & Freight Flows | PLANNED | Labor and commodity flow mapping |
+| 2.9 | Ideological Cartography | PLANNED | Mapping ISA (schools, churches, media) |
+
 ## Dependencies
 
 - Epoch 1 must be complete (simulation mechanics)
-- API keys required: CENSUS_API_KEY, FRED_API_KEY, FCC credentials
+- API keys required: CENSUS_API_KEY, FRED_API_KEY, ENERGY_API_KEY, FCC credentials
+
+## Slice Specifications
+
+| Slice | Spec File |
+|-------|-----------|
+| 2.1-2.4 | `data-infrastructure.yaml`, `census-data-loader.yaml`, `fred-api.yaml` |
+| 2.5 | `h3-geographic-system.yaml` |
+| 2.6 | `pyqt-visualization.yaml`, `echarts-patterns.yaml` |
+| 2.7 | `schema-integration.yaml`, `graph-protocol.yaml` |
+| 2.8 | `lodes-freight-flows.yaml` |
+| 2.9 | `ideological-geography.yaml` |
+
+See also: `data-quality.yaml` for error handling and validation patterns.
 
 ## Success Criteria
 

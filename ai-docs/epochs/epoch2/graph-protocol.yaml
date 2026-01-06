@@ -1,0 +1,85 @@
+# Epoch 2: GraphProtocol Specification (Slice 2.7)
+
+meta:
+  epoch: 2
+  slice: "2.7"
+  status: PLANNED
+  purpose: "GraphProtocol interface for backend-agnostic graph operations"
+  full_spec: "ai-docs/graph-abstraction-spec.yaml"
+
+overview:
+  what: "Abstract interface enabling NetworkX -> DuckDB migration"
+  why: |
+    - Epoch 1 uses direct NetworkX access (WorldState.to_graph())
+    - Epoch 3 needs DuckDB+DuckPGQ for scale (10,000+ edges)
+    - GraphProtocol provides migration path without rewriting Systems
+    - Systems access graph via protocol, not direct nx.DiGraph
+
+epoch2_scope:
+  implement:
+    - name: "GraphProtocol interface"
+      description: "typing.Protocol with 16 required methods"
+      location: "src/babylon/engine/graph_protocol.py"
+
+    - name: "InMemoryAdapter"
+      description: "Wraps NetworkX, refactored from WorldState methods"
+      location: "src/babylon/engine/adapters/inmemory_adapter.py"
+
+    - name: "Systems refactor"
+      description: "Systems access graph via ServiceContainer.graph_adapter"
+      impact: "All 7 systems updated to use protocol"
+
+  defer_to_epoch3:
+    - name: "ColumnarAdapter"
+      description: "DuckDB + DuckPGQ implementation"
+      rationale: "Requires H3 integration (2.5) and scale testing"
+
+    - name: "Franchise schema"
+      description: "OrganizationUnit, PopFragment (population scaling)"
+      rationale: "Epoch 3 game features"
+
+protocol_methods:
+  node_operations:
+    - "get_node(node_id: str) -> GraphNode"
+    - "get_nodes(node_type: NodeType) -> list[GraphNode]"
+    - "add_node(node: GraphNode) -> None"
+    - "update_node(node_id: str, **attrs) -> None"
+    - "remove_node(node_id: str) -> None"
+
+  edge_operations:
+    - "get_edge(source: str, target: str, edge_type: EdgeType) -> GraphEdge"
+    - "get_edges(edge_type: EdgeType) -> list[GraphEdge]"
+    - "add_edge(edge: GraphEdge) -> None"
+    - "update_edge(source: str, target: str, edge_type: EdgeType, **attrs) -> None"
+    - "remove_edge(source: str, target: str, edge_type: EdgeType) -> None"
+
+  traversal_operations:
+    - "get_neighbors(node_id: str, edge_type: EdgeType) -> list[GraphNode]"
+    - "get_incoming(node_id: str, edge_type: EdgeType) -> list[GraphEdge]"
+    - "get_outgoing(node_id: str, edge_type: EdgeType) -> list[GraphEdge]"
+
+  query_operations:
+    - "query(query: TraversalQuery) -> TraversalResult"
+    - "subgraph(node_ids: list[str]) -> GraphProtocol"
+
+migration_strategy:
+  phase1: |
+    1. Define GraphProtocol in graph_protocol.py
+    2. Create InMemoryAdapter wrapping nx.DiGraph
+    3. Add graph_adapter to ServiceContainer
+    4. Systems continue using graph.nodes[id] syntax (passthrough)
+
+  phase2: |
+    1. Update Systems to use protocol methods
+    2. Remove direct nx.DiGraph access
+    3. Validate all tests pass
+
+  phase3_epoch3: |
+    1. Implement ColumnarAdapter with DuckDB
+    2. Swap adapter in ServiceContainer
+    3. No System changes required
+
+see_also:
+  - "ai-docs/graph-abstraction-spec.yaml: Full specification"
+  - "h3-geographic-system.yaml: H3 node IDs"
+  - "schema-integration.yaml: How database hydrates nodes"

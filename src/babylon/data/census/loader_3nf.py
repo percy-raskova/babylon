@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -214,6 +214,15 @@ class FactTableSpec:
     # Hardcoded variable mapping (for housing)
     var_mapping: dict[str, str] = field(default_factory=dict)
 
+    # Race iteration support (Phase 3)
+    # Tables with race iterations have A-I suffixed versions (e.g., B19001A-I)
+    # Empty tuple means table only exists for Total race
+    race_suffixes: tuple[str, ...] = ()
+
+
+# Race suffixes for tables that have race iterations (Census A-I scheme)
+# Most demographic tables have race-iterated versions (e.g., B19001A through B19001I)
+FULL_RACE_SUFFIXES = ("A", "B", "C", "D", "E", "F", "G", "H", "I")
 
 # Fact table specifications for the generic loader
 # Handles 12 of 14 fact tables; hours and income_sources have special loaders
@@ -228,6 +237,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="bracket_id",
         value_field="household_count",
         skip_total=True,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="B23025",
@@ -238,6 +248,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="status_id",
         value_field="person_count",
         skip_total=False,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="B25070",
@@ -248,6 +259,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="burden_id",
         value_field="household_count",
         skip_total=True,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="B15003",
@@ -258,6 +270,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="level_id",
         value_field="person_count",
         skip_total=False,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="B08301",
@@ -268,6 +281,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="mode_id",
         value_field="worker_count",
         skip_total=False,
+        # No race iterations for commute mode table
     ),
     FactTableSpec(
         table_id="B17001",
@@ -278,6 +292,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="category_id",
         value_field="person_count",
         skip_total=False,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     # Pattern B: Scalar value tables
     FactTableSpec(
@@ -287,6 +302,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         value_field="median_income_usd",
         value_type="decimal",
         scalar_var="B19013_001E",
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="B25064",
@@ -295,6 +311,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         value_field="median_rent_usd",
         value_type="decimal",
         scalar_var="B25064_001E",
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="B19083",
@@ -303,6 +320,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         value_field="gini_coefficient",
         value_type="decimal",
         scalar_var="B19083_001E",
+        # No race iterations for Gini coefficient table
     ),
     # Pattern C: Gender-extracted dimension tables
     FactTableSpec(
@@ -314,6 +332,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="class_id",
         value_field="worker_count",
         extract_gender=True,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     FactTableSpec(
         table_id="C24010",
@@ -324,6 +343,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="occupation_id",
         value_field="worker_count",
         extract_gender=True,
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
     # Pattern E: Hardcoded variable mapping
     FactTableSpec(
@@ -339,6 +359,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
             "B25003_002E": "owner",
             "B25003_003E": "renter",
         },
+        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
     ),
 ]
 
@@ -631,39 +652,54 @@ class CensusLoader(DataLoader):
 
             session.flush()
 
-            # Get time_id and race_id for Total (base tables)
-            # Phase 2: Load only first year with race_code="T" (Total)
-            # Phase 3 will add multi-year and race-iterated loading
-            time_id = self._year_to_time_id[initial_year]
-            race_id = self._race_code_to_id["T"]  # Total (all races)
+            # Phase 3: Iterate over years and race groups
+            # Load fact tables for each year, then for each race within that year
+            for year in census_years:
+                if verbose:
+                    print(f"\n{'=' * 60}")
+                    print(f"Loading Census ACS 5-Year: {year}")
+                    print(f"{'=' * 60}")
 
-            if verbose:
-                print(f"\n{'=' * 60}")
-                print(f"Loading facts for year {initial_year} (race: Total)")
-                print(f"{'=' * 60}")
+                # Create new API client for this year
+                self._client = CensusAPIClient(year=year)
+                time_id = self._year_to_time_id[year]
 
-            # Load fact tables via generic loader (12 tables)
-            for spec in FACT_TABLE_SPECS:
-                fact_count = self._load_fact_table(
-                    spec, session, state_fips_list, verbose, time_id, race_id
+                # Load Total race first (base tables without race suffix)
+                race_id_total = self._race_code_to_id["T"]
+                if verbose:
+                    print("  Loading base tables (race: Total)...")
+
+                for spec in FACT_TABLE_SPECS:
+                    fact_count = self._load_fact_table(
+                        spec, session, state_fips_list, verbose, time_id, race_id_total
+                    )
+                    table_name: str = spec.fact_class.__tablename__  # type: ignore[attr-defined]
+                    stats.facts_loaded[table_name] = (
+                        stats.facts_loaded.get(table_name, 0) + fact_count
+                    )
+                    stats.api_calls += len(state_fips_list)
+
+                # Load special case fact tables for Total race
+                hours_count = self._load_fact_hours(
+                    session, state_fips_list, verbose, time_id, race_id_total
                 )
-                # Use fact class tablename for stats key
-                table_name: str = spec.fact_class.__tablename__  # type: ignore[attr-defined]
-                stats.facts_loaded[table_name] = fact_count
+                stats.facts_loaded["fact_census_hours"] = (
+                    stats.facts_loaded.get("fact_census_hours", 0) + hours_count
+                )
                 stats.api_calls += len(state_fips_list)
 
-            # Load special case fact tables (2 tables with unique patterns)
-            # Pattern D: Gender-grouped aggregation (hours)
-            hours_count = self._load_fact_hours(session, state_fips_list, verbose, time_id, race_id)
-            stats.facts_loaded["fact_census_hours"] = hours_count
-            stats.api_calls += len(state_fips_list)
+                sources_count = self._load_fact_income_sources(
+                    session, state_fips_list, verbose, time_id, race_id_total
+                )
+                stats.facts_loaded["fact_census_income_sources"] = (
+                    stats.facts_loaded.get("fact_census_income_sources", 0) + sources_count
+                )
+                stats.api_calls += len(state_fips_list) * 3
 
-            # Pattern F: Multi-table join (income sources)
-            sources_count = self._load_fact_income_sources(
-                session, state_fips_list, verbose, time_id, race_id
-            )
-            stats.facts_loaded["fact_census_income_sources"] = sources_count
-            stats.api_calls += len(state_fips_list) * 3  # B19052, B19053, B19054
+                # Load race-disaggregated data (A-I suffixed tables)
+                self._load_race_iterated_tables(session, state_fips_list, time_id, stats, verbose)
+
+                session.flush()
 
             session.commit()
 
@@ -681,6 +717,90 @@ class CensusLoader(DataLoader):
                 self._client = None
 
         return stats
+
+    def _load_race_iterated_tables(
+        self,
+        session: Session,
+        state_fips_list: list[str],
+        time_id: int,
+        stats: LoadStats,
+        verbose: bool,
+    ) -> None:
+        """Load race-iterated fact tables for races A-I.
+
+        For each race code, iterates through specs with race_suffixes and loads
+        the race-suffixed table (e.g., B19001A for White alone).
+
+        Args:
+            session: SQLAlchemy session.
+            state_fips_list: State FIPS codes to load.
+            time_id: FK to dim_time.
+            stats: LoadStats object to accumulate results.
+            verbose: Whether to show progress.
+        """
+        for race_data in RACE_CODES[1:]:  # Skip "T" (Total) - already loaded
+            race_code = str(race_data["code"])
+            race_id = self._race_code_to_id[race_code]
+            race_name = str(race_data["short"])
+
+            if verbose:
+                print(f"  Loading race-iterated tables for {race_name} ({race_code})...")
+
+            for spec in FACT_TABLE_SPECS:
+                # Skip tables without race iterations
+                if race_code not in spec.race_suffixes:
+                    continue
+
+                race_spec = self._create_race_suffixed_spec(spec, race_code)
+
+                try:
+                    fact_count = self._load_fact_table(
+                        race_spec, session, state_fips_list, False, time_id, race_id
+                    )
+                    table_name: str = spec.fact_class.__tablename__  # type: ignore[attr-defined]
+                    stats.facts_loaded[table_name] = (
+                        stats.facts_loaded.get(table_name, 0) + fact_count
+                    )
+                    stats.api_calls += len(state_fips_list)
+                except Exception as e:
+                    # Some race-iterated tables may not exist for all races
+                    error_str = str(e).lower()
+                    if "unknown variable" not in error_str:
+                        stats.errors.append(f"{race_spec.table_id}: {e}")
+
+    def _create_race_suffixed_spec(self, spec: FactTableSpec, race_code: str) -> FactTableSpec:
+        """Create a race-suffixed FactTableSpec.
+
+        Updates table_id, scalar_var, and var_mapping to use race suffix.
+
+        Args:
+            spec: Original FactTableSpec.
+            race_code: Race code (A-I).
+
+        Returns:
+            New FactTableSpec with race-suffixed identifiers.
+        """
+        race_table_id = f"{spec.table_id}{race_code}"
+
+        # Update scalar_var if present (e.g., B19013_001E -> B19013A_001E)
+        new_scalar_var = spec.scalar_var
+        if spec.scalar_var:
+            new_scalar_var = spec.scalar_var.replace(spec.table_id, race_table_id)
+
+        # Update var_mapping if present
+        new_var_mapping = spec.var_mapping
+        if spec.var_mapping:
+            new_var_mapping = {
+                var_code.replace(spec.table_id, race_table_id): dim_value
+                for var_code, dim_value in spec.var_mapping.items()
+            }
+
+        return replace(
+            spec,
+            table_id=race_table_id,
+            scalar_var=new_scalar_var,
+            var_mapping=new_var_mapping,
+        )
 
     # =========================================================================
     # DIMENSION LOADERS
@@ -1257,17 +1377,15 @@ class CensusLoader(DataLoader):
     def _build_dimension_map(self, spec: FactTableSpec, session: Session) -> dict[str, int]:
         """Build mapping from dimension code to dimension ID for a fact spec."""
         dim_map: dict[str, int] = {}
-        if not spec.dim_class:
+        if not spec.dim_class or not spec.fact_dim_attr:
             return dim_map
 
         dims: list[Any] = session.query(spec.dim_class).all()
         for dim in dims:
             code = getattr(dim, spec.dim_code_attr)
-            # Find the ID attribute - handle tenure_type special case
-            id_attr = spec.dim_code_attr.replace("_code", "_id")
-            if spec.dim_code_attr == "tenure_type":
-                id_attr = "tenure_id"
-            dim_map[code] = getattr(dim, id_attr)
+            # fact_dim_attr is the FK column name on fact table AND
+            # the PK column name on the dimension table (they always match)
+            dim_map[code] = getattr(dim, spec.fact_dim_attr)
         return dim_map
 
     def _process_county_facts(
@@ -1319,6 +1437,14 @@ class CensusLoader(DataLoader):
                 continue
 
             dim_code = var_code.replace("E", "")
+
+            # For race-suffixed tables (e.g., B19001A), normalize dim_code to
+            # match base dimension codes (e.g., "B19001A_002" -> "B19001_002")
+            table_id = spec.table_id
+            if table_id and len(table_id) > 1 and table_id[-1] in "ABCDEFGHI":
+                base_table_id = table_id[:-1]
+                dim_code = dim_code.replace(table_id, base_table_id)
+
             dim_id = dim_map.get(dim_code)
             if not dim_id:
                 continue

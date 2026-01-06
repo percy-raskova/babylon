@@ -26,6 +26,7 @@ repos:
         additional_dependencies:
           - pydantic>=2.0
           - types-requests
+          - types-tqdm
           - types-networkx
           - types-PyYAML
           - types-jsonschema

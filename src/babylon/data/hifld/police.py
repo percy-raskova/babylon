@@ -15,7 +15,7 @@ import logging
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from tqdm import tqdm  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats

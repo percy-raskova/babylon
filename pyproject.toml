@@ -83,6 +83,7 @@ optuna-dashboard = "^0.15"
 scipy = ">=1.11.0"
 SALib = ">=1.4.7"
 types-docutils = "^0.22.3.20251115"
+types-tqdm = "^4.67.0.20250809"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"

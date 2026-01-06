@@ -16,7 +16,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from tqdm import tqdm  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from babylon.data.cfs.api_client import CFSAPIClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats

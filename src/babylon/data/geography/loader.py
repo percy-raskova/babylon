@@ -19,7 +19,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
-from tqdm import tqdm  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (

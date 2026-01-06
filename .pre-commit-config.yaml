@@ -50,7 +50,7 @@ repos:
     hooks:
       - id: pytest-fast
         name: pytest (fast tests)
-        entry: poetry run pytest tests/unit/formulas tests/unit/engine -q --tb=no -m "not red_phase"
+        entry: poetry run pytest tests/unit/formulas tests/unit/engine -q --tb=no -m "not red_phase and not slow"
         language: system
         pass_filenames: false
         always_run: true

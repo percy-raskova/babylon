@@ -309,30 +309,8 @@ class TestStepDeterminism:
         assert result1.entities["C001"].wealth == pytest.approx(result2.entities["C001"].wealth)
         assert result1.entities["C002"].wealth == pytest.approx(result2.entities["C002"].wealth)
 
-    def test_hundred_turns_deterministic(
-        self,
-        two_node_state: WorldState,
-        config: SimulationConfig,
-    ) -> None:
-        """100 turns produce identical results."""
-        # Run 1
-        result1 = two_node_state
-        for _ in range(100):
-            result1 = step(result1, config)
-
-        # Run 2 (same starting state)
-        result2 = two_node_state
-        for _ in range(100):
-            result2 = step(result2, config)
-
-        # Compare final states
-        assert result1.tick == result2.tick == 100
-        assert result1.entities["C001"].wealth == pytest.approx(result2.entities["C001"].wealth)
-        assert result1.entities["C002"].wealth == pytest.approx(result2.entities["C002"].wealth)
-        # Compare class_consciousness from IdeologicalProfile
-        assert result1.entities["C001"].ideology.class_consciousness == pytest.approx(
-            result2.entities["C001"].ideology.class_consciousness
-        )
+    # NOTE: test_hundred_turns_deterministic moved to
+    # tests/integration/system/test_simulation_stability.py (slow test)
 
 
 # =============================================================================
@@ -571,82 +549,8 @@ class TestStepConsciousnessDrift:
         # No drift without exploitation edges
         Assert(new_state).entity("C001").consciousness_unchanged_from(state)
 
-    def test_ideology_clamped_lower_bound(
-        self,
-        owner: SocialClass,
-        exploitation_edge: Relationship,
-        config: SimulationConfig,
-    ) -> None:
-        """Class consciousness cannot exceed 1.0 even over 1000 ticks.
-
-        The class_consciousness field is constrained to [0, 1]. Even with continuous
-        drift, it must be clamped to prevent validation errors.
-        """
-        # Start already revolutionary to stress test the upper bound
-        revolutionary_worker = SocialClass(
-            id="C001",
-            name="Revolutionary Worker",
-            role=SocialRole.PERIPHERY_PROLETARIAT,
-            wealth=0.5,
-            ideology=-0.9,  # Already very revolutionary (consciousness 0.95)
-            organization=0.1,
-            repression_faced=0.5,
-            subsistence_threshold=0.3,
-        )
-        state = WorldState(
-            tick=0,
-            entities={"C001": revolutionary_worker, "C002": owner},
-            relationships=[exploitation_edge],
-        )
-
-        # Run 1000 ticks
-        for _ in range(1000):
-            state = step(state, config)
-
-        # Class consciousness must stay <= 1.0
-        assert state.entities["C001"].ideology.class_consciousness <= 1.0
-
-    def test_ideology_clamped_upper_bound(
-        self,
-        owner: SocialClass,
-        config: SimulationConfig,
-    ) -> None:
-        """Class consciousness cannot go below 0.0 (use labor aristocrat scenario).
-
-        A labor aristocrat receiving more than they produce should have
-        consciousness decay, but class_consciousness must stay >= 0.0.
-        """
-        # Labor aristocrat with low (reactionary) consciousness
-        labor_aristocrat = SocialClass(
-            id="C001",
-            name="Labor Aristocrat",
-            role=SocialRole.LABOR_ARISTOCRACY,
-            wealth=0.9,  # High wages
-            ideology=0.9,  # Already very reactionary (consciousness 0.05)
-            organization=0.1,
-            repression_faced=0.1,
-            subsistence_threshold=0.3,
-        )
-        # Labor aristocrat exploiting periphery
-        exploitation_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
-            edge_type=EdgeType.EXPLOITATION,
-            value_flow=0.0,
-            tension=0.0,
-        )
-        state = WorldState(
-            tick=0,
-            entities={"C001": labor_aristocrat, "C002": owner},
-            relationships=[exploitation_edge],
-        )
-
-        # Run 1000 ticks
-        for _ in range(1000):
-            state = step(state, config)
-
-        # Class consciousness must stay >= 0.0
-        assert state.entities["C001"].ideology.class_consciousness >= 0.0
+    # NOTE: test_ideology_clamped_lower_bound and test_ideology_clamped_upper_bound
+    # moved to tests/integration/system/test_simulation_stability.py (slow tests)
 
     def test_higher_solidarity_strength_faster_transmission(
         self,
@@ -711,26 +615,8 @@ class TestStepConsciousnessDrift:
         assert low_drift > 0
         assert high_drift > 0
 
-    def test_thousand_tick_stability(
-        self,
-        two_node_state: WorldState,
-        config: SimulationConfig,
-    ) -> None:
-        """Class consciousness stays bounded [0, 1] over 1000 ticks.
-
-        This is a stability test to ensure no numerical drift causes
-        consciousness to escape valid bounds over long simulations.
-        """
-        state = two_node_state
-        for _ in range(1000):
-            state = step(state, config)
-
-        # All class consciousness values must be in valid range
-        for entity_id, entity in state.entities.items():
-            consciousness = entity.ideology.class_consciousness
-            assert 0.0 <= consciousness <= 1.0, (
-                f"Entity {entity_id} class_consciousness {consciousness} out of bounds"
-            )
+    # NOTE: test_thousand_tick_stability moved to
+    # tests/integration/system/test_simulation_stability.py (slow test)
 
 
 # =============================================================================

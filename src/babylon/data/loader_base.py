@@ -387,6 +387,29 @@ class DataLoader(ABC):
 
         return source.source_id
 
+    def _build_county_lookup(self, session: Session) -> dict[str, int]:
+        """Build a FIPS code to county_id lookup dictionary.
+
+        Used by spatial loaders (HIFLD, MIRTA) that aggregate facility data
+        to the county level. The returned dictionary maps 5-digit FIPS codes
+        to database county_id values.
+
+        Args:
+            session: SQLAlchemy session for the normalized database.
+
+        Returns:
+            Dictionary mapping 5-digit FIPS codes (str) to county_id (int).
+
+        Example:
+            fips_to_county = self._build_county_lookup(session)
+            county_id = fips_to_county.get("06001")  # Alameda County, CA
+        """
+        # Import here to avoid circular dependency
+        from babylon.data.normalize.schema import DimCounty
+
+        counties = session.query(DimCounty).all()
+        return {c.fips: c.county_id for c in counties}
+
 
 __all__ = [
     "DataLoader",

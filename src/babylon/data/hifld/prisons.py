@@ -22,7 +22,6 @@ from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimCoerciveType,
-    DimCounty,
     FactCoerciveInfrastructure,
 )
 from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
@@ -121,7 +120,7 @@ class HIFLDPrisonsLoader(DataLoader):
                 session.flush()
 
             # Load county lookup
-            self._load_county_lookup(session)
+            self._fips_to_county = self._build_county_lookup(session)
             if verbose:
                 print(f"Loaded {len(self._fips_to_county):,} county mappings")
 
@@ -174,11 +173,6 @@ class HIFLDPrisonsLoader(DataLoader):
             session.query(FactCoerciveInfrastructure).filter(
                 FactCoerciveInfrastructure.coercive_type_id.in_(type_ids)
             ).delete(synchronize_session=False)
-
-    def _load_county_lookup(self, session: Session) -> None:
-        """Build FIPS -> county_id lookup."""
-        counties = session.query(DimCounty).all()
-        self._fips_to_county = {c.fips: c.county_id for c in counties}
 
     def _load_coercive_types(self, session: Session) -> int:
         """Load/ensure coercive type dimension for prisons.

@@ -20,7 +20,6 @@ from tqdm import tqdm  # type: ignore[import-untyped]
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
-    DimCounty,
     DimDataSource,
     FactElectricGrid,
 )
@@ -95,7 +94,7 @@ class HIFLDElectricLoader(DataLoader):
                 self._clear_electric_data(session)
                 session.flush()
 
-            self._load_county_lookup(session)
+            self._fips_to_county = self._build_county_lookup(session)
             if verbose:
                 print(f"Loaded {len(self._fips_to_county):,} county mappings")
 
@@ -148,11 +147,6 @@ class HIFLDElectricLoader(DataLoader):
             session.query(FactElectricGrid).filter(
                 FactElectricGrid.source_id == source.source_id
             ).delete(synchronize_session=False)
-
-    def _load_county_lookup(self, session: Session) -> None:
-        """Build FIPS -> county_id lookup."""
-        counties = session.query(DimCounty).all()
-        self._fips_to_county = {c.fips: c.county_id for c in counties}
 
     def _load_data_source(self, session: Session) -> None:
         """Load data source dimension."""

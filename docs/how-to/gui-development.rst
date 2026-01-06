@@ -1,314 +1,126 @@
-GUI Development Plan
-====================
+GUI Development Guide
+=====================
 
-Development roadmap for The Fall of Babylon's graphical user interface,
-based on the constructivist/brutalist design principles defined in
-:doc:`/concepts/aesthetics`.
+This guide outlines the development standards and architecture for Babylon's
+graphical user interface, "The Cockpit."
 
-Design Philosophy
------------------
+The interface is built using **Dear PyGui** (DPG), a GPU-accelerated Python
+GUI framework that allows for high-performance real-time visualization of
+simulation state.
+
+Design Philosophy: Bunker Constructivism
+----------------------------------------
+
+The UI follows the "Bunker Constructivism" aesthetic—a blend of Soviet
+Constructivism, brutalist industrial design, and Cold War bunker interfaces.
+It conveys a sense of surveillance, decay, and urgency.
 
 Visual Language
 ~~~~~~~~~~~~~~~
 
-- **Soviet Constructivist/Avant-garde** aesthetics
-- **Brutalist/Industrial** design elements
-- Propaganda poster-inspired compositions
-- Geometric shapes and dynamic diagonals
+- **Metaphor**: A dark-mode engineering dashboard ("The Cockpit") for observing
+  systemic collapse.
+- **Palette**: High-contrast phosphor colors against absolute black.
+- **Typography**: Monospace and industrial sans-serifs.
+- **feel**: Mechanical, precise, and foreboding.
 
-Color Scheme
-~~~~~~~~~~~~
+Color Palette
+~~~~~~~~~~~~~
 
-.. code-block:: python
+The design system is centrally defined in :py:class:`babylon.ui.design_system.BunkerPalette`
+and :py:class:`babylon.ui.design_system.DPGColors`.
 
-   PRIMARY_COLORS = {
-       "soviet_red": "#D40000",   # Main accent, alerts
-       "near_black": "#1A1A1A",   # Primary backgrounds
-       "off_white": "#F5F5F5",    # Secondary text
-       "gold": "#FFD700",         # Achievements
-   }
+.. list-table::
+   :widths: 20 20 60
+   :header-rows: 1
 
-   SECONDARY_COLORS = {
-       "dark_red": "#8B0000",     # Shadows, depth
-       "dark_gray": "#404040",    # Interface borders
-       "silver": "#C0C0C0",       # Inactive elements
-   }
+   * - Color Name
+     - Hex / RGB
+     - Semantic Usage
+   * - **VOID**
+     - ``#050505``
+     - Background darkness. The canvas.
+   * - **DATA_GREEN**
+     - ``#39FF14``
+     - Positive metrics, healthy systems, logs (INFO).
+   * - **PHOSPHOR_RED**
+     - ``#D40000``
+     - Critical failures, alarms, logs (ERROR), Bourgeoisie class.
+   * - **EXPOSED_COPPER**
+     - ``#FFD700``
+     - Warnings, degraded states, logs (WARN).
+   * - **SILVER_DUST**
+     - ``#C0C0C0``
+     - Neutral text, labels, inactive elements.
+   * - **DARK_METAL**
+     - ``#404040``
+     - Borders, grid lines, structural elements.
+   * - **ROYAL_BLUE**
+     - ``#4169E1``
+     - Labor Aristocracy class indicator.
 
-Interface Structure
--------------------
+Architecture
+------------
 
-Main Window Layout
-~~~~~~~~~~~~~~~~~~
+The UI is decoupled from the simulation engine. It acts as a passive observer
+and controller, running in the main thread while the simulation can tick
+independently.
 
-The interface is divided into four primary panels:
+Entry Point
+~~~~~~~~~~~
 
-**Left Panel: Contradiction Map**
-   - Network visualization of dialectical relationships
-   - Interactive graph using matplotlib
-   - Dark background (``#1A1A1A``)
-   - Soviet red (``#D40000``) for critical relationships
-   - Geometric node shapes
-   - Grid overlay in dark gray (``#404040``)
+The dashboard is launched via ``src/babylon/ui/dpg_runner.py``:
 
-**Center Panel: Detail View**
-   - Primary information display
-   - Clear typography hierarchy (Headers: Futura Bold, Body: Univers,
-     Data: Roboto Mono)
-   - High contrast text on dark background
-   - Constructivist-inspired section dividers
+.. code-block:: bash
 
-**Right Panel: Status Indicators**
-   - Economic and social metrics display
-   - Monospace font for data
-   - Soviet-inspired header styling
-   - Industrial/mechanical appearance
-   - Clear data visualization elements
+   poetry run python -m babylon.ui.dpg_runner
 
-**Bottom Panel: Event Log & Command Line**
-   - Console-style interface
-   - Soviet red prompt symbol
-   - Monospace font for commands
-   - Industrial/terminal styling
+Or via mise:
 
-Interactive Elements
-~~~~~~~~~~~~~~~~~~~~
+.. code-block:: bash
 
-**Buttons**
-   - Sharp geometric shapes
-   - Clear hover states
-   - Soviet red accents
-   - Mechanical click feedback
-   - Distinct active/inactive states
+   mise run ui
 
-**Input Fields**
-   - Industrial styling
-   - Minimal borders
-   - Soviet red text cursor
-   - Clear focus states
-   - Monospace font for input
+Core Components
+~~~~~~~~~~~~~~~
 
-**Scrollbars**
-   - Thin, geometric design
-   - Dark gray track
-   - Soviet red thumb
-   - Minimal but functional
+1. **Narrative Feed**: A scrolling log window displaying semantic events from the
+   ``NarrativeDirector``.
+2. **Telemetry Plots**: Time-series graphs tracking key contradictions (e.g.,
+   Imperial Rent vs. Stability).
+3. **Control Panel**: Play/Pause/Step controls for the simulation loop.
+4. **Topology Monitor**: (Planned) Network visualization of class/territory relations.
 
-Data Visualization
-~~~~~~~~~~~~~~~~~~
-
-**Graphs and Charts**
-   - Geometric shapes
-   - Strong grid systems
-   - Soviet-inspired color scheme
-   - Clear data hierarchies
-   - Industrial styling
-
-**Status Indicators**
-   - Mechanical/gauge-like displays
-   - Binary state indicators
-   - Progress bars with geometric styling
-   - Numerical displays in monospace font
-
-Implementation Phases
+Development Standards
 ---------------------
 
-Phase 1: Core Layout
-~~~~~~~~~~~~~~~~~~~~
-
-1. Implement main window frame
-2. Set up four primary panels
-3. Configure basic styling
-4. Establish color scheme
-
-Phase 2: Panel Development
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Contradiction Map**
-   - Set up matplotlib integration
-   - Implement network visualization
-   - Add interaction handlers
-   - Style graph elements
-
-**Detail View**
-   - Implement text display system
-   - Set up typography hierarchy
-   - Add content formatting
-   - Style scrolling and selection
-
-**Status Panel**
-   - Create metric displays
-   - Implement data updating
-   - Style indicators
-   - Add tooltips
-
-**Command Interface**
-   - Implement command input
-   - Set up event logging
-   - Style console elements
-   - Add command history
-
-Phase 3: Interactive Elements
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Implement button system
-2. Create input field handlers
-3. Add hover and click effects
-4. Implement scrolling behavior
-
-Phase 4: Data Visualization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Set up chart rendering
-2. Implement real-time updates
-3. Add interaction handlers
-4. Style visualization elements
-
-Phase 5: Polish and Optimization
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-1. Refine animations
-2. Optimize performance
-3. Add accessibility features
-4. Implement error handling
-
-NiceGUI Mode Selection
-----------------------
-
-NiceGUI has mutually exclusive modes. Choose ONE pattern and stick to it.
-
-.. warning::
-
-   Never mix ``@ui.page`` decorator with global-scope UI elements.
-   This causes ``RuntimeError`` at startup.
-
-Root Function Pattern (Recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For single-page applications like Babylon MVP:
+1. **GPU Acceleration**: DPG uses the GPU. Avoid blocking the main thread with heavy
+   CPU computations. Use async patterns where necessary.
+2. **Type Safety**: All UI code must be strictly typed.
+3. **Design System**: Do not hardcode colors. Always import from ``babylon.ui.design_system``.
 
 .. code-block:: python
 
-   from nicegui import ui
+   from babylon.ui.design_system import DPGColors
 
-   def main_page() -> None:
-       """Root function - all UI defined here."""
-       ui.dark_mode().enable()
+   # GOOD
+   dpg.add_text("System Critical", color=DPGColors.PHOSPHOR_RED)
 
-       with ui.column().classes("w-full items-center p-4"):
-           ui.label("BABYLON v0.3").classes("text-green-400 font-mono")
-           # ... more UI elements ...
+   # BAD
+   dpg.add_text("System Critical", color=(255, 0, 0, 255))
 
-       # Timer MUST be inside root function
-       ui.timer(interval=1.0, callback=run_loop)
-
-   if __name__ == "__main__":
-       ui.run(main_page, title="Babylon v0.3", port=6969)
-
-Key rules:
-
-1. **No** ``@ui.page`` decorator for single-page apps
-2. **All** UI elements inside the root function
-3. ``ui.timer()`` **must** be inside root function, not global scope
-4. Pass root function as **first positional argument** to ``ui.run()``
-
-Page Decorator Pattern (Multi-page Only)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Only use this for multi-page applications:
+4. **Context Managers**: Use DPG's context managers for nesting items.
 
 .. code-block:: python
 
-   from nicegui import ui
+   with dpg.window(label="Main Window"):
+       with dpg.group(horizontal=True):
+           dpg.add_button(label="Play")
+           dpg.add_button(label="Pause")
 
-   @ui.page("/")
-   def index():
-       ui.label("Home")
+Reference
+---------
 
-   @ui.page("/settings")
-   def settings():
-       ui.label("Settings")
-
-   # NO global UI elements allowed!
-   ui.run()
-
-.. note::
-
-   See ``ai-docs/decisions.yaml:ADR026_nicegui_root_function_pattern`` for
-   the full architectural decision record.
-
-Technical Considerations
-------------------------
-
-Typography System
-~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   FONTS = {
-       "header": ("Futura", 14, "bold"),
-       "body": ("Univers", 11),
-       "mono": ("Roboto Mono", 10),
-   }
-
-Styling Constants
-~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   STYLE = {
-       "bg": "#1A1A1A",
-       "fg": "#F5F5F5",
-       "accent": "#D40000",
-       "border_width": 1,
-       "padding": 10,
-   }
-
-Layout Management
-~~~~~~~~~~~~~~~~~
-
-- Use ``ui.row()`` and ``ui.column()`` for flex layouts
-- Apply Tailwind CSS classes via ``.classes()`` method
-- Use ``with`` context managers for nested containers
-- Maintain consistent spacing via Tailwind utilities (``p-4``, ``gap-4``)
-
-Performance Optimization
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-- Lazy loading for complex visualizations
-- Efficient event handling
-- Memory management for large datasets
-
-Accessibility Features
-----------------------
-
-1. High contrast color options
-2. Keyboard navigation support
-3. Screen reader compatibility
-4. Configurable text sizing
-5. Alternative text for visualizations
-
-Testing Strategy
-----------------
-
-1. Unit tests for UI components
-2. Integration tests for panel interactions
-3. Performance testing under load
-4. Cross-platform compatibility testing
-5. Accessibility compliance testing
-
-Future Enhancements
--------------------
-
-1. Theme customization system
-2. Advanced visualization options
-3. Additional data display modes
-4. Enhanced interaction patterns
-5. Expanded keyboard shortcuts
-
-See Also
---------
-
-- :doc:`/concepts/aesthetics` - Visual design philosophy (Bunker Constructivism)
-- :doc:`/reference/design-system` - Complete design tokens reference
-- :doc:`/concepts/architecture` - System architecture
-- :doc:`/reference/configuration` - Configuration system
+- :py:mod:`babylon.ui.dpg_runner` - Main runner and layout.
+- :py:mod:`babylon.ui.design_system` - Color constants and style tokens.
+- `Dear PyGui Documentation <https://dearpygui.readthedocs.io/>`_

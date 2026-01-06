@@ -176,12 +176,18 @@ temporarily offsets TRPF for core capitalists while accelerating it for
 peripheral capital. This explains both the stability of core capitalism
 AND its ultimate unsustainability.
 
-Epoch 1 models TRPF as time-dependent decay:
+Epoch 1 models TRPF as time-dependent decay (Surrogate):
 
 .. code-block:: python
 
+   # Epoch 1 Implementation
    trpf_multiplier = max(0.1, 1.0 - (trpf_coefficient * tick))
    effective_extraction = base_extraction * trpf_multiplier
+
+**Planned for Epoch 2:** Full organic composition tracking where entities
+maintain distinct `constant_capital` and `variable_capital` ledgers,
+allowing the rate of profit to emerge dynamically from investment decisions rather
+than a fixed decay curve.
 
 The Metabolic Rift
 ------------------

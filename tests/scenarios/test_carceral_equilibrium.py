@@ -63,7 +63,6 @@ class TestCarceralEquilibrium:
     revolution (which requires organization >= 0.5).
     """
 
-    @pytest.mark.red_phase  # TDD RED: Trajectory not yet producing all phase events
     def test_default_trajectory_phases(
         self,
         config: SimulationConfig,
@@ -343,7 +342,6 @@ class TestCarceralEquilibrium:
     # Phase Staggering Tests (RED phase TDD)
     # =========================================================================
 
-    @pytest.mark.red_phase
     def test_phase_spread_minimum_two_years(
         self,
         config: SimulationConfig,
@@ -387,7 +385,6 @@ class TestCarceralEquilibrium:
             f"Milestones: {milestones}"
         )
 
-    @pytest.mark.red_phase
     def test_each_phase_pair_has_gap(
         self,
         config: SimulationConfig,

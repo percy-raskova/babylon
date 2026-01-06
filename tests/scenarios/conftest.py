@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.config.defines import GameDefines
 from babylon.engine.observers import MetricsCollector
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.economy import GlobalEconomy
@@ -257,11 +258,15 @@ def create_imperial_circuit_state() -> WorldState:
     ]
 
     # Global economy with rent pool
-    # 1000.0 allows phases to cascade over 100+ ticks for proper staggering
+    # Pool size calibrated to exhaust within 5200 ticks (100 years) given:
+    # - TRPF decay rate (defines.economy.rent_pool_decay) per tick (multiplicative)
+    # - Wages bonus outflow depleting pool
+    # Pool must drain below negligible (defines.economy.negligible_rent) for SUPERWAGE_CRISIS
+    defines = GameDefines()
     economy = GlobalEconomy(
-        imperial_rent_pool=1000.0,  # Increased for phase staggering (was 200.0)
-        current_super_wage_rate=0.25,  # 25% wage rate
-        current_repression_level=0.4,  # Moderate repression
+        imperial_rent_pool=defines.economy.initial_rent_pool,  # From defines.yaml
+        current_super_wage_rate=defines.economy.super_wage_rate,  # From defines.yaml
+        current_repression_level=defines.survival.default_repression,  # From defines.yaml
     )
 
     return WorldState(

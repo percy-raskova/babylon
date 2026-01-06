@@ -286,7 +286,14 @@ class ImperialRentSystem:
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
     ) -> None:
-        """Phase 3: Super-wages via WAGES edges. DRAINS POOL. Applies PPP Model."""
+        """Phase 3: Super-wages via WAGES edges. Amin/Wallerstein Model.
+
+        The LA produces value (captured by employer in ProductionSystem), then
+        receives wages = productivity + super_wage_bonus. The bonus comes from
+        the imperial rent pool. When pool exhausts, bonus → 0 and wages → productivity.
+
+        Only the super_wage_bonus depletes the pool, not the productivity portion.
+        """
         _ = context  # Unused but kept for API consistency
         # Use dynamic wage rate from economy, not static config
         # Epoch 0: Convert annual rate to per-tick (weekly) rate
@@ -306,6 +313,9 @@ class ImperialRentSystem:
         negligible = services.defines.economy.negligible_rent
         available_pool = tick_context["current_pool"]
 
+        # Get LA production from ProductionSystem (Amin/Wallerstein model)
+        la_production = graph.graph.get("la_production", {})
+
         for source_id, target_id, data in graph.edges(data=True):
             edge_type = data.get("edge_type")
             if isinstance(edge_type, str):
@@ -316,17 +326,24 @@ class ImperialRentSystem:
 
             # Check for SUPERWAGE_CRISIS BEFORE skipping inactive entities
             # The crisis is about the SYSTEM'S inability to pay wages, not individual status
-            # This fixes the race condition where bourgeoisie dies before crisis is emitted
             bourgeoisie_active = graph.nodes[source_id].get("active", True)
             worker_active = graph.nodes[target_id].get("active", True)
 
-            if available_pool <= negligible:
-                # Terminal Crisis: Pool exhausted, wages can't be paid
-                # Emit once per WAGES edge when pool first becomes negligible
+            # Get what LA produced this tick (now owned by employer)
+            productivity_value = la_production.get(target_id, 0.0)
+
+            # Calculate super-wage bonus from rent pool (the "imperial bribe")
+            tribute_inflow = tick_context.get("tribute_inflow", 0.0)
+            max_bonus = tribute_inflow * super_wage_rate
+            super_wage_bonus = min(max_bonus, available_pool)
+
+            # SUPERWAGE_CRISIS condition: Pool exhausted AND bonus is negligible
+            # When bonus → 0, LA only gets productivity (no imperial bribe)
+            if available_pool <= negligible and super_wage_bonus <= negligible:
+                # Terminal Crisis: Pool exhausted, super-wages can't be paid
+                # LA will only receive productivity (if any) - no imperial bribe
                 tick = context.get("tick", 0)  # TickContext supports .get()
                 bourgeoisie_wealth = graph.nodes[source_id].get("wealth", 0.0)
-                tribute_inflow = tick_context.get("tribute_inflow", 0.0)
-                desired_wages = tribute_inflow * super_wage_rate
 
                 services.event_bus.publish(
                     Event(
@@ -335,18 +352,21 @@ class ImperialRentSystem:
                         payload={
                             "payer_id": source_id,
                             "receiver_id": target_id,
-                            "desired_wages": desired_wages,
+                            "productivity_value": productivity_value,
+                            "super_wage_bonus": super_wage_bonus,
                             "available_pool": available_pool,
                             "bourgeoisie_wealth": bourgeoisie_wealth,
                             "bourgeoisie_active": bourgeoisie_active,
                             "narrative_hint": (
                                 "SUPERWAGE CRISIS: Imperial rent pool exhausted. "
-                                "Core bourgeoisie cannot afford to bribe labor aristocracy."
+                                "Labor aristocracy receives only productivity - "
+                                "the imperial bribe has ended."
                             ),
                         },
                     )
                 )
-                continue  # Can't pay wages, skip to next edge
+                # Note: We continue to pay productivity even during crisis
+                # The crisis is about the BONUS ending, not wages entirely
 
             # Skip inactive (dead) entities for actual wage transfers
             if not bourgeoisie_active:
@@ -361,25 +381,23 @@ class ImperialRentSystem:
             if bourgeoisie_wealth <= 0:
                 continue
 
-            # Calculate super-wages from INCOME FLOW (tribute), not accumulated capital
-            # BUG FIX: This ensures C_b accumulates wealth over time
-            tribute_inflow = tick_context.get("tribute_inflow", 0.0)
-            desired_wages = tribute_inflow * super_wage_rate
-            # Also cap at what bourgeoisie can actually afford to pay
-            desired_wages = min(desired_wages, bourgeoisie_wealth)
+            # Amin/Wallerstein Model: wages = productivity + super_wage_bonus
+            # Productivity portion is returned to LA (they produced it)
+            # Bonus portion comes from rent pool (imperial bribe)
+            total_wages = productivity_value + super_wage_bonus
 
-            # Sprint 3.4.4: Cap wages at available pool
-            nominal_wages = min(desired_wages, available_pool)
+            # Cap at what bourgeoisie can actually afford
+            total_wages = min(total_wages, bourgeoisie_wealth)
 
-            # Transfer nominal wages (actual cash transfer)
-            graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - nominal_wages
+            # Transfer total wages (productivity + bonus)
+            graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - total_wages
             current_wealth = graph.nodes[target_id].get("wealth", 0.0)
-            new_nominal_wealth = current_wealth + nominal_wages
+            new_nominal_wealth = current_wealth + total_wages
             graph.nodes[target_id]["wealth"] = new_nominal_wealth
 
             # PPP Model: Calculate effective wealth (what the wages can actually buy)
             # The PPP bonus represents cheap commodities from periphery exploitation
-            ppp_bonus = nominal_wages * (ppp_multiplier - 1.0)
+            ppp_bonus = total_wages * (ppp_multiplier - 1.0)
             effective_wealth = new_nominal_wealth + ppp_bonus
             unearned_increment = ppp_bonus
 
@@ -389,11 +407,15 @@ class ImperialRentSystem:
             graph.nodes[target_id]["ppp_multiplier"] = ppp_multiplier
 
             # Record value flow (nominal)
-            graph.edges[source_id, target_id]["value_flow"] = nominal_wages
+            graph.edges[source_id, target_id]["value_flow"] = total_wages
 
-            # Sprint 3.4.4: Track wages as pool outflow
-            tick_context["wages_outflow"] += nominal_wages
-            tick_context["current_pool"] -= nominal_wages
+            # Track ONLY the bonus as pool outflow (productivity is not from pool)
+            # This is the key insight: productivity passes through, bonus depletes
+            actual_bonus_paid = min(super_wage_bonus, total_wages - productivity_value)
+            actual_bonus_paid = max(0.0, actual_bonus_paid)  # Safety clamp
+            tick_context["wages_outflow"] += actual_bonus_paid
+            tick_context["current_pool"] -= actual_bonus_paid
+            available_pool = tick_context["current_pool"]  # Update for next iteration
 
     def _process_subsidy_phase(
         self,

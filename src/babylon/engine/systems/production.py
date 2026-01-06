@@ -7,6 +7,15 @@ Workers (PERIPHERY_PROLETARIAT, LABOR_ARISTOCRACY) produce value based on:
 - Their territory's biocapacity ratio (biocapacity / max_biocapacity)
 - The base_labor_power configuration parameter
 
+Amin/Wallerstein Model (Labor Aristocracy):
+    The LA produces value, but their wages are HIGHER than productivity due to
+    super-profits extracted from the periphery. The difference is the "imperial bribe."
+
+    Production routing:
+    - PERIPHERY_PROLETARIAT: Production goes directly to worker wealth
+    - LABOR_ARISTOCRACY: Production routes to employer (Core Bourgeoisie),
+      then wages phase pays back productivity + super-wage bonus from rent pool
+
 After calculating production, this system sets extraction_intensity on each
 territory, enabling MetabolismSystem to calculate biocapacity depletion.
 
@@ -28,13 +37,14 @@ if TYPE_CHECKING:
 
 from babylon.engine.systems.protocol import ContextType
 
-# Worker roles that produce value (labor power)
-_PRODUCER_ROLES: frozenset[SocialRole] = frozenset(
-    {
-        SocialRole.PERIPHERY_PROLETARIAT,
-        SocialRole.LABOR_ARISTOCRACY,
-    }
-)
+# Direct producers: receive production directly (self-employed/exploited)
+_DIRECT_PRODUCER_ROLES: frozenset[SocialRole] = frozenset({SocialRole.PERIPHERY_PROLETARIAT})
+
+# Employed producers: production routes to employer (Amin/Wallerstein model)
+_EMPLOYED_PRODUCER_ROLES: frozenset[SocialRole] = frozenset({SocialRole.LABOR_ARISTOCRACY})
+
+# All producer roles (union for filtering)
+_PRODUCER_ROLES: frozenset[SocialRole] = _DIRECT_PRODUCER_ROLES | _EMPLOYED_PRODUCER_ROLES
 
 
 class ProductionSystem:
@@ -63,9 +73,12 @@ class ProductionSystem:
         """Generate wealth for workers and set extraction_intensity.
 
         Iterates all social_class nodes. For active workers with TENANCY
-        edges, calculates production based on territory health and adds
-        it to their wealth. Also accumulates production per territory
-        to set extraction_intensity for MetabolismSystem.
+        edges, calculates production based on territory health.
+
+        Production routing (Amin/Wallerstein model):
+        - Direct producers (periphery): Production added to worker wealth
+        - Employed producers (LA): Production routed to employer, stored
+          in graph metadata for wages phase to pay back with bonus
 
         NOTE: base_labor_power is an annual rate, converted to weekly here
         to match ImperialRentSystem's timescale conversion.
@@ -77,6 +90,9 @@ class ProductionSystem:
 
         # Track production per territory for extraction_intensity
         territory_production: dict[str, float] = {}
+
+        # Track LA production for wages phase (Amin/Wallerstein model)
+        la_production: dict[str, float] = {}
 
         for node_id, data in graph.nodes(data=True):
             # Skip non-entity nodes (territories, etc.)
@@ -108,16 +124,37 @@ class ProductionSystem:
             # Mass Line: Scale production by population (demographic block size)
             population = data.get("population", 1)
 
-            # Calculate and add production to wealth
+            # Calculate production value
             produced_value = (base_labor_power * population) * bio_ratio
             current_wealth = data.get("wealth", 0.0)
-            graph.nodes[node_id]["wealth"] = current_wealth + produced_value
+
+            # Route production based on role type
+            if role in _DIRECT_PRODUCER_ROLES:
+                # Direct producers: production goes to worker wealth
+                graph.nodes[node_id]["wealth"] = current_wealth + produced_value
+            elif role in _EMPLOYED_PRODUCER_ROLES:
+                # Employed producers (LA): production routes to employer
+                # Wages phase will pay back productivity + super-wage bonus
+                employer_id = self._find_employer(graph, node_id)
+                if employer_id is not None:
+                    # Route production to employer's wealth
+                    employer_wealth = graph.nodes[employer_id].get("wealth", 0.0)
+                    graph.nodes[employer_id]["wealth"] = employer_wealth + produced_value
+                    # Store production for wages phase
+                    la_production[node_id] = produced_value
+                else:
+                    # Fallback: no employer found, LA produces directly
+                    # This shouldn't happen in a properly configured scenario
+                    graph.nodes[node_id]["wealth"] = current_wealth + produced_value
 
             # Accumulate production by territory for extraction_intensity
             if territory_id and produced_value > 0:
                 territory_production[territory_id] = (
                     territory_production.get(territory_id, 0.0) + produced_value
                 )
+
+        # Store LA production for wages phase (ImperialRentSystem)
+        graph.graph["la_production"] = la_production
 
         # Set extraction_intensity on all territories
         self._update_extraction_intensities(graph, territory_production)
@@ -135,6 +172,25 @@ class ProductionSystem:
         for _, target_id, edge_data in graph.out_edges(worker_id, data=True):
             if edge_data.get("edge_type") == EdgeType.TENANCY:
                 return target_id
+        return None
+
+    def _find_employer(self, graph: nx.DiGraph[str], worker_id: str) -> str | None:
+        """Find employer via incoming WAGES edge (employer -> worker).
+
+        In the Amin/Wallerstein model, the Labor Aristocracy works for the
+        Core Bourgeoisie. The employer is identified by the source of WAGES
+        edges pointing to the worker.
+
+        Args:
+            graph: The world graph.
+            worker_id: The LA worker node ID.
+
+        Returns:
+            Employer node ID if found, None otherwise.
+        """
+        for source_id, _, edge_data in graph.in_edges(worker_id, data=True):
+            if edge_data.get("edge_type") == EdgeType.WAGES:
+                return source_id
         return None
 
     def _update_extraction_intensities(

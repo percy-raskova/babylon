@@ -12,7 +12,7 @@ Implement all recommendations from the [Unit Test Health Assessment](../research
 | Phase 2: Hypothesis Testing | ✅ COMPLETE | 31 property-based tests across 2 files |
 | Phase 3: Data Loader Tests | ✅ COMPLETE | 17 test files created (1079 data tests) |
 | Phase 4: Parametrization | ✅ COMPLETE | 147+ markers across 4 refactored files |
-| Phase 5: Mock Patterns | ❌ NOT STARTED | Guidelines not yet documented |
+| Phase 5: Mock Patterns | ✅ COMPLETE | tests/README.md created, fixtures added |
 | Phase 6: Import Errors | ❌ NOT STARTED | 2 integration tests still broken |
 
 ### YAML-First Constants Architecture (2026-01-05)
@@ -901,6 +901,19 @@ def test_territory_rejects_invalid_values(field: str, invalid_values: list) -> N
 ### Overview
 Establish consistent mock patterns using `spec=` for type safety and documenting patterns in conftest.
 
+### Status: ✅ COMPLETE
+
+**Implementation Summary** (2026-01-05):
+- Created `tests/README.md` with comprehensive mock pattern guidelines
+- Added 4 shared mock fixtures to root `tests/conftest.py`:
+  - `mock_llm_provider` (spec=LLMProvider)
+  - `mock_chroma_client` (plain MagicMock for external lib)
+  - `mock_chroma_collection` (plain MagicMock)
+  - `mock_simulation` (spec=Simulation)
+- Fixed duplicate `_isolate_random_state` fixture in conftest.py
+- Fixed pre-existing mypy error in mutmut patch (str | None type)
+- All 4009 unit tests passing
+
 ### Changes Required:
 
 #### 1. Document Mock Guidelines
@@ -991,13 +1004,13 @@ def test_something(mock_llm_provider):
 ### Success Criteria:
 
 #### Automated Verification:
-- [ ] All tests pass after mock refactoring
-- [ ] No mypy errors related to mock usage
-- [ ] Grep for `MagicMock()` without spec shows only external library mocks
+- [x] All tests pass after mock refactoring: `poetry run pytest tests/unit -m "not ai and not slow"` → **4009 passed**
+- [x] No mypy errors related to mock usage: `poetry run mypy tests/conftest.py` → Success
+- [x] Grep for `MagicMock()` without spec shows only external library mocks → Verified (ChromaDB, HTTP responses)
 
 #### Manual Verification:
-- [ ] Review mock fixtures are appropriately scoped (function vs session)
-- [ ] Document any intentional exceptions to spec= rule
+- [x] Review mock fixtures are appropriately scoped (function vs session)
+- [x] Document any intentional exceptions to spec= rule
 
 ---
 

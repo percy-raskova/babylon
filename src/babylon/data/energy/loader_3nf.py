@@ -28,9 +28,9 @@ from sqlalchemy import delete
 
 from babylon.data.energy.api_client import (
     PRIORITY_MSN_CODES,
-    EIAAPIError,
     EnergyAPIClient,
 )
+from babylon.data.exceptions import EIAAPIError
 from babylon.data.loader_base import DataLoader, LoadStats
 from babylon.data.normalize.schema import (
     DimDataSource,

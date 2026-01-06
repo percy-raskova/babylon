@@ -79,7 +79,8 @@ class GeographicHierarchyLoader(DataLoader):
             LoadStats with count of hierarchy records loaded.
         """
         stats = LoadStats(source="geography")
-        source_year = self.config.census_year
+        # Use most recent year from census_years for hierarchy data
+        source_year = self.config.census_years[-1] if self.config.census_years else 2022
 
         if verbose:
             print(f"Loading geographic hierarchy for year {source_year}")

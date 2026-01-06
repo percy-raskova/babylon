@@ -28,13 +28,13 @@ class TestGeographicHierarchyLoaderInit:
         """Loader initializes with default LoaderConfig."""
         loader = GeographicHierarchyLoader()
         assert loader.config is not None
-        assert loader.config.census_year == 2022
+        assert loader.config.census_years == list(range(2009, 2024))
 
     def test_init_with_custom_config(self) -> None:
         """Loader accepts custom LoaderConfig."""
-        config = LoaderConfig(census_year=2021)
+        config = LoaderConfig(census_years=[2021])
         loader = GeographicHierarchyLoader(config)
-        assert loader.config.census_year == 2021
+        assert loader.config.census_years == [2021]
 
 
 @pytest.mark.unit
@@ -232,10 +232,10 @@ class TestHierarchyRecordCreation:
 class TestConfigIntegration:
     """Tests for LoaderConfig integration."""
 
-    def test_uses_census_year_from_config(self) -> None:
-        """Loader uses census_year from config for source_year."""
-        config = LoaderConfig(census_year=2020)
+    def test_uses_census_years_from_config(self) -> None:
+        """Loader uses census_years from config."""
+        config = LoaderConfig(census_years=[2020])
         loader = GeographicHierarchyLoader(config)
 
         # Verify config is accessible
-        assert loader.config.census_year == 2020
+        assert loader.config.census_years == [2020]

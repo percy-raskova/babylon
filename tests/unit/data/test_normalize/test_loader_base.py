@@ -29,10 +29,10 @@ if TYPE_CHECKING:
 class TestLoaderConfigDefaults:
     """Tests for LoaderConfig default values."""
 
-    def test_census_year_default(self) -> None:
-        """Census year should default to 2022."""
+    def test_census_years_default(self) -> None:
+        """Census years should default to 2009-2023 (15 years)."""
         config = LoaderConfig()
-        assert config.census_year == 2022
+        assert config.census_years == list(range(2009, 2024))
 
     def test_fred_year_range_default(self) -> None:
         """FRED year range should default to 1990-2024."""
@@ -95,10 +95,10 @@ class TestLoaderConfigDefaults:
 class TestLoaderConfigOverrides:
     """Tests for LoaderConfig value overrides."""
 
-    def test_override_census_year(self) -> None:
-        """Census year should be overridable."""
-        config = LoaderConfig(census_year=2021)
-        assert config.census_year == 2021
+    def test_override_census_years(self) -> None:
+        """Census years should be overridable."""
+        config = LoaderConfig(census_years=[2021, 2022])
+        assert config.census_years == [2021, 2022]
 
     def test_override_fred_range(self) -> None:
         """FRED year range should be overridable."""
@@ -118,8 +118,8 @@ class TestLoaderConfigOverrides:
 
     def test_partial_override_preserves_defaults(self) -> None:
         """Overriding one field should preserve other defaults."""
-        config = LoaderConfig(census_year=2020)
-        assert config.census_year == 2020
+        config = LoaderConfig(census_years=[2020])
+        assert config.census_years == [2020]
         assert config.fred_start_year == 1990  # Default preserved
         assert config.batch_size == 10_000  # Default preserved
 
@@ -135,7 +135,7 @@ class TestLoaderConfigDataclass:
     def test_has_expected_fields(self) -> None:
         """LoaderConfig should have all expected fields."""
         expected_fields = {
-            "census_year",
+            "census_years",
             "fred_start_year",
             "fred_end_year",
             "energy_start_year",

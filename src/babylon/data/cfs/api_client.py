@@ -19,6 +19,8 @@ from typing import Any
 
 import httpx
 
+from babylon.data.exceptions import CFSAPIError
+
 logger = logging.getLogger(__name__)
 
 # CFS API configuration
@@ -29,15 +31,6 @@ DEFAULT_CFS_YEAR = 2022
 REQUEST_DELAY_SECONDS = 0.5
 MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2.0
-
-
-@dataclass
-class CFSAPIError(Exception):
-    """Error from Census CFS API."""
-
-    status_code: int
-    message: str
-    url: str
 
 
 @dataclass

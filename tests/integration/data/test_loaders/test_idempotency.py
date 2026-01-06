@@ -65,7 +65,7 @@ def isolated_session(isolated_engine: Engine) -> Generator[Session, None, None]:
 def fast_config() -> LoaderConfig:
     """Minimal config for fast testing."""
     return LoaderConfig(
-        census_year=2022,
+        census_years=[2022],
         fred_start_year=2022,
         fred_end_year=2022,
         energy_start_year=2022,

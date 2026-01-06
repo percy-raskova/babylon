@@ -27,7 +27,8 @@ class LoaderConfig:
     changes by adjusting year ranges, geographic filters, or batch sizes.
 
     Temporal Parameters (per data source):
-        census_year: ACS 5-year estimate vintage (e.g., 2022 = 2018-2022 estimates).
+        census_years: List of ACS 5-year estimate vintages (default: 2009-2023).
+            Each year represents a 5-year period (e.g., 2022 = 2018-2022 estimates).
         fred_start_year: Start year for FRED time series data.
         fred_end_year: End year for FRED time series data.
         energy_start_year: Start year for EIA energy data.
@@ -52,15 +53,17 @@ class LoaderConfig:
 
         # Custom config - single state, reduced year range
         config = LoaderConfig(
-            census_year=2021,
+            census_years=[2021, 2022],  # Load only 2021 and 2022
             fred_start_year=2000,
             fred_end_year=2023,
             state_fips_list=["06"],  # California only
         )
     """
 
-    # Temporal - Census (single year for 5-year estimates)
-    census_year: int = 2022
+    # Temporal - Census (list of years for multi-year loading)
+    census_years: list[int] = field(
+        default_factory=lambda: list(range(2009, 2024))  # 2009-2023 inclusive (15 years)
+    )
 
     # Temporal - FRED (time series range)
     fred_start_year: int = 1990
@@ -169,15 +172,17 @@ class DataLoader(ABC):
         class CensusLoader(DataLoader):
             def load(self, session: Session, reset: bool = True, **kwargs) -> LoadStats:
                 stats = LoadStats(source="census")
-                year = self.config.census_year  # Use config parameter
+                years = self.config.census_years  # Use config parameter
                 with session.begin():
                     if reset:
                         self.clear_tables(session)
-                    # ... load data for specified year ...
+                    for year in years:
+                        # ... load data for specified year ...
+                        pass
                 return stats
 
         # Use with custom config
-        config = LoaderConfig(census_year=2021, state_fips_list=["06"])
+        config = LoaderConfig(census_years=[2021], state_fips_list=["06"])
         loader = CensusLoader(config)
         stats = loader.load(session)
     """

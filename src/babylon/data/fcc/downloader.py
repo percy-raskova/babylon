@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from babylon.data.exceptions import FCCAPIError
+
 if TYPE_CHECKING:
     pass
 
@@ -37,24 +39,6 @@ DEFAULT_TIMEOUT = 60.0  # Longer timeout for file downloads
 # Environment variable names for credentials
 FCC_USERNAME_ENV = "FCC_USERNAME"
 FCC_API_KEY_ENV = "FCC_API_KEY"
-
-
-@dataclass
-class FCCAPIError(Exception):
-    """Error from FCC BDC API.
-
-    Attributes:
-        status_code: HTTP status code.
-        message: Error message from API.
-        url: Request URL that caused the error.
-    """
-
-    status_code: int
-    message: str
-    url: str
-
-    def __str__(self) -> str:
-        return f"FCC API Error {self.status_code}: {self.message} (URL: {self.url})"
 
 
 @dataclass

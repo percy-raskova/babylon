@@ -21,6 +21,8 @@ from typing import Any
 
 import httpx
 
+from babylon.data.exceptions import EIAAPIError
+
 logger = logging.getLogger(__name__)
 
 # EIA API v2 configuration
@@ -34,15 +36,6 @@ RETRY_BACKOFF_FACTOR = 2.0
 
 # Pagination limits
 MAX_ROWS_PER_REQUEST = 5000
-
-
-@dataclass
-class EIAAPIError(Exception):
-    """Error from EIA API."""
-
-    status_code: int
-    message: str
-    url: str
 
 
 @dataclass

@@ -5,6 +5,8 @@ This module provides a convenient import path for common exceptions.
 Hierarchy:
     BabylonError (base)
     ├── InfrastructureError - retryable I/O, network, database errors
+    │   ├── DataAPIError - data layer REST API errors (Census, FRED, EIA, FCC, etc.)
+    │   │   └── See babylon.data.exceptions for specific API errors
     │   ├── DatabaseError
     │   └── StorageError - files, checkpoints, persistence
     ├── ValidationError - bad input, schema violations
@@ -19,6 +21,7 @@ Hierarchy:
 from babylon.utils.exceptions import (
     BabylonError,
     ConfigurationError,
+    DataAPIError,
     DatabaseError,
     InfrastructureError,
     LLMError,
@@ -34,6 +37,7 @@ __all__ = [
     "BabylonError",
     # Infrastructure layer
     "InfrastructureError",
+    "DataAPIError",
     "DatabaseError",
     "StorageError",
     # Validation layer

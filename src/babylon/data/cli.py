@@ -68,8 +68,14 @@ def load_config_from_yaml(config_file: Path) -> LoaderConfig:
         data = yaml.safe_load(f)
 
     # Convert keys to match LoaderConfig field names
+    # Support both old (census_year: int) and new (census_years: list) config formats
+    census_years = data.get("census_years")
+    if census_years is None:
+        # Backwards compat: convert old census_year to census_years list
+        census_year = data.get("census_year", 2022)
+        census_years = [census_year]
     return LoaderConfig(
-        census_year=data.get("census_year", 2022),
+        census_years=census_years,
         fred_start_year=data.get("fred_start_year", 1990),
         fred_end_year=data.get("fred_end_year", 2024),
         energy_start_year=data.get("energy_start_year", 1990),
@@ -128,7 +134,7 @@ def _build_config(
     config = load_config_from_yaml(config_file) if config_file else LoaderConfig()
 
     if census_year is not None:
-        config.census_year = census_year
+        config.census_years = [census_year]
     if fred_start is not None:
         config.fred_start_year = fred_start
     if fred_end is not None:
@@ -346,7 +352,7 @@ def census(
     from babylon.data.normalize.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(
-        census_year=year,
+        census_years=[year],
         state_fips_list=parse_states(states),
         verbose=not quiet,
     )

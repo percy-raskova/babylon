@@ -15,7 +15,7 @@ Usage:
     from babylon.data.loader_base import LoaderConfig
     from babylon.data.normalize.database import get_normalized_session
 
-    config = LoaderConfig(census_year=2022)
+    config = LoaderConfig(census_years=[2022])
     loader = CensusLoader(config)
 
     with get_normalized_session() as session:
@@ -30,7 +30,6 @@ Usage:
 
 from babylon.data.census.api_client import (
     CensusAPIClient,
-    CensusAPIError,
     CountyData,
     VariableMetadata,
     fetch_county_table,
@@ -70,6 +69,7 @@ from babylon.data.census.schema import (
     CensusWageIncome,
     CensusWorkerClass,
 )
+from babylon.data.exceptions import CensusAPIError
 
 __all__ = [
     # Database

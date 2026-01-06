@@ -24,13 +24,13 @@ class TestCFSLoaderInit:
         """Loader initializes with default LoaderConfig."""
         loader = CFSLoader()
         assert loader.config is not None
-        assert loader.config.census_year == 2022
+        assert loader.config.census_years == list(range(2009, 2024))
 
     def test_init_with_custom_config(self) -> None:
         """Loader accepts custom LoaderConfig."""
-        config = LoaderConfig(census_year=2017)
+        config = LoaderConfig(census_years=[2017])
         loader = CFSLoader(config)
-        assert loader.config.census_year == 2017
+        assert loader.config.census_years == [2017]
 
 
 @pytest.mark.unit

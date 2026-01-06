@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from babylon.data.exceptions import ArcGISAPIError
+
 if TYPE_CHECKING:
     pass
 
@@ -30,24 +32,6 @@ REQUEST_DELAY_SECONDS = 0.2  # Conservative rate limit
 MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2.0
 DEFAULT_TIMEOUT = 30.0
-
-
-@dataclass
-class ArcGISAPIError(Exception):
-    """Error from ArcGIS REST API.
-
-    Attributes:
-        status_code: HTTP status code or ArcGIS error code.
-        message: Error message from API or HTTP response.
-        url: Request URL that caused the error.
-    """
-
-    status_code: int
-    message: str
-    url: str
-
-    def __str__(self) -> str:
-        return f"ArcGIS API Error {self.status_code}: {self.message} (URL: {self.url})"
 
 
 @dataclass

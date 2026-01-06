@@ -29,6 +29,7 @@ API Documentation:
     https://fred.stlouisfed.org/docs/api/fred/
 """
 
+from babylon.data.exceptions import FredAPIError
 from babylon.data.fred.api_client import (
     DFA_ASSET_CATEGORIES,
     DFA_WEALTH_CLASSES,
@@ -38,7 +39,6 @@ from babylon.data.fred.api_client import (
     NATIONAL_SERIES,
     US_STATES,
     FredAPIClient,
-    FredAPIError,
     Observation,
     SeriesData,
     SeriesMetadata,

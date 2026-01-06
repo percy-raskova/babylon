@@ -158,6 +158,45 @@ class ObserverError(BabylonError):
         super().__init__(message, error_code=error_code or "OBS_001", details=details)
 
 
+class DataAPIError(InfrastructureError):
+    """Base class for data layer API errors.
+
+    These errors represent failures when communicating with external data REST APIs
+    (Census Bureau, FRED, EIA, FCC, etc.). They include HTTP status information
+    and the URL that caused the failure.
+
+    Distinct from AI/LLM API errors (Claude, DeepSeek, etc.) which would use
+    different exception classes under ObserverError.
+
+    Error codes: DAPI_XXX
+
+    Attributes:
+        status_code: HTTP status code (0 for connection/timeout errors).
+        message: Error message from API or description of failure.
+        url: Request URL that caused the error.
+    """
+
+    _service_name: str = "Data API"  # Override in subclasses
+
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        url: str,
+        error_code: str | None = None,
+    ) -> None:
+        self.status_code = status_code
+        self.url = url
+        super().__init__(
+            message=message,
+            error_code=error_code or f"DAPI_{status_code:03d}",
+            details={"status_code": status_code, "url": url},
+        )
+
+    def __str__(self) -> str:
+        return f"{self._service_name} Error {self.status_code}: {self.message} (URL: {self.url})"
+
+
 # DatabaseError is now under InfrastructureError
 class DatabaseError(InfrastructureError):
     """Raised when database operations fail.

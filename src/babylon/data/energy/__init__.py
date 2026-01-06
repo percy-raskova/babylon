@@ -37,7 +37,6 @@ Usage:
 from babylon.data.energy.api_client import (
     MSN_BY_CATEGORY,
     PRIORITY_MSN_CODES,
-    EIAAPIError,
     EnergyAPIClient,
     EnergyObservation,
     EnergySeriesData,
@@ -50,6 +49,7 @@ from babylon.data.energy.schema import (
     EnergySeries,
     EnergyTable,
 )
+from babylon.data.exceptions import EIAAPIError
 
 __all__ = [
     # API Client (EIA v2)

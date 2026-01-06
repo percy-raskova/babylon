@@ -201,7 +201,7 @@ def minimal_config() -> LoaderConfig:
     Reduces year ranges and batch sizes to speed up integration tests.
     """
     return LoaderConfig(
-        census_year=2022,
+        census_years=[2022],
         fred_start_year=2020,
         fred_end_year=2022,
         energy_start_year=2020,

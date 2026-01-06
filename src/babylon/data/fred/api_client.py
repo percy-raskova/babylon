@@ -19,6 +19,8 @@ from typing import Any
 
 import httpx
 
+from babylon.data.exceptions import FredAPIError
+
 logger = logging.getLogger(__name__)
 
 # FRED API configuration
@@ -30,15 +32,6 @@ DEFAULT_FILE_TYPE = "json"
 REQUEST_DELAY_SECONDS = 0.5
 MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2.0
-
-
-@dataclass
-class FredAPIError(Exception):
-    """Error from FRED API."""
-
-    status_code: int
-    message: str
-    url: str
 
 
 @dataclass

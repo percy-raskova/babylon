@@ -14,7 +14,7 @@ Usage:
     from babylon.data import LoaderConfig
     from babylon.data.normalize.database import get_normalized_session_factory
 
-    config = LoaderConfig(census_year=2022, state_fips_list=["06"])  # CA only
+    config = LoaderConfig(census_years=[2022], state_fips_list=["06"])  # CA only
     loader = CensusLoader(config)
 
     session_factory = get_normalized_session_factory()
@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
 from tqdm import tqdm  # type: ignore[import-untyped]
 
@@ -50,8 +51,10 @@ from babylon.data.normalize.schema import (
     DimIncomeBracket,
     DimOccupation,
     DimPovertyCategory,
+    DimRace,
     DimRentBurden,
     DimState,
+    DimTime,
     DimWorkerClass,
     FactCensusCommute,
     FactCensusEducation,
@@ -78,6 +81,266 @@ logger = logging.getLogger(__name__)
 ORIGINAL_TABLES = ["B19001", "B19013", "B23025", "B24080", "B25003", "B25064", "B25070", "C24010"]
 MARXIAN_TABLES = ["B23020", "B17001", "B15003", "B19083", "B08301", "B19052", "B19053", "B19054"]
 ALL_TABLES = ORIGINAL_TABLES + MARXIAN_TABLES
+
+# Race code definitions following Census A-I suffix scheme
+# T = Total (base table without race suffix), A-I = race-iterated tables
+RACE_CODES: list[dict[str, object]] = [
+    {
+        "code": "T",
+        "name": "Total (all races)",
+        "short": "Total",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 0,
+    },
+    {
+        "code": "A",
+        "name": "White alone",
+        "short": "White",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 1,
+    },
+    {
+        "code": "B",
+        "name": "Black or African American alone",
+        "short": "Black",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 2,
+    },
+    {
+        "code": "C",
+        "name": "American Indian and Alaska Native alone",
+        "short": "AIAN",
+        "hispanic": False,
+        "indigenous": True,
+        "order": 3,
+    },
+    {
+        "code": "D",
+        "name": "Asian alone",
+        "short": "Asian",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 4,
+    },
+    {
+        "code": "E",
+        "name": "Native Hawaiian and Other Pacific Islander alone",
+        "short": "NHPI",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 5,
+    },
+    {
+        "code": "F",
+        "name": "Some other race alone",
+        "short": "Other",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 6,
+    },
+    {
+        "code": "G",
+        "name": "Two or more races",
+        "short": "Multiracial",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 7,
+    },
+    {
+        "code": "H",
+        "name": "White alone, not Hispanic or Latino",
+        "short": "White NH",
+        "hispanic": False,
+        "indigenous": False,
+        "order": 8,
+    },
+    {
+        "code": "I",
+        "name": "Hispanic or Latino",
+        "short": "Hispanic",
+        "hispanic": True,
+        "indigenous": False,
+        "order": 9,
+    },
+]
+
+
+@dataclass(frozen=True)
+class FactTableSpec:
+    """Configuration for loading a Census fact table via the generic loader.
+
+    Supports three loading patterns:
+    - Dimension-iterated: Maps variable codes to dimension FKs (most tables)
+    - Scalar: Single value per county from a specific variable
+    - Hardcoded mapping: Uses explicit var_code -> dim_value mapping
+
+    Attributes:
+        table_id: Census table ID (e.g., "B19001").
+        fact_class: SQLAlchemy fact model class.
+        label: Label for tqdm progress bar.
+        value_field: Field name on fact model for the measure value.
+        value_type: Type of value - "int" or "decimal".
+        dim_class: Dimension model class for FK lookup (optional).
+        dim_code_attr: Attribute on dimension for code lookup (e.g., "bracket_code").
+        fact_dim_attr: Attribute on fact for dimension FK (e.g., "bracket_id").
+        skip_total: Whether to skip the _001E total variable.
+        extract_gender: Whether to extract gender from variable labels.
+        scalar_var: For scalar tables, the specific variable to fetch.
+        var_mapping: For hardcoded mapping, dict of var_code -> dimension value.
+    """
+
+    # Required fields
+    table_id: str
+    fact_class: type
+    label: str
+    value_field: str
+    value_type: Literal["int", "decimal"] = "int"
+
+    # Dimension mapping (for iterated tables)
+    dim_class: type | None = None
+    dim_code_attr: str = ""
+    fact_dim_attr: str = ""
+
+    # Behavior flags
+    skip_total: bool = True
+    extract_gender: bool = False
+
+    # Scalar tables (single value per county)
+    scalar_var: str | None = None
+
+    # Hardcoded variable mapping (for housing)
+    var_mapping: dict[str, str] = field(default_factory=dict)
+
+
+# Fact table specifications for the generic loader
+# Handles 12 of 14 fact tables; hours and income_sources have special loaders
+FACT_TABLE_SPECS: list[FactTableSpec] = [
+    # Pattern A: Dimension-iterated tables
+    FactTableSpec(
+        table_id="B19001",
+        fact_class=FactCensusIncome,
+        label="B19001",
+        dim_class=DimIncomeBracket,
+        dim_code_attr="bracket_code",
+        fact_dim_attr="bracket_id",
+        value_field="household_count",
+        skip_total=True,
+    ),
+    FactTableSpec(
+        table_id="B23025",
+        fact_class=FactCensusEmployment,
+        label="B23025",
+        dim_class=DimEmploymentStatus,
+        dim_code_attr="status_code",
+        fact_dim_attr="status_id",
+        value_field="person_count",
+        skip_total=False,
+    ),
+    FactTableSpec(
+        table_id="B25070",
+        fact_class=FactCensusRentBurden,
+        label="B25070",
+        dim_class=DimRentBurden,
+        dim_code_attr="bracket_code",
+        fact_dim_attr="burden_id",
+        value_field="household_count",
+        skip_total=True,
+    ),
+    FactTableSpec(
+        table_id="B15003",
+        fact_class=FactCensusEducation,
+        label="B15003",
+        dim_class=DimEducationLevel,
+        dim_code_attr="level_code",
+        fact_dim_attr="level_id",
+        value_field="person_count",
+        skip_total=False,
+    ),
+    FactTableSpec(
+        table_id="B08301",
+        fact_class=FactCensusCommute,
+        label="B08301",
+        dim_class=DimCommuteMode,
+        dim_code_attr="mode_code",
+        fact_dim_attr="mode_id",
+        value_field="worker_count",
+        skip_total=False,
+    ),
+    FactTableSpec(
+        table_id="B17001",
+        fact_class=FactCensusPoverty,
+        label="B17001",
+        dim_class=DimPovertyCategory,
+        dim_code_attr="category_code",
+        fact_dim_attr="category_id",
+        value_field="person_count",
+        skip_total=False,
+    ),
+    # Pattern B: Scalar value tables
+    FactTableSpec(
+        table_id="B19013",
+        fact_class=FactCensusMedianIncome,
+        label="B19013",
+        value_field="median_income_usd",
+        value_type="decimal",
+        scalar_var="B19013_001E",
+    ),
+    FactTableSpec(
+        table_id="B25064",
+        fact_class=FactCensusRent,
+        label="B25064",
+        value_field="median_rent_usd",
+        value_type="decimal",
+        scalar_var="B25064_001E",
+    ),
+    FactTableSpec(
+        table_id="B19083",
+        fact_class=FactCensusGini,
+        label="B19083",
+        value_field="gini_coefficient",
+        value_type="decimal",
+        scalar_var="B19083_001E",
+    ),
+    # Pattern C: Gender-extracted dimension tables
+    FactTableSpec(
+        table_id="B24080",
+        fact_class=FactCensusWorkerClass,
+        label="B24080",
+        dim_class=DimWorkerClass,
+        dim_code_attr="class_code",
+        fact_dim_attr="class_id",
+        value_field="worker_count",
+        extract_gender=True,
+    ),
+    FactTableSpec(
+        table_id="C24010",
+        fact_class=FactCensusOccupation,
+        label="C24010",
+        dim_class=DimOccupation,
+        dim_code_attr="occupation_code",
+        fact_dim_attr="occupation_id",
+        value_field="worker_count",
+        extract_gender=True,
+    ),
+    # Pattern E: Hardcoded variable mapping
+    FactTableSpec(
+        table_id="B25003",
+        fact_class=FactCensusHousing,
+        label="B25003",
+        dim_class=DimHousingTenure,
+        dim_code_attr="tenure_type",
+        fact_dim_attr="tenure_id",
+        value_field="household_count",
+        var_mapping={
+            "B25003_001E": "total",
+            "B25003_002E": "owner",
+            "B25003_003E": "renter",
+        },
+    ),
+]
 
 # Default state FIPS codes (50 states + DC + PR)
 DEFAULT_STATE_FIPS = [
@@ -202,7 +465,7 @@ class CensusLoader(DataLoader):
         config: LoaderConfig controlling year, geographic scope, and operations.
 
     Example:
-        config = LoaderConfig(census_year=2022, state_fips_list=["06", "36"])
+        config = LoaderConfig(census_years=[2022], state_fips_list=["06", "36"])
         loader = CensusLoader(config)
         stats = loader.load(session, reset=True)
     """
@@ -214,6 +477,8 @@ class CensusLoader(DataLoader):
         self._fips_to_county: dict[str, int] = {}
         self._state_fips_to_id: dict[str, int] = {}
         self._gender_to_id: dict[str, int] = {}
+        self._race_code_to_id: dict[str, int] = {}
+        self._year_to_time_id: dict[int, int] = {}
         self._source_id: int | None = None
 
     def get_dimension_tables(self) -> list[type]:
@@ -229,6 +494,8 @@ class CensusLoader(DataLoader):
             DimDataSource,
             # Census-specific dimensions
             DimGender,
+            DimRace,  # Race dimension for disaggregated analysis
+            DimTime,  # Time dimension for multi-year loading
             DimIncomeBracket,
             DimEmploymentStatus,
             DimWorkerClass,
@@ -268,6 +535,10 @@ class CensusLoader(DataLoader):
     ) -> LoadStats:
         """Load Census data into 3NF schema.
 
+        Loads ACS 5-Year Estimates for all configured years and race groups.
+        Phase 2 infrastructure loads dimensions once (shared across years),
+        then iterates over years for fact loading.
+
         Args:
             session: SQLAlchemy session for the normalized database.
             reset: If True, delete existing census data before loading.
@@ -278,16 +549,25 @@ class CensusLoader(DataLoader):
             LoadStats with counts of loaded dimensions and facts.
         """
         stats = LoadStats(source="census")
-        year = self.config.census_year
+        census_years = self.config.census_years
         state_fips_list = self.config.state_fips_list or DEFAULT_STATE_FIPS
 
+        # Use first year for dimensions that need API metadata
+        initial_year = census_years[0] if census_years else 2022
+
         if verbose:
-            print(f"Loading ACS {year} 5-Year Estimates from Census API")
+            year_range = (
+                f"{min(census_years)}-{max(census_years)}"
+                if len(census_years) > 1
+                else str(census_years[0])
+            )
+            print("Loading ACS 5-Year Estimates from Census API")
+            print(f"Years: {year_range} ({len(census_years)} years)")
             print(f"States: {len(state_fips_list)} ({', '.join(state_fips_list[:5])}...)")
 
         try:
-            # Create API client
-            self._client = CensusAPIClient(year=year)
+            # Create API client for initial dimension loading
+            self._client = CensusAPIClient(year=initial_year)
 
             # Clear existing data if reset
             if reset:
@@ -296,12 +576,24 @@ class CensusLoader(DataLoader):
                 self.clear_tables(session)
                 session.flush()
 
-            # Load dimensions first
-            self._load_data_source(session, year)
+            # Load dimensions first (shared across all years)
+            self._load_data_source(session, initial_year)
             stats.dimensions_loaded["dim_data_source"] = 1
 
             self._load_genders(session)
             stats.dimensions_loaded["dim_gender"] = 3
+
+            # Load race dimension (10 records: T + A-I)
+            race_count = self._load_races(session)
+            stats.dimensions_loaded["dim_race"] = race_count
+            if verbose:
+                print(f"  Loaded {race_count} race categories")
+
+            # Load time dimension for all configured years
+            time_count = self._load_time_dimension(session)
+            stats.dimensions_loaded["dim_time"] = len(census_years)
+            if verbose:
+                print(f"  Loaded {time_count} new time records ({len(census_years)} total years)")
 
             state_count = self._load_states(session, state_fips_list, verbose)
             stats.dimensions_loaded["dim_state"] = state_count
@@ -339,60 +631,37 @@ class CensusLoader(DataLoader):
 
             session.flush()
 
-            # Load fact tables
-            income_count = self._load_fact_income(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_income"] = income_count
-            stats.api_calls += len(state_fips_list)
+            # Get time_id and race_id for Total (base tables)
+            # Phase 2: Load only first year with race_code="T" (Total)
+            # Phase 3 will add multi-year and race-iterated loading
+            time_id = self._year_to_time_id[initial_year]
+            race_id = self._race_code_to_id["T"]  # Total (all races)
 
-            median_count = self._load_fact_median_income(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_median_income"] = median_count
-            stats.api_calls += len(state_fips_list)
+            if verbose:
+                print(f"\n{'=' * 60}")
+                print(f"Loading facts for year {initial_year} (race: Total)")
+                print(f"{'=' * 60}")
 
-            emp_count = self._load_fact_employment(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_employment"] = emp_count
-            stats.api_calls += len(state_fips_list)
+            # Load fact tables via generic loader (12 tables)
+            for spec in FACT_TABLE_SPECS:
+                fact_count = self._load_fact_table(
+                    spec, session, state_fips_list, verbose, time_id, race_id
+                )
+                # Use fact class tablename for stats key
+                table_name: str = spec.fact_class.__tablename__  # type: ignore[attr-defined]
+                stats.facts_loaded[table_name] = fact_count
+                stats.api_calls += len(state_fips_list)
 
-            worker_count = self._load_fact_worker_class(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_worker_class"] = worker_count
-            stats.api_calls += len(state_fips_list)
-
-            occ_fact_count = self._load_fact_occupation(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_occupation"] = occ_fact_count
-            stats.api_calls += len(state_fips_list)
-
-            hours_count = self._load_fact_hours(session, state_fips_list, verbose)
+            # Load special case fact tables (2 tables with unique patterns)
+            # Pattern D: Gender-grouped aggregation (hours)
+            hours_count = self._load_fact_hours(session, state_fips_list, verbose, time_id, race_id)
             stats.facts_loaded["fact_census_hours"] = hours_count
             stats.api_calls += len(state_fips_list)
 
-            housing_count = self._load_fact_housing(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_housing"] = housing_count
-            stats.api_calls += len(state_fips_list)
-
-            rent_count = self._load_fact_rent(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_rent"] = rent_count
-            stats.api_calls += len(state_fips_list)
-
-            burden_fact_count = self._load_fact_rent_burden(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_rent_burden"] = burden_fact_count
-            stats.api_calls += len(state_fips_list)
-
-            edu_fact_count = self._load_fact_education(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_education"] = edu_fact_count
-            stats.api_calls += len(state_fips_list)
-
-            gini_count = self._load_fact_gini(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_gini"] = gini_count
-            stats.api_calls += len(state_fips_list)
-
-            commute_fact_count = self._load_fact_commute(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_commute"] = commute_fact_count
-            stats.api_calls += len(state_fips_list)
-
-            poverty_fact_count = self._load_fact_poverty(session, state_fips_list, verbose)
-            stats.facts_loaded["fact_census_poverty"] = poverty_fact_count
-            stats.api_calls += len(state_fips_list)
-
-            sources_count = self._load_fact_income_sources(session, state_fips_list, verbose)
+            # Pattern F: Multi-table join (income sources)
+            sources_count = self._load_fact_income_sources(
+                session, state_fips_list, verbose, time_id, race_id
+            )
             stats.facts_loaded["fact_census_income_sources"] = sources_count
             stats.api_calls += len(state_fips_list) * 3  # B19052, B19053, B19054
 
@@ -444,6 +713,64 @@ class CensusLoader(DataLoader):
             session.add(gender)
             session.flush()
             self._gender_to_id[code] = gender.gender_id
+
+    def _load_races(self, session: Session) -> int:
+        """Load race/ethnicity dimension (static, 10 records including Total).
+
+        Populates DimRace with Census race codes following the A-I suffix scheme.
+
+        Returns:
+            Number of race records loaded.
+        """
+        for race_data in RACE_CODES:
+            race = DimRace(
+                race_code=str(race_data["code"]),
+                race_name=str(race_data["name"]),
+                race_short_name=str(race_data["short"]),
+                is_hispanic_ethnicity=bool(race_data["hispanic"]),
+                is_indigenous=bool(race_data["indigenous"]),
+                display_order=int(race_data["order"]),  # type: ignore[call-overload]
+            )
+            session.add(race)
+        session.flush()
+
+        # Build lookup for fact loading
+        self._race_code_to_id = {r.race_code: r.race_id for r in session.query(DimRace).all()}
+
+        return len(RACE_CODES)
+
+    def _load_time_dimension(self, session: Session) -> int:
+        """Populate DimTime for all configured census years if not already present.
+
+        Creates annual time records for each year in config.census_years, enabling
+        multi-year Census data loading. Existing year records are reused.
+
+        Returns:
+            Number of time records created (newly added only).
+        """
+        existing_years = {t.year for t in session.query(DimTime).all()}
+        new_count = 0
+
+        for year in self.config.census_years:
+            if year not in existing_years:
+                time_record = DimTime(
+                    year=year,
+                    quarter=None,  # Annual data
+                    month=None,
+                    is_annual=True,
+                )
+                session.add(time_record)
+                new_count += 1
+
+        session.flush()
+
+        # Build lookup for all census years (including existing)
+        self._year_to_time_id = {
+            t.year: t.time_id
+            for t in session.query(DimTime).filter(DimTime.year.in_(self.config.census_years)).all()
+        }
+
+        return new_count
 
     def _load_states(
         self,
@@ -874,257 +1201,226 @@ class CensusLoader(DataLoader):
         return count
 
     # =========================================================================
-    # FACT TABLE LOADERS
+    # GENERIC FACT TABLE LOADER
     # =========================================================================
 
-    def _load_fact_income(
+    def _build_fact_kwargs(
         self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B19001 income distribution facts."""
-        assert self._client is not None
-        assert self._source_id is not None
+        spec: FactTableSpec,
+        county_id: int,
+        time_id: int,
+        race_id: int,
+        value: int | float,
+        dim_id: int | None = None,
+        gender_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Build kwargs dict for fact class instantiation.
 
-        # Get bracket_code -> bracket_id mapping
-        brackets = session.query(DimIncomeBracket).all()
-        bracket_map = {b.bracket_code: b.bracket_id for b in brackets}
+        Constructs the parameters needed to create a fact record, including
+        optional dimension FK and type-converted value field.
 
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B19001", disable=not verbose)
+        Args:
+            spec: Fact table specification.
+            county_id: FK to dim_county.
+            time_id: FK to dim_time.
+            race_id: FK to dim_race.
+            value: The measure value to store.
+            dim_id: Optional FK to the primary dimension.
+            gender_id: Optional FK to dim_gender.
 
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B19001", state_fips=state_fips)
+        Returns:
+            Dict of kwargs for fact class constructor.
+        """
+        kwargs: dict[str, Any] = {
+            "county_id": county_id,
+            "source_id": self._source_id,
+            "time_id": time_id,
+            "race_id": race_id,
+        }
 
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
+        # Add dimension FK if specified
+        if dim_id is not None and spec.fact_dim_attr:
+            kwargs[spec.fact_dim_attr] = dim_id
 
-                for var_code, value in county_data.values.items():
-                    # Skip total
-                    if var_code == "B19001_001E":
-                        continue
-                    if value is None:
-                        continue
+        # Add gender FK if specified
+        if gender_id is not None:
+            kwargs["gender_id"] = gender_id
 
-                    bracket_code = var_code.replace("E", "")
-                    bracket_id = bracket_map.get(bracket_code)
-                    if not bracket_id:
-                        continue
+        # Add value field with type conversion
+        if spec.value_type == "decimal":
+            kwargs[spec.value_field] = Decimal(str(value))
+        else:
+            kwargs[spec.value_field] = int(value)
 
-                    fact = FactCensusIncome(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        bracket_id=bracket_id,
-                        household_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
+        return kwargs
 
-            session.flush()
+    def _build_dimension_map(self, spec: FactTableSpec, session: Session) -> dict[str, int]:
+        """Build mapping from dimension code to dimension ID for a fact spec."""
+        dim_map: dict[str, int] = {}
+        if not spec.dim_class:
+            return dim_map
 
-        return count
+        dims: list[Any] = session.query(spec.dim_class).all()
+        for dim in dims:
+            code = getattr(dim, spec.dim_code_attr)
+            # Find the ID attribute - handle tenure_type special case
+            id_attr = spec.dim_code_attr.replace("_code", "_id")
+            if spec.dim_code_attr == "tenure_type":
+                id_attr = "tenure_id"
+            dim_map[code] = getattr(dim, id_attr)
+        return dim_map
 
-    def _load_fact_median_income(
+    def _process_county_facts(
         self,
+        spec: FactTableSpec,
         session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
+        county_id: int,
+        county_values: dict[str, int | float | None],
+        dim_map: dict[str, int],
+        variables: dict[str, Any],
+        time_id: int,
+        race_id: int,
     ) -> int:
-        """Load B19013 median income facts."""
-        assert self._client is not None
-        assert self._source_id is not None
+        """Process and create fact records for a single county.
 
+        Dispatches to the appropriate pattern based on spec configuration.
+        """
         count = 0
-        state_iter = tqdm(state_fips_list, desc="B19013", disable=not verbose)
 
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B19013", state_fips=state_fips)
+        # Pattern B: Scalar value (single variable per county)
+        if spec.scalar_var:
+            value = county_values.get(spec.scalar_var)
+            if value is not None:
+                kwargs = self._build_fact_kwargs(spec, county_id, time_id, race_id, value)
+                session.add(spec.fact_class(**kwargs))
+                count += 1
+            return count
 
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                value = county_data.values.get("B19013_001E")
+        # Pattern E: Hardcoded variable mapping
+        if spec.var_mapping:
+            for var_code, dim_value in spec.var_mapping.items():
+                value = county_values.get(var_code)
                 if value is None:
                     continue
+                dim_id = dim_map.get(dim_value)
+                if dim_id:
+                    kwargs = self._build_fact_kwargs(
+                        spec, county_id, time_id, race_id, value, dim_id
+                    )
+                    session.add(spec.fact_class(**kwargs))
+                    count += 1
+            return count
 
-                fact = FactCensusMedianIncome(
-                    county_id=county_id,
-                    source_id=self._source_id,
-                    median_income_usd=Decimal(str(value)),
+        # Pattern A/C: Dimension-iterated
+        for var_code, value in county_values.items():
+            if spec.skip_total and var_code.endswith("_001E"):
+                continue
+            if value is None:
+                continue
+
+            dim_code = var_code.replace("E", "")
+            dim_id = dim_map.get(dim_code)
+            if not dim_id:
+                continue
+
+            gender_id = None
+            if spec.extract_gender:
+                var_info = variables.get(var_code)
+                gender = _extract_gender(var_info.label if var_info else "")
+                gender_id = self._gender_to_id.get(gender, self._gender_to_id["total"])
+
+            kwargs = self._build_fact_kwargs(
+                spec, county_id, time_id, race_id, value, dim_id, gender_id
+            )
+            session.add(spec.fact_class(**kwargs))
+            count += 1
+
+        return count
+
+    def _load_fact_table(
+        self,
+        spec: FactTableSpec,
+        session: Session,
+        state_fips_list: list[str],
+        verbose: bool,
+        time_id: int,
+        race_id: int,
+    ) -> int:
+        """Generic fact table loader driven by FactTableSpec configuration.
+
+        Args:
+            spec: Fact table specification.
+            session: SQLAlchemy session.
+            state_fips_list: List of state FIPS codes to load.
+            verbose: Whether to show progress bar.
+            time_id: FK to dim_time for this load.
+            race_id: FK to dim_race for this load.
+
+        Returns:
+            Count of fact records created.
+        """
+        assert self._client is not None
+        assert self._source_id is not None
+
+        dim_map = self._build_dimension_map(spec, session)
+        count = 0
+        state_iter = tqdm(state_fips_list, desc=spec.label, disable=not verbose)
+
+        for state_fips in state_iter:
+            variables: dict[str, Any] = {}
+            if spec.extract_gender:
+                variables = self._client.get_variables(spec.table_id)
+
+            data = self._client.get_table_data(spec.table_id, state_fips=state_fips)
+
+            for county_data in data:
+                county_id = self._fips_to_county.get(county_data.fips)
+                if not county_id:
+                    continue
+
+                count += self._process_county_facts(
+                    spec,
+                    session,
+                    county_id,
+                    county_data.values,
+                    dim_map,
+                    variables,
+                    time_id,
+                    race_id,
                 )
-                session.add(fact)
-                count += 1
 
             session.flush()
 
         return count
 
-    def _load_fact_employment(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B23025 employment status facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get status_code -> status_id mapping
-        statuses = session.query(DimEmploymentStatus).all()
-        status_map = {s.status_code: s.status_id for s in statuses}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B23025", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B23025", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    if value is None:
-                        continue
-
-                    status_code = var_code.replace("E", "")
-                    status_id = status_map.get(status_code)
-                    if not status_id:
-                        continue
-
-                    fact = FactCensusEmployment(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        status_id=status_id,
-                        person_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_worker_class(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B24080 worker class facts with gender breakdown."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get class_code -> class_id mapping
-        classes = session.query(DimWorkerClass).all()
-        class_map = {c.class_code: c.class_id for c in classes}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B24080", disable=not verbose)
-
-        for state_fips in state_iter:
-            variables = self._client.get_variables("B24080")
-            data = self._client.get_table_data("B24080", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    if value is None:
-                        continue
-
-                    class_code = var_code.replace("E", "")
-                    class_id = class_map.get(class_code)
-                    if not class_id:
-                        continue
-
-                    # Determine gender from variable metadata
-                    var_info = variables.get(var_code)
-                    gender = _extract_gender(var_info.label if var_info else "")
-                    gender_id = self._gender_to_id.get(gender, self._gender_to_id["total"])
-
-                    fact = FactCensusWorkerClass(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        gender_id=gender_id,
-                        class_id=class_id,
-                        worker_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_occupation(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load C24010 occupation facts with gender breakdown."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get occupation_code -> occupation_id mapping
-        occupations = session.query(DimOccupation).all()
-        occ_map = {o.occupation_code: o.occupation_id for o in occupations}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="C24010", disable=not verbose)
-
-        for state_fips in state_iter:
-            variables = self._client.get_variables("C24010")
-            data = self._client.get_table_data("C24010", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    if value is None:
-                        continue
-
-                    occ_code = var_code.replace("E", "")
-                    occ_id = occ_map.get(occ_code)
-                    if not occ_id:
-                        continue
-
-                    var_info = variables.get(var_code)
-                    gender = _extract_gender(var_info.label if var_info else "")
-                    gender_id = self._gender_to_id.get(gender, self._gender_to_id["total"])
-
-                    fact = FactCensusOccupation(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        gender_id=gender_id,
-                        occupation_id=occ_id,
-                        worker_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
+    # =========================================================================
+    # SPECIAL CASE FACT LOADERS (Pattern D and F)
+    # =========================================================================
 
     def _load_fact_hours(
         self,
         session: Session,
         state_fips_list: list[str],
         verbose: bool,
+        time_id: int,
+        race_id: int,
     ) -> int:
-        """Load B23020 hours worked facts."""
+        """Load B23020 hours worked facts (Pattern D: gender-grouped aggregation).
+
+        This loader uses a special pattern that groups values by gender and
+        creates 3 facts per county (total, male, female) with aggregate/mean values.
+        Cannot be handled by the generic loader.
+
+        Args:
+            session: SQLAlchemy session.
+            state_fips_list: List of state FIPS codes.
+            verbose: Whether to show progress.
+            time_id: FK to dim_time.
+            race_id: FK to dim_race.
+
+        Returns:
+            Count of fact records created.
+        """
         assert self._client is not None
         assert self._source_id is not None
 
@@ -1170,326 +1466,10 @@ class CensusLoader(DataLoader):
                         county_id=county_id,
                         source_id=self._source_id,
                         gender_id=gender_id,
+                        time_id=time_id,
+                        race_id=race_id,
                         aggregate_hours=values["aggregate"],
                         mean_hours=values["mean"],
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_housing(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B25003 housing tenure facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get tenure mapping
-        tenures = session.query(DimHousingTenure).all()
-        tenure_map = {t.tenure_type: t.tenure_id for t in tenures}
-
-        tenure_codes = {
-            "B25003_001E": "total",
-            "B25003_002E": "owner",
-            "B25003_003E": "renter",
-        }
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B25003", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B25003", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, tenure_type in tenure_codes.items():
-                    value = county_data.values.get(var_code)
-                    if value is None:
-                        continue
-
-                    tenure_id = tenure_map.get(tenure_type)
-                    if not tenure_id:
-                        continue
-
-                    fact = FactCensusHousing(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        tenure_id=tenure_id,
-                        household_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_rent(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B25064 median rent facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B25064", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B25064", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                value = county_data.values.get("B25064_001E")
-                if value is None:
-                    continue
-
-                fact = FactCensusRent(
-                    county_id=county_id,
-                    source_id=self._source_id,
-                    median_rent_usd=Decimal(str(value)),
-                )
-                session.add(fact)
-                count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_rent_burden(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B25070 rent burden facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get burden mapping
-        burdens = session.query(DimRentBurden).all()
-        burden_map = {b.bracket_code: b.burden_id for b in burdens}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B25070", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B25070", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    # Skip total
-                    if var_code == "B25070_001E":
-                        continue
-                    if value is None:
-                        continue
-
-                    bracket_code = var_code.replace("E", "")
-                    burden_id = burden_map.get(bracket_code)
-                    if not burden_id:
-                        continue
-
-                    fact = FactCensusRentBurden(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        burden_id=burden_id,
-                        household_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_education(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B15003 education facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get level mapping
-        levels = session.query(DimEducationLevel).all()
-        level_map = {lv.level_code: lv.level_id for lv in levels}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B15003", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B15003", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    if value is None:
-                        continue
-
-                    level_code = var_code.replace("E", "")
-                    level_id = level_map.get(level_code)
-                    if not level_id:
-                        continue
-
-                    fact = FactCensusEducation(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        level_id=level_id,
-                        person_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_gini(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B19083 GINI coefficient facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B19083", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B19083", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                value = county_data.values.get("B19083_001E")
-                if value is None:
-                    continue
-
-                fact = FactCensusGini(
-                    county_id=county_id,
-                    source_id=self._source_id,
-                    gini_coefficient=Decimal(str(value)),
-                )
-                session.add(fact)
-                count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_commute(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B08301 commute mode facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get mode mapping
-        modes = session.query(DimCommuteMode).all()
-        mode_map = {m.mode_code: m.mode_id for m in modes}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B08301", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B08301", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    if value is None:
-                        continue
-
-                    mode_code = var_code.replace("E", "")
-                    mode_id = mode_map.get(mode_code)
-                    if not mode_id:
-                        continue
-
-                    fact = FactCensusCommute(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        mode_id=mode_id,
-                        worker_count=int(value),
-                    )
-                    session.add(fact)
-                    count += 1
-
-            session.flush()
-
-        return count
-
-    def _load_fact_poverty(
-        self,
-        session: Session,
-        state_fips_list: list[str],
-        verbose: bool,
-    ) -> int:
-        """Load B17001 poverty facts."""
-        assert self._client is not None
-        assert self._source_id is not None
-
-        # Get category mapping
-        categories = session.query(DimPovertyCategory).all()
-        cat_map = {c.category_code: c.category_id for c in categories}
-
-        count = 0
-        state_iter = tqdm(state_fips_list, desc="B17001", disable=not verbose)
-
-        for state_fips in state_iter:
-            data = self._client.get_table_data("B17001", state_fips=state_fips)
-
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                for var_code, value in county_data.values.items():
-                    if value is None:
-                        continue
-
-                    cat_code = var_code.replace("E", "")
-                    cat_id = cat_map.get(cat_code)
-                    if not cat_id:
-                        continue
-
-                    fact = FactCensusPoverty(
-                        county_id=county_id,
-                        source_id=self._source_id,
-                        category_id=cat_id,
-                        person_count=int(value),
                     )
                     session.add(fact)
                     count += 1
@@ -1503,8 +1483,25 @@ class CensusLoader(DataLoader):
         session: Session,
         state_fips_list: list[str],
         verbose: bool,
+        time_id: int,
+        race_id: int,
     ) -> int:
-        """Load B19052/B19053/B19054 income sources facts."""
+        """Load B19052/B19053/B19054 income sources facts (Pattern F: multi-table join).
+
+        This loader fetches 3 separate Census tables and joins them by FIPS code
+        to create a single fact record with nullable fields from each table.
+        Cannot be handled by the generic loader.
+
+        Args:
+            session: SQLAlchemy session.
+            state_fips_list: List of state FIPS codes.
+            verbose: Whether to show progress.
+            time_id: FK to dim_time.
+            race_id: FK to dim_race.
+
+        Returns:
+            Count of fact records created.
+        """
         assert self._client is not None
         assert self._source_id is not None
 
@@ -1539,6 +1536,8 @@ class CensusLoader(DataLoader):
                 fact = FactCensusIncomeSources(
                     county_id=county_id,
                     source_id=self._source_id,
+                    time_id=time_id,
+                    race_id=race_id,
                     total_households=_safe_int(wage_vals.get("B19052_001E")),
                     with_wage_income=_safe_int(wage_vals.get("B19052_002E")),
                     with_self_employment_income=_safe_int(self_emp_vals.get("B19053_002E")),

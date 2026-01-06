@@ -4,7 +4,7 @@ Provides properly normalized dimension and fact tables populated via ETL
 from research.sqlite. Optimized for imperial rent, surplus value, labor
 aristocracy, and unequal exchange analysis.
 
-Dimensions (32 tables):
+Dimensions (33 tables):
     Geographic: dim_state, dim_county, dim_metro_area, dim_geographic_hierarchy,
                 dim_cfs_area, dim_country, dim_import_source
     Bridge: bridge_county_metro, bridge_cfs_county
@@ -15,12 +15,16 @@ Dimensions (32 tables):
     Energy: dim_energy_table, dim_energy_series
     FRED: dim_wealth_class, dim_asset_category, dim_fred_series
     Commodities: dim_commodity, dim_commodity_metric, dim_sctg_commodity
-    Metadata: dim_time, dim_gender, dim_data_source
+    Metadata: dim_time, dim_gender, dim_data_source, dim_race
     Coercive: dim_coercive_type
 
 Facts (28 tables):
     Census (14), QCEW/Productivity (2), Trade (1), Energy (1),
     FRED (5), Commodities (1), Materials (3), Circulatory (4)
+
+Note:
+    Census fact tables include time_id and race_id FKs for multi-year and
+    race-disaggregated analysis (15 years x 10 race groups).
 """
 
 from decimal import Decimal
@@ -66,7 +70,13 @@ class DimCounty(NormalizedBase):
 
 
 class DimMetroArea(NormalizedBase):
-    """Metropolitan Statistical Areas."""
+    """Metropolitan and Micropolitan Statistical Areas.
+
+    Area Types:
+        msa: Metropolitan Statistical Area (50K+ urban core)
+        micropolitan: Micropolitan Statistical Area (10K-50K urban core)
+        csa: Combined Statistical Area (aggregation of adjacent CBSAs)
+    """
 
     __tablename__ = "dim_metro_area"
 
@@ -74,11 +84,11 @@ class DimMetroArea(NormalizedBase):
     geo_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     cbsa_code: Mapped[str | None] = mapped_column(String(10))
     metro_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    area_type: Mapped[str] = mapped_column(String(10), nullable=False)  # msa, csa
+    area_type: Mapped[str] = mapped_column(String(20), nullable=False)  # msa, micropolitan, csa
 
     __table_args__ = (
         Index("idx_metro_cbsa", "cbsa_code"),
-        CheckConstraint("area_type IN ('msa', 'csa')", name="ck_metro_area_type"),
+        CheckConstraint("area_type IN ('msa', 'micropolitan', 'csa')", name="ck_metro_area_type"),
     )
 
 
@@ -585,6 +595,44 @@ class DimDataSource(NormalizedBase):
     coverage_end_year: Mapped[int | None] = mapped_column()
 
 
+class DimRace(NormalizedBase):
+    """Race/ethnicity dimension following Census A-I suffix scheme.
+
+    Enables analysis of national oppression and class composition by race,
+    critical for understanding material conditions in MLM-TW framework.
+
+    Census Race Codes:
+        A = White alone
+        B = Black or African American alone
+        C = American Indian and Alaska Native alone
+        D = Asian alone
+        E = Native Hawaiian and Other Pacific Islander alone
+        F = Some other race alone
+        G = Two or more races
+        H = White alone, not Hispanic or Latino
+        I = Hispanic or Latino
+        T = Total (all races, base table)
+    """
+
+    __tablename__ = "dim_race"
+
+    race_id: Mapped[int] = mapped_column(primary_key=True)
+    race_code: Mapped[str] = mapped_column(String(1), unique=True, nullable=False)
+    race_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    race_short_name: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_hispanic_ethnicity: Mapped[bool] = mapped_column(default=False)
+    is_indigenous: Mapped[bool] = mapped_column(default=False)
+    display_order: Mapped[int] = mapped_column(default=0)
+
+    __table_args__ = (
+        Index("idx_race_code", "race_code"),
+        CheckConstraint(
+            "race_code IN ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'T')",
+            name="ck_race_code_valid",
+        ),
+    )
+
+
 # =============================================================================
 # COERCIVE INFRASTRUCTURE DIMENSION TABLES
 # =============================================================================
@@ -631,7 +679,7 @@ class DimCoerciveType(NormalizedBase):
 
 
 class FactCensusIncome(NormalizedBase):
-    """Income distribution by county."""
+    """Income distribution by county, time, and race."""
 
     __tablename__ = "fact_census_income"
 
@@ -642,13 +690,19 @@ class FactCensusIncome(NormalizedBase):
     bracket_id: Mapped[int] = mapped_column(
         ForeignKey("dim_income_bracket.bracket_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     household_count: Mapped[int] = mapped_column(nullable=False)
 
-    __table_args__ = (Index("idx_income_county", "county_id"),)
+    __table_args__ = (
+        Index("idx_income_county", "county_id"),
+        Index("idx_income_time", "time_id"),
+        Index("idx_income_race", "race_id"),
+    )
 
 
 class FactCensusMedianIncome(NormalizedBase):
-    """Median income by county."""
+    """Median income by county, time, and race."""
 
     __tablename__ = "fact_census_median_income"
 
@@ -656,11 +710,18 @@ class FactCensusMedianIncome(NormalizedBase):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("dim_data_source.source_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     median_income_usd: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+
+    __table_args__ = (
+        Index("idx_median_income_time", "time_id"),
+        Index("idx_median_income_race", "race_id"),
+    )
 
 
 class FactCensusEmployment(NormalizedBase):
-    """Employment status by county."""
+    """Employment status by county, time, and race."""
 
     __tablename__ = "fact_census_employment"
 
@@ -671,11 +732,18 @@ class FactCensusEmployment(NormalizedBase):
     status_id: Mapped[int] = mapped_column(
         ForeignKey("dim_employment_status.status_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     person_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_employment_time", "time_id"),
+        Index("idx_employment_race", "race_id"),
+    )
 
 
 class FactCensusWorkerClass(NormalizedBase):
-    """Class of worker by county and gender."""
+    """Class of worker by county, gender, time, and race."""
 
     __tablename__ = "fact_census_worker_class"
 
@@ -685,11 +753,18 @@ class FactCensusWorkerClass(NormalizedBase):
     )
     gender_id: Mapped[int] = mapped_column(ForeignKey("dim_gender.gender_id"), primary_key=True)
     class_id: Mapped[int] = mapped_column(ForeignKey("dim_worker_class.class_id"), primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     worker_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_worker_class_time", "time_id"),
+        Index("idx_worker_class_race", "race_id"),
+    )
 
 
 class FactCensusOccupation(NormalizedBase):
-    """Occupation by county and gender."""
+    """Occupation by county, gender, time, and race."""
 
     __tablename__ = "fact_census_occupation"
 
@@ -701,13 +776,19 @@ class FactCensusOccupation(NormalizedBase):
     occupation_id: Mapped[int] = mapped_column(
         ForeignKey("dim_occupation.occupation_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     worker_count: Mapped[int] = mapped_column(nullable=False)
 
-    __table_args__ = (Index("idx_occupation_county", "county_id"),)
+    __table_args__ = (
+        Index("idx_occupation_county", "county_id"),
+        Index("idx_occupation_time", "time_id"),
+        Index("idx_occupation_race", "race_id"),
+    )
 
 
 class FactCensusHours(NormalizedBase):
-    """Hours worked by county and gender."""
+    """Hours worked by county, gender, time, and race."""
 
     __tablename__ = "fact_census_hours"
 
@@ -716,12 +797,19 @@ class FactCensusHours(NormalizedBase):
         ForeignKey("dim_data_source.source_id"), primary_key=True
     )
     gender_id: Mapped[int] = mapped_column(ForeignKey("dim_gender.gender_id"), primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     aggregate_hours: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     mean_hours: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
 
+    __table_args__ = (
+        Index("idx_hours_time", "time_id"),
+        Index("idx_hours_race", "race_id"),
+    )
+
 
 class FactCensusHousing(NormalizedBase):
-    """Housing tenure by county."""
+    """Housing tenure by county, time, and race."""
 
     __tablename__ = "fact_census_housing"
 
@@ -732,11 +820,18 @@ class FactCensusHousing(NormalizedBase):
     tenure_id: Mapped[int] = mapped_column(
         ForeignKey("dim_housing_tenure.tenure_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     household_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_housing_time", "time_id"),
+        Index("idx_housing_race", "race_id"),
+    )
 
 
 class FactCensusRent(NormalizedBase):
-    """Median rent by county."""
+    """Median rent by county, time, and race."""
 
     __tablename__ = "fact_census_rent"
 
@@ -744,11 +839,18 @@ class FactCensusRent(NormalizedBase):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("dim_data_source.source_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     median_rent_usd: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+
+    __table_args__ = (
+        Index("idx_rent_time", "time_id"),
+        Index("idx_rent_race", "race_id"),
+    )
 
 
 class FactCensusRentBurden(NormalizedBase):
-    """Rent burden distribution by county."""
+    """Rent burden distribution by county, time, and race."""
 
     __tablename__ = "fact_census_rent_burden"
 
@@ -759,11 +861,18 @@ class FactCensusRentBurden(NormalizedBase):
     burden_id: Mapped[int] = mapped_column(
         ForeignKey("dim_rent_burden.burden_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     household_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_rent_burden_time", "time_id"),
+        Index("idx_rent_burden_race", "race_id"),
+    )
 
 
 class FactCensusEducation(NormalizedBase):
-    """Education attainment by county."""
+    """Education attainment by county, time, and race."""
 
     __tablename__ = "fact_census_education"
 
@@ -774,11 +883,18 @@ class FactCensusEducation(NormalizedBase):
     level_id: Mapped[int] = mapped_column(
         ForeignKey("dim_education_level.level_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     person_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_education_time", "time_id"),
+        Index("idx_education_race", "race_id"),
+    )
 
 
 class FactCensusGini(NormalizedBase):
-    """Gini inequality coefficient by county."""
+    """Gini inequality coefficient by county, time, and race."""
 
     __tablename__ = "fact_census_gini"
 
@@ -786,6 +902,8 @@ class FactCensusGini(NormalizedBase):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("dim_data_source.source_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     gini_coefficient: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False)
 
     __table_args__ = (
@@ -793,11 +911,13 @@ class FactCensusGini(NormalizedBase):
             "gini_coefficient >= 0 AND gini_coefficient <= 1",
             name="ck_gini_range",
         ),
+        Index("idx_gini_time", "time_id"),
+        Index("idx_gini_race", "race_id"),
     )
 
 
 class FactCensusCommute(NormalizedBase):
-    """Commute mode by county."""
+    """Commute mode by county, time, and race."""
 
     __tablename__ = "fact_census_commute"
 
@@ -806,11 +926,18 @@ class FactCensusCommute(NormalizedBase):
         ForeignKey("dim_data_source.source_id"), primary_key=True
     )
     mode_id: Mapped[int] = mapped_column(ForeignKey("dim_commute_mode.mode_id"), primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     worker_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_commute_time", "time_id"),
+        Index("idx_commute_race", "race_id"),
+    )
 
 
 class FactCensusPoverty(NormalizedBase):
-    """Poverty status by county."""
+    """Poverty status by county, time, and race."""
 
     __tablename__ = "fact_census_poverty"
 
@@ -821,11 +948,18 @@ class FactCensusPoverty(NormalizedBase):
     category_id: Mapped[int] = mapped_column(
         ForeignKey("dim_poverty_category.category_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     person_count: Mapped[int] = mapped_column(nullable=False)
+
+    __table_args__ = (
+        Index("idx_poverty_time", "time_id"),
+        Index("idx_poverty_race", "race_id"),
+    )
 
 
 class FactCensusIncomeSources(NormalizedBase):
-    """Income sources (wage/self-employment/investment) by county."""
+    """Income sources (wage/self-employment/investment) by county, time, and race."""
 
     __tablename__ = "fact_census_income_sources"
 
@@ -833,10 +967,17 @@ class FactCensusIncomeSources(NormalizedBase):
     source_id: Mapped[int] = mapped_column(
         ForeignKey("dim_data_source.source_id"), primary_key=True
     )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+    race_id: Mapped[int] = mapped_column(ForeignKey("dim_race.race_id"), primary_key=True)
     total_households: Mapped[int | None] = mapped_column()
     with_wage_income: Mapped[int | None] = mapped_column()
     with_self_employment_income: Mapped[int | None] = mapped_column()
     with_investment_income: Mapped[int | None] = mapped_column()
+
+    __table_args__ = (
+        Index("idx_income_sources_time", "time_id"),
+        Index("idx_income_sources_race", "race_id"),
+    )
 
 
 # =============================================================================
@@ -1224,6 +1365,7 @@ __all__ = [
     "DimTime",
     "DimGender",
     "DimDataSource",
+    "DimRace",
     # Dimensions - Coercive Infrastructure
     "DimCoerciveType",
     # Facts - Census

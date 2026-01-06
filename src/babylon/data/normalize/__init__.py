@@ -10,7 +10,7 @@ Usage:
     from babylon.data.normalize import get_normalized_db
     from babylon.data.census import CensusLoader
 
-    config = LoaderConfig(census_year=2022)
+    config = LoaderConfig(census_years=[2022])
     loader = CensusLoader(config)
 
     with get_normalized_db() as session:

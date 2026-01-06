@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from tqdm import tqdm  # type: ignore[import-untyped]
 
+from babylon.data.exceptions import FredAPIError
 from babylon.data.fred.api_client import (
     DFA_ASSET_CATEGORIES,
     DFA_WEALTH_CLASSES,
@@ -40,7 +41,6 @@ from babylon.data.fred.api_client import (
     INDUSTRY_UNEMPLOYMENT_SERIES,
     NATIONAL_SERIES,
     FredAPIClient,
-    FredAPIError,
 )
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (

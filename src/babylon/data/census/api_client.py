@@ -18,6 +18,8 @@ from typing import Any
 
 import httpx
 
+from babylon.data.exceptions import CensusAPIError
+
 logger = logging.getLogger(__name__)
 
 # Census Bureau API configuration
@@ -29,15 +31,6 @@ DEFAULT_DATASET = "acs/acs5"
 REQUEST_DELAY_SECONDS = 0.5  # Conservative delay between requests
 MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2.0
-
-
-@dataclass
-class CensusAPIError(Exception):
-    """Error from Census Bureau API."""
-
-    status_code: int
-    message: str
-    url: str
 
 
 @dataclass

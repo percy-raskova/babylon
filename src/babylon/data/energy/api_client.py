@@ -365,9 +365,11 @@ class EnergyAPIClient:
 
 # Priority MSN codes for Babylon metabolic analysis
 # These map to the conceptual categories in EIA_PRIORITY_TABLES
+# Note: MSN codes verified against EIA API v2 total-energy endpoint
 PRIORITY_MSN_CODES: dict[str, dict[str, str]] = {
     # Primary Energy Overview (Table 01.01)
-    "TETPBUS": {
+    # Note: TETPBUS doesn't exist; TEPRBUS is correct for production
+    "TEPRBUS": {
         "table_code": "01.01",
         "description": "Total Primary Energy Production",
         "category": "overview",
@@ -497,7 +499,7 @@ PRIORITY_MSN_CODES: dict[str, dict[str, str]] = {
 # All MSN codes grouped by category for bulk loading
 MSN_BY_CATEGORY: dict[str, list[str]] = {
     "overview": [
-        "TETPBUS",
+        "TEPRBUS",  # Total Primary Energy Production (not TETPBUS)
         "TETCBUS",
         "PAPRPUS",
         "NGPRBUS",

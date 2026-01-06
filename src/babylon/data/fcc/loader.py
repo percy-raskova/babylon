@@ -193,30 +193,20 @@ class FCCBroadbandLoader(DataLoader):
         """Load/ensure data source dimension for FCC BDC."""
         source_code = f"FCC_BDC_{as_of_date.replace('-', '')}"
 
-        existing = (
-            session.query(DimDataSource).filter(DimDataSource.source_code == source_code).first()
-        )
-
-        if existing:
-            self._source_id = existing.source_id
-            return
-
         # Extract year from as_of_date (e.g., "2025-06-30" -> 2025)
         try:
             year = int(as_of_date.split("-")[0])
         except (ValueError, IndexError):
             year = 2024
 
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code=source_code,
             source_name=f"FCC Broadband Data Collection ({as_of_date})",
             source_url="https://broadbandmap.fcc.gov/data-download/nationwide-data",
             source_agency="FCC",
             source_year=year,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _load_coverage_facts(
         self,

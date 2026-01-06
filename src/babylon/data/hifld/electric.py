@@ -24,6 +24,7 @@ from babylon.data.normalize.schema import (
     DimDataSource,
     FactElectricGrid,
 )
+from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -155,25 +156,14 @@ class HIFLDElectricLoader(DataLoader):
 
     def _load_data_source(self, session: Session) -> None:
         """Load data source dimension."""
-        existing = (
-            session.query(DimDataSource)
-            .filter(DimDataSource.source_code == "HIFLD_ELECTRIC_2024")
-            .first()
-        )
-        if existing:
-            self._source_id = existing.source_id
-            return
-
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code="HIFLD_ELECTRIC_2024",
             source_name="HIFLD Electric Grid Infrastructure",
             source_url="https://hifld-geoplatform.opendata.arcgis.com/",
             source_agency="DHS HIFLD",
             source_year=2024,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _aggregate_substations(
         self,
@@ -201,7 +191,7 @@ class HIFLDElectricLoader(DataLoader):
         for feature in feature_iter:
             attrs = feature.attributes
 
-            county_fips = self._extract_county_fips(attrs)
+            county_fips = extract_county_fips_from_attrs(attrs)
             if not county_fips or county_fips not in self._fips_to_county:
                 continue
 
@@ -311,17 +301,6 @@ class HIFLDElectricLoader(DataLoader):
 
         session.flush()
         return count
-
-    def _extract_county_fips(self, attrs: dict[str, Any]) -> str | None:
-        """Extract 5-digit county FIPS from feature attributes."""
-        county_fips = attrs.get("COUNTYFIPS") or attrs.get("CNTY_FIPS") or attrs.get("COUNTY_FIP")
-        if county_fips:
-            fips_str = str(county_fips).strip()
-            if len(fips_str) >= 5:
-                return fips_str[:5].zfill(5)
-            if len(fips_str) == 4:
-                return fips_str.zfill(5)
-        return None
 
     def _parse_numeric(self, value: Any) -> float | None:
         """Parse numeric value from various formats."""

@@ -165,6 +165,10 @@ class DataLoader(ABC):
         This is appropriate for a "load-once, read-many" scenario where we
         want clean slate loading without complex UPSERT logic.
 
+    Common Infrastructure:
+        - _get_or_create_time(): Time dimension lookup with caching
+        - _time_cache: Instance-level cache for time dimension lookups
+
     Attributes:
         config: LoaderConfig instance controlling loader behavior.
 
@@ -194,6 +198,8 @@ class DataLoader(ABC):
             config: LoaderConfig instance. If None, uses default config values.
         """
         self.config = config if config is not None else LoaderConfig()
+        # Time dimension cache: (year, month, quarter) -> time_id
+        self._time_cache: dict[tuple[int, int | None, int | None], int] = {}
 
     @abstractmethod
     def load(
@@ -250,6 +256,136 @@ class DataLoader(ABC):
         # Then delete dimensions
         for table in self.get_dimension_tables():
             session.query(table).delete()
+
+    def _get_or_create_time(
+        self,
+        session: Session,
+        year: int,
+        month: int | None = None,
+        quarter: int | None = None,
+    ) -> int:
+        """Get or create a time dimension record with caching.
+
+        Provides a unified interface for time dimension management across all
+        loaders. Supports annual, monthly, and quarterly granularity with
+        instance-level caching to minimize database lookups.
+
+        Args:
+            session: SQLAlchemy session for the normalized database.
+            year: 4-digit calendar year.
+            month: 1-12 month for monthly data, None for annual/quarterly.
+            quarter: 1-4 quarter for quarterly data, None for annual/monthly.
+
+        Returns:
+            time_id for the matching DimTime record.
+
+        Note:
+            - If month is None and quarter is None: annual granularity
+            - If month is provided: monthly granularity (quarter auto-calculated)
+            - If quarter is provided and month is None: quarterly granularity
+        """
+        # Import here to avoid circular dependency
+        from babylon.data.normalize.schema import DimTime
+
+        cache_key = (year, month, quarter)
+        if cache_key in self._time_cache:
+            return self._time_cache[cache_key]
+
+        # Determine if annual (no month and no quarter specified)
+        is_annual = month is None and quarter is None
+
+        # Build query to find existing record
+        query = session.query(DimTime).filter(DimTime.year == year)
+
+        if month is not None:
+            query = query.filter(DimTime.month == month)
+        else:
+            query = query.filter(DimTime.month.is_(None))
+
+        if quarter is not None:
+            query = query.filter(DimTime.quarter == quarter)
+        else:
+            query = query.filter(DimTime.quarter.is_(None))
+
+        existing = query.first()
+        if existing:
+            self._time_cache[cache_key] = existing.time_id
+            return existing.time_id
+
+        # Create new time record
+        # Auto-calculate quarter from month if month is provided
+        calculated_quarter = quarter
+        if month is not None and quarter is None:
+            calculated_quarter = (month - 1) // 3 + 1
+
+        time_record = DimTime(
+            year=year,
+            month=month,
+            quarter=calculated_quarter,
+            is_annual=is_annual,
+        )
+        session.add(time_record)
+        session.flush()
+
+        self._time_cache[cache_key] = time_record.time_id
+        return time_record.time_id
+
+    def _get_or_create_data_source(
+        self,
+        session: Session,
+        source_code: str,
+        source_name: str,
+        source_url: str | None = None,
+        description: str | None = None,
+        source_agency: str | None = None,
+        source_year: int | None = None,
+        coverage_start_year: int | None = None,
+        coverage_end_year: int | None = None,
+    ) -> int:
+        """Get or create a data source dimension record.
+
+        Provides a unified interface for data source dimension management across
+        all loaders. Checks for existing source by source_code before creating.
+
+        Args:
+            session: SQLAlchemy session for the normalized database.
+            source_code: Unique identifier for the data source (e.g., "EIA", "CENSUS").
+            source_name: Human-readable name for the data source.
+            source_url: URL for the data source (optional).
+            description: Description of the data source (optional).
+            source_agency: Government agency that provides the data (optional).
+            source_year: Year of the data release (optional).
+            coverage_start_year: First year of data coverage (optional).
+            coverage_end_year: Last year of data coverage (optional).
+
+        Returns:
+            source_id for the matching or newly created DimDataSource record.
+        """
+        # Import here to avoid circular dependency
+        from babylon.data.normalize.schema import DimDataSource
+
+        # Check for existing source
+        existing = (
+            session.query(DimDataSource).filter(DimDataSource.source_code == source_code).first()
+        )
+        if existing:
+            return existing.source_id
+
+        # Create new source record
+        source = DimDataSource(
+            source_code=source_code,
+            source_name=source_name,
+            source_url=source_url,
+            description=description,
+            source_agency=source_agency,
+            source_year=source_year,
+            coverage_start_year=coverage_start_year,
+            coverage_end_year=coverage_end_year,
+        )
+        session.add(source)
+        session.flush()
+
+        return source.source_id
 
 
 __all__ = [

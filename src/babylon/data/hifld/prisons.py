@@ -23,9 +23,9 @@ from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimCoerciveType,
     DimCounty,
-    DimDataSource,
     FactCoerciveInfrastructure,
 )
+from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -216,26 +216,14 @@ class HIFLDPrisonsLoader(DataLoader):
 
     def _load_data_source(self, session: Session) -> None:
         """Load data source dimension."""
-        # Check if source already exists
-        existing = (
-            session.query(DimDataSource)
-            .filter(DimDataSource.source_code == "HIFLD_PRISONS_2024")
-            .first()
-        )
-        if existing:
-            self._source_id = existing.source_id
-            return
-
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code="HIFLD_PRISONS_2024",
             source_name="HIFLD Prison Boundaries",
             source_url="https://hifld-geoplatform.opendata.arcgis.com/datasets/prison-boundaries",
             source_agency="DHS HIFLD",
             source_year=2024,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _load_aggregated_facts(
         self,
@@ -279,7 +267,7 @@ class HIFLDPrisonsLoader(DataLoader):
             attrs = feature.attributes
 
             # Get county FIPS
-            county_fips = self._extract_county_fips(attrs)
+            county_fips = extract_county_fips_from_attrs(attrs)
             if not county_fips:
                 skipped_no_fips += 1
                 continue
@@ -334,28 +322,6 @@ class HIFLDPrisonsLoader(DataLoader):
 
         session.flush()
         return count
-
-    def _extract_county_fips(self, attrs: dict[str, Any]) -> str | None:
-        """Extract 5-digit county FIPS from feature attributes.
-
-        Args:
-            attrs: Feature attribute dictionary.
-
-        Returns:
-            5-digit FIPS code or None if not available.
-        """
-        # Try direct COUNTYFIPS field first
-        county_fips = attrs.get("COUNTYFIPS") or attrs.get("CNTY_FIPS")
-        if county_fips:
-            fips_str = str(county_fips).strip()
-            # Should be 5 digits
-            if len(fips_str) >= 5:
-                return fips_str[:5].zfill(5)
-            if len(fips_str) == 4:
-                # Missing leading zero
-                return fips_str.zfill(5)
-
-        return None
 
     def _map_facility_type(self, attrs: dict[str, Any]) -> str:
         """Map facility type to coercive type code.

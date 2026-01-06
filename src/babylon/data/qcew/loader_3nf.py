@@ -129,7 +129,6 @@ class QcewLoader(DataLoader):
         county_lookup = self._build_county_lookup(session)
         industry_lookup: dict[str, int] = {}
         ownership_lookup: dict[str, int] = {}
-        time_cache: dict[int, int] = {}
 
         obs_count = 0
 
@@ -176,8 +175,8 @@ class QcewLoader(DataLoader):
                     ownership_lookup,
                 )
 
-                # Resolve time
-                time_id = self._get_or_create_time(session, record.year, time_cache)
+                # Resolve time (uses base class method with instance caching)
+                time_id = self._get_or_create_time(session, record.year)
 
                 # Create fact record
                 fact = FactQcewAnnual(
@@ -245,11 +244,8 @@ class QcewLoader(DataLoader):
         Returns:
             Data source ID.
         """
-        existing = session.query(DimDataSource).filter(DimDataSource.source_code == "QCEW").first()
-        if existing:
-            return existing.source_id
-
-        source = DimDataSource(
+        source_id = self._get_or_create_data_source(
+            session,
             source_code="QCEW",
             source_name="BLS Quarterly Census of Employment and Wages",
             source_url="https://www.bls.gov/qcew/",
@@ -259,13 +255,11 @@ class QcewLoader(DataLoader):
                 "and geographic class composition mapping."
             ),
         )
-        session.add(source)
-        session.flush()
 
         if verbose:
             logger.info("  Loaded QCEW data source")
 
-        return source.source_id
+        return source_id
 
     def _build_state_lookup(self, session: Session) -> dict[str, int]:
         """Build state FIPS to state_id lookup.
@@ -423,42 +417,3 @@ class QcewLoader(DataLoader):
         session.flush()
         ownership_lookup[own_code] = ownership.ownership_id
         return ownership.ownership_id
-
-    def _get_or_create_time(
-        self,
-        session: Session,
-        year: int,
-        time_cache: dict[int, int],
-    ) -> int:
-        """Get or create DimTime record for a year.
-
-        Args:
-            session: Database session.
-            year: Calendar year.
-            time_cache: Cache of year -> time_id mappings.
-
-        Returns:
-            time_id for the year.
-        """
-        if year in time_cache:
-            return time_cache[year]
-
-        existing = (
-            session.query(DimTime)
-            .filter(DimTime.year == year, DimTime.is_annual == True)  # noqa: E712
-            .first()
-        )
-        if existing:
-            time_cache[year] = existing.time_id
-            return existing.time_id
-
-        time_dim = DimTime(
-            year=year,
-            month=None,
-            quarter=None,
-            is_annual=True,
-        )
-        session.add(time_dim)
-        session.flush()
-        time_cache[year] = time_dim.time_id
-        return time_dim.time_id

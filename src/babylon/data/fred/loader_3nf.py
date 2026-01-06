@@ -154,7 +154,7 @@ class FredLoader(DataLoader):
         self._category_to_id: dict[str, int] = {}
         self._state_fips_to_id: dict[str, int] = {}
         self._industry_naics_to_id: dict[str, int] = {}
-        self._time_cache: dict[tuple[int, int | None, int | None], int] = {}
+        # Note: _time_cache is initialized by base class DataLoader.__init__()
         self._source_id: int | None = None
 
     def get_dimension_tables(self) -> list[type]:
@@ -305,7 +305,8 @@ class FredLoader(DataLoader):
     def _load_data_source(self, session: Session, start_year: int, end_year: int) -> None:
         """Load data source dimension."""
         source_code = f"FRED_API_{start_year}_{end_year}"
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code=source_code,
             source_name=f"Federal Reserve Economic Data (FRED) {start_year}-{end_year}",
             source_year=end_year,
@@ -313,9 +314,6 @@ class FredLoader(DataLoader):
             coverage_start_year=start_year,
             coverage_end_year=end_year,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _load_series_dimension(self, session: Session, verbose: bool) -> int:
         """Load FRED series dimension from API metadata."""
@@ -416,49 +414,9 @@ class FredLoader(DataLoader):
         for industry in industries:
             self._industry_naics_to_id[industry.naics_code] = industry.industry_id
 
-    def _get_or_create_time(
-        self,
-        session: Session,
-        year: int,
-        month: int | None = None,
-        quarter: int | None = None,
-    ) -> int:
-        """Get or create time dimension record."""
-        cache_key = (year, month, quarter)
-        if cache_key in self._time_cache:
-            return self._time_cache[cache_key]
-
-        # Check if exists
-        query = session.query(DimTime).filter(DimTime.year == year)
-        if month is not None:
-            query = query.filter(DimTime.month == month)
-        else:
-            query = query.filter(DimTime.month.is_(None))
-        if quarter is not None:
-            query = query.filter(DimTime.quarter == quarter)
-        else:
-            query = query.filter(DimTime.quarter.is_(None))
-
-        existing = query.first()
-        if existing:
-            self._time_cache[cache_key] = existing.time_id
-            return existing.time_id
-
-        # Create new
-        is_annual = month is None and quarter is None
-        time_dim = DimTime(
-            year=year,
-            month=month,
-            quarter=quarter,
-            is_annual=is_annual,
-        )
-        session.add(time_dim)
-        session.flush()
-        self._time_cache[cache_key] = time_dim.time_id
-        return time_dim.time_id
-
     # =========================================================================
     # FACT TABLE LOADERS
+    # Note: _get_or_create_time() is inherited from DataLoader base class
     # =========================================================================
 
     def _load_fact_national(

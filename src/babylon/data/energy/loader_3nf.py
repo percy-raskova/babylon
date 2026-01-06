@@ -154,11 +154,8 @@ class EnergyLoader(DataLoader):
         Returns:
             Data source ID.
         """
-        existing = session.query(DimDataSource).filter(DimDataSource.source_code == "EIA").first()
-        if existing:
-            return existing.source_id
-
-        source = DimDataSource(
+        source_id = self._get_or_create_data_source(
+            session,
             source_code="EIA",
             source_name="U.S. Energy Information Administration",
             source_url="https://www.eia.gov/",
@@ -168,13 +165,11 @@ class EnergyLoader(DataLoader):
                 "comprehensive statistics for metabolic rift analysis."
             ),
         )
-        session.add(source)
-        session.flush()
 
         if verbose:
             logger.info("  Loaded EIA data source")
 
-        return source.source_id
+        return source_id
 
     def _load_table_dimension(
         self,
@@ -240,45 +235,6 @@ class EnergyLoader(DataLoader):
 
         return table_lookup
 
-    def _get_or_create_time(
-        self,
-        session: Session,
-        year: int,
-        time_cache: dict[int, int],
-    ) -> int:
-        """Get or create DimTime record for a year.
-
-        Args:
-            session: Database session.
-            year: Calendar year.
-            time_cache: Cache of year -> time_id mappings.
-
-        Returns:
-            time_id for the year.
-        """
-        if year in time_cache:
-            return time_cache[year]
-
-        existing = (
-            session.query(DimTime)
-            .filter(DimTime.year == year, DimTime.is_annual == True)  # noqa: E712
-            .first()
-        )
-        if existing:
-            time_cache[year] = existing.time_id
-            return existing.time_id
-
-        time_dim = DimTime(
-            year=year,
-            month=None,
-            quarter=None,
-            is_annual=True,
-        )
-        session.add(time_dim)
-        session.flush()
-        time_cache[year] = time_dim.time_id
-        return time_dim.time_id
-
     def _load_series_and_facts(
         self,
         session: Session,
@@ -296,7 +252,6 @@ class EnergyLoader(DataLoader):
             stats: Statistics to update.
             verbose: Log progress.
         """
-        time_cache: dict[int, int] = {}
         series_count = 0
         obs_count = 0
 
@@ -349,7 +304,7 @@ class EnergyLoader(DataLoader):
                     if year < start_year or year > end_year:
                         continue
 
-                    time_id = self._get_or_create_time(session, year, time_cache)
+                    time_id = self._get_or_create_time(session, year)
 
                     fact = FactEnergyAnnual(
                         series_id=series.series_id,

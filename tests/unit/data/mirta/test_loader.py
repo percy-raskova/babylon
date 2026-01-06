@@ -14,6 +14,7 @@ from babylon.data.mirta.loader import (
     MILITARY_TYPE_MAP,
     MIRTAMilitaryLoader,
 )
+from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
 # =============================================================================
 # FIXTURES
@@ -86,50 +87,48 @@ class TestMIRTAMilitaryLoaderTables:
 
 
 class TestExtractCountyFIPS:
-    """Tests for _extract_county_fips method."""
+    """Tests for extract_county_fips_from_attrs utility."""
 
-    def test_extracts_from_countyfips_field(self, military_loader: MIRTAMilitaryLoader) -> None:
+    def test_extracts_from_countyfips_field(self) -> None:
         """Should extract FIPS from COUNTYFIPS field."""
         attrs = {"COUNTYFIPS": "06073"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06073"
 
-    def test_extracts_from_cnty_fips_field(self, military_loader: MIRTAMilitaryLoader) -> None:
+    def test_extracts_from_cnty_fips_field(self) -> None:
         """Should extract FIPS from CNTY_FIPS field."""
         attrs = {"CNTY_FIPS": "51059"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "51059"
 
-    def test_extracts_from_fips_field(self, military_loader: MIRTAMilitaryLoader) -> None:
+    def test_extracts_from_fips_field(self) -> None:
         """Should extract FIPS from FIPS field."""
         attrs = {"FIPS": "48029"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "48029"
 
-    def test_constructs_from_state_and_county(self, military_loader: MIRTAMilitaryLoader) -> None:
+    def test_constructs_from_state_and_county(self) -> None:
         """Should construct FIPS from STATE_FIPS and CNTY_FIPS_3."""
         attrs = {"STATE_FIPS": "06", "CNTY_FIPS_3": "073"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06073"
 
-    def test_constructs_from_statefp_and_countyfp(
-        self, military_loader: MIRTAMilitaryLoader
-    ) -> None:
+    def test_constructs_from_statefp_and_countyfp(self) -> None:
         """Should construct FIPS from STATEFP and COUNTYFP."""
         attrs = {"STATEFP": "48", "COUNTYFP": "029"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "48029"
 
-    def test_pads_4_digit_fips(self, military_loader: MIRTAMilitaryLoader) -> None:
+    def test_pads_4_digit_fips(self) -> None:
         """Should zero-pad 4-digit FIPS to 5 digits."""
         attrs = {"COUNTYFIPS": "6073"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06073"
 
-    def test_returns_none_for_missing_fips(self, military_loader: MIRTAMilitaryLoader) -> None:
+    def test_returns_none_for_missing_fips(self) -> None:
         """Should return None if no FIPS field present."""
         attrs = {"SITE_NAME": "Test Base"}
-        result = military_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result is None
 
 

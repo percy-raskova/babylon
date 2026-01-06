@@ -819,7 +819,8 @@ class CensusLoader(DataLoader):
     def _load_data_source(self, session: Session, year: int) -> None:
         """Load data source dimension."""
         source_code = f"ACS5Y{year}_API"
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code=source_code,
             source_name=f"ACS 5-Year Estimates {year} (Census API)",
             source_year=year,
@@ -827,9 +828,6 @@ class CensusLoader(DataLoader):
             coverage_start_year=year - 4,
             coverage_end_year=year,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _load_genders(self, session: Session) -> None:
         """Load gender dimension (static values)."""

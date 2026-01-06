@@ -142,7 +142,6 @@ class MaterialsLoader(DataLoader):
         # Build lookup caches
         commodity_lookup: dict[str, int] = {}
         metric_lookup: dict[str, int] = {}
-        time_cache: dict[int, int] = {}
 
         obs_count = 0
 
@@ -174,8 +173,8 @@ class MaterialsLoader(DataLoader):
                     metric_lookup,
                 )
 
-                # Resolve time
-                time_id = self._get_or_create_time(session, record.year, time_cache)
+                # Resolve time (uses base class method with instance caching)
+                time_id = self._get_or_create_time(session, record.year)
 
                 # Create fact record
                 fact = FactCommodityObservation(
@@ -239,11 +238,8 @@ class MaterialsLoader(DataLoader):
         Returns:
             Data source ID.
         """
-        existing = session.query(DimDataSource).filter(DimDataSource.source_code == "USGS").first()
-        if existing:
-            return existing.source_id
-
-        source = DimDataSource(
+        source_id = self._get_or_create_data_source(
+            session,
             source_code="USGS",
             source_name="USGS Mineral Commodity Summaries",
             source_url="https://www.usgs.gov/centers/national-minerals-information-center",
@@ -253,13 +249,11 @@ class MaterialsLoader(DataLoader):
                 "materials and resource extraction patterns."
             ),
         )
-        session.add(source)
-        session.flush()
 
         if verbose:
             logger.info("  Loaded USGS data source")
 
-        return source.source_id
+        return source_id
 
     def _get_or_create_commodity(
         self,
@@ -363,42 +357,3 @@ class MaterialsLoader(DataLoader):
         session.flush()
         metric_lookup[metric_code] = metric.metric_id
         return metric.metric_id
-
-    def _get_or_create_time(
-        self,
-        session: Session,
-        year: int,
-        time_cache: dict[int, int],
-    ) -> int:
-        """Get or create DimTime record for a year.
-
-        Args:
-            session: Database session.
-            year: Calendar year.
-            time_cache: Cache of year -> time_id mappings.
-
-        Returns:
-            time_id for the year.
-        """
-        if year in time_cache:
-            return time_cache[year]
-
-        existing = (
-            session.query(DimTime)
-            .filter(DimTime.year == year, DimTime.is_annual == True)  # noqa: E712
-            .first()
-        )
-        if existing:
-            time_cache[year] = existing.time_id
-            return existing.time_id
-
-        time_dim = DimTime(
-            year=year,
-            month=None,
-            quarter=None,
-            is_annual=True,
-        )
-        session.add(time_dim)
-        session.flush()
-        time_cache[year] = time_dim.time_id
-        return time_dim.time_id

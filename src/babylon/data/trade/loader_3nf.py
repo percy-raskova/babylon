@@ -162,11 +162,8 @@ class TradeLoader(DataLoader):
         Returns:
             Data source ID.
         """
-        existing = session.query(DimDataSource).filter(DimDataSource.source_code == "TRADE").first()
-        if existing:
-            return existing.source_id
-
-        source = DimDataSource(
+        source_id = self._get_or_create_data_source(
+            session,
             source_code="TRADE",
             source_name="UN Trade Statistics",
             source_url="https://comtrade.un.org/",
@@ -175,13 +172,11 @@ class TradeLoader(DataLoader):
                 "Used for unequal exchange and imperial rent analysis."
             ),
         )
-        session.add(source)
-        session.flush()
 
         if verbose:
             logger.info("  Loaded TRADE data source")
 
-        return source.source_id
+        return source_id
 
     def _load_country_dimension(
         self,
@@ -222,54 +217,6 @@ class TradeLoader(DataLoader):
 
         return country_lookup
 
-    def _get_or_create_time(
-        self,
-        session: Session,
-        year: int,
-        month: int,
-        time_cache: dict[tuple[int, int], int],
-    ) -> int:
-        """Get or create DimTime record for a year/month.
-
-        Args:
-            session: Database session.
-            year: Calendar year.
-            month: Calendar month (1-12).
-            time_cache: Cache of (year, month) -> time_id mappings.
-
-        Returns:
-            time_id for the year/month.
-        """
-        cache_key = (year, month)
-        if cache_key in time_cache:
-            return time_cache[cache_key]
-
-        # Calculate quarter from month
-        quarter = (month - 1) // 3 + 1
-
-        existing = (
-            session.query(DimTime)
-            .filter(
-                DimTime.year == year,
-                DimTime.month == month,
-            )
-            .first()
-        )
-        if existing:
-            time_cache[cache_key] = existing.time_id
-            return existing.time_id
-
-        time_dim = DimTime(
-            year=year,
-            month=month,
-            quarter=quarter,
-            is_annual=False,
-        )
-        session.add(time_dim)
-        session.flush()
-        time_cache[cache_key] = time_dim.time_id
-        return time_dim.time_id
-
     def _load_trade_facts(
         self,
         session: Session,
@@ -290,7 +237,6 @@ class TradeLoader(DataLoader):
         Returns:
             Number of facts loaded.
         """
-        time_cache: dict[tuple[int, int], int] = {}
         obs_count = 0
 
         for row in rows:
@@ -312,7 +258,8 @@ class TradeLoader(DataLoader):
                 if imports is None and exports is None:
                     continue
 
-                time_id = self._get_or_create_time(session, row.year, month, time_cache)
+                # Uses base class method (auto-calculates quarter from month)
+                time_id = self._get_or_create_time(session, row.year, month=month)
 
                 fact = FactTradeMonthly(
                     country_id=country_id,

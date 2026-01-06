@@ -22,9 +22,9 @@ from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimCoerciveType,
     DimCounty,
-    DimDataSource,
     FactCoerciveInfrastructure,
 )
+from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -187,23 +187,14 @@ class MIRTAMilitaryLoader(DataLoader):
 
     def _load_data_source(self, session: Session) -> None:
         """Load data source dimension."""
-        existing = (
-            session.query(DimDataSource).filter(DimDataSource.source_code == "MIRTA_2024").first()
-        )
-        if existing:
-            self._source_id = existing.source_id
-            return
-
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code="MIRTA_2024",
             source_name="MIRTA Military Installations",
             source_url="https://www.acq.osd.mil/eie/BSI/BEI_MIRTA.html",
             source_agency="DoD OASD(S)",
             source_year=2024,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _load_aggregated_facts(
         self,
@@ -234,7 +225,7 @@ class MIRTAMilitaryLoader(DataLoader):
         for feature in feature_iter:
             attrs = feature.attributes
 
-            county_fips = self._extract_county_fips(attrs)
+            county_fips = extract_county_fips_from_attrs(attrs)
             if not county_fips:
                 skipped_no_fips += 1
                 continue
@@ -273,29 +264,6 @@ class MIRTAMilitaryLoader(DataLoader):
 
         session.flush()
         return count
-
-    def _extract_county_fips(self, attrs: dict[str, Any]) -> str | None:
-        """Extract 5-digit county FIPS from feature attributes.
-
-        MIRTA may have FIPS in various fields - try common ones.
-        """
-        # Try common FIPS field names
-        for field_name in ["COUNTYFIPS", "CNTY_FIPS", "FIPS", "COUNTY_FIPS"]:
-            county_fips = attrs.get(field_name)
-            if county_fips:
-                fips_str = str(county_fips).strip()
-                if len(fips_str) >= 5:
-                    return fips_str[:5].zfill(5)
-                if len(fips_str) == 4:
-                    return fips_str.zfill(5)
-
-        # Try constructing from state + county FIPS
-        state_fips = attrs.get("STATE_FIPS") or attrs.get("STATEFP")
-        county_only = attrs.get("CNTY_FIPS_3") or attrs.get("COUNTYFP")
-        if state_fips and county_only:
-            return f"{str(state_fips).zfill(2)}{str(county_only).zfill(3)}"
-
-        return None
 
     def _map_service_branch(self, attrs: dict[str, Any]) -> str:
         """Map service branch to coercive type code."""

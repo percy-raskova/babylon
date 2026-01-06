@@ -22,7 +22,6 @@ from babylon.data.cfs.api_client import CFSAPIClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimCounty,
-    DimDataSource,
     DimGeographicHierarchy,
     DimSCTGCommodity,
     DimState,
@@ -241,16 +240,14 @@ class CFSLoader(DataLoader):
 
     def _load_data_source(self, session: Session, year: int) -> None:
         """Load data source dimension."""
-        source = DimDataSource(
+        self._source_id = self._get_or_create_data_source(
+            session,
             source_code=f"CFS_{year}",
             source_name=f"Census Commodity Flow Survey {year}",
             source_url=f"https://api.census.gov/data/{year}/cfsarea",
             source_agency="Census Bureau",
             source_year=year,
         )
-        session.add(source)
-        session.flush()
-        self._source_id = source.source_id
 
     def _load_disaggregated_flows(
         self,

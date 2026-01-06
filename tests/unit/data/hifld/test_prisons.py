@@ -17,6 +17,7 @@ from babylon.data.hifld.prisons import (
     HIFLDPrisonsLoader,
 )
 from babylon.data.loader_base import LoaderConfig
+from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
 # =============================================================================
 # FIXTURES
@@ -110,54 +111,54 @@ class TestHIFLDPrisonsLoaderTables:
 
 
 class TestExtractCountyFIPS:
-    """Tests for _extract_county_fips method."""
+    """Tests for extract_county_fips_from_attrs utility."""
 
-    def test_extracts_from_countyfips_field(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_extracts_from_countyfips_field(self) -> None:
         """Should extract FIPS from COUNTYFIPS field."""
         attrs = {"COUNTYFIPS": "06001"}
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06001"
 
-    def test_extracts_from_cnty_fips_field(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_extracts_from_cnty_fips_field(self) -> None:
         """Should extract FIPS from CNTY_FIPS field."""
         attrs = {"CNTY_FIPS": "36061"}
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "36061"
 
-    def test_pads_4_digit_fips(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_pads_4_digit_fips(self) -> None:
         """Should zero-pad 4-digit FIPS to 5 digits."""
         attrs = {"COUNTYFIPS": "6001"}  # Missing leading zero
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06001"
 
-    def test_truncates_long_fips(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_truncates_long_fips(self) -> None:
         """Should truncate FIPS longer than 5 digits."""
         attrs = {"COUNTYFIPS": "0600101"}  # Extra digits
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06001"
 
-    def test_handles_integer_fips(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_handles_integer_fips(self) -> None:
         """Should handle integer FIPS values."""
         attrs = {"COUNTYFIPS": 6001}  # Integer, not string
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06001"
 
-    def test_returns_none_for_missing_fips(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_returns_none_for_missing_fips(self) -> None:
         """Should return None if no FIPS field present."""
         attrs = {"NAME": "Test Prison"}
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result is None
 
-    def test_returns_none_for_short_fips(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_returns_none_for_short_fips(self) -> None:
         """Should return None for FIPS shorter than 4 digits."""
         attrs = {"COUNTYFIPS": "06"}  # Too short
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result is None
 
-    def test_handles_whitespace(self, prison_loader: HIFLDPrisonsLoader) -> None:
+    def test_handles_whitespace(self) -> None:
         """Should strip whitespace from FIPS."""
         attrs = {"COUNTYFIPS": " 06001 "}
-        result = prison_loader._extract_county_fips(attrs)
+        result = extract_county_fips_from_attrs(attrs)
         assert result == "06001"
 
 

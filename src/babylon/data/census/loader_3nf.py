@@ -41,6 +41,7 @@ from babylon.data.normalize.classifications import (
     classify_rent_burden,
 )
 from babylon.data.normalize.schema import (
+    BridgeCountyMetro,
     DimCommuteMode,
     DimCounty,
     DimDataSource,
@@ -49,6 +50,7 @@ from babylon.data.normalize.schema import (
     DimGender,
     DimHousingTenure,
     DimIncomeBracket,
+    DimMetroArea,
     DimOccupation,
     DimPovertyCategory,
     DimRace,
@@ -509,8 +511,11 @@ class CensusLoader(DataLoader):
         parent tables they reference (e.g., DimCounty before DimState).
         """
         return [
+            # Bridge tables - delete first (FK dependencies)
+            BridgeCountyMetro,  # References DimCounty and DimMetroArea
             # Shared dimensions - order respects FK dependencies
             DimCounty,  # References DimState, must be deleted first
+            DimMetroArea,  # Metro areas (MSA, Micropolitan, CSA)
             DimState,  # Parent of DimCounty
             DimDataSource,
             # Census-specific dimensions
@@ -621,6 +626,11 @@ class CensusLoader(DataLoader):
 
             county_count = self._load_counties(session, state_fips_list, verbose)
             stats.dimensions_loaded["dim_county"] = county_count
+
+            # Load metro areas and county-metro bridge (Phase 4)
+            metro_count, bridge_count = self._load_metro_areas(session, verbose)
+            stats.dimensions_loaded["dim_metro_area"] = metro_count
+            stats.dimensions_loaded["bridge_county_metro"] = bridge_count
 
             # Load code dimensions from variable metadata
             bracket_count = self._load_income_brackets(session, verbose)
@@ -970,6 +980,113 @@ class CensusLoader(DataLoader):
             print(f"  Loaded {count} counties")
 
         return count
+
+    def _load_metro_areas(self, session: Session, verbose: bool = True) -> tuple[int, int]:
+        """Load metropolitan statistical areas from CBSA delineation file.
+
+        Populates DimMetroArea with MSA, Micropolitan, and CSA areas, then
+        creates BridgeCountyMetro mappings for county-to-metro aggregation.
+
+        Requires counties to be loaded first (uses _fips_to_county lookup).
+
+        Args:
+            session: SQLAlchemy session.
+            verbose: Whether to show progress.
+
+        Returns:
+            Tuple of (metro_count, bridge_count).
+        """
+        from babylon.data.census.cbsa_parser import (
+            CBSA_EXCEL_PATH,
+            get_county_metro_mappings,
+            get_unique_cbsas,
+            get_unique_csas,
+            parse_cbsa_delineation,
+        )
+
+        if not CBSA_EXCEL_PATH.exists():
+            if verbose:
+                print(f"  CBSA delineation file not found at {CBSA_EXCEL_PATH}")
+                print("  Skipping metro area loading (download from Census Bureau)")
+            return (0, 0)
+
+        if verbose:
+            print("  Loading metropolitan statistical areas...")
+
+        try:
+            records = parse_cbsa_delineation(CBSA_EXCEL_PATH)
+        except Exception as e:
+            logger.warning(f"Failed to parse CBSA delineation file: {e}")
+            return (0, 0)
+
+        # Load CBSAs (MSA and Micropolitan)
+        cbsas = get_unique_cbsas(records)
+        for cbsa in cbsas:
+            # Generate geo_id from cbsa_code (required by schema)
+            geo_id = f"cbsa_{cbsa['cbsa_code']}"
+            metro = DimMetroArea(
+                geo_id=geo_id,
+                cbsa_code=cbsa["cbsa_code"],
+                metro_name=cbsa["metro_name"],
+                area_type=cbsa["area_type"],
+            )
+            session.add(metro)
+
+        # Load CSAs
+        csas = get_unique_csas(records)
+        for csa in csas:
+            geo_id = f"csa_{csa['cbsa_code']}"
+            metro = DimMetroArea(
+                geo_id=geo_id,
+                cbsa_code=csa["cbsa_code"],
+                metro_name=csa["metro_name"],
+                area_type=csa["area_type"],
+            )
+            session.add(metro)
+
+        session.flush()
+        metro_count = len(cbsas) + len(csas)
+
+        if verbose:
+            print(
+                f"    Loaded {len(cbsas)} CBSAs ({len([c for c in cbsas if c['area_type'] == 'msa'])} MSA, {len([c for c in cbsas if c['area_type'] == 'micropolitan'])} micropolitan)"
+            )
+            print(f"    Loaded {len(csas)} CSAs")
+
+        # Build lookup for bridge table: cbsa_code -> metro_area_id
+        metro_lookup: dict[str, int] = {
+            m.cbsa_code: m.metro_area_id for m in session.query(DimMetroArea).all() if m.cbsa_code
+        }
+
+        # Load county-to-metro mappings
+        if verbose:
+            print("  Loading county-to-metro mappings...")
+
+        mappings = get_county_metro_mappings(records)
+        bridge_count = 0
+
+        for mapping in mappings:
+            county_fips = str(mapping["county_fips"])
+            cbsa_code = str(mapping["cbsa_code"])
+
+            county_id = self._fips_to_county.get(county_fips)
+            metro_id = metro_lookup.get(cbsa_code)
+
+            if county_id and metro_id:
+                bridge = BridgeCountyMetro(
+                    county_id=county_id,
+                    metro_area_id=metro_id,
+                    is_principal_city=bool(mapping["is_principal_city"]),
+                )
+                session.add(bridge)
+                bridge_count += 1
+
+        session.flush()
+
+        if verbose:
+            print(f"    Created {bridge_count} county-to-metro mappings")
+
+        return (metro_count, bridge_count)
 
     def _load_income_brackets(self, session: Session, _verbose: bool) -> int:
         """Load income bracket dimension from B19001 metadata."""

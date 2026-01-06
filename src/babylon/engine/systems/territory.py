@@ -107,8 +107,8 @@ class TerritorySystem:
         HIGH_PROFILE: heat += high_profile_heat_gain
         LOW_PROFILE: heat *= (1 - heat_decay_rate)
         """
-        heat_decay_rate = services.config.heat_decay_rate
-        high_profile_heat_gain = services.config.high_profile_heat_gain
+        heat_decay_rate = services.defines.territory.heat_decay_rate
+        high_profile_heat_gain = services.defines.territory.high_profile_heat_gain
 
         for node_id, data in graph.nodes(data=True):
             # Only process territory nodes
@@ -215,9 +215,9 @@ class TerritorySystem:
             services: Service container with config
             context: Context dict, may contain 'displacement_mode' override
         """
-        eviction_threshold = services.config.eviction_heat_threshold
-        rent_spike_multiplier = services.config.rent_spike_multiplier
-        displacement_rate = services.config.displacement_rate
+        eviction_threshold = services.defines.territory.eviction_heat_threshold
+        rent_spike_multiplier = services.defines.territory.rent_spike_multiplier
+        displacement_rate = services.defines.territory.displacement_rate
 
         # Get displacement mode from context or default to EXTRACTION
         mode = context.get("displacement_mode", DisplacementPriorityMode.EXTRACTION)
@@ -273,7 +273,7 @@ class TerritorySystem:
         Heat spills from high-heat territories to adjacent ones.
         Formula: adjacent.heat += source.heat * heat_spillover_rate
         """
-        spillover_rate = services.config.heat_spillover_rate
+        spillover_rate = services.defines.territory.heat_spillover_rate
 
         # Collect spillover amounts first (to avoid order-dependent updates)
         spillover_amounts: dict[str, float] = {}
@@ -326,7 +326,7 @@ class TerritorySystem:
         RESERVATION territories have no additional effects - they only
         warehouse population (containment without active elimination).
         """
-        decay_rate = services.config.concentration_camp_decay_rate
+        decay_rate = services.defines.territory.concentration_camp_decay_rate
 
         for node_id, data in graph.nodes(data=True):
             # Only process territory nodes

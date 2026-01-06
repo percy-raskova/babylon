@@ -110,6 +110,14 @@ territory:
   displacement_rate: 0.1            # Population displacement during eviction (10%)
   heat_spillover_rate: 0.05         # Heat spillover via ADJACENCY edges (5%)
   clarity_profile_coefficient: 0.3  # Clarity bonus for HIGH_PROFILE territories (30%)
+  concentration_camp_decay_rate: 0.2  # Population decay in CONCENTRATION_CAMP (elimination, 20%)
+  # Displacement Priority Mode (Sprint 3.7.1)
+  displacement_priority_mode: "EXTRACTION"  # EXTRACTION (prison), CONTAINMENT (reservation), ELIMINATION (camp)
+  # AUTO mode thresholds (reserved for future use)
+  elimination_rent_threshold: 0.1     # Rent ratio below which ELIMINATION mode activates
+  elimination_tension_threshold: 0.8  # Tension above which ELIMINATION mode activates
+  containment_rent_threshold: 0.3     # Rent ratio below which CONTAINMENT mode activates
+  containment_tension_threshold: 0.5  # Tension above which CONTAINMENT mode activates
 
 # Struggle dynamics (Agency Layer - "George Floyd" Dynamic)
 struggle:

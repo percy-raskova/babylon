@@ -16,9 +16,9 @@ Test Intent:
 import networkx as nx
 import pytest
 
+from babylon.config.defines import GameDefines, TerritoryDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.territory import TerritorySystem
-from babylon.models.config import SimulationConfig
 from babylon.models.enums import EdgeType, OperationalProfile, SectorType, TerritoryType
 
 # =============================================================================
@@ -467,7 +467,7 @@ class TestTerritorySystemConfig:
     """Test that TerritorySystem respects configuration parameters."""
 
     def test_custom_heat_gain(self) -> None:
-        """System uses config's high_profile_heat_gain."""
+        """System uses GameDefines territory.high_profile_heat_gain."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
@@ -483,8 +483,8 @@ class TestTerritorySystemConfig:
             under_eviction=False,
         )
 
-        config = SimulationConfig(high_profile_heat_gain=0.25)
-        services = ServiceContainer.create(config)
+        defines = GameDefines(territory=TerritoryDefines(high_profile_heat_gain=0.25))
+        services = ServiceContainer.create(defines=defines)
         context: dict[str, int] = {"tick": 1}
         system = TerritorySystem()
 
@@ -495,7 +495,7 @@ class TestTerritorySystemConfig:
         assert graph.nodes["T001"]["heat"] == pytest.approx(0.45, abs=0.01)
 
     def test_custom_eviction_threshold(self) -> None:
-        """System uses config's eviction_heat_threshold."""
+        """System uses GameDefines territory.eviction_heat_threshold."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
@@ -511,8 +511,8 @@ class TestTerritorySystemConfig:
             under_eviction=False,
         )
 
-        config = SimulationConfig(eviction_heat_threshold=0.6)
-        services = ServiceContainer.create(config)
+        defines = GameDefines(territory=TerritoryDefines(eviction_heat_threshold=0.6))
+        services = ServiceContainer.create(defines=defines)
         context: dict[str, int] = {"tick": 1}
         system = TerritorySystem()
 
@@ -523,7 +523,7 @@ class TestTerritorySystemConfig:
         assert graph.nodes["T001"]["under_eviction"] is True
 
     def test_custom_rent_spike_multiplier(self) -> None:
-        """System uses config's rent_spike_multiplier."""
+        """System uses GameDefines territory.rent_spike_multiplier."""
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
@@ -539,8 +539,8 @@ class TestTerritorySystemConfig:
             under_eviction=True,
         )
 
-        config = SimulationConfig(rent_spike_multiplier=2.0)
-        services = ServiceContainer.create(config)
+        defines = GameDefines(territory=TerritoryDefines(rent_spike_multiplier=2.0))
+        services = ServiceContainer.create(defines=defines)
         context: dict[str, int] = {"tick": 1}
         system = TerritorySystem()
 

@@ -418,6 +418,45 @@ class TerritoryDefines(BaseModel):
         le=1.0,
         description="Clarity bonus for HIGH_PROFILE territories",
     )
+    concentration_camp_decay_rate: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Population decay rate in CONCENTRATION_CAMP territories (elimination)",
+    )
+
+    # Displacement Priority Mode (Sprint 3.7.1: Dynamic Displacement Routing)
+    # Stored as string for YAML compatibility, converted to enum at runtime
+    displacement_priority_mode: str = Field(
+        default="EXTRACTION",
+        description="Sink routing mode: EXTRACTION (prison first), CONTAINMENT (reservation first), ELIMINATION (camp first)",
+    )
+
+    # AUTO mode thresholds (Sprint 3.7.1 - reserved for future use)
+    elimination_rent_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Imperial rent ratio below which ELIMINATION mode activates",
+    )
+    elimination_tension_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Tension threshold above which ELIMINATION mode activates",
+    )
+    containment_rent_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Imperial rent ratio below which CONTAINMENT mode activates",
+    )
+    containment_tension_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Tension threshold above which CONTAINMENT mode activates",
+    )
 
 
 class TopologyDefines(BaseModel):

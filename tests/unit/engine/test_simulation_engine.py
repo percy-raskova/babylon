@@ -11,7 +11,7 @@ import pytest
 from tests.assertions import Assert
 from tests.factories import DomainFactory
 
-from babylon.config.defines import EconomyDefines, GameDefines
+from babylon.config.defines import EconomyDefines, GameDefines, TensionDefines
 from babylon.engine.simulation_engine import step
 from babylon.models import (
     EdgeType,
@@ -640,16 +640,17 @@ class TestStepTensionRate:
         two_node_state: WorldState,
     ) -> None:
         """Higher tension rate means faster accumulation."""
-        low_rate = SimulationConfig(tension_accumulation_rate=0.01)
-        high_rate = SimulationConfig(tension_accumulation_rate=0.1)
+        config = SimulationConfig()
+        low_rate_defines = GameDefines(tension=TensionDefines(accumulation_rate=0.01))
+        high_rate_defines = GameDefines(tension=TensionDefines(accumulation_rate=0.1))
 
         # Run same starting state with both rates
         state_low = two_node_state
         state_high = two_node_state
 
         for _ in range(10):
-            state_low = step(state_low, low_rate)
-            state_high = step(state_high, high_rate)
+            state_low = step(state_low, config, defines=low_rate_defines)
+            state_high = step(state_high, config, defines=high_rate_defines)
 
         # Higher rate should accumulate more tension
         assert state_high.relationships[0].tension > state_low.relationships[0].tension
@@ -659,10 +660,11 @@ class TestStepTensionRate:
         two_node_state: WorldState,
     ) -> None:
         """Zero tension rate means no accumulation (frozen)."""
-        config = SimulationConfig(tension_accumulation_rate=0.0)
+        config = SimulationConfig()
+        defines = GameDefines(tension=TensionDefines(accumulation_rate=0.0))
         initial_tension = two_node_state.relationships[0].tension
 
-        state = step(two_node_state, config)
+        state = step(two_node_state, config, defines=defines)
 
         assert state.relationships[0].tension == initial_tension
 

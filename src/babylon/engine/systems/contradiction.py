@@ -28,7 +28,7 @@ class ContradictionSystem:
     ) -> None:
         """Update tension on edges based on wealth gaps."""
         tick: int = context.get("tick", 0)
-        tension_accumulation_rate = services.config.tension_accumulation_rate
+        tension_accumulation_rate = services.defines.tension.accumulation_rate
 
         for source_id, target_id, data in graph.edges(data=True):
             # Skip edges involving inactive (dead) entities

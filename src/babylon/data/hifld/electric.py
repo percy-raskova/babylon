@@ -114,6 +114,7 @@ class HIFLDElectricLoader(DataLoader):
             # Merge aggregates and insert facts
             fact_count = self._insert_merged_facts(session, substation_agg, transmission_agg)
             stats.facts_loaded["fact_electric_grid"] = fact_count
+            stats.record_ingest("hifld_electric:fact_electric_grid", fact_count)
 
             session.commit()
 
@@ -121,6 +122,7 @@ class HIFLDElectricLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context="hifld_electric:load")
             stats.errors.append(str(e))
             session.rollback()
             raise

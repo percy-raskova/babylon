@@ -89,6 +89,7 @@ class CFSAPIClient:
         self.timeout = timeout
         self._last_request_time = 0.0
         self._client = httpx.Client(timeout=timeout)
+        self.last_error: CFSAPIError | None = None
 
     def close(self) -> None:
         """Close the HTTP client."""
@@ -204,6 +205,7 @@ class CFSAPIClient:
         try:
             data = self._request(params)
         except CFSAPIError as e:
+            self.last_error = e
             logger.error(f"CFS API error: {e.message}")
             return []
 

@@ -141,6 +141,7 @@ class FCCBroadbandLoader(DataLoader):
             fact_count, skipped = self._load_coverage_facts(session, csv_path, verbose)
             stats.facts_loaded["fact_broadband_coverage"] = fact_count
             stats.files_processed = 1
+            stats.record_ingest("fcc:fact_broadband_coverage", fact_count)
 
             if skipped > 0 and verbose:
                 print(f"  Skipped {skipped} counties not in database")
@@ -151,6 +152,7 @@ class FCCBroadbandLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context="fcc:load")
             stats.errors.append(str(e))
             session.rollback()
             raise

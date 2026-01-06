@@ -114,6 +114,7 @@ class HIFLDPoliceLoader(DataLoader):
             fact_count = self._load_aggregated_facts(session, total_count, verbose)
             stats.facts_loaded["fact_coercive_infrastructure"] = fact_count
             stats.api_calls = (total_count // 2000) + 1
+            stats.record_ingest("hifld_police:fact_coercive_infrastructure", fact_count)
 
             session.commit()
 
@@ -121,6 +122,7 @@ class HIFLDPoliceLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context="hifld_police:load")
             stats.errors.append(str(e))
             session.rollback()
             raise

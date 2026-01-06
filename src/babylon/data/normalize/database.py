@@ -3,9 +3,11 @@
 Provides a properly normalized database for Marxian economic analysis,
 populated via ETL from research.sqlite.
 
-Located at data/sqlite/marxist-data-3NF.sqlite.
+Located at data/sqlite/marxist-data-3NF.sqlite by default. Override with
+BABYLON_NORMALIZED_DB_PATH to target an alternate build database.
 """
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,18 +16,29 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # Normalized database path - 3NF structure for analytical queries
-NORMALIZED_DB_PATH = (
-    Path(__file__).parent.parent.parent.parent.parent
-    / "data"
-    / "sqlite"
-    / "marxist-data-3NF.sqlite"
+_REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
+
+
+def _resolve_db_path(env_var: str, default_path: Path) -> Path:
+    env_value = os.getenv(env_var)
+    if not env_value:
+        return default_path
+
+    env_path = Path(env_value).expanduser()
+    if not env_path.is_absolute():
+        env_path = _REPO_ROOT / env_path
+
+    return env_path
+
+
+NORMALIZED_DB_PATH = _resolve_db_path(
+    "BABYLON_NORMALIZED_DB_PATH",
+    _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite",
 )
 NORMALIZED_DATABASE_URL = f"sqlite:///{NORMALIZED_DB_PATH}"
 
 # Source database (for ETL)
-SOURCE_DB_PATH = (
-    Path(__file__).parent.parent.parent.parent.parent / "data" / "sqlite" / "research.sqlite"
-)
+SOURCE_DB_PATH = _REPO_ROOT / "data" / "sqlite" / "research.sqlite"
 SOURCE_DATABASE_URL = f"sqlite:///{SOURCE_DB_PATH}"
 
 
@@ -42,7 +55,7 @@ def get_normalized_engine(echo: bool = False) -> Engine:
         echo: If True, log SQL statements
 
     Returns:
-        Engine: SQLAlchemy engine for marxist-data-3NF.sqlite
+        Engine: SQLAlchemy engine for the normalized 3NF database.
     """
     NORMALIZED_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(NORMALIZED_DATABASE_URL, echo=echo)

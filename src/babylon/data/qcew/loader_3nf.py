@@ -32,7 +32,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete
 from tqdm import tqdm
 
-from babylon.data.loader_base import DataLoader, LoadStats
+from babylon.data.api_loader_base import ApiLoaderBase
+from babylon.data.loader_base import LoadStats
 from babylon.data.normalize.classifications import classify_class_composition
 from babylon.data.normalize.schema import (
     DimCounty,
@@ -115,7 +116,7 @@ class GeoCounts:
         return self.county + self.state + self.metro
 
 
-class QcewLoader(DataLoader):
+class QcewLoader(ApiLoaderBase):
     """Loader for BLS QCEW data into 3NF schema.
 
     Uses hybrid loading strategy:
@@ -143,6 +144,10 @@ class QcewLoader(DataLoader):
     def get_fact_tables(self) -> list[type]:
         """Return fact table models this loader populates."""
         return [FactQcewAnnual, FactQcewStateAnnual, FactQcewMetroAnnual]
+
+    def _make_client(self) -> QcewAPIClient:
+        """Create a QCEW API client."""
+        return QcewAPIClient()
 
     def load(
         self,
@@ -257,7 +262,7 @@ class QcewLoader(DataLoader):
             logger.info(msg)
             print(msg)
 
-        with QcewAPIClient() as client:
+        with self._client_scope(self._make_client()) as client:
             for year in years:
                 if verbose:
                     msg = f"Processing {year} via API..."
@@ -452,6 +457,7 @@ class QcewLoader(DataLoader):
             logger.debug(f"No data for {area_code} in {year}")
         else:
             msg = f"API error for {area_code}/{year}: {error.message}"
+            stats.record_api_error(error, context=f"qcew:{area_code}:{year}")
             stats.errors.append(msg)
             logger.warning(msg)
             print(f"WARNING: {msg}")
@@ -508,6 +514,9 @@ class QcewLoader(DataLoader):
         stats.facts_loaded["qcew_county"] = counts.county
         stats.facts_loaded["qcew_state"] = counts.state
         stats.facts_loaded["qcew_metro"] = counts.metro
+        stats.record_ingest(f"qcew_{source_type.lower()}:county", counts.county)
+        stats.record_ingest(f"qcew_{source_type.lower()}:state", counts.state)
+        stats.record_ingest(f"qcew_{source_type.lower()}:metro", counts.metro)
 
         if verbose:
             msg = (

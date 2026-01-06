@@ -117,6 +117,7 @@ class GeographicHierarchyLoader(DataLoader):
                 verbose,
             )
             stats.dimensions_loaded["dim_geographic_hierarchy"] = count
+            stats.record_ingest("geography:dim_geographic_hierarchy", count)
 
             session.commit()
 
@@ -124,6 +125,7 @@ class GeographicHierarchyLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context="geography:load")
             stats.errors.append(str(e))
             session.rollback()
             raise

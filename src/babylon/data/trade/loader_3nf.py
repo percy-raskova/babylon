@@ -99,38 +99,46 @@ class TradeLoader(DataLoader):
             logger.error(f"Trade data file not found: {xlsx_path}")
             return stats
 
-        if reset:
-            self._clear_trade_tables(session, verbose)
+        try:
+            if reset:
+                self._clear_trade_tables(session, verbose)
 
-        # Load data source dimension
-        self._load_data_source(session, verbose)
+            # Load data source dimension
+            self._load_data_source(session, verbose)
 
-        # Parse Excel file
-        if verbose:
-            logger.info(f"Parsing trade data from {xlsx_path}...")
+            # Parse Excel file
+            if verbose:
+                logger.info(f"Parsing trade data from {xlsx_path}...")
 
-        trade_data = parse_trade_excel(xlsx_path)
-        stats.files_processed = 1
+            trade_data = parse_trade_excel(xlsx_path)
+            stats.files_processed = 1
 
-        # Load country dimension
-        country_lookup = self._load_country_dimension(session, trade_data.countries, verbose)
-        stats.dimensions_loaded["countries"] = len(country_lookup)
+            # Load country dimension
+            country_lookup = self._load_country_dimension(session, trade_data.countries, verbose)
+            stats.dimensions_loaded["countries"] = len(country_lookup)
 
-        # Filter years based on config
-        years_to_load = set(self.config.trade_years)
+            # Filter years based on config
+            years_to_load = set(self.config.trade_years)
 
-        # Load monthly trade facts
-        obs_count = self._load_trade_facts(
-            session, trade_data.rows, country_lookup, years_to_load, verbose
-        )
-        stats.facts_loaded["trade_monthly"] = obs_count
-
-        session.commit()
-
-        if verbose:
-            logger.info(
-                f"Trade loading complete: {len(country_lookup)} countries, {obs_count} observations"
+            # Load monthly trade facts
+            obs_count = self._load_trade_facts(
+                session, trade_data.rows, country_lookup, years_to_load, verbose
             )
+            stats.facts_loaded["trade_monthly"] = obs_count
+            stats.record_ingest("trade:countries", len(country_lookup))
+            stats.record_ingest("trade:trade_monthly", obs_count)
+
+            session.commit()
+
+            if verbose:
+                logger.info(
+                    f"Trade loading complete: {len(country_lookup)} countries, {obs_count} observations"
+                )
+        except Exception as e:
+            stats.record_api_error(e, context="trade:load")
+            stats.errors.append(str(e))
+            session.rollback()
+            raise
 
         return stats
 

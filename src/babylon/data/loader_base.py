@@ -109,8 +109,10 @@ class LoadStats:
     dimensions_loaded: dict[str, int] = field(default_factory=dict)
     facts_loaded: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    api_errors: list["ApiErrorDetail"] = field(default_factory=list)
     api_calls: int = 0
     files_processed: int = 0
+    ingest_breakdown: dict[str, int] = field(default_factory=dict)
 
     @property
     def total_dimensions(self) -> int:
@@ -145,7 +147,45 @@ class LoadStats:
             lines.append(f"  Files processed: {self.files_processed}")
         if self.has_errors:
             lines.append(f"  Errors: {len(self.errors)}")
+        if self.api_errors:
+            lines.append(f"  API errors: {len(self.api_errors)}")
+        if self.ingest_breakdown:
+            lines.append(f"  Breakdown keys: {len(self.ingest_breakdown)}")
         return "\n".join(lines)
+
+    def record_ingest(self, key: str, count: int) -> None:
+        """Record a detailed ingest count for a specific key."""
+        if count <= 0:
+            return
+        self.ingest_breakdown[key] = self.ingest_breakdown.get(key, 0) + count
+
+    def record_api_error(self, error: Exception, context: str | None = None) -> None:
+        """Record a structured API error if available."""
+        status_code = getattr(error, "status_code", None)
+        url = getattr(error, "url", None)
+        message = getattr(error, "message", None) or str(error)
+
+        if status_code is None and url is None and context is None:
+            return
+
+        self.api_errors.append(
+            ApiErrorDetail(
+                context=context,
+                status_code=status_code,
+                url=url,
+                message=message,
+            )
+        )
+
+
+@dataclass(frozen=True)
+class ApiErrorDetail:
+    """Structured record of a single API error."""
+
+    context: str | None
+    status_code: int | None
+    url: str | None
+    message: str
 
 
 class DataLoader(ABC):

@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from tqdm import tqdm
 
+from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.exceptions import FredAPIError
 from babylon.data.fred.api_client import (
     DFA_ASSET_CATEGORIES,
@@ -42,7 +43,7 @@ from babylon.data.fred.api_client import (
     NATIONAL_SERIES,
     FredAPIClient,
 )
-from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
+from babylon.data.loader_base import LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimAssetCategory,
     DimDataSource,
@@ -129,7 +130,7 @@ DEFAULT_STATE_FIPS = [
 ]
 
 
-class FredLoader(DataLoader):
+class FredLoader(ApiLoaderBase):
     """Loader for FRED data into 3NF schema.
 
     Fetches macroeconomic time series from FRED API and loads directly
@@ -155,6 +156,10 @@ class FredLoader(DataLoader):
         self._industry_naics_to_id: dict[str, int] = {}
         # Note: _time_cache is initialized by base class DataLoader.__init__()
         self._source_id: int | None = None
+
+    def _make_client(self) -> FredAPIClient:
+        """Create a FRED API client."""
+        return FredAPIClient()
 
     def get_dimension_tables(self) -> list[type]:
         """Return dimension table models this loader populates."""
@@ -206,63 +211,81 @@ class FredLoader(DataLoader):
             print(f"States: {len(state_fips_list)}")
 
         try:
-            # Create API client
-            self._client = FredAPIClient()
+            with self._client_scope(self._make_client()):
+                # Clear existing FRED data if reset
+                if reset:
+                    if verbose:
+                        print("Clearing existing FRED data...")
+                    self._clear_fred_tables(session)
+                    session.flush()
 
-            # Clear existing FRED data if reset
-            if reset:
-                if verbose:
-                    print("Clearing existing FRED data...")
-                self._clear_fred_tables(session)
+                # Load dimensions
+                self._load_data_source(session, start_year, end_year)
+                stats.dimensions_loaded["dim_data_source"] = 1
+
+                series_count = self._load_series_dimension(session, verbose)
+                stats.dimensions_loaded["dim_fred_series"] = series_count
+
+                class_count = self._load_wealth_class_dimension(session, verbose)
+                stats.dimensions_loaded["dim_wealth_class"] = class_count
+
+                category_count = self._load_asset_category_dimension(session, verbose)
+                stats.dimensions_loaded["dim_asset_category"] = category_count
+
+                # Build state and industry lookups (may already exist from other loaders)
+                self._build_state_lookup(session, state_fips_list)
+                self._build_industry_lookup(session)
+
                 session.flush()
 
-            # Load dimensions
-            self._load_data_source(session, start_year, end_year)
-            stats.dimensions_loaded["dim_data_source"] = 1
+                # Load fact tables
+                national_count = self._load_fact_national(session, start_year, end_year, verbose)
+                stats.facts_loaded["fact_fred_national"] = national_count
+                stats.record_ingest(
+                    f"fred:{start_year}-{end_year}:fact_fred_national",
+                    national_count,
+                )
+                stats.api_calls += len(ALL_NATIONAL_SERIES)
 
-            series_count = self._load_series_dimension(session, verbose)
-            stats.dimensions_loaded["dim_fred_series"] = series_count
+                state_count = self._load_fact_state_unemployment(
+                    session, state_fips_list, start_year, end_year, verbose
+                )
+                stats.facts_loaded["fact_fred_state_unemployment"] = state_count
+                stats.record_ingest(
+                    f"fred:{start_year}-{end_year}:fact_fred_state_unemployment",
+                    state_count,
+                )
+                stats.api_calls += len(state_fips_list)
 
-            class_count = self._load_wealth_class_dimension(session, verbose)
-            stats.dimensions_loaded["dim_wealth_class"] = class_count
+                industry_count = self._load_fact_industry_unemployment(
+                    session, start_year, end_year, verbose
+                )
+                stats.facts_loaded["fact_fred_industry_unemployment"] = industry_count
+                stats.record_ingest(
+                    f"fred:{start_year}-{end_year}:fact_fred_industry_unemployment",
+                    industry_count,
+                )
+                stats.api_calls += len(INDUSTRY_UNEMPLOYMENT_SERIES)
 
-            category_count = self._load_asset_category_dimension(session, verbose)
-            stats.dimensions_loaded["dim_asset_category"] = category_count
+                wealth_level_count = self._load_fact_wealth_levels(
+                    session, start_year, end_year, verbose
+                )
+                stats.facts_loaded["fact_fred_wealth_levels"] = wealth_level_count
+                stats.record_ingest(
+                    f"fred:{start_year}-{end_year}:fact_fred_wealth_levels",
+                    wealth_level_count,
+                )
+                stats.api_calls += len(DFA_WEALTH_LEVEL_SERIES)
 
-            # Build state and industry lookups (may already exist from other loaders)
-            self._build_state_lookup(session, state_fips_list)
-            self._build_industry_lookup(session)
-
-            session.flush()
-
-            # Load fact tables
-            national_count = self._load_fact_national(session, start_year, end_year, verbose)
-            stats.facts_loaded["fact_fred_national"] = national_count
-            stats.api_calls += len(ALL_NATIONAL_SERIES)
-
-            state_count = self._load_fact_state_unemployment(
-                session, state_fips_list, start_year, end_year, verbose
-            )
-            stats.facts_loaded["fact_fred_state_unemployment"] = state_count
-            stats.api_calls += len(state_fips_list)
-
-            industry_count = self._load_fact_industry_unemployment(
-                session, start_year, end_year, verbose
-            )
-            stats.facts_loaded["fact_fred_industry_unemployment"] = industry_count
-            stats.api_calls += len(INDUSTRY_UNEMPLOYMENT_SERIES)
-
-            wealth_level_count = self._load_fact_wealth_levels(
-                session, start_year, end_year, verbose
-            )
-            stats.facts_loaded["fact_fred_wealth_levels"] = wealth_level_count
-            stats.api_calls += len(DFA_WEALTH_LEVEL_SERIES)
-
-            wealth_share_count = self._load_fact_wealth_shares(
-                session, start_year, end_year, verbose
-            )
-            stats.facts_loaded["fact_fred_wealth_shares"] = wealth_share_count
-            stats.api_calls += len(DFA_WEALTH_SHARE_SERIES)
+                wealth_share_count = self._load_fact_wealth_shares(
+                    session, start_year, end_year, verbose
+                )
+                stats.facts_loaded["fact_fred_wealth_shares"] = wealth_share_count
+                stats.record_ingest(
+                    f"fred:{start_year}-{end_year}:fact_fred_wealth_shares",
+                    wealth_share_count,
+                )
+                stats.api_calls += len(DFA_WEALTH_SHARE_SERIES)
 
             session.commit()
 
@@ -270,14 +293,10 @@ class FredLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context="fred:load")
             stats.errors.append(str(e))
             session.rollback()
             raise
-
-        finally:
-            if self._client:
-                self._client.close()
-                self._client = None
 
         return stats
 

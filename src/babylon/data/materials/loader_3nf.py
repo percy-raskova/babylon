@@ -118,12 +118,6 @@ class MaterialsLoader(DataLoader):
             logger.error(f"Materials data directory not found: {csv_dir}")
             return stats
 
-        if reset:
-            self._clear_materials_tables(session, verbose)
-
-        # Load data source dimension
-        self._load_data_source(session, verbose)
-
         # Discover CSV files
         csv_files = discover_commodity_files(csv_dir)
         if not csv_files:
@@ -136,76 +130,91 @@ class MaterialsLoader(DataLoader):
         if verbose:
             logger.info(f"Found {len(csv_files)} commodity CSV files to process")
 
-        # Filter years based on config
-        years_to_load = set(self.config.materials_years)
+        try:
+            if reset:
+                self._clear_materials_tables(session, verbose)
 
-        # Build lookup caches
-        commodity_lookup: dict[str, int] = {}
-        metric_lookup: dict[str, int] = {}
+            # Load data source dimension
+            self._load_data_source(session, verbose)
 
-        obs_count = 0
+            # Filter years based on config
+            years_to_load = set(self.config.materials_years)
 
-        # Process each CSV file
-        for csv_file in csv_files:
+            # Build lookup caches
+            commodity_lookup: dict[str, int] = {}
+            metric_lookup: dict[str, int] = {}
+
+            obs_count = 0
+
+            # Process each CSV file
+            for csv_file in csv_files:
+                if verbose:
+                    logger.info(f"Processing {csv_file.name}...")
+
+                records = parse_commodity_csv(csv_file)
+
+                for record in records:
+                    # Filter by year
+                    if record.year not in years_to_load:
+                        continue
+
+                    # Resolve commodity
+                    commodity_id = self._get_or_create_commodity(
+                        session,
+                        record.commodity_code,
+                        record.commodity_name,
+                        commodity_lookup,
+                    )
+
+                    # Resolve metric
+                    metric_id = self._get_or_create_metric(
+                        session,
+                        record.metric_code,
+                        record.metric_name,
+                        metric_lookup,
+                    )
+
+                    # Resolve time (uses base class method with instance caching)
+                    time_id = self._get_or_create_time(session, record.year)
+
+                    # Create fact record
+                    fact = FactCommodityObservation(
+                        commodity_id=commodity_id,
+                        metric_id=metric_id,
+                        time_id=time_id,
+                        value=record.value,
+                        value_text=record.value_text,
+                    )
+                    session.add(fact)
+                    obs_count += 1
+
+                    # Batch commit to avoid memory pressure
+                    if obs_count % 5000 == 0:
+                        session.flush()
+                        if verbose:
+                            logger.info(f"  Loaded {obs_count} observations...")
+
+            session.commit()
+
+            stats.dimensions_loaded["commodities"] = len(commodity_lookup)
+            stats.dimensions_loaded["metrics"] = len(metric_lookup)
+            stats.facts_loaded["commodity_observations"] = obs_count
+            stats.record_ingest("materials:commodities", len(commodity_lookup))
+            stats.record_ingest("materials:metrics", len(metric_lookup))
+            stats.record_ingest("materials:commodity_observations", obs_count)
+
             if verbose:
-                logger.info(f"Processing {csv_file.name}...")
-
-            records = parse_commodity_csv(csv_file)
-
-            for record in records:
-                # Filter by year
-                if record.year not in years_to_load:
-                    continue
-
-                # Resolve commodity
-                commodity_id = self._get_or_create_commodity(
-                    session,
-                    record.commodity_code,
-                    record.commodity_name,
-                    commodity_lookup,
+                logger.info(
+                    f"Materials loading complete: "
+                    f"{len(commodity_lookup)} commodities, "
+                    f"{len(metric_lookup)} metrics, "
+                    f"{obs_count} observations"
                 )
-
-                # Resolve metric
-                metric_id = self._get_or_create_metric(
-                    session,
-                    record.metric_code,
-                    record.metric_name,
-                    metric_lookup,
-                )
-
-                # Resolve time (uses base class method with instance caching)
-                time_id = self._get_or_create_time(session, record.year)
-
-                # Create fact record
-                fact = FactCommodityObservation(
-                    commodity_id=commodity_id,
-                    metric_id=metric_id,
-                    time_id=time_id,
-                    value=record.value,
-                    value_text=record.value_text,
-                )
-                session.add(fact)
-                obs_count += 1
-
-                # Batch commit to avoid memory pressure
-                if obs_count % 5000 == 0:
-                    session.flush()
-                    if verbose:
-                        logger.info(f"  Loaded {obs_count} observations...")
-
-        session.commit()
-
-        stats.dimensions_loaded["commodities"] = len(commodity_lookup)
-        stats.dimensions_loaded["metrics"] = len(metric_lookup)
-        stats.facts_loaded["commodity_observations"] = obs_count
-
-        if verbose:
-            logger.info(
-                f"Materials loading complete: "
-                f"{len(commodity_lookup)} commodities, "
-                f"{len(metric_lookup)} metrics, "
-                f"{obs_count} observations"
-            )
+        except Exception as e:
+            stats.record_api_error(e, context="materials:load")
+            stats.errors.append(str(e))
+            session.rollback()
+            raise
 
         return stats
 

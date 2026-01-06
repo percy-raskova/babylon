@@ -18,8 +18,9 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from tqdm import tqdm
 
+from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.cfs.api_client import CFSAPIClient
-from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
+from babylon.data.loader_base import LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimCounty,
     DimGeographicHierarchy,
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class CFSLoader(DataLoader):
+class CFSLoader(ApiLoaderBase):
     """Loader for Census CFS data with state-to-county disaggregation.
 
     Fetches state-level commodity flows from Census CFS API and distributes
@@ -57,6 +58,10 @@ class CFSLoader(DataLoader):
         self._source_id: int | None = None
         # Hierarchy: state_id -> [(county_id, pop_weight, emp_weight), ...]
         self._hierarchy: dict[int, list[tuple[int, Decimal, Decimal]]] = {}
+
+    def _make_client(self, year: int) -> CFSAPIClient:
+        """Create a CFS API client for a specific year."""
+        return CFSAPIClient(year=year)
 
     def get_dimension_tables(self) -> list[type]:
         """Return dimension tables this loader populates."""
@@ -91,40 +96,39 @@ class CFSLoader(DataLoader):
             print(f"Loading Census CFS data for year {year}")
 
         try:
-            # Initialize API client
-            self._client = CFSAPIClient(year=year)
+            with self._client_scope(self._make_client(year)):
+                if reset:
+                    if verbose:
+                        print("Clearing existing CFS data...")
+                    self._clear_cfs_data(session, year)
+                    session.flush()
 
-            if reset:
-                if verbose:
-                    print("Clearing existing CFS data...")
-                self._clear_cfs_data(session, year)
+                # Load lookups
+                self._load_state_lookup(session)
+                self._load_county_lookup(session)
+                self._load_hierarchy(session, year)
+
+                if not self._hierarchy:
+                    stats.errors.append(
+                        "No geographic hierarchy data found. Run GeographicHierarchyLoader first."
+                    )
+                    return stats
+
+                # Load SCTG dimension
+                sctg_count = self._load_sctg_dimension(session)
+                stats.dimensions_loaded["dim_sctg_commodity"] = sctg_count
+
+                # Load data source
+                self._load_data_source(session, year)
+                stats.dimensions_loaded["dim_data_source"] = 1
+
                 session.flush()
 
-            # Load lookups
-            self._load_state_lookup(session)
-            self._load_county_lookup(session)
-            self._load_hierarchy(session, year)
-
-            if not self._hierarchy:
-                stats.errors.append(
-                    "No geographic hierarchy data found. Run GeographicHierarchyLoader first."
-                )
-                return stats
-
-            # Load SCTG dimension
-            sctg_count = self._load_sctg_dimension(session)
-            stats.dimensions_loaded["dim_sctg_commodity"] = sctg_count
-
-            # Load data source
-            self._load_data_source(session, year)
-            stats.dimensions_loaded["dim_data_source"] = 1
-
-            session.flush()
-
-            # Fetch and disaggregate flows
-            flow_count = self._load_disaggregated_flows(session, year, verbose)
-            stats.facts_loaded["fact_commodity_flow"] = flow_count
-            stats.api_calls = 1  # Single API call for all state flows
+                # Fetch and disaggregate flows
+                flow_count = self._load_disaggregated_flows(session, year, verbose, stats)
+                stats.facts_loaded["fact_commodity_flow"] = flow_count
+                stats.record_ingest(f"cfs:{year}:fact_commodity_flow", flow_count)
+                stats.api_calls = 1  # Single API call for all state flows
 
             session.commit()
 
@@ -132,14 +136,10 @@ class CFSLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context=f"cfs:{year}")
             stats.errors.append(str(e))
             session.rollback()
             raise
-
-        finally:
-            if self._client:
-                self._client.close()
-                self._client = None
 
         return stats
 
@@ -254,6 +254,7 @@ class CFSLoader(DataLoader):
         session: Session,
         year: int,
         verbose: bool,
+        stats: LoadStats,
     ) -> int:
         """Load commodity flows disaggregated to county level.
 
@@ -268,6 +269,9 @@ class CFSLoader(DataLoader):
 
         # Get all state flows
         flows = self._client.get_state_flows()
+        if not flows and self._client.last_error:
+            stats.record_api_error(self._client.last_error, context=f"cfs:{year}:get_state_flows")
+            self._client.last_error = None
 
         if verbose:
             print(f"Retrieved {len(flows):,} state-level flow records")

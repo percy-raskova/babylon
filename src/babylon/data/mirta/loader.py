@@ -115,6 +115,7 @@ class MIRTAMilitaryLoader(DataLoader):
             fact_count = self._load_aggregated_facts(session, total_count, verbose)
             stats.facts_loaded["fact_coercive_infrastructure"] = fact_count
             stats.api_calls = (total_count // 2000) + 1
+            stats.record_ingest("mirta:fact_coercive_infrastructure", fact_count)
 
             session.commit()
 
@@ -122,6 +123,7 @@ class MIRTAMilitaryLoader(DataLoader):
                 print(f"\n{stats}")
 
         except Exception as e:
+            stats.record_api_error(e, context="mirta:load")
             stats.errors.append(str(e))
             session.rollback()
             raise

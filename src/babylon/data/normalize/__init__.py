@@ -3,7 +3,7 @@
 Provides a properly normalized database for Marxian economic analysis,
 populated directly by DataLoader implementations.
 
-Database location: data/sqlite/marxist-data-3NF.sqlite
+Database location: data/sqlite/marxist-data-3NF.sqlite (override via BABYLON_NORMALIZED_DB_PATH)
 
 Usage:
     from babylon.data import DataLoader, LoaderConfig

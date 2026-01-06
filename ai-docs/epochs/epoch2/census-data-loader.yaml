@@ -46,6 +46,31 @@ architecture_overview:
     validation: "Pydantic models with constrained types"
 
 # =============================================================================
+# LOAD PLAN + FLOW SEPARATION
+# =============================================================================
+
+load_plan_flow:
+  description: |
+    Fact ingestion is driven by a load-plan generator and split into
+    fetch → transform → write steps to ease parallelization refactors.
+  plan:
+    location: "src/babylon/data/census/loader_3nf.py"
+    entries:
+      - kind: "spec"
+        notes: "FactTableSpec-driven tables (base + race suffixes)"
+      - kind: "hours"
+        notes: "B23020 gender-grouped aggregation"
+      - kind: "income_sources"
+        notes: "B19052/B19053/B19054 multi-table join"
+  row_builders:
+    notes:
+      - "CountyData values -> row dicts before write"
+      - "ORM write isolated in helper for future bulk insert"
+  bulk_insert_helper:
+    location: "src/babylon/data/utils/bulk_insert.py"
+    status: "READY_FOR_OPTIMIZATION"
+
+# =============================================================================
 # DATA-DRIVEN LOADER PATTERN (FactTableSpec)
 # =============================================================================
 

@@ -27,6 +27,32 @@ schema:
     - FactBroadbandCoverage: "FCC broadband metrics"
     - FactElectricGrid: "Substations, transmission lines"
 
+loader_infrastructure:
+  api_loader_base:
+    location: "src/babylon/data/api_loader_base.py"
+    used_by:
+      - "census/loader_3nf.py"
+      - "cfs/loader.py"
+      - "fred/loader_3nf.py"
+      - "energy/loader_3nf.py"
+      - "qcew/loader_3nf.py"
+    notes:
+      - "Shared API client lifecycle helpers"
+  load_stats:
+    location: "src/babylon/data/loader_base.py"
+    fields:
+      api_errors: "Structured API error records (status_code, url, context)"
+      ingest_breakdown: "Detailed ingest counters keyed by loader/table/year"
+    notes:
+      - "Used for troubleshooting and ingest auditing"
+
+database_paths:
+  normalized_default: "data/sqlite/marxist-data-3NF.sqlite"
+  normalized_override_env: "BABYLON_NORMALIZED_DB_PATH"
+  notes:
+    - "Relative paths resolve from repo root"
+    - "Use for parallel build databases"
+
 loaders:
   complete:
     - census_qcew: "Quarterly Census of Employment & Wages"

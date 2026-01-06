@@ -31,7 +31,7 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
-from tqdm import tqdm  # type: ignore[import-untyped]
+from tqdm import tqdm
 
 from babylon.data.census.api_client import CensusAPIClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats

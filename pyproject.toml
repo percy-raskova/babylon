@@ -119,6 +119,7 @@ markers = [
     "ai: AI/RAG evaluation tests (slow, non-deterministic)",
     "red_phase: TDD RED phase tests (intentionally failing until GREEN phase)",
     "slow: Long-running scenario tests (2000+ ticks, multi-minute runtime)",
+    "scenario: Full simulation scenario tests (multi-tick arcs, state verification)",
     "theory_rent: Imperial rent and unequal exchange mechanics",
     "theory_rift: Metabolic rift and ecological limits mechanics",
     "theory_solidarity: Solidarity transmission and consciousness mechanics",

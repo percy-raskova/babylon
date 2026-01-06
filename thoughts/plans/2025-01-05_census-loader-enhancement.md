@@ -101,10 +101,11 @@ SELECT COUNT(*) FROM bridge_county_metro;
 The implementation follows a **schema-first** approach:
 
 1. Extend schema with new dimensions and FKs
-1. Update loader infrastructure for multi-year iteration
-1. Add race-disaggregated table fetching
-1. Populate metro area dimensions
-1. Comprehensive testing
+2. Update loader infrastructure for multi-year iteration
+3. Add race-disaggregated table fetching
+4. Populate metro area dimensions
+5. Consolidate repetitive loader patterns (base class extraction)
+6. Comprehensive testing
 
 Each phase is independently testable and deployable.
 
@@ -695,7 +696,330 @@ if verbose:
 
 ______________________________________________________________________
 
-## Phase 5: Testing and Documentation
+## Phase 5: Data Loader Infrastructure Refactoring
+
+### Overview
+
+Consolidate repetitive patterns across 13 data loaders identified during Phase 4 analysis. The Census loader's `FactTableSpec` data-driven pattern proved highly successful (eliminating 14 repetitive methods), and similar consolidations can reduce ~800-1000 LOC across the data loading infrastructure.
+
+### Analysis Summary
+
+Analysis of `src/babylon/data/` revealed four consolidation opportunities:
+
+| Pattern | Loaders Affected | Estimated LOC Reduction |
+|---------|------------------|-------------------------|
+| Time dimension management | 5 loaders (~40 lines each) | ~200 LOC |
+| Data source loading | 12 loaders (~15 lines each) | ~180 LOC |
+| County FIPS extraction | 6 HIFLD/MIRTA loaders (~20 lines each) | ~120 LOC |
+| ArcGIS spatial aggregation | 6 HIFLD/MIRTA loaders (~50-70 lines each) | ~300-400 LOC |
+
+### Changes Required
+
+#### 5a: Time Dimension Management Extraction
+
+**Current State**: 5 loaders duplicate `_get_or_create_time()` pattern:
+- `CensusLoader`
+- `EnergyLoader`
+- `FredLoader`
+- `QcewLoader`
+- `TradeLoader`
+
+**Target**: Extract to `DataLoader` base class as parameterized method.
+
+**File**: `src/babylon/data/loader_base.py`
+
+```python
+class DataLoader(ABC):
+    # ... existing code ...
+
+    # Cached time dimension lookup
+    _time_cache: dict[tuple[int, int | None], int] = {}
+
+    def _get_or_create_time(
+        self,
+        session: Session,
+        year: int,
+        month: int | None = None,
+        granularity: str = "annual",
+    ) -> int:
+        """Get or create time dimension record with caching.
+
+        Args:
+            session: Database session.
+            year: 4-digit year.
+            month: 1-12 month (optional for monthly granularity).
+            granularity: "annual" or "monthly".
+
+        Returns:
+            time_id for the dimension record.
+        """
+        cache_key = (year, month)
+        if cache_key in self._time_cache:
+            return self._time_cache[cache_key]
+
+        # Check DB first
+        from babylon.data.normalize.schema import DimTime
+        query = session.query(DimTime).filter(DimTime.year == year)
+        if month is not None:
+            query = query.filter(DimTime.month == month)
+        else:
+            query = query.filter(DimTime.month.is_(None))
+
+        existing = query.first()
+        if existing:
+            self._time_cache[cache_key] = existing.time_id
+            return existing.time_id
+
+        # Create new record
+        time_record = DimTime(
+            year=year,
+            month=month,
+            granularity=granularity,
+        )
+        session.add(time_record)
+        session.flush()
+
+        self._time_cache[cache_key] = time_record.time_id
+        return time_record.time_id
+```
+
+#### 5b: Data Source Loading Extraction
+
+**Current State**: 12 loaders duplicate `_load_data_source()` initialization.
+
+**Target**: Parameterize in base class with configurable attributes.
+
+**File**: `src/babylon/data/loader_base.py`
+
+```python
+class DataLoader(ABC):
+    # Class attributes for loader metadata
+    source_name: str = ""  # Override in subclass
+    source_description: str = ""  # Override in subclass
+    source_url: str = ""  # Override in subclass
+
+    # Cached source_id
+    _source_id: int | None = None
+
+    def _get_source_id(self, session: Session) -> int:
+        """Get or create data source record.
+
+        Uses class attributes source_name, source_description, source_url.
+        Caches result for subsequent calls.
+        """
+        if self._source_id is not None:
+            return self._source_id
+
+        from babylon.data.normalize.schema import DimDataSource
+
+        existing = session.query(DimDataSource).filter(
+            DimDataSource.source_name == self.source_name
+        ).first()
+
+        if existing:
+            self._source_id = existing.source_id
+            return existing.source_id
+
+        source = DimDataSource(
+            source_name=self.source_name,
+            description=self.source_description,
+            url=self.source_url,
+        )
+        session.add(source)
+        session.flush()
+
+        self._source_id = source.source_id
+        return source.source_id
+```
+
+#### 5c: County FIPS Extraction Utility
+
+**Current State**: 6 HIFLD/MIRTA loaders duplicate county FIPS extraction from coordinates.
+
+**Target**: Create shared utility module.
+
+**File**: `src/babylon/data/utils/fips_resolver.py` (NEW)
+
+```python
+"""FIPS code resolution utilities.
+
+Provides consistent county FIPS extraction from coordinates or state/county names,
+used by multiple data loaders for geographic aggregation.
+"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+
+@lru_cache(maxsize=5000)
+def state_county_to_fips(state_name: str, county_name: str) -> str | None:
+    """Convert state and county names to 5-digit FIPS code.
+
+    Args:
+        state_name: Full state name (e.g., "California").
+        county_name: County name (e.g., "Los Angeles County").
+
+    Returns:
+        5-digit FIPS code or None if not found.
+    """
+    # Normalize names
+    state = state_name.strip().upper()
+    county = county_name.strip().upper().replace(" COUNTY", "")
+
+    # Lookup from static mapping (loaded from Census FIPS file)
+    return _FIPS_LOOKUP.get((state, county))
+
+
+def coordinates_to_county_fips(
+    lat: float,
+    lon: float,
+    session: Session,
+) -> str | None:
+    """Resolve coordinates to county FIPS using spatial query.
+
+    Requires county boundaries in database.
+    Falls back to state_county_to_fips if spatial data unavailable.
+    """
+    # Implementation for spatial resolution
+    pass
+
+
+# Load static FIPS mapping from Census file
+_FIPS_LOOKUP: dict[tuple[str, str], str] = {}
+
+
+def _load_fips_lookup() -> None:
+    """Load FIPS lookup from Census county file."""
+    global _FIPS_LOOKUP
+    # Load from data/census/county_fips.csv if exists
+    pass
+```
+
+#### 5d: ArcGISSpatialLoader Base Class
+
+**Current State**: 6 HIFLD/MIRTA loaders share infrastructure aggregation pattern:
+- `HIFLDElectricLoader`
+- `HIFLDPrisonsLoader`
+- `HIFLDPoliceLoader`
+- `MIRTAMilitaryLoader`
+- (2 others)
+
+**Target**: Extract common ArcGIS/GeoJSON processing to intermediate base class.
+
+**File**: `src/babylon/data/loaders/arcgis_spatial_loader.py` (NEW)
+
+```python
+"""Base class for ArcGIS-sourced spatial data loaders.
+
+Provides common infrastructure for loading point/facility data from
+ArcGIS REST services or GeoJSON files, aggregating to county level.
+"""
+
+from __future__ import annotations
+
+import logging
+from abc import abstractmethod
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from babylon.data.loader_base import DataLoader
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class FacilityRecord:
+    """Base record for spatial facility data."""
+
+    name: str
+    state: str
+    county: str | None
+    latitude: float
+    longitude: float
+    facility_type: str | None = None
+    capacity: float | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class ArcGISSpatialLoader(DataLoader):
+    """Base class for county-aggregated spatial data loaders.
+
+    Subclasses override:
+    - parse_source_file(): Parse GeoJSON/CSV to FacilityRecord list
+    - aggregate_facilities(): Apply domain-specific aggregation logic
+    - create_fact_records(): Create ORM objects from aggregated data
+    """
+
+    @abstractmethod
+    def parse_source_file(self, filepath: Path) -> list[FacilityRecord]:
+        """Parse source file to facility records."""
+        pass
+
+    @abstractmethod
+    def aggregate_facilities(
+        self,
+        records: list[FacilityRecord],
+    ) -> dict[str, Any]:
+        """Aggregate facilities by county with domain logic."""
+        pass
+
+    def _resolve_county_fips(self, record: FacilityRecord) -> str | None:
+        """Resolve facility to county FIPS code."""
+        from babylon.data.utils.fips_resolver import (
+            state_county_to_fips,
+            coordinates_to_county_fips,
+        )
+
+        # Try state/county names first
+        if record.county:
+            fips = state_county_to_fips(record.state, record.county)
+            if fips:
+                return fips
+
+        # Fall back to coordinate resolution
+        return coordinates_to_county_fips(
+            record.latitude,
+            record.longitude,
+            self._session,
+        )
+```
+
+### Success Criteria
+
+#### Automated Verification:
+
+- [ ] Type checking passes: `mise run typecheck`
+- [ ] Linting passes: `mise run lint`
+- [ ] Unit tests pass: `mise run test:unit`
+- [ ] Integration tests pass for all 13 loaders
+- [ ] No regression in data loading functionality
+
+#### Metrics:
+
+- [ ] Total LOC reduced by 600+ lines (target: 800-1000)
+- [ ] All 13 loaders still pass their integration tests
+- [ ] Base class methods have 100% test coverage
+- [ ] No duplicated `_get_or_create_*` patterns in leaf loaders
+
+### Implementation Priority
+
+1. **5b: Data source loading** (Quick win, affects all 12 loaders)
+2. **5a: Time dimension management** (High value, affects 5 loaders)
+3. **5c: County FIPS utility** (Moderate value, enables 5d)
+4. **5d: ArcGIS base class** (Largest refactor, affects 6 loaders)
+
+______________________________________________________________________
+
+## Phase 6: Testing and Documentation
 
 ### Overview
 
@@ -1017,14 +1341,14 @@ ______________________________________________________________________
 
 ## Testing Strategy
 
-### Unit Tests (Phase 5)
+### Unit Tests (Phase 6)
 
 - `DimRace` schema validation
 - CBSA parser correctness
 - Race code mapping
 - Year range handling
 
-### Integration Tests (Phase 5)
+### Integration Tests (Phase 6)
 
 - Multi-year data loading (2-year subset for speed)
 - Race disaggregation completeness
@@ -1113,5 +1437,6 @@ ______________________________________________________________________
 | Phase 1 | ✅ Complete | (schema changes) | DimRace, time_id/race_id FKs added |
 | Phase 2 | ✅ Complete | `d9fc8f4` | Data-driven refactor, `census_years` API |
 | Phase 3 | ✅ Complete | `19cbee2` | Race-iterated tables loaded via A-I suffix |
-| Phase 4 | ✅ Complete | (pending commit) | Metro area population (1,119 areas, county-metro bridges) |
-| Phase 5 | 🔲 Pending | - | Testing and documentation |
+| Phase 4 | ✅ Complete | `822b021` | Metro area population (1,119 areas, county-metro bridges) |
+| Phase 5 | 🔲 Pending | - | Data loader infrastructure refactoring (4 consolidation patterns) |
+| Phase 6 | 🔲 Pending | - | Testing and documentation |

@@ -62,3 +62,6 @@ html/
 # Claude Code local settings
 .claude/settings.local.json
 assets/images/prolewiki.zip
+
+# Percy's personal research materials (PDFs, theory texts)
+thoughts/percy/

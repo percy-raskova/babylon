@@ -197,6 +197,17 @@ plugins = [
     "pydantic.mypy",
 ]
 
+# Packages without type stubs - explicit ignore rather than inline comments
+[[tool.mypy.overrides]]
+module = [
+    "duckdb",
+    "duckdb.*",
+    "alembic.*",
+    "h3",
+    "h3.*",
+]
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true

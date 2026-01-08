@@ -1,7 +1,7 @@
 """Census data loader for direct 3NF schema population.
 
 Loads ACS 5-Year Estimates directly from Census Bureau API into the normalized
-3NF schema (marxist-data-3NF.sqlite), bypassing the intermediate research.sqlite.
+3NF schema (marxist-data-3NF.duckdb), bypassing the intermediate research.sqlite.
 
 This loader:
 - Uses LoaderConfig for parameterized temporal/geographic/operational settings
@@ -14,7 +14,7 @@ Usage:
     from babylon.data import LoaderConfig
     from babylon.data.normalize.database import get_normalized_session_factory
 
-    config = LoaderConfig(census_years=[2022], state_fips_list=["06"])  # CA only
+    config = LoaderConfig(census_years=[2021], state_fips_list=["06"])  # CA only
     loader = CensusLoader(config)
 
     session_factory = get_normalized_session_factory()
@@ -35,7 +35,8 @@ from typing import TYPE_CHECKING, Any, Literal
 from tqdm import tqdm
 
 from babylon.data.api_loader_base import ApiLoaderBase
-from babylon.data.census.api_client import CensusAPIClient
+from babylon.data.census.api_client import CensusAPIClient, CountyData, VariableMetadata
+from babylon.data.exceptions import CensusAPIError
 from babylon.data.loader_base import LoaderConfig, LoadStats
 from babylon.data.normalize.classifications import (
     classify_labor_type,
@@ -75,6 +76,9 @@ from babylon.data.normalize.schema import (
     FactCensusRentBurden,
     FactCensusWorkerClass,
 )
+from babylon.data.utils import BatchWriter
+from babylon.data.utils.api_resilience import RetryPolicy
+from babylon.data.utils.logging_helpers import log_api_error
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -502,7 +506,7 @@ class CensusLoader(ApiLoaderBase):
         config: LoaderConfig controlling year, geographic scope, and operations.
 
     Example:
-        config = LoaderConfig(census_years=[2022], state_fips_list=["06", "36"])
+        config = LoaderConfig(census_years=[2021], state_fips_list=["06", "36"])
         loader = CensusLoader(config)
         stats = loader.load(session, reset=True)
     """
@@ -517,10 +521,20 @@ class CensusLoader(ApiLoaderBase):
         self._race_code_to_id: dict[str, int] = {}
         self._year_to_time_id: dict[int, int] = {}
         self._source_id: int | None = None
+        self._base_table_missing_by_year: dict[int, dict[str, set[str]]] = {}
+        self._race_table_skips_by_year: dict[int, dict[str, set[str]]] = {}
+        self._race_tables_unavailable_by_year: dict[int, set[str]] = {}
+        self._missing_tables_by_year: dict[int, set[str]] = {}
+        self._variables_by_year: dict[int, dict[str, dict[str, VariableMetadata]]] = {}
+        self._variables_from_base_by_year: dict[int, set[str]] = {}
 
     def _make_client(self, year: int) -> CensusAPIClient:
         """Create a Census API client for a specific year."""
-        return CensusAPIClient(year=year)
+        retry_policy = RetryPolicy(
+            max_retries=self.config.max_retries,
+            base_delay=self.config.request_delay_seconds,
+        )
+        return CensusAPIClient(year=year, retry_policy=retry_policy)
 
     def _fetch_variables(self, table_id: str) -> dict[str, Any]:
         """Fetch variable metadata for a table via the active client."""
@@ -531,6 +545,214 @@ class CensusLoader(ApiLoaderBase):
         """Fetch table data for a state (or all states) via the active client."""
         assert self._client is not None
         return self._client.get_table_data(table_id, state_fips=state_fips)
+
+    def _is_race_suffixed_table(self, table_id: str) -> bool:
+        """Return True if the table id ends with a race suffix (A-I)."""
+        return len(table_id) > 1 and table_id[-1] in FULL_RACE_SUFFIXES
+
+    def _base_table_id(self, table_id: str) -> str:
+        """Return the base table id for a race-suffixed table."""
+        if self._is_race_suffixed_table(table_id):
+            return table_id[:-1]
+        return table_id
+
+    def _record_base_table_missing(self, year: int, table_id: str, state_fips: str) -> None:
+        """Track when a base table is missing for a state/year."""
+        year_missing = self._base_table_missing_by_year.setdefault(year, {})
+        year_missing.setdefault(table_id, set()).add(state_fips)
+
+    def _is_base_table_missing(self, year: int, table_id: str, state_fips: str) -> bool:
+        """Return True if the base table was missing for a state/year."""
+        year_missing = self._base_table_missing_by_year.get(year, {})
+        return state_fips in year_missing.get(table_id, set())
+
+    def _record_race_table_skip(self, year: int, table_id: str, state_fips: str) -> None:
+        """Track when race tables are skipped due to base table missing."""
+        year_skips = self._race_table_skips_by_year.setdefault(year, {})
+        year_skips.setdefault(table_id, set()).add(state_fips)
+
+    def _record_race_tables_unavailable(self, year: int, base_table_id: str, reason: str) -> None:
+        """Track when race-iterated tables are unavailable for a base table/year."""
+        year_unavailable = self._race_tables_unavailable_by_year.setdefault(year, set())
+        if base_table_id in year_unavailable:
+            return
+        year_unavailable.add(base_table_id)
+        logger.info(
+            "Race-iterated tables for base table %s unavailable for year %s (%s).",
+            base_table_id,
+            year,
+            reason,
+            extra={
+                "loader": "census",
+                "operation": "race_tables_unavailable",
+                "base_table_id": base_table_id,
+                "year": year,
+                "reason": reason,
+            },
+        )
+
+    def _is_race_tables_unavailable(self, year: int, base_table_id: str) -> bool:
+        """Return True if race-iterated tables are unavailable for a base table/year."""
+        return base_table_id in self._race_tables_unavailable_by_year.get(year, set())
+
+    def _is_table_missing(self, year: int, table_id: str) -> bool:
+        """Return True if the table is known missing for a year."""
+        return table_id in self._missing_tables_by_year.get(year, set())
+
+    def _record_missing_table(
+        self,
+        year: int,
+        table_id: str,
+        reason: str,
+        stats: LoadStats | None = None,
+    ) -> None:
+        """Track a table that is unavailable for an entire year."""
+        year_missing = self._missing_tables_by_year.setdefault(year, set())
+        if table_id in year_missing:
+            return
+        year_missing.add(table_id)
+        logger.warning(
+            "Skipping Census table %s for year %s (%s).",
+            table_id,
+            year,
+            reason,
+            extra={
+                "loader": "census",
+                "operation": "table_missing_for_year",
+                "table_id": table_id,
+                "year": year,
+                "reason": reason,
+            },
+        )
+        if stats is not None:
+            stats.record_ingest(f"census:{year}:missing_table:{table_id}", 1)
+
+    def _get_variables_for_table(
+        self, table_id: str, year: int
+    ) -> tuple[dict[str, VariableMetadata], bool]:
+        """Return variable metadata for a table.
+
+        Returns:
+            Tuple of (variables, from_base). from_base is always False for
+            race-suffixed tables that lack metadata (race tables are skipped).
+        """
+        year_cache = self._variables_by_year.setdefault(year, {})
+        from_base_cache = self._variables_from_base_by_year.setdefault(year, set())
+        if table_id in year_cache:
+            return year_cache[table_id], table_id in from_base_cache
+
+        if self._is_race_suffixed_table(table_id):
+            base_table_id = self._base_table_id(table_id)
+            if self._is_race_tables_unavailable(year, base_table_id):
+                year_cache[table_id] = {}
+                return {}, False
+
+        variables = self._fetch_variables(table_id)
+        if variables:
+            year_cache[table_id] = variables
+            return variables, False
+
+        if self._is_race_suffixed_table(table_id):
+            base_table_id = self._base_table_id(table_id)
+            self._record_race_tables_unavailable(
+                year,
+                base_table_id,
+                reason="variable_metadata_missing",
+            )
+
+        year_cache[table_id] = {}
+        return {}, False
+
+    def _fetch_county_data_chunked(self, variables: list[str], state_fips: str) -> list[CountyData]:
+        """Fetch county data with variable chunking to respect API limits."""
+        assert self._client is not None
+        if not variables:
+            return []
+
+        chunk_size = 45
+        merged: dict[str, CountyData] = {}
+        for i in range(0, len(variables), chunk_size):
+            chunk = variables[i : i + chunk_size]
+            data = self._client.get_county_data(chunk, state_fips=state_fips)
+            for row in data:
+                existing = merged.get(row.fips)
+                if existing is None:
+                    merged[row.fips] = CountyData(
+                        state_fips=row.state_fips,
+                        county_fips=row.county_fips,
+                        fips=row.fips,
+                        name=row.name,
+                        values=dict(row.values),
+                    )
+                else:
+                    existing.values.update(row.values)
+
+        return list(merged.values())
+
+    def _log_race_table_skip_summary(self, year: int, stats: LoadStats | None = None) -> None:
+        """Log a summary of skipped race-iterated tables for a year."""
+        skipped = self._race_table_skips_by_year.pop(year, {})
+        if not skipped:
+            return
+
+        for base_table_id, states in sorted(skipped.items()):
+            state_fips_list = sorted(states)
+            logger.warning(
+                "Skipping race-iterated tables for base table %s because base table data "
+                "is missing for %s states.",
+                base_table_id,
+                len(state_fips_list),
+                extra={
+                    "loader": "census",
+                    "operation": "race_iterated_skip",
+                    "base_table_id": base_table_id,
+                    "year": year,
+                    "state_fips": state_fips_list,
+                    "skip_reason": "base_table_missing",
+                },
+            )
+            if stats is not None:
+                stats.record_ingest(
+                    f"census:{year}:race_table_skips:{base_table_id}",
+                    len(state_fips_list),
+                )
+
+    def _handle_api_error(
+        self,
+        error: CensusAPIError,
+        *,
+        table_id: str,
+        state_fips: str,
+        operation: str,
+        stats: LoadStats | None = None,
+    ) -> None:
+        """Handle API errors according to loader policy."""
+        year = self._client.year if self._client else None
+        dataset = self._client.dataset if self._client else None
+        detail_context = {
+            "loader": "census",
+            "operation": operation,
+            "table_id": table_id,
+            "state_fips": state_fips,
+            "year": year,
+            "dataset": dataset,
+            "api_error_policy": self.config.api_error_policy,
+        }
+        log_api_error(
+            logger,
+            error,
+            context=detail_context,
+            level=logging.WARNING,
+        )
+        if stats is not None:
+            year_label = str(year) if year is not None else "unknown"
+            stats.record_api_error(
+                error,
+                context=f"census:{year_label}:{table_id}:{state_fips}",
+                details=detail_context,
+            )
+        if self.config.api_error_policy == "abort":
+            raise error
 
     def _iter_base_fact_plan(self, time_id: int, race_id: int) -> Iterator[FactLoadPlan]:
         """Yield the base load plan for Total race tables and special cases."""
@@ -588,19 +810,36 @@ class CensusLoader(ApiLoaderBase):
         session: Session,
         state_fips_list: list[str],
         verbose: bool,
+        stats: LoadStats | None = None,
     ) -> int:
         """Execute a load-plan entry."""
         if plan.kind == "spec":
             assert plan.spec is not None
             return self._load_fact_table(
-                plan.spec, session, state_fips_list, verbose, plan.time_id, plan.race_id
+                plan.spec,
+                session,
+                state_fips_list,
+                verbose,
+                plan.time_id,
+                plan.race_id,
+                stats,
             )
         if plan.kind == "hours":
             return self._load_fact_hours(
-                session, state_fips_list, verbose, plan.time_id, plan.race_id
+                session,
+                state_fips_list,
+                verbose,
+                plan.time_id,
+                plan.race_id,
+                stats,
             )
         return self._load_fact_income_sources(
-            session, state_fips_list, verbose, plan.time_id, plan.race_id
+            session,
+            state_fips_list,
+            verbose,
+            plan.time_id,
+            plan.race_id,
+            stats,
         )
 
     def get_dimension_tables(self) -> list[type]:
@@ -651,6 +890,27 @@ class CensusLoader(ApiLoaderBase):
             FactCensusIncomeSources,
         ]
 
+    def clear_tables(self, session: Session) -> None:
+        """Clear Census tables without deleting shared dimensions."""
+        self._delete_tables(session, self.get_fact_tables())
+        self._delete_tables(
+            session,
+            [
+                BridgeCountyMetro,
+                DimIncomeBracket,
+                DimEmploymentStatus,
+                DimWorkerClass,
+                DimOccupation,
+                DimEducationLevel,
+                DimHousingTenure,
+                DimRentBurden,
+                DimCommuteMode,
+                DimPovertyCategory,
+                DimGender,
+                DimRace,
+            ],
+        )
+
     def load(
         self,
         session: Session,
@@ -674,11 +934,17 @@ class CensusLoader(ApiLoaderBase):
             LoadStats with counts of loaded dimensions and facts.
         """
         stats = LoadStats(source="census")
+        self._base_table_missing_by_year.clear()
+        self._race_table_skips_by_year.clear()
+        self._race_tables_unavailable_by_year.clear()
+        self._missing_tables_by_year.clear()
+        self._variables_by_year.clear()
+        self._variables_from_base_by_year.clear()
         census_years = self.config.census_years
         state_fips_list = self.config.state_fips_list or DEFAULT_STATE_FIPS
 
         # Use first year for dimensions that need API metadata
-        initial_year = census_years[0] if census_years else 2022
+        initial_year = census_years[0] if census_years else 2021
 
         if verbose:
             year_range = (
@@ -724,7 +990,7 @@ class CensusLoader(ApiLoaderBase):
                 state_count = self._load_states(session, state_fips_list, verbose)
                 stats.dimensions_loaded["dim_state"] = state_count
 
-                county_count = self._load_counties(session, state_fips_list, verbose)
+                county_count = self._load_counties(session, state_fips_list, verbose, stats)
                 stats.dimensions_loaded["dim_county"] = county_count
 
                 # Load metro areas and county-metro bridge (Phase 4)
@@ -781,7 +1047,7 @@ class CensusLoader(ApiLoaderBase):
 
                     for plan in self._iter_base_fact_plan(time_id, race_id_total):
                         fact_count = self._execute_fact_plan(
-                            plan, session, state_fips_list, verbose
+                            plan, session, state_fips_list, verbose, stats
                         )
                         if plan.kind == "spec":
                             assert plan.spec is not None
@@ -865,7 +1131,7 @@ class CensusLoader(ApiLoaderBase):
                 current_race = plan.race_code
 
             try:
-                fact_count = self._execute_fact_plan(plan, session, state_fips_list, False)
+                fact_count = self._execute_fact_plan(plan, session, state_fips_list, False, stats)
                 assert plan.spec is not None
                 table_name: str = plan.spec.fact_class.__tablename__  # type: ignore[attr-defined]
                 stats.facts_loaded[table_name] = stats.facts_loaded.get(table_name, 0) + fact_count
@@ -882,8 +1148,17 @@ class CensusLoader(ApiLoaderBase):
                     stats.record_api_error(
                         e,
                         context=f"census:{year}:{plan.race_code}:{table_id}",
+                        details={
+                            "loader": "census",
+                            "operation": "race_iterated_table",
+                            "table_id": table_id,
+                            "race_code": plan.race_code,
+                            "year": year,
+                        },
                     )
                     stats.errors.append(f"{table_id}: {e}")
+
+        self._log_race_table_skip_summary(year, stats)
 
     def _create_race_suffixed_spec(self, spec: FactTableSpec, race_code: str) -> FactTableSpec:
         """Create a race-suffixed FactTableSpec.
@@ -1016,11 +1291,22 @@ class CensusLoader(ApiLoaderBase):
         """Load state dimension from API."""
         assert self._client is not None
 
+        existing_states = {state.state_fips: state for state in session.query(DimState).all()}
         states = self._client.get_all_states()
         count = 0
 
         for fips, name in states:
             if fips not in state_fips_list:
+                continue
+
+            existing = existing_states.get(fips)
+            if existing:
+                self._state_fips_to_id[fips] = existing.state_id
+                if existing.state_name != name:
+                    existing.state_name = name
+                abbrev = STATE_ABBREVS.get(fips, fips)
+                if existing.state_abbrev != abbrev:
+                    existing.state_abbrev = abbrev
                 continue
 
             abbrev = STATE_ABBREVS.get(fips, fips)
@@ -1044,10 +1330,12 @@ class CensusLoader(ApiLoaderBase):
         session: Session,
         state_fips_list: list[str],
         verbose: bool,
+        stats: LoadStats | None = None,
     ) -> int:
         """Load county dimension from API."""
         assert self._client is not None
 
+        existing_counties = {county.fips: county for county in session.query(DimCounty).all()}
         count = 0
         state_iter = tqdm(state_fips_list, desc="Counties", disable=not verbose)
 
@@ -1061,14 +1349,34 @@ class CensusLoader(ApiLoaderBase):
                     variables=["B19013_001E"],
                     state_fips=state_fips,
                 )
+            except CensusAPIError as exc:
+                self._handle_api_error(
+                    exc,
+                    table_id="B19013_001E",
+                    state_fips=state_fips,
+                    operation="load_counties",
+                    stats=stats,
+                )
+                continue
             except Exception as e:
-                logger.warning(f"Failed to fetch counties for state {state_fips}: {e}")
+                logger.warning("Failed to fetch counties for state %s: %s", state_fips, e)
                 continue
 
             for county_data in data:
                 # Parse county name
                 name_parts = county_data.name.split(", ")
                 county_name = name_parts[0] if name_parts else county_data.name
+
+                existing = existing_counties.get(county_data.fips)
+                if existing:
+                    self._fips_to_county[county_data.fips] = existing.county_id
+                    if existing.county_name != county_name:
+                        existing.county_name = county_name
+                    if existing.county_fips != county_data.county_fips:
+                        existing.county_fips = county_data.county_fips
+                    if existing.state_id != state_id:
+                        existing.state_id = state_id
+                    continue
 
                 county = DimCounty(
                     fips=county_data.fips,
@@ -1085,6 +1393,110 @@ class CensusLoader(ApiLoaderBase):
             print(f"  Loaded {count} counties")
 
         return count
+
+    def _get_existing_metro_keys(self, session: Session) -> tuple[set[str], set[str]]:
+        """Return existing CBSA codes and geo IDs for metro areas."""
+        existing_metros = session.query(DimMetroArea).all()
+        existing_cbsa = {m.cbsa_code for m in existing_metros if m.cbsa_code}
+        existing_geo = {m.geo_id for m in existing_metros if m.geo_id}
+        return existing_cbsa, existing_geo
+
+    def _load_cbsa_metros(
+        self,
+        session: Session,
+        cbsas: list[dict[str, str]],
+        existing_cbsa: set[str],
+        existing_geo: set[str],
+    ) -> tuple[int, int, int]:
+        """Insert CBSA metro areas and return counts."""
+        new_cbsas = 0
+        new_msas = 0
+        new_micros = 0
+        for cbsa in cbsas:
+            geo_id = f"cbsa_{cbsa['cbsa_code']}"
+            if cbsa["cbsa_code"] in existing_cbsa or geo_id in existing_geo:
+                continue
+            metro = DimMetroArea(
+                geo_id=geo_id,
+                cbsa_code=cbsa["cbsa_code"],
+                metro_name=cbsa["metro_name"],
+                area_type=cbsa["area_type"],
+            )
+            session.add(metro)
+            new_cbsas += 1
+            if cbsa["area_type"] == "msa":
+                new_msas += 1
+            elif cbsa["area_type"] == "micropolitan":
+                new_micros += 1
+        return new_cbsas, new_msas, new_micros
+
+    def _load_csa_metros(
+        self,
+        session: Session,
+        csas: list[dict[str, str]],
+        existing_cbsa: set[str],
+        existing_geo: set[str],
+    ) -> int:
+        """Insert CSA metro areas and return count."""
+        new_csas = 0
+        for csa in csas:
+            geo_id = f"csa_{csa['cbsa_code']}"
+            if csa["cbsa_code"] in existing_cbsa or geo_id in existing_geo:
+                continue
+            metro = DimMetroArea(
+                geo_id=geo_id,
+                cbsa_code=csa["cbsa_code"],
+                metro_name=csa["metro_name"],
+                area_type=csa["area_type"],
+            )
+            session.add(metro)
+            new_csas += 1
+        return new_csas
+
+    def _build_metro_lookup(self, session: Session) -> dict[str, int]:
+        """Build CBSA code to metro_area_id lookup."""
+        return {
+            m.cbsa_code: m.metro_area_id for m in session.query(DimMetroArea).all() if m.cbsa_code
+        }
+
+    def _load_metro_bridges(
+        self,
+        session: Session,
+        mappings: list[dict[str, str | bool]],
+        metro_lookup: dict[str, int],
+        verbose: bool,
+    ) -> int:
+        """Load county-to-metro bridge mappings."""
+        existing_bridges = {
+            (bridge.county_id, bridge.metro_area_id)
+            for bridge in session.query(BridgeCountyMetro).all()
+        }
+        bridge_count = 0
+
+        for mapping in mappings:
+            county_fips = str(mapping["county_fips"])
+            cbsa_code = str(mapping["cbsa_code"])
+
+            county_id = self._fips_to_county.get(county_fips)
+            metro_id = metro_lookup.get(cbsa_code)
+
+            if county_id and metro_id:
+                if (county_id, metro_id) in existing_bridges:
+                    continue
+                bridge = BridgeCountyMetro(
+                    county_id=county_id,
+                    metro_area_id=metro_id,
+                    is_principal_city=bool(mapping["is_principal_city"]),
+                )
+                session.add(bridge)
+                bridge_count += 1
+
+        session.flush()
+
+        if verbose:
+            print(f"    Created {bridge_count} county-to-metro mappings")
+
+        return bridge_count
 
     def _load_metro_areas(self, session: Session, verbose: bool = True) -> tuple[int, int]:
         """Load metropolitan statistical areas from CBSA delineation file.
@@ -1124,72 +1536,37 @@ class CensusLoader(ApiLoaderBase):
             logger.warning(f"Failed to parse CBSA delineation file: {e}")
             return (0, 0)
 
+        existing_cbsa, existing_geo = self._get_existing_metro_keys(session)
+
         # Load CBSAs (MSA and Micropolitan)
         cbsas = get_unique_cbsas(records)
-        for cbsa in cbsas:
-            # Generate geo_id from cbsa_code (required by schema)
-            geo_id = f"cbsa_{cbsa['cbsa_code']}"
-            metro = DimMetroArea(
-                geo_id=geo_id,
-                cbsa_code=cbsa["cbsa_code"],
-                metro_name=cbsa["metro_name"],
-                area_type=cbsa["area_type"],
-            )
-            session.add(metro)
+        new_cbsas, new_msas, new_micros = self._load_cbsa_metros(
+            session,
+            cbsas,
+            existing_cbsa,
+            existing_geo,
+        )
 
         # Load CSAs
         csas = get_unique_csas(records)
-        for csa in csas:
-            geo_id = f"csa_{csa['cbsa_code']}"
-            metro = DimMetroArea(
-                geo_id=geo_id,
-                cbsa_code=csa["cbsa_code"],
-                metro_name=csa["metro_name"],
-                area_type=csa["area_type"],
-            )
-            session.add(metro)
+        new_csas = self._load_csa_metros(session, csas, existing_cbsa, existing_geo)
 
         session.flush()
-        metro_count = len(cbsas) + len(csas)
+        metro_count = new_cbsas + new_csas
 
         if verbose:
-            print(
-                f"    Loaded {len(cbsas)} CBSAs ({len([c for c in cbsas if c['area_type'] == 'msa'])} MSA, {len([c for c in cbsas if c['area_type'] == 'micropolitan'])} micropolitan)"
-            )
-            print(f"    Loaded {len(csas)} CSAs")
+            print(f"    Loaded {new_cbsas} CBSAs ({new_msas} MSA, {new_micros} micropolitan)")
+            print(f"    Loaded {new_csas} CSAs")
 
         # Build lookup for bridge table: cbsa_code -> metro_area_id
-        metro_lookup: dict[str, int] = {
-            m.cbsa_code: m.metro_area_id for m in session.query(DimMetroArea).all() if m.cbsa_code
-        }
+        metro_lookup = self._build_metro_lookup(session)
 
         # Load county-to-metro mappings
         if verbose:
             print("  Loading county-to-metro mappings...")
 
         mappings = get_county_metro_mappings(records)
-        bridge_count = 0
-
-        for mapping in mappings:
-            county_fips = str(mapping["county_fips"])
-            cbsa_code = str(mapping["cbsa_code"])
-
-            county_id = self._fips_to_county.get(county_fips)
-            metro_id = metro_lookup.get(cbsa_code)
-
-            if county_id and metro_id:
-                bridge = BridgeCountyMetro(
-                    county_id=county_id,
-                    metro_area_id=metro_id,
-                    is_principal_city=bool(mapping["is_principal_city"]),
-                )
-                session.add(bridge)
-                bridge_count += 1
-
-        session.flush()
-
-        if verbose:
-            print(f"    Created {bridge_count} county-to-metro mappings")
+        bridge_count = self._load_metro_bridges(session, mappings, metro_lookup, verbose)
 
         return (metro_count, bridge_count)
 
@@ -1603,11 +1980,8 @@ class CensusLoader(ApiLoaderBase):
         rows: Iterable[dict[str, Any]],
     ) -> int:
         """Persist rows to the session using ORM models."""
-        count = 0
-        for row in rows:
-            session.add(model(**row))
-            count += 1
-        return count
+        writer = BatchWriter(session, self.config.batch_size)
+        return writer.write(model, rows)
 
     def _build_dimension_map(self, spec: FactTableSpec, session: Session) -> dict[str, int]:
         """Build mapping from dimension code to dimension ID for a fact spec."""
@@ -1691,6 +2065,69 @@ class CensusLoader(ApiLoaderBase):
 
         return rows
 
+    def _prepare_fact_variables(
+        self,
+        spec: FactTableSpec,
+        year: int,
+        stats: LoadStats | None,
+    ) -> tuple[dict[str, VariableMetadata], bool] | None:
+        """Resolve variable metadata needed for a fact table load."""
+        if self._is_race_suffixed_table(spec.table_id):
+            variables, use_variable_fallback = self._get_variables_for_table(spec.table_id, year)
+            if not variables:
+                return None
+            return variables, use_variable_fallback
+
+        if spec.extract_gender:
+            variables, _ = self._get_variables_for_table(spec.table_id, year)
+            if not variables:
+                self._record_missing_table(
+                    year,
+                    spec.table_id,
+                    reason="variable_metadata_missing",
+                    stats=stats,
+                )
+                return None
+            return variables, False
+
+        return {}, False
+
+    def _should_skip_race_state(self, year: int, base_table_id: str, state_fips: str) -> bool:
+        """Return True if race tables should skip the current state."""
+        if self._is_table_missing(year, base_table_id):
+            self._record_race_table_skip(year, base_table_id, state_fips)
+            return True
+        if self._is_base_table_missing(year, base_table_id, state_fips):
+            self._record_race_table_skip(year, base_table_id, state_fips)
+            return True
+        return False
+
+    def _fetch_fact_data_for_state(
+        self,
+        spec: FactTableSpec,
+        state_fips: str,
+        variables: dict[str, VariableMetadata],
+        use_variable_fallback: bool,
+        stats: LoadStats | None,
+    ) -> list[CountyData] | None:
+        """Fetch fact data for a table/state with fallback handling."""
+        try:
+            if use_variable_fallback:
+                return self._fetch_county_data_chunked(list(variables.keys()), state_fips)
+            data = self._fetch_table_data(spec.table_id, state_fips)
+            if data or not self._is_race_suffixed_table(spec.table_id) or not variables:
+                return data
+            return self._fetch_county_data_chunked(list(variables.keys()), state_fips)
+        except CensusAPIError as exc:
+            self._handle_api_error(
+                exc,
+                table_id=spec.table_id,
+                state_fips=state_fips,
+                operation="fact_table",
+                stats=stats,
+            )
+            return None
+
     def _load_fact_table(
         self,
         spec: FactTableSpec,
@@ -1699,6 +2136,7 @@ class CensusLoader(ApiLoaderBase):
         verbose: bool,
         time_id: int,
         race_id: int,
+        stats: LoadStats | None = None,
     ) -> int:
         """Generic fact table loader driven by FactTableSpec configuration.
 
@@ -1715,17 +2153,48 @@ class CensusLoader(ApiLoaderBase):
         """
         assert self._client is not None
         assert self._source_id is not None
+        year = self._client.year
+
+        race_table = self._is_race_suffixed_table(spec.table_id)
+        base_table_id = self._base_table_id(spec.table_id) if race_table else None
+        if race_table and base_table_id and self._is_race_tables_unavailable(year, base_table_id):
+            return 0
 
         dim_map = self._build_dimension_map(spec, session)
         count = 0
         state_iter = tqdm(state_fips_list, desc=spec.label, disable=not verbose)
+        variable_payload = self._prepare_fact_variables(spec, year, stats)
+        if variable_payload is None:
+            return 0
+        variables, use_variable_fallback = variable_payload
 
         for state_fips in state_iter:
-            variables: dict[str, Any] = {}
-            if spec.extract_gender:
-                variables = self._fetch_variables(spec.table_id)
+            if self._is_table_missing(year, spec.table_id):
+                break
+            if (
+                race_table
+                and base_table_id
+                and self._should_skip_race_state(
+                    year,
+                    base_table_id,
+                    state_fips,
+                )
+            ):
+                continue
 
-            data = self._fetch_table_data(spec.table_id, state_fips)
+            data = self._fetch_fact_data_for_state(
+                spec,
+                state_fips,
+                variables,
+                use_variable_fallback,
+                stats,
+            )
+            if data is None:
+                continue
+
+            if not data and not race_table:
+                self._record_base_table_missing(year, spec.table_id, state_fips)
+                continue
 
             for county_data in data:
                 county_id = self._fips_to_county.get(county_data.fips)
@@ -1806,6 +2275,7 @@ class CensusLoader(ApiLoaderBase):
         verbose: bool,
         time_id: int,
         race_id: int,
+        stats: LoadStats | None = None,
     ) -> int:
         """Load B23020 hours worked facts (Pattern D: gender-grouped aggregation).
 
@@ -1830,8 +2300,18 @@ class CensusLoader(ApiLoaderBase):
         state_iter = tqdm(state_fips_list, desc="B23020", disable=not verbose)
 
         for state_fips in state_iter:
-            variables = self._fetch_variables("B23020")
-            data = self._fetch_table_data("B23020", state_fips)
+            try:
+                variables = self._fetch_variables("B23020")
+                data = self._fetch_table_data("B23020", state_fips)
+            except CensusAPIError as exc:
+                self._handle_api_error(
+                    exc,
+                    table_id="B23020",
+                    state_fips=state_fips,
+                    operation="fact_hours",
+                    stats=stats,
+                )
+                continue
 
             for county_data in data:
                 county_id = self._fips_to_county.get(county_data.fips)
@@ -1879,6 +2359,7 @@ class CensusLoader(ApiLoaderBase):
         verbose: bool,
         time_id: int,
         race_id: int,
+        stats: LoadStats | None = None,
     ) -> int:
         """Load B19052/B19053/B19054 income sources facts (Pattern F: multi-table join).
 
@@ -1903,10 +2384,20 @@ class CensusLoader(ApiLoaderBase):
         state_iter = tqdm(state_fips_list, desc="Income Sources", disable=not verbose)
 
         for state_fips in state_iter:
-            # Fetch all three tables
-            wage_data = self._fetch_table_data("B19052", state_fips)
-            self_emp_data = self._fetch_table_data("B19053", state_fips)
-            invest_data = self._fetch_table_data("B19054", state_fips)
+            try:
+                # Fetch all three tables
+                wage_data = self._fetch_table_data("B19052", state_fips)
+                self_emp_data = self._fetch_table_data("B19053", state_fips)
+                invest_data = self._fetch_table_data("B19054", state_fips)
+            except CensusAPIError as exc:
+                self._handle_api_error(
+                    exc,
+                    table_id="B19052/B19053/B19054",
+                    state_fips=state_fips,
+                    operation="fact_income_sources",
+                    stats=stats,
+                )
+                continue
 
             # Build lookup by FIPS
             wage_by_fips = {d.fips: d.values for d in wage_data}

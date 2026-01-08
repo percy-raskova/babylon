@@ -3,14 +3,14 @@
 Provides a properly normalized database for Marxian economic analysis,
 populated directly by DataLoader implementations.
 
-Database location: data/sqlite/marxist-data-3NF.sqlite (override via BABYLON_NORMALIZED_DB_PATH)
+Database location: data/duckdb/marxist-data-3NF.duckdb (override via BABYLON_NORMALIZED_DB_PATH)
 
 Usage:
     from babylon.data import DataLoader, LoaderConfig
     from babylon.data.normalize import get_normalized_db
     from babylon.data.census import CensusLoader
 
-    config = LoaderConfig(census_years=[2022])
+    config = LoaderConfig(census_years=[2021])
     loader = CensusLoader(config)
 
     with get_normalized_db() as session:
@@ -19,7 +19,7 @@ Usage:
 
 Or via CLI:
     mise run data:load
-    mise run data:census -- --year 2022
+    mise run data:census -- --year 2021
 """
 
 from __future__ import annotations

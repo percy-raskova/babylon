@@ -29,7 +29,7 @@ Note:
 
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, Sequence, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from babylon.data.normalize.database import NormalizedBase
@@ -44,7 +44,7 @@ class DimState(NormalizedBase):
 
     __tablename__ = "dim_state"
 
-    state_id: Mapped[int] = mapped_column(primary_key=True)
+    state_id: Mapped[int] = mapped_column(Sequence("dim_state_state_id_seq"), primary_key=True)
     state_fips: Mapped[str] = mapped_column(String(2), unique=True, nullable=False)
     state_name: Mapped[str] = mapped_column(String(100), nullable=False)
     state_abbrev: Mapped[str] = mapped_column(String(2), nullable=False)
@@ -57,7 +57,7 @@ class DimCounty(NormalizedBase):
 
     __tablename__ = "dim_county"
 
-    county_id: Mapped[int] = mapped_column(primary_key=True)
+    county_id: Mapped[int] = mapped_column(Sequence("dim_county_county_id_seq"), primary_key=True)
     fips: Mapped[str] = mapped_column(String(5), unique=True, nullable=False)
     state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
     county_fips: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -80,7 +80,9 @@ class DimMetroArea(NormalizedBase):
 
     __tablename__ = "dim_metro_area"
 
-    metro_area_id: Mapped[int] = mapped_column(primary_key=True)
+    metro_area_id: Mapped[int] = mapped_column(
+        Sequence("dim_metro_area_metro_area_id_seq"), primary_key=True
+    )
     geo_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     cbsa_code: Mapped[str | None] = mapped_column(String(10))
     metro_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -129,7 +131,9 @@ class DimGeographicHierarchy(NormalizedBase):
 
     __tablename__ = "dim_geographic_hierarchy"
 
-    hierarchy_id: Mapped[int] = mapped_column(primary_key=True)
+    hierarchy_id: Mapped[int] = mapped_column(
+        Sequence("dim_geographic_hierarchy_hierarchy_id_seq"), primary_key=True
+    )
     state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
     county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
     population_weight: Mapped[Decimal] = mapped_column(
@@ -168,7 +172,9 @@ class DimCFSArea(NormalizedBase):
 
     __tablename__ = "dim_cfs_area"
 
-    cfs_area_id: Mapped[int] = mapped_column(primary_key=True)
+    cfs_area_id: Mapped[int] = mapped_column(
+        Sequence("dim_cfs_area_cfs_area_id_seq"), primary_key=True
+    )
     cfs_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     cfs_name: Mapped[str] = mapped_column(String(200), nullable=False)
     state_id: Mapped[int | None] = mapped_column(ForeignKey("dim_state.state_id"))
@@ -198,7 +204,9 @@ class DimSCTGCommodity(NormalizedBase):
 
     __tablename__ = "dim_sctg_commodity"
 
-    sctg_id: Mapped[int] = mapped_column(primary_key=True)
+    sctg_id: Mapped[int] = mapped_column(
+        Sequence("dim_sctg_commodity_sctg_id_seq"), primary_key=True
+    )
     sctg_code: Mapped[str] = mapped_column(String(5), unique=True, nullable=False)
     sctg_name: Mapped[str] = mapped_column(String(200), nullable=False)
     category: Mapped[str | None] = mapped_column(String(50))  # agriculture, mining, manufacturing
@@ -218,7 +226,9 @@ class DimCountry(NormalizedBase):
 
     __tablename__ = "dim_country"
 
-    country_id: Mapped[int] = mapped_column(primary_key=True)
+    country_id: Mapped[int] = mapped_column(
+        Sequence("dim_country_country_id_seq"), primary_key=True
+    )
     cty_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     country_name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_region: Mapped[bool] = mapped_column(default=False)
@@ -241,7 +251,9 @@ class DimImportSource(NormalizedBase):
 
     __tablename__ = "dim_import_source"
 
-    import_source_id: Mapped[int] = mapped_column(primary_key=True)
+    import_source_id: Mapped[int] = mapped_column(
+        Sequence("dim_import_source_import_source_id_seq"), primary_key=True
+    )
     country: Mapped[str] = mapped_column(String(100), nullable=False)
     commodity_count: Mapped[int | None] = mapped_column()
     map_class: Mapped[str | None] = mapped_column(String(50))  # Geopolitical classification
@@ -257,7 +269,9 @@ class DimIndustry(NormalizedBase):
 
     __tablename__ = "dim_industry"
 
-    industry_id: Mapped[int] = mapped_column(primary_key=True)
+    industry_id: Mapped[int] = mapped_column(
+        Sequence("dim_industry_industry_id_seq"), primary_key=True
+    )
     naics_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     industry_title: Mapped[str] = mapped_column(String(300), nullable=False)
     naics_level: Mapped[int] = mapped_column(nullable=False)  # 0-6
@@ -290,7 +304,7 @@ class DimSector(NormalizedBase):
 
     __tablename__ = "dim_sector"
 
-    sector_id: Mapped[int] = mapped_column(primary_key=True)
+    sector_id: Mapped[int] = mapped_column(Sequence("dim_sector_sector_id_seq"), primary_key=True)
     sector_code: Mapped[str] = mapped_column(String(2), unique=True, nullable=False)
     sector_name: Mapped[str] = mapped_column(String(100), nullable=False)
     class_composition: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -301,7 +315,9 @@ class DimOwnership(NormalizedBase):
 
     __tablename__ = "dim_ownership"
 
-    ownership_id: Mapped[int] = mapped_column(primary_key=True)
+    ownership_id: Mapped[int] = mapped_column(
+        Sequence("dim_ownership_ownership_id_seq"), primary_key=True
+    )
     own_code: Mapped[str] = mapped_column(String(2), unique=True, nullable=False)
     own_title: Mapped[str] = mapped_column(String(50), nullable=False)
     is_government: Mapped[bool] = mapped_column(nullable=False)
@@ -318,7 +334,9 @@ class DimIncomeBracket(NormalizedBase):
 
     __tablename__ = "dim_income_bracket"
 
-    bracket_id: Mapped[int] = mapped_column(primary_key=True)
+    bracket_id: Mapped[int] = mapped_column(
+        Sequence("dim_income_bracket_bracket_id_seq"), primary_key=True
+    )
     bracket_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     bracket_label: Mapped[str] = mapped_column(String(100), nullable=False)
     bracket_min_usd: Mapped[int | None] = mapped_column()
@@ -331,7 +349,9 @@ class DimEmploymentStatus(NormalizedBase):
 
     __tablename__ = "dim_employment_status"
 
-    status_id: Mapped[int] = mapped_column(primary_key=True)
+    status_id: Mapped[int] = mapped_column(
+        Sequence("dim_employment_status_status_id_seq"), primary_key=True
+    )
     status_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     status_label: Mapped[str] = mapped_column(String(100), nullable=False)
     is_labor_force: Mapped[bool | None] = mapped_column()
@@ -344,7 +364,9 @@ class DimWorkerClass(NormalizedBase):
 
     __tablename__ = "dim_worker_class"
 
-    class_id: Mapped[int] = mapped_column(primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        Sequence("dim_worker_class_class_id_seq"), primary_key=True
+    )
     class_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     class_label: Mapped[str] = mapped_column(String(200), nullable=False)
     marxian_class: Mapped[str | None] = mapped_column(String(20))
@@ -364,7 +386,9 @@ class DimOccupation(NormalizedBase):
 
     __tablename__ = "dim_occupation"
 
-    occupation_id: Mapped[int] = mapped_column(primary_key=True)
+    occupation_id: Mapped[int] = mapped_column(
+        Sequence("dim_occupation_occupation_id_seq"), primary_key=True
+    )
     occupation_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     occupation_label: Mapped[str] = mapped_column(String(300), nullable=False)
     occupation_category: Mapped[str | None] = mapped_column(String(100))
@@ -387,7 +411,9 @@ class DimEducationLevel(NormalizedBase):
 
     __tablename__ = "dim_education_level"
 
-    level_id: Mapped[int] = mapped_column(primary_key=True)
+    level_id: Mapped[int] = mapped_column(
+        Sequence("dim_education_level_level_id_seq"), primary_key=True
+    )
     level_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     level_label: Mapped[str] = mapped_column(String(200), nullable=False)
     years_of_schooling: Mapped[int | None] = mapped_column()
@@ -399,7 +425,9 @@ class DimHousingTenure(NormalizedBase):
 
     __tablename__ = "dim_housing_tenure"
 
-    tenure_id: Mapped[int] = mapped_column(primary_key=True)
+    tenure_id: Mapped[int] = mapped_column(
+        Sequence("dim_housing_tenure_tenure_id_seq"), primary_key=True
+    )
     tenure_type: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     tenure_label: Mapped[str] = mapped_column(String(100), nullable=False)
     is_owner: Mapped[bool] = mapped_column(nullable=False)
@@ -410,7 +438,9 @@ class DimRentBurden(NormalizedBase):
 
     __tablename__ = "dim_rent_burden"
 
-    burden_id: Mapped[int] = mapped_column(primary_key=True)
+    burden_id: Mapped[int] = mapped_column(
+        Sequence("dim_rent_burden_burden_id_seq"), primary_key=True
+    )
     bracket_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     burden_bracket: Mapped[str] = mapped_column(String(50), nullable=False)
     burden_min_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
@@ -425,7 +455,7 @@ class DimCommuteMode(NormalizedBase):
 
     __tablename__ = "dim_commute_mode"
 
-    mode_id: Mapped[int] = mapped_column(primary_key=True)
+    mode_id: Mapped[int] = mapped_column(Sequence("dim_commute_mode_mode_id_seq"), primary_key=True)
     mode_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     mode_label: Mapped[str] = mapped_column(String(200), nullable=False)
     is_public_transit: Mapped[bool | None] = mapped_column()
@@ -438,7 +468,9 @@ class DimPovertyCategory(NormalizedBase):
 
     __tablename__ = "dim_poverty_category"
 
-    category_id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        Sequence("dim_poverty_category_category_id_seq"), primary_key=True
+    )
     category_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     category_label: Mapped[str] = mapped_column(String(200), nullable=False)
     is_below_poverty: Mapped[bool | None] = mapped_column()
@@ -455,7 +487,9 @@ class DimEnergyTable(NormalizedBase):
 
     __tablename__ = "dim_energy_table"
 
-    table_id: Mapped[int] = mapped_column(primary_key=True)
+    table_id: Mapped[int] = mapped_column(
+        Sequence("dim_energy_table_table_id_seq"), primary_key=True
+    )
     table_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     category: Mapped[str | None] = mapped_column(String(100))
@@ -467,7 +501,9 @@ class DimEnergySeries(NormalizedBase):
 
     __tablename__ = "dim_energy_series"
 
-    series_id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(
+        Sequence("dim_energy_series_series_id_seq"), primary_key=True
+    )
     table_id: Mapped[int] = mapped_column(ForeignKey("dim_energy_table.table_id"), nullable=False)
     series_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     series_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -485,7 +521,9 @@ class DimWealthClass(NormalizedBase):
 
     __tablename__ = "dim_wealth_class"
 
-    wealth_class_id: Mapped[int] = mapped_column(primary_key=True)
+    wealth_class_id: Mapped[int] = mapped_column(
+        Sequence("dim_wealth_class_wealth_class_id_seq"), primary_key=True
+    )
     percentile_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     percentile_label: Mapped[str] = mapped_column(String(100), nullable=False)
     babylon_class: Mapped[str | None] = mapped_column(String(50))  # Maps to Babylon social class
@@ -496,7 +534,9 @@ class DimAssetCategory(NormalizedBase):
 
     __tablename__ = "dim_asset_category"
 
-    category_id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        Sequence("dim_asset_category_category_id_seq"), primary_key=True
+    )
     category_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     category_label: Mapped[str] = mapped_column(String(100), nullable=False)
     marxian_interpretation: Mapped[str | None] = mapped_column(Text)
@@ -507,7 +547,9 @@ class DimFredSeries(NormalizedBase):
 
     __tablename__ = "dim_fred_series"
 
-    series_id: Mapped[int] = mapped_column(primary_key=True)
+    series_id: Mapped[int] = mapped_column(
+        Sequence("dim_fred_series_series_id_seq"), primary_key=True
+    )
     series_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     units: Mapped[str | None] = mapped_column(String(50))
@@ -526,7 +568,9 @@ class DimCommodity(NormalizedBase):
 
     __tablename__ = "dim_commodity"
 
-    commodity_id: Mapped[int] = mapped_column(primary_key=True)
+    commodity_id: Mapped[int] = mapped_column(
+        Sequence("dim_commodity_commodity_id_seq"), primary_key=True
+    )
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     is_critical: Mapped[bool | None] = mapped_column()
@@ -539,7 +583,9 @@ class DimCommodityMetric(NormalizedBase):
 
     __tablename__ = "dim_commodity_metric"
 
-    metric_id: Mapped[int] = mapped_column(primary_key=True)
+    metric_id: Mapped[int] = mapped_column(
+        Sequence("dim_commodity_metric_metric_id_seq"), primary_key=True
+    )
     code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     units: Mapped[str | None] = mapped_column(String(50))
@@ -557,7 +603,7 @@ class DimTime(NormalizedBase):
 
     __tablename__ = "dim_time"
 
-    time_id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(Sequence("dim_time_time_id_seq"), primary_key=True)
     year: Mapped[int] = mapped_column(nullable=False)
     month: Mapped[int | None] = mapped_column()  # NULL for annual data
     quarter: Mapped[int | None] = mapped_column()  # 1-4
@@ -574,7 +620,7 @@ class DimGender(NormalizedBase):
 
     __tablename__ = "dim_gender"
 
-    gender_id: Mapped[int] = mapped_column(primary_key=True)
+    gender_id: Mapped[int] = mapped_column(Sequence("dim_gender_gender_id_seq"), primary_key=True)
     gender_code: Mapped[str] = mapped_column(String(10), unique=True, nullable=False)
     gender_label: Mapped[str] = mapped_column(String(20), nullable=False)
 
@@ -584,7 +630,9 @@ class DimDataSource(NormalizedBase):
 
     __tablename__ = "dim_data_source"
 
-    source_id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(
+        Sequence("dim_data_source_source_id_seq"), primary_key=True
+    )
     source_code: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     source_name: Mapped[str] = mapped_column(String(200), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(500))
@@ -616,7 +664,7 @@ class DimRace(NormalizedBase):
 
     __tablename__ = "dim_race"
 
-    race_id: Mapped[int] = mapped_column(primary_key=True)
+    race_id: Mapped[int] = mapped_column(Sequence("dim_race_race_id_seq"), primary_key=True)
     race_code: Mapped[str] = mapped_column(String(1), unique=True, nullable=False)
     race_name: Mapped[str] = mapped_column(String(100), nullable=False)
     race_short_name: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -649,7 +697,9 @@ class DimCoerciveType(NormalizedBase):
 
     __tablename__ = "dim_coercive_type"
 
-    coercive_type_id: Mapped[int] = mapped_column(primary_key=True)
+    coercive_type_id: Mapped[int] = mapped_column(
+        Sequence("dim_coercive_type_coercive_type_id_seq"), primary_key=True
+    )
     code: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     category: Mapped[str] = mapped_column(
@@ -1024,7 +1074,9 @@ class FactQcewStateAnnual(NormalizedBase):
 
     __tablename__ = "fact_qcew_state_annual"
 
-    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    fact_id: Mapped[int] = mapped_column(
+        Sequence("fact_qcew_state_annual_fact_id_seq"), primary_key=True
+    )
     state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
     industry_id: Mapped[int] = mapped_column(ForeignKey("dim_industry.industry_id"), nullable=False)
     ownership_id: Mapped[int] = mapped_column(
@@ -1062,7 +1114,9 @@ class FactQcewMetroAnnual(NormalizedBase):
 
     __tablename__ = "fact_qcew_metro_annual"
 
-    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    fact_id: Mapped[int] = mapped_column(
+        Sequence("fact_qcew_metro_annual_fact_id_seq"), primary_key=True
+    )
     metro_area_id: Mapped[int] = mapped_column(
         ForeignKey("dim_metro_area.metro_area_id"), nullable=False
     )
@@ -1380,7 +1434,9 @@ class FactCommodityFlow(NormalizedBase):
 
     __tablename__ = "fact_commodity_flow"
 
-    flow_id: Mapped[int] = mapped_column(primary_key=True)
+    flow_id: Mapped[int] = mapped_column(
+        Sequence("fact_commodity_flow_flow_id_seq"), primary_key=True
+    )
     origin_county_id: Mapped[int] = mapped_column(
         ForeignKey("dim_county.county_id"), nullable=False
     )
@@ -1398,6 +1454,184 @@ class FactCommodityFlow(NormalizedBase):
         Index("idx_commodity_flow_dest", "dest_county_id"),
         Index("idx_commodity_flow_sctg", "sctg_id"),
         Index("idx_commodity_flow_year", "year"),
+    )
+
+
+# =============================================================================
+# LODES CROSSWALK
+# =============================================================================
+
+
+class BridgeLodesBlock(NormalizedBase):
+    """Census block to county crosswalk from LEHD LODES.
+
+    Maps census block GEOIDs to counties, tracts, CBSAs, and ZIP codes.
+    Used for disaggregating employment data to sub-county levels.
+    """
+
+    __tablename__ = "bridge_lodes_block"
+
+    block_geoid: Mapped[str] = mapped_column(String(20), primary_key=True)
+    county_id: Mapped[int | None] = mapped_column(ForeignKey("dim_county.county_id"))
+    state_fips: Mapped[str | None] = mapped_column(String(2))
+    county_fips: Mapped[str | None] = mapped_column(String(3))
+    tract_geoid: Mapped[str | None] = mapped_column(String(11))
+    block_group: Mapped[str | None] = mapped_column(String(1))
+    cbsa_code: Mapped[str | None] = mapped_column(String(5))
+    zcta: Mapped[str | None] = mapped_column(String(5))
+    latitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+    longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
+
+
+# =============================================================================
+# EMPLOYMENT INDUSTRY
+# =============================================================================
+
+
+class DimEmploymentArea(NormalizedBase):
+    """Employment area dimension for BLS QCEW by-area data.
+
+    Represents geographic areas at various levels: national, state, county,
+    MSA, CSA. Links to state and county dimensions where applicable.
+    """
+
+    __tablename__ = "dim_employment_area"
+
+    area_id: Mapped[int] = mapped_column(
+        Sequence("dim_employment_area_area_id_seq"), primary_key=True
+    )
+    area_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    area_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    area_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # national/state/county/msa/csa
+    state_id: Mapped[int | None] = mapped_column(ForeignKey("dim_state.state_id"))
+    county_id: Mapped[int | None] = mapped_column(ForeignKey("dim_county.county_id"))
+    cbsa_code: Mapped[str | None] = mapped_column(String(5))
+    csa_code: Mapped[str | None] = mapped_column(String(3))
+
+    __table_args__ = (
+        Index("idx_employment_area_code", "area_code"),
+        Index("idx_employment_area_type", "area_type"),
+    )
+
+
+class FactEmploymentIndustryAnnual(NormalizedBase):
+    """Annual employment and wages by area, industry, and ownership.
+
+    Comprehensive QCEW data with location quotients and over-the-year changes.
+    Supports county, state, MSA, and national level analysis.
+    """
+
+    __tablename__ = "fact_employment_industry_annual"
+
+    fact_id: Mapped[int] = mapped_column(
+        Sequence("fact_employment_industry_annual_fact_id_seq"), primary_key=True
+    )
+    area_id: Mapped[int] = mapped_column(ForeignKey("dim_employment_area.area_id"), nullable=False)
+    industry_id: Mapped[int] = mapped_column(ForeignKey("dim_industry.industry_id"), nullable=False)
+    ownership_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_ownership.ownership_id"), nullable=False
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+
+    agglvl_code: Mapped[int | None] = mapped_column()
+    size_code: Mapped[str | None] = mapped_column(String(5))
+    qtr: Mapped[str | None] = mapped_column(String(1))
+    disclosure_code: Mapped[str | None] = mapped_column(String(1))
+
+    # Core employment metrics
+    annual_avg_estabs_count: Mapped[int | None] = mapped_column()
+    annual_avg_emplvl: Mapped[int | None] = mapped_column()
+    total_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    taxable_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    annual_contributions: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    annual_avg_wkly_wage: Mapped[int | None] = mapped_column()
+    avg_annual_pay: Mapped[int | None] = mapped_column()
+
+    # Location quotients
+    lq_disclosure_code: Mapped[str | None] = mapped_column(String(1))
+    lq_annual_avg_estabs_count: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_avg_emplvl: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_total_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_taxable_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_contributions: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_avg_wkly_wage: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_avg_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+
+    # Over-the-year changes
+    oty_disclosure_code: Mapped[str | None] = mapped_column(String(1))
+    oty_annual_avg_estabs_count_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_annual_avg_estabs_count_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_emplvl_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_annual_avg_emplvl_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_total_annual_wages_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_total_annual_wages_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_taxable_annual_wages_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_taxable_annual_wages_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_contributions_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_annual_contributions_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_wkly_wage_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_annual_avg_wkly_wage_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_avg_annual_pay_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    oty_avg_annual_pay_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+
+    __table_args__ = (
+        Index("idx_emp_ind_area", "area_id"),
+        Index("idx_emp_ind_industry", "industry_id"),
+        Index("idx_emp_ind_time", "time_id"),
+    )
+
+
+# =============================================================================
+# DOT HPMS ROAD SEGMENTS
+# =============================================================================
+
+
+class FactHpmsRoadSegment(NormalizedBase):
+    """Road segment characteristics from FHWA HPMS.
+
+    Highway Performance Monitoring System data at segment level,
+    including traffic (AADT), geometry, and functional classification.
+    """
+
+    __tablename__ = "fact_hpms_road_segment"
+
+    segment_id: Mapped[int] = mapped_column(
+        Sequence("fact_hpms_road_segment_segment_id_seq"), primary_key=True
+    )
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+    time_id: Mapped[int | None] = mapped_column(ForeignKey("dim_time.time_id"))
+
+    route_id: Mapped[str | None] = mapped_column(String(100))
+    route_number: Mapped[str | None] = mapped_column(String(10))
+    route_signing: Mapped[str | None] = mapped_column(String(2))
+    route_qualifier: Mapped[str | None] = mapped_column(String(2))
+    functional_system: Mapped[int | None] = mapped_column()
+    facility_type: Mapped[int | None] = mapped_column()
+
+    aadt: Mapped[int | None] = mapped_column()  # Annual Average Daily Traffic
+    aadt_single_unit: Mapped[int | None] = mapped_column()
+    aadt_combination: Mapped[int | None] = mapped_column()
+    speed_limit: Mapped[int | None] = mapped_column()
+    through_lanes: Mapped[int | None] = mapped_column()
+    lane_width: Mapped[Decimal | None] = mapped_column(Numeric(6, 2))
+    section_length: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+
+    nhs: Mapped[int | None] = mapped_column()  # National Highway System
+    nhfn: Mapped[int | None] = mapped_column()  # National Highway Freight Network
+    urban_id: Mapped[str | None] = mapped_column(String(10))
+    year_record: Mapped[int | None] = mapped_column()
+    shape_id: Mapped[str | None] = mapped_column(String(50))
+    sample_id: Mapped[str | None] = mapped_column(String(50))
+    geometry_wkt: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("idx_hpms_county", "county_id"),
+        Index("idx_hpms_state", "state_id"),
+        Index("idx_hpms_year", "year_record"),
     )
 
 
@@ -1489,4 +1723,11 @@ __all__ = [
     "FactBroadbandCoverage",
     "FactElectricGrid",
     "FactCommodityFlow",
+    # LODES Crosswalk
+    "BridgeLodesBlock",
+    # Employment Industry
+    "DimEmploymentArea",
+    "FactEmploymentIndustryAnnual",
+    # DOT HPMS
+    "FactHpmsRoadSegment",
 ]

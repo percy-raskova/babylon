@@ -15,7 +15,7 @@ Usage:
     from babylon.data.loader_base import LoaderConfig
     from babylon.data.normalize.database import get_normalized_session
 
-    config = LoaderConfig(census_years=[2022])
+    config = LoaderConfig(census_years=[2021])
     loader = CensusLoader(config)
 
     with get_normalized_session() as session:

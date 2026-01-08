@@ -30,9 +30,9 @@ class TestLoaderConfigDefaults:
     """Tests for LoaderConfig default values."""
 
     def test_census_years_default(self) -> None:
-        """Census years should default to 2009-2023 (15 years)."""
+        """Census years should default to 2021."""
         config = LoaderConfig()
-        assert config.census_years == list(range(2009, 2024))
+        assert config.census_years == [2021]
 
     def test_fred_year_range_default(self) -> None:
         """FRED year range should default to 1990-2024."""
@@ -148,6 +148,7 @@ class TestLoaderConfigDataclass:
             "batch_size",
             "request_delay_seconds",
             "max_retries",
+            "api_error_policy",
             "verbose",
         }
         actual_fields = {f.name for f in fields(LoaderConfig)}
@@ -259,6 +260,52 @@ class TestLoadStatsStr:
         assert "1" in str(stats) or "Error" in str(stats)
 
 
+@pytest.mark.unit
+class TestLoadStatsApiErrors:
+    """Tests for structured API error recording."""
+
+    def test_record_api_error_captures_details(self) -> None:
+        """record_api_error should capture context and structured details."""
+        from babylon.data.exceptions import CensusAPIError
+
+        error = CensusAPIError(
+            status_code=503,
+            message="Service unavailable",
+            url="https://api.census.gov/data/2017/acs/acs5?key=secret&get=NAME",
+            details={
+                "endpoint": "https://api.census.gov/data/2017/acs/acs5",
+                "params": {"key": "secret"},
+            },
+        )
+        stats = LoadStats(source="census")
+        stats.record_api_error(
+            error,
+            context="census:2017:B19001:01",
+            details={
+                "loader": "census",
+                "state_fips": "01",
+                "table_id": "B19001",
+                "endpoint": "https://api.census.gov/data/2017/acs/acs5?key=secret",
+            },
+        )
+
+        assert len(stats.api_errors) == 1
+        detail = stats.api_errors[0]
+        assert detail.context == "census:2017:B19001:01"
+        assert detail.status_code == 503
+        assert detail.error_code == error.error_code
+        assert detail.error_type == "CensusAPIError"
+        assert detail.url is not None
+        assert "secret" not in detail.url
+        assert detail.details is not None
+        assert detail.details.get("endpoint") == "https://api.census.gov/data/2017/acs/acs5?key=***"
+        assert isinstance(detail.details.get("params"), dict)
+        assert detail.details["params"]["key"] == "***"
+        assert detail.details.get("loader") == "census"
+        assert detail.details.get("state_fips") == "01"
+        assert detail.details.get("table_id") == "B19001"
+
+
 # =============================================================================
 # DATALOADER ABC TESTS
 # =============================================================================
@@ -297,7 +344,7 @@ class ConcreteTestLoader(DataLoader):
 @pytest.fixture
 def test_session() -> Session:
     """Create in-memory test session."""
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine("duckdb:///:memory:")
     NormalizedBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     session = session_factory()
@@ -498,15 +545,7 @@ class FKTestLoader(DataLoader):
 @pytest.fixture
 def fk_session() -> Session:
     """Create session with FK enforcement enabled."""
-    from sqlalchemy import event
-
-    engine = create_engine("sqlite:///:memory:")
-
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    engine = create_engine("duckdb:///:memory:")
 
     NormalizedBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
@@ -582,8 +621,9 @@ class TestFKSafeClearTables:
             loader.clear_tables(fk_session)
             fk_session.commit()
 
-        # Should be FK constraint violation
-        assert "FOREIGN KEY constraint failed" in str(exc_info.value)
+        # Should be FK constraint violation (backend-specific wording).
+        error_text = str(exc_info.value).lower()
+        assert "foreign key" in error_text
 
     def test_census_loader_has_correct_fk_order(self) -> None:
         """CensusLoader.get_dimension_tables() should have correct FK order."""

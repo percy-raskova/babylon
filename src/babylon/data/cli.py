@@ -1,14 +1,14 @@
 """CLI entry point for unified data loading.
 
 Provides command-line interface to load data from all sources into the
-normalized 3NF database (marxist-data-3NF.sqlite).
+normalized 3NF database (marxist-data-3NF.duckdb).
 
 Usage:
     # Load all data with default config
     mise run data:load
 
     # Load specific loaders
-    mise run data:census -- --year 2022
+    mise run data:census -- --year 2021
     mise run data:fred -- --start-year 1990 --end-year 2024
     mise run data:energy -- --start-year 2000 --end-year 2023
 
@@ -24,20 +24,52 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 import yaml
+from sqlalchemy import text
 
+from babylon.data.exceptions import SchemaCheckError
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
+
+if TYPE_CHECKING:
+    from babylon.data.normalize.schema_check import SchemaRepairReport
+    from babylon.data.preflight import PreflightResult
 
 app = typer.Typer(
     name="data",
     help="Unified data loading for Babylon's 3NF database.",
     no_args_is_help=True,
 )
+
+logger = logging.getLogger(__name__)
+_LOGGING_CONFIGURED = False
+
+
+def _configure_cli_logging() -> None:
+    global _LOGGING_CONFIGURED
+    if _LOGGING_CONFIGURED:
+        return
+    from babylon.config.logging_config import setup_logging
+
+    config_path = Path("logging.yaml")
+    reset_logs = any(arg == "load" for arg in sys.argv[1:])
+    setup_logging(
+        config_path=config_path if config_path.exists() else None,
+        reset_files=reset_logs,
+    )
+    _LOGGING_CONFIGURED = True
+
+
+@app.callback()
+def _init_logging() -> None:
+    _configure_cli_logging()
 
 
 def parse_states(states: str | None) -> list[str] | None:
@@ -72,7 +104,7 @@ def load_config_from_yaml(config_file: Path) -> LoaderConfig:
     census_years = data.get("census_years")
     if census_years is None:
         # Backwards compat: convert old census_year to census_years list
-        census_year = data.get("census_year", 2022)
+        census_year = data.get("census_year", 2021)
         census_years = [census_year]
     return LoaderConfig(
         census_years=census_years,
@@ -95,12 +127,326 @@ def load_config_from_yaml(config_file: Path) -> LoaderConfig:
 def print_stats(stats: LoadStats) -> None:
     """Print load statistics in a formatted way."""
     typer.echo(str(stats))
+    if stats.api_errors:
+        typer.secho(f"\nAPI Errors ({len(stats.api_errors)}):", fg=typer.colors.RED)
+        for api_error in stats.api_errors[:10]:
+            parts: list[str] = []
+            if api_error.error_code:
+                parts.append(api_error.error_code)
+            if api_error.status_code is not None:
+                parts.append(f"status={api_error.status_code}")
+            if api_error.context:
+                parts.append(f"context={api_error.context}")
+            if api_error.url:
+                parts.append(f"url={api_error.url}")
+            detail_msg = " | ".join(parts)
+            if detail_msg:
+                detail_msg = f" ({detail_msg})"
+            typer.echo(f"  - {api_error.message}{detail_msg}")
+            if api_error.details and api_error.details.get("params"):
+                typer.echo(f"    params={api_error.details['params']}")
     if stats.has_errors:
         typer.secho(f"\nErrors ({len(stats.errors)}):", fg=typer.colors.RED)
         for error in stats.errors[:10]:  # Show first 10 errors
             typer.echo(f"  - {error}")
         if len(stats.errors) > 10:
             typer.echo(f"  ... and {len(stats.errors) - 10} more")
+
+
+def _print_preflight(result: object) -> None:
+    """Print preflight results."""
+    from babylon.data.preflight import PreflightResult
+
+    if not isinstance(result, PreflightResult):
+        typer.echo("Invalid preflight result.")
+        return
+
+    status_colors = {
+        "ok": typer.colors.GREEN,
+        "warn": typer.colors.YELLOW,
+        "fail": typer.colors.RED,
+    }
+
+    typer.echo("\nPreflight checks:")
+    for check in result.checks:
+        color = status_colors.get(check.status, typer.colors.WHITE)
+        typer.secho(f"[{check.status.upper()}] {check.message}", fg=color)
+        if check.hint:
+            typer.echo(f"  Hint: {check.hint}")
+
+    typer.echo(
+        f"\nSummary: {len(result.checks)} checks, "
+        f"{len(result.warnings)} warnings, {len(result.failures)} failures"
+    )
+
+
+@dataclass
+class IngestReadinessResult:
+    """Aggregated readiness results for ingestion."""
+
+    preflight: PreflightResult
+    schema_report: SchemaRepairReport | None = None
+    schema_error: SchemaCheckError | None = None
+    prereq_errors: dict[str, list[str]] = field(default_factory=dict)
+    strict: bool = False
+
+    @property
+    def ok(self) -> bool:
+        if self.preflight.failures:
+            return False
+        if self.strict and self.preflight.warnings:
+            return False
+        if self.schema_error is not None:
+            return False
+        if self.schema_report:
+            if self.schema_report.failed:
+                return False
+            if self.schema_report.remaining_diffs:
+                return False
+        return not self.prereq_errors
+
+
+def _run_schema_readiness(repair: bool) -> SchemaRepairReport:
+    """Return schema readiness report with optional repairs."""
+    try:
+        from babylon.data.normalize import schema_check
+    except ModuleNotFoundError as exc:
+        if exc.name != "alembic":
+            raise
+        raise SchemaCheckError(
+            "Alembic is required for schema drift checks.",
+            hint="Install dev dependencies or add alembic to the main group.",
+        ) from exc
+
+    try:
+        return schema_check.get_schema_repair_report(repair=repair)
+    except SchemaCheckError:
+        raise
+    except ModuleNotFoundError as exc:
+        if exc.name in {"duckdb", "duckdb_engine"}:
+            raise SchemaCheckError(
+                "DuckDB engine not available. Install `duckdb` and `duckdb-engine` "
+                "(e.g., `poetry install`) before running schema checks.",
+            ) from exc
+        raise
+    except Exception as exc:
+        try:
+            from sqlalchemy.exc import NoSuchModuleError
+        except ModuleNotFoundError:
+            NoSuchModuleError = None  # type: ignore[assignment]
+        if NoSuchModuleError and isinstance(exc, NoSuchModuleError) and "duckdb" in str(exc):
+            raise SchemaCheckError(
+                "DuckDB SQLAlchemy dialect not found. Install `duckdb-engine` "
+                "(e.g., `poetry install`) before running schema checks.",
+            ) from exc
+        raise SchemaCheckError(
+            f"Schema check failed: {exc}",
+            hint="Review the stack trace and verify database connectivity.",
+        ) from exc
+
+
+def _run_ingest_readiness(
+    config: LoaderConfig,
+    selected: list[str],
+    online: bool,
+    strict: bool,
+    repair: bool,
+) -> IngestReadinessResult:
+    """Run preflight + schema readiness + prerequisite checks."""
+    from babylon.data.preflight import run_preflight
+
+    preflight = run_preflight(config, selected, online=online)
+    schema_report: SchemaRepairReport | None = None
+    schema_error: SchemaCheckError | None = None
+    try:
+        schema_report = _run_schema_readiness(repair=repair)
+    except SchemaCheckError as exc:
+        schema_error = exc
+        schema_error.log(logger, level=logging.ERROR, exc_info=True)
+
+    if schema_report and (schema_report.has_changes or schema_report.remaining_diffs):
+        level = logging.WARNING
+        if schema_report.failed or schema_report.remaining_diffs:
+            level = logging.ERROR
+        logger.log(
+            level, "Schema readiness report", extra={"schema_repairs": schema_report.to_dict()}
+        )
+
+    prereq_errors: dict[str, list[str]] = {}
+    if schema_error is None and schema_report and not schema_report.remaining_diffs:
+        prereq_errors = _collect_prereq_errors(selected, config)
+
+    return IngestReadinessResult(
+        preflight=preflight,
+        schema_report=schema_report,
+        schema_error=schema_error,
+        prereq_errors=prereq_errors,
+        strict=strict,
+    )
+
+
+def _print_schema_action_summary(
+    label: str,
+    actions: list[object],
+    color: str,
+) -> None:
+    """Print a summarized list of schema repair actions."""
+    if not actions:
+        return
+    typer.secho(label, fg=color)
+    for action in actions[:10]:
+        typer.echo(f"  - {action.short_label()}")
+    if len(actions) > 10:
+        typer.echo(f"  ... and {len(actions) - 10} more")
+
+
+def _print_schema_readiness(result: IngestReadinessResult) -> None:
+    """Print schema readiness and repair results."""
+    if result.schema_error:
+        typer.secho(str(result.schema_error), fg=typer.colors.RED)
+        if result.schema_error.hint:
+            typer.echo(f"Hint: {result.schema_error.hint}")
+        diffs = result.schema_error.details.get("diffs")
+        if diffs:
+            typer.echo(f"Diffs:\n{diffs}")
+        return
+
+    report = result.schema_report
+    if report is None:
+        typer.secho("Schema readiness unavailable.", fg=typer.colors.RED)
+        return
+
+    if not report.has_changes and not report.remaining_diffs:
+        typer.secho("[OK] Schema matches SQLAlchemy models.", fg=typer.colors.GREEN)
+        return
+
+    _print_schema_action_summary(
+        f"[WARN] Applied {len(report.applied)} schema repair(s).",
+        report.applied,
+        typer.colors.YELLOW,
+    )
+    _print_schema_action_summary(
+        f"[FAIL] {len(report.failed)} schema repair(s) failed.",
+        report.failed,
+        typer.colors.RED,
+    )
+    _print_schema_action_summary(
+        f"[WARN] {len(report.skipped)} non-additive diff(s) skipped.",
+        report.skipped,
+        typer.colors.YELLOW,
+    )
+
+    if report.remaining_diffs:
+        from babylon.data.normalize.schema_check import format_schema_diffs
+
+        typer.secho("[FAIL] Schema drift remains after repairs.", fg=typer.colors.RED)
+        typer.echo(f"Diffs:\n{format_schema_diffs(report.remaining_diffs)}")
+
+
+def _collect_prereq_errors(
+    selected: list[str],
+    config: LoaderConfig,
+) -> dict[str, list[str]]:
+    """Collect prerequisite errors for loaders missing dependencies."""
+    from babylon.data.normalize.database import get_normalized_session
+
+    errors: dict[str, list[str]] = {}
+    selected_set = set(selected)
+    needs_session = any(
+        dep not in selected_set for name in selected for dep in LOADER_DEPENDENCIES.get(name, [])
+    )
+    if not needs_session:
+        return errors
+
+    with get_normalized_session() as session:
+        for name in selected:
+            missing_deps = [
+                dep for dep in LOADER_DEPENDENCIES.get(name, []) if dep not in selected_set
+            ]
+            if not missing_deps:
+                continue
+            prereq_errors = _check_loader_prereqs(name, session, config)
+            if prereq_errors:
+                errors[name] = prereq_errors
+    return errors
+
+
+def _print_prereq_summary(errors: dict[str, list[str]]) -> None:
+    if not errors:
+        return
+    for name, loader_errors in errors.items():
+        _print_prereq_errors(name, loader_errors)
+
+
+def _run_schema_check(quiet: bool) -> None:
+    """Validate normalized schema against SQLAlchemy models."""
+    try:
+        from babylon.data.exceptions import SchemaCheckError
+        from babylon.data.normalize.schema_check import check_normalized_schema
+    except ModuleNotFoundError as exc:
+        if exc.name != "alembic":
+            raise
+        typer.secho(
+            "Alembic is required for schema drift checks. "
+            "Install dev dependencies or add alembic to the main group.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1) from exc
+
+    try:
+        message = check_normalized_schema()
+    except SchemaCheckError as exc:
+        exc.log(logger, level=logging.ERROR, exc_info=True)
+        typer.secho(str(exc), fg=typer.colors.RED)
+        if exc.hint:
+            typer.echo(f"Hint: {exc.hint}")
+        if exc.details.get("diffs"):
+            typer.echo(f"Diffs:\n{exc.details['diffs']}")
+        raise typer.Exit(1) from exc
+    except ModuleNotFoundError as exc:
+        if exc.name in {"duckdb", "duckdb_engine"}:
+            typer.secho(
+                "DuckDB engine not available. Install `duckdb` and `duckdb-engine` "
+                "(e.g., `poetry install`) before running schema checks.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1) from exc
+        raise
+    except Exception as exc:
+        try:
+            from sqlalchemy.exc import NoSuchModuleError
+        except ModuleNotFoundError:
+            NoSuchModuleError = None  # type: ignore[assignment]
+        if NoSuchModuleError and isinstance(exc, NoSuchModuleError) and "duckdb" in str(exc):
+            typer.secho(
+                "DuckDB SQLAlchemy dialect not found. Install `duckdb-engine` "
+                "(e.g., `poetry install`) before running schema checks.",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(1) from exc
+        logger.exception("Schema check failed unexpectedly.")
+        typer.secho(f"Schema check failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(1) from exc
+    if not quiet:
+        typer.echo(message)
+
+
+def _execute_readiness(
+    config: LoaderConfig,
+    selected: list[str],
+    online: bool,
+    strict: bool,
+    repair: bool,
+    quiet: bool,
+) -> None:
+    result = _run_ingest_readiness(config, selected, online, strict, repair)
+    if not quiet:
+        _print_preflight(result.preflight)
+        typer.echo("\nSchema readiness:")
+        _print_schema_readiness(result)
+        _print_prereq_summary(result.prereq_errors)
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 ALL_LOADERS = [
@@ -110,6 +456,9 @@ ALL_LOADERS = [
     "qcew",
     "trade",
     "materials",
+    "employment_industry",
+    "dot_hpms",
+    "lodes",
     "hifld_prisons",
     "hifld_police",
     "hifld_electric",
@@ -118,6 +467,53 @@ ALL_LOADERS = [
     "geography",
     "cfs",
 ]
+
+LOADER_DEPENDENCIES: dict[str, list[str]] = {
+    "qcew": ["census"],
+    "employment_industry": ["census"],
+    "dot_hpms": ["census"],
+    "lodes": ["census"],
+    "fcc": ["census"],
+    "hifld_prisons": ["census"],
+    "hifld_police": ["census"],
+    "hifld_electric": ["census"],
+    "mirta": ["census"],
+    "geography": ["census", "qcew"],
+    "cfs": ["geography"],
+}
+
+
+def _resolve_loader_order(selected: list[str]) -> list[str]:
+    """Return selected loaders ordered by declared dependencies."""
+    selected_set = set(selected)
+    deps: dict[str, list[str]] = {
+        name: [dep for dep in LOADER_DEPENDENCIES.get(name, []) if dep in selected_set]
+        for name in selected
+    }
+    in_degree = dict.fromkeys(selected, 0)
+    forward: dict[str, list[str]] = {name: [] for name in selected}
+
+    for name, requirements in deps.items():
+        for requirement in requirements:
+            in_degree[name] += 1
+            forward[requirement].append(name)
+
+    ordered: list[str] = []
+    queue = [name for name in ALL_LOADERS if name in selected_set and in_degree[name] == 0]
+
+    while queue:
+        current = queue.pop(0)
+        ordered.append(current)
+        for dependent in forward.get(current, []):
+            in_degree[dependent] -= 1
+            if in_degree[dependent] == 0:
+                queue.append(dependent)
+
+    if len(ordered) != len(selected):
+        # Fallback to original order if cycles or missing nodes appear.
+        return selected
+
+    return ordered
 
 
 def _build_config(
@@ -163,6 +559,154 @@ def _validate_loaders(loaders: str | None) -> list[str]:
     return selected
 
 
+def _has_rows(session: object, model: object) -> bool:
+    """Return True if the table has at least one row."""
+    from sqlalchemy import select
+
+    return session.execute(select(model).limit(1)).first() is not None
+
+
+def _has_rows_for_year(session: object, model: object, year: int, field_name: str) -> bool:
+    """Return True if the table has at least one row for a given year."""
+    from sqlalchemy import select
+
+    field = getattr(model, field_name)
+    return session.execute(select(model).where(field == year).limit(1)).first() is not None
+
+
+def _get_cfs_year(config: LoaderConfig) -> int:
+    """Return the survey year used by the CFS loader."""
+    if config.census_years:
+        valid_years = [y for y in config.census_years if y in {2012, 2017, 2022}]
+        if valid_years:
+            return max(valid_years)
+    return 2022
+
+
+def _missing_dimension_rows(session: object, required: dict[str, object]) -> list[str]:
+    """Return missing dimension names for the requested models."""
+    missing: list[str] = []
+    for label, model in required.items():
+        if not _has_rows(session, model):
+            missing.append(label)
+    return missing
+
+
+def _check_prereqs_census_dims(
+    session: object,
+    name: str,
+    _config: LoaderConfig,
+) -> list[str]:
+    """Return census dimension prerequisite errors."""
+    from babylon.data.normalize.schema import (
+        DimCounty,
+        DimState,
+    )
+
+    missing = _missing_dimension_rows(session, {"DimState": DimState, "DimCounty": DimCounty})
+    if not missing:
+        return []
+
+    return [
+        (
+            f"{name} requires Census dimensions ({', '.join(missing)}). "
+            f"Run `mise run data:census` or include `--loaders=census,{name}`."
+        )
+    ]
+
+
+def _check_prereqs_county_only(
+    session: object,
+    name: str,
+    _config: LoaderConfig,
+) -> list[str]:
+    """Return county-only prerequisite errors."""
+    from babylon.data.normalize.schema import DimCounty
+
+    if _has_rows(session, DimCounty):
+        return []
+    return [
+        (
+            f"{name} requires county FIPS in DimCounty. "
+            f"Run `mise run data:census` or include `--loaders=census,{name}`."
+        )
+    ]
+
+
+def _check_prereqs_geography(
+    session: object,
+    _name: str,
+    _config: LoaderConfig,
+) -> list[str]:
+    """Return prerequisite errors for geography loader."""
+    from babylon.data.normalize.schema import DimCounty, FactCensusEmployment, FactQcewAnnual
+
+    missing_parts = []
+    if not _has_rows(session, DimCounty):
+        missing_parts.append("DimCounty")
+    if not _has_rows(session, FactCensusEmployment):
+        missing_parts.append("FactCensusEmployment")
+    if not _has_rows(session, FactQcewAnnual):
+        missing_parts.append("FactQcewAnnual")
+    if not missing_parts:
+        return []
+    return [
+        (
+            "geography requires Census employment and QCEW annual employment. "
+            "Run `mise run data:census` and `mise run data:qcew` first. "
+            f"Missing: {', '.join(missing_parts)}."
+        )
+    ]
+
+
+def _check_prereqs_cfs(
+    session: object,
+    _name: str,
+    config: LoaderConfig,
+) -> list[str]:
+    """Return prerequisite errors for cfs loader."""
+    from babylon.data.normalize.schema import DimGeographicHierarchy
+
+    year = _get_cfs_year(config)
+    if _has_rows_for_year(session, DimGeographicHierarchy, year, "source_year"):
+        return []
+    return [
+        (
+            "cfs requires geographic hierarchy weights. "
+            f"Run `mise run data:geography` for year {year} or include `--loaders=geography,cfs`."
+        )
+    ]
+
+
+_PREREQ_CHECKS: dict[str, Callable[[object, str, LoaderConfig], list[str]]] = {
+    "qcew": _check_prereqs_census_dims,
+    "employment_industry": _check_prereqs_census_dims,
+    "dot_hpms": _check_prereqs_census_dims,
+    "lodes": _check_prereqs_census_dims,
+    "fcc": _check_prereqs_county_only,
+    "hifld_prisons": _check_prereqs_county_only,
+    "hifld_police": _check_prereqs_county_only,
+    "hifld_electric": _check_prereqs_county_only,
+    "mirta": _check_prereqs_county_only,
+    "geography": _check_prereqs_geography,
+    "cfs": _check_prereqs_cfs,
+}
+
+
+def _check_loader_prereqs(name: str, session: object, config: LoaderConfig) -> list[str]:
+    """Return actionable prerequisite errors for a loader."""
+    handler = _PREREQ_CHECKS.get(name)
+    if handler is None:
+        return []
+    return handler(session, name, config)
+
+
+def _print_prereq_errors(name: str, errors: list[str]) -> None:
+    typer.secho(f"Prerequisite checks failed for {name}:", fg=typer.colors.RED)
+    for error in errors:
+        typer.echo(f"  - {error}")
+
+
 @app.command()
 def load(
     config_file: Annotated[
@@ -187,8 +731,21 @@ def load(
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
     loaders: Annotated[
         str | None,
-        typer.Option("--loaders", help="Loader names (census,fred,energy,qcew,trade,materials)"),
+        typer.Option(
+            "--loaders",
+            help=(
+                "Loader names (e.g., census,fred,energy,qcew,trade,materials,"
+                "employment_industry,dot_hpms,lodes)"
+            ),
+        ),
     ] = None,
+    schema_check: Annotated[
+        bool,
+        typer.Option(
+            "--schema-check/--no-schema-check",
+            help="Validate normalized schema before loading",
+        ),
+    ] = True,
 ) -> None:
     """Load all data sources into the 3NF database."""
     from babylon.data.normalize.database import (
@@ -200,11 +757,15 @@ def load(
     config = _build_config(
         config_file, census_year, fred_start, fred_end, energy_start, energy_end, states, quiet
     )
-    selected = _validate_loaders(loaders)
+    selected = _resolve_loader_order(_validate_loaders(loaders))
 
     if not quiet:
         typer.echo("Initializing 3NF database...")
     init_normalized_db()
+    if schema_check:
+        if not quiet:
+            typer.echo("Checking normalized schema for drift...")
+        _run_schema_check(quiet)
 
     total_stats, has_errors = _run_all_loaders(selected, config, reset, quiet)
 
@@ -213,9 +774,140 @@ def load(
     view_count = create_views(get_normalized_engine())
     if not quiet:
         _print_summary(total_stats, view_count)
+        _print_empty_tables(get_normalized_engine())
 
     if has_errors:
         raise typer.Exit(1)
+
+
+@app.command("readiness")
+def readiness(
+    config_file: Annotated[
+        Path | None,
+        typer.Option("--config-file", "-c", help="Path to YAML config file"),
+    ] = None,
+    loaders: Annotated[
+        str | None,
+        typer.Option(
+            "--loaders",
+            help=(
+                "Loader names (e.g., census,fred,energy,qcew,trade,materials,"
+                "employment_industry,dot_hpms,lodes)"
+            ),
+        ),
+    ] = None,
+    online: Annotated[
+        bool,
+        typer.Option("--online/--offline", help="Validate API endpoints over the network"),
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option("--strict/--no-strict", help="Treat warnings as failures"),
+    ] = False,
+    repair: Annotated[
+        bool,
+        typer.Option("--repair/--no-repair", help="Apply additive schema repairs"),
+    ] = True,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
+) -> None:
+    """Run ingest readiness checks (preflight + schema + prerequisites)."""
+    config = load_config_from_yaml(config_file) if config_file else LoaderConfig()
+    selected = _resolve_loader_order(_validate_loaders(loaders))
+    _execute_readiness(config, selected, online, strict, repair, quiet)
+
+
+@app.command("schema-check")
+def schema_check(
+    config_file: Annotated[
+        Path | None,
+        typer.Option("--config-file", "-c", help="Path to YAML config file"),
+    ] = None,
+    loaders: Annotated[
+        str | None,
+        typer.Option(
+            "--loaders",
+            help=(
+                "Loader names (e.g., census,fred,energy,qcew,trade,materials,"
+                "employment_industry,dot_hpms,lodes)"
+            ),
+        ),
+    ] = None,
+    online: Annotated[
+        bool,
+        typer.Option("--online/--offline", help="Validate API endpoints over the network"),
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option("--strict/--no-strict", help="Treat warnings as failures"),
+    ] = False,
+    repair: Annotated[
+        bool,
+        typer.Option("--repair/--no-repair", help="Apply additive schema repairs"),
+    ] = True,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
+) -> None:
+    """Alias for ingest readiness checks."""
+    config = load_config_from_yaml(config_file) if config_file else LoaderConfig()
+    selected = _resolve_loader_order(_validate_loaders(loaders))
+    _execute_readiness(config, selected, online, strict, repair, quiet)
+
+
+@app.command("schema-init")
+def schema_init(
+    views: Annotated[
+        bool,
+        typer.Option("--views/--no-views", help="Create analytical views after tables"),
+    ] = True,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
+) -> None:
+    """Create normalized schema tables (and optional views)."""
+    from babylon.data.normalize.database import get_normalized_engine, init_normalized_db
+    from babylon.data.normalize.views import create_views
+
+    init_normalized_db()
+    view_count = 0
+    if views:
+        view_count = create_views(get_normalized_engine())
+    if not quiet:
+        typer.echo("Normalized schema tables created.")
+        if views:
+            typer.echo(f"Views created: {view_count}")
+
+
+@app.command("preflight")
+def preflight(
+    config_file: Annotated[
+        Path | None,
+        typer.Option("--config-file", "-c", help="Path to YAML config file"),
+    ] = None,
+    loaders: Annotated[
+        str | None,
+        typer.Option(
+            "--loaders",
+            help=(
+                "Loader names (e.g., census,fred,energy,qcew,trade,materials,"
+                "employment_industry,dot_hpms,lodes)"
+            ),
+        ),
+    ] = None,
+    online: Annotated[
+        bool,
+        typer.Option("--online/--offline", help="Validate API endpoints over the network"),
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option("--strict/--no-strict", help="Treat warnings as failures"),
+    ] = False,
+    repair: Annotated[
+        bool,
+        typer.Option("--repair/--no-repair", help="Apply additive schema repairs"),
+    ] = True,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
+) -> None:
+    """Alias for ingest readiness checks."""
+    config = load_config_from_yaml(config_file) if config_file else LoaderConfig()
+    selected = _resolve_loader_order(_validate_loaders(loaders))
+    _execute_readiness(config, selected, online, strict, repair, quiet)
 
 
 def _run_all_loaders(
@@ -223,6 +915,8 @@ def _run_all_loaders(
 ) -> tuple[list[LoadStats], bool]:
     """Run all selected loaders and return stats."""
     from babylon.data.normalize.database import get_normalized_session
+    from babylon.utils.exceptions import BabylonError
+    from babylon.utils.log import log_context_scope
 
     total_stats: list[LoadStats] = []
     has_errors = False
@@ -235,14 +929,30 @@ def _run_all_loaders(
                 typer.echo("=" * 60)
 
             try:
-                stats = _run_loader(name, session, config, reset, not quiet)
-                total_stats.append(stats)
-                if stats.has_errors:
+                prereq_errors = _check_loader_prereqs(name, session, config)
+                if prereq_errors:
+                    _print_prereq_errors(name, prereq_errors)
                     has_errors = True
-                if not quiet:
-                    print_stats(stats)
+                    raise typer.Exit(1)
+                with log_context_scope(loader=name):
+                    stats = _run_loader(name, session, config, reset, not quiet)
+                    total_stats.append(stats)
+                    if stats.has_errors:
+                        has_errors = True
+                    if not quiet:
+                        print_stats(stats)
             except Exception as e:
+                if isinstance(e, BabylonError):
+                    e.log(logger, level=logging.ERROR, exc_info=True)
+                else:
+                    logger.exception("Loader %s failed", name)
                 typer.secho(f"Error loading {name}: {e}", fg=typer.colors.RED)
+                if isinstance(e, BabylonError) and not quiet:
+                    if e.details:
+                        typer.echo(f"Details: {e.details}")
+                    hint = getattr(e, "hint", None)
+                    if hint:
+                        typer.echo(f"Hint: {hint}")
                 has_errors = True
 
     return total_stats, has_errors
@@ -260,6 +970,169 @@ def _print_summary(total_stats: list[LoadStats], view_count: int) -> None:
     typer.echo(f"Views created: {view_count}")
 
 
+def _quote_identifier(engine: object, name: str) -> str:
+    preparer = engine.dialect.identifier_preparer
+    return ".".join(preparer.quote(part) for part in name.split("."))
+
+
+def _collect_empty_tables(engine: object) -> list[str]:
+    """Return base tables with zero rows."""
+    excluded = {"alembic_version"}
+    with engine.connect() as conn:
+        tables = [
+            row[0]
+            for row in conn.execute(
+                text(
+                    """
+                    SELECT table_name
+                    FROM information_schema.tables
+                    WHERE table_schema = 'main' AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                    """
+                )
+            ).fetchall()
+        ]
+
+        empty_tables: list[str] = []
+        for table in tables:
+            if table in excluded:
+                continue
+            quoted = _quote_identifier(engine, table)
+            has_row = conn.execute(text(f"SELECT 1 FROM {quoted} LIMIT 1")).first()
+            if has_row is None:
+                empty_tables.append(table)
+
+    return empty_tables
+
+
+def _print_empty_tables(engine: object) -> None:
+    empty_tables = _collect_empty_tables(engine)
+    if not empty_tables:
+        typer.secho("Empty tables: none", fg=typer.colors.GREEN)
+        return
+    typer.secho(f"Empty tables: {len(empty_tables)}", fg=typer.colors.YELLOW)
+    for table in empty_tables[:50]:
+        typer.echo(f"  - {table}")
+    if len(empty_tables) > 50:
+        typer.echo(f"  ... and {len(empty_tables) - 50} more")
+
+
+def _make_census_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.census import CensusLoader
+
+    return CensusLoader(config)
+
+
+def _make_fred_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.fred import FredLoader
+
+    return FredLoader(config)
+
+
+def _make_energy_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.energy import EnergyLoader
+
+    return EnergyLoader(config)
+
+
+def _make_qcew_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.qcew import QcewLoader
+
+    return QcewLoader(config)
+
+
+def _make_trade_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.trade import TradeLoader
+
+    return TradeLoader(config)
+
+
+def _make_materials_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.materials import MaterialsLoader
+
+    return MaterialsLoader(config)
+
+
+def _make_employment_industry_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.employment_industry import EmploymentIndustryLoader
+
+    return EmploymentIndustryLoader(config)
+
+
+def _make_dot_hpms_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.dot import DotHpmsLoader
+
+    return DotHpmsLoader(config)
+
+
+def _make_lodes_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.lodes import LodesCrosswalkLoader
+
+    return LodesCrosswalkLoader(config)
+
+
+def _make_hifld_prisons_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.hifld import HIFLDPrisonsLoader
+
+    return HIFLDPrisonsLoader(config)
+
+
+def _make_hifld_police_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.hifld import HIFLDPoliceLoader
+
+    return HIFLDPoliceLoader(config)
+
+
+def _make_hifld_electric_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.hifld import HIFLDElectricLoader
+
+    return HIFLDElectricLoader(config)
+
+
+def _make_mirta_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.mirta import MIRTAMilitaryLoader
+
+    return MIRTAMilitaryLoader(config)
+
+
+def _make_geography_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.geography import GeographicHierarchyLoader
+
+    return GeographicHierarchyLoader(config)
+
+
+def _make_cfs_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.cfs import CFSLoader
+
+    return CFSLoader(config)
+
+
+def _make_fcc_loader(config: LoaderConfig) -> DataLoader:
+    from babylon.data.fcc import FCCBroadbandLoader
+
+    return FCCBroadbandLoader(config)
+
+
+_LOADER_FACTORIES: dict[str, Callable[[LoaderConfig], DataLoader]] = {
+    "census": _make_census_loader,
+    "fred": _make_fred_loader,
+    "energy": _make_energy_loader,
+    "qcew": _make_qcew_loader,
+    "trade": _make_trade_loader,
+    "materials": _make_materials_loader,
+    "employment_industry": _make_employment_industry_loader,
+    "dot_hpms": _make_dot_hpms_loader,
+    "lodes": _make_lodes_loader,
+    "hifld_prisons": _make_hifld_prisons_loader,
+    "hifld_police": _make_hifld_police_loader,
+    "hifld_electric": _make_hifld_electric_loader,
+    "mirta": _make_mirta_loader,
+    "geography": _make_geography_loader,
+    "cfs": _make_cfs_loader,
+    "fcc": _make_fcc_loader,
+}
+
+
 def _run_loader(
     name: str,
     session: object,
@@ -268,63 +1141,11 @@ def _run_loader(
     verbose: bool,
 ) -> LoadStats:
     """Run a specific loader by name."""
-    # Import loaders lazily to avoid circular imports
-    loader: DataLoader
-    if name == "census":
-        from babylon.data.census import CensusLoader
-
-        loader = CensusLoader(config)
-    elif name == "fred":
-        from babylon.data.fred import FredLoader
-
-        loader = FredLoader(config)
-    elif name == "energy":
-        from babylon.data.energy import EnergyLoader
-
-        loader = EnergyLoader(config)
-    elif name == "qcew":
-        from babylon.data.qcew import QcewLoader
-
-        loader = QcewLoader(config)
-    elif name == "trade":
-        from babylon.data.trade import TradeLoader
-
-        loader = TradeLoader(config)
-    elif name == "materials":
-        from babylon.data.materials import MaterialsLoader
-
-        loader = MaterialsLoader(config)
-    elif name == "hifld_prisons":
-        from babylon.data.hifld import HIFLDPrisonsLoader
-
-        loader = HIFLDPrisonsLoader(config)
-    elif name == "hifld_police":
-        from babylon.data.hifld import HIFLDPoliceLoader
-
-        loader = HIFLDPoliceLoader(config)
-    elif name == "hifld_electric":
-        from babylon.data.hifld import HIFLDElectricLoader
-
-        loader = HIFLDElectricLoader(config)
-    elif name == "mirta":
-        from babylon.data.mirta import MIRTAMilitaryLoader
-
-        loader = MIRTAMilitaryLoader(config)
-    elif name == "geography":
-        from babylon.data.geography import GeographicHierarchyLoader
-
-        loader = GeographicHierarchyLoader(config)
-    elif name == "cfs":
-        from babylon.data.cfs import CFSLoader
-
-        loader = CFSLoader(config)
-    elif name == "fcc":
-        from babylon.data.fcc import FCCBroadbandLoader
-
-        loader = FCCBroadbandLoader(config)
-    else:
+    factory = _LOADER_FACTORIES.get(name)
+    if factory is None:
         raise ValueError(f"Unknown loader: {name}")
 
+    loader = factory(config)
     return loader.load(session, reset=reset, verbose=verbose)  # type: ignore[arg-type]
 
 
@@ -333,7 +1154,7 @@ def census(
     year: Annotated[
         int,
         typer.Option("--year", "-y", help="Census ACS 5-year vintage"),
-    ] = 2022,
+    ] = 2021,
     states: Annotated[
         str | None,
         typer.Option("--states", help="Comma-separated state FIPS codes"),
@@ -613,6 +1434,153 @@ def materials(
     print_stats(stats)
     if stats.has_errors:
         raise typer.Exit(1)
+
+
+@app.command()
+def employment_industry(
+    data_path: Annotated[
+        Path | None,
+        typer.Option("--data-path", help="Path to employment industry data directory"),
+    ] = None,
+    states: Annotated[
+        str | None,
+        typer.Option("--states", help="State FIPS codes (e.g., 06,36)"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load employment industry data into 3NF database."""
+    from babylon.data.employment_industry import EmploymentIndustryLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading employment industry data...")
+
+    init_normalized_db()
+    loader = EmploymentIndustryLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet, data_path=data_path)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def dot_hpms(
+    data_path: Annotated[
+        Path | None,
+        typer.Option("--data-path", help="Path to HPMS CSV or directory"),
+    ] = None,
+    states: Annotated[
+        str | None,
+        typer.Option("--states", help="State FIPS codes (e.g., 06,36)"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load DOT HPMS road segments into 3NF database."""
+    from babylon.data.dot import DotHpmsLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading DOT HPMS road segments...")
+
+    init_normalized_db()
+    loader = DotHpmsLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet, data_path=data_path)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def lodes(
+    data_path: Annotated[
+        Path | None,
+        typer.Option("--data-path", help="Path to LODES crosswalk file or directory"),
+    ] = None,
+    states: Annotated[
+        str | None,
+        typer.Option("--states", help="State FIPS codes (e.g., 06,36)"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load LODES crosswalk data into 3NF database."""
+    from babylon.data.lodes import LodesCrosswalkLoader
+    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading LODES crosswalk data...")
+
+    init_normalized_db()
+    loader = LodesCrosswalkLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet, data_path=data_path)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command("export-sqlite")
+def export_sqlite(
+    duckdb_path: Annotated[
+        Path | None,
+        typer.Option("--duckdb-path", help="Path to DuckDB file to export"),
+    ] = None,
+    sqlite_path: Annotated[
+        Path | None,
+        typer.Option("--sqlite-path", help="Target SQLite output path"),
+    ] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option("--overwrite/--no-overwrite", help="Overwrite existing SQLite file"),
+    ] = False,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
+) -> None:
+    """Export DuckDB tables into a SQLite database file."""
+    from babylon.data.export_sqlite import export_duckdb_to_sqlite
+
+    count = export_duckdb_to_sqlite(
+        duckdb_path=duckdb_path,
+        sqlite_path=sqlite_path,
+        overwrite=overwrite,
+    )
+
+    if not quiet:
+        target = sqlite_path or Path("data/sqlite/marxist-data-3NF.sqlite")
+        typer.echo(f"Exported {count} tables to {target}")
 
 
 @app.command()

@@ -28,7 +28,7 @@ class TestGeographicHierarchyLoaderInit:
         """Loader initializes with default LoaderConfig."""
         loader = GeographicHierarchyLoader()
         assert loader.config is not None
-        assert loader.config.census_years == list(range(2009, 2024))
+        assert loader.config.census_years == [2021]
 
     def test_init_with_custom_config(self) -> None:
         """Loader accepts custom LoaderConfig."""

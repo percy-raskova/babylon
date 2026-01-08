@@ -153,7 +153,7 @@ class TestConstantMappings:
 
     def test_priority_msn_includes_key_series(self) -> None:
         """PRIORITY_MSN_CODES includes key energy series."""
-        assert "TETPBUS" in PRIORITY_MSN_CODES  # Total production
+        assert "TEPRBUS" in PRIORITY_MSN_CODES  # Total Primary Energy Production
         assert "TETCBUS" in PRIORITY_MSN_CODES  # Total consumption
         assert "PAPRPUS" in PRIORITY_MSN_CODES  # Crude oil
         assert "TETCEUS" in PRIORITY_MSN_CODES  # CO2 emissions

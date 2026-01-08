@@ -275,8 +275,8 @@ def redact_url(url: str) -> str:
         else:
             redacted[key] = values
 
-    # Reconstruct query string (doseq=True handles lists)
-    new_query = urlencode(redacted, doseq=True)
+    # Reconstruct query string (doseq=True handles lists, safe='*' preserves asterisks)
+    new_query = urlencode(redacted, doseq=True, safe="*")
     return urlunparse(parsed._replace(query=new_query))
 
 

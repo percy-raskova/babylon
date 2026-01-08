@@ -111,6 +111,71 @@ def extract_state_fips(area_fips: str) -> str | None:
     return None
 
 
+def normalize_numeric_fips(
+    value: int | str | None,
+    expected_length: int,
+    min_length: int = 1,
+) -> str | None:
+    """Normalize a numeric FIPS code to zero-padded string.
+
+    This is an alias for normalize_fips with a default min_length of 1.
+
+    Args:
+        value: Raw FIPS value (string or integer).
+        expected_length: Expected length (5 for county, 2 for state, 3 for county-only).
+        min_length: Minimum length for valid input (default 1).
+
+    Returns:
+        Zero-padded FIPS string or None if input is invalid.
+
+    Example:
+        >>> normalize_numeric_fips("6001", 5)
+        '06001'
+        >>> normalize_numeric_fips(6, 2)
+        '06'
+        >>> normalize_numeric_fips("06", 5, min_length=4)
+        None
+    """
+    return normalize_fips(value, expected_length, min_length)
+
+
+def build_county_fips(state_fips: str | None, county_part: str | int | None) -> str | None:
+    """Build 5-digit county FIPS from state and county parts.
+
+    Combines a 2-digit state FIPS with a 3-digit county code to create
+    a full 5-digit county FIPS code.
+
+    Args:
+        state_fips: 2-digit state FIPS code (e.g., "06" for California).
+        county_part: 3-digit county code (e.g., "001" for Alameda) or integer.
+
+    Returns:
+        5-digit county FIPS code or None if inputs are invalid.
+
+    Example:
+        >>> build_county_fips("06", "001")
+        '06001'
+        >>> build_county_fips("06", 1)
+        '06001'
+        >>> build_county_fips("6", "1")
+        '06001'
+        >>> build_county_fips(None, "001")
+        None
+    """
+    if state_fips is None or county_part is None:
+        return None
+
+    state_normalized = normalize_fips(state_fips, 2)
+    if state_normalized is None:
+        return None
+
+    county_normalized = normalize_fips(county_part, 3)
+    if county_normalized is None:
+        return None
+
+    return f"{state_normalized}{county_normalized}"
+
+
 def extract_county_fips_from_attrs(
     attrs: dict[str, Any],
     field_names: tuple[str, ...] | None = None,
@@ -173,7 +238,9 @@ __all__ = [
     "COUNTY_ONLY_FIELD_NAMES",
     "FIPS_FIELD_NAMES",
     "STATE_FIPS_FIELD_NAMES",
+    "build_county_fips",
     "extract_county_fips_from_attrs",
     "extract_state_fips",
     "normalize_fips",
+    "normalize_numeric_fips",
 ]

@@ -2200,103 +2200,164 @@ class CensusLoader(ApiLoaderBase):
 
         Includes checkpoint-based resume capability. When resuming, skips
         states that were already completed in previous runs.
-
-        Args:
-            spec: Fact table specification.
-            session: SQLAlchemy session.
-            state_fips_list: List of state FIPS codes to load.
-            verbose: Whether to show progress bar.
-            time_id: FK to dim_time for this load.
-            race_id: FK to dim_race for this load.
-            stats: Optional LoadStats for error tracking.
-
-        Returns:
-            Count of fact records created.
         """
         assert self._client is not None
         assert self._source_id is not None
-        year = self._client.year
 
-        # Determine race code for checkpoint tracking
-        race_code = "T"
-        if self._is_race_suffixed_table(spec.table_id):
-            race_code = spec.table_id[-1]  # Extract A-I suffix
-
-        race_table = self._is_race_suffixed_table(spec.table_id)
-        base_table_id = self._base_table_id(spec.table_id) if race_table else None
-        if race_table and base_table_id and self._is_race_tables_unavailable(year, base_table_id):
+        ctx = self._prepare_fact_table_context(spec, session, stats)
+        if ctx is None:
             return 0
 
-        dim_map = self._build_dimension_map(spec, session)
+        count, skipped = self._iterate_states_for_fact_table(
+            spec, session, state_fips_list, verbose, time_id, race_id, ctx, stats
+        )
+
+        if skipped > 0 and verbose:
+            logger.info(f"Skipped {skipped} already-completed states for {spec.table_id}")
+
+        return count
+
+    def _prepare_fact_table_context(
+        self,
+        spec: FactTableSpec,
+        session: Session,
+        stats: LoadStats | None,
+    ) -> dict[str, Any] | None:
+        """Prepare context for fact table loading. Returns None if table unavailable."""
+        assert self._client is not None
+        year = self._client.year
+
+        race_code = spec.table_id[-1] if self._is_race_suffixed_table(spec.table_id) else "T"
+        race_table = self._is_race_suffixed_table(spec.table_id)
+        base_table_id = self._base_table_id(spec.table_id) if race_table else None
+
+        if race_table and base_table_id and self._is_race_tables_unavailable(year, base_table_id):
+            return None
+
+        variable_payload = self._prepare_fact_variables(spec, year, stats)
+        if variable_payload is None:
+            return None
+
+        variables, use_variable_fallback = variable_payload
+
+        return {
+            "year": year,
+            "race_code": race_code,
+            "race_table": race_table,
+            "base_table_id": base_table_id,
+            "dim_map": self._build_dimension_map(spec, session),
+            "variables": variables,
+            "use_variable_fallback": use_variable_fallback,
+        }
+
+    def _iterate_states_for_fact_table(
+        self,
+        spec: FactTableSpec,
+        session: Session,
+        state_fips_list: list[str],
+        verbose: bool,
+        time_id: int,
+        race_id: int,
+        ctx: dict[str, Any],
+        stats: LoadStats | None,
+    ) -> tuple[int, int]:
+        """Iterate over states and load fact data. Returns (count, skipped_states)."""
         count = 0
         skipped_states = 0
         state_iter = tqdm(state_fips_list, desc=spec.label, disable=not verbose)
-        variable_payload = self._prepare_fact_variables(spec, year, stats)
-        if variable_payload is None:
-            return 0
-        variables, use_variable_fallback = variable_payload
 
         for state_fips in state_iter:
-            # Check if this work unit is already completed (RESUME FEATURE)
-            if self._is_completed(session, "census", year, state_fips, spec.table_id, race_code):
+            result = self._process_state_for_fact_table(
+                spec, session, state_fips, time_id, race_id, ctx, stats
+            )
+            if result == "skipped":
                 skipped_states += 1
-                continue
-
-            if self._is_table_missing(year, spec.table_id):
+            elif result == "break":
                 break
-            if (
-                race_table
-                and base_table_id
-                and self._should_skip_race_state(
-                    year,
-                    base_table_id,
-                    state_fips,
-                )
-            ):
+            elif isinstance(result, int):
+                count += result
+
+        return count, skipped_states
+
+    def _process_state_for_fact_table(
+        self,
+        spec: FactTableSpec,
+        session: Session,
+        state_fips: str,
+        time_id: int,
+        race_id: int,
+        ctx: dict[str, Any],
+        stats: LoadStats | None,
+    ) -> int | str:
+        """Process a single state for fact table loading.
+
+        Returns:
+            int: Count of rows loaded
+            'skipped': State was already completed
+            'break': Table is missing, stop iteration
+        """
+        year = ctx["year"]
+        race_code = ctx["race_code"]
+        race_table = ctx["race_table"]
+        base_table_id = ctx["base_table_id"]
+
+        # Check if already completed (RESUME FEATURE)
+        if self._is_completed(session, "census", year, state_fips, spec.table_id, race_code):
+            return "skipped"
+
+        if self._is_table_missing(year, spec.table_id):
+            return "break"
+
+        if (
+            race_table
+            and base_table_id
+            and self._should_skip_race_state(year, base_table_id, state_fips)
+        ):
+            return 0
+
+        data = self._fetch_fact_data_for_state(
+            spec, state_fips, ctx["variables"], ctx["use_variable_fallback"], stats
+        )
+        if data is None:
+            return 0
+
+        if not data and not race_table:
+            self._record_base_table_missing(year, spec.table_id, state_fips)
+            return 0
+
+        state_count = self._load_county_facts(
+            spec, session, data, ctx["dim_map"], ctx["variables"], time_id, race_id
+        )
+
+        # Mark checkpoint after successful state processing
+        self._mark_completed(
+            session, "census", year, state_fips, spec.table_id, race_code, state_count
+        )
+        session.flush()
+
+        return state_count
+
+    def _load_county_facts(
+        self,
+        spec: FactTableSpec,
+        session: Session,
+        data: list[CountyData],
+        dim_map: dict[str, int],
+        variables: dict[str, Any],
+        time_id: int,
+        race_id: int,
+    ) -> int:
+        """Load facts for all counties in the data. Returns count loaded."""
+        count = 0
+        for county_data in data:
+            county_id = self._fips_to_county.get(county_data.fips)
+            if not county_id:
                 continue
 
-            data = self._fetch_fact_data_for_state(
-                spec,
-                state_fips,
-                variables,
-                use_variable_fallback,
-                stats,
+            rows = self._build_fact_rows_for_county(
+                spec, county_id, county_data.values, dim_map, variables, time_id, race_id
             )
-            if data is None:
-                continue
-
-            if not data and not race_table:
-                self._record_base_table_missing(year, spec.table_id, state_fips)
-                continue
-
-            state_count = 0
-            for county_data in data:
-                county_id = self._fips_to_county.get(county_data.fips)
-                if not county_id:
-                    continue
-
-                rows = self._build_fact_rows_for_county(
-                    spec,
-                    county_id,
-                    county_data.values,
-                    dim_map,
-                    variables,
-                    time_id,
-                    race_id,
-                )
-                state_count += self._write_rows(session, spec.fact_class, rows)
-
-            count += state_count
-
-            # Mark this work unit as completed (CHECKPOINT)
-            self._mark_completed(
-                session, "census", year, state_fips, spec.table_id, race_code, state_count
-            )
-            session.flush()
-
-        if skipped_states > 0 and verbose:
-            logger.info(f"Skipped {skipped_states} already-completed states for {spec.table_id}")
-
+            count += self._write_rows(session, spec.fact_class, rows)
         return count
 
     # =========================================================================

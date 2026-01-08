@@ -24,6 +24,38 @@ logger = logging.getLogger(__name__)
 # Default path for CBSA delineation Excel file
 CBSA_EXCEL_PATH = Path("data/census/cbsa_delineation_2023.xlsx")
 
+# Git LFS pointer signature
+_LFS_POINTER_PREFIX = b"version https://git-lfs.github.com/spec/v1"
+
+
+def _is_lfs_pointer(filepath: Path) -> bool:
+    """Check if a file is a Git LFS pointer instead of actual content.
+
+    Git LFS pointers are small text files that reference the actual
+    binary content stored in Git LFS. They have a specific format:
+
+        version https://git-lfs.github.com/spec/v1
+        oid sha256:abc123...
+        size 12345
+
+    Args:
+        filepath: Path to the file to check.
+
+    Returns:
+        True if the file appears to be a Git LFS pointer, False otherwise.
+    """
+    if not filepath.exists():
+        return False
+
+    # Read first 128 bytes to check for LFS pointer signature
+    try:
+        with open(filepath, "rb") as f:
+            header = f.read(128)
+        return header.startswith(_LFS_POINTER_PREFIX)
+    except OSError:
+        return False
+
+
 # Expected column names in the delineation file
 CBSA_CODE_COL = "CBSA Code"
 CBSA_TITLE_COL = "CBSA Title"

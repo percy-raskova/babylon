@@ -2070,6 +2070,12 @@ class CensusLoader(ApiLoaderBase):
         if self._is_race_suffixed_table(spec.table_id):
             variables, use_variable_fallback = self._get_variables_for_table(spec.table_id, year)
             if not variables:
+                self._record_missing_table(
+                    year,
+                    spec.table_id,
+                    reason="variable_metadata_missing",
+                    stats=stats,
+                )
                 return None
             return variables, use_variable_fallback
 

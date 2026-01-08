@@ -33,6 +33,7 @@ from sqlalchemy import delete
 from tqdm import tqdm
 
 from babylon.data.api_loader_base import ApiLoaderBase
+from babylon.data.exceptions import QcewAPIError
 from babylon.data.loader_base import LoadStats
 from babylon.data.normalize.classifications import classify_class_composition
 from babylon.data.normalize.schema import (
@@ -49,7 +50,6 @@ from babylon.data.normalize.schema import (
 )
 from babylon.data.qcew.api_client import (
     QcewAPIClient,
-    QcewAPIError,
     QcewAreaRecord,
     get_state_area_code,
 )
@@ -457,7 +457,16 @@ class QcewLoader(ApiLoaderBase):
             logger.debug(f"No data for {area_code} in {year}")
         else:
             msg = f"API error for {area_code}/{year}: {error.message}"
-            stats.record_api_error(error, context=f"qcew:{area_code}:{year}")
+            stats.record_api_error(
+                error,
+                context=f"qcew:{area_code}:{year}",
+                details={
+                    "loader": "qcew",
+                    "area_code": area_code,
+                    "year": year,
+                    "endpoint": error.url,
+                },
+            )
             stats.errors.append(msg)
             logger.warning(msg)
             print(f"WARNING: {msg}")

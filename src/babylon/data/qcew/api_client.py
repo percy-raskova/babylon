@@ -17,6 +17,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from babylon.data.exceptions import QcewAPIError
+
 logger = logging.getLogger(__name__)
 
 # QCEW API configuration
@@ -28,15 +30,6 @@ REQUEST_DELAY_SECONDS = 0.5
 MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2.0
 DEFAULT_TIMEOUT = 60.0  # Large CSV files may take time
-
-
-@dataclass
-class QcewAPIError(Exception):
-    """Error from QCEW API."""
-
-    status_code: int
-    message: str
-    url: str
 
 
 @dataclass

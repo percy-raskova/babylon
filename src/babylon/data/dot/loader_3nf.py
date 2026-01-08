@@ -82,6 +82,47 @@ def _parse_decimal(value: object) -> Decimal | None:
         return None
 
 
+def _build_road_segment_row(
+    row: dict[str, str | None],
+    county_id: int,
+    state_id: int,
+    source_id: int,
+    time_id: int | None,
+    year_record: int | None,
+) -> dict[str, Any]:
+    """Build a road segment fact row dictionary from CSV data."""
+    geometry_wkt = _parse_str(row.get("line"))
+    if geometry_wkt:
+        geometry_wkt = geometry_wkt.strip('"')
+
+    return {
+        "county_id": county_id,
+        "state_id": state_id,
+        "source_id": source_id,
+        "time_id": time_id,
+        "route_id": _parse_str(row.get("ROUTE_ID")),
+        "route_number": _parse_str(row.get("ROUTE_NUMBER")),
+        "route_signing": _parse_str(row.get("ROUTE_SIGNING")),
+        "route_qualifier": _parse_str(row.get("ROUTE_QUALIFIER")),
+        "functional_system": _parse_int(row.get("F_SYSTEM")),
+        "facility_type": _parse_int(row.get("FACILITY_TYPE")),
+        "aadt": _parse_int(row.get("AADT")),
+        "aadt_single_unit": _parse_int(row.get("AADT_SINGLE_UNIT")),
+        "aadt_combination": _parse_int(row.get("AADT_COMBINATION")),
+        "speed_limit": _parse_int(row.get("SPEED_LIMIT")),
+        "through_lanes": _parse_int(row.get("THROUGH_LANES")),
+        "lane_width": _parse_decimal(row.get("LANE_WIDTH")),
+        "section_length": _parse_decimal(row.get("SectionLength")),
+        "nhs": _parse_int(row.get("NHS")),
+        "nhfn": _parse_int(row.get("NHFN")),
+        "urban_id": _parse_str(row.get("URBAN_ID")),
+        "year_record": year_record,
+        "shape_id": _parse_str(row.get("ShapeId")),
+        "sample_id": _parse_str(row.get("SAMPLE_ID")),
+        "geometry_wkt": geometry_wkt,
+    }
+
+
 class DotHpmsLoader(DataLoader):
     """Loader for DOT HPMS spatial roadway segments."""
 
@@ -99,8 +140,7 @@ class DotHpmsLoader(DataLoader):
         **kwargs: object,
     ) -> LoadStats:
         stats = LoadStats(source="dot_hpms")
-        data_path = kwargs.get("data_path")
-        csv_path = _resolve_hpms_path(data_path)
+        csv_path = _resolve_hpms_path(kwargs.get("data_path"))
 
         if csv_path is None or not csv_path.exists():
             stats.errors.append("DOT HPMS CSV file not found.")
@@ -108,10 +148,7 @@ class DotHpmsLoader(DataLoader):
             return stats
 
         if reset:
-            if verbose:
-                logger.info("Clearing existing HPMS road segments...")
-            session.execute(delete(FactHpmsRoadSegment))
-            session.flush()
+            self._clear_existing_data(session, verbose)
 
         source_id = self._get_or_create_data_source(
             session,
@@ -121,10 +158,36 @@ class DotHpmsLoader(DataLoader):
             source_agency="Federal Highway Administration",
         )
 
-        state_lookup = {s.state_fips: s.state_id for s in session.query(DimState).all()}
-        county_lookup = {c.fips: c.county_id for c in session.query(DimCounty).all()}
-        state_filter = set(self.config.state_fips_list or [])
+        lookups = self._initialize_lookups(session, source_id)
+        counts = self._process_file(session, csv_path, lookups)
 
+        session.commit()
+        self._record_stats(stats, counts, verbose)
+        return stats
+
+    def _clear_existing_data(self, session: Session, verbose: bool) -> None:
+        """Clear existing HPMS road segment data."""
+        if verbose:
+            logger.info("Clearing existing HPMS road segments...")
+        session.execute(delete(FactHpmsRoadSegment))
+        session.flush()
+
+    def _initialize_lookups(self, session: Session, source_id: int) -> dict[str, Any]:
+        """Initialize lookup dictionaries."""
+        return {
+            "state": {s.state_fips: s.state_id for s in session.query(DimState).all()},
+            "county": {c.fips: c.county_id for c in session.query(DimCounty).all()},
+            "state_filter": set(self.config.state_fips_list or []),
+            "source_id": source_id,
+        }
+
+    def _process_file(
+        self,
+        session: Session,
+        csv_path: Path,
+        lookups: dict[str, Any],
+    ) -> dict[str, int]:
+        """Process the CSV file and return load counts."""
         writer = BatchWriter(session, self.config.batch_size)
         batch: list[dict[str, Any]] = []
         loaded = 0
@@ -134,69 +197,71 @@ class DotHpmsLoader(DataLoader):
         with csv_path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
-                state_fips = normalize_numeric_fips(row.get("StateID"), 2, min_length=1)
-                if not state_fips:
-                    skipped_no_fips += 1
+                result = self._process_row(session, row, lookups)
+                if result is None:
                     continue
-                if state_filter and state_fips not in state_filter:
-                    continue
-
-                county_fips = build_county_fips(state_fips, row.get("COUNTY_ID"))
-                if not county_fips:
-                    skipped_no_fips += 1
+                if isinstance(result, str):
+                    if result == "no_fips":
+                        skipped_no_fips += 1
+                    else:  # "missing_geo"
+                        skipped_missing_geo += 1
                     continue
 
-                county_id = county_lookup.get(county_fips)
-                state_id = state_lookup.get(state_fips)
-                if county_id is None or state_id is None:
-                    skipped_missing_geo += 1
-                    continue
-
-                year_record = _parse_int(row.get("YEAR_RECORD"))
-                time_id = self._get_or_create_time(session, year_record) if year_record else None
-
-                geometry_wkt = _parse_str(row.get("line"))
-                if geometry_wkt:
-                    geometry_wkt = geometry_wkt.strip('"')
-
-                batch.append(
-                    {
-                        "county_id": county_id,
-                        "state_id": state_id,
-                        "source_id": source_id,
-                        "time_id": time_id,
-                        "route_id": _parse_str(row.get("ROUTE_ID")),
-                        "route_number": _parse_str(row.get("ROUTE_NUMBER")),
-                        "route_signing": _parse_str(row.get("ROUTE_SIGNING")),
-                        "route_qualifier": _parse_str(row.get("ROUTE_QUALIFIER")),
-                        "functional_system": _parse_int(row.get("F_SYSTEM")),
-                        "facility_type": _parse_int(row.get("FACILITY_TYPE")),
-                        "aadt": _parse_int(row.get("AADT")),
-                        "aadt_single_unit": _parse_int(row.get("AADT_SINGLE_UNIT")),
-                        "aadt_combination": _parse_int(row.get("AADT_COMBINATION")),
-                        "speed_limit": _parse_int(row.get("SPEED_LIMIT")),
-                        "through_lanes": _parse_int(row.get("THROUGH_LANES")),
-                        "lane_width": _parse_decimal(row.get("LANE_WIDTH")),
-                        "section_length": _parse_decimal(row.get("SectionLength")),
-                        "nhs": _parse_int(row.get("NHS")),
-                        "nhfn": _parse_int(row.get("NHFN")),
-                        "urban_id": _parse_str(row.get("URBAN_ID")),
-                        "year_record": year_record,
-                        "shape_id": _parse_str(row.get("ShapeId")),
-                        "sample_id": _parse_str(row.get("SAMPLE_ID")),
-                        "geometry_wkt": geometry_wkt,
-                    }
-                )
-
+                batch.append(result)
                 if len(batch) >= self.config.batch_size:
                     loaded += writer.write(FactHpmsRoadSegment, batch)
                     batch.clear()
 
         if batch:
             loaded += writer.write(FactHpmsRoadSegment, batch)
-            batch.clear()
 
-        session.commit()
+        return {
+            "loaded": loaded,
+            "skipped_no_fips": skipped_no_fips,
+            "skipped_missing_geo": skipped_missing_geo,
+        }
+
+    def _process_row(
+        self,
+        session: Session,
+        row: dict[str, str | None],
+        lookups: dict[str, Any],
+    ) -> dict[str, Any] | str | None:
+        """Process a single row. Returns dict, 'no_fips', 'missing_geo', or None."""
+        state_fips = normalize_numeric_fips(row.get("StateID"), 2, min_length=1)
+        if not state_fips:
+            return "no_fips"
+
+        state_filter = lookups["state_filter"]
+        if state_filter and state_fips not in state_filter:
+            return None
+
+        county_fips = build_county_fips(state_fips, row.get("COUNTY_ID"))
+        if not county_fips:
+            return "no_fips"
+
+        county_id = lookups["county"].get(county_fips)
+        state_id = lookups["state"].get(state_fips)
+        if county_id is None or state_id is None:
+            return "missing_geo"
+
+        year_record = _parse_int(row.get("YEAR_RECORD"))
+        time_id = self._get_or_create_time(session, year_record) if year_record else None
+
+        return _build_road_segment_row(
+            row, county_id, state_id, lookups["source_id"], time_id, year_record
+        )
+
+    def _record_stats(
+        self,
+        stats: LoadStats,
+        counts: dict[str, int],
+        verbose: bool,
+    ) -> None:
+        """Record loading statistics."""
+        loaded = counts["loaded"]
+        skipped_no_fips = counts["skipped_no_fips"]
+        skipped_missing_geo = counts["skipped_missing_geo"]
 
         stats.files_processed = 1
         stats.facts_loaded["hpms_road_segments"] = loaded
@@ -213,5 +278,3 @@ class DotHpmsLoader(DataLoader):
                 skipped_no_fips,
                 skipped_missing_geo,
             )
-
-        return stats

@@ -108,6 +108,70 @@ def _discover_area_files(base_path: Path) -> list[Path]:
     return files
 
 
+def _build_fact_row(
+    row: dict[str, str | None],
+    area_id: int,
+    industry_id: int,
+    ownership_id: int,
+    time_id: int,
+    agglvl_code: int | None,
+) -> dict[str, Any]:
+    """Build a fact row dictionary from CSV data.
+
+    Extracts and parses all fact fields from the CSV row.
+    """
+    return {
+        "area_id": area_id,
+        "industry_id": industry_id,
+        "ownership_id": ownership_id,
+        "time_id": time_id,
+        "agglvl_code": agglvl_code,
+        "size_code": _parse_str(row.get("size_code")),
+        "qtr": _parse_str(row.get("qtr")),
+        "disclosure_code": _parse_str(row.get("disclosure_code")),
+        "annual_avg_estabs_count": _parse_int(row.get("annual_avg_estabs_count")),
+        "annual_avg_emplvl": _parse_int(row.get("annual_avg_emplvl")),
+        "total_annual_wages": _parse_decimal(row.get("total_annual_wages")),
+        "taxable_annual_wages": _parse_decimal(row.get("taxable_annual_wages")),
+        "annual_contributions": _parse_decimal(row.get("annual_contributions")),
+        "annual_avg_wkly_wage": _parse_int(row.get("annual_avg_wkly_wage")),
+        "avg_annual_pay": _parse_int(row.get("avg_annual_pay")),
+        "lq_disclosure_code": _parse_str(row.get("lq_disclosure_code")),
+        "lq_annual_avg_estabs_count": _parse_decimal(row.get("lq_annual_avg_estabs_count")),
+        "lq_annual_avg_emplvl": _parse_decimal(row.get("lq_annual_avg_emplvl")),
+        "lq_total_annual_wages": _parse_decimal(row.get("lq_total_annual_wages")),
+        "lq_taxable_annual_wages": _parse_decimal(row.get("lq_taxable_annual_wages")),
+        "lq_annual_contributions": _parse_decimal(row.get("lq_annual_contributions")),
+        "lq_annual_avg_wkly_wage": _parse_decimal(row.get("lq_annual_avg_wkly_wage")),
+        "lq_avg_annual_pay": _parse_decimal(row.get("lq_avg_annual_pay")),
+        "oty_disclosure_code": _parse_str(row.get("oty_disclosure_code")),
+        "oty_annual_avg_estabs_count_chg": _parse_decimal(
+            row.get("oty_annual_avg_estabs_count_chg")
+        ),
+        "oty_annual_avg_estabs_count_pct_chg": _parse_decimal(
+            row.get("oty_annual_avg_estabs_count_pct_chg")
+        ),
+        "oty_annual_avg_emplvl_chg": _parse_decimal(row.get("oty_annual_avg_emplvl_chg")),
+        "oty_annual_avg_emplvl_pct_chg": _parse_decimal(row.get("oty_annual_avg_emplvl_pct_chg")),
+        "oty_total_annual_wages_chg": _parse_decimal(row.get("oty_total_annual_wages_chg")),
+        "oty_total_annual_wages_pct_chg": _parse_decimal(row.get("oty_total_annual_wages_pct_chg")),
+        "oty_taxable_annual_wages_chg": _parse_decimal(row.get("oty_taxable_annual_wages_chg")),
+        "oty_taxable_annual_wages_pct_chg": _parse_decimal(
+            row.get("oty_taxable_annual_wages_pct_chg")
+        ),
+        "oty_annual_contributions_chg": _parse_decimal(row.get("oty_annual_contributions_chg")),
+        "oty_annual_contributions_pct_chg": _parse_decimal(
+            row.get("oty_annual_contributions_pct_chg")
+        ),
+        "oty_annual_avg_wkly_wage_chg": _parse_decimal(row.get("oty_annual_avg_wkly_wage_chg")),
+        "oty_annual_avg_wkly_wage_pct_chg": _parse_decimal(
+            row.get("oty_annual_avg_wkly_wage_pct_chg")
+        ),
+        "oty_avg_annual_pay_chg": _parse_decimal(row.get("oty_avg_annual_pay_chg")),
+        "oty_avg_annual_pay_pct_chg": _parse_decimal(row.get("oty_avg_annual_pay_pct_chg")),
+    }
+
+
 class EmploymentIndustryLoader(DataLoader):
     """Loader for BLS QCEW employment industry data (by area)."""
 
@@ -125,10 +189,7 @@ class EmploymentIndustryLoader(DataLoader):
         **kwargs: object,
     ) -> LoadStats:
         stats = LoadStats(source="employment_industry")
-        data_path = kwargs.get("data_path")
-        base_path = (
-            Path(data_path) if isinstance(data_path, (str, Path)) else DEFAULT_EMPLOYMENT_PATH
-        )
+        base_path = self._resolve_data_path(kwargs)
 
         if not base_path.exists():
             stats.errors.append(f"Employment industry data path not found: {base_path}")
@@ -144,11 +205,7 @@ class EmploymentIndustryLoader(DataLoader):
         stats.files_processed = len(files)
 
         if reset:
-            if verbose:
-                logger.info("Clearing existing employment industry data...")
-            session.execute(delete(FactEmploymentIndustryAnnual))
-            session.execute(delete(DimEmploymentArea))
-            session.flush()
+            self._clear_existing_data(session, verbose)
 
         self._get_or_create_data_source(
             session,
@@ -158,159 +215,154 @@ class EmploymentIndustryLoader(DataLoader):
             source_agency="Bureau of Labor Statistics",
         )
 
-        state_lookup = {s.state_fips: s.state_id for s in session.query(DimState).all()}
-        county_lookup = {c.fips: c.county_id for c in session.query(DimCounty).all()}
-        state_filter = set(self.config.state_fips_list or [])
+        lookups = self._initialize_lookups(session)
+        loaded = self._process_all_files(session, files, lookups)
 
-        area_lookup: dict[str, int] = {}
-        industry_lookup: dict[str, int] = {}
-        ownership_lookup: dict[str, int] = {}
+        session.commit()
+        self._record_stats(stats, lookups, loaded, verbose)
+        return stats
 
+    def _resolve_data_path(self, kwargs: dict[str, object]) -> Path:
+        """Resolve the employment data path from kwargs or default."""
+        data_path = kwargs.get("data_path")
+        if isinstance(data_path, (str, Path)):
+            return Path(data_path)
+        return DEFAULT_EMPLOYMENT_PATH
+
+    def _clear_existing_data(self, session: Session, verbose: bool) -> None:
+        """Clear existing employment industry data."""
+        if verbose:
+            logger.info("Clearing existing employment industry data...")
+        session.execute(delete(FactEmploymentIndustryAnnual))
+        session.execute(delete(DimEmploymentArea))
+        session.flush()
+
+    def _initialize_lookups(self, session: Session) -> dict[str, Any]:
+        """Initialize all dimension lookup dictionaries."""
+        return {
+            "state": {s.state_fips: s.state_id for s in session.query(DimState).all()},
+            "county": {c.fips: c.county_id for c in session.query(DimCounty).all()},
+            "state_filter": set(self.config.state_fips_list or []),
+            "area": {},
+            "industry": {},
+            "ownership": {},
+        }
+
+    def _process_all_files(
+        self,
+        session: Session,
+        files: list[Path],
+        lookups: dict[str, Any],
+    ) -> int:
+        """Process all CSV files and load facts."""
         writer = BatchWriter(session, self.config.batch_size)
         batch: list[dict[str, Any]] = []
         loaded = 0
 
         for csv_path in files:
-            with csv_path.open("r", encoding="utf-8", newline="") as handle:
-                reader = csv.DictReader(handle)
-                for row in reader:
-                    raw_area = _parse_str(row.get("area_fips"))
-                    if not raw_area:
-                        continue
-                    area_code = _normalize_area_code(raw_area)
-                    agglvl_code = _parse_int(row.get("agglvl_code"))
-                    area_type = _determine_employment_area_type(area_code, agglvl_code)
-
-                    state_fips = _extract_state_fips(area_code)
-                    if state_filter and (not state_fips or state_fips not in state_filter):
-                        continue
-
-                    county_id = None
-                    if area_type == "county" and area_code.isdigit() and len(area_code) == 5:
-                        county_id = county_lookup.get(area_code)
-
-                    state_id = state_lookup.get(state_fips) if state_fips else None
-                    area_id = self._get_or_create_area(
-                        session,
-                        area_code,
-                        _parse_str(row.get("area_title")) or area_code,
-                        area_type,
-                        state_id,
-                        county_id,
-                        area_lookup,
-                    )
-
-                    industry_code = _parse_str(row.get("industry_code")) or "10"
-                    industry_title = (
-                        _parse_str(row.get("industry_title")) or "Total, all industries"
-                    )
-                    industry_id = self._get_or_create_industry(
-                        session, industry_code, industry_title, industry_lookup
-                    )
-
-                    own_code = _parse_str(row.get("own_code")) or "0"
-                    own_title = _parse_str(row.get("own_title")) or "Total Covered"
-                    ownership_id = self._get_or_create_ownership(
-                        session, own_code, own_title, ownership_lookup
-                    )
-
-                    year = _parse_int(row.get("year"))
-                    if year is None:
-                        continue
-                    time_id = self._get_or_create_time(session, year)
-
-                    batch.append(
-                        {
-                            "area_id": area_id,
-                            "industry_id": industry_id,
-                            "ownership_id": ownership_id,
-                            "time_id": time_id,
-                            "agglvl_code": agglvl_code,
-                            "size_code": _parse_str(row.get("size_code")),
-                            "qtr": _parse_str(row.get("qtr")),
-                            "disclosure_code": _parse_str(row.get("disclosure_code")),
-                            "annual_avg_estabs_count": _parse_int(
-                                row.get("annual_avg_estabs_count")
-                            ),
-                            "annual_avg_emplvl": _parse_int(row.get("annual_avg_emplvl")),
-                            "total_annual_wages": _parse_decimal(row.get("total_annual_wages")),
-                            "taxable_annual_wages": _parse_decimal(row.get("taxable_annual_wages")),
-                            "annual_contributions": _parse_decimal(row.get("annual_contributions")),
-                            "annual_avg_wkly_wage": _parse_int(row.get("annual_avg_wkly_wage")),
-                            "avg_annual_pay": _parse_int(row.get("avg_annual_pay")),
-                            "lq_disclosure_code": _parse_str(row.get("lq_disclosure_code")),
-                            "lq_annual_avg_estabs_count": _parse_decimal(
-                                row.get("lq_annual_avg_estabs_count")
-                            ),
-                            "lq_annual_avg_emplvl": _parse_decimal(row.get("lq_annual_avg_emplvl")),
-                            "lq_total_annual_wages": _parse_decimal(
-                                row.get("lq_total_annual_wages")
-                            ),
-                            "lq_taxable_annual_wages": _parse_decimal(
-                                row.get("lq_taxable_annual_wages")
-                            ),
-                            "lq_annual_contributions": _parse_decimal(
-                                row.get("lq_annual_contributions")
-                            ),
-                            "lq_annual_avg_wkly_wage": _parse_decimal(
-                                row.get("lq_annual_avg_wkly_wage")
-                            ),
-                            "lq_avg_annual_pay": _parse_decimal(row.get("lq_avg_annual_pay")),
-                            "oty_disclosure_code": _parse_str(row.get("oty_disclosure_code")),
-                            "oty_annual_avg_estabs_count_chg": _parse_decimal(
-                                row.get("oty_annual_avg_estabs_count_chg")
-                            ),
-                            "oty_annual_avg_estabs_count_pct_chg": _parse_decimal(
-                                row.get("oty_annual_avg_estabs_count_pct_chg")
-                            ),
-                            "oty_annual_avg_emplvl_chg": _parse_decimal(
-                                row.get("oty_annual_avg_emplvl_chg")
-                            ),
-                            "oty_annual_avg_emplvl_pct_chg": _parse_decimal(
-                                row.get("oty_annual_avg_emplvl_pct_chg")
-                            ),
-                            "oty_total_annual_wages_chg": _parse_decimal(
-                                row.get("oty_total_annual_wages_chg")
-                            ),
-                            "oty_total_annual_wages_pct_chg": _parse_decimal(
-                                row.get("oty_total_annual_wages_pct_chg")
-                            ),
-                            "oty_taxable_annual_wages_chg": _parse_decimal(
-                                row.get("oty_taxable_annual_wages_chg")
-                            ),
-                            "oty_taxable_annual_wages_pct_chg": _parse_decimal(
-                                row.get("oty_taxable_annual_wages_pct_chg")
-                            ),
-                            "oty_annual_contributions_chg": _parse_decimal(
-                                row.get("oty_annual_contributions_chg")
-                            ),
-                            "oty_annual_contributions_pct_chg": _parse_decimal(
-                                row.get("oty_annual_contributions_pct_chg")
-                            ),
-                            "oty_annual_avg_wkly_wage_chg": _parse_decimal(
-                                row.get("oty_annual_avg_wkly_wage_chg")
-                            ),
-                            "oty_annual_avg_wkly_wage_pct_chg": _parse_decimal(
-                                row.get("oty_annual_avg_wkly_wage_pct_chg")
-                            ),
-                            "oty_avg_annual_pay_chg": _parse_decimal(
-                                row.get("oty_avg_annual_pay_chg")
-                            ),
-                            "oty_avg_annual_pay_pct_chg": _parse_decimal(
-                                row.get("oty_avg_annual_pay_pct_chg")
-                            ),
-                        }
-                    )
-
-                    if len(batch) >= self.config.batch_size:
-                        loaded += writer.write(FactEmploymentIndustryAnnual, batch)
-                        batch.clear()
+            loaded += self._process_csv_file(session, csv_path, lookups, writer, batch)
 
         if batch:
             loaded += writer.write(FactEmploymentIndustryAnnual, batch)
             batch.clear()
 
-        session.commit()
+        return loaded
+
+    def _process_csv_file(
+        self,
+        session: Session,
+        csv_path: Path,
+        lookups: dict[str, Any],
+        writer: BatchWriter,
+        batch: list[dict[str, Any]],
+    ) -> int:
+        """Process a single CSV file."""
+        loaded = 0
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                fact_row = self._process_csv_row(session, row, lookups)
+                if fact_row is None:
+                    continue
+                batch.append(fact_row)
+                if len(batch) >= self.config.batch_size:
+                    loaded += writer.write(FactEmploymentIndustryAnnual, batch)
+                    batch.clear()
+        return loaded
+
+    def _process_csv_row(
+        self,
+        session: Session,
+        row: dict[str, str | None],
+        lookups: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Process a single CSV row and return fact dictionary or None."""
+        raw_area = _parse_str(row.get("area_fips"))
+        if not raw_area:
+            return None
+
+        area_code = _normalize_area_code(raw_area)
+        agglvl_code = _parse_int(row.get("agglvl_code"))
+        area_type = _determine_employment_area_type(area_code, agglvl_code)
+
+        state_fips = _extract_state_fips(area_code)
+        state_filter = lookups["state_filter"]
+        if state_filter and (not state_fips or state_fips not in state_filter):
+            return None
+
+        year = _parse_int(row.get("year"))
+        if year is None:
+            return None
+
+        county_id = self._resolve_county_id(area_code, area_type, lookups["county"])
+        state_id = lookups["state"].get(state_fips) if state_fips else None
+        area_id = self._get_or_create_area(
+            session,
+            area_code,
+            _parse_str(row.get("area_title")) or area_code,
+            area_type,
+            state_id,
+            county_id,
+            lookups["area"],
+        )
+
+        industry_id = self._get_or_create_industry(
+            session,
+            _parse_str(row.get("industry_code")) or "10",
+            _parse_str(row.get("industry_title")) or "Total, all industries",
+            lookups["industry"],
+        )
+
+        ownership_id = self._get_or_create_ownership(
+            session,
+            _parse_str(row.get("own_code")) or "0",
+            _parse_str(row.get("own_title")) or "Total Covered",
+            lookups["ownership"],
+        )
+
+        time_id = self._get_or_create_time(session, year)
+
+        return _build_fact_row(row, area_id, industry_id, ownership_id, time_id, agglvl_code)
+
+    def _resolve_county_id(
+        self, area_code: str, area_type: str, county_lookup: dict[str, int]
+    ) -> int | None:
+        """Resolve county_id for county-level areas."""
+        if area_type == "county" and area_code.isdigit() and len(area_code) == 5:
+            return county_lookup.get(area_code)
+        return None
+
+    def _record_stats(
+        self,
+        stats: LoadStats,
+        lookups: dict[str, Any],
+        loaded: int,
+        verbose: bool,
+    ) -> None:
+        """Record loading statistics."""
+        area_lookup = lookups["area"]
+        industry_lookup = lookups["industry"]
+        ownership_lookup = lookups["ownership"]
 
         stats.dimensions_loaded["employment_areas"] = len(area_lookup)
         stats.dimensions_loaded["industries"] = len(industry_lookup)
@@ -327,8 +379,6 @@ class EmploymentIndustryLoader(DataLoader):
                 len(area_lookup),
                 loaded,
             )
-
-        return stats
 
     def _get_or_create_area(
         self,

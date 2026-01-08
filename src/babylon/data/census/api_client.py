@@ -13,10 +13,10 @@ Environment:
 import logging
 import os
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+from pydantic import BaseModel, Field
 
 from babylon.data.exceptions import CensusAPIError
 
@@ -33,8 +33,7 @@ MAX_RETRIES = 3
 RETRY_BACKOFF_FACTOR = 2.0
 
 
-@dataclass
-class VariableMetadata:
+class VariableMetadata(BaseModel):
     """Metadata for a Census variable."""
 
     code: str
@@ -43,15 +42,42 @@ class VariableMetadata:
     predicate_type: str | None = None
 
 
-@dataclass
-class CountyData:
+class CountyData(BaseModel):
     """Census data for a single county."""
 
     state_fips: str
     county_fips: str
     fips: str  # Combined 5-digit FIPS
     name: str
-    values: dict[str, Any] = field(default_factory=dict)
+    values: dict[str, int | float | None] = Field(default_factory=dict)
+
+
+class ACSDataResponse(BaseModel):
+    """Validates Census API data response (2D array with headers).
+
+    Census API returns data as a 2D array where the first row is headers
+    and subsequent rows are data. This model validates that structure.
+    """
+
+    headers: list[str]
+    rows: list[list[str | int | float | None]]
+
+    @classmethod
+    def from_raw(cls, data: list[list[Any]]) -> "ACSDataResponse":
+        """Parse raw Census API response into validated model.
+
+        Args:
+            data: Raw 2D array from Census API JSON response.
+
+        Returns:
+            Validated ACSDataResponse with headers and data rows separated.
+        """
+        if not data or len(data) < 1:
+            return cls(headers=[], rows=[])
+        # First row is headers, rest are data rows
+        headers = [str(h) for h in data[0]]
+        rows = data[1:] if len(data) > 1 else []
+        return cls(headers=headers, rows=rows)
 
 
 class CensusAPIClient:
@@ -317,22 +343,23 @@ class CensusAPIClient:
                 return []
             raise
 
-        if not data or len(data) < 2:
+        # Validate response structure with Pydantic
+        response = ACSDataResponse.from_raw(data)
+        if not response.rows:
             return []
 
-        headers = data[0]
         results: list[CountyData] = []
 
-        for row in data[1:]:
-            row_dict = dict(zip(headers, row, strict=False))
+        for row in response.rows:
+            row_dict = dict(zip(response.headers, row, strict=False))
 
-            state = row_dict.get("state", "")
-            county = row_dict.get("county", "")
+            state = str(row_dict.get("state", ""))
+            county = str(row_dict.get("county", ""))
 
             # Extract all estimate columns (ending in E)
-            values: dict[str, Any] = {}
+            values: dict[str, int | float | None] = {}
             for key, val in row_dict.items():
-                if key.startswith(table) and key.endswith("E"):
+                if isinstance(key, str) and key.startswith(table) and key.endswith("E"):
                     values[key] = self._parse_value(val)
 
             results.append(
@@ -340,7 +367,7 @@ class CensusAPIClient:
                     state_fips=state,
                     county_fips=county,
                     fips=f"{state}{county}",
-                    name=row_dict.get("NAME", ""),
+                    name=str(row_dict.get("NAME", "")),
                     values=values,
                 )
             )

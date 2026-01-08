@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex CLI (OpenAI Codex) when working with code in this repository.
 
 ## Project Identity
 
@@ -42,7 +42,7 @@ feature/*, fix/*, docs/*, refactor/*
 | `refactor/` | Code improvements |
 | `test/`     | Test changes      |
 
-### For Claude Instances
+### For Codex Instances
 
 When making commits:
 
@@ -530,7 +530,7 @@ Results are stored in `results/` (CSV, JSON), `reports/` (Markdown), `tests/base
 
 **Architecture Principle**: State is pure data. Engine is pure transformation. They never mix.
 
-## Common Gotchas (from claude-mem)
+## Common Gotchas
 
 These lessons emerged from debugging sessions and are preserved to prevent re-learning:
 
@@ -651,11 +651,8 @@ import something  # type: ignore
 
 ## Session Continuity
 
-**claude-mem Integration**: This project uses claude-mem for cross-session memory. Discoveries, decisions, and features are automatically recorded.
-
 **Before Re-investigating**:
 
-- Search claude-mem for prior work on the topic
 - Check ai-docs/decisions.yaml for relevant ADRs
 - Review ai-docs/state.yaml for current project status
 

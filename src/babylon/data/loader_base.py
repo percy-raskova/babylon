@@ -513,6 +513,130 @@ class DataLoader(ABC):
         counties = session.query(DimCounty).all()
         return {c.fips: c.county_id for c in counties}
 
+    # -------------------------------------------------------------------------
+    # Checkpoint Helpers (for resume capability)
+    # -------------------------------------------------------------------------
+
+    def _is_completed(
+        self,
+        session: Session,
+        source_code: str,
+        year: int,
+        state_fips: str,
+        table_id: str,
+        race_code: str = "T",
+    ) -> bool:
+        """Check if a work unit is already completed.
+
+        Args:
+            session: SQLAlchemy session.
+            source_code: Data source identifier (e.g., "census", "qcew").
+            year: Year of the data.
+            state_fips: 2-digit state FIPS code.
+            table_id: Table identifier (e.g., "B19001").
+            race_code: Race code suffix (default "T" for total).
+
+        Returns:
+            True if this work unit has already been completed.
+        """
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        exists = (
+            session.query(IngestCheckpoint)
+            .filter(
+                IngestCheckpoint.source_code == source_code,
+                IngestCheckpoint.year == year,
+                IngestCheckpoint.state_fips == state_fips,
+                IngestCheckpoint.table_id == table_id,
+                IngestCheckpoint.race_code == race_code,
+            )
+            .first()
+        )
+        return exists is not None
+
+    def _mark_completed(
+        self,
+        session: Session,
+        source_code: str,
+        year: int,
+        state_fips: str,
+        table_id: str,
+        race_code: str = "T",
+        row_count: int = 0,
+    ) -> None:
+        """Mark a work unit as completed.
+
+        Uses query-first pattern for compatibility with DuckDB:
+        - If checkpoint exists, updates row_count
+        - If checkpoint doesn't exist, inserts new record
+
+        Args:
+            session: SQLAlchemy session.
+            source_code: Data source identifier (e.g., "census", "qcew").
+            year: Year of the data.
+            state_fips: 2-digit state FIPS code.
+            table_id: Table identifier (e.g., "B19001").
+            race_code: Race code suffix (default "T" for total).
+            row_count: Number of rows loaded for this work unit.
+        """
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        # Query for existing checkpoint
+        existing = (
+            session.query(IngestCheckpoint)
+            .filter(
+                IngestCheckpoint.source_code == source_code,
+                IngestCheckpoint.year == year,
+                IngestCheckpoint.state_fips == state_fips,
+                IngestCheckpoint.table_id == table_id,
+                IngestCheckpoint.race_code == race_code,
+            )
+            .first()
+        )
+
+        if existing:
+            # Update existing checkpoint
+            existing.row_count = row_count
+        else:
+            # Insert new checkpoint
+            checkpoint = IngestCheckpoint(
+                source_code=source_code,
+                year=year,
+                state_fips=state_fips,
+                table_id=table_id,
+                race_code=race_code,
+                row_count=row_count,
+            )
+            session.add(checkpoint)
+
+    def _clear_checkpoints(
+        self,
+        session: Session,
+        source_code: str,
+        year: int | None = None,
+    ) -> int:
+        """Clear checkpoints for a source (optionally by year).
+
+        Called when reset=True to clear previous checkpoint state before
+        a fresh load.
+
+        Args:
+            session: SQLAlchemy session.
+            source_code: Data source identifier (e.g., "census", "qcew").
+            year: Optional year to filter by. If None, clears all years.
+
+        Returns:
+            Number of checkpoint records deleted.
+        """
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        query = session.query(IngestCheckpoint).filter(IngestCheckpoint.source_code == source_code)
+        if year is not None:
+            query = query.filter(IngestCheckpoint.year == year)
+
+        count = query.delete()
+        return count
+
 
 __all__ = [
     "DataLoader",

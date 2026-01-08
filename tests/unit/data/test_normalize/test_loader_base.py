@@ -729,3 +729,245 @@ class TestDimDataSourceFields:
         saved = test_session.query(DimDataSource).filter_by(source_code="DESC_TEST").first()
         assert saved is not None
         assert saved.description == "This is a test description for provenance tracking."
+
+
+# =============================================================================
+# CHECKPOINT HELPER TESTS
+# =============================================================================
+
+
+@pytest.fixture
+def checkpoint_session() -> Session:
+    """Create session with IngestCheckpoint table for testing."""
+    engine = create_engine("duckdb:///:memory:")
+    NormalizedBase.metadata.create_all(engine)
+    session_factory = sessionmaker(bind=engine)
+    session = session_factory()
+    yield session
+    session.close()
+
+
+class TestCheckpointHelpers:
+    """Tests for DataLoader checkpoint helper methods."""
+
+    def test_is_completed_returns_false_when_not_exists(self, checkpoint_session: Session) -> None:
+        """_is_completed() returns False when checkpoint doesn't exist."""
+        loader = ConcreteTestLoader()
+        result = loader._is_completed(
+            checkpoint_session,
+            source_code="census",
+            year=2021,
+            state_fips="06",
+            table_id="B19001",
+            race_code="T",
+        )
+        assert result is False
+
+    def test_mark_completed_creates_checkpoint(self, checkpoint_session: Session) -> None:
+        """_mark_completed() creates a checkpoint record."""
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        loader = ConcreteTestLoader()
+        loader._mark_completed(
+            checkpoint_session,
+            source_code="census",
+            year=2021,
+            state_fips="06",
+            table_id="B19001",
+            race_code="T",
+            row_count=100,
+        )
+        checkpoint_session.flush()
+
+        # Verify checkpoint was created
+        checkpoint = checkpoint_session.query(IngestCheckpoint).first()
+        assert checkpoint is not None
+        assert checkpoint.source_code == "census"
+        assert checkpoint.year == 2021
+        assert checkpoint.state_fips == "06"
+        assert checkpoint.table_id == "B19001"
+        assert checkpoint.race_code == "T"
+        assert checkpoint.row_count == 100
+
+    def test_is_completed_returns_true_after_mark(self, checkpoint_session: Session) -> None:
+        """_is_completed() returns True after _mark_completed()."""
+        loader = ConcreteTestLoader()
+
+        # Mark as completed
+        loader._mark_completed(
+            checkpoint_session,
+            source_code="census",
+            year=2021,
+            state_fips="06",
+            table_id="B19001",
+            race_code="T",
+        )
+        checkpoint_session.flush()
+
+        # Check completion status
+        result = loader._is_completed(
+            checkpoint_session,
+            source_code="census",
+            year=2021,
+            state_fips="06",
+            table_id="B19001",
+            race_code="T",
+        )
+        assert result is True
+
+    def test_is_completed_respects_different_sources(self, checkpoint_session: Session) -> None:
+        """_is_completed() distinguishes between different sources."""
+        loader = ConcreteTestLoader()
+
+        # Mark census as completed
+        loader._mark_completed(
+            checkpoint_session,
+            source_code="census",
+            year=2021,
+            state_fips="06",
+            table_id="B19001",
+        )
+        checkpoint_session.flush()
+
+        # Census should be completed
+        assert loader._is_completed(checkpoint_session, "census", 2021, "06", "B19001")
+        # QCEW should NOT be completed
+        assert not loader._is_completed(checkpoint_session, "qcew", 2021, "06", "B19001")
+
+    def test_is_completed_respects_different_years(self, checkpoint_session: Session) -> None:
+        """_is_completed() distinguishes between different years."""
+        loader = ConcreteTestLoader()
+
+        loader._mark_completed(checkpoint_session, "census", 2021, "06", "B19001")
+        checkpoint_session.flush()
+
+        assert loader._is_completed(checkpoint_session, "census", 2021, "06", "B19001")
+        assert not loader._is_completed(checkpoint_session, "census", 2022, "06", "B19001")
+
+    def test_is_completed_respects_different_states(self, checkpoint_session: Session) -> None:
+        """_is_completed() distinguishes between different states."""
+        loader = ConcreteTestLoader()
+
+        loader._mark_completed(
+            checkpoint_session,
+            "census",
+            2021,
+            "06",
+            "B19001",  # California
+        )
+        checkpoint_session.flush()
+
+        assert loader._is_completed(checkpoint_session, "census", 2021, "06", "B19001")
+        assert not loader._is_completed(
+            checkpoint_session,
+            "census",
+            2021,
+            "36",
+            "B19001",  # New York
+        )
+
+    def test_is_completed_respects_race_codes(self, checkpoint_session: Session) -> None:
+        """_is_completed() distinguishes between race codes."""
+        loader = ConcreteTestLoader()
+
+        # Mark Total race as completed
+        loader._mark_completed(checkpoint_session, "census", 2021, "06", "B19001", "T")
+        checkpoint_session.flush()
+
+        assert loader._is_completed(checkpoint_session, "census", 2021, "06", "B19001", "T")
+        assert not loader._is_completed(
+            checkpoint_session,
+            "census",
+            2021,
+            "06",
+            "B19001A",
+            "A",  # White alone
+        )
+
+    def test_clear_checkpoints_removes_all_for_source(self, checkpoint_session: Session) -> None:
+        """_clear_checkpoints() removes all checkpoints for a source."""
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        loader = ConcreteTestLoader()
+
+        # Create multiple checkpoints
+        for state in ["06", "36", "48"]:
+            loader._mark_completed(checkpoint_session, "census", 2021, state, "B19001")
+        checkpoint_session.flush()
+
+        # Verify 3 checkpoints exist
+        assert checkpoint_session.query(IngestCheckpoint).count() == 3
+
+        # Clear all census checkpoints
+        loader._clear_checkpoints(checkpoint_session, "census")
+        checkpoint_session.flush()
+
+        # Verify all are deleted (DuckDB delete() may return -1, so don't check return value)
+        assert checkpoint_session.query(IngestCheckpoint).count() == 0
+
+    def test_clear_checkpoints_filters_by_year(self, checkpoint_session: Session) -> None:
+        """_clear_checkpoints() can filter by year."""
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        loader = ConcreteTestLoader()
+
+        # Create checkpoints for 2021 and 2022
+        loader._mark_completed(checkpoint_session, "census", 2021, "06", "B19001")
+        loader._mark_completed(checkpoint_session, "census", 2022, "06", "B19001")
+        checkpoint_session.flush()
+
+        assert checkpoint_session.query(IngestCheckpoint).count() == 2
+
+        # Clear only 2021
+        loader._clear_checkpoints(checkpoint_session, "census", year=2021)
+        checkpoint_session.flush()
+
+        # Only 2022 should remain (DuckDB delete() may return -1, so check query)
+        remaining = checkpoint_session.query(IngestCheckpoint).all()
+        assert len(remaining) == 1
+        assert remaining[0].year == 2022
+
+    def test_clear_checkpoints_only_affects_specified_source(
+        self, checkpoint_session: Session
+    ) -> None:
+        """_clear_checkpoints() doesn't affect other sources."""
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        loader = ConcreteTestLoader()
+
+        # Create checkpoints for census and qcew
+        loader._mark_completed(checkpoint_session, "census", 2021, "06", "B19001")
+        loader._mark_completed(checkpoint_session, "qcew", 2021, "06", "Q1")
+        checkpoint_session.flush()
+
+        # Clear only census
+        loader._clear_checkpoints(checkpoint_session, "census")
+        checkpoint_session.flush()
+
+        # QCEW should remain
+        remaining = checkpoint_session.query(IngestCheckpoint).all()
+        assert len(remaining) == 1
+        assert remaining[0].source_code == "qcew"
+
+    def test_mark_completed_upserts_on_duplicate(self, checkpoint_session: Session) -> None:
+        """_mark_completed() upserts (updates) existing checkpoint."""
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        loader = ConcreteTestLoader()
+
+        # First mark with 100 rows
+        loader._mark_completed(
+            checkpoint_session, "census", 2021, "06", "B19001", "T", row_count=100
+        )
+        checkpoint_session.flush()
+
+        # Mark again with 200 rows (should update)
+        loader._mark_completed(
+            checkpoint_session, "census", 2021, "06", "B19001", "T", row_count=200
+        )
+        checkpoint_session.flush()
+
+        # Should still be only 1 record
+        checkpoints = checkpoint_session.query(IngestCheckpoint).all()
+        assert len(checkpoints) == 1
+        assert checkpoints[0].row_count == 200

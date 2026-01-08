@@ -27,10 +27,23 @@ Note:
     race-disaggregated analysis (15 years x 10 race groups).
 """
 
+from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, Sequence, String, Text
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    Sequence,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import DateTime
 
 from babylon.data.normalize.database import NormalizedBase
 
@@ -678,6 +691,51 @@ class DimRace(NormalizedBase):
             "race_code IN ('A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'T')",
             name="ck_race_code_valid",
         ),
+    )
+
+
+# =============================================================================
+# INGEST CHECKPOINT TABLE (for resume capability)
+# =============================================================================
+
+
+class IngestCheckpoint(NormalizedBase):
+    """Tracks completed data ingestion work units for resume capability.
+
+    Each row represents a completed (source, year, state, table, race) tuple.
+    Loaders query this before fetching data to skip completed work.
+
+    Note:
+        This table is managed by DataLoader checkpoint helpers, not by
+        individual loaders. Use _is_completed(), _mark_completed(), and
+        _clear_checkpoints() from DataLoader base class.
+    """
+
+    __tablename__ = "ingest_checkpoint"
+
+    checkpoint_id: Mapped[int] = mapped_column(
+        Sequence("ingest_checkpoint_checkpoint_id_seq"), primary_key=True
+    )
+    source_code: Mapped[str] = mapped_column(String(50), nullable=False)  # e.g., "census", "qcew"
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    state_fips: Mapped[str] = mapped_column(String(2), nullable=False)
+    table_id: Mapped[str] = mapped_column(String(20), nullable=False)  # e.g., "B19001", "B19001A"
+    race_code: Mapped[str] = mapped_column(String(1), nullable=False, default="T")  # T, A-I
+    row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_code",
+            "year",
+            "state_fips",
+            "table_id",
+            "race_code",
+            name="uq_ingest_checkpoint",
+        ),
+        Index("idx_checkpoint_source_year", "source_code", "year"),
     )
 
 
@@ -1680,6 +1738,8 @@ __all__ = [
     "DimGender",
     "DimDataSource",
     "DimRace",
+    # Ingest Tracking
+    "IngestCheckpoint",
     # Dimensions - Coercive Infrastructure
     "DimCoerciveType",
     # Facts - Census

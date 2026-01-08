@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from pytest_mock import MockerFixture
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -26,11 +27,15 @@ from babylon.data.normalize.schema import (
 class TestCensusLoaderResilience:
     """Tests for Census loader error handling."""
 
-    def test_load_fact_table_skips_state_errors(self) -> None:
+    def test_load_fact_table_skips_state_errors(self, mocker: MockerFixture) -> None:
         """Fact table loader should skip states that fail to fetch."""
         loader = CensusLoader(LoaderConfig(api_error_policy="skip_state"))
         loader._client = MagicMock()
         loader._source_id = 1
+
+        # Mock checkpoint helpers to allow processing (not skip any states)
+        mocker.patch.object(loader, "_is_completed", return_value=False)
+        mocker.patch.object(loader, "_mark_completed")
 
         spec = FactTableSpec(
             table_id="B19001",
@@ -49,7 +54,7 @@ class TestCensusLoaderResilience:
                 [],
             ]
         )
-        loader._fetch_table_data = fetch_mock  # type: ignore[assignment]
+        mocker.patch.object(loader, "_fetch_table_data", fetch_mock)
         session = MagicMock()
         stats = LoadStats(source="census")
 
@@ -66,12 +71,16 @@ class TestCensusLoaderResilience:
         assert count == 0
         assert fetch_mock.call_count == 2
 
-    def test_load_fact_hours_skips_state_errors(self) -> None:
+    def test_load_fact_hours_skips_state_errors(self, mocker: MockerFixture) -> None:
         """Hours loader should skip states that fail to fetch."""
         loader = CensusLoader(LoaderConfig(api_error_policy="skip_state"))
         loader._client = MagicMock()
         loader._source_id = 1
-        loader._fetch_variables = MagicMock(return_value={})  # type: ignore[assignment]
+
+        # Mock checkpoint helpers to allow processing
+        mocker.patch.object(loader, "_is_completed", return_value=False)
+        mocker.patch.object(loader, "_mark_completed")
+        mocker.patch.object(loader, "_fetch_variables", return_value={})
 
         fetch_mock = MagicMock(
             side_effect=[
@@ -83,7 +92,7 @@ class TestCensusLoaderResilience:
                 [],
             ]
         )
-        loader._fetch_table_data = fetch_mock  # type: ignore[assignment]
+        mocker.patch.object(loader, "_fetch_table_data", fetch_mock)
         session = MagicMock()
         stats = LoadStats(source="census")
 
@@ -99,12 +108,16 @@ class TestCensusLoaderResilience:
         assert count == 0
         assert fetch_mock.call_count == 2
 
-    def test_load_fact_income_sources_skips_state_errors(self) -> None:
+    def test_load_fact_income_sources_skips_state_errors(self, mocker: MockerFixture) -> None:
         """Income sources loader should skip states that fail to fetch."""
         loader = CensusLoader(LoaderConfig(api_error_policy="skip_state"))
         loader._client = MagicMock()
         loader._source_id = 1
         calls: list[tuple[str, str]] = []
+
+        # Mock checkpoint helpers to allow processing
+        mocker.patch.object(loader, "_is_completed", return_value=False)
+        mocker.patch.object(loader, "_mark_completed")
 
         def fetch(table_id: str, state_fips: str) -> list[object]:
             calls.append((table_id, state_fips))
@@ -116,7 +129,7 @@ class TestCensusLoaderResilience:
                 )
             return []
 
-        loader._fetch_table_data = fetch  # type: ignore[assignment]
+        mocker.patch.object(loader, "_fetch_table_data", fetch)
         session = MagicMock()
         stats = LoadStats(source="census")
 
@@ -134,11 +147,15 @@ class TestCensusLoaderResilience:
         assert ("B19053", "02") in calls
         assert ("B19054", "02") in calls
 
-    def test_load_fact_table_aborts_when_policy_abort(self) -> None:
+    def test_load_fact_table_aborts_when_policy_abort(self, mocker: MockerFixture) -> None:
         """Fact table loader should raise when policy is abort."""
         loader = CensusLoader(LoaderConfig(api_error_policy="abort"))
         loader._client = MagicMock()
         loader._source_id = 1
+
+        # Mock checkpoint helpers to allow processing
+        mocker.patch.object(loader, "_is_completed", return_value=False)
+        mocker.patch.object(loader, "_mark_completed")
 
         spec = FactTableSpec(
             table_id="B19001",
@@ -147,13 +164,14 @@ class TestCensusLoaderResilience:
             value_field="value",
         )
 
-        loader._fetch_table_data = MagicMock(  # type: ignore[assignment]
+        fetch_mock = MagicMock(
             side_effect=CensusAPIError(
                 status_code=503,
                 message="Service unavailable",
                 url="https://api.census.gov/data",
             )
         )
+        mocker.patch.object(loader, "_fetch_table_data", fetch_mock)
         session = MagicMock()
         stats = LoadStats(source="census")
 
@@ -170,6 +188,7 @@ class TestCensusLoaderResilience:
 
     def test_race_tables_skip_when_base_table_missing(
         self,
+        mocker: MockerFixture,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Race-iterated tables should skip states where base table is missing."""
@@ -180,13 +199,17 @@ class TestCensusLoaderResilience:
         session = MagicMock()
         stats = LoadStats(source="census")
 
+        # Mock checkpoint helpers to allow processing
+        mocker.patch.object(loader, "_is_completed", return_value=False)
+        mocker.patch.object(loader, "_mark_completed")
+
         base_spec = FactTableSpec(
             table_id="B23025",
             fact_class=object,
             label="Test",
             value_field="value",
         )
-        loader._fetch_table_data = MagicMock(return_value=[])  # type: ignore[assignment]
+        mocker.patch.object(loader, "_fetch_table_data", return_value=[])
 
         loader._load_fact_table(
             base_spec,
@@ -205,7 +228,7 @@ class TestCensusLoaderResilience:
             value_field="value",
         )
         fetch_mock = MagicMock(return_value=[])
-        loader._fetch_table_data = fetch_mock  # type: ignore[assignment]
+        mocker.patch.object(loader, "_fetch_table_data", fetch_mock)
 
         loader._load_fact_table(
             race_spec,

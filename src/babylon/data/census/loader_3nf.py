@@ -906,6 +906,78 @@ class CensusLoader(ApiLoaderBase):
             ],
         )
 
+    def _load_all_dimensions(
+        self,
+        session: Session,
+        initial_year: int,
+        census_years: list[int],
+        state_fips_list: list[str],
+        verbose: bool,
+        stats: LoadStats,
+    ) -> None:
+        """Load all dimension tables shared across years.
+
+        Args:
+            session: SQLAlchemy session.
+            initial_year: Year to use for API metadata fetching.
+            census_years: All years being loaded (for time dimension).
+            state_fips_list: State FIPS codes to load.
+            verbose: Whether to print progress.
+            stats: LoadStats to record dimension counts.
+        """
+        self._load_data_source(session, initial_year)
+        stats.dimensions_loaded["dim_data_source"] = 1
+
+        self._load_genders(session)
+        stats.dimensions_loaded["dim_gender"] = 3
+
+        race_count = self._load_races(session)
+        stats.dimensions_loaded["dim_race"] = race_count
+        if verbose:
+            print(f"  Loaded {race_count} race categories")
+
+        time_count = self._load_time_dimension(session)
+        stats.dimensions_loaded["dim_time"] = len(census_years)
+        if verbose:
+            print(f"  Loaded {time_count} new time records ({len(census_years)} total years)")
+
+        state_count = self._load_states(session, state_fips_list, verbose)
+        stats.dimensions_loaded["dim_state"] = state_count
+
+        county_count = self._load_counties(session, state_fips_list, verbose, stats)
+        stats.dimensions_loaded["dim_county"] = county_count
+
+        metro_count, bridge_count = self._load_metro_areas(session, verbose)
+        stats.dimensions_loaded["dim_metro_area"] = metro_count
+        stats.dimensions_loaded["bridge_county_metro"] = bridge_count
+
+        bracket_count = self._load_income_brackets(session, verbose)
+        stats.dimensions_loaded["dim_income_bracket"] = bracket_count
+
+        status_count = self._load_employment_statuses(session, verbose)
+        stats.dimensions_loaded["dim_employment_status"] = status_count
+
+        class_count = self._load_worker_classes(session, verbose)
+        stats.dimensions_loaded["dim_worker_class"] = class_count
+
+        occ_count = self._load_occupations(session, verbose)
+        stats.dimensions_loaded["dim_occupation"] = occ_count
+
+        edu_count = self._load_education_levels(session, verbose)
+        stats.dimensions_loaded["dim_education_level"] = edu_count
+
+        tenure_count = self._load_housing_tenures(session)
+        stats.dimensions_loaded["dim_housing_tenure"] = tenure_count
+
+        burden_count = self._load_rent_burdens(session, verbose)
+        stats.dimensions_loaded["dim_rent_burden"] = burden_count
+
+        commute_count = self._load_commute_modes(session, verbose)
+        stats.dimensions_loaded["dim_commute_mode"] = commute_count
+
+        poverty_count = self._load_poverty_categories(session, verbose)
+        stats.dimensions_loaded["dim_poverty_category"] = poverty_count
+
     def load(
         self,
         session: Session,
@@ -957,70 +1029,20 @@ class CensusLoader(ApiLoaderBase):
                 # Clear existing data if reset
                 if reset:
                     if verbose:
-                        print("Clearing existing census data...")
+                        print("Clearing existing census data and checkpoints...")
                     self.clear_tables(session)
+                    # Clear checkpoints for all configured census years
+                    for year in census_years:
+                        self._clear_checkpoints(session, "census", year)
                     session.flush()
+                else:
+                    if verbose:
+                        print("Resume mode: skipping completed work units...")
 
-                # Load dimensions first (shared across all years)
-                self._load_data_source(session, initial_year)
-                stats.dimensions_loaded["dim_data_source"] = 1
-
-                self._load_genders(session)
-                stats.dimensions_loaded["dim_gender"] = 3
-
-                # Load race dimension (10 records: T + A-I)
-                race_count = self._load_races(session)
-                stats.dimensions_loaded["dim_race"] = race_count
-                if verbose:
-                    print(f"  Loaded {race_count} race categories")
-
-                # Load time dimension for all configured years
-                time_count = self._load_time_dimension(session)
-                stats.dimensions_loaded["dim_time"] = len(census_years)
-                if verbose:
-                    print(
-                        f"  Loaded {time_count} new time records ({len(census_years)} total years)"
-                    )
-
-                state_count = self._load_states(session, state_fips_list, verbose)
-                stats.dimensions_loaded["dim_state"] = state_count
-
-                county_count = self._load_counties(session, state_fips_list, verbose, stats)
-                stats.dimensions_loaded["dim_county"] = county_count
-
-                # Load metro areas and county-metro bridge (Phase 4)
-                metro_count, bridge_count = self._load_metro_areas(session, verbose)
-                stats.dimensions_loaded["dim_metro_area"] = metro_count
-                stats.dimensions_loaded["bridge_county_metro"] = bridge_count
-
-                # Load code dimensions from variable metadata
-                bracket_count = self._load_income_brackets(session, verbose)
-                stats.dimensions_loaded["dim_income_bracket"] = bracket_count
-
-                status_count = self._load_employment_statuses(session, verbose)
-                stats.dimensions_loaded["dim_employment_status"] = status_count
-
-                class_count = self._load_worker_classes(session, verbose)
-                stats.dimensions_loaded["dim_worker_class"] = class_count
-
-                occ_count = self._load_occupations(session, verbose)
-                stats.dimensions_loaded["dim_occupation"] = occ_count
-
-                edu_count = self._load_education_levels(session, verbose)
-                stats.dimensions_loaded["dim_education_level"] = edu_count
-
-                tenure_count = self._load_housing_tenures(session)
-                stats.dimensions_loaded["dim_housing_tenure"] = tenure_count
-
-                burden_count = self._load_rent_burdens(session, verbose)
-                stats.dimensions_loaded["dim_rent_burden"] = burden_count
-
-                commute_count = self._load_commute_modes(session, verbose)
-                stats.dimensions_loaded["dim_commute_mode"] = commute_count
-
-                poverty_count = self._load_poverty_categories(session, verbose)
-                stats.dimensions_loaded["dim_poverty_category"] = poverty_count
-
+                # Load all dimensions (shared across all years)
+                self._load_all_dimensions(
+                    session, initial_year, census_years, state_fips_list, verbose, stats
+                )
                 session.flush()
 
             # Phase 3: Iterate over years and race groups
@@ -2141,6 +2163,9 @@ class CensusLoader(ApiLoaderBase):
     ) -> int:
         """Generic fact table loader driven by FactTableSpec configuration.
 
+        Includes checkpoint-based resume capability. When resuming, skips
+        states that were already completed in previous runs.
+
         Args:
             spec: Fact table specification.
             session: SQLAlchemy session.
@@ -2148,6 +2173,7 @@ class CensusLoader(ApiLoaderBase):
             verbose: Whether to show progress bar.
             time_id: FK to dim_time for this load.
             race_id: FK to dim_race for this load.
+            stats: Optional LoadStats for error tracking.
 
         Returns:
             Count of fact records created.
@@ -2156,6 +2182,11 @@ class CensusLoader(ApiLoaderBase):
         assert self._source_id is not None
         year = self._client.year
 
+        # Determine race code for checkpoint tracking
+        race_code = "T"
+        if self._is_race_suffixed_table(spec.table_id):
+            race_code = spec.table_id[-1]  # Extract A-I suffix
+
         race_table = self._is_race_suffixed_table(spec.table_id)
         base_table_id = self._base_table_id(spec.table_id) if race_table else None
         if race_table and base_table_id and self._is_race_tables_unavailable(year, base_table_id):
@@ -2163,6 +2194,7 @@ class CensusLoader(ApiLoaderBase):
 
         dim_map = self._build_dimension_map(spec, session)
         count = 0
+        skipped_states = 0
         state_iter = tqdm(state_fips_list, desc=spec.label, disable=not verbose)
         variable_payload = self._prepare_fact_variables(spec, year, stats)
         if variable_payload is None:
@@ -2170,6 +2202,11 @@ class CensusLoader(ApiLoaderBase):
         variables, use_variable_fallback = variable_payload
 
         for state_fips in state_iter:
+            # Check if this work unit is already completed (RESUME FEATURE)
+            if self._is_completed(session, "census", year, state_fips, spec.table_id, race_code):
+                skipped_states += 1
+                continue
+
             if self._is_table_missing(year, spec.table_id):
                 break
             if (
@@ -2197,6 +2234,7 @@ class CensusLoader(ApiLoaderBase):
                 self._record_base_table_missing(year, spec.table_id, state_fips)
                 continue
 
+            state_count = 0
             for county_data in data:
                 county_id = self._fips_to_county.get(county_data.fips)
                 if not county_id:
@@ -2211,9 +2249,18 @@ class CensusLoader(ApiLoaderBase):
                     time_id,
                     race_id,
                 )
-                count += self._write_rows(session, spec.fact_class, rows)
+                state_count += self._write_rows(session, spec.fact_class, rows)
 
+            count += state_count
+
+            # Mark this work unit as completed (CHECKPOINT)
+            self._mark_completed(
+                session, "census", year, state_fips, spec.table_id, race_code, state_count
+            )
             session.flush()
+
+        if skipped_states > 0 and verbose:
+            logger.info(f"Skipped {skipped_states} already-completed states for {spec.table_id}")
 
         return count
 
@@ -2284,23 +2331,33 @@ class CensusLoader(ApiLoaderBase):
         creates 3 facts per county (total, male, female) with aggregate/mean values.
         Cannot be handled by the generic loader.
 
+        Includes checkpoint-based resume capability.
+
         Args:
             session: SQLAlchemy session.
             state_fips_list: List of state FIPS codes.
             verbose: Whether to show progress.
             time_id: FK to dim_time.
             race_id: FK to dim_race.
+            stats: Optional LoadStats for error tracking.
 
         Returns:
             Count of fact records created.
         """
         assert self._client is not None
         assert self._source_id is not None
+        year = self._client.year
 
         count = 0
+        skipped_states = 0
         state_iter = tqdm(state_fips_list, desc="B23020", disable=not verbose)
 
         for state_fips in state_iter:
+            # Check if this work unit is already completed (RESUME FEATURE)
+            if self._is_completed(session, "census", year, state_fips, "B23020", "T"):
+                skipped_states += 1
+                continue
+
             try:
                 variables = self._fetch_variables("B23020")
                 data = self._fetch_table_data("B23020", state_fips)
@@ -2314,6 +2371,7 @@ class CensusLoader(ApiLoaderBase):
                 )
                 continue
 
+            state_count = 0
             for county_data in data:
                 county_id = self._fips_to_county.get(county_data.fips)
                 if not county_id:
@@ -2326,9 +2384,16 @@ class CensusLoader(ApiLoaderBase):
                     time_id,
                     race_id,
                 )
-                count += self._write_rows(session, FactCensusHours, rows)
+                state_count += self._write_rows(session, FactCensusHours, rows)
 
+            count += state_count
+
+            # Mark this work unit as completed (CHECKPOINT)
+            self._mark_completed(session, "census", year, state_fips, "B23020", "T", state_count)
             session.flush()
+
+        if skipped_states > 0 and verbose:
+            logger.info(f"Skipped {skipped_states} already-completed states for B23020")
 
         return count
 
@@ -2368,23 +2433,34 @@ class CensusLoader(ApiLoaderBase):
         to create a single fact record with nullable fields from each table.
         Cannot be handled by the generic loader.
 
+        Includes checkpoint-based resume capability.
+
         Args:
             session: SQLAlchemy session.
             state_fips_list: List of state FIPS codes.
             verbose: Whether to show progress.
             time_id: FK to dim_time.
             race_id: FK to dim_race.
+            stats: Optional LoadStats for error tracking.
 
         Returns:
             Count of fact records created.
         """
         assert self._client is not None
         assert self._source_id is not None
+        year = self._client.year
 
         count = 0
+        skipped_states = 0
         state_iter = tqdm(state_fips_list, desc="Income Sources", disable=not verbose)
 
         for state_fips in state_iter:
+            # Check if this work unit is already completed (RESUME FEATURE)
+            # Use B19052 as the canonical table ID for income sources
+            if self._is_completed(session, "census", year, state_fips, "B19052", "T"):
+                skipped_states += 1
+                continue
+
             try:
                 # Fetch all three tables
                 wage_data = self._fetch_table_data("B19052", state_fips)
@@ -2410,6 +2486,7 @@ class CensusLoader(ApiLoaderBase):
                 set(wage_by_fips.keys()) | set(self_emp_by_fips.keys()) | set(invest_by_fips.keys())
             )
 
+            state_count = 0
             for fips in all_fips:
                 county_id = self._fips_to_county.get(fips)
                 if not county_id:
@@ -2427,9 +2504,16 @@ class CensusLoader(ApiLoaderBase):
                     time_id,
                     race_id,
                 )
-                count += self._write_rows(session, FactCensusIncomeSources, [row])
+                state_count += self._write_rows(session, FactCensusIncomeSources, [row])
 
+            count += state_count
+
+            # Mark this work unit as completed (CHECKPOINT)
+            self._mark_completed(session, "census", year, state_fips, "B19052", "T", state_count)
             session.flush()
+
+        if skipped_states > 0 and verbose:
+            logger.info(f"Skipped {skipped_states} already-completed states for income sources")
 
         return count
 

@@ -1,0 +1,71 @@
+{
+  "source": "hifld_police",
+  "data_source": {
+    "code": "HIFLD_POLICE_2024",
+    "name": "HIFLD Local Law Enforcement Locations",
+    "url": "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/Local_Law_Enforcement_Locations_RAPT/FeatureServer/0",
+    "agency": "DHS HIFLD",
+    "year": 2024
+  },
+  "arcgis": {
+    "service_url": "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/Local_Law_Enforcement_Locations_RAPT/FeatureServer/0",
+    "out_fields": [
+      "COUNTYFIPS",
+      "COUNTY",
+      "STATE",
+      "TYPE",
+      "NAME"
+    ],
+    "return_geometry": false
+  },
+  "type_map": {
+    "POLICE DEPARTMENT": {
+      "code": "police_local",
+      "name": "Local Police Department",
+      "category": "enforcement",
+      "command_chain": "local"
+    },
+    "SHERIFF": {
+      "code": "police_sheriff",
+      "name": "Sheriff's Office",
+      "category": "enforcement",
+      "command_chain": "local"
+    },
+    "CAMPUS POLICE": {
+      "code": "police_campus",
+      "name": "Campus Police",
+      "category": "enforcement",
+      "command_chain": "local"
+    },
+    "TRANSIT POLICE": {
+      "code": "police_transit",
+      "name": "Transit Police",
+      "category": "enforcement",
+      "command_chain": "local"
+    },
+    "CONSTABLE": {
+      "code": "police_constable",
+      "name": "Constable",
+      "category": "enforcement",
+      "command_chain": "local"
+    },
+    "MARSHAL": {
+      "code": "police_marshal",
+      "name": "Marshal's Office",
+      "category": "enforcement",
+      "command_chain": "local"
+    },
+    "TRIBAL POLICE": {
+      "code": "police_tribal",
+      "name": "Tribal Police",
+      "category": "enforcement",
+      "command_chain": "federal"
+    }
+  },
+  "default_type": {
+    "code": "police_other",
+    "name": "Other Law Enforcement",
+    "category": "enforcement",
+    "command_chain": "local"
+  }
+}

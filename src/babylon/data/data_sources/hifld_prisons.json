@@ -1,0 +1,73 @@
+{
+  "source": "hifld_prisons",
+  "data_source": {
+    "code": "HIFLD_PRISONS_2024",
+    "name": "HIFLD Prison Boundaries",
+    "url": "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/Prison_Boundaries_RAPT/FeatureServer/1",
+    "agency": "DHS HIFLD",
+    "year": 2024
+  },
+  "arcgis": {
+    "service_url": "https://services.arcgis.com/XG15cJAlne2vxtgt/arcgis/rest/services/Prison_Boundaries_RAPT/FeatureServer/1",
+    "out_fields": [
+      "COUNTYFIPS",
+      "COUNTY",
+      "STATE",
+      "TYPE",
+      "CAPACITY",
+      "STATUS",
+      "SECURELVL"
+    ],
+    "return_geometry": false
+  },
+  "type_map": {
+    "FEDERAL": {
+      "code": "prison_federal",
+      "name": "Federal Prison",
+      "category": "carceral",
+      "command_chain": "federal"
+    },
+    "STATE": {
+      "code": "prison_state",
+      "name": "State Prison",
+      "category": "carceral",
+      "command_chain": "state"
+    },
+    "LOCAL": {
+      "code": "prison_local",
+      "name": "Local Jail/Detention",
+      "category": "carceral",
+      "command_chain": "local"
+    },
+    "COUNTY": {
+      "code": "prison_local",
+      "name": "Local Jail/Detention",
+      "category": "carceral",
+      "command_chain": "local"
+    },
+    "CITY": {
+      "code": "prison_local",
+      "name": "Local Jail/Detention",
+      "category": "carceral",
+      "command_chain": "local"
+    },
+    "PRIVATE": {
+      "code": "prison_private",
+      "name": "Private Prison",
+      "category": "carceral",
+      "command_chain": "mixed"
+    },
+    "TRIBAL": {
+      "code": "prison_tribal",
+      "name": "Tribal Correctional",
+      "category": "carceral",
+      "command_chain": "federal"
+    }
+  },
+  "default_type": {
+    "code": "prison_other",
+    "name": "Other Correctional",
+    "category": "carceral",
+    "command_chain": "mixed"
+  }
+}

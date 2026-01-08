@@ -1,0 +1,34 @@
+{
+  "source": "hifld_electric",
+  "data_source": {
+    "code": "HIFLD_ELECTRIC_2024",
+    "name": "HIFLD Electric Grid Infrastructure",
+    "url": "https://hifld-geoplatform.opendata.arcgis.com/",
+    "agency": "DHS HIFLD",
+    "year": 2024
+  },
+  "arcgis": {
+    "substations": {
+      "service_url": "https://services1.arcgis.com/BSnEnFfEn54YLVeq/arcgis/rest/services/HIFLD_Electric_Substations/FeatureServer/5",
+      "out_fields": [
+        "COUNTYFIPS",
+        "COUNTY",
+        "STATE",
+        "MAX_VOLT",
+        "MIN_VOLT",
+        "STATUS"
+      ],
+      "return_geometry": false
+    },
+    "transmission": {
+      "service_url": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/US_Electric_Power_Transmission_Lines/FeatureServer/0",
+      "out_fields": [
+        "ID",
+        "VOLTAGE",
+        "STATUS",
+        "Shape__Length"
+      ],
+      "return_geometry": false
+    }
+  }
+}

@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from tqdm import tqdm
 
+from babylon.config.logging_config import create_ingest_handler
 from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.census.api_client import CensusAPIClient, CountyData, VariableMetadata
 from babylon.data.exceptions import CensusAPIError
@@ -985,7 +986,7 @@ class CensusLoader(ApiLoaderBase):
         verbose: bool = True,
         **_kwargs: object,
     ) -> LoadStats:
-        """Load Census data into 3NF schema.
+        """Load Census data into 3NF schema with full observability.
 
         Loads ACS 5-Year Estimates for all configured years and race groups.
         Phase 2 infrastructure loads dimensions once (shared across years),
@@ -1013,6 +1014,10 @@ class CensusLoader(ApiLoaderBase):
         # Use first year for dimensions that need API metadata
         initial_year = census_years[0] if census_years else 2021
 
+        # Setup per-run logging
+        ingest_handler, run_id = create_ingest_handler("census")
+        logger.addHandler(ingest_handler)
+
         if verbose:
             year_range = (
                 f"{min(census_years)}-{max(census_years)}"
@@ -1024,6 +1029,15 @@ class CensusLoader(ApiLoaderBase):
             print(f"States: {len(state_fips_list)} ({', '.join(state_fips_list[:5])}...)")
 
         try:
+            logger.info(
+                "Starting Census ingest",
+                extra={
+                    "run_id": run_id,
+                    "years": census_years,
+                    "state_count": len(state_fips_list),
+                    "reset": reset,
+                },
+            )
             # Create API client for initial dimension loading
             with self._client_scope(self._make_client(initial_year)):
                 # Clear existing data if reset
@@ -1105,14 +1119,35 @@ class CensusLoader(ApiLoaderBase):
 
             session.commit()
 
+            # Log completion summary
+            logger.info(
+                "Census ingest complete",
+                extra={
+                    "run_id": run_id,
+                    "total_facts": stats.total_facts,
+                    "dimensions": stats.dimensions_loaded,
+                    "error_count": len(stats.errors),
+                    "api_calls": stats.api_calls,
+                },
+            )
+
             if verbose:
                 print(f"\n{stats}")
 
         except Exception as e:
+            logger.error(
+                "Census ingest failed",
+                exc_info=True,
+                extra={"run_id": run_id, "error": str(e)},
+            )
             stats.record_api_error(e, context="census:load")
             stats.errors.append(str(e))
             session.rollback()
             raise
+        finally:
+            # Remove handler to avoid accumulation on repeated calls
+            logger.removeHandler(ingest_handler)
+            ingest_handler.close()
 
         return stats
 

@@ -327,6 +327,48 @@ def create_simulation_handler(
     return handler
 
 
+def create_ingest_handler(
+    source: str,
+    run_id: str | None = None,
+) -> tuple[RotatingFileHandler, str]:
+    """Create a file handler for a data ingest run.
+
+    Creates a per-ingest log file for debugging and auditing data loads.
+
+    Args:
+        source: Data source identifier (e.g., "census", "fred", "qcew").
+        run_id: Optional run ID. If None, generates one from timestamp+uuid.
+
+    Returns:
+        Tuple of (handler, run_id) for the ingest log.
+    """
+    import uuid
+    from datetime import UTC, datetime
+
+    # Ensure ingest logs directory exists
+    ingest_log_dir = BaseConfig.LOG_DIR / "ingest"
+    ingest_log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate run_id if not provided
+    if run_id is None:
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        run_id = f"{timestamp}_{uuid.uuid4().hex[:8]}"
+
+    # Build filename: {source}_ingest_{run_id}.jsonl
+    filename = f"{source}_ingest_{run_id}.jsonl"
+
+    handler = RotatingFileHandler(
+        ingest_log_dir / filename,
+        maxBytes=MAIN_LOG_MAX_BYTES,
+        backupCount=3,
+    )
+    handler.setLevel(logging.DEBUG)  # Capture all levels in file
+    handler.setFormatter(JSONFormatter())
+    handler.addFilter(ContextAwareFilter())
+
+    return handler, run_id
+
+
 def get_current_config() -> LoggingConfig:
     """Get the current logging configuration (for debugging/inspection).
 

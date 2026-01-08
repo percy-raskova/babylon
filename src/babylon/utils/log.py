@@ -225,6 +225,86 @@ class ContextAwareFilter(logging.Filter):
 
 
 # =============================================================================
+# URL and Parameter Redaction
+# =============================================================================
+
+# Keys that should have their values redacted in logs
+_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    {
+        "key",
+        "api_key",
+        "apikey",
+        "api-key",
+        "secret",
+        "password",
+        "token",
+        "auth",
+        "authorization",
+        "access_token",
+        "refresh_token",
+        "client_secret",
+    }
+)
+
+
+def redact_url(url: str) -> str:
+    """Redact sensitive query parameters from a URL.
+
+    Args:
+        url: URL string that may contain API keys in query params.
+
+    Returns:
+        URL with sensitive parameter values replaced by '***'.
+
+    Example:
+        >>> redact_url("https://api.census.gov/data?key=SECRET&get=NAME")
+        'https://api.census.gov/data?key=***&get=NAME'
+    """
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+    parsed = urlparse(url)
+    if not parsed.query:
+        return url
+
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    redacted: dict[str, list[str]] = {}
+
+    for key, values in params.items():
+        if key.lower() in _SENSITIVE_KEYS:
+            redacted[key] = ["***"] * len(values)
+        else:
+            redacted[key] = values
+
+    # Reconstruct query string (doseq=True handles lists)
+    new_query = urlencode(redacted, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def redact_params(params: dict[str, Any]) -> dict[str, Any]:
+    """Redact sensitive values from a parameters dictionary.
+
+    Args:
+        params: Dictionary of parameters that may contain API keys.
+
+    Returns:
+        Dictionary with sensitive values replaced by '***'.
+
+    Example:
+        >>> redact_params({"key": "SECRET", "state": "06"})
+        {'key': '***', 'state': '06'}
+    """
+    redacted: dict[str, Any] = {}
+    for key, value in params.items():
+        if key.lower() in _SENSITIVE_KEYS:
+            redacted[key] = "***"
+        elif isinstance(value, dict):
+            redacted[key] = redact_params(value)
+        else:
+            redacted[key] = value
+    return redacted
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -236,4 +316,6 @@ __all__ = [
     "set_log_context",
     "clear_log_context",
     "log_context_scope",
+    "redact_url",
+    "redact_params",
 ]

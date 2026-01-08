@@ -22,6 +22,10 @@ Hierarchy:
     └── CFSAPIError - Census Commodity Flow Survey API
 """
 
+from __future__ import annotations
+
+import logging
+
 from babylon.exceptions import DataAPIError
 
 __all__ = [
@@ -31,7 +35,50 @@ __all__ = [
     "EIAAPIError",
     "FCCAPIError",
     "FredAPIError",
+    "SchemaCheckError",
 ]
+
+
+class SchemaCheckError(Exception):
+    """Error during schema validation or migration checks.
+
+    Attributes:
+        message: Primary error message.
+        hint: Optional guidance for resolving the error.
+        details: Additional diagnostic information.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        self.message = message
+        self.hint = hint
+        self.details: dict[str, object] = details or {}
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        if self.hint:
+            return f"{self.message}\nHint: {self.hint}"
+        return self.message
+
+    def log(
+        self,
+        logger: logging.Logger,
+        level: int = 40,  # logging.ERROR
+        exc_info: bool = False,
+    ) -> None:
+        """Log this error with optional exception info.
+
+        Args:
+            logger: Logger instance to use.
+            level: Logging level (default ERROR=40).
+            exc_info: Whether to include exception traceback.
+        """
+        extra = {"hint": self.hint, "details": self.details}
+        logger.log(level, self.message, exc_info=exc_info, extra=extra)
 
 
 class CensusAPIError(DataAPIError):

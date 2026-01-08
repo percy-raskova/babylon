@@ -29,7 +29,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 import typer
 import yaml
@@ -39,7 +39,9 @@ from babylon.data.exceptions import SchemaCheckError
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 
 if TYPE_CHECKING:
-    from babylon.data.normalize.schema_check import SchemaRepairReport
+    from collections.abc import Sequence
+
+    from babylon.data.normalize.schema_check import SchemaRepairAction, SchemaRepairReport
     from babylon.data.preflight import PreflightResult
 
 app = typer.Typer(
@@ -59,10 +61,8 @@ def _configure_cli_logging() -> None:
     from babylon.config.logging_config import setup_logging
 
     config_path = Path("logging.yaml")
-    reset_logs = any(arg == "load" for arg in sys.argv[1:])
     setup_logging(
         config_path=config_path if config_path.exists() else None,
-        reset_files=reset_logs,
     )
     _LOGGING_CONFIGURED = True
 
@@ -230,11 +230,18 @@ def _run_schema_readiness(repair: bool) -> SchemaRepairReport:
             ) from exc
         raise
     except Exception as exc:
+        _no_such_module_exc: type[Exception] | None = None
         try:
             from sqlalchemy.exc import NoSuchModuleError
+
+            _no_such_module_exc = NoSuchModuleError
         except ModuleNotFoundError:
-            NoSuchModuleError = None  # type: ignore[assignment]
-        if NoSuchModuleError and isinstance(exc, NoSuchModuleError) and "duckdb" in str(exc):
+            pass
+        if (
+            _no_such_module_exc is not None
+            and isinstance(exc, _no_such_module_exc)
+            and "duckdb" in str(exc)
+        ):
             raise SchemaCheckError(
                 "DuckDB SQLAlchemy dialect not found. Install `duckdb-engine` "
                 "(e.g., `poetry install`) before running schema checks.",
@@ -287,7 +294,7 @@ def _run_ingest_readiness(
 
 def _print_schema_action_summary(
     label: str,
-    actions: list[object],
+    actions: Sequence[SchemaRepairAction],
     color: str,
 ) -> None:
     """Print a summarized list of schema repair actions."""
@@ -413,11 +420,18 @@ def _run_schema_check(quiet: bool) -> None:
             raise typer.Exit(1) from exc
         raise
     except Exception as exc:
+        _no_such_module_exc: type[Exception] | None = None
         try:
             from sqlalchemy.exc import NoSuchModuleError
+
+            _no_such_module_exc = NoSuchModuleError
         except ModuleNotFoundError:
-            NoSuchModuleError = None  # type: ignore[assignment]
-        if NoSuchModuleError and isinstance(exc, NoSuchModuleError) and "duckdb" in str(exc):
+            pass
+        if (
+            _no_such_module_exc is not None
+            and isinstance(exc, _no_such_module_exc)
+            and "duckdb" in str(exc)
+        ):
             typer.secho(
                 "DuckDB SQLAlchemy dialect not found. Install `duckdb-engine` "
                 "(e.g., `poetry install`) before running schema checks.",
@@ -559,14 +573,14 @@ def _validate_loaders(loaders: str | None) -> list[str]:
     return selected
 
 
-def _has_rows(session: object, model: object) -> bool:
+def _has_rows(session: Any, model: Any) -> bool:
     """Return True if the table has at least one row."""
     from sqlalchemy import select
 
     return session.execute(select(model).limit(1)).first() is not None
 
 
-def _has_rows_for_year(session: object, model: object, year: int, field_name: str) -> bool:
+def _has_rows_for_year(session: Any, model: Any, year: int, field_name: str) -> bool:
     """Return True if the table has at least one row for a given year."""
     from sqlalchemy import select
 
@@ -583,7 +597,7 @@ def _get_cfs_year(config: LoaderConfig) -> int:
     return 2022
 
 
-def _missing_dimension_rows(session: object, required: dict[str, object]) -> list[str]:
+def _missing_dimension_rows(session: Any, required: dict[str, Any]) -> list[str]:
     """Return missing dimension names for the requested models."""
     missing: list[str] = []
     for label, model in required.items():
@@ -970,12 +984,12 @@ def _print_summary(total_stats: list[LoadStats], view_count: int) -> None:
     typer.echo(f"Views created: {view_count}")
 
 
-def _quote_identifier(engine: object, name: str) -> str:
+def _quote_identifier(engine: Any, name: str) -> str:
     preparer = engine.dialect.identifier_preparer
     return ".".join(preparer.quote(part) for part in name.split("."))
 
 
-def _collect_empty_tables(engine: object) -> list[str]:
+def _collect_empty_tables(engine: Any) -> list[str]:
     """Return base tables with zero rows."""
     excluded = {"alembic_version"}
     with engine.connect() as conn:

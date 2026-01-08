@@ -77,7 +77,6 @@ from babylon.data.normalize.schema import (
     FactCensusWorkerClass,
 )
 from babylon.data.utils import BatchWriter
-from babylon.data.utils.api_resilience import RetryPolicy
 from babylon.data.utils.logging_helpers import log_api_error
 
 if TYPE_CHECKING:
@@ -530,11 +529,7 @@ class CensusLoader(ApiLoaderBase):
 
     def _make_client(self, year: int) -> CensusAPIClient:
         """Create a Census API client for a specific year."""
-        retry_policy = RetryPolicy(
-            max_retries=self.config.max_retries,
-            base_delay=self.config.request_delay_seconds,
-        )
-        return CensusAPIClient(year=year, retry_policy=retry_policy)
+        return CensusAPIClient(year=year, timeout=30.0)
 
     def _fetch_variables(self, table_id: str) -> dict[str, Any]:
         """Fetch variable metadata for a table via the active client."""
@@ -729,7 +724,7 @@ class CensusLoader(ApiLoaderBase):
         """Handle API errors according to loader policy."""
         year = self._client.year if self._client else None
         dataset = self._client.dataset if self._client else None
-        detail_context = {
+        detail_context: dict[str, object] = {
             "loader": "census",
             "operation": operation,
             "table_id": table_id,

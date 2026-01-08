@@ -114,7 +114,7 @@ class EnergyAPIClient:
     def __enter__(self) -> EnergyAPIClient:
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *_args: Any) -> None:
         self.close()
 
     def _rate_limit(self) -> None:

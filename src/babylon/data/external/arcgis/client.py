@@ -89,7 +89,7 @@ class ArcGISClient:
         """Context manager entry."""
         return self
 
-    def __exit__(self, *args: object) -> None:
+    def __exit__(self, *_args: object) -> None:
         """Context manager exit - close client."""
         self.close()
 

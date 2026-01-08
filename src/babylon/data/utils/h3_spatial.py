@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
-import h3  # type: ignore[import-not-found]
+import h3
 
 from babylon.data.data_sources import (
     get_arcgis_out_fields,

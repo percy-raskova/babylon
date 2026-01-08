@@ -109,7 +109,7 @@ class QcewAPIClient:
         """Enter context manager."""
         return self
 
-    def __exit__(self, *args: object) -> None:
+    def __exit__(self, *_args: object) -> None:
         """Exit context manager."""
         self.close()
 

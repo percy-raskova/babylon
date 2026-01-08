@@ -122,7 +122,7 @@ class CensusAPIClient:
     def __enter__(self) -> "CensusAPIClient":
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *_args: Any) -> None:
         self.close()
 
     @property

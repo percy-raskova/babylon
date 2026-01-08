@@ -68,3 +68,6 @@ assets/images/prolewiki.zip
 
 # Percy's personal research materials (PDFs, theory texts)
 thoughts/percy/
+
+# Data directory (API responses, databases - too large for git)
+/data/

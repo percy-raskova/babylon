@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from babylon.data.loader_base import DataLoader, LoadStats
 from babylon.data.normalize.classifications import classify_class_composition
@@ -54,6 +54,19 @@ def _parse_decimal(value: object) -> Decimal | None:
     try:
         return Decimal(text)
     except (InvalidOperation, ValueError):
+        return None
+
+
+def _parse_float(value: object) -> float | None:
+    """Parse a value as float, handling None and empty strings."""
+    if value is None:
+        return None
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (ValueError, TypeError):
         return None
 
 
@@ -137,38 +150,38 @@ def _build_fact_row(
         "annual_avg_wkly_wage": _parse_int(row.get("annual_avg_wkly_wage")),
         "avg_annual_pay": _parse_int(row.get("avg_annual_pay")),
         "lq_disclosure_code": _parse_str(row.get("lq_disclosure_code")),
-        "lq_annual_avg_estabs_count": _parse_decimal(row.get("lq_annual_avg_estabs_count")),
-        "lq_annual_avg_emplvl": _parse_decimal(row.get("lq_annual_avg_emplvl")),
-        "lq_total_annual_wages": _parse_decimal(row.get("lq_total_annual_wages")),
-        "lq_taxable_annual_wages": _parse_decimal(row.get("lq_taxable_annual_wages")),
-        "lq_annual_contributions": _parse_decimal(row.get("lq_annual_contributions")),
-        "lq_annual_avg_wkly_wage": _parse_decimal(row.get("lq_annual_avg_wkly_wage")),
-        "lq_avg_annual_pay": _parse_decimal(row.get("lq_avg_annual_pay")),
+        "lq_annual_avg_estabs_count": _parse_float(row.get("lq_annual_avg_estabs_count")),
+        "lq_annual_avg_emplvl": _parse_float(row.get("lq_annual_avg_emplvl")),
+        "lq_total_annual_wages": _parse_float(row.get("lq_total_annual_wages")),
+        "lq_taxable_annual_wages": _parse_float(row.get("lq_taxable_annual_wages")),
+        "lq_annual_contributions": _parse_float(row.get("lq_annual_contributions")),
+        "lq_annual_avg_wkly_wage": _parse_float(row.get("lq_annual_avg_wkly_wage")),
+        "lq_avg_annual_pay": _parse_float(row.get("lq_avg_annual_pay")),
         "oty_disclosure_code": _parse_str(row.get("oty_disclosure_code")),
         "oty_annual_avg_estabs_count_chg": _parse_decimal(
             row.get("oty_annual_avg_estabs_count_chg")
         ),
-        "oty_annual_avg_estabs_count_pct_chg": _parse_decimal(
+        "oty_annual_avg_estabs_count_pct_chg": _parse_float(
             row.get("oty_annual_avg_estabs_count_pct_chg")
         ),
         "oty_annual_avg_emplvl_chg": _parse_decimal(row.get("oty_annual_avg_emplvl_chg")),
-        "oty_annual_avg_emplvl_pct_chg": _parse_decimal(row.get("oty_annual_avg_emplvl_pct_chg")),
+        "oty_annual_avg_emplvl_pct_chg": _parse_float(row.get("oty_annual_avg_emplvl_pct_chg")),
         "oty_total_annual_wages_chg": _parse_decimal(row.get("oty_total_annual_wages_chg")),
-        "oty_total_annual_wages_pct_chg": _parse_decimal(row.get("oty_total_annual_wages_pct_chg")),
+        "oty_total_annual_wages_pct_chg": _parse_float(row.get("oty_total_annual_wages_pct_chg")),
         "oty_taxable_annual_wages_chg": _parse_decimal(row.get("oty_taxable_annual_wages_chg")),
-        "oty_taxable_annual_wages_pct_chg": _parse_decimal(
+        "oty_taxable_annual_wages_pct_chg": _parse_float(
             row.get("oty_taxable_annual_wages_pct_chg")
         ),
         "oty_annual_contributions_chg": _parse_decimal(row.get("oty_annual_contributions_chg")),
-        "oty_annual_contributions_pct_chg": _parse_decimal(
+        "oty_annual_contributions_pct_chg": _parse_float(
             row.get("oty_annual_contributions_pct_chg")
         ),
         "oty_annual_avg_wkly_wage_chg": _parse_decimal(row.get("oty_annual_avg_wkly_wage_chg")),
-        "oty_annual_avg_wkly_wage_pct_chg": _parse_decimal(
+        "oty_annual_avg_wkly_wage_pct_chg": _parse_float(
             row.get("oty_annual_avg_wkly_wage_pct_chg")
         ),
         "oty_avg_annual_pay_chg": _parse_decimal(row.get("oty_avg_annual_pay_chg")),
-        "oty_avg_annual_pay_pct_chg": _parse_decimal(row.get("oty_avg_annual_pay_pct_chg")),
+        "oty_avg_annual_pay_pct_chg": _parse_float(row.get("oty_avg_annual_pay_pct_chg")),
     }
 
 
@@ -254,17 +267,18 @@ class EmploymentIndustryLoader(DataLoader):
         files: list[Path],
         lookups: dict[str, Any],
     ) -> int:
-        """Process all CSV files and load facts."""
+        """Process all CSV files and load facts with per-file commits."""
         writer = BatchWriter(session, self.config.batch_size)
-        batch: list[dict[str, Any]] = []
         loaded = 0
+        total_files = len(files)
 
-        for csv_path in files:
-            loaded += self._process_csv_file(session, csv_path, lookups, writer, batch)
-
-        if batch:
-            loaded += writer.write(FactEmploymentIndustryAnnual, batch)
-            batch.clear()
+        for i, csv_path in enumerate(files, 1):
+            logger.info("Processing file %d/%d: %s", i, total_files, csv_path.name)
+            file_loaded = self._process_csv_file(session, csv_path, lookups, writer)
+            loaded += file_loaded
+            # Commit after each file for resumability
+            session.commit()
+            logger.info("File %d/%d complete: %d facts loaded", i, total_files, file_loaded)
 
         return loaded
 
@@ -274,20 +288,59 @@ class EmploymentIndustryLoader(DataLoader):
         csv_path: Path,
         lookups: dict[str, Any],
         writer: BatchWriter,
-        batch: list[dict[str, Any]],
     ) -> int:
-        """Process a single CSV file."""
-        loaded = 0
+        """Process a single CSV file with per-file idempotency.
+
+        For idempotent loading, this method:
+        1. Reads all rows from the file
+        2. Extracts unique area_codes
+        3. Deletes existing facts for those areas (enables resume without duplicates)
+        4. Inserts new facts
+        """
+        # Read all rows from file
         with csv_path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                fact_row = self._process_csv_row(session, row, lookups)
-                if fact_row is None:
-                    continue
-                batch.append(fact_row)
-                if len(batch) >= self.config.batch_size:
-                    loaded += writer.write(FactEmploymentIndustryAnnual, batch)
-                    batch.clear()
+            rows = list(csv.DictReader(handle))
+
+        if not rows:
+            return 0
+
+        # Extract unique area_codes from this file for idempotent delete
+        area_codes: set[str] = set()
+        for row in rows:
+            raw_area = _parse_str(row.get("area_fips"))
+            if raw_area:
+                area_codes.add(_normalize_area_code(raw_area))
+
+        # Delete existing facts for these areas (idempotent per-file)
+        if area_codes:
+            area_ids_subq = (
+                select(DimEmploymentArea.area_id)
+                .where(DimEmploymentArea.area_code.in_(area_codes))
+                .scalar_subquery()
+            )
+            session.execute(
+                delete(FactEmploymentIndustryAnnual).where(
+                    FactEmploymentIndustryAnnual.area_id.in_(area_ids_subq)
+                )
+            )
+            session.flush()
+
+        # Process and insert rows
+        loaded = 0
+        batch: list[dict[str, Any]] = []
+        for row in rows:
+            fact_row = self._process_csv_row(session, row, lookups)
+            if fact_row is None:
+                continue
+            batch.append(fact_row)
+            if len(batch) >= self.config.batch_size:
+                loaded += writer.write(FactEmploymentIndustryAnnual, batch)
+                batch.clear()
+
+        # Flush remaining batch
+        if batch:
+            loaded += writer.write(FactEmploymentIndustryAnnual, batch)
+
         return loaded
 
     def _process_csv_row(

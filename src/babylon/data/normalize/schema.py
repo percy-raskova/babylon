@@ -1,8 +1,8 @@
-"""3NF Normalized SQLite schema for Marxian economic analysis.
+"""3NF Normalized DuckDB schema for Marxian economic analysis.
 
 Provides properly normalized dimension and fact tables populated via ETL
-from research.sqlite. Optimized for imperial rent, surplus value, labor
-aristocracy, and unequal exchange analysis.
+from external data sources. Optimized for imperial rent, surplus value,
+labor aristocracy, and unequal exchange analysis.
 
 Dimensions (33 tables):
     Geographic: dim_state, dim_county, dim_metro_area, dim_geographic_hierarchy,
@@ -32,6 +32,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -1112,8 +1113,8 @@ class FactQcewAnnual(NormalizedBase):
     total_wages_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     avg_weekly_wage_usd: Mapped[int | None] = mapped_column()
     avg_annual_pay_usd: Mapped[int | None] = mapped_column()
-    lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     disclosure_code: Mapped[str | None] = mapped_column(String(5))
 
     __table_args__ = (
@@ -1607,32 +1608,32 @@ class FactEmploymentIndustryAnnual(NormalizedBase):
     annual_avg_wkly_wage: Mapped[int | None] = mapped_column()
     avg_annual_pay: Mapped[int | None] = mapped_column()
 
-    # Location quotients
+    # Location quotients (use Float - can exceed 1M in extreme cases)
     lq_disclosure_code: Mapped[str | None] = mapped_column(String(1))
-    lq_annual_avg_estabs_count: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_annual_avg_emplvl: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_total_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_taxable_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_annual_contributions: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_annual_avg_wkly_wage: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_avg_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_avg_estabs_count: Mapped[float | None] = mapped_column(Float)
+    lq_annual_avg_emplvl: Mapped[float | None] = mapped_column(Float)
+    lq_total_annual_wages: Mapped[float | None] = mapped_column(Float)
+    lq_taxable_annual_wages: Mapped[float | None] = mapped_column(Float)
+    lq_annual_contributions: Mapped[float | None] = mapped_column(Float)
+    lq_annual_avg_wkly_wage: Mapped[float | None] = mapped_column(Float)
+    lq_avg_annual_pay: Mapped[float | None] = mapped_column(Float)
 
-    # Over-the-year changes
+    # Over-the-year changes (pct_chg uses Float - can exceed 1M% for tiny industries)
     oty_disclosure_code: Mapped[str | None] = mapped_column(String(1))
     oty_annual_avg_estabs_count_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_avg_estabs_count_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_estabs_count_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_annual_avg_emplvl_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_avg_emplvl_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_emplvl_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_total_annual_wages_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_total_annual_wages_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_total_annual_wages_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_taxable_annual_wages_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_taxable_annual_wages_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_taxable_annual_wages_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_annual_contributions_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_contributions_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_contributions_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_annual_avg_wkly_wage_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_avg_wkly_wage_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_wkly_wage_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_avg_annual_pay_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_avg_annual_pay_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_avg_annual_pay_pct_chg: Mapped[float | None] = mapped_column(Float)
 
     __table_args__ = (
         Index("idx_emp_ind_area", "area_id"),

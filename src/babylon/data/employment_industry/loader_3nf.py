@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import csv
 import logging
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select
 
 from babylon.data.loader_base import DataLoader, LoadStats
+from babylon.data.loaders.dimension_loader import DimensionLoader
 from babylon.data.normalize.classifications import classify_class_composition
 from babylon.data.normalize.schema import (
     DimCounty,
@@ -24,6 +24,7 @@ from babylon.data.normalize.schema import (
 )
 from babylon.data.qcew.parser import determine_area_type, determine_naics_level
 from babylon.data.utils import BatchWriter, normalize_numeric_fips
+from babylon.data.utils.field_parsers import parse_decimal, parse_float, parse_int, parse_str
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -31,50 +32,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_EMPLOYMENT_PATH = Path("data/employment_industry")
-
-
-def _parse_int(value: object) -> int | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return int(float(text))
-    except (ValueError, TypeError):
-        return None
-
-
-def _parse_decimal(value: object) -> Decimal | None:
-    if value is None:
-        return None
-    text = str(value).strip().replace(",", "")
-    if not text:
-        return None
-    try:
-        return Decimal(text)
-    except (InvalidOperation, ValueError):
-        return None
-
-
-def _parse_float(value: object) -> float | None:
-    """Parse a value as float, handling None and empty strings."""
-    if value is None:
-        return None
-    text = str(value).strip().replace(",", "")
-    if not text:
-        return None
-    try:
-        return float(text)
-    except (ValueError, TypeError):
-        return None
-
-
-def _parse_str(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
 
 
 def _normalize_area_code(raw_value: str) -> str:
@@ -139,49 +96,49 @@ def _build_fact_row(
         "ownership_id": ownership_id,
         "time_id": time_id,
         "agglvl_code": agglvl_code,
-        "size_code": _parse_str(row.get("size_code")),
-        "qtr": _parse_str(row.get("qtr")),
-        "disclosure_code": _parse_str(row.get("disclosure_code")),
-        "annual_avg_estabs_count": _parse_int(row.get("annual_avg_estabs_count")),
-        "annual_avg_emplvl": _parse_int(row.get("annual_avg_emplvl")),
-        "total_annual_wages": _parse_decimal(row.get("total_annual_wages")),
-        "taxable_annual_wages": _parse_decimal(row.get("taxable_annual_wages")),
-        "annual_contributions": _parse_decimal(row.get("annual_contributions")),
-        "annual_avg_wkly_wage": _parse_int(row.get("annual_avg_wkly_wage")),
-        "avg_annual_pay": _parse_int(row.get("avg_annual_pay")),
-        "lq_disclosure_code": _parse_str(row.get("lq_disclosure_code")),
-        "lq_annual_avg_estabs_count": _parse_float(row.get("lq_annual_avg_estabs_count")),
-        "lq_annual_avg_emplvl": _parse_float(row.get("lq_annual_avg_emplvl")),
-        "lq_total_annual_wages": _parse_float(row.get("lq_total_annual_wages")),
-        "lq_taxable_annual_wages": _parse_float(row.get("lq_taxable_annual_wages")),
-        "lq_annual_contributions": _parse_float(row.get("lq_annual_contributions")),
-        "lq_annual_avg_wkly_wage": _parse_float(row.get("lq_annual_avg_wkly_wage")),
-        "lq_avg_annual_pay": _parse_float(row.get("lq_avg_annual_pay")),
-        "oty_disclosure_code": _parse_str(row.get("oty_disclosure_code")),
-        "oty_annual_avg_estabs_count_chg": _parse_decimal(
+        "size_code": parse_str(row.get("size_code")),
+        "qtr": parse_str(row.get("qtr")),
+        "disclosure_code": parse_str(row.get("disclosure_code")),
+        "annual_avg_estabs_count": parse_int(row.get("annual_avg_estabs_count")),
+        "annual_avg_emplvl": parse_int(row.get("annual_avg_emplvl")),
+        "total_annual_wages": parse_decimal(row.get("total_annual_wages")),
+        "taxable_annual_wages": parse_decimal(row.get("taxable_annual_wages")),
+        "annual_contributions": parse_decimal(row.get("annual_contributions")),
+        "annual_avg_wkly_wage": parse_int(row.get("annual_avg_wkly_wage")),
+        "avg_annual_pay": parse_int(row.get("avg_annual_pay")),
+        "lq_disclosure_code": parse_str(row.get("lq_disclosure_code")),
+        "lq_annual_avg_estabs_count": parse_float(row.get("lq_annual_avg_estabs_count")),
+        "lq_annual_avg_emplvl": parse_float(row.get("lq_annual_avg_emplvl")),
+        "lq_total_annual_wages": parse_float(row.get("lq_total_annual_wages")),
+        "lq_taxable_annual_wages": parse_float(row.get("lq_taxable_annual_wages")),
+        "lq_annual_contributions": parse_float(row.get("lq_annual_contributions")),
+        "lq_annual_avg_wkly_wage": parse_float(row.get("lq_annual_avg_wkly_wage")),
+        "lq_avg_annual_pay": parse_float(row.get("lq_avg_annual_pay")),
+        "oty_disclosure_code": parse_str(row.get("oty_disclosure_code")),
+        "oty_annual_avg_estabs_count_chg": parse_decimal(
             row.get("oty_annual_avg_estabs_count_chg")
         ),
-        "oty_annual_avg_estabs_count_pct_chg": _parse_float(
+        "oty_annual_avg_estabs_count_pct_chg": parse_float(
             row.get("oty_annual_avg_estabs_count_pct_chg")
         ),
-        "oty_annual_avg_emplvl_chg": _parse_decimal(row.get("oty_annual_avg_emplvl_chg")),
-        "oty_annual_avg_emplvl_pct_chg": _parse_float(row.get("oty_annual_avg_emplvl_pct_chg")),
-        "oty_total_annual_wages_chg": _parse_decimal(row.get("oty_total_annual_wages_chg")),
-        "oty_total_annual_wages_pct_chg": _parse_float(row.get("oty_total_annual_wages_pct_chg")),
-        "oty_taxable_annual_wages_chg": _parse_decimal(row.get("oty_taxable_annual_wages_chg")),
-        "oty_taxable_annual_wages_pct_chg": _parse_float(
+        "oty_annual_avg_emplvl_chg": parse_decimal(row.get("oty_annual_avg_emplvl_chg")),
+        "oty_annual_avg_emplvl_pct_chg": parse_float(row.get("oty_annual_avg_emplvl_pct_chg")),
+        "oty_total_annual_wages_chg": parse_decimal(row.get("oty_total_annual_wages_chg")),
+        "oty_total_annual_wages_pct_chg": parse_float(row.get("oty_total_annual_wages_pct_chg")),
+        "oty_taxable_annual_wages_chg": parse_decimal(row.get("oty_taxable_annual_wages_chg")),
+        "oty_taxable_annual_wages_pct_chg": parse_float(
             row.get("oty_taxable_annual_wages_pct_chg")
         ),
-        "oty_annual_contributions_chg": _parse_decimal(row.get("oty_annual_contributions_chg")),
-        "oty_annual_contributions_pct_chg": _parse_float(
+        "oty_annual_contributions_chg": parse_decimal(row.get("oty_annual_contributions_chg")),
+        "oty_annual_contributions_pct_chg": parse_float(
             row.get("oty_annual_contributions_pct_chg")
         ),
-        "oty_annual_avg_wkly_wage_chg": _parse_decimal(row.get("oty_annual_avg_wkly_wage_chg")),
-        "oty_annual_avg_wkly_wage_pct_chg": _parse_float(
+        "oty_annual_avg_wkly_wage_chg": parse_decimal(row.get("oty_annual_avg_wkly_wage_chg")),
+        "oty_annual_avg_wkly_wage_pct_chg": parse_float(
             row.get("oty_annual_avg_wkly_wage_pct_chg")
         ),
-        "oty_avg_annual_pay_chg": _parse_decimal(row.get("oty_avg_annual_pay_chg")),
-        "oty_avg_annual_pay_pct_chg": _parse_float(row.get("oty_avg_annual_pay_pct_chg")),
+        "oty_avg_annual_pay_chg": parse_decimal(row.get("oty_avg_annual_pay_chg")),
+        "oty_avg_annual_pay_pct_chg": parse_float(row.get("oty_avg_annual_pay_pct_chg")),
     }
 
 
@@ -251,14 +208,24 @@ class EmploymentIndustryLoader(DataLoader):
         session.flush()
 
     def _initialize_lookups(self, session: Session) -> dict[str, Any]:
-        """Initialize all dimension lookup dictionaries."""
+        """Initialize all dimension lookup dictionaries and loaders."""
+        # Create DimensionLoaders for get-or-create pattern
+        area_loader = DimensionLoader(session, DimEmploymentArea, "area_code")
+        area_loader.initialize_from_db()
+
+        industry_loader = DimensionLoader(session, DimIndustry, "naics_code")
+        industry_loader.initialize_from_db()
+
+        ownership_loader = DimensionLoader(session, DimOwnership, "own_code")
+        ownership_loader.initialize_from_db()
+
         return {
             "state": {s.state_fips: s.state_id for s in session.query(DimState).all()},
             "county": {c.fips: c.county_id for c in session.query(DimCounty).all()},
             "state_filter": set(self.config.state_fips_list or []),
-            "area": {},
-            "industry": {},
-            "ownership": {},
+            "area_loader": area_loader,
+            "industry_loader": industry_loader,
+            "ownership_loader": ownership_loader,
         }
 
     def _process_all_files(
@@ -307,7 +274,7 @@ class EmploymentIndustryLoader(DataLoader):
         # Extract unique area_codes from this file for idempotent delete
         area_codes: set[str] = set()
         for row in rows:
-            raw_area = _parse_str(row.get("area_fips"))
+            raw_area = parse_str(row.get("area_fips"))
             if raw_area:
                 area_codes.add(_normalize_area_code(raw_area))
 
@@ -350,12 +317,12 @@ class EmploymentIndustryLoader(DataLoader):
         lookups: dict[str, Any],
     ) -> dict[str, Any] | None:
         """Process a single CSV row and return fact dictionary or None."""
-        raw_area = _parse_str(row.get("area_fips"))
+        raw_area = parse_str(row.get("area_fips"))
         if not raw_area:
             return None
 
         area_code = _normalize_area_code(raw_area)
-        agglvl_code = _parse_int(row.get("agglvl_code"))
+        agglvl_code = parse_int(row.get("agglvl_code"))
         area_type = _determine_employment_area_type(area_code, agglvl_code)
 
         state_fips = _extract_state_fips(area_code)
@@ -363,34 +330,32 @@ class EmploymentIndustryLoader(DataLoader):
         if state_filter and (not state_fips or state_fips not in state_filter):
             return None
 
-        year = _parse_int(row.get("year"))
+        year = parse_int(row.get("year"))
         if year is None:
             return None
 
         county_id = self._resolve_county_id(area_code, area_type, lookups["county"])
         state_id = lookups["state"].get(state_fips) if state_fips else None
         area_id = self._get_or_create_area(
-            session,
             area_code,
-            _parse_str(row.get("area_title")) or area_code,
+            parse_str(row.get("area_title")) or area_code,
             area_type,
             state_id,
             county_id,
-            lookups["area"],
+            lookups["area_loader"],
         )
 
         industry_id = self._get_or_create_industry(
             session,
-            _parse_str(row.get("industry_code")) or "10",
-            _parse_str(row.get("industry_title")) or "Total, all industries",
-            lookups["industry"],
+            parse_str(row.get("industry_code")) or "10",
+            parse_str(row.get("industry_title")) or "Total, all industries",
+            lookups["industry_loader"],
         )
 
         ownership_id = self._get_or_create_ownership(
-            session,
-            _parse_str(row.get("own_code")) or "0",
-            _parse_str(row.get("own_title")) or "Total Covered",
-            lookups["ownership"],
+            parse_str(row.get("own_code")) or "0",
+            parse_str(row.get("own_title")) or "Total Covered",
+            lookups["ownership_loader"],
         )
 
         time_id = self._get_or_create_time(session, year)
@@ -413,58 +378,40 @@ class EmploymentIndustryLoader(DataLoader):
         verbose: bool,
     ) -> None:
         """Record loading statistics."""
-        area_lookup = lookups["area"]
-        industry_lookup = lookups["industry"]
-        ownership_lookup = lookups["ownership"]
+        area_loader: DimensionLoader[DimEmploymentArea] = lookups["area_loader"]
+        industry_loader: DimensionLoader[DimIndustry] = lookups["industry_loader"]
+        ownership_loader: DimensionLoader[DimOwnership] = lookups["ownership_loader"]
 
-        stats.dimensions_loaded["employment_areas"] = len(area_lookup)
-        stats.dimensions_loaded["industries"] = len(industry_lookup)
-        stats.dimensions_loaded["ownership"] = len(ownership_lookup)
+        stats.dimensions_loaded["employment_areas"] = len(area_loader)
+        stats.dimensions_loaded["industries"] = len(industry_loader)
+        stats.dimensions_loaded["ownership"] = len(ownership_loader)
         stats.facts_loaded["employment_industry_annual"] = loaded
-        stats.record_ingest("employment:areas", len(area_lookup))
-        stats.record_ingest("employment:industries", len(industry_lookup))
-        stats.record_ingest("employment:ownership", len(ownership_lookup))
+        stats.record_ingest("employment:areas", len(area_loader))
+        stats.record_ingest("employment:industries", len(industry_loader))
+        stats.record_ingest("employment:ownership", len(ownership_loader))
         stats.record_ingest("employment:employment_industry_annual", loaded)
 
         if verbose:
             logger.info(
                 "Employment industry loading complete: %s areas, %s facts.",
-                len(area_lookup),
+                len(area_loader),
                 loaded,
             )
 
     def _get_or_create_area(
         self,
-        session: Session,
         area_code: str,
         area_name: str,
         area_type: str,
         state_id: int | None,
         county_id: int | None,
-        area_lookup: dict[str, int],
+        area_loader: DimensionLoader[DimEmploymentArea],
     ) -> int:
-        if area_code in area_lookup:
-            return area_lookup[area_code]
+        """Get or create employment area dimension using DimensionLoader."""
+        # Derive CBSA/CSA codes from area_code
+        cbsa_code, csa_code = self._derive_area_codes(area_code, area_type)
 
-        existing = (
-            session.query(DimEmploymentArea)
-            .filter(DimEmploymentArea.area_code == area_code)
-            .first()
-        )
-        if existing:
-            area_lookup[area_code] = existing.area_id
-            return existing.area_id
-
-        cbsa_code = None
-        csa_code = None
-        if area_code.startswith("CS"):
-            csa_code = area_code[2:]
-        elif area_code.startswith("C"):
-            cbsa_code = area_code[1:]
-        elif area_type == "msa":
-            cbsa_code = area_code if area_code.isdigit() else None
-
-        area = DimEmploymentArea(
+        return area_loader.get_or_create(
             area_code=area_code,
             area_name=area_name,
             area_type=area_type,
@@ -473,34 +420,47 @@ class EmploymentIndustryLoader(DataLoader):
             cbsa_code=cbsa_code,
             csa_code=csa_code,
         )
-        session.add(area)
-        session.flush()
-        area_lookup[area_code] = area.area_id
-        return area.area_id
+
+    def _derive_area_codes(self, area_code: str, area_type: str) -> tuple[str | None, str | None]:
+        """Extract CBSA and CSA codes from area_code."""
+        cbsa_code = None
+        csa_code = None
+        if area_code.startswith("CS"):
+            csa_code = area_code[2:]
+        elif area_code.startswith("C"):
+            cbsa_code = area_code[1:]
+        elif area_type == "msa":
+            cbsa_code = area_code if area_code.isdigit() else None
+        return cbsa_code, csa_code
 
     def _get_or_create_industry(
         self,
         session: Session,
         naics_code: str,
         industry_title: str,
-        industry_lookup: dict[str, int],
+        industry_loader: DimensionLoader[DimIndustry],
     ) -> int:
-        if naics_code in industry_lookup:
-            return industry_lookup[naics_code]
+        """Get or create industry dimension, marking has_qcew_data=True.
 
-        existing = session.query(DimIndustry).filter(DimIndustry.naics_code == naics_code).first()
-        if existing:
-            if not existing.has_qcew_data:
+        Uses DimensionLoader.get() for lookup, then handles the has_qcew_data
+        flag update for existing records separately.
+        """
+        # Check if industry already exists (cache + DB lookup)
+        existing_id = industry_loader.get(naics_code)
+        if existing_id is not None:
+            # Update has_qcew_data flag if needed
+            existing = session.get(DimIndustry, existing_id)
+            if existing and not existing.has_qcew_data:
                 existing.has_qcew_data = True
-            industry_lookup[naics_code] = existing.industry_id
-            return existing.industry_id
+            return existing_id
 
+        # Create new industry with derived fields
         naics_level = determine_naics_level(naics_code)
         sector_code = naics_code[:2] if len(naics_code) >= 2 else None
         parent_code = naics_code[:-1] if len(naics_code) > 2 else None
         class_comp = classify_class_composition(naics_code, industry_title)
 
-        industry = DimIndustry(
+        return industry_loader.get_or_create(
             naics_code=naics_code,
             industry_title=industry_title,
             naics_level=naics_level,
@@ -511,36 +471,20 @@ class EmploymentIndustryLoader(DataLoader):
             has_productivity_data=False,
             has_fred_data=False,
         )
-        session.add(industry)
-        session.flush()
-        industry_lookup[naics_code] = industry.industry_id
-        return industry.industry_id
 
     def _get_or_create_ownership(
         self,
-        session: Session,
         own_code: str,
         own_title: str,
-        ownership_lookup: dict[str, int],
+        ownership_loader: DimensionLoader[DimOwnership],
     ) -> int:
-        if own_code in ownership_lookup:
-            return ownership_lookup[own_code]
-
-        existing = session.query(DimOwnership).filter(DimOwnership.own_code == own_code).first()
-        if existing:
-            ownership_lookup[own_code] = existing.ownership_id
-            return existing.ownership_id
-
+        """Get or create ownership dimension using DimensionLoader."""
         is_government = own_code in ("1", "2", "3", "4")
         is_private = own_code == "5"
 
-        ownership = DimOwnership(
+        return ownership_loader.get_or_create(
             own_code=own_code,
             own_title=own_title,
             is_government=is_government,
             is_private=is_private,
         )
-        session.add(ownership)
-        session.flush()
-        ownership_lookup[own_code] = ownership.ownership_id
-        return ownership.ownership_id

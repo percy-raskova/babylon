@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import gzip
 import logging
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
@@ -14,6 +13,7 @@ from sqlalchemy import delete
 from babylon.data.loader_base import DataLoader, LoadStats
 from babylon.data.normalize.schema import BridgeLodesBlock, DimCounty
 from babylon.data.utils import BatchWriter, build_county_fips, normalize_numeric_fips
+from babylon.data.utils.field_parsers import parse_decimal, parse_str
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -51,25 +51,6 @@ def _open_csv(path: Path) -> TextIO:
     return path.open("r", encoding="utf-8", newline="")
 
 
-def _parse_decimal(value: object) -> Decimal | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return Decimal(text)
-    except (InvalidOperation, ValueError):
-        return None
-
-
-def _parse_str(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
-
-
 def _build_tract_geoid(
     state_fips: str | None,
     county_fips_only: str | None,
@@ -97,16 +78,16 @@ def _build_block_row(
 ) -> dict[str, Any]:
     """Build a LODES block row dictionary from CSV data."""
     return {
-        "block_geoid": _parse_str(row.get("tabblk2020")),
+        "block_geoid": parse_str(row.get("tabblk2020")),
         "county_id": county_id,
         "state_fips": state_fips,
         "county_fips": county_fips_only,
         "tract_geoid": tract_geoid,
-        "block_group": _parse_str(row.get("bgrp")),
-        "cbsa_code": _parse_str(row.get("cbsa")),
-        "zcta": _parse_str(row.get("zcta")),
-        "latitude": _parse_decimal(row.get("blklatdd")),
-        "longitude": _parse_decimal(row.get("blklondd")),
+        "block_group": parse_str(row.get("bgrp")),
+        "cbsa_code": parse_str(row.get("cbsa")),
+        "zcta": parse_str(row.get("zcta")),
+        "latitude": parse_decimal(row.get("blklatdd")),
+        "longitude": parse_decimal(row.get("blklondd")),
     }
 
 
@@ -208,7 +189,7 @@ class LodesCrosswalkLoader(DataLoader):
         if county_fips and county_id is None:
             return "skip_geo"
 
-        tract = _normalize_tract(_parse_str(row.get("trct")))
+        tract = _normalize_tract(parse_str(row.get("trct")))
         tract_geoid = _build_tract_geoid(state_fips, county_fips_only, tract)
 
         return _build_block_row(row, county_id, state_fips, county_fips_only, tract_geoid)

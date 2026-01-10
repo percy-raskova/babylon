@@ -260,8 +260,8 @@ class EmploymentIndustryLoader(DataLoader):
 
         For idempotent loading, this method:
         1. Reads all rows from the file
-        2. Extracts unique area_codes
-        3. Deletes existing facts for those areas (enables resume without duplicates)
+        2. Extracts unique area_codes and the file's year
+        3. Deletes existing facts for those areas AND year (enables resume without duplicates)
         4. Inserts new facts
         """
         # Read all rows from file
@@ -271,15 +271,19 @@ class EmploymentIndustryLoader(DataLoader):
         if not rows:
             return 0
 
-        # Extract unique area_codes from this file for idempotent delete
+        # Extract unique area_codes and year from this file for idempotent delete
         area_codes: set[str] = set()
+        file_year: int | None = None
         for row in rows:
             raw_area = parse_str(row.get("area_fips"))
             if raw_area:
                 area_codes.add(_normalize_area_code(raw_area))
+            if file_year is None:
+                file_year = parse_int(row.get("year"))
 
-        # Delete existing facts for these areas (idempotent per-file)
-        if area_codes:
+        # Delete existing facts for these areas AND year (idempotent per-file)
+        if area_codes and file_year is not None:
+            time_id = self._get_or_create_time(session, file_year)
             area_ids_subq = (
                 select(DimEmploymentArea.area_id)
                 .where(DimEmploymentArea.area_code.in_(area_codes))
@@ -287,26 +291,28 @@ class EmploymentIndustryLoader(DataLoader):
             )
             session.execute(
                 delete(FactEmploymentIndustryAnnual).where(
-                    FactEmploymentIndustryAnnual.area_id.in_(area_ids_subq)
+                    FactEmploymentIndustryAnnual.area_id.in_(area_ids_subq),
+                    FactEmploymentIndustryAnnual.time_id == time_id,
                 )
             )
             session.flush()
 
-        # Process and insert rows
+        # Process and insert rows with exception-safe batch flush
         loaded = 0
         batch: list[dict[str, Any]] = []
-        for row in rows:
-            fact_row = self._process_csv_row(session, row, lookups)
-            if fact_row is None:
-                continue
-            batch.append(fact_row)
-            if len(batch) >= self.config.batch_size:
+        try:
+            for row in rows:
+                fact_row = self._process_csv_row(session, row, lookups)
+                if fact_row is None:
+                    continue
+                batch.append(fact_row)
+                if len(batch) >= self.config.batch_size:
+                    loaded += writer.write(FactEmploymentIndustryAnnual, batch)
+                    batch.clear()
+        finally:
+            # Flush remaining batch even on exception
+            if batch:
                 loaded += writer.write(FactEmploymentIndustryAnnual, batch)
-                batch.clear()
-
-        # Flush remaining batch
-        if batch:
-            loaded += writer.write(FactEmploymentIndustryAnnual, batch)
 
         return loaded
 

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
+from babylon.config.defines import GameDefines
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
@@ -30,11 +31,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# HIFLD Local Law Enforcement Feature Service
-POLICE_SERVICE_URL = (
-    "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/"
-    "Local_Law_Enforcement_Locations/FeatureServer/0"
-)
+
+def _get_police_service_url(defines: GameDefines | None = None) -> str:
+    """Get Law Enforcement Locations FeatureServer URL from configuration.
+
+    Args:
+        defines: Optional GameDefines instance. Uses default if not provided.
+
+    Returns:
+        Complete FeatureServer URL for Law Enforcement Locations.
+    """
+    if defines is None:
+        defines = GameDefines.load_default()
+    return defines.external_data.law_enforcement_url()
+
 
 # Police type mapping: facility_type -> (code, name, category, command_chain)
 POLICE_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
@@ -87,7 +97,8 @@ class HIFLDPoliceLoader(DataLoader):
             print("Loading HIFLD Local Law Enforcement from ArcGIS Feature Service")
 
         try:
-            self._client = ArcGISClient(POLICE_SERVICE_URL)
+            service_url = _get_police_service_url()
+            self._client = ArcGISClient(service_url)
 
             total_count = self._client.get_record_count()
             if verbose:

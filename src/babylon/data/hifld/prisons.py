@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
+from babylon.config.defines import GameDefines
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
@@ -31,11 +32,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# HIFLD Prison Boundaries Feature Service
-PRISONS_SERVICE_URL = (
-    "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/"
-    "Prison_Boundaries/FeatureServer/0"
-)
+
+def _get_prisons_service_url(defines: GameDefines | None = None) -> str:
+    """Get Prison Boundaries FeatureServer URL from configuration.
+
+    Args:
+        defines: Optional GameDefines instance. Uses default if not provided.
+
+    Returns:
+        Complete FeatureServer URL for Prison Boundaries.
+    """
+    if defines is None:
+        defines = GameDefines.load_default()
+    return defines.external_data.prison_boundaries_url()
+
 
 # Prison type mapping: facility_type -> (code, name, category, command_chain)
 PRISON_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
@@ -106,7 +116,8 @@ class HIFLDPrisonsLoader(DataLoader):
             print("Loading HIFLD Prison Boundaries from ArcGIS Feature Service")
 
         try:
-            self._client = ArcGISClient(PRISONS_SERVICE_URL)
+            service_url = _get_prisons_service_url()
+            self._client = ArcGISClient(service_url)
 
             # Get record count for progress bar
             total_count = self._client.get_record_count()

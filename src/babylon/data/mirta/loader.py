@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
+from babylon.config.defines import GameDefines
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
@@ -30,11 +31,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# MIRTA Military Installations FeatureServer
-MIRTA_SERVICE_URL = (
-    "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/"
-    "MIRTA_Public/FeatureServer/0"
-)
+
+def _get_mirta_service_url(defines: GameDefines | None = None) -> str:
+    """Get MIRTA Military Installations FeatureServer URL from configuration.
+
+    Args:
+        defines: Optional GameDefines instance. Uses default if not provided.
+
+    Returns:
+        Complete FeatureServer URL for MIRTA Military Installations.
+    """
+    if defines is None:
+        defines = GameDefines.load_default()
+    return defines.external_data.mirta_url()
+
 
 # Military branch mapping: service -> (code, name, category, command_chain)
 MILITARY_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
@@ -88,7 +98,8 @@ class MIRTAMilitaryLoader(DataLoader):
             print("Loading MIRTA Military Installations from ArcGIS FeatureServer")
 
         try:
-            self._client = ArcGISClient(MIRTA_SERVICE_URL)
+            service_url = _get_mirta_service_url()
+            self._client = ArcGISClient(service_url)
 
             total_count = self._client.get_record_count()
             if verbose:

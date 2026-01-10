@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
+from babylon.config.defines import GameDefines
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
@@ -30,15 +31,28 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _get_transmission_service_url(defines: GameDefines | None = None) -> str:
+    """Get Electric Transmission Lines FeatureServer URL from configuration.
+
+    Args:
+        defines: Optional GameDefines instance. Uses default if not provided.
+
+    Returns:
+        Complete FeatureServer URL for Electric Transmission Lines.
+    """
+    if defines is None:
+        defines = GameDefines.load_default()
+    return defines.external_data.electric_transmission_url()
+
+
 # HIFLD Electric Grid Feature Services
+# NOTE: Electric_Substations was removed from the Hp6G80Pky0om7QvQ organization.
+# National substations data is currently unavailable via public FeatureServer.
+# Consider downloading from HIFLD Open Data portal as GeoJSON/CSV fallback.
 SUBSTATIONS_SERVICE_URL = (
     "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/"
-    "Electric_Substations/FeatureServer/0"
-)
-
-TRANSMISSION_SERVICE_URL = (
-    "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/"
-    "Electric_Power_Transmission_Lines/FeatureServer/0"
+    "Electric_Substations/FeatureServer/0"  # BROKEN - service removed
 )
 
 
@@ -80,7 +94,8 @@ class HIFLDElectricLoader(DataLoader):
 
         try:
             self._substation_client = ArcGISClient(SUBSTATIONS_SERVICE_URL)
-            self._transmission_client = ArcGISClient(TRANSMISSION_SERVICE_URL)
+            transmission_url = _get_transmission_service_url()
+            self._transmission_client = ArcGISClient(transmission_url)
 
             substation_count = self._substation_client.get_record_count()
             transmission_count = self._transmission_client.get_record_count()

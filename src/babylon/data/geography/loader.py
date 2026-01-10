@@ -25,6 +25,7 @@ from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 from babylon.data.normalize.schema import (
     DimCounty,
     DimGeographicHierarchy,
+    DimTime,
     FactCensusEmployment,
     FactQcewAnnual,
 )
@@ -148,7 +149,7 @@ class GeographicHierarchyLoader(DataLoader):
 
         return dict(result)
 
-    def _get_population_weights(self, session: Session, _year: int) -> dict[str, Decimal]:
+    def _get_population_weights(self, session: Session, year: int) -> dict[str, Decimal]:
         """Get population-proxy weights from Census employment totals.
 
         Uses total employment from FactCensusEmployment as a proxy for
@@ -156,18 +157,20 @@ class GeographicHierarchyLoader(DataLoader):
 
         Args:
             session: Database session.
-            _year: Source year (unused - uses all available data).
+            year: Source year to filter data.
 
         Returns:
             Dict mapping county FIPS to raw weight value (not yet normalized).
         """
-        # Sum employment across all categories per county
+        # Sum employment across all categories per county for specified year
         query = (
             select(
                 DimCounty.fips,
                 func.sum(FactCensusEmployment.person_count).label("total_emp"),
             )
             .join(DimCounty, FactCensusEmployment.county_id == DimCounty.county_id)
+            .join(DimTime, FactCensusEmployment.time_id == DimTime.time_id)
+            .where(DimTime.year == year)
             .group_by(DimCounty.fips)
         )
 
@@ -176,27 +179,32 @@ class GeographicHierarchyLoader(DataLoader):
             if row.total_emp and row.total_emp > 0:
                 weights[row.fips] = Decimal(str(row.total_emp))
 
+        if not weights:
+            logger.warning("No Census employment data found for year %d", year)
+
         return weights
 
-    def _get_employment_weights(self, session: Session, _year: int) -> dict[str, Decimal]:
+    def _get_employment_weights(self, session: Session, year: int) -> dict[str, Decimal]:
         """Get employment weights from QCEW annual data.
 
         Uses total annual employment from FactQcewAnnual.
 
         Args:
             session: Database session.
-            _year: Source year (unused - uses all available data).
+            year: Source year to filter data.
 
         Returns:
             Dict mapping county FIPS to raw employment count.
         """
-        # Get employment from QCEW - employment field contains count
+        # Get employment from QCEW for specified year
         query = (
             select(
                 DimCounty.fips,
                 func.sum(FactQcewAnnual.employment).label("total_emp"),
             )
             .join(DimCounty, FactQcewAnnual.county_id == DimCounty.county_id)
+            .join(DimTime, FactQcewAnnual.time_id == DimTime.time_id)
+            .where(DimTime.year == year)
             .group_by(DimCounty.fips)
         )
 
@@ -204,6 +212,9 @@ class GeographicHierarchyLoader(DataLoader):
         for row in session.execute(query):
             if row.total_emp and row.total_emp > 0:
                 weights[row.fips] = Decimal(str(row.total_emp))
+
+        if not weights:
+            logger.warning("No QCEW employment data found for year %d", year)
 
         return weights
 
@@ -211,12 +222,14 @@ class GeographicHierarchyLoader(DataLoader):
         self,
         raw_weights: dict[str, Decimal],
         county_fips_list: list[str],
+        state_fips: str | None = None,
     ) -> dict[str, Decimal]:
         """Normalize weights to sum to 1.0 for a state.
 
         Args:
             raw_weights: Dict of county FIPS -> raw weight value.
             county_fips_list: List of county FIPS in this state.
+            state_fips: State FIPS code for logging (optional).
 
         Returns:
             Dict of county FIPS -> normalized weight (0.0 to 1.0).
@@ -233,6 +246,17 @@ class GeographicHierarchyLoader(DataLoader):
         # Normalize to sum to 1.0
         if state_total > 0:
             normalized = {fips: weight / state_total for fips, weight in county_weights.items()}
+            # Warn about zero-weight counties (excluded from disaggregation)
+            zero_weight_counties = [fips for fips, w in normalized.items() if w == Decimal("0")]
+            if zero_weight_counties:
+                state_info = f" in state {state_fips}" if state_fips else ""
+                logger.warning(
+                    "%d counties%s have zero weight (no data): %s",
+                    len(zero_weight_counties),
+                    state_info,
+                    ", ".join(zero_weight_counties[:5])
+                    + ("..." if len(zero_weight_counties) > 5 else ""),
+                )
         else:
             # Equal distribution if no data
             equal_weight = Decimal("1") / Decimal(len(county_fips_list))
@@ -271,10 +295,12 @@ class GeographicHierarchyLoader(DataLoader):
 
         for state_id, counties in state_iter:
             county_fips_list = [fips for _, fips in counties]
+            # Extract state FIPS from first county (first 2 digits)
+            state_fips = county_fips_list[0][:2] if county_fips_list else None
 
             # Normalize weights for this state
-            norm_pop = self._normalize_weights(pop_weights, county_fips_list)
-            norm_emp = self._normalize_weights(emp_weights, county_fips_list)
+            norm_pop = self._normalize_weights(pop_weights, county_fips_list, state_fips)
+            norm_emp = self._normalize_weights(emp_weights, county_fips_list, state_fips)
 
             for county_id, fips in counties:
                 hierarchy = DimGeographicHierarchy(

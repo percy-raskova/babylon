@@ -428,16 +428,53 @@ class EmploymentIndustryLoader(DataLoader):
         )
 
     def _derive_area_codes(self, area_code: str, area_type: str) -> tuple[str | None, str | None]:
-        """Extract CBSA and CSA codes from area_code."""
+        """Extract and validate CBSA and CSA codes from area_code.
+
+        CBSA (Core Based Statistical Area) codes are 5-digit numeric codes.
+        CSA (Combined Statistical Area) codes are 3-digit numeric codes.
+
+        Args:
+            area_code: BLS area code (may have C/CS prefix for metro/combined areas)
+            area_type: Area type from BLS data
+
+        Returns:
+            Tuple of (cbsa_code, csa_code), validated or None if invalid.
+        """
         cbsa_code = None
         csa_code = None
+
         if area_code.startswith("CS"):
-            csa_code = area_code[2:]
+            # CSA codes are 3 digits
+            candidate = area_code[2:]
+            if self._is_valid_csa_code(candidate):
+                csa_code = candidate
+            else:
+                logger.debug(
+                    "Invalid CSA code format: %s (extracted from %s)", candidate, area_code
+                )
         elif area_code.startswith("C"):
-            cbsa_code = area_code[1:]
+            # CBSA codes are 5 digits
+            candidate = area_code[1:]
+            if self._is_valid_cbsa_code(candidate):
+                cbsa_code = candidate
+            else:
+                logger.debug(
+                    "Invalid CBSA code format: %s (extracted from %s)", candidate, area_code
+                )
         elif area_type == "msa":
-            cbsa_code = area_code if area_code.isdigit() else None
+            # Direct CBSA code without prefix
+            if self._is_valid_cbsa_code(area_code):
+                cbsa_code = area_code
+
         return cbsa_code, csa_code
+
+    def _is_valid_cbsa_code(self, code: str) -> bool:
+        """Validate CBSA code format (5 digits)."""
+        return code.isdigit() and len(code) == 5
+
+    def _is_valid_csa_code(self, code: str) -> bool:
+        """Validate CSA code format (3 digits)."""
+        return code.isdigit() and len(code) == 3
 
     def _get_or_create_industry(
         self,

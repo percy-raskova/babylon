@@ -92,6 +92,8 @@ class EnergyLoader(ApiLoaderBase):
 
         if reset:
             self._clear_energy_tables(session, verbose)
+            self._clear_checkpoints(session, "energy")
+            session.flush()
 
         # Load data source dimension
         self._load_data_source(session, verbose)
@@ -264,6 +266,12 @@ class EnergyLoader(ApiLoaderBase):
             logger.info(f"Fetching energy data from EIA API ({start_year}-{end_year})...")
 
         for msn, config in PRIORITY_MSN_CODES.items():
+            # Check if this series already completed (enables resume)
+            if self._is_completed(session, "energy", 0, msn, "series", "T"):
+                if verbose:
+                    logger.debug(f"Skipping completed series: {msn}")
+                continue
+
             table_code = config["table_code"]
             table_id = table_lookup.get(table_code)
 
@@ -293,6 +301,7 @@ class EnergyLoader(ApiLoaderBase):
                 series_count += 1
 
                 # Load observations as facts
+                series_obs_count = 0
                 for obs in series_data.observations:
                     if obs.value is None:
                         continue
@@ -315,6 +324,11 @@ class EnergyLoader(ApiLoaderBase):
                     )
                     session.add(fact)
                     obs_count += 1
+                    series_obs_count += 1
+
+                # Mark series as completed after successful processing
+                self._mark_completed(session, "energy", 0, msn, "series", "T", series_obs_count)
+                session.flush()
 
                 if verbose and series_count % 5 == 0:
                     logger.info(f"  Loaded {series_count} series, {obs_count} observations...")

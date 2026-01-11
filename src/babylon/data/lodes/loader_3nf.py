@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
@@ -117,9 +118,21 @@ class LodesCrosswalkLoader(DataLoader):
 
         if reset:
             self._clear_existing_data(session, verbose)
+            self._clear_checkpoints(session, "lodes")
+            session.flush()
+
+        # Check if this file already completed (enables resume)
+        file_hash = self._get_file_hash(csv_path)
+        if self._is_completed(session, "lodes", 0, file_hash, "crosswalk", "T"):
+            if verbose:
+                logger.info("Skipping completed LODES crosswalk file: %s", csv_path.name)
+            return stats
 
         lookups = self._initialize_lookups(session)
         loaded, skipped = self._process_file(session, csv_path, lookups)
+
+        # Mark file as completed after successful processing
+        self._mark_completed(session, "lodes", 0, file_hash, "crosswalk", "T", loaded)
 
         session.commit()
         self._record_stats(stats, loaded, skipped, verbose)
@@ -210,3 +223,11 @@ class LodesCrosswalkLoader(DataLoader):
 
         if verbose:
             logger.info("LODES crosswalk loading complete: %s blocks.", loaded)
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

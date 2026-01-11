@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -176,6 +177,8 @@ class EmploymentIndustryLoader(DataLoader):
 
         if reset:
             self._clear_existing_data(session, verbose)
+            self._clear_checkpoints(session, "employment")
+            session.flush()
 
         self._get_or_create_data_source(
             session,
@@ -240,9 +243,20 @@ class EmploymentIndustryLoader(DataLoader):
         total_files = len(files)
 
         for i, csv_path in enumerate(files, 1):
+            file_hash = self._get_file_hash(csv_path)
+
+            # Check if this file already completed (enables resume)
+            if self._is_completed(session, "employment", 0, file_hash, "file", "T"):
+                logger.info("Skipping completed file %d/%d: %s", i, total_files, csv_path.name)
+                continue
+
             logger.info("Processing file %d/%d: %s", i, total_files, csv_path.name)
             file_loaded = self._process_csv_file(session, csv_path, lookups, writer)
             loaded += file_loaded
+
+            # Mark file as completed after successful processing
+            self._mark_completed(session, "employment", 0, file_hash, "file", "T", file_loaded)
+
             # Commit after each file for resumability
             session.commit()
             logger.info("File %d/%d complete: %d facts loaded", i, total_files, file_loaded)
@@ -531,3 +545,11 @@ class EmploymentIndustryLoader(DataLoader):
             is_government=is_government,
             is_private=is_private,
         )
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

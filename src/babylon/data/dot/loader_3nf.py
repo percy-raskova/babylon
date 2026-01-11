@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -118,6 +119,15 @@ class DotHpmsLoader(DataLoader):
 
         if reset:
             self._clear_existing_data(session, verbose)
+            self._clear_checkpoints(session, "dot_hpms")
+            session.flush()
+
+        # Check if this file already completed (enables resume)
+        file_hash = self._get_file_hash(csv_path)
+        if self._is_completed(session, "dot_hpms", 0, file_hash, "file", "T"):
+            if verbose:
+                logger.info("Skipping completed HPMS file: %s", csv_path.name)
+            return stats
 
         source_id = self._get_or_create_data_source(
             session,
@@ -129,6 +139,9 @@ class DotHpmsLoader(DataLoader):
 
         lookups = self._initialize_lookups(session, source_id)
         counts = self._process_file(session, csv_path, lookups)
+
+        # Mark file as completed after successful processing
+        self._mark_completed(session, "dot_hpms", 0, file_hash, "file", "T", counts["loaded"])
 
         session.commit()
         self._record_stats(stats, counts, verbose)
@@ -247,3 +260,11 @@ class DotHpmsLoader(DataLoader):
                 skipped_no_fips,
                 skipped_missing_geo,
             )
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

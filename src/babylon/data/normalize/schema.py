@@ -740,6 +740,52 @@ class IngestCheckpoint(NormalizedBase):
     )
 
 
+class StagingArcGISFeature(NormalizedBase):
+    """Staging table for ArcGIS features pending county-level aggregation.
+
+    Enables resume capability for HIFLD/MIRTA loaders by streaming features
+    to database instead of holding all in memory. Features are deduplicated
+    by (source_code, object_id) and aggregated to FactCoerciveInfrastructure
+    after fetch phase completes.
+
+    Workflow:
+        1. Fetch phase: Stream features page-by-page with checkpoints
+        2. Aggregate phase: GROUP BY county_fips, type_code -> insert facts
+        3. Cleanup: Clear staging after successful aggregation
+
+    Note:
+        This is a temporary staging table, not a permanent dimension/fact.
+        Data is cleared after each successful load cycle.
+    """
+
+    __tablename__ = "staging_arcgis_feature"
+
+    feature_id: Mapped[int] = mapped_column(
+        Sequence("staging_arcgis_feature_feature_id_seq"), primary_key=True
+    )
+    source_code: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g., "hifld_police", "mirta"
+    object_id: Mapped[int] = mapped_column(nullable=False)  # ArcGIS OBJECTID
+    county_fips: Mapped[str | None] = mapped_column(String(5))  # 5-digit FIPS or NULL
+    type_code: Mapped[str] = mapped_column(
+        String(30), nullable=False
+    )  # e.g., "police_local", "prison_federal"
+    capacity: Mapped[int | None] = mapped_column()  # For prisons (bed count)
+
+    __table_args__ = (
+        # Unique on (source, object_id) for upsert/dedup on resume
+        Index(
+            "idx_staging_source_objectid",
+            "source_code",
+            "object_id",
+            unique=True,
+        ),
+        # For aggregation queries
+        Index("idx_staging_county_type", "source_code", "county_fips", "type_code"),
+    )
+
+
 # =============================================================================
 # COERCIVE INFRASTRUCTURE DIMENSION TABLES
 # =============================================================================
@@ -1741,6 +1787,7 @@ __all__ = [
     "DimRace",
     # Ingest Tracking
     "IngestCheckpoint",
+    "StagingArcGISFeature",
     # Dimensions - Coercive Infrastructure
     "DimCoerciveType",
     # Facts - Census

@@ -168,13 +168,6 @@ def get_all_loader_classes() -> list[type[DataLoader]]:
         pass
 
     try:
-        from babylon.data.hifld.electric import HIFLDElectricLoader
-
-        loaders.append(HIFLDElectricLoader)
-    except ImportError:
-        pass
-
-    try:
         from babylon.data.mirta.loader import MIRTAMilitaryLoader
 
         loaders.append(MIRTAMilitaryLoader)

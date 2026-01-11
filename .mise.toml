@@ -323,10 +323,6 @@ run = "poetry run python -m babylon.data.cli hifld-prisons"
 description = "Load HIFLD Local Law Enforcement Locations into 3NF database"
 run = "poetry run python -m babylon.data.cli hifld-police"
 
-[tasks."data:hifld-electric"]
-description = "Load HIFLD Electric Substations into 3NF database"
-run = "poetry run python -m babylon.data.cli hifld-electric"
-
 [tasks."data:mirta"]
 description = "Load MIRTA Military Installations into 3NF database"
 run = "poetry run python -m babylon.data.cli mirta"

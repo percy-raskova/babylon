@@ -475,7 +475,6 @@ ALL_LOADERS = [
     "lodes",
     "hifld_prisons",
     "hifld_police",
-    "hifld_electric",
     "mirta",
     "fcc",
     "geography",
@@ -490,7 +489,6 @@ LOADER_DEPENDENCIES: dict[str, list[str]] = {
     "fcc": ["census"],
     "hifld_prisons": ["census"],
     "hifld_police": ["census"],
-    "hifld_electric": ["census"],
     "mirta": ["census"],
     "geography": ["census", "qcew"],
     "cfs": ["geography"],
@@ -700,7 +698,6 @@ _PREREQ_CHECKS: dict[str, Callable[[object, str, LoaderConfig], list[str]]] = {
     "fcc": _check_prereqs_county_only,
     "hifld_prisons": _check_prereqs_county_only,
     "hifld_police": _check_prereqs_county_only,
-    "hifld_electric": _check_prereqs_county_only,
     "mirta": _check_prereqs_county_only,
     "geography": _check_prereqs_geography,
     "cfs": _check_prereqs_cfs,
@@ -1100,12 +1097,6 @@ def _make_hifld_police_loader(config: LoaderConfig) -> DataLoader:
     return HIFLDPoliceLoader(config)
 
 
-def _make_hifld_electric_loader(config: LoaderConfig) -> DataLoader:
-    from babylon.data.hifld import HIFLDElectricLoader
-
-    return HIFLDElectricLoader(config)
-
-
 def _make_mirta_loader(config: LoaderConfig) -> DataLoader:
     from babylon.data.mirta import MIRTAMilitaryLoader
 
@@ -1142,7 +1133,6 @@ _LOADER_FACTORIES: dict[str, Callable[[LoaderConfig], DataLoader]] = {
     "lodes": _make_lodes_loader,
     "hifld_prisons": _make_hifld_prisons_loader,
     "hifld_police": _make_hifld_police_loader,
-    "hifld_electric": _make_hifld_electric_loader,
     "mirta": _make_mirta_loader,
     "geography": _make_geography_loader,
     "cfs": _make_cfs_loader,
@@ -1715,41 +1705,6 @@ def hifld_police(
 
     init_normalized_db()
     loader = HIFLDPoliceLoader(config)
-
-    with get_normalized_session() as session:
-        stats = loader.load(session, reset=reset, verbose=not quiet)
-
-    print_stats(stats)
-    if stats.has_errors:
-        raise typer.Exit(1)
-
-
-@app.command()
-def hifld_electric(
-    reset: Annotated[
-        bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
-    quiet: Annotated[
-        bool,
-        typer.Option("--quiet", "-q", help="Suppress verbose output"),
-    ] = False,
-) -> None:
-    """Load HIFLD Electric Substations into 3NF database.
-
-    Loads electric substation data from HIFLD ArcGIS Feature Service
-    and aggregates to county-level electric grid metrics.
-    """
-    from babylon.data.hifld import HIFLDElectricLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
-
-    config = LoaderConfig(verbose=not quiet)
-
-    if not quiet:
-        typer.echo("Loading HIFLD Electric Substations from ArcGIS...")
-
-    init_normalized_db()
-    loader = HIFLDElectricLoader(config)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)

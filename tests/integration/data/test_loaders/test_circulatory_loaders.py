@@ -26,7 +26,6 @@ from babylon.data.normalize.schema import (
     DimDataSource,
     DimState,
     FactCoerciveInfrastructure,
-    FactElectricGrid,
 )
 
 if TYPE_CHECKING:
@@ -186,7 +185,7 @@ class TestHIFLDPrisonsLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_prison_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.hifld.prisons.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPrisonsLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -212,7 +211,7 @@ class TestHIFLDPrisonsLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_prison_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.hifld.prisons.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPrisonsLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -241,7 +240,7 @@ class TestHIFLDPrisonsLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_prison_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.hifld.prisons.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPrisonsLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -277,7 +276,7 @@ class TestHIFLDPrisonsLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_prison_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.hifld.prisons.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPrisonsLoader(LoaderConfig(verbose=False))
             stats = loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -338,7 +337,7 @@ class TestHIFLDPoliceLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_police_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.hifld.police.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPoliceLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -363,7 +362,7 @@ class TestHIFLDPoliceLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_police_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.hifld.police.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPoliceLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -432,7 +431,7 @@ class TestMIRTAMilitaryLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_military_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.mirta.loader.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = MIRTAMilitaryLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -458,7 +457,7 @@ class TestMIRTAMilitaryLoaderIntegration:
         mock_client.get_record_count.return_value = len(mock_military_features)
         mock_client.query_all.side_effect = mock_query_all
 
-        with patch("babylon.data.mirta.loader.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = MIRTAMilitaryLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 
@@ -472,114 +471,6 @@ class TestMIRTAMilitaryLoaderIntegration:
             assert mil_type.command_chain == "federal", (
                 f"{mil_type.code} should have federal command chain"
             )
-
-
-# =============================================================================
-# HIFLD ELECTRIC LOADER INTEGRATION TESTS
-# =============================================================================
-
-
-class TestHIFLDElectricLoaderIntegration:
-    """Integration tests for HIFLD Electric Grid loader."""
-
-    @pytest.fixture
-    def mock_substation_features(self) -> list[dict[str, Any]]:
-        """Sample electric substation features."""
-        return [
-            {
-                "OBJECTID": 1,
-                "NAME": "Downtown LA Substation",
-                "COUNTYFIPS": "06037",
-                "MAX_VOLT": "115000",
-                "MIN_VOLT": "4000",
-            },
-            {
-                "OBJECTID": 2,
-                "NAME": "Valley Substation",
-                "COUNTYFIPS": "06037",
-                "MAX_VOLT": "230000",
-                "MIN_VOLT": "69000",
-            },
-            {
-                "OBJECTID": 3,
-                "NAME": "San Diego Central",
-                "COUNTYFIPS": "06073",
-                "MAX_VOLT": "500000",
-                "MIN_VOLT": "230000",
-            },
-        ]
-
-    def test_load_creates_fact_records(
-        self, circulatory_db_session: Session, mock_substation_features: list[dict[str, Any]]
-    ) -> None:
-        """Load should create FactElectricGrid records."""
-        from babylon.data.hifld.electric import HIFLDElectricLoader
-
-        def mock_substation_query(*args: Any, **kwargs: Any) -> Iterator[ArcGISFeature]:
-            for attrs in mock_substation_features:
-                yield _create_mock_feature(attrs)
-
-        def mock_transmission_query(*args: Any, **kwargs: Any) -> Iterator[ArcGISFeature]:
-            return iter([])
-
-        mock_sub_client = MagicMock()
-        mock_sub_client.get_record_count.return_value = len(mock_substation_features)
-        mock_sub_client.query_all.side_effect = mock_substation_query
-
-        mock_trans_client = MagicMock()
-        mock_trans_client.get_record_count.return_value = 0
-        mock_trans_client.query_all.side_effect = mock_transmission_query
-
-        # ArcGISClient is called twice - once for substations, once for transmission
-        with patch(
-            "babylon.data.hifld.electric.ArcGISClient",
-            side_effect=[mock_sub_client, mock_trans_client],
-        ):
-            loader = HIFLDElectricLoader(LoaderConfig(verbose=False))
-            loader.load(circulatory_db_session, reset=True, verbose=False)
-
-        facts = circulatory_db_session.query(FactElectricGrid).all()
-        assert len(facts) > 0
-
-    def test_load_aggregates_substation_counts(
-        self, circulatory_db_session: Session, mock_substation_features: list[dict[str, Any]]
-    ) -> None:
-        """Load should count substations per county."""
-        from babylon.data.hifld.electric import HIFLDElectricLoader
-
-        def mock_substation_query(*args: Any, **kwargs: Any) -> Iterator[ArcGISFeature]:
-            for attrs in mock_substation_features:
-                yield _create_mock_feature(attrs)
-
-        def mock_transmission_query(*args: Any, **kwargs: Any) -> Iterator[ArcGISFeature]:
-            return iter([])
-
-        mock_sub_client = MagicMock()
-        mock_sub_client.get_record_count.return_value = len(mock_substation_features)
-        mock_sub_client.query_all.side_effect = mock_substation_query
-
-        mock_trans_client = MagicMock()
-        mock_trans_client.get_record_count.return_value = 0
-        mock_trans_client.query_all.side_effect = mock_transmission_query
-
-        with patch(
-            "babylon.data.hifld.electric.ArcGISClient",
-            side_effect=[mock_sub_client, mock_trans_client],
-        ):
-            loader = HIFLDElectricLoader(LoaderConfig(verbose=False))
-            loader.load(circulatory_db_session, reset=True, verbose=False)
-
-        # LA County should have 2 substations
-        la_county = circulatory_db_session.query(DimCounty).filter_by(fips="06037").first()
-        assert la_county is not None
-
-        la_fact = (
-            circulatory_db_session.query(FactElectricGrid)
-            .filter_by(county_id=la_county.county_id)
-            .first()
-        )
-        if la_fact:
-            assert la_fact.substation_count == 2
 
 
 # =============================================================================
@@ -613,17 +504,17 @@ class TestCirculatoryLoadersCrossIntegration:
 
         # Load all three with proper patching
         prison_mock = create_mock_client(prison_features)
-        with patch("babylon.data.hifld.prisons.ArcGISClient", return_value=prison_mock):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=prison_mock):
             prison_loader = HIFLDPrisonsLoader(LoaderConfig(verbose=False))
             prison_loader.load(circulatory_db_session, reset=True, verbose=False)
 
         police_mock = create_mock_client(police_features)
-        with patch("babylon.data.hifld.police.ArcGISClient", return_value=police_mock):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=police_mock):
             police_loader = HIFLDPoliceLoader(LoaderConfig(verbose=False))
             police_loader.load(circulatory_db_session, reset=False, verbose=False)
 
         military_mock = create_mock_client(military_features)
-        with patch("babylon.data.mirta.loader.ArcGISClient", return_value=military_mock):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=military_mock):
             military_loader = MIRTAMilitaryLoader(LoaderConfig(verbose=False))
             military_loader.load(circulatory_db_session, reset=False, verbose=False)
 
@@ -654,7 +545,7 @@ class TestCirculatoryLoadersCrossIntegration:
         mock_client.get_record_count.return_value = len(prison_features)
         mock_client.query_all.side_effect = mock_query
 
-        with patch("babylon.data.hifld.prisons.ArcGISClient", return_value=mock_client):
+        with patch("babylon.data.external.arcgis.client.ArcGISClient", return_value=mock_client):
             loader = HIFLDPrisonsLoader(LoaderConfig(verbose=False))
             loader.load(circulatory_db_session, reset=True, verbose=False)
 

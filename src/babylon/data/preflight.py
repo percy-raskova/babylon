@@ -368,7 +368,6 @@ def _check_arcgis_loaders(
     arcgis_loaders = {
         "hifld_prisons": "HIFLD prisons",
         "hifld_police": "HIFLD police",
-        "hifld_electric": "HIFLD electric",
         "mirta": "MIRTA",
     }
     arcgis_selected = arcgis_loaders.keys() & selected
@@ -381,10 +380,6 @@ def _check_arcgis_loaders(
     endpoints = {
         "hifld_prisons": [get_arcgis_service_url("hifld_prisons")],
         "hifld_police": [get_arcgis_service_url("hifld_police")],
-        "hifld_electric": [
-            get_arcgis_service_url("hifld_electric", "substations"),
-            get_arcgis_service_url("hifld_electric", "transmission"),
-        ],
         "mirta": [get_arcgis_service_url("mirta")],
     }
 

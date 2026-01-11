@@ -1508,25 +1508,6 @@ class FactBroadbandCoverage(NormalizedBase):
     __table_args__ = (Index("idx_broadband_county", "county_id"),)
 
 
-class FactElectricGrid(NormalizedBase):
-    """County-level electric grid infrastructure from HIFLD.
-
-    Tracks power infrastructure capacity for critical infrastructure modeling.
-    """
-
-    __tablename__ = "fact_electric_grid"
-
-    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
-    source_id: Mapped[int] = mapped_column(
-        ForeignKey("dim_data_source.source_id"), primary_key=True
-    )
-    substation_count: Mapped[int] = mapped_column(default=0)
-    total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
-    transmission_line_miles: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-
-    __table_args__ = (Index("idx_electric_county", "county_id"),)
-
-
 class FactCommodityFlow(NormalizedBase):
     """State-level commodity flows from Census CFS, allocated to counties.
 
@@ -1829,7 +1810,6 @@ __all__ = [
     # Facts - Circulatory System
     "FactCoerciveInfrastructure",
     "FactBroadbandCoverage",
-    "FactElectricGrid",
     "FactCommodityFlow",
     # LODES Crosswalk
     "BridgeLodesBlock",

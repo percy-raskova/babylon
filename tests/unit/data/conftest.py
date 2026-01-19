@@ -33,12 +33,12 @@ def mock_db_session() -> MagicMock:
 
 @pytest.fixture
 def in_memory_db() -> Engine:
-    """Create an in-memory SQLite database for integration-style unit tests.
+    """Create an in-memory DuckDB database for integration-style unit tests.
 
     Returns:
-        SQLAlchemy engine connected to in-memory SQLite.
+        SQLAlchemy engine connected to in-memory DuckDB.
     """
-    return create_engine("sqlite:///:memory:")
+    return create_engine("duckdb:///:memory:")
 
 
 @pytest.fixture

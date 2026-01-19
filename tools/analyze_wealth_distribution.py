@@ -23,7 +23,6 @@ See Also:
 from __future__ import annotations
 
 import argparse
-import sqlite3
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -35,7 +34,7 @@ from numpy.typing import NDArray
 
 # Project paths
 PROJECT_ROOT: Final = Path(__file__).parent.parent
-DB_PATH: Final = PROJECT_ROOT / "data" / "sqlite" / "research.sqlite"
+DB_PATH: Final = PROJECT_ROOT / "data" / "duckdb" / "marxist-data-3NF.duckdb"
 RESULTS_DIR: Final = PROJECT_ROOT / "results"
 
 
@@ -86,28 +85,31 @@ class InvertedDistribution:
 
 
 def load_wealth_shares(db_path: Path = DB_PATH) -> list[WealthDistributionPoint]:
-    """Load FRED DFA wealth share data from SQLite.
+    """Load FRED DFA wealth share data from DuckDB.
 
     Args:
-        db_path: Path to research.sqlite database
+        db_path: Path to marxist-data-3NF.duckdb database
 
     Returns:
         List of WealthDistributionPoint sorted by date
     """
+    import duckdb
+
     query = """
         SELECT
-            fws.year,
-            fws.quarter,
-            fwc.percentile_code,
-            fws.share_percent
-        FROM fred_wealth_shares fws
-        JOIN fred_wealth_classes fwc ON fws.wealth_class_id = fwc.id
-        JOIN fred_asset_categories fac ON fws.asset_category_id = fac.id
-        WHERE fac.category_code = 'NET_WORTH'
-        ORDER BY fws.year, fws.quarter, fwc.id
+            t.year,
+            t.quarter,
+            wc.percentile_code,
+            ws.share_percent
+        FROM fact_fred_wealth_shares ws
+        JOIN dim_wealth_class wc ON ws.wealth_class_id = wc.wealth_class_id
+        JOIN dim_asset_category ac ON ws.category_id = ac.category_id
+        JOIN dim_time t ON ws.time_id = t.time_id
+        WHERE ac.category_code = 'NET_WORTH'
+        ORDER BY t.year, t.quarter, wc.wealth_class_id
     """
 
-    conn = sqlite3.connect(db_path)
+    conn = duckdb.connect(str(db_path), read_only=True)
     cursor = conn.execute(query)
     rows = cursor.fetchall()
     conn.close()

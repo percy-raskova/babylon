@@ -27,14 +27,6 @@ def test_hifld_prisons_service_url_is_rapt_layer() -> None:
     assert url.endswith("/FeatureServer/1")
 
 
-def test_hifld_electric_out_fields_match_config() -> None:
-    """HIFLD electric out_fields should be configured explicitly."""
-    substations = get_arcgis_out_fields("hifld_electric", "substations")
-    transmission = get_arcgis_out_fields("hifld_electric", "transmission")
-    assert substations == "COUNTYFIPS,COUNTY,STATE,MAX_VOLT,MIN_VOLT,STATUS"
-    assert transmission == "ID,VOLTAGE,STATUS,Shape__Length"
-
-
 def test_mirta_service_fields_and_endpoint_present() -> None:
     """MIRTA config should include service fields and endpoint."""
     config = get_source_config("mirta")

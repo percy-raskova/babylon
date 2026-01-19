@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import csv
 import gzip
+import hashlib
 import logging
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
@@ -14,6 +14,7 @@ from sqlalchemy import delete
 from babylon.data.loader_base import DataLoader, LoadStats
 from babylon.data.normalize.schema import BridgeLodesBlock, DimCounty
 from babylon.data.utils import BatchWriter, build_county_fips, normalize_numeric_fips
+from babylon.data.utils.field_parsers import parse_decimal, parse_str
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -51,25 +52,6 @@ def _open_csv(path: Path) -> TextIO:
     return path.open("r", encoding="utf-8", newline="")
 
 
-def _parse_decimal(value: object) -> Decimal | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return Decimal(text)
-    except (InvalidOperation, ValueError):
-        return None
-
-
-def _parse_str(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
-
-
 def _build_tract_geoid(
     state_fips: str | None,
     county_fips_only: str | None,
@@ -97,16 +79,16 @@ def _build_block_row(
 ) -> dict[str, Any]:
     """Build a LODES block row dictionary from CSV data."""
     return {
-        "block_geoid": _parse_str(row.get("tabblk2020")),
+        "block_geoid": parse_str(row.get("tabblk2020")),
         "county_id": county_id,
         "state_fips": state_fips,
         "county_fips": county_fips_only,
         "tract_geoid": tract_geoid,
-        "block_group": _parse_str(row.get("bgrp")),
-        "cbsa_code": _parse_str(row.get("cbsa")),
-        "zcta": _parse_str(row.get("zcta")),
-        "latitude": _parse_decimal(row.get("blklatdd")),
-        "longitude": _parse_decimal(row.get("blklondd")),
+        "block_group": parse_str(row.get("bgrp")),
+        "cbsa_code": parse_str(row.get("cbsa")),
+        "zcta": parse_str(row.get("zcta")),
+        "latitude": parse_decimal(row.get("blklatdd")),
+        "longitude": parse_decimal(row.get("blklondd")),
     }
 
 
@@ -136,9 +118,21 @@ class LodesCrosswalkLoader(DataLoader):
 
         if reset:
             self._clear_existing_data(session, verbose)
+            self._clear_checkpoints(session, "lodes")
+            session.flush()
+
+        # Check if this file already completed (enables resume)
+        file_hash = self._get_file_hash(csv_path)
+        if self._is_completed(session, "lodes", 0, file_hash, "crosswalk", "T"):
+            if verbose:
+                logger.info("Skipping completed LODES crosswalk file: %s", csv_path.name)
+            return stats
 
         lookups = self._initialize_lookups(session)
         loaded, skipped = self._process_file(session, csv_path, lookups)
+
+        # Mark file as completed after successful processing
+        self._mark_completed(session, "lodes", 0, file_hash, "crosswalk", "T", loaded)
 
         session.commit()
         self._record_stats(stats, loaded, skipped, verbose)
@@ -208,7 +202,7 @@ class LodesCrosswalkLoader(DataLoader):
         if county_fips and county_id is None:
             return "skip_geo"
 
-        tract = _normalize_tract(_parse_str(row.get("trct")))
+        tract = _normalize_tract(parse_str(row.get("trct")))
         tract_geoid = _build_tract_geoid(state_fips, county_fips_only, tract)
 
         return _build_block_row(row, county_id, state_fips, county_fips_only, tract_geoid)
@@ -229,3 +223,11 @@ class LodesCrosswalkLoader(DataLoader):
 
         if verbose:
             logger.info("LODES crosswalk loading complete: %s blocks.", loaded)
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

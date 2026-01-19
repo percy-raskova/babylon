@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import logging
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -19,6 +19,7 @@ from babylon.data.normalize.schema import (
     FactHpmsRoadSegment,
 )
 from babylon.data.utils import BatchWriter, build_county_fips, normalize_numeric_fips
+from babylon.data.utils.field_parsers import parse_decimal, parse_int, parse_str
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -51,37 +52,6 @@ def _resolve_hpms_path(data_path: object | None) -> Path | None:
     return None
 
 
-def _parse_str(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text if text else None
-
-
-def _parse_int(value: object) -> int | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return int(float(text))
-    except (ValueError, TypeError):
-        return None
-
-
-def _parse_decimal(value: object) -> Decimal | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return Decimal(text)
-    except (InvalidOperation, ValueError):
-        return None
-
-
 def _build_road_segment_row(
     row: dict[str, str | None],
     county_id: int,
@@ -91,7 +61,7 @@ def _build_road_segment_row(
     year_record: int | None,
 ) -> dict[str, Any]:
     """Build a road segment fact row dictionary from CSV data."""
-    geometry_wkt = _parse_str(row.get("line"))
+    geometry_wkt = parse_str(row.get("line"))
     if geometry_wkt:
         geometry_wkt = geometry_wkt.strip('"')
 
@@ -100,25 +70,25 @@ def _build_road_segment_row(
         "state_id": state_id,
         "source_id": source_id,
         "time_id": time_id,
-        "route_id": _parse_str(row.get("ROUTE_ID")),
-        "route_number": _parse_str(row.get("ROUTE_NUMBER")),
-        "route_signing": _parse_str(row.get("ROUTE_SIGNING")),
-        "route_qualifier": _parse_str(row.get("ROUTE_QUALIFIER")),
-        "functional_system": _parse_int(row.get("F_SYSTEM")),
-        "facility_type": _parse_int(row.get("FACILITY_TYPE")),
-        "aadt": _parse_int(row.get("AADT")),
-        "aadt_single_unit": _parse_int(row.get("AADT_SINGLE_UNIT")),
-        "aadt_combination": _parse_int(row.get("AADT_COMBINATION")),
-        "speed_limit": _parse_int(row.get("SPEED_LIMIT")),
-        "through_lanes": _parse_int(row.get("THROUGH_LANES")),
-        "lane_width": _parse_decimal(row.get("LANE_WIDTH")),
-        "section_length": _parse_decimal(row.get("SectionLength")),
-        "nhs": _parse_int(row.get("NHS")),
-        "nhfn": _parse_int(row.get("NHFN")),
-        "urban_id": _parse_str(row.get("URBAN_ID")),
+        "route_id": parse_str(row.get("ROUTE_ID")),
+        "route_number": parse_str(row.get("ROUTE_NUMBER")),
+        "route_signing": parse_str(row.get("ROUTE_SIGNING")),
+        "route_qualifier": parse_str(row.get("ROUTE_QUALIFIER")),
+        "functional_system": parse_int(row.get("F_SYSTEM")),
+        "facility_type": parse_int(row.get("FACILITY_TYPE")),
+        "aadt": parse_int(row.get("AADT")),
+        "aadt_single_unit": parse_int(row.get("AADT_SINGLE_UNIT")),
+        "aadt_combination": parse_int(row.get("AADT_COMBINATION")),
+        "speed_limit": parse_int(row.get("SPEED_LIMIT")),
+        "through_lanes": parse_int(row.get("THROUGH_LANES")),
+        "lane_width": parse_decimal(row.get("LANE_WIDTH")),
+        "section_length": parse_decimal(row.get("SectionLength")),
+        "nhs": parse_int(row.get("NHS")),
+        "nhfn": parse_int(row.get("NHFN")),
+        "urban_id": parse_str(row.get("URBAN_ID")),
         "year_record": year_record,
-        "shape_id": _parse_str(row.get("ShapeId")),
-        "sample_id": _parse_str(row.get("SAMPLE_ID")),
+        "shape_id": parse_str(row.get("ShapeId")),
+        "sample_id": parse_str(row.get("SAMPLE_ID")),
         "geometry_wkt": geometry_wkt,
     }
 
@@ -149,6 +119,15 @@ class DotHpmsLoader(DataLoader):
 
         if reset:
             self._clear_existing_data(session, verbose)
+            self._clear_checkpoints(session, "dot_hpms")
+            session.flush()
+
+        # Check if this file already completed (enables resume)
+        file_hash = self._get_file_hash(csv_path)
+        if self._is_completed(session, "dot_hpms", 0, file_hash, "file", "T"):
+            if verbose:
+                logger.info("Skipping completed HPMS file: %s", csv_path.name)
+            return stats
 
         source_id = self._get_or_create_data_source(
             session,
@@ -160,6 +139,9 @@ class DotHpmsLoader(DataLoader):
 
         lookups = self._initialize_lookups(session, source_id)
         counts = self._process_file(session, csv_path, lookups)
+
+        # Mark file as completed after successful processing
+        self._mark_completed(session, "dot_hpms", 0, file_hash, "file", "T", counts["loaded"])
 
         session.commit()
         self._record_stats(stats, counts, verbose)
@@ -245,7 +227,7 @@ class DotHpmsLoader(DataLoader):
         if county_id is None or state_id is None:
             return "missing_geo"
 
-        year_record = _parse_int(row.get("YEAR_RECORD"))
+        year_record = parse_int(row.get("YEAR_RECORD"))
         time_id = self._get_or_create_time(session, year_record) if year_record else None
 
         return _build_road_segment_row(
@@ -278,3 +260,11 @@ class DotHpmsLoader(DataLoader):
                 skipped_no_fips,
                 skipped_missing_geo,
             )
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

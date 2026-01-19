@@ -128,7 +128,15 @@ class FCCBroadbandLoader(DataLoader):
                 if verbose:
                     print("  Clearing existing FCC broadband data...")
                 self._clear_fcc_data(session)
+                self._clear_checkpoints(session, "fcc")
                 session.flush()
+
+            # Check if this snapshot already completed (enables resume)
+            snapshot_key = date_dir.name.replace("-", "")
+            if self._is_completed(session, "fcc", 0, snapshot_key, "snapshot", "T"):
+                if verbose:
+                    print(f"  Skipping completed snapshot: {date_dir.name}")
+                return stats
 
             self._load_county_lookup(session)
             if verbose:
@@ -145,6 +153,9 @@ class FCCBroadbandLoader(DataLoader):
 
             if skipped > 0 and verbose:
                 print(f"  Skipped {skipped} counties not in database")
+
+            # Mark snapshot as completed after successful processing
+            self._mark_completed(session, "fcc", 0, snapshot_key, "snapshot", "T", fact_count)
 
             session.commit()
 

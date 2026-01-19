@@ -475,7 +475,6 @@ ALL_LOADERS = [
     "lodes",
     "hifld_prisons",
     "hifld_police",
-    "hifld_electric",
     "mirta",
     "fcc",
     "geography",
@@ -490,7 +489,6 @@ LOADER_DEPENDENCIES: dict[str, list[str]] = {
     "fcc": ["census"],
     "hifld_prisons": ["census"],
     "hifld_police": ["census"],
-    "hifld_electric": ["census"],
     "mirta": ["census"],
     "geography": ["census", "qcew"],
     "cfs": ["geography"],
@@ -700,7 +698,6 @@ _PREREQ_CHECKS: dict[str, Callable[[object, str, LoaderConfig], list[str]]] = {
     "fcc": _check_prereqs_county_only,
     "hifld_prisons": _check_prereqs_county_only,
     "hifld_police": _check_prereqs_county_only,
-    "hifld_electric": _check_prereqs_county_only,
     "mirta": _check_prereqs_county_only,
     "geography": _check_prereqs_geography,
     "cfs": _check_prereqs_cfs,
@@ -967,6 +964,9 @@ def _run_all_loaders(
                     hint = getattr(e, "hint", None)
                     if hint:
                         typer.echo(f"Hint: {hint}")
+                # Rollback failed transaction to allow subsequent loaders to run
+                # (DuckDB requires explicit rollback after transaction errors)
+                session.rollback()
                 has_errors = True
 
     return total_stats, has_errors
@@ -1097,12 +1097,6 @@ def _make_hifld_police_loader(config: LoaderConfig) -> DataLoader:
     return HIFLDPoliceLoader(config)
 
 
-def _make_hifld_electric_loader(config: LoaderConfig) -> DataLoader:
-    from babylon.data.hifld import HIFLDElectricLoader
-
-    return HIFLDElectricLoader(config)
-
-
 def _make_mirta_loader(config: LoaderConfig) -> DataLoader:
     from babylon.data.mirta import MIRTAMilitaryLoader
 
@@ -1139,7 +1133,6 @@ _LOADER_FACTORIES: dict[str, Callable[[LoaderConfig], DataLoader]] = {
     "lodes": _make_lodes_loader,
     "hifld_prisons": _make_hifld_prisons_loader,
     "hifld_police": _make_hifld_police_loader,
-    "hifld_electric": _make_hifld_electric_loader,
     "mirta": _make_mirta_loader,
     "geography": _make_geography_loader,
     "cfs": _make_cfs_loader,
@@ -1163,37 +1156,83 @@ def _run_loader(
     return loader.load(session, reset=reset, verbose=verbose)  # type: ignore[arg-type]
 
 
+def _parse_year_range(years_str: str) -> list[int]:
+    """Parse year range or list into list of years.
+
+    Supports:
+        - Range: "2020-2023" -> [2020, 2021, 2022, 2023]
+        - List: "2020,2021,2022" -> [2020, 2021, 2022]
+        - Single: "2021" -> [2021]
+    """
+    if "-" in years_str and "," not in years_str:
+        start, end = years_str.split("-")
+        return list(range(int(start.strip()), int(end.strip()) + 1))
+    return [int(y.strip()) for y in years_str.split(",")]
+
+
 @app.command()
 def census(
     year: Annotated[
-        int,
-        typer.Option("--year", "-y", help="Census ACS 5-year vintage"),
-    ] = 2021,
+        int | None,
+        typer.Option("--year", "-y", help="Single Census ACS 5-year vintage"),
+    ] = None,
+    years: Annotated[
+        str | None,
+        typer.Option(
+            "--years",
+            help="Year range (2020-2023) or comma-separated (2020,2021,2022)",
+        ),
+    ] = None,
     states: Annotated[
         str | None,
         typer.Option("--states", help="Comma-separated state FIPS codes"),
     ] = None,
     reset: Annotated[
         bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
+        typer.Option(
+            "--reset/--no-reset",
+            help="Clear tables before loading. Default is --no-reset (idempotent)",
+        ),
+    ] = False,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
     ] = False,
 ) -> None:
-    """Load Census ACS data into 3NF database."""
+    """Load Census ACS data into 3NF database.
+
+    Examples:
+        # Load single year
+        mise run data:census -- --year=2021
+
+        # Load multiple years
+        mise run data:census -- --years=2020-2023
+
+        # Load with reset (wipe tables first)
+        mise run data:census -- --year=2021 --reset
+    """
     from babylon.data.census import CensusLoader
     from babylon.data.normalize.database import get_normalized_session, init_normalized_db
 
+    # Determine year list
+    if years:
+        year_list = _parse_year_range(years)
+    elif year:
+        year_list = [year]
+    else:
+        year_list = [2021]  # Default
+
     config = LoaderConfig(
-        census_years=[year],
+        census_years=year_list,
         state_fips_list=parse_states(states),
         verbose=not quiet,
     )
 
     if not quiet:
-        typer.echo(f"Loading Census ACS {year} 5-year estimates...")
+        if len(year_list) == 1:
+            typer.echo(f"Loading Census ACS {year_list[0]} 5-year estimates...")
+        else:
+            typer.echo(f"Loading Census ACS {year_list[0]}-{year_list[-1]} 5-year estimates...")
         if states:
             typer.echo(f"States: {states}")
 
@@ -1462,14 +1501,22 @@ def employment_industry(
     ] = None,
     reset: Annotated[
         bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
+        typer.Option(
+            "--reset/--no-reset",
+            help="Clear all tables before loading. Default is --no-reset (idempotent per-file)",
+        ),
+    ] = False,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
     ] = False,
 ) -> None:
-    """Load employment industry data into 3NF database."""
+    """Load employment industry data into 3NF database.
+
+    Supports idempotent per-file loading for resumability. Each CSV file is
+    processed atomically - existing data for that area is replaced. Use --reset
+    to clear all data and start fresh.
+    """
     from babylon.data.employment_industry import EmploymentIndustryLoader
     from babylon.data.normalize.database import get_normalized_session, init_normalized_db
 
@@ -1658,41 +1705,6 @@ def hifld_police(
 
     init_normalized_db()
     loader = HIFLDPoliceLoader(config)
-
-    with get_normalized_session() as session:
-        stats = loader.load(session, reset=reset, verbose=not quiet)
-
-    print_stats(stats)
-    if stats.has_errors:
-        raise typer.Exit(1)
-
-
-@app.command()
-def hifld_electric(
-    reset: Annotated[
-        bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
-    quiet: Annotated[
-        bool,
-        typer.Option("--quiet", "-q", help="Suppress verbose output"),
-    ] = False,
-) -> None:
-    """Load HIFLD Electric Substations into 3NF database.
-
-    Loads electric substation data from HIFLD ArcGIS Feature Service
-    and aggregates to county-level electric grid metrics.
-    """
-    from babylon.data.hifld import HIFLDElectricLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
-
-    config = LoaderConfig(verbose=not quiet)
-
-    if not quiet:
-        typer.echo("Loading HIFLD Electric Substations from ArcGIS...")
-
-    init_normalized_db()
-    loader = HIFLDElectricLoader(config)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)

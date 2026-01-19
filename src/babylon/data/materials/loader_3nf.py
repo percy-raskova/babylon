@@ -21,6 +21,7 @@ Example:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -133,6 +134,8 @@ class MaterialsLoader(DataLoader):
         try:
             if reset:
                 self._clear_materials_tables(session, verbose)
+                self._clear_checkpoints(session, "materials")
+                session.flush()
 
             # Load data source dimension
             self._load_data_source(session, verbose)
@@ -148,10 +151,19 @@ class MaterialsLoader(DataLoader):
 
             # Process each CSV file
             for csv_file in csv_files:
+                file_hash = self._get_file_hash(csv_file)
+
+                # Check if this file already completed (enables resume)
+                if self._is_completed(session, "materials", 0, file_hash, "file", "T"):
+                    if verbose:
+                        logger.debug(f"Skipping completed file: {csv_file.name}")
+                    continue
+
                 if verbose:
                     logger.info(f"Processing {csv_file.name}...")
 
                 records = parse_commodity_csv(csv_file)
+                file_obs_count = 0
 
                 for record in records:
                     # Filter by year
@@ -187,12 +199,19 @@ class MaterialsLoader(DataLoader):
                     )
                     session.add(fact)
                     obs_count += 1
+                    file_obs_count += 1
 
                     # Batch commit to avoid memory pressure
                     if obs_count % 5000 == 0:
                         session.flush()
                         if verbose:
                             logger.info(f"  Loaded {obs_count} observations...")
+
+                # Mark file as completed after successful processing
+                self._mark_completed(
+                    session, "materials", 0, file_hash, "file", "T", file_obs_count
+                )
+                session.flush()
 
             session.commit()
 
@@ -366,3 +385,11 @@ class MaterialsLoader(DataLoader):
         session.flush()
         metric_lookup[metric_code] = metric.metric_id
         return metric.metric_id
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

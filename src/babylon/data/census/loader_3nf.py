@@ -39,6 +39,7 @@ from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.census.api_client import CensusAPIClient, CountyData, VariableMetadata
 from babylon.data.exceptions import CensusAPIError
 from babylon.data.loader_base import LoaderConfig, LoadStats
+from babylon.data.loaders import DimensionLoader
 from babylon.data.normalize.classifications import (
     classify_labor_type,
     classify_marxian_class,
@@ -929,8 +930,8 @@ class CensusLoader(ApiLoaderBase):
         self._load_data_source(session, initial_year)
         stats.dimensions_loaded["dim_data_source"] = 1
 
-        self._load_genders(session)
-        stats.dimensions_loaded["dim_gender"] = 3
+        gender_count = self._load_genders(session)
+        stats.dimensions_loaded["dim_gender"] = gender_count
 
         race_count = self._load_races(session)
         stats.dimensions_loaded["dim_race"] = race_count
@@ -1263,43 +1264,49 @@ class CensusLoader(ApiLoaderBase):
             coverage_end_year=year,
         )
 
-    def _load_genders(self, session: Session) -> None:
-        """Load gender dimension (static values)."""
+    def _load_genders(self, session: Session) -> int:
+        """Load gender dimension (idempotent - skips existing).
+
+        Returns:
+            Number of new gender records created.
+        """
+        loader = DimensionLoader(session, DimGender, "gender_code")
+        initial_count = loader.initialize_from_db()
+
         genders = [
             ("total", "Total"),
             ("male", "Male"),
             ("female", "Female"),
         ]
         for code, label in genders:
-            gender = DimGender(gender_code=code, gender_label=label)
-            session.add(gender)
-            session.flush()
-            self._gender_to_id[code] = gender.gender_id
+            loader.get_or_create(gender_code=code, gender_label=label)
+
+        self._gender_to_id = loader.cache
+        return len(loader) - initial_count
 
     def _load_races(self, session: Session) -> int:
-        """Load race/ethnicity dimension (static, 10 records including Total).
+        """Load race/ethnicity dimension (idempotent - skips existing).
 
         Populates DimRace with Census race codes following the A-I suffix scheme.
 
         Returns:
-            Number of race records loaded.
+            Number of race records loaded (may be 0 if all exist).
         """
+        loader = DimensionLoader(session, DimRace, "race_code")
+        initial_count = loader.initialize_from_db()
+
         for race_data in RACE_CODES:
-            race = DimRace(
+            loader.get_or_create(
                 race_code=str(race_data["code"]),
                 race_name=str(race_data["name"]),
                 race_short_name=str(race_data["short"]),
                 is_hispanic_ethnicity=bool(race_data["hispanic"]),
                 is_indigenous=bool(race_data["indigenous"]),
-                display_order=int(race_data["order"]),  # type: ignore[call-overload]
+                display_order=int(str(race_data["order"])),
             )
-            session.add(race)
-        session.flush()
 
-        # Build lookup for fact loading
-        self._race_code_to_id = {r.race_code: r.race_id for r in session.query(DimRace).all()}
-
-        return len(RACE_CODES)
+        self._race_code_to_id = loader.cache
+        return len(loader) - initial_count  # New records created
 
     def _load_time_dimension(self, session: Session) -> int:
         """Populate DimTime for all configured census years if not already present.
@@ -1623,11 +1630,13 @@ class CensusLoader(ApiLoaderBase):
         return (metro_count, bridge_count)
 
     def _load_income_brackets(self, session: Session, _verbose: bool) -> int:
-        """Load income bracket dimension from B19001 metadata."""
+        """Load income bracket dimension from B19001 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimIncomeBracket, "bracket_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B19001")
-        count = 0
         order = 1
 
         # Income bracket parsing patterns
@@ -1667,25 +1676,25 @@ class CensusLoader(ApiLoaderBase):
                     bracket_max = max_val
                     break
 
-            bracket = DimIncomeBracket(
+            loader.get_or_create(
                 bracket_code=bracket_code,
                 bracket_label=label or bracket_code,
                 bracket_min_usd=bracket_min,
                 bracket_max_usd=bracket_max,
                 bracket_order=order,
             )
-            session.add(bracket)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_employment_statuses(self, session: Session, _verbose: bool) -> int:
-        """Load employment status dimension from B23025 metadata."""
+        """Load employment status dimension from B23025 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimEmploymentStatus, "status_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B23025")
-        count = 0
         order = 1
 
         for var_code, var_info in sorted(variables.items()):
@@ -1706,25 +1715,25 @@ class CensusLoader(ApiLoaderBase):
                 elif "unemployed" in label_lower:
                     is_employed = False
 
-            status = DimEmploymentStatus(
+            loader.get_or_create(
                 status_code=status_code,
                 status_label=label or status_code,
                 is_labor_force=is_labor_force,
                 is_employed=is_employed,
                 status_order=order,
             )
-            session.add(status)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_worker_classes(self, session: Session, _verbose: bool) -> int:
-        """Load worker class dimension from B24080 metadata with Marxian mapping."""
+        """Load worker class dimension from B24080 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimWorkerClass, "class_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B24080")
-        count = 0
         order = 1
 
         for var_code, var_info in sorted(variables.items()):
@@ -1734,24 +1743,24 @@ class CensusLoader(ApiLoaderBase):
             # Apply Marxian classification
             marxian_class = classify_marxian_class(class_code, label or "")
 
-            worker_class = DimWorkerClass(
+            loader.get_or_create(
                 class_code=class_code,
                 class_label=label or class_code,
                 marxian_class=marxian_class,
                 class_order=order,
             )
-            session.add(worker_class)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_occupations(self, session: Session, _verbose: bool) -> int:
-        """Load occupation dimension from C24010 metadata with labor type."""
+        """Load occupation dimension from C24010 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimOccupation, "occupation_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("C24010")
-        count = 0
         order = 1
 
         for var_code, var_info in sorted(variables.items()):
@@ -1763,25 +1772,25 @@ class CensusLoader(ApiLoaderBase):
             # Apply labor type classification
             labor_type = classify_labor_type(occ_category)
 
-            occupation = DimOccupation(
+            loader.get_or_create(
                 occupation_code=occ_code,
                 occupation_label=occ_label or occ_code,
                 occupation_category=occ_category,
                 labor_type=labor_type,
                 occupation_order=order,
             )
-            session.add(occupation)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_education_levels(self, session: Session, _verbose: bool) -> int:
-        """Load education level dimension from B15003 metadata."""
+        """Load education level dimension from B15003 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimEducationLevel, "level_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B15003")
-        count = 0
         order = 1
 
         # Years of schooling mapping
@@ -1823,41 +1832,43 @@ class CensusLoader(ApiLoaderBase):
                         years = yrs
                         break
 
-            level = DimEducationLevel(
+            loader.get_or_create(
                 level_code=level_code,
                 level_label=label or level_code,
                 years_of_schooling=years,
                 level_order=order,
             )
-            session.add(level)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_housing_tenures(self, session: Session) -> int:
-        """Load housing tenure dimension (static values)."""
+        """Load housing tenure dimension (idempotent - skips existing)."""
+        loader = DimensionLoader(session, DimHousingTenure, "tenure_type")
+        initial_count = loader.initialize_from_db()
+
         tenures = [
             ("total", "Total occupied housing units", False),
             ("owner", "Owner-occupied housing units", True),
             ("renter", "Renter-occupied housing units", False),
         ]
         for code, label, is_owner in tenures:
-            tenure = DimHousingTenure(
+            loader.get_or_create(
                 tenure_type=code,
                 tenure_label=label,
                 is_owner=is_owner,
             )
-            session.add(tenure)
 
-        return 3
+        return len(loader) - initial_count
 
     def _load_rent_burdens(self, session: Session, _verbose: bool) -> int:
-        """Load rent burden dimension from B25070 metadata."""
+        """Load rent burden dimension from B25070 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimRentBurden, "bracket_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B25070")
-        count = 0
         order = 1
 
         for var_code, var_info in sorted(variables.items()):
@@ -1887,7 +1898,7 @@ class CensusLoader(ApiLoaderBase):
                     if max_match:
                         burden_max = Decimal(max_match.group(1))
 
-            burden = DimRentBurden(
+            loader.get_or_create(
                 bracket_code=bracket_code,
                 burden_bracket=label or bracket_code,
                 burden_min_pct=burden_min,
@@ -1896,18 +1907,18 @@ class CensusLoader(ApiLoaderBase):
                 is_severely_burdened=is_severe,
                 bracket_order=order,
             )
-            session.add(burden)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_commute_modes(self, session: Session, _verbose: bool) -> int:
-        """Load commute mode dimension from B08301 metadata."""
+        """Load commute mode dimension from B08301 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimCommuteMode, "mode_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B08301")
-        count = 0
         order = 1
 
         public_transit_keywords = {"bus", "subway", "streetcar", "railroad", "ferryboat"}
@@ -1926,25 +1937,25 @@ class CensusLoader(ApiLoaderBase):
                 if any(kw in label_lower for kw in active_transport_keywords):
                     is_active = True
 
-            mode = DimCommuteMode(
+            loader.get_or_create(
                 mode_code=mode_code,
                 mode_label=label or mode_code,
                 is_public_transit=is_public,
                 is_active_transport=is_active,
                 mode_order=order,
             )
-            session.add(mode)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     def _load_poverty_categories(self, session: Session, _verbose: bool) -> int:
-        """Load poverty category dimension from B17001 metadata."""
+        """Load poverty category dimension from B17001 metadata (idempotent)."""
         assert self._client is not None
 
+        loader = DimensionLoader(session, DimPovertyCategory, "category_code")
+        initial_count = loader.initialize_from_db()
+
         variables = self._fetch_variables("B17001")
-        count = 0
         order = 1
 
         for var_code, var_info in sorted(variables.items()):
@@ -1959,17 +1970,15 @@ class CensusLoader(ApiLoaderBase):
                 elif "at or above poverty" in label_lower:
                     is_below = False
 
-            category = DimPovertyCategory(
+            loader.get_or_create(
                 category_code=category_code,
                 category_label=label or category_code,
                 is_below_poverty=is_below,
                 category_order=order,
             )
-            session.add(category)
             order += 1
-            count += 1
 
-        return count
+        return len(loader) - initial_count
 
     # =========================================================================
     # GENERIC FACT TABLE LOADER

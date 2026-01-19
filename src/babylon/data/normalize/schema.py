@@ -1,8 +1,8 @@
-"""3NF Normalized SQLite schema for Marxian economic analysis.
+"""3NF Normalized DuckDB schema for Marxian economic analysis.
 
 Provides properly normalized dimension and fact tables populated via ETL
-from research.sqlite. Optimized for imperial rent, surplus value, labor
-aristocracy, and unequal exchange analysis.
+from external data sources. Optimized for imperial rent, surplus value,
+labor aristocracy, and unequal exchange analysis.
 
 Dimensions (33 tables):
     Geographic: dim_state, dim_county, dim_metro_area, dim_geographic_hierarchy,
@@ -32,6 +32,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -739,6 +740,52 @@ class IngestCheckpoint(NormalizedBase):
     )
 
 
+class StagingArcGISFeature(NormalizedBase):
+    """Staging table for ArcGIS features pending county-level aggregation.
+
+    Enables resume capability for HIFLD/MIRTA loaders by streaming features
+    to database instead of holding all in memory. Features are deduplicated
+    by (source_code, object_id) and aggregated to FactCoerciveInfrastructure
+    after fetch phase completes.
+
+    Workflow:
+        1. Fetch phase: Stream features page-by-page with checkpoints
+        2. Aggregate phase: GROUP BY county_fips, type_code -> insert facts
+        3. Cleanup: Clear staging after successful aggregation
+
+    Note:
+        This is a temporary staging table, not a permanent dimension/fact.
+        Data is cleared after each successful load cycle.
+    """
+
+    __tablename__ = "staging_arcgis_feature"
+
+    feature_id: Mapped[int] = mapped_column(
+        Sequence("staging_arcgis_feature_feature_id_seq"), primary_key=True
+    )
+    source_code: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # e.g., "hifld_police", "mirta"
+    object_id: Mapped[int] = mapped_column(nullable=False)  # ArcGIS OBJECTID
+    county_fips: Mapped[str | None] = mapped_column(String(5))  # 5-digit FIPS or NULL
+    type_code: Mapped[str] = mapped_column(
+        String(30), nullable=False
+    )  # e.g., "police_local", "prison_federal"
+    capacity: Mapped[int | None] = mapped_column()  # For prisons (bed count)
+
+    __table_args__ = (
+        # Unique on (source, object_id) for upsert/dedup on resume
+        Index(
+            "idx_staging_source_objectid",
+            "source_code",
+            "object_id",
+            unique=True,
+        ),
+        # For aggregation queries
+        Index("idx_staging_county_type", "source_code", "county_fips", "type_code"),
+    )
+
+
 # =============================================================================
 # COERCIVE INFRASTRUCTURE DIMENSION TABLES
 # =============================================================================
@@ -1112,8 +1159,8 @@ class FactQcewAnnual(NormalizedBase):
     total_wages_usd: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
     avg_weekly_wage_usd: Mapped[int | None] = mapped_column()
     avg_annual_pay_usd: Mapped[int | None] = mapped_column()
-    lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    lq_employment: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     disclosure_code: Mapped[str | None] = mapped_column(String(5))
 
     __table_args__ = (
@@ -1461,25 +1508,6 @@ class FactBroadbandCoverage(NormalizedBase):
     __table_args__ = (Index("idx_broadband_county", "county_id"),)
 
 
-class FactElectricGrid(NormalizedBase):
-    """County-level electric grid infrastructure from HIFLD.
-
-    Tracks power infrastructure capacity for critical infrastructure modeling.
-    """
-
-    __tablename__ = "fact_electric_grid"
-
-    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
-    source_id: Mapped[int] = mapped_column(
-        ForeignKey("dim_data_source.source_id"), primary_key=True
-    )
-    substation_count: Mapped[int] = mapped_column(default=0)
-    total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
-    transmission_line_miles: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-
-    __table_args__ = (Index("idx_electric_county", "county_id"),)
-
-
 class FactCommodityFlow(NormalizedBase):
     """State-level commodity flows from Census CFS, allocated to counties.
 
@@ -1607,32 +1635,32 @@ class FactEmploymentIndustryAnnual(NormalizedBase):
     annual_avg_wkly_wage: Mapped[int | None] = mapped_column()
     avg_annual_pay: Mapped[int | None] = mapped_column()
 
-    # Location quotients
+    # Location quotients (use Float - can exceed 1M in extreme cases)
     lq_disclosure_code: Mapped[str | None] = mapped_column(String(1))
-    lq_annual_avg_estabs_count: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_annual_avg_emplvl: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_total_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_taxable_annual_wages: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_annual_contributions: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_annual_avg_wkly_wage: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
-    lq_avg_annual_pay: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    lq_annual_avg_estabs_count: Mapped[float | None] = mapped_column(Float)
+    lq_annual_avg_emplvl: Mapped[float | None] = mapped_column(Float)
+    lq_total_annual_wages: Mapped[float | None] = mapped_column(Float)
+    lq_taxable_annual_wages: Mapped[float | None] = mapped_column(Float)
+    lq_annual_contributions: Mapped[float | None] = mapped_column(Float)
+    lq_annual_avg_wkly_wage: Mapped[float | None] = mapped_column(Float)
+    lq_avg_annual_pay: Mapped[float | None] = mapped_column(Float)
 
-    # Over-the-year changes
+    # Over-the-year changes (pct_chg uses Float - can exceed 1M% for tiny industries)
     oty_disclosure_code: Mapped[str | None] = mapped_column(String(1))
     oty_annual_avg_estabs_count_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_avg_estabs_count_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_estabs_count_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_annual_avg_emplvl_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_avg_emplvl_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_emplvl_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_total_annual_wages_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_total_annual_wages_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_total_annual_wages_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_taxable_annual_wages_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_taxable_annual_wages_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_taxable_annual_wages_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_annual_contributions_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_contributions_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_contributions_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_annual_avg_wkly_wage_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_annual_avg_wkly_wage_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_annual_avg_wkly_wage_pct_chg: Mapped[float | None] = mapped_column(Float)
     oty_avg_annual_pay_chg: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
-    oty_avg_annual_pay_pct_chg: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    oty_avg_annual_pay_pct_chg: Mapped[float | None] = mapped_column(Float)
 
     __table_args__ = (
         Index("idx_emp_ind_area", "area_id"),
@@ -1740,6 +1768,7 @@ __all__ = [
     "DimRace",
     # Ingest Tracking
     "IngestCheckpoint",
+    "StagingArcGISFeature",
     # Dimensions - Coercive Infrastructure
     "DimCoerciveType",
     # Facts - Census
@@ -1781,7 +1810,6 @@ __all__ = [
     # Facts - Circulatory System
     "FactCoerciveInfrastructure",
     "FactBroadbandCoverage",
-    "FactElectricGrid",
     "FactCommodityFlow",
     # LODES Crosswalk
     "BridgeLodesBlock",

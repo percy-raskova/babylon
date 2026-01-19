@@ -149,7 +149,7 @@ extended-analysis.yml
    * - ``extended_tests``
      - Python 3.12/3.13 matrix testing
    * - ``parameter_analysis``
-     - Run ``mise run analyze-trace`` and ``mise run analyze-sweep``
+     - Run ``mise run sim:trace`` and ``mise run sim:sweep``
    * - ``ai_evaluation``
      - Run AI tests (release only): ``pytest -m "ai"``
 
@@ -342,9 +342,9 @@ Local Testing
 
 .. code-block:: bash
 
-   mise run ci        # lint + format + typecheck + test-fast
-   mise run test      # all non-AI tests
-   mise run docs      # build documentation
+   mise run ci        # lint + format + typecheck + test:unit
+   mise run test:all  # all non-AI tests
+   mise run docs:build # build documentation
 
 **gh act** (full simulation):
 
@@ -376,7 +376,7 @@ Troubleshooting
 
    .. code-block:: bash
 
-      mise run docs-strict
+      mise run docs:strict
 
 **Duplicate object warnings (autodoc)**
    Expected with Pydantic model re-exports. Suppressed via ``suppress_warnings``

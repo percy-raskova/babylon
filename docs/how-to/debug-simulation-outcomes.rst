@@ -39,9 +39,9 @@ Run the formula doctests to ensure mathematical operations work correctly:
 
 .. code-block:: bash
 
-   mise run doctest
+   mise run test:doctest
 
-This validates all formulas in ``src/babylon/systems/formulas.py`` against
+This validates all formulas in ``src/babylon/systems/formulas/`` against
 their documented examples. If tests fail, the bug is in formula implementation.
 
 .. seealso::
@@ -55,7 +55,7 @@ Capture full simulation state over time:
 
 .. code-block:: bash
 
-   mise run analyze-trace
+   mise run sim:trace
 
 This outputs a CSV to ``results/trace.csv`` with per-tick data:
 

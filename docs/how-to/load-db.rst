@@ -17,12 +17,13 @@ The data pipeline is driven by:
 
 Key commands you will use:
 
-- ``mise run data:readiness`` for checks (aliases: ``data:preflight``, ``data:schema-check``)
-- ``mise run data:load`` for full ingestion
-- ``mise run data:qcew`` for QCEW only
-- ``mise run data:employment-industry`` for BLS area/industry files
-- ``mise run data:dot-hpms`` for DOT HPMS road segments
-- ``mise run data:lodes`` for LODES crosswalks
+- ``mise run data:db-init`` to initialize the DuckDB database schema
+- ``mise run data:load`` for full ingestion of all data sources
+- ``mise run data:qcew`` for QCEW employment data only
+- ``mise run data:fred`` for FRED macroeconomic data only
+- ``mise run data:census`` for Census ACS data only
+- ``mise run data:fcc`` for FCC broadband coverage
+- ``mise run data:query`` to open DuckDB CLI for querying
 
 Prerequisites
 =============
@@ -67,11 +68,11 @@ If you do not have historical QCEW CSVs, you can run QCEW API-only years.
 Quick Start: Full Load
 ======================
 
-1) Run ingest readiness checks (with endpoint validation and schema repair):
+1) Initialize the database schema:
 
 .. code-block:: bash
 
-   mise run data:readiness -- --online
+   mise run data:db-init
 
 2) Download FCC national summary (only required if you plan to load FCC data):
 
@@ -84,19 +85,6 @@ Quick Start: Full Load
 .. code-block:: bash
 
    mise run data:load
-
-If schema checks fail due to missing DuckDB SQLAlchemy dialect, you can skip
-schema checks during load:
-
-.. code-block:: bash
-
-   mise run data:load -- --no-schema-check
-
-To report schema drift without applying repairs, use:
-
-.. code-block:: bash
-
-   mise run data:readiness -- --no-repair
 
 Run QCEW with API-Only Years
 ============================
@@ -116,7 +104,6 @@ Recommended checks after a full load:
 
 .. code-block:: bash
 
-   mise run data:readiness -- --no-repair
    mise run test:unit
 
 For the full non-AI test suite:

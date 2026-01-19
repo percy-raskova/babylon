@@ -14,15 +14,13 @@ Build Commands
 
    * - Command
      - Description
-   * - ``mise run docs``
+   * - ``mise run docs:build``
      - Build HTML documentation to ``docs/_build/html/``
-   * - ``mise run docs-live``
+   * - ``mise run docs:live``
      - Live-reload server at ``http://localhost:8000``
-   * - ``mise run docs-pdf``
-     - Build both PDF books via XeLaTeX
-   * - ``mise run docs-pdf-single <name>``
-     - Build single PDF (``babylon-docs`` or ``babylon-commentary``)
-   * - ``mise run doctest``
+   * - ``mise run docs:pdf``
+     - Build PDF documentation via XeLaTeX
+   * - ``mise run test:doctest``
      - Run doctest examples in Python code
    * - ``mise run clean``
      - Remove build artifacts including ``docs/_build/``

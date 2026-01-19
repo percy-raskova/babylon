@@ -29,8 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Parameter Analysis Tools
 
-- Added `mise run analyze-trace` for single simulation time-series CSV output
-- Added `mise run analyze-sweep` for parameter sweep analysis
+- Added `mise run sim:trace` for single simulation time-series CSV output
+- Added `mise run sim:sweep` for parameter sweep analysis
 - Created parameter_analysis.py tool for sensitivity analysis
 
 #### Configuration

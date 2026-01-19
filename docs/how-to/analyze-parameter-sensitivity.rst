@@ -32,7 +32,7 @@ Capture complete state evolution for detailed analysis:
 
 .. code-block:: bash
 
-   mise run analyze-trace
+   mise run sim:trace
 
 This creates ``results/trace.csv`` with columns:
 
@@ -88,7 +88,7 @@ Explore how outcomes change across a parameter range:
 
 .. code-block:: bash
 
-   mise run analyze-sweep
+   mise run sim:sweep
 
 Default sweep varies ``economy.extraction_efficiency`` from 0.05 to 0.50
 in steps of 0.05. Output goes to ``results/sweep.csv``.

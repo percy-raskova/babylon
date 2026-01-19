@@ -324,14 +324,14 @@ operations. While optional, it provides convenient shortcuts.
 
 .. code-block:: bash
 
-   mise run test        # Run all non-AI tests
-   mise run test-fast   # Run fast math/engine tests
+   mise run test:all    # Run all non-AI tests
+   mise run test:unit   # Run fast unit tests
    mise run lint        # Run Ruff linter
    mise run typecheck   # Run MyPy
    mise run ci          # Run all CI checks locally
-   mise run docs-live   # Start live documentation server
-   mise run security    # Run security audit on dependencies
-   mise run coverage    # Run tests with coverage report
+   mise run docs:live   # Start live documentation server
+   mise run qa:security # Run security audit on dependencies
+   mise run test:cov    # Run tests with coverage report
 
 Verifying Your Setup
 --------------------

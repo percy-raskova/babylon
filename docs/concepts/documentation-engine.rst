@@ -121,18 +121,14 @@ Build Commands
 
 .. code-block:: bash
 
-   # Full PDF build (both books)
-   mise run docs-pdf
-
-   # Build single PDF
-   mise run docs-pdf-single babylon-docs
-   mise run docs-pdf-single babylon-commentary
+   # PDF build
+   mise run docs:pdf
 
    # HTML build
-   mise run docs
+   mise run docs:build
 
    # Live-reload development server
-   mise run docs-live
+   mise run docs:live
 
 Necropolis Codex Theme
 ----------------------
@@ -319,7 +315,7 @@ Adding New Documents
 
 1. Create ``.rst`` or ``.md`` file in appropriate Diataxis quadrant
 2. Add to parent ``index.rst`` toctree
-3. Build and verify: ``mise run docs-live``
+3. Build and verify: ``mise run docs:live``
 
 Updating PDF Theme
 ~~~~~~~~~~~~~~~~~~
@@ -337,7 +333,7 @@ Testing Documentation
 .. code-block:: bash
 
    # Run doctest examples in code
-   mise run doctest
+   mise run test:doctest
 
    # Check documentation coverage
    poetry run sphinx-build -b coverage docs docs/_build/coverage

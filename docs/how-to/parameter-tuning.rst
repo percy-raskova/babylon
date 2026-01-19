@@ -102,7 +102,7 @@ Run a simulation and export time-series data:
 
 .. code-block:: bash
 
-   mise run analyze-trace
+   mise run sim:trace
 
 This produces ``results/trace.csv`` with per-tick metrics:
 
@@ -122,7 +122,7 @@ Test multiple parameter values systematically:
 
 .. code-block:: bash
 
-   mise run analyze-sweep
+   mise run sim:sweep
 
 This produces ``results/sweep.csv`` with summary metrics:
 

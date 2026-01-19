@@ -17,14 +17,19 @@ transform the world state. This design choice enables:
 .. mermaid::
 
    flowchart TB
-       A["WorldState (tick N)"] --> B["1. ImperialRentSystem<br/>Extract tribute"]
-       B --> C["2. SolidaritySystem<br/>Transmit consciousness"]
-       C --> D["3. ConsciousnessSystem<br/>Drift ideology"]
-       D --> E["4. SurvivalSystem<br/>Calculate probabilities"]
-       E --> F["5. StruggleSystem<br/>Agency responses"]
-       F --> G["6. ContradictionSystem<br/>Accumulate tension"]
-       G --> H["7. TerritorySystem<br/>Process heat/eviction"]
-       H --> I["WorldState (tick N+1)"]
+       A["WorldState (tick N)"] --> B["1. VitalitySystem<br/>Drain + attrition"]
+       B --> C["2. TerritorySystem<br/>Heat/eviction"]
+       C --> D["3. ProductionSystem<br/>Value creation"]
+       D --> E["4. SolidaritySystem<br/>Transmit consciousness"]
+       E --> F["5. ImperialRentSystem<br/>Extract tribute"]
+       F --> G["6. DecompositionSystem<br/>LA crisis"]
+       G --> H["7. ControlRatioSystem<br/>Guard ratio"]
+       H --> I["8. MetabolismSystem<br/>Ecology"]
+       I --> J["9. SurvivalSystem<br/>P(S|A), P(S|R)"]
+       J --> K["10. StruggleSystem<br/>Agency"]
+       K --> L["11. ConsciousnessSystem<br/>Bifurcation"]
+       L --> M["12. ContradictionSystem<br/>Tension"]
+       M --> N["WorldState (tick N+1)"]
 
 The System Protocol
 -------------------
@@ -55,85 +60,78 @@ All systems implement a common protocol that enforces separation of concerns:
 System Execution Order
 ----------------------
 
-The order of systems is not arbitrary—it reflects causal dependencies in the
-simulation's theoretical model:
+The order of systems is not arbitrary—it reflects **materialist causality**:
+physical reality (life, space, production) determines social responses
+(consciousness, struggle), not vice versa.
 
-**1. ImperialRentSystem** (Economic base)
-   Material conditions must be established first. Wealth flows via
-   EXPLOITATION edges determine everything that follows.
+The twelve systems execute in three phases:
 
-**2. SolidaritySystem** (Communication infrastructure)
-   Consciousness can only spread where organizational infrastructure
-   exists. This must happen before ideology drift.
+**Phase 1: Material Base** (Systems 1-8)
+   Physical existence precedes consciousness. These systems model the
+   objective conditions that constrain all social action.
 
-**3. ConsciousnessSystem** (Superstructure response)
-   Ideology changes in response to material conditions and solidarity.
-   The George Jackson bifurcation determines revolution vs fascism.
+**Phase 2: Superstructure** (Systems 9-12)
+   Agents respond to material conditions through survival calculations,
+   struggle, ideological drift, and contradiction accumulation.
 
-**4. SurvivalSystem** (Agent calculus)
-   With economic and ideological state updated, agents can calculate
-   their survival probabilities under acquiescence vs revolution.
+**Phase 3: Why Order Matters**
+   Material base must update before superstructure can respond. Running
+   systems out of order produces incoherent state (e.g., consciousness
+   spreading based on stale wealth data).
 
-**5. ContradictionSystem** (Tension accumulation)
-   Contradictions between classes accumulate based on the above factors,
-   potentially triggering rupture events.
-
-**6. TerritorySystem** (Spatial dynamics)
-   State attention (heat) responds to activity, triggering eviction and
-   displacement. This is the carceral geography layer.
-
-**7. StruggleSystem** (Agency responses)
-   Finally, agents respond to state actions. EXCESSIVE_FORCE can trigger
-   UPRISING when organization is sufficient.
-
-Why This Order Matters
-~~~~~~~~~~~~~~~~~~~~~~
-
-Consider what happens if we ran systems in wrong order:
-
-- **SolidaritySystem before ImperialRentSystem**: Consciousness would spread
-  based on stale wealth data from the previous tick.
-- **ConsciousnessSystem before SolidaritySystem**: Bifurcation would check
-  for solidarity edges that haven't been updated yet.
-- **StruggleSystem before TerritorySystem**: Agents would respond to
-  repression that hasn't been applied yet.
-
-The system order encodes the Marxist base-superstructure relationship:
-material conditions (base) determine consciousness (superstructure), which
-then shapes political action.
-
-The Seven Systems
------------------
+The Twelve Systems
+------------------
 
 Each system models a specific aspect of class dynamics:
 
-**ImperialRentSystem**
-   Extracts wealth via EXPLOITATION edges. Implements the fundamental
-   theorem: W_c > V_c implies imperial rent extraction.
+**1. VitalitySystem** (Material Base)
+   The Drain (subsistence costs), Grinding Attrition (slow vitality decay),
+   and The Reaper (death when vitality reaches zero). Physical existence is
+   the foundation of all else.
 
-**SolidaritySystem**
-   Transmits consciousness along SOLIDARITY edges and decays edge
-   strengths over time (organization requires maintenance).
+**2. TerritorySystem** (Material Base)
+   Heat dynamics (state attention), eviction pipeline, and necropolitics.
+   Space is contested through carceral geography.
 
-**ConsciousnessSystem**
-   Applies the George Jackson bifurcation model. Agitation routes to
-   revolution (with solidarity) or fascism (without solidarity).
+**3. ProductionSystem** (Material Base)
+   Value creation from labor × biocapacity. Production is the interface
+   between human labor and ecological limits.
 
-**SurvivalSystem**
+**4. SolidaritySystem** (Material Base)
+   Transmits consciousness along SOLIDARITY edges. Organization is a
+   material infrastructure that requires maintenance.
+
+**5. ImperialRentSystem** (Material Base)
+   5-phase Imperial Circuit with pool tracking. Implements the fundamental
+   theorem: W_c > V_c implies imperial rent extraction from periphery.
+
+**6. DecompositionSystem** (Crisis Dynamics)
+   Labor aristocracy decomposition during super-wage crisis. Models the
+   breakdown of core working class privilege.
+
+**7. ControlRatioSystem** (Crisis Dynamics)
+   Guard-to-prisoner ratio monitoring. When ratio exceeds threshold,
+   bourgeoisie makes terminal decision (massacre vs collapse).
+
+**8. MetabolismSystem** (Material Base)
+   Biocapacity depletion and ecological overshoot. Ecological limits
+   constrain capital accumulation.
+
+**9. SurvivalSystem** (Superstructure)
    Calculates P(S|A) and P(S|R) for each class. When P(S|R) > P(S|A),
    revolution becomes the rational survival strategy.
 
-**ContradictionSystem**
+**10. StruggleSystem** (Superstructure)
+   George Floyd Dynamic: agency responses to state action. EXCESSIVE_FORCE
+   against organized classes can trigger UPRISING events.
+
+**11. ConsciousnessSystem** (Superstructure)
+   Ideological drift and George Jackson bifurcation. Agitation routes to
+   revolution (with solidarity) or fascism (without solidarity).
+
+**12. ContradictionSystem** (Superstructure)
    Accumulates tension from class contradictions. When tension exceeds
    threshold, flags potential rupture events.
-
-**TerritorySystem**
-   Manages territorial heat (state attention), eviction, displacement,
-   and the detention-to-incarceration pipeline.
-
-**StruggleSystem**
-   Handles agency responses to state action. EXCESSIVE_FORCE against
-   organized classes can trigger UPRISING events.
 
 See Also
 --------

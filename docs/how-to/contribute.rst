@@ -76,7 +76,7 @@ Make Your Changes
       poetry run pytest -m "not ai" --tb=short
 
       # Or use mise
-      mise run test
+      mise run test:all
 
 Commit Your Changes
 -------------------

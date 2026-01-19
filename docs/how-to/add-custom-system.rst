@@ -56,34 +56,52 @@ There is no runtime registration—the system list is immutable after creation.
 
 .. code-block:: python
 
-   from babylon.engine.simulation_engine import SimulationEngine
-   from babylon.engine.systems import (
-       ImperialRentSystem,
-       SolidaritySystem,
-       ConsciousnessSystem,
-       SurvivalSystem,
-       StruggleSystem,
-       ContradictionSystem,
-       TerritorySystem,
-   )
+   from babylon.engine.simulation_engine import SimulationEngine, _DEFAULT_SYSTEMS
+   from babylon.engine.systems import PropagandaSystem
 
-   # Create custom system list with your system inserted
-   custom_systems = [
-       ImperialRentSystem(),
-       SolidaritySystem(),
-       ConsciousnessSystem(),
-       SurvivalSystem(),
-       PropagandaSystem(effectiveness=0.05),  # Custom system
-       StruggleSystem(),
-       ContradictionSystem(),
-       TerritorySystem(),
-   ]
+   # Option 1: Start with the default system list
+   # (recommended - see simulation_engine.py for canonical order)
+   custom_systems = list(_DEFAULT_SYSTEMS)
+   # Insert your system at the appropriate position
+   custom_systems.insert(9, PropagandaSystem(effectiveness=0.05))  # Before SurvivalSystem
+
+   # Option 2: Build from scratch (not recommended unless you know what you're doing)
+   # from babylon.engine.systems import (
+   #     VitalitySystem,
+   #     TerritorySystem,
+   #     ProductionSystem,
+   #     SolidaritySystem,
+   #     ImperialRentSystem,
+   #     DecompositionSystem,
+   #     ControlRatioSystem,
+   #     MetabolismSystem,
+   #     SurvivalSystem,
+   #     StruggleSystem,
+   #     ConsciousnessSystem,
+   #     ContradictionSystem,
+   # )
+   # custom_systems = [
+   #     VitalitySystem(),
+   #     TerritorySystem(),
+   #     ProductionSystem(),
+   #     SolidaritySystem(),
+   #     ImperialRentSystem(),
+   #     DecompositionSystem(),
+   #     ControlRatioSystem(),
+   #     MetabolismSystem(),
+   #     PropagandaSystem(effectiveness=0.05),  # Custom system
+   #     SurvivalSystem(),
+   #     StruggleSystem(),
+   #     ConsciousnessSystem(),
+   #     ContradictionSystem(),
+   # ]
 
    # Pass systems at construction
    engine = SimulationEngine(systems=custom_systems)
 
-**Order matters!** Economic systems must run before ideology systems.
-The default order encodes historical materialist causality.
+**Order matters!** The system execution order encodes materialist causality:
+economic base (production, extraction) → superstructure (consciousness, ideology).
+See ``_DEFAULT_SYSTEMS`` in ``simulation_engine.py`` for the canonical ordering.
 
 Use the Formula Registry
 ------------------------

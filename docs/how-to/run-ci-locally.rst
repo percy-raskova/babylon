@@ -38,8 +38,8 @@ Run individual CI checks directly:
    # All non-AI tests
    poetry run pytest -m "not ai" --tb=short
 
-   # Fast math/engine tests only
-   mise run test-fast
+   # Fast unit tests only
+   mise run test:unit
 
 **Check documentation:**
 
@@ -49,7 +49,7 @@ Run individual CI checks directly:
    cd docs && poetry run sphinx-build -b html . _build/html
 
    # Strict mode (warnings as errors)
-   mise run docs-strict
+   mise run docs:strict
 
 **Check formatting:**
 
@@ -71,20 +71,20 @@ Mise provides convenient task shortcuts:
    # List all available tasks
    mise tasks
 
-   # Quick CI (lint + format + typecheck + fast tests)
+   # Quick CI (lint + format + typecheck + unit tests)
    mise run ci
 
    # Full test suite
-   mise run test
+   mise run test:all
 
    # Type checking only
    mise run typecheck
 
    # Documentation build
-   mise run docs
+   mise run docs:build
 
    # Live documentation server (auto-reload)
-   mise run docs-live
+   mise run docs:live
 
 Full CI Simulation with gh act
 ------------------------------

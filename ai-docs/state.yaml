@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.5"
-  updated: "2026-01-01"
-  last_sprint: "Scenario Layer - Carceral Equilibrium Test (ADR034)"
+  version: "2.0.6"
+  updated: "2026-01-06"
+  last_sprint: "Agency Layer - Fractal Bureaucracy"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -197,10 +197,12 @@ epoch_status:
         "2.5": { name: "The Wire", sub_epoch: "2C", spec: "ai-docs/gramscian-wire-vision.yaml" }
         "2.6": { name: "Resource Economy", sub_epoch: "2A", spec: "ai-docs/vanguard-economy.yaml" }
         "2.7": { name: "Kinetic Warfare", sub_epoch: "2D", spec: "ai-docs/kinetic-warfare.yaml" }
-        "2.8": { name: "Doctrine System", sub_epoch: "2B", spec: "ai-docs/doctrine-tree.yaml" }
-        "2.9": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml" }
-        "2.10": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai-docs/fog-of-war.yaml" }
-        "2.11": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
+        "2.8": { name: "LODES & Freight", sub_epoch: "2B", spec: "ai-docs/epochs/epoch2/lodes-freight-flows.yaml" }
+        "2.9": { name: "Ideological Cartography", sub_epoch: "2C", spec: "ai-docs/epochs/epoch2/ideological-geography.yaml" }
+        "2.10": { name: "Doctrine System", sub_epoch: "2B", spec: "ai-docs/doctrine-tree.yaml" }
+        "2.11": { name: "The Panopticon", sub_epoch: "2C", spec: "ai-docs/state-attention-economy.yaml" }
+        "2.12": { name: "Epistemic Horizon", sub_epoch: "2C", spec: "ai-docs/fog-of-war.yaml" }
+        "2.13": { name: "Multiple Scenarios", sub_epoch: "DEFERRED", status: "CONCEPTUAL" }
 
     epoch_3:
       name: "The Platform"
@@ -562,6 +564,33 @@ implemented:
           - "JSON baseline generation/comparison"
           - "Formula drift detection"
         baselines: "tests/baselines/"
+
+# =============================================================================
+# AGENCY SPECIFICATION (Internal Factions) - TARGET: EPOCH 3
+# =============================================================================
+# This advanced "Fractal Bureaucracy" logic is scheduled for Epoch 3.
+# Epoch 2 will use a simplified unitary State model.
+
+agencies:
+  SIB:
+    name: "State Intelligence Bureau"
+    doctrine_bias: 0.2  # -1.0 (Algorithm) to +1.0 (Case Officers)
+    cohesion: 0.6       # If low, factions actively sabotage each other
+
+  HSF:
+    name: "Homeland Security Force"
+    doctrine_bias: -0.5 # -1.0 (Professionals) to +1.0 (Praetorians)
+    cohesion: 0.8
+    triggers:
+      - if: "Player_Violence > 50"
+        effect: "doctrine_bias += 0.1" # Push toward Brutality
+
+  OEO:
+    name: "Office of Economic Order"
+    doctrine_bias: -0.8 # -1.0 (Globalist) to +1.0 (Nationalist)
+    triggers:
+      - if: "Imperial_Rent < 200"
+        effect: "doctrine_bias += 0.2" # Panic shift toward Nationalism
 
 # =============================================================================
 # NOT YET IMPLEMENTED
@@ -1649,7 +1678,7 @@ tech_debt:
     scenario_layer:
       status: "NEW (2026-01-01)"
       adr: "ADR034_scenario_layer_test_taxonomy"
-      purpose: "Validate 70-year arc null hypothesis from carceral-equilibrium.md"
+      purpose: "Validate 100-year arc null hypothesis from carceral-equilibrium.yaml"
       directory: "tests/scenarios/"
       files:
         - "test_endgame_flow.py (14 tests) - moved from integration/system/"

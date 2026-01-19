@@ -76,6 +76,7 @@ class DimCounty(NormalizedBase):
     state_id: Mapped[int] = mapped_column(ForeignKey("dim_state.state_id"), nullable=False)
     county_fips: Mapped[str] = mapped_column(String(3), nullable=False)
     county_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    h3_res4: Mapped[str | None] = mapped_column(String(15))
 
     __table_args__ = (
         Index("idx_county_state", "state_id"),

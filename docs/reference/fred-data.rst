@@ -15,8 +15,8 @@ FRED is integrated into Babylon to provide:
 - **Fiscal indicators**: Federal debt and M2 money supply
 - **Imperial bribe data**: PPP-adjusted GDP per capita
 
-All data is stored in ``data/sqlite/research.sqlite`` alongside Census, QCEW,
-Trade, and Productivity data.
+All data is stored in ``data/duckdb/marxist-data-3NF.duckdb`` (the normalized 3NF
+database) alongside Census, QCEW, Trade, and Productivity data.
 
 Setup
 -----
@@ -29,7 +29,7 @@ Setup
 
 3. Load the data::
 
-    mise run data:fred-load
+    mise run data:fred
 
 Series Catalog
 --------------
@@ -100,34 +100,44 @@ Command Line
 .. code-block:: bash
 
     # Load all FRED data for 2022 (default)
-    mise run data:fred-load
-
-    # Reset and reload
-    mise run data:fred-reset
-
-    # National series only (faster)
-    mise run data:fred-national
+    mise run data:fred
 
 Python API
 ^^^^^^^^^^
 
 .. code-block:: python
 
-    from babylon.data.fred import load_fred_data, FredNational, FredSeries
-    from babylon.data.census import get_census_db
+    from babylon.data.fred.loader_3nf import FredLoader
+    from babylon.data.loader_base import LoaderConfig
+    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.normalize.schema import (
+        FactFredNational,
+        DimFredSeries,
+        DimTime,
+    )
 
-    # Load data
-    stats = load_fred_data(year=2022, reset=True)
-    print(f"Loaded {stats.national_records} national records")
+    # Load FRED data for 1990-2024
+    config = LoaderConfig(fred_start_year=1990, fred_end_year=2024)
+    loader = FredLoader(config)
+
+    session_factory = get_normalized_session_factory()
+    with session_factory() as session:
+        stats = loader.load(session, reset=True)
+        print(f"Loaded {stats.facts_loaded['fact_fred_national']} national records")
 
     # Query CPI data
-    db = next(get_census_db())
-    cpi = db.query(FredNational).join(FredSeries).filter(
-        FredSeries.series_id == "CPIAUCSL"
-    ).all()
+    with session_factory() as session:
+        cpi = (
+            session.query(FactFredNational, DimTime)
+            .join(DimFredSeries, FactFredNational.series_id == DimFredSeries.series_id)
+            .join(DimTime, FactFredNational.time_id == DimTime.time_id)
+            .filter(DimFredSeries.series_code == "CPIAUCSL")
+            .order_by(DimTime.year, DimTime.month)
+            .all()
+        )
 
-    for obs in cpi:
-        print(f"{obs.date}: {obs.value}")
+        for fact, time in cpi:
+            print(f"{time.year}-{time.month:02d}: {fact.value}")
 
 SQL Queries
 ^^^^^^^^^^^

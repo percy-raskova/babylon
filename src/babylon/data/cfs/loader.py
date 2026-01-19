@@ -90,7 +90,13 @@ class CFSLoader(ApiLoaderBase):
         """
         stats = LoadStats(source="cfs")
         # CFS uses most recent year from census_years (surveys are periodic: 2012, 2017, 2022)
-        year = self.config.census_years[-1] if self.config.census_years else 2022
+        # Force 2022 as latest available year to prevent 404s on 2023+
+        year = 2022
+        if self.config.census_years:
+            # Try to find a valid survey year in config, otherwise stick to 2022
+            valid_years = [y for y in self.config.census_years if y in {2012, 2017, 2022}]
+            if valid_years:
+                year = max(valid_years)
 
         if verbose:
             print(f"Loading Census CFS data for year {year}")

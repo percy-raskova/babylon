@@ -12,7 +12,8 @@ Directory Structure
 
     data/
     ├── census/              # Census ACS data (auto-downloaded via API)
-    ├── duckdb/              # DuckDB database files (generated)
+    ├── duckdb/              # DuckDB database files (PRIMARY - normalized 3NF)
+    │   └── marxist-data-3NF.duckdb  # Main analytical database
     ├── dot/                 # DOT HPMS road segment data (MANUAL DOWNLOAD)
     ├── employment_industry/ # BLS employment data (auto-downloaded)
     ├── energy/              # EIA energy data (auto-downloaded via API)
@@ -23,7 +24,7 @@ Directory Structure
     ├── productivity/        # BLS productivity data
     ├── qcew/                # BLS QCEW historical files (MANUAL DOWNLOAD for pre-2021)
     ├── raw_mats/            # USGS materials data
-    └── sqlite/              # SQLite database files
+    └── sqlite/              # LEGACY SQLite files (migration source)
 
 Manual Download Instructions
 ----------------------------
@@ -158,11 +159,8 @@ This populates ``data/fcc/downloads/`` with the required CSV files.
 Verifying Data Files
 --------------------
 
-Run the preflight check to verify all required files are present:
-
-.. code-block:: bash
-
-    mise run data:ingest --dry-run
+You can verify data files are present by checking the data directories or
+running individual loaders.
 
 Or check specific loaders:
 
@@ -171,11 +169,11 @@ Or check specific loaders:
     from babylon.data.preflight import run_preflight_checks
     from pathlib import Path
 
-    checks = run_preflight_checks(Path('data'), loaders=['qcew', 'dot', 'lodes'])
-    for name, status, msg, hint, path in checks:
-        print(f'{status.upper():6} {name}: {msg}')
-        if hint:
-            print(f'       Hint: {hint}')
+    result = run_preflight_checks(Path('data'), loaders=['qcew', 'dot', 'lodes'])
+    for check in result.checks:
+        print(f'{check.status.upper():6} {check.check_id}: {check.message}')
+        if check.hint:
+            print(f'       Hint: {check.hint}')
 
 Environment Variables
 ---------------------
@@ -247,7 +245,7 @@ The loader couldn't find expected files. Check:
 
 The geographic identifier couldn't be matched. Ensure:
 
-1. Census loader has run first (``mise run data:ingest census``)
+1. Census loader has run first (``mise run data:census``)
 2. Geographic data covers the required years
 3. FIPS codes in source files are valid
 

@@ -23,6 +23,7 @@ logs/
 *.db
 data/babylon.db
 data/*.db
+data/
 
 # ChromaDB local storage
 chromadb/
@@ -36,7 +37,10 @@ chromadb/
 
 #pycache
 *__pycache__*
-
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
 
 
 .coverage

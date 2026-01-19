@@ -672,18 +672,21 @@ See Also
 Technical Reference
 ===================
 
-The census data is stored in ``data/sqlite/census.sqlite`` and can be queried
-directly:
+The census data is stored in ``data/duckdb/marxist-data-3NF.duckdb`` in the
+normalized 3NF schema. Query using DuckDB CLI or Python:
 
 .. code-block:: bash
 
-   # Open SQLite CLI
-   mise run data:census-query
+   # Open DuckDB CLI
+   duckdb data/duckdb/marxist-data-3NF.duckdb
 
-   # Example: Top 10 metros by median income
-   SELECT m.name, mi.estimate
-   FROM census_metro_areas m
-   JOIN census_median_income mi ON m.id = mi.metro_id
-   ORDER BY mi.estimate DESC LIMIT 10;
+.. code-block:: sql
+
+   # Example: Top 10 counties by median income
+   SELECT c.county_name, s.state_abbrev, f.median_income_usd
+   FROM fact_census_median_income f
+   JOIN dim_county c ON f.county_id = c.county_id
+   JOIN dim_state s ON c.state_id = s.state_id
+   ORDER BY f.median_income_usd DESC LIMIT 10;
 
 See ``src/babylon/data/census/`` for the Python ingestion module.

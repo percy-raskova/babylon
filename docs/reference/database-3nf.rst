@@ -4,7 +4,7 @@
 3NF Normalized Database Reference
 =================================
 
-This document describes the schema and contents of ``marxist-data-3NF.sqlite``,
+This document describes the schema and contents of ``marxist-data-3NF.duckdb``,
 the normalized data warehouse supporting the Babylon simulation engine.
 
 Overview
@@ -12,9 +12,9 @@ Overview
 
 The database implements a **Third Normal Form (3NF)** star schema design with:
 
-- **28 dimension tables** (``dim_*``) - Reference data with surrogate keys
-- **21 fact tables** (``fact_*``) - Measurements linking to dimensions
-- **1 bridge table** (``bridge_*``) - Many-to-many relationship
+- **33 dimension tables** (``dim_*``) - Reference data with surrogate keys
+- **34 fact tables** (``fact_*``) - Measurements linking to dimensions
+- **3 bridge tables** (``bridge_*``) - Many-to-many relationships
 
 Coverage
 --------
@@ -26,7 +26,7 @@ Temporal Range      1949-2025
 Geographic Scope    3,222 US counties, 52 states, 392 metros
 Countries           263 countries with world-system tier
 Industries          2,283 NAICS codes
-Fact Records        2.8M+ QCEW records, 107K+ trade records
+Fact Records        Millions of QCEW records, 100K+ trade records
 ==================  ==========================================
 
 Data Sources
@@ -834,4 +834,4 @@ See Also
 - :ref:`census-analysis` - Census data analysis guide
 - :ref:`fred-data` - FRED data loader documentation
 - :ref:`class-dynamics` - Class dynamics ODE system
-- :doc:`/how-to/data-ingestion` - Data loading workflows
+- :doc:`/how-to/load-db` - Data loading workflows

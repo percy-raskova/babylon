@@ -16,8 +16,8 @@ QCEW is integrated into Babylon to provide:
 - **Location quotients**: Industry concentration metrics for comparative analysis
 - **Class composition**: NAICS industry mapping to Marxian class categories
 
-All data is stored in ``data/sqlite/marxist-data-3NF.sqlite`` using a normalized
-star schema.
+All data is stored in ``data/duckdb/marxist-data-3NF.duckdb`` using a normalized
+star schema with DuckDB's columnar storage for analytical query performance.
 
 Setup
 -----

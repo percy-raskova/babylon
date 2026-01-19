@@ -56,8 +56,13 @@ class Territory(BaseModel):
     # Required fields
     id: str = Field(
         ...,
-        pattern=r"^T[0-9]{3}$",
-        description="Unique identifier matching ^T[0-9]{3}$",
+        pattern=r"^(T[0-9]{3}|[0-9a-f]{15})$",
+        description="Unique identifier (T[0-9]{3} or 15-char H3 hex)",
+    )
+    h3_index: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{15}$",
+        description="H3 hexagonal index (resolution 4)",
     )
     name: str = Field(
         ...,

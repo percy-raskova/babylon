@@ -54,6 +54,8 @@ salib = "^1.5.2"
 openpyxl = "^3.1.5"
 hypothesis = "^6.149.0"
 h3 = "^4.0.0b1"
+duckdb = ">=1.0.0"
+duckdb-engine = ">=0.17.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
@@ -85,6 +87,7 @@ scipy = ">=1.11.0"
 SALib = ">=1.4.7"
 types-docutils = "^0.22.3.20251115"
 types-tqdm = "^4.67.0.20250809"
+vulture = "^2.14"
 
 [tool.poetry.group.docs.dependencies]
 sphinx = ">=7,<9"
@@ -196,6 +199,17 @@ exclude = [
 plugins = [
     "pydantic.mypy",
 ]
+
+# Packages without type stubs - explicit ignore rather than inline comments
+[[tool.mypy.overrides]]
+module = [
+    "duckdb",
+    "duckdb.*",
+    "alembic.*",
+    "h3",
+    "h3.*",
+]
+ignore_missing_imports = true
 
 [tool.pydantic-mypy]
 init_forbid_extra = true

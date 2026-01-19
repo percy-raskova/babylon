@@ -13,6 +13,7 @@ docs/_build/
 reports/
 
 # Project root files (various formatting conventions)
+AGENTS.md
 CHANGELOG.md
 CLAUDE.md
 CONTRIBUTORS.md

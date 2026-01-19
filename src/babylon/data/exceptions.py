@@ -22,7 +22,12 @@ Hierarchy:
     └── CFSAPIError - Census Commodity Flow Survey API
 """
 
+from __future__ import annotations
+
+import logging
+
 from babylon.exceptions import DataAPIError
+from babylon.utils.exceptions import SchemaError
 
 __all__ = [
     "ArcGISAPIError",
@@ -31,7 +36,56 @@ __all__ = [
     "EIAAPIError",
     "FCCAPIError",
     "FredAPIError",
+    "QcewAPIError",
+    "SchemaCheckError",
 ]
+
+
+class SchemaCheckError(SchemaError):
+    """Error during schema validation or migration checks.
+
+    Inherits from SchemaError (which inherits from DatabaseError).
+    Used for detailed schema validation errors with hints for resolution.
+
+    Attributes:
+        message: Primary error message.
+        hint: Optional guidance for resolving the error.
+        details: Additional diagnostic information (includes hint if provided).
+    """
+
+    def __init__(
+        self,
+        message: str,
+        hint: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        self.hint = hint
+        # Merge hint into details for unified access
+        merged_details: dict[str, object] = dict(details) if details else {}
+        if hint is not None:
+            merged_details["hint"] = hint
+        super().__init__(message, error_code="SCH_CHECK", details=merged_details)
+
+    def __str__(self) -> str:
+        if self.hint:
+            return f"{self.message}\nHint: {self.hint}"
+        return self.message
+
+    def log(
+        self,
+        logger: logging.Logger,
+        level: int = 40,  # logging.ERROR
+        exc_info: bool = False,
+    ) -> None:
+        """Log this error with optional exception info.
+
+        Args:
+            logger: Logger instance to use.
+            level: Logging level (default ERROR=40).
+            exc_info: Whether to include exception traceback.
+        """
+        extra = {"hint": self.hint, "details": self.details}
+        logger.log(level, self.message, exc_info=exc_info, extra=extra)
 
 
 class CensusAPIError(DataAPIError):
@@ -68,3 +122,9 @@ class CFSAPIError(DataAPIError):
     """Error from Census Commodity Flow Survey API."""
 
     _service_name: str = "CFS API"
+
+
+class QcewAPIError(DataAPIError):
+    """Error from Bureau of Labor Statistics QCEW API."""
+
+    _service_name: str = "QCEW API"

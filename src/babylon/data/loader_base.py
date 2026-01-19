@@ -2,7 +2,7 @@
 
 Provides a common DataLoader ABC that enforces consistency, parameterization,
 idempotency, and proper structure across all data sources. All loaders write
-directly to the normalized 3NF schema in marxist-data-3NF.sqlite.
+directly to the normalized 3NF schema in marxist-data-3NF.duckdb.
 
 Usage:
     from babylon.data.loader_base import DataLoader, LoadStats
@@ -14,8 +14,11 @@ Usage:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Literal
 
 from sqlalchemy.orm import Session
+
+from babylon.utils.log import redact_params, redact_url
 
 
 @dataclass
@@ -27,7 +30,7 @@ class LoaderConfig:
     changes by adjusting year ranges, geographic filters, or batch sizes.
 
     Temporal Parameters (per data source):
-        census_years: List of ACS 5-year estimate vintages (default: 2009-2023).
+        census_years: List of ACS 5-year estimate vintages (default: 2021).
             Each year represents a 5-year period (e.g., 2022 = 2018-2022 estimates).
         fred_start_year: Start year for FRED time series data.
         fred_end_year: End year for FRED time series data.
@@ -45,6 +48,7 @@ class LoaderConfig:
         batch_size: Rows per bulk insert operation.
         request_delay_seconds: Rate limiting delay between API calls.
         max_retries: Max retry attempts for failed API requests.
+        api_error_policy: How loaders handle API errors ("abort" or "skip_state").
         verbose: Enable progress output during loading.
 
     Example:
@@ -61,9 +65,7 @@ class LoaderConfig:
     """
 
     # Temporal - Census (list of years for multi-year loading)
-    census_years: list[int] = field(
-        default_factory=lambda: list(range(2009, 2024))  # 2009-2023 inclusive (15 years)
-    )
+    census_years: list[int] = field(default_factory=lambda: [2021])
 
     # Temporal - FRED (time series range)
     fred_start_year: int = 1990
@@ -86,6 +88,7 @@ class LoaderConfig:
     batch_size: int = 10_000
     request_delay_seconds: float = 0.5
     max_retries: int = 3
+    api_error_policy: Literal["abort", "skip_state"] = "abort"
     verbose: bool = True
 
 
@@ -109,8 +112,10 @@ class LoadStats:
     dimensions_loaded: dict[str, int] = field(default_factory=dict)
     facts_loaded: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    api_errors: list["ApiErrorDetail"] = field(default_factory=list)
     api_calls: int = 0
     files_processed: int = 0
+    ingest_breakdown: dict[str, int] = field(default_factory=dict)
 
     @property
     def total_dimensions(self) -> int:
@@ -145,7 +150,92 @@ class LoadStats:
             lines.append(f"  Files processed: {self.files_processed}")
         if self.has_errors:
             lines.append(f"  Errors: {len(self.errors)}")
+        if self.api_errors:
+            lines.append(f"  API errors: {len(self.api_errors)}")
+        if self.ingest_breakdown:
+            lines.append(f"  Breakdown keys: {len(self.ingest_breakdown)}")
         return "\n".join(lines)
+
+    def record_ingest(self, key: str, count: int) -> None:
+        """Record a detailed ingest count for a specific key."""
+        if count <= 0:
+            return
+        self.ingest_breakdown[key] = self.ingest_breakdown.get(key, 0) + count
+
+    def record_api_error(
+        self,
+        error: Exception,
+        context: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        """Record a structured API error if available.
+
+        Args:
+            error: Exception to record.
+            context: Stable context identifier (e.g., loader:operation:scope).
+            details: Additional structured context to merge into error details.
+        """
+        status_code = getattr(error, "status_code", None)
+        url = getattr(error, "url", None)
+        message = getattr(error, "message", None) or str(error)
+        error_code = getattr(error, "error_code", None)
+        error_details = getattr(error, "details", None)
+        error_type = error.__class__.__name__
+
+        if status_code is None and url is None and context is None:
+            return
+
+        if isinstance(url, str):
+            url = redact_url(url)
+
+        sanitized_details: dict[str, object] | None = None
+        if isinstance(error_details, dict):
+            sanitized_details = _sanitize_details(error_details)
+
+        if details is not None:
+            extra_details = _sanitize_details(details)
+            if sanitized_details is None:
+                sanitized_details = extra_details
+            else:
+                sanitized_details.update(extra_details)
+
+        self.api_errors.append(
+            ApiErrorDetail(
+                context=context,
+                status_code=status_code,
+                url=url,
+                message=message,
+                error_code=error_code,
+                error_type=error_type,
+                details=sanitized_details,
+            )
+        )
+
+
+def _sanitize_details(details: dict[str, object]) -> dict[str, object]:
+    """Redact sensitive fields from API error details."""
+    sanitized: dict[str, object] = {}
+    for key, value in details.items():
+        if key in {"params", "headers"} and isinstance(value, dict):
+            sanitized[key] = redact_params(value)
+        elif key in {"url", "endpoint"} and isinstance(value, str):
+            sanitized[key] = redact_url(value)
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
+@dataclass(frozen=True)
+class ApiErrorDetail:
+    """Structured record of a single API error."""
+
+    context: str | None
+    status_code: int | None
+    url: str | None
+    message: str
+    error_code: str | None = None
+    error_type: str | None = None
+    details: dict[str, object] | None = None
 
 
 class DataLoader(ABC):
@@ -250,12 +340,25 @@ class DataLoader(ABC):
             session: SQLAlchemy session for the normalized database.
         """
         # Delete facts first (they reference dimensions)
-        for table in self.get_fact_tables():
-            session.query(table).delete()
+        self._delete_tables(session, self.get_fact_tables())
 
         # Then delete dimensions
-        for table in self.get_dimension_tables():
+        self._delete_tables(session, self.get_dimension_tables())
+
+    def _delete_tables(self, session: Session, tables: list[type]) -> None:
+        """Delete all rows from the provided tables in order.
+
+        DuckDB enforces FK constraints per-statement; commits between deletes
+        avoid false constraint violations during ordered cleanup.
+        """
+        if not tables:
+            return
+
+        is_duckdb = session.get_bind().dialect.name == "duckdb"
+        for table in tables:
             session.query(table).delete()
+            if is_duckdb:
+                session.commit()
 
     def _get_or_create_time(
         self,
@@ -409,6 +512,130 @@ class DataLoader(ABC):
 
         counties = session.query(DimCounty).all()
         return {c.fips: c.county_id for c in counties}
+
+    # -------------------------------------------------------------------------
+    # Checkpoint Helpers (for resume capability)
+    # -------------------------------------------------------------------------
+
+    def _is_completed(
+        self,
+        session: Session,
+        source_code: str,
+        year: int,
+        state_fips: str,
+        table_id: str,
+        race_code: str = "T",
+    ) -> bool:
+        """Check if a work unit is already completed.
+
+        Args:
+            session: SQLAlchemy session.
+            source_code: Data source identifier (e.g., "census", "qcew").
+            year: Year of the data.
+            state_fips: 2-digit state FIPS code.
+            table_id: Table identifier (e.g., "B19001").
+            race_code: Race code suffix (default "T" for total).
+
+        Returns:
+            True if this work unit has already been completed.
+        """
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        exists = (
+            session.query(IngestCheckpoint)
+            .filter(
+                IngestCheckpoint.source_code == source_code,
+                IngestCheckpoint.year == year,
+                IngestCheckpoint.state_fips == state_fips,
+                IngestCheckpoint.table_id == table_id,
+                IngestCheckpoint.race_code == race_code,
+            )
+            .first()
+        )
+        return exists is not None
+
+    def _mark_completed(
+        self,
+        session: Session,
+        source_code: str,
+        year: int,
+        state_fips: str,
+        table_id: str,
+        race_code: str = "T",
+        row_count: int = 0,
+    ) -> None:
+        """Mark a work unit as completed.
+
+        Uses query-first pattern for compatibility with DuckDB:
+        - If checkpoint exists, updates row_count
+        - If checkpoint doesn't exist, inserts new record
+
+        Args:
+            session: SQLAlchemy session.
+            source_code: Data source identifier (e.g., "census", "qcew").
+            year: Year of the data.
+            state_fips: 2-digit state FIPS code.
+            table_id: Table identifier (e.g., "B19001").
+            race_code: Race code suffix (default "T" for total).
+            row_count: Number of rows loaded for this work unit.
+        """
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        # Query for existing checkpoint
+        existing = (
+            session.query(IngestCheckpoint)
+            .filter(
+                IngestCheckpoint.source_code == source_code,
+                IngestCheckpoint.year == year,
+                IngestCheckpoint.state_fips == state_fips,
+                IngestCheckpoint.table_id == table_id,
+                IngestCheckpoint.race_code == race_code,
+            )
+            .first()
+        )
+
+        if existing:
+            # Update existing checkpoint
+            existing.row_count = row_count
+        else:
+            # Insert new checkpoint
+            checkpoint = IngestCheckpoint(
+                source_code=source_code,
+                year=year,
+                state_fips=state_fips,
+                table_id=table_id,
+                race_code=race_code,
+                row_count=row_count,
+            )
+            session.add(checkpoint)
+
+    def _clear_checkpoints(
+        self,
+        session: Session,
+        source_code: str,
+        year: int | None = None,
+    ) -> int:
+        """Clear checkpoints for a source (optionally by year).
+
+        Called when reset=True to clear previous checkpoint state before
+        a fresh load.
+
+        Args:
+            session: SQLAlchemy session.
+            source_code: Data source identifier (e.g., "census", "qcew").
+            year: Optional year to filter by. If None, clears all years.
+
+        Returns:
+            Number of checkpoint records deleted.
+        """
+        from babylon.data.normalize.schema import IngestCheckpoint
+
+        query = session.query(IngestCheckpoint).filter(IngestCheckpoint.source_code == source_code)
+        if year is not None:
+            query = query.filter(IngestCheckpoint.year == year)
+
+        count = query.delete()
+        return count
 
 
 __all__ = [

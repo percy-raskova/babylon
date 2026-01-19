@@ -1,34 +1,73 @@
+# Dependabot configuration for Babylon
+# Docs: https://docs.github.com/en/code-security/dependabot
+#
+# Workflow: Dependabot PRs target `dev` branch. After CI passes,
+# minor/patch updates auto-merge. Major updates require manual review.
+# BD squash-merges `dev` to `main` for releases.
+
 version: 2
 updates:
-  # Python dependencies via Poetry
+  # ==========================================================================
+  # Python dependencies (Poetry)
+  # ==========================================================================
   - package-ecosystem: "pip"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
     open-pull-requests-limit: 10
-    labels:
-      - "dependencies"
-      - "security"
+    rebase-strategy: "auto"
+    versioning-strategy: "increase-if-necessary"
     commit-message:
       prefix: "fix(deps)"
+      prefix-development: "chore(deps-dev)"
+    labels:
+      - "dependencies"
+      - "python"
     groups:
-      # Group minor/patch updates to reduce PR noise
-      python-minor:
+      # Group all minor/patch updates into a single PR (reduces noise)
+      python-minor-patch:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
+      # Security updates get their own group (higher priority)
+      python-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    # Major updates stay as individual PRs for careful review.
+    # Ignore specific packages that cause issues or need manual handling.
+    # Example: ignore major numpy updates (uncomment if needed)
+    # ignore:
+    #   - dependency-name: "numpy"
+    #     update-types: ["version-update:semver-major"]
 
+  # ==========================================================================
   # GitHub Actions
+  # ==========================================================================
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "dev"
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "09:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "ci(deps)"
     labels:
       - "dependencies"
       - "ci"
-    commit-message:
-      prefix: "ci(deps)"
+    groups:
+      # Group all GitHub Actions updates together
+      github-actions-all:
+        patterns:
+          - "*"

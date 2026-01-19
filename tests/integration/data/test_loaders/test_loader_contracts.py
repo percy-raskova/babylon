@@ -76,14 +76,17 @@ class TestGetDimensionTables:
             assert hasattr(table, "__table__"), f"{table} has no __table__"
 
     @pytest.mark.parametrize("loader_class", ALL_LOADERS)
-    def test_tables_have_valid_prefix(self, loader_class: type[DataLoader]) -> None:
-        """Dimension/bridge tables should have 'dim_' or 'bridge_' prefix."""
+    def test_tables_have_dim_prefix(self, loader_class: type[DataLoader]) -> None:
+        """Dimension tables should have appropriate naming prefixes.
+
+        Accepts both 'dim_' (dimension tables) and 'bridge_' (bridge/junction tables)
+        as bridge tables are many-to-many relationships between dimensions.
+        """
         loader = loader_class()
         tables = loader.get_dimension_tables()
 
         for table in tables:
-            valid_prefix = table.__tablename__.startswith(("dim_", "bridge_"))
-            assert valid_prefix, (
+            assert table.__tablename__.startswith(("dim_", "bridge_")), (
                 f"{table.__name__} should have 'dim_' or 'bridge_' prefix, "
                 f"got {table.__tablename__}"
             )

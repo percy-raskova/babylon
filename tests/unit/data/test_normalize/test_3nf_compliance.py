@@ -15,9 +15,7 @@ These tests verify that the normalized 3NF schema meets formal requirements:
 4. No transitive dependencies (3NF core requirement)
 5. Full functional dependency on PK (2NF prerequisite)
 
-Additionally tests SQLite-specific quirks:
-- PRAGMA foreign_keys=ON enforcement
-- No NULLs in PK columns (SQLite allows this unless NOT NULL declared)
+DuckDB enforces foreign keys by default, unlike SQLite which requires PRAGMA.
 """
 
 from __future__ import annotations
@@ -25,7 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
 from babylon.data.normalize.database import NormalizedBase
@@ -158,16 +156,11 @@ FACT_TABLES = [
 
 @pytest.fixture(scope="module")
 def engine() -> Engine:
-    """Create in-memory SQLite database with FK enforcement."""
-    engine = create_engine("sqlite:///:memory:", echo=False)
+    """Create in-memory DuckDB database.
 
-    # Enable foreign key enforcement for SQLite (OFF by default!)
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
+    DuckDB enforces foreign keys by default, no PRAGMA needed.
+    """
+    engine = create_engine("duckdb:///:memory:", echo=False)
     NormalizedBase.metadata.create_all(engine)
     return engine
 
@@ -182,15 +175,8 @@ def session(engine: Engine) -> Session:
     session.close()
 
 
-class TestSQLitePragmaEnforcement:
-    """Tests for SQLite-specific FK enforcement."""
-
-    def test_foreign_keys_pragma_is_on(self, engine: Engine) -> None:
-        """PRAGMA foreign_keys should be ON for all connections."""
-        with engine.connect() as conn:
-            result = conn.execute(text("PRAGMA foreign_keys"))
-            value = result.scalar()
-            assert value == 1, "PRAGMA foreign_keys should be ON (1), got OFF (0)"
+class TestForeignKeyEnforcement:
+    """Tests for DuckDB FK enforcement (enabled by default)."""
 
     def test_fk_violation_raises_error(self, session: Session) -> None:
         """Inserting orphan FK should raise IntegrityError."""
@@ -460,7 +446,37 @@ class TestSchemaIntegrity:
                     )
 
     def test_dimension_tables_have_unique_constraints(self, engine: Engine) -> None:
-        """Dimension tables should have unique constraints on natural keys."""
+        """Dimension tables should have unique constraints on natural keys.
+
+        Note: DuckDB's SQLAlchemy driver doesn't support constraint/index reflection,
+        so we verify the schema definition in SQLAlchemy ORM instead of inspecting DB.
+        """
+        dialect = engine.dialect.name
+
+        if dialect == "duckdb":
+            # DuckDB doesn't support constraint reflection, verify via ORM definition
+            # The schema defines these with unique=True in mapped_column()
+            from babylon.data.normalize.schema import (
+                DimCountry,
+                DimCounty,
+                DimIndustry,
+                DimState,
+            )
+
+            schema_checks = [
+                (DimState, "state_fips"),
+                (DimCounty, "fips"),
+                (DimCountry, "cty_code"),
+                (DimIndustry, "naics_code"),
+            ]
+            for model, col_name in schema_checks:
+                col = model.__table__.columns[col_name]
+                assert col.unique or col.primary_key, (
+                    f"{model.__tablename__}.{col_name} should have unique=True in schema"
+                )
+            return
+
+        # SQLite path: use inspector for constraint reflection
         inspector = inspect(engine)
 
         # Key dimension tables that MUST have unique constraints

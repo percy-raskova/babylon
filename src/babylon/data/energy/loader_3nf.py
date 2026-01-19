@@ -26,12 +26,10 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import delete
 
-from babylon.data.energy.api_client import (
-    PRIORITY_MSN_CODES,
-    EnergyAPIClient,
-)
+from babylon.data.api_loader_base import ApiLoaderBase
+from babylon.data.energy.api_client import PRIORITY_MSN_CODES, EnergyAPIClient
 from babylon.data.exceptions import EIAAPIError
-from babylon.data.loader_base import DataLoader, LoadStats
+from babylon.data.loader_base import LoadStats
 from babylon.data.normalize.schema import (
     DimDataSource,
     DimEnergySeries,
@@ -46,7 +44,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class EnergyLoader(DataLoader):
+class EnergyLoader(ApiLoaderBase):
     """Loader for EIA energy data into 3NF schema.
 
     Fetches annual energy data from EIA API v2 and loads it into the
@@ -69,6 +67,10 @@ class EnergyLoader(DataLoader):
         """Return fact table models this loader populates."""
         return [FactEnergyAnnual]
 
+    def _make_client(self) -> EnergyAPIClient:
+        """Create an EIA API client."""
+        return EnergyAPIClient()
+
     def load(
         self,
         session: Session,
@@ -90,6 +92,8 @@ class EnergyLoader(DataLoader):
 
         if reset:
             self._clear_energy_tables(session, verbose)
+            self._clear_checkpoints(session, "energy")
+            session.flush()
 
         # Load data source dimension
         self._load_data_source(session, verbose)
@@ -100,7 +104,7 @@ class EnergyLoader(DataLoader):
 
         # Fetch and load series + observations from API
         try:
-            with EnergyAPIClient() as client:
+            with self._client_scope(self._make_client()) as client:
                 self._load_series_and_facts(
                     session,
                     client,
@@ -262,6 +266,12 @@ class EnergyLoader(DataLoader):
             logger.info(f"Fetching energy data from EIA API ({start_year}-{end_year})...")
 
         for msn, config in PRIORITY_MSN_CODES.items():
+            # Check if this series already completed (enables resume)
+            if self._is_completed(session, "energy", 0, msn, "series", "T"):
+                if verbose:
+                    logger.debug(f"Skipping completed series: {msn}")
+                continue
+
             table_code = config["table_code"]
             table_id = table_lookup.get(table_code)
 
@@ -291,6 +301,7 @@ class EnergyLoader(DataLoader):
                 series_count += 1
 
                 # Load observations as facts
+                series_obs_count = 0
                 for obs in series_data.observations:
                     if obs.value is None:
                         continue
@@ -313,11 +324,17 @@ class EnergyLoader(DataLoader):
                     )
                     session.add(fact)
                     obs_count += 1
+                    series_obs_count += 1
+
+                # Mark series as completed after successful processing
+                self._mark_completed(session, "energy", 0, msn, "series", "T", series_obs_count)
+                session.flush()
 
                 if verbose and series_count % 5 == 0:
                     logger.info(f"  Loaded {series_count} series, {obs_count} observations...")
 
             except EIAAPIError as e:
+                stats.record_api_error(e, context=f"eia:{msn}")
                 stats.errors.append(f"Failed to fetch {msn}: {e.message}")
                 logger.warning(f"API error for {msn}: {e.message}")
                 continue
@@ -326,6 +343,8 @@ class EnergyLoader(DataLoader):
 
         stats.dimensions_loaded["energy_series"] = series_count
         stats.facts_loaded["energy_annual"] = obs_count
+        stats.record_ingest("energy:energy_series", series_count)
+        stats.record_ingest("energy:energy_annual", obs_count)
 
         if verbose:
             logger.info(f"  Loaded {series_count} series with {obs_count} observations")

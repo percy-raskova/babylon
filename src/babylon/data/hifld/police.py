@@ -1,7 +1,7 @@
-"""HIFLD Local Law Enforcement Locations loader.
+"""HIFLD Local Law Enforcement Locations loader with streaming checkpoint support.
 
 Loads police station data from HIFLD ArcGIS Feature Service and aggregates
-to county-level facility counts.
+to county-level facility counts with page-level checkpoints for resume.
 
 The loader categorizes facilities by type (local police, sheriff, campus
 police, etc.) and aggregates counts to the county level.
@@ -12,16 +12,17 @@ Source: https://hifld-geoplatform.opendata.arcgis.com/datasets/local-law-enforce
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from tqdm import tqdm
+from sqlalchemy import func
 
-from babylon.data.external.arcgis import ArcGISClient
-from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
+from babylon.config.defines import GameDefines
+from babylon.data.arcgis_loader_base import ArcGISStreamingLoader
+from babylon.data.loader_base import LoaderConfig
 from babylon.data.normalize.schema import (
     DimCoerciveType,
     FactCoerciveInfrastructure,
+    StagingArcGISFeature,
 )
 from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
@@ -30,11 +31,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# HIFLD Local Law Enforcement Feature Service
-POLICE_SERVICE_URL = (
-    "https://services1.arcgis.com/Hp6G80Pky0om7QvQ/arcgis/rest/services/"
-    "Local_Law_Enforcement_Locations/FeatureServer/0"
-)
+
+def _get_police_service_url(defines: GameDefines | None = None) -> str:
+    """Get Law Enforcement Locations FeatureServer URL from configuration.
+
+    Args:
+        defines: Optional GameDefines instance. Uses default if not provided.
+
+    Returns:
+        Complete FeatureServer URL for Law Enforcement Locations.
+    """
+    if defines is None:
+        defines = GameDefines.load_default()
+    return defines.external_data.law_enforcement_url()
+
 
 # Police type mapping: facility_type -> (code, name, category, command_chain)
 POLICE_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
@@ -50,87 +60,128 @@ POLICE_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
 DEFAULT_POLICE_TYPE = ("police_other", "Other Law Enforcement", "enforcement", "local")
 
 
-class HIFLDPoliceLoader(DataLoader):
-    """Loader for HIFLD Local Law Enforcement Locations data.
+class HIFLDPoliceLoader(ArcGISStreamingLoader):
+    """Loader for HIFLD Local Law Enforcement Locations with checkpoint support.
 
-    Fetches police station data from HIFLD ArcGIS Feature Service and
-    aggregates to county-level facility counts.
+    Fetches police station data from HIFLD ArcGIS Feature Service with
+    page-level checkpoints, then aggregates to county-level facility counts.
+
+    Two-phase loading:
+        1. Fetch: Stream features to staging table with checkpoints
+        2. Aggregate: GROUP BY county/type and insert facts
     """
 
     def __init__(self, config: LoaderConfig | None = None) -> None:
         """Initialize police loader."""
         super().__init__(config)
-        self._client: ArcGISClient | None = None
-        self._fips_to_county: dict[str, int] = {}
-        self._type_to_id: dict[str, int] = {}
-        self._source_id: int | None = None
 
-    def get_dimension_tables(self) -> list[type[Any]]:
-        """Return dimension tables."""
-        return [DimCoerciveType]
+    # -------------------------------------------------------------------------
+    # Abstract Method Implementations
+    # -------------------------------------------------------------------------
 
-    def get_fact_tables(self) -> list[type[Any]]:
-        """Return fact tables."""
-        return [FactCoerciveInfrastructure]
+    def _get_source_code(self) -> str:
+        """Return source code for checkpoints."""
+        return "hifld_police"
 
-    def load(
-        self,
-        session: Session,
-        reset: bool = True,
-        verbose: bool = True,
-        **_kwargs: object,
-    ) -> LoadStats:
-        """Load police data into 3NF schema."""
-        stats = LoadStats(source="hifld_police")
+    def _get_service_url(self) -> str:
+        """Return ArcGIS FeatureServer URL."""
+        return _get_police_service_url()
 
+    def _get_out_fields(self) -> str:
+        """Return comma-separated field names to fetch."""
+        return "OBJECTID,COUNTYFIPS,COUNTY,STATE,TYPE,NAME"
+
+    def _map_feature_to_staging(
+        self, feature: Any, fips_lookup: dict[str, int]
+    ) -> dict[str, Any] | None:
+        """Convert ArcGIS feature to staging record.
+
+        Args:
+            feature: ArcGIS feature with object_id and attributes.
+            fips_lookup: Map of county FIPS code -> county_id.
+
+        Returns:
+            Dict with staging record fields, or None to skip.
+        """
+        attrs = feature.attributes
+
+        county_fips = extract_county_fips_from_attrs(attrs)
+        if not county_fips or county_fips not in fips_lookup:
+            return None
+
+        type_code = self._map_facility_type(attrs)
+
+        return {
+            "object_id": feature.object_id,
+            "county_fips": county_fips,
+            "type_code": type_code,
+            "capacity": None,  # Police stations don't have capacity
+        }
+
+    def _aggregate_and_insert_facts(self, session: Session, source_id: int) -> int:
+        """Aggregate staging data and insert facts.
+
+        Uses SQL GROUP BY on staging table to produce county-level aggregates.
+        """
+        source_code = self._get_source_code()
+
+        # Query aggregates from staging
+        results = (
+            session.query(
+                StagingArcGISFeature.county_fips,
+                StagingArcGISFeature.type_code,
+                func.count(StagingArcGISFeature.feature_id).label("count"),
+            )
+            .filter(StagingArcGISFeature.source_code == source_code)
+            .filter(StagingArcGISFeature.county_fips.isnot(None))
+            .group_by(
+                StagingArcGISFeature.county_fips,
+                StagingArcGISFeature.type_code,
+            )
+            .all()
+        )
+
+        # Insert facts
+        count = 0
+        for county_fips, type_code, facility_count in results:
+            county_id = self._fips_to_county.get(county_fips)
+            type_id = self._type_to_id.get(type_code)
+
+            if county_id and type_id:
+                fact = FactCoerciveInfrastructure(
+                    county_id=county_id,
+                    coercive_type_id=type_id,
+                    source_id=source_id,
+                    facility_count=facility_count,
+                    total_capacity=None,
+                )
+                session.add(fact)
+                count += 1
+
+        session.flush()
+        return count
+
+    # -------------------------------------------------------------------------
+    # Optional Override Implementations
+    # -------------------------------------------------------------------------
+
+    def _setup_dimensions(self, session: Session, verbose: bool) -> None:
+        """Set up dimension tables before loading."""
         if verbose:
-            print("Loading HIFLD Local Law Enforcement from ArcGIS Feature Service")
+            print(f"Loaded {len(self._fips_to_county):,} county mappings")
 
-        try:
-            self._client = ArcGISClient(POLICE_SERVICE_URL)
+        self._load_coercive_types(session)
+        self._load_data_source(session)
 
-            total_count = self._client.get_record_count()
-            if verbose:
-                print(f"Total facilities: {total_count:,}")
+    def _clear_fact_data(self, session: Session, verbose: bool) -> None:
+        """Clear existing police fact data on reset."""
+        if verbose:
+            print("Clearing existing police data...")
+        self._clear_police_data(session)
 
-            if reset:
-                if verbose:
-                    print("Clearing existing police data...")
-                self._clear_police_data(session)
-                session.flush()
-
-            self._fips_to_county = self._build_county_lookup(session)
-            if verbose:
-                print(f"Loaded {len(self._fips_to_county):,} county mappings")
-
-            type_count = self._load_coercive_types(session)
-            stats.dimensions_loaded["dim_coercive_type"] = type_count
-
-            self._load_data_source(session)
-            stats.dimensions_loaded["dim_data_source"] = 1
-
-            session.flush()
-
-            fact_count = self._load_aggregated_facts(session, total_count, verbose)
-            stats.facts_loaded["fact_coercive_infrastructure"] = fact_count
-            stats.api_calls = (total_count // 2000) + 1
-
-            session.commit()
-
-            if verbose:
-                print(f"\n{stats}")
-
-        except Exception as e:
-            stats.errors.append(str(e))
-            session.rollback()
-            raise
-
-        finally:
-            if self._client:
-                self._client.close()
-                self._client = None
-
-        return stats
+    # -------------------------------------------------------------------------
+    # Police-Specific Methods
+    # -------------------------------------------------------------------------
 
     def _clear_police_data(self, session: Session) -> None:
         """Clear only police-related coercive infrastructure data."""
@@ -186,74 +237,6 @@ class HIFLDPoliceLoader(DataLoader):
             source_agency="DHS HIFLD",
             source_year=2024,
         )
-
-    def _load_aggregated_facts(
-        self,
-        session: Session,
-        total_count: int,
-        verbose: bool,
-    ) -> int:
-        """Load county-aggregated police facts."""
-        if self._client is None:
-            msg = "ArcGIS client not initialized"
-            raise RuntimeError(msg)
-        if self._source_id is None:
-            msg = "Data source not loaded"
-            raise RuntimeError(msg)
-
-        # Aggregate: county_fips -> type_code -> count
-        aggregates: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-
-        features = self._client.query_all(
-            out_fields="COUNTYFIPS,COUNTY,STATE,TYPE,NAME",
-        )
-        feature_iter = tqdm(features, total=total_count, desc="Police", disable=not verbose)
-
-        skipped_no_fips = 0
-        skipped_not_in_db = 0
-
-        for feature in feature_iter:
-            attrs = feature.attributes
-
-            county_fips = extract_county_fips_from_attrs(attrs)
-            if not county_fips:
-                skipped_no_fips += 1
-                continue
-
-            if county_fips not in self._fips_to_county:
-                skipped_not_in_db += 1
-                continue
-
-            type_code = self._map_facility_type(attrs)
-            aggregates[county_fips][type_code] += 1
-
-        if verbose:
-            print(f"\nSkipped: {skipped_no_fips} no FIPS, {skipped_not_in_db} not in DB")
-
-        # Insert aggregated facts
-        count = 0
-        for county_fips, type_data in aggregates.items():
-            county_id = self._fips_to_county.get(county_fips)
-            if not county_id:
-                continue
-
-            for type_code, facility_count in type_data.items():
-                type_id = self._type_to_id.get(type_code)
-                if not type_id:
-                    continue
-
-                fact = FactCoerciveInfrastructure(
-                    county_id=county_id,
-                    coercive_type_id=type_id,
-                    source_id=self._source_id,
-                    facility_count=facility_count,
-                    total_capacity=None,  # No capacity for police stations
-                )
-                session.add(fact)
-                count += 1
-
-        session.flush()
-        return count
 
     def _map_facility_type(self, attrs: dict[str, Any]) -> str:
         """Map facility type to coercive type code."""

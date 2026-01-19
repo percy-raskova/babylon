@@ -13,6 +13,7 @@ import pytest
 from babylon.data.census.api_client import (
     DEFAULT_DATASET,
     DEFAULT_YEAR,
+    ACSDataResponse,
     CensusAPIClient,
     CensusAPIError,
     CountyData,
@@ -264,3 +265,63 @@ class TestCensusAPIClientRequest:
 
             assert result == [["header"], ["data"]]
             assert mock_client.get.call_count == 2
+
+
+@pytest.mark.unit
+class TestACSDataResponse:
+    """Tests for ACSDataResponse Pydantic model."""
+
+    def test_from_raw_parses_valid_response(self) -> None:
+        """from_raw() parses Census API response correctly."""
+        raw_data = [
+            ["NAME", "state", "county", "B19001_001E"],
+            ["Alameda County, California", "06", "001", "12345"],
+            ["Alpine County, California", "06", "003", "678"],
+        ]
+        response = ACSDataResponse.from_raw(raw_data)
+
+        assert response.headers == ["NAME", "state", "county", "B19001_001E"]
+        assert len(response.rows) == 2
+        assert response.rows[0] == ["Alameda County, California", "06", "001", "12345"]
+        assert response.rows[1] == ["Alpine County, California", "06", "003", "678"]
+
+    def test_from_raw_handles_empty_list(self) -> None:
+        """from_raw() returns empty headers and rows for empty input."""
+        response = ACSDataResponse.from_raw([])
+        assert response.headers == []
+        assert response.rows == []
+
+    def test_from_raw_handles_headers_only(self) -> None:
+        """from_raw() handles response with headers but no data."""
+        raw_data = [["NAME", "state", "county"]]
+        response = ACSDataResponse.from_raw(raw_data)
+
+        assert response.headers == ["NAME", "state", "county"]
+        assert response.rows == []
+
+    def test_from_raw_converts_headers_to_strings(self) -> None:
+        """from_raw() converts headers to strings."""
+        raw_data = [[123, 456], ["a", "b"]]  # Non-string headers
+        response = ACSDataResponse.from_raw(raw_data)
+
+        assert response.headers == ["123", "456"]
+        assert all(isinstance(h, str) for h in response.headers)
+
+    def test_from_raw_preserves_mixed_types_in_rows(self) -> None:
+        """from_raw() preserves mixed types in data rows."""
+        raw_data = [
+            ["NAME", "value", "count"],
+            ["Test", 123.45, 100],
+            ["Test2", None, 200],
+        ]
+        response = ACSDataResponse.from_raw(raw_data)
+
+        assert response.rows[0] == ["Test", 123.45, 100]
+        assert response.rows[1] == ["Test2", None, 200]
+
+    def test_model_validates_types(self) -> None:
+        """ACSDataResponse validates field types."""
+        # Valid construction
+        response = ACSDataResponse(headers=["a", "b"], rows=[["x", 1], ["y", 2]])
+        assert response.headers == ["a", "b"]
+        assert len(response.rows) == 2

@@ -42,8 +42,33 @@ architecture_overview:
 
   technology:
     orm: "SQLAlchemy 2.0 with DeclarativeBase"
-    database: "SQLite with foreign key enforcement"
+    database: "DuckDB (normalized 3NF file)"
     validation: "Pydantic models with constrained types"
+
+# =============================================================================
+# LOAD PLAN + FLOW SEPARATION
+# =============================================================================
+
+load_plan_flow:
+  description: |
+    Fact ingestion is driven by a load-plan generator and split into
+    fetch → transform → write steps to ease parallelization refactors.
+  plan:
+    location: "src/babylon/data/census/loader_3nf.py"
+    entries:
+      - kind: "spec"
+        notes: "FactTableSpec-driven tables (base + race suffixes)"
+      - kind: "hours"
+        notes: "B23020 gender-grouped aggregation"
+      - kind: "income_sources"
+        notes: "B19052/B19053/B19054 multi-table join"
+  row_builders:
+    notes:
+      - "CountyData values -> row dicts before write"
+      - "BatchWriter handles bulk inserts for fact rows"
+  bulk_insert_helper:
+    location: "src/babylon/data/utils/bulk_insert.py"
+    status: "IN_USE"
 
 # =============================================================================
 # DATA-DRIVEN LOADER PATTERN (FactTableSpec)
@@ -130,9 +155,9 @@ multi_year_loading:
     location: "src/babylon/data/normalize/loader_config.py"
     field: "census_years"
     type: "list[int]"
-    default: "[2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023]"
+    default: "[2021]"
     notes: |
-      The default range covers all available ACS 5-year estimates.
+      The default range focuses on recent ACS 5-year estimates.
       Users can customize to load only specific years.
 
   dim_time_schema:
@@ -161,6 +186,10 @@ race_disaggregation:
   description: |
     The DimRace dimension table enables race-disaggregated analysis of
     Census data following the ACS A-I suffix scheme.
+  availability:
+    notes: |
+      Race-iterated tables are skipped for a year when ACS group metadata is
+      missing, avoiding unknown-variable errors for unsupported race tables.
 
   dim_race_schema:
     location: "src/babylon/data/normalize/schema.py:598"
@@ -385,7 +414,7 @@ testing_strategy:
       - "Race disaggregation query patterns"
 
   test_patterns:
-    isolation: "In-memory SQLite with FK enforcement"
+    isolation: "In-memory DuckDB"
     fixtures: "Session-scoped engine, function-scoped sessions"
     rollback: "Automatic rollback after each test function"
 

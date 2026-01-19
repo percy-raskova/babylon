@@ -187,3 +187,30 @@ precision:
 timescale:
   tick_duration_days: 7             # Real-world days per tick. Default 7 = weekly
   weeks_per_year: 52                # Weeks per year for flow conversion
+
+# External data source configuration
+# ArcGIS organization IDs for HIFLD and related infrastructure data
+external_data:
+  arcgis:
+    # FEMA RAPT (Resilience Analysis and Planning Tool) - primary source for HIFLD
+    fema_rapt_org: "XG15cJAlne2vxtgt"
+    fema_rapt_host: "services.arcgis.com"
+
+    # Esri US Federal Data - MIRTA military installations
+    esri_federal_org: "FiaPA4ga0iQKduv3"
+    esri_federal_host: "services2.arcgis.com"
+
+    # Legacy HIFLD organization (some services still work)
+    hifld_legacy_org: "Hp6G80Pky0om7QvQ"
+    hifld_legacy_host: "services1.arcgis.com"
+
+  # Service names (can be overridden for testing/alternative sources)
+  services:
+    prison_boundaries: "Prison_Boundaries_RAPT"
+    prison_boundaries_layer: 1              # Note: Layer 1, not 0
+    law_enforcement: "Local_Law_Enforcement_Locations_RAPT"
+    law_enforcement_layer: 0
+    mirta_polygons: "MIRTA_Polygons_A_view"
+    mirta_layer: 0
+    electric_transmission: "Electric_Power_Transmission_Lines"
+    electric_transmission_layer: 0

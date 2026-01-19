@@ -173,10 +173,28 @@ class DataAPIError(InfrastructureError):
     Attributes:
         status_code: HTTP status code (0 for connection/timeout errors).
         message: Error message from API or description of failure.
-        url: Request URL that caused the error.
+        url: Request URL that caused the error (sensitive params redacted).
     """
 
     _service_name: str = "Data API"  # Override in subclasses
+
+    # Keys that should have their values redacted in logs
+    _SENSITIVE_KEYS: frozenset[str] = frozenset(
+        {
+            "key",
+            "api_key",
+            "apikey",
+            "api-key",
+            "secret",
+            "password",
+            "token",
+            "auth",
+            "authorization",
+            "access_token",
+            "refresh_token",
+            "client_secret",
+        }
+    )
 
     def __init__(
         self,
@@ -184,14 +202,60 @@ class DataAPIError(InfrastructureError):
         message: str,
         url: str,
         error_code: str | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         self.status_code = status_code
-        self.url = url
+        # Redact sensitive params from URL
+        self.url = self._redact_url(url)
+
+        # Build merged details
+        merged_details: dict[str, object] = {"status_code": status_code, "url": self.url}
+        if details:
+            # Redact sensitive values in user-provided details
+            for key, value in details.items():
+                if isinstance(value, dict):
+                    merged_details[key] = self._redact_params(value)
+                else:
+                    merged_details[key] = value
+
         super().__init__(
             message=message,
             error_code=error_code or f"DAPI_{status_code:03d}",
-            details={"status_code": status_code, "url": url},
+            details=merged_details,
         )
+
+    def _redact_url(self, url: str) -> str:
+        """Redact sensitive query parameters from a URL."""
+        from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+        parsed = urlparse(url)
+        if not parsed.query:
+            return url
+
+        params = parse_qs(parsed.query, keep_blank_values=True)
+        redacted: dict[str, list[str]] = {}
+
+        for key, values in params.items():
+            if key.lower() in self._SENSITIVE_KEYS:
+                redacted[key] = ["***"] * len(values)
+            else:
+                redacted[key] = values
+
+        # Use safe='*' to preserve asterisks without encoding
+        new_query = urlencode(redacted, doseq=True, safe="*")
+        return urlunparse(parsed._replace(query=new_query))
+
+    def _redact_params(self, params: dict[str, object]) -> dict[str, object]:
+        """Redact sensitive values from a parameters dictionary."""
+        redacted: dict[str, object] = {}
+        for key, value in params.items():
+            if key.lower() in self._SENSITIVE_KEYS:
+                redacted[key] = "***"
+            elif isinstance(value, dict):
+                redacted[key] = self._redact_params(value)
+            else:
+                redacted[key] = value
+        return redacted
 
     def __str__(self) -> str:
         return f"{self._service_name} Error {self.status_code}: {self.message} (URL: {self.url})"
@@ -211,6 +275,28 @@ class DatabaseError(InfrastructureError):
         details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message, error_code=error_code or "DB_001", details=details)
+
+
+class SchemaError(DatabaseError):
+    """Raised when schema validation fails.
+
+    Base class for schema-related errors such as schema drift,
+    missing tables, or incompatible column types.
+
+    Error codes:
+    - SCH_001: General schema error
+    - SCH_002: Schema drift detected
+    - SCH_003: Missing table
+    - SCH_004: Incompatible type
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        super().__init__(message, error_code=error_code or "SCH_001", details=details)
 
 
 # =============================================================================

@@ -24,6 +24,7 @@ Example:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,7 +33,9 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete
 from tqdm import tqdm
 
-from babylon.data.loader_base import DataLoader, LoadStats
+from babylon.data.api_loader_base import ApiLoaderBase
+from babylon.data.exceptions import QcewAPIError
+from babylon.data.loader_base import LoadStats
 from babylon.data.normalize.classifications import classify_class_composition
 from babylon.data.normalize.schema import (
     DimCounty,
@@ -48,7 +51,6 @@ from babylon.data.normalize.schema import (
 )
 from babylon.data.qcew.api_client import (
     QcewAPIClient,
-    QcewAPIError,
     QcewAreaRecord,
     get_state_area_code,
 )
@@ -115,7 +117,7 @@ class GeoCounts:
         return self.county + self.state + self.metro
 
 
-class QcewLoader(DataLoader):
+class QcewLoader(ApiLoaderBase):
     """Loader for BLS QCEW data into 3NF schema.
 
     Uses hybrid loading strategy:
@@ -143,6 +145,10 @@ class QcewLoader(DataLoader):
     def get_fact_tables(self) -> list[type]:
         """Return fact table models this loader populates."""
         return [FactQcewAnnual, FactQcewStateAnnual, FactQcewMetroAnnual]
+
+    def _make_client(self) -> QcewAPIClient:
+        """Create a QCEW API client."""
+        return QcewAPIClient()
 
     def load(
         self,
@@ -179,6 +185,10 @@ class QcewLoader(DataLoader):
 
         if reset:
             self._clear_qcew_tables(session, verbose)
+            # Clear checkpoints for all years being loaded
+            for year in self.config.qcew_years:
+                self._clear_checkpoints(session, "qcew", year)
+            session.flush()
 
         # Load data source dimension
         self._load_data_source(session, verbose)
@@ -257,7 +267,7 @@ class QcewLoader(DataLoader):
             logger.info(msg)
             print(msg)
 
-        with QcewAPIClient() as client:
+        with self._client_scope(self._make_client()) as client:
             for year in years:
                 if verbose:
                     msg = f"Processing {year} via API..."
@@ -287,13 +297,27 @@ class QcewLoader(DataLoader):
         state_iter = tqdm(states, desc=f"States {year}", disable=not verbose)
 
         for state in state_iter:
+            # Check if this state+year already completed (enables resume)
+            if self._is_completed(session, "qcew", year, state.state_fips, "api", "T"):
+                if verbose:
+                    logger.debug(f"Skipping completed: {year}/{state.state_fips}")
+                continue
+
             area_code = get_state_area_code(state.state_fips)
             stats.api_calls += 1
+            state_record_count = 0
 
             try:
                 for record in client.get_area_annual_data(year, area_code):
                     self._process_api_record(session, record, year, state, lookups, counts)
+                    state_record_count += 1
                     self._maybe_flush(session, counts, verbose)
+
+                # Mark state+year as completed after successful processing
+                self._mark_completed(
+                    session, "qcew", year, state.state_fips, "api", "T", state_record_count
+                )
+                session.flush()
 
             except QcewAPIError as e:
                 self._handle_api_error(e, area_code, year, stats)
@@ -452,6 +476,16 @@ class QcewLoader(DataLoader):
             logger.debug(f"No data for {area_code} in {year}")
         else:
             msg = f"API error for {area_code}/{year}: {error.message}"
+            stats.record_api_error(
+                error,
+                context=f"qcew:{area_code}:{year}",
+                details={
+                    "loader": "qcew",
+                    "area_code": area_code,
+                    "year": year,
+                    "endpoint": error.url,
+                },
+            )
             stats.errors.append(msg)
             logger.warning(msg)
             print(f"WARNING: {msg}")
@@ -508,6 +542,9 @@ class QcewLoader(DataLoader):
         stats.facts_loaded["qcew_county"] = counts.county
         stats.facts_loaded["qcew_state"] = counts.state
         stats.facts_loaded["qcew_metro"] = counts.metro
+        stats.record_ingest(f"qcew_{source_type.lower()}:county", counts.county)
+        stats.record_ingest(f"qcew_{source_type.lower()}:state", counts.state)
+        stats.record_ingest(f"qcew_{source_type.lower()}:metro", counts.metro)
 
         if verbose:
             msg = (
@@ -556,7 +593,21 @@ class QcewLoader(DataLoader):
 
         file_iter = tqdm(csv_files, desc="CSV files", disable=not verbose)
         for csv_file in file_iter:
-            self._process_csv_file(session, csv_file, years_to_load, lookups, counts, verbose)
+            file_hash = self._get_file_hash(csv_file)
+
+            # Check if this file already completed (enables resume)
+            if self._is_completed(session, "qcew", 0, file_hash, "file", "T"):
+                if verbose:
+                    logger.debug(f"Skipping completed file: {csv_file.name}")
+                continue
+
+            file_record_count = self._process_csv_file(
+                session, csv_file, years_to_load, lookups, counts, verbose
+            )
+
+            # Mark file as completed after successful processing
+            self._mark_completed(session, "qcew", 0, file_hash, "file", "T", file_record_count)
+            session.flush()
 
         session.commit()
         self._finalize_stats(stats, lookups, counts, verbose, "File")
@@ -570,15 +621,19 @@ class QcewLoader(DataLoader):
         lookups: dict[str, dict[str, int]],
         counts: GeoCounts,
         verbose: bool,
-    ) -> None:
-        """Process a single CSV file."""
+    ) -> int:
+        """Process a single CSV file. Returns count of processed records."""
         logger.debug(f"Processing {csv_file.name}...")
+        file_record_count = 0
 
         for record in parse_qcew_csv(csv_file):
             if record.year not in years_to_load:
                 continue
             self._process_file_record(session, record, lookups, counts)
+            file_record_count += 1
             self._maybe_flush(session, counts, verbose)
+
+        return file_record_count
 
     def _process_file_record(
         self,
@@ -858,3 +913,11 @@ class QcewLoader(DataLoader):
         session.flush()
         ownership_lookup[own_code] = ownership.ownership_id
         return ownership.ownership_id
+
+    def _get_file_hash(self, path: Path) -> str:
+        """Create a short hash of file path for checkpoint key.
+
+        Uses file path (not content) for fast, deterministic checkpointing.
+        The same file at the same path will always produce the same hash.
+        """
+        return hashlib.md5(str(path).encode()).hexdigest()[:16]

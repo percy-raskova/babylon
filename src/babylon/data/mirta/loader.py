@@ -1,7 +1,7 @@
-"""MIRTA Military Installations loader.
+"""MIRTA Military Installations loader with streaming checkpoint support.
 
 Loads military installation data from MIRTA ArcGIS FeatureServer and aggregates
-to county-level facility counts.
+to county-level facility counts with page-level checkpoints for resume.
 
 The loader categorizes installations by service branch and aggregates counts
 to the county level for coercive infrastructure analysis.
@@ -12,16 +12,17 @@ Source: https://www.acq.osd.mil/eie/BSI/BEI_MIRTA.html
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
-from tqdm import tqdm
+from sqlalchemy import func
 
-from babylon.data.external.arcgis import ArcGISClient
-from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
+from babylon.config.defines import GameDefines
+from babylon.data.arcgis_loader_base import ArcGISStreamingLoader
+from babylon.data.loader_base import LoaderConfig
 from babylon.data.normalize.schema import (
     DimCoerciveType,
     FactCoerciveInfrastructure,
+    StagingArcGISFeature,
 )
 from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
 
@@ -30,11 +31,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# MIRTA Military Installations FeatureServer
-MIRTA_SERVICE_URL = (
-    "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/"
-    "MIRTA_Public/FeatureServer/0"
-)
+
+def _get_mirta_service_url(defines: GameDefines | None = None) -> str:
+    """Get MIRTA Military Installations FeatureServer URL from configuration.
+
+    Args:
+        defines: Optional GameDefines instance. Uses default if not provided.
+
+    Returns:
+        Complete FeatureServer URL for MIRTA Military Installations.
+    """
+    if defines is None:
+        defines = GameDefines.load_default()
+    return defines.external_data.mirta_url()
+
 
 # Military branch mapping: service -> (code, name, category, command_chain)
 MILITARY_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
@@ -51,87 +61,127 @@ MILITARY_TYPE_MAP: dict[str, tuple[str, str, str, str]] = {
 DEFAULT_MILITARY_TYPE = ("military_other", "Other Military Installation", "military", "federal")
 
 
-class MIRTAMilitaryLoader(DataLoader):
-    """Loader for MIRTA Military Installations data.
+class MIRTAMilitaryLoader(ArcGISStreamingLoader):
+    """Loader for MIRTA Military Installations with checkpoint support.
 
-    Fetches military installation data from MIRTA ArcGIS FeatureServer and
-    aggregates to county-level facility counts.
+    Fetches military installation data from MIRTA ArcGIS FeatureServer with
+    page-level checkpoints, then aggregates to county-level facility counts.
+
+    Two-phase loading:
+        1. Fetch: Stream features to staging table with checkpoints
+        2. Aggregate: GROUP BY county/type and insert facts
     """
 
     def __init__(self, config: LoaderConfig | None = None) -> None:
         """Initialize military loader."""
         super().__init__(config)
-        self._client: ArcGISClient | None = None
-        self._fips_to_county: dict[str, int] = {}
-        self._type_to_id: dict[str, int] = {}
-        self._source_id: int | None = None
 
-    def get_dimension_tables(self) -> list[type[Any]]:
-        """Return dimension tables."""
-        return [DimCoerciveType]
+    # -------------------------------------------------------------------------
+    # Abstract Method Implementations
+    # -------------------------------------------------------------------------
 
-    def get_fact_tables(self) -> list[type[Any]]:
-        """Return fact tables."""
-        return [FactCoerciveInfrastructure]
+    def _get_source_code(self) -> str:
+        """Return source code for checkpoints."""
+        return "mirta_military"
 
-    def load(
-        self,
-        session: Session,
-        reset: bool = True,
-        verbose: bool = True,
-        **_kwargs: object,
-    ) -> LoadStats:
-        """Load military installation data into 3NF schema."""
-        stats = LoadStats(source="mirta_military")
+    def _get_service_url(self) -> str:
+        """Return ArcGIS FeatureServer URL."""
+        return _get_mirta_service_url()
 
+    def _get_out_fields(self) -> str:
+        """Return comma-separated field names to fetch.
+
+        MIRTA fields vary, so we fetch all fields.
+        """
+        return "*"
+
+    def _map_feature_to_staging(
+        self, feature: Any, fips_lookup: dict[str, int]
+    ) -> dict[str, Any] | None:
+        """Convert ArcGIS feature to staging record.
+
+        Args:
+            feature: ArcGIS feature with object_id and attributes.
+            fips_lookup: Map of county FIPS code -> county_id.
+
+        Returns:
+            Dict with staging record fields, or None to skip.
+        """
+        attrs = feature.attributes
+
+        county_fips = extract_county_fips_from_attrs(attrs)
+        if not county_fips or county_fips not in fips_lookup:
+            return None
+
+        type_code = self._map_service_branch(attrs)
+
+        return {
+            "object_id": feature.object_id,
+            "county_fips": county_fips,
+            "type_code": type_code,
+            "capacity": None,  # Military installations don't have capacity metric
+        }
+
+    def _aggregate_and_insert_facts(self, session: Session, source_id: int) -> int:
+        """Aggregate staging data and insert facts.
+
+        Uses SQL GROUP BY on staging table to produce county-level aggregates.
+        """
+        source_code = self._get_source_code()
+
+        # Query aggregates from staging
+        results = (
+            session.query(
+                StagingArcGISFeature.county_fips,
+                StagingArcGISFeature.type_code,
+                func.count(StagingArcGISFeature.feature_id).label("count"),
+            )
+            .filter(StagingArcGISFeature.source_code == source_code)
+            .filter(StagingArcGISFeature.county_fips.isnot(None))
+            .group_by(
+                StagingArcGISFeature.county_fips,
+                StagingArcGISFeature.type_code,
+            )
+            .all()
+        )
+
+        # Insert facts
+        count = 0
+        for county_fips, type_code, facility_count in results:
+            county_id = self._fips_to_county.get(county_fips)
+            type_id = self._type_to_id.get(type_code)
+
+            if county_id and type_id:
+                fact = FactCoerciveInfrastructure(
+                    county_id=county_id,
+                    coercive_type_id=type_id,
+                    source_id=source_id,
+                    facility_count=facility_count,
+                    total_capacity=None,
+                )
+                session.add(fact)
+                count += 1
+
+        session.flush()
+        return count
+
+    # -------------------------------------------------------------------------
+    # Optional Override Implementations
+    # -------------------------------------------------------------------------
+
+    def _setup_dimensions(self, session: Session, verbose: bool) -> None:
+        """Set up dimension tables before loading."""
         if verbose:
-            print("Loading MIRTA Military Installations from ArcGIS FeatureServer")
+            print(f"Loaded {len(self._fips_to_county):,} county mappings")
 
-        try:
-            self._client = ArcGISClient(MIRTA_SERVICE_URL)
+        self._load_coercive_types(session)
+        self._load_data_source(session)
 
-            total_count = self._client.get_record_count()
-            if verbose:
-                print(f"Total installations: {total_count:,}")
-
-            if reset:
-                if verbose:
-                    print("Clearing existing military data...")
-                self._clear_military_data(session)
-                session.flush()
-
-            self._fips_to_county = self._build_county_lookup(session)
-            if verbose:
-                print(f"Loaded {len(self._fips_to_county):,} county mappings")
-
-            type_count = self._load_coercive_types(session)
-            stats.dimensions_loaded["dim_coercive_type"] = type_count
-
-            self._load_data_source(session)
-            stats.dimensions_loaded["dim_data_source"] = 1
-
-            session.flush()
-
-            fact_count = self._load_aggregated_facts(session, total_count, verbose)
-            stats.facts_loaded["fact_coercive_infrastructure"] = fact_count
-            stats.api_calls = (total_count // 2000) + 1
-
-            session.commit()
-
-            if verbose:
-                print(f"\n{stats}")
-
-        except Exception as e:
-            stats.errors.append(str(e))
-            session.rollback()
-            raise
-
-        finally:
-            if self._client:
-                self._client.close()
-                self._client = None
-
-        return stats
+    def _clear_fact_data(self, session: Session, verbose: bool) -> None:
+        """Clear existing military fact data on reset."""
+        if verbose:
+            print("Clearing existing military data...")
+        self._clear_military_data(session)
 
     def _clear_military_data(self, session: Session) -> None:
         """Clear only military-related coercive infrastructure data."""
@@ -190,74 +240,9 @@ class MIRTAMilitaryLoader(DataLoader):
             source_year=2024,
         )
 
-    def _load_aggregated_facts(
-        self,
-        session: Session,
-        total_count: int,
-        verbose: bool,
-    ) -> int:
-        """Load county-aggregated military facts."""
-        if self._client is None:
-            msg = "ArcGIS client not initialized"
-            raise RuntimeError(msg)
-        if self._source_id is None:
-            msg = "Data source not loaded"
-            raise RuntimeError(msg)
-
-        # Aggregate: county_fips -> type_code -> count
-        aggregates: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-
-        # MIRTA fields vary - common ones include SERVICE, SITE_NAME, STATE_TERR, etc.
-        features = self._client.query_all(
-            out_fields="*",  # Get all fields since MIRTA schema varies
-        )
-        feature_iter = tqdm(features, total=total_count, desc="Military", disable=not verbose)
-
-        skipped_no_fips = 0
-        skipped_not_in_db = 0
-
-        for feature in feature_iter:
-            attrs = feature.attributes
-
-            county_fips = extract_county_fips_from_attrs(attrs)
-            if not county_fips:
-                skipped_no_fips += 1
-                continue
-
-            if county_fips not in self._fips_to_county:
-                skipped_not_in_db += 1
-                continue
-
-            type_code = self._map_service_branch(attrs)
-            aggregates[county_fips][type_code] += 1
-
-        if verbose:
-            print(f"\nSkipped: {skipped_no_fips} no FIPS, {skipped_not_in_db} not in DB")
-
-        # Insert aggregated facts
-        count = 0
-        for county_fips, type_data in aggregates.items():
-            county_id = self._fips_to_county.get(county_fips)
-            if not county_id:
-                continue
-
-            for type_code, facility_count in type_data.items():
-                type_id = self._type_to_id.get(type_code)
-                if not type_id:
-                    continue
-
-                fact = FactCoerciveInfrastructure(
-                    county_id=county_id,
-                    coercive_type_id=type_id,
-                    source_id=self._source_id,
-                    facility_count=facility_count,
-                    total_capacity=None,
-                )
-                session.add(fact)
-                count += 1
-
-        session.flush()
-        return count
+    # -------------------------------------------------------------------------
+    # Military-Specific Methods
+    # -------------------------------------------------------------------------
 
     def _map_service_branch(self, attrs: dict[str, Any]) -> str:
         """Map service branch to coercive type code."""

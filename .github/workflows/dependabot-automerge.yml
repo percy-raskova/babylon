@@ -1,37 +1,82 @@
+# Dependabot Auto-Merge Workflow
+#
+# Automatically merges Dependabot PRs to `dev` branch after CI passes.
+# - Minor/patch version updates: auto-merge (low risk)
+# - Major updates: require manual review (breaking changes)
+# - Security updates: auto-merge (urgent fixes)
+#
+# The BD will later squash-merge `dev` to `main` for releases.
+
 name: Dependabot Auto-Merge
 
 on:
   pull_request:
+    branches:
+      - dev  # Only trigger for PRs targeting dev
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  dependabot:
+  dependabot-automerge:
     name: Auto-merge Dependabot PRs
     runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
 
     steps:
-      - name: Dependabot metadata
+      - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Auto-merge minor and patch updates
-        if: |
-          steps.metadata.outputs.update-type == 'version-update:semver-minor' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-patch'
-        run: gh pr merge --auto --squash "$PR_URL"
+      - name: Log update details
+        run: |
+          echo "Dependency: ${{ steps.metadata.outputs.dependency-names }}"
+          echo "Update type: ${{ steps.metadata.outputs.update-type }}"
+          echo "Ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}"
+          echo "Previous version: ${{ steps.metadata.outputs.previous-version }}"
+          echo "New version: ${{ steps.metadata.outputs.new-version }}"
+
+      # Auto-merge PATCH updates (bug fixes, no breaking changes)
+      - name: Auto-merge patch updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        run: |
+          echo "Auto-merging patch update..."
+          gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Auto-merge MINOR updates (new features, backward compatible)
+      - name: Auto-merge minor updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        run: |
+          echo "Auto-merging minor update..."
+          gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auto-merge ALL GitHub Actions updates (typically safe)
       - name: Auto-merge GitHub Actions updates
-        if: steps.metadata.outputs.package-ecosystem == 'github_actions'
-        run: gh pr merge --auto --squash "$PR_URL"
+        if: |
+          steps.metadata.outputs.package-ecosystem == 'github_actions' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: |
+          echo "Auto-merging GitHub Actions update..."
+          gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # MAJOR updates require manual review - just add a comment
+      - name: Comment on major updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        run: |
+          gh pr comment "$PR_URL" --body \
+            "**Major version update** - may contain breaking changes. Manual review required."
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

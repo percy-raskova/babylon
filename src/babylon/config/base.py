@@ -32,10 +32,10 @@ class BaseConfig:
     TESTING: Final[bool] = os.getenv("TESTING", "false").lower() == "true"
 
     # === Database Configuration (The Ledger) ===
-    # SQLite: simple, embedded, no server required
-    # Default location: data/babylon.db (relative to project root)
+    # DuckDB: fast analytical database, embedded, no server required
+    # Default location: data/babylon.duckdb (relative to project root)
     DATABASE_URL: Final[str] = os.getenv(
-        "DATABASE_URL", f"sqlite:///{Path.cwd() / 'data' / 'babylon.db'}"
+        "DATABASE_URL", f"duckdb:///{Path.cwd() / 'data' / 'babylon.duckdb'}"
     )
 
     # === Logging Configuration ===

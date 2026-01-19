@@ -1,7 +1,7 @@
 """Shared fixtures for data loader integration tests.
 
 Provides:
-- In-memory SQLite database with FK enforcement
+- In-memory DuckDB database (FK enforcement by default)
 - Session factory with automatic rollback
 - Sample dimension data for testing
 - All loader classes for parameterized tests
@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from babylon.data.loader_base import DataLoader, LoaderConfig
@@ -32,19 +32,13 @@ if TYPE_CHECKING:
 
 @pytest.fixture(scope="module")
 def in_memory_engine() -> Generator[Engine, None, None]:
-    """Create in-memory SQLite database with FK enforcement.
+    """Create in-memory DuckDB database.
 
     Uses module scope to avoid recreation overhead while still
     providing isolation through function-scoped sessions.
+    DuckDB enforces foreign keys by default.
     """
-    engine = create_engine("sqlite:///:memory:", echo=False)
-
-    # Enable foreign key enforcement for SQLite (OFF by default!)
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    engine = create_engine("duckdb:///:memory:", echo=False)
 
     # Create all tables
     NormalizedBase.metadata.create_all(engine)
@@ -71,18 +65,13 @@ def session(in_memory_engine: Engine) -> Generator[Session, None, None]:
 
 @pytest.fixture(scope="function")
 def fresh_db_session() -> Generator[Session, None, None]:
-    """Create completely fresh in-memory database for each test.
+    """Create completely fresh in-memory DuckDB database for each test.
 
     Use this when you need complete isolation (e.g., testing
     schema creation or destructive operations).
+    DuckDB enforces foreign keys by default.
     """
-    engine = create_engine("sqlite:///:memory:", echo=False)
-
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    engine = create_engine("duckdb:///:memory:", echo=False)
 
     NormalizedBase.metadata.create_all(engine)
 
@@ -164,13 +153,6 @@ def get_all_loader_classes() -> list[type[DataLoader]]:
         from babylon.data.hifld.police import HIFLDPoliceLoader
 
         loaders.append(HIFLDPoliceLoader)
-    except ImportError:
-        pass
-
-    try:
-        from babylon.data.hifld.electric import HIFLDElectricLoader
-
-        loaders.append(HIFLDElectricLoader)
     except ImportError:
         pass
 
@@ -276,7 +258,7 @@ def sample_industry_data() -> list[dict[str, str | int | None]]:
 
 @pytest.fixture
 def fk_check_enabled(in_memory_engine: Engine) -> bool:
-    """Verify FK checking is enabled."""
-    with in_memory_engine.connect() as conn:
-        result = conn.execute(text("PRAGMA foreign_keys"))
-        return result.scalar() == 1
+    """Verify FK checking is enabled (always True for DuckDB)."""
+    # DuckDB enforces foreign keys by default
+    _ = in_memory_engine  # Unused but kept for fixture signature compatibility
+    return True

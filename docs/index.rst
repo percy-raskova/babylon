@@ -38,8 +38,8 @@ The system runs locally without external servers, using the **Embedded Trinity**
      - Technology
      - Purpose
    * - **The Ledger**
-     - SQLite / Pydantic
-     - Rigid material state (wealth, organization)
+     - DuckDB (data warehouse) / SQLite (game state) / Pydantic (validation)
+     - Rigid material state (wealth, organization, empirical data)
    * - **The Topology**
      - NetworkX
      - Fluid relational state (solidarity, exploitation)

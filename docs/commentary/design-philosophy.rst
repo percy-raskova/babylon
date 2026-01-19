@@ -29,8 +29,11 @@ Architecture: The Embedded Trinity
 The system runs locally without external servers, organized into three
 pillars that never mix their concerns:
 
-**The Ledger (SQLite/Pydantic)**
+**The Ledger (DuckDB/SQLite/Pydantic)**
    Stores rigid, material state—economics, resources, turn history.
+   DuckDB holds the 3NF data warehouse (empirical research data: Census, FRED, etc.).
+   SQLite holds game state (simulation history, checkpoints).
+   Pydantic validates all data structures.
    The Ledger is **truth**. It doesn't interpret; it records.
 
 **The Topology (NetworkX)**
@@ -145,14 +148,14 @@ The test suite covers:
 
 .. code-block:: bash
 
-   # Run the full test suite
-   mise run test
+   # Run all non-AI tests
+   mise run test:all
 
-   # Run fast formula tests only
-   mise run test-fast
+   # Run fast unit tests only
+   mise run test:unit
 
    # Run with coverage report
-   mise run test-cov
+   mise run test:cov
 
 State is Pure Data
 ------------------

@@ -14,7 +14,8 @@ the **Embedded Trinity**:
 .. note::
    Architecture diagram (The Embedded Trinity) planned for future addition.
 
-1. **The Ledger** - Rigid material state (Pydantic/SQLite)
+1. **The Ledger** - Rigid material state (DuckDB data warehouse /
+   SQLite game state / Pydantic validation)
 2. **The Topology** - Fluid relational state (NetworkX)
 3. **The Archive** - Semantic history (ChromaDB)
 
@@ -37,7 +38,7 @@ The Ledger stores **rigid, quantitative state** that changes discretely:
 Data Storage
 ^^^^^^^^^^^^
 
-The Ledger uses two complementary systems:
+The Ledger uses three complementary systems:
 
 **Pydantic Models**
    In-memory state with strict validation. All game entities derive from
@@ -53,10 +54,15 @@ The Ledger uses two complementary systems:
           wealth: Currency = Field(ge=0.0)
           organization: Probability  # Constrained to [0, 1]
 
-**SQLite Database**
-   Persistent storage for history and checkpoints. The
+**DuckDB Data Warehouse**
+   3NF (Third Normal Form) relational database for empirical research data.
+   Stores economic indicators, demographic data, infrastructure, and geographic
+   information. Located at ``data/duckdb/marxist-data-3NF.duckdb``.
+
+**SQLite Game State**
+   Persistent storage for simulation history and checkpoints. The
    :py:class:`~babylon.engine.database.DatabaseConnection` class manages
-   SQLAlchemy sessions.
+   SQLAlchemy sessions. Isolated from the DuckDB research database.
 
 Entity Collections
 ^^^^^^^^^^^^^^^^^^
@@ -91,6 +97,12 @@ The Ledger contains 18 JSON entity collections in ``src/babylon/data/game/``:
      - Economic policy, resource, and technology definitions
    * - ``revolts.json``, ``sentiments.json``
      - Uprising conditions and public sentiment data
+
+.. note::
+
+   These JSON collections define game entities and rules. The DuckDB data warehouse
+   stores empirical research data (Census, FRED, HIFLD, etc.) in normalized form,
+   isolated from game state. SQLite stores simulation history and checkpoints.
 
 The Topology: Relational State
 ------------------------------

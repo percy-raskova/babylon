@@ -17,10 +17,11 @@ Dimensions (33 tables):
     Commodities: dim_commodity, dim_commodity_metric, dim_sctg_commodity
     Metadata: dim_time, dim_gender, dim_data_source, dim_race
     Coercive: dim_coercive_type
+    Employment: dim_employment_area
 
-Facts (28 tables):
-    Census (14), QCEW/Productivity (2), Trade (1), Energy (1),
-    FRED (5), Commodities (1), Materials (3), Circulatory (4)
+Facts (34 tables):
+    Census (14), QCEW/Productivity (5), Trade (1), Energy (1),
+    FRED (5), Commodities (1), Materials (3), Circulatory (3), DOT (1)
 
 Note:
     Census fact tables include time_id and race_id FKs for multi-year and

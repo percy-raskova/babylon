@@ -1,7 +1,7 @@
 """FRED data loader for direct 3NF schema population.
 
 Loads FRED (Federal Reserve Economic Data) directly from the FRED API into the
-normalized 3NF schema (marxist-data-3NF.sqlite), bypassing intermediate research.sqlite.
+normalized 3NF schema (marxist-data-3NF.duckdb), bypassing intermediate research.sqlite.
 
 This loader:
 - Uses LoaderConfig for parameterized temporal (fred_start_year, fred_end_year) settings

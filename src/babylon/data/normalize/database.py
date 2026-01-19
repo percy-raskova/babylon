@@ -1,10 +1,16 @@
 """Normalized 3NF research database configuration.
 
 Provides a properly normalized database for Marxian economic analysis,
-populated via ETL from research.sqlite.
+populated via ETL from external data sources.
 
-Located at data/sqlite/marxist-data-3NF.sqlite by default. Override with
+Located at data/duckdb/marxist-data-3NF.duckdb by default. Override with
 BABYLON_NORMALIZED_DB_PATH to target an alternate build database.
+
+DuckDB was chosen over SQLite for:
+- Better analytical query performance (columnar storage)
+- Native Parquet and CSV support for data import/export
+- Future DuckPGQ graph query support (Topology layer unification)
+- Concurrent read access without locking
 """
 
 import os
@@ -12,7 +18,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # Normalized database path - 3NF structure for analytical queries
@@ -33,11 +39,11 @@ def _resolve_db_path(env_var: str, default_path: Path) -> Path:
 
 NORMALIZED_DB_PATH = _resolve_db_path(
     "BABYLON_NORMALIZED_DB_PATH",
-    _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite",
+    _REPO_ROOT / "data" / "duckdb" / "marxist-data-3NF.duckdb",
 )
-NORMALIZED_DATABASE_URL = f"sqlite:///{NORMALIZED_DB_PATH}"
+NORMALIZED_DATABASE_URL = f"duckdb:///{NORMALIZED_DB_PATH}"
 
-# Source database (for ETL)
+# Legacy source database path (for reference during migration)
 SOURCE_DB_PATH = _REPO_ROOT / "data" / "sqlite" / "research.sqlite"
 SOURCE_DATABASE_URL = f"sqlite:///{SOURCE_DB_PATH}"
 
@@ -49,24 +55,18 @@ class NormalizedBase(DeclarativeBase):
 
 
 def get_normalized_engine(echo: bool = False) -> Engine:
-    """Create normalized database engine with FK enforcement.
+    """Create normalized DuckDB database engine.
+
+    DuckDB enforces foreign keys by default and supports concurrent reads.
 
     Args:
         echo: If True, log SQL statements
 
     Returns:
-        Engine: SQLAlchemy engine for the normalized 3NF database.
+        Engine: SQLAlchemy engine for the normalized 3NF DuckDB database.
     """
     NORMALIZED_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(NORMALIZED_DATABASE_URL, echo=echo)
-
-    # Enable foreign key enforcement for SQLite
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
     return engine
 
 

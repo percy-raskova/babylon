@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from babylon.data.loader_base import LoaderConfig
@@ -43,18 +43,13 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def circulatory_db_session() -> Generator[Session, None, None]:
-    """Create fresh in-memory database for circulatory loader tests.
+    """Create fresh in-memory DuckDB database for circulatory loader tests.
 
     This fixture creates all required dimension tables pre-populated with
     sample data for testing foreign key relationships.
+    DuckDB enforces foreign keys by default.
     """
-    engine = create_engine("sqlite:///:memory:", echo=False)
-
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    engine = create_engine("duckdb:///:memory:", echo=False)
 
     NormalizedBase.metadata.create_all(engine)
 

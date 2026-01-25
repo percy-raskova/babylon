@@ -22,10 +22,13 @@ Usage:
         stats = loader.load(session)
 """
 
+from babylon.data.bea.loader_concordance import BEAConcordanceLoader, expand_naics_codes
 from babylon.data.bea.loader_national import BEANationalLoader
 from babylon.data.bea.parser import BEAIndustryParser
 
 __all__ = [
+    "BEAConcordanceLoader",
     "BEANationalLoader",
     "BEAIndustryParser",
+    "expand_naics_codes",
 ]

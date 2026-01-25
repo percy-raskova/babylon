@@ -23,11 +23,13 @@ Usage:
 """
 
 from babylon.data.bea.loader_concordance import BEAConcordanceLoader, expand_naics_codes
+from babylon.data.bea.loader_county import BEACountyGDPLoader
 from babylon.data.bea.loader_national import BEANationalLoader
 from babylon.data.bea.parser import BEAIndustryParser
 
 __all__ = [
     "BEAConcordanceLoader",
+    "BEACountyGDPLoader",
     "BEANationalLoader",
     "BEAIndustryParser",
     "expand_naics_codes",

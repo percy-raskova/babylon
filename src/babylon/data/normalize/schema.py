@@ -1454,6 +1454,39 @@ class FactBEANationalIndustry(NormalizedBase):
     )
 
 
+class FactBEACountyGDP(NormalizedBase):
+    """BEA county-level GDP by industry.
+
+    Stores annual GDP values from BEA CAGDP2 table at the county level.
+    Values are in millions of current dollars (nominal).
+
+    The CAGDP2 table provides GDP by industry for all US counties.
+    Industry granularity is coarser than national (~20 industries vs ~70).
+    Uses bridge_naics_bea for mapping to national industry ratios.
+
+    Note:
+        Some county-industry combinations have suppressed data "(D)" due to
+        disclosure limitations. These are stored as NULL.
+    """
+
+    __tablename__ = "fact_bea_county_gdp"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    bea_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), primary_key=True
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+
+    # GDP in millions of dollars (converted from BEA's thousands)
+    gdp_millions: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+
+    __table_args__ = (
+        Index("idx_bea_county_time", "time_id"),
+        Index("idx_bea_county_industry", "bea_industry_id"),
+        Index("idx_bea_county_county", "county_id"),
+    )
+
+
 # =============================================================================
 # TRADE FACT TABLES
 # =============================================================================
@@ -1969,6 +2002,7 @@ __all__ = [
     "FactProductivityAnnual",
     # Facts - BEA
     "FactBEANationalIndustry",
+    "FactBEACountyGDP",
     # Facts - Trade
     "FactTradeMonthly",
     # Facts - Energy

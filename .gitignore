@@ -23,7 +23,8 @@ logs/
 *.db
 data/babylon.db
 data/*.db
-data/
+# Note: /data/ at root is ignored below (line 77). Don't add bare "data/" here
+# as it would also ignore src/babylon/data/ source code.
 
 # ChromaDB local storage
 chromadb/

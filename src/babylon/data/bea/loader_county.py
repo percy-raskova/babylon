@@ -323,19 +323,17 @@ class BEACountyGDPLoader(DataLoader):
         skipped_counties = 0
         skipped_industries = 0
 
+        # Count lines first (separate file handle to avoid state issues)
+        with open(csv_path, encoding="latin-1") as f:
+            total_lines = sum(1 for _ in f) - 1  # Subtract header
+
+        # Now process with clean DictReader
         with open(csv_path, encoding="latin-1") as f:
             reader = csv.DictReader(f)
 
             # Get year columns (all columns from 2001 to 2023)
             year_columns = [col for col in reader.fieldnames or [] if col.isdigit()]
 
-            # Count lines for progress bar
-            f.seek(0)
-            total_lines = sum(1 for _ in f) - 1  # Subtract header
-            f.seek(0)
-            next(reader)  # Skip header since we're at start
-
-            reader = csv.DictReader(f)
             row_iter = tqdm(reader, total=total_lines, desc="County GDP", disable=not verbose)
 
             for row in row_iter:

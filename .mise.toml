@@ -315,6 +315,10 @@ run = "poetry run python -m babylon.data.cli bea-national"
 description = "Load BEA county GDP data into 3NF database"
 run = "poetry run python -m babylon.data.cli bea-county"
 
+[tasks."data:naics-bea"]
+description = "Load NAICS-BEA industry concordance into bridge table"
+run = "poetry run python -m babylon.data.cli naics-bea"
+
 [tasks."data:energy"]
 description = "Load EIA energy data into 3NF database"
 run = "poetry run python -m babylon.data.cli energy"

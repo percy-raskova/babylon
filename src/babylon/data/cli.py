@@ -470,6 +470,7 @@ ALL_LOADERS = [
     "fred",
     "bea_national",
     "bea_county",
+    "naics_bea",
     "energy",
     "qcew",
     "trade",
@@ -489,6 +490,7 @@ LOADER_DEPENDENCIES: dict[str, list[str]] = {
     "tiger": ["census"],
     "h3": ["tiger"],
     "bea_county": ["bea_national", "census"],
+    "naics_bea": ["qcew", "bea_national"],
     "qcew": ["census"],
     "employment_industry": ["census"],
     "dot_hpms": ["census"],
@@ -1472,6 +1474,52 @@ def bea_county(
 
     init_normalized_db()
     loader = BEACountyGDPLoader(config, data_dir=data_path)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def naics_bea(
+    data_path: Annotated[
+        Path | None,
+        typer.Option("--data-path", help="Path to concordance data directory"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load NAICS-BEA industry concordance into bridge table.
+
+    Creates bridge_naics_bea records linking NAICS industries (from QCEW)
+    to BEA industries, enabling economic analysis across classification systems.
+
+    Requires both qcew (for DimIndustry) and bea_national (for DimBEAIndustry)
+    to be loaded first.
+
+    Examples:
+        mise run data:naics-bea
+        mise run data:naics-bea -- --data-path /path/to/concordance
+    """
+    from babylon.data.concordance import NAICSBEAConcordanceLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading NAICS-BEA concordance...")
+
+    init_normalized_db()
+    loader = NAICSBEAConcordanceLoader(config, data_dir=data_path)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)

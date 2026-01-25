@@ -67,6 +67,19 @@ class EnergyLoader(ApiLoaderBase):
         """Return fact table models this loader populates."""
         return [FactEnergyAnnual]
 
+    def _get_year_range(self) -> tuple[int, int]:
+        """Get effective year range from config.
+
+        Uses energy_years list if provided (min/max), otherwise falls back
+        to energy_start_year/energy_end_year range.
+
+        Returns:
+            Tuple of (start_year, end_year) for API queries.
+        """
+        if self.config.energy_years:
+            return min(self.config.energy_years), max(self.config.energy_years)
+        return self.config.energy_start_year, self.config.energy_end_year
+
     def _make_client(self) -> EnergyAPIClient:
         """Create an EIA API client."""
         return EnergyAPIClient()
@@ -259,11 +272,15 @@ class EnergyLoader(ApiLoaderBase):
         series_count = 0
         obs_count = 0
 
-        start_year = self.config.energy_start_year
-        end_year = self.config.energy_end_year
+        start_year, end_year = self._get_year_range()
 
         if verbose:
-            logger.info(f"Fetching energy data from EIA API ({start_year}-{end_year})...")
+            if self.config.energy_years:
+                logger.info(
+                    f"Fetching energy data from EIA API (years: {self.config.energy_years})..."
+                )
+            else:
+                logger.info(f"Fetching energy data from EIA API ({start_year}-{end_year})...")
 
         for msn, config in PRIORITY_MSN_CODES.items():
             # Check if this series already completed (enables resume)

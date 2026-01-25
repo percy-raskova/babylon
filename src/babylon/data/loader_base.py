@@ -68,10 +68,16 @@ class LoaderConfig:
     census_years: list[int] = field(default_factory=lambda: [2021])
 
     # Temporal - FRED (time series range)
+    # List-based (new, preferred) - None means all available years
+    fred_years: list[int] | None = None
+    # Range-based (backwards compatibility)
     fred_start_year: int = 1990
     fred_end_year: int = 2024
 
     # Temporal - Energy (EIA annual data)
+    # List-based (new, preferred) - None means all available years
+    energy_years: list[int] | None = None
+    # Range-based (backwards compatibility)
     energy_start_year: int = 1990
     energy_end_year: int = 2024
 

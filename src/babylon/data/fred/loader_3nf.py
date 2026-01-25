@@ -157,6 +157,19 @@ class FredLoader(ApiLoaderBase):
         # Note: _time_cache is initialized by base class DataLoader.__init__()
         self._source_id: int | None = None
 
+    def _get_year_range(self) -> tuple[int, int]:
+        """Get effective year range from config.
+
+        Uses fred_years list if provided (min/max), otherwise falls back
+        to fred_start_year/fred_end_year range.
+
+        Returns:
+            Tuple of (start_year, end_year) for API queries.
+        """
+        if self.config.fred_years:
+            return min(self.config.fred_years), max(self.config.fred_years)
+        return self.config.fred_start_year, self.config.fred_end_year
+
     def _make_client(self) -> FredAPIClient:
         """Create a FRED API client."""
         return FredAPIClient()
@@ -202,12 +215,14 @@ class FredLoader(ApiLoaderBase):
             LoadStats with counts of loaded dimensions and facts.
         """
         stats = LoadStats(source="fred")
-        start_year = self.config.fred_start_year
-        end_year = self.config.fred_end_year
+        start_year, end_year = self._get_year_range()
         state_fips_list = self.config.state_fips_list or DEFAULT_STATE_FIPS
 
         if verbose:
-            print(f"Loading FRED data for {start_year}-{end_year}")
+            if self.config.fred_years:
+                print(f"Loading FRED data for years: {self.config.fred_years}")
+            else:
+                print(f"Loading FRED data for {start_year}-{end_year}")
             print(f"States: {len(state_fips_list)}")
 
         try:
@@ -419,18 +434,48 @@ class FredLoader(ApiLoaderBase):
             logger.warning(f"Missing states in dim_state (run CensusLoader first?): {missing}")
 
     def _build_industry_lookup(self, session: Session) -> None:
-        """Build industry NAICS to ID lookup from existing DimIndustry records."""
-        # Map LNU codes to NAICS sectors
-        lnu_to_naics = {code: sector for code, (_, sector) in INDUSTRY_UNEMPLOYMENT_SERIES.items()}
+        """Build industry NAICS to ID lookup from existing DimIndustry records.
 
-        # Get industries matching these NAICS codes
-        naics_codes = list(set(lnu_to_naics.values()))
-        industries = (
-            session.query(DimIndustry).filter(DimIndustry.naics_code.in_(naics_codes)).all()
-        )
+        Handles aggregate NAICS codes (e.g., "52-53", "31-33") by mapping them
+        to sector-level industries via the sector_code field in DimIndustry.
 
-        for industry in industries:
-            self._industry_naics_to_id[industry.naics_code] = industry.industry_id
+        Aggregate codes like "52-53" represent combined sectors (Finance 52 +
+        Real Estate 53). We find any sector-level industry matching one of the
+        component codes.
+        """
+        # Mapping from FRED aggregate codes to component 2-digit sector codes
+        aggregate_to_sectors: dict[str, list[str]] = {
+            "23": ["23"],  # Construction (single)
+            "31-33": ["31", "32", "33"],  # Manufacturing
+            "48-49": ["48", "49"],  # Transportation & Utilities
+            "51": ["51"],  # Information (single)
+            "52-53": ["52", "53"],  # Finance & Real Estate
+            "54-56": ["54", "55", "56"],  # Professional Services
+            "61-62": ["61", "62"],  # Education & Health
+            "71-72": ["71", "72"],  # Leisure & Hospitality
+        }
+
+        # Map LNU codes to aggregate NAICS codes
+        for _lnu_code, (_, naics_aggregate) in INDUSTRY_UNEMPLOYMENT_SERIES.items():
+            sectors = aggregate_to_sectors.get(naics_aggregate)
+            if not sectors:
+                logger.debug(f"No sector mapping for aggregate {naics_aggregate}")
+                continue
+
+            # Find a sector-level industry matching any of the component codes
+            industry = (
+                session.query(DimIndustry)
+                .filter(
+                    DimIndustry.sector_code.in_(sectors),
+                    DimIndustry.naics_level == 2,  # Sector level only
+                )
+                .first()
+            )
+
+            if industry:
+                self._industry_naics_to_id[naics_aggregate] = industry.industry_id
+            else:
+                logger.debug(f"No sector-level industry for {naics_aggregate} (sectors: {sectors})")
 
     # =========================================================================
     # FACT TABLE LOADERS

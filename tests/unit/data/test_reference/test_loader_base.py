@@ -136,13 +136,16 @@ class TestLoaderConfigDataclass:
         """LoaderConfig should have all expected fields."""
         expected_fields = {
             "census_years",
+            "fred_years",
             "fred_start_year",
             "fred_end_year",
+            "energy_years",
             "energy_start_year",
             "energy_end_year",
             "trade_years",
             "qcew_years",
             "materials_years",
+            "bea_county_years",
             "state_fips_list",
             "include_territories",
             "batch_size",

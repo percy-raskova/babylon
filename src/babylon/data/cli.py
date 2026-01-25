@@ -1350,13 +1350,17 @@ def h3(
 
 @app.command()
 def fred(
+    years: Annotated[
+        str | None,
+        typer.Option("--years", help="Years to load (e.g., 2020-2024 or 2020,2021,2022)"),
+    ] = None,
     start_year: Annotated[
         int,
-        typer.Option("--start-year", help="Start year for time series"),
+        typer.Option("--start-year", help="Start year for time series (deprecated, use --years)"),
     ] = 1990,
     end_year: Annotated[
         int,
-        typer.Option("--end-year", help="End year for time series"),
+        typer.Option("--end-year", help="End year for time series (deprecated, use --years)"),
     ] = 2024,
     states: Annotated[
         str | None,
@@ -1364,18 +1368,34 @@ def fred(
     ] = None,
     reset: Annotated[
         bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading. Default: --no-reset"),
+    ] = False,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
     ] = False,
 ) -> None:
-    """Load FRED macroeconomic data into 3NF database."""
+    """Load FRED macroeconomic data into 3NF database.
+
+    Uses hybrid year specification:
+    - --years (preferred): List or range of years (e.g., 2020-2024 or 2020,2021,2022)
+    - --start-year/--end-year (deprecated): Falls back to range when --years not specified
+
+    Examples:
+        mise run data:fred                           # Default years (1990-2024)
+        mise run data:fred -- --years 2020-2024      # Specific range
+        mise run data:fred -- --years 2020,2022,2024 # Specific years
+        mise run data:fred -- --no-reset             # Preserve existing data (default)
+        mise run data:fred -- --reset                # Clear before loading
+    """
     from babylon.data.fred import FredLoader
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
+    # Use --years if provided, else fall back to start/end range
+    year_list = parse_years(years) if years else None
+
     config = LoaderConfig(
+        fred_years=year_list,
         fred_start_year=start_year,
         fred_end_year=end_year,
         state_fips_list=parse_states(states),
@@ -1383,7 +1403,10 @@ def fred(
     )
 
     if not quiet:
-        typer.echo(f"Loading FRED data {start_year}-{end_year}...")
+        if year_list:
+            typer.echo(f"Loading FRED data for years: {year_list}")
+        else:
+            typer.echo(f"Loading FRED data {start_year}-{end_year}...")
 
     init_normalized_db()
     loader = FredLoader(config)
@@ -1542,35 +1565,58 @@ def naics_bea(
 
 @app.command()
 def energy(
+    years: Annotated[
+        str | None,
+        typer.Option("--years", help="Years to load (e.g., 2020-2024 or 2020,2021,2022)"),
+    ] = None,
     start_year: Annotated[
         int,
-        typer.Option("--start-year", help="Start year for energy data"),
+        typer.Option("--start-year", help="Start year for energy data (deprecated, use --years)"),
     ] = 1990,
     end_year: Annotated[
         int,
-        typer.Option("--end-year", help="End year for energy data"),
+        typer.Option("--end-year", help="End year for energy data (deprecated, use --years)"),
     ] = 2024,
     reset: Annotated[
         bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading. Default: --no-reset"),
+    ] = False,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
     ] = False,
 ) -> None:
-    """Load EIA energy data into 3NF database."""
+    """Load EIA energy data into 3NF database.
+
+    Uses hybrid year specification:
+    - --years (preferred): List or range of years (e.g., 2020-2024 or 2020,2021,2022)
+    - --start-year/--end-year (deprecated): Falls back to range when --years not specified
+
+    Examples:
+        mise run data:energy                            # Default years (1990-2024)
+        mise run data:energy -- --years 2020-2024       # Specific range
+        mise run data:energy -- --years 2020,2022,2024  # Specific years
+        mise run data:energy -- --no-reset              # Preserve existing data (default)
+        mise run data:energy -- --reset                 # Clear before loading
+    """
     from babylon.data.energy import EnergyLoader
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
+    # Use --years if provided, else fall back to start/end range
+    year_list = parse_years(years) if years else None
+
     config = LoaderConfig(
+        energy_years=year_list,
         energy_start_year=start_year,
         energy_end_year=end_year,
         verbose=not quiet,
     )
 
     if not quiet:
-        typer.echo(f"Loading EIA energy data {start_year}-{end_year}...")
+        if year_list:
+            typer.echo(f"Loading EIA energy data for years: {year_list}")
+        else:
+            typer.echo(f"Loading EIA energy data {start_year}-{end_year}...")
 
     init_normalized_db()
     loader = EnergyLoader(config)

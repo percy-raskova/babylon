@@ -1253,6 +1253,13 @@ def census(
 
 @app.command()
 def tiger(
+    store_wkt: Annotated[
+        bool,
+        typer.Option(
+            "--store-wkt/--no-store-wkt",
+            help="Store full WKT polygon geometry (~500MB). Required for proper H3 polyfill.",
+        ),
+    ] = False,
     reset: Annotated[
         bool,
         typer.Option("--reset/--no-reset", help="Clear tables before loading"),
@@ -1269,7 +1276,7 @@ def tiger(
 
     Examples:
         mise run data:tiger
-        mise run data:tiger -- --reset
+        mise run data:tiger -- --store-wkt --reset
     """
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
     from babylon.data.tiger import TIGERCountyLoader
@@ -1278,9 +1285,11 @@ def tiger(
 
     if not quiet:
         typer.echo("Loading TIGER county geometries...")
+        if store_wkt:
+            typer.echo("Storing full WKT polygons (this adds ~500MB to database)")
 
     init_normalized_db()
-    loader = TIGERCountyLoader(config)
+    loader = TIGERCountyLoader(config, store_wkt=store_wkt)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset)

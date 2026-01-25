@@ -85,6 +85,33 @@ class DimCounty(NormalizedBase):
     )
 
 
+class DimCountyGeometry(NormalizedBase):
+    """County geometry for spatial operations.
+
+    Stores county boundary polygons and centroids from TIGER shapefiles
+    for spatial aggregation (H3 hex mapping) and visualization.
+
+    The geometry_wkt column contains Well-Known Text format polygons
+    for counties requiring spatial queries. This is a 1:1 extension
+    of DimCounty, not a separate dimension.
+
+    Attributes:
+        county_id: FK to DimCounty (also primary key).
+        centroid_lat: Latitude of county centroid (WGS84).
+        centroid_lon: Longitude of county centroid (WGS84).
+        area_sq_km: County land area in square kilometers.
+        geometry_wkt: Well-Known Text polygon boundary (optional, large).
+    """
+
+    __tablename__ = "dim_county_geometry"
+
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), primary_key=True)
+    centroid_lat: Mapped[Decimal] = mapped_column(Numeric(9, 6), nullable=False)
+    centroid_lon: Mapped[Decimal] = mapped_column(Numeric(10, 6), nullable=False)
+    area_sq_km: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    geometry_wkt: Mapped[str | None] = mapped_column(Text)
+
+
 class DimMetroArea(NormalizedBase):
     """Metropolitan and Micropolitan Statistical Areas.
 

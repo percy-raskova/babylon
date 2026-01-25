@@ -1455,12 +1455,9 @@ class CensusLoader(ApiLoaderBase):
 
             existing = existing_states.get(fips)
             if existing:
+                # Just use existing state - don't update fields.
+                # DuckDB can't UPDATE rows referenced by foreign keys.
                 self._state_fips_to_id[fips] = existing.state_id
-                if existing.state_name != name:
-                    existing.state_name = name
-                abbrev = STATE_ABBREVS.get(fips, fips)
-                if existing.state_abbrev != abbrev:
-                    existing.state_abbrev = abbrev
                 continue
 
             abbrev = STATE_ABBREVS.get(fips, fips)
@@ -1523,13 +1520,10 @@ class CensusLoader(ApiLoaderBase):
 
                 existing = existing_counties.get(county_data.fips)
                 if existing:
+                    # Just use existing county - don't update fields.
+                    # DuckDB can't UPDATE rows referenced by foreign keys,
+                    # and county dimension data is stable anyway.
                     self._fips_to_county[county_data.fips] = existing.county_id
-                    if existing.county_name != county_name:
-                        existing.county_name = county_name
-                    if existing.county_fips != county_data.county_fips:
-                        existing.county_fips = county_data.county_fips
-                    if existing.state_id != state_id:
-                        existing.state_id = state_id
                     continue
 
                 county = DimCounty(

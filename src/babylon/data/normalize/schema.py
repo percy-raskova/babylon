@@ -340,6 +340,85 @@ class DimOwnership(NormalizedBase):
     is_private: Mapped[bool] = mapped_column(nullable=False)
 
 
+class DimBEAIndustry(NormalizedBase):
+    """BEA industry classification (~71 industries).
+
+    The Bureau of Economic Analysis uses its own industry classification scheme
+    for GDP-by-industry, input-output, and gross output data. BEA industries
+    roughly correspond to 2-3 digit NAICS but with aggregations and splits
+    specific to national accounting.
+
+    Hierarchy levels:
+        1 = Sector (All industries, Private industries, Government)
+        2 = Major industry group (Agriculture, Mining, Manufacturing, etc.)
+        3 = Industry (Farms, Oil & Gas, Motor vehicles, etc.)
+        4 = Detail industry (where available)
+
+    Note:
+        County-level BEA GDP uses a coarser ~20-industry classification.
+        National-level BEA data uses the full ~71-industry detail.
+        The bridge_naics_bea table maps NAICS codes to BEA industries.
+    """
+
+    __tablename__ = "dim_bea_industry"
+
+    bea_industry_id: Mapped[int] = mapped_column(
+        Sequence("dim_bea_industry_bea_industry_id_seq"), primary_key=True
+    )
+    bea_code: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    industry_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    bea_level: Mapped[int] = mapped_column(
+        nullable=False
+    )  # 1=sector, 2=major, 3=industry, 4=detail
+    parent_bea_code: Mapped[str | None] = mapped_column(String(20))
+    line_number: Mapped[int | None] = mapped_column()  # BEA table line number for reference
+
+    __table_args__ = (
+        Index("idx_bea_industry_level", "bea_level"),
+        Index("idx_bea_industry_parent", "parent_bea_code"),
+        CheckConstraint("bea_level >= 1 AND bea_level <= 4", name="ck_bea_level_range"),
+    )
+
+
+class BridgeNAICSBEA(NormalizedBase):
+    """NAICS to BEA industry concordance.
+
+    Maps NAICS codes from DimIndustry to BEA industry codes in DimBEAIndustry.
+    This bridge enables linking QCEW employment data (NAICS-based) to BEA
+    gross output and value-added data for surplus value calculations.
+
+    Mapping quality indicators:
+        exact: 1:1 NAICS to BEA mapping
+        aggregated: Multiple NAICS codes map to one BEA industry
+        split: One NAICS code maps to multiple BEA industries (weighted)
+        estimated: Approximate mapping based on SIC-era concordances
+
+    Note:
+        County-level BEA uses coarser industries than national BEA.
+        A NAICS code may map to different BEA codes at different levels.
+    """
+
+    __tablename__ = "bridge_naics_bea"
+
+    industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_industry.industry_id"), primary_key=True
+    )
+    bea_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), primary_key=True
+    )
+    mapping_quality: Mapped[str] = mapped_column(String(20), default="exact")
+    weight: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))  # For split mappings (sum to 1.0)
+
+    __table_args__ = (
+        Index("idx_naics_bea_industry", "industry_id"),
+        Index("idx_naics_bea_bea", "bea_industry_id"),
+        CheckConstraint(
+            "mapping_quality IN ('exact', 'aggregated', 'split', 'estimated')",
+            name="ck_mapping_quality",
+        ),
+    )
+
+
 # =============================================================================
 # CENSUS CODE DIMENSION TABLES (Extracted Labels)
 # =============================================================================
@@ -1283,6 +1362,45 @@ class FactProductivityAnnual(NormalizedBase):
     __table_args__ = (Index("idx_productivity_time", "time_id"),)
 
 
+class FactBEANationalIndustry(NormalizedBase):
+    """BEA national industry accounts - gross output, value added, intermediate inputs.
+
+    Stores annual dollar values from BEA GDP-by-industry tables at the national level.
+    The fundamental accounting identity holds:
+        gross_output = intermediate_inputs + value_added
+
+    This is the core data for deriving constant capital (c) and variable capital (v)
+    at the national level. County-level decomposition uses these national ratios
+    applied to county employment/wage data from QCEW.
+
+    Columns:
+        gross_output_millions: Total production (c + v + s in Marxian terms)
+        intermediate_inputs_millions: Constant capital consumed (c)
+        value_added_millions: New value created (v + s)
+
+    Note:
+        Values are in millions of current dollars (nominal). For real analysis,
+        apply GDPDEF deflator from fact_fred_national.
+    """
+
+    __tablename__ = "fact_bea_national_industry"
+
+    bea_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), primary_key=True
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+
+    # BEA industry accounts (millions of dollars)
+    gross_output_millions: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    intermediate_inputs_millions: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+    value_added_millions: Mapped[Decimal | None] = mapped_column(Numeric(15, 2))
+
+    __table_args__ = (
+        Index("idx_bea_national_time", "time_id"),
+        Index("idx_bea_national_industry", "bea_industry_id"),
+    )
+
+
 # =============================================================================
 # TRADE FACT TABLES
 # =============================================================================
@@ -1743,6 +1861,9 @@ __all__ = [
     "DimIndustry",
     "DimSector",
     "DimOwnership",
+    # Dimensions - BEA Industry
+    "DimBEAIndustry",
+    "BridgeNAICSBEA",
     # Dimensions - Census Codes
     "DimIncomeBracket",
     "DimEmploymentStatus",
@@ -1793,6 +1914,8 @@ __all__ = [
     "FactQcewStateAnnual",
     "FactQcewMetroAnnual",
     "FactProductivityAnnual",
+    # Facts - BEA
+    "FactBEANationalIndustry",
     # Facts - Trade
     "FactTradeMonthly",
     # Facts - Energy

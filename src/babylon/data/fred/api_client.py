@@ -390,6 +390,7 @@ NATIONAL_SERIES = {
     "AHETPI": "Average Hourly Earnings of All Employees, Total Private",
     "UNRATE": "Unemployment Rate",
     "GFDEBTN": "Federal Debt: Total Public Debt",
+    "GDPDEF": "Gross Domestic Product: Implicit Price Deflator",
     "GINIALLRF": "GINI Index for the United States",
     "M2SL": "M2 Money Stock",
     "PPPTTLUSA618NUPN": "Purchasing Power Parity over GDP",

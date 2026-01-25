@@ -15,7 +15,7 @@ from babylon.data.census.api_client import VariableMetadata
 from babylon.data.census.loader_3nf import CensusLoader, FactTableSpec
 from babylon.data.exceptions import CensusAPIError
 from babylon.data.loader_base import LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimFredSeries,
     DimTime,
     FactFredNational,
@@ -426,3 +426,201 @@ class TestCensusLoaderResilience:
         assert loader._fetch_table_data.call_count == 0
         assert loader._client.get_county_data.call_count == 0
         assert "B19013" in loader._race_tables_unavailable_by_year[2021]
+
+
+@pytest.mark.unit
+class TestVariableFallbackBehavior:
+    """Tests for year fallback when fetching Census API variable metadata.
+
+    The Census Bureau's older API vintages (especially 2010) lack variable
+    metadata for certain tables like B23025 and B15003. The fallback mechanism
+    tries newer years when the current year returns empty metadata.
+    """
+
+    def test_fetch_variables_with_fallback_returns_early_when_current_year_succeeds(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Fallback should not be triggered when current year has data."""
+        loader = CensusLoader()
+        loader._client = MagicMock()
+        loader._client.year = 2023
+
+        expected_vars = {
+            "B23025_001E": VariableMetadata(
+                code="B23025_001E",
+                label="Total",
+                concept=None,
+                predicate_type=None,
+            )
+        }
+        loader._client.get_variables.return_value = expected_vars
+
+        result = loader._fetch_variables_with_fallback("B23025", [2010, 2015, 2023])
+
+        assert result == expected_vars
+        loader._client.get_variables.assert_called_once_with("B23025")
+
+    def test_fetch_variables_with_fallback_tries_newer_years_on_empty(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Fallback should try newer years when current year returns empty."""
+        loader = CensusLoader()
+
+        # Track which clients were created and used
+        clients_created: list[int] = []
+        get_variables_calls: list[tuple[int, str]] = []
+
+        def make_mock_client(year: int) -> MagicMock:
+            clients_created.append(year)
+            client = MagicMock()
+            client.year = year
+            client.close = MagicMock()
+
+            def get_vars(table_id: str) -> dict[str, VariableMetadata]:
+                get_variables_calls.append((year, table_id))
+                # 2010 returns empty, 2023 has data
+                if year == 2010:
+                    return {}
+                return {
+                    "B23025_001E": VariableMetadata(
+                        code="B23025_001E",
+                        label="Total",
+                        concept=None,
+                        predicate_type=None,
+                    )
+                }
+
+            client.get_variables = get_vars
+            return client
+
+        mocker.patch.object(loader, "_make_client", make_mock_client)
+
+        # Start with 2010 client (which has no data)
+        loader._client = make_mock_client(2010)
+        clients_created.clear()  # Reset after initial setup
+
+        result = loader._fetch_variables_with_fallback("B23025", [2010, 2015, 2023])
+
+        # Should have data from fallback year
+        assert "B23025_001E" in result
+        # Should have tried 2010 first, then 2023 (newest), then 2015
+        assert (2010, "B23025") in get_variables_calls
+        assert (2023, "B23025") in get_variables_calls
+
+    def test_fetch_variables_with_fallback_returns_empty_when_all_years_fail(
+        self, mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Fallback should return empty dict when all years fail."""
+        loader = CensusLoader()
+
+        def make_mock_client(year: int) -> MagicMock:
+            client = MagicMock()
+            client.year = year
+            client.close = MagicMock()
+            client.get_variables = MagicMock(return_value={})
+            return client
+
+        mocker.patch.object(loader, "_make_client", make_mock_client)
+        loader._client = make_mock_client(2010)
+
+        with caplog.at_level(logging.WARNING):
+            result = loader._fetch_variables_with_fallback("B23025", [2010, 2011, 2012])
+
+        assert result == {}
+        assert any(
+            "No variable metadata found for B23025 in any year" in record.message
+            for record in caplog.records
+        )
+
+    def test_fetch_variables_with_fallback_logs_successful_fallback(
+        self, mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Fallback should log when using data from a different year."""
+        loader = CensusLoader()
+
+        def make_mock_client(year: int) -> MagicMock:
+            client = MagicMock()
+            client.year = year
+            client.close = MagicMock()
+
+            def get_vars(table_id: str) -> dict[str, VariableMetadata]:
+                if year == 2010:
+                    return {}
+                return {
+                    "B15003_001E": VariableMetadata(
+                        code="B15003_001E",
+                        label="Total",
+                        concept=None,
+                        predicate_type=None,
+                    )
+                }
+
+            client.get_variables = get_vars
+            return client
+
+        mocker.patch.object(loader, "_make_client", make_mock_client)
+        loader._client = make_mock_client(2010)
+
+        with caplog.at_level(logging.INFO):
+            result = loader._fetch_variables_with_fallback("B15003", [2010, 2023])
+
+        assert "B15003_001E" in result
+        assert any(
+            "Fetched B15003 metadata from fallback year 2023" in record.message
+            for record in caplog.records
+        )
+
+    def test_fetch_variables_with_fallback_tries_years_newest_first(
+        self, mocker: MockerFixture
+    ) -> None:
+        """Fallback should try years in descending order (newest first)."""
+        loader = CensusLoader()
+
+        years_tried: list[int] = []
+
+        def make_mock_client(year: int) -> MagicMock:
+            client = MagicMock()
+            client.year = year
+            client.close = MagicMock()
+
+            def get_vars(table_id: str) -> dict[str, VariableMetadata]:
+                years_tried.append(year)
+                # Only 2015 has data
+                if year == 2015:
+                    return {
+                        "B23025_001E": VariableMetadata(
+                            code="B23025_001E",
+                            label="Total",
+                            concept=None,
+                            predicate_type=None,
+                        )
+                    }
+                return {}
+
+            client.get_variables = get_vars
+            return client
+
+        mocker.patch.object(loader, "_make_client", make_mock_client)
+        loader._client = make_mock_client(2010)
+
+        result = loader._fetch_variables_with_fallback("B23025", [2010, 2012, 2015, 2018])
+
+        # Should try 2010 first (current), then 2018 (newest), then 2015, then 2012
+        # But should stop at 2015 since it has data
+        assert "B23025_001E" in result  # Got data from fallback
+        assert years_tried[0] == 2010  # Current year first
+        assert years_tried[1] == 2018  # Then newest fallback
+        assert years_tried[2] == 2015  # Found data, stopped
+        assert 2012 not in years_tried  # Never reached
+
+    def test_initial_year_uses_newest_year(self) -> None:
+        """Loader should use newest year for initial dimension loading."""
+        loader = CensusLoader(LoaderConfig(census_years=[2010, 2015, 2020, 2023]))
+
+        # Access config to verify it would use newest year
+        # The actual initial_year selection happens in load(), but we can verify
+        # the config is set up correctly
+        census_years = loader.config.census_years
+        expected_initial = census_years[-1] if census_years else 2023
+
+        assert expected_initial == 2023

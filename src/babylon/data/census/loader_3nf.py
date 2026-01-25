@@ -12,7 +12,7 @@ This loader:
 Usage:
     from babylon.data.census.loader_3nf import CensusLoader
     from babylon.data import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     config = LoaderConfig(census_years=[2021], state_fips_list=["06"])  # CA only
     loader = CensusLoader(config)
@@ -40,12 +40,12 @@ from babylon.data.census.api_client import CensusAPIClient, CountyData, Variable
 from babylon.data.exceptions import CensusAPIError
 from babylon.data.loader_base import LoaderConfig, LoadStats
 from babylon.data.loaders import DimensionLoader
-from babylon.data.normalize.classifications import (
+from babylon.data.reference.classifications import (
     classify_labor_type,
     classify_marxian_class,
     classify_rent_burden,
 )
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     BridgeCountyMetro,
     DimCommuteMode,
     DimCounty,
@@ -269,7 +269,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="status_id",
         value_field="person_count",
         skip_total=False,
-        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
+        # No race iterations: Census API returns 404 for B23025A-I
     ),
     FactTableSpec(
         table_id="B25070",
@@ -280,7 +280,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="burden_id",
         value_field="household_count",
         skip_total=True,
-        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
+        # No race iterations: Census API returns 404 for B25070A-I
     ),
     FactTableSpec(
         table_id="B15003",
@@ -291,7 +291,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="level_id",
         value_field="person_count",
         skip_total=False,
-        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
+        # No race iterations: Census API returns 404 for B15003A-I
     ),
     FactTableSpec(
         table_id="B08301",
@@ -332,7 +332,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         value_field="median_rent_usd",
         value_type="decimal",
         scalar_var="B25064_001E",
-        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
+        # No race iterations: Census API returns 404 for B25064A-I
     ),
     FactTableSpec(
         table_id="B19083",
@@ -353,7 +353,7 @@ FACT_TABLE_SPECS: list[FactTableSpec] = [
         fact_dim_attr="class_id",
         value_field="worker_count",
         extract_gender=True,
-        race_suffixes=FULL_RACE_SUFFIXES,  # Has race iterations
+        # No race iterations: Census API returns 404 for B24080A-I
     ),
     FactTableSpec(
         table_id="C24010",
@@ -537,6 +537,75 @@ class CensusLoader(ApiLoaderBase):
         """Fetch variable metadata for a table via the active client."""
         assert self._client is not None
         return self._client.get_variables(table_id)
+
+    def _fetch_variables_with_fallback(
+        self,
+        table_id: str,
+        census_years: list[int],
+    ) -> dict[str, VariableMetadata]:
+        """Fetch variables, trying multiple years if the current year returns empty.
+
+        Tries years in reverse order (newest first) since newer years have
+        more complete metadata. The Census Bureau's older API vintages
+        (especially 2010) lack variable metadata for certain tables.
+
+        Args:
+            table_id: Census table ID (e.g., "B23025").
+            census_years: List of years to try as fallback.
+
+        Returns:
+            Variable metadata dict, or empty dict if all years fail.
+        """
+        assert self._client is not None
+
+        # Try current client's year first
+        variables = self._fetch_variables(table_id)
+        if variables:
+            return variables
+
+        current_year = self._client.year
+        logger.debug(
+            "No variables found for %s in year %d, trying fallback years",
+            table_id,
+            current_year,
+        )
+
+        # Fallback: try other years (newest to oldest)
+        for fallback_year in sorted(census_years, reverse=True):
+            if fallback_year == current_year:
+                continue  # Already tried this year
+
+            with self._client_scope(self._make_client(fallback_year)):
+                variables = self._fetch_variables(table_id)
+                if variables:
+                    logger.info(
+                        "Fetched %s metadata from fallback year %d (current year %d had no data)",
+                        table_id,
+                        fallback_year,
+                        current_year,
+                        extra={
+                            "loader": "census",
+                            "operation": "dimension_fallback",
+                            "table_id": table_id,
+                            "fallback_year": fallback_year,
+                            "original_year": current_year,
+                        },
+                    )
+                    return variables
+
+        # All years failed
+        logger.warning(
+            "No variable metadata found for %s in any year: %s",
+            table_id,
+            census_years,
+            extra={
+                "loader": "census",
+                "operation": "dimension_fallback_exhausted",
+                "table_id": table_id,
+                "years_tried": census_years,
+            },
+        )
+        return {}
 
     def _fetch_table_data(self, table_id: str, state_fips: str | None) -> list[Any]:
         """Fetch table data for a state (or all states) via the active client."""
@@ -956,7 +1025,7 @@ class CensusLoader(ApiLoaderBase):
         bracket_count = self._load_income_brackets(session, verbose)
         stats.dimensions_loaded["dim_income_bracket"] = bracket_count
 
-        status_count = self._load_employment_statuses(session, verbose)
+        status_count = self._load_employment_statuses(session, verbose, census_years)
         stats.dimensions_loaded["dim_employment_status"] = status_count
 
         class_count = self._load_worker_classes(session, verbose)
@@ -965,7 +1034,7 @@ class CensusLoader(ApiLoaderBase):
         occ_count = self._load_occupations(session, verbose)
         stats.dimensions_loaded["dim_occupation"] = occ_count
 
-        edu_count = self._load_education_levels(session, verbose)
+        edu_count = self._load_education_levels(session, verbose, census_years)
         stats.dimensions_loaded["dim_education_level"] = edu_count
 
         tenure_count = self._load_housing_tenures(session)
@@ -1012,8 +1081,9 @@ class CensusLoader(ApiLoaderBase):
         census_years = self.config.census_years
         state_fips_list = self.config.state_fips_list or DEFAULT_STATE_FIPS
 
-        # Use first year for dimensions that need API metadata
-        initial_year = census_years[0] if census_years else 2021
+        # Use newest year for dimensions that need API metadata
+        # Older years (especially 2010) may lack metadata for some tables
+        initial_year = census_years[-1] if census_years else 2023
 
         # Setup per-run logging
         ingest_handler, run_id = create_ingest_handler("census")
@@ -1687,14 +1757,19 @@ class CensusLoader(ApiLoaderBase):
 
         return len(loader) - initial_count
 
-    def _load_employment_statuses(self, session: Session, _verbose: bool) -> int:
-        """Load employment status dimension from B23025 metadata (idempotent)."""
+    def _load_employment_statuses(
+        self, session: Session, _verbose: bool, census_years: list[int]
+    ) -> int:
+        """Load employment status dimension from B23025 metadata (idempotent).
+
+        Uses year fallback because 2010 API lacks B23025 variable metadata.
+        """
         assert self._client is not None
 
         loader = DimensionLoader(session, DimEmploymentStatus, "status_code")
         initial_count = loader.initialize_from_db()
 
-        variables = self._fetch_variables("B23025")
+        variables = self._fetch_variables_with_fallback("B23025", census_years)
         order = 1
 
         for var_code, var_info in sorted(variables.items()):
@@ -1783,14 +1858,19 @@ class CensusLoader(ApiLoaderBase):
 
         return len(loader) - initial_count
 
-    def _load_education_levels(self, session: Session, _verbose: bool) -> int:
-        """Load education level dimension from B15003 metadata (idempotent)."""
+    def _load_education_levels(
+        self, session: Session, _verbose: bool, census_years: list[int]
+    ) -> int:
+        """Load education level dimension from B15003 metadata (idempotent).
+
+        Uses year fallback because 2010 API lacks B15003 variable metadata.
+        """
         assert self._client is not None
 
         loader = DimensionLoader(session, DimEducationLevel, "level_code")
         initial_count = loader.initialize_from_db()
 
-        variables = self._fetch_variables("B15003")
+        variables = self._fetch_variables_with_fallback("B15003", census_years)
         order = 1
 
         # Years of schooling mapping

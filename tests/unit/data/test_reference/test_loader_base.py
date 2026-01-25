@@ -14,8 +14,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import DimState
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import DimState
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -528,7 +528,7 @@ class FKTestLoader(DataLoader):
 
     def get_dimension_tables(self) -> list[type]:
         """Return dimension tables - order depends on wrong_order flag."""
-        from babylon.data.normalize.schema import DimCounty, DimState
+        from babylon.data.reference.schema import DimCounty, DimState
 
         if self._wrong_order:
             # WRONG: DimState before DimCounty violates FK constraint
@@ -563,7 +563,7 @@ class TestFKSafeClearTables:
 
     def test_correct_fk_order_succeeds(self, fk_session: Session) -> None:
         """clear_tables() with correct FK order should succeed."""
-        from babylon.data.normalize.schema import DimCounty, DimState
+        from babylon.data.reference.schema import DimCounty, DimState
 
         # Add parent state
         state = DimState(state_fips="06", state_name="California", state_abbrev="CA")
@@ -597,7 +597,7 @@ class TestFKSafeClearTables:
         """clear_tables() with wrong FK order should fail with constraint error."""
         from sqlalchemy.exc import IntegrityError
 
-        from babylon.data.normalize.schema import DimCounty, DimState
+        from babylon.data.reference.schema import DimCounty, DimState
 
         # Add parent state
         state = DimState(state_fips="06", state_name="California", state_abbrev="CA")
@@ -628,7 +628,7 @@ class TestFKSafeClearTables:
     def test_census_loader_has_correct_fk_order(self) -> None:
         """CensusLoader.get_dimension_tables() should have correct FK order."""
         from babylon.data.census.loader_3nf import CensusLoader
-        from babylon.data.normalize.schema import DimCounty, DimState
+        from babylon.data.reference.schema import DimCounty, DimState
 
         loader = CensusLoader()
         tables = loader.get_dimension_tables()
@@ -653,7 +653,7 @@ class TestDimDataSourceFields:
 
     def test_source_url_field_exists(self) -> None:
         """DimDataSource should have source_url field."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         # Check column exists in table
         columns = DimDataSource.__table__.columns
@@ -661,14 +661,14 @@ class TestDimDataSourceFields:
 
     def test_source_url_is_nullable(self) -> None:
         """source_url should be nullable (optional field)."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         source_url_col = DimDataSource.__table__.columns["source_url"]
         assert source_url_col.nullable is True
 
     def test_can_create_with_source_url(self, test_session: Session) -> None:
         """DimDataSource should accept source_url parameter."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         source = DimDataSource(
             source_code="TEST",
@@ -686,7 +686,7 @@ class TestDimDataSourceFields:
 
     def test_can_create_without_source_url(self, test_session: Session) -> None:
         """DimDataSource should work without source_url (nullable)."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         source = DimDataSource(
             source_code="NO_URL",
@@ -701,7 +701,7 @@ class TestDimDataSourceFields:
 
     def test_source_url_max_length(self) -> None:
         """source_url should have sufficient length for URLs (500 chars)."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         source_url_col = DimDataSource.__table__.columns["source_url"]
         # SQLAlchemy String type has length attribute
@@ -709,14 +709,14 @@ class TestDimDataSourceFields:
 
     def test_description_field_exists(self) -> None:
         """DimDataSource should have description field."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         columns = DimDataSource.__table__.columns
         assert "description" in columns
 
     def test_can_create_with_description(self, test_session: Session) -> None:
         """DimDataSource should accept description parameter."""
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         source = DimDataSource(
             source_code="DESC_TEST",
@@ -765,7 +765,7 @@ class TestCheckpointHelpers:
 
     def test_mark_completed_creates_checkpoint(self, checkpoint_session: Session) -> None:
         """_mark_completed() creates a checkpoint record."""
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         loader = ConcreteTestLoader()
         loader._mark_completed(
@@ -886,7 +886,7 @@ class TestCheckpointHelpers:
 
     def test_clear_checkpoints_removes_all_for_source(self, checkpoint_session: Session) -> None:
         """_clear_checkpoints() removes all checkpoints for a source."""
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         loader = ConcreteTestLoader()
 
@@ -907,7 +907,7 @@ class TestCheckpointHelpers:
 
     def test_clear_checkpoints_filters_by_year(self, checkpoint_session: Session) -> None:
         """_clear_checkpoints() can filter by year."""
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         loader = ConcreteTestLoader()
 
@@ -931,7 +931,7 @@ class TestCheckpointHelpers:
         self, checkpoint_session: Session
     ) -> None:
         """_clear_checkpoints() doesn't affect other sources."""
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         loader = ConcreteTestLoader()
 
@@ -951,7 +951,7 @@ class TestCheckpointHelpers:
 
     def test_mark_completed_upserts_on_duplicate(self, checkpoint_session: Session) -> None:
         """_mark_completed() upserts (updates) existing checkpoint."""
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         loader = ConcreteTestLoader()
 

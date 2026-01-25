@@ -19,7 +19,7 @@ from sqlalchemy import func
 from babylon.config.defines import GameDefines
 from babylon.data.arcgis_loader_base import ArcGISStreamingLoader
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCoerciveType,
     FactCoerciveInfrastructure,
     StagingArcGISFeature,

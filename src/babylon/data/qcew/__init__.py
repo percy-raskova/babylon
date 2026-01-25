@@ -8,7 +8,7 @@ from the BLS Open Data API or local CSV files using a hybrid approach:
 Usage:
     from babylon.data.qcew import QcewLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(qcew_years=list(range(2013, 2026)))
     loader = QcewLoader(config)

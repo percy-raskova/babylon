@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from babylon.data.loader_base import LoaderConfig
 from babylon.data.lodes import LodesCrosswalkLoader
-from babylon.data.normalize import schema as _schema  # noqa: F401
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import BridgeLodesBlock, DimCounty, DimState
+from babylon.data.reference import schema as _schema  # noqa: F401
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import BridgeLodesBlock, DimCounty, DimState
 
 
 def _make_session() -> Session:

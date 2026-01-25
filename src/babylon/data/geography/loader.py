@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCounty,
     DimGeographicHierarchy,
     DimTime,

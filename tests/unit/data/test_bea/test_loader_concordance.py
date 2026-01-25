@@ -115,7 +115,7 @@ class TestLoaderStructure:
 
     def test_get_fact_tables(self) -> None:
         """Should declare BridgeNAICSBEA as fact table."""
-        from babylon.data.normalize.schema import BridgeNAICSBEA
+        from babylon.data.reference.schema import BridgeNAICSBEA
 
         loader = BEAConcordanceLoader()
         tables = loader.get_fact_tables()
@@ -135,7 +135,7 @@ class TestActualFileLoading:
     @pytest.fixture
     def session(self) -> Session:
         """Get a database session."""
-        from babylon.data.normalize.database import get_normalized_session_factory
+        from babylon.data.reference.database import get_normalized_session_factory
 
         session_factory = get_normalized_session_factory()
         return session_factory()

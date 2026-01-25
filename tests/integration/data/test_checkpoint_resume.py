@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from babylon.data.loader_base import LoaderConfig
 from babylon.data.materials.loader_3nf import MaterialsLoader
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import (
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import (
     FactCommodityObservation,
     IngestCheckpoint,
 )

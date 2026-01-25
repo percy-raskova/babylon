@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from babylon.data.fcc.parser import parse_fcc_summary_csv
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCounty,
     DimDataSource,
     FactBroadbandCoverage,

@@ -16,7 +16,7 @@ Modules:
 Usage:
     from babylon.data.fred import FredLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(fred_start_year=1990, fred_end_year=2024)
     loader = FredLoader(config)

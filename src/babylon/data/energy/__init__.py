@@ -24,7 +24,7 @@ Marxian interpretations:
 Usage:
     from babylon.data.energy import EnergyLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(energy_start_year=2000, energy_end_year=2023)
     loader = EnergyLoader(config)

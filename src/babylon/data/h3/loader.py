@@ -5,7 +5,7 @@ and persists them to BridgeCountyH3 for efficient spatial joins.
 
 Usage:
     from babylon.data.h3 import H3GridLoader
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = H3GridLoader(resolution=5)
     session_factory = get_normalized_session_factory()
@@ -22,7 +22,7 @@ import h3
 from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import BridgeCountyH3, DimCountyGeometry
+from babylon.data.reference.schema import BridgeCountyH3, DimCountyGeometry
 
 if TYPE_CHECKING:
     from shapely.geometry import Polygon as ShapelyPolygon  # type: ignore[import-untyped]

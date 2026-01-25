@@ -13,7 +13,7 @@ Usage:
     # Load directly to 3NF (recommended)
     from babylon.data.census import CensusLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(census_years=[2021])
     loader = CensusLoader(config)

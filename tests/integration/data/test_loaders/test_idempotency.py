@@ -19,8 +19,8 @@ from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import DimState
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import DimState
 
 if TYPE_CHECKING:
     from collections.abc import Generator

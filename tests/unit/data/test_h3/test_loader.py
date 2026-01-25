@@ -52,7 +52,7 @@ class TestLoaderStructure:
     def test_get_fact_tables(self) -> None:
         """Should declare BridgeCountyH3 as fact table."""
         from babylon.data.h3 import H3GridLoader
-        from babylon.data.normalize.schema import BridgeCountyH3
+        from babylon.data.reference.schema import BridgeCountyH3
 
         loader = H3GridLoader()
         tables = loader.get_fact_tables()
@@ -151,7 +151,7 @@ class TestActualDatabaseLoading:
     @pytest.fixture(scope="class")
     def session_factory(self) -> Callable:
         """Get session factory."""
-        from babylon.data.normalize.database import get_normalized_session_factory
+        from babylon.data.reference.database import get_normalized_session_factory
 
         return get_normalized_session_factory()
 

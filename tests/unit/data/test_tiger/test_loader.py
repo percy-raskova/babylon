@@ -47,7 +47,7 @@ class TestLoaderStructure:
 
     def test_get_dimension_tables(self) -> None:
         """Should declare DimCountyGeometry as dimension table."""
-        from babylon.data.normalize.schema import DimCountyGeometry
+        from babylon.data.reference.schema import DimCountyGeometry
         from babylon.data.tiger import TIGERCountyLoader
 
         loader = TIGERCountyLoader()
@@ -179,7 +179,7 @@ class TestActualFileLoading:
     @pytest.fixture(scope="class")
     def session_factory(self) -> Callable:
         """Get session factory."""
-        from babylon.data.normalize.database import get_normalized_session_factory
+        from babylon.data.reference.database import get_normalized_session_factory
 
         return get_normalized_session_factory()
 

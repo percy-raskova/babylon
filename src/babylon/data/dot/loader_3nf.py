@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete
 
 from babylon.data.loader_base import DataLoader, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCounty,
     DimDataSource,
     DimState,

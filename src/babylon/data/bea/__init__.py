@@ -14,7 +14,7 @@ by providing:
 Usage:
     from babylon.data.bea import BEANationalLoader
     from babylon.data import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = BEANationalLoader()
     session_factory = get_normalized_session_factory()

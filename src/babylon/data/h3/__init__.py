@@ -10,7 +10,7 @@ H3 is a hierarchical hexagonal geospatial indexing system that enables:
 
 Usage:
     from babylon.data.h3 import H3GridLoader
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = H3GridLoader(resolution=5)
     session_factory = get_normalized_session_factory()

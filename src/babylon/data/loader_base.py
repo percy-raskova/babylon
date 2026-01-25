@@ -388,7 +388,7 @@ class DataLoader(ABC):
             - If quarter is provided and month is None: quarterly granularity
         """
         # Import here to avoid circular dependency
-        from babylon.data.normalize.schema import DimTime
+        from babylon.data.reference.schema import DimTime
 
         cache_key = (year, month, quarter)
         if cache_key in self._time_cache:
@@ -465,7 +465,7 @@ class DataLoader(ABC):
             source_id for the matching or newly created DimDataSource record.
         """
         # Import here to avoid circular dependency
-        from babylon.data.normalize.schema import DimDataSource
+        from babylon.data.reference.schema import DimDataSource
 
         # Check for existing source
         existing = (
@@ -508,7 +508,7 @@ class DataLoader(ABC):
             county_id = fips_to_county.get("06001")  # Alameda County, CA
         """
         # Import here to avoid circular dependency
-        from babylon.data.normalize.schema import DimCounty
+        from babylon.data.reference.schema import DimCounty
 
         counties = session.query(DimCounty).all()
         return {c.fips: c.county_id for c in counties}
@@ -539,7 +539,7 @@ class DataLoader(ABC):
         Returns:
             True if this work unit has already been completed.
         """
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         exists = (
             session.query(IngestCheckpoint)
@@ -579,7 +579,7 @@ class DataLoader(ABC):
             race_code: Race code suffix (default "T" for total).
             row_count: Number of rows loaded for this work unit.
         """
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         # Query for existing checkpoint
         existing = (
@@ -628,7 +628,7 @@ class DataLoader(ABC):
         Returns:
             Number of checkpoint records deleted.
         """
-        from babylon.data.normalize.schema import IngestCheckpoint
+        from babylon.data.reference.schema import IngestCheckpoint
 
         query = session.query(IngestCheckpoint).filter(IngestCheckpoint.source_code == source_code)
         if year is not None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import Column, Integer, MetaData, Sequence, String, Table, create_engine, inspect
 
-from babylon.data.normalize import schema_check
+from babylon.data.reference import schema_check
 
 
 def test_apply_schema_repairs_adds_table() -> None:

@@ -21,7 +21,7 @@ from tqdm import tqdm
 from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.cfs.api_client import CFSAPIClient
 from babylon.data.loader_base import LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCounty,
     DimGeographicHierarchy,
     DimSCTGCommodity,

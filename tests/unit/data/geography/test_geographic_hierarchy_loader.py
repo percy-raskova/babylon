@@ -14,7 +14,7 @@ import pytest
 
 from babylon.data.geography.loader import GeographicHierarchyLoader
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize.schema import DimGeographicHierarchy
+from babylon.data.reference.schema import DimGeographicHierarchy
 
 if TYPE_CHECKING:
     pass

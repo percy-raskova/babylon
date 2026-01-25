@@ -6,7 +6,7 @@ world-system tiers, class composition, Marxian class, and labor type.
 
 from __future__ import annotations
 
-from babylon.data.normalize.classifications import (
+from babylon.data.reference.classifications import (
     CORE_COUNTRIES,
     SEMI_PERIPHERY_COUNTRIES,
     classify_class_composition,

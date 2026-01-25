@@ -13,7 +13,7 @@ import pytest
 
 from babylon.data.cfs.loader import CFSLoader
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize.schema import DimSCTGCommodity, FactCommodityFlow
+from babylon.data.reference.schema import DimSCTGCommodity, FactCommodityFlow
 
 
 @pytest.mark.unit

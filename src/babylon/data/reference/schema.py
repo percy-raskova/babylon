@@ -47,7 +47,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import DateTime
 
-from babylon.data.normalize.database import NormalizedBase
+from babylon.data.reference.database import NormalizedBase
 
 # =============================================================================
 # GEOGRAPHIC DIMENSION TABLES

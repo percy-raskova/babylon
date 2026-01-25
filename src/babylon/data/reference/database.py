@@ -1,7 +1,8 @@
-"""Normalized 3NF research database configuration.
+"""Reference database configuration (immutable federal statistical data).
 
-Provides a properly normalized database for Marxian economic analysis,
-populated via ETL from external data sources.
+The reference database contains normalized 3NF federal statistical data
+for initializing simulation state. This data is treated as immutable
+after initial load - loaders write once, simulation reads only.
 
 Located at data/duckdb/marxist-data-3NF.duckdb by default. Override with
 BABYLON_NORMALIZED_DB_PATH to target an alternate build database.
@@ -132,13 +133,16 @@ def get_normalized_db() -> Iterator[Session]:
 def get_normalized_session() -> Iterator[Session]:
     """Get a normalized database session as a context manager.
 
+    This provides write access to the reference database and should
+    only be used by loaders during initial data population.
+
     Usage:
         with get_normalized_session() as session:
             session.add(obj)
             session.commit()
 
     Yields:
-        Session: SQLAlchemy database session
+        Session: SQLAlchemy database session with write access.
     """
     session_factory = get_normalized_session_factory()
     session = session_factory()
@@ -152,8 +156,33 @@ def get_normalized_session() -> Iterator[Session]:
         session.close()
 
 
+@contextmanager
+def get_reference_session() -> Iterator[Session]:
+    """Get a read-only reference database session.
+
+    This is the preferred API for simulation code to access reference data.
+    The session is read-only by convention - no commit is performed.
+
+    Usage:
+        from babylon.data.reference import get_reference_session, DimCounty
+
+        with get_reference_session() as session:
+            counties = session.query(DimCounty).all()
+
+    Yields:
+        Session: SQLAlchemy database session (read-only by convention).
+    """
+    session_factory = get_normalized_session_factory()
+    session = session_factory()
+    try:
+        yield session
+        # No commit - read-only by convention
+    finally:
+        session.close()
+
+
 def init_normalized_db() -> None:
     """Create all normalized database tables."""
-    from babylon.data.normalize import schema  # noqa: F401
+    from babylon.data.reference import schema  # noqa: F401
 
     NormalizedBase.metadata.create_all(bind=normalized_engine())

@@ -13,7 +13,7 @@ This loader:
 Usage:
     from babylon.data.fred.loader_3nf import FredLoader
     from babylon.data import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     config = LoaderConfig(fred_start_year=1990, fred_end_year=2024)
     loader = FredLoader(config)
@@ -44,7 +44,7 @@ from babylon.data.fred.api_client import (
     FredAPIClient,
 )
 from babylon.data.loader_base import LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimAssetCategory,
     DimDataSource,
     DimFredSeries,

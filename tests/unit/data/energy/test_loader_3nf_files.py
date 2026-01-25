@@ -18,9 +18,9 @@ from babylon.data.energy.api_client import (
     EnergySeriesMetadata,
 )
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize import schema as _schema  # noqa: F401
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import DimEnergySeries, FactEnergyAnnual
+from babylon.data.reference import schema as _schema  # noqa: F401
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import DimEnergySeries, FactEnergyAnnual
 
 
 def _make_session() -> Session:

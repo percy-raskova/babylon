@@ -19,8 +19,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import (
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import (
     DimCoerciveType,
     DimCounty,
     DimDataSource,

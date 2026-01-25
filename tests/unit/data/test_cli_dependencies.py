@@ -7,8 +7,8 @@ from sqlalchemy.orm import sessionmaker
 
 from babylon.data.cli import _check_loader_prereqs, _resolve_loader_order
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize import schema as _schema  # noqa: F401
-from babylon.data.normalize.database import NormalizedBase
+from babylon.data.reference import schema as _schema  # noqa: F401
+from babylon.data.reference.database import NormalizedBase
 
 
 def _make_session():

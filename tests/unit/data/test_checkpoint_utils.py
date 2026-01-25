@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from babylon.data.normalize.checkpoint_utils import (
+from babylon.data.reference.checkpoint_utils import (
     count_checkpoints,
     count_checkpoints_by_year,
     get_checkpoint_details,
@@ -17,8 +17,8 @@ from babylon.data.normalize.checkpoint_utils import (
     get_total_row_count,
     verify_checkpoint_coverage,
 )
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import IngestCheckpoint
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import IngestCheckpoint
 
 
 @pytest.fixture

@@ -66,7 +66,7 @@ class TestMIRTAMilitaryLoaderTables:
         self, military_loader: MIRTAMilitaryLoader
     ) -> None:
         """Dimension tables should include DimCoerciveType."""
-        from babylon.data.normalize.schema import DimCoerciveType
+        from babylon.data.reference.schema import DimCoerciveType
 
         tables = military_loader.get_dimension_tables()
         assert DimCoerciveType in tables
@@ -75,7 +75,7 @@ class TestMIRTAMilitaryLoaderTables:
         self, military_loader: MIRTAMilitaryLoader
     ) -> None:
         """Fact tables should include FactCoerciveInfrastructure."""
-        from babylon.data.normalize.schema import FactCoerciveInfrastructure
+        from babylon.data.reference.schema import FactCoerciveInfrastructure
 
         tables = military_loader.get_fact_tables()
         assert FactCoerciveInfrastructure in tables

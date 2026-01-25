@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from babylon.data import cli
-from babylon.data.normalize import schema_check
 from babylon.data.preflight import PreflightCheck, PreflightResult
+from babylon.data.reference import schema_check
 
 
 def test_ingest_readiness_applies_repairs(monkeypatch) -> None:

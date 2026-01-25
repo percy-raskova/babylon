@@ -154,7 +154,7 @@ class TestLoaderStructure:
     def test_get_fact_tables(self) -> None:
         """Should declare FactBEACountyGDP as fact table."""
         from babylon.data.bea.loader_county import BEACountyGDPLoader
-        from babylon.data.normalize.schema import FactBEACountyGDP
+        from babylon.data.reference.schema import FactBEACountyGDP
 
         loader = BEACountyGDPLoader()
         tables = loader.get_fact_tables()
@@ -208,7 +208,7 @@ class TestActualDatabaseLoading:
     @pytest.fixture(scope="class")
     def session_factory(self) -> Callable:
         """Get session factory."""
-        from babylon.data.normalize.database import get_normalized_session_factory
+        from babylon.data.reference.database import get_normalized_session_factory
 
         return get_normalized_session_factory()
 

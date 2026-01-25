@@ -6,7 +6,7 @@ like H3 hex-to-county mapping and visualization.
 
 Usage:
     from babylon.data.tiger import TIGERCountyLoader
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = TIGERCountyLoader()
     session_factory = get_normalized_session_factory()
@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import DimCountyGeometry
+from babylon.data.reference.schema import DimCountyGeometry
 
 if TYPE_CHECKING:
     from shapely.geometry.base import BaseGeometry  # type: ignore[import-untyped]

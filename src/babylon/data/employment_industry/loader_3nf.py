@@ -12,8 +12,9 @@ from sqlalchemy import delete, select
 
 from babylon.data.loader_base import DataLoader, LoadStats
 from babylon.data.loaders.dimension_loader import DimensionLoader
-from babylon.data.normalize.classifications import classify_class_composition
-from babylon.data.normalize.schema import (
+from babylon.data.qcew.parser import determine_area_type, determine_naics_level
+from babylon.data.reference.classifications import classify_class_composition
+from babylon.data.reference.schema import (
     DimCounty,
     DimDataSource,
     DimEmploymentArea,
@@ -23,7 +24,6 @@ from babylon.data.normalize.schema import (
     DimTime,
     FactEmploymentIndustryAnnual,
 )
-from babylon.data.qcew.parser import determine_area_type, determine_naics_level
 from babylon.data.utils import BatchWriter, normalize_numeric_fips
 from babylon.data.utils.field_parsers import parse_decimal, parse_float, parse_int, parse_str
 

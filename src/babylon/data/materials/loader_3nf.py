@@ -9,7 +9,7 @@ This loader replaces the legacy loader (loader.py) with a direct
 Example:
     from babylon.data.materials import MaterialsLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(materials_years=list(range(2015, 2025)))
     loader = MaterialsLoader(config)
@@ -34,7 +34,7 @@ from babylon.data.materials.parser import (
     get_metric_category,
     parse_commodity_csv,
 )
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCommodity,
     DimCommodityMetric,
     DimDataSource,

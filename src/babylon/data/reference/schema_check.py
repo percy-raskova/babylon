@@ -17,8 +17,8 @@ from sqlalchemy.schema import CreateColumn
 from sqlalchemy.sql.functions import next_value
 
 from babylon.data.exceptions import SchemaCheckError
-from babylon.data.normalize import schema as _schema  # noqa: F401
-from babylon.data.normalize.database import (
+from babylon.data.reference import schema as _schema  # noqa: F401
+from babylon.data.reference.database import (
     NORMALIZED_DB_PATH,
     NormalizedBase,
     get_normalized_engine,

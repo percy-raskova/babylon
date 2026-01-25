@@ -12,7 +12,7 @@ The data forms the foundation for Marxian value analysis by providing:
 
 Usage:
     from babylon.data.bea import BEANationalLoader
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = BEANationalLoader()
     session_factory = get_normalized_session_factory()
@@ -31,7 +31,7 @@ from tqdm import tqdm
 
 from babylon.data.bea.parser import BEAIndustry, BEAIndustryParser, BEAParseResult
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     BridgeNAICSBEA,
     DimBEAIndustry,
     DimDataSource,

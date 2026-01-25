@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Integer, String, Text
 
-import babylon.data.normalize.schema_check as schema_check
+import babylon.data.reference.schema_check as schema_check
 from babylon.data.exceptions import SchemaCheckError
 
 

@@ -4,7 +4,7 @@ import importlib
 import os
 from pathlib import Path
 
-import babylon.data.normalize.database as database
+import babylon.data.reference.database as database
 
 
 def _reload_with_env(value: str | None) -> None:

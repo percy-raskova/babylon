@@ -11,9 +11,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from babylon.data.loaders.dimension_loader import DimensionLoader
-from babylon.data.normalize import schema as _schema  # noqa: F401  # Import for side effects
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import DimGender, DimOwnership
+from babylon.data.reference import schema as _schema  # noqa: F401  # Import for side effects
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import DimGender, DimOwnership
 
 
 def _make_session() -> Session:

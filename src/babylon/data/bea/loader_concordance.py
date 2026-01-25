@@ -12,7 +12,7 @@ The concordance maps BEA industry codes to NAICS codes at multiple levels:
 
 Usage:
     from babylon.data.bea import BEAConcordanceLoader
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = BEAConcordanceLoader()
     session_factory = get_normalized_session_factory()
@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     BridgeNAICSBEA,
     DimBEAIndustry,
     DimIndustry,

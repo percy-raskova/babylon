@@ -43,7 +43,7 @@ class TestBEANationalLoaderStructure:
 
     def test_get_dimension_tables(self) -> None:
         """Should declare DimBEAIndustry as dimension table."""
-        from babylon.data.normalize.schema import DimBEAIndustry, DimDataSource
+        from babylon.data.reference.schema import DimBEAIndustry, DimDataSource
 
         loader = BEANationalLoader()
         tables = loader.get_dimension_tables()
@@ -52,7 +52,7 @@ class TestBEANationalLoaderStructure:
 
     def test_get_fact_tables(self) -> None:
         """Should declare FactBEANationalIndustry as fact table."""
-        from babylon.data.normalize.schema import FactBEANationalIndustry
+        from babylon.data.reference.schema import FactBEANationalIndustry
 
         loader = BEANationalLoader()
         tables = loader.get_fact_tables()
@@ -120,7 +120,7 @@ class TestActualDatabaseLoading:
 
         This avoids repeated load/clear cycles that cause FK constraint issues.
         """
-        from babylon.data.normalize.database import get_normalized_session_factory
+        from babylon.data.reference.database import get_normalized_session_factory
 
         loader = BEANationalLoader(data_dir=Path("data"))
         session_factory = get_normalized_session_factory()
@@ -133,7 +133,7 @@ class TestActualDatabaseLoading:
     @pytest.fixture
     def session(self, loaded_data: LoadStats) -> Session:
         """Get a database session (data already loaded by loaded_data fixture)."""
-        from babylon.data.normalize.database import get_normalized_session_factory
+        from babylon.data.reference.database import get_normalized_session_factory
 
         session_factory = get_normalized_session_factory()
         return session_factory()

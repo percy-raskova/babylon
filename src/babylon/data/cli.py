@@ -41,8 +41,8 @@ from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from babylon.data.normalize.schema_check import SchemaRepairAction, SchemaRepairReport
     from babylon.data.preflight import PreflightResult
+    from babylon.data.reference.schema_check import SchemaRepairAction, SchemaRepairReport
 
 app = typer.Typer(
     name="data",
@@ -209,7 +209,7 @@ class IngestReadinessResult:
 def _run_schema_readiness(repair: bool) -> SchemaRepairReport:
     """Return schema readiness report with optional repairs."""
     try:
-        from babylon.data.normalize import schema_check
+        from babylon.data.reference import schema_check
     except ModuleNotFoundError as exc:
         if exc.name != "alembic":
             raise
@@ -344,7 +344,7 @@ def _print_schema_readiness(result: IngestReadinessResult) -> None:
     )
 
     if report.remaining_diffs:
-        from babylon.data.normalize.schema_check import format_schema_diffs
+        from babylon.data.reference.schema_check import format_schema_diffs
 
         typer.secho("[FAIL] Schema drift remains after repairs.", fg=typer.colors.RED)
         typer.echo(f"Diffs:\n{format_schema_diffs(report.remaining_diffs)}")
@@ -355,7 +355,7 @@ def _collect_prereq_errors(
     config: LoaderConfig,
 ) -> dict[str, list[str]]:
     """Collect prerequisite errors for loaders missing dependencies."""
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     errors: dict[str, list[str]] = {}
     selected_set = set(selected)
@@ -389,7 +389,7 @@ def _run_schema_check(quiet: bool) -> None:
     """Validate normalized schema against SQLAlchemy models."""
     try:
         from babylon.data.exceptions import SchemaCheckError
-        from babylon.data.normalize.schema_check import check_normalized_schema
+        from babylon.data.reference.schema_check import check_normalized_schema
     except ModuleNotFoundError as exc:
         if exc.name != "alembic":
             raise
@@ -610,7 +610,7 @@ def _check_prereqs_census_dims(
     _config: LoaderConfig,
 ) -> list[str]:
     """Return census dimension prerequisite errors."""
-    from babylon.data.normalize.schema import (
+    from babylon.data.reference.schema import (
         DimCounty,
         DimState,
     )
@@ -633,7 +633,7 @@ def _check_prereqs_county_only(
     _config: LoaderConfig,
 ) -> list[str]:
     """Return county-only prerequisite errors."""
-    from babylon.data.normalize.schema import DimCounty
+    from babylon.data.reference.schema import DimCounty
 
     if _has_rows(session, DimCounty):
         return []
@@ -651,7 +651,7 @@ def _check_prereqs_geography(
     _config: LoaderConfig,
 ) -> list[str]:
     """Return prerequisite errors for geography loader."""
-    from babylon.data.normalize.schema import DimCounty, FactCensusEmployment, FactQcewAnnual
+    from babylon.data.reference.schema import DimCounty, FactCensusEmployment, FactQcewAnnual
 
     missing_parts = []
     if not _has_rows(session, DimCounty):
@@ -677,7 +677,7 @@ def _check_prereqs_cfs(
     config: LoaderConfig,
 ) -> list[str]:
     """Return prerequisite errors for cfs loader."""
-    from babylon.data.normalize.schema import DimGeographicHierarchy
+    from babylon.data.reference.schema import DimGeographicHierarchy
 
     year = _get_cfs_year(config)
     if _has_rows_for_year(session, DimGeographicHierarchy, year, "source_year"):
@@ -759,11 +759,11 @@ def load(
     ] = True,
 ) -> None:
     """Load all data sources into the 3NF database."""
-    from babylon.data.normalize.database import (
+    from babylon.data.reference.database import (
         get_normalized_engine,
         init_normalized_db,
     )
-    from babylon.data.normalize.views import create_views
+    from babylon.data.reference.views import create_views
 
     config = _build_config(
         config_file, census_year, fred_start, fred_end, energy_start, energy_end, states, quiet
@@ -872,8 +872,8 @@ def schema_init(
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
 ) -> None:
     """Create normalized schema tables (and optional views)."""
-    from babylon.data.normalize.database import get_normalized_engine, init_normalized_db
-    from babylon.data.normalize.views import create_views
+    from babylon.data.reference.database import get_normalized_engine, init_normalized_db
+    from babylon.data.reference.views import create_views
 
     init_normalized_db()
     view_count = 0
@@ -925,7 +925,7 @@ def _run_all_loaders(
     selected: list[str], config: LoaderConfig, reset: bool, quiet: bool
 ) -> tuple[list[LoadStats], bool]:
     """Run all selected loaders and return stats."""
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
     from babylon.utils.exceptions import BabylonError
     from babylon.utils.log import log_context_scope
 
@@ -1212,7 +1212,7 @@ def census(
         mise run data:census -- --year=2021 --reset
     """
     from babylon.data.census import CensusLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     # Determine year list
     if years:
@@ -1272,7 +1272,7 @@ def fred(
 ) -> None:
     """Load FRED macroeconomic data into 3NF database."""
     from babylon.data.fred import FredLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(
         fred_start_year=start_year,
@@ -1316,7 +1316,7 @@ def energy(
 ) -> None:
     """Load EIA energy data into 3NF database."""
     from babylon.data.energy import EnergyLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(
         energy_start_year=start_year,
@@ -1378,8 +1378,8 @@ def qcew(
         mise run data:qcew -- --years 2015-2020 --force-files  # Historical via files
         mise run data:qcew -- --force-api            # Force API for all years
     """
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
     from babylon.data.qcew import QcewLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     # Default years: 2013-2025 (hybrid: 2013-2020 files, 2021-2025 API)
     config = LoaderConfig(
@@ -1429,7 +1429,7 @@ def trade(
     ] = False,
 ) -> None:
     """Load UN trade data into 3NF database."""
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
     from babylon.data.trade import TradeLoader
 
     config = LoaderConfig(
@@ -1468,7 +1468,7 @@ def materials(
 ) -> None:
     """Load USGS materials data into 3NF database."""
     from babylon.data.materials import MaterialsLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(
         materials_years=parse_years(years) or list(range(2015, 2024)),
@@ -1518,7 +1518,7 @@ def employment_industry(
     to clear all data and start fresh.
     """
     from babylon.data.employment_industry import EmploymentIndustryLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
 
@@ -1557,7 +1557,7 @@ def dot_hpms(
 ) -> None:
     """Load DOT HPMS road segments into 3NF database."""
     from babylon.data.dot import DotHpmsLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
 
@@ -1596,7 +1596,7 @@ def lodes(
 ) -> None:
     """Load LODES crosswalk data into 3NF database."""
     from babylon.data.lodes import LodesCrosswalkLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
 
@@ -1661,7 +1661,7 @@ def hifld_prisons(
     and aggregates to county-level coercive infrastructure metrics.
     """
     from babylon.data.hifld import HIFLDPrisonsLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(verbose=not quiet)
 
@@ -1696,7 +1696,7 @@ def hifld_police(
     Feature Service and aggregates to county-level coercive infrastructure metrics.
     """
     from babylon.data.hifld import HIFLDPoliceLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(verbose=not quiet)
 
@@ -1731,7 +1731,7 @@ def mirta(
     and aggregates to county-level coercive infrastructure metrics.
     """
     from babylon.data.mirta import MIRTAMilitaryLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(verbose=not quiet)
 
@@ -1773,7 +1773,7 @@ def fcc(
         mise run data:fcc-download --national
     """
     from babylon.data.fcc import FCCBroadbandLoader
-    from babylon.data.normalize.database import get_normalized_session, init_normalized_db
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(verbose=not quiet)
 

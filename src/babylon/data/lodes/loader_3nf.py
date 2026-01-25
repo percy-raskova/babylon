@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 from sqlalchemy import delete
 
 from babylon.data.loader_base import DataLoader, LoadStats
-from babylon.data.normalize.schema import BridgeLodesBlock, DimCounty
+from babylon.data.reference.schema import BridgeLodesBlock, DimCounty
 from babylon.data.utils import BatchWriter, build_county_fips, normalize_numeric_fips
 from babylon.data.utils.field_parsers import parse_decimal, parse_str
 

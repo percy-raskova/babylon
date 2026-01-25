@@ -16,8 +16,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from babylon.data.loader_base import DataLoader, LoadStats
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import IngestCheckpoint
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import IngestCheckpoint
 
 # =============================================================================
 # FIXTURES

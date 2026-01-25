@@ -8,7 +8,7 @@ population (marxist-data-3NF.sqlite). Parameterized via LoaderConfig.
 Usage:
     from babylon.data.trade import TradeLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(trade_years=[2020, 2021, 2022, 2023])
     loader = TradeLoader(config)

@@ -11,7 +11,7 @@ The data enables spatial aggregation and visualization by providing:
 
 Usage:
     from babylon.data.tiger import TIGERCountyLoader
-    from babylon.data.normalize.database import get_normalized_session_factory
+    from babylon.data.reference.database import get_normalized_session_factory
 
     loader = TIGERCountyLoader()
     session_factory = get_normalized_session_factory()

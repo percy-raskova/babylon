@@ -14,7 +14,7 @@ from sqlalchemy import delete, func
 
 from babylon.data.arcgis_loader_base import ArcGISStreamingLoader
 from babylon.data.loader_base import LoaderConfig
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCoerciveType,
     DimCounty,
     DimState,

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 
-from babylon.data.normalize.schema import IngestCheckpoint
+from babylon.data.reference.schema import IngestCheckpoint
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session

@@ -26,8 +26,8 @@ import pytest
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
-from babylon.data.normalize.database import NormalizedBase
-from babylon.data.normalize.schema import (
+from babylon.data.reference.database import NormalizedBase
+from babylon.data.reference.schema import (
     # Dimension tables
     DimAssetCategory,
     DimCommodity,
@@ -456,7 +456,7 @@ class TestSchemaIntegrity:
         if dialect == "duckdb":
             # DuckDB doesn't support constraint reflection, verify via ORM definition
             # The schema defines these with unique=True in mapped_column()
-            from babylon.data.normalize.schema import (
+            from babylon.data.reference.schema import (
                 DimCountry,
                 DimCounty,
                 DimIndustry,

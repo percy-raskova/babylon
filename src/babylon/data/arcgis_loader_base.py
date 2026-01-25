@@ -36,7 +36,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimCoerciveType,
     DimDataSource,
     FactCoerciveInfrastructure,

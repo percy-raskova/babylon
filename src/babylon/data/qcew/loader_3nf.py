@@ -12,7 +12,7 @@ Supports three geographic levels:
 Example:
     from babylon.data.qcew import QcewLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(qcew_years=list(range(2013, 2026)))
     loader = QcewLoader(config)
@@ -36,19 +36,6 @@ from tqdm import tqdm
 from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.exceptions import QcewAPIError
 from babylon.data.loader_base import LoadStats
-from babylon.data.normalize.classifications import classify_class_composition
-from babylon.data.normalize.schema import (
-    DimCounty,
-    DimDataSource,
-    DimIndustry,
-    DimMetroArea,
-    DimOwnership,
-    DimState,
-    DimTime,
-    FactQcewAnnual,
-    FactQcewMetroAnnual,
-    FactQcewStateAnnual,
-)
 from babylon.data.qcew.api_client import (
     QcewAPIClient,
     QcewAreaRecord,
@@ -59,6 +46,19 @@ from babylon.data.qcew.parser import (
     determine_naics_level,
     extract_state_fips,
     parse_qcew_csv,
+)
+from babylon.data.reference.classifications import classify_class_composition
+from babylon.data.reference.schema import (
+    DimCounty,
+    DimDataSource,
+    DimIndustry,
+    DimMetroArea,
+    DimOwnership,
+    DimState,
+    DimTime,
+    FactQcewAnnual,
+    FactQcewMetroAnnual,
+    FactQcewStateAnnual,
 )
 
 if TYPE_CHECKING:

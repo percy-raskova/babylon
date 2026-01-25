@@ -9,7 +9,7 @@ modern API-first approach that writes directly to 3NF tables.
 Example:
     from babylon.data.energy import EnergyLoader
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     config = LoaderConfig(energy_start_year=2000, energy_end_year=2023)
     loader = EnergyLoader(config)
@@ -30,7 +30,7 @@ from babylon.data.api_loader_base import ApiLoaderBase
 from babylon.data.energy.api_client import PRIORITY_MSN_CODES, EnergyAPIClient
 from babylon.data.exceptions import EIAAPIError
 from babylon.data.loader_base import LoadStats
-from babylon.data.normalize.schema import (
+from babylon.data.reference.schema import (
     DimDataSource,
     DimEnergySeries,
     DimEnergyTable,

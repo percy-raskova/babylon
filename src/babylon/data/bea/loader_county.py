@@ -281,25 +281,28 @@ class BEACountyGDPLoader(DataLoader):
             if line_number:
                 self._industry_cache[f"line:{line_number}"] = bea_id
 
-    def _get_industry_id(self, naics_code: str) -> int | None:
-        """Get BEA industry ID for a NAICS code.
+    def _get_industry_id(self, naics_code: str, line_code: int | None) -> int | None:
+        """Get BEA industry ID for a row.
+
+        Uses the CSV's LineCode column as the authoritative source, since
+        multiple rows can share the same NAICS code with different line codes.
 
         Args:
             naics_code: NAICS code from IndustryClassification column.
+            line_code: Line code from LineCode column (authoritative).
 
         Returns:
             bea_industry_id or None if not found.
         """
-        # First try direct code lookup
-        if naics_code in self._industry_cache:
-            return self._industry_cache[naics_code]
-
-        # Try line number mapping
-        line_code = NAICS_TO_LINE_CODE.get(naics_code)
-        if line_code:
+        # First try line number lookup (authoritative from CSV)
+        if line_code is not None:
             line_key = f"line:{line_code}"
             if line_key in self._industry_cache:
                 return self._industry_cache[line_key]
+
+        # Fall back to direct code lookup
+        if naics_code in self._industry_cache:
+            return self._industry_cache[naics_code]
 
         return None
 
@@ -348,9 +351,11 @@ class BEACountyGDPLoader(DataLoader):
                     skipped_counties += 1
                     continue
 
-                # Get industry classification
+                # Get industry classification - use LineCode from CSV as authoritative
                 naics_code = row["IndustryClassification"].strip()
-                industry_id = self._get_industry_id(naics_code)
+                line_code_str = row.get("LineCode", "").strip()
+                line_code = int(line_code_str) if line_code_str.isdigit() else None
+                industry_id = self._get_industry_id(naics_code, line_code)
                 if industry_id is None:
                     skipped_industries += 1
                     continue

@@ -429,3 +429,81 @@ class TestRegressionBugs:
         #     f.seek(0)
         #     next(reader)  # This corrupts state
         #     reader = csv.DictReader(f)  # This reads "1,2,3" as header!
+
+    def test_same_naics_different_linecodes_get_different_industries(self) -> None:
+        """Rows with same NAICS but different LineCodes should map to different industries.
+
+        BEA CSV has multiple rows with the same NAICS code "..." but different
+        LineCodes (1=All industry, 2=Private industries, 91=Goods-producing, etc).
+        These must map to DIFFERENT industry IDs to avoid duplicate key violations.
+
+        Original bug: _get_industry_id used NAICS_TO_LINE_CODE mapping instead of
+        the CSV's LineCode column. This caused all "..." rows to map to line 1.
+
+        Regression test for: fix(data): use CSV LineCode for industry lookup
+        """
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+
+        loader = BEACountyGDPLoader()
+
+        # Simulate industry cache with different line codes
+        loader._industry_cache = {
+            "line:1": 101,  # All industry total
+            "line:2": 102,  # Private industries
+            "line:91": 191,  # Private goods-producing
+            "line:92": 192,  # Private services-providing
+        }
+
+        # All rows have same NAICS "..." but different LineCodes
+        naics = "..."
+
+        # Each should map to a DIFFERENT industry
+        assert loader._get_industry_id(naics, line_code=1) == 101
+        assert loader._get_industry_id(naics, line_code=2) == 102
+        assert loader._get_industry_id(naics, line_code=91) == 191
+        assert loader._get_industry_id(naics, line_code=92) == 192
+
+        # OLD buggy behavior would return same ID for all:
+        # assert loader._get_industry_id(naics) == 101  # All mapped to line 1!
+
+    def test_get_industry_id_uses_linecode_over_naics(self) -> None:
+        """LineCode from CSV should take precedence over NAICS code lookup.
+
+        The CSV's LineCode column is the authoritative source because:
+        1. Multiple rows share the same NAICS with different LineCodes
+        2. LineCode directly corresponds to BEA's industry classification
+
+        Regression test for: fix(data): use CSV LineCode for industry lookup
+        """
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+
+        loader = BEACountyGDPLoader()
+
+        # Cache has both code-based and line-based lookups
+        loader._industry_cache = {
+            "11": 999,  # NAICS code lookup (should be fallback)
+            "line:3": 103,  # LineCode lookup (should be primary)
+        }
+
+        # LineCode should win over NAICS when both available
+        # NAICS "11" maps to line:3 in BEA data
+        result = loader._get_industry_id(naics_code="11", line_code=3)
+        assert result == 103  # Uses line:3, not "11"
+
+        # Falls back to NAICS only when LineCode not found
+        result_fallback = loader._get_industry_id(naics_code="11", line_code=None)
+        assert result_fallback == 999  # Falls back to NAICS code
+
+    def test_get_industry_id_returns_none_for_unknown(self) -> None:
+        """Should return None when neither LineCode nor NAICS found in cache.
+
+        Ensures proper handling of unrecognized industries without errors.
+        """
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+
+        loader = BEACountyGDPLoader()
+        loader._industry_cache = {"line:1": 101}
+
+        # Unknown LineCode and unknown NAICS
+        result = loader._get_industry_id(naics_code="UNKNOWN", line_code=999)
+        assert result is None

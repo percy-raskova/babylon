@@ -349,7 +349,10 @@ class FredLoader(ApiLoaderBase):
         )
 
     def _load_series_dimension(self, session: Session, verbose: bool) -> int:
-        """Load FRED series dimension from API metadata."""
+        """Load FRED series dimension from API metadata.
+
+        Uses get-or-create pattern to support idempotent loading with reset=False.
+        """
         assert self._client is not None
 
         count = 0
@@ -366,6 +369,16 @@ class FredLoader(ApiLoaderBase):
         series_iter = tqdm(all_series, desc="Series", disable=not verbose)
 
         for series_code in series_iter:
+            # Check if series already exists (idempotency support)
+            existing = (
+                session.query(DimFredSeries)
+                .filter(DimFredSeries.series_code == series_code)
+                .first()
+            )
+            if existing:
+                self._series_to_id[series_code] = existing.series_id
+                continue
+
             try:
                 metadata = self._client.get_series_info(series_code)
                 series = DimFredSeries(
@@ -388,10 +401,21 @@ class FredLoader(ApiLoaderBase):
         return count
 
     def _load_wealth_class_dimension(self, session: Session, _verbose: bool) -> int:
-        """Load wealth class dimension with Babylon mappings."""
+        """Load wealth class dimension with Babylon mappings.
+
+        Uses get-or-create pattern to support idempotent loading with reset=False.
+        """
         count = 0
 
         for code, metadata in DFA_WEALTH_CLASSES.items():
+            # Check if wealth class already exists
+            existing = (
+                session.query(DimWealthClass).filter(DimWealthClass.percentile_code == code).first()
+            )
+            if existing:
+                self._class_to_id[code] = existing.wealth_class_id
+                continue
+
             wealth_class = DimWealthClass(
                 percentile_code=code,
                 percentile_label=str(metadata["label"]),
@@ -405,10 +429,23 @@ class FredLoader(ApiLoaderBase):
         return count
 
     def _load_asset_category_dimension(self, session: Session, _verbose: bool) -> int:
-        """Load asset category dimension with Marxian interpretations."""
+        """Load asset category dimension with Marxian interpretations.
+
+        Uses get-or-create pattern to support idempotent loading with reset=False.
+        """
         count = 0
 
         for code, metadata in DFA_ASSET_CATEGORIES.items():
+            # Check if category already exists
+            existing = (
+                session.query(DimAssetCategory)
+                .filter(DimAssetCategory.category_code == code)
+                .first()
+            )
+            if existing:
+                self._category_to_id[code] = existing.category_id
+                continue
+
             category = DimAssetCategory(
                 category_code=code,
                 category_label=metadata["label"],

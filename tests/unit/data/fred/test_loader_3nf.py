@@ -257,6 +257,91 @@ class TestIdempotency:
         assert "FactFredNational" in deleted_tables
         assert "DimFredSeries" in deleted_tables
 
+    def test_series_loader_uses_get_or_create(self) -> None:
+        """_load_series_dimension should reuse existing series records."""
+        loader = FredLoader()
+        mock_session = MagicMock()
+
+        # Mock existing series in database
+        existing_series = MagicMock()
+        existing_series.series_id = 42
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.return_value = existing_series
+        mock_session.query.return_value = mock_query
+
+        # Mock client with metadata
+        mock_client = MagicMock()
+        loader._client = mock_client
+
+        # Call with one series code
+        with (
+            patch.dict(
+                "babylon.data.fred.loader_3nf.ALL_NATIONAL_SERIES",
+                {"TEST_SERIES": "Test"},
+                clear=True,
+            ),
+            patch.dict("babylon.data.fred.loader_3nf.DFA_WEALTH_LEVEL_SERIES", {}, clear=True),
+            patch.dict("babylon.data.fred.loader_3nf.DFA_WEALTH_SHARE_SERIES", {}, clear=True),
+        ):
+            count = loader._load_series_dimension(mock_session, verbose=False)
+
+        # Should have queried for existing series
+        mock_session.query.assert_called()
+        # Should NOT have added new record (existing found)
+        mock_session.add.assert_not_called()
+        # Should have cached the existing series_id
+        assert loader._series_to_id.get("TEST_SERIES") == 42
+        # Count should be 0 (no new records)
+        assert count == 0
+
+    def test_wealth_class_loader_uses_get_or_create(self) -> None:
+        """_load_wealth_class_dimension should reuse existing records."""
+        loader = FredLoader()
+        mock_session = MagicMock()
+
+        # Mock existing wealth class
+        existing = MagicMock()
+        existing.wealth_class_id = 99
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.return_value = existing
+        mock_session.query.return_value = mock_query
+
+        with patch.dict(
+            "babylon.data.fred.loader_3nf.DFA_WEALTH_CLASSES",
+            {"TOP1": {"label": "Top 1%", "babylon_class": "bourgeoisie"}},
+            clear=True,
+        ):
+            count = loader._load_wealth_class_dimension(mock_session, _verbose=False)
+
+        # Should have cached existing ID
+        assert loader._class_to_id.get("TOP1") == 99
+        # No new records
+        assert count == 0
+
+    def test_asset_category_loader_uses_get_or_create(self) -> None:
+        """_load_asset_category_dimension should reuse existing records."""
+        loader = FredLoader()
+        mock_session = MagicMock()
+
+        # Mock existing category
+        existing = MagicMock()
+        existing.category_id = 77
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.return_value = existing
+        mock_session.query.return_value = mock_query
+
+        with patch.dict(
+            "babylon.data.fred.loader_3nf.DFA_ASSET_CATEGORIES",
+            {"NET_WORTH": {"label": "Net Worth", "interpretation": "Total wealth"}},
+            clear=True,
+        ):
+            count = loader._load_asset_category_dimension(mock_session, _verbose=False)
+
+        # Should have cached existing ID
+        assert loader._category_to_id.get("NET_WORTH") == 77
+        # No new records
+        assert count == 0
+
 
 class TestCLIParameterParsing:
     """Test CLI command parameter behavior."""

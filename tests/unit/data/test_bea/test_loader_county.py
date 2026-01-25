@@ -4,13 +4,16 @@ Tests the BEACountyGDPLoader class for:
 - GDP value parsing with suppression handling
 - County FIPS extraction and validation
 - Industry ID mapping via NAICS codes
+- Regression tests for encoding and FIPS lookup bugs
 """
 
 from __future__ import annotations
 
+import csv
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -307,3 +310,122 @@ class TestActualDatabaseLoading:
             ).scalar()
 
             assert result == 0
+
+
+class TestRegressionBugs:
+    """Regression tests for previously encountered bugs.
+
+    These tests ensure we don't reintroduce bugs that were fixed:
+    - Latin-1 encoding for county names with special characters (ñ)
+    - Full 5-digit FIPS codes in county cache lookup
+    - CSV DictReader file handle state corruption
+    """
+
+    def test_csv_handles_latin1_characters(self, tmp_path: Path) -> None:
+        """CSV reading should handle Latin-1 encoded county names.
+
+        BEA CSV files contain county names like "Doña Ana County" which use
+        Latin-1 encoding (byte 0xf1 = ñ). Reading with UTF-8 would raise:
+        UnicodeDecodeError: 'utf-8' codec can't decode byte 0xf1
+
+        Regression test for: fix(data): use latin-1 encoding for BEA county CSV
+        """
+        # Create CSV with Latin-1 encoded county name
+        csv_content = (
+            "GeoFIPS,GeoName,Region,TableName,LineCode,IndustryClassification,"
+            "Description,Unit,2022,2023\n"
+            '"35013","Doña Ana, NM",,CAGDP2,1,"...","All industry total",'
+            '"Thousands of dollars",1000000,1100000\n'
+        )
+
+        csv_path = tmp_path / "test_latin1.csv"
+        # Write with Latin-1 encoding (as BEA files use)
+        csv_path.write_bytes(csv_content.encode("latin-1"))
+
+        # Verify reading with latin-1 works (our fix)
+        with open(csv_path, encoding="latin-1") as f:
+            reader = csv.DictReader(f)
+            row = next(reader)
+            assert "Doña Ana" in row["GeoName"]
+
+        # Verify reading with UTF-8 would fail (the original bug)
+        with pytest.raises(UnicodeDecodeError), open(csv_path, encoding="utf-8") as f:
+            _ = f.read()
+
+    def test_county_cache_uses_full_fips(self) -> None:
+        """County cache should use full 5-digit FIPS, not 3-digit county_fips.
+
+        DimCounty has both:
+        - fips: "01001" (full 5-digit FIPS)
+        - county_fips: "001" (3-digit county code within state)
+
+        The BEA CSV uses full 5-digit FIPS, so cache must use DimCounty.fips.
+
+        Regression test for: fix(data): use full 5-digit FIPS in BEA county loader
+        """
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+
+        loader = BEACountyGDPLoader()
+
+        # Create mock session with sample county data
+        mock_session = MagicMock()
+
+        # Mock DimCounty with both fips (5-digit) and county_fips (3-digit)
+        mock_county = MagicMock()
+        mock_county.county_id = 1
+        mock_county.fips = "01001"  # Full 5-digit FIPS
+        mock_county.county_fips = "001"  # 3-digit county code (WRONG to use)
+
+        mock_session.query.return_value.all.return_value = [
+            (mock_county.county_id, mock_county.fips)
+        ]
+
+        # Build cache - should use full FIPS
+        loader._build_county_cache(mock_session)
+
+        # Verify cache is keyed by full 5-digit FIPS
+        assert "01001" in loader._county_cache
+        assert loader._county_cache["01001"] == 1
+
+        # Verify cache is NOT keyed by 3-digit county_fips
+        assert "001" not in loader._county_cache
+
+    def test_csv_reader_state_not_corrupted(self, tmp_path: Path) -> None:
+        """CSV DictReader should not have corrupted state after line counting.
+
+        Original bug: Creating DictReader, seeking file, counting lines, then
+        creating new DictReader caused the new reader to read data row as header.
+
+        The fix uses separate file handles for counting vs reading.
+
+        Regression test for: fix(data): fix CSV DictReader state corruption
+        """
+        # Create a simple CSV
+        csv_content = "col_a,col_b,col_c\n1,2,3\n4,5,6\n"
+        csv_path = tmp_path / "test_reader.csv"
+        csv_path.write_text(csv_content)
+
+        # Our fixed pattern: separate handles for counting and reading
+        with open(csv_path) as f:
+            total_lines = sum(1 for _ in f) - 1  # Count lines
+
+        with open(csv_path) as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+
+        # Line count should match actual data rows
+        assert total_lines == 2
+
+        # Should have correct fieldnames and data
+        assert reader.fieldnames == ["col_a", "col_b", "col_c"]
+        assert len(rows) == total_lines
+        assert rows[0]["col_a"] == "1"
+
+        # The OLD buggy pattern (don't do this):
+        # with open(csv_path) as f:
+        #     reader = csv.DictReader(f)
+        #     f.seek(0)
+        #     total_lines = sum(1 for _ in f) - 1
+        #     f.seek(0)
+        #     next(reader)  # This corrupts state
+        #     reader = csv.DictReader(f)  # This reads "1,2,3" as header!

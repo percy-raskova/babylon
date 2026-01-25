@@ -149,6 +149,32 @@ class BridgeCountyMetro(NormalizedBase):
     is_principal_city: Mapped[bool] = mapped_column(default=False)
 
 
+class BridgeCountyH3(NormalizedBase):
+    """H3 hexagon to county mapping for spatial aggregation.
+
+    Maps H3 hexagonal cells at a specified resolution to counties,
+    enabling efficient spatial joins without runtime polygon operations.
+
+    At resolution 5 (~252 km² hexagons), CONUS requires ~21K cells.
+    Each cell maps to one county (the county containing the cell center).
+
+    Attributes:
+        h3_index: H3 cell index string (15 chars, primary key).
+        county_id: FK to DimCounty containing this cell's centroid.
+        resolution: H3 resolution level (default 5).
+        coverage_pct: Optional % of cell area within county bounds.
+    """
+
+    __tablename__ = "bridge_county_h3"
+
+    h3_index: Mapped[str] = mapped_column(String(15), primary_key=True)
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    resolution: Mapped[int] = mapped_column(default=5)
+    coverage_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+
+    __table_args__ = (Index("idx_h3_county", "county_id"),)
+
+
 class DimGeographicHierarchy(NormalizedBase):
     """State-to-county geographic hierarchy with allocation weights.
 

@@ -307,6 +307,14 @@ run = "poetry run python -m babylon.data.cli h3"
 description = "Load FRED macroeconomic data into 3NF database"
 run = "poetry run python -m babylon.data.cli fred"
 
+[tasks."data:bea-national"]
+description = "Load BEA national GDP-by-industry data into 3NF database"
+run = "poetry run python -m babylon.data.cli bea-national"
+
+[tasks."data:bea-county"]
+description = "Load BEA county GDP data into 3NF database"
+run = "poetry run python -m babylon.data.cli bea-county"
+
 [tasks."data:energy"]
 description = "Load EIA energy data into 3NF database"
 run = "poetry run python -m babylon.data.cli energy"

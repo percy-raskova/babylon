@@ -468,6 +468,8 @@ ALL_LOADERS = [
     "tiger",
     "h3",
     "fred",
+    "bea_national",
+    "bea_county",
     "energy",
     "qcew",
     "trade",
@@ -486,6 +488,7 @@ ALL_LOADERS = [
 LOADER_DEPENDENCIES: dict[str, list[str]] = {
     "tiger": ["census"],
     "h3": ["tiger"],
+    "bea_county": ["bea_national", "census"],
     "qcew": ["census"],
     "employment_industry": ["census"],
     "dot_hpms": ["census"],
@@ -1382,6 +1385,93 @@ def fred(
 
     init_normalized_db()
     loader = FredLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def bea_national(
+    data_path: Annotated[
+        Path | None,
+        typer.Option("--data-path", help="Path to BEA GDP-by-industry data directory"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load BEA national GDP-by-industry data into 3NF database.
+
+    Loads BEA GDP-by-industry tables from XLSX files, populating:
+    - dim_bea_industry: Industry dimension with hierarchy
+    - fact_bea_national_industry: Annual gross output, value added, intermediate inputs
+
+    Examples:
+        mise run data:bea-national
+        mise run data:bea-national -- --data-path /path/to/bea/data
+    """
+    from babylon.data.bea import BEANationalLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading BEA national industry data...")
+
+    init_normalized_db()
+    loader = BEANationalLoader(config, data_dir=data_path)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def bea_county(
+    data_path: Annotated[
+        Path | None,
+        typer.Option("--data-path", help="Path to BEA county GDP data directory"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load BEA county GDP data into 3NF database.
+
+    Loads BEA CAGDP2 (County GDP by Industry) from bulk CSV downloads.
+    Requires bea_national to be loaded first for industry dimension.
+
+    Examples:
+        mise run data:bea-county
+        mise run data:bea-county -- --data-path /path/to/bea/county/data
+    """
+    from babylon.data.bea import BEACountyGDPLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading BEA county GDP data...")
+
+    init_normalized_db()
+    loader = BEACountyGDPLoader(config, data_dir=data_path)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)

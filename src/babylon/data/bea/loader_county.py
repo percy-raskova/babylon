@@ -260,7 +260,7 @@ class BEACountyGDPLoader(DataLoader):
 
     def _build_county_cache(self, session: Session) -> None:
         """Build FIPS -> county_id lookup cache."""
-        counties = session.query(DimCounty.county_id, DimCounty.county_fips).all()
+        counties = session.query(DimCounty.county_id, DimCounty.fips).all()
         self._county_cache = {fips: county_id for county_id, fips in counties}
 
     def _build_industry_cache(self, session: Session) -> None:

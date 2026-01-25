@@ -295,6 +295,14 @@ run = "poetry run python -m babylon.data.cli load"
 description = "Load Census ACS data into 3NF database"
 run = "poetry run python -m babylon.data.cli census"
 
+[tasks."data:tiger"]
+description = "Load TIGER county geometries into 3NF database"
+run = "poetry run python -m babylon.data.cli tiger"
+
+[tasks."data:h3"]
+description = "Generate H3 hex grid from county geometries"
+run = "poetry run python -m babylon.data.cli h3"
+
 [tasks."data:fred"]
 description = "Load FRED macroeconomic data into 3NF database"
 run = "poetry run python -m babylon.data.cli fred"

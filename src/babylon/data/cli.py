@@ -465,6 +465,8 @@ def _execute_readiness(
 
 ALL_LOADERS = [
     "census",
+    "tiger",
+    "h3",
     "fred",
     "energy",
     "qcew",
@@ -482,6 +484,8 @@ ALL_LOADERS = [
 ]
 
 LOADER_DEPENDENCIES: dict[str, list[str]] = {
+    "tiger": ["census"],
+    "h3": ["tiger"],
     "qcew": ["census"],
     "employment_industry": ["census"],
     "dot_hpms": ["census"],
@@ -1241,6 +1245,89 @@ def census(
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def tiger(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load TIGER county geometries into 3NF database.
+
+    Loads county boundaries and centroids from Census TIGER/Line shapefiles.
+    Requires the shapefile to be downloaded to data/tiger/county/.
+
+    Examples:
+        mise run data:tiger
+        mise run data:tiger -- --reset
+    """
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+    from babylon.data.tiger import TIGERCountyLoader
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading TIGER county geometries...")
+
+    init_normalized_db()
+    loader = TIGERCountyLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def h3(
+    resolution: Annotated[
+        int,
+        typer.Option("--resolution", "-r", help="H3 resolution level (0-15)"),
+    ] = 5,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Generate H3 hex grid from county geometries.
+
+    Creates H3 hexagonal cells covering all counties and stores the
+    county-to-hex mapping in BridgeCountyH3. Requires TIGER data to be
+    loaded first.
+
+    Examples:
+        mise run data:h3
+        mise run data:h3 -- --resolution=6
+    """
+    from babylon.data.h3 import H3GridLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo(f"Generating H3 grid at resolution {resolution}...")
+
+    init_normalized_db()
+    loader = H3GridLoader(config, resolution=resolution)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset)
 
     print_stats(stats)
     if stats.has_errors:

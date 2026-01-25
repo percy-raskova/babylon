@@ -507,3 +507,89 @@ class TestRegressionBugs:
         # Unknown LineCode and unknown NAICS
         result = loader._get_industry_id(naics_code="UNKNOWN", line_code=999)
         assert result is None
+
+
+class TestYearFiltering:
+    """Test year filtering functionality for BEA county loader."""
+
+    def test_loader_accepts_years_from_config(self) -> None:
+        """Loader should read years from LoaderConfig.bea_county_years."""
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig(bea_county_years=[2020, 2021, 2022])
+        loader = BEACountyGDPLoader(config=config)
+        assert loader.config.bea_county_years == [2020, 2021, 2022]
+
+    def test_loader_default_years_is_none(self) -> None:
+        """Default config should have None for bea_county_years."""
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig()
+        assert config.bea_county_years is None
+
+    def test_filter_year_columns_with_specific_years(self) -> None:
+        """_filter_year_columns should filter to specified years."""
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig(bea_county_years=[2020, 2022])
+        loader = BEACountyGDPLoader(config=config)
+        all_columns = ["2018", "2019", "2020", "2021", "2022", "2023"]
+        filtered = loader._filter_year_columns(all_columns)
+        assert filtered == ["2020", "2022"]
+
+    def test_filter_year_columns_preserves_order(self) -> None:
+        """Filtered years should preserve original column order."""
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig(bea_county_years=[2022, 2020])  # Out of order
+        loader = BEACountyGDPLoader(config=config)
+        all_columns = ["2019", "2020", "2021", "2022", "2023"]
+        filtered = loader._filter_year_columns(all_columns)
+        assert filtered == ["2020", "2022"]  # Column order preserved
+
+    def test_filter_year_columns_with_none_returns_all(self) -> None:
+        """When bea_county_years is None, return all columns."""
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig(bea_county_years=None)
+        loader = BEACountyGDPLoader(config=config)
+        all_columns = ["2020", "2021", "2022"]
+        filtered = loader._filter_year_columns(all_columns)
+        assert filtered == ["2020", "2021", "2022"]
+
+    def test_filter_year_columns_with_empty_list_returns_all(self) -> None:
+        """When bea_county_years is empty, return all columns."""
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig(bea_county_years=[])
+        loader = BEACountyGDPLoader(config=config)
+        all_columns = ["2020", "2021", "2022"]
+        filtered = loader._filter_year_columns(all_columns)
+        assert filtered == ["2020", "2021", "2022"]
+
+    def test_filter_year_columns_ignores_nonexistent_years(self) -> None:
+        """Should only include years that exist in data."""
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig(bea_county_years=[2020, 2030])  # 2030 doesn't exist
+        loader = BEACountyGDPLoader(config=config)
+        all_columns = ["2019", "2020", "2021", "2022"]
+        filtered = loader._filter_year_columns(all_columns)
+        assert filtered == ["2020"]
+
+    def test_deprecated_start_end_year_params_removed(self) -> None:
+        """Verify start_year and end_year params no longer accepted."""
+        import inspect
+
+        from babylon.data.bea.loader_county import BEACountyGDPLoader
+
+        sig = inspect.signature(BEACountyGDPLoader.__init__)
+        param_names = list(sig.parameters.keys())
+        assert "start_year" not in param_names
+        assert "end_year" not in param_names

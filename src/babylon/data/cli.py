@@ -1446,6 +1446,10 @@ def bea_county(
         Path | None,
         typer.Option("--data-path", help="Path to BEA county GDP data directory"),
     ] = None,
+    years: Annotated[
+        str | None,
+        typer.Option("--years", help="Years to load (e.g., 2020-2023 or 2020,2021,2022)"),
+    ] = None,
     reset: Annotated[
         bool,
         typer.Option("--reset/--no-reset", help="Clear tables before loading"),
@@ -1462,15 +1466,22 @@ def bea_county(
 
     Examples:
         mise run data:bea-county
+        mise run data:bea-county -- --years 2020-2023
         mise run data:bea-county -- --data-path /path/to/bea/county/data
     """
     from babylon.data.bea import BEACountyGDPLoader
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
-    config = LoaderConfig(verbose=not quiet)
+    config = LoaderConfig(
+        bea_county_years=parse_years(years),
+        verbose=not quiet,
+    )
 
     if not quiet:
-        typer.echo("Loading BEA county GDP data...")
+        if years:
+            typer.echo(f"Loading BEA county GDP data for years: {config.bea_county_years}")
+        else:
+            typer.echo("Loading BEA county GDP data (all years)...")
 
     init_normalized_db()
     loader = BEACountyGDPLoader(config, data_dir=data_path)

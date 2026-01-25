@@ -150,7 +150,8 @@ class BEACountyGDPLoader(DataLoader):
         """Initialize BEA county GDP loader.
 
         Args:
-            config: LoaderConfig for operational settings.
+            config: LoaderConfig for operational settings. Use config.bea_county_years
+                to filter years (None or empty = load all available years).
             data_dir: Path to data directory. Defaults to "data" in project root.
         """
         super().__init__(config)
@@ -306,6 +307,21 @@ class BEACountyGDPLoader(DataLoader):
 
         return None
 
+    def _filter_year_columns(self, year_columns: list[str]) -> list[str]:
+        """Filter year columns based on config.bea_county_years.
+
+        Args:
+            year_columns: List of year column names from CSV.
+
+        Returns:
+            Filtered list. None or empty config means all years.
+        """
+        years_to_load = self.config.bea_county_years
+        if not years_to_load:
+            return year_columns
+        years_set = set(years_to_load)
+        return [col for col in year_columns if int(col) in years_set]
+
     def _load_from_csv(
         self,
         session: Session,
@@ -334,8 +350,17 @@ class BEACountyGDPLoader(DataLoader):
         with open(csv_path, encoding="latin-1") as f:
             reader = csv.DictReader(f)
 
-            # Get year columns (all columns from 2001 to 2023)
-            year_columns = [col for col in reader.fieldnames or [] if col.isdigit()]
+            # Get all year columns from CSV
+            all_year_columns = [col for col in reader.fieldnames or [] if col.isdigit()]
+
+            # Filter to configured years (None/empty = all years)
+            year_columns = self._filter_year_columns(all_year_columns)
+
+            if verbose and len(year_columns) < len(all_year_columns):
+                print(
+                    f"  Filtering to {len(year_columns)} years: "
+                    f"{year_columns[0]}-{year_columns[-1]}"
+                )
 
             row_iter = tqdm(reader, total=total_lines, desc="County GDP", disable=not verbose)
 

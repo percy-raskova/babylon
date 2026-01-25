@@ -80,6 +80,9 @@ class LoaderConfig:
     qcew_years: list[int] = field(default_factory=lambda: list(range(2015, 2024)))
     materials_years: list[int] = field(default_factory=lambda: list(range(2015, 2024)))
 
+    # Temporal - BEA county data (None = all available years)
+    bea_county_years: list[int] | None = None
+
     # Geographic scope
     state_fips_list: list[str] | None = None  # None = all 52 (50 + DC + PR)
     include_territories: bool = False  # VI, GU, AS, MP

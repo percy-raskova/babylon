@@ -76,4 +76,13 @@ thoughts/percy/
 
 # Data directory (API responses, databases - too large for git)
 /data/
+
+# DOT transportation data files (large, downloaded on-demand)
+src/babylon/data/dot/*.csv
+src/babylon/data/dot/*.geodatabase
+src/babylon/data/dot/*.json
+
+# Test coverage output
+coverage.json
+
 .mypy_cache/

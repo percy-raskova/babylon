@@ -323,7 +323,7 @@ class BEACountyGDPLoader(DataLoader):
         skipped_counties = 0
         skipped_industries = 0
 
-        with open(csv_path, encoding="utf-8") as f:
+        with open(csv_path, encoding="latin-1") as f:
             reader = csv.DictReader(f)
 
             # Get year columns (all columns from 2001 to 2023)

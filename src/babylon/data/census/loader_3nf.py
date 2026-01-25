@@ -86,6 +86,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Latest available ACS 5-Year vintage (updated when Census releases new data)
+# ACS 5-Year data has ~1 year lag: 2023 estimates released Dec 2024
+LATEST_AVAILABLE_ACS_YEAR = 2023
+
 # Census tables to load
 ORIGINAL_TABLES = ["B19001", "B19013", "B23025", "B24080", "B25003", "B25064", "B25070", "C24010"]
 MARXIAN_TABLES = ["B23020", "B17001", "B15003", "B19083", "B08301", "B19052", "B19053", "B19054"]
@@ -1049,7 +1053,7 @@ class CensusLoader(ApiLoaderBase):
         poverty_count = self._load_poverty_categories(session, verbose)
         stats.dimensions_loaded["dim_poverty_category"] = poverty_count
 
-    def load(
+    def load(  # noqa: C901 (multi-phase Census loading is inherently complex)
         self,
         session: Session,
         reset: bool = True,
@@ -1080,6 +1084,27 @@ class CensusLoader(ApiLoaderBase):
         self._variables_from_base_by_year.clear()
         census_years = self.config.census_years
         state_fips_list = self.config.state_fips_list or DEFAULT_STATE_FIPS
+
+        # Filter out years beyond what Census has released
+        unavailable_years = [y for y in census_years if y > LATEST_AVAILABLE_ACS_YEAR]
+        if unavailable_years:
+            logger.warning(
+                "Filtering out unavailable ACS years: %s (latest available: %d)",
+                unavailable_years,
+                LATEST_AVAILABLE_ACS_YEAR,
+            )
+            if verbose:
+                print(
+                    f"Warning: ACS 5-Year data not yet available for {unavailable_years}. "
+                    f"Latest available: {LATEST_AVAILABLE_ACS_YEAR}"
+                )
+            census_years = [y for y in census_years if y <= LATEST_AVAILABLE_ACS_YEAR]
+            if not census_years:
+                stats.errors.append(
+                    f"No valid census years after filtering. "
+                    f"Latest available: {LATEST_AVAILABLE_ACS_YEAR}"
+                )
+                return stats
 
         # Use newest year for dimensions that need API metadata
         # Older years (especially 2010) may lack metadata for some tables

@@ -214,8 +214,8 @@ class DimGeographicHierarchy(NormalizedBase):
     __table_args__ = (
         Index("idx_geo_hierarchy_state", "state_id"),
         Index("idx_geo_hierarchy_county", "county_id"),
-        # Ensure unique state-county pairing per year
-        Index("idx_geo_hierarchy_unique", "state_id", "county_id", "source_year", unique=True),
+        # Ensure unique state-county pairing per year (UniqueConstraint required for ON CONFLICT)
+        UniqueConstraint("state_id", "county_id", "source_year", name="uq_geo_hierarchy_unique"),
         CheckConstraint(
             "population_weight >= 0 AND population_weight <= 1",
             name="ck_population_weight_range",
@@ -853,13 +853,8 @@ class StagingArcGISFeature(NormalizedBase):
     capacity: Mapped[int | None] = mapped_column()  # For prisons (bed count)
 
     __table_args__ = (
-        # Unique on (source, object_id) for upsert/dedup on resume
-        Index(
-            "idx_staging_source_objectid",
-            "source_code",
-            "object_id",
-            unique=True,
-        ),
+        # Unique on (source, object_id) for upsert/dedup on resume (UniqueConstraint required for ON CONFLICT)
+        UniqueConstraint("source_code", "object_id", name="uq_staging_source_objectid"),
         # For aggregation queries
         Index("idx_staging_county_type", "source_code", "county_fips", "type_code"),
     )

@@ -2082,6 +2082,119 @@ def fcc(
         raise typer.Exit(1)
 
 
+@app.command()
+def geography(
+    year: Annotated[
+        int | None,
+        typer.Option("--year", "-y", help="Source year for allocation weights"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load geographic hierarchy (state-to-county allocation weights).
+
+    Derives allocation weights from Census employment and QCEW data:
+    - population_weight: From Census employment data
+    - employment_weight: From QCEW annual data
+
+    Prerequisites:
+        - Census data loaded (county dimensions, employment facts)
+        - QCEW data loaded (employment facts)
+
+    Examples:
+        mise run data:geography              # Load with most recent year
+        mise run data:geography -- --year 2022
+        mise run data:geography -- --no-reset
+    """
+    from babylon.data.geography import GeographicHierarchyLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    config_kwargs: dict[str, Any] = {"verbose": not quiet}
+    if year is not None:
+        config_kwargs["census_years"] = [year]
+    config = LoaderConfig(**config_kwargs)
+
+    if not quiet:
+        display_year = year if year else "most recent"
+        typer.echo(f"Loading geographic hierarchy for {display_year}...")
+
+    init_normalized_db()
+    loader = GeographicHierarchyLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
+def cfs(
+    year: Annotated[
+        int | None,
+        typer.Option("--year", "-y", help="CFS survey year (2012, 2017, or 2022)"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load Census Commodity Flow Survey data into 3NF database.
+
+    Loads state-level commodity flows from Census CFS API and disaggregates
+    them to county level using geographic hierarchy allocation weights.
+
+    CFS surveys are conducted every 5 years: 2012, 2017, 2022.
+    Default uses the most recent survey year (2022).
+
+    Prerequisites:
+        - Census data loaded (county dimensions)
+        - Geographic hierarchy loaded (allocation weights)
+
+    Examples:
+        mise run data:cfs                    # Load 2022 CFS data
+        mise run data:cfs -- --year 2017     # Load 2017 CFS data
+        mise run data:cfs -- --no-reset      # Preserve existing data
+    """
+    from babylon.data.cfs import CFSLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    # Validate year if provided
+    valid_years = {2012, 2017, 2022}
+    if year is not None and year not in valid_years:
+        typer.echo(f"Error: Invalid CFS year {year}. Valid years: {sorted(valid_years)}")
+        raise typer.Exit(1)
+
+    # Use provided year or default to most recent
+    census_years = [year] if year else [2022]
+    config = LoaderConfig(census_years=census_years, verbose=not quiet)
+
+    if not quiet:
+        display_year = year if year else 2022
+        typer.echo(f"Loading Census CFS data for survey year {display_year}...")
+
+    init_normalized_db()
+    loader = CFSLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
 def _parse_state_fips_list(state_fips: str) -> list[str]:
     """Parse state FIPS input into list of 2-digit codes.
 

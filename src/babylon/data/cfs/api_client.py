@@ -1,11 +1,15 @@
 """Census Commodity Flow Survey (CFS) API client.
 
 Provides access to Census Bureau CFS data at state-level geography.
-The API provides commodity flow data for origin-destination pairs by
+The API provides commodity flow data aggregated by origin state and
 SCTG (Standard Classification of Transported Goods) commodity codes.
 
+NOTE: The CFS API provides flows aggregated by origin geography (state),
+NOT origin-destination pairs. For O-D pairs, use FAF (Freight Analysis Framework)
+CSV data instead.
+
 API Documentation: https://api.census.gov/data/2022/cfsarea
-Variables: COMM (SCTG code), VAL (value $M), TON (tons k), dms_orig, dms_dest
+Variables: COMM (SCTG code), VAL (value $M), TON (tons k), AVGMILE (avg distance), STATE
 
 Environment:
     CENSUS_API_KEY: API key for higher rate limits (optional but recommended)
@@ -35,24 +39,25 @@ RETRY_BACKOFF_FACTOR = 2.0
 
 @dataclass
 class CFSFlowRecord:
-    """Single commodity flow record from CFS API.
+    """Commodity flow record from CFS API (aggregated by origin state).
+
+    The CFS API provides flows aggregated by origin geography, NOT
+    origin-destination pairs. Use FAF data for O-D pair analysis.
 
     Attributes:
-        origin_state_fips: 2-digit origin state FIPS code.
-        dest_state_fips: 2-digit destination state FIPS code.
+        state_fips: 2-digit state FIPS code where flows originate.
         sctg_code: SCTG commodity code (2-digit).
-        value_millions: Value in millions of dollars.
-        tons_thousands: Weight in thousands of tons.
-        ton_miles_millions: Ton-miles in millions (optional).
+        value_millions: Value in millions of dollars (may be None if suppressed).
+        tons_thousands: Weight in thousands of tons (may be None if suppressed).
+        avg_miles: Average shipment distance in miles (may be None if suppressed).
         mode_code: Transportation mode code (optional).
     """
 
-    origin_state_fips: str
-    dest_state_fips: str
+    state_fips: str
     sctg_code: str
     value_millions: float | None = None
     tons_thousands: float | None = None
-    ton_miles_millions: float | None = None
+    avg_miles: float | None = None
     mode_code: str | None = None
 
 
@@ -60,11 +65,12 @@ class CFSAPIClient:
     """Client for Census Commodity Flow Survey REST API.
 
     Fetches state-level commodity flow data with rate limiting
-    and error handling. CFS provides origin-destination flows
-    by commodity type (SCTG codes).
+    and error handling. CFS provides flows aggregated by origin state
+    and commodity type (SCTG codes).
 
-    Note: CFS API provides state-level and CFS-area level data only,
-    NOT county-level. County disaggregation requires DimGeographicHierarchy.
+    Note: The CFS API provides aggregated flows BY geography, NOT
+    origin-destination pairs. For O-D analysis, use FAF data.
+    County disaggregation requires DimGeographicHierarchy weights.
 
     Attributes:
         api_key: Optional API key for higher rate limits.
@@ -172,36 +178,31 @@ class CFSAPIClient:
         origin_state: str | None = None,
         sctg_code: str | None = None,
     ) -> list[CFSFlowRecord]:
-        """Get commodity flows at state level.
+        """Get commodity flows aggregated by state.
+
+        The CFS API provides flows aggregated by origin state, NOT
+        origin-destination pairs. Each record represents total flows
+        FROM a state for a given commodity.
 
         Args:
-            origin_state: Filter by origin state FIPS (optional).
+            origin_state: Filter by state FIPS (optional).
             sctg_code: Filter by SCTG commodity code (optional).
 
         Returns:
-            List of CFSFlowRecord objects.
+            List of CFSFlowRecord objects (aggregated by origin state).
         """
         # Build query parameters
-        # Variables: NAME, dms_orig, dms_dest, COMM (SCTG), VAL, TON, TMILES
+        # Variables: NAME, STATE, COMM (SCTG), VAL, TON, AVGMILE
+        # Note: CFS API does NOT have dms_orig, dms_dest, or TMILES - those are FAF variables
         params: dict[str, str] = {
-            "get": "NAME,dms_orig,dms_dest,COMM,VAL,TON,TMILES",
+            "get": "NAME,STATE,COMM,VAL,TON,AVGMILE",
             "for": "state:*",  # All states
         }
 
         if self.api_key:
             params["key"] = self.api_key
 
-        # Add filters if specified
-        predicates = []
-        if origin_state:
-            predicates.append(f"dms_orig={origin_state}")
-        if sctg_code:
-            predicates.append(f"COMM={sctg_code}")
-
-        # CFS uses different filter syntax than ACS
-        # We'll fetch all and filter in Python for simplicity
-        # (CFS API has limited predicate support)
-
+        # CFS API has limited predicate support, filter in Python
         try:
             data = self._request(params)
         except CFSAPIError as e:
@@ -216,38 +217,52 @@ class CFSAPIClient:
         headers = data[0]
         records: list[CFSFlowRecord] = []
 
-        # Find column indices
+        # Find column indices dynamically
         col_map = {h: i for i, h in enumerate(headers)}
+
+        # Census suppression codes: N=not available, D=disclosure, S=suppressed
+        suppression_codes = {"N", "D", "S", ""}
 
         for row in data[1:]:
             try:
-                origin = str(row[col_map.get("dms_orig", 1)]).zfill(2)
-                dest = str(row[col_map.get("dms_dest", 2)]).zfill(2)
-                sctg = str(row[col_map.get("COMM", 3)])
+                # Get state FIPS - may be in STATE or state column
+                state_col = col_map.get("STATE", col_map.get("state", 1))
+                state = str(row[state_col]).zfill(2)
+
+                # Get SCTG commodity code
+                comm_col = col_map.get("COMM", col_map.get("comm", 2))
+                sctg = str(row[comm_col])
 
                 # Skip if filtering and doesn't match
-                if origin_state and origin != origin_state:
+                if origin_state and state != origin_state:
                     continue
                 if sctg_code and sctg != sctg_code:
                     continue
 
-                # Parse numeric values
-                val_str = row[col_map.get("VAL", 4)]
-                ton_str = row[col_map.get("TON", 5)]
-                tmiles_str = row[col_map.get("TMILES", 6)] if "TMILES" in col_map else None
+                # Parse numeric values, handling suppression codes
+                val_str = row[col_map.get("VAL", 3)] if "VAL" in col_map else None
+                ton_str = row[col_map.get("TON", 4)] if "TON" in col_map else None
+                avgmile_str = row[col_map.get("AVGMILE", 5)] if "AVGMILE" in col_map else None
 
-                value = float(val_str) if val_str and val_str != "N" else None
-                tons = float(ton_str) if ton_str and ton_str != "N" else None
-                tmiles = float(tmiles_str) if tmiles_str and tmiles_str != "N" else None
+                value = None
+                if val_str and str(val_str) not in suppression_codes:
+                    value = float(val_str)
+
+                tons = None
+                if ton_str and str(ton_str) not in suppression_codes:
+                    tons = float(ton_str)
+
+                avgmile = None
+                if avgmile_str and str(avgmile_str) not in suppression_codes:
+                    avgmile = float(avgmile_str)
 
                 records.append(
                     CFSFlowRecord(
-                        origin_state_fips=origin,
-                        dest_state_fips=dest,
+                        state_fips=state,
                         sctg_code=sctg,
                         value_millions=value,
                         tons_thousands=tons,
-                        ton_miles_millions=tmiles,
+                        avg_miles=avgmile,
                     )
                 )
             except (IndexError, ValueError) as e:

@@ -97,39 +97,37 @@ class TestCFSFlowRecord:
     """Tests for CFSFlowRecord dataclass."""
 
     def test_flow_record_has_required_fields(self) -> None:
-        """CFSFlowRecord requires origin, dest, and sctg_code."""
+        """CFSFlowRecord requires state_fips and sctg_code."""
         record = CFSFlowRecord(
-            origin_state_fips="06",
-            dest_state_fips="48",
+            state_fips="06",
             sctg_code="02",
         )
-        assert record.origin_state_fips == "06"
-        assert record.dest_state_fips == "48"
+        assert record.state_fips == "06"
         assert record.sctg_code == "02"
 
     def test_flow_record_optional_fields_default_none(self) -> None:
         """Optional fields default to None."""
         record = CFSFlowRecord(
-            origin_state_fips="06",
-            dest_state_fips="48",
+            state_fips="06",
             sctg_code="02",
         )
         assert record.value_millions is None
         assert record.tons_thousands is None
-        assert record.ton_miles_millions is None
+        assert record.avg_miles is None
         assert record.mode_code is None
 
     def test_flow_record_accepts_values(self) -> None:
         """CFSFlowRecord accepts flow values."""
         record = CFSFlowRecord(
-            origin_state_fips="06",
-            dest_state_fips="48",
+            state_fips="06",
             sctg_code="02",
             value_millions=1500.5,
             tons_thousands=2500.0,
+            avg_miles=350.0,
         )
         assert record.value_millions == 1500.5
         assert record.tons_thousands == 2500.0
+        assert record.avg_miles == 350.0
 
 
 @pytest.mark.unit

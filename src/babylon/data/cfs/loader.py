@@ -3,9 +3,13 @@
 Loads CFS commodity flow data at state level and disaggregates to county
 level using allocation weights from DimGeographicHierarchy.
 
-The CFS API provides origin-destination commodity flows at state level.
-This loader distributes those flows to counties proportionally based on
-employment weights (for origin) and population weights (for destination).
+The CFS API provides commodity flows aggregated BY origin state (not O-D pairs).
+This loader distributes those flows to county pairs WITHIN the same state,
+modeling intra-state flows proportionally based on employment weights
+(for origin) and population weights (for destination).
+
+Note: For true origin-destination flows, use FAF (Freight Analysis Framework)
+data instead of CFS API data.
 """
 
 from __future__ import annotations
@@ -39,13 +43,16 @@ class CFSLoader(ApiLoaderBase):
     """Loader for Census CFS data with state-to-county disaggregation.
 
     Fetches state-level commodity flows from Census CFS API and distributes
-    them to county pairs using DimGeographicHierarchy allocation weights.
+    them to county pairs WITHIN each state using DimGeographicHierarchy
+    allocation weights.
 
-    The disaggregation uses:
-    - employment_weight for origin counties (production/shipping)
-    - population_weight for destination counties (consumption)
+    The CFS API provides flows aggregated by origin state, NOT origin-destination
+    pairs. This loader models intra-state flows by distributing to county pairs:
+    - employment_weight for origin counties (production/shipping proxy)
+    - population_weight for destination counties (consumption proxy)
 
-    This creates county-to-county flow estimates from state-level data.
+    This creates county-to-county flow estimates representing intra-state
+    distribution of goods originating from that state.
     """
 
     def __init__(self, config: LoaderConfig | None = None) -> None:
@@ -264,8 +271,9 @@ class CFSLoader(ApiLoaderBase):
     ) -> int:
         """Load commodity flows disaggregated to county level.
 
-        Fetches state-level flows and distributes to counties using
-        geographic hierarchy weights.
+        Fetches state-level aggregated flows and distributes to county pairs
+        WITHIN each state using geographic hierarchy weights. This models
+        intra-state flows since the CFS API doesn't provide O-D pairs.
         """
         assert self._client is not None
         assert self._source_id is not None
@@ -273,7 +281,7 @@ class CFSLoader(ApiLoaderBase):
         if verbose:
             print("Fetching state-level commodity flows...")
 
-        # Get all state flows
+        # Get all state flows (aggregated by origin state, not O-D pairs)
         flows = self._client.get_state_flows()
         if not flows and self._client.last_error:
             stats.record_api_error(self._client.last_error, context=f"cfs:{year}:get_state_flows")
@@ -281,17 +289,15 @@ class CFSLoader(ApiLoaderBase):
 
         if verbose:
             print(f"Retrieved {len(flows):,} state-level flow records")
-            print("Disaggregating to county level...")
+            print("Disaggregating to intra-state county flows...")
 
         count = 0
         flow_iter = tqdm(flows, desc="Disaggregating", disable=not verbose)
 
         for flow in flow_iter:
-            # Get state IDs
-            origin_state_id = self._state_fips_to_id.get(flow.origin_state_fips)
-            dest_state_id = self._state_fips_to_id.get(flow.dest_state_fips)
-
-            if not origin_state_id or not dest_state_id:
+            # Get state ID from the single state FIPS in aggregated flow
+            state_id = self._state_fips_to_id.get(flow.state_fips)
+            if not state_id:
                 continue
 
             # Get SCTG ID
@@ -299,17 +305,16 @@ class CFSLoader(ApiLoaderBase):
             if not sctg_id:
                 continue
 
-            # Get hierarchy for both states
-            origin_counties = self._hierarchy.get(origin_state_id, [])
-            dest_counties = self._hierarchy.get(dest_state_id, [])
-
-            if not origin_counties or not dest_counties:
+            # Get hierarchy for this state (use same state for both origin and dest)
+            # This models intra-state flows since CFS doesn't provide O-D pairs
+            counties = self._hierarchy.get(state_id, [])
+            if not counties:
                 continue
 
-            # Disaggregate flow to county pairs
+            # Disaggregate flow to county pairs within the same state
             # Use employment weight for origin, population weight for destination
-            for o_county_id, _, o_emp_weight in origin_counties:
-                for d_county_id, d_pop_weight, _ in dest_counties:
+            for o_county_id, _, o_emp_weight in counties:
+                for d_county_id, d_pop_weight, _ in counties:
                     # Combined weight = origin_employment * dest_population
                     combined_weight = o_emp_weight * d_pop_weight
 
@@ -326,9 +331,14 @@ class CFSLoader(ApiLoaderBase):
                     if flow.tons_thousands is not None:
                         tons = Decimal(str(flow.tons_thousands)) * combined_weight
 
-                    tmiles = None
-                    if flow.ton_miles_millions is not None:
-                        tmiles = Decimal(str(flow.ton_miles_millions)) * combined_weight
+                    # CFS API provides avg_miles, not ton_miles
+                    # Store avg_miles in ton_miles_millions field as a proxy
+                    # (or leave NULL if we want to be strict about semantics)
+                    avg_miles_value = None
+                    if flow.avg_miles is not None:
+                        # Note: avg_miles is NOT ton-miles; storing raw value without
+                        # weighting since it's already an average
+                        avg_miles_value = Decimal(str(flow.avg_miles))
 
                     fact = FactCommodityFlow(
                         origin_county_id=o_county_id,
@@ -338,7 +348,7 @@ class CFSLoader(ApiLoaderBase):
                         year=year,
                         value_millions=value,
                         tons_thousands=tons,
-                        ton_miles_millions=tmiles,
+                        ton_miles_millions=avg_miles_value,  # Storing avg_miles here
                         mode_code=flow.mode_code,
                     )
                     session.add(fact)

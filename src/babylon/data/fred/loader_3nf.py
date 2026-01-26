@@ -318,11 +318,9 @@ class FredLoader(ApiLoaderBase):
     def _clear_fred_tables(self, session: Session) -> None:
         """Clear FRED-specific tables (not shared dimensions).
 
-        DuckDB enforces FK constraints per-statement, so we commit after
-        each delete to avoid false constraint violations.
+        SQLite enforces FK constraints within transactions when PRAGMA
+        foreign_keys=ON is set (configured via event listener in database.py).
         """
-        is_duckdb = session.get_bind().dialect.name == "duckdb"
-
         # Clear fact tables first (they reference dimensions)
         fact_tables = [
             FactFredNational,
@@ -333,15 +331,11 @@ class FredLoader(ApiLoaderBase):
         ]
         for table in fact_tables:
             session.query(table).delete()
-            if is_duckdb:
-                session.commit()
 
         # Clear FRED-specific dimensions (after facts are gone)
         dim_tables = [DimFredSeries, DimWealthClass, DimAssetCategory]
         for table in dim_tables:
             session.query(table).delete()
-            if is_duckdb:
-                session.commit()
 
         # Note: Do NOT clear DimState, DimIndustry, DimTime - shared dimensions
 

@@ -37,11 +37,22 @@ from .conftest import ALL_LOADERS
 
 @pytest.fixture(scope="function")
 def isolated_engine() -> Generator[Engine, None, None]:
-    """Create completely isolated in-memory DuckDB database per test.
+    """Create completely isolated in-memory SQLite database per test.
 
-    DuckDB enforces foreign keys by default.
+    FK constraints are enabled via PRAGMA for referential integrity.
     """
-    engine = create_engine("duckdb:///:memory:", echo=False)
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     NormalizedBase.metadata.create_all(engine)
 

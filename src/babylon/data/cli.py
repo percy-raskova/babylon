@@ -1002,15 +1002,16 @@ def _collect_empty_tables(engine: Any) -> list[str]:
     """Return base tables with zero rows."""
     excluded = {"alembic_version"}
     with engine.connect() as conn:
+        # Use SQLite-compatible query (sqlite_master) instead of information_schema
         tables = [
             row[0]
             for row in conn.execute(
                 text(
                     """
-                    SELECT table_name
-                    FROM information_schema.tables
-                    WHERE table_schema = 'main' AND table_type = 'BASE TABLE'
-                    ORDER BY table_name
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table'
+                    ORDER BY name
                     """
                 )
             ).fetchall()

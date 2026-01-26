@@ -16,9 +16,10 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from tqdm import tqdm
 
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
@@ -273,7 +274,11 @@ class GeographicHierarchyLoader(DataLoader):
         source_year: int,
         verbose: bool,
     ) -> int:
-        """Load hierarchy records with normalized weights.
+        """Load hierarchy records with normalized weights using upsert.
+
+        Uses ON CONFLICT DO UPDATE to handle idempotent loading without
+        requiring delete-first semantics. This avoids duplicate key violations
+        when running with reset=False or when records already exist.
 
         Args:
             session: Database session.
@@ -284,9 +289,9 @@ class GeographicHierarchyLoader(DataLoader):
             verbose: Whether to show progress.
 
         Returns:
-            Number of hierarchy records loaded.
+            Number of hierarchy records loaded/updated.
         """
-        count = 0
+        records: list[dict[str, Any]] = []
         state_iter = tqdm(
             state_counties.items(),
             desc="States",
@@ -303,19 +308,50 @@ class GeographicHierarchyLoader(DataLoader):
             norm_emp = self._normalize_weights(emp_weights, county_fips_list, state_fips)
 
             for county_id, fips in counties:
-                hierarchy = DimGeographicHierarchy(
-                    state_id=state_id,
-                    county_id=county_id,
-                    population_weight=norm_pop.get(fips, Decimal("0")),
-                    employment_weight=norm_emp.get(fips, Decimal("0")),
-                    gdp_weight=None,  # Could derive from wages + employment
-                    source_year=source_year,
+                records.append(
+                    {
+                        "state_id": state_id,
+                        "county_id": county_id,
+                        "population_weight": norm_pop.get(fips, Decimal("0")),
+                        "employment_weight": norm_emp.get(fips, Decimal("0")),
+                        "gdp_weight": None,
+                        "source_year": source_year,
+                    }
                 )
-                session.add(hierarchy)
-                count += 1
 
+        # Batch upsert using ON CONFLICT DO UPDATE
+        # SQLite supports ON CONFLICT via sqlalchemy.dialects.sqlite
+        if records:
+            self._upsert_hierarchy_batch(session, records)
+
+        return len(records)
+
+    def _upsert_hierarchy_batch(
+        self,
+        session: Session,
+        records: list[dict[str, Any]],
+        batch_size: int = 1000,
+    ) -> None:
+        """Upsert hierarchy records using SQLite ON CONFLICT DO UPDATE.
+
+        Args:
+            session: Database session.
+            records: List of hierarchy record dicts to upsert.
+            batch_size: Number of records per batch (default 1000).
+        """
+        for i in range(0, len(records), batch_size):
+            batch = records[i : i + batch_size]
+            stmt = sqlite_insert(DimGeographicHierarchy).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["state_id", "county_id", "source_year"],
+                set_={
+                    "population_weight": stmt.excluded.population_weight,
+                    "employment_weight": stmt.excluded.employment_weight,
+                    "gdp_weight": stmt.excluded.gdp_weight,
+                },
+            )
+            session.execute(stmt)
         session.flush()
-        return count
 
 
 __all__ = ["GeographicHierarchyLoader"]

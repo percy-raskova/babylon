@@ -23,7 +23,7 @@ class DatabaseConnection:
     resource management and testability.
 
     Example:
-        >>> db = DatabaseConnection(url="duckdb:///:memory:")
+        >>> db = DatabaseConnection(url="sqlite:///:memory:")
         >>> with db.session() as session:
         ...     result = session.execute(text("SELECT 1"))
         ...     print(result.scalar())
@@ -31,12 +31,12 @@ class DatabaseConnection:
         >>> db.close()
     """
 
-    def __init__(self, url: str = "duckdb:///babylon.duckdb") -> None:
+    def __init__(self, url: str = "sqlite:///babylon.sqlite") -> None:
         """Initialize database connection.
 
         Args:
-            url: SQLAlchemy database URL. Defaults to local DuckDB file.
-                 Use "duckdb:///:memory:" for in-memory testing.
+            url: SQLAlchemy database URL. Defaults to local SQLite file.
+                 Use "sqlite:///:memory:" for in-memory testing.
         """
         self._engine: Engine = create_engine(url)
         self._session_factory = sessionmaker(

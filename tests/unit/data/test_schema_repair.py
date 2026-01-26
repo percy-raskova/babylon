@@ -2,13 +2,31 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, MetaData, Sequence, String, Table, create_engine, inspect
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, inspect
 
 from babylon.data.reference import schema_check
 
 
+def _create_sqlite_engine():
+    """Create SQLite engine with FK enforcement."""
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+    return engine
+
+
 def test_apply_schema_repairs_adds_table() -> None:
-    engine = create_engine("duckdb:///:memory:")
+    engine = _create_sqlite_engine()
     metadata = MetaData()
     table = Table("test_add_table", metadata, Column("id", Integer))
 
@@ -23,14 +41,14 @@ def test_apply_schema_repairs_adds_table() -> None:
     assert report.applied
 
 
-def test_apply_schema_repairs_adds_table_with_sequence() -> None:
-    engine = create_engine("duckdb:///:memory:")
+def test_apply_schema_repairs_adds_table_with_autoincrement() -> None:
+    """Test adding table with autoincrement primary key (SQLite-compatible)."""
+    engine = _create_sqlite_engine()
     metadata = MetaData()
-    seq = Sequence("test_sequence_id_seq", metadata=metadata)
     table = Table(
-        "test_seq_table",
+        "test_autoinc_table",
         metadata,
-        Column("id", Integer, server_default=seq.next_value(), primary_key=True),
+        Column("id", Integer, primary_key=True, autoincrement=True),
         Column("label", String()),
     )
 
@@ -41,12 +59,12 @@ def test_apply_schema_repairs_adds_table_with_sequence() -> None:
     )
 
     inspector = inspect(engine)
-    assert "test_seq_table" in inspector.get_table_names()
+    assert "test_autoinc_table" in inspector.get_table_names()
     assert report.applied
 
 
 def test_apply_schema_repairs_adds_column() -> None:
-    engine = create_engine("duckdb:///:memory:")
+    engine = _create_sqlite_engine()
     metadata = MetaData()
     _table = Table("test_add_column", metadata, Column("id", Integer))
     metadata.create_all(engine)
@@ -66,7 +84,7 @@ def test_apply_schema_repairs_adds_column() -> None:
 
 
 def test_apply_schema_repairs_leaves_blocking_diffs() -> None:
-    engine = create_engine("duckdb:///:memory:")
+    engine = _create_sqlite_engine()
     metadata = MetaData()
     Table("test_blocking", metadata, Column("id", Integer))
     metadata.create_all(engine)

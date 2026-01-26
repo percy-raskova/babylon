@@ -43,13 +43,24 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def circulatory_db_session() -> Generator[Session, None, None]:
-    """Create fresh in-memory DuckDB database for circulatory loader tests.
+    """Create fresh in-memory SQLite database for circulatory loader tests.
 
     This fixture creates all required dimension tables pre-populated with
     sample data for testing foreign key relationships.
-    DuckDB enforces foreign keys by default.
+    FK constraints are enabled via PRAGMA for referential integrity.
     """
-    engine = create_engine("duckdb:///:memory:", echo=False)
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     NormalizedBase.metadata.create_all(engine)
 

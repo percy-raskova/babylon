@@ -32,13 +32,24 @@ if TYPE_CHECKING:
 
 @pytest.fixture(scope="module")
 def in_memory_engine() -> Generator[Engine, None, None]:
-    """Create in-memory DuckDB database.
+    """Create in-memory SQLite database.
 
     Uses module scope to avoid recreation overhead while still
     providing isolation through function-scoped sessions.
-    DuckDB enforces foreign keys by default.
+    FK constraints are enabled via PRAGMA for referential integrity.
     """
-    engine = create_engine("duckdb:///:memory:", echo=False)
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     # Create all tables
     NormalizedBase.metadata.create_all(engine)
@@ -65,13 +76,24 @@ def session(in_memory_engine: Engine) -> Generator[Session, None, None]:
 
 @pytest.fixture(scope="function")
 def fresh_db_session() -> Generator[Session, None, None]:
-    """Create completely fresh in-memory DuckDB database for each test.
+    """Create completely fresh in-memory SQLite database for each test.
 
     Use this when you need complete isolation (e.g., testing
     schema creation or destructive operations).
-    DuckDB enforces foreign keys by default.
+    FK constraints are enabled via PRAGMA for referential integrity.
     """
-    engine = create_engine("duckdb:///:memory:", echo=False)
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
     NormalizedBase.metadata.create_all(engine)
 
@@ -258,7 +280,7 @@ def sample_industry_data() -> list[dict[str, str | int | None]]:
 
 @pytest.fixture
 def fk_check_enabled(in_memory_engine: Engine) -> bool:
-    """Verify FK checking is enabled (always True for DuckDB)."""
-    # DuckDB enforces foreign keys by default
+    """Verify FK checking is enabled (via PRAGMA for SQLite)."""
+    # SQLite FK enforcement enabled via event listener in engine fixture
     _ = in_memory_engine  # Unused but kept for fixture signature compatibility
     return True

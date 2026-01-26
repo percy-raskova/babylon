@@ -355,43 +355,24 @@ class ArcGISStreamingLoader(DataLoader):
         return new_features
 
     def _upsert_staging_batch(self, session: Session, records: list[dict[str, Any]]) -> None:
-        """Upsert batch of staging records using ON CONFLICT UPDATE.
+        """Upsert batch of staging records using SQLite ON CONFLICT UPDATE.
 
         Uses SQLAlchemy's insert with on_conflict_do_update for deduplication.
         """
         if not records:
             return
 
-        # Use dialect-appropriate upsert
-        dialect = session.get_bind().dialect.name
-
-        if dialect == "duckdb":
-            # DuckDB: Use PostgreSQL-compatible ON CONFLICT (duckdb-engine is PG-like)
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-            pg_stmt = pg_insert(StagingArcGISFeature).values(records)
-            pg_stmt = pg_stmt.on_conflict_do_update(
-                index_elements=["source_code", "object_id"],
-                set_={
-                    "county_fips": pg_stmt.excluded.county_fips,
-                    "type_code": pg_stmt.excluded.type_code,
-                    "capacity": pg_stmt.excluded.capacity,
-                },
-            )
-            session.execute(pg_stmt)
-        else:
-            # SQLite: Use INSERT OR REPLACE
-            sq_stmt = sqlite_insert(StagingArcGISFeature).values(records)
-            sq_stmt = sq_stmt.on_conflict_do_update(
-                index_elements=["source_code", "object_id"],
-                set_={
-                    "county_fips": sq_stmt.excluded.county_fips,
-                    "type_code": sq_stmt.excluded.type_code,
-                    "capacity": sq_stmt.excluded.capacity,
-                },
-            )
-            session.execute(sq_stmt)
-
+        # SQLite: Use ON CONFLICT DO UPDATE
+        stmt = sqlite_insert(StagingArcGISFeature).values(records)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["source_code", "object_id"],
+            set_={
+                "county_fips": stmt.excluded.county_fips,
+                "type_code": stmt.excluded.type_code,
+                "capacity": stmt.excluded.capacity,
+            },
+        )
+        session.execute(stmt)
         session.flush()
 
     # -------------------------------------------------------------------------

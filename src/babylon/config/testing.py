@@ -11,12 +11,12 @@ from typing import Final
 class TestingConfig:
     """Configuration for test environments.
 
-    Uses in-memory DuckDB and temporary directories to ensure
+    Uses in-memory SQLite and temporary directories to ensure
     test isolation and reproducibility.
     """
 
     # === Database ===
-    DATABASE_URL: Final[str] = "duckdb:///:memory:"
+    DATABASE_URL: Final[str] = "sqlite:///:memory:"
     DB_POOL_SIZE: Final[int] = 1
     DB_MAX_OVERFLOW: Final[int] = 0
 

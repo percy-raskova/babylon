@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 # Paths relative to repository root
 _REPO_ROOT = Path(__file__).parent.parent.parent.parent.parent
 RUNS_DIR = _REPO_ROOT / "data" / "runs"
-REFERENCE_DB_PATH = _REPO_ROOT / "data" / "duckdb" / "marxist-data-3NF.duckdb"
+REFERENCE_DB_PATH = _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite"
 
 
 class SimulationDB:

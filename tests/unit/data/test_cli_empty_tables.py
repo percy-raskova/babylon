@@ -8,7 +8,7 @@ from babylon.data import cli
 
 
 def test_collect_empty_tables_detects_empty() -> None:
-    engine = create_engine("duckdb:///:memory:")
+    engine = create_engine("sqlite:///:memory:")
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE has_rows (id INTEGER)"))
         conn.execute(text("CREATE TABLE empty_table (id INTEGER)"))

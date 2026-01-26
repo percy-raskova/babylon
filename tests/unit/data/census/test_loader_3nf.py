@@ -253,7 +253,19 @@ class TestCensusLoaderResilience:
 
     def test_clear_tables_does_not_delete_shared_dims(self) -> None:
         """Census clear_tables should not delete shared dimensions."""
-        engine = create_engine("duckdb:///:memory:")
+        from sqlalchemy import event
+
+        engine = create_engine("sqlite:///:memory:")
+
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+            import sqlite3
+
+            if isinstance(dbapi_conn, sqlite3.Connection):
+                cursor = dbapi_conn.cursor()
+                cursor.execute("PRAGMA foreign_keys=ON")
+                cursor.close()
+
         NormalizedBase.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
         session = Session()

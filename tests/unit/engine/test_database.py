@@ -18,8 +18,8 @@ from sqlalchemy.orm import Session
 class TestDatabaseConnection:
     """Test DatabaseConnection behavior."""
 
-    def test_default_creates_duckdb_connection(self) -> None:
-        """Default constructor creates a DuckDB connection."""
+    def test_default_creates_sqlite_connection(self) -> None:
+        """Default constructor creates a SQLite connection."""
         from babylon.engine.database import DatabaseConnection
 
         db = DatabaseConnection()
@@ -27,8 +27,8 @@ class TestDatabaseConnection:
         try:
             # Should have created an engine
             assert db._engine is not None
-            # Should be DuckDB by default
-            assert "duckdb" in str(db._engine.url)
+            # Should be SQLite by default (used for ETL, reliable UPSERT)
+            assert "sqlite" in str(db._engine.url)
         finally:
             db.close()
 

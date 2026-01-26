@@ -30,7 +30,19 @@ from babylon.data.reference.schema import (
 @pytest.fixture
 def integration_session() -> Generator[Session, None, None]:
     """Create session with full schema for integration testing."""
-    engine = create_engine("duckdb:///:memory:")
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     NormalizedBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     session = session_factory()

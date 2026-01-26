@@ -33,12 +33,31 @@ def mock_db_session() -> MagicMock:
 
 @pytest.fixture
 def in_memory_db() -> Engine:
-    """Create an in-memory DuckDB database for integration-style unit tests.
+    """Create an in-memory SQLite database for integration-style unit tests.
+
+    SQLite is used for ETL operations where reliable UPSERT is needed.
+    FK constraints are enabled via PRAGMA for referential integrity.
 
     Returns:
-        SQLAlchemy engine connected to in-memory DuckDB.
+        SQLAlchemy engine connected to in-memory SQLite with FK enforcement.
     """
-    return create_engine("duckdb:///:memory:")
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(
+        dbapi_conn: object,
+        _connection_record: object,
+    ) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
+    return engine
 
 
 @pytest.fixture

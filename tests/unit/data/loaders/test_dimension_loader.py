@@ -17,8 +17,20 @@ from babylon.data.reference.schema import DimGender, DimOwnership
 
 
 def _make_session() -> Session:
-    """Create an in-memory DuckDB session for testing."""
-    engine = create_engine("duckdb:///:memory:")
+    """Create an in-memory SQLite session for testing."""
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     NormalizedBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     return session_factory()

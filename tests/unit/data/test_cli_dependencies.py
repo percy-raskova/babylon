@@ -12,7 +12,19 @@ from babylon.data.reference.database import NormalizedBase
 
 
 def _make_session():
-    engine = create_engine("duckdb:///:memory:")
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn: object, _connection_record: object) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     NormalizedBase.metadata.create_all(engine)
     session_factory = sessionmaker(bind=engine)
     return session_factory()

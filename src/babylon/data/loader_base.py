@@ -2,7 +2,7 @@
 
 Provides a common DataLoader ABC that enforces consistency, parameterization,
 idempotency, and proper structure across all data sources. All loaders write
-directly to the normalized 3NF schema in marxist-data-3NF.duckdb.
+directly to the normalized 3NF schema in marxist-data-3NF.sqlite.
 
 Usage:
     from babylon.data.loader_base import DataLoader, LoadStats
@@ -357,17 +357,66 @@ class DataLoader(ABC):
     def _delete_tables(self, session: Session, tables: list[type]) -> None:
         """Delete all rows from the provided tables in order.
 
-        DuckDB enforces FK constraints per-statement; commits between deletes
-        avoid false constraint violations during ordered cleanup.
+        SQLite enforces FK constraints within transactions when PRAGMA
+        foreign_keys=ON is set (configured via event listener in database.py).
         """
         if not tables:
             return
 
-        is_duckdb = session.get_bind().dialect.name == "duckdb"
         for table in tables:
             session.query(table).delete()
-            if is_duckdb:
-                session.commit()
+
+    def _upsert_batch(
+        self,
+        session: Session,
+        table: type,
+        records: list[dict[str, object]],
+        index_elements: list[str],
+        update_columns: list[str],
+        batch_size: int = 1000,
+    ) -> int:
+        """Upsert records using SQLite ON CONFLICT DO UPDATE.
+
+        Standard pattern for idempotent loading without reset. Uses SQLite's
+        INSERT ... ON CONFLICT DO UPDATE syntax via SQLAlchemy's sqlite dialect.
+
+        Args:
+            session: SQLAlchemy session for the normalized database.
+            table: SQLAlchemy model class for the target table.
+            records: List of dictionaries representing rows to upsert.
+            index_elements: Column names that form the unique constraint.
+            update_columns: Column names to update on conflict.
+            batch_size: Number of rows per batch (default: 1000).
+
+        Returns:
+            Total number of rows upserted.
+
+        Example:
+            count = self._upsert_batch(
+                session,
+                DimGeographicHierarchy,
+                records=[{"state_id": 1, "county_id": 5, ...}],
+                index_elements=["state_id", "county_id", "source_year"],
+                update_columns=["population_weight", "employment_weight"],
+            )
+        """
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        if not records:
+            return 0
+
+        count = 0
+        for i in range(0, len(records), batch_size):
+            batch = records[i : i + batch_size]
+            stmt = sqlite_insert(table).values(batch)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=index_elements,
+                set_={col: stmt.excluded[col] for col in update_columns},
+            )
+            session.execute(stmt)
+            count += len(batch)
+        session.flush()
+        return count
 
     def _get_or_create_time(
         self,

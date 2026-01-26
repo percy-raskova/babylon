@@ -4,14 +4,21 @@ The reference database contains normalized 3NF federal statistical data
 for initializing simulation state. This data is treated as immutable
 after initial load - loaders write once, simulation reads only.
 
-Located at data/duckdb/marxist-data-3NF.duckdb by default. Override with
+Architecture (two-database pattern):
+    - ETL/Loading: SQLite (reliable UPSERT, idempotent operations)
+    - In-Game Ledger: DuckDB (fast OLAP queries, converted from SQLite)
+
+Located at data/sqlite/marxist-data-3NF.sqlite by default. Override with
 BABYLON_NORMALIZED_DB_PATH to target an alternate build database.
 
-DuckDB was chosen over SQLite for:
-- Better analytical query performance (columnar storage)
-- Native Parquet and CSV support for data import/export
-- Future DuckPGQ graph query support (Topology layer unification)
-- Concurrent read access without locking
+SQLite was chosen for ETL over DuckDB because:
+- Reliable on_conflict_do_update (UPSERT) support via SQLAlchemy
+- Mature, battle-tested SQLAlchemy dialect
+- Predictable constraint enforcement within transactions
+- Idempotent loader operations without duplicate key violations
+
+For in-game use, convert SQLite to DuckDB using:
+    python tools/convert_sqlite_to_duckdb.py
 """
 
 import os
@@ -19,7 +26,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 # Normalized database path - 3NF structure for analytical queries
@@ -40,9 +47,9 @@ def _resolve_db_path(env_var: str, default_path: Path) -> Path:
 
 NORMALIZED_DB_PATH = _resolve_db_path(
     "BABYLON_NORMALIZED_DB_PATH",
-    _REPO_ROOT / "data" / "duckdb" / "marxist-data-3NF.duckdb",
+    _REPO_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite",
 )
-NORMALIZED_DATABASE_URL = f"duckdb:///{NORMALIZED_DB_PATH}"
+NORMALIZED_DATABASE_URL = f"sqlite:///{NORMALIZED_DB_PATH}"
 
 # Legacy source database path (for reference during migration)
 SOURCE_DB_PATH = _REPO_ROOT / "data" / "sqlite" / "research.sqlite"
@@ -56,18 +63,33 @@ class NormalizedBase(DeclarativeBase):
 
 
 def get_normalized_engine(echo: bool = False) -> Engine:
-    """Create normalized DuckDB database engine.
+    """Create normalized SQLite database engine with FK enforcement.
 
-    DuckDB enforces foreign keys by default and supports concurrent reads.
+    SQLite requires explicit PRAGMA foreign_keys=ON to enforce foreign keys.
+    This is set via an event listener on every connection.
 
     Args:
         echo: If True, log SQL statements
 
     Returns:
-        Engine: SQLAlchemy engine for the normalized 3NF DuckDB database.
+        Engine: SQLAlchemy engine for the normalized 3NF SQLite database.
     """
     NORMALIZED_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     engine = create_engine(NORMALIZED_DATABASE_URL, echo=echo)
+
+    # Enable FK constraints for SQLite (must be set on every connection)
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(
+        dbapi_conn: object,  # sqlite3.Connection at runtime
+        _connection_record: object,
+    ) -> None:
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     return engine
 
 

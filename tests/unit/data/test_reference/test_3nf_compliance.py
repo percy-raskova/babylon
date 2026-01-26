@@ -156,11 +156,24 @@ FACT_TABLES = [
 
 @pytest.fixture(scope="module")
 def engine() -> Engine:
-    """Create in-memory DuckDB database.
+    """Create in-memory SQLite database with FK enforcement.
 
-    DuckDB enforces foreign keys by default, no PRAGMA needed.
+    SQLite requires explicit PRAGMA foreign_keys=ON for FK enforcement.
     """
-    engine = create_engine("duckdb:///:memory:", echo=False)
+    from sqlalchemy import event
+
+    engine = create_engine("sqlite:///:memory:", echo=False)
+
+    # Enable FK constraints for SQLite
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, _connection_record):  # type: ignore[no-untyped-def]
+        import sqlite3
+
+        if isinstance(dbapi_conn, sqlite3.Connection):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+
     NormalizedBase.metadata.create_all(engine)
     return engine
 
@@ -176,7 +189,7 @@ def session(engine: Engine) -> Session:
 
 
 class TestForeignKeyEnforcement:
-    """Tests for DuckDB FK enforcement (enabled by default)."""
+    """Tests for SQLite FK enforcement (enabled via PRAGMA foreign_keys=ON)."""
 
     def test_fk_violation_raises_error(self, session: Session) -> None:
         """Inserting orphan FK should raise IntegrityError."""

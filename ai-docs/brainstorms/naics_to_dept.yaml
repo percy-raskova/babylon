@@ -1,0 +1,437 @@
+# =============================================================================
+# NAICS to Marxian Department Mapping
+# =============================================================================
+#
+# Maps NAICS codes to Marxian reproduction schema departments by END-USE
+# DESTINATION, not production process.
+#
+# Departments:
+#   I   = Means of Production (consumed productively by capital)
+#   IIa = Necessary Consumption (wage goods for proletariat reproduction)
+#   IIb = Luxury Consumption (surplus value sink, bourgeois consumption)
+#   III = Social Reproduction (produces labor power itself)
+#
+# Logic: NAICS classifies by process; we classify by buyer/destination.
+# A commodity enters Dept I if capital buys it for production, Dept IIa if
+# workers buy it to survive, Dept IIb if bourgeoisie consumes it from surplus.
+#
+# Split coefficients: When a NAICS sector produces for multiple destinations,
+# weights sum to 1.0. Weights are initial estimates; calibrate against BEA
+# Use Tables for final demand by sector.
+#
+# Sources:
+#   - NotebookLM synthesis of Marx Vol II reproduction schemas
+#   - Fortunati (1995) on reproductive labor
+#   - BLS NAICS 2022 structure
+# =============================================================================
+
+version: "1.0"
+notes:
+  - "Split coefficients are initial estimates. Calibrate against BEA Use Tables."
+  - "Government (NAICS 92) excluded - outside M-C-M' circuit."
+  - "Unpaid domestic labor not captured here; separate metric tensor calculation."
+
+# =============================================================================
+# DEFAULT MAPPINGS BY 2-DIGIT SECTOR
+# =============================================================================
+# These apply when no more specific code is matched. Lookup proceeds from
+# most specific (6-digit) to least specific (2-digit).
+
+defaults:
+  # -------------------------------------------------------------------------
+  # DEPARTMENT I: Means of Production
+  # -------------------------------------------------------------------------
+  # Commodities consumed productively by capital to create new value.
+  # These re-enter the production cycle as constant capital (c).
+
+  "11":  # Agriculture, Forestry, Fishing and Hunting
+    dept_I: 0.7    # Raw materials for industry
+    dept_IIa: 0.3  # Food directly consumed by workers
+
+  "21":  # Mining, Quarrying, and Oil and Gas Extraction
+    dept_I: 1.0    # Pure means of production
+
+  "22":  # Utilities
+    dept_I: 0.6    # Industrial power consumption
+    dept_IIa: 0.4  # Residential utilities (worker reproduction)
+
+  "23":  # Construction
+    dept_I: 0.7    # Industrial/commercial infrastructure
+    dept_IIa: 0.25 # Workforce housing
+    dept_IIb: 0.05 # Luxury residential
+
+  # -------------------------------------------------------------------------
+  # MANUFACTURING (31-33): Mixed by subsector
+  # -------------------------------------------------------------------------
+  # Manufacturing is the most heterogeneous sector. Default to Dept I
+  # (most manufacturing output is intermediate goods), with overrides below.
+
+  "31":  # Food, Beverage, Textile, Apparel
+    dept_IIa: 0.85 # Wage goods (food, basic clothing)
+    dept_IIb: 0.15 # Premium food/beverages, luxury apparel
+
+  "32":  # Wood, Paper, Printing, Petroleum, Chemicals, Plastics
+    dept_I: 0.8    # Intermediate industrial inputs
+    dept_IIa: 0.15 # Consumer goods (paper products, plastics)
+    dept_IIb: 0.05 # Luxury chemicals (perfumes, cosmetics)
+
+  "33":  # Metals, Machinery, Electronics, Transport Equipment
+    dept_I: 0.7    # Capital goods, machinery, equipment
+    dept_IIa: 0.2  # Consumer durables (appliances, basic vehicles)
+    dept_IIb: 0.1  # Luxury vehicles, electronics
+
+  # -------------------------------------------------------------------------
+  # CIRCULATION: Wholesale, Retail, Transport, Warehousing
+  # -------------------------------------------------------------------------
+  # Circulation doesn't create value but realizes it. Map by what they move.
+
+  "42":  # Wholesale Trade
+    dept_I: 0.7    # Industrial distribution
+    dept_IIa: 0.25 # Consumer goods distribution
+    dept_IIb: 0.05 # Luxury goods distribution
+
+  "44":  # Retail Trade (part 1)
+    dept_IIa: 0.75 # Consumer necessities
+    dept_IIb: 0.25 # Non-essential retail
+
+  "45":  # Retail Trade (part 2)
+    dept_IIa: 0.6  # Consumer goods
+    dept_IIb: 0.4  # More discretionary
+
+  "48":  # Transportation
+    dept_I: 0.6    # Freight movement
+    dept_IIa: 0.35 # Worker commuting
+    dept_IIb: 0.05 # Luxury travel
+
+  "49":  # Warehousing and Postal
+    dept_I: 0.7    # Industrial logistics
+    dept_IIa: 0.3  # Consumer package delivery
+
+  # -------------------------------------------------------------------------
+  # INFORMATION AND FINANCE: Circulation and Overhead
+  # -------------------------------------------------------------------------
+
+  "51":  # Information
+    dept_I: 0.4    # Business software, data services
+    dept_IIa: 0.4  # Consumer media, communications
+    dept_IIb: 0.2  # Premium content, luxury media
+
+  "52":  # Finance and Insurance
+    dept_I: 0.3    # Business finance, commercial lending
+    dept_IIa: 0.4  # Consumer banking, basic insurance
+    dept_IIb: 0.3  # Wealth management, luxury financial services
+
+  "53":  # Real Estate and Rental
+    dept_I: 0.3    # Commercial/industrial property
+    dept_IIa: 0.5  # Workforce housing
+    dept_IIb: 0.2  # Luxury residential, vacation properties
+
+  # -------------------------------------------------------------------------
+  # PROFESSIONAL AND BUSINESS SERVICES
+  # -------------------------------------------------------------------------
+
+  "54":  # Professional, Scientific, Technical Services
+    dept_I: 0.7    # Business services (legal, accounting, consulting)
+    dept_IIa: 0.2  # Consumer legal, tax prep
+    dept_IIb: 0.1  # Luxury professional services
+
+  "55":  # Management of Companies
+    dept_I: 1.0    # Pure overhead capital
+
+  "56":  # Administrative, Support, Waste Management
+    dept_I: 0.6    # Business support services
+    dept_IIa: 0.4  # Consumer services (travel agencies, etc.)
+
+  # -------------------------------------------------------------------------
+  # EDUCATION AND HEALTHCARE
+  # -------------------------------------------------------------------------
+
+  "61":  # Educational Services
+    dept_III: 1.0  # Produces labor power (training future workers)
+
+  "62":  # Health Care and Social Assistance
+    dept_IIa: 0.7  # Basic healthcare (worker maintenance)
+    dept_IIb: 0.2  # Elective/luxury healthcare
+    dept_III: 0.1  # Childcare component (see 6244 override)
+
+  # -------------------------------------------------------------------------
+  # LEISURE AND HOSPITALITY: Largely Luxury
+  # -------------------------------------------------------------------------
+
+  "71":  # Arts, Entertainment, Recreation
+    dept_IIa: 0.3  # Mass entertainment, basic recreation
+    dept_IIb: 0.7  # Luxury leisure
+
+  "72":  # Accommodation and Food Services
+    dept_IIa: 0.6  # Fast food, budget accommodation (worker sustenance)
+    dept_IIb: 0.4  # Fine dining, luxury hotels
+
+  # -------------------------------------------------------------------------
+  # OTHER SERVICES
+  # -------------------------------------------------------------------------
+
+  "81":  # Other Services (except Public Administration)
+    dept_IIa: 0.5  # Basic repair, personal services
+    dept_IIb: 0.3  # Luxury personal services
+    dept_III: 0.2  # Private households (see 814 override)
+
+# =============================================================================
+# SPECIFIC OVERRIDES (3-6 digit NAICS)
+# =============================================================================
+# More specific codes override defaults. Lookup is most-specific-first.
+
+overrides:
+  # -------------------------------------------------------------------------
+  # DEPARTMENT I: Pure Means of Production
+  # -------------------------------------------------------------------------
+
+  "211":   # Oil and Gas Extraction
+    dept_I: 1.0
+
+  "212":   # Mining (except Oil and Gas)
+    dept_I: 1.0
+
+  "213":   # Support Activities for Mining
+    dept_I: 1.0
+
+  "324":   # Petroleum and Coal Products Manufacturing
+    dept_I: 0.85
+    dept_IIa: 0.15  # Consumer gasoline
+
+  "325":   # Chemical Manufacturing
+    dept_I: 0.75
+    dept_IIa: 0.2   # Consumer chemicals
+    dept_IIb: 0.05  # Luxury cosmetics (see 325620)
+
+  "331":   # Primary Metal Manufacturing
+    dept_I: 1.0
+
+  "332":   # Fabricated Metal Product Manufacturing
+    dept_I: 0.9
+    dept_IIa: 0.1   # Consumer metal goods
+
+  "333":   # Machinery Manufacturing
+    dept_I: 0.95
+    dept_IIa: 0.05  # Consumer appliances
+
+  "334":   # Computer and Electronic Product Manufacturing
+    dept_I: 0.5     # Industrial electronics
+    dept_IIa: 0.35  # Consumer electronics
+    dept_IIb: 0.15  # Premium consumer electronics
+
+  "335":   # Electrical Equipment Manufacturing
+    dept_I: 0.7
+    dept_IIa: 0.25
+    dept_IIb: 0.05
+
+  # -------------------------------------------------------------------------
+  # DEPARTMENT IIa: Necessary Consumption (Wage Goods)
+  # -------------------------------------------------------------------------
+
+  "311":   # Food Manufacturing
+    dept_IIa: 0.9
+    dept_IIb: 0.1   # Premium/gourmet food
+
+  "312":   # Beverage and Tobacco Product Manufacturing
+    dept_IIa: 0.6
+    dept_IIb: 0.4   # Luxury beverages, tobacco as luxury
+
+  "313":   # Textile Mills
+    dept_I: 0.4     # Industrial textiles
+    dept_IIa: 0.5   # Basic clothing inputs
+    dept_IIb: 0.1
+
+  "314":   # Textile Product Mills
+    dept_IIa: 0.8
+    dept_IIb: 0.2
+
+  "315":   # Apparel Manufacturing
+    dept_IIa: 0.7   # Basic clothing
+    dept_IIb: 0.3   # Fashion/luxury apparel
+
+  "316":   # Leather and Allied Product Manufacturing
+    dept_IIa: 0.4   # Basic leather goods
+    dept_IIb: 0.6   # Luxury leather (see 316990)
+
+  "445":   # Food and Beverage Stores
+    dept_IIa: 0.9   # Essential retail
+    dept_IIb: 0.1   # Premium grocery
+
+  "446":   # Health and Personal Care Stores
+    dept_IIa: 0.8
+    dept_IIb: 0.2
+
+  "447":   # Gasoline Stations
+    dept_IIa: 0.85  # Worker transportation
+    dept_I: 0.15    # Commercial fuel
+
+  "621":   # Ambulatory Health Care Services
+    dept_IIa: 0.85  # Basic medical care
+    dept_IIb: 0.15  # Elective procedures
+
+  "622":   # Hospitals
+    dept_IIa: 0.9   # Essential care
+    dept_IIb: 0.1
+
+  "623":   # Nursing and Residential Care Facilities
+    dept_IIa: 1.0   # Worker reproduction (elder care)
+
+  # -------------------------------------------------------------------------
+  # DEPARTMENT IIb: Luxury Consumption (Pure Surplus Sinks)
+  # -------------------------------------------------------------------------
+
+  "4483":  # Jewelry, Luggage, and Leather Goods Stores
+    dept_IIb: 1.0   # Pure luxury realization
+
+  "448310": # Jewelry Stores
+    dept_IIb: 1.0
+
+  "448320": # Luggage and Leather Goods Stores
+    dept_IIb: 1.0
+
+  "523":   # Securities, Commodity Contracts, Financial Investments
+    dept_IIb: 0.7   # Wealth management (bourgeois consumption)
+    dept_I: 0.3     # Business finance
+
+  "525":   # Funds, Trusts, Other Financial Vehicles
+    dept_IIb: 1.0   # Pure surplus repository
+
+  "711":   # Performing Arts, Spectator Sports
+    dept_IIa: 0.3   # Mass entertainment
+    dept_IIb: 0.7   # Premium experiences
+
+  "712":   # Museums, Historical Sites
+    dept_IIa: 0.4
+    dept_IIb: 0.6
+
+  "713":   # Amusement, Gambling, Recreation
+    dept_IIa: 0.4
+    dept_IIb: 0.6
+
+  "71391": # Golf Courses and Country Clubs
+    dept_IIb: 1.0   # Pure bourgeois leisure
+
+  "713910": # Golf Courses and Country Clubs
+    dept_IIb: 1.0
+
+  "721":   # Accommodation
+    dept_IIa: 0.4   # Budget hotels, worker travel
+    dept_IIb: 0.6   # Luxury accommodation
+
+  "722":   # Food Services and Drinking Places
+    dept_IIa: 0.65  # Fast food, casual dining
+    dept_IIb: 0.35  # Fine dining
+
+  "812":   # Personal and Laundry Services
+    dept_IIa: 0.5   # Basic personal services
+    dept_IIb: 0.5   # Luxury personal services (spas, etc.)
+
+  # -------------------------------------------------------------------------
+  # DEPARTMENT III: Social Reproduction (Produces Labor Power)
+  # -------------------------------------------------------------------------
+  # The "missing" department in classical schemas. These sectors directly
+  # produce and maintain labor power rather than commodities.
+
+  "814":   # Private Households
+    dept_III: 1.0   # Purest capitalist form of reproductive labor
+
+  "8141":  # Private Households
+    dept_III: 1.0
+
+  "814110": # Private Households
+    dept_III: 1.0   # Cooks, maids, nannies employed by households
+
+  "6244":  # Child Day Care Services
+    dept_III: 1.0   # Industrialized reproduction
+
+  "62441": # Child Day Care Services
+    dept_III: 1.0
+
+  "624410": # Child Day Care Services
+    dept_III: 1.0
+
+  "611":   # Educational Services
+    dept_III: 0.9   # Training future labor power
+    dept_IIa: 0.1   # Educational materials consumption
+
+  "624":   # Social Assistance
+    dept_III: 0.6   # Social reproduction support
+    dept_IIa: 0.4
+
+  # -------------------------------------------------------------------------
+  # DUAL-USE SECTORS: Significant Splits Required
+  # -------------------------------------------------------------------------
+
+  "336":   # Transportation Equipment Manufacturing
+    dept_I: 0.4     # Commercial vehicles, trucks, aircraft
+    dept_IIa: 0.45  # Consumer vehicles (Corolla class)
+    dept_IIb: 0.15  # Luxury vehicles
+
+  "3361":  # Motor Vehicle Manufacturing
+    dept_I: 0.35    # Commercial fleets, work trucks
+    dept_IIa: 0.5   # Wage-good cars
+    dept_IIb: 0.15  # Luxury automobiles
+
+  "33611": # Automobile and Light Duty Motor Vehicle Manufacturing
+    dept_I: 0.3
+    dept_IIa: 0.55
+    dept_IIb: 0.15
+
+  "336111": # Automobile Manufacturing
+    dept_IIa: 0.65  # Standard passenger cars
+    dept_IIb: 0.35  # Premium/luxury cars
+
+  "3364":  # Aerospace Product and Parts Manufacturing
+    dept_I: 0.9     # Military, commercial aviation
+    dept_IIa: 0.05  # General aviation
+    dept_IIb: 0.05  # Private jets
+
+  "531":   # Real Estate
+    dept_I: 0.3     # Commercial/industrial
+    dept_IIa: 0.5   # Workforce housing
+    dept_IIb: 0.2   # Luxury residential
+
+  "531110": # Lessors of Residential Buildings
+    dept_IIa: 0.7   # Worker housing (massive wage drain)
+    dept_IIb: 0.3   # Luxury apartments
+
+  "531120": # Lessors of Nonresidential Buildings
+    dept_I: 0.9     # Commercial/industrial space
+    dept_IIb: 0.1   # Premium office (bourgeois overhead)
+
+# =============================================================================
+# EXCLUDED SECTORS
+# =============================================================================
+# These are outside the M-C-M' circuit or require special handling.
+
+excluded:
+  "92":    # Public Administration
+    reason: "State sector outside capitalist reproduction circuit"
+    notes: "Could map to IIa if modeling state workers' reproduction needs"
+
+  "99":    # Unclassified
+    reason: "No meaningful mapping possible"
+
+# =============================================================================
+# VALIDATION RULES
+# =============================================================================
+# For DepartmentMapper implementation
+
+validation:
+  # Weights must sum to 1.0 (within tolerance)
+  weight_sum_tolerance: 0.001
+
+  # Valid department keys
+  valid_departments:
+    - dept_I
+    - dept_IIa
+    - dept_IIb
+    - dept_III
+
+  # Lookup priority: most specific first
+  lookup_order:
+    - 6  # 6-digit NAICS (e.g., 336111)
+    - 5  # 5-digit NAICS (e.g., 33611)
+    - 4  # 4-digit NAICS (e.g., 3361)
+    - 3  # 3-digit NAICS (e.g., 336)
+    - 2  # 2-digit sector (e.g., 33)

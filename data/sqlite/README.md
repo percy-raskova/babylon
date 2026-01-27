@@ -1,35 +1,114 @@
 # SQLite Data Directory
 
-This directory contains SQLite databases for the Babylon simulation engine.
+This directory contains the SQLite database for the Babylon simulation engine's data warehouse.
 
-## Databases
+## Database Overview
 
 | File                      | Description                                 | Size   |
 | ------------------------- | ------------------------------------------- | ------ |
-| `marxist-data-3NF.sqlite` | Normalized data warehouse (3NF star schema) | ~500MB |
-| `research.sqlite`         | Legacy research database (being migrated)   | Varies |
+| `marxist-data-3NF.sqlite` | Normalized data warehouse (3NF star schema) | 3.4 GB |
 
-## Quick Start
+**Contents:**
 
-### Prerequisites
+- 35 dimension tables (`dim_*`)
+- 36 fact tables (`fact_*`)
+- 5 bridge tables (`bridge_*`)
+- 10 analytical views (`view_*`)
+- 2 utility tables (`ingest_checkpoint`, `staging_arcgis_feature`)
+
+**Time Coverage:** 1997-2024
+
+______________________________________________________________________
+
+## SQLite Installation
+
+### Windows
+
+**Chocolatey:**
+
+```powershell
+choco install sqlite
+```
+
+**Winget:**
+
+```powershell
+winget install SQLite.SQLite
+```
+
+**Manual:**
+
+1. Download from [sqlite.org/download.html](https://sqlite.org/download.html)
+1. Extract `sqlite-tools-win-x64-*.zip`
+1. Add to PATH or run from extracted directory
+
+### macOS
+
+**Homebrew:**
 
 ```bash
-# Ensure SQLite is available
+brew install sqlite
+```
+
+SQLite is pre-installed on macOS. To get the latest version, use Homebrew.
+
+### Linux
+
+**Debian/Ubuntu:**
+
+```bash
+sudo apt update && sudo apt install sqlite3
+```
+
+**Fedora/RHEL:**
+
+```bash
+sudo dnf install sqlite
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -S sqlite
+```
+
+### Verify Installation
+
+```bash
 sqlite3 --version
-
-# Or use Python
-poetry run python -c "import sqlite3; print(sqlite3.sqlite_version)"
+# Expected: 3.40+ (any recent version works)
 ```
 
-### Basic Connection
+______________________________________________________________________
 
-**Command Line:**
+## Connecting to the Database
+
+### Command Line (sqlite3)
 
 ```bash
-sqlite3 marxist-data-3NF.sqlite
+# Open the database
+sqlite3 data/sqlite/marxist-data-3NF.sqlite
+
+# Useful dot commands inside sqlite3:
+.tables                  # List all tables
+.schema dim_county       # Show table structure
+.mode column             # Columnar output
+.headers on              # Show column headers
+.quit                    # Exit
 ```
 
-**Python:**
+**Quick queries from shell:**
+
+```bash
+# Count records
+sqlite3 data/sqlite/marxist-data-3NF.sqlite "SELECT COUNT(*) FROM dim_county"
+
+# Export to CSV
+sqlite3 -header -csv data/sqlite/marxist-data-3NF.sqlite \
+  "SELECT * FROM dim_state" > states.csv
+```
+
+### Python (sqlite3 module)
 
 ```python
 import sqlite3
@@ -39,14 +118,19 @@ db_path = Path("data/sqlite/marxist-data-3NF.sqlite")
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-# Example query
+# Example: count counties
 cursor.execute("SELECT COUNT(*) FROM dim_county")
-print(f"Counties: {cursor.fetchone()[0]}")
+print(f"Counties: {cursor.fetchone()[0]}")  # 3,234
+
+# Example: list states
+cursor.execute("SELECT state_abbrev, state_name FROM dim_state ORDER BY state_name")
+for row in cursor.fetchall():
+    print(row)
 
 conn.close()
 ```
 
-**With Pandas:**
+### Python (Pandas)
 
 ```python
 import pandas as pd
@@ -55,263 +139,254 @@ import sqlite3
 conn = sqlite3.connect("data/sqlite/marxist-data-3NF.sqlite")
 
 # Load a dimension table
-df = pd.read_sql("SELECT * FROM dim_state", conn)
+df_states = pd.read_sql("SELECT * FROM dim_state", conn)
+print(df_states.head())
 
 # Load fact data with joins
 query = """
-SELECT c.county_name, s.state_abbrev, m.median_income_usd
+SELECT
+    c.county_name,
+    s.state_abbrev,
+    m.median_income_usd
 FROM fact_census_median_income m
 JOIN dim_county c ON m.county_id = c.county_id
 JOIN dim_state s ON c.state_id = s.state_id
+JOIN dim_time t ON m.time_id = t.time_id
+WHERE t.year = 2023
 ORDER BY m.median_income_usd DESC
 LIMIT 20
 """
 top_income = pd.read_sql(query, conn)
+print(top_income)
+
 conn.close()
 ```
 
-## Database Schema
+______________________________________________________________________
 
-The `marxist-data-3NF.sqlite` database uses a Third Normal Form (3NF) star schema:
+## Schema Overview
 
-- **28 dimension tables** (`dim_*`) - Reference data with surrogate keys
-- **21 fact tables** (`fact_*`) - Measurements linking to dimensions
-- **1 bridge table** (`bridge_*`) - Many-to-many relationships
+The database uses a **Third Normal Form (3NF) star schema** designed for Marxian economic analysis.
+
+| Category   | Count | Description                        |
+| ---------- | ----- | ---------------------------------- |
+| Dimensions | 35    | Reference data with surrogate keys |
+| Facts      | 36    | Measurements linking to dimensions |
+| Bridges    | 5     | Many-to-many relationship mappings |
+| Views      | 10    | Pre-built analytical queries       |
+
+For complete schema documentation, see [data_dictionary.md](data_dictionary.md).
 
 ### List All Tables
 
 ```bash
-sqlite3 marxist-data-3NF.sqlite ".tables"
+sqlite3 data/sqlite/marxist-data-3NF.sqlite ".tables"
 ```
 
 ### View Table Schema
 
 ```bash
-sqlite3 marxist-data-3NF.sqlite ".schema dim_county"
+sqlite3 data/sqlite/marxist-data-3NF.sqlite ".schema dim_county"
 ```
 
-### Row Counts
+______________________________________________________________________
 
-```sql
-SELECT 'dim_state' as tbl, COUNT(*) as cnt FROM dim_state
-UNION ALL SELECT 'dim_county', COUNT(*) FROM dim_county
-UNION ALL SELECT 'fact_qcew_annual', COUNT(*) FROM fact_qcew_annual;
-```
+## Quick Reference: Top Populated Tables
 
-## Key Tables
+### Dimension Tables
 
-### Geographic Dimensions
-
-| Table            | Records | Description                        |
-| ---------------- | ------- | ---------------------------------- |
-| `dim_state`      | 52      | US states and territories          |
-| `dim_county`     | 3,222   | US counties                        |
-| `dim_metro_area` | 392     | Metropolitan Statistical Areas     |
-| `dim_country`    | 263     | Countries (with world-system tier) |
-
-### Economic Dimensions
-
-| Table           | Records | Description          |
-| --------------- | ------- | -------------------- |
-| `dim_industry`  | 2,283   | NAICS industry codes |
-| `dim_sector`    | 27      | NAICS sectors        |
-| `dim_ownership` | 7       | QCEW ownership types |
+| Table                      | Rows  | Description                          |
+| -------------------------- | ----- | ------------------------------------ |
+| `dim_geographic_hierarchy` | 6,468 | State-county allocation weights      |
+| `dim_county`               | 3,234 | US counties (primary domestic grain) |
+| `dim_county_geometry`      | 3,222 | County spatial coordinates           |
+| `dim_industry`             | 2,416 | NAICS codes with class composition   |
+| `dim_metro_area`           | 1,119 | MSA/Micropolitan/CSA areas           |
+| `dim_time`                 | 268   | Time periods (1997-2024)             |
+| `dim_bea_industry`         | 100   | BEA industry classification          |
+| `dim_occupation`           | 74    | Census occupations with labor type   |
+| `dim_poverty_category`     | 60    | Poverty ratio categories             |
+| `dim_state`                | 52    | US states and territories            |
 
 ### Fact Tables
 
-| Table                    | Records | Description                         |
-| ------------------------ | ------- | ----------------------------------- |
-| `fact_qcew_annual`       | 2.8M+   | Employment/wages by county/industry |
-| `fact_qcew_state_annual` | 50K+    | Employment/wages by state/industry  |
-| `fact_qcew_metro_annual` | 200K+   | Employment/wages by MSA/Micro/CSA   |
-| `fact_trade_monthly`     | 107K+   | Import/export by country            |
-| `fact_census_income`     | 51K+    | Income distribution by county       |
-| `fact_energy_annual`     | 16K     | Energy data by series               |
+| Table                       | Rows       | Description                        |
+| --------------------------- | ---------- | ---------------------------------- |
+| `fact_census_poverty`       | 26,576,550 | Poverty status by county/category  |
+| `fact_census_occupation`    | 8,108,076  | Employment by occupation/county    |
+| `fact_census_income`        | 7,207,200  | Income distribution by county      |
+| `fact_bea_county_gdp`       | 1,995,283  | County GDP by industry (1997-2024) |
+| `fact_census_housing`       | 1,351,380  | Housing tenure by county           |
+| `fact_census_commute`       | 945,945    | Commute mode by county             |
+| `fact_census_worker_class`  | 900,900    | Worker class by county             |
+| `fact_census_rent_burden`   | 450,450    | Rent burden by county              |
+| `fact_census_median_income` | 314,704    | Median income by county/year       |
+| `fact_qcew_metro_annual`    | 20,893     | Employment/wages by metro area     |
 
-## Marxian Classifications
+### Bridge Tables
 
-The schema embeds Marxian analytical categories:
+| Table                 | Rows   | Description                  |
+| --------------------- | ------ | ---------------------------- |
+| `bridge_county_h3`    | 38,538 | H3 hexagon to county mapping |
+| `bridge_county_metro` | 3,256  | County to MSA/CSA mapping    |
 
-### World-System Tiers (`dim_country.world_system_tier`)
+______________________________________________________________________
+
+## Example Queries
+
+### Basic Dimension Query
 
 ```sql
-SELECT world_system_tier, COUNT(*)
-FROM dim_country
-WHERE world_system_tier IS NOT NULL
-GROUP BY world_system_tier;
+-- List all states with abbreviations
+SELECT state_fips, state_abbrev, state_name
+FROM dim_state
+ORDER BY state_name;
 ```
 
-- `core` - Imperial metropoles (USA, EU, Japan)
-- `semi_periphery` - Intermediate states (Mexico, Brazil)
-- `periphery` - Exploited nations
-
-### Class Composition (`dim_sector.class_composition`)
+### Fact Table with Joins
 
 ```sql
-SELECT class_composition, COUNT(*)
-FROM dim_sector
-GROUP BY class_composition;
-```
-
-- `goods_producing` - Manufacturing, construction
-- `service_producing` - Services, retail
-- `circulation` - Finance, real estate (non-productive)
-- `government` - Public administration
-- `extraction` - Mining, resources
-
-### Wealth Classes (`dim_wealth_class.babylon_class`)
-
-```sql
-SELECT * FROM dim_wealth_class;
-```
-
-- `core_bourgeoisie` - Top 1% (ruling class)
-- `petty_bourgeoisie` - 90-99%
-- `labor_aristocracy` - 50-90%
-- `internal_proletariat` - Bottom 50%
-
-## Common Queries
-
-### Employment by Class Composition
-
-```sql
-SELECT
-    sec.class_composition,
-    SUM(q.employment) as total_employment,
-    ROUND(SUM(q.total_wages_usd) / 1e9, 2) as wages_billions
-FROM fact_qcew_annual q
-JOIN dim_industry i ON q.industry_id = i.industry_id
-JOIN dim_sector sec ON i.sector_code = sec.sector_code
-JOIN dim_time t ON q.time_id = t.time_id
-WHERE t.year = 2023 AND sec.class_composition IS NOT NULL
-GROUP BY sec.class_composition
-ORDER BY total_employment DESC;
-```
-
-### Trade Balance by World-System Position
-
-```sql
-SELECT
-    c.world_system_tier,
-    ROUND(SUM(f.imports_usd_millions) / 1000, 1) as imports_billions,
-    ROUND(SUM(f.exports_usd_millions) / 1000, 1) as exports_billions,
-    ROUND(SUM(f.exports_usd_millions - f.imports_usd_millions) / 1000, 1) as balance
-FROM fact_trade_monthly f
-JOIN dim_country c ON f.country_id = c.country_id
-JOIN dim_time t ON f.time_id = t.time_id
-WHERE c.world_system_tier IS NOT NULL AND t.year = 2024
-GROUP BY c.world_system_tier;
-```
-
-### Rent-Burdened Counties
-
-```sql
+-- Top 10 counties by median income (2023)
 SELECT
     c.county_name,
     s.state_abbrev,
-    SUM(CASE WHEN rb.is_cost_burdened THEN rb_f.household_count ELSE 0 END) as burdened,
-    SUM(rb_f.household_count) as total,
-    ROUND(100.0 * SUM(CASE WHEN rb.is_cost_burdened THEN rb_f.household_count ELSE 0 END) /
-          SUM(rb_f.household_count), 1) as pct_burdened
-FROM fact_census_rent_burden rb_f
-JOIN dim_rent_burden rb ON rb_f.burden_id = rb.burden_id
-JOIN dim_county c ON rb_f.county_id = c.county_id
+    m.median_income_usd
+FROM fact_census_median_income m
+JOIN dim_county c ON m.county_id = c.county_id
+JOIN dim_state s ON c.state_id = s.state_id
+JOIN dim_time t ON m.time_id = t.time_id
+WHERE t.year = 2023
+ORDER BY m.median_income_usd DESC
+LIMIT 10;
+```
+
+### Analytical View Usage
+
+```sql
+-- Wealth distribution by Babylon class
+SELECT * FROM view_wealth_concentration;
+```
+
+### County GDP Analysis
+
+```sql
+-- Total GDP by state (most recent year)
+SELECT
+    s.state_abbrev,
+    ROUND(SUM(g.gdp_thousands) / 1000000.0, 2) as gdp_billions
+FROM fact_bea_county_gdp g
+JOIN dim_county c ON g.county_id = c.county_id
+JOIN dim_state s ON c.state_id = s.state_id
+JOIN dim_time t ON g.time_id = t.time_id
+WHERE t.year = 2023
+GROUP BY s.state_id
+ORDER BY gdp_billions DESC
+LIMIT 10;
+```
+
+### Rent Burden Analysis
+
+```sql
+-- Counties with highest rent burden (% cost-burdened households)
+SELECT
+    c.county_name,
+    s.state_abbrev,
+    SUM(CASE WHEN rb.is_cost_burdened THEN f.household_count ELSE 0 END) as burdened,
+    SUM(f.household_count) as total,
+    ROUND(100.0 * SUM(CASE WHEN rb.is_cost_burdened THEN f.household_count ELSE 0 END) /
+          NULLIF(SUM(f.household_count), 0), 1) as pct_burdened
+FROM fact_census_rent_burden f
+JOIN dim_rent_burden rb ON f.burden_id = rb.burden_id
+JOIN dim_county c ON f.county_id = c.county_id
 JOIN dim_state s ON c.state_id = s.state_id
 GROUP BY c.county_id
-HAVING total > 1000
+HAVING total > 10000
 ORDER BY pct_burdened DESC
 LIMIT 20;
 ```
 
-### Energy Metabolism Overview
+______________________________________________________________________
 
-```sql
-SELECT
-    et.title,
-    et.marxian_interpretation,
-    COUNT(es.series_id) as series_count
-FROM dim_energy_table et
-JOIN dim_energy_series es ON et.table_id = es.table_id
-GROUP BY et.table_id
-ORDER BY et.table_code;
-```
+## Data Loading
 
-## Data Sources
+The ETL pipeline is located in `src/babylon/data/`. Use mise tasks to load data:
 
-| Source       | Coverage  | Frequency | Tables                                                                 |
-| ------------ | --------- | --------- | ---------------------------------------------------------------------- |
-| Census ACS   | 2022      | 5-Year    | `fact_census_*`                                                        |
-| BLS QCEW     | 2013-2025 | Annual    | `fact_qcew_annual`, `fact_qcew_state_annual`, `fact_qcew_metro_annual` |
-| Census Trade | 1949-2025 | Monthly   | `fact_trade_monthly`                                                   |
-| FRED         | Various   | Various   | `fact_fred_*`                                                          |
-| EIA          | 1949-2023 | Annual    | `fact_energy_annual`                                                   |
-| USGS         | Various   | Annual    | `fact_commodity_*`, `fact_mineral_*`                                   |
-
-## Loading New Data
-
-The ETL pipeline is in `src/babylon/data/`. Use mise tasks:
+### Key Commands
 
 ```bash
-# Load all data
-mise run data:ingest
+# Load all data sources
+mise run data:load
 
-# Load QCEW data (hybrid: API for 2021+, files for 2013-2020)
-mise run data:qcew
+# Individual loaders
+mise run data:census         # Census ACS data
+mise run data:fred           # FRED macroeconomic data
+mise run data:bea-county     # BEA county GDP
+mise run data:qcew           # QCEW employment/wages
+mise run data:geography      # Geographic hierarchies
 
-# Force API-only loading (requires network)
-mise run data:qcew -- --force-api
-
-# Force file-based loading (requires downloaded CSVs)
-mise run data:qcew -- --force-files --data-path data/qcew
-
-# Load FRED data
-mise run data:fred
+# List all data tasks
+mise tasks | grep "^data:"
 ```
 
-### QCEW Loading Strategy
+### Data Sources
 
-QCEW data uses a **hybrid loading strategy**:
+| Source     | Coverage   | Tables                      |
+| ---------- | ---------- | --------------------------- |
+| Census ACS | 2010, 2023 | `fact_census_*` (17 tables) |
+| BEA        | 1997-2024  | `fact_bea_county_gdp`       |
+| FRED       | 2010-2024  | `fact_fred_*` (5 tables)    |
+| QCEW       | Various    | `fact_qcew_*` (3 tables)    |
 
-- **API (2021-2025)**: Fetches directly from BLS QCEW Open Data API (no setup required)
-- **Files (2013-2020)**: Reads from local CSV files downloaded from BLS website
-
-This hybrid approach provides:
-
-- **Convenience**: Recent years load automatically via API
-- **Coverage**: 13 years of historical data (2013-2025)
-- **Flexibility**: Use `--force-api` or `--force-files` to override defaults
-
-Three geographic levels are loaded:
-
-- **County** (agglvl_code 70-78) → `fact_qcew_annual`
-- **State** (agglvl_code 20-28) → `fact_qcew_state_annual`
-- **Metro/CSA** (agglvl_code 30-58) → `fact_qcew_metro_annual`
+______________________________________________________________________
 
 ## Performance Tips
 
-1. **Use indexes**: Key columns are indexed (see schema)
-1. **Filter early**: Apply WHERE clauses on dimensions before joining facts
-1. **Aggregate wisely**: Use GROUP BY at the right level
-1. **Limit results**: Use LIMIT during exploration
+### Use Indexes
 
-### Index Coverage
+Key columns are indexed for fast lookups:
 
 ```sql
 -- View all indexes
 SELECT name, tbl_name FROM sqlite_master WHERE type = 'index';
 ```
 
-Key indexes exist on:
+### PRAGMA Settings for Large Queries
 
-- `dim_county(county_name)`, `dim_county(state_id)`
-- `dim_industry(naics_level)`, `dim_industry(class_composition)`
-- `dim_country(world_system_tier)`
-- `fact_qcew_annual(county_id, time_id)`
-- `fact_trade_monthly(country_id, time_id)`
+```sql
+-- Increase cache for large analytical queries
+PRAGMA cache_size = -64000;  -- 64MB cache
+PRAGMA temp_store = MEMORY;  -- Keep temp tables in memory
+```
+
+### Query Optimization
+
+1. **Filter early**: Apply WHERE clauses on dimension tables before joining facts
+1. **Use indexes**: Filter on indexed columns (county_id, time_id, state_id)
+1. **Aggregate wisely**: Use GROUP BY at the appropriate grain
+1. **Limit during exploration**: Use LIMIT when exploring large tables
+
+### Example: Efficient Query Pattern
+
+```sql
+-- Filter on indexed dimension columns, then join
+SELECT
+    c.county_name,
+    SUM(f.value) as total
+FROM fact_census_poverty f
+JOIN dim_county c ON f.county_id = c.county_id
+JOIN dim_time t ON f.time_id = t.time_id
+WHERE t.year = 2023           -- Filter on indexed column
+  AND c.state_id = 6          -- Filter on indexed FK
+GROUP BY c.county_id
+ORDER BY total DESC
+LIMIT 20;
+```
+
+______________________________________________________________________
 
 ## Detailed Reference
 
-For complete schema documentation, see:
+For complete schema documentation including all columns, constraints, and Marxian classifications:
 
-- `DATA_DICTIONARY.md` (this directory) - Quick reference
-- `docs/reference/database-3nf.rst` - Full RST documentation
+- [data_dictionary.md](data_dictionary.md) - Full data dictionary
+- `src/babylon/data/reference/schema.py` - Schema definitions in code

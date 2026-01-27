@@ -8,10 +8,10 @@ meta:
   updated: "2026-01-02"
   purpose: "Document the implemented mathematical formulas that transform types into behavior"
   principle: "Types are nouns, formulas are verbs"
-  status: "IMPLEMENTED (21 formulas) + CONCEPTUAL (1 distribution pattern)"
+  status: "IMPLEMENTED (28 formulas across 11 modules) + CONCEPTUAL (1 distribution pattern)"
   location: "src/babylon/systems/formulas/"
   tests: "tests/unit/formulas/ (80+ tests, ALL PASSING)"
-  formula_count: 22
+  formula_count: 28
   note: "This spec documents the complete formula inventory driving the simulation."
   sprint_3_4_3_update: "Added calculate_ideological_routing() for George Jackson Refactor"
   class_dynamics_update: |
@@ -19,10 +19,10 @@ meta:
     See ai-docs/class-dynamics.yaml for full specification.
 
 # =============================================================================
-# FORMULA INVENTORY (12 FORMULAS, ALL IMPLEMENTED)
+# FORMULA INVENTORY (28 FORMULAS, ALL IMPLEMENTED)
 # =============================================================================
-# These formulas exist in src/babylon/systems/formulas.py with 40+ passing tests.
-# Organized into three categories: Fundamental Theorem, Survival Calculus, Unequal Exchange.
+# These formulas exist in src/babylon/systems/formulas/ with 80+ passing tests.
+# Organized into 8 categories across 11 modules.
 
 constants:
   LOSS_AVERSION_COEFFICIENT:

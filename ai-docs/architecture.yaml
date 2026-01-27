@@ -622,7 +622,7 @@ directory_map:
         - "history_formatter.py: format_class_struggle_history()"
       subdirs:
         systems/:
-          purpose: "Modular System implementations (8 Systems)"
+          purpose: "Modular System implementations (10 Systems: 9 core + 1 protocol)"
           files:
             - "protocol.py: System protocol with step(graph, services, context)"
             - "economic.py: ImperialRentSystem - wealth extraction via imperial rent"
@@ -632,6 +632,8 @@ directory_map:
             - "struggle.py: StruggleSystem - Agency Layer (George Floyd Dynamic)"
             - "contradiction.py: ContradictionSystem - tension/rupture dynamics"
             - "territory.py: TerritorySystem - heat, eviction, carceral geography"
+            - "vitality.py: VitalitySystem - population mortality and extinction"
+            - "production.py: ProductionSystem - value generation from labor"
             - "event_template.py: EventTemplateSystem - structured event templates"
         history/:
           purpose: "State persistence and undo/redo"
@@ -712,7 +714,7 @@ directory_map:
     systems/:
       purpose: "Game systems implementation"
       key_files:
-        - "formulas.py: Mathematical core"
+        - "formulas/: Mathematical core (package with 11 modules)"
         - "contradiction_analysis.py: Dialectical engine"
     metrics/: "Performance and gameplay metrics"
     utils/: "Shared utilities, exceptions"

@@ -1,0 +1,336 @@
+# NAICS to Marxian Department Mapping Configuration
+#
+# Maps NAICS industry codes to the four Marxian reproduction schema departments:
+#   I   = Means of Production (capital goods consumed by other industries)
+#   IIa = Necessary Consumption (wage goods for working class reproduction)
+#   IIb = Luxury Consumption (surplus value sink, bourgeois consumption)
+#   III = Social Reproduction (care work that produces labor power)
+#
+# Classification is based on END-USE DESTINATION, not production process.
+# A steel mill making I-beams for construction = Dept I (means of production)
+# A steel mill making car frames for consumers = Dept IIa/IIb (consumption goods)
+
+# =============================================================================
+# 2-DIGIT SECTOR DEFAULTS
+# =============================================================================
+# These are fallbacks when no more specific override exists.
+# Most sectors are dual-use and get rough allocations based on end-use patterns.
+
+defaults:
+  # Agriculture, Forestry, Fishing, Hunting (11)
+  # Split: ~50% intermediate inputs (feed, seed, fiber), ~50% food consumption
+  11:
+    dept_I: 0.30
+    dept_IIa: 0.60
+    dept_IIb: 0.10
+
+  # Mining, Quarrying, Oil & Gas (21)
+  # Primarily intermediate inputs for manufacturing/construction
+  21:
+    dept_I: 0.85
+    dept_IIa: 0.10
+    dept_IIb: 0.05
+
+  # Utilities (22)
+  # Split between industrial use and residential consumption
+  22:
+    dept_I: 0.40
+    dept_IIa: 0.55
+    dept_IIb: 0.05
+
+  # Construction (23)
+  # Commercial/industrial vs residential split
+  23:
+    dept_I: 0.55
+    dept_IIa: 0.40
+    dept_IIb: 0.05
+
+  # Manufacturing (31-33)
+  # Varies wildly by 3-6 digit; this is a rough default
+  31:
+    dept_IIa: 0.70
+    dept_IIb: 0.30
+  32:
+    dept_I: 0.60
+    dept_IIa: 0.30
+    dept_IIb: 0.10
+  33:
+    dept_I: 0.45
+    dept_IIa: 0.40
+    dept_IIb: 0.15
+
+  # Wholesale Trade (42)
+  # Intermediary - allocation follows goods traded
+  42:
+    dept_I: 0.35
+    dept_IIa: 0.50
+    dept_IIb: 0.15
+
+  # Retail Trade (44-45)
+  # Primarily consumer-facing
+  44:
+    dept_IIa: 0.75
+    dept_IIb: 0.25
+  45:
+    dept_IIa: 0.65
+    dept_IIb: 0.35
+
+  # Transportation & Warehousing (48-49)
+  # Mix of freight (intermediate) and passenger (consumption)
+  48:
+    dept_I: 0.40
+    dept_IIa: 0.45
+    dept_IIb: 0.15
+  49:
+    dept_I: 0.50
+    dept_IIa: 0.40
+    dept_IIb: 0.10
+
+  # Information (51)
+  # Mix of B2B services and consumer media
+  51:
+    dept_I: 0.30
+    dept_IIa: 0.45
+    dept_IIb: 0.25
+
+  # Finance & Insurance (52)
+  # Facilitates all circuits; weighted toward consumption
+  52:
+    dept_I: 0.25
+    dept_IIa: 0.55
+    dept_IIb: 0.20
+
+  # Real Estate (53)
+  # Commercial vs residential
+  53:
+    dept_I: 0.30
+    dept_IIa: 0.50
+    dept_IIb: 0.20
+
+  # Professional, Scientific, Technical Services (54)
+  # Primarily B2B intermediate services
+  54:
+    dept_I: 0.60
+    dept_IIa: 0.30
+    dept_IIb: 0.10
+
+  # Management of Companies (55)
+  # Holding companies - allocate to I
+  55:
+    dept_I: 0.80
+    dept_IIa: 0.15
+    dept_IIb: 0.05
+
+  # Administrative & Waste Services (56)
+  # Mix of B2B and consumer services
+  56:
+    dept_I: 0.45
+    dept_IIa: 0.45
+    dept_IIb: 0.10
+
+  # Educational Services (61)
+  # Social reproduction of labor power
+  61:
+    dept_IIa: 0.20
+    dept_III: 0.80
+
+  # Health Care (62)
+  # Social reproduction of labor power
+  62:
+    dept_IIa: 0.30
+    dept_III: 0.70
+
+  # Arts, Entertainment, Recreation (71)
+  # Primarily luxury consumption
+  71:
+    dept_IIa: 0.30
+    dept_IIb: 0.70
+
+  # Accommodation & Food Services (72)
+  # Mix of necessary and luxury
+  72:
+    dept_IIa: 0.60
+    dept_IIb: 0.40
+
+  # Other Services (81)
+  # Repair, personal services, etc.
+  81:
+    dept_IIa: 0.70
+    dept_IIb: 0.20
+    dept_III: 0.10
+
+# =============================================================================
+# NAICS OVERRIDES (more specific than 2-digit defaults)
+# =============================================================================
+# These override the defaults for specific industries where end-use
+# is better known or significantly different from sector average.
+
+overrides:
+  # ----------------------------------------------------------------------------
+  # Agriculture Overrides
+  # ----------------------------------------------------------------------------
+  # Animal feed manufacturing - intermediate input
+  311111:
+    dept_I: 0.95
+    dept_IIa: 0.05
+
+  # ----------------------------------------------------------------------------
+  # Mining Overrides
+  # ----------------------------------------------------------------------------
+  # Coal mining - energy intermediate
+  2121:
+    dept_I: 0.90
+    dept_IIa: 0.10
+
+  # Iron ore mining - purely intermediate
+  21221:
+    dept_I: 1.0
+
+  # ----------------------------------------------------------------------------
+  # Manufacturing Overrides
+  # ----------------------------------------------------------------------------
+  # Automobile Manufacturing - consumer durables
+  336111:
+    dept_IIa: 0.65
+    dept_IIb: 0.35
+
+  # Motor Vehicle Body Manufacturing - split
+  3361:
+    dept_I: 0.20
+    dept_IIa: 0.55
+    dept_IIb: 0.25
+
+  # Industrial Machinery Manufacturing - capital goods
+  3332:
+    dept_I: 0.95
+    dept_IIa: 0.05
+
+  # Semiconductor Manufacturing - capital goods
+  3344:
+    dept_I: 0.85
+    dept_IIa: 0.10
+    dept_IIb: 0.05
+
+  # Pharmaceutical Manufacturing - necessary consumption
+  3254:
+    dept_IIa: 0.85
+    dept_IIb: 0.15
+
+  # Food Manufacturing - primarily necessary consumption
+  311:
+    dept_IIa: 0.85
+    dept_IIb: 0.15
+
+  # Beverage Manufacturing - split necessary/luxury
+  3121:
+    dept_IIa: 0.50
+    dept_IIb: 0.50
+
+  # Jewelry Manufacturing - luxury
+  3399:
+    dept_IIb: 1.0
+
+  # Perfume Manufacturing - luxury
+  32562:
+    dept_IIb: 1.0
+
+  # ----------------------------------------------------------------------------
+  # Retail Overrides
+  # ----------------------------------------------------------------------------
+  # Grocery stores - necessary consumption
+  4451:
+    dept_IIa: 0.95
+    dept_IIb: 0.05
+
+  # Department stores - mix
+  4522:
+    dept_IIa: 0.60
+    dept_IIb: 0.40
+
+  # Jewelry stores - luxury
+  44831:
+    dept_IIb: 1.0
+
+  # Sporting goods stores - luxury
+  45111:
+    dept_IIa: 0.30
+    dept_IIb: 0.70
+
+  # ----------------------------------------------------------------------------
+  # Services Overrides
+  # ----------------------------------------------------------------------------
+  # Golf courses - luxury
+  71391:
+    dept_IIb: 1.0
+
+  # Country clubs - luxury
+  71399:
+    dept_IIb: 1.0
+
+  # Fine dining - luxury
+  722511:
+    dept_IIa: 0.20
+    dept_IIb: 0.80
+
+  # Fast food - necessary consumption
+  722513:
+    dept_IIa: 0.90
+    dept_IIb: 0.10
+
+  # ----------------------------------------------------------------------------
+  # Social Reproduction Overrides
+  # ----------------------------------------------------------------------------
+  # Child day care services - pure social reproduction
+  6244:
+    dept_III: 1.0
+
+  # Private households (domestic workers) - social reproduction
+  814:
+    dept_III: 1.0
+
+  # Elementary and secondary schools - social reproduction
+  6111:
+    dept_III: 1.0
+
+  # Nursing care facilities - social reproduction
+  6231:
+    dept_IIa: 0.20
+    dept_III: 0.80
+
+# =============================================================================
+# EXCLUDED SECTORS
+# =============================================================================
+# These NAICS codes are excluded from the M-C-M' circuit analysis.
+# Government (92) is the primary exclusion - operates outside commodity exchange.
+
+excluded:
+  - "92"  # Public Administration (all government)
+
+# =============================================================================
+# DEFAULT RATIOS (BEA Fallbacks)
+# =============================================================================
+# When BEA industry-level data is unavailable, these default c/v and s/v
+# ratios are used for each department. These encode structural differences
+# in capital composition and exploitation rates across the reproduction schema.
+#
+# Dept I (Means of Production): High c/v (capital-intensive), high s/v (extractive)
+# Dept IIa (Necessary Consumption): Low c/v (labor-intensive retail/services), moderate s/v
+# Dept IIb (Luxury Consumption): High c/v (monopoly rents), very high s/v
+# Dept III (Social Reproduction): Very low c/v (care work), low s/v (suppressed wages)
+
+default_ratios:
+  dept_I:
+    cv_ratio: 3.0    # Capital-intensive: mining, machinery, construction materials
+    sv_ratio: 2.0    # High extraction from productivity gains
+
+  dept_IIa:
+    cv_ratio: 1.5    # Labor-intensive: food retail, basic services
+    sv_ratio: 1.0    # Moderate exploitation, competitive markets
+
+  dept_IIb:
+    cv_ratio: 2.5    # Monopoly capital in luxury goods
+    sv_ratio: 3.0    # High markups, brand rents, status goods
+
+  dept_III:
+    cv_ratio: 0.5    # Very labor-intensive: care work, domestic labor
+    sv_ratio: 0.7    # Suppressed wages, often unpaid domestic labor equivalent

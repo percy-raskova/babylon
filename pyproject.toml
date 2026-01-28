@@ -132,6 +132,7 @@ markers = [
     "theory_solidarity: Solidarity transmission and consciousness mechanics",
     "property: Property-based tests using Hypothesis",
     "theory: Marxian theory validation tests (Capital Volume 2 reproduction schema)",
+    "empirical: Empirical validation tests requiring real QCEW data (deselect with '-m \"not empirical\"')",
 ]
 
 [tool.ruff]

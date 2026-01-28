@@ -14,8 +14,8 @@ See Also:
     :mod:`babylon.models.types`: Currency and other constrained types.
 """
 
-# Adapters (protocols for dependency injection)
-from babylon.economics.adapters import BEADataSource, QCEWDataSource
+# Adapters (protocols and implementations)
+from babylon.economics.adapters import BEADataSource, QCEWDataSource, SQLiteQCEWSource
 
 # Department mapping
 from babylon.economics.department_mapper import (
@@ -34,9 +34,10 @@ from babylon.economics.hydrator import MarxianHydrator
 from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
 
 __all__ = [
-    # Protocols
+    # Protocols and implementations
     "BEADataSource",
     "QCEWDataSource",
+    "SQLiteQCEWSource",
     # Department mapping
     "DefaultRatios",
     "Department",

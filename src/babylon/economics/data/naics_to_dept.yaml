@@ -256,6 +256,11 @@ overrides:
     dept_IIa: 0.33
     dept_IIb: 0.10
 
+  # Basic Chemical Manufacturing - almost entirely intermediate
+  3251:
+    dept_I: 0.95
+    dept_IIa: 0.05
+
   # Pharmaceutical Manufacturing - necessary consumption
   3254:
     # Essential medicines (70% IIa), elective (15% IIb), healthcare system (15% III)
@@ -320,10 +325,25 @@ overrides:
   # ----------------------------------------------------------------------------
   # Retail Overrides
   # ----------------------------------------------------------------------------
+  # Food and Beverage Stores - mostly necessary
+  445:
+    dept_IIa: 0.90
+    dept_IIb: 0.10
+
   # Grocery stores - necessary consumption
   4451:
     dept_IIa: 0.95
     dept_IIb: 0.05
+
+  # Clothing and Accessories Stores - CEX: 60% IIa, 40% IIb
+  448:
+    dept_IIa: 0.60
+    dept_IIb: 0.40
+
+  # General Merchandise Stores - CEX: 70% IIa, 30% IIb
+  455:
+    dept_IIa: 0.70
+    dept_IIb: 0.30
 
   # Department stores - mix
   4522:
@@ -338,6 +358,17 @@ overrides:
   45111:
     dept_IIa: 0.30
     dept_IIb: 0.70
+
+  # ----------------------------------------------------------------------------
+  # Real Estate Overrides
+  # ----------------------------------------------------------------------------
+  # Real Estate (not including rental/leasing)
+  # Commercial (~45% = $27T) → Dept I
+  # Residential (~55% = $33T): 85% workforce housing (IIa), 15% luxury (IIb)
+  531:
+    dept_I: 0.38
+    dept_IIa: 0.52
+    dept_IIb: 0.10
 
   # ----------------------------------------------------------------------------
   # Services Overrides

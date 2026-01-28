@@ -2,13 +2,14 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.6"
-  updated: "2026-01-06"
-  last_sprint: "Agency Layer - Fractal Bureaucracy"
+  version: "2.0.7"
+  updated: "2026-01-28"
+  last_sprint: "Marxian Tensor Calibration (BEA/CEX)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
   last_audit: "Documentation Accuracy Audit (2025-12-26)"
+  last_calibration: "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
 
 # =============================================================================
 # EPOCH + SLICE STATUS
@@ -241,6 +242,34 @@ implemented:
         status: "configured"
         details: "SQLite setup, no tables populated yet"
         location: "src/babylon/data/database.py"
+
+      marxian_tensor_calibration:
+        status: "complete"
+        date: "2026-01-28"
+        details: "BEA/CEX calibration of Marxian value tensor ratios"
+        spec: "ai-docs/marxian-tensor-spec.yaml"
+        calibration_source: "ai-docs/brainstorms/bea2ratio.md"
+        files_modified:
+          - "src/babylon/economics/data/naics_to_dept.yaml (defaults, overrides, sector_ratios)"
+          - "src/babylon/economics/department_mapper.py (sector ratio methods)"
+          - "src/babylon/economics/hydrator.py (three-tier lookup)"
+        key_changes:
+          default_ratios: "BEA-calibrated values producing 3-8% Piketty profit rates"
+          sector_ratios: "22 NAICS 2-digit sector-level ratios (NEW)"
+          naics_overrides: "60+ industry-specific allocations (expanded)"
+          lookup_hierarchy: "BEA → sector_ratios → default_ratios"
+        validation:
+          tests: 12
+          location: "tests/integration/tensors/test_empirical_validation.py"
+          assertions:
+            - "Profit rates within Piketty 3-8% bounds"
+            - "Gentrification signal: Oakland > Wayne (>5% difference)"
+            - "Conservation law: allocated + excluded = total"
+            - "Temporal stability across years"
+        theoretical_framework:
+          dept_I_II_split: "BEA Use Tables (intermediate vs final demand)"
+          IIa_IIb_split: "BLS CEX necessity index (worker vs capitalist consumption)"
+          dept_III: "Fortunati/Federici reproductive labor framework"
 
   core_logic:
     status: "complete"
@@ -844,6 +873,7 @@ current_focus:
     outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
 
   recently_completed:
+    - "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
     - "XML to JSON migration"
     - "JSON Schema system (36 schemas)"
     - "Schema validation tooling"

@@ -1,0 +1,141 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.072442+00:00",
+  "sourceFormat": "xml",
+  "relationships": [
+    {
+      "source": "colonel_richard_blackwood",
+      "target": "robert_sterling",
+      "type": "Strategic Alliance",
+      "strength": 75,
+      "dynamic": "Growing",
+      "influences": [
+        {
+          "type": "Political",
+          "impact": "Shared nationalist agenda but different methods"
+        },
+        {
+          "type": "Economic",
+          "impact": "Sterling provides financial support to military initiatives"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2023-11-30T00:00:00",
+          "description": "Initial meeting at conservative political fundraiser"
+        }
+      ]
+    },
+    {
+      "source": "emma_goldman",
+      "target": "sarah_martinez",
+      "type": "Union Mentor",
+      "strength": 90,
+      "dynamic": "Growing",
+      "influences": [
+        {
+          "type": "Ideological",
+          "impact": "Shared labor organizing experience strengthens mentorship"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2023-06-15T00:00:00",
+          "description": "First met during hospital unionization drive"
+        }
+      ]
+    },
+    {
+      "source": "persephone_raskova",
+      "target": "alkemy_roanoke",
+      "type": "Comrade and Close Friend",
+      "strength": 80,
+      "dynamic": "Strong",
+      "influences": [
+        {
+          "type": "Political",
+          "impact": "Collaborative revolutionary organizing"
+        },
+        {
+          "type": "Personal",
+          "impact": "Deep friendship built on shared struggles and values"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2023-03-20T00:00:00",
+          "description": "Met through revolutionary study group"
+        }
+      ]
+    },
+    {
+      "source": "persephone_raskova",
+      "target": "astra_dremel",
+      "type": "Romantic",
+      "strength": 95,
+      "dynamic": "Growing",
+      "influences": [
+        {
+          "type": "Personal",
+          "impact": "Strong emotional support and shared future plans"
+        },
+        {
+          "type": "Ideological",
+          "impact": "Mutual reinforcement of revolutionary commitments"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2024-06-01T00:00:00",
+          "description": "Planning relocation to Baltimore together"
+        }
+      ]
+    },
+    {
+      "source": "persephone_raskova",
+      "target": "nick_mc_kee-_rist",
+      "type": "Mentor",
+      "strength": 90,
+      "dynamic": "Stable",
+      "influences": [
+        {
+          "type": "Ideological",
+          "impact": "Guidance in Maoist theory and practice"
+        },
+        {
+          "type": "Strategic",
+          "impact": "Development of revolutionary leadership skills"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2023-01-15T00:00:00",
+          "description": "Began mentorship through Kansas Socialist Book Club"
+        }
+      ]
+    },
+    {
+      "source": "zero_day",
+      "target": "victoria_chen",
+      "type": "Ideological Opponents",
+      "strength": -85,
+      "dynamic": "Deteriorating",
+      "influences": [
+        {
+          "type": "Political",
+          "impact": "Fundamental disagreement over tech industry's role in society"
+        },
+        {
+          "type": "Technical",
+          "impact": "Opposing views on AI development and regulation"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2024-03-15T00:00:00",
+          "description": "Zero Day exposed privacy violations at Victoria's company"
+        }
+      ]
+    }
+  ]
+}

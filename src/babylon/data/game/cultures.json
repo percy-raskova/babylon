@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.083522+00:00",
+  "sourceFormat": "xml",
+  "cultures": [
+    {
+      "id": "CUL001",
+      "name": "Evangelical Christianity",
+      "description": "A conservative Protestant Christian movement emphasizing biblical literalism, personal conversion, and evangelical outreach",
+      "values": [],
+      "customs": [],
+      "attributes": {
+        "religiousIntensity": "High",
+        "socialInfluence": "Strong"
+      }
+    },
+    {
+      "id": "CUL002",
+      "name": "Secular Humanism",
+      "description": "A philosophical and cultural movement emphasizing reason, scientific inquiry, and human agency without supernatural beliefs",
+      "values": [],
+      "customs": [],
+      "attributes": {
+        "scientificOrientation": "High",
+        "socialInfluence": "Medium"
+      }
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "source": "mirta",
+  "data_source": {
+    "code": "MIRTA_2024",
+    "name": "MIRTA Military Installations",
+    "url": "https://www.acq.osd.mil/eie/BSI/BEI_MIRTA.html",
+    "agency": "DoD OASD(S)",
+    "year": 2024
+  },
+  "arcgis": {
+    "service_url": "https://services7.arcgis.com/n1YM8pTrFmm7L4hs/arcgis/rest/services/mirta/FeatureServer/0",
+    "out_fields": "*",
+    "return_geometry": false
+  },
+  "service_fields": [
+    "SERVICE",
+    "BRANCH",
+    "COMPONENT",
+    "OPER_STAT"
+  ],
+  "name_fields": [
+    "SITE_NAME",
+    "NAME"
+  ],
+  "type_map": {
+    "ARMY": {
+      "code": "military_army",
+      "name": "Army Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "NAVY": {
+      "code": "military_navy",
+      "name": "Navy Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "AIR FORCE": {
+      "code": "military_air_force",
+      "name": "Air Force Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "MARINE CORPS": {
+      "code": "military_marines",
+      "name": "Marine Corps Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "COAST GUARD": {
+      "code": "military_coast_guard",
+      "name": "Coast Guard Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "SPACE FORCE": {
+      "code": "military_space_force",
+      "name": "Space Force Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "NATIONAL GUARD": {
+      "code": "military_guard",
+      "name": "National Guard Installation",
+      "category": "military",
+      "command_chain": "federal"
+    },
+    "JOINT": {
+      "code": "military_joint",
+      "name": "Joint Military Installation",
+      "category": "military",
+      "command_chain": "federal"
+    }
+  },
+  "default_type": {
+    "code": "military_other",
+    "name": "Other Military Installation",
+    "category": "military",
+    "command_chain": "federal"
+  }
+}

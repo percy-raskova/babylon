@@ -1,0 +1,339 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.074792+00:00",
+  "sourceFormat": "xml",
+  "resources": [
+    {
+      "id": "R001",
+      "name": "Iron Ore",
+      "type": "raw_material",
+      "category": "mineral",
+      "description": "High-grade iron ore suitable for steel production",
+      "attributes": {
+        "purity": 0.65
+      },
+      "production": {
+        "baseRate": 1000.0,
+        "units": [
+          "DENVER_MINING"
+        ],
+        "requiredTechnologies": [
+          "MINING_TECH_01"
+        ]
+      },
+      "consumption": {
+        "rate": 800.0,
+        "consumers": [
+          "Steel Works"
+        ]
+      },
+      "value": 50.0,
+      "marketPrice": 65.0,
+      "availability": {
+        "locations": [
+          "ROCKY_MOUNTAINS"
+        ],
+        "scarcity": "limited"
+      }
+    },
+    {
+      "id": "R002",
+      "name": "Crude Oil",
+      "type": "raw_material",
+      "category": "energy",
+      "description": "Unrefined petroleum",
+      "attributes": {
+        "grade": "Light Sweet Crude"
+      },
+      "production": {
+        "baseRate": 5000.0,
+        "units": [
+          "OIL_FIELD_01"
+        ],
+        "requiredTechnologies": [
+          "OIL_EXTRACTION_01"
+        ]
+      },
+      "consumption": {
+        "rate": 4800.0,
+        "consumers": [
+          "Refinery"
+        ]
+      },
+      "value": 70.0,
+      "marketPrice": 75.0,
+      "availability": {
+        "locations": [
+          "GULF_COAST"
+        ],
+        "scarcity": "limited"
+      }
+    },
+    {
+      "id": "R003",
+      "name": "Steel",
+      "type": "manufactured_good",
+      "category": "industrial",
+      "description": "Refined steel for construction and manufacturing",
+      "attributes": {
+        "strength": "High-Grade"
+      },
+      "production": {
+        "baseRate": 500.0,
+        "units": [
+          "CHICAGO_STEEL"
+        ],
+        "requiredTechnologies": [
+          "STEEL_PRODUCTION_02"
+        ]
+      },
+      "consumption": {
+        "rate": 450.0,
+        "consumers": [
+          "Manufacturing"
+        ]
+      },
+      "value": 200.0,
+      "marketPrice": 225.0,
+      "availability": {
+        "locations": [
+          "CHICAGO_INDUSTRIAL"
+        ],
+        "scarcity": "abundant"
+      }
+    },
+    {
+      "id": "R004",
+      "name": "Semiconductors",
+      "type": "manufactured_good",
+      "category": "technology",
+      "description": "Electronic components for computing devices",
+      "attributes": {
+        "precision": "5nm"
+      },
+      "production": {
+        "baseRate": 100.0,
+        "units": [
+          "TECH_FACILITY"
+        ],
+        "requiredTechnologies": [
+          "SEMICONDUCTOR_TECH_03"
+        ]
+      },
+      "consumption": {
+        "rate": 95.0,
+        "consumers": [
+          "Electronics Manufacturing"
+        ]
+      },
+      "value": 1000.0,
+      "marketPrice": 1200.0,
+      "availability": {
+        "locations": [
+          "LAWRENCE_TECH"
+        ],
+        "scarcity": "limited"
+      }
+    },
+    {
+      "id": "R005",
+      "name": "Automobiles",
+      "type": "manufactured_good",
+      "category": "consumer",
+      "description": "Passenger vehicles for consumer use",
+      "attributes": {
+        "class": "Mid-Size"
+      },
+      "production": {
+        "baseRate": 50.0,
+        "units": [
+          "KC_AUTO_PLANT"
+        ],
+        "requiredTechnologies": [
+          "AUTO_ASSEMBLY_02"
+        ]
+      },
+      "consumption": {
+        "rate": 48.0,
+        "consumers": [
+          "Consumer"
+        ]
+      },
+      "value": 25000.0,
+      "marketPrice": 30000.0,
+      "availability": {
+        "locations": [
+          "KANSAS_CITY"
+        ],
+        "scarcity": "abundant"
+      }
+    },
+    {
+      "id": "R006",
+      "name": "Wheat",
+      "type": "raw_material",
+      "category": "agricultural",
+      "description": "Basic grain crop for food production",
+      "attributes": {
+        "quality": "Grade A"
+      },
+      "production": {
+        "baseRate": 2000.0,
+        "units": [
+          "MANHATTAN_AG"
+        ],
+        "requiredTechnologies": [
+          "AGRICULTURE_01"
+        ]
+      },
+      "consumption": {
+        "rate": 1800.0,
+        "consumers": [
+          "Food Processing"
+        ]
+      },
+      "value": 20.0,
+      "marketPrice": 22.0,
+      "availability": {
+        "locations": [
+          "KANSAS_PLAINS"
+        ],
+        "scarcity": "abundant"
+      }
+    },
+    {
+      "id": "R007",
+      "name": "Processed Food",
+      "type": "manufactured_good",
+      "category": "consumer",
+      "description": "Packaged food products for consumer consumption",
+      "attributes": {
+        "shelfLife": "12 months"
+      },
+      "production": {
+        "baseRate": 1000.0,
+        "units": [
+          "FOOD_PROCESSING_01"
+        ],
+        "requiredTechnologies": [
+          "FOOD_TECH_02"
+        ]
+      },
+      "consumption": {
+        "rate": 950.0,
+        "consumers": [
+          "Consumer"
+        ]
+      },
+      "value": 40.0,
+      "marketPrice": 45.0,
+      "availability": {
+        "locations": [
+          "MULTIPLE"
+        ],
+        "scarcity": "abundant"
+      }
+    },
+    {
+      "id": "R008",
+      "name": "Gasoline",
+      "type": "manufactured_good",
+      "category": "energy",
+      "description": "Refined petroleum fuel for vehicles",
+      "attributes": {
+        "octane": 87
+      },
+      "production": {
+        "baseRate": 3000.0,
+        "units": [
+          "REFINERY_01"
+        ],
+        "requiredTechnologies": [
+          "REFINING_02"
+        ]
+      },
+      "consumption": {
+        "rate": 2900.0,
+        "consumers": [
+          "Consumer",
+          "Transportation"
+        ]
+      },
+      "value": 3.0,
+      "marketPrice": 3.5,
+      "availability": {
+        "locations": [
+          "MULTIPLE"
+        ],
+        "scarcity": "abundant"
+      }
+    },
+    {
+      "id": "R009",
+      "name": "Solar Panels",
+      "type": "manufactured_good",
+      "category": "energy",
+      "description": "Photovoltaic panels for renewable energy generation",
+      "attributes": {
+        "efficiency": 0.22
+      },
+      "production": {
+        "baseRate": 200.0,
+        "units": [
+          "TECH_FACILITY"
+        ],
+        "requiredTechnologies": [
+          "SOLAR_TECH_03"
+        ]
+      },
+      "consumption": {
+        "rate": 190.0,
+        "consumers": [
+          "Energy Sector",
+          "Consumer"
+        ]
+      },
+      "value": 500.0,
+      "marketPrice": 600.0,
+      "availability": {
+        "locations": [
+          "LAWRENCE_TECH"
+        ],
+        "scarcity": "limited"
+      }
+    },
+    {
+      "id": "R010",
+      "name": "Computer Chips",
+      "type": "manufactured_good",
+      "category": "technology",
+      "description": "Processed semiconductor chips for computing devices",
+      "attributes": {
+        "processingPower": "High Performance"
+      },
+      "production": {
+        "baseRate": 75.0,
+        "units": [
+          "TECH_FACILITY"
+        ],
+        "requiredTechnologies": [
+          "CHIP_TECH_03"
+        ]
+      },
+      "consumption": {
+        "rate": 70.0,
+        "consumers": [
+          "Electronics Manufacturing"
+        ]
+      },
+      "value": 1500.0,
+      "marketPrice": 1800.0,
+      "availability": {
+        "locations": [
+          "LAWRENCE_TECH"
+        ],
+        "scarcity": "limited"
+      }
+    }
+  ]
+}

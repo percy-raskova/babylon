@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.081040+00:00",
+  "sourceFormat": "xml",
+  "laws": [
+    {
+      "id": "LAW001",
+      "name": "Drug Prohibition",
+      "type": "Criminal",
+      "description": "Laws criminalizing the possession, sale, and distribution of specified controlled substances",
+      "enactedBy": "",
+      "enactmentDate": "",
+      "effects": []
+    },
+    {
+      "id": "LAW002",
+      "name": "Freedom of Speech",
+      "type": "Constitutional",
+      "description": "Constitutional protection of expression, press, and assembly rights",
+      "enactedBy": "",
+      "enactmentDate": "",
+      "effects": []
+    },
+    {
+      "id": "LAW003",
+      "name": "Private Property",
+      "type": "Property",
+      "description": "Legal framework protecting private ownership of means of production and resources",
+      "enactedBy": "",
+      "enactmentDate": "",
+      "effects": []
+    },
+    {
+      "id": "LAW004",
+      "name": "Free Market",
+      "type": "Economic",
+      "description": "Legal framework enabling unregulated market exchange and competition",
+      "enactedBy": "",
+      "enactmentDate": "",
+      "effects": []
+    },
+    {
+      "id": "LAW005",
+      "name": "Gun Ownership",
+      "type": "Constitutional",
+      "description": "Constitutional and statutory rights regarding firearms possession",
+      "enactedBy": "",
+      "enactmentDate": "",
+      "effects": []
+    }
+  ]
+}

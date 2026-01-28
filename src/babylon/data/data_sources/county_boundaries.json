@@ -1,0 +1,17 @@
+{
+  "source": "county_boundaries",
+  "data_source": {
+    "code": "ARCGIS_COUNTIES_2024",
+    "name": "USA Counties Generalized Boundaries",
+    "url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Counties_Generalized_Boundaries/FeatureServer/0",
+    "agency": "Esri ArcGIS",
+    "year": 2024
+  },
+  "arcgis": {
+    "service_url": "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Counties_Generalized_Boundaries/FeatureServer/0",
+    "out_fields": [
+      "FIPS"
+    ],
+    "return_geometry": true
+  }
+}

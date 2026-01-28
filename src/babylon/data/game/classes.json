@@ -1,0 +1,91 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.057903+00:00",
+  "sourceFormat": "xml",
+  "classes": [
+    {
+      "id": "bourgeoisie",
+      "name": "Bourgeoisie",
+      "description": "The capitalist class who owns the means of production and employs wage labor.",
+      "attributes": {
+        "relationToProduction": "Owns means of production",
+        "economicPower": "High"
+      },
+      "relationships": [
+        {
+          "targetId": "Proletariat",
+          "type": "",
+          "strength": ""
+        },
+        {
+          "targetId": "Petit Bourgeoisie",
+          "type": "",
+          "strength": ""
+        }
+      ]
+    },
+    {
+      "id": "lumpenproletariat",
+      "name": "Lumpenproletariat",
+      "description": "The underclass existing outside the wage-labor system, including the chronically unemployed, criminals, and others existing on the margins of society.",
+      "attributes": {
+        "relationToProduction": "Outside formal economic system",
+        "socialStatus": "Marginalized"
+      },
+      "relationships": [
+        {
+          "targetId": "Proletariat",
+          "type": "",
+          "strength": ""
+        },
+        {
+          "targetId": "Bourgeoisie",
+          "type": "",
+          "strength": ""
+        }
+      ]
+    },
+    {
+      "id": "petit_bourgeoisie",
+      "name": "Petit Bourgeoisie",
+      "description": "Small business owners and self-employed individuals who own some means of production but also often perform their own labor.",
+      "attributes": {
+        "relationToProduction": "Small-scale ownership and self-employment",
+        "classPosition": "Intermediate"
+      },
+      "relationships": [
+        {
+          "targetId": "Bourgeoisie",
+          "type": "",
+          "strength": ""
+        },
+        {
+          "targetId": "Proletariat",
+          "type": "",
+          "strength": ""
+        }
+      ]
+    },
+    {
+      "id": "proletariat",
+      "name": "Proletariat",
+      "description": "The working class who must sell their labor power to survive, owning no means of production themselves.",
+      "attributes": {
+        "relationToProduction": "Sells labor power",
+        "classConsciousness": "Varies by historical conditions"
+      },
+      "relationships": [
+        {
+          "targetId": "Bourgeoisie",
+          "type": "",
+          "strength": ""
+        },
+        {
+          "targetId": "Petit Bourgeoisie",
+          "type": "",
+          "strength": ""
+        }
+      ]
+    }
+  ]
+}

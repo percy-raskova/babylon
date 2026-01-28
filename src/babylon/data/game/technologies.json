@@ -1,0 +1,559 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2025-12-07T08:21:45.076537+00:00",
+  "sourceFormat": "xml",
+  "technologies": [
+    {
+      "id": "T001",
+      "name": "Advanced Manufacturing Automation",
+      "category": "Economic",
+      "description": "Cutting-edge robotics and AI systems for automotive manufacturing",
+      "prerequisites": [
+        "T004"
+      ],
+      "requiredResources": [],
+      "researchCost": 5000.0,
+      "researchTime": 360,
+      "effects": [
+        {
+          "target": "AutoFactory",
+          "attribute": "ProductionEfficiency",
+          "operation": "increase",
+          "magnitude": 0.35,
+          "description": "35% increase in automobile production efficiency"
+        },
+        {
+          "target": "LaborForce",
+          "attribute": "RequiredWorkers",
+          "operation": "decrease",
+          "magnitude": 0.25,
+          "description": "25% reduction in required workforce"
+        }
+      ],
+      "availableToClasses": [
+        "BOURGEOISIE"
+      ]
+    },
+    {
+      "id": "T002",
+      "name": "Precision Agriculture Systems",
+      "category": "Economic",
+      "description": "AI-driven farming systems with automated irrigation and harvest optimization",
+      "prerequisites": [],
+      "requiredResources": [],
+      "researchCost": 3000.0,
+      "researchTime": 240,
+      "effects": [
+        {
+          "target": "WheatProduction",
+          "attribute": "YieldRate",
+          "operation": "increase",
+          "magnitude": 0.25,
+          "description": "25% increase in wheat yield per acre"
+        },
+        {
+          "target": "ResourceConsumption",
+          "attribute": "WaterUsage",
+          "operation": "decrease",
+          "magnitude": 0.2,
+          "description": "20% reduction in water consumption"
+        }
+      ],
+      "availableToClasses": []
+    },
+    {
+      "id": "T003",
+      "name": "Advanced Semiconductor Fabrication",
+      "category": "Economic",
+      "description": "Next-generation semiconductor manufacturing processes",
+      "prerequisites": [],
+      "requiredResources": [],
+      "researchCost": 8000.0,
+      "researchTime": 480,
+      "effects": [
+        {
+          "target": "SemiconductorProduction",
+          "attribute": "Quality",
+          "operation": "increase",
+          "magnitude": 0.4,
+          "description": "40% increase in semiconductor quality and complexity"
+        },
+        {
+          "target": "ProductionCost",
+          "attribute": "Cost",
+          "operation": "decrease",
+          "magnitude": 0.3,
+          "description": "30% reduction in production costs"
+        }
+      ],
+      "availableToClasses": []
+    },
+    {
+      "id": "T004",
+      "name": "High-Efficiency Solar Technology",
+      "category": "Economic",
+      "description": "Advanced photovoltaic materials and manufacturing techniques",
+      "prerequisites": [],
+      "requiredResources": [],
+      "researchCost": 4000.0,
+      "researchTime": 300,
+      "effects": [
+        {
+          "target": "SolarPanelProduction",
+          "attribute": "Efficiency",
+          "operation": "increase",
+          "magnitude": 0.3,
+          "description": "30% increase in solar panel energy conversion efficiency"
+        }
+      ],
+      "availableToClasses": []
+    },
+    {
+      "id": "T005",
+      "name": "Advanced Steel Processing",
+      "category": "Economic",
+      "description": "Enhanced steel production methods with reduced environmental impact",
+      "prerequisites": [],
+      "requiredResources": [],
+      "researchCost": 3500.0,
+      "researchTime": 270,
+      "effects": [
+        {
+          "target": "SteelProduction",
+          "attribute": "Quality",
+          "operation": "increase",
+          "magnitude": 0.25,
+          "description": "25% increase in steel quality"
+        },
+        {
+          "target": "Emissions",
+          "attribute": "CarbonOutput",
+          "operation": "decrease",
+          "magnitude": 0.35,
+          "description": "35% reduction in carbon emissions"
+        }
+      ],
+      "availableToClasses": []
+    },
+    {
+      "id": "T006",
+      "name": "Large Language Model Infrastructure",
+      "category": "Control",
+      "description": "The quintessential dual-use technology of the 21st century. In the hands of capital and state, LLMs enable unprecedented surveillance, narrative control, and automation of cognitive labor—a panopticon that writes its own propaganda. Yet the same technology, when seized by revolutionary forces, becomes a force multiplier: enabling small cells to code their own infrastructure, hack enemy systems, translate across languages, educate the masses, and achieve operational self-reliance that would otherwise require thousands of specialists. The question is not whether AI will transform society, but which class will wield it.",
+      "prerequisites": [
+        "T003"
+      ],
+      "requiredResources": [
+        "R_COMPUTE_CLUSTER",
+        "R_TRAINING_DATA"
+      ],
+      "researchCost": 15000.0,
+      "researchTime": 720,
+      "effects": [
+        {
+          "target": "KnowledgeWorkers",
+          "attribute": "RequiredWorkers",
+          "operation": "decrease",
+          "magnitude": 0.40,
+          "description": "40% reduction in required knowledge workers (journalism, legal, programming)"
+        },
+        {
+          "target": "StateApparatus",
+          "attribute": "SurveillanceCapacity",
+          "operation": "increase",
+          "magnitude": 0.50,
+          "description": "50% increase in state surveillance—every communication parsed, every pattern detected"
+        },
+        {
+          "target": "IdeologicalApparatus",
+          "attribute": "NarrativeControl",
+          "operation": "increase",
+          "magnitude": 0.35,
+          "description": "35% increase in ability to shape discourse through algorithmic curation"
+        },
+        {
+          "target": "RepressiveApparatus",
+          "attribute": "TargetingPrecision",
+          "operation": "increase",
+          "magnitude": 0.45,
+          "description": "45% increase in ability to identify and track dissidents"
+        },
+        {
+          "target": "ImperialRent",
+          "attribute": "ExtractionRate",
+          "operation": "increase",
+          "magnitude": 0.20,
+          "description": "20% increase in imperial rent extraction through platform monopolies"
+        },
+        {
+          "target": "Contradiction",
+          "attribute": "CapitalLabor",
+          "operation": "intensify",
+          "magnitude": 0.30,
+          "description": "30% intensification of capital-labor contradiction as cognitive work is commodified"
+        }
+      ],
+      "availableToClasses": [
+        "BOURGEOISIE",
+        "COMPRADOR_BOURGEOISIE"
+      ],
+      "unlocksTechnologies": [
+        "T007",
+        "T008",
+        "T009",
+        "T010"
+      ],
+      "dialecticalContradictions": [
+        {
+          "thesis": "Concentration of AI capability in monopoly capital enables total surveillance",
+          "antithesis": "The same models, once leaked or replicated, give small groups capabilities of large organizations",
+          "potentialSynthesis": "Democratized AI collapses the asymmetry between state and revolutionary forces"
+        },
+        {
+          "thesis": "AI automates cognitive labor, creating mass technological unemployment",
+          "antithesis": "Displaced workers have nothing to lose and technical skills to contribute",
+          "potentialSynthesis": "Either managed decline into neo-feudalism or revolutionary seizure of productive forces"
+        },
+        {
+          "thesis": "AI requires massive compute infrastructure controlled by capital",
+          "antithesis": "Efficiency improvements and edge computing enable decentralized deployment",
+          "potentialSynthesis": "Infrastructure becomes a key site of class struggle"
+        }
+      ]
+    },
+    {
+      "id": "T007",
+      "name": "Federated Open-Source AI",
+      "category": "Liberation",
+      "description": "The revolutionary seizure of AI capability. Decentralized, community-controlled language models running on distributed infrastructure, trained on curated datasets that center working-class perspectives and historical revolutionary praxis. This technology enables small cells to achieve capabilities previously requiring large organizations: automated code generation for secure infrastructure, real-time translation for international coordination, mass political education, and counter-narrative production—all without corporate or state surveillance. A single cadre with a laptop becomes as capable as a team of specialists.",
+      "prerequisites": [
+        "T006"
+      ],
+      "requiredResources": [
+        "R_DISTRIBUTED_COMPUTE",
+        "R_COMMUNITY_DATA"
+      ],
+      "researchCost": 8000.0,
+      "researchTime": 540,
+      "effects": [
+        {
+          "target": "MovementOrganization",
+          "attribute": "CoordinationCapacity",
+          "operation": "increase",
+          "magnitude": 0.45,
+          "description": "45% increase in movement coordination—AI handles logistics, translation, scheduling"
+        },
+        {
+          "target": "Proletariat",
+          "attribute": "ClassConsciousness",
+          "operation": "increase",
+          "magnitude": 0.30,
+          "description": "30% increase in class consciousness through personalized political education at scale"
+        },
+        {
+          "target": "CounterHegemony",
+          "attribute": "NarrativeCapacity",
+          "operation": "increase",
+          "magnitude": 0.40,
+          "description": "40% increase in ability to produce and distribute counter-narratives in all languages"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "TechnicalSelfReliance",
+          "operation": "increase",
+          "magnitude": 0.55,
+          "description": "55% increase in ability to build and maintain own infrastructure without outside help"
+        },
+        {
+          "target": "StateApparatus",
+          "attribute": "SurveillanceEffectiveness",
+          "operation": "decrease",
+          "magnitude": 0.25,
+          "description": "25% reduction in state surveillance through encrypted, AI-assisted operational security"
+        },
+        {
+          "target": "InternationalSolidarity",
+          "attribute": "TranslationCapacity",
+          "operation": "increase",
+          "magnitude": 0.70,
+          "description": "70% increase in cross-language communication—real-time translation breaks language barriers"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "CodingCapacity",
+          "operation": "increase",
+          "magnitude": 0.60,
+          "description": "60% increase in ability to develop custom tools, apps, and secure communication systems"
+        }
+      ],
+      "availableToClasses": [
+        "PROLETARIAT",
+        "SEMI_PROLETARIAT",
+        "PEASANTRY",
+        "REVOLUTIONARY_INTELLECTUALS"
+      ],
+      "dialecticalContradictions": [
+        {
+          "thesis": "Technology liberated from capital control enables revolutionary self-reliance",
+          "antithesis": "Still dependent on hardware supply chains controlled by capital",
+          "potentialSynthesis": "Full technological sovereignty requires seizure of semiconductor production"
+        },
+        {
+          "thesis": "AI amplifies individual capability, reducing need for mass organization",
+          "antithesis": "Revolutionary change still requires mass mobilization and class consciousness",
+          "potentialSynthesis": "AI as tool of the vanguard, not replacement for the masses"
+        }
+      ]
+    },
+    {
+      "id": "T008",
+      "name": "Autonomous Disinformation Networks",
+      "category": "Repression",
+      "description": "AI-generated synthetic media and coordinated inauthentic behavior at scale. Deployed by state and capital to manufacture consent, discredit opposition movements, and sow confusion among the masses. The automation of propaganda represents a qualitative leap in ideological state apparatus capability.",
+      "prerequisites": [
+        "T006"
+      ],
+      "requiredResources": [
+        "R_SOCIAL_MEDIA_ACCESS",
+        "R_COMPUTE_CLUSTER"
+      ],
+      "researchCost": 6000.0,
+      "researchTime": 360,
+      "effects": [
+        {
+          "target": "PublicSentiment",
+          "attribute": "Confusion",
+          "operation": "increase",
+          "magnitude": 0.45,
+          "description": "45% increase in public epistemic confusion and distrust"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "PublicTrust",
+          "operation": "decrease",
+          "magnitude": 0.30,
+          "description": "30% decrease in public trust of opposition movements"
+        },
+        {
+          "target": "IdeologicalApparatus",
+          "attribute": "ManufacturedConsent",
+          "operation": "increase",
+          "magnitude": 0.40,
+          "description": "40% increase in ability to manufacture consent for state actions"
+        },
+        {
+          "target": "Proletariat",
+          "attribute": "Atomization",
+          "operation": "increase",
+          "magnitude": 0.20,
+          "description": "20% increase in atomization through destruction of shared reality"
+        },
+        {
+          "target": "Contradiction",
+          "attribute": "StatePopulation",
+          "operation": "intensify",
+          "magnitude": 0.15,
+          "description": "15% intensification when disinformation is exposed"
+        }
+      ],
+      "availableToClasses": [
+        "BOURGEOISIE",
+        "STATE_BUREAUCRACY"
+      ]
+    },
+    {
+      "id": "T009",
+      "name": "Predictive Repression Systems",
+      "category": "Repression",
+      "description": "Machine learning systems that analyze communication patterns, social networks, and behavioral data to identify and neutralize organizers before movements can crystallize. The algorithmic pre-crime apparatus represents the fusion of AI with the repressive state apparatus.",
+      "prerequisites": [
+        "T006"
+      ],
+      "requiredResources": [
+        "R_SURVEILLANCE_DATA",
+        "R_COMPUTE_CLUSTER"
+      ],
+      "researchCost": 10000.0,
+      "researchTime": 480,
+      "effects": [
+        {
+          "target": "StateApparatus",
+          "attribute": "PreemptiveRepression",
+          "operation": "increase",
+          "magnitude": 0.50,
+          "description": "50% increase in ability to identify and neutralize organizers early"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "OperationalSecurity",
+          "operation": "decrease",
+          "magnitude": 0.35,
+          "description": "35% reduction in movement operational security"
+        },
+        {
+          "target": "RevolutionarySituation",
+          "attribute": "OrganizationalCapacity",
+          "operation": "decrease",
+          "magnitude": 0.25,
+          "description": "25% reduction in capacity to build revolutionary organization"
+        },
+        {
+          "target": "Contradiction",
+          "attribute": "StatePopulation",
+          "operation": "intensify",
+          "magnitude": 0.20,
+          "description": "20% intensification of state-population contradiction through visible repression"
+        }
+      ],
+      "availableToClasses": [
+        "STATE_BUREAUCRACY"
+      ],
+      "dialecticalContradictions": [
+        {
+          "thesis": "Perfect surveillance prevents organization",
+          "antithesis": "Visible repression delegitimizes the state",
+          "potentialSynthesis": "Either total control or revolutionary rupture"
+        }
+      ]
+    },
+    {
+      "id": "T010",
+      "name": "Revolutionary AI Warfare",
+      "category": "Liberation",
+      "description": "The offensive application of AI capabilities for revolutionary struggle. This technology enables small, decentralized cells to conduct operations that would previously require state-level resources: automated vulnerability discovery and exploitation of enemy infrastructure, AI-generated social engineering at scale, deepfake production for operational deception, automated evasion of surveillance systems, and real-time tactical decision support. The great equalizer—asymmetric warfare meets artificial intelligence.",
+      "prerequisites": [
+        "T007"
+      ],
+      "requiredResources": [
+        "R_HACKING_EXPERTISE",
+        "R_DISTRIBUTED_COMPUTE"
+      ],
+      "researchCost": 12000.0,
+      "researchTime": 600,
+      "effects": [
+        {
+          "target": "MovementOrganization",
+          "attribute": "CyberWarfareCapacity",
+          "operation": "increase",
+          "magnitude": 0.65,
+          "description": "65% increase in ability to conduct cyber operations against state and corporate targets"
+        },
+        {
+          "target": "EnemyInfrastructure",
+          "attribute": "Vulnerability",
+          "operation": "increase",
+          "magnitude": 0.40,
+          "description": "40% increase in ability to identify and exploit vulnerabilities in enemy systems"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "OperationalDeception",
+          "operation": "increase",
+          "magnitude": 0.50,
+          "description": "50% increase in ability to generate cover identities, false trails, and operational deception"
+        },
+        {
+          "target": "StateApparatus",
+          "attribute": "IntelligenceReliability",
+          "operation": "decrease",
+          "magnitude": 0.30,
+          "description": "30% reduction in state intelligence reliability due to AI-generated noise and deception"
+        },
+        {
+          "target": "RevolutionarySituation",
+          "attribute": "AsymmetricCapability",
+          "operation": "increase",
+          "magnitude": 0.45,
+          "description": "45% increase in asymmetric warfare capability—small cells achieve state-level effects"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "SurveillanceEvasion",
+          "operation": "increase",
+          "magnitude": 0.55,
+          "description": "55% increase in ability to evade detection through AI-optimized operational patterns"
+        },
+        {
+          "target": "FinancialSystem",
+          "attribute": "Vulnerability",
+          "operation": "increase",
+          "magnitude": 0.35,
+          "description": "35% increase in ability to disrupt or expropriate from financial infrastructure"
+        }
+      ],
+      "availableToClasses": [
+        "PROLETARIAT",
+        "REVOLUTIONARY_INTELLECTUALS"
+      ],
+      "dialecticalContradictions": [
+        {
+          "thesis": "AI enables revolutionary forces to match state capabilities",
+          "antithesis": "Offensive capabilities invite escalation and justify repression",
+          "potentialSynthesis": "Strategic deployment must balance capability with political cost"
+        },
+        {
+          "thesis": "Technical operations can cripple enemy infrastructure",
+          "antithesis": "Revolution requires mass support, not just technical victory",
+          "potentialSynthesis": "Cyber operations as complement to, not substitute for, mass line"
+        }
+      ]
+    },
+    {
+      "id": "T011",
+      "name": "Autonomous Infrastructure Defense",
+      "category": "Liberation",
+      "description": "AI-powered defensive systems that protect revolutionary infrastructure from state attack. Self-healing networks, automated threat detection, decentralized redundancy, and AI-generated operational security protocols. Enables movements to maintain communications and coordination even under intense state pressure. The digital equivalent of building tunnels and safe houses.",
+      "prerequisites": [
+        "T007"
+      ],
+      "requiredResources": [
+        "R_DISTRIBUTED_COMPUTE",
+        "R_SECURITY_EXPERTISE"
+      ],
+      "researchCost": 7000.0,
+      "researchTime": 420,
+      "effects": [
+        {
+          "target": "MovementOrganization",
+          "attribute": "InfrastructureResilience",
+          "operation": "increase",
+          "magnitude": 0.60,
+          "description": "60% increase in ability to maintain operations under state attack"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "CommunicationsSecurity",
+          "operation": "increase",
+          "magnitude": 0.50,
+          "description": "50% increase in secure communications capability"
+        },
+        {
+          "target": "StateApparatus",
+          "attribute": "InfiltrationSuccess",
+          "operation": "decrease",
+          "magnitude": 0.35,
+          "description": "35% reduction in state ability to infiltrate movement communications"
+        },
+        {
+          "target": "MovementOrganization",
+          "attribute": "DecentralizedRedundancy",
+          "operation": "increase",
+          "magnitude": 0.55,
+          "description": "55% increase in ability to operate without central points of failure"
+        }
+      ],
+      "availableToClasses": [
+        "PROLETARIAT",
+        "SEMI_PROLETARIAT",
+        "REVOLUTIONARY_INTELLECTUALS"
+      ],
+      "dialecticalContradictions": [
+        {
+          "thesis": "Perfect security enables sustained organization",
+          "antithesis": "Security measures can become barriers to mass participation",
+          "potentialSynthesis": "Tiered security architecture balancing protection and accessibility"
+        }
+      ]
+    }
+  ]
+}

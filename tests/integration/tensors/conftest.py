@@ -34,6 +34,7 @@ from babylon.economics.hydrator import MarxianHydrator
 
 # Ordered list of candidate database paths (first found wins)
 _DB_PATH_CANDIDATES = [
+    Path("data/sqlite/marxist-data-3NF.sqlite"),  # Primary: SQLite export from DuckDB
     Path("data/babylon.db"),
     Path("data/databases/babylon.db"),
     Path("data/qcew.db"),

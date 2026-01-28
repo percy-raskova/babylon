@@ -86,3 +86,6 @@ src/babylon/data/dot/*.json
 coverage.json
 
 .mypy_cache/
+
+# Large binary assets (stored externally)
+assets/

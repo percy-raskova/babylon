@@ -160,12 +160,13 @@ class DepartmentMapper:
         overrides: 3-6 digit NAICS code -> allocation mapping.
         excluded: Set of excluded NAICS codes (outside M-C-M' circuit).
         default_ratios: Per-department default c/v and s/v ratios.
+        sector_ratios: 2-digit sector code -> DefaultRatios mapping.
 
     Example:
         >>> mapper = DepartmentMapper.from_yaml("naics_to_dept.yaml")
         >>> allocation = mapper.get_allocation("336111")  # Automobile Mfg
         >>> allocation.allocate(1_000_000)  # $1M in wages
-        {Department.I: 0.0, Department.IIa: 650000.0, ...}
+        {Department.I: 0.0, Department.IIa: 900000.0, ...}
     """
 
     def __init__(
@@ -174,6 +175,7 @@ class DepartmentMapper:
         overrides: dict[str, DepartmentAllocation],
         excluded: set[str],
         default_ratios: dict[Department, DefaultRatios] | None = None,
+        sector_ratios: dict[str, DefaultRatios] | None = None,
     ) -> None:
         """Initialize the mapper.
 
@@ -182,11 +184,13 @@ class DepartmentMapper:
             overrides: 3-6 digit NAICS code -> allocation mapping.
             excluded: Set of excluded NAICS codes (outside M-C-M' circuit).
             default_ratios: Per-department default c/v and s/v ratios.
+            sector_ratios: 2-digit sector code -> c/v and s/v ratios.
         """
         self._defaults = defaults
         self._overrides = overrides
         self._excluded = excluded
         self._default_ratios = default_ratios or {}
+        self._sector_ratios = sector_ratios or {}
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> DepartmentMapper:
@@ -231,11 +235,21 @@ class DepartmentMapper:
                     sv_ratio=ratios.get("sv_ratio", 1.0),
                 )
 
+        # Parse sector_ratios (BEA-derived sector-level ratios)
+        sector_ratios: dict[str, DefaultRatios] = {}
+        sector_config = config.get("sector_ratios", {})
+        for sector_code, ratios in sector_config.items():
+            sector_ratios[str(sector_code)] = DefaultRatios(
+                cv_ratio=ratios.get("cv_ratio", 1.0),
+                sv_ratio=ratios.get("sv_ratio", 1.0),
+            )
+
         return cls(
             defaults=defaults,
             overrides=overrides,
             excluded=excluded,
             default_ratios=default_ratios,
+            sector_ratios=sector_ratios,
         )
 
     def is_excluded(self, naics_code: str) -> bool:
@@ -305,6 +319,34 @@ class DepartmentMapper:
         if ratios is None:
             return 1.0  # Default to 1.0 if not configured
         return ratios.sv_ratio
+
+    def get_sector_sv_ratio(self, sector_code: str) -> float | None:
+        """Get s/v ratio for a NAICS sector from sector_ratios config.
+
+        Args:
+            sector_code: 2-digit NAICS sector code.
+
+        Returns:
+            Rate of surplus value (s/v) ratio, or None if not configured.
+        """
+        ratios = self._sector_ratios.get(str(sector_code)[:2])
+        if ratios is None:
+            return None
+        return ratios.sv_ratio
+
+    def get_sector_cv_ratio(self, sector_code: str) -> float | None:
+        """Get c/v ratio for a NAICS sector from sector_ratios config.
+
+        Args:
+            sector_code: 2-digit NAICS sector code.
+
+        Returns:
+            Organic composition of capital (c/v) ratio, or None if not configured.
+        """
+        ratios = self._sector_ratios.get(str(sector_code)[:2])
+        if ratios is None:
+            return None
+        return ratios.cv_ratio
 
     def allocate_value(
         self,

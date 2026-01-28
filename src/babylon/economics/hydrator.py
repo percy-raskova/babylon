@@ -163,8 +163,10 @@ class MarxianHydrator:
     ) -> float:
         """Get weighted s/v ratio for a department.
 
-        Attempts to use BEA data for industries in the department,
-        falling back to YAML defaults if unavailable.
+        Lookup order for each NAICS code:
+        1. BEA source (industry-level empirical data)
+        2. Sector-level ratios (2-digit NAICS from YAML)
+        3. Department default (if nothing found)
 
         Args:
             dept: Target department.
@@ -174,8 +176,6 @@ class MarxianHydrator:
         Returns:
             Weighted s/v ratio or department default.
         """
-        # For now, use simple average of BEA ratios where available,
-        # falling back to department default
         ratios: list[tuple[float, float]] = []  # (ratio, weight)
 
         for naics_code, wages, _employment in qcew_records:
@@ -188,13 +188,21 @@ class MarxianHydrator:
             if dept_weight == 0.0:
                 continue
 
-            # Try to get BEA ratio
+            weighted_wages = wages * dept_weight
+
+            # Try to get BEA ratio first (most specific)
             bea_ratio = self._bea_source.get_sv_ratio(naics_code, year)
             if bea_ratio is not None:
-                weighted_wages = wages * dept_weight
                 ratios.append((bea_ratio, weighted_wages))
+                continue
 
-        # Calculate weighted average if we have BEA data
+            # Fall back to sector-level ratio (2-digit NAICS)
+            sector = naics_code[:2]
+            sector_ratio = self._dept_mapper.get_sector_sv_ratio(sector)
+            if sector_ratio is not None:
+                ratios.append((sector_ratio, weighted_wages))
+
+        # Calculate weighted average if we have any ratios
         if ratios:
             total_weight = sum(w for _, w in ratios)
             if total_weight > 0:
@@ -212,8 +220,10 @@ class MarxianHydrator:
     ) -> float:
         """Get weighted c/v ratio for a department.
 
-        Attempts to use BEA data for industries in the department,
-        falling back to YAML defaults if unavailable.
+        Lookup order for each NAICS code:
+        1. BEA source (industry-level empirical data)
+        2. Sector-level ratios (2-digit NAICS from YAML)
+        3. Department default (if nothing found)
 
         Args:
             dept: Target department.
@@ -223,8 +233,6 @@ class MarxianHydrator:
         Returns:
             Weighted c/v ratio or department default.
         """
-        # For now, use simple average of BEA ratios where available,
-        # falling back to department default
         ratios: list[tuple[float, float]] = []  # (ratio, weight)
 
         for naics_code, wages, _employment in qcew_records:
@@ -237,13 +245,21 @@ class MarxianHydrator:
             if dept_weight == 0.0:
                 continue
 
-            # Try to get BEA ratio
+            weighted_wages = wages * dept_weight
+
+            # Try to get BEA ratio first (most specific)
             bea_ratio = self._bea_source.get_cv_ratio(naics_code, year)
             if bea_ratio is not None:
-                weighted_wages = wages * dept_weight
                 ratios.append((bea_ratio, weighted_wages))
+                continue
 
-        # Calculate weighted average if we have BEA data
+            # Fall back to sector-level ratio (2-digit NAICS)
+            sector = naics_code[:2]
+            sector_ratio = self._dept_mapper.get_sector_cv_ratio(sector)
+            if sector_ratio is not None:
+                ratios.append((sector_ratio, weighted_wages))
+
+        # Calculate weighted average if we have any ratios
         if ratios:
             total_weight = sum(w for _, w in ratios)
             if total_weight > 0:

@@ -18,18 +18,18 @@
 
 defaults:
   # Agriculture, Forestry, Fishing, Hunting (11)
-  # Split: ~50% intermediate inputs (feed, seed, fiber), ~50% food consumption
+  # BEA: 34% of grains → animal feed, majority to food processing
+  # USDA: only 33% of farm sales are direct-to-consumer
   11:
-    dept_I: 0.30
-    dept_IIa: 0.60
-    dept_IIb: 0.10
+    dept_I: 0.62
+    dept_IIa: 0.33
+    dept_IIb: 0.05
 
   # Mining, Quarrying, Oil & Gas (21)
-  # Primarily intermediate inputs for manufacturing/construction
+  # Almost entirely intermediate inputs for manufacturing/construction
   21:
-    dept_I: 0.85
-    dept_IIa: 0.10
-    dept_IIb: 0.05
+    dept_I: 0.95
+    dept_IIa: 0.05
 
   # Utilities (22)
   # Split between industrial use and residential consumption
@@ -46,45 +46,54 @@ defaults:
     dept_IIb: 0.05
 
   # Manufacturing (31-33)
-  # Varies wildly by 3-6 digit; this is a rough default
+  # Varies wildly by 3-6 digit; specific overrides below
+  # BEA shows total manufacturing at 63.8% intermediate use
   31:
-    dept_IIa: 0.70
-    dept_IIb: 0.30
+    # Food/beverage/textiles - mostly final consumption
+    dept_I: 0.05
+    dept_IIa: 0.85
+    dept_IIb: 0.10
   32:
-    dept_I: 0.60
-    dept_IIa: 0.30
+    # Wood, paper, chemicals - high intermediate use
+    # Chemical manufacturing (3251 basic): ~95% Dept I
+    dept_I: 0.57
+    dept_IIa: 0.33
     dept_IIb: 0.10
   33:
-    dept_I: 0.45
-    dept_IIa: 0.40
-    dept_IIb: 0.15
+    # Metal, machinery, electronics - mostly intermediate
+    # BEA: Computer/electronics shows 61.9% intermediate use
+    dept_I: 0.58
+    dept_IIa: 0.30
+    dept_IIb: 0.12
 
   # Wholesale Trade (42)
-  # Intermediary - allocation follows goods traded
+  # Primarily INTERMEDIATE trade - moves goods between producers
+  # Not consumer-facing like retail
   42:
-    dept_I: 0.35
-    dept_IIa: 0.50
-    dept_IIb: 0.15
+    dept_I: 0.85
+    dept_IIa: 0.15
 
   # Retail Trade (44-45)
-  # Primarily consumer-facing
+  # Final consumption; CEX income quintile data: 72% IIa, 28% IIb
   44:
-    dept_IIa: 0.75
-    dept_IIb: 0.25
+    dept_IIa: 0.72
+    dept_IIb: 0.28
   45:
-    dept_IIa: 0.65
-    dept_IIb: 0.35
+    dept_IIa: 0.72
+    dept_IIb: 0.28
 
   # Transportation & Warehousing (48-49)
   # Mix of freight (intermediate) and passenger (consumption)
+  # Rail: 95% freight. Trucking: 95% freight. Air: 15% freight.
   48:
-    dept_I: 0.40
-    dept_IIa: 0.45
-    dept_IIb: 0.15
+    dept_I: 0.60
+    dept_IIa: 0.35
+    dept_IIb: 0.05
   49:
-    dept_I: 0.50
-    dept_IIa: 0.40
-    dept_IIb: 0.10
+    # Warehousing - primarily intermediate storage
+    dept_I: 0.70
+    dept_IIa: 0.25
+    dept_IIb: 0.05
 
   # Information (51)
   # Mix of B2B services and consumer media
@@ -101,11 +110,12 @@ defaults:
     dept_IIb: 0.20
 
   # Real Estate (53)
-  # Commercial vs residential
+  # Commercial (~45% = $27T) → Dept I
+  # Residential (~55% = $33T): 85% workforce housing (IIa), 15% luxury (IIb)
   53:
-    dept_I: 0.30
-    dept_IIa: 0.50
-    dept_IIb: 0.20
+    dept_I: 0.38
+    dept_IIa: 0.52
+    dept_IIb: 0.10
 
   # Professional, Scientific, Technical Services (54)
   # Primarily B2B intermediate services
@@ -129,16 +139,22 @@ defaults:
     dept_IIb: 0.10
 
   # Educational Services (61)
-  # Social reproduction of labor power
+  # K-12 and community colleges produce general work capacity (Dept III)
+  # Professional training leans Dept I; private schools = luxury (IIb)
+  # Fortunati/Federici: education produces labor power itself
   61:
-    dept_IIa: 0.20
-    dept_III: 0.80
-
-  # Health Care (62)
-  # Social reproduction of labor power
-  62:
     dept_IIa: 0.30
-    dept_III: 0.70
+    dept_IIb: 0.20
+    dept_III: 0.50
+
+  # Health Care & Social Assistance (62)
+  # CDC/CMS data: most healthcare maintains/restores labor power
+  # Cosmetic/elective procedures represent <1% of total spending (~$26B of $4.5T)
+  # Nursing facilities (4.5%) and home health (3.0%) = Dept III
+  62:
+    dept_IIa: 0.75
+    dept_IIb: 0.05
+    dept_III: 0.20
 
   # Arts, Entertainment, Recreation (71)
   # Primarily luxury consumption
@@ -147,10 +163,12 @@ defaults:
     dept_IIb: 0.70
 
   # Accommodation & Food Services (72)
-  # Mix of necessary and luxury
+  # Worker meals replace home cooking (Dept III reproductive function)
+  # Fine dining = luxury (IIb); everyday eating = necessary (IIa)
   72:
-    dept_IIa: 0.60
+    dept_IIa: 0.50
     dept_IIb: 0.40
+    dept_III: 0.10
 
   # Other Services (81)
   # Repair, personal services, etc.
@@ -189,42 +207,77 @@ overrides:
   # ----------------------------------------------------------------------------
   # Manufacturing Overrides
   # ----------------------------------------------------------------------------
-  # Automobile Manufacturing - consumer durables
-  336111:
-    dept_IIa: 0.65
-    dept_IIb: 0.35
+  # Motor Vehicle Manufacturing
+  # Data: Heavy trucks (Class 4+) = ~20-25% commercial fleet purchases (Dept I)
+  # Light trucks (SUVs, pickups) = 74-80% of vehicle sales = consumer durables
+  # Consumer vehicles: ~90% necessary (IIa), ~10% luxury (IIb)
+  336:
+    dept_I: 0.23
+    dept_IIa: 0.67
+    dept_IIb: 0.10
 
-  # Motor Vehicle Body Manufacturing - split
   3361:
+    # Motor Vehicle Body Manufacturing
+    dept_I: 0.23
+    dept_IIa: 0.67
+    dept_IIb: 0.10
+
+  336111:
+    # Automobile Manufacturing - consumer vehicles
     dept_I: 0.20
-    dept_IIa: 0.55
-    dept_IIb: 0.25
+    dept_IIa: 0.70
+    dept_IIb: 0.10
 
   # Industrial Machinery Manufacturing - capital goods
+  333:
+    dept_I: 0.95
+    dept_IIa: 0.05
+
   3332:
     dept_I: 0.95
     dept_IIa: 0.05
 
-  # Semiconductor Manufacturing - capital goods
+  # Computer and Electronic Products - BEA: 61.9% intermediate use
+  334:
+    dept_I: 0.58
+    dept_IIa: 0.30
+    dept_IIb: 0.12
+
   3344:
+    # Semiconductor Manufacturing - capital goods
     dept_I: 0.85
     dept_IIa: 0.10
     dept_IIb: 0.05
 
+  # Chemical Manufacturing
+  325:
+    # Basic chemicals (3251) ~95% Dept I; overall 57% intermediate
+    dept_I: 0.57
+    dept_IIa: 0.33
+    dept_IIb: 0.10
+
   # Pharmaceutical Manufacturing - necessary consumption
   3254:
-    dept_IIa: 0.85
+    # Essential medicines (70% IIa), elective (15% IIb), healthcare system (15% III)
+    dept_IIa: 0.70
     dept_IIb: 0.15
+    dept_III: 0.15
 
   # Food Manufacturing - primarily necessary consumption
   311:
+    dept_I: 0.05
     dept_IIa: 0.85
-    dept_IIb: 0.15
+    dept_IIb: 0.10
 
   # Beverage Manufacturing - split necessary/luxury
   3121:
     dept_IIa: 0.50
     dept_IIb: 0.50
+
+  # Soap/Toiletries
+  3256:
+    dept_IIa: 0.75
+    dept_IIb: 0.25
 
   # Jewelry Manufacturing - luxury
   3399:
@@ -233,6 +286,36 @@ overrides:
   # Perfume Manufacturing - luxury
   32562:
     dept_IIb: 1.0
+
+  # ----------------------------------------------------------------------------
+  # Transportation Overrides
+  # ----------------------------------------------------------------------------
+  # Air Transportation - mostly passenger
+  481:
+    dept_I: 0.15
+    dept_IIa: 0.75
+    dept_IIb: 0.10
+
+  # Rail Transportation - mostly freight (Amtrak = 3% of track)
+  482:
+    dept_I: 0.95
+    dept_IIa: 0.05
+
+  # Trucking - mostly freight
+  484:
+    dept_I: 0.95
+    dept_IIa: 0.05
+
+  # Transit/Ground Passenger - all consumption
+  485:
+    dept_IIa: 0.90
+    dept_IIb: 0.10
+
+  # Couriers/Messengers - 40% B2B, 60% consumer (e-commerce)
+  492:
+    dept_I: 0.40
+    dept_IIa: 0.55
+    dept_IIb: 0.05
 
   # ----------------------------------------------------------------------------
   # Retail Overrides
@@ -267,35 +350,97 @@ overrides:
   71399:
     dept_IIb: 1.0
 
+  # Food Services - worker meals replace home cooking (reproductive function)
+  722:
+    dept_IIa: 0.50
+    dept_IIb: 0.40
+    dept_III: 0.10
+
   # Fine dining - luxury
   722511:
     dept_IIa: 0.20
     dept_IIb: 0.80
 
-  # Fast food - necessary consumption
+  # Fast food - necessary consumption with reproductive element
   722513:
-    dept_IIa: 0.90
+    dept_IIa: 0.80
     dept_IIb: 0.10
+    dept_III: 0.10
+
+  # ----------------------------------------------------------------------------
+  # Healthcare Subsector Overrides (Fortunati/Federici framework)
+  # ----------------------------------------------------------------------------
+  # Ambulatory Healthcare - primary/preventive care maintains workers
+  621:
+    dept_IIa: 0.70
+    dept_IIb: 0.10
+    dept_III: 0.20
+
+  # Hospitals - essential care with small elective component
+  622:
+    dept_IIa: 0.75
+    dept_IIb: 0.05
+    dept_III: 0.20
+
+  # Nursing & Residential Care - pure social reproduction
+  # Federici: elder care is explicitly reproductive
+  623:
+    dept_III: 1.0
+
+  # Social Assistance - primarily reproductive
+  624:
+    dept_IIa: 0.10
+    dept_III: 0.90
+
+  # Home Health Care Services - maintains labor power in domestic settings
+  6216:
+    dept_III: 1.0
+
+  # ----------------------------------------------------------------------------
+  # Education Subsector Overrides
+  # ----------------------------------------------------------------------------
+  # Elementary and secondary schools - produces general work capacity
+  6111:
+    dept_III: 1.0
+
+  # Junior Colleges - general work capacity
+  6112:
+    dept_IIa: 0.20
+    dept_III: 0.80
+
+  # Colleges/Universities - mix of general capacity and professional training
+  6113:
+    dept_I: 0.20
+    dept_IIa: 0.30
+    dept_IIb: 0.20
+    dept_III: 0.30
 
   # ----------------------------------------------------------------------------
   # Social Reproduction Overrides
   # ----------------------------------------------------------------------------
-  # Child day care services - pure social reproduction
+  # Child day care services - pure social reproduction (generational reproduction)
   6244:
     dept_III: 1.0
 
-  # Private households (domestic workers) - social reproduction
-  814:
+  # Individual & Family Services - maintains worker capacity
+  6241:
     dept_III: 1.0
 
-  # Elementary and secondary schools - social reproduction
-  6111:
+  # Community Food & Housing Services - emergency reproduction
+  6242:
+    dept_III: 1.0
+
+  # Vocational Rehabilitation - restores damaged labor power
+  6243:
+    dept_III: 1.0
+
+  # Private households (domestic workers) - Fortunati's paradigmatic reproductive labor
+  814:
     dept_III: 1.0
 
   # Nursing care facilities - social reproduction
   6231:
-    dept_IIa: 0.20
-    dept_III: 0.80
+    dept_III: 1.0
 
 # =============================================================================
 # EXCLUDED SECTORS
@@ -319,18 +464,103 @@ excluded:
 # Dept III (Social Reproduction): Very low c/v (care work), low s/v (suppressed wages)
 
 default_ratios:
+  # BEA-calibrated ratios derived from IntermediateInputs.xlsx and ValueAdded.xlsx
+  # cv_ratio = intermediate_inputs / compensation
+  # sv_ratio = gross_operating_surplus / compensation
+  # Target: Profit rate r = s/(c+v) within Piketty's 3-8% empirical bounds
   dept_I:
-    cv_ratio: 3.0    # Capital-intensive: mining, machinery, construction materials
-    sv_ratio: 2.0    # High extraction from productivity gains
+    cv_ratio: 1.8    # BEA: intermediate/compensation for capital goods sectors
+    sv_ratio: 0.12   # BEA: gross_operating_surplus/compensation
 
   dept_IIa:
-    cv_ratio: 1.5    # Labor-intensive: food retail, basic services
-    sv_ratio: 1.0    # Moderate exploitation, competitive markets
+    cv_ratio: 1.0    # BEA: retail/service intermediate costs
+    sv_ratio: 0.08   # BEA: competitive wage goods, low margins
 
   dept_IIb:
-    cv_ratio: 2.5    # Monopoly capital in luxury goods
-    sv_ratio: 3.0    # High markups, brand rents, status goods
+    cv_ratio: 1.5    # BEA: luxury goods production
+    sv_ratio: 0.15   # BEA: monopoly markup on luxuries
 
   dept_III:
-    cv_ratio: 0.5    # Very labor-intensive: care work, domestic labor
-    sv_ratio: 0.7    # Suppressed wages, often unpaid domestic labor equivalent
+    cv_ratio: 0.4    # BEA: care work, minimal fixed capital
+    sv_ratio: 0.05   # BEA: suppressed care worker margins
+
+# =============================================================================
+# SECTOR RATIOS (BEA Industry-Level Calibration)
+# =============================================================================
+# These sector-level ratios are derived from BEA national accounts data:
+# - cv_ratio: intermediate_inputs / compensation (from TII105-A)
+# - sv_ratio: gross_operating_surplus / compensation (from TVA113-A)
+#
+# These override department defaults for better sector-specific accuracy.
+# Lookup order: BEA source -> sector_ratios -> default_ratios (by department)
+
+sector_ratios:
+  "11":  # Agriculture, forestry, fishing, hunting
+    cv_ratio: 1.4
+    sv_ratio: 0.25
+  "21":  # Mining, quarrying, oil & gas
+    cv_ratio: 2.5
+    sv_ratio: 0.40
+  "22":  # Utilities
+    cv_ratio: 2.0
+    sv_ratio: 0.35
+  "23":  # Construction
+    cv_ratio: 1.5
+    sv_ratio: 0.11
+  "31":  # Manufacturing (food, beverage, textiles)
+    cv_ratio: 1.8
+    sv_ratio: 0.14
+  "32":  # Manufacturing (wood, paper, chemicals)
+    cv_ratio: 1.8
+    sv_ratio: 0.14
+  "33":  # Manufacturing (metal, machinery, electronics)
+    cv_ratio: 1.8
+    sv_ratio: 0.14
+  "42":  # Wholesale trade
+    cv_ratio: 0.6
+    sv_ratio: 0.10
+  "44":  # Retail trade (motor vehicle, furniture, electronics)
+    cv_ratio: 0.8
+    sv_ratio: 0.10
+  "45":  # Retail trade (sporting goods, general merchandise)
+    cv_ratio: 0.8
+    sv_ratio: 0.10
+  "48":  # Transportation
+    cv_ratio: 1.2
+    sv_ratio: 0.12
+  "49":  # Warehousing & postal
+    cv_ratio: 1.2
+    sv_ratio: 0.12
+  "51":  # Information
+    cv_ratio: 0.7
+    sv_ratio: 0.20
+  "52":  # Finance & insurance
+    cv_ratio: 0.4
+    sv_ratio: 0.15
+  "53":  # Real estate & rental
+    cv_ratio: 0.3
+    sv_ratio: 0.50
+  "54":  # Professional services
+    cv_ratio: 0.4
+    sv_ratio: 0.09
+  "55":  # Management of companies
+    cv_ratio: 0.5
+    sv_ratio: 0.12
+  "56":  # Administrative & waste services
+    cv_ratio: 0.5
+    sv_ratio: 0.10
+  "61":  # Educational services
+    cv_ratio: 0.3
+    sv_ratio: 0.04
+  "62":  # Healthcare & social assistance
+    cv_ratio: 0.5
+    sv_ratio: 0.06
+  "71":  # Arts, entertainment, recreation
+    cv_ratio: 0.6
+    sv_ratio: 0.12
+  "72":  # Accommodation & food services
+    cv_ratio: 0.7
+    sv_ratio: 0.08
+  "81":  # Other services
+    cv_ratio: 0.5
+    sv_ratio: 0.10

@@ -894,6 +894,93 @@ class RevolutionaryFinanceDefaults:
     DRIFT_HIGH: float = 0.6  # High drift (NGO-style org)
 
 
+# =============================================================================
+# MARXIAN REPRODUCTION SCHEMA EXAMPLES (Capital Volume 2)
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class MarxReproductionExamples:
+    """Numerical examples from Marx's Capital Volume 2, Chapters 20-21.
+
+    These examples validate our 4x3 Marxian reproduction schema against
+    Marx's original formulations in Capital Volume 2.
+
+    Sources:
+        - Chapter 20: Simple Reproduction
+        - Chapter 21: Expanded Reproduction
+        - Marx's IIa/IIb subdivision for luxury vs. necessary consumption
+
+    Note: Marx assumed uniform c/v ratio of 4:1 and s/v ratio of 1:1 (100%).
+    Our implementation extends this with variable ratios per department.
+    """
+
+    # -------------------------------------------------------------------------
+    # Simple Reproduction (Capital Vol. 2, Chapter 20)
+    # -------------------------------------------------------------------------
+    # Department I: Means of Production
+    SIMPLE_I_C: float = 4000.0
+    SIMPLE_I_V: float = 1000.0
+    SIMPLE_I_S: float = 1000.0
+    SIMPLE_I_TOTAL: float = 6000.0
+
+    # Department II: Means of Consumption (IIa + IIb combined)
+    SIMPLE_II_C: float = 2000.0
+    SIMPLE_II_V: float = 500.0
+    SIMPLE_II_S: float = 500.0
+    SIMPLE_II_TOTAL: float = 3000.0
+
+    # -------------------------------------------------------------------------
+    # IIa/IIb Subdivision (Capital Vol. 2, Chapter 20)
+    # -------------------------------------------------------------------------
+    # Department IIa: Necessary Consumption (wage goods)
+    SIMPLE_IIA_C: float = 1600.0
+    SIMPLE_IIA_V: float = 400.0
+    SIMPLE_IIA_S: float = 400.0
+    SIMPLE_IIA_TOTAL: float = 2400.0
+
+    # Department IIb: Luxury Consumption (bourgeois goods)
+    SIMPLE_IIB_C: float = 400.0
+    SIMPLE_IIB_V: float = 100.0
+    SIMPLE_IIB_S: float = 100.0
+    SIMPLE_IIB_TOTAL: float = 600.0
+
+    # -------------------------------------------------------------------------
+    # Expanded Reproduction (Capital Vol. 2, Chapter 21)
+    # -------------------------------------------------------------------------
+    # Department I: Means of Production (accumulating capital)
+    EXPAND_I_C: float = 5000.0
+    EXPAND_I_V: float = 1000.0
+    EXPAND_I_S: float = 1000.0
+    EXPAND_I_TOTAL: float = 7000.0
+
+    # Department II: Means of Consumption
+    EXPAND_II_C: float = 1430.0
+    EXPAND_II_V: float = 285.0
+    EXPAND_II_S: float = 285.0
+    EXPAND_II_TOTAL: float = 2000.0
+
+    # -------------------------------------------------------------------------
+    # Marx's Theoretical Ratios (uniform in his examples)
+    # -------------------------------------------------------------------------
+    MARX_OCC: float = 4.0  # c/v ratio in all Marx's examples
+    MARX_EXPLOITATION_RATE: float = 1.0  # s/v = 100% (s equals v)
+
+    # -------------------------------------------------------------------------
+    # Derived Ratios
+    # -------------------------------------------------------------------------
+    # IIb to total II ratio: 600/3000 = 20% luxury consumption
+    IIB_TO_II_RATIO: float = 0.20
+
+    # Simple reproduction equilibrium: I(v+s) = IIc
+    # 1000 + 1000 = 2000 ✓
+    SIMPLE_EQUILIBRIUM_LHS: float = 2000.0  # I(v+s)
+    SIMPLE_EQUILIBRIUM_RHS: float = 2000.0  # IIc
+
+    # Total economy value in simple reproduction
+    SIMPLE_TOTAL_VALUE: float = 9000.0
+
+
 @dataclass(frozen=True)
 class Thresholds:
     __test__ = False  # Prevent pytest collection
@@ -977,6 +1064,9 @@ class Thresholds:
     DynamicBalance: type[DynamicBalanceDefaults] = DynamicBalanceDefaults
     ImperialCircuit: type[ImperialCircuitDefaults] = ImperialCircuitDefaults
     Phase2: type[Phase2GameLoopDefaults] = Phase2GameLoopDefaults
+
+    # Marxian theory validation constants (Capital Volume 2)
+    MarxReproduction: type[MarxReproductionExamples] = MarxReproductionExamples
 
 
 # Alias for backwards compatibility and shorter imports

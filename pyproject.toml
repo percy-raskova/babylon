@@ -131,6 +131,7 @@ markers = [
     "theory_rift: Metabolic rift and ecological limits mechanics",
     "theory_solidarity: Solidarity transmission and consciousness mechanics",
     "property: Property-based tests using Hypothesis",
+    "theory: Marxian theory validation tests (Capital Volume 2 reproduction schema)",
 ]
 
 [tool.ruff]

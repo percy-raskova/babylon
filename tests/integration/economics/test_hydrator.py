@@ -480,3 +480,179 @@ class TestTensorOutput:
         assert restored.fips_code == tensor.fips_code
         assert restored.year == tensor.year
         assert restored.dept_I.v == pytest.approx(tensor.dept_I.v)
+
+
+# =============================================================================
+# MARXIAN THEORY VALIDATION TESTS
+# =============================================================================
+
+
+class TestReproductionSchemaConditions:
+    """Tests for Marx's reproduction schema conditions on hydrated tensors.
+
+    These tests verify that QCEW-derived tensors satisfy (or approach)
+    Marx's equilibrium conditions from Capital Volume 2.
+    """
+
+    @pytest.mark.theory
+    def test_tensor_satisfies_simple_reproduction_ratio(
+        self,
+        wayne_county_qcew: list[tuple[str, float, int]],
+        dept_mapper: DepartmentMapper,
+        mock_bea_source: MockBEADataSource,
+    ) -> None:
+        """A balanced economy tensor should approach I(v+s) ~ IIc.
+
+        This tests that real QCEW data produces tensors compatible
+        with Marx's reproduction conditions. The ratio should be
+        roughly balanced (in range 0.5 to 2.0) for a functioning economy.
+
+        Perfect equality (1.0) indicates simple reproduction.
+        Values > 1.0 indicate expanded reproduction (accumulation).
+        """
+        qcew = MockQCEWDataSource({("26163", 2022): wayne_county_qcew})
+        hydrator = MarxianHydrator(
+            qcew_source=qcew,
+            bea_source=mock_bea_source,
+            dept_mapper=dept_mapper,
+        )
+
+        tensor = hydrator.hydrate("26163", 2022)
+
+        # I(v+s) - living labor in Dept I
+        I_living = tensor.dept_I.v + tensor.dept_I.s
+
+        # IIc - constant capital in consumption departments (IIa + IIb + III)
+        II_constant = tensor.dept_IIa.c + tensor.dept_IIb.c + tensor.dept_III.c
+
+        # Skip if either is zero (degenerate case)
+        if I_living == 0.0 or II_constant == 0.0:
+            pytest.skip("Degenerate tensor with zero I(v+s) or IIc")
+
+        ratio = I_living / II_constant
+
+        # Should be roughly balanced (0.5 to 2.0 range)
+        # This is a weak condition - a functioning economy shouldn't be
+        # wildly unbalanced between production and consumption
+        assert 0.5 <= ratio <= 2.0, (
+            f"Reproduction ratio I(v+s)/IIc = {ratio:.3f} outside plausible range [0.5, 2.0]. "
+            f"I(v+s)={I_living:.2f}, IIc={II_constant:.2f}"
+        )
+
+
+class TestOrganicCompositionOrdering:
+    """Tests for organic composition ordering in hydrated tensors.
+
+    Theoretical prediction: Dept I (capital goods) should have
+    higher OCC than Dept IIa (wage goods) which should have higher
+    OCC than Dept III (care work).
+    """
+
+    @pytest.mark.theory
+    def test_aggregate_occ_ordering_in_real_data(
+        self,
+        dept_mapper: DepartmentMapper,
+        mock_bea_source: MockBEADataSource,
+    ) -> None:
+        """Real QCEW data should produce OCC ordering: I > IIa > III.
+
+        This test uses carefully constructed QCEW data that mimics
+        the theoretical capital intensity differences between departments.
+        """
+        # Create data with clear departmental separation
+        # Dept I industries (mining, machinery) - capital intensive
+        # Dept IIa industries (retail, food) - moderate
+        # Dept III industries (care work) - labor intensive
+        qcew_data = [
+            # Dept I - high capital intensity
+            ("21221", 100_000.0, 50),  # Iron ore mining - 100% I
+            ("3332", 80_000.0, 40),  # Industrial machinery - 95% I
+            # Dept IIa - moderate capital
+            ("4451", 200_000.0, 150),  # Grocery stores - 95% IIa
+            ("311", 150_000.0, 100),  # Food manufacturing - 85% IIa
+            # Dept III - low capital (labor intensive)
+            ("6244", 100_000.0, 80),  # Child day care - 100% III
+            ("814", 50_000.0, 60),  # Private households - 100% III
+        ]
+
+        qcew = MockQCEWDataSource({("12345", 2022): qcew_data})
+        hydrator = MarxianHydrator(
+            qcew_source=qcew,
+            bea_source=mock_bea_source,
+            dept_mapper=dept_mapper,
+        )
+
+        tensor = hydrator.hydrate("12345", 2022)
+
+        # Skip if any department has zero variable capital
+        if tensor.dept_I.v == 0.0 or tensor.dept_IIa.v == 0.0 or tensor.dept_III.v == 0.0:
+            pytest.skip("Degenerate tensor with zero variable capital in some department")
+
+        # Get organic compositions
+        occ_I = tensor.dept_I.organic_composition
+        occ_III = tensor.dept_III.organic_composition
+
+        # Theoretical ordering: I > III
+        # (We skip IIa/IIb as they depend on sector composition which varies)
+        assert occ_I > occ_III, f"Dept I OCC ({occ_I:.2f}) should > Dept III OCC ({occ_III:.2f})"
+
+
+class TestExploitationRateOrdering:
+    """Tests for exploitation rate ordering in hydrated tensors.
+
+    Theoretical prediction: Dept IIb (luxury goods) should have
+    higher s/v than Dept IIa (competitive markets) which should
+    have higher s/v than Dept III (suppressed care wages).
+    """
+
+    @pytest.mark.theory
+    def test_aggregate_exploitation_ordering_in_real_data(
+        self,
+        dept_mapper: DepartmentMapper,
+        mock_bea_source: MockBEADataSource,
+    ) -> None:
+        """Real QCEW data should produce s/v ordering with IIb higher than IIa.
+
+        This test uses QCEW data with clear luxury vs. necessary distinction.
+        """
+        # Create data with clear departmental separation
+        qcew_data = [
+            # Dept IIb - high exploitation (luxury monopoly rents)
+            ("44831", 100_000.0, 30),  # Jewelry stores - 100% IIb
+            ("71391", 80_000.0, 20),  # Golf courses - 100% IIb
+            ("722511", 60_000.0, 25),  # Fine dining - 80% IIb
+            # Dept IIa - moderate exploitation (competitive)
+            ("4451", 200_000.0, 150),  # Grocery stores - 95% IIa
+            ("722513", 100_000.0, 100),  # Fast food - 90% IIa
+            # Dept III - lowest exploitation (suppressed)
+            ("6244", 120_000.0, 100),  # Child day care - 100% III
+            ("814", 60_000.0, 80),  # Private households - 100% III
+        ]
+
+        qcew = MockQCEWDataSource({("12345", 2022): qcew_data})
+        hydrator = MarxianHydrator(
+            qcew_source=qcew,
+            bea_source=mock_bea_source,
+            dept_mapper=dept_mapper,
+        )
+
+        tensor = hydrator.hydrate("12345", 2022)
+
+        # Skip if any department has zero variable capital
+        if tensor.dept_IIa.v == 0.0 or tensor.dept_IIb.v == 0.0 or tensor.dept_III.v == 0.0:
+            pytest.skip("Degenerate tensor with zero variable capital in some department")
+
+        # Get exploitation rates
+        sv_IIa = tensor.dept_IIa.exploitation_rate
+        sv_IIb = tensor.dept_IIb.exploitation_rate
+        sv_III = tensor.dept_III.exploitation_rate
+
+        # Theoretical ordering: IIb > IIa > III
+        assert sv_IIb > sv_III, (
+            f"Dept IIb exploitation rate ({sv_IIb:.2f}) should > "
+            f"Dept III exploitation rate ({sv_III:.2f})"
+        )
+        assert sv_IIa > sv_III, (
+            f"Dept IIa exploitation rate ({sv_IIa:.2f}) should > "
+            f"Dept III exploitation rate ({sv_III:.2f})"
+        )

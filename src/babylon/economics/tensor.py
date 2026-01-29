@@ -203,6 +203,19 @@ class ValueTensor4x3(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def total_v(self) -> Currency:
+        """Total variable capital (wages) across all departments.
+
+        This represents the aggregate wage bill for the county - the total
+        living labor employed across all four departments of production.
+
+        Returns:
+            Sum of v (variable capital) across all departments.
+        """
+        return self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + self.dept_III.v
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def profit_rate(self) -> float:
         """Average rate of profit across all departments.
 

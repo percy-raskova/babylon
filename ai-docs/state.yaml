@@ -2,9 +2,9 @@
 # What exists vs what's planned - KEEP THIS UPDATED
 
 meta:
-  version: "2.0.7"
-  updated: "2026-01-28"
-  last_sprint: "Marxian Tensor Calibration (BEA/CEX)"
+  version: "2.0.8"
+  updated: "2026-01-29"
+  last_sprint: "Imperial Rent Calculation (Emmanuel-Amin)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -270,6 +270,37 @@ implemented:
           dept_I_II_split: "BEA Use Tables (intermediate vs final demand)"
           IIa_IIb_split: "BLS CEX necessity index (worker vs capitalist consumption)"
           dept_III: "Fortunati/Federici reproductive labor framework"
+
+      imperial_rent_calculation:
+        status: "complete"
+        date: "2026-01-29"
+        details: "Imperial rent as derived corollary to Marxian value tensor"
+        spec: "ai-docs/imperial-rent-spec.yaml"
+        theoretical_framework: "Emmanuel-Amin unequal exchange"
+        files_created:
+          - "src/babylon/economics/reproduction.py (PeripheryReproductionBasket, ImperialRentCalculator, ImperialRentResult)"
+          - "src/babylon/economics/data/periphery_basket.yaml (peripheral reproduction costs)"
+          - "tests/integration/economics/test_imperial_rent.py (8 tests)"
+          - "tests/integration/economics/conftest.py (shared fixtures)"
+        files_modified:
+          - "src/babylon/economics/tensor.py (added total_v computed property)"
+          - "src/babylon/economics/hydrator.py (added hydrate_with_rent method)"
+          - "src/babylon/economics/__init__.py (exports)"
+        key_formula:
+          simple_baseline: "Phi = W_actual - P_periphery"
+          future_roadmap: "Phi_worker = (W_actual - P_periphery) × alpha (value chain layers)"
+        validation:
+          tests: 8
+          location: "tests/integration/economics/test_imperial_rent.py"
+          assertions:
+            - "All US counties have Phi > 0 (wages > periphery baseline)"
+            - "Imperial rent ratio > 99% (periphery cost negligible vs US wages)"
+            - "Computed fields (wage_multiple, rent_ratio) calculate correctly"
+        future_work:
+          - "Regional periphery baselines (Sub-Saharan, South Asia, LATAM)"
+          - "World Bank/ILO data integration"
+          - "Value chain extraction layers"
+          - "Per-worker imperial rent metrics"
 
   core_logic:
     status: "complete"

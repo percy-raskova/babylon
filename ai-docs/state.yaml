@@ -4,7 +4,7 @@
 meta:
   version: "2.0.8"
   updated: "2026-01-29"
-  last_sprint: "Imperial Rent Calculation (Emmanuel-Amin)"
+  last_sprint: "Shadow Labor Visibility (Department III)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -301,6 +301,48 @@ implemented:
           - "World Bank/ILO data integration"
           - "Value chain extraction layers"
           - "Per-worker imperial rent metrics"
+
+      shadow_labor_visibility:
+        status: "complete"
+        date: "2026-01-29"
+        details: "Shadow labor visibility dimension (g_33) for Department III"
+        spec: "ai-docs/shadow-labor-spec.yaml"
+        theoretical_framework: "Feminist Marxism / Social Reproduction Theory (Federici, Vogel)"
+        files_created:
+          - "src/babylon/data/atus/__init__.py (package exports)"
+          - "src/babylon/data/atus/models.py (ATUSActivityRecord, ATUSHouseholdSummary)"
+          - "src/babylon/data/atus/protocol.py (ReproductionLoaderProtocol ABC)"
+          - "src/babylon/data/atus/mock_loader.py (MockReproductionLoader)"
+          - "src/babylon/economics/shadow_labor.py (ShadowLaborConfig, ShadowLaborResult, ShadowLaborService)"
+          - "tests/unit/economics/test_shadow_labor.py (37 tests)"
+        files_modified:
+          - "src/babylon/config/defines.py (added shadow_wage_hourly constant)"
+          - "src/babylon/economics/__init__.py (exports)"
+          - "tests/constants.py (ShadowLaborDefaults)"
+        key_formulas:
+          v_market: "T_3,v × w_shadow × g_33 (monetized care work)"
+          v_shadow: "T_3,v × w_shadow × (1 - g_33) (shadow subsidy)"
+          invariant: "v_market + v_shadow = total_value (value conservation)"
+        constants:
+          g_33_default: "0.3 (ATUS 2022: ~30% of care work monetized)"
+          shadow_wage: "$15.43/hour (BLS SOC 31-1120 median, May 2023)"
+          weekly_hours: "21 hours/week (ATUS 2022 national average)"
+        architecture:
+          pattern: "Lens/View - provides alternative decomposition without modifying tensor"
+          key_principle: "Shadow labor service operates alongside tensor, not inside it"
+        validation:
+          tests: 37
+          location: "tests/unit/economics/test_shadow_labor.py"
+          assertions:
+            - "g_33=1.0 → v_shadow=0 (full monetization)"
+            - "g_33=0.0 → v_market=0 (full shadow)"
+            - "Value conservation: v_market + v_shadow = total_value"
+        future_work:
+          - "Real ATUS microdata integration (BLS API)"
+          - "County-level g_33 variation (empirical calibration)"
+          - "Optional tensor integration (shadow_decomposition field)"
+          - "Gendered split of reproductive labor"
+          - "International comparison (ILO/World Bank time-use data)"
 
   core_logic:
     status: "complete"
@@ -904,6 +946,8 @@ current_focus:
     outcome: "Win (solidarity) or Lose (fascism) based on solidarity_strength"
 
   recently_completed:
+    - "Shadow Labor Visibility Sprint (2026-01-29)"
+    - "Imperial Rent Calculation (Emmanuel-Amin) (2026-01-29)"
     - "Marxian Value Tensor BEA/CEX Calibration (2026-01-28)"
     - "XML to JSON migration"
     - "JSON Schema system (36 schemas)"

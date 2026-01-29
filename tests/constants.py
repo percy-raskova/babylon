@@ -900,6 +900,40 @@ class RevolutionaryFinanceDefaults:
 
 
 @dataclass(frozen=True)
+class ShadowLaborDefaults:
+    """Shadow labor test constants (Department III visibility).
+
+    Source: Shadow Labor Sprint implementation.
+    The visibility coefficient g_33 determines what fraction of reproductive
+    labor is monetized vs. shadow (unpaid household work).
+
+    Based on:
+    - ATUS 2022 national averages (~21 hours/week care work)
+    - BLS OES May 2023 (SOC 31-1120 home health aide median: $15.43/hour)
+    """
+
+    # Mock ATUS values (national averages)
+    WEEKLY_HOURS: float = 21.0  # ATUS 2022 national average
+    ANNUAL_HOURS: float = 1092.0  # 21 * 52 weeks
+
+    # Shadow wage (BLS replacement cost)
+    SHADOW_WAGE_HOURLY: float = _DEFINES.economy.shadow_wage_hourly  # $15.43
+
+    # Visibility coefficients
+    G_33_FULL_MONETIZED: float = 1.0  # All care work paid → no shadow
+    G_33_FULL_SHADOW: float = 0.0  # All care work unpaid → max shadow
+    G_33_DEFAULT: float = 0.3  # ATUS 2022 ~30% monetized
+
+    # Test scenario: 1000 annual hours at $15.43/hour
+    TEST_HOURS: float = 1000.0
+    TEST_TOTAL_VALUE: float = 15430.0  # 1000 * 15.43
+    TEST_SHADOW_FULL: float = 15430.0  # g_33 = 0.0 → 100% shadow
+    TEST_SHADOW_NONE: float = 0.0  # g_33 = 1.0 → 0% shadow
+    TEST_MARKET_DEFAULT: float = 4629.0  # g_33 = 0.3 → 30% market (15430 * 0.3)
+    TEST_SHADOW_DEFAULT: float = 10801.0  # g_33 = 0.3 → 70% shadow (15430 * 0.7)
+
+
+@dataclass(frozen=True)
 class MarxReproductionExamples:
     """Numerical examples from Marx's Capital Volume 2, Chapters 20-21.
 
@@ -1064,6 +1098,7 @@ class Thresholds:
     DynamicBalance: type[DynamicBalanceDefaults] = DynamicBalanceDefaults
     ImperialCircuit: type[ImperialCircuitDefaults] = ImperialCircuitDefaults
     Phase2: type[Phase2GameLoopDefaults] = Phase2GameLoopDefaults
+    ShadowLabor: type[ShadowLaborDefaults] = ShadowLaborDefaults
 
     # Marxian theory validation constants (Capital Volume 2)
     MarxReproduction: type[MarxReproductionExamples] = MarxReproductionExamples

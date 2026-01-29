@@ -116,6 +116,13 @@ class EconomyDefines(BaseModel):
         description="P(S|R)/P(S|A) ratio threshold for subsidy",
     )
 
+    # Shadow labor (Department III visibility) - Sprint: Shadow Labor
+    shadow_wage_hourly: float = Field(
+        default=15.43,
+        ge=0.0,
+        description="Shadow labor hourly rate (BLS 31-1120 home health aide median, May 2023)",
+    )
+
     # Negligible value thresholds (noise filtering)
     negligible_rent: float = Field(
         default=0.01,

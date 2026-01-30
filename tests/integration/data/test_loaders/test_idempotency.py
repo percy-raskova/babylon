@@ -208,18 +208,9 @@ class TestTransactionAtomicity:
     def test_rollback_on_error(self, isolated_session: Session) -> None:
         """Failed load should rollback all changes.
 
-        Note: This test is skipped for DuckDB because:
-        1. DuckDB doesn't support SAVEPOINT (nested transactions)
-        2. DuckDB FK enforcement requires commits between dependent deletes
-           (see loader_base._delete_tables), making partial rollback impossible
+        Note: This test uses SQLite which supports SAVEPOINT for nested transactions.
         """
-        # Skip for DuckDB - doesn't support nested transactions
-        dialect = isolated_session.get_bind().dialect.name
-        if dialect == "duckdb":
-            pytest.skip(
-                "DuckDB doesn't support SAVEPOINT; clear_tables commits each delete "
-                "for FK constraint handling, making rollback impossible"
-            )
+        # SQLite supports SAVEPOINT, so this test works without skipping
 
         from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
 

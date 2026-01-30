@@ -25,7 +25,7 @@ from babylon.data.reference.database import (
     init_normalized_db,
 )
 
-# DuckDB reflection is limited; focus drift checks on tables/columns.
+# SQLite reflection is limited; focus drift checks on tables/columns.
 _EXCLUDED_OBJECT_TYPES = {
     "check_constraint",
     "foreign_key_constraint",
@@ -96,10 +96,10 @@ def _types_equivalent(inspected_type: object, metadata_type: object) -> bool:
     return False
 
 
-def _ensure_duckdb_impl() -> None:
-    """Register a fallback Alembic impl for DuckDB."""
-    if "duckdb" not in alembic_impl._impls:
-        alembic_impl._impls["duckdb"] = alembic_impl.DefaultImpl
+def _ensure_sqlite_impl() -> None:
+    """Register a fallback Alembic impl for SQLite (if not already present)."""
+    if "sqlite" not in alembic_impl._impls:
+        alembic_impl._impls["sqlite"] = alembic_impl.DefaultImpl
 
 
 def _include_object(
@@ -118,7 +118,7 @@ def collect_schema_diffs(engine: Engine | None = None) -> list[Any]:
     """Return Alembic autogenerate diffs between DB and model metadata."""
     resolved_engine = engine or get_normalized_engine()
     with resolved_engine.connect() as connection:
-        _ensure_duckdb_impl()
+        _ensure_sqlite_impl()
 
         def _compare_type(
             _context: object,
@@ -347,14 +347,11 @@ def get_schema_repair_report(
     try:
         diffs = collect_schema_diffs(resolved_engine)
     except KeyError as exc:
-        if str(exc).strip("'\"") == "duckdb":
+        if str(exc).strip("'\"") == "sqlite":
             raise SchemaCheckError(
-                "Alembic has no migration implementation for the 'duckdb' dialect.",
-                hint=(
-                    "Ensure `duckdb-engine` is installed and the DuckDB Alembic "
-                    "fallback impl is registered before schema checks."
-                ),
-                details={"dialect": "duckdb"},
+                "Alembic has no migration implementation for the 'sqlite' dialect.",
+                hint="Ensure SQLAlchemy is properly installed.",
+                details={"dialect": "sqlite"},
             ) from exc
         raise
     except Exception as exc:  # pragma: no cover - defensive catch

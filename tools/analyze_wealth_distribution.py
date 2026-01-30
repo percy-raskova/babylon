@@ -34,7 +34,7 @@ from numpy.typing import NDArray
 
 # Project paths
 PROJECT_ROOT: Final = Path(__file__).parent.parent
-DB_PATH: Final = PROJECT_ROOT / "data" / "duckdb" / "marxist-data-3NF.duckdb"
+DB_PATH: Final = PROJECT_ROOT / "data" / "sqlite" / "marxist-data-3NF.sqlite"
 RESULTS_DIR: Final = PROJECT_ROOT / "results"
 
 
@@ -85,15 +85,15 @@ class InvertedDistribution:
 
 
 def load_wealth_shares(db_path: Path = DB_PATH) -> list[WealthDistributionPoint]:
-    """Load FRED DFA wealth share data from DuckDB.
+    """Load FRED DFA wealth share data from SQLite.
 
     Args:
-        db_path: Path to marxist-data-3NF.duckdb database
+        db_path: Path to marxist-data-3NF.sqlite database
 
     Returns:
         List of WealthDistributionPoint sorted by date
     """
-    import duckdb
+    import sqlite3
 
     query = """
         SELECT
@@ -109,7 +109,7 @@ def load_wealth_shares(db_path: Path = DB_PATH) -> list[WealthDistributionPoint]
         ORDER BY t.year, t.quarter, wc.wealth_class_id
     """
 
-    conn = duckdb.connect(str(db_path), read_only=True)
+    conn = sqlite3.connect(str(db_path))
     cursor = conn.execute(query)
     rows = cursor.fetchall()
     conn.close()

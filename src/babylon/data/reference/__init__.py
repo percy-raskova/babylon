@@ -4,7 +4,7 @@ The reference database contains normalized 3NF federal statistical data
 for initializing simulation state. This data is immutable after initial
 load - loaders write once, simulation reads only.
 
-Database location: data/duckdb/marxist-data-3NF.duckdb (override via BABYLON_NORMALIZED_DB_PATH)
+Database location: data/sqlite/marxist-data-3NF.sqlite (override via BABYLON_NORMALIZED_DB_PATH)
 
 Usage:
     # Read-only access (default for simulation)

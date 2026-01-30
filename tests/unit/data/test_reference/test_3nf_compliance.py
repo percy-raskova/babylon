@@ -461,35 +461,9 @@ class TestSchemaIntegrity:
     def test_dimension_tables_have_unique_constraints(self, engine: Engine) -> None:
         """Dimension tables should have unique constraints on natural keys.
 
-        Note: DuckDB's SQLAlchemy driver doesn't support constraint/index reflection,
-        so we verify the schema definition in SQLAlchemy ORM instead of inspecting DB.
+        Uses SQLite inspector for constraint reflection.
         """
-        dialect = engine.dialect.name
-
-        if dialect == "duckdb":
-            # DuckDB doesn't support constraint reflection, verify via ORM definition
-            # The schema defines these with unique=True in mapped_column()
-            from babylon.data.reference.schema import (
-                DimCountry,
-                DimCounty,
-                DimIndustry,
-                DimState,
-            )
-
-            schema_checks = [
-                (DimState, "state_fips"),
-                (DimCounty, "fips"),
-                (DimCountry, "cty_code"),
-                (DimIndustry, "naics_code"),
-            ]
-            for model, col_name in schema_checks:
-                col = model.__table__.columns[col_name]
-                assert col.unique or col.primary_key, (
-                    f"{model.__tablename__}.{col_name} should have unique=True in schema"
-                )
-            return
-
-        # SQLite path: use inspector for constraint reflection
+        # SQLite: use inspector for constraint reflection
         inspector = inspect(engine)
 
         # Key dimension tables that MUST have unique constraints

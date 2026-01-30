@@ -1,7 +1,7 @@
 """CLI entry point for unified data loading.
 
 Provides command-line interface to load data from all sources into the
-normalized 3NF database (marxist-data-3NF.duckdb).
+normalized 3NF database (marxist-data-3NF.sqlite).
 
 Usage:
     # Load all data with default config
@@ -222,30 +222,7 @@ def _run_schema_readiness(repair: bool) -> SchemaRepairReport:
         return schema_check.get_schema_repair_report(repair=repair)
     except SchemaCheckError:
         raise
-    except ModuleNotFoundError as exc:
-        if exc.name in {"duckdb", "duckdb_engine"}:
-            raise SchemaCheckError(
-                "DuckDB engine not available. Install `duckdb` and `duckdb-engine` "
-                "(e.g., `poetry install`) before running schema checks.",
-            ) from exc
-        raise
     except Exception as exc:
-        _no_such_module_exc: type[Exception] | None = None
-        try:
-            from sqlalchemy.exc import NoSuchModuleError
-
-            _no_such_module_exc = NoSuchModuleError
-        except ModuleNotFoundError:
-            pass
-        if (
-            _no_such_module_exc is not None
-            and isinstance(exc, _no_such_module_exc)
-            and "duckdb" in str(exc)
-        ):
-            raise SchemaCheckError(
-                "DuckDB SQLAlchemy dialect not found. Install `duckdb-engine` "
-                "(e.g., `poetry install`) before running schema checks.",
-            ) from exc
         raise SchemaCheckError(
             f"Schema check failed: {exc}",
             hint="Review the stack trace and verify database connectivity.",
@@ -410,34 +387,7 @@ def _run_schema_check(quiet: bool) -> None:
         if exc.details.get("diffs"):
             typer.echo(f"Diffs:\n{exc.details['diffs']}")
         raise typer.Exit(1) from exc
-    except ModuleNotFoundError as exc:
-        if exc.name in {"duckdb", "duckdb_engine"}:
-            typer.secho(
-                "DuckDB engine not available. Install `duckdb` and `duckdb-engine` "
-                "(e.g., `poetry install`) before running schema checks.",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(1) from exc
-        raise
     except Exception as exc:
-        _no_such_module_exc: type[Exception] | None = None
-        try:
-            from sqlalchemy.exc import NoSuchModuleError
-
-            _no_such_module_exc = NoSuchModuleError
-        except ModuleNotFoundError:
-            pass
-        if (
-            _no_such_module_exc is not None
-            and isinstance(exc, _no_such_module_exc)
-            and "duckdb" in str(exc)
-        ):
-            typer.secho(
-                "DuckDB SQLAlchemy dialect not found. Install `duckdb-engine` "
-                "(e.g., `poetry install`) before running schema checks.",
-                fg=typer.colors.RED,
-            )
-            raise typer.Exit(1) from exc
         logger.exception("Schema check failed unexpectedly.")
         typer.secho(f"Schema check failed: {exc}", fg=typer.colors.RED)
         raise typer.Exit(1) from exc
@@ -1904,36 +1854,6 @@ def lodes(
     print_stats(stats)
     if stats.has_errors:
         raise typer.Exit(1)
-
-
-@app.command("export-sqlite")
-def export_sqlite(
-    duckdb_path: Annotated[
-        Path | None,
-        typer.Option("--duckdb-path", help="Path to DuckDB file to export"),
-    ] = None,
-    sqlite_path: Annotated[
-        Path | None,
-        typer.Option("--sqlite-path", help="Target SQLite output path"),
-    ] = None,
-    overwrite: Annotated[
-        bool,
-        typer.Option("--overwrite/--no-overwrite", help="Overwrite existing SQLite file"),
-    ] = False,
-    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Suppress output")] = False,
-) -> None:
-    """Export DuckDB tables into a SQLite database file."""
-    from babylon.data.export_sqlite import export_duckdb_to_sqlite
-
-    count = export_duckdb_to_sqlite(
-        duckdb_path=duckdb_path,
-        sqlite_path=sqlite_path,
-        overwrite=overwrite,
-    )
-
-    if not quiet:
-        target = sqlite_path or Path("data/sqlite/marxist-data-3NF.sqlite")
-        typer.echo(f"Exported {count} tables to {target}")
 
 
 @app.command()

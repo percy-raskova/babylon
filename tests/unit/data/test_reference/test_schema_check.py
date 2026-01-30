@@ -25,7 +25,7 @@ def test_types_equivalent_detects_non_string_difference() -> None:
 
 
 def test_schema_check_reports_missing_database(tmp_path: Path) -> None:
-    missing_path = tmp_path / "missing.duckdb"
+    missing_path = tmp_path / "missing.sqlite"
     original_path = schema_check.NORMALIZED_DB_PATH
     schema_check.NORMALIZED_DB_PATH = missing_path
 
@@ -39,14 +39,14 @@ def test_schema_check_reports_missing_database(tmp_path: Path) -> None:
         schema_check.NORMALIZED_DB_PATH = original_path
 
 
-def test_schema_check_wraps_duckdb_impl_error(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.duckdb"
+def test_schema_check_wraps_sqlite_impl_error(tmp_path: Path) -> None:
+    db_path = tmp_path / "db.sqlite"
     db_path.touch()
     original_path = schema_check.NORMALIZED_DB_PATH
     schema_check.NORMALIZED_DB_PATH = db_path
 
     def _raise(_engine: object | None = None) -> list[object]:
-        raise KeyError("duckdb")
+        raise KeyError("sqlite")
 
     original_collect = schema_check.collect_schema_diffs
     schema_check.collect_schema_diffs = _raise
@@ -54,16 +54,16 @@ def test_schema_check_wraps_duckdb_impl_error(tmp_path: Path) -> None:
     try:
         with pytest.raises(SchemaCheckError) as exc_info:
             schema_check.check_normalized_schema()
-        assert "duckdb" in str(exc_info.value).lower()
+        assert "sqlite" in str(exc_info.value).lower()
         assert exc_info.value.hint
-        assert exc_info.value.details.get("dialect") == "duckdb"
+        assert exc_info.value.details.get("dialect") == "sqlite"
     finally:
         schema_check.collect_schema_diffs = original_collect
         schema_check.NORMALIZED_DB_PATH = original_path
 
 
 def test_schema_check_reports_drift(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.duckdb"
+    db_path = tmp_path / "db.sqlite"
     db_path.touch()
     original_path = schema_check.NORMALIZED_DB_PATH
     schema_check.NORMALIZED_DB_PATH = db_path
@@ -83,7 +83,7 @@ def test_schema_check_reports_drift(tmp_path: Path) -> None:
 
 
 def test_schema_check_returns_message_on_success(tmp_path: Path) -> None:
-    db_path = tmp_path / "db.duckdb"
+    db_path = tmp_path / "db.sqlite"
     db_path.touch()
     original_path = schema_check.NORMALIZED_DB_PATH
     schema_check.NORMALIZED_DB_PATH = db_path

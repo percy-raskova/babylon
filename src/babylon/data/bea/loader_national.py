@@ -1,7 +1,7 @@
 """BEA national industry data loader for 3NF schema.
 
 Loads BEA GDP-by-industry data from XLSX files directly into the normalized
-3NF schema (marxist-data-3NF.duckdb). This loader populates:
+3NF schema (marxist-data-3NF.sqlite). This loader populates:
 - dim_bea_industry: Industry dimension with hierarchy
 - fact_bea_national_industry: Annual gross output, value added, intermediate inputs
 

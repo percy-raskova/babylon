@@ -155,11 +155,7 @@ def _check_dir_with_globs(
 
 
 def _check_core_dependencies(add_check: AddCheckFn) -> None:
-    """Check core runtime dependencies for DuckDB ingestion."""
-    _check_module(add_check, "duckdb", required=True, hint="Install `duckdb` (poetry install).")
-    _check_module(
-        add_check, "duckdb_engine", required=True, hint="Install `duckdb-engine` (poetry install)."
-    )
+    """Check core runtime dependencies for SQLite ingestion."""
     _check_module(
         add_check, "sqlalchemy", required=True, hint="Install `sqlalchemy` (poetry install)."
     )

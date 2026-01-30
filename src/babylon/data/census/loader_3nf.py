@@ -1,7 +1,7 @@
 """Census data loader for direct 3NF schema population.
 
 Loads ACS 5-Year Estimates directly from Census Bureau API into the normalized
-3NF schema (marxist-data-3NF.duckdb), bypassing the intermediate research.sqlite.
+3NF schema (marxist-data-3NF.sqlite), bypassing the intermediate research.sqlite.
 
 This loader:
 - Uses LoaderConfig for parameterized temporal/geographic/operational settings

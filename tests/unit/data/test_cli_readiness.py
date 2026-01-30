@@ -9,7 +9,7 @@ from babylon.data.reference import schema_check
 
 def test_ingest_readiness_applies_repairs(monkeypatch) -> None:
     preflight = PreflightResult(
-        checks=[PreflightCheck(check_id="module:duckdb", status="ok", message="duckdb ok")]
+        checks=[PreflightCheck(check_id="module:sqlalchemy", status="ok", message="sqlalchemy ok")]
     )
     report = schema_check.SchemaRepairReport(
         applied=[

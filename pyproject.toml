@@ -35,7 +35,6 @@ sqlalchemy = ">=2.0.36"      # ORM for Ledger layer
 
 # === DATA & ANALYSIS ===
 pandas = ">=2.2.3"           # Dataframes for metrics
-duckdb = ">=1.0.0"           # In-game simulation ledger (not ETL)
 jsonschema = "^4.25.1"       # JSON Schema validation
 referencing = "^0.37.0"      # JSON Schema $ref support
 openpyxl = "^3.1.5"          # Excel export
@@ -219,8 +218,6 @@ plugins = [
 # Packages without type stubs - explicit ignore rather than inline comments
 [[tool.mypy.overrides]]
 module = [
-    "duckdb",
-    "duckdb.*",
     "alembic.*",
     "h3",
     "h3.*",

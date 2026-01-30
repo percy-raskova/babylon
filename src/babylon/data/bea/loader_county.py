@@ -1,7 +1,7 @@
 """BEA county GDP data loader for 3NF schema.
 
 Loads BEA CAGDP2 (County GDP by Industry) from bulk CSV downloads into the
-normalized 3NF schema (marxist-data-3NF.duckdb). This loader populates:
+normalized 3NF schema (marxist-data-3NF.sqlite). This loader populates:
 - fact_bea_county_gdp: Annual GDP by industry for each county
 
 The CAGDP2 table uses approximately 20 industries at the county level, which

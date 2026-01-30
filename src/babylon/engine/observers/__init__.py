@@ -7,6 +7,7 @@ monitor specific aspects of the simulation state:
 - EconomyMonitor: Detects sudden drops in imperial_rent_pool (>20%)
 - CausalChainObserver: Detects Shock Doctrine pattern (Crash -> Austerity -> Radicalization)
 - EndgameDetector: Detects game ending conditions (Slice 1.6)
+- SessionRecorder: Persists tick-by-tick state to SQLite (ADR030)
 
 Observers follow the Observer Pattern: they receive state change
 notifications but cannot modify simulation state. This separation
@@ -27,11 +28,13 @@ from babylon.engine.observers.schema_validator import (
     is_valid_narrative_frame,
     validate_narrative_frame,
 )
+from babylon.engine.observers.session_recorder import SessionRecorder
 
 __all__ = [
     "CausalChainObserver",
     "EconomyMonitor",
     "EndgameDetector",
+    "SessionRecorder",
     "TickStateRecorder",
     "is_valid_narrative_frame",
     "validate_narrative_frame",

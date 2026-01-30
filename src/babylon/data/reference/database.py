@@ -4,21 +4,20 @@ The reference database contains normalized 3NF federal statistical data
 for initializing simulation state. This data is treated as immutable
 after initial load - loaders write once, simulation reads only.
 
-Architecture (two-database pattern):
+Architecture (ADR030 - Unified SQLite Runtime):
     - ETL/Loading: SQLite (reliable UPSERT, idempotent operations)
-    - In-Game Ledger: DuckDB (fast OLAP queries, converted from SQLite)
+    - Reference Data: SQLite (census, QCEW, geography)
+    - Simulation State: SQLite (tick-keyed temporal tables per ADR031)
 
 Located at data/sqlite/marxist-data-3NF.sqlite by default. Override with
 BABYLON_NORMALIZED_DB_PATH to target an alternate build database.
 
-SQLite was chosen for ETL over DuckDB because:
+SQLite was chosen for the entire stack because:
 - Reliable on_conflict_do_update (UPSERT) support via SQLAlchemy
 - Mature, battle-tested SQLAlchemy dialect
 - Predictable constraint enforcement within transactions
 - Idempotent loader operations without duplicate key violations
-
-For in-game use, convert SQLite to DuckDB using:
-    python tools/convert_sqlite_to_duckdb.py
+- Single file deployment (no additional database servers)
 """
 
 import os

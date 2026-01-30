@@ -10,6 +10,9 @@ The simulation database stores ephemeral state during simulation runs:
 This database is separate from the reference database (immutable federal
 statistical data) and is created fresh for each simulation run.
 
+Implements ADR030 (Unified SQLite Runtime Architecture) - uses SQLite
+instead of the previous DuckDB implementation.
+
 Usage:
     from babylon.data.simulation import SimulationDB
 
@@ -19,18 +22,15 @@ Usage:
 
     # File-based for production (persists to data/runs/)
     with SimulationDB(run_id="experiment_001") as sim:
-        # Query reference data via ATTACH
-        counties = sim.con.execute("SELECT * FROM ref.dim_county").fetchdf()
-
         # Record simulation state
         sim.con.execute("INSERT INTO agent_state VALUES (...)")
 
 Architecture:
-    Reference DB (DuckDB) ──┬── Immutable federal data
-                           │   ATTACHed as 'ref' (read-only)
-                           │
-    Simulation DB (DuckDB) ─┴── Ephemeral per-run state
-                               Created fresh, discarded after analysis
+    Reference DB (SQLite) ── Immutable federal data (3NF)
+                            (census, QCEW, geography)
+
+    Simulation DB (SQLite) ── Ephemeral per-run state
+                             Created fresh, discarded after analysis
 """
 
 from babylon.data.simulation.database import SimulationDB

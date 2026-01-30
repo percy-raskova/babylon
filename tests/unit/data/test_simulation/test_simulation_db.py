@@ -1,8 +1,15 @@
-"""Unit tests for SimulationDB class."""
+"""Unit tests for SimulationDB class (SQLite implementation).
+
+Tests verify ADR030 (Unified SQLite Runtime Architecture) compliance:
+- SimulationDB uses SQLite instead of DuckDB
+- All existing API methods work correctly
+- Schema creates expected tables
+"""
 
 from __future__ import annotations
 
-import duckdb
+import sqlite3
+
 import pytest
 
 from babylon.data.simulation import SimulationDB
@@ -265,9 +272,9 @@ class TestDirectSQLOperations:
             sim.con.execute(
                 """
                 INSERT INTO production_event
-                (event_id, tick, territory_id, sector_code, c_millions,
+                (tick, territory_id, sector_code, c_millions,
                  v_millions, s_millions, workers)
-                VALUES (1, 0, 'CA-06001', '31-33', 500.0, 200.0, 100.0, 5000)
+                VALUES (0, 'CA-06001', '31-33', 500.0, 200.0, 100.0, 5000)
                 """
             )
 
@@ -306,7 +313,7 @@ class TestContextManager:
             sim.con.execute("SELECT 1")
 
         # After exit, connection should be closed
-        with pytest.raises(duckdb.ConnectionException):
+        with pytest.raises(sqlite3.ProgrammingError):
             sim.con.execute("SELECT 1")
 
     def test_context_manager_closes_on_exception(self) -> None:
@@ -316,5 +323,5 @@ class TestContextManager:
             raise ValueError("Intentional error")
 
         # Connection should still be closed
-        with pytest.raises(duckdb.ConnectionException):
+        with pytest.raises(sqlite3.ProgrammingError):
             sim.con.execute("SELECT 1")

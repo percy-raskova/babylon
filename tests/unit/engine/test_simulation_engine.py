@@ -21,6 +21,11 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 # =============================================================================
 # FIXTURES (using DomainFactory)
@@ -66,7 +71,7 @@ def two_node_state(
 ) -> WorldState:
     """Create a minimal WorldState with two nodes and one edge."""
     return _factory.create_world_state(
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
     )
 
@@ -105,7 +110,7 @@ class TestStepTickIncrement:
         """step() increments from any starting tick."""
         state = WorldState(
             tick=42,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation_edge],
         )
         new_state = step(state, config)
@@ -138,7 +143,7 @@ class TestStepImperialRent:
     ) -> None:
         """Worker loses wealth through imperial rent extraction."""
         new_state = step(two_node_state, config)
-        Assert(new_state).entity("C001").is_poorer_than(two_node_state)
+        Assert(new_state).entity(PERIPHERY_WORKER_ID).is_poorer_than(two_node_state)
 
     def test_step_transfers_rent_to_owner(
         self,
@@ -153,7 +158,7 @@ class TestStepImperialRent:
         # Isolate rent mechanics from subsistence deductions
         no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
         new_state = step(two_node_state, config, defines=no_subsistence_defines)
-        Assert(new_state).entity("C002").is_richer_than(two_node_state)
+        Assert(new_state).entity(COMPRADOR_ID).is_richer_than(two_node_state)
 
     def test_step_rent_is_zero_sum(
         self,
@@ -180,7 +185,7 @@ class TestStepImperialRent:
         """step() records value_flow on the exploitation edge."""
         new_state = step(two_node_state, config)
         assert len(new_state.relationships) == 1
-        Assert(new_state).relationship("C001", "C002").has_value_flow()
+        Assert(new_state).relationship(PERIPHERY_WORKER_ID, COMPRADOR_ID).has_value_flow()
 
     def test_step_higher_extraction_means_more_rent(
         self,
@@ -218,7 +223,7 @@ class TestStepSurvivalProbabilities:
         """step() calculates P(S|A) for each entity."""
         new_state = step(two_node_state, config)
         # Worker should have some acquiescence probability
-        Assert(new_state).entity("C001").has_p_acquiescence(0.0)
+        Assert(new_state).entity(PERIPHERY_WORKER_ID).has_p_acquiescence(0.0)
 
     def test_step_updates_p_revolution(
         self,
@@ -228,7 +233,7 @@ class TestStepSurvivalProbabilities:
         """step() calculates P(S|R) for each entity."""
         new_state = step(two_node_state, config)
         # Worker should have some revolution probability
-        Assert(new_state).entity("C001").has_p_revolution(0.0)
+        Assert(new_state).entity(PERIPHERY_WORKER_ID).has_p_revolution(0.0)
 
     def test_step_wealthy_has_high_acquiescence(
         self,
@@ -237,7 +242,7 @@ class TestStepSurvivalProbabilities:
     ) -> None:
         """Wealthy entities have high P(S|A)."""
         rich_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Rich Worker",
             role=SocialRole.LABOR_ARISTOCRACY,
             wealth=0.9,  # Very wealthy
@@ -248,12 +253,12 @@ class TestStepSurvivalProbabilities:
         # No exploitation edge - just test wealth -> acquiescence relationship
         state = WorldState(
             tick=0,
-            entities={"C001": rich_worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: rich_worker, COMPRADOR_ID: owner},
             relationships=[],  # No edges - wealth stays constant
         )
         new_state = step(state, config)
         # High wealth -> high acquiescence probability
-        Assert(new_state).entity("C001").has_p_acquiescence(0.7)
+        Assert(new_state).entity(PERIPHERY_WORKER_ID).has_p_acquiescence(0.7)
 
 
 # =============================================================================
@@ -272,7 +277,9 @@ class TestStepContradictionTension:
     ) -> None:
         """Extraction increases tension on the exploitation edge."""
         new_state = step(two_node_state, config)
-        Assert(new_state).relationship("C001", "C002").has_tension_increased(two_node_state)
+        Assert(new_state).relationship(PERIPHERY_WORKER_ID, COMPRADOR_ID).has_tension_increased(
+            two_node_state
+        )
 
     def test_step_tension_accumulates(
         self,
@@ -284,7 +291,9 @@ class TestStepContradictionTension:
         for _ in range(10):
             state = step(state, config)
 
-        Assert(state).relationship("C001", "C002").has_tension_increased(two_node_state)
+        Assert(state).relationship(PERIPHERY_WORKER_ID, COMPRADOR_ID).has_tension_increased(
+            two_node_state
+        )
 
 
 # =============================================================================
@@ -306,8 +315,12 @@ class TestStepDeterminism:
         result2 = step(two_node_state, config)
 
         assert result1.tick == result2.tick
-        assert result1.entities["C001"].wealth == pytest.approx(result2.entities["C001"].wealth)
-        assert result1.entities["C002"].wealth == pytest.approx(result2.entities["C002"].wealth)
+        assert result1.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(
+            result2.entities[PERIPHERY_WORKER_ID].wealth
+        )
+        assert result1.entities[COMPRADOR_ID].wealth == pytest.approx(
+            result2.entities[COMPRADOR_ID].wealth
+        )
 
     # NOTE: test_hundred_turns_deterministic moved to
     # tests/integration/system/test_simulation_stability.py (slow test)
@@ -332,7 +345,7 @@ class TestStepEventLog:
         """step() preserves existing event log entries."""
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation_edge],
             event_log=["Previous event"],
         )
@@ -372,13 +385,13 @@ class TestStepEdgeCases:
         no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[],
         )
         new_state = step(state, config, defines=no_subsistence_defines)
         Assert(new_state).tick_is(1)
         # Wealth unchanged without extraction edges (subsistence disabled)
-        Assert(new_state).entity("C001").wealth_unchanged_from(state)
+        Assert(new_state).entity(PERIPHERY_WORKER_ID).wealth_unchanged_from(state)
 
     @pytest.mark.slow
     def test_step_wealth_cannot_go_negative(
@@ -389,7 +402,7 @@ class TestStepEdgeCases:
     ) -> None:
         """Worker wealth cannot go below 0."""
         poor_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Poor Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.01,  # Nearly broke
@@ -399,14 +412,14 @@ class TestStepEdgeCases:
         )
         state = WorldState(
             tick=0,
-            entities={"C001": poor_worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: poor_worker, COMPRADOR_ID: owner},
             relationships=[exploitation_edge],
         )
         # Run multiple steps
         for _ in range(100):
             state = step(state, config)
 
-        assert state.entities["C001"].wealth >= 0
+        assert state.entities[PERIPHERY_WORKER_ID].wealth >= 0
 
 
 # =============================================================================
@@ -446,7 +459,7 @@ class TestStepConsciousnessDrift:
 
         # Create worker with initial WAGES that will be cut
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
@@ -460,7 +473,7 @@ class TestStepConsciousnessDrift:
 
         # Create a solidarity source (periphery worker with high consciousness)
         periphery_worker = SocialClass(
-            id="C003",
+            id=CORE_BOURGEOISIE_ID,
             name="Solidarity Source",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.2,
@@ -471,34 +484,38 @@ class TestStepConsciousnessDrift:
 
         # WAGES edge from owner to worker (will be cut next tick)
         wages_edge = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,
         )
 
         # SOLIDARITY edge from periphery to worker
         solidarity_edge = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.8,
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner, "C003": periphery_worker},
+            entities={
+                PERIPHERY_WORKER_ID: worker,
+                COMPRADOR_ID: owner,
+                CORE_BOURGEOISIE_ID: periphery_worker,
+            },
             relationships=[wages_edge, solidarity_edge],
         )
 
         # Run first tick to establish wage baseline
         state = step(state, config)
-        initial_consciousness = state.entities["C001"].ideology.class_consciousness
+        initial_consciousness = state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
 
         # Cut wages and run another tick
         reduced_wages = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # 40% wage cut
         )
@@ -510,7 +527,10 @@ class TestStepConsciousnessDrift:
         final_state = step(state_with_cut, config)
 
         # Worker should drift revolutionary (class_consciousness increasing) with solidarity
-        assert final_state.entities["C001"].ideology.class_consciousness > initial_consciousness
+        assert (
+            final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
+            > initial_consciousness
+        )
 
     def test_owner_ideology_unchanged(
         self,
@@ -526,7 +546,7 @@ class TestStepConsciousnessDrift:
         new_state = step(two_node_state, config)
 
         # Owner class_consciousness unchanged (no outgoing exploitation edges)
-        Assert(new_state).entity("C002").consciousness_unchanged_from(two_node_state)
+        Assert(new_state).entity(COMPRADOR_ID).consciousness_unchanged_from(two_node_state)
 
     def test_no_edges_no_drift(
         self,
@@ -541,14 +561,14 @@ class TestStepConsciousnessDrift:
         """
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[],  # No edges
         )
 
         new_state = step(state, config)
 
         # No drift without exploitation edges
-        Assert(new_state).entity("C001").consciousness_unchanged_from(state)
+        Assert(new_state).entity(PERIPHERY_WORKER_ID).consciousness_unchanged_from(state)
 
     # NOTE: test_ideology_clamped_lower_bound and test_ideology_clamped_upper_bound
     # moved to tests/integration/system/test_simulation_stability.py (slow tests)
@@ -569,7 +589,7 @@ class TestStepConsciousnessDrift:
         def create_state_with_solidarity(strength: float) -> WorldState:
             # Core worker starts with low consciousness
             worker = SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Worker",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 wealth=0.5,
@@ -579,7 +599,7 @@ class TestStepConsciousnessDrift:
             )
             # Periphery worker has high consciousness (source of transmission)
             periphery = SocialClass(
-                id="C003",
+                id=CORE_BOURGEOISIE_ID,
                 name="Periphery",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 wealth=0.2,
@@ -588,14 +608,18 @@ class TestStepConsciousnessDrift:
                 ),
             )
             solidarity = Relationship(
-                source_id="C003",
-                target_id="C001",
+                source_id=CORE_BOURGEOISIE_ID,
+                target_id=PERIPHERY_WORKER_ID,
                 edge_type=EdgeType.SOLIDARITY,
                 solidarity_strength=strength,
             )
             return WorldState(
                 tick=0,
-                entities={"C001": worker, "C002": owner, "C003": periphery},
+                entities={
+                    PERIPHERY_WORKER_ID: worker,
+                    COMPRADOR_ID: owner,
+                    CORE_BOURGEOISIE_ID: periphery,
+                },
                 relationships=[solidarity],
             )
 
@@ -605,9 +629,13 @@ class TestStepConsciousnessDrift:
         low_state = step(create_state_with_solidarity(0.2), config)
         high_state = step(create_state_with_solidarity(0.8), config)
 
-        low_drift = low_state.entities["C001"].ideology.class_consciousness - initial_consciousness
+        low_drift = (
+            low_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
+            - initial_consciousness
+        )
         high_drift = (
-            high_state.entities["C001"].ideology.class_consciousness - initial_consciousness
+            high_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
+            - initial_consciousness
         )
 
         # Higher solidarity strength should produce larger consciousness drift

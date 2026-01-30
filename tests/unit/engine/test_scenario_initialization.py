@@ -16,6 +16,10 @@ from babylon.engine.scenarios import (
     create_imperial_circuit_scenario,
     create_two_node_scenario,
 )
+from babylon.models.entity_registry import (
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType
 
 TC = TestConstants
@@ -48,7 +52,7 @@ class TestTwoNodeScenarioGenesis:
         """Worker must have TENANCY edge to territory for production."""
         state, _, _ = create_two_node_scenario()
         graph = state.to_graph()
-        worker_id = "C001"
+        worker_id = PERIPHERY_WORKER_ID
 
         has_tenancy = any(
             edge_data.get("edge_type") == EdgeType.TENANCY
@@ -86,7 +90,7 @@ class TestImperialCircuitScenarioGenesis:
         """Periphery worker (C001) must have TENANCY edge to territory."""
         state, _, _ = create_imperial_circuit_scenario()
         graph = state.to_graph()
-        worker_id = "C001"
+        worker_id = PERIPHERY_WORKER_ID
 
         has_tenancy = any(
             edge_data.get("edge_type") == EdgeType.TENANCY
@@ -98,7 +102,7 @@ class TestImperialCircuitScenarioGenesis:
         """Labor aristocracy (C004) must have TENANCY edge to territory."""
         state, _, _ = create_imperial_circuit_scenario()
         graph = state.to_graph()
-        worker_id = "C004"
+        worker_id = LABOR_ARISTOCRACY_ID
 
         has_tenancy = any(
             edge_data.get("edge_type") == EdgeType.TENANCY

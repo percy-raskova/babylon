@@ -25,6 +25,7 @@ import pytest
 
 from babylon.engine.scenarios import create_two_node_scenario
 from babylon.engine.simulation import Simulation
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.world_state import WorldState
 
 # =============================================================================
@@ -784,8 +785,8 @@ class TestIntegration:
 
         assert state.tick == 1
         # Verify state has expected structure
-        assert "C001" in state.entities
-        assert "C002" in state.entities
+        assert PERIPHERY_WORKER_ID in state.entities
+        assert COMPRADOR_ID in state.entities
 
     async def test_real_simulation_multi_step(
         self,
@@ -813,14 +814,14 @@ class TestIntegration:
 
         runner = AsyncSimulationRunner(real_simulation)
 
-        initial_worker_wealth = real_simulation.current_state.entities["C001"].wealth
+        initial_worker_wealth = real_simulation.current_state.entities[PERIPHERY_WORKER_ID].wealth
 
         for _ in range(10):
             await runner.step_once()
 
         # Worker should have lost wealth due to extraction
         final_state = real_simulation.current_state
-        final_worker_wealth = final_state.entities["C001"].wealth
+        final_worker_wealth = final_state.entities[PERIPHERY_WORKER_ID].wealth
 
         # Wealth changes due to imperial rent extraction
         assert final_worker_wealth != pytest.approx(initial_worker_wealth)

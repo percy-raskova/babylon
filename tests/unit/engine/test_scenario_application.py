@@ -14,6 +14,10 @@ from babylon.config.defines import GameDefines
 # Imports will fail in RED phase - this is expected
 from babylon.engine.scenarios import apply_scenario, create_two_node_scenario
 from babylon.models import SimulationConfig, WorldState
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType
 from babylon.models.scenario import ScenarioConfig
 
@@ -158,8 +162,8 @@ class TestApplyScenarioSolidarityIndex:
         from babylon.models.entities.relationship import Relationship
 
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             description="Test solidarity edge",
             solidarity_strength=0.0,  # Will be set by apply_scenario
@@ -281,8 +285,8 @@ class TestApplyScenarioCombined:
         from babylon.models.entities.relationship import Relationship
 
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             description="Test solidarity edge",
             solidarity_strength=0.0,
@@ -562,7 +566,7 @@ class TestApplyScenarioGameDefinesIntegration:
         # from new_defines.economy.superwage_multiplier
         assert new_defines.economy.superwage_multiplier == 1.5
         # The worker should have effective_wealth > nominal wealth due to PPP bonus
-        worker = result.entities.get("C001")
+        worker = result.entities.get(PERIPHERY_WORKER_ID)
         assert worker is not None
         # With high SW, effective_wealth should include PPP bonus
         # (This will only pass once the full pipeline is wired correctly)
@@ -584,7 +588,7 @@ class TestApplyScenarioGameDefinesIntegration:
         )
         for _ in range(10):
             high_state = step(high_state, high_config, defines=high_defines)
-        high_worker = high_state.entities.get("C001")
+        high_worker = high_state.entities.get(PERIPHERY_WORKER_ID)
 
         # Run LOW superwage scenario
         low_scenario = ScenarioConfig(name="low_sw", superwage_multiplier=0.3)
@@ -593,7 +597,7 @@ class TestApplyScenarioGameDefinesIntegration:
         )
         for _ in range(10):
             low_state = step(low_state, low_config, defines=low_defines)
-        low_worker = low_state.entities.get("C001")
+        low_worker = low_state.entities.get(PERIPHERY_WORKER_ID)
 
         # HIGH superwage should produce HIGHER effective wealth than LOW
         assert high_worker is not None

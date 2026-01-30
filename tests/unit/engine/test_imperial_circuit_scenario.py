@@ -22,6 +22,13 @@ import pytest
 from babylon.config.defines import EconomyDefines, GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.models import SimulationConfig, WorldState
+from babylon.models.entity_registry import (
+    ALL_ENTITY_IDS,
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SocialRole
 
 
@@ -45,7 +52,7 @@ class TestImperialCircuitScenarioStructure:
     def test_entity_ids_follow_pattern(self) -> None:
         """Entity IDs: C001-C006 (matches ^C[0-9]{3}$ pattern)."""
         state, _, _ = create_imperial_circuit_scenario()
-        expected_ids = {"C001", "C002", "C003", "C004", "C005", "C006"}
+        expected_ids = set(ALL_ENTITY_IDS)
         actual_ids = set(state.entities.keys())
         assert actual_ids == expected_ids
 
@@ -57,22 +64,22 @@ class TestImperialCircuitEntityRoles:
     def test_periphery_worker_is_periphery_proletariat(self) -> None:
         """C001 (P_w) must have role=PERIPHERY_PROLETARIAT."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C001"].role == SocialRole.PERIPHERY_PROLETARIAT
+        assert state.entities[PERIPHERY_WORKER_ID].role == SocialRole.PERIPHERY_PROLETARIAT
 
     def test_comprador_is_comprador_bourgeoisie(self) -> None:
         """C002 (P_c) must have role=COMPRADOR_BOURGEOISIE."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C002"].role == SocialRole.COMPRADOR_BOURGEOISIE
+        assert state.entities[COMPRADOR_ID].role == SocialRole.COMPRADOR_BOURGEOISIE
 
     def test_core_bourgeoisie_has_correct_role(self) -> None:
         """C003 (C_b) must have role=CORE_BOURGEOISIE."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C003"].role == SocialRole.CORE_BOURGEOISIE
+        assert state.entities[CORE_BOURGEOISIE_ID].role == SocialRole.CORE_BOURGEOISIE
 
     def test_labor_aristocracy_has_correct_role(self) -> None:
         """C004 (C_w) must have role=LABOR_ARISTOCRACY."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C004"].role == SocialRole.LABOR_ARISTOCRACY
+        assert state.entities[LABOR_ARISTOCRACY_ID].role == SocialRole.LABOR_ARISTOCRACY
 
 
 @pytest.mark.unit
@@ -90,8 +97,8 @@ class TestImperialCircuitEdgeTopology:
         ]
         assert len(exploitation_edges) == 1
         edge = exploitation_edges[0]
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C002"
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == COMPRADOR_ID
 
     def test_tribute_edge_from_pc_to_cb(self) -> None:
         """TRIBUTE must flow FROM P_c (C002) TO C_b (C003)."""
@@ -99,8 +106,8 @@ class TestImperialCircuitEdgeTopology:
         tribute_edges = [r for r in state.relationships if r.edge_type == EdgeType.TRIBUTE]
         assert len(tribute_edges) == 1
         edge = tribute_edges[0]
-        assert edge.source_id == "C002"
-        assert edge.target_id == "C003"
+        assert edge.source_id == COMPRADOR_ID
+        assert edge.target_id == CORE_BOURGEOISIE_ID
 
     def test_wages_edge_from_cb_to_cw(self) -> None:
         """WAGES must flow FROM C_b (C003) TO C_w (C004)."""
@@ -108,8 +115,8 @@ class TestImperialCircuitEdgeTopology:
         wages_edges = [r for r in state.relationships if r.edge_type == EdgeType.WAGES]
         assert len(wages_edges) == 1
         edge = wages_edges[0]
-        assert edge.source_id == "C003"
-        assert edge.target_id == "C004"
+        assert edge.source_id == CORE_BOURGEOISIE_ID
+        assert edge.target_id == LABOR_ARISTOCRACY_ID
 
     def test_wages_edge_NOT_to_periphery_worker(self) -> None:
         """WAGES edge must NOT target PERIPHERY_PROLETARIAT.
@@ -132,8 +139,8 @@ class TestImperialCircuitEdgeTopology:
         ]
         assert len(client_state_edges) == 1
         edge = client_state_edges[0]
-        assert edge.source_id == "C003"
-        assert edge.target_id == "C002"
+        assert edge.source_id == CORE_BOURGEOISIE_ID
+        assert edge.target_id == COMPRADOR_ID
 
     def test_solidarity_edge_from_pw_to_cw(self) -> None:
         """SOLIDARITY must flow FROM P_w (C001) TO C_w (C004)."""
@@ -141,8 +148,8 @@ class TestImperialCircuitEdgeTopology:
         solidarity_edges = [r for r in state.relationships if r.edge_type == EdgeType.SOLIDARITY]
         assert len(solidarity_edges) == 1
         edge = solidarity_edges[0]
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C004"
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == LABOR_ARISTOCRACY_ID
 
     def test_solidarity_starts_at_zero(self) -> None:
         """SOLIDARITY edge strength starts at 0.0 (workers separated)."""
@@ -160,34 +167,34 @@ class TestImperialCircuitWealthCalculations:
     def test_default_periphery_worker_wealth(self) -> None:
         """C001 (P_w) wealth = periphery_wealth (default 0.6, calibrated for P(S|A) > P(S|R))."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C001"].wealth == pytest.approx(0.6)
+        assert state.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(0.6)
 
     def test_default_comprador_wealth(self) -> None:
         """C002 (P_c) wealth = periphery_wealth * 2 (default 1.2)."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C002"].wealth == pytest.approx(1.2)
+        assert state.entities[COMPRADOR_ID].wealth == pytest.approx(1.2)
 
     def test_default_core_bourgeoisie_wealth(self) -> None:
         """C003 (C_b) wealth = core_wealth (default 0.9)."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C003"].wealth == pytest.approx(0.9)
+        assert state.entities[CORE_BOURGEOISIE_ID].wealth == pytest.approx(0.9)
 
     def test_default_labor_aristocracy_wealth(self) -> None:
         """C004 (C_w) wealth = core_wealth * 0.2 (default 0.18)."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C004"].wealth == pytest.approx(0.18)
+        assert state.entities[LABOR_ARISTOCRACY_ID].wealth == pytest.approx(0.18)
 
     def test_custom_periphery_wealth(self) -> None:
         """Custom periphery_wealth affects C001 and C002."""
         state, _, _ = create_imperial_circuit_scenario(periphery_wealth=0.5)
-        assert state.entities["C001"].wealth == pytest.approx(0.5)
-        assert state.entities["C002"].wealth == pytest.approx(1.0)
+        assert state.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(0.5)
+        assert state.entities[COMPRADOR_ID].wealth == pytest.approx(1.0)
 
     def test_custom_core_wealth(self) -> None:
         """Custom core_wealth affects C003 and C004."""
         state, _, _ = create_imperial_circuit_scenario(core_wealth=1.0)
-        assert state.entities["C003"].wealth == pytest.approx(1.0)
-        assert state.entities["C004"].wealth == pytest.approx(0.2)
+        assert state.entities[CORE_BOURGEOISIE_ID].wealth == pytest.approx(1.0)
+        assert state.entities[LABOR_ARISTOCRACY_ID].wealth == pytest.approx(0.2)
 
 
 @pytest.mark.unit
@@ -197,12 +204,12 @@ class TestImperialCircuitSubsistenceThresholds:
     def test_periphery_worker_high_vulnerability(self) -> None:
         """C001 (P_w) subsistence = 0.3 (high vulnerability)."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C001"].subsistence_threshold == pytest.approx(0.3)
+        assert state.entities[PERIPHERY_WORKER_ID].subsistence_threshold == pytest.approx(0.3)
 
     def test_labor_aristocracy_low_vulnerability(self) -> None:
         """C004 (C_w) subsistence = 0.1 (low vulnerability due to super-wages)."""
         state, _, _ = create_imperial_circuit_scenario()
-        assert state.entities["C004"].subsistence_threshold == pytest.approx(0.1)
+        assert state.entities[LABOR_ARISTOCRACY_ID].subsistence_threshold == pytest.approx(0.1)
 
 
 @pytest.mark.unit
@@ -287,12 +294,12 @@ class TestWageCalculationCorrectness:
         # Isolate wage mechanics from subsistence deductions
         no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
 
-        initial_cb = state.entities["C003"].wealth
+        initial_cb = state.entities[CORE_BOURGEOISIE_ID].wealth
         assert initial_cb == pytest.approx(0.9), "C_b should start at 0.9"
 
         # Run one tick
         new_state = step(state, config, defines=no_subsistence_defines)
-        final_cb = new_state.entities["C003"].wealth
+        final_cb = new_state.entities[CORE_BOURGEOISIE_ID].wealth
 
         # Core Bourgeoisie should NOT lose wealth to wages
         # They should accumulate from tribute (even after paying wages)
@@ -317,12 +324,12 @@ class TestWageCalculationCorrectness:
         # Isolate wage mechanics from subsistence deductions
         no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
 
-        initial_cb = state.entities["C003"].wealth
+        initial_cb = state.entities[CORE_BOURGEOISIE_ID].wealth
 
         for _ in range(10):
             state = step(state, config, defines=no_subsistence_defines)
 
-        final_cb = state.entities["C003"].wealth
+        final_cb = state.entities[CORE_BOURGEOISIE_ID].wealth
         assert final_cb > initial_cb, (
             f"C_b should accumulate over 10 ticks: {initial_cb:.4f} -> {final_cb:.4f}"
         )
@@ -339,8 +346,8 @@ class TestWageCalculationCorrectness:
         from babylon.engine.simulation_engine import step
 
         state, config, _ = create_imperial_circuit_scenario()
-        initial_cw = state.entities["C004"].wealth
-        initial_cb = state.entities["C003"].wealth
+        initial_cw = state.entities[LABOR_ARISTOCRACY_ID].wealth
+        initial_cb = state.entities[CORE_BOURGEOISIE_ID].wealth
 
         # Isolate wage mechanics from subsistence deductions
         no_subsistence_defines = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
@@ -349,8 +356,8 @@ class TestWageCalculationCorrectness:
         for _ in range(10):
             state = step(state, config, defines=no_subsistence_defines)
 
-        final_cw = state.entities["C004"].wealth
-        final_cb = state.entities["C003"].wealth
+        final_cw = state.entities[LABOR_ARISTOCRACY_ID].wealth
+        final_cb = state.entities[CORE_BOURGEOISIE_ID].wealth
 
         # C_w should gain some wages
         assert final_cw > initial_cw, "Labor aristocracy should receive wages"

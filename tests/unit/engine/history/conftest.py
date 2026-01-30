@@ -16,13 +16,14 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 
 
 @pytest.fixture
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=0.5,
@@ -36,7 +37,7 @@ def worker() -> SocialClass:
 def owner() -> SocialClass:
     """Create a core owner social class."""
     return SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Core Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=0.9,
@@ -50,8 +51,8 @@ def owner() -> SocialClass:
 def exploitation_edge() -> Relationship:
     """Create an exploitation relationship from worker to owner."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=0.2,
         tension=0.3,
@@ -67,7 +68,7 @@ def sample_world_state(
     """Create a minimal WorldState with two nodes and one edge."""
     return WorldState(
         tick=0,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
         event_log=["Initial state created"],
     )

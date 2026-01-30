@@ -24,6 +24,11 @@ import pytest
 from babylon.config.defines import GameDefines, StruggleDefines
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.struggle import StruggleSystem
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -73,7 +78,7 @@ def _create_test_graph(
 
     # Comprador Bourgeoisie (p_c)
     graph.add_node(
-        "C001",
+        COMPRADOR_ID,
         role=SocialRole.COMPRADOR_BOURGEOISIE,
         wealth=comprador_wealth,
         subsistence_threshold=comprador_subsistence,
@@ -82,7 +87,7 @@ def _create_test_graph(
 
     # Periphery Proletariat (p_w)
     graph.add_node(
-        "C002",
+        PERIPHERY_WORKER_ID,
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=10.0,
         organization=p_w_organization,
@@ -100,7 +105,7 @@ def _create_test_graph(
     # Labor Aristocracy / Core Worker (c_w)
     if include_core_worker:
         graph.add_node(
-            "C003",
+            LABOR_ARISTOCRACY_ID,
             role=SocialRole.LABOR_ARISTOCRACY,
             wealth=50.0,
             organization=0.1,
@@ -151,7 +156,7 @@ class TestPowerVacuumTrigger:
         # Assert: POWER_VACUUM event emitted
         assert len(events) == 1, f"Expected 1 POWER_VACUUM event, got {len(events)}"
         event = events[0]
-        assert event.payload["comprador_id"] == "C001"
+        assert event.payload["comprador_id"] == COMPRADOR_ID
         assert event.payload["comprador_wealth"] == 2.0
         assert event.payload["subsistence_threshold"] == 5.0
 
@@ -183,7 +188,7 @@ class TestPowerVacuumTrigger:
         graph: nx.DiGraph = nx.DiGraph()
         # Only add a periphery proletariat, no comprador
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=10.0,
             organization=0.5,
@@ -230,7 +235,7 @@ class TestRevolutionaryOffensive:
         # Assert: REVOLUTIONARY_OFFENSIVE event emitted
         assert len(events) == 1, f"Expected 1 REVOLUTIONARY_OFFENSIVE, got {len(events)}"
         event = events[0]
-        assert event.payload["periphery_id"] == "C002"
+        assert event.payload["periphery_id"] == PERIPHERY_WORKER_ID
         assert event.payload["revolutionary_capacity"] == pytest.approx(0.48)
         assert "narrative_hint" in event.payload
 
@@ -248,14 +253,14 @@ class TestRevolutionaryOffensive:
         context = {"tick": 1}
 
         # Verify initial state
-        assert graph.nodes["C002"]["p_revolution"] == 0.2
+        assert graph.nodes[PERIPHERY_WORKER_ID]["p_revolution"] == 0.2
 
         # Act
         system = StruggleSystem()
         system.step(graph, services, context)
 
         # Assert: p_revolution set to 1.0
-        assert graph.nodes["C002"]["p_revolution"] == 1.0
+        assert graph.nodes[PERIPHERY_WORKER_ID]["p_revolution"] == 1.0
 
     def test_agitation_boosted_on_revolutionary_offensive(
         self, services: ServiceContainer, seeded_random: None
@@ -270,14 +275,14 @@ class TestRevolutionaryOffensive:
         )
         context = {"tick": 1}
 
-        initial_agitation = graph.nodes["C002"]["ideology"]["agitation"]
+        initial_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
 
         # Act
         system = StruggleSystem()
         system.step(graph, services, context)
 
         # Assert: agitation increased by 0.5 (default boost)
-        new_agitation = graph.nodes["C002"]["ideology"]["agitation"]
+        new_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
         expected_boost = services.defines.struggle.revolutionary_agitation_boost
         assert new_agitation == pytest.approx(initial_agitation + expected_boost)
 
@@ -337,7 +342,7 @@ class TestFascistRevanchism:
         # Assert: FASCIST_REVANCHISM event emitted
         assert len(events) == 1, f"Expected 1 FASCIST_REVANCHISM, got {len(events)}"
         event = events[0]
-        assert event.payload["core_worker_id"] == "C003"
+        assert event.payload["core_worker_id"] == LABOR_ARISTOCRACY_ID
         assert event.payload["revolutionary_capacity"] == pytest.approx(0.06)
         assert "narrative_hint" in event.payload
 
@@ -355,14 +360,14 @@ class TestFascistRevanchism:
         )
         context = {"tick": 1}
 
-        initial_identity = graph.nodes["C003"]["ideology"]["national_identity"]
+        initial_identity = graph.nodes[LABOR_ARISTOCRACY_ID]["ideology"]["national_identity"]
 
         # Act
         system = StruggleSystem()
         system.step(graph, services, context)
 
         # Assert: national_identity increased
-        new_identity = graph.nodes["C003"]["ideology"]["national_identity"]
+        new_identity = graph.nodes[LABOR_ARISTOCRACY_ID]["ideology"]["national_identity"]
         expected_boost = services.defines.struggle.fascist_identity_boost
         assert new_identity == pytest.approx(initial_identity + expected_boost)
 
@@ -380,14 +385,14 @@ class TestFascistRevanchism:
         )
         context = {"tick": 1}
 
-        initial_acquiescence = graph.nodes["C003"]["p_acquiescence"]
+        initial_acquiescence = graph.nodes[LABOR_ARISTOCRACY_ID]["p_acquiescence"]
 
         # Act
         system = StruggleSystem()
         system.step(graph, services, context)
 
         # Assert: p_acquiescence increased
-        new_acquiescence = graph.nodes["C003"]["p_acquiescence"]
+        new_acquiescence = graph.nodes[LABOR_ARISTOCRACY_ID]["p_acquiescence"]
         expected_boost = services.defines.struggle.fascist_acquiescence_boost
         assert new_acquiescence == pytest.approx(initial_acquiescence + expected_boost)
 
@@ -435,7 +440,7 @@ class TestFascistRevanchism:
         system.step(graph, services, context)
 
         # Assert: Clamped to 1.0
-        assert graph.nodes["C003"]["ideology"]["national_identity"] == 1.0
+        assert graph.nodes[LABOR_ARISTOCRACY_ID]["ideology"]["national_identity"] == 1.0
 
     def test_p_acquiescence_clamped_at_one(
         self, services: ServiceContainer, seeded_random: None
@@ -456,7 +461,7 @@ class TestFascistRevanchism:
         system.step(graph, services, context)
 
         # Assert: Clamped to 1.0
-        assert graph.nodes["C003"]["p_acquiescence"] == 1.0
+        assert graph.nodes[LABOR_ARISTOCRACY_ID]["p_acquiescence"] == 1.0
 
 
 @pytest.mark.unit
@@ -505,7 +510,7 @@ class TestConfigurationOverrides:
         svc = _create_services_with_defines(defines=custom_defines)
         context = {"tick": 1}
 
-        initial_agitation = graph.nodes["C002"]["ideology"]["agitation"]
+        initial_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
 
         try:
             # Act
@@ -513,7 +518,7 @@ class TestConfigurationOverrides:
             system.step(graph, svc, context)
 
             # Assert: Custom boost applied
-            new_agitation = graph.nodes["C002"]["ideology"]["agitation"]
+            new_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
             assert new_agitation == pytest.approx(initial_agitation + custom_boost)
         finally:
             svc.database.close()

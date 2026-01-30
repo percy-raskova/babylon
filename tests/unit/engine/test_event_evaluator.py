@@ -33,6 +33,11 @@ from babylon.models.entities.event_template import (
     Resolution,
     TemplateEffect,
 )
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SocialRole
 
 
@@ -42,7 +47,7 @@ def simple_graph() -> nx.DiGraph:
     g: nx.DiGraph = nx.DiGraph()
 
     g.add_node(
-        "C001",
+        PERIPHERY_WORKER_ID,
         _node_type="social_class",
         role="periphery_proletariat",
         wealth=50.0,
@@ -51,7 +56,7 @@ def simple_graph() -> nx.DiGraph:
     )
 
     g.add_node(
-        "C002",
+        COMPRADOR_ID,
         _node_type="social_class",
         role="core_bourgeoisie",
         wealth=500.0,
@@ -60,8 +65,8 @@ def simple_graph() -> nx.DiGraph:
     )
 
     g.add_edge(
-        "C002",
-        "C001",
+        COMPRADOR_ID,
+        PERIPHERY_WORKER_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=50.0,
     )
@@ -75,7 +80,7 @@ def solidarity_graph() -> nx.DiGraph:
     g: nx.DiGraph = nx.DiGraph()
 
     g.add_node(
-        "C001",
+        PERIPHERY_WORKER_ID,
         _node_type="social_class",
         role="periphery_proletariat",
         wealth=50.0,
@@ -83,7 +88,7 @@ def solidarity_graph() -> nx.DiGraph:
     )
 
     g.add_node(
-        "C002",
+        COMPRADOR_ID,
         _node_type="social_class",
         role="labor_aristocracy",
         wealth=200.0,
@@ -91,7 +96,7 @@ def solidarity_graph() -> nx.DiGraph:
     )
 
     g.add_node(
-        "C003",
+        CORE_BOURGEOISIE_ID,
         _node_type="social_class",
         role="lumpenproletariat",
         wealth=20.0,
@@ -100,15 +105,15 @@ def solidarity_graph() -> nx.DiGraph:
 
     # Two solidarity edges
     g.add_edge(
-        "C001",
-        "C002",
+        PERIPHERY_WORKER_ID,
+        COMPRADOR_ID,
         edge_type=EdgeType.SOLIDARITY,
         solidarity_strength=0.6,
     )
 
     g.add_edge(
-        "C001",
-        "C003",
+        PERIPHERY_WORKER_ID,
+        CORE_BOURGEOISIE_ID,
         edge_type=EdgeType.SOLIDARITY,
         solidarity_strength=0.8,
     )
@@ -215,8 +220,8 @@ class TestFilterNodes:
     def test_no_filter_returns_all_nodes(self, simple_graph: nx.DiGraph) -> None:
         result = filter_nodes(simple_graph, None)
         assert len(result) == 2
-        assert "C001" in result
-        assert "C002" in result
+        assert PERIPHERY_WORKER_ID in result
+        assert COMPRADOR_ID in result
 
     def test_filter_by_node_type(self, simple_graph: nx.DiGraph) -> None:
         node_filter = NodeFilter(node_type="social_class")
@@ -227,13 +232,13 @@ class TestFilterNodes:
         node_filter = NodeFilter(role=[SocialRole.PERIPHERY_PROLETARIAT])
         result = filter_nodes(simple_graph, node_filter)
         assert len(result) == 1
-        assert "C001" in result
+        assert PERIPHERY_WORKER_ID in result
 
     def test_filter_by_id_pattern(self, simple_graph: nx.DiGraph) -> None:
         node_filter = NodeFilter(id_pattern=r"^C001$")
         result = filter_nodes(simple_graph, node_filter)
         assert len(result) == 1
-        assert "C001" in result
+        assert PERIPHERY_WORKER_ID in result
 
 
 class TestEvaluateNodeCondition:
@@ -613,5 +618,5 @@ class TestGetMatchingNodesForResolution:
         )
 
         matching = get_matching_nodes_for_resolution(template, simple_graph)
-        assert "C001" in matching  # Has agitation 0.7 >= 0.6
-        assert "C002" not in matching  # Has agitation 0.1 < 0.6
+        assert PERIPHERY_WORKER_ID in matching  # Has agitation 0.7 >= 0.6
+        assert COMPRADOR_ID not in matching  # Has agitation 0.1 < 0.6

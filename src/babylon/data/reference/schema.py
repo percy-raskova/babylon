@@ -1854,6 +1854,115 @@ class FactHpmsRoadSegment(NormalizedBase):
 
 
 # =============================================================================
+# ATUS REPRODUCTIVE LABOR TABLES
+# =============================================================================
+
+
+class DimATUSActivityCategory(NormalizedBase):
+    """ATUS activity category dimension for reproductive labor mapping.
+
+    Maps ATUS 6-digit activity codes to Babylon reproductive labor categories.
+    Enables aggregation of time diary entries into Department III categories.
+
+    ATUS Code Structure (first 2 digits = major category):
+        02: Household activities (cooking, cleaning, maintenance)
+        03: Caring for household members
+        04: Caring for non-household members
+
+    Babylon Categories:
+        housework: Cleaning, laundry, household management
+        cooking: Food and drink preparation
+        childcare: Physical care and activities with children
+        eldercare: Physical care and activities with adults
+        emotional_support: Listening, comforting (future)
+
+    Note:
+        Activity codes are prefixes (e.g., "0201" matches 020101-020199).
+        Use atus_code_prefix for pattern matching when loading microdata.
+    """
+
+    __tablename__ = "dim_atus_activity_category"
+
+    category_id: Mapped[int] = mapped_column(primary_key=True)
+    atus_code_prefix: Mapped[str] = mapped_column(String(6), unique=True, nullable=False)
+    atus_description: Mapped[str] = mapped_column(String(200), nullable=False)
+    babylon_category: Mapped[str] = mapped_column(String(30), nullable=False)
+    major_category: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_reproductive: Mapped[bool] = mapped_column(default=True)
+
+    __table_args__ = (
+        Index("idx_atus_category_babylon", "babylon_category"),
+        Index("idx_atus_category_major", "major_category"),
+        CheckConstraint(
+            "babylon_category IN ('housework', 'cooking', 'childcare', 'eldercare', "
+            "'emotional_support')",
+            name="ck_atus_babylon_category",
+        ),
+    )
+
+
+class FactATUSReproductiveLabor(NormalizedBase):
+    """National average reproductive labor hours from ATUS.
+
+    Stores pre-aggregated time use averages from BLS Table A-1 for shadow labor
+    calculations in Department III. Values are weekly hours per category.
+
+    Data Flow:
+        BLS Table A-1 (daily averages) -> seed_data.yaml -> this table
+        Conversion: daily_hours × 7 = weekly_hours
+
+    Disaggregation (optional):
+        - By gender (gender_id): For gendered division of labor analysis
+        - By occupation (occupation_group): Future labor-type breakdown
+        - By employment (employment_status): Working vs non-working
+
+    Primary Use:
+        ATUSDBLoader reads this table to satisfy ReproductionLoaderProtocol
+        for ShadowLaborService calculations.
+
+    Note:
+        Currently stores national averages only. County-level variation
+        requires ATUS microdata access (restricted-use files).
+    """
+
+    __tablename__ = "fact_atus_reproductive_labor"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_atus_activity_category.category_id"), nullable=False
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    gender_id: Mapped[int] = mapped_column(ForeignKey("dim_gender.gender_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    # Core metric: weekly hours per person
+    hours_per_week: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False)
+
+    # Optional metadata
+    participation_rate: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))  # 0.0000-1.0000
+    sample_size: Mapped[int | None] = mapped_column()
+
+    # Optional disaggregation (NULL = population average)
+    occupation_group: Mapped[str | None] = mapped_column(String(50))
+    employment_status: Mapped[str | None] = mapped_column(String(50))
+
+    __table_args__ = (
+        Index("idx_atus_labor_category", "category_id"),
+        Index("idx_atus_labor_time", "time_id"),
+        Index("idx_atus_labor_gender", "gender_id"),
+        # Unique constraint for upsert operations
+        UniqueConstraint(
+            "category_id",
+            "time_id",
+            "gender_id",
+            "occupation_group",
+            "employment_status",
+            name="uq_atus_labor_composite",
+        ),
+    )
+
+
+# =============================================================================
 # EXPORTS
 # =============================================================================
 
@@ -1956,4 +2065,7 @@ __all__ = [
     "FactEmploymentIndustryAnnual",
     # DOT HPMS
     "FactHpmsRoadSegment",
+    # ATUS Reproductive Labor
+    "DimATUSActivityCategory",
+    "FactATUSReproductiveLabor",
 ]

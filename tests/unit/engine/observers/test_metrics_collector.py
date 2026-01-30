@@ -1,8 +1,8 @@
-"""Tests for MetricsCollector observer (Sprint 4.1: Dashboard/Sweeper Unification).
+"""Tests for TickStateRecorder observer (Sprint 4.1: Dashboard/Sweeper Unification).
 
 TDD GREEN Phase: All tests pass with implementation.
 
-The MetricsCollector:
+The TickStateRecorder (formerly TickStateRecorder):
 - Implements SimulationObserver protocol
 - Extracts entity metrics (wealth, consciousness, survival probabilities)
 - Extracts edge metrics (tension, value flows, solidarity)
@@ -10,6 +10,9 @@ The MetricsCollector:
 - Supports two modes: "interactive" (rolling window) and "batch" (full history)
 - Provides summary statistics for parameter sweeps
 - Exports to CSV-compatible format
+
+Note: Renamed from TickStateRecorder to avoid namespace collision with
+babylon.metrics.collector.TickStateRecorder (RAG telemetry).
 """
 
 from __future__ import annotations
@@ -18,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from babylon.engine.observers.metrics import MetricsCollector
+from babylon.engine.observers.metrics import TickStateRecorder
 from babylon.engine.scenarios import (
     create_imperial_circuit_scenario,
     create_two_node_scenario,
@@ -88,36 +91,36 @@ def state_with_tension(four_node_state: WorldState) -> WorldState:
 
 
 @pytest.mark.unit
-class TestMetricsCollectorProtocol:
-    """Tests for MetricsCollector protocol compliance."""
+class TestTickStateRecorderProtocol:
+    """Tests for TickStateRecorder protocol compliance."""
 
     def test_implements_observer_protocol(self) -> None:
-        """MetricsCollector satisfies SimulationObserver protocol."""
+        """TickStateRecorder satisfies SimulationObserver protocol."""
         from babylon.engine.observer import SimulationObserver
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert isinstance(collector, SimulationObserver)
 
     def test_name_property_returns_metrics_collector(self) -> None:
-        """Name property returns 'MetricsCollector'."""
-        collector = MetricsCollector()
-        assert collector.name == "MetricsCollector"
+        """Name property returns 'TickStateRecorder'."""
+        collector = TickStateRecorder()
+        assert collector.name == "TickStateRecorder"
 
     def test_has_on_simulation_start_method(self) -> None:
         """Has on_simulation_start method accepting WorldState and SimulationConfig."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert hasattr(collector, "on_simulation_start")
         assert callable(collector.on_simulation_start)
 
     def test_has_on_tick_method(self) -> None:
         """Has on_tick method accepting two WorldState arguments."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert hasattr(collector, "on_tick")
         assert callable(collector.on_tick)
 
     def test_has_on_simulation_end_method(self) -> None:
         """Has on_simulation_end method accepting WorldState."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert hasattr(collector, "on_simulation_end")
         assert callable(collector.on_simulation_end)
 
@@ -129,26 +132,26 @@ class TestMetricsCollectorProtocol:
 
 @pytest.mark.unit
 class TestModeConfiguration:
-    """Tests for MetricsCollector mode configuration."""
+    """Tests for TickStateRecorder mode configuration."""
 
     def test_default_mode_is_interactive(self) -> None:
         """Default mode is 'interactive' for dashboard use."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert collector._mode == "interactive"
 
     def test_can_specify_batch_mode(self) -> None:
         """Can create collector in 'batch' mode for parameter sweeps."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         assert collector._mode == "batch"
 
     def test_default_rolling_window_is_50(self) -> None:
         """Default rolling window is 50 ticks for interactive mode."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert collector._rolling_window == 50
 
     def test_can_specify_custom_rolling_window(self) -> None:
         """Can customize rolling window size."""
-        collector = MetricsCollector(rolling_window=100)
+        collector = TickStateRecorder(rolling_window=100)
         assert collector._rolling_window == 100
 
     def test_interactive_mode_uses_rolling_window(
@@ -161,7 +164,7 @@ class TestModeConfiguration:
         When more ticks are collected than the window size,
         old entries should be evicted.
         """
-        collector = MetricsCollector(mode="interactive", rolling_window=5)
+        collector = TickStateRecorder(mode="interactive", rolling_window=5)
         collector.on_simulation_start(four_node_state, config)
 
         # Simulate 10 ticks
@@ -180,7 +183,7 @@ class TestModeConfiguration:
         config: SimulationConfig,
     ) -> None:
         """Batch mode accumulates all history without limit."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(four_node_state, config)
 
         # Simulate 100 ticks
@@ -200,12 +203,12 @@ class TestModeConfiguration:
 
 
 @pytest.mark.unit
-class TestMetricsCollectorProperties:
-    """Tests for MetricsCollector properties."""
+class TestTickStateRecorderProperties:
+    """Tests for TickStateRecorder properties."""
 
     def test_latest_returns_none_when_empty(self) -> None:
         """latest property returns None when no data collected."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert collector.latest is None
 
     def test_latest_returns_tick_metrics_after_data(
@@ -216,7 +219,7 @@ class TestMetricsCollectorProperties:
         """latest property returns TickMetrics after collecting data."""
         from babylon.models.metrics import TickMetrics
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -230,7 +233,7 @@ class TestMetricsCollectorProperties:
         config: SimulationConfig,
     ) -> None:
         """latest returns the most recent tick's metrics."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         # Add several ticks
@@ -246,18 +249,18 @@ class TestMetricsCollectorProperties:
 
     def test_history_returns_list_not_deque(self) -> None:
         """history property returns a list, not a deque."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         history = collector.history
         assert isinstance(history, list)
 
     def test_history_returns_empty_list_when_empty(self) -> None:
         """history property returns empty list when no data collected."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert collector.history == []
 
     def test_summary_returns_none_when_empty(self) -> None:
         """summary property returns None when no data collected."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert collector.summary is None
 
     def test_summary_returns_sweep_summary_after_data(
@@ -268,7 +271,7 @@ class TestMetricsCollectorProperties:
         """summary property returns SweepSummary after collecting data."""
         from babylon.models.metrics import SweepSummary
 
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(four_node_state, config)
 
         summary = collector.summary
@@ -291,7 +294,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts C001 (Periphery Worker) metrics as p_w slot."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -309,7 +312,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts C002 (Comprador) metrics as p_c slot."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -325,7 +328,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts C003 (Core Bourgeoisie) metrics as c_b slot."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -341,7 +344,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts C004 (Labor Aristocracy) metrics as c_w slot."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -357,7 +360,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Two-node scenario has only C001/C002, others should be None."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(two_node_state, config)
 
         latest = collector.latest
@@ -375,7 +378,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts consciousness from entity.ideology.class_consciousness."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -391,7 +394,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts national_identity from entity.ideology.national_identity."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -407,7 +410,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts agitation from entity.ideology.agitation."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -423,7 +426,7 @@ class TestEntityExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts p_acquiescence and p_revolution from entity."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -454,7 +457,7 @@ class TestEntityExtraction:
             update={"entities": {**four_node_state.entities, "C001": entity_with_pop}}
         )
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -480,7 +483,7 @@ class TestEdgeExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts tension from EXPLOITATION edge."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state_with_tension, config)
 
         latest = collector.latest
@@ -493,7 +496,7 @@ class TestEdgeExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts value_flow from EXPLOITATION edge as exploitation_rent."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state_with_tension, config)
 
         latest = collector.latest
@@ -506,7 +509,7 @@ class TestEdgeExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts value_flow from TRIBUTE edge."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -520,7 +523,7 @@ class TestEdgeExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts value_flow from WAGES edge."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -533,7 +536,7 @@ class TestEdgeExtraction:
         config: SimulationConfig,
     ) -> None:
         """Extracts solidarity_strength from SOLIDARITY edge."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         latest = collector.latest
@@ -549,7 +552,7 @@ class TestEdgeExtraction:
         # Create minimal state with no relationships
         state = WorldState(tick=0, entities={}, relationships=[])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -578,7 +581,7 @@ class TestGlobalMetrics:
         economy = GlobalEconomy(imperial_rent_pool=100.0)
         state = WorldState(tick=0, economy=economy)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -591,7 +594,7 @@ class TestGlobalMetrics:
         config: SimulationConfig,
     ) -> None:
         """Calculates global_tension as average of all relationship tensions."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state_with_tension, config)
 
         latest = collector.latest
@@ -607,7 +610,7 @@ class TestGlobalMetrics:
         """Global tension is 0.0 when no relationships exist."""
         state = WorldState(tick=0, relationships=[])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -630,7 +633,7 @@ class TestSummaryCalculation:
         config: SimulationConfig,
     ) -> None:
         """ticks_survived equals the number of recorded ticks."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(four_node_state, config)
 
         # Add 5 ticks
@@ -665,7 +668,7 @@ class TestSummaryCalculation:
         )
         state = WorldState(tick=0, entities={"C001": dead_worker})
 
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state, config)
 
         summary = collector.summary
@@ -678,7 +681,7 @@ class TestSummaryCalculation:
         config: SimulationConfig,
     ) -> None:
         """Outcome is 'SURVIVED' when p_w wealth > 0.001."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(four_node_state, config)
 
         summary = collector.summary
@@ -723,7 +726,7 @@ class TestSummaryCalculation:
         )
         state1 = WorldState(tick=1, entities={"C001": worker_crossover})
 
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state0, config)
         collector.on_tick(state0, state1)
 
@@ -737,7 +740,7 @@ class TestSummaryCalculation:
         config: SimulationConfig,
     ) -> None:
         """crossover_tick is None when P(S|R) never exceeds P(S|A)."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(four_node_state, config)
 
         summary = collector.summary
@@ -751,7 +754,7 @@ class TestSummaryCalculation:
         config: SimulationConfig,
     ) -> None:
         """max_tension is the maximum exploitation_tension across all ticks."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state_with_tension, config)
 
         summary = collector.summary
@@ -764,7 +767,7 @@ class TestSummaryCalculation:
         config: SimulationConfig,
     ) -> None:
         """cumulative_rent sums all exploitation_rent values."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state_with_tension, config)
 
         # Initial state has exploitation_rent = 10.0
@@ -778,7 +781,7 @@ class TestSummaryCalculation:
         config: SimulationConfig,
     ) -> None:
         """peak_p_w_consciousness tracks maximum p_w consciousness."""
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(four_node_state, config)
 
         summary = collector.summary
@@ -802,7 +805,7 @@ class TestCsvExport:
         config: SimulationConfig,
     ) -> None:
         """to_csv_rows returns list of dictionaries."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         rows = collector.to_csv_rows()
@@ -816,7 +819,7 @@ class TestCsvExport:
         config: SimulationConfig,
     ) -> None:
         """Each CSV row has a 'tick' key."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         rows = collector.to_csv_rows()
@@ -829,7 +832,7 @@ class TestCsvExport:
         config: SimulationConfig,
     ) -> None:
         """Entity metrics are flattened to p_w_wealth, p_w_consciousness format."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         rows = collector.to_csv_rows()
@@ -850,7 +853,7 @@ class TestCsvExport:
         config: SimulationConfig,
     ) -> None:
         """CSV rows include edge metrics directly."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         rows = collector.to_csv_rows()
@@ -871,7 +874,7 @@ class TestCsvExport:
 
         The column names should match those in collect_tick_data().
         """
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         rows = collector.to_csv_rows()
@@ -919,7 +922,7 @@ class TestLifecycle:
         config: SimulationConfig,
     ) -> None:
         """on_simulation_start clears any existing history."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
 
         # First run
         collector.on_simulation_start(four_node_state, config)
@@ -944,7 +947,7 @@ class TestLifecycle:
         config: SimulationConfig,
     ) -> None:
         """on_simulation_start records initial state as tick 0."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         assert len(collector.history) == 1
@@ -956,7 +959,7 @@ class TestLifecycle:
         config: SimulationConfig,
     ) -> None:
         """on_tick appends new metrics to history."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         tick1_state = four_node_state.model_copy(update={"tick": 1})
@@ -971,7 +974,7 @@ class TestLifecycle:
         config: SimulationConfig,
     ) -> None:
         """on_simulation_end is a no-op (does not modify state)."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(four_node_state, config)
 
         history_before = len(collector.history)
@@ -988,7 +991,7 @@ class TestLifecycle:
         config: SimulationConfig,
     ) -> None:
         """Multiple simulation runs don't accumulate history."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
 
         # Run 1
         collector.on_simulation_start(four_node_state, config)
@@ -1019,7 +1022,7 @@ class TestErrorHandling:
         """Handles state with no entities gracefully."""
         state = WorldState(tick=0, entities={})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1045,7 +1048,7 @@ class TestErrorHandling:
         )
         state = WorldState(tick=0, entities={"C001": worker}, relationships=[])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1054,7 +1057,7 @@ class TestErrorHandling:
 
     def test_summary_handles_empty_history(self) -> None:
         """Summary returns None for empty collector."""
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         assert collector.summary is None
 
 
@@ -1072,10 +1075,10 @@ class TestSimulationIntegration:
         four_node_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """MetricsCollector can be registered with Simulation."""
+        """TickStateRecorder can be registered with Simulation."""
         from babylon.engine.simulation import Simulation
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         sim = Simulation(four_node_state, config, observers=[collector])
 
         assert collector in sim.observers
@@ -1085,10 +1088,10 @@ class TestSimulationIntegration:
         four_node_state: WorldState,
         config: SimulationConfig,
     ) -> None:
-        """MetricsCollector receives notifications during simulation steps."""
+        """TickStateRecorder receives notifications during simulation steps."""
         from babylon.engine.simulation import Simulation
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         sim = Simulation(four_node_state, config, observers=[collector])
 
         # Run a step
@@ -1105,7 +1108,7 @@ class TestSimulationIntegration:
         """Metrics are captured after each simulation step."""
         from babylon.engine.simulation import Simulation
 
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         sim = Simulation(four_node_state, config, observers=[collector])
 
         # Run 5 steps
@@ -1130,7 +1133,7 @@ class TestEconomyDriverExtraction:
     """Tests for economy driver extraction from WorldState.
 
     Phase 4.1B: Expose Meaningful Metrics - Economy Driver Extraction.
-    These tests verify that the MetricsCollector correctly extracts
+    These tests verify that the TickStateRecorder correctly extracts
     economy driver values from the simulation state.
     """
 
@@ -1145,7 +1148,7 @@ class TestEconomyDriverExtraction:
         economy = GlobalEconomy(super_wage_rate=0.25)
         state = WorldState(tick=0, economy=economy)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1163,7 +1166,7 @@ class TestEconomyDriverExtraction:
         economy = GlobalEconomy(repression_level=0.7)
         state = WorldState(tick=0, economy=economy)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1181,7 +1184,7 @@ class TestEconomyDriverExtraction:
         economy = GlobalEconomy(imperial_rent_pool=80.0, initial_pool=100.0)
         state = WorldState(tick=0, economy=economy)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1199,7 +1202,7 @@ class TestEconomyDriverExtraction:
         economy = GlobalEconomy(imperial_rent_pool=50.0)
         state = WorldState(tick=0, economy=economy)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1219,7 +1222,7 @@ class TestEconomyDriverExtraction:
         economy = GlobalEconomy(imperial_rent_pool=150.0, initial_pool=100.0)
         state = WorldState(tick=0, economy=economy)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1236,7 +1239,7 @@ class TestEconomyDriverExtraction:
         """
         state = WorldState(tick=0)  # No economy
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1257,7 +1260,7 @@ class TestDifferentialCalculation:
     """Tests for derived differential calculations.
 
     Phase 4.1B: Expose Meaningful Metrics - Differential Calculation.
-    These tests verify that the MetricsCollector correctly computes
+    These tests verify that the TickStateRecorder correctly computes
     derived differentials from entity values.
     """
 
@@ -1294,7 +1297,7 @@ class TestDifferentialCalculation:
         )
         state = WorldState(tick=0, entities={"C001": p_w, "C004": c_w})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1326,7 +1329,7 @@ class TestDifferentialCalculation:
         )
         state = WorldState(tick=0, entities={"C004": c_w})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1357,7 +1360,7 @@ class TestDifferentialCalculation:
         )
         state = WorldState(tick=0, entities={"C001": p_w})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1392,7 +1395,7 @@ class TestDifferentialCalculation:
         )
         state = WorldState(tick=0, entities={"C001": p_w, "C003": c_b})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1410,7 +1413,7 @@ class TestDifferentialCalculation:
         """
         state = WorldState(tick=0, entities={})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1464,7 +1467,7 @@ class TestGlobalTensionBugFix:
             relationships=[exploitation_edge, solidarity_edge],
         )
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1491,7 +1494,7 @@ class TestGlobalTensionBugFix:
         )
         state = WorldState(tick=0, relationships=[solidarity_edge])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1518,7 +1521,7 @@ class TestGlobalTensionBugFix:
         )
         state = WorldState(tick=0, relationships=[wages_edge])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1546,7 +1549,7 @@ class TestGlobalTensionBugFix:
         )
         state = WorldState(tick=0, relationships=[tribute_edge])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1580,7 +1583,7 @@ class TestGlobalTensionBugFix:
         )
         state = WorldState(tick=0, relationships=[expl1, expl2])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1630,7 +1633,7 @@ class TestEdgeAggregationFix:
         )
         state = WorldState(tick=0, relationships=[expl1, expl2])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1664,7 +1667,7 @@ class TestEdgeAggregationFix:
         )
         state = WorldState(tick=0, relationships=[expl1, expl2])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1698,7 +1701,7 @@ class TestEdgeAggregationFix:
         )
         state = WorldState(tick=0, relationships=[trib1, trib2])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1732,7 +1735,7 @@ class TestEdgeAggregationFix:
         )
         state = WorldState(tick=0, relationships=[sol1, sol2])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1767,7 +1770,7 @@ class TestEdgeAggregationFix:
         )
         state = WorldState(tick=0, relationships=[expl1, expl2])
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         rows = collector.to_csv_rows()
@@ -1787,7 +1790,7 @@ class TestEdgeAggregationFix:
 class TestEcologicalMetricsExtraction:
     """Tests for ecological metrics extraction from WorldState.
 
-    Sprint 1.4C: The Wiring - MetricsCollector must extract ecological
+    Sprint 1.4C: The Wiring - TickStateRecorder must extract ecological
     metrics (overshoot_ratio, total_biocapacity, total_consumption) from
     WorldState computed fields.
     """
@@ -1796,7 +1799,7 @@ class TestEcologicalMetricsExtraction:
         self,
         config: SimulationConfig,
     ) -> None:
-        """MetricsCollector should extract overshoot_ratio from WorldState.
+        """TickStateRecorder should extract overshoot_ratio from WorldState.
 
         The overshoot_ratio computed field on WorldState should be captured
         in the TickMetrics snapshot.
@@ -1829,7 +1832,7 @@ class TestEcologicalMetricsExtraction:
             entities={"C001": entity},
         )
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1837,14 +1840,14 @@ class TestEcologicalMetricsExtraction:
         # overshoot_ratio = 40 / 20 = 2.0
         assert latest.overshoot_ratio == 2.0, (
             f"Expected overshoot_ratio=2.0, got {latest.overshoot_ratio}. "
-            "Is MetricsCollector extracting WorldState.overshoot_ratio?"
+            "Is TickStateRecorder extracting WorldState.overshoot_ratio?"
         )
 
     def test_extracts_total_biocapacity_from_world_state(
         self,
         config: SimulationConfig,
     ) -> None:
-        """MetricsCollector should extract total_biocapacity from WorldState.
+        """TickStateRecorder should extract total_biocapacity from WorldState.
 
         The total_biocapacity computed field sums all territory biocapacities.
         """
@@ -1867,21 +1870,21 @@ class TestEcologicalMetricsExtraction:
         }
         state = WorldState(tick=0, territories=territories)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
         assert latest is not None
         assert latest.total_biocapacity == 250.0, (
             f"Expected total_biocapacity=250.0, got {latest.total_biocapacity}. "
-            "Is MetricsCollector extracting WorldState.total_biocapacity?"
+            "Is TickStateRecorder extracting WorldState.total_biocapacity?"
         )
 
     def test_extracts_total_consumption_from_world_state(
         self,
         config: SimulationConfig,
     ) -> None:
-        """MetricsCollector should extract total_consumption from WorldState.
+        """TickStateRecorder should extract total_consumption from WorldState.
 
         The total_consumption computed field sums all entity consumption_needs.
         """
@@ -1908,7 +1911,7 @@ class TestEcologicalMetricsExtraction:
         }
         state = WorldState(tick=0, entities=entities)
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1916,7 +1919,7 @@ class TestEcologicalMetricsExtraction:
         # Total = (10+5) + (20+15) = 50
         assert latest.total_consumption == 50.0, (
             f"Expected total_consumption=50.0, got {latest.total_consumption}. "
-            "Is MetricsCollector extracting WorldState.total_consumption?"
+            "Is TickStateRecorder extracting WorldState.total_consumption?"
         )
 
     def test_ecological_metrics_default_when_no_territories(
@@ -1930,7 +1933,7 @@ class TestEcologicalMetricsExtraction:
         """
         state = WorldState(tick=0, territories={})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         latest = collector.latest
@@ -1960,7 +1963,7 @@ class TestEcologicalMetricsExtraction:
         )
         state = WorldState(tick=0, territories={"T001": territory})
 
-        collector = MetricsCollector()
+        collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
 
         rows = collector.to_csv_rows()
@@ -2000,7 +2003,7 @@ class TestEcologicalMetricsExtraction:
         )
         state1 = WorldState(tick=1, territories={"T001": territory_depleted})
 
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state0, config)
         collector.on_tick(state0, state1)
 

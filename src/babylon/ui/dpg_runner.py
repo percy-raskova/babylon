@@ -30,7 +30,7 @@ import dearpygui.dearpygui as dpg  # type: ignore
 
 from babylon.ai.director import NarrativeDirector
 from babylon.ai.llm_provider import MockLLM
-from babylon.engine.observers import MetricsCollector
+from babylon.engine.observers import TickStateRecorder
 from babylon.engine.observers.endgame_detector import EndgameDetector
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
@@ -197,7 +197,7 @@ def get_state() -> DashboardState:
 def create_simulation() -> Simulation:
     """Create a fresh simulation with observers.
 
-    Creates a new Simulation instance with MetricsCollector, NarrativeDirector,
+    Creates a new Simulation instance with TickStateRecorder, NarrativeDirector,
     and TopologyMonitor observers attached. Uses the Imperial Circuit scenario
     as the initial state.
 
@@ -205,7 +205,7 @@ def create_simulation() -> Simulation:
         A configured Simulation instance ready for stepping.
     """
     initial_state, config, defines = create_imperial_circuit_scenario()
-    metrics = MetricsCollector(mode="interactive", rolling_window=ROLLING_WINDOW)
+    metrics = TickStateRecorder(mode="interactive", rolling_window=ROLLING_WINDOW)
 
     # MockLLM for narrative generation (offline MVP, no API costs)
     llm = MockLLM(
@@ -829,17 +829,17 @@ def log_to_narrative(message: str, color: tuple[int, int, int, int] | None = Non
 def update_telemetry() -> None:
     """Update telemetry plots with latest metrics.
 
-    Pulls data from MetricsCollector and updates the Imperial Rent and
+    Pulls data from TickStateRecorder and updates the Imperial Rent and
     LA Stability plots.
     """
     state = get_state()
     if state.simulation is None:
         return
 
-    # Find MetricsCollector observer
+    # Find TickStateRecorder observer
     metrics_collector = None
     for observer in state.simulation._observers:
-        if isinstance(observer, MetricsCollector):
+        if isinstance(observer, TickStateRecorder):
             metrics_collector = observer
             break
 
@@ -916,7 +916,7 @@ def update_tick_display() -> None:
 def update_status_bar() -> None:
     """Update status bar with current phase, metrics, and overshoot.
 
-    Fetches phase state from TopologyMonitor and pool ratio/overshoot from MetricsCollector.
+    Fetches phase state from TopologyMonitor and pool ratio/overshoot from TickStateRecorder.
 
     Phase 2 Dashboard: Added overshoot ratio with color-coded thresholds:
     - < 1.0: DATA_GREEN (sustainable)
@@ -954,10 +954,10 @@ def update_status_bar() -> None:
                 trend = "FALLING"
         dpg.set_value("trend_display", trend)
 
-    # Find MetricsCollector for pool ratio and overshoot
+    # Find TickStateRecorder for pool ratio and overshoot
     metrics_collector = None
     for observer in state.simulation._observers:
-        if isinstance(observer, MetricsCollector):
+        if isinstance(observer, TickStateRecorder):
             metrics_collector = observer
             break
 
@@ -1039,10 +1039,10 @@ def update_wealth_trend() -> None:
     if state.simulation is None:
         return
 
-    # Find MetricsCollector observer
+    # Find TickStateRecorder observer
     metrics_collector = None
     for observer in state.simulation._observers:
-        if isinstance(observer, MetricsCollector):
+        if isinstance(observer, TickStateRecorder):
             metrics_collector = observer
             break
 
@@ -1118,10 +1118,10 @@ def update_key_metrics() -> None:
     if state.simulation is None:
         return
 
-    # Find MetricsCollector observer
+    # Find TickStateRecorder observer
     metrics_collector = None
     for observer in state.simulation._observers:
-        if isinstance(observer, MetricsCollector):
+        if isinstance(observer, TickStateRecorder):
             metrics_collector = observer
             break
 
@@ -1150,10 +1150,10 @@ def update_rift_trend() -> None:
     if state.simulation is None:
         return
 
-    # Find MetricsCollector observer
+    # Find TickStateRecorder observer
     metrics_collector = None
     for observer in state.simulation._observers:
-        if isinstance(observer, MetricsCollector):
+        if isinstance(observer, TickStateRecorder):
             metrics_collector = observer
             break
 

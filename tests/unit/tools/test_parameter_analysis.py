@@ -12,7 +12,7 @@ Test Classes:
 
 Note:
     TestExtractSweepSummary tests are skipped pending refactor to use
-    MetricsCollector instead of manual trace_data extraction.
+    TickStateRecorder instead of manual trace_data extraction.
 """
 
 from __future__ import annotations
@@ -110,17 +110,17 @@ class TestRunTrace:
     """Test the run_trace function."""
 
     def test_run_trace_returns_collector_config_defines(self) -> None:
-        """Verify run_trace returns (MetricsCollector, SimulationConfig, GameDefines)."""
+        """Verify run_trace returns (TickStateRecorder, SimulationConfig, GameDefines)."""
         from babylon.config.defines import GameDefines
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.config import SimulationConfig
 
         module = load_parameter_analysis_module()
 
         collector, config, defines = module.run_trace(max_ticks=3)
 
-        assert isinstance(collector, MetricsCollector), (
-            f"Expected MetricsCollector, got {type(collector)}"
+        assert isinstance(collector, TickStateRecorder), (
+            f"Expected TickStateRecorder, got {type(collector)}"
         )
         assert isinstance(config, SimulationConfig), (
             f"Expected SimulationConfig, got {type(config)}"
@@ -334,10 +334,10 @@ class TestIntegration:
 
     @pytest.mark.integration
     def test_trace_includes_phase_4_1b_metrics(self) -> None:
-        """Verify run_trace includes new metrics from MetricsCollector.
+        """Verify run_trace includes new metrics from TickStateRecorder.
 
-        Phase 4.1B introduced MetricsCollector with additional causal DAG metrics.
-        This test verifies that when MetricsCollector is integrated into run_trace,
+        Phase 4.1B introduced TickStateRecorder with additional causal DAG metrics.
+        This test verifies that when TickStateRecorder is integrated into run_trace,
         these new columns are present in the output.
         """
         module = load_parameter_analysis_module()
@@ -420,10 +420,10 @@ class TestIntegration:
 
 
 class TestExtractSweepSummary:
-    """Tests for extract_sweep_summary function with MetricsCollector.
+    """Tests for extract_sweep_summary function with TickStateRecorder.
 
     Tests verify that extract_sweep_summary correctly extracts summary
-    statistics from a MetricsCollector instance.
+    statistics from a TickStateRecorder instance.
     """
 
     def test_extract_sweep_summary_exists(self) -> None:
@@ -433,11 +433,11 @@ class TestExtractSweepSummary:
         assert callable(module.extract_sweep_summary)
 
     def test_extract_sweep_summary_empty_collector(self) -> None:
-        """Should handle empty MetricsCollector gracefully."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        """Should handle empty TickStateRecorder gracefully."""
+        from babylon.engine.observers.metrics import TickStateRecorder
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         # Empty collector has no history, summary is None
         result = module.extract_sweep_summary(collector, 0.1)
         assert result["value"] == 0.1
@@ -446,11 +446,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_basic_fields(self) -> None:
         """Should extract basic summary fields from collector."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         # Manually populate history for testing
         tick0 = TickMetrics(
@@ -545,11 +545,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_detects_death(self) -> None:
         """Should detect DIED outcome when wealth <= 0.001."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         tick0 = TickMetrics(
             tick=0,
@@ -584,11 +584,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_calculates_crossover(self) -> None:
         """Should detect crossover tick when P(S|R) > P(S|A)."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         ticks = [
             TickMetrics(
@@ -638,11 +638,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_no_crossover(self) -> None:
         """Should return None for crossover_tick if no crossover."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         ticks = [
             TickMetrics(
@@ -679,11 +679,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_cumulative_rent(self) -> None:
         """Should calculate cumulative rent extracted."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         ticks = [
             TickMetrics(
@@ -733,11 +733,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_peak_consciousness(self) -> None:
         """Should track peak consciousness values."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         ticks = [
             TickMetrics(
@@ -815,11 +815,11 @@ class TestExtractSweepSummary:
 
     def test_extract_sweep_summary_max_tension(self) -> None:
         """Should track max tension."""
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
         from babylon.models.metrics import EdgeMetrics, EntityMetrics, TickMetrics
 
         module = load_parameter_analysis_module()
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
 
         ticks = [
             TickMetrics(

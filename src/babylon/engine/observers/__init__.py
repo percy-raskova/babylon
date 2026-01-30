@@ -22,7 +22,7 @@ Schema validation is provided for observer JSON outputs:
 from babylon.engine.observers.causal import CausalChainObserver
 from babylon.engine.observers.economic import EconomyMonitor
 from babylon.engine.observers.endgame_detector import EndgameDetector
-from babylon.engine.observers.metrics import MetricsCollector
+from babylon.engine.observers.metrics import TickStateRecorder
 from babylon.engine.observers.schema_validator import (
     is_valid_narrative_frame,
     validate_narrative_frame,
@@ -32,7 +32,7 @@ __all__ = [
     "CausalChainObserver",
     "EconomyMonitor",
     "EndgameDetector",
-    "MetricsCollector",
+    "TickStateRecorder",
     "is_valid_narrative_frame",
     "validate_narrative_frame",
 ]

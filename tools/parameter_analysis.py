@@ -39,7 +39,7 @@ from shared import (
 __all__ = ["ENTITY_IDS"]
 
 from babylon.config.defines import GameDefines
-from babylon.engine.observers.metrics import MetricsCollector
+from babylon.engine.observers.metrics import TickStateRecorder
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
 from babylon.models.config import SimulationConfig
@@ -54,11 +54,11 @@ def _run_simulation_with_metrics(
     config: SimulationConfig,
     defines: GameDefines,
     max_ticks: int,
-) -> MetricsCollector:
-    """Run simulation with MetricsCollector observer.
+) -> TickStateRecorder:
+    """Run simulation with TickStateRecorder observer.
 
     Uses Simulation facade with observer pattern for unified metrics collection.
-    MetricsCollector records initial state (tick 0) plus state after each step,
+    TickStateRecorder records initial state (tick 0) plus state after each step,
     so we run max_ticks - 1 steps to get max_ticks total data points.
 
     Args:
@@ -68,9 +68,9 @@ def _run_simulation_with_metrics(
         max_ticks: Maximum ticks to run (total data points collected)
 
     Returns:
-        MetricsCollector with recorded history
+        TickStateRecorder with recorded history
     """
-    collector = MetricsCollector(mode="batch")
+    collector = TickStateRecorder(mode="batch")
     sim = Simulation(state, config, observers=[collector], defines=defines)
 
     # First step triggers on_simulation_start (records tick 0) + on_tick (records tick 1)
@@ -91,10 +91,10 @@ def run_trace(
     param_path: str | None = None,
     param_value: float | None = None,
     max_ticks: int = DEFAULT_TICKS,
-) -> tuple[MetricsCollector, SimulationConfig, GameDefines]:
+) -> tuple[TickStateRecorder, SimulationConfig, GameDefines]:
     """Run single simulation, return collector with config for export.
 
-    Executes a simulation using MetricsCollector observer and returns
+    Executes a simulation using TickStateRecorder observer and returns
     the collector along with config/defines for flexible export (CSV/JSON).
 
     Args:
@@ -103,7 +103,7 @@ def run_trace(
         max_ticks: Maximum number of ticks to run
 
     Returns:
-        Tuple of (MetricsCollector, SimulationConfig, GameDefines)
+        Tuple of (TickStateRecorder, SimulationConfig, GameDefines)
     """
     # Create scenario with default parameters
     state, config, scenario_defines = create_imperial_circuit_scenario()
@@ -115,19 +115,19 @@ def run_trace(
     else:
         defines = scenario_defines
 
-    # Run simulation with MetricsCollector
+    # Run simulation with TickStateRecorder
     collector = _run_simulation_with_metrics(state, config, defines, max_ticks)
     return collector, config, defines
 
 
 def extract_sweep_summary(
-    collector: MetricsCollector,
+    collector: TickStateRecorder,
     param_value: float,
 ) -> dict[str, Any]:
-    """Extract summary metrics from MetricsCollector.
+    """Extract summary metrics from TickStateRecorder.
 
     Args:
-        collector: MetricsCollector with recorded history
+        collector: TickStateRecorder with recorded history
         param_value: The parameter value used
 
     Returns:
@@ -189,7 +189,7 @@ def run_sweep(
         state, config, scenario_defines = create_imperial_circuit_scenario()
         defines = inject_parameter(GameDefines(), param_path, value)
 
-        # Run simulation with MetricsCollector
+        # Run simulation with TickStateRecorder
         collector = _run_simulation_with_metrics(state, config, defines, max_ticks)
 
         # Extract summary metrics

@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 
 from babylon.config.defines import GameDefines
-from babylon.engine.observers import MetricsCollector
+from babylon.engine.observers import TickStateRecorder
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
@@ -29,9 +29,9 @@ def config() -> SimulationConfig:
 
 
 @pytest.fixture
-def batch_metrics_collector() -> MetricsCollector:
-    """Create MetricsCollector in batch mode for long-running scenarios."""
-    return MetricsCollector(mode="batch")
+def batch_tick_recorder() -> TickStateRecorder:
+    """Create TickStateRecorder in batch mode for long-running scenarios."""
+    return TickStateRecorder(mode="batch")
 
 
 def create_imperial_circuit_state() -> WorldState:

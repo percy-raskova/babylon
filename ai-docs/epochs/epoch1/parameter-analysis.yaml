@@ -390,13 +390,13 @@ architecture_analysis:
   coupling_problem:
     status: "DESIGN DEBT IDENTIFIED"
     description: |
-      parameter_analysis.py and MetricsCollector implement PARALLEL data collection
+      parameter_analysis.py and TickStateRecorder implement PARALLEL data collection
       paths. When new metrics are added to TickMetrics, parameter_analysis.py does
       NOT automatically receive them because it has its own collect_tick_data().
 
     current_state:
       dashboard_path:
-        uses: "MetricsCollector (observer pattern)"
+        uses: "TickStateRecorder (observer pattern)"
         method: "collector.to_csv_rows()"
         auto_updates: true
       sweeper_path:
@@ -407,7 +407,7 @@ architecture_analysis:
     evidence:
       location: "tools/parameter_analysis.py:108-173"
       code_pattern: |
-        # Duplicates MetricsCollector extraction logic
+        # Duplicates TickStateRecorder extraction logic
         row["p_w_wealth"] = float(p_w.wealth)
         row["p_w_consciousness"] = float(p_w.ideology.class_consciousness)
         # ... manually lists each field
@@ -418,12 +418,12 @@ architecture_analysis:
       ParameterSweeper does NOT see them without code changes to collect_tick_data().
 
     recommended_fix:
-      description: "Refactor parameter_analysis.py to use MetricsCollector"
+      description: "Refactor parameter_analysis.py to use TickStateRecorder"
       priority: "Phase 4.2 or later"
       pattern: |
-        from babylon.engine.observers.metrics import MetricsCollector
+        from babylon.engine.observers.metrics import TickStateRecorder
 
-        collector = MetricsCollector(mode="batch")
+        collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state, config)
         for tick in range(max_ticks):
             prev = state
@@ -436,7 +436,7 @@ architecture_analysis:
     description: |
       In physics, we have Planck constants (c, h, G) from which everything derives.
       What are our simulation's "Planck constants"? Understanding this hierarchy
-      clarifies what ParameterSweeper should vary vs what MetricsCollector should observe.
+      clarifies what ParameterSweeper should vary vs what TickStateRecorder should observe.
 
     causal_hierarchy:
       level_1_fundamentals:
@@ -515,14 +515,14 @@ architecture_analysis:
     architecture_principle: |
       ParameterSweeper should:
         - INPUT: Vary FUNDAMENTALS (via GameDefines injection)
-        - OUTPUT: Observe DERIVED METRICS (via MetricsCollector)
+        - OUTPUT: Observe DERIVED METRICS (via TickStateRecorder)
         - NEVER: Directly manipulate state variables
 
       Current architecture status:
         - GameDefines ✅ - Correctly stores fundamentals
         - Systems ✅ - Correctly compute derived dynamics
-        - MetricsCollector ✅ - Correctly observes derived metrics
-        - ParameterSweeper ❌ - Bypasses MetricsCollector, breaks abstraction
+        - TickStateRecorder ✅ - Correctly observes derived metrics
+        - ParameterSweeper ❌ - Bypasses TickStateRecorder, breaks abstraction
 
 # =============================================================================
 # IMPLEMENTATION PHASES

@@ -1,10 +1,14 @@
-"""MetricsCollector observer for unified simulation metrics.
+"""TickStateRecorder observer for unified simulation metrics.
 
-Implements SimulationObserver protocol to collect comprehensive metrics
+Implements SimulationObserver protocol to record tick-by-tick state
 during simulation runs. Supports two modes:
 
 - "interactive": Rolling window of recent ticks (for dashboard)
 - "batch": Accumulates all history (for parameter sweeps)
+
+Note: This class was renamed from MetricsCollector to TickStateRecorder
+to avoid namespace collision with src/babylon/metrics/collector.py
+(RAG telemetry collection).
 
 Sprint 4.1: Phase 4 Dashboard/Sweeper unification.
 Sprint 4.1C: Add JSON export for DAG structure preservation.
@@ -39,12 +43,15 @@ ENTITY_SLOTS: Final[dict[str, str]] = {
 DEATH_THRESHOLD: Final[float] = 0.001
 
 
-class MetricsCollector:
-    """Observer that collects simulation metrics for analysis.
+class TickStateRecorder:
+    """Observer that records simulation state at each tick for analysis.
 
     Implements SimulationObserver protocol. Extracts entity and edge
     metrics at each tick, with optional rolling window for memory
     efficiency in interactive mode.
+
+    Renamed from MetricsCollector to avoid namespace collision with
+    babylon.metrics.collector.MetricsCollector (RAG telemetry).
     """
 
     def __init__(
@@ -69,7 +76,7 @@ class MetricsCollector:
     @property
     def name(self) -> str:
         """Return observer identifier."""
-        return "MetricsCollector"
+        return "TickStateRecorder"
 
     @property
     def latest(self) -> TickMetrics | None:

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.engine.observers import MetricsCollector
+from babylon.engine.observers import TickStateRecorder
 from babylon.engine.simulation import Simulation
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.enums import EventType, SocialRole
@@ -66,7 +66,7 @@ class TestCarceralEquilibrium:
     def test_default_trajectory_phases(
         self,
         config: SimulationConfig,
-        batch_metrics_collector: MetricsCollector,
+        batch_tick_recorder: TickStateRecorder,
     ) -> None:
         """70-Year Arc (Default - No Player Intervention).
 
@@ -83,7 +83,7 @@ class TestCarceralEquilibrium:
         """
         # Create initial state: imperial circuit with NO player organization
         state = create_imperial_circuit_state()
-        sim = Simulation(state, config, observers=[batch_metrics_collector])
+        sim = Simulation(state, config, observers=[batch_tick_recorder])
 
         # Track phase milestones (tick when first detected)
         milestones: dict[str, int | None] = {
@@ -100,7 +100,7 @@ class TestCarceralEquilibrium:
         # Run tick-by-tick, detecting phase transitions
         for tick in range(MAX_TICKS):
             current_state = sim.step()
-            latest = batch_metrics_collector.latest
+            latest = batch_tick_recorder.latest
 
             # Phase 2: Metabolic Rift - overshoot ratio exceeds 1.0
             if (
@@ -151,11 +151,11 @@ class TestCarceralEquilibrium:
         # All phases must occur
         assert milestones["metabolic_rift_opened"] is not None, (
             "Metabolic rift should open (overshoot > 1.0) during simulation. "
-            f"Final overshoot: {batch_metrics_collector.latest.overshoot_ratio if batch_metrics_collector.latest else 'N/A'}"
+            f"Final overshoot: {batch_tick_recorder.latest.overshoot_ratio if batch_tick_recorder.latest else 'N/A'}"
         )
         assert milestones["superwage_crisis"] is not None, (
             "Superwage crisis should occur (rent pool exhausted). "
-            f"Final pool: {batch_metrics_collector.latest.imperial_rent_pool if batch_metrics_collector.latest else 'N/A'}"
+            f"Final pool: {batch_tick_recorder.latest.imperial_rent_pool if batch_tick_recorder.latest else 'N/A'}"
         )
         assert milestones["class_decomposition"] is not None, (
             "Labor aristocracy should decompose into enforcers/prisoners. "
@@ -220,7 +220,7 @@ class TestCarceralEquilibrium:
     def _run_and_collect_milestones(
         self,
         config: SimulationConfig,
-        batch_metrics_collector: MetricsCollector,
+        batch_tick_recorder: TickStateRecorder,
     ) -> dict[str, int | None]:
         """Run simulation and collect phase milestone ticks.
 
@@ -229,7 +229,7 @@ class TestCarceralEquilibrium:
             or None if phase did not occur.
         """
         state = create_imperial_circuit_state()
-        sim = Simulation(state, config, observers=[batch_metrics_collector])
+        sim = Simulation(state, config, observers=[batch_tick_recorder])
 
         milestones: dict[str, int | None] = {
             "metabolic_rift_opened": None,
@@ -241,7 +241,7 @@ class TestCarceralEquilibrium:
 
         for tick in range(MAX_TICKS):
             current_state = sim.step()
-            latest = batch_metrics_collector.latest
+            latest = batch_tick_recorder.latest
 
             # Metabolic rift detection
             if (
@@ -345,7 +345,7 @@ class TestCarceralEquilibrium:
     def test_phase_spread_minimum_two_years(
         self,
         config: SimulationConfig,
-        batch_metrics_collector: MetricsCollector,
+        batch_tick_recorder: TickStateRecorder,
     ) -> None:
         """Carceral phases should span at least 2 years of simulation time.
 
@@ -355,7 +355,7 @@ class TestCarceralEquilibrium:
         Specifically, the time between SUPERWAGE_CRISIS (first carceral phase)
         and TERMINAL_DECISION (last carceral phase) must be >= 104 ticks.
         """
-        milestones = self._run_and_collect_milestones(config, batch_metrics_collector)
+        milestones = self._run_and_collect_milestones(config, batch_tick_recorder)
 
         # Get carceral phase ticks (excluding metabolic rift which is pre-carceral)
         carceral_phases = [
@@ -388,7 +388,7 @@ class TestCarceralEquilibrium:
     def test_each_phase_pair_has_gap(
         self,
         config: SimulationConfig,
-        batch_metrics_collector: MetricsCollector,
+        batch_tick_recorder: TickStateRecorder,
     ) -> None:
         """Each phase transition must have at least 1 tick gap.
 
@@ -398,7 +398,7 @@ class TestCarceralEquilibrium:
         Phase sequence:
         SUPERWAGE_CRISIS -> CLASS_DECOMPOSITION -> CONTROL_RATIO_CRISIS -> TERMINAL_DECISION
         """
-        milestones = self._run_and_collect_milestones(config, batch_metrics_collector)
+        milestones = self._run_and_collect_milestones(config, batch_tick_recorder)
 
         # All 4 carceral phases must occur for this test to be meaningful
         required_phases = [

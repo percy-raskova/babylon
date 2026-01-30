@@ -50,12 +50,12 @@ class TestSimulationCreation:
         assert isinstance(sim, Simulation)
 
     def test_create_simulation_has_metrics_collector(self) -> None:
-        """The simulation should have a MetricsCollector observer."""
+        """The simulation should have a TickStateRecorder observer."""
         from babylon.ui.dpg_runner import create_simulation
 
         sim = create_simulation()
         observer_types = [type(o).__name__ for o in sim._observers]
-        assert "MetricsCollector" in observer_types
+        assert "TickStateRecorder" in observer_types
 
     def test_create_simulation_has_narrative_director(self) -> None:
         """The simulation should have a NarrativeDirector observer."""
@@ -547,7 +547,7 @@ class TestImperialCircuitWealthDataFlow:
     """TDD tests for 4-node Imperial Circuit wealth data in dashboard.
 
     Verifies that all four social classes (P_w, P_c, C_b, C_w) are properly
-    wired from the simulation through MetricsCollector to the dashboard display.
+    wired from the simulation through TickStateRecorder to the dashboard display.
 
     Issue being investigated: "invisible P_c (Comprador) wealth line"
 
@@ -560,22 +560,22 @@ class TestImperialCircuitWealthDataFlow:
     def test_all_four_entity_slots_populated_after_tick(self) -> None:
         """All four slots (p_w, p_c, c_b, c_w) must be populated in TickMetrics.
 
-        The MetricsCollector ENTITY_SLOTS mapping must capture all 4 nodes from
+        The TickStateRecorder ENTITY_SLOTS mapping must capture all 4 nodes from
         the imperial circuit scenario. If any slot is None, the corresponding
         wealth line will be invisible on the dashboard.
         """
-        from babylon.engine.observers import MetricsCollector
+        from babylon.engine.observers import TickStateRecorder
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
 
         state, config, defines = create_imperial_circuit_scenario()
-        metrics = MetricsCollector(mode="interactive")
+        metrics = TickStateRecorder(mode="interactive")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         sim.step()
 
         latest = metrics.latest
-        assert latest is not None, "MetricsCollector should have recorded tick"
+        assert latest is not None, "TickStateRecorder should have recorded tick"
         assert latest.p_w is not None, "P_w (C001) metrics missing"
         assert latest.p_c is not None, "P_c (C002) metrics missing - invisible line bug"
         assert latest.c_b is not None, "C_b (C003) metrics missing"
@@ -589,12 +589,12 @@ class TestImperialCircuitWealthDataFlow:
 
         Runs 10 ticks and verifies at least one class has changing wealth values.
         """
-        from babylon.engine.observers import MetricsCollector
+        from babylon.engine.observers import TickStateRecorder
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
 
         state, config, defines = create_imperial_circuit_scenario()
-        metrics = MetricsCollector(mode="batch")
+        metrics = TickStateRecorder(mode="batch")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         # Run 10 ticks
@@ -629,13 +629,13 @@ class TestImperialCircuitWealthDataFlow:
         - C_w wealth increases (super-wages)
         - P_c wealth remains positive (keeps 15% comprador cut)
         """
-        from babylon.engine.observers import MetricsCollector
+        from babylon.engine.observers import TickStateRecorder
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
 
         # Use higher initial wealth so extraction visibly dominates production
         state, config, defines = create_imperial_circuit_scenario(periphery_wealth=100.0)
-        metrics = MetricsCollector(mode="batch")
+        metrics = TickStateRecorder(mode="batch")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         # Record initial values
@@ -677,16 +677,16 @@ class TestImperialCircuitWealthDataFlow:
     def test_dashboard_state_updates_all_four_wealth_series(self) -> None:
         """DashboardState should have data for all 4 wealth series after update.
 
-        This tests the wiring between MetricsCollector and DashboardState.
+        This tests the wiring between TickStateRecorder and DashboardState.
         If P_c data is not appended, the line will be invisible.
         """
-        from babylon.engine.observers import MetricsCollector
+        from babylon.engine.observers import TickStateRecorder
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
         from babylon.ui.dpg_runner import DashboardState, update_wealth_trend
 
         state, config, defines = create_imperial_circuit_scenario()
-        metrics = MetricsCollector(mode="interactive")
+        metrics = TickStateRecorder(mode="interactive")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         # Create dashboard state
@@ -723,13 +723,13 @@ class TestImperialCircuitWealthDataFlow:
         If one series has N points, all series should have N points.
         This ensures consistent display updates across all wealth lines.
         """
-        from babylon.engine.observers import MetricsCollector
+        from babylon.engine.observers import TickStateRecorder
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
         from babylon.ui.dpg_runner import DashboardState, update_wealth_trend
 
         state, config, defines = create_imperial_circuit_scenario()
-        metrics = MetricsCollector(mode="interactive")
+        metrics = TickStateRecorder(mode="interactive")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         dash_state = DashboardState()
@@ -763,12 +763,12 @@ class TestImperialCircuitWealthDataFlow:
         Root cause investigation: If P_c values overlap with another class,
         the line may appear invisible due to z-order or identical positioning.
         """
-        from babylon.engine.observers import MetricsCollector
+        from babylon.engine.observers import TickStateRecorder
         from babylon.engine.scenarios import create_imperial_circuit_scenario
         from babylon.engine.simulation import Simulation
 
         state, config, defines = create_imperial_circuit_scenario()
-        metrics = MetricsCollector(mode="batch")
+        metrics = TickStateRecorder(mode="batch")
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         # Run 10 ticks

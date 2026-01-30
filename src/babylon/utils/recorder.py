@@ -9,7 +9,7 @@ JSONL files in distinct session directories.
 
 See Also:
     :mod:`babylon.engine.observer` for the SimulationObserver protocol.
-    :mod:`babylon.engine.observers.metrics` for MetricsCollector.
+    :mod:`babylon.engine.observers.metrics` for TickStateRecorder.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import IO, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from babylon.ai.director import NarrativeDirector
-    from babylon.engine.observers.metrics import MetricsCollector
+    from babylon.engine.observers.metrics import TickStateRecorder
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
 
@@ -40,7 +40,7 @@ class SessionRecorder:
     - summary.json: Session metadata on completion
 
     Args:
-        metrics_collector: MetricsCollector observer to extract TickMetrics.
+        metrics_collector: TickStateRecorder observer to extract TickMetrics.
         narrative_director: Optional NarrativeDirector for narrative log.
         base_dir: Base directory for sessions (default: logs/sessions).
 
@@ -54,7 +54,7 @@ class SessionRecorder:
 
     def __init__(
         self,
-        metrics_collector: MetricsCollector,
+        metrics_collector: TickStateRecorder,
         narrative_director: NarrativeDirector | None = None,
         base_dir: Path | None = None,
     ) -> None:

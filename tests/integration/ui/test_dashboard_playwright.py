@@ -18,6 +18,8 @@ from contextlib import closing
 
 import pytest
 
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
+
 # Skip entire module if playwright not installed
 playwright = pytest.importorskip("playwright.sync_api", reason="Playwright not installed")
 sync_playwright = playwright.sync_playwright
@@ -74,13 +76,15 @@ class TestDashboardUI:
         assert page.locator('button:has-text("RESET")').count() > 0, "RESET button not found"
 
     def test_state_panel_displays_entity(self, browser_page) -> None:
-        """STATE panel displays C001 entity with key metrics."""
+        """STATE panel displays PERIPHERY_WORKER_ID entity with key metrics."""
         page = browser_page
         page.goto(DASHBOARD_URL)
         page.wait_for_load_state("networkidle")
 
-        # Verify C001 entity is visible
-        assert page.locator("text=C001").count() > 0, "C001 entity not displayed"
+        # Verify PERIPHERY_WORKER_ID entity is visible
+        assert page.locator(f"text={PERIPHERY_WORKER_ID}").count() > 0, (
+            f"{PERIPHERY_WORKER_ID} entity not displayed"
+        )
 
         # Verify key metrics are shown
         metrics = ["wealth", "p_revolution", "effective_wealth", "ppp_multiplier"]

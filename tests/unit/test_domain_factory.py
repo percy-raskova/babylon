@@ -11,6 +11,10 @@ from tests.factories import DomainFactory
 
 from babylon.models import EdgeType, SocialRole
 from babylon.models.entities.social_class import IdeologicalProfile
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 
 class TestDomainFactoryWorker:
@@ -24,7 +28,7 @@ class TestDomainFactoryWorker:
     @pytest.mark.parametrize(
         "attr,expected",
         [
-            ("id", "C001"),
+            ("id", PERIPHERY_WORKER_ID),
             ("name", "Test Worker"),
             ("role", SocialRole.PERIPHERY_PROLETARIAT),
             ("wealth", 0.5),
@@ -89,7 +93,7 @@ class TestDomainFactoryOwner:
     @pytest.mark.parametrize(
         "attr,expected",
         [
-            ("id", "C002"),
+            ("id", COMPRADOR_ID),
             ("name", "Test Owner"),
             ("role", SocialRole.CORE_BOURGEOISIE),
             ("wealth", 10.0),
@@ -147,8 +151,8 @@ class TestDomainFactoryRelationship:
     @pytest.mark.parametrize(
         "attr,expected",
         [
-            ("source_id", "C001"),
-            ("target_id", "C002"),
+            ("source_id", PERIPHERY_WORKER_ID),
+            ("target_id", COMPRADOR_ID),
             ("edge_type", EdgeType.EXPLOITATION),
             ("value_flow", 0.0),
             ("tension", 0.0),
@@ -203,17 +207,19 @@ class TestDomainFactoryWorldState:
         """WorldState accepts entities dict."""
         worker = factory.create_worker()
         owner = factory.create_owner()
-        state = factory.create_world_state(entities={"C001": worker, "C002": owner})
+        state = factory.create_world_state(
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner}
+        )
         assert len(state.entities) == 2
-        assert "C001" in state.entities
-        assert "C002" in state.entities
+        assert PERIPHERY_WORKER_ID in state.entities
+        assert COMPRADOR_ID in state.entities
 
     def test_create_world_state_with_relationships(self, factory: DomainFactory) -> None:
         """WorldState accepts relationships list."""
         rel = factory.create_relationship()
         state = factory.create_world_state(relationships=[rel])
         assert len(state.relationships) == 1
-        assert state.relationships[0].source_id == "C001"
+        assert state.relationships[0].source_id == PERIPHERY_WORKER_ID
 
     def test_create_world_state_override_tick(self, factory: DomainFactory) -> None:
         """WorldState tick can be overridden."""
@@ -235,14 +241,14 @@ class TestDomainFactoryIntegration:
         owner = factory.create_owner()
         rel = factory.create_relationship()
         state = factory.create_world_state(
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[rel],
         )
 
         assert len(state.entities) == 2
         assert len(state.relationships) == 1
-        assert state.entities["C001"].role == SocialRole.PERIPHERY_PROLETARIAT
-        assert state.entities["C002"].role == SocialRole.CORE_BOURGEOISIE
+        assert state.entities[PERIPHERY_WORKER_ID].role == SocialRole.PERIPHERY_PROLETARIAT
+        assert state.entities[COMPRADOR_ID].role == SocialRole.CORE_BOURGEOISIE
         assert state.relationships[0].edge_type == EdgeType.EXPLOITATION
 
     def test_simulation_engine_fixture_equivalence(self, factory: DomainFactory) -> None:
@@ -259,7 +265,7 @@ class TestDomainFactoryIntegration:
             name="Periphery Worker",
             # All other values match defaults
         )
-        assert worker.id == "C001"
+        assert worker.id == PERIPHERY_WORKER_ID
         assert worker.wealth == 0.5
         assert worker.organization == 0.1
 
@@ -270,7 +276,7 @@ class TestDomainFactoryIntegration:
             ideology=0.0,  # Override: test uses 0.0, not default 0.5
             organization=0.8,  # Override: test uses 0.8, not default 0.7
         )
-        assert owner.id == "C002"
+        assert owner.id == COMPRADOR_ID
         assert owner.wealth == 0.5
         assert owner.organization == 0.8
         # ideology=0.0 converts to class_consciousness=0.5

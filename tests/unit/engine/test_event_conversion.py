@@ -13,6 +13,11 @@ from datetime import datetime
 
 from babylon.engine.event_bus import Event
 from babylon.engine.simulation_engine import _convert_bus_event_to_pydantic
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EventType
 from babylon.models.events import (
     CrisisEvent,
@@ -36,8 +41,8 @@ class TestExtractionEventConversion:
             type=EventType.SURPLUS_EXTRACTION,
             tick=5,
             payload={
-                "source_id": "C001",
-                "target_id": "C002",
+                "source_id": PERIPHERY_WORKER_ID,
+                "target_id": COMPRADOR_ID,
                 "amount": 15.5,
                 "mechanism": "imperial_rent",
             },
@@ -48,8 +53,8 @@ class TestExtractionEventConversion:
         assert isinstance(result, ExtractionEvent)
         assert result.event_type == EventType.SURPLUS_EXTRACTION
         assert result.tick == 5
-        assert result.source_id == "C001"
-        assert result.target_id == "C002"
+        assert result.source_id == PERIPHERY_WORKER_ID
+        assert result.target_id == COMPRADOR_ID
         assert result.amount == 15.5
         assert result.mechanism == "imperial_rent"
 
@@ -59,8 +64,8 @@ class TestExtractionEventConversion:
             type="surplus_extraction",  # type: ignore[arg-type]
             tick=3,
             payload={
-                "source_id": "C001",
-                "target_id": "C002",
+                "source_id": PERIPHERY_WORKER_ID,
+                "target_id": COMPRADOR_ID,
                 "amount": 10.0,
             },
         )
@@ -80,8 +85,8 @@ class TestSubsidyEventConversion:
             type=EventType.IMPERIAL_SUBSIDY,
             tick=7,
             payload={
-                "source_id": "C002",
-                "target_id": "C003",
+                "source_id": COMPRADOR_ID,
+                "target_id": CORE_BOURGEOISIE_ID,
                 "amount": 100.0,
                 "repression_boost": 0.25,
             },
@@ -92,8 +97,8 @@ class TestSubsidyEventConversion:
         assert isinstance(result, SubsidyEvent)
         assert result.event_type == EventType.IMPERIAL_SUBSIDY
         assert result.tick == 7
-        assert result.source_id == "C002"
-        assert result.target_id == "C003"
+        assert result.source_id == COMPRADOR_ID
+        assert result.target_id == CORE_BOURGEOISIE_ID
         assert result.amount == 100.0
         assert result.repression_boost == 0.25
 
@@ -134,8 +139,8 @@ class TestTransmissionEventConversion:
             type=EventType.CONSCIOUSNESS_TRANSMISSION,
             tick=3,
             payload={
-                "source_id": "C002",
-                "target_id": "C001",
+                "source_id": COMPRADOR_ID,
+                "target_id": PERIPHERY_WORKER_ID,
                 "delta": 0.05,
                 "solidarity_strength": 0.8,
             },
@@ -146,8 +151,8 @@ class TestTransmissionEventConversion:
         assert isinstance(result, TransmissionEvent)
         assert result.event_type == EventType.CONSCIOUSNESS_TRANSMISSION
         assert result.tick == 3
-        assert result.source_id == "C002"
-        assert result.target_id == "C001"
+        assert result.source_id == COMPRADOR_ID
+        assert result.target_id == PERIPHERY_WORKER_ID
         assert result.delta == 0.05
         assert result.solidarity_strength == 0.8
 
@@ -161,10 +166,10 @@ class TestMassAwakeningEventConversion:
             type=EventType.MASS_AWAKENING,
             tick=7,
             payload={
-                "target_id": "C001",
+                "target_id": PERIPHERY_WORKER_ID,
                 "old_consciousness": 0.4,
                 "new_consciousness": 0.7,
-                "triggering_source": "C002",
+                "triggering_source": COMPRADOR_ID,
             },
         )
         result = _convert_bus_event_to_pydantic(bus_event)
@@ -173,10 +178,10 @@ class TestMassAwakeningEventConversion:
         assert isinstance(result, MassAwakeningEvent)
         assert result.event_type == EventType.MASS_AWAKENING
         assert result.tick == 7
-        assert result.target_id == "C001"
+        assert result.target_id == PERIPHERY_WORKER_ID
         assert result.old_consciousness == 0.4
         assert result.new_consciousness == 0.7
-        assert result.triggering_source == "C002"
+        assert result.triggering_source == COMPRADOR_ID
 
 
 class TestSparkEventConversion:
@@ -188,7 +193,7 @@ class TestSparkEventConversion:
             type=EventType.EXCESSIVE_FORCE,
             tick=5,
             payload={
-                "node_id": "C001",
+                "node_id": PERIPHERY_WORKER_ID,
                 "repression": 0.8,
                 "spark_probability": 0.4,
             },
@@ -199,7 +204,7 @@ class TestSparkEventConversion:
         assert isinstance(result, SparkEvent)
         assert result.event_type == EventType.EXCESSIVE_FORCE
         assert result.tick == 5
-        assert result.node_id == "C001"
+        assert result.node_id == PERIPHERY_WORKER_ID
         assert result.repression == 0.8
         assert result.spark_probability == 0.4
 
@@ -213,7 +218,7 @@ class TestUprisingEventConversion:
             type=EventType.UPRISING,
             tick=8,
             payload={
-                "node_id": "C001",
+                "node_id": PERIPHERY_WORKER_ID,
                 "trigger": "spark",
                 "agitation": 0.9,
                 "repression": 0.7,
@@ -225,7 +230,7 @@ class TestUprisingEventConversion:
         assert isinstance(result, UprisingEvent)
         assert result.event_type == EventType.UPRISING
         assert result.tick == 8
-        assert result.node_id == "C001"
+        assert result.node_id == PERIPHERY_WORKER_ID
         assert result.trigger == "spark"
         assert result.agitation == 0.9
         assert result.repression == 0.7
@@ -240,7 +245,7 @@ class TestSolidaritySpikeEventConversion:
             type=EventType.SOLIDARITY_SPIKE,
             tick=6,
             payload={
-                "node_id": "C001",
+                "node_id": PERIPHERY_WORKER_ID,
                 "solidarity_gained": 0.3,
                 "edges_affected": 2,
                 "triggered_by": "uprising",
@@ -252,7 +257,7 @@ class TestSolidaritySpikeEventConversion:
         assert isinstance(result, SolidaritySpikeEvent)
         assert result.event_type == EventType.SOLIDARITY_SPIKE
         assert result.tick == 6
-        assert result.node_id == "C001"
+        assert result.node_id == PERIPHERY_WORKER_ID
         assert result.solidarity_gained == 0.3
         assert result.edges_affected == 2
         assert result.triggered_by == "uprising"
@@ -263,11 +268,12 @@ class TestRuptureEventConversion:
 
     def test_converts_rupture_event(self) -> None:
         """RUPTURE events convert to RuptureEvent."""
+        edge_repr = f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}"
         bus_event = Event(
             type=EventType.RUPTURE,
             tick=12,
             payload={
-                "edge": "C001->C002",
+                "edge": edge_repr,
             },
         )
         result = _convert_bus_event_to_pydantic(bus_event)
@@ -276,7 +282,7 @@ class TestRuptureEventConversion:
         assert isinstance(result, RuptureEvent)
         assert result.event_type == EventType.RUPTURE
         assert result.tick == 12
-        assert result.edge == "C001->C002"
+        assert result.edge == edge_repr
 
 
 class TestGracefulDegradation:
@@ -297,7 +303,7 @@ class TestGracefulDegradation:
         bus_event = Event(
             type=EventType.SOLIDARITY_AWAKENING,
             tick=0,
-            payload={"node_id": "C001"},
+            payload={"node_id": PERIPHERY_WORKER_ID},
         )
         result = _convert_bus_event_to_pydantic(bus_event)
         # SOLIDARITY_AWAKENING doesn't have a dedicated event class yet
@@ -311,8 +317,8 @@ class TestGracefulDegradation:
             tick=0,
             timestamp=timestamp,
             payload={
-                "source_id": "C001",
-                "target_id": "C002",
+                "source_id": PERIPHERY_WORKER_ID,
+                "target_id": COMPRADOR_ID,
                 "amount": 10.0,
             },
         )

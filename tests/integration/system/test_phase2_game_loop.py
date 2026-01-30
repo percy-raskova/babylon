@@ -15,6 +15,10 @@ from babylon.engine.scenarios import (
     create_two_node_scenario,
 )
 from babylon.engine.simulation_engine import step
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType
 from tests.constants import TestConstants
 
@@ -39,8 +43,8 @@ class TestCreateTwoNodeScenario:
         """State has exactly two entities."""
         state, _, _ = create_two_node_scenario()
         assert len(state.entities) == 2
-        assert "C001" in state.entities  # Worker
-        assert "C002" in state.entities  # Owner
+        assert PERIPHERY_WORKER_ID in state.entities  # Worker
+        assert COMPRADOR_ID in state.entities  # Owner
 
     def test_state_has_required_relationships(self) -> None:
         """State has required relationships: exploitation, solidarity, wages, and tenancy.
@@ -68,8 +72,8 @@ class TestCreateTwoNodeScenario:
             owner_wealth=TC.Phase2.CUSTOM_OWNER_WEALTH,
             extraction_efficiency=TC.Phase2.CUSTOM_EXTRACTION,
         )
-        assert state.entities["C001"].wealth == TC.Phase2.CUSTOM_WORKER_WEALTH
-        assert state.entities["C002"].wealth == TC.Phase2.CUSTOM_OWNER_WEALTH
+        assert state.entities[PERIPHERY_WORKER_ID].wealth == TC.Phase2.CUSTOM_WORKER_WEALTH
+        assert state.entities[COMPRADOR_ID].wealth == TC.Phase2.CUSTOM_OWNER_WEALTH
         # Paradox Refactor: extraction_efficiency now in GameDefines, not SimulationConfig
         assert defines.economy.extraction_efficiency == TC.Phase2.CUSTOM_EXTRACTION
 
@@ -111,7 +115,7 @@ class TestRentSpiralFeedbackLoop:
 
         # PPP Model: Worker receives wages that may offset extraction
         # Key verification: effective_wealth shows PPP bonus is applied
-        worker = state.entities["C001"]
+        worker = state.entities[PERIPHERY_WORKER_ID]
         assert worker.effective_wealth > 0  # Worker has effective wealth
         assert worker.ppp_multiplier > 1.0  # PPP bonus is active
         # With weekly conversion, the PPP bonus is small - verify mechanism is active
@@ -127,14 +131,14 @@ class TestRentSpiralFeedbackLoop:
         effect depends on extraction rates vs wage rates.
         """
         state, config, defines = create_two_node_scenario()
-        initial_wealth = state.entities["C002"].wealth
+        initial_wealth = state.entities[COMPRADOR_ID].wealth
 
         for _ in range(TC.Phase2.MEDIUM_FEEDBACK_TICKS):
             state = step(state, config, defines=defines)
 
         # PPP Model: Owner's wealth changes due to wages payment and extraction
         # Key verification: economic activity occurred (wages paid)
-        owner = state.entities["C002"]
+        owner = state.entities[COMPRADOR_ID]
         # Owner may be richer or poorer depending on extraction vs wages balance
         # The important thing is that the system is running and wages are being paid
         assert owner.wealth != initial_wealth  # Some change occurred
@@ -149,7 +153,7 @@ class TestRentSpiralFeedbackLoop:
 
         # With PPP model, acquiescence depends on effective wealth
         # which includes the purchasing power bonus
-        worker = state.entities["C001"]
+        worker = state.entities[PERIPHERY_WORKER_ID]
         # P(S|A) should be positive since worker has effective wealth > subsistence
         assert worker.p_acquiescence > 0
         # With weekly conversion, PPP bonus is small - effective should be >= wealth
@@ -188,7 +192,7 @@ class TestRepressionTrapFeedbackLoop:
         state = step(state, config, defines=defines)
 
         # P(S|R) should be low with high repression
-        assert state.entities["C001"].p_revolution < TC.Phase2.LOW_P_REVOLUTION
+        assert state.entities[PERIPHERY_WORKER_ID].p_revolution < TC.Phase2.LOW_P_REVOLUTION
 
     def test_low_repression_allows_higher_p_revolution(self) -> None:
         """Low repression allows higher P(S|R)."""
@@ -199,7 +203,7 @@ class TestRepressionTrapFeedbackLoop:
         state = step(state, config, defines=defines)
 
         # P(S|R) should be higher with low repression
-        assert state.entities["C001"].p_revolution > TC.Phase2.HIGH_P_REVOLUTION
+        assert state.entities[PERIPHERY_WORKER_ID].p_revolution > TC.Phase2.HIGH_P_REVOLUTION
 
     def test_repression_delays_crossover(self) -> None:
         """High repression delays the crossover point (P(S|R) > P(S|A))."""
@@ -222,8 +226,8 @@ class TestRepressionTrapFeedbackLoop:
             state_low = step(state_low, config_low, defines=defines_low)
             state_high = step(state_high, config_high, defines=defines_high)
 
-            worker_low = state_low.entities["C001"]
-            worker_high = state_high.entities["C001"]
+            worker_low = state_low.entities[PERIPHERY_WORKER_ID]
+            worker_high = state_high.entities[PERIPHERY_WORKER_ID]
 
             if crossover_tick_low is None and worker_low.p_revolution > worker_low.p_acquiescence:
                 crossover_tick_low = tick
@@ -263,8 +267,12 @@ class TestGameLoopDeterminism:
 
         # Should be identical
         assert state1.tick == state2.tick == TC.Phase2.SUCCESS_CRITERIA_TICKS
-        assert state1.entities["C001"].wealth == pytest.approx(state2.entities["C001"].wealth)
-        assert state1.entities["C002"].wealth == pytest.approx(state2.entities["C002"].wealth)
+        assert state1.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(
+            state2.entities[PERIPHERY_WORKER_ID].wealth
+        )
+        assert state1.entities[COMPRADOR_ID].wealth == pytest.approx(
+            state2.entities[COMPRADOR_ID].wealth
+        )
         assert state1.relationships[0].tension == pytest.approx(state2.relationships[0].tension)
 
     def test_parameter_changes_cause_different_trajectories(self) -> None:
@@ -283,8 +291,8 @@ class TestGameLoopDeterminism:
 
         # With PPP model, different extraction rates affect PPP multiplier
         # Higher extraction -> higher PPP multiplier -> higher effective wealth bonus
-        worker_base = state_base.entities["C001"]
-        worker_high = state_high.entities["C001"]
+        worker_base = state_base.entities[PERIPHERY_WORKER_ID]
+        worker_high = state_high.entities[PERIPHERY_WORKER_ID]
 
         # PPP multipliers should differ based on extraction efficiency
         # High extraction scenario should have higher PPP bonus
@@ -393,7 +401,7 @@ class TestScenarioVariants:
     def test_labor_aristocracy_scenario_worker_wealthy(self) -> None:
         """Labor aristocracy scenario has wealthy worker."""
         state, _, _ = create_labor_aristocracy_scenario()
-        assert state.entities["C001"].wealth >= TC.Phase2.LABOR_ARISTOCRACY_WEALTH
+        assert state.entities[PERIPHERY_WORKER_ID].wealth >= TC.Phase2.LABOR_ARISTOCRACY_WEALTH
 
 
 # =============================================================================
@@ -437,13 +445,17 @@ class TestPhase2SuccessCriteria:
 
         # Same inputs -> Same outputs
         assert state.tick == state2.tick == TC.Phase2.SUCCESS_CRITERIA_TICKS
-        assert state.entities["C001"].wealth == pytest.approx(state2.entities["C001"].wealth)
-        assert state.entities["C002"].wealth == pytest.approx(state2.entities["C002"].wealth)
+        assert state.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(
+            state2.entities[PERIPHERY_WORKER_ID].wealth
+        )
+        assert state.entities[COMPRADOR_ID].wealth == pytest.approx(
+            state2.entities[COMPRADOR_ID].wealth
+        )
 
         # Verify predictable state transitions with PPP model
         # With super-wages, worker wealth may increase; owner wealth may decrease
         # Key: economic activity occurred and PPP bonus is applied
-        worker = state.entities["C001"]
+        worker = state.entities[PERIPHERY_WORKER_ID]
         assert worker.effective_wealth > 0  # PPP effective wealth calculated
         assert worker.ppp_multiplier > 1.0  # PPP bonus is active
 
@@ -453,17 +465,17 @@ class TestPhase2SuccessCriteria:
             assert exploitation_edges[0].tension > 0
 
         # Probabilities should be calculated
-        assert state.entities["C001"].p_acquiescence > 0
-        assert state.entities["C001"].p_revolution > 0
+        assert state.entities[PERIPHERY_WORKER_ID].p_acquiescence > 0
+        assert state.entities[PERIPHERY_WORKER_ID].p_revolution > 0
 
         # Print summary for human verification
         print("\n=== PHASE 2 SUCCESS CRITERIA MET ===")
         print(f"Final tick: {state.tick}")
-        print(f"Worker wealth: {state.entities['C001'].wealth:.4f}")
-        print(f"Owner wealth: {state.entities['C002'].wealth:.4f}")
+        print(f"Worker wealth: {state.entities[PERIPHERY_WORKER_ID].wealth:.4f}")
+        print(f"Owner wealth: {state.entities[COMPRADOR_ID].wealth:.4f}")
         print(f"Tension: {state.relationships[0].tension:.4f}")
-        print(f"P(S|A): {state.entities['C001'].p_acquiescence:.4f}")
-        print(f"P(S|R): {state.entities['C001'].p_revolution:.4f}")
+        print(f"P(S|A): {state.entities[PERIPHERY_WORKER_ID].p_acquiescence:.4f}")
+        print(f"P(S|R): {state.entities[PERIPHERY_WORKER_ID].p_revolution:.4f}")
         print("=====================================")
 
 
@@ -501,7 +513,10 @@ class TestConsciousnessFeedbackLoop:
 
         # Revolutionary worker should have MORE wealth remaining
         # (they resisted extraction via consciousness)
-        assert rev_state.entities["C001"].wealth > react_state.entities["C001"].wealth
+        assert (
+            rev_state.entities[PERIPHERY_WORKER_ID].wealth
+            > react_state.entities[PERIPHERY_WORKER_ID].wealth
+        )
 
     def test_consciousness_drift_reduces_future_extraction(self) -> None:
         """As worker becomes more revolutionary, extraction decreases.
@@ -527,8 +542,8 @@ class TestConsciousnessFeedbackLoop:
 
         # Revolutionary worker should have retained more wealth
         # because consciousness affects extraction resistance
-        rev_wealth = rev_state.entities["C001"].wealth
-        react_wealth = react_state.entities["C001"].wealth
+        rev_wealth = rev_state.entities[PERIPHERY_WORKER_ID].wealth
+        react_wealth = react_state.entities[PERIPHERY_WORKER_ID].wealth
 
         assert rev_wealth > react_wealth, (
             f"Revolutionary worker ({rev_wealth}) should retain more wealth "

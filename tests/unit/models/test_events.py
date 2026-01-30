@@ -15,6 +15,12 @@ import pytest
 from pydantic import ValidationError
 from tests.constants import TestConstants
 
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EventType
 from babylon.models.events import (
     ConsciousnessEvent,
@@ -104,10 +110,10 @@ class TestConsciousnessEvent:
         event = ConsciousnessEvent(
             event_type=EventType.CONSCIOUSNESS_TRANSMISSION,
             tick=TC.Event.TICK_ZERO,
-            target_id="C001",
+            target_id=PERIPHERY_WORKER_ID,
         )
         with pytest.raises(ValidationError):
-            event.target_id = "C002"  # type: ignore[misc]
+            event.target_id = COMPRADOR_ID  # type: ignore[misc]
 
 
 class TestStruggleEvent:
@@ -126,10 +132,10 @@ class TestStruggleEvent:
         event = StruggleEvent(
             event_type=EventType.EXCESSIVE_FORCE,
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
         )
         with pytest.raises(ValidationError):
-            event.node_id = "C002"  # type: ignore[misc]
+            event.node_id = COMPRADOR_ID  # type: ignore[misc]
 
 
 class TestContradictionEvent:
@@ -148,10 +154,10 @@ class TestContradictionEvent:
         event = ContradictionEvent(
             event_type=EventType.RUPTURE,
             tick=TC.Event.TICK_ZERO,
-            edge="C001->C002",
+            edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}",
         )
         with pytest.raises(ValidationError):
-            event.edge = "C003->C004"  # type: ignore[misc]
+            event.edge = f"{CORE_BOURGEOISIE_ID}->{LABOR_ARISTOCRACY_ID}"  # type: ignore[misc]
 
 
 # =============================================================================
@@ -166,14 +172,14 @@ class TestExtractionEvent:
         """ExtractionEvent can be created with required fields."""
         event = ExtractionEvent(
             tick=TC.Event.TICK_MID,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=TC.Event.EXTRACTION_MODERATE,
         )
         assert event.event_type == EventType.SURPLUS_EXTRACTION
         assert event.tick == TC.Event.TICK_MID
-        assert event.source_id == "C001"
-        assert event.target_id == "C002"
+        assert event.source_id == PERIPHERY_WORKER_ID
+        assert event.target_id == COMPRADOR_ID
         assert event.amount == TC.Event.EXTRACTION_MODERATE
         assert event.mechanism == "imperial_rent"  # default
 
@@ -181,8 +187,8 @@ class TestExtractionEvent:
         """ExtractionEvent should be immutable."""
         event = ExtractionEvent(
             tick=TC.Event.TICK_ZERO,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=TC.Event.EXTRACTION_SMALL,
         )
         with pytest.raises(ValidationError):
@@ -192,8 +198,8 @@ class TestExtractionEvent:
         """ExtractionEvent should default to SURPLUS_EXTRACTION."""
         event = ExtractionEvent(
             tick=TC.Event.TICK_ZERO,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=TC.Event.EXTRACTION_SMALL,
         )
         assert event.event_type == EventType.SURPLUS_EXTRACTION
@@ -206,15 +212,15 @@ class TestSubsidyEvent:
         """SubsidyEvent can be created with required fields."""
         event = SubsidyEvent(
             tick=TC.Event.TICK_MID,
-            source_id="C002",
-            target_id="C003",
+            source_id=COMPRADOR_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             amount=TC.Event.SUBSIDY_LARGE,
             repression_boost=TC.Event.REPRESSION_BOOST_MODERATE,
         )
         assert event.event_type == EventType.IMPERIAL_SUBSIDY
         assert event.tick == TC.Event.TICK_MID
-        assert event.source_id == "C002"
-        assert event.target_id == "C003"
+        assert event.source_id == COMPRADOR_ID
+        assert event.target_id == CORE_BOURGEOISIE_ID
         assert event.amount == TC.Event.SUBSIDY_LARGE
         assert event.repression_boost == TC.Event.REPRESSION_BOOST_MODERATE
 
@@ -222,8 +228,8 @@ class TestSubsidyEvent:
         """SubsidyEvent should be immutable."""
         event = SubsidyEvent(
             tick=TC.Event.TICK_ZERO,
-            source_id="C002",
-            target_id="C003",
+            source_id=COMPRADOR_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             amount=TC.Event.EXTRACTION_LARGE,
             repression_boost=TC.Event.REPRESSION_BOOST_LOW,
         )
@@ -234,8 +240,8 @@ class TestSubsidyEvent:
         """SubsidyEvent should default to IMPERIAL_SUBSIDY."""
         event = SubsidyEvent(
             tick=TC.Event.TICK_ZERO,
-            source_id="C002",
-            target_id="C003",
+            source_id=COMPRADOR_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             amount=TC.Event.EXTRACTION_LARGE,
             repression_boost=TC.Event.REPRESSION_BOOST_LOW,
         )
@@ -292,15 +298,15 @@ class TestTransmissionEvent:
         """TransmissionEvent can be created with required fields."""
         event = TransmissionEvent(
             tick=TC.Event.TICK_EARLY,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=TC.Event.SMALL_DELTA,
             solidarity_strength=TC.EconomicFlow.STRONG_SOLIDARITY,
         )
         assert event.event_type == EventType.CONSCIOUSNESS_TRANSMISSION
         assert event.tick == TC.Event.TICK_EARLY
-        assert event.target_id == "C001"
-        assert event.source_id == "C002"
+        assert event.target_id == PERIPHERY_WORKER_ID
+        assert event.source_id == COMPRADOR_ID
         assert event.delta == TC.Event.SMALL_DELTA
         assert event.solidarity_strength == TC.EconomicFlow.STRONG_SOLIDARITY
 
@@ -308,8 +314,8 @@ class TestTransmissionEvent:
         """TransmissionEvent should be immutable."""
         event = TransmissionEvent(
             tick=TC.Event.TICK_ZERO,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=TC.Event.MODERATE_DELTA,
             solidarity_strength=TC.EconomicFlow.ACTUAL_SOLIDARITY,
         )
@@ -320,8 +326,8 @@ class TestTransmissionEvent:
         """TransmissionEvent should default to CONSCIOUSNESS_TRANSMISSION."""
         event = TransmissionEvent(
             tick=TC.Event.TICK_ZERO,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=TC.Event.MODERATE_DELTA,
             solidarity_strength=TC.EconomicFlow.ACTUAL_SOLIDARITY,
         )
@@ -335,26 +341,26 @@ class TestMassAwakeningEvent:
         """MassAwakeningEvent can be created with required fields."""
         event = MassAwakeningEvent(
             tick=TC.Event.TICK_SEVEN,
-            target_id="C001",
+            target_id=PERIPHERY_WORKER_ID,
             old_consciousness=TC.Probability.BELOW_MIDPOINT,
             new_consciousness=TC.Consciousness.AWAKENING,
-            triggering_source="C002",
+            triggering_source=COMPRADOR_ID,
         )
         assert event.event_type == EventType.MASS_AWAKENING
         assert event.tick == TC.Event.TICK_SEVEN
-        assert event.target_id == "C001"
+        assert event.target_id == PERIPHERY_WORKER_ID
         assert event.old_consciousness == TC.Probability.BELOW_MIDPOINT
         assert event.new_consciousness == TC.Consciousness.AWAKENING
-        assert event.triggering_source == "C002"
+        assert event.triggering_source == COMPRADOR_ID
 
     def test_mass_awakening_event_is_frozen(self) -> None:
         """MassAwakeningEvent should be immutable."""
         event = MassAwakeningEvent(
             tick=TC.Event.TICK_ZERO,
-            target_id="C001",
+            target_id=PERIPHERY_WORKER_ID,
             old_consciousness=TC.Probability.MODERATE,
             new_consciousness=TC.Solidarity.MASS_AWAKENING_THRESHOLD,
-            triggering_source="C002",
+            triggering_source=COMPRADOR_ID,
         )
         with pytest.raises(ValidationError):
             event.new_consciousness = TC.Consciousness.REVOLUTIONARY  # type: ignore[misc]
@@ -363,10 +369,10 @@ class TestMassAwakeningEvent:
         """MassAwakeningEvent should default to MASS_AWAKENING."""
         event = MassAwakeningEvent(
             tick=TC.Event.TICK_ZERO,
-            target_id="C001",
+            target_id=PERIPHERY_WORKER_ID,
             old_consciousness=TC.Probability.MODERATE,
             new_consciousness=TC.Solidarity.MASS_AWAKENING_THRESHOLD,
-            triggering_source="C002",
+            triggering_source=COMPRADOR_ID,
         )
         assert event.event_type == EventType.MASS_AWAKENING
 
@@ -378,13 +384,13 @@ class TestSparkEvent:
         """SparkEvent can be created with required fields."""
         event = SparkEvent(
             tick=TC.Event.TICK_MID,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=TC.Probability.VERY_HIGH,
             spark_probability=TC.Event.SPARK_MODERATE,
         )
         assert event.event_type == EventType.EXCESSIVE_FORCE
         assert event.tick == TC.Event.TICK_MID
-        assert event.node_id == "C001"
+        assert event.node_id == PERIPHERY_WORKER_ID
         assert event.repression == TC.Probability.VERY_HIGH
         assert event.spark_probability == TC.Event.SPARK_MODERATE
 
@@ -392,7 +398,7 @@ class TestSparkEvent:
         """SparkEvent should be immutable."""
         event = SparkEvent(
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=TC.Probability.MIDPOINT,
             spark_probability=TC.Event.SPARK_LOW,
         )
@@ -403,7 +409,7 @@ class TestSparkEvent:
         """SparkEvent should default to EXCESSIVE_FORCE."""
         event = SparkEvent(
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=TC.Probability.MIDPOINT,
             spark_probability=TC.Event.SPARK_LOW,
         )
@@ -417,14 +423,14 @@ class TestUprisingEvent:
         """UprisingEvent can be created with required fields."""
         event = UprisingEvent(
             tick=TC.Event.TICK_EIGHT,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             trigger="spark",
             agitation=TC.Probability.EXTREME,
             repression=TC.Probability.HIGH,
         )
         assert event.event_type == EventType.UPRISING
         assert event.tick == TC.Event.TICK_EIGHT
-        assert event.node_id == "C001"
+        assert event.node_id == PERIPHERY_WORKER_ID
         assert event.trigger == "spark"
         assert event.agitation == TC.Probability.EXTREME
         assert event.repression == TC.Probability.HIGH
@@ -433,7 +439,7 @@ class TestUprisingEvent:
         """UprisingEvent should be immutable."""
         event = UprisingEvent(
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             trigger="revolutionary_pressure",
             agitation=TC.Probability.ELEVATED,
             repression=TC.Probability.BELOW_MIDPOINT,
@@ -445,7 +451,7 @@ class TestUprisingEvent:
         """UprisingEvent should default to UPRISING."""
         event = UprisingEvent(
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             trigger="spark",
             agitation=TC.Probability.MIDPOINT,
             repression=TC.Probability.MODERATE,
@@ -460,14 +466,14 @@ class TestSolidaritySpikeEvent:
         """SolidaritySpikeEvent can be created with required fields."""
         event = SolidaritySpikeEvent(
             tick=TC.Event.TICK_SIX,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             solidarity_gained=TC.Event.SOLIDARITY_GAIN_LARGE,
             edges_affected=TC.Event.EDGES_AFFECTED_FEW,
             triggered_by="uprising",
         )
         assert event.event_type == EventType.SOLIDARITY_SPIKE
         assert event.tick == TC.Event.TICK_SIX
-        assert event.node_id == "C001"
+        assert event.node_id == PERIPHERY_WORKER_ID
         assert event.solidarity_gained == TC.Event.SOLIDARITY_GAIN_LARGE
         assert event.edges_affected == TC.Event.EDGES_AFFECTED_FEW
         assert event.triggered_by == "uprising"
@@ -476,7 +482,7 @@ class TestSolidaritySpikeEvent:
         """SolidaritySpikeEvent should be immutable."""
         event = SolidaritySpikeEvent(
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             solidarity_gained=TC.Event.SOLIDARITY_GAIN_MODERATE,
             edges_affected=TC.Event.EDGES_AFFECTED_ONE,
             triggered_by="uprising",
@@ -488,7 +494,7 @@ class TestSolidaritySpikeEvent:
         """SolidaritySpikeEvent should default to SOLIDARITY_SPIKE."""
         event = SolidaritySpikeEvent(
             tick=TC.Event.TICK_ZERO,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             solidarity_gained=TC.Event.SOLIDARITY_GAIN_SMALL,
             edges_affected=TC.Event.EDGES_AFFECTED_ONE,
             triggered_by="uprising",
@@ -503,26 +509,26 @@ class TestRuptureEvent:
         """RuptureEvent can be created with required fields."""
         event = RuptureEvent(
             tick=TC.Event.TICK_ENDGAME,
-            edge="C001->C002",
+            edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}",
         )
         assert event.event_type == EventType.RUPTURE
         assert event.tick == TC.Event.TICK_ENDGAME
-        assert event.edge == "C001->C002"
+        assert event.edge == f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}"
 
     def test_rupture_event_is_frozen(self) -> None:
         """RuptureEvent should be immutable."""
         event = RuptureEvent(
             tick=TC.Event.TICK_ZERO,
-            edge="C001->C002",
+            edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}",
         )
         with pytest.raises(ValidationError):
-            event.edge = "C003->C004"  # type: ignore[misc]
+            event.edge = f"{CORE_BOURGEOISIE_ID}->{LABOR_ARISTOCRACY_ID}"  # type: ignore[misc]
 
     def test_rupture_event_default_event_type(self) -> None:
         """RuptureEvent should default to RUPTURE."""
         event = RuptureEvent(
             tick=TC.Event.TICK_ZERO,
-            edge="C001->C002",
+            edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}",
         )
         assert event.event_type == EventType.RUPTURE
 
@@ -540,8 +546,8 @@ class TestEventFieldValidation:
         with pytest.raises(ValidationError):
             ExtractionEvent(
                 tick=-1,  # Boundary violation
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 amount=TC.Event.EXTRACTION_SMALL,
             )
 
@@ -551,7 +557,7 @@ class TestEventFieldValidation:
             ExtractionEvent(
                 tick=TC.Event.TICK_ZERO,
                 source_id="",
-                target_id="C002",
+                target_id=COMPRADOR_ID,
                 amount=TC.Event.EXTRACTION_SMALL,
             )
 
@@ -560,7 +566,7 @@ class TestEventFieldValidation:
         with pytest.raises(ValidationError):
             ExtractionEvent(
                 tick=TC.Event.TICK_ZERO,
-                source_id="C001",
+                source_id=PERIPHERY_WORKER_ID,
                 target_id="",
                 amount=TC.Event.EXTRACTION_SMALL,
             )
@@ -570,8 +576,8 @@ class TestEventFieldValidation:
         with pytest.raises(ValidationError):
             SubsidyEvent(
                 tick=TC.Event.TICK_ZERO,
-                source_id="C002",
-                target_id="C003",
+                source_id=COMPRADOR_ID,
+                target_id=CORE_BOURGEOISIE_ID,
                 amount=-10.0,  # Boundary violation
                 repression_boost=TC.Event.REPRESSION_BOOST_LOW,
             )
@@ -581,7 +587,7 @@ class TestEventFieldValidation:
         with pytest.raises(ValidationError):
             SolidaritySpikeEvent(
                 tick=TC.Event.TICK_ZERO,
-                node_id="C001",
+                node_id=PERIPHERY_WORKER_ID,
                 solidarity_gained=TC.Event.SOLIDARITY_GAIN_SMALL,
                 edges_affected=-1,  # Boundary violation
                 triggered_by="uprising",

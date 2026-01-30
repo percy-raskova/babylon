@@ -36,6 +36,11 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.events import ExtractionEvent, TransmissionEvent
 
 # =============================================================================
@@ -47,7 +52,7 @@ from babylon.models.events import ExtractionEvent, TransmissionEvent
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=0.5,
@@ -69,7 +74,7 @@ def initial_state(worker: SocialClass) -> WorldState:
     """Create initial WorldState with one worker entity."""
     return WorldState(
         tick=0,
-        entities={"C001": worker},
+        entities={PERIPHERY_WORKER_ID: worker},
         event_log=[],
     )
 
@@ -115,8 +120,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -168,8 +173,8 @@ class TestNarrativePipeline:
         # Create a non-significant typed event (Sprint 4.1)
         transmission_event = TransmissionEvent(
             tick=1,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.5,
         )
@@ -234,8 +239,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -288,8 +293,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -337,8 +342,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=15.0,
         )
 
@@ -393,20 +398,20 @@ class TestNarrativePipeline:
         # Create multiple typed events (Sprint 4.1)
         extraction_event_a = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         extraction_event_b = ExtractionEvent(
             tick=1,
-            source_id="C003",
-            target_id="C002",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=COMPRADOR_ID,
             amount=12.0,
         )
         transmission_event = TransmissionEvent(
             tick=1,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.5,
         )
@@ -458,8 +463,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -503,8 +508,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -544,8 +549,8 @@ class TestNarrativePipeline:
         # Create typed extraction event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -727,8 +732,8 @@ class TestTypedEventConsumption:
 
         extraction_event = ExtractionEvent(
             tick=3,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=15.5,
         )
 
@@ -782,7 +787,7 @@ class TestTypedEventConsumption:
 
         uprising_event = UprisingEvent(
             tick=8,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             trigger="spark",
             agitation=0.9,
             repression=0.7,
@@ -834,7 +839,7 @@ class TestTypedEventConsumption:
 
         spark_event = SparkEvent(
             tick=5,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=0.8,
             spark_probability=0.4,
         )
@@ -885,7 +890,7 @@ class TestTypedEventConsumption:
 
         rupture_event = RuptureEvent(
             tick=15,
-            edge="C001->C002",
+            edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}",
         )
 
         state_t0 = initial_state
@@ -992,13 +997,13 @@ class TestTypedEventConsumption:
 
         extraction_event = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=20.0,
         )
         spark_event = SparkEvent(
             tick=5,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=0.8,
             spark_probability=0.3,
         )
@@ -1051,8 +1056,8 @@ class TestTypedEventConsumption:
 
         transmission_event = TransmissionEvent(
             tick=3,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.8,
         )
@@ -1124,8 +1129,8 @@ class TestPersonaIntegration:
         # Create extraction event to trigger narrative
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=15.0,
         )
 
@@ -1192,8 +1197,8 @@ class TestPersonaIntegration:
         # Create extraction event
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -1250,8 +1255,8 @@ class TestPersonaIntegration:
 
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -1306,8 +1311,8 @@ class TestPersonaIntegration:
 
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -1504,7 +1509,7 @@ class TestPersonaIntegration:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="PeripheryWorker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.3,
@@ -1514,15 +1519,23 @@ class TestPersonaIntegration:
             subsistence_threshold=0.25,
         )
 
-        state = WorldState(tick=0, entities={"C001": worker})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker})
 
         # Events for each tick - all are SIGNIFICANT_EVENT_TYPES
         # (SURPLUS_EXTRACTION, ECONOMIC_CRISIS, PHASE_TRANSITION, UPRISING)
         events_per_tick = [
-            [ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=12.0)],
+            [
+                ExtractionEvent(
+                    tick=1, source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, amount=12.0
+                )
+            ],
             [
                 UprisingEvent(
-                    tick=2, node_id="C001", trigger="spark", agitation=0.85, repression=0.7
+                    tick=2,
+                    node_id=PERIPHERY_WORKER_ID,
+                    trigger="spark",
+                    agitation=0.85,
+                    repression=0.7,
                 )
             ],
             [

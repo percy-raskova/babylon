@@ -28,6 +28,7 @@ from babylon.engine.topology_monitor import (
 from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import EdgeType, SocialRole
 from babylon.models.world_state import WorldState
 
@@ -542,8 +543,8 @@ class TestTopologyEdgeCases:
 
     def test_single_node_state(self) -> None:
         """WorldState with single node produces correct metrics."""
-        worker = create_proletariat(id="C001")
-        state = WorldState(tick=0, entities={"C001": worker}, relationships=[])
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID)
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker}, relationships=[])
         config = SimulationConfig()
         monitor = TopologyMonitor()
 
@@ -602,18 +603,18 @@ class TestTopologyEdgeCases:
 
     def test_two_node_connected_pair(self) -> None:
         """Two nodes with SOLIDARITY edge form single component."""
-        worker1 = create_proletariat(id="C001", name="Worker 1")
-        worker2 = create_proletariat(id="C002", name="Worker 2")
+        worker1 = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker 1")
+        worker2 = create_proletariat(id=COMPRADOR_ID, name="Worker 2")
         solidarity = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.8,
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker1, "C002": worker2},
+            entities={PERIPHERY_WORKER_ID: worker1, COMPRADOR_ID: worker2},
             relationships=[solidarity],
         )
         config = SimulationConfig()

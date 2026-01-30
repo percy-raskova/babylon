@@ -18,6 +18,10 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
 from tests.factories import DomainFactory
 
 # =============================================================================
@@ -58,7 +62,7 @@ def two_node_state(
 ) -> WorldState:
     """Create a minimal WorldState with two nodes and one edge."""
     return _factory.create_world_state(
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
     )
 
@@ -101,11 +105,15 @@ class TestSimulationDeterminism:
 
         # Compare final states
         assert result1.tick == result2.tick == 100
-        assert result1.entities["C001"].wealth == pytest.approx(result2.entities["C001"].wealth)
-        assert result1.entities["C002"].wealth == pytest.approx(result2.entities["C002"].wealth)
+        assert result1.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(
+            result2.entities[PERIPHERY_WORKER_ID].wealth
+        )
+        assert result1.entities[COMPRADOR_ID].wealth == pytest.approx(
+            result2.entities[COMPRADOR_ID].wealth
+        )
         # Compare class_consciousness from IdeologicalProfile
-        assert result1.entities["C001"].ideology.class_consciousness == pytest.approx(
-            result2.entities["C001"].ideology.class_consciousness
+        assert result1.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness == pytest.approx(
+            result2.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
         )
 
 
@@ -132,7 +140,7 @@ class TestConsciousnessBoundsStability:
         """
         # Start already revolutionary to stress test the upper bound
         revolutionary_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Revolutionary Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
@@ -143,7 +151,7 @@ class TestConsciousnessBoundsStability:
         )
         state = WorldState(
             tick=0,
-            entities={"C001": revolutionary_worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: revolutionary_worker, COMPRADOR_ID: owner},
             relationships=[exploitation_edge],
         )
 
@@ -152,7 +160,7 @@ class TestConsciousnessBoundsStability:
             state = step(state, config)
 
         # Class consciousness must stay <= 1.0
-        assert state.entities["C001"].ideology.class_consciousness <= 1.0
+        assert state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness <= 1.0
 
     def test_ideology_clamped_upper_bound(
         self,
@@ -166,7 +174,7 @@ class TestConsciousnessBoundsStability:
         """
         # Labor aristocrat with low (reactionary) consciousness
         labor_aristocrat = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Labor Aristocrat",
             role=SocialRole.LABOR_ARISTOCRACY,
             wealth=0.9,  # High wages
@@ -177,15 +185,15 @@ class TestConsciousnessBoundsStability:
         )
         # Labor aristocrat exploiting periphery
         exploitation_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
         )
         state = WorldState(
             tick=0,
-            entities={"C001": labor_aristocrat, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: labor_aristocrat, COMPRADOR_ID: owner},
             relationships=[exploitation_edge],
         )
 
@@ -194,7 +202,7 @@ class TestConsciousnessBoundsStability:
             state = step(state, config)
 
         # Class consciousness must stay >= 0.0
-        assert state.entities["C001"].ideology.class_consciousness >= 0.0
+        assert state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness >= 0.0
 
     def test_thousand_tick_stability(
         self,

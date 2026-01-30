@@ -31,6 +31,14 @@ import pytest
 from pydantic import ValidationError
 from tests.constants import TestConstants
 
+from babylon.models.entity_registry import (
+    CARCERAL_ENFORCER_ID,
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
+
 if TYPE_CHECKING:
     pass
 
@@ -74,7 +82,7 @@ class TestGraphNodeCreation:
         The node_type is the discriminator for polymorphism.
         """
         with pytest.raises(ValidationError):
-            GraphNode(id="C001")  # type: ignore[call-arg]
+            GraphNode(id=PERIPHERY_WORKER_ID)  # type: ignore[call-arg]
 
     def test_graphnode_rejects_empty_id(self) -> None:
         """GraphNode rejects empty string as id.
@@ -90,15 +98,15 @@ class TestGraphNodeCreation:
         Empty node_type would break type-based queries.
         """
         with pytest.raises(ValidationError):
-            GraphNode(id="C001", node_type="")
+            GraphNode(id=PERIPHERY_WORKER_ID, node_type="")
 
     def test_graphnode_creates_with_required_fields(self) -> None:
         """GraphNode can be created with just id and node_type.
 
         Attributes default to empty dict.
         """
-        node = GraphNode(id="C001", node_type="social_class")
-        assert node.id == "C001"
+        node = GraphNode(id=PERIPHERY_WORKER_ID, node_type="social_class")
+        assert node.id == PERIPHERY_WORKER_ID
         assert node.node_type == "social_class"
         assert node.attributes == {}
 
@@ -112,7 +120,7 @@ class TestGraphNodeCreation:
             "consciousness": TC.Consciousness.NEUTRAL_IDENTITY,
             "name": "Workers",
         }
-        node = GraphNode(id="C001", node_type="social_class", attributes=attrs)
+        node = GraphNode(id=PERIPHERY_WORKER_ID, node_type="social_class", attributes=attrs)
         assert node.attributes == attrs
 
     def test_graphnode_is_frozen(self) -> None:
@@ -120,9 +128,9 @@ class TestGraphNodeCreation:
 
         Immutability ensures thread safety and prevents accidental mutation.
         """
-        node = GraphNode(id="C001", node_type="social_class")
+        node = GraphNode(id=PERIPHERY_WORKER_ID, node_type="social_class")
         with pytest.raises(ValidationError):
-            node.id = "C002"  # type: ignore[misc]
+            node.id = COMPRADOR_ID  # type: ignore[misc]
 
 
 @pytest.mark.math
@@ -135,7 +143,7 @@ class TestGraphNodeProperties:
         Convenience method for safe attribute access.
         """
         node = GraphNode(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             node_type="social_class",
             attributes={"wealth": TC.Wealth.SIGNIFICANT},
         )
@@ -146,7 +154,7 @@ class TestGraphNodeProperties:
 
         Default is None if not specified.
         """
-        node = GraphNode(id="C001", node_type="social_class")
+        node = GraphNode(id=PERIPHERY_WORKER_ID, node_type="social_class")
         assert node.get_attr("missing") is None
         assert node.get_attr("missing", 0.0) == 0.0
 
@@ -156,7 +164,7 @@ class TestGraphNodeProperties:
         Convenience accessor for common attribute.
         """
         node = GraphNode(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             node_type="social_class",
             attributes={"wealth": 250.5},
         )
@@ -167,7 +175,7 @@ class TestGraphNodeProperties:
 
         Default ensures safe numeric operations.
         """
-        node = GraphNode(id="C001", node_type="social_class")
+        node = GraphNode(id=PERIPHERY_WORKER_ID, node_type="social_class")
         assert node.wealth == 0.0
 
 
@@ -181,12 +189,12 @@ class TestGraphNodeSerialization:
         Required for network transfer and persistence.
         """
         node = GraphNode(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             node_type="social_class",
             attributes={"wealth": TC.Wealth.SIGNIFICANT},
         )
         json_str = node.model_dump_json()
-        assert "C001" in json_str
+        assert PERIPHERY_WORKER_ID in json_str
         assert "social_class" in json_str
 
     def test_graphnode_round_trip(self) -> None:
@@ -195,7 +203,7 @@ class TestGraphNodeSerialization:
         Validates serialization/deserialization integrity.
         """
         original = GraphNode(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             node_type="social_class",
             attributes={"wealth": TC.Wealth.SIGNIFICANT, "name": "Workers"},
         )
@@ -221,7 +229,7 @@ class TestGraphEdgeCreation:
         The source is the origin of the directed edge.
         """
         with pytest.raises(ValidationError):
-            GraphEdge(target_id="C002", edge_type="SOLIDARITY")  # type: ignore[call-arg]
+            GraphEdge(target_id=COMPRADOR_ID, edge_type="SOLIDARITY")  # type: ignore[call-arg]
 
     def test_graphedge_requires_target_id(self) -> None:
         """GraphEdge must have a target_id field.
@@ -229,7 +237,7 @@ class TestGraphEdgeCreation:
         The target is the destination of the directed edge.
         """
         with pytest.raises(ValidationError):
-            GraphEdge(source_id="C001", edge_type="SOLIDARITY")  # type: ignore[call-arg]
+            GraphEdge(source_id=PERIPHERY_WORKER_ID, edge_type="SOLIDARITY")  # type: ignore[call-arg]
 
     def test_graphedge_requires_edge_type(self) -> None:
         """GraphEdge must have an edge_type field.
@@ -237,31 +245,33 @@ class TestGraphEdgeCreation:
         The edge_type categorizes the relationship.
         """
         with pytest.raises(ValidationError):
-            GraphEdge(source_id="C001", target_id="C002")  # type: ignore[call-arg]
+            GraphEdge(source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID)  # type: ignore[call-arg]
 
     def test_graphedge_rejects_empty_source_id(self) -> None:
         """GraphEdge rejects empty string as source_id."""
         with pytest.raises(ValidationError):
-            GraphEdge(source_id="", target_id="C002", edge_type="SOLIDARITY")
+            GraphEdge(source_id="", target_id=COMPRADOR_ID, edge_type="SOLIDARITY")
 
     def test_graphedge_rejects_empty_target_id(self) -> None:
         """GraphEdge rejects empty string as target_id."""
         with pytest.raises(ValidationError):
-            GraphEdge(source_id="C001", target_id="", edge_type="SOLIDARITY")
+            GraphEdge(source_id=PERIPHERY_WORKER_ID, target_id="", edge_type="SOLIDARITY")
 
     def test_graphedge_rejects_empty_edge_type(self) -> None:
         """GraphEdge rejects empty string as edge_type."""
         with pytest.raises(ValidationError):
-            GraphEdge(source_id="C001", target_id="C002", edge_type="")
+            GraphEdge(source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, edge_type="")
 
     def test_graphedge_creates_with_required_fields(self) -> None:
         """GraphEdge can be created with required fields.
 
         Weight defaults to 1.0, attributes to empty dict.
         """
-        edge = GraphEdge(source_id="C001", target_id="C002", edge_type="SOLIDARITY")
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C002"
+        edge = GraphEdge(
+            source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, edge_type="SOLIDARITY"
+        )
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == COMPRADOR_ID
         assert edge.edge_type == "SOLIDARITY"
         assert edge.weight == 1.0
         assert edge.attributes == {}
@@ -269,8 +279,8 @@ class TestGraphEdgeCreation:
     def test_graphedge_accepts_weight(self) -> None:
         """GraphEdge accepts custom weight value."""
         edge = GraphEdge(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type="SOLIDARITY",
             weight=0.75,
         )
@@ -280,8 +290,8 @@ class TestGraphEdgeCreation:
         """GraphEdge accepts arbitrary attributes dict."""
         attrs = {"tension": TC.Probability.MIDPOINT, "value_flow": TC.Wealth.SIGNIFICANT}
         edge = GraphEdge(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type="EXPLOITATION",
             attributes=attrs,
         )
@@ -289,9 +299,11 @@ class TestGraphEdgeCreation:
 
     def test_graphedge_is_frozen(self) -> None:
         """GraphEdge instances are immutable (frozen)."""
-        edge = GraphEdge(source_id="C001", target_id="C002", edge_type="SOLIDARITY")
+        edge = GraphEdge(
+            source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, edge_type="SOLIDARITY"
+        )
         with pytest.raises(ValidationError):
-            edge.source_id = "C003"  # type: ignore[misc]
+            edge.source_id = CORE_BOURGEOISIE_ID  # type: ignore[misc]
 
 
 @pytest.mark.math
@@ -301,8 +313,8 @@ class TestGraphEdgeProperties:
     def test_graphedge_tension_property(self) -> None:
         """tension property returns tension from attributes."""
         edge = GraphEdge(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type="EXPLOITATION",
             attributes={"tension": TC.Probability.HIGH},
         )
@@ -310,14 +322,16 @@ class TestGraphEdgeProperties:
 
     def test_graphedge_tension_defaults_to_zero(self) -> None:
         """tension property returns 0.0 when not present."""
-        edge = GraphEdge(source_id="C001", target_id="C002", edge_type="EXPLOITATION")
+        edge = GraphEdge(
+            source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, edge_type="EXPLOITATION"
+        )
         assert edge.tension == 0.0
 
     def test_graphedge_value_flow_property(self) -> None:
         """value_flow property returns value_flow from attributes."""
         edge = GraphEdge(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type="EXPLOITATION",
             attributes={"value_flow": TC.Wealth.HIGH},
         )
@@ -325,7 +339,9 @@ class TestGraphEdgeProperties:
 
     def test_graphedge_value_flow_defaults_to_zero(self) -> None:
         """value_flow property returns 0.0 when not present."""
-        edge = GraphEdge(source_id="C001", target_id="C002", edge_type="EXPLOITATION")
+        edge = GraphEdge(
+            source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, edge_type="EXPLOITATION"
+        )
         assert edge.value_flow == 0.0
 
 
@@ -457,17 +473,17 @@ class TestTraversalQueryParameters:
 
     def test_traversalquery_accepts_start_nodes(self) -> None:
         """TraversalQuery accepts start_nodes list."""
-        query = TraversalQuery(query_type="bfs", start_nodes=["C001", "C002"])
-        assert query.start_nodes == ["C001", "C002"]
+        query = TraversalQuery(query_type="bfs", start_nodes=[PERIPHERY_WORKER_ID, COMPRADOR_ID])
+        assert query.start_nodes == [PERIPHERY_WORKER_ID, COMPRADOR_ID]
 
     def test_traversalquery_accepts_target_nodes(self) -> None:
         """TraversalQuery accepts target_nodes list."""
         query = TraversalQuery(
             query_type="shortest_path",
-            start_nodes=["C001"],
-            target_nodes=["C005"],
+            start_nodes=[PERIPHERY_WORKER_ID],
+            target_nodes=[LABOR_ARISTOCRACY_ID],
         )
-        assert query.target_nodes == ["C005"]
+        assert query.target_nodes == [LABOR_ARISTOCRACY_ID]
 
     def test_traversalquery_accepts_edge_filter(self) -> None:
         """TraversalQuery accepts EdgeFilter."""
@@ -525,24 +541,33 @@ class TestTraversalResultCreation:
 
     def test_traversalresult_accepts_nodes(self) -> None:
         """TraversalResult accepts list of node IDs."""
-        result = TraversalResult(nodes=["C001", "C002", "C003"])
-        assert result.nodes == ["C001", "C002", "C003"]
+        result = TraversalResult(nodes=[PERIPHERY_WORKER_ID, COMPRADOR_ID, CORE_BOURGEOISIE_ID])
+        assert result.nodes == [PERIPHERY_WORKER_ID, COMPRADOR_ID, CORE_BOURGEOISIE_ID]
 
     def test_traversalresult_accepts_edges(self) -> None:
         """TraversalResult accepts list of edge tuples."""
-        edges = [("C001", "C002", "SOLIDARITY"), ("C002", "C003", "SOLIDARITY")]
+        edges = [
+            (PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY"),
+            (COMPRADOR_ID, CORE_BOURGEOISIE_ID, "SOLIDARITY"),
+        ]
         result = TraversalResult(edges=edges)
         assert result.edges == edges
 
     def test_traversalresult_accepts_paths(self) -> None:
         """TraversalResult accepts list of path lists."""
-        paths = [["C001", "C002", "C003"], ["C001", "C004", "C003"]]
+        paths = [
+            [PERIPHERY_WORKER_ID, COMPRADOR_ID, CORE_BOURGEOISIE_ID],
+            [PERIPHERY_WORKER_ID, LABOR_ARISTOCRACY_ID, CORE_BOURGEOISIE_ID],
+        ]
         result = TraversalResult(paths=paths)
         assert result.paths == paths
 
     def test_traversalresult_accepts_components(self) -> None:
         """TraversalResult accepts list of component lists."""
-        components = [["C001", "C002"], ["C003", "C004", "C005"]]
+        components = [
+            [PERIPHERY_WORKER_ID, COMPRADOR_ID],
+            [CORE_BOURGEOISIE_ID, LABOR_ARISTOCRACY_ID, CARCERAL_ENFORCER_ID],
+        ]
         result = TraversalResult(components=components)
         assert result.components == components
 

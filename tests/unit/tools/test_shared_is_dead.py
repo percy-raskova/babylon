@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from babylon.models import SocialClass, SocialRole
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.types import EntityProtocol
 
 # Add tools directory to path so we can import shared
@@ -30,7 +31,7 @@ class TestEntityProtocol:
         EntityProtocol requires an 'active' property, which SocialClass has.
         """
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             active=True,
@@ -40,7 +41,7 @@ class TestEntityProtocol:
     def test_inactive_social_class_implements_protocol(self) -> None:
         """Dead SocialClass (active=False) still implements EntityProtocol."""
         dead_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Dead Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             active=False,
@@ -56,7 +57,7 @@ class TestIsDeadTypeEnforcement:
         from shared import is_dead
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             active=True,
@@ -68,7 +69,7 @@ class TestIsDeadTypeEnforcement:
         from shared import is_dead
 
         dead_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Dead Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             active=False,

@@ -15,6 +15,7 @@ from unittest.mock import Mock
 import pytest
 
 from babylon.engine.observer import SimulationObserver
+from babylon.models.entity_registry import CORE_BOURGEOISIE_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import EventType
 from babylon.models.events import ExtractionEvent
 from babylon.models.metrics import EntityMetrics, TickMetrics
@@ -79,8 +80,8 @@ def mock_world_state() -> Mock:
             event_type=EventType.SURPLUS_EXTRACTION,
             tick=1,
             timestamp=datetime.now(),
-            source_id="C001",
-            target_id="C003",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             amount=Currency(50.0),
             mechanism="imperial_rent",
         ),
@@ -317,8 +318,8 @@ class TestEventsLogging:
         data = json.loads(lines[0])
         # Event type is lowercase in JSON (enum value serialization)
         assert data["event_type"] == "surplus_extraction"
-        assert data["source_id"] == "C001"
-        assert data["target_id"] == "C003"
+        assert data["source_id"] == PERIPHERY_WORKER_ID
+        assert data["target_id"] == CORE_BOURGEOISIE_ID
 
     def test_recorder_handles_empty_events(
         self,

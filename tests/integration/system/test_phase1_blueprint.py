@@ -15,6 +15,11 @@ import networkx as nx
 import pytest
 
 from babylon.models import Relationship, SocialClass
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SocialRole
 from babylon.systems.formulas import (
     calculate_acquiescence_probability,
@@ -42,13 +47,13 @@ class TestPhase1Blueprint:
         """
         # Create Phase 1 nodes
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=20.0,  # Receives wage
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Factory Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=1000.0,  # Accumulated capital
@@ -82,7 +87,7 @@ class TestPhase1Blueprint:
         """
         # Worker's material conditions
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=20.0,
@@ -116,7 +121,7 @@ class TestPhase1Blueprint:
         """
         # Desperate worker with high organization
         desperate_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Organized Desperate Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=5.0,  # Below subsistence!
@@ -146,13 +151,13 @@ class TestPhase1Blueprint:
         """
         # Create nodes
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=20.0,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=1000.0,
@@ -177,13 +182,13 @@ class TestPhase1Blueprint:
         assert G.number_of_edges() == 1
 
         # Verify node data
-        assert G.nodes["C001"]["role"] == "periphery_proletariat"
-        assert G.nodes["C002"]["role"] == "core_bourgeoisie"
+        assert G.nodes[PERIPHERY_WORKER_ID]["role"] == "periphery_proletariat"
+        assert G.nodes[COMPRADOR_ID]["role"] == "core_bourgeoisie"
 
         # Verify edge data
-        assert G.has_edge("C001", "C002")
-        assert G["C001"]["C002"]["edge_type"] == "exploitation"
-        assert G["C001"]["C002"]["value_flow"] == 80.0
+        assert G.has_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID)
+        assert G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["edge_type"] == "exploitation"
+        assert G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["value_flow"] == 80.0
 
 
 # =============================================================================
@@ -198,7 +203,7 @@ class TestFormulaIntegration:
     def test_imperial_rent_formula(self) -> None:
         """Imperial rent formula with SocialClass data."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             ideology=-0.2,  # Slightly revolutionary -> class_consciousness 0.6
@@ -236,7 +241,7 @@ class TestFormulaIntegration:
         """Model consciousness change based on material conditions."""
         # Labor aristocrat: well-paid but producing less value
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Core Worker",
             role=SocialRole.LABOR_ARISTOCRACY,
             ideology=0.5,  # Currently reactionary -> class_consciousness 0.25
@@ -272,8 +277,8 @@ class TestDialecticalTension:
         """High value extraction creates dialectical tension."""
         # Heavy exploitation
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=90.0,  # High extraction
             tension=0.0,  # Starting tension
@@ -295,8 +300,8 @@ class TestDialecticalTension:
 
         # Solidarity relationship (demonstrates model structure)
         _solidarity = Relationship(
-            source_id="C001",
-            target_id="C003",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             edge_type=EdgeType.SOLIDARITY,
             value_flow=0.0,
             tension=0.0,
@@ -311,8 +316,8 @@ class TestDialecticalTension:
     def test_repression_increases_tension(self) -> None:
         """State repression increases contradiction intensity."""
         repression = Relationship(
-            source_id="C002",  # Bourgeoisie
-            target_id="C001",  # Proletariat
+            source_id=COMPRADOR_ID,  # Bourgeoisie
+            target_id=PERIPHERY_WORKER_ID,  # Proletariat
             edge_type=EdgeType.REPRESSION,
             tension=0.5,
         )
@@ -344,7 +349,7 @@ class TestEndToEndScenario:
         """
         # Initial state
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=30.0,
@@ -354,7 +359,7 @@ class TestEndToEndScenario:
         )
 
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=1000.0,

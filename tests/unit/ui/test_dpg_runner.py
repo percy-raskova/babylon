@@ -12,6 +12,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
+from babylon.models.entity_registry import (
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
+
 if TYPE_CHECKING:
     pass
 
@@ -639,9 +645,9 @@ class TestImperialCircuitWealthDataFlow:
         sim = Simulation(state, config, observers=[metrics], defines=defines)
 
         # Record initial values
-        initial_p_w = float(state.entities["C001"].wealth)
-        initial_c_b = float(state.entities["C003"].wealth)
-        initial_c_w = float(state.entities["C004"].wealth)
+        initial_p_w = float(state.entities[PERIPHERY_WORKER_ID].wealth)
+        initial_c_b = float(state.entities[CORE_BOURGEOISIE_ID].wealth)
+        initial_c_w = float(state.entities[LABOR_ARISTOCRACY_ID].wealth)
 
         # Run 10 ticks
         for _ in range(10):

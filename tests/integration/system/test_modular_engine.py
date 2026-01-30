@@ -14,6 +14,7 @@ from babylon.engine.systems import (
     SurvivalSystem,
     System,
 )
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 
 
 class TestModularEngineArchitecture:
@@ -71,7 +72,7 @@ class TestRefactorDeterminism:
         # The net effect depends on extraction_efficiency vs wage_rate.
         # Key PPP verification: effective_wealth > nominal_wealth (PPP bonus exists)
         assert state.tick == 100
-        worker = state.entities["C001"]
+        worker = state.entities[PERIPHERY_WORKER_ID]
         # PPP Model: effective_wealth includes purchasing power bonus
         assert worker.effective_wealth > 0  # Worker has effective wealth
         assert worker.ppp_multiplier > 1.0  # PPP bonus is active
@@ -93,5 +94,8 @@ class TestRefactorDeterminism:
         # Economic flow occurred (extraction and/or wages)
         # With PPP model, net wealth change depends on extraction vs wages
         # Key verification: some economic activity happened
-        worker = new_state.entities["C001"]
-        assert worker.wealth != state.entities["C001"].wealth or worker.effective_wealth > 0
+        worker = new_state.entities[PERIPHERY_WORKER_ID]
+        assert (
+            worker.wealth != state.entities[PERIPHERY_WORKER_ID].wealth
+            or worker.effective_wealth > 0
+        )

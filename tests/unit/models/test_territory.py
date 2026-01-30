@@ -13,6 +13,10 @@ from pydantic import ValidationError
 from tests.constants import TestConstants
 
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import OperationalProfile, SectorType, TerritoryType
 
 # Aliases for readability
@@ -44,16 +48,16 @@ class TestTerritoryCreation:
             id="T002",
             name="Industrial Zone",
             sector_type=SectorType.INDUSTRIAL,
-            host_id="C001",
-            occupant_id="C002",
+            host_id=PERIPHERY_WORKER_ID,
+            occupant_id=COMPRADOR_ID,
             profile=OperationalProfile.HIGH_PROFILE,
             heat=TC.Territory.MODERATE_HEAT,
             rent_level=TC.Territory.ELEVATED_RENT,
             population=TC.Territory.SMALL_POPULATION,
             under_eviction=True,
         )
-        assert territory.host_id == "C001"
-        assert territory.occupant_id == "C002"
+        assert territory.host_id == PERIPHERY_WORKER_ID
+        assert territory.occupant_id == COMPRADOR_ID
         assert territory.profile == OperationalProfile.HIGH_PROFILE
         assert territory.heat == TC.Territory.MODERATE_HEAT
         assert territory.rent_level == TC.Territory.ELEVATED_RENT
@@ -88,7 +92,7 @@ class TestTerritoryIdValidation:
         "invalid_id,reason",
         [
             ("t001", "lowercase"),
-            ("C001", "wrong_prefix"),
+            (PERIPHERY_WORKER_ID, "wrong_prefix"),
             ("T01", "too_short"),
             ("T0001", "too_long"),
         ],
@@ -244,8 +248,8 @@ class TestTerritoryLiberation:
         "host_id,occupant_id,expected",
         [
             (None, None, False),
-            ("C001", "C002", False),
-            (None, "C002", True),
+            (PERIPHERY_WORKER_ID, COMPRADOR_ID, False),
+            (None, COMPRADOR_ID, True),
         ],
         ids=["unoccupied", "with_host", "occupant_no_host_liberated"],
     )
@@ -278,8 +282,8 @@ class TestTerritorySerialization:
             id="T001",
             name="University District",
             sector_type=SectorType.UNIVERSITY,
-            host_id="C001",
-            occupant_id="C002",
+            host_id=PERIPHERY_WORKER_ID,
+            occupant_id=COMPRADOR_ID,
             profile=OperationalProfile.HIGH_PROFILE,
             heat=TC.Territory.MODERATE_HEAT,
             rent_level=TC.Territory.ELEVATED_RENT,

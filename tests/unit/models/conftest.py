@@ -9,6 +9,11 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, create_model
 
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
+
 
 @pytest.fixture
 def make_model() -> Any:
@@ -47,7 +52,7 @@ def sample_social_class_data() -> dict[str, Any]:
     Returns valid data matching the Phase 1 blueprint.
     """
     return {
-        "id": "C001",
+        "id": PERIPHERY_WORKER_ID,
         "name": "Periphery Mine Worker",
         "role": "periphery_proletariat",
         "wealth": 20.0,
@@ -62,8 +67,8 @@ def sample_relationship_data() -> dict[str, Any]:
     Returns valid data for the Phase 1 exploitation edge.
     """
     return {
-        "source_id": "C001",
-        "target_id": "C002",
+        "source_id": PERIPHERY_WORKER_ID,
+        "target_id": COMPRADOR_ID,
         "edge_type": "exploitation",
         "value_flow": 80.0,
         "tension": 0.5,

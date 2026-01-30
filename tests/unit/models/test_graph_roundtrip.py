@@ -15,6 +15,11 @@ from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EventType, OperationalProfile, SectorType
 from babylon.models.events import ExtractionEvent, UprisingEvent
 from babylon.models.world_state import WorldState
@@ -31,13 +36,13 @@ class TestEventsRoundTrip:
         # Create a state with events
         extraction = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=15.5,
         )
         uprising = UprisingEvent(
             tick=8,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             trigger="spark",
             agitation=0.9,
             repression=0.7,
@@ -54,10 +59,10 @@ class TestEventsRoundTrip:
         # Assert events are preserved
         assert len(restored.events) == 2, "Events list should have 2 events"
         assert restored.events[0].event_type == EventType.SURPLUS_EXTRACTION
-        assert restored.events[0].source_id == "C001"
+        assert restored.events[0].source_id == PERIPHERY_WORKER_ID
         assert restored.events[0].amount == 15.5
         assert restored.events[1].event_type == EventType.UPRISING
-        assert restored.events[1].node_id == "C001"
+        assert restored.events[1].node_id == PERIPHERY_WORKER_ID
         assert restored.events[1].trigger == "spark"
 
 
@@ -109,8 +114,8 @@ class TestBackwardCompatibility:
             events=[
                 ExtractionEvent(
                     tick=5,
-                    source_id="C001",
-                    target_id="C002",
+                    source_id=PERIPHERY_WORKER_ID,
+                    target_id=COMPRADOR_ID,
                     amount=10.0,
                 )
             ],
@@ -121,7 +126,7 @@ class TestBackwardCompatibility:
         explicit_events = [
             UprisingEvent(
                 tick=6,
-                node_id="C003",
+                node_id=CORE_BOURGEOISIE_ID,
                 trigger="revolutionary_pressure",
                 agitation=0.8,
                 repression=0.6,
@@ -132,7 +137,7 @@ class TestBackwardCompatibility:
         # Explicit parameter should win
         assert len(restored.events) == 1
         assert restored.events[0].event_type == EventType.UPRISING
-        assert restored.events[0].node_id == "C003"
+        assert restored.events[0].node_id == CORE_BOURGEOISIE_ID
 
 
 class TestFullStateRoundTrip:
@@ -145,7 +150,7 @@ class TestFullStateRoundTrip:
         """
         # Create entities
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=100.0,
@@ -156,7 +161,7 @@ class TestFullStateRoundTrip:
             active=True,
         )
         bourgeois = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=10000.0,
@@ -176,8 +181,8 @@ class TestFullStateRoundTrip:
 
         # Create relationship
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=5.0,
             tension=0.4,
@@ -187,8 +192,8 @@ class TestFullStateRoundTrip:
         # Create events
         extraction = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=5.0,
         )
 
@@ -200,13 +205,13 @@ class TestFullStateRoundTrip:
 
         # Create state finances
         state_finances = {
-            "C002": StateFinance(tax_rate=0.2, budget=500.0),
+            COMPRADOR_ID: StateFinance(tax_rate=0.2, budget=500.0),
         }
 
         # Build WorldState
         state = WorldState(
             tick=10,
-            entities={"C001": worker, "C002": bourgeois},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: bourgeois},
             territories={"T001": territory},
             relationships=[exploitation],
             event_log=["Initial extraction"],
@@ -225,10 +230,10 @@ class TestFullStateRoundTrip:
 
         # 2. Entities
         assert len(restored.entities) == 2
-        assert restored.entities["C001"].name == "Worker"
-        assert restored.entities["C001"].wealth == 100.0
-        assert restored.entities["C001"].s_bio == 0.1
-        assert restored.entities["C002"].role == SocialRole.CORE_BOURGEOISIE
+        assert restored.entities[PERIPHERY_WORKER_ID].name == "Worker"
+        assert restored.entities[PERIPHERY_WORKER_ID].wealth == 100.0
+        assert restored.entities[PERIPHERY_WORKER_ID].s_bio == 0.1
+        assert restored.entities[COMPRADOR_ID].role == SocialRole.CORE_BOURGEOISIE
 
         # 3. Territories
         assert len(restored.territories) == 1
@@ -238,8 +243,8 @@ class TestFullStateRoundTrip:
 
         # 4. Relationships
         assert len(restored.relationships) == 1
-        assert restored.relationships[0].source_id == "C001"
-        assert restored.relationships[0].target_id == "C002"
+        assert restored.relationships[0].source_id == PERIPHERY_WORKER_ID
+        assert restored.relationships[0].target_id == COMPRADOR_ID
         assert restored.relationships[0].edge_type == EdgeType.EXPLOITATION
         assert restored.relationships[0].tension == pytest.approx(0.4)
 
@@ -248,8 +253,8 @@ class TestFullStateRoundTrip:
         assert restored.economy.current_super_wage_rate == pytest.approx(0.25)
 
         # 6. State Finances
-        assert "C002" in restored.state_finances
-        assert restored.state_finances["C002"].tax_rate == pytest.approx(0.2)
+        assert COMPRADOR_ID in restored.state_finances
+        assert restored.state_finances[COMPRADOR_ID].tax_rate == pytest.approx(0.2)
 
         # 7. Event log (THE FIX for Pain Point #7)
         assert restored.event_log == ["Initial extraction"]
@@ -257,7 +262,7 @@ class TestFullStateRoundTrip:
         # 8. Events (THE FIX for Pain Point #7)
         assert len(restored.events) == 1
         assert restored.events[0].event_type == EventType.SURPLUS_EXTRACTION
-        assert restored.events[0].source_id == "C001"
+        assert restored.events[0].source_id == PERIPHERY_WORKER_ID
 
     def test_model_dump_round_trip_equality(self) -> None:
         """Ultimate Goal: state.model_dump() == recovered.model_dump().
@@ -267,7 +272,7 @@ class TestFullStateRoundTrip:
         """
         # Create entities without relying on computed fields
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=100.0,
@@ -278,7 +283,7 @@ class TestFullStateRoundTrip:
             active=True,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=5000.0,
@@ -296,8 +301,8 @@ class TestFullStateRoundTrip:
 
         # Create relationship
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=5.0,
             tension=0.4,
@@ -306,15 +311,15 @@ class TestFullStateRoundTrip:
         # Create event
         extraction = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=5.0,
         )
 
         # Build state
         state = WorldState(
             tick=1,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation],
             events=[extraction],

@@ -878,13 +878,13 @@ class TestWorldStateMetabolicAggregates:
         from babylon.models.enums import SocialRole
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.05,
             s_class=0.10,
         )
-        state = WorldState(entities={"C001": worker})
+        state = WorldState(entities={PERIPHERY_WORKER_ID: worker})
         assert state.total_consumption == pytest.approx(0.15, abs=0.001)
 
     def test_total_consumption_multiple_entities(self) -> None:
@@ -893,20 +893,20 @@ class TestWorldStateMetabolicAggregates:
         from babylon.models.enums import SocialRole
 
         e1 = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker 1",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.02,
             s_class=0.03,
         )
         e2 = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Worker 2",
             role=SocialRole.LABOR_ARISTOCRACY,
             s_bio=0.02,
             s_class=0.08,
         )
-        state = WorldState(entities={"C001": e1, "C002": e2})
+        state = WorldState(entities={PERIPHERY_WORKER_ID: e1, COMPRADOR_ID: e2})
         # 0.05 + 0.10 = 0.15
         assert state.total_consumption == pytest.approx(0.15, abs=0.001)
 
@@ -923,14 +923,14 @@ class TestWorldStateMetabolicAggregates:
             biocapacity=TC.Territory.FULL_BIOCAPACITY,
         )
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.02,
             s_class=0.03,
         )
         state = WorldState(
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
         )
         # consumption = 0.05, biocapacity = 100.0
@@ -951,14 +951,14 @@ class TestWorldStateMetabolicAggregates:
             biocapacity=0.01,  # Almost no biocapacity
         )
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.02,
             s_class=0.03,
         )
         state = WorldState(
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
         )
         # consumption = 0.05, biocapacity = 0.01
@@ -979,13 +979,13 @@ class TestWorldStateMetabolicAggregates:
             biocapacity=0.0,
         )
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.01,
         )
         state = WorldState(
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
         )
         assert state.overshoot_ratio == 999.0

@@ -352,7 +352,7 @@ class TestHistoryOfClassStruggle:
         # Worker should have gained consciousness via solidarity transmission
         assert final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness > 0.5, (
             f"Worker class_consciousness should be above neutral (revolutionary): "
-            f"{final_state.entities['C001'].ideology.class_consciousness}"
+            f"{final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness}"
         )
 
     def test_tension_accumulates_on_exploitation_edge(self) -> None:

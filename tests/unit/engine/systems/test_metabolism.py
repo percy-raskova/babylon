@@ -208,7 +208,7 @@ class TestMetabolismSystemEvents:
         # Social class with high consumption needs
         # consumption_needs = s_bio + s_class = 5 + 10 = 15
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=10.0,
@@ -257,7 +257,7 @@ class TestMetabolismSystemEvents:
 
         # Social class with low consumption needs
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=5.0,
@@ -294,7 +294,7 @@ class TestMetabolismSystemEvents:
 
         # Consumption exactly equals biocapacity
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=50.0,
             s_class=50.0,  # Total = 100
@@ -349,7 +349,7 @@ class TestMetabolismSystemAggregation:
 
         # Single class with consumption = 80
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=30.0,
             s_class=50.0,
@@ -371,8 +371,8 @@ class TestMetabolismSystemAggregation:
         """Total consumption is sum of all class consumption needs.
 
         Scenario: Multiple classes aggregate correctly
-        - C001: s_bio=5, s_class=15 -> 20
-        - C002: s_bio=5, s_class=25 -> 30
+        - PERIPHERY_WORKER_ID: s_bio=5, s_class=15 -> 20
+        - COMPRADOR_ID: s_bio=5, s_class=25 -> 30
         - Total consumption = 50.0
         - Initial biocapacity = 40.0, after regen = 40 + 2 = 42.0
         - Overshoot ratio = 50/42 = 1.19 (overshoot!)
@@ -393,13 +393,13 @@ class TestMetabolismSystemAggregation:
 
         # Two classes with combined consumption = 50
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=15.0,  # Total = 20
         )
         graph.add_node(
-            "C002",
+            "COMPRADOR_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=25.0,  # Total = 30
@@ -438,7 +438,7 @@ class TestMetabolismSystemEdgeCases:
         graph: nx.DiGraph[str] = nx.DiGraph()
         # Only a social class node, no territories
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=5.0,
@@ -543,7 +543,7 @@ class TestMetabolismSystemEdgeCases:
 
         # Social class with consumption = 60 (overshoot if only T001 counts)
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=20.0,
             s_class=40.0,  # Total = 60
@@ -588,7 +588,7 @@ class TestMetabolismSystemEdgeCases:
 
         # Real social class
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=5.0,  # Total = 10
@@ -609,7 +609,7 @@ class TestMetabolismSystemEdgeCases:
         # Act
         system.step(graph, services, context)
 
-        # Assert: No overshoot (only C001's consumption = 10, biocapacity = 100)
+        # Assert: No overshoot (only PERIPHERY_WORKER_ID's consumption = 10, biocapacity = 100)
         events = services.event_bus.get_history()
         overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
         assert len(overshoot_events) == 0
@@ -641,7 +641,7 @@ class TestMetabolismPopulationScaling:
         # Single class with small per-capita consumption but large population
         # consumption_needs = (0.5 + 0.5) * 100 = 100
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=0.5,
             s_class=0.5,
@@ -684,7 +684,7 @@ class TestMetabolismPopulationScaling:
 
         # consumption = (5 + 5) * 1 = 10
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=5.0,
             s_class=5.0,
@@ -723,7 +723,7 @@ class TestMetabolismPopulationScaling:
 
         # Active class with tiny consumption
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             s_bio=1.0,
             s_class=1.0,  # Total = 2 per capita
@@ -733,7 +733,7 @@ class TestMetabolismPopulationScaling:
 
         # Dead class with huge consumption that would cause overshoot if counted
         graph.add_node(
-            "C002",
+            "COMPRADOR_ID",
             _node_type="social_class",
             s_bio=100.0,
             s_class=100.0,  # Total = 200 (would cause massive overshoot)
@@ -748,7 +748,7 @@ class TestMetabolismPopulationScaling:
         # Act
         system.step(graph, services, context)
 
-        # Assert: No overshoot (only C001 counted: 2/12 = 0.17 < 1.0)
+        # Assert: No overshoot (only PERIPHERY_WORKER_ID counted: 2/12 = 0.17 < 1.0)
         events = services.event_bus.get_history()
         overshoot_events = [e for e in events if e.type == EventType.ECOLOGICAL_OVERSHOOT]
         assert len(overshoot_events) == 0

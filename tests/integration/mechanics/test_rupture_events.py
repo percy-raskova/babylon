@@ -23,6 +23,11 @@ from babylon.config.defines import GameDefines, TensionDefines
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.simulation import Simulation
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 
@@ -40,13 +45,13 @@ class TestRuptureEvents:
 
         # Create extreme wealth gap for fast tension accumulation
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Oppressed Worker",
             wealth=10.0,  # Very low wealth
         )
 
         owner = create_bourgeoisie(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Oppressor",
             wealth=1000.0,  # Very high wealth
         )
@@ -54,15 +59,15 @@ class TestRuptureEvents:
         # EXPLOITATION edge - tension will accumulate here
         # Wealth gap = 990, tension_delta per tick = 990 * accumulation_rate
         exploitation = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.0,  # Start at zero
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation],
         )
 
@@ -98,27 +103,27 @@ class TestRuptureEvents:
 
         # Some wealth gap exists, but very low accumulation rate
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             wealth=50.0,
         )
 
         owner = create_bourgeoisie(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Owner",
             wealth=200.0,  # Modest gap
         )
 
         exploitation = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.0,  # Start at zero
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation],
         )
 
@@ -154,19 +159,19 @@ class TestRuptureEvents:
         random.seed(42)
 
         def create_scenario() -> WorldState:
-            worker = create_proletariat(id="C001", name="Worker", wealth=50.0)
-            owner = create_bourgeoisie(id="C002", name="Owner", wealth=500.0)
+            worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker", wealth=50.0)
+            owner = create_bourgeoisie(id=COMPRADOR_ID, name="Owner", wealth=500.0)
 
             exploitation = Relationship(
-                source_id="C002",
-                target_id="C001",
+                source_id=COMPRADOR_ID,
+                target_id=PERIPHERY_WORKER_ID,
                 edge_type=EdgeType.EXPLOITATION,
                 tension=0.5,  # Start halfway to rupture
             )
 
             return WorldState(
                 tick=0,
-                entities={"C001": worker, "C002": owner},
+                entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
                 relationships=[exploitation],
             )
 
@@ -200,28 +205,32 @@ class TestRuptureEvents:
         random.seed(42)
 
         # Create three workers with different wealth (different tension deltas)
-        worker1 = create_proletariat(id="C001", name="Poorest Worker", wealth=10.0)
-        worker2 = create_proletariat(id="C002", name="Poor Worker", wealth=50.0)
-        owner = create_bourgeoisie(id="C003", name="Owner", wealth=1000.0)
+        worker1 = create_proletariat(id=PERIPHERY_WORKER_ID, name="Poorest Worker", wealth=10.0)
+        worker2 = create_proletariat(id=COMPRADOR_ID, name="Poor Worker", wealth=50.0)
+        owner = create_bourgeoisie(id=CORE_BOURGEOISIE_ID, name="Owner", wealth=1000.0)
 
         # Two exploitation edges with different starting tension
         exploitation1 = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.9,  # Very close to rupture
         )
 
         exploitation2 = Relationship(
-            source_id="C003",
-            target_id="C002",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.1,  # Far from rupture
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker1, "C002": worker2, "C003": owner},
+            entities={
+                PERIPHERY_WORKER_ID: worker1,
+                COMPRADOR_ID: worker2,
+                CORE_BOURGEOISIE_ID: owner,
+            },
             relationships=[exploitation1, exploitation2],
         )
 
@@ -249,19 +258,19 @@ class TestRuptureEvents:
         """
         random.seed(42)
 
-        worker = create_proletariat(id="C001", name="Worker", wealth=10.0)
-        owner = create_bourgeoisie(id="C002", name="Owner", wealth=1000.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker", wealth=10.0)
+        owner = create_bourgeoisie(id=COMPRADOR_ID, name="Owner", wealth=1000.0)
 
         exploitation = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.95,  # Very close to rupture
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation],
         )
 

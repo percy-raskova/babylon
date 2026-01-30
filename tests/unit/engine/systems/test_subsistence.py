@@ -17,6 +17,10 @@ from tests.constants import TestConstants
 
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.economic import ImperialRentSystem
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import SocialRole
 
 TC = TestConstants
@@ -66,7 +70,7 @@ class TestLinearSubsistenceBurn:
         initial_wealth = 0.2
         _create_entity_node(
             graph,
-            "C001",
+            PERIPHERY_WORKER_ID,
             SocialRole.PERIPHERY_PROLETARIAT,
             wealth=initial_wealth,
             subsistence_multiplier=1.0,
@@ -78,7 +82,7 @@ class TestLinearSubsistenceBurn:
 
         base_subsistence = services.defines.economy.base_subsistence
         expected_linear = initial_wealth - (base_subsistence * 1.0)
-        actual_wealth = graph.nodes["C001"]["wealth"]
+        actual_wealth = graph.nodes[PERIPHERY_WORKER_ID]["wealth"]
 
         # Should be linear, not exponential
         assert actual_wealth == pytest.approx(expected_linear, rel=1e-6)
@@ -90,7 +94,7 @@ class TestLinearSubsistenceBurn:
         worker_multiplier = 1.5
         _create_entity_node(
             graph,
-            "C001",
+            PERIPHERY_WORKER_ID,
             SocialRole.PERIPHERY_PROLETARIAT,
             wealth=initial_wealth,
             subsistence_multiplier=worker_multiplier,
@@ -103,7 +107,9 @@ class TestLinearSubsistenceBurn:
         expected_burn = base_subsistence * worker_multiplier
         expected_wealth = initial_wealth - expected_burn
 
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth, rel=1e-6)
+        assert graph.nodes[PERIPHERY_WORKER_ID]["wealth"] == pytest.approx(
+            expected_wealth, rel=1e-6
+        )
 
     def test_bourgeoisie_burns_faster_than_worker(self, services: ServiceContainer) -> None:
         """Core bourgeoisie (mult=20) burns much faster than worker (mult=1.5)."""
@@ -113,7 +119,7 @@ class TestLinearSubsistenceBurn:
         # Worker with 1.5x multiplier
         _create_entity_node(
             graph,
-            "C001",
+            PERIPHERY_WORKER_ID,
             SocialRole.PERIPHERY_PROLETARIAT,
             wealth=initial_wealth,
             subsistence_multiplier=1.5,
@@ -121,7 +127,7 @@ class TestLinearSubsistenceBurn:
         # Bourgeoisie with 20x multiplier
         _create_entity_node(
             graph,
-            "C002",
+            COMPRADOR_ID,
             SocialRole.CORE_BOURGEOISIE,
             wealth=initial_wealth,
             subsistence_multiplier=20.0,
@@ -130,8 +136,8 @@ class TestLinearSubsistenceBurn:
         system = ImperialRentSystem()
         system._process_subsistence_phase(graph, services)
 
-        worker_wealth = graph.nodes["C001"]["wealth"]
-        bourgeois_wealth = graph.nodes["C002"]["wealth"]
+        worker_wealth = graph.nodes[PERIPHERY_WORKER_ID]["wealth"]
+        bourgeois_wealth = graph.nodes[COMPRADOR_ID]["wealth"]
 
         # Bourgeoisie should have lost more wealth
         worker_loss = initial_wealth - worker_wealth
@@ -153,7 +159,7 @@ class TestLinearSubsistenceBurn:
         comprador_multiplier = 10.0
         _create_entity_node(
             graph,
-            "C001",
+            PERIPHERY_WORKER_ID,
             SocialRole.COMPRADOR_BOURGEOISIE,
             wealth=initial_wealth,
             subsistence_multiplier=comprador_multiplier,
@@ -169,7 +175,7 @@ class TestLinearSubsistenceBurn:
             system._process_subsistence_phase(graph, services)
 
         # After expected_ttd ticks, wealth should be at or near 0
-        final_wealth = graph.nodes["C001"]["wealth"]
+        final_wealth = graph.nodes[PERIPHERY_WORKER_ID]["wealth"]
         assert final_wealth < burn_per_tick, (
             f"Comprador should be nearly dead after {expected_ttd} ticks, "
             f"but has {final_wealth} wealth"
@@ -181,7 +187,7 @@ class TestLinearSubsistenceBurn:
         initial_wealth = 0.2
         _create_entity_node(
             graph,
-            "C001",
+            PERIPHERY_WORKER_ID,
             SocialRole.PERIPHERY_PROLETARIAT,
             wealth=initial_wealth,
             subsistence_multiplier=1.0,
@@ -192,14 +198,14 @@ class TestLinearSubsistenceBurn:
         system._process_subsistence_phase(graph, services)
 
         # Wealth should be unchanged
-        assert graph.nodes["C001"]["wealth"] == initial_wealth
+        assert graph.nodes[PERIPHERY_WORKER_ID]["wealth"] == initial_wealth
 
     def test_zero_wealth_entities_skip_burn(self, services: ServiceContainer) -> None:
         """Entities with zero wealth should not go negative."""
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            PERIPHERY_WORKER_ID,
             SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.0,
             subsistence_multiplier=1.0,
@@ -209,7 +215,7 @@ class TestLinearSubsistenceBurn:
         system._process_subsistence_phase(graph, services)
 
         # Wealth should remain 0, not go negative
-        assert graph.nodes["C001"]["wealth"] == 0.0
+        assert graph.nodes[PERIPHERY_WORKER_ID]["wealth"] == 0.0
 
 
 @pytest.mark.unit
@@ -221,7 +227,7 @@ class TestClassSpecificMultipliers:
         from babylon.models.entities.social_class import SocialClass
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -232,7 +238,7 @@ class TestClassSpecificMultipliers:
         from babylon.models.entities.social_class import SocialClass
 
         la = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Labor Aristocrat",
             role=SocialRole.LABOR_ARISTOCRACY,
         )
@@ -243,7 +249,7 @@ class TestClassSpecificMultipliers:
         from babylon.models.entities.social_class import SocialClass
 
         comprador = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Comprador",
             role=SocialRole.COMPRADOR_BOURGEOISIE,
         )
@@ -254,7 +260,7 @@ class TestClassSpecificMultipliers:
         from babylon.models.entities.social_class import SocialClass
 
         bourgeois = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Bourgeois",
             role=SocialRole.CORE_BOURGEOISIE,
         )
@@ -266,7 +272,7 @@ class TestClassSpecificMultipliers:
 
         # Worker with explicit multiplier different from default
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             subsistence_multiplier=3.0,  # Override default 1.5

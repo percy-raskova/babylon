@@ -81,7 +81,7 @@ class TestVitalitySystem:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.0,  # Starving
             s_bio=0.01,  # Needs food
             s_class=0.0,
@@ -94,10 +94,10 @@ class TestVitalitySystem:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Entity is now dead
-        assert graph.nodes["C001"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
         # Assert: ENTITY_DEATH event emitted
         assert len(events) == 1
-        assert events[0].payload["entity_id"] == "C001"
+        assert events[0].payload["entity_id"] == "PERIPHERY_WORKER_ID"
         assert events[0].payload["wealth"] == 0.0
         assert events[0].payload["consumption_needs"] == pytest.approx(0.01)
 
@@ -109,7 +109,7 @@ class TestVitalitySystem:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.1,  # Has enough
             s_bio=0.01,
             s_class=0.0,
@@ -122,7 +122,7 @@ class TestVitalitySystem:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Entity survives
-        assert graph.nodes["C001"]["active"] is True
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
         # Assert: No death event
         assert len(events) == 0
 
@@ -137,12 +137,12 @@ class TestVitalitySystem:
         graph: nx.DiGraph = nx.DiGraph()
 
         # Rich entity (survives: 10.0 - 0.005 = 9.995 >= 0.01)
-        _create_entity_node(graph, "C001", wealth=10.0, s_bio=0.01)
+        _create_entity_node(graph, "PERIPHERY_WORKER_ID", wealth=10.0, s_bio=0.01)
         # Poor entity (dies: 0.0 - 0.005 = 0.0 < 0.01)
-        _create_entity_node(graph, "C002", wealth=0.0, s_bio=0.01)
+        _create_entity_node(graph, "COMPRADOR_ID", wealth=0.0, s_bio=0.01)
         # Borderline entity (survives: 0.016 - 0.005 = 0.011 >= 0.01)
         # Note: Using 0.016 instead of 0.015 to avoid floating-point precision edge case
-        _create_entity_node(graph, "C003", wealth=0.016, s_bio=0.01)
+        _create_entity_node(graph, "CORE_BOURGEOISIE_ID", wealth=0.016, s_bio=0.01)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
@@ -150,21 +150,21 @@ class TestVitalitySystem:
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
-        # Assert: Only C002 died
-        assert graph.nodes["C001"]["active"] is True
-        assert graph.nodes["C002"]["active"] is False
-        assert graph.nodes["C003"]["active"] is True
+        # Assert: Only COMPRADOR_ID died
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
+        assert graph.nodes["COMPRADOR_ID"]["active"] is False
+        assert graph.nodes["CORE_BOURGEOISIE_ID"]["active"] is True
 
-        # Assert: Only one death event (for C002)
+        # Assert: Only one death event (for COMPRADOR_ID)
         assert len(events) == 1
-        assert events[0].payload["entity_id"] == "C002"
+        assert events[0].payload["entity_id"] == "COMPRADOR_ID"
 
     def test_already_dead_entities_skipped(self, services: ServiceContainer) -> None:
         """Entities with active=False should not trigger additional death events."""
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.0,
             s_bio=0.01,
             active=False,  # Already dead
@@ -179,7 +179,7 @@ class TestVitalitySystem:
         # Assert: No death event (already dead)
         assert len(events) == 0
         # Assert: Still dead
-        assert graph.nodes["C001"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
 
     def test_non_entity_nodes_skipped(self, services: ServiceContainer) -> None:
         """Territory nodes and other non-entity nodes should be skipped."""
@@ -192,7 +192,7 @@ class TestVitalitySystem:
             biocapacity=100.0,
         )
         # Add entity for comparison
-        _create_entity_node(graph, "C001", wealth=0.0, s_bio=0.01)
+        _create_entity_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, s_bio=0.01)
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
@@ -201,9 +201,9 @@ class TestVitalitySystem:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Only entity died, territory unchanged
-        assert graph.nodes["C001"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
         assert len(events) == 1
-        assert events[0].payload["entity_id"] == "C001"
+        assert events[0].payload["entity_id"] == "PERIPHERY_WORKER_ID"
 
     def test_high_s_class_increases_death_threshold(self, services: ServiceContainer) -> None:
         """Entity with high social reproduction costs dies at higher wealth.
@@ -214,7 +214,7 @@ class TestVitalitySystem:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.05,  # Has some wealth
             s_bio=0.01,
             s_class=0.09,  # High social reproduction needs
@@ -224,7 +224,7 @@ class TestVitalitySystem:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Entity died despite having some wealth
-        assert graph.nodes["C001"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
 
     def test_vitality_system_name(self) -> None:
         """VitalitySystem should have correct name property."""
@@ -254,11 +254,11 @@ class TestVitalitySubsistenceBurn:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             s_bio=0.01,  # Low consumption for survival
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.5
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.5
 
         # Note: base_subsistence comes from services.defines.economy
         system = VitalitySystem()
@@ -268,7 +268,7 @@ class TestVitalitySubsistenceBurn:
         base_sub = services.defines.economy.base_subsistence
         expected_cost = base_sub * 1.5
         expected_wealth = 1.0 - expected_cost
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_wealth)
 
     def test_burn_uses_class_multiplier(self, services: ServiceContainer) -> None:
         """Higher subsistence_multiplier = faster burn.
@@ -278,12 +278,16 @@ class TestVitalitySubsistenceBurn:
         graph: nx.DiGraph = nx.DiGraph()
 
         # Periphery worker (1.5x multiplier)
-        _create_entity_node(graph, "C001", role=SocialRole.PERIPHERY_PROLETARIAT, wealth=1.0)
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.5
+        _create_entity_node(
+            graph, "PERIPHERY_WORKER_ID", role=SocialRole.PERIPHERY_PROLETARIAT, wealth=1.0
+        )
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.5
 
         # Core bourgeoisie (20.0x multiplier)
-        _create_entity_node(graph, "C003", role=SocialRole.CORE_BOURGEOISIE, wealth=1.0)
-        graph.nodes["C003"]["subsistence_multiplier"] = 20.0
+        _create_entity_node(
+            graph, "CORE_BOURGEOISIE_ID", role=SocialRole.CORE_BOURGEOISIE, wealth=1.0
+        )
+        graph.nodes["CORE_BOURGEOISIE_ID"]["subsistence_multiplier"] = 20.0
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
@@ -293,11 +297,14 @@ class TestVitalitySubsistenceBurn:
         periphery_cost = base_sub * 1.5
         bourgeoisie_cost = base_sub * 20.0
 
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(1.0 - periphery_cost)
-        assert graph.nodes["C003"]["wealth"] == pytest.approx(1.0 - bourgeoisie_cost)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(1.0 - periphery_cost)
+        assert graph.nodes["CORE_BOURGEOISIE_ID"]["wealth"] == pytest.approx(1.0 - bourgeoisie_cost)
 
         # Bourgeoisie burned more
-        assert graph.nodes["C003"]["wealth"] < graph.nodes["C001"]["wealth"]
+        assert (
+            graph.nodes["CORE_BOURGEOISIE_ID"]["wealth"]
+            < graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
+        )
 
     def test_burn_then_death_check_sequence(self, services: ServiceContainer) -> None:
         """Entity with wealth=0.01, burn cost=0.0075 survives burn but may die.
@@ -311,11 +318,11 @@ class TestVitalitySubsistenceBurn:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.01,  # Barely positive
             s_bio=0.01,  # Consumption needs match initial wealth
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.5
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.5
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
@@ -325,7 +332,7 @@ class TestVitalitySubsistenceBurn:
 
         # Burn happened first: 0.01 - 0.0075 = 0.0025
         # Then death check: 0.0025 < 0.01 → DEAD
-        assert graph.nodes["C001"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
         assert len(events) == 1
 
     def test_burn_skips_inactive_entities(self, services: ServiceContainer) -> None:
@@ -333,17 +340,17 @@ class TestVitalitySubsistenceBurn:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             active=False,  # Already dead
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.5
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.5
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
         # Assert: Wealth unchanged (no burn for dead entities)
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(1.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(1.0)
 
     def test_zero_base_subsistence_skips_burn(self, services: ServiceContainer) -> None:
         """When base_subsistence=0, no wealth should be burned.
@@ -353,11 +360,11 @@ class TestVitalitySubsistenceBurn:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.5
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.5
 
         # With base_subsistence=0.0, no burn should occur
         # (This requires modifying defines in GREEN phase)
@@ -377,16 +384,18 @@ class TestVitalitySubsistenceBurn:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.001,  # Very low wealth
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 20.0  # High burn: 0.005 * 20 = 0.1
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = (
+            20.0  # High burn: 0.005 * 20 = 0.1
+        )
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
         # Assert: Wealth clamped to 0, not negative
-        assert graph.nodes["C001"]["wealth"] >= 0.0
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] >= 0.0
 
 
 @pytest.mark.unit
@@ -414,13 +423,13 @@ class TestGrindingAttrition:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=100.0,
             population=1000,
             inequality=0.0,
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.0
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
@@ -429,8 +438,8 @@ class TestGrindingAttrition:
         system.step(graph, services, {"tick": 1})
 
         # Assert: No deaths, population unchanged
-        assert graph.nodes["C001"]["population"] == 1000
-        assert graph.nodes["C001"]["active"] is True
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 1000
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
         assert len(events) == 0
 
     def test_high_inequality_causes_deaths(self, services: ServiceContainer) -> None:
@@ -448,13 +457,13 @@ class TestGrindingAttrition:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=10.0,  # Exactly 1× coverage when divided by pop
             population=1000,
             inequality=0.8,  # High inequality means threshold = 1.8
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 0.0  # Disable burn
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 0.0  # Disable burn
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
@@ -463,10 +472,10 @@ class TestGrindingAttrition:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Deaths occurred due to inequality (coverage < threshold)
-        assert graph.nodes["C001"]["population"] < 1000
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] < 1000
         assert len(events) == 1
         assert events[0].payload["deaths"] > 0
-        assert events[0].payload["entity_id"] == "C001"
+        assert events[0].payload["entity_id"] == "PERIPHERY_WORKER_ID"
 
     def test_population_one_backward_compatible(self, services: ServiceContainer) -> None:
         """With population=1 and inequality=0, behaves like old binary model.
@@ -476,20 +485,20 @@ class TestGrindingAttrition:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             population=1,
             inequality=0.0,
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.0
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
         # Assert: Single agent survives with sufficient wealth
-        assert graph.nodes["C001"]["population"] == 1
-        assert graph.nodes["C001"]["active"] is True
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 1
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
 
     def test_full_extinction_sets_active_false(self, services: ServiceContainer) -> None:
         """When population reaches 0, class is marked inactive.
@@ -499,13 +508,13 @@ class TestGrindingAttrition:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=0.0,
             population=1,
             inequality=1.0,
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.0
 
         entity_death_events: list[Event] = []
         services.event_bus.subscribe(EventType.ENTITY_DEATH, entity_death_events.append)
@@ -514,7 +523,7 @@ class TestGrindingAttrition:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Entity is extinct (active=False)
-        assert graph.nodes["C001"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
         # Assert: ENTITY_DEATH emitted for full extinction
         assert len(entity_death_events) >= 1
 
@@ -529,18 +538,18 @@ class TestGrindingAttrition:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             population=100,
             inequality=0.9,
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 1.0
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 1.0
 
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
-        pop_after_tick_1 = graph.nodes["C001"]["population"]
+        pop_after_tick_1 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_1 = 100 - pop_after_tick_1
 
         # Skip if no deaths occurred (adjust test params if needed)
@@ -549,7 +558,7 @@ class TestGrindingAttrition:
 
         system.step(graph, services, {"tick": 2})
 
-        pop_after_tick_2 = graph.nodes["C001"]["population"]
+        pop_after_tick_2 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_2 = pop_after_tick_1 - pop_after_tick_2
 
         # Assert: Malthusian correction - fewer deaths in tick 2
@@ -567,13 +576,13 @@ class TestGrindingAttrition:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=10.0,  # wealth_per_capita = 0.01
             population=1000,
             inequality=0.8,  # threshold = 1.8, coverage = 1.0 < 1.8
             s_bio=0.01,
         )
-        graph.nodes["C001"]["subsistence_multiplier"] = 0.0  # Disable burn
+        graph.nodes["PERIPHERY_WORKER_ID"]["subsistence_multiplier"] = 0.0  # Disable burn
 
         events: list[Event] = []
         services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
@@ -588,6 +597,6 @@ class TestGrindingAttrition:
         assert "deaths" in payload
         assert "remaining_population" in payload
         assert "attrition_rate" in payload
-        assert payload["entity_id"] == "C001"
+        assert payload["entity_id"] == "PERIPHERY_WORKER_ID"
         assert payload["deaths"] > 0
         assert payload["remaining_population"] < 1000

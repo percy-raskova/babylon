@@ -27,6 +27,12 @@ from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SectorType, SocialRole
 from babylon.models.world_state import WorldState
 from tests.constants import TestConstants
@@ -67,7 +73,7 @@ def create_imperial_circuit_scenario(
     # Create nodes (IDs must match pattern ^C[0-9]{3}$)
     # All entities have population=1 for per-capita survival mechanics
     periphery_worker = SocialClass(
-        id="C001",  # P_w
+        id=PERIPHERY_WORKER_ID,  # P_w
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         description="Exploited workers in the global periphery",
@@ -82,7 +88,7 @@ def create_imperial_circuit_scenario(
     )
 
     periphery_comprador = SocialClass(
-        id="C002",  # P_c
+        id=COMPRADOR_ID,  # P_c
         name="Periphery Comprador",
         role=SocialRole.COMPRADOR_BOURGEOISIE,
         description="Local collaborator class in the periphery",
@@ -97,7 +103,7 @@ def create_imperial_circuit_scenario(
     )
 
     core_bourgeoisie = SocialClass(
-        id="C003",  # C_b
+        id=CORE_BOURGEOISIE_ID,  # C_b
         name="Core Bourgeoisie",
         role=SocialRole.CORE_BOURGEOISIE,
         description="Imperial capitalist class",
@@ -112,7 +118,7 @@ def create_imperial_circuit_scenario(
     )
 
     core_worker = SocialClass(
-        id="C004",  # C_w
+        id=LABOR_ARISTOCRACY_ID,  # C_w
         name="Core Worker",
         role=SocialRole.LABOR_ARISTOCRACY,
         description="Labor aristocracy receiving super-wages",
@@ -140,8 +146,8 @@ def create_imperial_circuit_scenario(
     #                   ^                  |
     #                   |------ C003 ------| (subsidy)
     exploitation_edge = Relationship(
-        source_id="C001",  # P_w
-        target_id="C002",  # P_c
+        source_id=PERIPHERY_WORKER_ID,  # P_w
+        target_id=COMPRADOR_ID,  # P_c
         edge_type=EdgeType.EXPLOITATION,
         description="Imperial rent extraction from periphery workers",
         value_flow=0.0,
@@ -149,8 +155,8 @@ def create_imperial_circuit_scenario(
     )
 
     tribute_edge = Relationship(
-        source_id="C002",  # P_c
-        target_id="C003",  # C_b
+        source_id=COMPRADOR_ID,  # P_c
+        target_id=CORE_BOURGEOISIE_ID,  # C_b
         edge_type=EdgeType.TRIBUTE,
         description="Comprador tribute to core (minus cut)",
         value_flow=0.0,
@@ -158,8 +164,8 @@ def create_imperial_circuit_scenario(
     )
 
     wages_edge = Relationship(
-        source_id="C003",  # C_b
-        target_id="C004",  # C_w
+        source_id=CORE_BOURGEOISIE_ID,  # C_b
+        target_id=LABOR_ARISTOCRACY_ID,  # C_w
         edge_type=EdgeType.WAGES,
         description="Super-wages to labor aristocracy",
         value_flow=0.0,
@@ -167,8 +173,8 @@ def create_imperial_circuit_scenario(
     )
 
     client_state_edge = Relationship(
-        source_id="C003",  # C_b
-        target_id="C002",  # P_c
+        source_id=CORE_BOURGEOISIE_ID,  # C_b
+        target_id=COMPRADOR_ID,  # P_c
         edge_type=EdgeType.CLIENT_STATE,
         description="Imperial subsidy to stabilize client state",
         value_flow=0.0,
@@ -178,20 +184,20 @@ def create_imperial_circuit_scenario(
 
     # TENANCY edges for all entities (production requires territory)
     tenancy_edges = [
-        Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY),
-        Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY),
-        Relationship(source_id="C003", target_id="T001", edge_type=EdgeType.TENANCY),
-        Relationship(source_id="C004", target_id="T001", edge_type=EdgeType.TENANCY),
+        Relationship(source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY),
+        Relationship(source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY),
+        Relationship(source_id=CORE_BOURGEOISIE_ID, target_id="T001", edge_type=EdgeType.TENANCY),
+        Relationship(source_id=LABOR_ARISTOCRACY_ID, target_id="T001", edge_type=EdgeType.TENANCY),
     ]
 
     # Create world state
     state = WorldState(
         tick=0,
         entities={
-            "C001": periphery_worker,
-            "C002": periphery_comprador,
-            "C003": core_bourgeoisie,
-            "C004": core_worker,
+            PERIPHERY_WORKER_ID: periphery_worker,
+            COMPRADOR_ID: periphery_comprador,
+            CORE_BOURGEOISIE_ID: core_bourgeoisie,
+            LABOR_ARISTOCRACY_ID: core_worker,
         },
         territories={"T001": territory},
         relationships=[
@@ -262,7 +268,7 @@ class TestImperialCircuitFlow:
         expected_extraction = TC.ImperialCircuit.P_W_WEALTH * (alpha / weeks_per_year) * 0.5
 
         # C001 (P_w) should have lost wealth to extraction
-        assert new_state.entities["C001"].wealth < TC.ImperialCircuit.P_W_WEALTH, (
+        assert new_state.entities[PERIPHERY_WORKER_ID].wealth < TC.ImperialCircuit.P_W_WEALTH, (
             "C001 should lose wealth to extraction"
         )
 
@@ -272,7 +278,9 @@ class TestImperialCircuitFlow:
             p_c_initial + expected_extraction
         ) * TC.ImperialCircuit.COMPRADOR_CUT
         # Relaxed tolerance due to subsistence burn entropy
-        assert new_state.entities["C002"].wealth == pytest.approx(expected_c002_wealth, rel=0.10)
+        assert new_state.entities[COMPRADOR_ID].wealth == pytest.approx(
+            expected_c002_wealth, rel=0.10
+        )
 
     def test_phase2_tribute_p_c_to_c_b(self) -> None:
         """Phase 2: C002 (P_c) sends tribute to C003 (C_b), keeping COMPRADOR_CUT.
@@ -300,10 +308,12 @@ class TestImperialCircuitFlow:
             p_c_initial + expected_extraction
         ) * TC.ImperialCircuit.COMPRADOR_CUT
         # Relaxed tolerance due to subsistence burn entropy
-        assert new_state.entities["C002"].wealth == pytest.approx(expected_c002_wealth, rel=0.10)
+        assert new_state.entities[COMPRADOR_ID].wealth == pytest.approx(
+            expected_c002_wealth, rel=0.10
+        )
         # C003 (C_b) retains most of its initial wealth plus tribute
         # The exact amount depends on wage/subsidy outflows
-        assert new_state.entities["C003"].wealth >= TC.ImperialCircuit.C_B_WEALTH * 0.9
+        assert new_state.entities[CORE_BOURGEOISIE_ID].wealth >= TC.ImperialCircuit.C_B_WEALTH * 0.9
 
     def test_phase3_wages_c_b_to_c_w(self) -> None:
         """Phase 3: C003 (C_b) pays super-wages to C004 (C_w).
@@ -321,10 +331,12 @@ class TestImperialCircuitFlow:
         new_state = step(state, config, defines=defines)
 
         # C003 (C_b) retains most of its initial wealth (may lose some to subsistence)
-        assert new_state.entities["C003"].wealth >= TC.ImperialCircuit.C_B_WEALTH * 0.9
+        assert new_state.entities[CORE_BOURGEOISIE_ID].wealth >= TC.ImperialCircuit.C_B_WEALTH * 0.9
         # C004 (C_w) should have received wages (but also pays subsistence)
         # Net result may be slightly below initial due to subsistence burn
-        assert new_state.entities["C004"].wealth >= TC.ImperialCircuit.C_W_WEALTH * 0.9
+        assert (
+            new_state.entities[LABOR_ARISTOCRACY_ID].wealth >= TC.ImperialCircuit.C_W_WEALTH * 0.9
+        )
 
     def test_phase4_subsidy_when_client_state_unstable(self) -> None:
         """Phase 4: Subsidy triggered when P(S|R) >= 0.8 * P(S|A).
@@ -343,7 +355,8 @@ class TestImperialCircuitFlow:
         # The test verifies the mechanism exists and functions
         # C002 (P_c) should have higher repression if subsidy was triggered
         assert (
-            new_state.entities["C002"].repression_faced >= state.entities["C002"].repression_faced
+            new_state.entities[COMPRADOR_ID].repression_faced
+            >= state.entities[COMPRADOR_ID].repression_faced
         )
 
     def test_full_circuit_wealth_flows_correctly(self) -> None:
@@ -359,13 +372,13 @@ class TestImperialCircuitFlow:
             p_c_repression=0.9,  # High repression -> stable client state
         )
 
-        initial_c001 = state.entities["C001"].wealth
-        initial_c003 = state.entities["C003"].wealth
+        initial_c001 = state.entities[PERIPHERY_WORKER_ID].wealth
+        initial_c003 = state.entities[CORE_BOURGEOISIE_ID].wealth
 
         new_state = step(state, config, defines=defines)
 
-        final_c001 = new_state.entities["C001"].wealth
-        final_c003 = new_state.entities["C003"].wealth
+        final_c001 = new_state.entities[PERIPHERY_WORKER_ID].wealth
+        final_c003 = new_state.entities[CORE_BOURGEOISIE_ID].wealth
 
         # Periphery worker loses wealth (extraction)
         assert final_c001 < initial_c001, "C001 should lose wealth to extraction"
@@ -392,16 +405,16 @@ class TestImperialCircuitFlow:
             subsidy_trigger_threshold=0.5,  # Lower threshold to ensure trigger
         )
 
-        initial_c_b_wealth = state.entities["C003"].wealth
-        initial_p_c_repression = state.entities["C002"].repression_faced
+        initial_c_b_wealth = state.entities[CORE_BOURGEOISIE_ID].wealth
+        initial_p_c_repression = state.entities[COMPRADOR_ID].repression_faced
         new_state = step(state, config, defines=defines)
 
         # Verify subsidy triggered by checking repression increased
-        final_p_c_repression = new_state.entities["C002"].repression_faced
+        final_p_c_repression = new_state.entities[COMPRADOR_ID].repression_faced
         if final_p_c_repression > initial_p_c_repression:
             # Subsidy was applied - verify C003 lost SOME wealth to subsidy
             # With the bug fix, C_b still accumulates overall, but subsidy is an outflow
-            final_c_b_wealth = new_state.entities["C003"].wealth
+            final_c_b_wealth = new_state.entities[CORE_BOURGEOISIE_ID].wealth
 
             # C_b should still accumulate (tribute > wages + subsidy)
             # But should have less than if no subsidy was paid
@@ -466,7 +479,10 @@ class TestImperialSubsidyEvent:
         subsidy_events = [e for e in new_state.event_log if "IMPERIAL_SUBSIDY" in e.upper()]
         # Event should be present if subsidy was triggered
         # We verify the mechanism works by checking repression increased
-        if new_state.entities["C002"].repression_faced > state.entities["C002"].repression_faced:
+        if (
+            new_state.entities[COMPRADOR_ID].repression_faced
+            > state.entities[COMPRADOR_ID].repression_faced
+        ):
             assert len(subsidy_events) >= 1, "IMPERIAL_SUBSIDY event should be emitted"
 
     def test_no_subsidy_event_when_client_stable(self) -> None:

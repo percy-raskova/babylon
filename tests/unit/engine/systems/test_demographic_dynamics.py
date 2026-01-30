@@ -88,7 +88,7 @@ class TestPopulationScaledDrain:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=100.0,
             population=100,
             s_bio=0.01,
@@ -102,7 +102,9 @@ class TestPopulationScaledDrain:
         base_sub = services.defines.economy.base_subsistence
         expected_cost = base_sub * 100 * 1.0
         expected_wealth = 100.0 - expected_cost
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth, abs=0.001)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(
+            expected_wealth, abs=0.001
+        )
 
     def test_single_pop_burns_1x_subsistence(self, services: ServiceContainer) -> None:
         """Population=1 burns the same as old formula (backward compatible).
@@ -113,7 +115,7 @@ class TestPopulationScaledDrain:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             population=1,
             s_bio=0.01,
@@ -126,7 +128,9 @@ class TestPopulationScaledDrain:
         base_sub = services.defines.economy.base_subsistence
         expected_cost = base_sub * 1 * 1.5
         expected_wealth = 1.0 - expected_cost
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth, abs=0.001)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(
+            expected_wealth, abs=0.001
+        )
 
     def test_elite_burn_rate_scales_by_population(self, services: ServiceContainer) -> None:
         """Elite class (multiplier=20) with population=50 burns massively.
@@ -138,7 +142,7 @@ class TestPopulationScaledDrain:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=100.0,
             population=50,
             s_bio=0.1,
@@ -151,7 +155,9 @@ class TestPopulationScaledDrain:
         base_sub = services.defines.economy.base_subsistence
         expected_cost = base_sub * 50 * 20.0
         expected_wealth = 100.0 - expected_cost
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth, abs=0.001)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(
+            expected_wealth, abs=0.001
+        )
 
 
 @pytest.mark.unit
@@ -175,7 +181,7 @@ class TestCoverageRatioFormula:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=TC.WEALTH_100,
             population=TC.POP_100,
             inequality=TC.ZERO_INEQUALITY,
@@ -191,7 +197,7 @@ class TestCoverageRatioFormula:
         system.step(graph, services, {"tick": 1})
 
         # Assert: No deaths, population unchanged
-        assert graph.nodes["C001"]["population"] == TC.POP_100
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == TC.POP_100
         assert len(events) == 0
 
     def test_high_inequality_causes_deaths(self, services: ServiceContainer) -> None:
@@ -206,7 +212,7 @@ class TestCoverageRatioFormula:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=TC.WEALTH_100,
             population=TC.POP_100,
             inequality=TC.HIGH_INEQUALITY,
@@ -222,7 +228,7 @@ class TestCoverageRatioFormula:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Full attrition due to high inequality
-        assert graph.nodes["C001"]["population"] == 0
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 0
         assert len(events) == 1
         assert events[0].payload["deaths"] == TC.POP_100
 
@@ -236,7 +242,7 @@ class TestCoverageRatioFormula:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=200.0,  # Double wealth for 2.0 coverage
             population=TC.POP_100,
             inequality=TC.HIGH_INEQUALITY,
@@ -252,7 +258,7 @@ class TestCoverageRatioFormula:
         system.step(graph, services, {"tick": 1})
 
         # Assert: No deaths when coverage exceeds threshold
-        assert graph.nodes["C001"]["population"] == TC.POP_100
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == TC.POP_100
         assert len(events) == 0
 
     def test_partial_attrition(self, services: ServiceContainer) -> None:
@@ -267,7 +273,7 @@ class TestCoverageRatioFormula:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=140.0,
             population=TC.POP_100,
             inequality=TC.HIGH_INEQUALITY,
@@ -285,7 +291,7 @@ class TestCoverageRatioFormula:
         # Assert: Partial attrition
         # deficit = 0.4, attrition = 0.4 * 1.3 = 0.52
         expected_deaths = int(TC.POP_100 * 0.52)
-        assert graph.nodes["C001"]["population"] == TC.POP_100 - expected_deaths
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == TC.POP_100 - expected_deaths
         assert len(events) == 1
         assert events[0].payload["deaths"] == expected_deaths
 
@@ -316,7 +322,7 @@ class TestMalthusianCorrection:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=100.0,
             population=100,
             inequality=TC.MODERATE_INEQUALITY,
@@ -332,8 +338,8 @@ class TestMalthusianCorrection:
         system = VitalitySystem()
         system.step(graph, services, {"tick": 1})
 
-        final_wealth = graph.nodes["C001"]["wealth"]
-        final_pop = graph.nodes["C001"]["population"]
+        final_wealth = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
+        final_pop = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
 
         # Assert: Wealth unchanged (poor die with 0 wealth)
         assert final_wealth == pytest.approx(initial_wealth, abs=0.001)
@@ -354,7 +360,7 @@ class TestMalthusianCorrection:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=100.0,
             population=100,
             inequality=TC.MODERATE_INEQUALITY,
@@ -366,9 +372,9 @@ class TestMalthusianCorrection:
         system = VitalitySystem()
 
         # Tick 1
-        pop_before_tick_1 = graph.nodes["C001"]["population"]
+        pop_before_tick_1 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         system.step(graph, services, {"tick": 1})
-        pop_after_tick_1 = graph.nodes["C001"]["population"]
+        pop_after_tick_1 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_1 = pop_before_tick_1 - pop_after_tick_1
 
         # Skip if no deaths (test params need adjustment)
@@ -376,9 +382,9 @@ class TestMalthusianCorrection:
             pytest.skip("No deaths in tick 1")
 
         # Tick 2
-        pop_before_tick_2 = graph.nodes["C001"]["population"]
+        pop_before_tick_2 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         system.step(graph, services, {"tick": 2})
-        pop_after_tick_2 = graph.nodes["C001"]["population"]
+        pop_after_tick_2 = graph.nodes["PERIPHERY_WORKER_ID"]["population"]
         deaths_tick_2 = pop_before_tick_2 - pop_after_tick_2
 
         # Assert: Fewer deaths in tick 2 (Malthusian correction)
@@ -394,7 +400,7 @@ class TestAttritionEventPayload:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=TC.WEALTH_100,
             population=TC.POP_100,
             inequality=TC.HIGH_INEQUALITY,
@@ -420,7 +426,7 @@ class TestAttritionEventPayload:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=TC.WEALTH_100,
             population=TC.POP_100,
             inequality=TC.HIGH_INEQUALITY,
@@ -441,7 +447,7 @@ class TestAttritionEventPayload:
         assert "deaths" in payload
         assert "remaining_population" in payload
         assert "attrition_rate" in payload
-        assert payload["entity_id"] == "C001"
+        assert payload["entity_id"] == "PERIPHERY_WORKER_ID"
         assert payload["deaths"] > 0
         assert payload["remaining_population"] >= 0
 
@@ -460,7 +466,7 @@ class TestBackwardCompatibility:
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=1.0,
             population=1,
             inequality=0.0,
@@ -472,15 +478,15 @@ class TestBackwardCompatibility:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Single agent survives with sufficient wealth
-        assert graph.nodes["C001"]["population"] == 1
-        assert graph.nodes["C001"]["active"] is True
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 1
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is True
 
     def test_full_extinction_emits_entity_death(self, services: ServiceContainer) -> None:
         """When population=0 after attrition, ENTITY_DEATH is emitted."""
         graph: nx.DiGraph = nx.DiGraph()
         _create_entity_node(
             graph,
-            "C001",
+            "PERIPHERY_WORKER_ID",
             wealth=TC.WEALTH_100,
             population=TC.POP_100,
             inequality=TC.HIGH_INEQUALITY,  # Will cause 100% attrition
@@ -495,7 +501,7 @@ class TestBackwardCompatibility:
         system.step(graph, services, {"tick": 1})
 
         # Assert: Full extinction triggers ENTITY_DEATH
-        assert graph.nodes["C001"]["active"] is False
-        assert graph.nodes["C001"]["population"] == 0
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["active"] is False
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["population"] == 0
         assert len(entity_death_events) == 1
         assert entity_death_events[0].payload["cause"] == "extinction"

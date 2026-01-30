@@ -19,6 +19,10 @@ import pytest
 
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.ideology import ConsciousnessSystem
+from babylon.models.entity_registry import (
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 
 @pytest.mark.unit
@@ -41,7 +45,7 @@ class TestConsciousnessSystemWealthTracking:
         # Arrange: Graph with a periphery worker
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,
@@ -63,12 +67,12 @@ class TestConsciousnessSystemWealthTracking:
         assert "previous_wealth" in context
         previous_wealth = context["previous_wealth"]
         assert isinstance(previous_wealth, dict)
-        assert previous_wealth["C001"] == 1.0
+        assert previous_wealth[PERIPHERY_WORKER_ID] == 1.0
 
     def test_wealth_extraction_generates_agitation(self) -> None:
         """Wealth loss between ticks should generate agitation.
 
-        Scenario: Periphery worker C001
+        Scenario: Periphery worker PERIPHERY_WORKER_ID
         - Tick 0: wealth = 1.0 (baseline established)
         - Between ticks: EXPLOITATION edge extracts 0.5 wealth
         - Tick 1: wealth = 0.5 (wealth_change = -0.5)
@@ -77,7 +81,7 @@ class TestConsciousnessSystemWealthTracking:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,
@@ -95,7 +99,7 @@ class TestConsciousnessSystemWealthTracking:
         system.step(graph, services, context)
 
         # Simulate extraction: wealth reduced between ticks
-        graph.nodes["C001"]["wealth"] = 0.5  # Lost 0.5 wealth
+        graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.5  # Lost 0.5 wealth
 
         # Second tick: should detect wealth loss
         context["tick"] = 1
@@ -103,7 +107,7 @@ class TestConsciousnessSystemWealthTracking:
 
         # Assert: Agitation should increase OR ideology should shift
         # (routing depends on solidarity pressure)
-        ideology = graph.nodes["C001"]["ideology"]
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
         # Either agitation increases OR national_identity increases (fascist path)
         has_response = ideology["agitation"] > 0.0 or ideology["national_identity"] > 0.5
         assert has_response, "Wealth extraction should generate agitation or ideology shift"
@@ -118,7 +122,7 @@ class TestConsciousnessSystemWealthTracking:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,
@@ -137,14 +141,14 @@ class TestConsciousnessSystemWealthTracking:
         system.step(graph, services, context)
 
         # Simulate extraction
-        graph.nodes["C001"]["wealth"] = 0.3  # Major extraction
+        graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.3  # Major extraction
 
         # Second tick
         context["tick"] = 1
         system.step(graph, services, context)
 
         # Assert: national_identity should increase (fascist bifurcation)
-        ideology = graph.nodes["C001"]["ideology"]
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
         assert ideology["national_identity"] > 0.5, (
             "Without solidarity, wealth extraction routes to fascism"
         )
@@ -159,9 +163,9 @@ class TestConsciousnessSystemWealthTracking:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
 
-        # C001: Periphery worker (target of solidarity)
+        # PERIPHERY_WORKER_ID: Periphery worker (target of solidarity)
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,
@@ -171,9 +175,9 @@ class TestConsciousnessSystemWealthTracking:
             _node_type="social_class",
         )
 
-        # C004: Revolutionary source with high consciousness
+        # LABOR_ARISTOCRACY_ID: Revolutionary source with high consciousness
         graph.add_node(
-            "C004",
+            LABOR_ARISTOCRACY_ID,
             wealth=0.5,
             ideology={
                 "class_consciousness": 0.9,  # Revolutionary consciousness
@@ -183,12 +187,12 @@ class TestConsciousnessSystemWealthTracking:
             _node_type="social_class",
         )
 
-        # SOLIDARITY edge from revolutionary source to C001
+        # SOLIDARITY edge from revolutionary source to PERIPHERY_WORKER_ID
         from babylon.models.enums import EdgeType
 
         graph.add_edge(
-            "C004",
-            "C001",
+            LABOR_ARISTOCRACY_ID,
+            PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.8,  # Strong infrastructure
         )
@@ -201,14 +205,14 @@ class TestConsciousnessSystemWealthTracking:
         system.step(graph, services, context)
 
         # Simulate extraction
-        graph.nodes["C001"]["wealth"] = 0.3  # Major extraction
+        graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 0.3  # Major extraction
 
         # Second tick
         context["tick"] = 1
         system.step(graph, services, context)
 
         # Assert: class_consciousness should increase (revolutionary path)
-        ideology = graph.nodes["C001"]["ideology"]
+        ideology = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]
         assert ideology["class_consciousness"] > 0.5, (
             "With solidarity, wealth extraction routes to revolution"
         )
@@ -222,7 +226,7 @@ class TestConsciousnessSystemWealthTracking:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,
@@ -238,17 +242,17 @@ class TestConsciousnessSystemWealthTracking:
 
         # First tick
         system.step(graph, services, context)
-        initial_agitation = graph.nodes["C001"]["ideology"]["agitation"]
+        initial_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
 
         # Wealth stays the same (no extraction)
-        # graph.nodes["C001"]["wealth"] = 1.0  # unchanged
+        # graph.nodes[PERIPHERY_WORKER_ID]["wealth"] = 1.0  # unchanged
 
         # Second tick
         context["tick"] = 1
         system.step(graph, services, context)
 
         # Assert: agitation should decay, not increase
-        final_agitation = graph.nodes["C001"]["ideology"]["agitation"]
+        final_agitation = graph.nodes[PERIPHERY_WORKER_ID]["ideology"]["agitation"]
         assert final_agitation <= initial_agitation, (
             "Stable wealth should not generate new agitation"
         )
@@ -263,7 +267,7 @@ class TestConsciousnessSystemPersistentContext:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,
@@ -294,7 +298,7 @@ class TestConsciousnessSystemPersistentContext:
         # Arrange
         graph: nx.DiGraph[str] = nx.DiGraph()
         graph.add_node(
-            "C001",
+            PERIPHERY_WORKER_ID,
             wealth=1.0,
             ideology={
                 "class_consciousness": 0.5,

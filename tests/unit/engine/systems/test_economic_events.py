@@ -24,6 +24,7 @@ from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.models.config import SimulationConfig
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 # RED Phase imports - these don't exist yet and will cause import errors
@@ -351,8 +352,8 @@ class TestStructuredEventsInWorldState:
         # Arrange - Use valid C-prefixed IDs per SocialClass id pattern
         # Need wealth >= 2.0 for weekly extraction to exceed negligible threshold
         factory = DomainFactory()
-        worker = factory.create_worker(id="C001", wealth=2.0)
-        owner = factory.create_owner(id="C002", wealth=5.0)
+        worker = factory.create_worker(id=PERIPHERY_WORKER_ID, wealth=2.0)
+        owner = factory.create_owner(id=COMPRADOR_ID, wealth=5.0)
         relationship = factory.create_relationship(
             source_id=worker.id,
             target_id=owner.id,
@@ -369,8 +370,8 @@ class TestStructuredEventsInWorldState:
         # Assert - Verify typed event with correct fields
         Assert(new_state).has_event(
             ExtractionEvent,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
         )
         # Amount should be positive (wealth was extracted)
         Assert(new_state).has_event(ExtractionEvent, amount_gt=0.0)
@@ -392,8 +393,8 @@ class TestStructuredEventsInWorldState:
         # Create a pre-existing event with valid IDs
         event = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=0.1,
         )
 

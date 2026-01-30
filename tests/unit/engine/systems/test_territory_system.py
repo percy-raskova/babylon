@@ -41,7 +41,7 @@ class TestTerritorySystemBasic:
         graph: nx.DiGraph[str] = nx.DiGraph()
         # Social class node (should be ignored)
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
             wealth=10.0,
             ideology=0.0,
@@ -55,7 +55,7 @@ class TestTerritorySystemBasic:
         system.step(graph, services, context)
 
         # Assert: No changes to social class node
-        assert graph.nodes["C001"]["wealth"] == 10.0
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == 10.0
 
 
 # =============================================================================
@@ -953,15 +953,15 @@ class TestNecropolitics:
         )
         # Social class with high organization
         graph.add_node(
-            "C001",
+            "PERIPHERY_WORKER_ID",
             _node_type="social_class",
-            id="C001",
+            id="PERIPHERY_WORKER_ID",
             name="Prisoners",
             organization=0.8,  # High organization
             wealth=1.0,
         )
         # TENANCY edge from class to territory
-        graph.add_edge("C001", "T001", edge_type=EdgeType.TENANCY)
+        graph.add_edge("PERIPHERY_WORKER_ID", "T001", edge_type=EdgeType.TENANCY)
 
         services = ServiceContainer.create()
         context: dict[str, int] = {"tick": 1}
@@ -971,7 +971,7 @@ class TestNecropolitics:
         system.step(graph, services, context)
 
         # Assert: organization suppressed to 0.0
-        assert graph.nodes["C001"]["organization"] == pytest.approx(0.0, abs=0.01)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["organization"] == pytest.approx(0.0, abs=0.01)
 
 
 # =============================================================================

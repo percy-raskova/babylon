@@ -26,6 +26,7 @@ from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS, step
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import SectorType, SocialRole
 
 # Most tests are GREEN; only TestBiocapacityDynamics.test_biocapacity_depletes_under_extraction is RED
@@ -83,7 +84,7 @@ def consuming_entity() -> SocialClass:
     s_bio + s_class = consumption_needs
     """
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="High Consumers",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=100.0,
@@ -277,7 +278,7 @@ class TestOvershootDetection:
 
         # High consumption class
         social_class = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="High Consumers",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=100.0,
@@ -289,7 +290,7 @@ class TestOvershootDetection:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": social_class},
+            entities={PERIPHERY_WORKER_ID: social_class},
         )
 
         # Check WorldState computed property
@@ -314,7 +315,7 @@ class TestOvershootDetection:
 
         # Low consumption class
         social_class = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Low Consumers",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=10.0,
@@ -326,7 +327,7 @@ class TestOvershootDetection:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": social_class},
+            entities={PERIPHERY_WORKER_ID: social_class},
         )
 
         # Ratio = 10 / 500 = 0.02 (sustainable)
@@ -352,7 +353,7 @@ class TestOvershootDetection:
             max_biocapacity=100.0,
         )
         entity = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Consumers",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=100.0,
@@ -363,7 +364,7 @@ class TestOvershootDetection:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": entity},
+            entities={PERIPHERY_WORKER_ID: entity},
         )
 
         # Run one tick
@@ -410,7 +411,7 @@ class TestWorldStateEcologicalFields:
         """WorldState.total_consumption should sum all entity consumption_needs."""
         entities = {
             "C001": SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Class A",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 wealth=10.0,
@@ -418,7 +419,7 @@ class TestWorldStateEcologicalFields:
                 s_class=5.0,
             ),
             "C002": SocialClass(
-                id="C002",
+                id=COMPRADOR_ID,
                 name="Class B",
                 role=SocialRole.CORE_BOURGEOISIE,
                 wealth=100.0,
@@ -440,7 +441,7 @@ class TestWorldStateEcologicalFields:
             biocapacity=100.0,
         )
         entity = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=40.0,
@@ -449,7 +450,7 @@ class TestWorldStateEcologicalFields:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": entity},
+            entities={PERIPHERY_WORKER_ID: entity},
         )
 
         # Ratio = 50 / 100 = 0.5
@@ -467,7 +468,7 @@ class TestWorldStateEcologicalFields:
             biocapacity=0.0,  # Completely depleted
         )
         entity = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Consumer",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=10.0,
@@ -476,7 +477,7 @@ class TestWorldStateEcologicalFields:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": entity},
+            entities={PERIPHERY_WORKER_ID: entity},
         )
 
         # Should not raise ZeroDivisionError
@@ -511,7 +512,7 @@ class TestMetabolicStability:
             extraction_intensity=0.03,
         )
         entity = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test Consumer",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
@@ -521,7 +522,7 @@ class TestMetabolicStability:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": entity},
+            entities={PERIPHERY_WORKER_ID: entity},
         )
 
         # Run 100 ticks

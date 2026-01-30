@@ -87,9 +87,9 @@ class TestProductionSystem:
         production = (1.0 / 52) * (100 / 100) = 0.0192
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -98,7 +98,7 @@ class TestProductionSystem:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_production = (annual_labor_power / weeks_per_year) * 1.0
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_production)
 
     def test_worker_in_half_biocapacity_territory_gains_half_labor_power(
         self, services: ServiceContainer
@@ -108,9 +108,9 @@ class TestProductionSystem:
         production = (1.0 / 52) * (50 / 100) = 0.0096
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=50.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -118,7 +118,7 @@ class TestProductionSystem:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_production = (annual_labor_power / weeks_per_year) * 0.5
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_production)
 
     def test_worker_in_depleted_territory_gains_nothing(self, services: ServiceContainer) -> None:
         """Worker in territory with 0 biocapacity gains nothing.
@@ -126,73 +126,79 @@ class TestProductionSystem:
         production = 1.0 * (0 / 100) = 0.0
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=5.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=5.0)
         _create_territory_node(graph, "T001", biocapacity=0.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
         # Wealth unchanged (no production)
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(5.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)
 
     def test_worker_without_territory_gains_nothing(self, services: ServiceContainer) -> None:
         """Worker with no TENANCY edge gains nothing (no territory to work)."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=5.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=5.0)
         # No territory, no tenancy edge
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
         # Wealth unchanged
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(5.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)
 
     def test_inactive_worker_does_not_produce(self, services: ServiceContainer) -> None:
         """Dead workers (active=False) do not produce."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0, active=False)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, active=False)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
         # Wealth unchanged (dead worker can't work)
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(0.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(0.0)
 
     def test_bourgeoisie_does_not_produce(self, services: ServiceContainer) -> None:
         """Bourgeoisie extracts but does not produce value."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", role=SocialRole.CORE_BOURGEOISIE, wealth=100.0)
+        _create_worker_node(
+            graph, "PERIPHERY_WORKER_ID", role=SocialRole.CORE_BOURGEOISIE, wealth=100.0
+        )
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
         # Wealth unchanged (bourgeoisie doesn't produce)
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(100.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(100.0)
 
     def test_comprador_does_not_produce(self, services: ServiceContainer) -> None:
         """Comprador bourgeoisie extracts but does not produce."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", role=SocialRole.COMPRADOR_BOURGEOISIE, wealth=50.0)
+        _create_worker_node(
+            graph, "PERIPHERY_WORKER_ID", role=SocialRole.COMPRADOR_BOURGEOISIE, wealth=50.0
+        )
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
         # Wealth unchanged
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(50.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(50.0)
 
     def test_labor_aristocracy_produces(self, services: ServiceContainer) -> None:
         """Labor aristocracy is a worker class and produces value."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", role=SocialRole.LABOR_ARISTOCRACY, wealth=0.0)
+        _create_worker_node(
+            graph, "PERIPHERY_WORKER_ID", role=SocialRole.LABOR_ARISTOCRACY, wealth=0.0
+        )
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -200,14 +206,16 @@ class TestProductionSystem:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_production = (annual_labor_power / weeks_per_year) * 1.0
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_production)
 
     def test_periphery_proletariat_produces(self, services: ServiceContainer) -> None:
         """Periphery proletariat produces value."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", role=SocialRole.PERIPHERY_PROLETARIAT, wealth=0.0)
+        _create_worker_node(
+            graph, "PERIPHERY_WORKER_ID", role=SocialRole.PERIPHERY_PROLETARIAT, wealth=0.0
+        )
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -215,14 +223,14 @@ class TestProductionSystem:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_production = (annual_labor_power / weeks_per_year) * 1.0
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_production)
 
     def test_production_accumulates_with_existing_wealth(self, services: ServiceContainer) -> None:
         """Production adds to existing wealth, not replaces it."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=10.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=10.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -230,7 +238,7 @@ class TestProductionSystem:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_wealth = 10.0 + (annual_labor_power / weeks_per_year)
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_wealth)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_wealth)
 
     def test_production_system_name(self) -> None:
         """ProductionSystem should have correct name property."""
@@ -249,9 +257,9 @@ class TestProductionPopulationScaling:
         production = (base_labor_power * population) * bio_ratio
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0, population=100)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, population=100)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -260,7 +268,7 @@ class TestProductionPopulationScaling:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_production = (annual_labor_power / weeks_per_year) * 100 * 1.0
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_production)
 
     def test_population_one_backward_compatible(self, services: ServiceContainer) -> None:
         """Population=1 produces same as original implementation.
@@ -268,9 +276,9 @@ class TestProductionPopulationScaling:
         This ensures backward compatibility for existing scenarios.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0, population=1)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, population=1)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -278,7 +286,7 @@ class TestProductionPopulationScaling:
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
         expected_production = (annual_labor_power / weeks_per_year) * 1.0
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(expected_production)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(expected_production)
 
     def test_population_zero_no_production(self, services: ServiceContainer) -> None:
         """Population=0 produces nothing (extinct block).
@@ -286,12 +294,12 @@ class TestProductionPopulationScaling:
         Zero workers means zero production, regardless of territory health.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=5.0, population=0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=5.0, population=0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
 
         # Wealth unchanged (0 population = 0 production)
-        assert graph.nodes["C001"]["wealth"] == pytest.approx(5.0)
+        assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)

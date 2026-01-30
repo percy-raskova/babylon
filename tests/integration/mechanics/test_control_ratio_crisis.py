@@ -25,6 +25,10 @@ from babylon.config.defines import CarceralDefines, GameDefines
 from babylon.engine.simulation_engine import step
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entity_registry import (
+    CARCERAL_ENFORCER_ID,
+    INTERNAL_PROLETARIAT_ID,
+)
 from babylon.models.enums import SocialRole
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_rent]
@@ -51,7 +55,7 @@ def _create_post_decomposition_scenario(
     ControlRatioSystem precondition.
     """
     enforcer = SocialClass(
-        id="C001",
+        id=CARCERAL_ENFORCER_ID,
         name="Carceral Enforcer",
         role=SocialRole.CARCERAL_ENFORCER,
         wealth=100.0,
@@ -61,7 +65,7 @@ def _create_post_decomposition_scenario(
     )
 
     prisoner = SocialClass(
-        id="C002",
+        id=INTERNAL_PROLETARIAT_ID,
         name="Internal Proletariat",
         role=SocialRole.INTERNAL_PROLETARIAT,
         wealth=10.0,
@@ -72,7 +76,7 @@ def _create_post_decomposition_scenario(
 
     state = WorldState(
         tick=100,  # Post-decomposition
-        entities={"C001": enforcer, "C002": prisoner},
+        entities={CARCERAL_ENFORCER_ID: enforcer, INTERNAL_PROLETARIAT_ID: prisoner},
         relationships=[],
     )
 

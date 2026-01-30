@@ -19,6 +19,12 @@ from babylon.models.config import SimulationConfig
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SocialRole
 from babylon.models.world_state import WorldState
 from tests.constants import TestConstants
@@ -59,7 +65,7 @@ def create_dynamic_balance_scenario(
     """
     # Create the 4-node Imperial Circuit
     periphery_worker = SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         description="Exploited workers",
@@ -73,7 +79,7 @@ def create_dynamic_balance_scenario(
     )
 
     periphery_comprador = SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Periphery Comprador",
         role=SocialRole.PETTY_BOURGEOISIE,
         description="Local collaborator class",
@@ -87,7 +93,7 @@ def create_dynamic_balance_scenario(
     )
 
     core_bourgeoisie = SocialClass(
-        id="C003",
+        id=CORE_BOURGEOISIE_ID,
         name="Core Bourgeoisie",
         role=SocialRole.CORE_BOURGEOISIE,
         description="Imperial capitalist class",
@@ -101,7 +107,7 @@ def create_dynamic_balance_scenario(
     )
 
     core_worker = SocialClass(
-        id="C004",
+        id=LABOR_ARISTOCRACY_ID,
         name="Core Worker",
         role=SocialRole.LABOR_ARISTOCRACY,
         description="Labor aristocracy",
@@ -116,8 +122,8 @@ def create_dynamic_balance_scenario(
 
     # Create edges with specified tension
     exploitation_edge = Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         description="Imperial rent extraction",
         value_flow=0.0,
@@ -125,8 +131,8 @@ def create_dynamic_balance_scenario(
     )
 
     tribute_edge = Relationship(
-        source_id="C002",
-        target_id="C003",
+        source_id=COMPRADOR_ID,
+        target_id=CORE_BOURGEOISIE_ID,
         edge_type=EdgeType.TRIBUTE,
         description="Comprador tribute",
         value_flow=0.0,
@@ -134,8 +140,8 @@ def create_dynamic_balance_scenario(
     )
 
     wages_edge = Relationship(
-        source_id="C003",
-        target_id="C004",
+        source_id=CORE_BOURGEOISIE_ID,
+        target_id=LABOR_ARISTOCRACY_ID,
         edge_type=EdgeType.WAGES,
         description="Super-wages",
         value_flow=0.0,
@@ -143,8 +149,8 @@ def create_dynamic_balance_scenario(
     )
 
     client_state_edge = Relationship(
-        source_id="C003",
-        target_id="C002",
+        source_id=CORE_BOURGEOISIE_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.CLIENT_STATE,
         description="Imperial subsidy",
         value_flow=0.0,
@@ -163,10 +169,10 @@ def create_dynamic_balance_scenario(
     state = WorldState(
         tick=0,
         entities={
-            "C001": periphery_worker,
-            "C002": periphery_comprador,
-            "C003": core_bourgeoisie,
-            "C004": core_worker,
+            PERIPHERY_WORKER_ID: periphery_worker,
+            COMPRADOR_ID: periphery_comprador,
+            CORE_BOURGEOISIE_ID: core_bourgeoisie,
+            LABOR_ARISTOCRACY_ID: core_worker,
         },
         relationships=[
             exploitation_edge,

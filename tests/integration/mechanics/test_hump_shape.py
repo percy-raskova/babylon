@@ -24,6 +24,9 @@ import pytest
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
+from babylon.models.entity_registry import (
+    CORE_BOURGEOISIE_ID,
+)
 
 # Skip entire module until Dashboard visual calibration complete (Sprint 1.5)
 pytestmark = [
@@ -36,12 +39,6 @@ pytestmark = [
 GROWTH_END = 104  # Year 2
 PLATEAU_END = 520  # Year 10
 SIMULATION_END = 1040  # Year 20
-
-# Entity IDs from imperial circuit scenario
-CORE_BOURGEOISIE_ID = "C003"
-COMPRADOR_ID = "C002"
-PERIPHERY_WORKER_ID = "C001"
-LABOR_ARISTOCRACY_ID = "C004"
 
 
 def run_simulation_and_collect_history(

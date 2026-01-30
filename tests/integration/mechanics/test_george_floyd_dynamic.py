@@ -26,6 +26,7 @@ from babylon.engine.factories import create_proletariat
 from babylon.engine.simulation import Simulation
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import SocialRole
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
@@ -48,7 +49,7 @@ class TestGeorgeFloydDynamic:
 
         # Create a worker facing high repression
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Oppressed Worker",
             wealth=50.0,
             ideology=-0.3,  # Some class consciousness
@@ -59,7 +60,7 @@ class TestGeorgeFloydDynamic:
         # Create initial state
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             relationships=[],
         )
         config = SimulationConfig()
@@ -89,7 +90,7 @@ class TestGeorgeFloydDynamic:
 
         # Create a worker with high agitation and high repression
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Agitated Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=30.0,
@@ -105,7 +106,7 @@ class TestGeorgeFloydDynamic:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             relationships=[],
         )
         config = SimulationConfig()
@@ -134,7 +135,7 @@ class TestGeorgeFloydDynamic:
 
         # Create two workers with solidarity edge between them
         worker1 = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Struggling Worker 1",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=30.0,
@@ -149,7 +150,7 @@ class TestGeorgeFloydDynamic:
         )
 
         worker2 = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Comrade Worker 2",
             wealth=40.0,
             ideology=-0.5,  # Revolutionary consciousness
@@ -159,15 +160,15 @@ class TestGeorgeFloydDynamic:
 
         # Solidarity edge from worker2 to worker1 (starts with ZERO solidarity)
         solidarity_edge = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.0,  # KEY: Starts at zero
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker1, "C002": worker2},
+            entities={PERIPHERY_WORKER_ID: worker1, COMPRADOR_ID: worker2},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -183,8 +184,8 @@ class TestGeorgeFloydDynamic:
         final_solidarity_edge = None
         for rel in final_state.relationships:
             if (
-                rel.source_id == "C002"
-                and rel.target_id == "C001"
+                rel.source_id == COMPRADOR_ID
+                and rel.target_id == PERIPHERY_WORKER_ID
                 and rel.edge_type == EdgeType.SOLIDARITY
             ):
                 final_solidarity_edge = rel
@@ -219,7 +220,7 @@ class TestGeorgeFloydDynamic:
 
         # Revolutionary source worker (will transmit consciousness)
         revolutionary = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Revolutionary Leader",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=20.0,
@@ -235,7 +236,7 @@ class TestGeorgeFloydDynamic:
 
         # Target worker (will receive consciousness if solidarity is built)
         target_worker = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Awakening Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=30.0,
@@ -251,15 +252,15 @@ class TestGeorgeFloydDynamic:
 
         # Solidarity edge starts at ZERO - no transmission possible initially
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.0,  # KEY: Zero solidarity initially
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": revolutionary, "C002": target_worker},
+            entities={PERIPHERY_WORKER_ID: revolutionary, COMPRADOR_ID: target_worker},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -272,7 +273,7 @@ class TestGeorgeFloydDynamic:
         final_state = sim.run(50)
 
         # Get final consciousness
-        final_worker = final_state.entities["C002"]
+        final_worker = final_state.entities[COMPRADOR_ID]
         final_consciousness = final_worker.ideology.class_consciousness
 
         # Count events
@@ -319,7 +320,7 @@ class TestGeorgeFloydDynamic:
 
         # Create a worker who will experience uprisings
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Rioting Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=100.0,  # Track this carefully
@@ -335,7 +336,7 @@ class TestGeorgeFloydDynamic:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             relationships=[],
         )
         config = SimulationConfig()
@@ -349,7 +350,7 @@ class TestGeorgeFloydDynamic:
 
         if len(uprising_events) > 0:
             # Wealth should have decreased due to destruction
-            final_worker = final_state.entities["C001"]
+            final_worker = final_state.entities[PERIPHERY_WORKER_ID]
             # Each uprising destroys 5% of wealth
             # Multiple uprisings compound the destruction
             assert final_worker.wealth < 100.0, (
@@ -365,7 +366,7 @@ class TestGeorgeFloydDynamic:
 
         # Setup similar to solidarity increase test
         worker1 = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Struggling Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=30.0,
@@ -380,7 +381,7 @@ class TestGeorgeFloydDynamic:
         )
 
         worker2 = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Comrade",
             wealth=40.0,
             ideology=-0.5,
@@ -389,15 +390,15 @@ class TestGeorgeFloydDynamic:
         )
 
         solidarity_edge = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.0,
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker1, "C002": worker2},
+            entities={PERIPHERY_WORKER_ID: worker1, COMPRADOR_ID: worker2},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -431,7 +432,7 @@ class TestStruggleSystemDefines:
         random.seed(999)
 
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             wealth=50.0,
             ideology=-0.3,
@@ -441,7 +442,7 @@ class TestStruggleSystemDefines:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             relationships=[],
         )
         config = SimulationConfig()
@@ -484,7 +485,7 @@ class TestStruggleSystemDefines:
 
         # Worker with moderate agitation
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
@@ -500,7 +501,7 @@ class TestStruggleSystemDefines:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             relationships=[],
         )
         config = SimulationConfig()

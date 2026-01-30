@@ -26,6 +26,11 @@ from babylon.config.defines import CarceralDefines, GameDefines
 from babylon.engine.simulation import Simulation
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entity_registry import (
+    CARCERAL_ENFORCER_ID,
+    INTERNAL_PROLETARIAT_ID,
+    LABOR_ARISTOCRACY_ID,
+)
 from babylon.models.enums import SocialRole
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_rent]
@@ -56,7 +61,7 @@ def _create_la_crisis_scenario(
     - Dormant INTERNAL_PROLETARIAT (population=0, active=False)
     """
     labor_aristocracy = SocialClass(
-        id="C001",
+        id=LABOR_ARISTOCRACY_ID,
         name="Labor Aristocracy",
         role=SocialRole.LABOR_ARISTOCRACY,
         wealth=la_wealth,
@@ -69,7 +74,7 @@ def _create_la_crisis_scenario(
 
     # Dormant entities that will be activated by decomposition
     enforcer = SocialClass(
-        id="C002",
+        id=CARCERAL_ENFORCER_ID,
         name="Carceral Enforcer",
         role=SocialRole.CARCERAL_ENFORCER,
         wealth=0.0,
@@ -78,7 +83,7 @@ def _create_la_crisis_scenario(
     )
 
     internal_proletariat = SocialClass(
-        id="C003",
+        id=INTERNAL_PROLETARIAT_ID,
         name="Internal Proletariat",
         role=SocialRole.INTERNAL_PROLETARIAT,
         wealth=0.0,
@@ -89,9 +94,9 @@ def _create_la_crisis_scenario(
     state = WorldState(
         tick=0,
         entities={
-            "C001": labor_aristocracy,
-            "C002": enforcer,
-            "C003": internal_proletariat,
+            LABOR_ARISTOCRACY_ID: labor_aristocracy,
+            CARCERAL_ENFORCER_ID: enforcer,
+            INTERNAL_PROLETARIAT_ID: internal_proletariat,
         },
         relationships=[],
     )
@@ -208,8 +213,8 @@ class TestDecompositionOutcome:
         if decomposition_events:
             # Verify population splits - the fractions are applied to LA pop
             # at the moment of decomposition (which may have changed slightly)
-            enforcer = final_state.entities.get("C002")
-            proletariat = final_state.entities.get("C003")
+            enforcer = final_state.entities.get(CARCERAL_ENFORCER_ID)
+            proletariat = final_state.entities.get(INTERNAL_PROLETARIAT_ID)
 
             # Key test: enforcer should have SOME population (was 0 initially)
             if enforcer is not None and enforcer.active:
@@ -263,7 +268,7 @@ class TestDecompositionOutcome:
 
         if decomposition_events:
             # LA should be deactivated
-            la = final_state.entities.get("C001")
+            la = final_state.entities.get(LABOR_ARISTOCRACY_ID)
             assert la is not None, "LA entity should still exist"
             assert la.active is False, "LA should be deactivated after decomposition"
 
@@ -288,8 +293,8 @@ class TestDecompositionOutcome:
 
         if decomposition_events:
             # Both dormant entities should now be active
-            enforcer = final_state.entities.get("C002")
-            proletariat = final_state.entities.get("C003")
+            enforcer = final_state.entities.get(CARCERAL_ENFORCER_ID)
+            proletariat = final_state.entities.get(INTERNAL_PROLETARIAT_ID)
 
             assert enforcer is not None and enforcer.active, (
                 "Enforcer should be activated after decomposition"
@@ -371,8 +376,8 @@ class TestDecompositionWithCustomFractions:
         ]
 
         if decomposition_events:
-            enforcer = final_state.entities.get("C002")
-            proletariat = final_state.entities.get("C003")
+            enforcer = final_state.entities.get(CARCERAL_ENFORCER_ID)
+            proletariat = final_state.entities.get(INTERNAL_PROLETARIAT_ID)
 
             # Verify both entities have population
             if (

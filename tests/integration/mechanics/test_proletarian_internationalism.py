@@ -17,6 +17,12 @@ import pytest
 from babylon.engine.factories import create_bourgeoisie, create_proletariat
 from babylon.engine.simulation import Simulation
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 
@@ -38,28 +44,28 @@ class TestProletarianInternationalism:
         """
         # Arrange using factory functions with proper ID format
         periphery_worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=0.5,
             ideology=-0.8,  # consciousness 0.9
         )
         core_worker = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Worker",
             wealth=1.0,
             ideology=0.8,  # consciousness 0.1
         )
 
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.8,  # Strong infrastructure
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": periphery_worker, "C002": core_worker},
+            entities={PERIPHERY_WORKER_ID: periphery_worker, COMPRADOR_ID: core_worker},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -72,7 +78,7 @@ class TestProletarianInternationalism:
         # Get consciousness history for core worker
         consciousness_history: list[float] = []
         for state in history:
-            cw = state.entities["C002"]
+            cw = state.entities[COMPRADOR_ID]
             consciousness = cw.ideology.class_consciousness
             consciousness_history.append(consciousness)
 
@@ -94,13 +100,13 @@ class TestProletarianInternationalism:
         """
         # Arrange
         periphery_worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=0.5,
             ideology=-0.8,  # consciousness 0.9 (revolutionary)
         )
         core_worker = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Worker",
             wealth=1.0,
             ideology=0.8,  # consciousness 0.1 (passive)
@@ -108,15 +114,15 @@ class TestProletarianInternationalism:
 
         # KEY: solidarity_strength=0 (no infrastructure)
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.0,  # Fascist scenario!
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": periphery_worker, "C002": core_worker},
+            entities={PERIPHERY_WORKER_ID: periphery_worker, COMPRADOR_ID: core_worker},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -127,7 +133,7 @@ class TestProletarianInternationalism:
 
         # Assert: Core worker consciousness should NOT significantly change
         # (only ConsciousnessSystem drift, not solidarity transmission)
-        cw = final_state.entities["C002"]
+        cw = final_state.entities[COMPRADOR_ID]
         final_consciousness = cw.ideology.class_consciousness
 
         # Should still be near initial low consciousness (maybe small drift)
@@ -149,36 +155,36 @@ class TestSolidaritySystemTurnOrder:
         """
         # Arrange: 4-node model
         periphery_worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=1.0,
             ideology=-0.6,  # consciousness 0.8
         )
         periphery_comprador = create_bourgeoisie(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Periphery Comprador",
             wealth=0.5,
         )
         core_bourgeoisie = create_bourgeoisie(
-            id="C003",
+            id=CORE_BOURGEOISIE_ID,
             name="Core Bourgeoisie",
             wealth=2.0,
         )
         core_worker = create_proletariat(
-            id="C004",
+            id=LABOR_ARISTOCRACY_ID,
             name="Core Worker",
             wealth=0.8,
             ideology=0.6,  # consciousness 0.2
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
         solidarity = Relationship(
-            source_id="C001",
-            target_id="C004",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=LABOR_ARISTOCRACY_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.5,
         )
@@ -186,10 +192,10 @@ class TestSolidaritySystemTurnOrder:
         state = WorldState(
             tick=0,
             entities={
-                "C001": periphery_worker,
-                "C002": periphery_comprador,
-                "C003": core_bourgeoisie,
-                "C004": core_worker,
+                PERIPHERY_WORKER_ID: periphery_worker,
+                COMPRADOR_ID: periphery_comprador,
+                CORE_BOURGEOISIE_ID: core_bourgeoisie,
+                LABOR_ARISTOCRACY_ID: core_worker,
             },
             relationships=[exploitation, solidarity],
         )
@@ -201,11 +207,11 @@ class TestSolidaritySystemTurnOrder:
 
         # Assert: Both extraction AND solidarity transmission happened
         # 1. P_w wealth should decrease (exploitation)
-        pw = final_state.entities["C001"]
+        pw = final_state.entities[PERIPHERY_WORKER_ID]
         assert pw.wealth < 1.0
 
         # 2. C_w consciousness should change (solidarity transmission)
-        cw = final_state.entities["C004"]
+        cw = final_state.entities[LABOR_ARISTOCRACY_ID]
         original_consciousness = 0.2  # from ideology 0.6
         new_consciousness = cw.ideology.class_consciousness
         assert new_consciousness > original_consciousness
@@ -223,28 +229,28 @@ class TestMassAwakeningScenario:
         """
         # Arrange
         periphery_worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=0.5,
             ideology=-0.8,  # consciousness 0.9
         )
         core_worker = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Worker",
             wealth=1.0,
             ideology=0.1,  # consciousness 0.45 (below 0.6 threshold)
         )
 
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.6,  # Moderate-strong infrastructure
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": periphery_worker, "C002": core_worker},
+            entities={PERIPHERY_WORKER_ID: periphery_worker, COMPRADOR_ID: core_worker},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -254,7 +260,7 @@ class TestMassAwakeningScenario:
         final_state = sim.run(1)
 
         # Assert: Core worker should cross mass awakening threshold
-        cw = final_state.entities["C002"]
+        cw = final_state.entities[COMPRADOR_ID]
         new_consciousness = cw.ideology.class_consciousness
         assert new_consciousness >= 0.6
 
@@ -262,28 +268,28 @@ class TestMassAwakeningScenario:
         """Gradual approach to mass awakening with moderate solidarity."""
         # Arrange: Lower solidarity_strength means slower awakening
         periphery_worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=0.5,
             ideology=-0.8,  # consciousness 0.9
         )
         core_worker = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Worker",
             wealth=1.0,
             ideology=0.8,  # consciousness 0.1
         )
 
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.2,  # Weak infrastructure
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": periphery_worker, "C002": core_worker},
+            entities={PERIPHERY_WORKER_ID: periphery_worker, COMPRADOR_ID: core_worker},
             relationships=[solidarity_edge],
         )
         config = SimulationConfig()
@@ -295,7 +301,7 @@ class TestMassAwakeningScenario:
 
         for tick in range(1, max_ticks + 1):
             current_state = sim.run(1)
-            cw = current_state.entities["C002"]
+            cw = current_state.entities[COMPRADOR_ID]
             consciousness = cw.ideology.class_consciousness
             if consciousness >= 0.6:
                 ticks_to_awakening = tick
@@ -314,26 +320,26 @@ class TestBackwardCompatibility:
         """Simulations without SOLIDARITY edges should work normally."""
         # Arrange: Simple 2-node exploitation model (Phase 1)
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=1.0,
             ideology=0.0,
         )
         owner = create_bourgeoisie(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Owner",
             wealth=5.0,
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation],
         )
         config = SimulationConfig()
@@ -345,35 +351,35 @@ class TestBackwardCompatibility:
         # Assert: Basic mechanics work
         assert final_state.tick == 1
         # Worker lost wealth (exploitation)
-        w = final_state.entities["C001"]
+        w = final_state.entities[PERIPHERY_WORKER_ID]
         assert w.wealth < 1.0
 
     def test_solidarity_edge_with_zero_strength_unchanged(self) -> None:
         """SOLIDARITY edge with zero strength should not affect simulation."""
         # Arrange
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             wealth=0.5,
             ideology=-0.8,
         )
         consumer = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Consumer",
             wealth=1.0,
             ideology=0.8,
         )
 
         solidarity = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.0,  # Zero strength
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": consumer},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: consumer},
             relationships=[solidarity],
         )
         config = SimulationConfig()
@@ -384,7 +390,7 @@ class TestBackwardCompatibility:
 
         # Assert: Consumer class_consciousness should not significantly change from solidarity
         # (may change slightly from ConsciousnessSystem drift)
-        c = final_state.entities["C002"]
+        c = final_state.entities[COMPRADOR_ID]
         # Should still be near original low consciousness (0.1)
         # With zero solidarity_strength, no transmission occurs
         assert c.ideology.class_consciousness < 0.3

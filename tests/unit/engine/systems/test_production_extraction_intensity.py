@@ -121,9 +121,9 @@ class TestProductionSetsExtractionIntensity:
             intensity = (1.0/52) / 100.0 = 0.000192
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -145,11 +145,11 @@ class TestProductionSetsExtractionIntensity:
         extraction_intensity equal to sum of individual productions.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
-        _create_worker_node(graph, "C002", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
+        _create_worker_node(graph, "COMPRADOR_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
-        _create_tenancy_edge(graph, "C002", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
+        _create_tenancy_edge(graph, "COMPRADOR_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -221,9 +221,9 @@ class TestProductionSetsExtractionIntensity:
         to extraction_intensity.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0, active=False)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0, active=False)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -238,9 +238,9 @@ class TestProductionSetsExtractionIntensity:
         At 50% biocapacity, production is halved, so intensity is halved.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=50.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -260,12 +260,12 @@ class TestProductionSetsExtractionIntensity:
     ) -> None:
         """Workers on separate territories affect only their territory."""
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
-        _create_worker_node(graph, "C002", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
+        _create_worker_node(graph, "COMPRADOR_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
         _create_territory_node(graph, "T002", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
-        _create_tenancy_edge(graph, "C002", "T002")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
+        _create_tenancy_edge(graph, "COMPRADOR_ID", "T002")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -349,22 +349,22 @@ class TestExtractionIntensityCausesDepletion:
         production decreases, which eventually slows depletion.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(graph, "T001", biocapacity=50.0, max_biocapacity=100.0)
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         # Full biocapacity production
         full_graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(full_graph, "C001", wealth=0.0)
+        _create_worker_node(full_graph, "PERIPHERY_WORKER_ID", wealth=0.0)
         _create_territory_node(full_graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
-        _create_tenancy_edge(full_graph, "C001", "T001")
+        _create_tenancy_edge(full_graph, "PERIPHERY_WORKER_ID", "T001")
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
         system.step(full_graph, services, {"tick": 1})
 
-        depleted_production = graph.nodes["C001"]["wealth"]
-        full_production = full_graph.nodes["C001"]["wealth"]
+        depleted_production = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
+        full_production = full_graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
 
         assert depleted_production < full_production, (
             f"Depleted territory should produce less: "
@@ -426,7 +426,7 @@ class TestHumpShapeDecay:
         the second 50 ticks due to biocapacity depletion.
         """
         graph: nx.DiGraph = nx.DiGraph()
-        _create_worker_node(graph, "C001", wealth=0.0)
+        _create_worker_node(graph, "PERIPHERY_WORKER_ID", wealth=0.0)
 
         # Use high extraction to accelerate depletion for test
         _create_territory_node(
@@ -437,24 +437,24 @@ class TestHumpShapeDecay:
             regeneration_rate=0.02,
             extraction_intensity=0.5,  # High initial extraction
         )
-        _create_tenancy_edge(graph, "C001", "T001")
+        _create_tenancy_edge(graph, "PERIPHERY_WORKER_ID", "T001")
 
         production = ProductionSystem()
         metabolism = MetabolismSystem()
 
         # Run first 50 ticks and record wealth gained
-        wealth_at_start = graph.nodes["C001"]["wealth"]
+        wealth_at_start = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         for tick in range(50):
             production.step(graph, services, {"tick": tick})
             metabolism.step(graph, services, {"tick": tick})
-        wealth_at_50 = graph.nodes["C001"]["wealth"]
+        wealth_at_50 = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         first_half_gain = wealth_at_50 - wealth_at_start
 
         # Run next 50 ticks
         for tick in range(50, 100):
             production.step(graph, services, {"tick": tick})
             metabolism.step(graph, services, {"tick": tick})
-        wealth_at_100 = graph.nodes["C001"]["wealth"]
+        wealth_at_100 = graph.nodes["PERIPHERY_WORKER_ID"]["wealth"]
         second_half_gain = wealth_at_100 - wealth_at_50
 
         # Second half should produce less due to depleted biocapacity

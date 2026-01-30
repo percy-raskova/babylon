@@ -15,6 +15,12 @@ import pytest
 from babylon.engine.factories import create_proletariat
 from babylon.engine.simulation import Simulation
 from babylon.models import EdgeType, Relationship, SimulationConfig, WorldState
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.theory_solidarity]
 
@@ -50,7 +56,7 @@ class TestIdeologicalBifurcation:
 
         # The National (no solidarity) - will drift fascist
         worker_a = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="The National (no solidarity)",
             wealth=100.0,
             ideology=initial_ideology,
@@ -58,7 +64,7 @@ class TestIdeologicalBifurcation:
 
         # The International (with solidarity) - will drift revolutionary
         worker_b = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="The International (with solidarity)",
             wealth=100.0,
             ideology=initial_ideology,
@@ -67,7 +73,7 @@ class TestIdeologicalBifurcation:
         # Periphery worker with revolutionary consciousness
         # This is the source of solidarity transmission
         periphery_worker = create_proletariat(
-            id="C003",
+            id=CORE_BOURGEOISIE_ID,
             name="Periphery Worker",
             wealth=20.0,
             ideology=-0.8,  # consciousness 0.9 (revolutionary)
@@ -75,7 +81,7 @@ class TestIdeologicalBifurcation:
 
         # Core Bourgeoisie who pays wages
         core_bourgeoisie = create_bourgeoisie(
-            id="C004",
+            id=LABOR_ARISTOCRACY_ID,
             name="Core Bourgeoisie",
             wealth=500.0,
         )
@@ -83,22 +89,22 @@ class TestIdeologicalBifurcation:
         # WAGES edges from bourgeoisie to workers (high wages = labor aristocracy)
         # These will be reduced in tick 2 to simulate crisis
         wages_to_a = Relationship(
-            source_id="C004",
-            target_id="C001",
+            source_id=LABOR_ARISTOCRACY_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,  # High super-wages initially
         )
         wages_to_b = Relationship(
-            source_id="C004",
-            target_id="C002",
+            source_id=LABOR_ARISTOCRACY_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,  # High super-wages initially
         )
 
         # KEY DIFFERENTIATION: SOLIDARITY edge only to Worker_B
         solidarity_edge = Relationship(
-            source_id="C003",  # Periphery worker
-            target_id="C002",  # Worker_B (The International)
+            source_id=CORE_BOURGEOISIE_ID,  # Periphery worker
+            target_id=COMPRADOR_ID,  # Worker_B (The International)
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.9,  # Strong infrastructure
         )
@@ -107,10 +113,10 @@ class TestIdeologicalBifurcation:
         state = WorldState(
             tick=0,
             entities={
-                "C001": worker_a,
-                "C002": worker_b,
-                "C003": periphery_worker,
-                "C004": core_bourgeoisie,
+                PERIPHERY_WORKER_ID: worker_a,
+                COMPRADOR_ID: worker_b,
+                CORE_BOURGEOISIE_ID: periphery_worker,
+                LABOR_ARISTOCRACY_ID: core_bourgeoisie,
             },
             relationships=[wages_to_a, wages_to_b, solidarity_edge],
         )
@@ -124,14 +130,14 @@ class TestIdeologicalBifurcation:
         # Now simulate wage CUT by reducing WAGES edge value_flow
         # This is the "Imperial Crisis" scenario
         reduced_wages_to_a = Relationship(
-            source_id="C004",
-            target_id="C001",
+            source_id=LABOR_ARISTOCRACY_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # 20 unit wage cut (40% reduction)
         )
         reduced_wages_to_b = Relationship(
-            source_id="C004",
-            target_id="C002",
+            source_id=LABOR_ARISTOCRACY_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # 20 unit wage cut (40% reduction)
         )
@@ -148,12 +154,14 @@ class TestIdeologicalBifurcation:
         final_state = sim2.run(1)
 
         # Get final class_consciousness values
-        a_consciousness = final_state.entities["C001"].ideology.class_consciousness
-        b_consciousness = final_state.entities["C002"].ideology.class_consciousness
+        a_consciousness = final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
+        b_consciousness = final_state.entities[COMPRADOR_ID].ideology.class_consciousness
 
         # Get consciousness after tick 1 (before wage cut) for comparison
-        a_after_tick1 = state_after_tick_1.entities["C001"].ideology.class_consciousness
-        b_after_tick1 = state_after_tick_1.entities["C002"].ideology.class_consciousness
+        a_after_tick1 = state_after_tick_1.entities[
+            PERIPHERY_WORKER_ID
+        ].ideology.class_consciousness
+        b_after_tick1 = state_after_tick_1.entities[COMPRADOR_ID].ideology.class_consciousness
 
         # ASSERTIONS:
         # The key assertion is the RELATIVE difference between workers
@@ -175,13 +183,13 @@ class TestIdeologicalBifurcation:
         """
         # Two identical workers with stable wages
         worker_a = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker A",
             wealth=100.0,
             ideology=0.3,
         )
         worker_b = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Worker B",
             wealth=100.0,
             ideology=0.3,
@@ -189,7 +197,7 @@ class TestIdeologicalBifurcation:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker_a, "C002": worker_b},
+            entities={PERIPHERY_WORKER_ID: worker_a, COMPRADOR_ID: worker_b},
             relationships=[],
         )
         config = SimulationConfig()
@@ -199,8 +207,8 @@ class TestIdeologicalBifurcation:
         final_state = sim.run(1)
 
         # Both should drift similarly (no bifurcation without wage change)
-        a_consciousness = final_state.entities["C001"].ideology.class_consciousness
-        b_consciousness = final_state.entities["C002"].ideology.class_consciousness
+        a_consciousness = final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
+        b_consciousness = final_state.entities[COMPRADOR_ID].ideology.class_consciousness
 
         # They should be approximately equal (within epsilon)
         assert abs(a_consciousness - b_consciousness) < 0.1, (
@@ -216,7 +224,7 @@ class TestIdeologicalBifurcation:
         class consciousness, it flows toward nationalism/fascism.
         """
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Isolated Worker",
             wealth=100.0,
             ideology=0.0,  # Neutral starting point
@@ -224,7 +232,7 @@ class TestIdeologicalBifurcation:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             relationships=[],  # No solidarity edges
         )
         config = SimulationConfig()
@@ -235,7 +243,7 @@ class TestIdeologicalBifurcation:
         # The drift should be amplified by loss aversion
         final_state = sim.run(3)
 
-        final_consciousness = final_state.entities["C001"].ideology.class_consciousness
+        final_consciousness = final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
 
         # Without solidarity and with implicit wage pressure,
         # worker should drift toward low class_consciousness (reactionary)
@@ -258,7 +266,7 @@ class TestBifurcationMechanics:
         higher effective solidarity pressure.
         """
         target_worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Target Worker",
             wealth=100.0,
             ideology=0.5,  # Passive
@@ -266,13 +274,13 @@ class TestBifurcationMechanics:
 
         # Multiple periphery workers with solidarity connections
         periphery_1 = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Periphery 1",
             wealth=20.0,
             ideology=-0.6,  # consciousness 0.8
         )
         periphery_2 = create_proletariat(
-            id="C003",
+            id=CORE_BOURGEOISIE_ID,
             name="Periphery 2",
             wealth=20.0,
             ideology=-0.8,  # consciousness 0.9
@@ -280,14 +288,14 @@ class TestBifurcationMechanics:
 
         # Two solidarity edges with different strengths
         solidarity_1 = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.5,
         )
         solidarity_2 = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.3,
         )
@@ -295,9 +303,9 @@ class TestBifurcationMechanics:
         state = WorldState(
             tick=0,
             entities={
-                "C001": target_worker,
-                "C002": periphery_1,
-                "C003": periphery_2,
+                PERIPHERY_WORKER_ID: target_worker,
+                COMPRADOR_ID: periphery_1,
+                CORE_BOURGEOISIE_ID: periphery_2,
             },
             relationships=[solidarity_1, solidarity_2],
         )
@@ -308,7 +316,7 @@ class TestBifurcationMechanics:
 
         # With combined solidarity pressure of 0.8, worker should
         # gain class consciousness (higher value = more revolutionary)
-        final_consciousness = final_state.entities["C001"].ideology.class_consciousness
+        final_consciousness = final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
 
         # Started at 0.25 (from ideology=0.5), should increase with solidarity
         assert final_consciousness > 0.25, (
@@ -323,7 +331,7 @@ class TestBifurcationMechanics:
         the bifurcation mechanic - only standard W/V ratio drift.
         """
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             wealth=100.0,
             ideology=0.0,
@@ -331,22 +339,22 @@ class TestBifurcationMechanics:
 
         # Periphery with solidarity connection
         periphery = create_proletariat(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Periphery",
             wealth=20.0,
             ideology=-0.8,
         )
 
         solidarity = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.9,
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": periphery},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: periphery},
             relationships=[solidarity],
         )
         config = SimulationConfig()
@@ -360,7 +368,7 @@ class TestBifurcationMechanics:
         # Worker should still drift toward periphery consciousness
         # via standard solidarity transmission, even without
         # the crisis-amplified bifurcation
-        final_consciousness = final_state.entities["C001"].ideology.class_consciousness
+        final_consciousness = final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness
 
         # Should be higher (more revolutionary) due to solidarity
         # Started at 0.5 (neutral), periphery has 0.9

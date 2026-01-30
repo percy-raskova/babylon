@@ -18,6 +18,11 @@ Sprint 1.X: Refactored for Material Reality physics:
 import pytest
 
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import SectorType
 from tests.constants import TestConstants
 
@@ -49,14 +54,14 @@ class TestHistoryOfClassStruggle:
         # Create entities with default population for per-capita survival mechanics
         # Worker has moderate wealth for extraction; Owner has high wealth to survive 100 ticks
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=100.0,  # High wealth as extraction source
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=50.0,  # High starting wealth to survive subsistence over 100 ticks
@@ -76,8 +81,8 @@ class TestHistoryOfClassStruggle:
 
         # Create exploitation relationship
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
@@ -86,7 +91,7 @@ class TestHistoryOfClassStruggle:
         # ONLY worker has TENANCY - Owner is pure extractor (no production)
         # This is the fundamental class relationship: workers produce, owners extract
         tenancy_worker = Relationship(
-            source_id="C001",
+            source_id=PERIPHERY_WORKER_ID,
             target_id="T001",
             edge_type=EdgeType.TENANCY,
         )
@@ -94,7 +99,7 @@ class TestHistoryOfClassStruggle:
         # Create initial state with territory
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation, tenancy_worker],  # No owner tenancy
         )
@@ -110,8 +115,8 @@ class TestHistoryOfClassStruggle:
         initial_worker_wealth = 100.0  # Explicitly set above
         initial_owner_wealth = 50.0  # Explicitly set above
 
-        final_worker_wealth = final_state.entities["C001"].wealth
-        final_owner_wealth = final_state.entities["C002"].wealth
+        final_worker_wealth = final_state.entities[PERIPHERY_WORKER_ID].wealth
+        final_owner_wealth = final_state.entities[COMPRADOR_ID].wealth
 
         # Worker should have lost wealth to extraction
         # (even with production, high extraction should dominate)
@@ -150,14 +155,14 @@ class TestHistoryOfClassStruggle:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -174,8 +179,8 @@ class TestHistoryOfClassStruggle:
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
@@ -183,19 +188,19 @@ class TestHistoryOfClassStruggle:
 
         # TENANCY edges
         tenancy_worker = Relationship(
-            source_id="C001",
+            source_id=PERIPHERY_WORKER_ID,
             target_id="T001",
             edge_type=EdgeType.TENANCY,
         )
         tenancy_owner = Relationship(
-            source_id="C002",
+            source_id=COMPRADOR_ID,
             target_id="T001",
             edge_type=EdgeType.TENANCY,
         )
 
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
@@ -262,7 +267,7 @@ class TestHistoryOfClassStruggle:
 
         # Core worker starts at neutral consciousness (0.5)
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -270,7 +275,7 @@ class TestHistoryOfClassStruggle:
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -279,7 +284,7 @@ class TestHistoryOfClassStruggle:
 
         # Add a revolutionary periphery worker to transmit consciousness
         periphery_worker = SocialClass(
-            id="C003",
+            id=CORE_BOURGEOISIE_ID,
             name="Revolutionary",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -297,8 +302,8 @@ class TestHistoryOfClassStruggle:
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
@@ -306,24 +311,30 @@ class TestHistoryOfClassStruggle:
 
         # Solidarity edge from periphery to worker for consciousness transmission
         solidarity = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.3,
         )
 
         # TENANCY edges for all entities
         tenancy_worker = Relationship(
-            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+            source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
         )
-        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+        tenancy_owner = Relationship(
+            source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY
+        )
         tenancy_periphery = Relationship(
-            source_id="C003", target_id="T001", edge_type=EdgeType.TENANCY
+            source_id=CORE_BOURGEOISIE_ID, target_id="T001", edge_type=EdgeType.TENANCY
         )
 
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner, "C003": periphery_worker},
+            entities={
+                PERIPHERY_WORKER_ID: worker,
+                COMPRADOR_ID: owner,
+                CORE_BOURGEOISIE_ID: periphery_worker,
+            },
             territories={"T001": territory},
             relationships=[
                 exploitation,
@@ -339,7 +350,7 @@ class TestHistoryOfClassStruggle:
         final_state = sim.run(100)
 
         # Worker should have gained consciousness via solidarity transmission
-        assert final_state.entities["C001"].ideology.class_consciousness > 0.5, (
+        assert final_state.entities[PERIPHERY_WORKER_ID].ideology.class_consciousness > 0.5, (
             f"Worker class_consciousness should be above neutral (revolutionary): "
             f"{final_state.entities['C001'].ideology.class_consciousness}"
         )
@@ -360,14 +371,14 @@ class TestHistoryOfClassStruggle:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -384,8 +395,8 @@ class TestHistoryOfClassStruggle:
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,  # Start with no tension
@@ -393,13 +404,15 @@ class TestHistoryOfClassStruggle:
 
         # TENANCY edges
         tenancy_worker = Relationship(
-            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+            source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
         )
-        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+        tenancy_owner = Relationship(
+            source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY
+        )
 
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
@@ -427,14 +440,14 @@ class TestHistoryOfClassStruggle:
 
         def run_simulation() -> WorldState:
             worker = SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Proletariat",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 wealth=TC.Wealth.SAFE_WEALTH,
                 population=TC.Vitality.DEFAULT_POPULATION,
             )
             owner = SocialClass(
-                id="C002",
+                id=COMPRADOR_ID,
                 name="Bourgeoisie",
                 role=SocialRole.CORE_BOURGEOISIE,
                 wealth=TC.Wealth.SAFE_WEALTH,
@@ -451,8 +464,8 @@ class TestHistoryOfClassStruggle:
             )
 
             exploitation = Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.EXPLOITATION,
                 value_flow=0.0,
                 tension=0.0,
@@ -460,15 +473,15 @@ class TestHistoryOfClassStruggle:
 
             # TENANCY edges
             tenancy_worker = Relationship(
-                source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+                source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
             )
             tenancy_owner = Relationship(
-                source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY
+                source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY
             )
 
             initial_state = WorldState(
                 tick=0,
-                entities={"C001": worker, "C002": owner},
+                entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
                 territories={"T001": territory},
                 relationships=[exploitation, tenancy_worker, tenancy_owner],
             )
@@ -482,9 +495,15 @@ class TestHistoryOfClassStruggle:
         result2 = run_simulation()
 
         # Results should be identical
-        assert result1.entities["C001"].wealth == pytest.approx(result2.entities["C001"].wealth)
-        assert result1.entities["C002"].wealth == pytest.approx(result2.entities["C002"].wealth)
-        assert result1.entities["C001"].ideology == pytest.approx(result2.entities["C001"].ideology)
+        assert result1.entities[PERIPHERY_WORKER_ID].wealth == pytest.approx(
+            result2.entities[PERIPHERY_WORKER_ID].wealth
+        )
+        assert result1.entities[COMPRADOR_ID].wealth == pytest.approx(
+            result2.entities[COMPRADOR_ID].wealth
+        )
+        assert result1.entities[PERIPHERY_WORKER_ID].ideology == pytest.approx(
+            result2.entities[PERIPHERY_WORKER_ID].ideology
+        )
         assert result1.relationships[0].tension == pytest.approx(result2.relationships[0].tension)
 
 
@@ -511,14 +530,14 @@ class TestHistoryFormatter:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -535,8 +554,8 @@ class TestHistoryFormatter:
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
@@ -544,13 +563,15 @@ class TestHistoryFormatter:
 
         # TENANCY edges
         tenancy_worker = Relationship(
-            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+            source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
         )
-        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+        tenancy_owner = Relationship(
+            source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY
+        )
 
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
@@ -584,14 +605,14 @@ class TestHistoryFormatter:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -608,8 +629,8 @@ class TestHistoryFormatter:
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
@@ -617,13 +638,15 @@ class TestHistoryFormatter:
 
         # TENANCY edges
         tenancy_worker = Relationship(
-            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+            source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
         )
-        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+        tenancy_owner = Relationship(
+            source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY
+        )
 
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation, tenancy_worker, tenancy_owner],
         )
@@ -655,14 +678,14 @@ class TestHistoryFormatter:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.SAFE_WEALTH,
             population=TC.Vitality.DEFAULT_POPULATION,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.SAFE_WEALTH,
@@ -679,8 +702,8 @@ class TestHistoryFormatter:
         )
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=0.0,
             tension=0.0,
@@ -688,13 +711,15 @@ class TestHistoryFormatter:
 
         # TENANCY edges
         tenancy_worker = Relationship(
-            source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY
+            source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
         )
-        tenancy_owner = Relationship(source_id="C002", target_id="T001", edge_type=EdgeType.TENANCY)
+        tenancy_owner = Relationship(
+            source_id=COMPRADOR_ID, target_id="T001", edge_type=EdgeType.TENANCY
+        )
 
         initial_state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             territories={"T001": territory},
             relationships=[exploitation, tenancy_worker, tenancy_owner],
         )

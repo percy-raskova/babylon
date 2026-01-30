@@ -31,6 +31,7 @@ from babylon.models import (
     WorldState,
 )
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.enums import (
     OperationalProfile,
     SectorType,
@@ -60,20 +61,20 @@ class TestHeatDynamics:
 
         # Create worker tenant (needed for simulation to have entities)
         worker = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Cell Members",
             wealth=50.0,
         )
 
         tenancy = Relationship(
-            source_id="C001",
+            source_id=PERIPHERY_WORKER_ID,
             target_id="T001",
             edge_type=EdgeType.TENANCY,
         )
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
             relationships=[tenancy],
         )
@@ -110,14 +111,16 @@ class TestHeatDynamics:
             population=100,
         )
 
-        worker = create_proletariat(id="C001", name="Members", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Members", wealth=50.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY)
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                )
             ],
         )
         config = SimulationConfig()
@@ -157,14 +160,16 @@ class TestEvictionPipeline:
             rent_level=1.0,
         )
 
-        worker = create_proletariat(id="C001", name="Residents", wealth=100.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Residents", wealth=100.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY)
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                )
             ],
         )
         config = SimulationConfig()
@@ -196,14 +201,16 @@ class TestEvictionPipeline:
             rent_level=1.0,
         )
 
-        worker = create_proletariat(id="C001", name="Residents", wealth=100.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Residents", wealth=100.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY)
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                )
             ],
         )
         config = SimulationConfig()
@@ -247,7 +254,7 @@ class TestEvictionPipeline:
             population=100,  # Start with some prisoners
         )
 
-        worker = create_proletariat(id="C001", name="Residents", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Residents", wealth=50.0)
 
         # Adjacency edge from source to sink
         adjacency = Relationship(
@@ -258,10 +265,12 @@ class TestEvictionPipeline:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": source, "T002": sink},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY),
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                ),
                 adjacency,
             ],
         )
@@ -315,7 +324,7 @@ class TestHeatSpillover:
             population=100,
         )
 
-        worker = create_proletariat(id="C001", name="Workers", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Workers", wealth=50.0)
 
         # Adjacency edge enables spillover
         adjacency = Relationship(
@@ -326,10 +335,12 @@ class TestHeatSpillover:
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": hot_territory, "T002": cold_territory},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY),
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                ),
                 adjacency,
             ],
         )
@@ -369,11 +380,11 @@ class TestNecropolitics:
         )
 
         # Need at least one entity for simulation to run
-        worker = create_proletariat(id="C001", name="Guard", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Guard", wealth=50.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": camp},
             relationships=[],
         )
@@ -410,7 +421,7 @@ class TestNecropolitics:
 
         # Create prisoner with high organization
         prisoner = create_proletariat(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Political Prisoner",
             wealth=10.0,
             organization=0.8,  # High organization
@@ -418,7 +429,7 @@ class TestNecropolitics:
 
         # TENANCY edge connects prisoner to prison
         tenancy = Relationship(
-            source_id="C001",
+            source_id=PERIPHERY_WORKER_ID,
             target_id="T001",
             edge_type=EdgeType.TENANCY,
         )
@@ -437,7 +448,7 @@ class TestNecropolitics:
 
         # Assert: Organization suppressed to 0
         initial_org = 0.8
-        final_org = final_state.entities["C001"].organization
+        final_org = final_state.entities[PERIPHERY_WORKER_ID].organization
 
         assert final_org == 0.0, (
             f"Penal colony should suppress organization to 0. "
@@ -479,14 +490,16 @@ class TestDisplacementModes:
             population=0,
         )
 
-        worker = create_proletariat(id="C001", name="Residents", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Residents", wealth=50.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": source, "T002": prison, "T003": reservation},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY),
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                ),
                 Relationship(source_id="T001", target_id="T002", edge_type=EdgeType.ADJACENCY),
                 Relationship(source_id="T001", target_id="T003", edge_type=EdgeType.ADJACENCY),
             ],
@@ -526,14 +539,16 @@ class TestCustomDefines:
             population=100,
         )
 
-        worker = create_proletariat(id="C001", name="Worker", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker", wealth=50.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY)
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                )
             ],
         )
         config = SimulationConfig()
@@ -578,14 +593,16 @@ class TestCustomDefines:
             population=1000,
         )
 
-        worker = create_proletariat(id="C001", name="Worker", wealth=50.0)
+        worker = create_proletariat(id=PERIPHERY_WORKER_ID, name="Worker", wealth=50.0)
 
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": territory},
             relationships=[
-                Relationship(source_id="C001", target_id="T001", edge_type=EdgeType.TENANCY)
+                Relationship(
+                    source_id=PERIPHERY_WORKER_ID, target_id="T001", edge_type=EdgeType.TENANCY
+                )
             ],
         )
         config = SimulationConfig()

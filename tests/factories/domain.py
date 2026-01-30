@@ -33,6 +33,7 @@ from babylon.models import (
     WorldState,
 )
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import SectorType
 from babylon.models.events import (
     CrisisEvent,
@@ -59,7 +60,7 @@ class DomainFactory:
     The defaults are:
 
     Worker (create_worker):
-        - id: "C001"
+        - id: PERIPHERY_WORKER_ID ("C001")
         - name: "Test Worker"
         - role: PERIPHERY_PROLETARIAT
         - wealth: 0.5
@@ -69,7 +70,7 @@ class DomainFactory:
         - subsistence_threshold: 0.3
 
     Owner (create_owner):
-        - id: "C002"
+        - id: COMPRADOR_ID ("C002")
         - name: "Test Owner"
         - role: CORE_BOURGEOISIE
         - wealth: 10.0
@@ -79,8 +80,8 @@ class DomainFactory:
         - subsistence_threshold: 0.1
 
     Relationship (create_relationship):
-        - source_id: "C001"
-        - target_id: "C002"
+        - source_id: PERIPHERY_WORKER_ID ("C001")
+        - target_id: COMPRADOR_ID ("C002")
         - edge_type: EXPLOITATION
         - value_flow: 0.0
         - tension: 0.0
@@ -89,7 +90,7 @@ class DomainFactory:
     def create_worker(
         self,
         *,
-        id: str = "C001",
+        id: str = PERIPHERY_WORKER_ID,
         name: str = "Test Worker",
         role: SocialRole = SocialRole.PERIPHERY_PROLETARIAT,
         wealth: float = 0.5,
@@ -127,7 +128,7 @@ class DomainFactory:
     def create_owner(
         self,
         *,
-        id: str = "C002",
+        id: str = COMPRADOR_ID,
         name: str = "Test Owner",
         role: SocialRole = SocialRole.CORE_BOURGEOISIE,
         wealth: float = 10.0,
@@ -165,8 +166,8 @@ class DomainFactory:
     def create_relationship(
         self,
         *,
-        source_id: str = "C001",
-        target_id: str = "C002",
+        source_id: str = PERIPHERY_WORKER_ID,
+        target_id: str = COMPRADOR_ID,
         edge_type: EdgeType = EdgeType.EXPLOITATION,
         value_flow: float = 0.0,
         tension: float = 0.0,

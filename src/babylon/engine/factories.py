@@ -15,12 +15,13 @@ automatically converted to IdeologicalProfile by the SocialClass validator.
 from __future__ import annotations
 
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import SocialRole
 from babylon.models.types import Currency, Probability
 
 
 def create_proletariat(
-    id: str = "C001",
+    id: str = PERIPHERY_WORKER_ID,
     name: str = "Proletariat",
     wealth: Currency = 0.5,
     ideology: float | IdeologicalProfile = -0.3,
@@ -87,7 +88,7 @@ def create_proletariat(
 
 
 def create_bourgeoisie(
-    id: str = "C002",
+    id: str = COMPRADOR_ID,
     name: str = "Bourgeoisie",
     wealth: Currency = 10.0,
     ideology: float | IdeologicalProfile = 0.8,

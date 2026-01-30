@@ -36,32 +36,33 @@ The former is real debt. The latter is preference. Prioritize accordingly.
 
 ### entity-id-proliferation
 
-- **What**: Hardcoded entity ID strings (`"C001"`, `"C002"`, etc.) are scattered across 91 files
-  with 2038 total occurrences instead of using the new `entity_registry` module constants
-- **Where**: Widespread across codebase:
-  - 9 source files in `src/` (excluding `entity_registry.py` which is the canonical source):
-    - `src/babylon/engine/scenarios.py` (34 occurrences)
-    - `src/babylon/engine/factories.py`
-    - `src/babylon/engine/systems/decomposition.py`
-    - `src/babylon/engine/adapters/inmemory_adapter.py`
-    - `src/babylon/engine/adapters/subgraph_view.py`
-    - `src/babylon/engine/adapters/subgraph_filter.py`
-    - `src/babylon/models/graph.py`
-    - `src/babylon/models/events.py`
-    - `src/babylon/models/types.py`
+- **What**: Hardcoded entity ID strings (`"C001"`, `"C002"`, etc.) remain in test files
+  and some docstring-only source files. Core production code has been refactored.
+- **Where**: Remaining locations after Phase 1 completion:
   - 78 test files in `tests/` (heaviest: `test_inmemory_adapter.py` with 122 occurrences)
-  - 3 tools files in `tools/`
+  - 6 source files with docstring-only occurrences (documentation, not code):
+    - `src/babylon/engine/adapters/inmemory_adapter.py` (docstrings)
+    - `src/babylon/engine/adapters/subgraph_view.py` (docstrings)
+    - `src/babylon/engine/adapters/subgraph_filter.py` (docstrings)
+    - `src/babylon/models/graph.py` (docstrings)
+    - `src/babylon/models/events.py` (docstrings)
+    - `src/babylon/models/types.py` (docstrings)
+- **Completed**:
+  - ✅ `src/babylon/engine/scenarios.py` - 35 occurrences refactored
+  - ✅ `src/babylon/engine/factories.py` - 4 occurrences refactored
+  - ✅ `src/babylon/engine/systems/decomposition.py` - bug fixed + refactored
+  - ✅ `tests/factories/domain.py` - DomainFactory defaults use constants
+  - ✅ `tools/shared.py` - already using entity_registry
 - **Why it exists**: Entity IDs were introduced ad-hoc before a registry pattern was established.
   The `entity_registry` module was created to address the DRY violation between `metrics.py`
-  and `tools/shared.py`, but the broader proliferation was not addressed.
+  and `tools/shared.py`, and core production code has now been migrated.
 - **Fix looks like**:
-  1. **Phase 1 (Source)**: Update 9 source files to import constants like
-     `PERIPHERY_WORKER_ID`, `COMPRADOR_ID` from `babylon.models.entity_registry`
-  1. **Phase 2 (Tests)**: Update test files to use `TestConstants` or import from registry
-  1. **Phase 3 (Tools)**: Remaining tools files
-- **Blocked by**: None (entity_registry module now exists as canonical source)
-- **Priority**: High (prevents consistent entity ID management, risk of typos, makes
-  adding new entities error-prone, violates DRY across 91 files)
+  1. ~~**Phase 1 (Source)**~~: ✅ COMPLETE - Core source files use entity_registry constants
+  1. **Phase 2 (Tests)**: Update 78 test files to use constants (can be done incrementally)
+  1. ~~**Phase 3 (Tools)**~~: ✅ COMPLETE - tools/shared.py already using entity_registry
+- **Blocked by**: None
+- **Priority**: Medium (core production code fixed; test files are lower priority since
+  they don't affect runtime behavior, but should be migrated for consistency)
 
 ### metrics-singleton-vs-di
 

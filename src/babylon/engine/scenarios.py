@@ -14,6 +14,14 @@ from babylon.models.config import SimulationConfig
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import (
+    CARCERAL_ENFORCER_ID,
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    INTERNAL_PROLETARIAT_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SectorType, SocialRole
 from babylon.models.scenario import ScenarioConfig
 from babylon.models.world_state import WorldState
@@ -54,7 +62,7 @@ def create_two_node_scenario(
     """
     # Create worker (periphery proletariat)
     worker = SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         description="Exploited worker in the global periphery",
@@ -69,7 +77,7 @@ def create_two_node_scenario(
 
     # Create owner (core bourgeoisie)
     owner = SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Core Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         description="Capital owner in the imperial core",
@@ -84,8 +92,8 @@ def create_two_node_scenario(
 
     # Create exploitation relationship
     exploitation = Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         description="Imperial rent extraction",
         value_flow=0.0,  # Will be calculated by step()
@@ -97,8 +105,8 @@ def create_two_node_scenario(
     # The solidarity_strength will be set by apply_scenario() based on solidarity_index.
     # Self-solidarity edge: worker supports worker (internal class cohesion)
     solidarity = Relationship(
-        source_id="C002",  # External support flows TO worker
-        target_id="C001",  # Worker receives solidarity
+        source_id=COMPRADOR_ID,  # External support flows TO worker
+        target_id=PERIPHERY_WORKER_ID,  # Worker receives solidarity
         edge_type=EdgeType.SOLIDARITY,
         description="Class solidarity infrastructure",
         value_flow=0.0,
@@ -110,8 +118,8 @@ def create_two_node_scenario(
     # In MLM-TW theory, super-wages flow from the core bourgeoisie to workers.
     # This enables the PPP calculation to provide purchasing power bonus.
     wages = Relationship(
-        source_id="C002",  # Owner pays
-        target_id="C001",  # Worker receives
+        source_id=COMPRADOR_ID,  # Owner pays
+        target_id=PERIPHERY_WORKER_ID,  # Worker receives
         edge_type=EdgeType.WAGES,
         description="Super-wages from imperial rent",
         value_flow=0.0,  # Calculated by step()
@@ -130,7 +138,7 @@ def create_two_node_scenario(
 
     # TENANCY edge: Worker occupies territory (enables production)
     tenancy = Relationship(
-        source_id="C001",
+        source_id=PERIPHERY_WORKER_ID,
         target_id="T001",
         edge_type=EdgeType.TENANCY,
         description="Worker land tenancy",
@@ -141,7 +149,7 @@ def create_two_node_scenario(
     # Create world state
     state = WorldState(
         tick=0,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         territories={"T001": territory},
         relationships=[exploitation, solidarity, wages, tenancy],
         event_log=[],
@@ -284,7 +292,7 @@ def create_imperial_circuit_scenario(
     """
     # C001: Periphery Worker (P_w) - source of extracted value
     periphery_worker = SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         description="Exploited worker in the global periphery",
@@ -299,7 +307,7 @@ def create_imperial_circuit_scenario(
 
     # C002: Comprador (P_c) - intermediary class, keeps a cut
     comprador = SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Comprador",
         role=SocialRole.COMPRADOR_BOURGEOISIE,
         description="Intermediary extracting value for imperial core",
@@ -314,7 +322,7 @@ def create_imperial_circuit_scenario(
 
     # C003: Core Bourgeoisie (C_b) - receives tribute, pays wages
     core_bourgeoisie = SocialClass(
-        id="C003",
+        id=CORE_BOURGEOISIE_ID,
         name="Core Bourgeoisie",
         role=SocialRole.CORE_BOURGEOISIE,
         description="Capital owner in the imperial core",
@@ -329,7 +337,7 @@ def create_imperial_circuit_scenario(
 
     # C004: Labor Aristocracy (C_w) - receives super-wages (THE FIX)
     labor_aristocracy = SocialClass(
-        id="C004",
+        id=LABOR_ARISTOCRACY_ID,
         name="Labor Aristocracy",
         role=SocialRole.LABOR_ARISTOCRACY,
         description="Core workers benefiting from imperial rent",
@@ -346,7 +354,7 @@ def create_imperial_circuit_scenario(
     # C005: Carceral Enforcer - DORMANT until CLASS_DECOMPOSITION
     # Receives 30% of Labor Aristocracy during decomposition (guards, cops)
     carceral_enforcer = SocialClass(
-        id="C005",
+        id=CARCERAL_ENFORCER_ID,
         name="Carceral Enforcer",
         role=SocialRole.CARCERAL_ENFORCER,
         description="Guards and police managing surplus population",
@@ -364,7 +372,7 @@ def create_imperial_circuit_scenario(
     # C006: Internal Proletariat - DORMANT until CLASS_DECOMPOSITION
     # Receives 70% of Labor Aristocracy during decomposition (precariat, prisoners)
     internal_proletariat = SocialClass(
-        id="C006",
+        id=INTERNAL_PROLETARIAT_ID,
         name="Internal Proletariat",
         role=SocialRole.INTERNAL_PROLETARIAT,
         description="Surplus population managed by carceral state",
@@ -381,8 +389,8 @@ def create_imperial_circuit_scenario(
 
     # Edge 1: EXPLOITATION - P_w (C001) -> P_c (C002)
     exploitation = Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         description="Value flows from periphery to comprador",
         value_flow=0.0,
@@ -391,8 +399,8 @@ def create_imperial_circuit_scenario(
 
     # Edge 2: TRIBUTE - P_c (C002) -> C_b (C003)
     tribute = Relationship(
-        source_id="C002",
-        target_id="C003",
+        source_id=COMPRADOR_ID,
+        target_id=CORE_BOURGEOISIE_ID,
         edge_type=EdgeType.TRIBUTE,
         description="Imperial rent transfer (minus comprador cut)",
         value_flow=0.0,
@@ -401,8 +409,8 @@ def create_imperial_circuit_scenario(
 
     # Edge 3: WAGES - C_b (C003) -> C_w (C004) - THE FIX: targets labor aristocracy, NOT periphery
     wages = Relationship(
-        source_id="C003",
-        target_id="C004",
+        source_id=CORE_BOURGEOISIE_ID,
+        target_id=LABOR_ARISTOCRACY_ID,
         edge_type=EdgeType.WAGES,
         description="Super-wages buying loyalty",
         value_flow=0.0,
@@ -411,8 +419,8 @@ def create_imperial_circuit_scenario(
 
     # Edge 4: CLIENT_STATE - C_b (C003) -> P_c (C002)
     client_state = Relationship(
-        source_id="C003",
-        target_id="C002",
+        source_id=CORE_BOURGEOISIE_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.CLIENT_STATE,
         description="Subsidy for client state stabilization",
         value_flow=0.0,
@@ -422,8 +430,8 @@ def create_imperial_circuit_scenario(
 
     # Edge 5: SOLIDARITY - P_w (C001) -> C_w (C004)
     solidarity = Relationship(
-        source_id="C001",
-        target_id="C004",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=LABOR_ARISTOCRACY_ID,
         edge_type=EdgeType.SOLIDARITY,
         description="Potential internationalism",
         value_flow=0.0,
@@ -452,7 +460,7 @@ def create_imperial_circuit_scenario(
     # TENANCY edges: Workers occupy territories (enables production)
     # C001 (Periphery Worker) -> T001 (Periphery Land)
     periphery_tenancy = Relationship(
-        source_id="C001",
+        source_id=PERIPHERY_WORKER_ID,
         target_id="T001",
         edge_type=EdgeType.TENANCY,
         description="Periphery worker land tenancy",
@@ -461,7 +469,7 @@ def create_imperial_circuit_scenario(
     )
     # C004 (Labor Aristocracy) -> T002 (Core Land)
     core_tenancy = Relationship(
-        source_id="C004",
+        source_id=LABOR_ARISTOCRACY_ID,
         target_id="T002",
         edge_type=EdgeType.TENANCY,
         description="Labor aristocracy land tenancy",
@@ -473,12 +481,12 @@ def create_imperial_circuit_scenario(
     state = WorldState(
         tick=0,
         entities={
-            "C001": periphery_worker,
-            "C002": comprador,
-            "C003": core_bourgeoisie,
-            "C004": labor_aristocracy,
-            "C005": carceral_enforcer,  # DORMANT - activated during CLASS_DECOMPOSITION
-            "C006": internal_proletariat,  # DORMANT - activated during CLASS_DECOMPOSITION
+            PERIPHERY_WORKER_ID: periphery_worker,
+            COMPRADOR_ID: comprador,
+            CORE_BOURGEOISIE_ID: core_bourgeoisie,
+            LABOR_ARISTOCRACY_ID: labor_aristocracy,
+            CARCERAL_ENFORCER_ID: carceral_enforcer,  # DORMANT - activated during CLASS_DECOMPOSITION
+            INTERNAL_PROLETARIAT_ID: internal_proletariat,  # DORMANT - activated during CLASS_DECOMPOSITION
         },
         territories={
             "T001": periphery_land,

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 
 from babylon.engine.event_bus import Event
+from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
@@ -153,7 +154,7 @@ class DecompositionSystem:
                     type=EventType.SUPERWAGE_CRISIS,
                     tick=tick,
                     payload={
-                        "payer_id": "C001",  # Core bourgeoisie (conventional)
+                        "payer_id": CORE_BOURGEOISIE_ID,  # Core bourgeoisie
                         "receiver_id": la_id,
                         "desired_wages": 0.0,
                         "available_pool": 0.0,

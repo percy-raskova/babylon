@@ -33,7 +33,11 @@ from babylon.models import (
     WorldState,
 )
 from babylon.models.entities.territory import Territory
-from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import SectorType
 from babylon.models.events import (
     CrisisEvent,
@@ -102,7 +106,7 @@ class DomainFactory:
         """Create a worker social class with test defaults.
 
         Args:
-            id: Entity identifier (default: "C001").
+            id: Entity identifier (default: PERIPHERY_WORKER_ID).
             name: Human-readable name (default: "Test Worker").
             role: Social role in world system (default: PERIPHERY_PROLETARIAT).
             wealth: Economic resources (default: 0.5).
@@ -140,7 +144,7 @@ class DomainFactory:
         """Create an owner social class with test defaults.
 
         Args:
-            id: Entity identifier (default: "C002").
+            id: Entity identifier (default: COMPRADOR_ID).
             name: Human-readable name (default: "Test Owner").
             role: Social role in world system (default: CORE_BOURGEOISIE).
             wealth: Economic resources (default: 10.0).
@@ -176,8 +180,8 @@ class DomainFactory:
         """Create a relationship edge with test defaults.
 
         Args:
-            source_id: Origin entity ID (default: "C001").
-            target_id: Destination entity ID (default: "C002").
+            source_id: Origin entity ID (default: PERIPHERY_WORKER_ID).
+            target_id: Destination entity ID (default: COMPRADOR_ID).
             edge_type: Nature of relationship (default: EXPLOITATION).
             value_flow: Imperial rent amount (default: 0.0).
             tension: Dialectical tension (default: 0.0).
@@ -280,8 +284,8 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        source_id: str = "C001",
-        target_id: str = "C002",
+        source_id: str = PERIPHERY_WORKER_ID,
+        target_id: str = COMPRADOR_ID,
         amount: float = 1.0,
         mechanism: str = "imperial_rent",
     ) -> ExtractionEvent:
@@ -289,8 +293,10 @@ class DomainFactory:
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            source_id: Entity ID of the worker being extracted from (default: "C001").
-            target_id: Entity ID of the bourgeoisie receiving rent (default: "C002").
+            source_id: Entity ID of the worker being extracted from
+                (default: PERIPHERY_WORKER_ID).
+            target_id: Entity ID of the bourgeoisie receiving rent
+                (default: COMPRADOR_ID).
             amount: Currency amount extracted (default: 1.0).
             mechanism: Extraction mechanism description (default: "imperial_rent").
 
@@ -309,8 +315,8 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        source_id: str = "C002",
-        target_id: str = "C003",
+        source_id: str = COMPRADOR_ID,
+        target_id: str = CORE_BOURGEOISIE_ID,
         amount: float = 50.0,
         repression_boost: float = 0.15,
     ) -> SubsidyEvent:
@@ -318,8 +324,8 @@ class DomainFactory:
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            source_id: Entity ID of the core bourgeoisie (default: "C002").
-            target_id: Entity ID of the client state (default: "C003").
+            source_id: Entity ID of the core bourgeoisie (default: COMPRADOR_ID).
+            target_id: Entity ID of the client state (default: CORE_BOURGEOISIE_ID).
             amount: Currency amount of subsidy (default: 50.0).
             repression_boost: Repression capacity gained (default: 0.15).
 
@@ -367,8 +373,8 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        source_id: str = "C001",
-        target_id: str = "C002",
+        source_id: str = PERIPHERY_WORKER_ID,
+        target_id: str = COMPRADOR_ID,
         delta: float = 0.05,
         solidarity_strength: float = 0.5,
     ) -> TransmissionEvent:
@@ -376,8 +382,9 @@ class DomainFactory:
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            source_id: Entity transmitting consciousness (default: "C001").
-            target_id: Entity receiving consciousness (default: "C002").
+            source_id: Entity transmitting consciousness
+                (default: PERIPHERY_WORKER_ID).
+            target_id: Entity receiving consciousness (default: COMPRADOR_ID).
             delta: Amount of consciousness transmitted (default: 0.05).
             solidarity_strength: Strength of solidarity edge (default: 0.5).
 
@@ -396,19 +403,21 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        target_id: str = "C001",
+        target_id: str = PERIPHERY_WORKER_ID,
         old_consciousness: float = 0.4,
         new_consciousness: float = 0.7,
-        triggering_source: str = "C002",
+        triggering_source: str = COMPRADOR_ID,
     ) -> MassAwakeningEvent:
         """Create a mass awakening event with test defaults.
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            target_id: Entity whose consciousness crossed threshold (default: "C001").
+            target_id: Entity whose consciousness crossed threshold
+                (default: PERIPHERY_WORKER_ID).
             old_consciousness: Consciousness before awakening (default: 0.4).
             new_consciousness: Consciousness after awakening (default: 0.7).
-            triggering_source: Entity that triggered awakening (default: "C002").
+            triggering_source: Entity that triggered awakening
+                (default: COMPRADOR_ID).
 
         Returns:
             MassAwakeningEvent configured with given parameters.
@@ -425,7 +434,7 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        node_id: str = "C001",
+        node_id: str = PERIPHERY_WORKER_ID,
         repression: float = 0.7,
         spark_probability: float = 0.35,
     ) -> SparkEvent:
@@ -433,7 +442,7 @@ class DomainFactory:
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            node_id: Entity where spark occurred (default: "C001").
+            node_id: Entity where spark occurred (default: PERIPHERY_WORKER_ID).
             repression: Repression level faced (default: 0.7).
             spark_probability: Probability that led to spark (default: 0.35).
 
@@ -451,7 +460,7 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        node_id: str = "C001",
+        node_id: str = PERIPHERY_WORKER_ID,
         trigger: str = "spark",
         agitation: float = 0.8,
         repression: float = 0.6,
@@ -460,7 +469,7 @@ class DomainFactory:
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            node_id: Entity where uprising occurred (default: "C001").
+            node_id: Entity where uprising occurred (default: PERIPHERY_WORKER_ID).
             trigger: What caused the uprising (default: "spark").
             agitation: Accumulated agitation level (default: 0.8).
             repression: Current repression level (default: 0.6).
@@ -480,7 +489,7 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        node_id: str = "C001",
+        node_id: str = PERIPHERY_WORKER_ID,
         solidarity_gained: float = 0.2,
         edges_affected: int = 2,
         triggered_by: str = "uprising",
@@ -489,7 +498,7 @@ class DomainFactory:
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            node_id: Entity where spike occurred (default: "C001").
+            node_id: Entity where spike occurred (default: PERIPHERY_WORKER_ID).
             solidarity_gained: Total solidarity gained (default: 0.2).
             edges_affected: Number of edges strengthened (default: 2).
             triggered_by: What caused the spike (default: "uprising").
@@ -509,13 +518,14 @@ class DomainFactory:
         self,
         *,
         tick: int = 0,
-        edge: str = "C001->C002",
+        edge: str = f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}",
     ) -> RuptureEvent:
         """Create a rupture event with test defaults.
 
         Args:
             tick: Simulation tick when event occurred (default: 0).
-            edge: Edge where rupture occurred (default: "C001->C002").
+            edge: Edge where rupture occurred
+                (default: f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}").
 
         Returns:
             RuptureEvent configured with given parameters.

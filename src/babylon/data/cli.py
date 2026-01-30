@@ -1258,9 +1258,16 @@ def tiger(
 @app.command()
 def h3(
     resolution: Annotated[
-        int,
-        typer.Option("--resolution", "-r", help="H3 resolution level (0-15)"),
-    ] = 5,
+        int | None,
+        typer.Option("--resolution", "-r", help="Single H3 resolution level (0-15)"),
+    ] = None,
+    resolutions: Annotated[
+        str | None,
+        typer.Option(
+            "--resolutions",
+            help="Comma-separated H3 resolutions (e.g., '3,4,5' for multi-scale)",
+        ),
+    ] = None,
     reset: Annotated[
         bool,
         typer.Option("--reset/--no-reset", help="Clear tables before loading"),
@@ -1276,20 +1283,38 @@ def h3(
     county-to-hex mapping in BridgeCountyH3. Requires TIGER data to be
     loaded first.
 
+    Supports multi-resolution generation for different visualization scales:
+    - Resolution 3: ~12,393 km² per cell (~300 cells - 50-state overview)
+    - Resolution 4: ~1,770 km² per cell (~3,000 cells - state-level view)
+    - Resolution 5: ~252 km² per cell (~38,000 cells - county-level view)
+
     Examples:
-        mise run data:h3
-        mise run data:h3 -- --resolution=6
+        mise run data:h3                           # Default resolution 5
+        mise run data:h3 -- --resolution=6         # Single resolution 6
+        mise run data:h3 -- --resolutions=3,4,5    # Multi-scale (recommended)
     """
-    from babylon.data.h3 import H3GridLoader
+    from babylon.data.h3 import DEFAULT_H3_RESOLUTION, H3GridLoader
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
 
     config = LoaderConfig(verbose=not quiet)
 
+    # Parse resolutions - prefer --resolutions over --resolution
+    res_list: list[int] | None = None
+    if resolutions:
+        res_list = [int(r.strip()) for r in resolutions.split(",")]
+    elif resolution is not None:
+        res_list = [resolution]
+    # else: loader will use its default
+
     if not quiet:
-        typer.echo(f"Generating H3 grid at resolution {resolution}...")
+        if res_list:
+            res_str = ", ".join(str(r) for r in res_list)
+            typer.echo(f"Generating H3 grid at resolutions: {res_str}...")
+        else:
+            typer.echo(f"Generating H3 grid at default resolution {DEFAULT_H3_RESOLUTION}...")
 
     init_normalized_db()
-    loader = H3GridLoader(config, resolution=resolution)
+    loader = H3GridLoader(config, resolutions=res_list)
 
     with get_normalized_session() as session:
         stats = loader.load(session, reset=reset)

@@ -41,6 +41,23 @@ class TestLoaderStructure:
 
         loader = H3GridLoader(resolution=4)
         assert loader.resolution == 4
+        assert loader.resolutions == [4]
+
+    def test_multiple_resolutions(self) -> None:
+        """Should accept multiple resolutions."""
+        from babylon.data.h3 import H3GridLoader
+
+        loader = H3GridLoader(resolutions=[3, 4, 5])
+        assert loader.resolutions == [3, 4, 5]
+        assert loader.resolution == 3  # First resolution
+
+    def test_resolutions_takes_precedence(self) -> None:
+        """resolutions parameter should take precedence over resolution."""
+        from babylon.data.h3 import H3GridLoader
+
+        loader = H3GridLoader(resolution=6, resolutions=[3, 4])
+        assert loader.resolutions == [3, 4]
+        assert loader.resolution == 3
 
     def test_get_dimension_tables_empty(self) -> None:
         """H3 grid loader doesn't create dimensions."""
@@ -218,11 +235,12 @@ class TestActualDatabaseLoading:
             if geom_count == 0:
                 pytest.skip("DimCountyGeometry not populated")
 
-            # Check all resolutions match
+            # Check all resolutions match the loader's configured resolutions
             result = session.execute(
                 text("SELECT DISTINCT resolution FROM bridge_county_h3")
             ).fetchall()
 
             if result:
-                resolutions = [r[0] for r in result]
-                assert all(r == loader.resolution for r in resolutions)
+                db_resolutions = {r[0] for r in result}
+                expected_resolutions = set(loader.resolutions)
+                assert db_resolutions == expected_resolutions

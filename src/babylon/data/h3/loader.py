@@ -3,12 +3,23 @@
 Generates H3 hexagonal cells from county geometries (DimCountyGeometry)
 and persists them to BridgeCountyH3 for efficient spatial joins.
 
+Supports multiple resolutions for multi-scale geographic visualization:
+- Resolution 3: ~12,393 km² per cell (~300 cells for CONUS - 50-state overview)
+- Resolution 4: ~1,770 km² per cell (~3,000 cells - state-level view)
+- Resolution 5: ~252 km² per cell (~38,000 cells - county-level view)
+
 Usage:
     from babylon.data.h3 import H3GridLoader
     from babylon.data.reference.database import get_normalized_session_factory
 
+    # Single resolution (backwards compatible)
     loader = H3GridLoader(resolution=5)
     session_factory = get_normalized_session_factory()
+    with session_factory() as session:
+        stats = loader.load(session)
+
+    # Multiple resolutions
+    loader = H3GridLoader(resolutions=[3, 4, 5])
     with session_factory() as session:
         stats = loader.load(session)
 """
@@ -32,6 +43,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 DEFAULT_H3_RESOLUTION = 5
+DEFAULT_H3_RESOLUTIONS = [3, 4, 5]  # Multi-scale: 50-state, state, county views
 
 
 def wkt_to_geometry(wkt: str | None) -> BaseGeometry | None:
@@ -118,30 +130,49 @@ class H3GridLoader(DataLoader):
     """Loader that generates H3 grid from county geometries.
 
     Reads county polygons from DimCountyGeometry (WKT) and generates
-    H3 hexagonal cells at the specified resolution, persisting them
+    H3 hexagonal cells at specified resolutions, persisting them
     to BridgeCountyH3 for efficient spatial joins.
 
-    At resolution 5 (~252 km² per cell), CONUS generates ~21K cells.
-    At resolution 4 (~1770 km² per cell), CONUS generates ~3K cells.
+    Supports multiple resolutions for multi-scale visualization:
+    - Resolution 3: ~12,393 km² per cell (~300 cells for CONUS - 50-state overview)
+    - Resolution 4: ~1,770 km² per cell (~3,000 cells - state-level view)
+    - Resolution 5: ~252 km² per cell (~38,000 cells - county-level view)
 
     Attributes:
         config: LoaderConfig controlling operational settings.
-        resolution: H3 resolution level (default 5).
+        resolutions: List of H3 resolution levels to generate.
     """
 
     def __init__(
         self,
         config: LoaderConfig | None = None,
-        resolution: int = DEFAULT_H3_RESOLUTION,
+        resolution: int | None = None,
+        resolutions: list[int] | None = None,
     ) -> None:
         """Initialize H3 grid loader.
 
         Args:
             config: LoaderConfig for operational settings.
-            resolution: H3 resolution level (0-15, default 5).
+            resolution: Single H3 resolution level (0-15, backwards compatible).
+            resolutions: List of H3 resolution levels to generate (takes precedence).
         """
         super().__init__(config)
-        self.resolution = resolution
+        # Support both single resolution (backwards compat) and multiple resolutions
+        if resolutions is not None:
+            self.resolutions = resolutions
+        elif resolution is not None:
+            self.resolutions = [resolution]
+        else:
+            self.resolutions = [DEFAULT_H3_RESOLUTION]
+
+    @property
+    def resolution(self) -> int:
+        """Return the first resolution (backwards compatibility).
+
+        For single-resolution loaders, returns the configured resolution.
+        For multi-resolution loaders, returns the first (coarsest) resolution.
+        """
+        return self.resolutions[0]
 
     def get_dimension_tables(self) -> list[type]:
         """Return dimension table models this loader populates."""
@@ -151,6 +182,57 @@ class H3GridLoader(DataLoader):
         """Return fact table models this loader populates."""
         return [BridgeCountyH3]
 
+    def _get_geometries(self, session: Session, verbose: bool) -> list[DimCountyGeometry]:
+        """Query county geometries, falling back to centroids if no WKT."""
+        geometries = (
+            session.query(DimCountyGeometry)
+            .filter(DimCountyGeometry.geometry_wkt.isnot(None))
+            .all()
+        )
+
+        if verbose:
+            print(f"County geometries available: {len(geometries)}")
+
+        if len(geometries) == 0:
+            geometries = session.query(DimCountyGeometry).all()
+            if verbose:
+                print(f"Using centroids for {len(geometries)} counties (no WKT)")
+
+        return geometries
+
+    def _load_resolution(
+        self,
+        session: Session,
+        geometries: list[DimCountyGeometry],
+        resolution: int,
+        verbose: bool,
+    ) -> int:
+        """Load H3 cells for a single resolution, returning count."""
+        count = 0
+        seen_cells: set[str] = set()
+
+        for geom in tqdm(geometries, desc=f"H3 res {resolution}", disable=not verbose):
+            cells = self._generate_cells_for_county(geom, resolution)
+
+            for cell in cells:
+                if cell in seen_cells:
+                    continue
+
+                bridge = BridgeCountyH3(
+                    h3_index=cell,
+                    county_id=geom.county_id,
+                    resolution=resolution,
+                )
+                session.add(bridge)
+                seen_cells.add(cell)
+                count += 1
+
+                if count % 1000 == 0:
+                    session.flush()
+
+        session.commit()
+        return count
+
     def load(
         self,
         session: Session,
@@ -158,7 +240,7 @@ class H3GridLoader(DataLoader):
         verbose: bool = True,
         **_kwargs: object,
     ) -> LoadStats:
-        """Generate H3 grid from county geometries.
+        """Generate H3 grid from county geometries at multiple resolutions.
 
         Args:
             session: SQLAlchemy session for the normalized database.
@@ -170,68 +252,41 @@ class H3GridLoader(DataLoader):
             LoadStats with counts of loaded records.
         """
         stats = LoadStats(source="h3_grid")
+        resolutions_str = ", ".join(str(r) for r in self.resolutions)
 
         if verbose:
-            print(f"Generating H3 grid at resolution {self.resolution}...")
+            print(f"Generating H3 grid at resolutions: {resolutions_str}...")
 
         try:
-            # Clear existing H3 data if reset
             if reset:
                 if verbose:
                     print("Clearing existing H3 data...")
                 session.query(BridgeCountyH3).delete()
                 session.commit()
 
-            # Query all county geometries with WKT
-            geometries = (
-                session.query(DimCountyGeometry)
-                .filter(DimCountyGeometry.geometry_wkt.isnot(None))
-                .all()
-            )
-
-            if verbose:
-                print(f"County geometries available: {len(geometries)}")
-
-            if len(geometries) == 0:
-                # Fall back to using centroids if no WKT
-                geometries = session.query(DimCountyGeometry).all()
-                if verbose:
-                    print(f"Using centroids for {len(geometries)} counties (no WKT)")
+            geometries = self._get_geometries(session, verbose)
 
             if len(geometries) == 0:
                 logger.warning("No county geometries found - cannot generate H3 grid")
                 stats.errors.append("DimCountyGeometry is empty - run TIGERCountyLoader first")
                 return stats
 
-            # Generate H3 cells for each county
-            count = 0
-            seen_cells: set[str] = set()
+            total_count = 0
+            for resolution in self.resolutions:
+                if verbose:
+                    print(f"\nProcessing resolution {resolution}...")
 
-            for geom in tqdm(geometries, desc="H3 cells", disable=not verbose):
-                cells = self._generate_cells_for_county(geom)
+                count = self._load_resolution(session, geometries, resolution, verbose)
 
-                for cell in cells:
-                    # Skip if cell already assigned to another county
-                    if cell in seen_cells:
-                        continue
+                if verbose:
+                    print(f"  Resolution {resolution}: {count} cells")
 
-                    bridge = BridgeCountyH3(
-                        h3_index=cell,
-                        county_id=geom.county_id,
-                        resolution=self.resolution,
-                    )
-                    session.add(bridge)
-                    seen_cells.add(cell)
-                    count += 1
+                total_count += count
 
-                    if count % 1000 == 0:
-                        session.flush()
-
-            session.commit()
-            stats.facts_loaded["bridge_county_h3"] = count
+            stats.facts_loaded["bridge_county_h3"] = total_count
 
             if verbose:
-                print(f"\nGenerated {count} H3 cells at resolution {self.resolution}")
+                print(f"\nTotal: {total_count} H3 cells across resolutions {resolutions_str}")
                 print(f"\n{stats}")
 
         except Exception as e:
@@ -241,13 +296,14 @@ class H3GridLoader(DataLoader):
 
         return stats
 
-    def _generate_cells_for_county(self, geom: DimCountyGeometry) -> set[str]:
-        """Generate H3 cells for a county geometry.
+    def _generate_cells_for_county(self, geom: DimCountyGeometry, resolution: int) -> set[str]:
+        """Generate H3 cells for a county geometry at a specific resolution.
 
         Uses WKT polygon if available, otherwise falls back to centroid.
 
         Args:
             geom: DimCountyGeometry record.
+            resolution: H3 resolution level.
 
         Returns:
             Set of H3 cell indices.
@@ -256,16 +312,18 @@ class H3GridLoader(DataLoader):
         if geom.geometry_wkt:
             polygon = wkt_to_polygon(geom.geometry_wkt)
             if polygon:
-                return generate_h3_cells(polygon, self.resolution)
+                return generate_h3_cells(polygon, resolution)
 
         # Fall back to centroid
         lat = float(geom.centroid_lat)
         lon = float(geom.centroid_lon)
-        cell = h3.latlng_to_cell(lat, lon, self.resolution)
+        cell = h3.latlng_to_cell(lat, lon, resolution)
         return {cell}
 
 
 __all__ = [
+    "DEFAULT_H3_RESOLUTION",
+    "DEFAULT_H3_RESOLUTIONS",
     "H3GridLoader",
     "cell_to_latlon",
     "generate_h3_cells",

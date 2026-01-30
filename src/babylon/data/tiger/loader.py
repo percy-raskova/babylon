@@ -61,7 +61,7 @@ def calculate_area_sq_km(geometry: BaseGeometry) -> float:
     Returns:
         Area in square kilometers.
     """
-    import pyproj  # type: ignore[import-not-found]
+    import pyproj
     from shapely.ops import transform  # type: ignore[import-untyped]
 
     # Project to equal-area CRS (US Albers Equal Area)

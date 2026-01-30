@@ -1,0 +1,81 @@
+meta:
+  id: ADR030_unified_sqlite_runtime
+  version: 1.0.0
+
+ADR030_unified_sqlite_runtime:
+  status: accepted
+  date: '2026-01-30'
+  title: Unified SQLite Runtime Architecture
+  supersedes: ADR029_hybrid_graph_architecture (KuzuDB component)
+
+  context: |
+    ADR029 proposed a hybrid architecture with NetworkX for tactical operations
+    and KuzuDB for strategic queries. However, at Babylon's actual scale
+    (Detroit test case: ~hundreds of nodes, ~thousands of edges, ~1000 ticks),
+    this adds complexity without proportional benefit.
+
+    The project also maintains a 3NF reference database for census/QCEW ingest,
+    which serves a different purpose than runtime state.
+
+  decision: |
+    Use a single SQLite file for all runtime simulation state:
+
+    1. Topology History (node_history, edge_history tables)
+       - Tick-keyed snapshots of graph state
+       - Enables temporal queries and replay
+
+    2. Ledger Tables (production_events, flows, etc.)
+       - Append-only event log
+       - Source of truth for economic transactions
+
+    3. Future: Vector Storage (deferred)
+       - sqlite-vec extension when RAG is implemented
+       - Keeps single-file architecture
+
+    Schema sketch:
+    ```sql
+    CREATE TABLE node_history (
+        tick INTEGER NOT NULL,
+        node_id TEXT NOT NULL,
+        node_type TEXT NOT NULL,
+        attributes JSON,
+        PRIMARY KEY (tick, node_id)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE edge_history (
+        tick INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        target TEXT NOT NULL,
+        edge_mode TEXT NOT NULL,
+        attributes JSON,
+        PRIMARY KEY (tick, source, target, edge_mode)
+    ) WITHOUT ROWID;
+    ```
+
+    The 3NF reference database remains separate for census data ingest,
+    usable outside Babylon for other purposes.
+
+  rationale:
+    - Detroit scale does not require graph database overhead
+    - Single file simplifies deployment and backup
+    - SQLite recursive CTEs handle simple traversals
+    - NetworkX handles complex graph algorithms (see ADR032)
+    - KuzuDB adds dependency without earning its keep at this scale
+    - 3NF ingest database serves different purpose (heterogeneous source reconciliation)
+
+  consequences:
+    positive:
+      - Single file for entire simulation state
+      - No additional database dependencies
+      - Simpler mental model
+      - Easy backup/restore (copy one file)
+      - Reference database reusable for non-Babylon purposes
+    negative:
+      - May need to revisit if scale increases dramatically (10K+ nodes)
+      - Complex graph queries require NetworkX hydration
+      - No native graph query language (Cypher, etc.)
+
+  migration:
+    - Remove KuzuDB from dependencies
+    - Implement node_history/edge_history tables
+    - Update GraphProtocol adapters to persist to SQLite

@@ -1,0 +1,108 @@
+meta:
+  id: ADR033_deterministic_simulation
+  version: 1.0.0
+
+ADR033_deterministic_simulation:
+  status: accepted
+  date: '2026-01-30'
+  title: Deterministic Simulation over Cryptographic Auditability
+
+  context: |
+    Babylon needs reproducibility and debuggability. Two approaches considered:
+
+    1. Merkle chains: Cryptographic proof that history wasn't mutated
+       - Hash each tick's state
+       - Chain hashes together
+       - Enables tamper-evident audit trail
+
+    2. Deterministic simulation: Given same inputs, produce same outputs
+       - Pin RNG seeds
+       - Log exogenous inputs
+       - Replay from any point
+
+    Merkle chains are attractive (Fossil uses them) but what's the threat model?
+
+  decision: |
+    Prioritize deterministic simulation over cryptographic auditability.
+
+    The actual problems to solve:
+    - "Why did the simulation produce this state?"
+    - "Can I reproduce this bug?"
+    - "Did my code change break something?"
+
+    These are solved by:
+
+    1. Deterministic simulation
+       - Pin all RNG seeds
+       - No floating-point nondeterminism (use Decimal or fixed-point where needed)
+       - Sorted iteration over dicts/sets
+       - Given identical inputs → identical outputs
+
+    2. Invariant assertions per tick
+       - Explicit checks for "impossible" states
+       - Profit rate negative? Fail loud.
+       - Population negative? Fail loud.
+       - Edge references nonexistent node? Fail loud.
+       ```python
+       def check_invariants(self, graph: nx.DiGraph) -> None:
+           for node_id, attrs in graph.nodes(data=True):
+               if attrs.get('population', 0) < 0:
+                   raise InvariantViolation(f"Negative population: {node_id}")
+               if attrs.get('profit_rate') is not None and attrs['profit_rate'] < -1:
+                   raise InvariantViolation(f"Impossible profit rate: {node_id}")
+       ```
+
+    3. Rich diffs, not hashes
+       - When something goes wrong, know WHAT changed, not just THAT it changed
+       - Log actual mutations, not cryptographic fingerprints
+
+    4. Replay capability
+       - Store initial conditions + tick-by-tick exogenous inputs
+       - Replay from any point to reproduce bugs
+       ```python
+       @dataclass
+       class TickRecord:
+           tick: int
+           mutations: list[Mutation]  # what changed
+           invariant_checks: dict[str, bool]  # what we verified
+           rng_state: bytes  # for exact replay
+       ```
+
+    Merkle chains don't help with any of these. They solve for adversarial
+    verification (third parties trusting your results) which is not the
+    current threat model.
+
+  rationale:
+    - Mysterious state problems are almost always nondeterminism or missing invariants
+    - Cryptographic hashing doesn't help debug WHY something went wrong
+    - Merkle chains add complexity (canonical serialization is hard)
+    - Determinism + invariants + logging solves actual problems
+    - Can add Merkle chains later for federation if needed
+
+  consequences:
+    positive:
+      - Bugs are reproducible
+      - Invariant violations fail fast with clear error messages
+      - Rich mutation logs enable debugging
+      - Simpler implementation (no canonical serialization needed)
+    negative:
+      - No cryptographic tamper-evidence
+      - Must maintain determinism discipline (easy to accidentally break)
+      - Federation use case would require adding Merkle chains later
+
+  future_consideration: |
+    If Babylon moves to federated contributions ("contributors model their own
+    regions"), Merkle auditability becomes genuinely useful. At that point:
+
+    ```sql
+    CREATE TABLE tick_log (
+        tick INTEGER PRIMARY KEY,
+        state_hash BLOB,        -- SHA256 of canonical state
+        prev_hash BLOB,         -- tick_log[tick-1].state_hash
+        diff JSON,              -- what changed this tick
+        chain_hash BLOB         -- SHA256(prev_hash || state_hash || diff)
+    );
+    ```
+
+    But this requires solving canonical serialization first (byte-identical
+    output for identical states). Defer until federation is on the roadmap.

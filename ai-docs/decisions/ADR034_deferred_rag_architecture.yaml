@@ -1,0 +1,90 @@
+meta:
+  id: ADR034_deferred_rag_architecture
+  version: 1.0.0
+
+ADR034_deferred_rag_architecture:
+  status: accepted
+  date: '2026-01-30'
+  title: Deferred RAG Architecture (ChromaDB When Needed)
+  relates_to:
+    - ADR003_ai_as_observer
+    - ADR015_llm_provider_abstraction
+
+  context: |
+    The RAG architecture spec (rag-architecture.yaml) defines three collections:
+
+    1. THE_CANON - Immutable theoretical texts (Marx, Lenin, Fanon, etc.)
+    2. THE_CHRONICLE - Immutable historical events (Weimar, Paris Commune, etc.)
+    3. THE_ZEITGEIST - Mutable simulation memory (grows per session)
+
+    The spec uses ChromaDB with rich metadata filtering:
+    ```python
+    where={'year': {'$gte': 1929, '$lte': 1939}, 'location': 'Germany'}
+    where={'event_type': 'RUPTURE', 'session_id': current_session}
+    ```
+
+    Question: Should we implement RAG now or defer?
+
+  decision: |
+    Defer RAG implementation until core simulation loop works.
+
+    RAG is narrative flavor, not mechanical necessity. Per ADR003, the AI
+    observes and narrates but never controls mechanics. The simulation
+    must work without AI.
+
+    Current priority:
+    1. Core simulation loop (Systems, tick execution)
+    2. State persistence (SQLite, tick-keyed history)
+    3. Basic NarrativeDirector (LLM with game state, no RAG)
+    4. Validation against real data (QCEW, Census)
+
+    THEN add RAG when:
+    - Simulation produces interesting outputs to narrate
+    - We understand what metadata is actually useful
+    - The corpus is built and chunked
+
+    Benefits of deferral:
+    - Let simulation tell us what's narratively significant
+    - Design metadata schema around actual outputs, not speculation
+    - Avoid premature optimization of ChromaDB collections
+
+    When RAG time comes:
+    - ChromaDB is the right tool (rich metadata filtering, collection lifecycle)
+    - sqlite-vec would require reimplementing ChromaDB's query engine
+    - ChromaDB uses SQLite under the hood anyway
+    - CANON/CHRONICLE are separate from runtime SQLite (immutable reference data)
+
+  rationale:
+    - Simulation must work without AI (ADR003)
+    - Current metadata schema is speculative
+    - Premature RAG implementation constrains game design
+    - ChromaDB can spin up alongside runtime SQLite when needed
+    - CANON/CHRONICLE don't need to live in same file (read-only reference data)
+
+  consequences:
+    positive:
+      - Focus on core simulation
+      - RAG metadata designed around actual game outputs
+      - No ChromaDB dependency until needed
+      - Simpler initial architecture
+    negative:
+      - Narrative generation is basic until RAG implemented
+      - May need to revisit corpus design later
+      - Deferred integration work
+
+  implementation_timeline: |
+    Phase 1 (Current): No RAG
+    - NarrativeDirector receives game state as JSON
+    - LLM generates narrative from state alone
+    - Good enough for MVP/vertical slice
+
+    Phase 2 (Post-core): Basic RAG
+    - ChromaDB with CANON collection
+    - Ground narrative in theoretical texts
+    - "This crisis resembles what Marx described in..."
+
+    Phase 3 (Full): Complete RAG
+    - All three collections operational
+    - ZEITGEIST tracks simulation history
+    - Full resonance matching between game state and history
+    - Metadata schema derived from actual game outputs

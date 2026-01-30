@@ -1,0 +1,88 @@
+meta:
+  id: ADR032_networkx_hydration_pattern
+  version: 1.0.0
+
+ADR032_networkx_hydration_pattern:
+  status: accepted
+  date: '2026-01-30'
+  title: NetworkX Hydration Pattern (Persist to SQLite, Compute in Memory)
+  relates_to:
+    - ADR009_networkx_topology
+    - ADR030_unified_sqlite_runtime
+
+  context: |
+    Babylon uses NetworkX for graph topology (ADR009). The question is how
+    NetworkX relates to SQLite persistence (ADR030).
+
+    Options considered:
+    1. Rehydrate NetworkX from SQLite every tick
+    2. Keep NetworkX in memory, sync to SQLite periodically
+    3. Keep NetworkX in memory across ticks, append history to SQLite each tick
+
+  decision: |
+    NetworkX is the in-memory compute layer. SQLite is the persistence/history layer.
+    Do NOT rehydrate every tick.
+
+    Lifecycle:
+    1. Simulation start: Hydrate NetworkX from SQLite (latest tick or specific tick for replay)
+    2. Each tick: Mutate in-memory NetworkX → append snapshot to SQLite history tables
+    3. Simulation end/crash recovery: Current state already persisted; resume from SQLite
+
+    ```
+    ┌─────────────────────────────────────────────────────────────┐
+    │                     SIMULATION RUNTIME                      │
+    │  ┌─────────────┐                         ┌──────────────┐  │
+    │  │  NetworkX   │  ←── hydrate (start) ── │   SQLite     │  │
+    │  │  (compute)  │  ─── persist (each) ──→ │  (history)   │  │
+    │  └─────────────┘                         └──────────────┘  │
+    │        ↓                                        ↓          │
+    │   Betti numbers                          Temporal queries  │
+    │   Centrality                             Replay/debug      │
+    │   Path finding                           Audit trail       │
+    │   Topology mutations                                       │
+    └─────────────────────────────────────────────────────────────┘
+    ```
+
+    SQLite stores the graph STRUCTURE (nodes table, edges table).
+    NetworkX is the COMPUTE ENGINE that operates on hydrated snapshots.
+
+    Simple queries (ancestors, descendants) can use SQLite recursive CTEs.
+    Complex algorithms (Betti numbers, centrality, component analysis) use NetworkX.
+
+  rationale:
+    - Rehydrating per-tick is unnecessary I/O overhead
+    - NetworkX is already the working state; SQLite is the journal
+    - Graph algorithms (especially topological) need in-memory access patterns
+    - SQLite recursive CTEs are adequate for simple traversals but slow on cyclic graphs
+    - Clean separation: SQLite = source of truth, NetworkX = compute engine
+
+  consequences:
+    positive:
+      - No per-tick hydration overhead
+      - Full NetworkX algorithm library available
+      - SQLite history enables temporal queries without affecting runtime
+      - Clean crash recovery (last persisted tick is recoverable state)
+    negative:
+      - Memory usage grows with graph size (acceptable at Detroit scale)
+      - Must ensure NetworkX mutations are persisted (discipline required)
+      - Two representations of "the graph" (in-memory vs persisted)
+
+  implementation_notes: |
+    Persist at end of tick, not during mutations:
+    ```python
+    def run_tick(self, tick: int) -> None:
+        # All systems mutate self.graph (NetworkX)
+        for system in self.systems:
+            system.execute(self.graph, self.context)
+
+        # Single persist at end of tick
+        self.persist_snapshot(tick)
+
+    def persist_snapshot(self, tick: int) -> None:
+        for node_id, attrs in self.graph.nodes(data=True):
+            self.db.execute(
+                "INSERT INTO node_history (tick, node_id, node_type, attributes) VALUES (?, ?, ?, ?)",
+                (tick, node_id, attrs['_node_type'], json.dumps(attrs))
+            )
+        # Similar for edges
+    ```

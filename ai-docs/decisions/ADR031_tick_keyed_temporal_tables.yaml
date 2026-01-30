@@ -1,0 +1,92 @@
+meta:
+  id: ADR031_tick_keyed_temporal_tables
+  version: 1.0.0
+
+ADR031_tick_keyed_temporal_tables:
+  status: accepted
+  date: '2026-01-30'
+  title: Tick-Keyed Temporal Tables for State History
+
+  context: |
+    Babylon needs to track simulation state over time for:
+    - Debugging and reproducibility
+    - Temporal queries ("what was the profit rate at tick 500?")
+    - Replay capability
+    - Validation (compare replayed state to logged state)
+
+    Options considered:
+    1. Full snapshots every tick
+    2. Diff-based storage (only store changes)
+    3. Event sourcing (derive state from event log)
+
+  decision: |
+    Use tick as a temporal primary key, storing full snapshots per tick.
+
+    The "real" identity of any entity is the tuple (tick, entity_id).
+    What we normally call "the node" is just the projection at a specific tick.
+
+    Schema:
+    ```sql
+    CREATE TABLE node_history (
+        tick INTEGER NOT NULL,
+        node_id TEXT NOT NULL,
+        node_type TEXT NOT NULL,
+        attributes JSON,
+        PRIMARY KEY (tick, node_id)
+    ) WITHOUT ROWID;
+
+    CREATE TABLE edge_history (
+        tick INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        target TEXT NOT NULL,
+        edge_mode TEXT NOT NULL,
+        attributes JSON,
+        PRIMARY KEY (tick, source, target, edge_mode)
+    ) WITHOUT ROWID;
+    ```
+
+    This enables powerful temporal queries:
+    ```sql
+    -- State at any point in time
+    SELECT * FROM node_history WHERE tick = 500;
+
+    -- Diff between two ticks
+    SELECT * FROM node_history WHERE tick = 500
+    EXCEPT
+    SELECT * FROM node_history WHERE tick = 499;
+
+    -- When did this node's type change?
+    SELECT tick, node_type
+    FROM node_history
+    WHERE node_id = 'wayne_prole'
+    AND node_type != LAG(node_type) OVER (ORDER BY tick);
+
+    -- Trajectory of a single node
+    SELECT tick, json_extract(attributes, '$.profit_rate') as r
+    FROM node_history
+    WHERE node_id = 'core_bourg'
+    ORDER BY tick;
+    ```
+
+  rationale:
+    - Full snapshots are simpler than diff reconstruction
+    - At Detroit scale (~1000 ticks × ~hundreds of nodes), storage is trivial (~50-100MB)
+    - Tick-keyed tables work naturally with SQLite indexes
+    - Enables both snapshot queries and longitudinal analysis
+    - Supports replay validation (compare replayed vs logged state)
+
+  consequences:
+    positive:
+      - Simple mental model (tick, entity_id) is the primary key
+      - Fast point-in-time queries via primary key
+      - No reconstruction logic needed
+      - Natural fit for temporal debugging
+    negative:
+      - Storage grows linearly with ticks (acceptable at current scale)
+      - Redundant storage of unchanged attributes
+      - May need diff-based optimization if scale increases
+
+  future_optimization: |
+    If storage becomes an issue, add valid_from/valid_to columns
+    and only store rows when something changes. But this adds
+    complexity for minimal gain at current scale. Defer until needed.

@@ -283,13 +283,9 @@ class TickStateRecorder:
             wealth_gap = float(c_b.wealth) - float(p_w.wealth)
 
         # Ecological Metrics (Slice 1.4)
-        overshoot_ratio = state.overshoot_ratio if hasattr(state, "overshoot_ratio") else 0.0
-        total_biocapacity = (
-            float(state.total_biocapacity) if hasattr(state, "total_biocapacity") else 0.0
-        )
-        total_consumption = (
-            float(state.total_consumption) if hasattr(state, "total_consumption") else 0.0
-        )
+        overshoot_ratio = state.overshoot_ratio
+        total_biocapacity = float(state.total_biocapacity)
+        total_consumption = float(state.total_consumption)
 
         return TickMetrics(
             tick=state.tick,

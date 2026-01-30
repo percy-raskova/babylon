@@ -63,15 +63,6 @@ The former is real debt. The latter is preference. Prioritize accordingly.
 - **Blocked by**: None
 - **Priority**: Medium
 
-### metrics-silent-state-assumptions
-
-- **What**: `hasattr()` checks with `0.0` fallback in TickStateRecorder hide missing fields vs intentional zeros
-- **Where**: `src/babylon/engine/observers/metrics.py:279-285`
-- **Why it exists**: Defensive coding for optional WorldState fields
-- **Fix looks like**: Make fields explicit in `WorldState` schema with proper Optional typing
-- **Blocked by**: WorldState schema decisions
-- **Priority**: Medium
-
 ### metrics-orphaned-orm-models
 
 - **What**: ORM models `Metric`, `Counter`, `TimeSeries` in `models.py` are never instantiated anywhere in codebase

@@ -182,6 +182,7 @@ class ATUSDBLoader(ReproductionLoaderProtocol):
         self,
         year: int,
         gender_code: str = "T",
+        occupation_group: str | None = None,
     ) -> dict[str, float]:
         """Get reproductive labor hours breakdown by Babylon category.
 
@@ -191,6 +192,8 @@ class ATUSDBLoader(ReproductionLoaderProtocol):
         Args:
             year: Data year for time dimension.
             gender_code: Gender code ("T" for total, "M", "F").
+            occupation_group: If None, return national average (occupation_group IS NULL).
+                            If specified, return for that occupation group (class proxy).
 
         Returns:
             Dict mapping babylon_category to hours_per_week.
@@ -204,7 +207,7 @@ class ATUSDBLoader(ReproductionLoaderProtocol):
             return {}
 
         # Query with category breakdown
-        results = (
+        query = (
             self._session.query(
                 DimATUSActivityCategory.babylon_category,
                 func.sum(FactATUSReproductiveLabor.hours_per_week).label("total_hours"),
@@ -217,9 +220,15 @@ class ATUSDBLoader(ReproductionLoaderProtocol):
                 FactATUSReproductiveLabor.time_id == time_id,
                 FactATUSReproductiveLabor.gender_id == gender_id,
             )
-            .group_by(DimATUSActivityCategory.babylon_category)
-            .all()
         )
+
+        # Filter by occupation group (NULL = national average)
+        if occupation_group is None:
+            query = query.filter(FactATUSReproductiveLabor.occupation_group.is_(None))
+        else:
+            query = query.filter(FactATUSReproductiveLabor.occupation_group == occupation_group)
+
+        results = query.group_by(DimATUSActivityCategory.babylon_category).all()
 
         return {row.babylon_category: float(row.total_hours) for row in results}
 
@@ -292,26 +301,37 @@ class ATUSDBLoader(ReproductionLoaderProtocol):
             self._gender_total_id = result.gender_id
         return result.gender_id if result else None
 
-    def _query_total_hours(self, time_id: int, gender_id: int) -> Decimal:
+    def _query_total_hours(
+        self,
+        time_id: int,
+        gender_id: int,
+        occupation_group: str | None = None,
+    ) -> Decimal:
         """Query total reproductive labor hours across all categories.
 
         Args:
             time_id: Time dimension ID.
             gender_id: Gender dimension ID.
+            occupation_group: If None, query national average (occupation_group IS NULL).
+                            If specified, query for that occupation group.
 
         Returns:
             Sum of hours_per_week across all categories.
         """
-        result = (
-            self._session.query(
-                func.sum(FactATUSReproductiveLabor.hours_per_week).label("total_hours")
-            )
-            .filter(
-                FactATUSReproductiveLabor.time_id == time_id,
-                FactATUSReproductiveLabor.gender_id == gender_id,
-            )
-            .first()
+        query = self._session.query(
+            func.sum(FactATUSReproductiveLabor.hours_per_week).label("total_hours")
+        ).filter(
+            FactATUSReproductiveLabor.time_id == time_id,
+            FactATUSReproductiveLabor.gender_id == gender_id,
         )
+
+        # Filter by occupation group (NULL = national average)
+        if occupation_group is None:
+            query = query.filter(FactATUSReproductiveLabor.occupation_group.is_(None))
+        else:
+            query = query.filter(FactATUSReproductiveLabor.occupation_group == occupation_group)
+
+        result = query.first()
 
         if result and result.total_hours is not None:
             return Decimal(str(result.total_hours))

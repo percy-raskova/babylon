@@ -131,11 +131,11 @@ class TestLoadCountySummary:
         loader = ATUSDBLoader(populated_session)
         summary = loader.load_county_summary("06001", 2022)
 
-        # Total should be sum of housework + cooking + childcare + eldercare
-        # From seed data: 0.73 + 0.67 + 0.40 + 0.05 = 1.85 daily
-        # Weekly: 1.85 * 7 = 12.95
+        # Total should be sum of all categories including emotional_support
+        # From seed data: 0.73 + 0.67 + 0.40 + 0.05 + 0.82 = 2.67 daily
+        # Weekly: 2.67 * 7 = 18.69
         assert summary.unpaid_care_hours_weekly > 0
-        assert summary.unpaid_care_hours_weekly == pytest.approx(12.95, rel=0.1)
+        assert summary.unpaid_care_hours_weekly == pytest.approx(18.69, rel=0.1)
 
     def test_all_hours_are_unpaid(self, populated_session: Session) -> None:
         """ATUS hours should all be classified as unpaid."""

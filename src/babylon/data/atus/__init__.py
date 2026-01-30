@@ -61,9 +61,14 @@ from babylon.data.atus.mappings import (
     ATUS_CODE_MAPPING,
     ATUS_CODE_MAPPINGS,
     BABYLON_CATEGORIES,
+    BABYLON_OCCUPATION_GROUPS,
+    OCCUPATION_GROUP_MAPPINGS,
+    SOC_TO_OCCUPATION_GROUP,
     ATUSActivityMapping,
+    OccupationGroupMapping,
     get_babylon_category,
     get_mapping,
+    get_occupation_group,
 )
 from babylon.data.atus.mock_loader import (
     NATIONAL_AVG_UNPAID_CARE_WEEKLY,
@@ -121,13 +126,19 @@ __all__ = [
     # Factory functions
     "create_atus_loader",
     "create_atus_db_loader",
-    # Mappings
+    # Activity Mappings
     "ATUSActivityMapping",
     "ATUS_CODE_MAPPING",
     "ATUS_CODE_MAPPINGS",
     "BABYLON_CATEGORIES",
     "get_babylon_category",
     "get_mapping",
+    # Occupation Group Mappings
+    "OccupationGroupMapping",
+    "OCCUPATION_GROUP_MAPPINGS",
+    "BABYLON_OCCUPATION_GROUPS",
+    "SOC_TO_OCCUPATION_GROUP",
+    "get_occupation_group",
     # Constants
     "NATIONAL_AVG_UNPAID_CARE_WEEKLY",
     "REPLACEMENT_COST_HOURLY",

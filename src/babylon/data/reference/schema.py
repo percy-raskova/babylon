@@ -1911,18 +1911,26 @@ class FactATUSReproductiveLabor(NormalizedBase):
         BLS Table A-1 (daily averages) -> seed_data.yaml -> this table
         Conversion: daily_hours × 7 = weekly_hours
 
-    Disaggregation (optional):
+    Disaggregation:
         - By gender (gender_id): For gendered division of labor analysis
-        - By occupation (occupation_group): Future labor-type breakdown
+        - By occupation (occupation_group): Class proxy via SOC major groups
         - By employment (employment_status): Working vs non-working
+
+    Occupation Groups (class proxies):
+        - professional_managerial: SOC 11-13 (bourgeois/petit_bourgeois)
+        - professional_technical: SOC 15-29 (labor aristocracy)
+        - sales_clerical: SOC 41-43 (proletariat/petit_bourgeois)
+        - service: SOC 31-39 (proletariat)
+        - trades: SOC 45-49 (proletariat)
+        - production_transport: SOC 51-53 (proletariat)
 
     Primary Use:
         ATUSDBLoader reads this table to satisfy ReproductionLoaderProtocol
         for ShadowLaborService calculations.
 
     Note:
-        Currently stores national averages only. County-level variation
-        requires ATUS microdata access (restricted-use files).
+        Occupation-level data uses synthetic estimates based on research.
+        Source: IWPR, Pew Research, ATUS education/income differentials.
     """
 
     __tablename__ = "fact_atus_reproductive_labor"
@@ -1950,6 +1958,7 @@ class FactATUSReproductiveLabor(NormalizedBase):
         Index("idx_atus_labor_category", "category_id"),
         Index("idx_atus_labor_time", "time_id"),
         Index("idx_atus_labor_gender", "gender_id"),
+        Index("idx_atus_labor_occupation", "occupation_group"),
         # Unique constraint for upsert operations
         UniqueConstraint(
             "category_id",
@@ -1958,6 +1967,13 @@ class FactATUSReproductiveLabor(NormalizedBase):
             "occupation_group",
             "employment_status",
             name="uq_atus_labor_composite",
+        ),
+        # Valid occupation groups (class proxies) or NULL for population average
+        CheckConstraint(
+            "occupation_group IS NULL OR occupation_group IN ("
+            "'professional_managerial', 'professional_technical', 'sales_clerical', "
+            "'service', 'trades', 'production_transport')",
+            name="ck_atus_occupation_group",
         ),
     )
 

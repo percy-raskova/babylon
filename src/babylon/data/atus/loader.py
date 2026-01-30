@@ -256,7 +256,8 @@ class ATUSReferenceLoader(DataLoader):
         """Load reproductive labor fact records from seed data.
 
         Creates fact records for each category-gender combination with
-        weekly hours converted from daily hours.
+        weekly hours converted from daily hours. Also creates occupation-
+        disaggregated records using synthetic multipliers.
 
         Args:
             session: SQLAlchemy session.
@@ -279,16 +280,14 @@ class ATUSReferenceLoader(DataLoader):
 
         count = 0
         national_averages = seed_data["national_averages"]
+        occupation_multipliers = seed_data.get("occupation_multipliers", {})
 
         for category_name, category_data in national_averages.items():
-            if category_name not in self._category_cache:
-                if verbose:
-                    logger.warning(f"Skipping unmapped category: {category_name}")
-                continue
-
             # Get the first matching category_id (we aggregate at category level)
             category_id = self._get_category_id_for_babylon_category(session, category_name)
             if category_id is None:
+                if verbose:
+                    logger.warning(f"Skipping unmapped category: {category_name}")
                 continue
 
             participation_rates = category_data.get("participation_rate", {})
@@ -299,7 +298,7 @@ class ATUSReferenceLoader(DataLoader):
                     continue
 
                 # Convert daily to weekly
-                weekly_hours = Decimal(str(daily_hours)) * DAILY_TO_WEEKLY
+                base_weekly_hours = Decimal(str(daily_hours)) * DAILY_TO_WEEKLY
 
                 # Get participation rate if available
                 participation_rate = participation_rates.get(gender_key)
@@ -308,19 +307,42 @@ class ATUSReferenceLoader(DataLoader):
 
                 gender_id = self._gender_cache[gender_code]
 
+                # Create national average (occupation_group=NULL)
                 fact = FactATUSReproductiveLabor(
                     category_id=category_id,
                     time_id=time_id,
                     gender_id=gender_id,
                     source_id=self._source_id,
-                    hours_per_week=weekly_hours,
+                    hours_per_week=base_weekly_hours,
                     participation_rate=participation_rate,
-                    sample_size=None,  # Not available in summary data
+                    sample_size=None,
                     occupation_group=None,
                     employment_status=None,
                 )
                 session.add(fact)
                 count += 1
+
+                # Create occupation-disaggregated records using multipliers
+                for occ_group, occ_data in occupation_multipliers.items():
+                    multipliers = occ_data.get("multipliers", {})
+                    multiplier = multipliers.get(category_name, 1.0)
+
+                    # Apply multiplier to base hours
+                    occ_weekly_hours = base_weekly_hours * Decimal(str(multiplier))
+
+                    occ_fact = FactATUSReproductiveLabor(
+                        category_id=category_id,
+                        time_id=time_id,
+                        gender_id=gender_id,
+                        source_id=self._source_id,
+                        hours_per_week=occ_weekly_hours,
+                        participation_rate=participation_rate,
+                        sample_size=None,
+                        occupation_group=occ_group,
+                        employment_status=None,
+                    )
+                    session.add(occ_fact)
+                    count += 1
 
         session.flush()
         return count

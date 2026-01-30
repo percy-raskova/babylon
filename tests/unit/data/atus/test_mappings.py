@@ -124,6 +124,7 @@ class TestMajorCategories:
             "Household Activities",
             "Caring for Household Members",
             "Caring for Non-Household Members",
+            "Socializing and Emotional Labor",
         }
         assert set(MAJOR_CATEGORIES) == expected
 

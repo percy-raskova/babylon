@@ -410,7 +410,7 @@ class TestWorldStateEcologicalFields:
     def test_total_consumption_computed_field(self) -> None:
         """WorldState.total_consumption should sum all entity consumption_needs."""
         entities = {
-            "C001": SocialClass(
+            PERIPHERY_WORKER_ID: SocialClass(
                 id=PERIPHERY_WORKER_ID,
                 name="Class A",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
@@ -418,7 +418,7 @@ class TestWorldStateEcologicalFields:
                 s_bio=10.0,
                 s_class=5.0,
             ),
-            "C002": SocialClass(
+            COMPRADOR_ID: SocialClass(
                 id=COMPRADOR_ID,
                 name="Class B",
                 role=SocialRole.CORE_BOURGEOISIE,

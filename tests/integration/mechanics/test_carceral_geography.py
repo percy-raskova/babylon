@@ -436,7 +436,7 @@ class TestNecropolitics:
 
         state = WorldState(
             tick=0,
-            entities={"C001": prisoner},
+            entities={PERIPHERY_WORKER_ID: prisoner},
             territories={"T001": prison},
             relationships=[tenancy],
         )

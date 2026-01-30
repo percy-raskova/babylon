@@ -76,6 +76,14 @@ depends = ["lint", "format", "typecheck", "test:unit"]
 description = "Run unit tests only (fast)"
 run = "poetry run pytest tests/unit -v --tb=short"
 
+[tasks."test:fast"]
+description = "Run fast unit tests only (excludes slow-marked tests)"
+run = "poetry run pytest tests/unit -v --tb=short -m 'not slow'"
+
+[tasks."test:slow"]
+description = "Run slow-marked tests only"
+run = "poetry run pytest -v --tb=short -m 'slow'"
+
 [tasks."test:int"]
 description = "Run integration tests (mechanics & systems)"
 run = "poetry run pytest tests/integration -v --tb=short"

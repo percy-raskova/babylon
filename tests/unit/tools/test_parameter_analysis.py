@@ -960,6 +960,7 @@ class TestRunSweep:
 class TestSweepCLI:
     """Tests for sweep CLI subcommand."""
 
+    @pytest.mark.slow
     def test_sweep_subcommand_exists(self) -> None:
         """sweep subcommand should be recognized."""
         import subprocess
@@ -973,6 +974,7 @@ class TestSweepCLI:
         assert result.returncode == 0
         assert "--param" in result.stdout
 
+    @pytest.mark.slow
     def test_sweep_requires_param(self) -> None:
         """sweep should require --param argument."""
         import subprocess
@@ -999,6 +1001,7 @@ class TestSweepCLI:
         )
         assert result.returncode != 0
 
+    @pytest.mark.slow
     def test_sweep_requires_csv(self) -> None:
         """sweep should require --csv argument."""
         import subprocess

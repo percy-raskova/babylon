@@ -373,6 +373,7 @@ class TestIntegration:
     """Integration tests that run actual simulations (slower)."""
 
     @pytest.mark.integration
+    @pytest.mark.slow
     def test_actual_sweep_with_low_extraction(self) -> None:
         """Verify sweep runs actual simulation with low extraction values."""
         module = load_tune_parameters_module()
@@ -394,6 +395,7 @@ class TestIntegration:
         )
 
     @pytest.mark.integration
+    @pytest.mark.slow
     def test_high_extraction_causes_earlier_death(self) -> None:
         """Verify high extraction causes death sooner than low extraction."""
         module = load_tune_parameters_module()

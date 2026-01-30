@@ -380,6 +380,7 @@ class TestStepEdgeCases:
         # Wealth unchanged without extraction edges (subsistence disabled)
         Assert(new_state).entity("C001").wealth_unchanged_from(state)
 
+    @pytest.mark.slow
     def test_step_wealth_cannot_go_negative(
         self,
         owner: SocialClass,

@@ -35,6 +35,7 @@ import pytest
 from babylon.engine.observers import TickStateRecorder
 from babylon.engine.simulation import Simulation
 from babylon.models import SimulationConfig, WorldState
+from babylon.models.entity_registry import CARCERAL_ENFORCER_ID, INTERNAL_PROLETARIAT_ID
 from babylon.models.enums import EventType, SocialRole
 
 from .conftest import create_imperial_circuit_state
@@ -307,7 +308,7 @@ class TestCarceralEquilibrium:
         assert roles == expected_roles, f"Expected roles {expected_roles}, got {roles}"
 
         # Verify dormant entities are inactive
-        dormant_ids = {"C005", "C006"}
+        dormant_ids = {CARCERAL_ENFORCER_ID, INTERNAL_PROLETARIAT_ID}
         for entity_id in dormant_ids:
             assert not state.entities[entity_id].active, (
                 f"Entity {entity_id} should be dormant (active=False)"

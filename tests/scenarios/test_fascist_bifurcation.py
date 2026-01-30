@@ -19,6 +19,13 @@ from babylon.models.entities.social_class import IdeologicalProfile
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
 
+# Test-local entity ID constants (bifurcation tests use custom entity setups)
+# These do not map to canonical roles - they're test-specific identifiers
+ENTITY_1 = "C001"  # Primary worker in tests
+ENTITY_2 = "C002"  # Secondary worker or bourgeoisie
+ENTITY_3 = "C003"  # Periphery worker or bourgeoisie
+ENTITY_4 = "C004"  # Bourgeoisie (symmetry test)
+
 
 @pytest.mark.integration
 class TestFascistBifurcationMultiDimensional:
@@ -36,7 +43,7 @@ class TestFascistBifurcationMultiDimensional:
         # Create a core worker who will experience wage cuts
         # Start with neutral ideology (class_consciousness=0.5)
         core_worker = create_proletariat(
-            id="C001",
+            id=ENTITY_1,
             name="Core Worker (with solidarity)",
             wealth=100.0,
             ideology=0.0,  # Neutral starting point (consciousness 0.5)
@@ -44,7 +51,7 @@ class TestFascistBifurcationMultiDimensional:
 
         # Periphery worker with revolutionary consciousness to provide solidarity
         periphery_worker = create_proletariat(
-            id="C002",
+            id=ENTITY_2,
             name="Periphery Worker",
             wealth=20.0,
             ideology=-0.8,  # Revolutionary consciousness (0.9)
@@ -52,23 +59,23 @@ class TestFascistBifurcationMultiDimensional:
 
         # Core bourgeoisie who pays wages
         core_bourgeoisie = create_bourgeoisie(
-            id="C003",
+            id=ENTITY_3,
             name="Core Bourgeoisie",
             wealth=500.0,
         )
 
         # WAGES edge from bourgeoisie to worker (high initial wages)
         wages_edge = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=ENTITY_3,
+            target_id=ENTITY_1,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,  # High super-wages initially
         )
 
         # KEY: Strong SOLIDARITY edge from periphery to core worker
         solidarity_edge = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=ENTITY_2,
+            target_id=ENTITY_1,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=1.0,  # Maximum solidarity infrastructure
         )
@@ -77,9 +84,9 @@ class TestFascistBifurcationMultiDimensional:
         state = WorldState(
             tick=0,
             entities={
-                "C001": core_worker,
-                "C002": periphery_worker,
-                "C003": core_bourgeoisie,
+                ENTITY_1: core_worker,
+                ENTITY_2: periphery_worker,
+                ENTITY_3: core_bourgeoisie,
             },
             relationships=[wages_edge, solidarity_edge],
         )
@@ -90,7 +97,7 @@ class TestFascistBifurcationMultiDimensional:
         state_after_tick_1 = sim.run(1)
 
         # Get the ideology profile from the worker after tick 1
-        worker_tick1 = state_after_tick_1.entities["C001"]
+        worker_tick1 = state_after_tick_1.entities[ENTITY_1]
 
         # The ideology should be an IdeologicalProfile with the new fields
         ideology_profile = worker_tick1.ideology
@@ -111,8 +118,8 @@ class TestFascistBifurcationMultiDimensional:
 
         # Now simulate wage CUT by updating the state with reduced wages
         reduced_wages_edge = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=ENTITY_3,
+            target_id=ENTITY_1,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # 20 unit wage cut (40% reduction)
         )
@@ -131,7 +138,7 @@ class TestFascistBifurcationMultiDimensional:
         final_state = sim.run(1)
 
         # Get final ideology profile
-        final_worker = final_state.entities["C001"]
+        final_worker = final_state.entities[ENTITY_1]
         final_profile = final_worker.ideology
 
         # ASSERTIONS for Revolutionary Path:
@@ -159,7 +166,7 @@ class TestFascistBifurcationMultiDimensional:
         """
         # Create a core worker who will experience wage cuts (isolated, no solidarity)
         core_worker = create_proletariat(
-            id="C001",
+            id=ENTITY_1,
             name="Core Worker (isolated)",
             wealth=100.0,
             ideology=0.0,  # Neutral starting point (class_consciousness 0.5)
@@ -167,15 +174,15 @@ class TestFascistBifurcationMultiDimensional:
 
         # Core bourgeoisie who pays wages
         core_bourgeoisie = create_bourgeoisie(
-            id="C002",
+            id=ENTITY_2,
             name="Core Bourgeoisie",
             wealth=500.0,
         )
 
         # WAGES edge from bourgeoisie to worker (high initial wages)
         wages_edge = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=ENTITY_2,
+            target_id=ENTITY_1,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,  # High super-wages initially
         )
@@ -186,8 +193,8 @@ class TestFascistBifurcationMultiDimensional:
         state = WorldState(
             tick=0,
             entities={
-                "C001": core_worker,
-                "C002": core_bourgeoisie,
+                ENTITY_1: core_worker,
+                ENTITY_2: core_bourgeoisie,
             },
             relationships=[wages_edge],
         )
@@ -198,7 +205,7 @@ class TestFascistBifurcationMultiDimensional:
         state_after_tick_1 = sim.run(1)
 
         # Get the ideology profile from the worker after tick 1
-        worker_tick1 = state_after_tick_1.entities["C001"]
+        worker_tick1 = state_after_tick_1.entities[ENTITY_1]
         ideology_profile = worker_tick1.ideology
 
         # Record initial values (after first tick to establish baseline)
@@ -207,8 +214,8 @@ class TestFascistBifurcationMultiDimensional:
 
         # Now simulate wage CUT
         reduced_wages_edge = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=ENTITY_2,
+            target_id=ENTITY_1,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # 20 unit wage cut (40% reduction)
         )
@@ -227,7 +234,7 @@ class TestFascistBifurcationMultiDimensional:
         final_state = sim.run(1)
 
         # Get final ideology profile
-        final_worker = final_state.entities["C001"]
+        final_worker = final_state.entities[ENTITY_1]
         final_profile = final_worker.ideology
 
         # ASSERTIONS for Fascist Path:
@@ -285,7 +292,7 @@ class TestFascistBifurcationMultiDimensional:
         """
         # Worker A (with solidarity)
         worker_a = create_proletariat(
-            id="C001",
+            id=ENTITY_1,
             name="Worker A (with solidarity)",
             wealth=100.0,
             ideology=0.0,
@@ -293,7 +300,7 @@ class TestFascistBifurcationMultiDimensional:
 
         # Worker B (without solidarity)
         worker_b = create_proletariat(
-            id="C002",
+            id=ENTITY_2,
             name="Worker B (isolated)",
             wealth=100.0,
             ideology=0.0,
@@ -301,7 +308,7 @@ class TestFascistBifurcationMultiDimensional:
 
         # Periphery worker to provide solidarity to Worker A only
         periphery_worker = create_proletariat(
-            id="C003",
+            id=ENTITY_3,
             name="Periphery Worker",
             wealth=20.0,
             ideology=-0.8,  # Revolutionary consciousness
@@ -309,29 +316,29 @@ class TestFascistBifurcationMultiDimensional:
 
         # Core bourgeoisie
         core_bourgeoisie = create_bourgeoisie(
-            id="C004",
+            id=ENTITY_4,
             name="Core Bourgeoisie",
             wealth=500.0,
         )
 
         # WAGES edges to both workers (identical)
         wages_to_a = Relationship(
-            source_id="C004",
-            target_id="C001",
+            source_id=ENTITY_4,
+            target_id=ENTITY_1,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,
         )
         wages_to_b = Relationship(
-            source_id="C004",
-            target_id="C002",
+            source_id=ENTITY_4,
+            target_id=ENTITY_2,
             edge_type=EdgeType.WAGES,
             value_flow=50.0,
         )
 
         # SOLIDARITY only to Worker A
         solidarity_edge = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=ENTITY_3,
+            target_id=ENTITY_1,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=1.0,
         )
@@ -340,10 +347,10 @@ class TestFascistBifurcationMultiDimensional:
         state = WorldState(
             tick=0,
             entities={
-                "C001": worker_a,
-                "C002": worker_b,
-                "C003": periphery_worker,
-                "C004": core_bourgeoisie,
+                ENTITY_1: worker_a,
+                ENTITY_2: worker_b,
+                ENTITY_3: periphery_worker,
+                ENTITY_4: core_bourgeoisie,
             },
             relationships=[wages_to_a, wages_to_b, solidarity_edge],
         )
@@ -354,19 +361,19 @@ class TestFascistBifurcationMultiDimensional:
         state_after_tick_1 = sim.run(1)
 
         # Record initial profiles
-        profile_a_initial = state_after_tick_1.entities["C001"].ideology
-        profile_b_initial = state_after_tick_1.entities["C002"].ideology
+        profile_a_initial = state_after_tick_1.entities[ENTITY_1].ideology
+        profile_b_initial = state_after_tick_1.entities[ENTITY_2].ideology
 
         # Now apply identical wage cuts
         reduced_wages_to_a = Relationship(
-            source_id="C004",
-            target_id="C001",
+            source_id=ENTITY_4,
+            target_id=ENTITY_1,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # Same 20 unit cut
         )
         reduced_wages_to_b = Relationship(
-            source_id="C004",
-            target_id="C002",
+            source_id=ENTITY_4,
+            target_id=ENTITY_2,
             edge_type=EdgeType.WAGES,
             value_flow=30.0,  # Same 20 unit cut
         )
@@ -385,8 +392,8 @@ class TestFascistBifurcationMultiDimensional:
         final_state = sim.run(1)
 
         # Get final profiles
-        profile_a_final = final_state.entities["C001"].ideology
-        profile_b_final = final_state.entities["C002"].ideology
+        profile_a_final = final_state.entities[ENTITY_1].ideology
+        profile_b_final = final_state.entities[ENTITY_2].ideology
 
         # Calculate deltas
         a_class_delta = profile_a_final.class_consciousness - profile_a_initial.class_consciousness

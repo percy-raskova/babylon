@@ -19,6 +19,14 @@ from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import (
+    CARCERAL_ENFORCER_ID,
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    INTERNAL_PROLETARIAT_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, SectorType, SocialRole
 
 
@@ -72,7 +80,7 @@ def create_imperial_circuit_state() -> WorldState:
     """
     # Core Bourgeoisie - owns the system, starts wealthy
     core_bourgeoisie = SocialClass(
-        id="C001",
+        id=CORE_BOURGEOISIE_ID,
         name="Core Bourgeoisie",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=1000.0,
@@ -92,7 +100,7 @@ def create_imperial_circuit_state() -> WorldState:
     # High starting wealth ensures LA survives until SUPERWAGE_CRISIS
     # triggers decomposition (rent pool must exhaust first)
     labor_aristocracy = SocialClass(
-        id="C002",
+        id=LABOR_ARISTOCRACY_ID,
         name="Labor Aristocracy",
         role=SocialRole.LABOR_ARISTOCRACY,
         wealth=50000.0,  # High wealth to survive until rent pool exhausts
@@ -111,7 +119,7 @@ def create_imperial_circuit_state() -> WorldState:
 
     # Periphery Proletariat - exploited, source of imperial rent
     periphery_proletariat = SocialClass(
-        id="C003",
+        id=PERIPHERY_WORKER_ID,
         name="Periphery Proletariat",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=10.0,
@@ -130,7 +138,7 @@ def create_imperial_circuit_state() -> WorldState:
 
     # Comprador Bourgeoisie - intermediary, passes tribute
     comprador = SocialClass(
-        id="C004",
+        id=COMPRADOR_ID,
         name="Comprador Bourgeoisie",
         role=SocialRole.COMPRADOR_BOURGEOISIE,
         wealth=50.0,
@@ -149,7 +157,7 @@ def create_imperial_circuit_state() -> WorldState:
     # Dormant Carceral Enforcer - activated during CLASS_DECOMPOSITION
     # Receives portion of LA population when super-wages collapse
     carceral_enforcer = SocialClass(
-        id="C005",
+        id=CARCERAL_ENFORCER_ID,
         name="Carceral Enforcer",
         role=SocialRole.CARCERAL_ENFORCER,
         wealth=0.0,
@@ -170,7 +178,7 @@ def create_imperial_circuit_state() -> WorldState:
     # Dormant Internal Proletariat - activated during CLASS_DECOMPOSITION
     # Receives majority of LA population when super-wages collapse
     internal_proletariat = SocialClass(
-        id="C006",
+        id=INTERNAL_PROLETARIAT_ID,
         name="Internal Proletariat",
         role=SocialRole.INTERNAL_PROLETARIAT,
         wealth=0.0,
@@ -189,12 +197,12 @@ def create_imperial_circuit_state() -> WorldState:
     )
 
     entities = {
-        "C001": core_bourgeoisie,
-        "C002": labor_aristocracy,
-        "C003": periphery_proletariat,
-        "C004": comprador,
-        "C005": carceral_enforcer,
-        "C006": internal_proletariat,
+        CORE_BOURGEOISIE_ID: core_bourgeoisie,
+        LABOR_ARISTOCRACY_ID: labor_aristocracy,
+        PERIPHERY_WORKER_ID: periphery_proletariat,
+        COMPRADOR_ID: comprador,
+        CARCERAL_ENFORCER_ID: carceral_enforcer,
+        INTERNAL_PROLETARIAT_ID: internal_proletariat,
     }
 
     # Territory with depletable biocapacity
@@ -211,48 +219,49 @@ def create_imperial_circuit_state() -> WorldState:
     territories = {"T001": territory}
 
     # Relationships: The Imperial Circuit
+    territory_id = "T001"
     relationships = [
         # EXPLOITATION: Core Bourgeoisie extracts from Periphery
         Relationship(
-            source_id="C001",
-            target_id="C003",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=20.0,  # Significant extraction
             tension=0.3,  # Initial tension
         ),
         # WAGES: Core Bourgeoisie pays Labor Aristocracy (super-wages)
         Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=LABOR_ARISTOCRACY_ID,
             edge_type=EdgeType.WAGES,
             value_flow=15.0,  # Super-wages from rent pool
         ),
         # TRIBUTE: Comprador sends tribute to Core (after keeping cut)
         Relationship(
-            source_id="C004",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             edge_type=EdgeType.TRIBUTE,
             value_flow=10.0,  # Tribute flow
         ),
         # TENANCY: All classes connected to territory
         Relationship(
-            source_id="C001",
-            target_id="T001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=territory_id,
             edge_type=EdgeType.TENANCY,
         ),
         Relationship(
-            source_id="C002",
-            target_id="T001",
+            source_id=LABOR_ARISTOCRACY_ID,
+            target_id=territory_id,
             edge_type=EdgeType.TENANCY,
         ),
         Relationship(
-            source_id="C003",
-            target_id="T001",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=territory_id,
             edge_type=EdgeType.TENANCY,
         ),
         Relationship(
-            source_id="C004",
-            target_id="T001",
+            source_id=COMPRADOR_ID,
+            target_id=territory_id,
             edge_type=EdgeType.TENANCY,
         ),
     ]

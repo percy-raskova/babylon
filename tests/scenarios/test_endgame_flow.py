@@ -30,6 +30,7 @@ from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import IdeologicalProfile, SocialClass
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import EdgeType, GameOutcome, SectorType, SocialRole
 
 pytestmark = [pytest.mark.integration, pytest.mark.slow]
@@ -201,8 +202,8 @@ def create_in_progress_state() -> WorldState:
 
     # Balanced entities (no revolutionary victory or fascist consolidation)
     entities = {
-        "C001": SocialClass(
-            id="C001",
+        PERIPHERY_WORKER_ID: SocialClass(
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             ideology=IdeologicalProfile(
@@ -212,8 +213,8 @@ def create_in_progress_state() -> WorldState:
             s_bio=5.0,
             s_class=5.0,
         ),
-        "C002": SocialClass(
-            id="C002",
+        COMPRADOR_ID: SocialClass(
+            id=COMPRADOR_ID,
             name="Worker 2",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             ideology=IdeologicalProfile(

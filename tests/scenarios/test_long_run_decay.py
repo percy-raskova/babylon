@@ -16,6 +16,9 @@ from babylon.models import SocialClass, SocialRole
 from babylon.models.config import SimulationConfig
 from babylon.models.world_state import WorldState
 
+# Test-local entity ID constant for isolated decay tests
+TEST_ENTITY_ID = "C001"
+
 # Maximum ticks before we consider the test a failure
 MAX_TICKS_STARVATION = 1000
 
@@ -53,7 +56,7 @@ class TestStarvationChamber:
         """
         # Create isolated entity with consumption needs
         prisoner = SocialClass(
-            id="C001",
+            id=TEST_ENTITY_ID,
             name="Prisoner",
             role=SocialRole.INTERNAL_PROLETARIAT,
             wealth=10.0,  # Starting wealth
@@ -66,7 +69,7 @@ class TestStarvationChamber:
 
         state = WorldState(
             tick=0,
-            entities={"C001": prisoner},
+            entities={TEST_ENTITY_ID: prisoner},
             # No relationships = no income
         )
         config = SimulationConfig()
@@ -76,7 +79,7 @@ class TestStarvationChamber:
 
         for tick in range(MAX_TICKS_STARVATION):
             current_state = sim.step()
-            entity = current_state.entities.get("C001")
+            entity = current_state.entities.get(TEST_ENTITY_ID)
 
             if entity is None or not entity.active:
                 death_tick = tick
@@ -84,7 +87,7 @@ class TestStarvationChamber:
 
         assert death_tick is not None, (
             f"Entity should have died from starvation within {MAX_TICKS_STARVATION} ticks. "
-            f"Final wealth: {current_state.entities.get('C001').wealth if current_state.entities.get('C001') else 'N/A'}"
+            f"Final wealth: {current_state.entities.get(TEST_ENTITY_ID).wealth if current_state.entities.get(TEST_ENTITY_ID) else 'N/A'}"
         )
 
         # Death should happen within reasonable time (not instant, but not too long)
@@ -97,7 +100,7 @@ class TestStarvationChamber:
         not a zombie. This is intentional behavior for dormant entities.
         """
         dormant = SocialClass(
-            id="C001",
+            id=TEST_ENTITY_ID,
             name="Dormant",
             role=SocialRole.CARCERAL_ENFORCER,
             wealth=0.0,
@@ -107,11 +110,11 @@ class TestStarvationChamber:
             active=False,  # Already inactive
         )
 
-        state = WorldState(tick=0, entities={"C001": dormant})
+        state = WorldState(tick=0, entities={TEST_ENTITY_ID: dormant})
         G = state.to_graph()
 
         # Dormant entities should remain in stable inactive state
-        assert G.nodes["C001"]["active"] is False
+        assert G.nodes[TEST_ENTITY_ID]["active"] is False
 
     def test_near_zero_wealth_triggers_death(self) -> None:
         """Entity with wealth below death threshold must die.
@@ -125,7 +128,7 @@ class TestStarvationChamber:
         before the zombie trap kicks in.
         """
         starving = SocialClass(
-            id="C001",
+            id=TEST_ENTITY_ID,
             name="Starving",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.0001,  # Below death threshold (0.001)
@@ -135,13 +138,13 @@ class TestStarvationChamber:
             active=True,
         )
 
-        state = WorldState(tick=0, entities={"C001": starving})
+        state = WorldState(tick=0, entities={TEST_ENTITY_ID: starving})
         config = SimulationConfig()
         sim = Simulation(state, config)
 
         # Run one tick - should trigger death
         new_state = sim.step()
-        entity = new_state.entities.get("C001")
+        entity = new_state.entities.get(TEST_ENTITY_ID)
 
         # Entity should be dead after one tick
         assert entity is None or entity.active is False, (
@@ -162,7 +165,7 @@ class TestStarvationChamber:
         """
         # Create entity WITHOUT territory/TENANCY
         landless = SocialClass(
-            id="C001",
+            id=TEST_ENTITY_ID,
             name="Landless Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=10.0,  # Starting wealth
@@ -174,7 +177,7 @@ class TestStarvationChamber:
 
         state = WorldState(
             tick=0,
-            entities={"C001": landless},
+            entities={TEST_ENTITY_ID: landless},
             # NO territories
             # NO relationships (especially no TENANCY)
         )
@@ -186,7 +189,7 @@ class TestStarvationChamber:
 
         for _tick in range(10):
             current_state = sim.step()
-            entity = current_state.entities.get("C001")
+            entity = current_state.entities.get(TEST_ENTITY_ID)
 
             if entity is None or not entity.active:
                 break
@@ -202,7 +205,7 @@ class TestStarvationChamber:
         )
 
         # Wealth should have decreased (subsistence burn)
-        final_entity = current_state.entities.get("C001")
+        final_entity = current_state.entities.get(TEST_ENTITY_ID)
         if final_entity and final_entity.active:
             assert final_entity.wealth < 10.0, (
                 f"Entity should lose wealth to subsistence. Final wealth: {final_entity.wealth}"
@@ -220,7 +223,7 @@ class TestPopulationAttrition:
         the Grinding Attrition formula should reduce population.
         """
         crowded = SocialClass(
-            id="C001",
+            id=TEST_ENTITY_ID,
             name="Crowded Camp",
             role=SocialRole.INTERNAL_PROLETARIAT,
             wealth=50.0,  # Not enough for everyone
@@ -231,7 +234,7 @@ class TestPopulationAttrition:
             active=True,
         )
 
-        state = WorldState(tick=0, entities={"C001": crowded})
+        state = WorldState(tick=0, entities={TEST_ENTITY_ID: crowded})
         config = SimulationConfig()
         sim = Simulation(state, config)
 
@@ -241,7 +244,7 @@ class TestPopulationAttrition:
         for _ in range(10):
             state = sim.step()
 
-        entity = state.entities.get("C001")
+        entity = state.entities.get(TEST_ENTITY_ID)
 
         # Population should have declined due to attrition
         if entity is not None and entity.active:

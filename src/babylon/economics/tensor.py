@@ -177,6 +177,17 @@ class ValueTensor4x3(BaseModel):
         description="Wages excluded from allocation (e.g., government NAICS 92)"
     )
 
+    visibility_g33: Annotated[float, Field(default=1.0, ge=0.0, le=1.0)] = 1.0
+    """Visibility scalar for Department III reproductive labor.
+
+    Controls what fraction of care work is visible to the price system:
+    - 1.0 = fully monetized (backward compatible default)
+    - 0.0 = fully unwaged (all shadow labor)
+    - 0.5 = half visible, half shadow (typical estimate)
+
+    Based on Fortunati's "The Arcane of Reproduction" (1981).
+    """
+
     @field_validator("fips_code")
     @classmethod
     def validate_fips_numeric(cls, v: str) -> str:
@@ -216,6 +227,16 @@ class ValueTensor4x3(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
+    def total_s(self) -> Currency:
+        """Total surplus value across all departments.
+
+        Returns:
+            Sum of s (surplus value) across all departments.
+        """
+        return Currency(self.dept_I.s + self.dept_IIa.s + self.dept_IIb.s + self.dept_III.s)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def profit_rate(self) -> float:
         """Average rate of profit across all departments.
 
@@ -225,13 +246,102 @@ class ValueTensor4x3(BaseModel):
         Returns:
             Profit rate (s / (c + v)), or float('inf') if (c + v) = 0.
         """
-        total_s = self.dept_I.s + self.dept_IIa.s + self.dept_IIb.s + self.dept_III.s
         total_c = self.dept_I.c + self.dept_IIa.c + self.dept_IIb.c + self.dept_III.c
-        total_v = self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + self.dept_III.v
-        denominator = total_c + total_v
+        denominator = total_c + self.total_v
         if denominator == 0.0:
             return float("inf")
-        return total_s / denominator
+        return self.total_s / denominator
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def monetized_value(self) -> Currency:
+        """Total value visible to the price system.
+
+        Includes full value of Depts I, IIa, IIb, but only the visible
+        fraction of Dept III based on g₃₃.
+
+        Formula: Σ(Dept_i.total) + Dept_III.total × g₃₃
+                 for i ∈ {I, IIa, IIb}
+
+        Returns:
+            Total monetized value across all departments.
+        """
+        visible_dept_iii = self.dept_III.total_value * self.visibility_g33
+        return Currency(
+            self.dept_I.total_value
+            + self.dept_IIa.total_value
+            + self.dept_IIb.total_value
+            + visible_dept_iii
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def monetized_v(self) -> Currency:
+        """Total variable capital actually paid as wages.
+
+        Includes full v from Depts I, IIa, IIb, but only the visible
+        fraction of Dept III v based on g₃₃.
+
+        Formula: v_I + v_IIa + v_IIb + (v_III × g₃₃)
+
+        Returns:
+            Total wages actually paid (monetized variable capital).
+        """
+        visible_dept_iii_v = self.dept_III.v * self.visibility_g33
+        return Currency(self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + visible_dept_iii_v)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def shadow_subsidy(self) -> Currency:
+        """Unpaid reproductive labor appropriated as surplus.
+
+        In Fortunati's framework, shadow labor is NOT merely "unpaid costs" -
+        it is **appropriated surplus value**. The capitalist class benefits
+        twice: they pay less V, AND they capture the surplus labor time of
+        the reproduction sphere.
+
+        Formula: Dept_III.v × (1 - g₃₃)
+
+        When g₃₃=1.0, shadow_subsidy=0 (all care work is paid).
+        When g₃₃=0.0, shadow_subsidy=Dept_III.v (all care work unpaid).
+
+        Returns:
+            Shadow subsidy (unpaid reproductive labor value).
+        """
+        return Currency(self.dept_III.v * (1 - self.visibility_g33))
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def exploitation_rate_fortunati(self) -> float:
+        """Expanded exploitation rate including shadow labor as appropriated surplus.
+
+        The Fortunati rate recognizes that unpaid domestic labor is NOT
+        merely a cost reduction but is **appropriated surplus value**.
+        Capital extracts labor time from the reproductive sphere without
+        any compensation whatsoever.
+
+        Formula: e' = (S_total + shadow_subsidy) / monetized_v
+
+        Example (Dept III only, v=100, s=100, g₃₃=0.5):
+            - monetized_v = 50 (half paid)
+            - shadow_subsidy = 50 (half unpaid → appropriated surplus)
+            - total_surplus = 100 + 50 = 150
+            - Fortunati rate = 150 / 50 = 300%
+            - (Standard rate would be 100/100 = 100%)
+
+        When g₃₃=1.0, equals standard exploitation_rate (total_s/total_v).
+        When g₃₃<1.0, rate increases dramatically as shadow labor is recognized.
+
+        Returns:
+            Fortunati exploitation rate, or float('inf') if monetized_v = 0.
+
+        See Also:
+            Fortunati, Leopoldina. "The Arcane of Reproduction" (1981).
+        """
+        if self.monetized_v == 0.0:
+            return float("inf")
+        numerator = self.total_s + self.shadow_subsidy
+        return float(numerator / self.monetized_v)
 
 
 __all__ = [

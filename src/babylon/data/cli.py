@@ -2137,6 +2137,49 @@ def geography(
 
 
 @app.command()
+def atus(
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load ATUS reproductive labor reference data.
+
+    Loads BLS American Time Use Survey data for Department III shadow labor
+    calculations. Populates:
+    - dim_atus_activity_category: ATUS code to Babylon category mappings
+    - fact_atus_reproductive_labor: National average hours per week
+
+    Data source: Bundled seed_data.yaml (BLS Table A-1 national averages)
+
+    Examples:
+        mise run data:atus              # Load ATUS reference data
+        mise run data:atus -- --no-reset  # Append without clearing
+    """
+    from babylon.data.atus import ATUSReferenceLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    config = LoaderConfig(verbose=not quiet)
+
+    if not quiet:
+        typer.echo("Loading ATUS reproductive labor reference data...")
+
+    init_normalized_db()
+    loader = ATUSReferenceLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(session, reset=reset, verbose=not quiet)
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
+@app.command()
 def cfs(
     year: Annotated[
         int | None,

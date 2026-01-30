@@ -40,9 +40,11 @@ Economic Theory
 
    imperial-rent
    survival-calculus
+   reproductive-labor
 
 The mathematical foundations: Imperial Rent extraction, labor aristocracy,
-and the survival calculus that drives agent behavior.
+the survival calculus that drives agent behavior, and the proletarian feminist
+analysis of reproductive labor and shadow wages.
 
 Consciousness & Organization
 ----------------------------

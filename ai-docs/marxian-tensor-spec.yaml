@@ -3,12 +3,16 @@
 # Transforms QCEW employment/wage data into 4x3 Marxian value tensors
 
 meta:
-  version: "1.1.0"
+  version: "2.0.0"
   created: "2026-01-27"
-  updated: "2026-01-28"
+  updated: "2026-01-30"
   purpose: "Document the Marxian tensor infrastructure for transforming QCEW data into reproduction schema tensors"
   principle: "Pure transformation: QCEW data in, ValueTensor4x3 out"
-  status: "IMPLEMENTED & CALIBRATED (124 tests passing)"
+  status: "IMPLEMENTED & CALIBRATED (145 tests passing)"
+  sprints:
+    - "Initial Implementation (v1.0.0)"
+    - "BEA/CEX Calibration (v1.1.0)"
+    - "Sprint 2.1: Visibility Tensor (v2.0.0)"
   location: "src/babylon/economics/"
   tests: "tests/unit/economics/, tests/integration/economics/, tests/integration/tensors/"
   test_count: 124
@@ -82,6 +86,17 @@ theoretical_foundation:
         Department III is uniquely labor-intensive (low c/v = 0.5) and has
         suppressed surplus rates (s/v = 0.7) reflecting the undervaluation
         of care work in capitalist society.
+      visibility_dimension: |
+        Department III contains BOTH paid care work (visible to markets) and
+        unpaid domestic labor (invisible shadow subsidy). The visibility
+        scalar g₃₃ controls this split (Sprint 2.1):
+        - g₃₃ = 1.0: All monetized (standard Marxian analysis)
+        - g₃₃ = 0.0: All unpaid (extreme invisibility)
+        - g₃₃ = 0.3: ATUS 2022 estimate (~70% unpaid)
+      feminist_marxist_sources:
+        - "Fortunati, L. (1981). The Arcane of Reproduction"
+        - "Federici, S. (2004). Caliban and the Witch"
+        - "Meillassoux, C. (1981). Maidens, Meal and Money"
 
   reproduction_conditions:
     simple_reproduction: "I(c+v+s) = Ic + IIa.c + IIb.c + III.c"
@@ -221,15 +236,75 @@ models:
       excluded_wages:
         type: "Currency"
         description: "Wages excluded from allocation (e.g., government NAICS 92)"
+      visibility_g33:
+        type: "float"
+        constraint: "[0.0, 1.0]"
+        default: 1.0
+        description: |
+          Visibility scalar for Department III reproductive labor.
+          Controls what fraction of care work is visible to the price system:
+          - 1.0 = fully monetized (backward compatible default)
+          - 0.0 = fully unwaged (all shadow labor)
+          - 0.5 = half visible, half shadow (typical estimate)
+          Based on Fortunati's "The Arcane of Reproduction" (1981).
+        added_in: "Sprint 2.1 (v2.0.0)"
     computed_fields:
       total_value:
         formula: "sum(dept.total_value for dept in [I, IIa, IIb, III])"
         type: "Currency"
         description: "Total value across all departments"
+      total_v:
+        formula: "sum(dept.v for dept in [I, IIa, IIb, III])"
+        type: "Currency"
+        description: "Total variable capital (wages) across all departments"
+      total_s:
+        formula: "sum(dept.s for dept in [I, IIa, IIb, III])"
+        type: "Currency"
+        description: "Total surplus value across all departments"
+        added_in: "Sprint 2.1 (v2.0.0)"
       profit_rate:
         formula: "total_s / (total_c + total_v)"
         type: "float"
         description: "Economy-wide return on capital investment"
+      monetized_value:
+        formula: "Σ dept.total for I,IIa,IIb + (dept_III.total × g₃₃)"
+        type: "Currency"
+        description: "Total value visible to the price system"
+        added_in: "Sprint 2.1 (v2.0.0)"
+      monetized_v:
+        formula: "Σ v for I,IIa,IIb + (v_III × g₃₃)"
+        type: "Currency"
+        description: "Wages actually paid (only visible fraction of Dept III)"
+        added_in: "Sprint 2.1 (v2.0.0)"
+      shadow_subsidy:
+        formula: "v_III × (1 - g₃₃)"
+        type: "Currency"
+        description: |
+          Unpaid reproductive labor appropriated as surplus.
+          In Fortunati's framework, shadow labor is APPROPRIATED SURPLUS VALUE,
+          not merely "unpaid costs". Capital benefits twice: reduced V paid,
+          AND capture of reproductive sphere labor time.
+        added_in: "Sprint 2.1 (v2.0.0)"
+      exploitation_rate_fortunati:
+        formula: "e' = (total_s + shadow_subsidy) / monetized_v"
+        type: "float"
+        description: |
+          Expanded exploitation rate including shadow labor as appropriated surplus.
+          When g₃₃=1.0, equals standard rate (total_s/total_v).
+          When g₃₃<1.0, rate increases dramatically.
+          Returns float('inf') when monetized_v=0 (pure extraction).
+        canonical_example: |
+          Dept III only: v=100, s=100, g₃₃=0.5
+          - Standard rate: 100/100 = 100%
+          - Fortunati rate: 150/50 = 300%
+          Shadow labor TRIPLES apparent exploitation.
+        infinity_case: |
+          When monetized_v=0, returns float('inf').
+          This represents a QUALITATIVE SHIFT from exploitation (wage relation)
+          to expropriation (pure extraction) - the condition of slavery,
+          prison labor, or fully unwaged domestic work.
+        added_in: "Sprint 2.1 (v2.0.0)"
+        see_also: "ai-docs/shadow-labor-spec.yaml (infinity_dialectic section)"
     validation:
       fips_code: "Must be exactly 5 numeric digits (regex: ^\\d{5}$)"
       weights_sum: "Department allocations must sum to 1.0"

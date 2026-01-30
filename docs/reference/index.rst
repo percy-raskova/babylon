@@ -10,10 +10,12 @@ Data Models
    :maxdepth: 1
 
    data-models
+   tensor
    precision
 
 Complete specification of data structures, entity collections, constrained
-types, graph structure, and the Gatekeeper Pattern for quantization.
+types, graph structure, the Marxian value tensor, and the Gatekeeper Pattern
+for quantization.
 
 Mathematical Formulas
 ---------------------

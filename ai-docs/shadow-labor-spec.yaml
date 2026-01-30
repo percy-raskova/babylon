@@ -5,12 +5,14 @@
 # capital accumulation without entering the formal commodity circuit.
 
 meta:
-  version: "1.0.0"
+  version: "2.0.0"
   created: "2026-01-29"
-  updated: "2026-01-29"
+  updated: "2026-01-30"
   purpose: "Define shadow labor visibility calculations for Department III"
-  status: "COMPLETE - Mock Infrastructure with Lens Pattern"
-  sprint: "Shadow Labor Sprint"
+  status: "COMPLETE - Tensor Integration + Lens Pattern"
+  sprints:
+    - "Shadow Labor Sprint (Lens Pattern)"
+    - "Sprint 2.1 (Visibility Tensor)"
   problem_statement: |
     The 4-department Marxian tensor (ValueTensor4x3) models Department III
     (Social Reproduction) but does not distinguish between:
@@ -40,9 +42,13 @@ theoretical_foundation:
 
   key_texts:
     - "Federici, S. (2012). Revolution at Point Zero"
+    - "Federici, S. (2004). Caliban and the Witch"
+    - "Fortunati, L. (1981). The Arcane of Reproduction"
     - "Vogel, L. (2013). Marxism and the Oppression of Women"
     - "Bhattacharya, T. (2017). Social Reproduction Theory"
     - "Mies, M. (1986). Patriarchy and Accumulation on a World Scale"
+    - "Meillassoux, C. (1981). Maidens, Meal and Money"
+    - "MIM Prisons. Gender and Revolutionary Feminism"
 
   core_insight: |
     Reproductive labor is NECESSARY for capital accumulation but INVISIBLE
@@ -97,6 +103,184 @@ theoretical_foundation:
       reference_occupation: "SOC 31-1120 (Home Health and Personal Care Aides)"
       median_wage: "$15.43/hour (May 2023)"
       rationale: "Market replacement cost for unpaid care work"
+
+# =============================================================================
+# SPRINT 2.1: VISIBILITY TENSOR INTEGRATION
+# =============================================================================
+
+visibility_tensor:
+  sprint: "Sprint 2.1"
+  status: "COMPLETE"
+  location: "src/babylon/economics/tensor.py"
+
+  description: |
+    The visibility tensor (g₃₃) is now integrated directly into ValueTensor4x3,
+    enabling Department III shadow labor calculations at the tensor level.
+    This complements the ShadowLaborService lens pattern with direct tensor
+    support for Fortunati's exploitation rate.
+
+  new_field:
+    name: "visibility_g33"
+    type: "float"
+    constraint: "[0.0, 1.0]"
+    default: 1.0
+    rationale: |
+      Default 1.0 preserves backward compatibility - existing code sees
+      no change. Values < 1.0 activate shadow labor calculations.
+
+  new_computed_properties:
+    total_s:
+      formula: "Σ s_dept for all departments"
+      purpose: "Extracted from profit_rate for reuse"
+
+    monetized_value:
+      formula: "Σ dept.total for I,IIa,IIb + (dept_III.total × g₃₃)"
+      purpose: "Total value visible to price system"
+
+    monetized_v:
+      formula: "Σ v_dept for I,IIa,IIb + (v_III × g₃₃)"
+      purpose: "Wages actually paid (denominator for Fortunati rate)"
+
+    shadow_subsidy:
+      formula: "v_III × (1 - g₃₃)"
+      purpose: "Unpaid reproductive labor appropriated as surplus"
+
+    exploitation_rate_fortunati:
+      formula: "e' = (total_s + shadow_subsidy) / monetized_v"
+      purpose: "Expanded exploitation rate recognizing shadow labor"
+
+  theoretical_grounding: |
+    The Fortunati rate differs from the standard exploitation rate (s/v) by:
+
+    1. NUMERATOR: Adds shadow_subsidy to total_s
+       - Shadow labor is APPROPRIATED SURPLUS, not merely reduced costs
+       - Capital extracts labor time without any compensation
+
+    2. DENOMINATOR: Uses monetized_v, not total_v
+       - Only wages actually paid count
+       - Recognizes that unpaid labor receives nothing
+
+    This produces dramatically higher exploitation rates when shadow labor
+    is recognized. The canonical example (Dept III: v=100, s=100, g₃₃=0.5):
+    - Standard rate: 100/100 = 100%
+    - Fortunati rate: 150/50 = 300%
+
+    The 3x multiplier effect demonstrates Fortunati's insight.
+
+# =============================================================================
+# THE INFINITY DIALECTIC
+# =============================================================================
+
+infinity_dialectic:
+
+  condition: "monetized_v = 0"
+  result: "exploitation_rate_fortunati = ∞"
+
+  meaning: |
+    When monetized_v reaches zero, the exploitation rate becomes infinite.
+    This is NOT a mathematical edge case to be "handled" - it represents
+    a QUALITATIVE SHIFT in the social relation of production.
+
+  dialectical_interpretation: |
+    The wage relation, despite being exploitative, contains a formal exchange:
+    labor-power for money. When wages reach zero, this exchange disappears.
+    What remains is DIRECT APPROPRIATION - the condition of slavery, serfdom,
+    or what MIM Prisons calls the relationship between oppressor and oppressed
+    nations.
+
+    The infinity signals that we have crossed from EXPLOITATION (wage relation)
+    to EXPROPRIATION (pure extraction). This is a qualitative, not merely
+    quantitative, transformation.
+
+  historical_conditions:
+    slavery:
+      description: "Labor-power extracted with zero wages"
+      significance: "Foundation of American primitive accumulation"
+      monetary_relation: "None - pure extraction"
+
+    domestic_labor_historical:
+      description: "Housewives historically received zero wages"
+      significance: "Entire reproductive labor appropriated"
+      monetary_relation: "Mediated through male wage (Fortunati)"
+
+    prison_labor:
+      description: "13th Amendment explicitly permits slavery as punishment"
+      significance: "Continuation of slavery by other means"
+      monetary_relation: "$0.00-$0.50/hour or nothing"
+
+    colonial_extraction:
+      description: "Indigenous dispossession and forced labor"
+      significance: "Global primitive accumulation"
+      monetary_relation: "Tribute, not wages"
+
+    peripheral_child_labor:
+      description: "Children in mines, fields, factories"
+      significance: "Most brutal extraction"
+      monetary_relation: "Subsistence or nothing"
+
+  federici_insight: |
+    From Federici's "Caliban and the Witch": The wage relation is built
+    ON TOP OF unwaged labor, not the other way around. The "normal" case
+    of finite exploitation (where workers receive some wage) is actually
+    the HISTORICAL EXCEPTION - a privilege granted primarily to white
+    male workers in the imperial core.
+
+    The witch hunts were primitive accumulation against women's bodies.
+    Capitalism required the disciplining of women into unpaged reproductive
+    labor. The wage is a tool of division - it hides the unwaged labor
+    that makes waged labor possible.
+
+  meillassoux_insight: |
+    From "Maidens, Meal and Money": Capitalism PARASITIZES the domestic
+    community and the colonized periphery. It extracts labor-power without
+    paying reproduction costs. This isn't "superexploitation" in the sense
+    of EXTRA exploitation - it's the FOUNDATIONAL mode of extraction that
+    makes waged exploitation in the core possible.
+
+  mim_prisons_analysis: |
+    The MIM (Maoist Internationalist Movement) framework emphasizes:
+
+    1. First World "workers" often receive W > V (wages exceeding value
+       produced) - they are NET BENEFICIARIES of imperial rent
+
+    2. The Fortunati rate going to infinity in the periphery is the
+       mathematical inverse of the labor aristocracy receiving more
+       than they produce in the core:
+
+       Core:       W > V    →  exploitation may be negative (net recipients)
+       Periphery:  W → 0    →  exploitation → ∞ (pure extraction)
+
+    3. Gender oppression intersects with national oppression - both serve
+       the extraction of unwaged labor for imperial accumulation
+
+  implementation_guidance: |
+    DO NOT sanitize the infinity. The mathematical infinity correctly
+    represents historical brutality. Clamping to an arbitrary maximum
+    would be IDEOLOGICAL MYSTIFICATION - it would make slavery, prison
+    labor, and unwaged domestic work appear as merely "very high"
+    exploitation rather than qualitatively different conditions.
+
+    PRESERVE the infinity and ADD SEMANTIC MEANING:
+
+    @computed_field
+    @property
+    def is_pure_extraction(self) -> bool:
+        """True when labor is appropriated without any wage relation."""
+        return self.monetized_v == 0.0
+
+    This property makes explicit the political meaning of the infinity.
+
+  downstream_implications: |
+    Systems consuming exploitation_rate_fortunati must handle infinity:
+
+    1. COMPARISON: float('inf') > any_finite_number (always True)
+    2. ARITHMETIC: float('inf') + x = float('inf') (absorbs finite values)
+    3. DANGER: float('inf') - float('inf') = nan (undefined)
+    4. SEMANTIC: Treat infinity as "pure extraction mode" flag
+
+    The simulation should recognize this as a distinct REGIME, not just
+    an extreme value. When exploitation → ∞, the social relation has
+    qualitatively transformed.
 
 # =============================================================================
 # ARCHITECTURE: LENS PATTERN
@@ -399,20 +583,25 @@ future_roadmap:
 
   phase_4:
     name: "Tensor Integration"
-    status: "PLANNED"
-    description: "Optional shadow_decomposition field on ValueTensor4x3"
-    design: |
-      class ValueTensor4x3Extended(ValueTensor4x3):
-          shadow_decomposition: ShadowLaborResult | None = None
+    status: "COMPLETE (Sprint 2.1)"
+    description: "visibility_g33 field and computed properties on ValueTensor4x3"
+    implementation: |
+      Sprint 2.1 integrated shadow labor directly into ValueTensor4x3:
+
+      class ValueTensor4x3(BaseModel):
+          visibility_g33: float = 1.0  # [0.0, 1.0]
 
           @computed_field
-          def dept_III_adjusted(self) -> DepartmentRow:
-              # Adjust v to only include monetized portion
-              return DepartmentRow(
-                  c=self.dept_III.c,
-                  v=self.shadow_decomposition.v_market,
-                  s=self.dept_III.s,
-              )
+          def shadow_subsidy(self) -> Currency:
+              return Currency(self.dept_III.v * (1 - self.visibility_g33))
+
+          @computed_field
+          def exploitation_rate_fortunati(self) -> float:
+              if self.monetized_v == 0.0:
+                  return float("inf")  # Pure extraction
+              return (self.total_s + self.shadow_subsidy) / self.monetized_v
+
+      See visibility_tensor section above for full details.
 
   phase_5:
     name: "Gendered Split"

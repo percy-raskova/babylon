@@ -29,6 +29,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import UprisingEvent
 
 # =============================================================================
@@ -40,7 +41,7 @@ from babylon.models.events import UprisingEvent
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=0.5,
@@ -55,7 +56,7 @@ def worker() -> SocialClass:
 def owner() -> SocialClass:
     """Create a core owner social class."""
     return SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=10.0,
@@ -70,8 +71,8 @@ def owner() -> SocialClass:
 def exploitation_edge() -> Relationship:
     """Create an exploitation relationship from worker to owner."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=0.0,
         tension=0.0,
@@ -87,7 +88,7 @@ def initial_state(
     """Create initial WorldState with two nodes and one edge."""
     return WorldState(
         tick=0,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
     )
 
@@ -97,7 +98,7 @@ def uprising_event() -> UprisingEvent:
     """Create an uprising event for testing dual narratives."""
     return UprisingEvent(
         tick=1,
-        node_id="C001",
+        node_id=PERIPHERY_WORKER_ID,
         trigger="spark",
         agitation=0.9,
         repression=0.7,
@@ -264,7 +265,7 @@ class TestGeneratePerspective:
         assert mock_llm.call_count == 1
         call = mock_llm.call_history[0]
         # Event type or key details should appear in prompt
-        assert "uprising" in call["prompt"].lower() or "C001" in call["prompt"]
+        assert "uprising" in call["prompt"].lower() or PERIPHERY_WORKER_ID in call["prompt"]
 
 
 # =============================================================================
@@ -498,8 +499,8 @@ class TestOnTickPopulatesDualNarratives:
         # TransmissionEvent is not in SIGNIFICANT_EVENT_TYPES
         non_significant_event = TransmissionEvent(
             tick=1,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.5,
         )

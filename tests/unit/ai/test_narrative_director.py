@@ -28,6 +28,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import ExtractionEvent, TransmissionEvent
 
 # =============================================================================
@@ -39,7 +40,7 @@ from babylon.models.events import ExtractionEvent, TransmissionEvent
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=0.5,
@@ -54,7 +55,7 @@ def worker() -> SocialClass:
 def owner() -> SocialClass:
     """Create a core owner social class."""
     return SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=10.0,
@@ -69,8 +70,8 @@ def owner() -> SocialClass:
 def exploitation_edge() -> Relationship:
     """Create an exploitation relationship from worker to owner."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=0.0,
         tension=0.0,
@@ -86,7 +87,7 @@ def initial_state(
     """Create initial WorldState with two nodes and one edge."""
     return WorldState(
         tick=0,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
     )
 
@@ -173,14 +174,14 @@ class TestNarrativeDirectorEvents:
         # Create typed events (Sprint 4.1)
         event_a = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         event_b = TransmissionEvent(
             tick=1,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.5,
         )
@@ -213,8 +214,8 @@ class TestNarrativeDirectorEvents:
         # Create typed event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -247,8 +248,8 @@ class TestNarrativeDirectorEvents:
         # Create a typed event
         old_event = ExtractionEvent(
             tick=0,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=5.0,
         )
 
@@ -410,8 +411,8 @@ class TestNarrativeDirectorPerTickEvents:
         # Tick 1: has 1 event
         event_tick1 = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         state_tick1 = initial_state.model_copy(
@@ -447,12 +448,16 @@ class TestNarrativeDirectorPerTickEvents:
 
         # New tick: 3 events (all new since events are per-tick)
         events = [
-            ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=1.0),
-            ExtractionEvent(tick=1, source_id="C002", target_id="C001", amount=2.0),
+            ExtractionEvent(
+                tick=1, source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, amount=1.0
+            ),
+            ExtractionEvent(
+                tick=1, source_id=COMPRADOR_ID, target_id=PERIPHERY_WORKER_ID, amount=2.0
+            ),
             TransmissionEvent(
                 tick=1,
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 delta=0.05,
                 solidarity_strength=0.5,
             ),
@@ -488,9 +493,15 @@ class TestNarrativeDirectorPerTickEvents:
 
         # Previous tick had 3 events
         prev_events = [
-            ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=1.0),
-            ExtractionEvent(tick=1, source_id="C002", target_id="C001", amount=2.0),
-            ExtractionEvent(tick=1, source_id="C001", target_id="C002", amount=3.0),
+            ExtractionEvent(
+                tick=1, source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, amount=1.0
+            ),
+            ExtractionEvent(
+                tick=1, source_id=COMPRADOR_ID, target_id=PERIPHERY_WORKER_ID, amount=2.0
+            ),
+            ExtractionEvent(
+                tick=1, source_id=PERIPHERY_WORKER_ID, target_id=COMPRADOR_ID, amount=3.0
+            ),
         ]
         prev_state = initial_state.model_copy(update={"tick": 1, "events": prev_events})
 
@@ -498,8 +509,8 @@ class TestNarrativeDirectorPerTickEvents:
         new_events = [
             TransmissionEvent(
                 tick=2,
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 delta=0.05,
                 solidarity_strength=0.5,
             ),
@@ -540,7 +551,7 @@ class TestNarrativeDirectorDualNarratives:
         # EXCESSIVE_FORCE (SparkEvent) is a SIGNIFICANT_EVENT_TYPE
         spark_event = SparkEvent(
             tick=1,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=0.7,
             spark_probability=0.35,
         )
@@ -572,8 +583,8 @@ class TestNarrativeDirectorDualNarratives:
         # TransmissionEvent (CONSCIOUSNESS_TRANSMISSION) is NOT in SIGNIFICANT_EVENT_TYPES
         event = TransmissionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.5,
         )
@@ -644,7 +655,7 @@ class TestNarrativeDirectorDualNarratives:
 
         uprising = UprisingEvent(
             tick=5,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             trigger="spark",
             agitation=0.8,
             repression=0.6,
@@ -715,7 +726,7 @@ class TestNarrativeDirectorDualNarratives:
         # No LLM provided, use_llm=True but _llm=None
         director = NarrativeDirector(use_llm=True, llm=None)
 
-        rupture = RuptureEvent(tick=1, edge="C001->C002")
+        rupture = RuptureEvent(tick=1, edge=f"{PERIPHERY_WORKER_ID}->{COMPRADOR_ID}")
         new_state = initial_state.model_copy(
             update={
                 "tick": 1,

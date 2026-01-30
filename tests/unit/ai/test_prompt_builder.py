@@ -23,6 +23,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.events import ExtractionEvent, SparkEvent
 
 # =============================================================================
@@ -34,7 +35,7 @@ from babylon.models.events import ExtractionEvent, SparkEvent
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=0.5,
@@ -49,7 +50,7 @@ def worker() -> SocialClass:
 def owner() -> SocialClass:
     """Create a core owner social class."""
     return SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=10.0,
@@ -64,8 +65,8 @@ def owner() -> SocialClass:
 def high_tension_edge() -> Relationship:
     """Create a high-tension exploitation relationship."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=5.0,
         tension=0.8,
@@ -76,8 +77,8 @@ def high_tension_edge() -> Relationship:
 def low_tension_edge() -> Relationship:
     """Create a low-tension exploitation relationship."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=1.0,
         tension=0.2,
@@ -89,7 +90,7 @@ def state_with_entities(worker: SocialClass, owner: SocialClass) -> WorldState:
     """Create state with entities but no relationships."""
     return WorldState(
         tick=5,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[],
     )
 
@@ -103,7 +104,7 @@ def state_with_high_tension(
     """Create state with high-tension relationship."""
     return WorldState(
         tick=10,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[high_tension_edge],
     )
 
@@ -117,7 +118,7 @@ def state_with_low_tension(
     """Create state with low-tension relationship."""
     return WorldState(
         tick=10,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[low_tension_edge],
     )
 
@@ -186,8 +187,8 @@ class TestContextBlock:
         # Create typed event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -218,8 +219,8 @@ class TestContextBlock:
         # Create typed event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -248,13 +249,13 @@ class TestContextBlock:
         # Create typed events (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         spark_event = SparkEvent(
             tick=5,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             repression=0.8,
             spark_probability=0.4,
         )
@@ -310,8 +311,8 @@ class TestContextBlock:
         # Create typed event (Sprint 4.1)
         extraction_event = ExtractionEvent(
             tick=5,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -395,15 +396,15 @@ class TestTensionCalculation:
 
         # Create medium tension relationship (0.4-0.7 range)
         medium_edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=3.0,
             tension=0.5,
         )
         state = WorldState(
             tick=5,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[medium_edge],
         )
 

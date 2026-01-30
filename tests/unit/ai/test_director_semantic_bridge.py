@@ -32,6 +32,7 @@ from babylon.models import (
     SocialRole,
     WorldState,
 )
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import EventType
 from babylon.models.events import (
     CrisisEvent,
@@ -50,7 +51,7 @@ from babylon.models.events import (
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=0.5,
@@ -65,7 +66,7 @@ def worker() -> SocialClass:
 def owner() -> SocialClass:
     """Create a core owner social class."""
     return SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=10.0,
@@ -80,8 +81,8 @@ def owner() -> SocialClass:
 def exploitation_edge() -> Relationship:
     """Create an exploitation relationship."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=5.0,
         tension=0.5,
@@ -97,7 +98,7 @@ def initial_state(
     """Create initial WorldState."""
     return WorldState(
         tick=0,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
     )
 
@@ -217,8 +218,8 @@ class TestSingleEventTranslation:
 
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
 
@@ -253,8 +254,8 @@ class TestSingleEventTranslation:
 
         subsidy_event = SubsidyEvent(
             tick=1,
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             amount=5.0,
             repression_boost=0.2,
         )
@@ -372,14 +373,14 @@ class TestMultipleEventTypesCombination:
 
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         transmission_event = TransmissionEvent(
             tick=1,
-            target_id="C001",
-            source_id="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            source_id=COMPRADOR_ID,
             delta=0.05,
             solidarity_strength=0.5,
         )
@@ -413,8 +414,8 @@ class TestMultipleEventTypesCombination:
 
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         crisis_event = CrisisEvent(
@@ -426,8 +427,8 @@ class TestMultipleEventTypesCombination:
         )
         awakening_event = MassAwakeningEvent(
             tick=1,
-            target_id="C001",
-            triggering_source="C002",
+            target_id=PERIPHERY_WORKER_ID,
+            triggering_source=COMPRADOR_ID,
             old_consciousness=0.3,
             new_consciousness=0.8,
         )
@@ -478,7 +479,7 @@ class TestSemanticFallback:
         # SOLIDARITY_SPIKE might not be in SEMANTIC_MAP, triggering fallback
         spike_event = SolidaritySpikeEvent(
             tick=1,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             solidarity_gained=0.15,
             edges_affected=3,
             triggered_by="uprising",
@@ -533,13 +534,13 @@ class TestSemanticFallback:
         # ExtractionEvent is mapped, SolidaritySpikeEvent might not be
         extraction_event = ExtractionEvent(
             tick=1,
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             amount=10.0,
         )
         spike_event = SolidaritySpikeEvent(
             tick=1,
-            node_id="C001",
+            node_id=PERIPHERY_WORKER_ID,
             solidarity_gained=0.15,
             edges_affected=3,
             triggered_by="uprising",

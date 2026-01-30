@@ -32,40 +32,34 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from babylon.config.defines import GameDefines
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation_engine import step
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    ENTITY_SLOT_NAMES,
+    LABOR_ARISTOCRACY_ID,
+    METRICS_ENTITY_IDS,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType, EventType
 from babylon.models.types import EntityProtocol
 
 # =============================================================================
-# ENTITY ID CONSTANTS
+# ENTITY ID CONSTANTS (re-exported from entity_registry for backward compatibility)
 # =============================================================================
 
-PERIPHERY_WORKER_ID: Final[str] = "C001"
-"""Periphery Worker (P_w) - exploited proletariat in the global South."""
+# Re-export entity IDs - see babylon.models.entity_registry for canonical source
+# PERIPHERY_WORKER_ID, COMPRADOR_ID, CORE_BOURGEOISIE_ID, LABOR_ARISTOCRACY_ID
+# are imported above and re-exported in __all__
 
-COMPRADOR_ID: Final[str] = "C002"
-"""Comprador (P_c) - local bourgeoisie collaborating with imperialism."""
+# Backward-compatible aliases
+ENTITY_IDS: Final[list[str]] = list(METRICS_ENTITY_IDS)
+"""All entity IDs for iteration (alias for METRICS_ENTITY_IDS)."""
 
-CORE_BOURGEOISIE_ID: Final[str] = "C003"
-"""Core Bourgeoisie (C_b) - metropolitan capitalist class."""
-
-LABOR_ARISTOCRACY_ID: Final[str] = "C004"
-"""Labor Aristocracy (C_w) - privileged workers in the imperial core."""
-
-# All entity IDs for iteration
-ENTITY_IDS: Final[list[str]] = [
-    PERIPHERY_WORKER_ID,
-    COMPRADOR_ID,
-    CORE_BOURGEOISIE_ID,
-    LABOR_ARISTOCRACY_ID,
-]
-
-# Column name mapping for CSV output (semantic names)
+# Only include metrics entities for backward compatibility (original had C001-C004 only)
 ENTITY_COLUMN_PREFIX: Final[dict[str, str]] = {
-    "C001": "p_w",  # Periphery Worker
-    "C002": "p_c",  # Comprador
-    "C003": "c_b",  # Core Bourgeoisie
-    "C004": "c_w",  # Labor Aristocracy (Core Worker)
+    entity_id: ENTITY_SLOT_NAMES[entity_id] for entity_id in METRICS_ENTITY_IDS
 }
+"""Column name mapping for CSV output (filtered to metrics entities for compatibility)."""
 
 # =============================================================================
 # SIMULATION CONSTANTS

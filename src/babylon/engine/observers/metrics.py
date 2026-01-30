@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from babylon.models.entity_registry import ENTITY_SLOT_NAMES, METRICS_ENTITY_IDS
 from babylon.models.enums import EdgeType
 from babylon.models.metrics import EdgeMetrics, EntityMetrics, SweepSummary, TickMetrics
 
@@ -31,12 +32,9 @@ if TYPE_CHECKING:
     from babylon.models.entities.social_class import SocialClass
     from babylon.models.world_state import WorldState
 
-# Entity ID to slot mapping
+# Entity ID to slot mapping - derived from entity registry
 ENTITY_SLOTS: Final[dict[str, str]] = {
-    "C001": "p_w",  # Periphery Worker
-    "C002": "p_c",  # Comprador
-    "C003": "c_b",  # Core Bourgeoisie
-    "C004": "c_w",  # Labor Aristocracy
+    entity_id: ENTITY_SLOT_NAMES[entity_id] for entity_id in METRICS_ENTITY_IDS
 }
 
 # Death threshold for outcome determination

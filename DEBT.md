@@ -54,15 +54,6 @@ The former is real debt. The latter is preference. Prioritize accordingly.
 - **Blocked by**: None
 - **Priority**: Medium
 
-### metrics-magic-entity-ids
-
-- **What**: Hardcoded entity IDs `"C001"`, `"C002"`, etc. in observer code instead of deriving from enums
-- **Where**: `src/babylon/engine/observers/metrics.py:31-36`
-- **Why it exists**: Quick implementation during Sprint 4.1
-- **Fix looks like**: Derive from `SocialRole` enum or `GameDefines` configuration
-- **Blocked by**: None
-- **Priority**: Medium
-
 ### metrics-orphaned-orm-models
 
 - **What**: ORM models `Metric`, `Counter`, `TimeSeries` in `models.py` are never instantiated anywhere in codebase

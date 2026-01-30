@@ -35,6 +35,22 @@ from babylon.models.entities import (
     Trigger,
     TriggerCondition,
 )
+
+# Entity Registry (single source of truth for entity IDs)
+from babylon.models.entity_registry import (
+    ALL_ENTITY_IDS,
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    ENTITY_ID_TO_ROLE,
+    ENTITY_SLOT_NAMES,
+    LABOR_ARISTOCRACY_ID,
+    METRICS_ENTITY_IDS,
+    PERIPHERY_WORKER_ID,
+    ROLE_TO_ENTITY_ID,
+    entity_id_to_role,
+    get_slot_name,
+    role_to_entity_id,
+)
 from babylon.models.enums import (
     EdgeType,
     IntensityLevel,
@@ -125,4 +141,17 @@ __all__ = [
     "NodeFilter",
     "TraversalQuery",
     "TraversalResult",
+    # Entity Registry (single source of truth for entity IDs)
+    "PERIPHERY_WORKER_ID",
+    "COMPRADOR_ID",
+    "CORE_BOURGEOISIE_ID",
+    "LABOR_ARISTOCRACY_ID",
+    "ROLE_TO_ENTITY_ID",
+    "ENTITY_ID_TO_ROLE",
+    "ENTITY_SLOT_NAMES",
+    "METRICS_ENTITY_IDS",
+    "ALL_ENTITY_IDS",
+    "role_to_entity_id",
+    "entity_id_to_role",
+    "get_slot_name",
 ]

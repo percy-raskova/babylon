@@ -268,18 +268,26 @@ class TestFactTableSpec:
         )
 
     def test_fact_classes_are_valid_orm_models(self) -> None:
-        """fact_class should reference valid SQLAlchemy models."""
+        """fact_class should reference valid SQLAlchemy models.
+
+        Note:
+            Uses DeclarativeBase instead of NormalizedBase for detection because
+            importlib.reload() in test_database_config.py creates a new NormalizedBase
+            class, breaking issubclass() checks for models that inherited from the
+            original NormalizedBase. DeclarativeBase (from SQLAlchemy) is never reloaded.
+        """
+        from sqlalchemy.orm import DeclarativeBase
+
         from babylon.data.census.loader_3nf import FACT_TABLE_SPECS
-        from babylon.data.reference.database import NormalizedBase
 
         for spec in FACT_TABLE_SPECS:
             # Should be a class with __tablename__
             assert hasattr(spec.fact_class, "__tablename__"), (
                 f"{spec.table_id} fact_class missing __tablename__"
             )
-            # Should be a subclass of NormalizedBase
-            assert issubclass(spec.fact_class, NormalizedBase), (
-                f"{spec.table_id} fact_class not a NormalizedBase subclass"
+            # Should be a subclass of DeclarativeBase (via NormalizedBase)
+            assert issubclass(spec.fact_class, DeclarativeBase), (
+                f"{spec.table_id} fact_class not a DeclarativeBase subclass"
             )
 
 

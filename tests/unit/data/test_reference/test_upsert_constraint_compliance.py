@@ -68,8 +68,15 @@ def find_on_conflict_columns(loader_path: Path) -> Iterator[tuple[str, frozenset
 
 
 def get_all_schema_models() -> list[type]:
-    """Get all SQLAlchemy models from schema module via __all__ or introspection."""
-    from babylon.data.reference.database import NormalizedBase
+    """Get all SQLAlchemy models from schema module via __all__ or introspection.
+
+    Note:
+        Uses DeclarativeBase instead of NormalizedBase for detection because
+        importlib.reload() in test_database_config.py creates a new NormalizedBase
+        class, breaking issubclass() checks for models that inherited from the
+        original NormalizedBase. DeclarativeBase (from SQLAlchemy) is never reloaded.
+    """
+    from sqlalchemy.orm import DeclarativeBase
 
     models: list[type] = []
     for name in dir(schema):
@@ -77,8 +84,8 @@ def get_all_schema_models() -> list[type]:
         if (
             isinstance(obj, type)
             and hasattr(obj, "__tablename__")
-            and issubclass(obj, NormalizedBase)
-            and obj is not NormalizedBase
+            and issubclass(obj, DeclarativeBase)
+            and obj.__module__ == "babylon.data.reference.schema"
         ):
             models.append(obj)
     return models

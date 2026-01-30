@@ -34,35 +34,30 @@ The former is real debt. The latter is preference. Prioritize accordingly.
 
 ## Debts
 
-### entity-id-proliferation
+### entity-id-proliferation ✅ RESOLVED
 
-- **What**: Hardcoded entity ID strings (`"C001"`, `"C002"`, etc.) remain in test files
-  and some docstring-only source files. Core production code has been refactored.
-- **Where**: Remaining locations after Phase 1 completion:
-  - 78 test files in `tests/` (heaviest: `test_inmemory_adapter.py` with 122 occurrences)
-  - 6 source files with docstring-only occurrences (documentation, not code):
-    - `src/babylon/engine/adapters/inmemory_adapter.py` (docstrings)
-    - `src/babylon/engine/adapters/subgraph_view.py` (docstrings)
-    - `src/babylon/engine/adapters/subgraph_filter.py` (docstrings)
-    - `src/babylon/models/graph.py` (docstrings)
-    - `src/babylon/models/events.py` (docstrings)
-    - `src/babylon/models/types.py` (docstrings)
-- **Completed**:
-  - ✅ `src/babylon/engine/scenarios.py` - 35 occurrences refactored
-  - ✅ `src/babylon/engine/factories.py` - 4 occurrences refactored
-  - ✅ `src/babylon/engine/systems/decomposition.py` - bug fixed + refactored
-  - ✅ `tests/factories/domain.py` - DomainFactory defaults use constants
-  - ✅ `tools/shared.py` - already using entity_registry
-- **Why it exists**: Entity IDs were introduced ad-hoc before a registry pattern was established.
-  The `entity_registry` module was created to address the DRY violation between `metrics.py`
-  and `tools/shared.py`, and core production code has now been migrated.
-- **Fix looks like**:
-  1. ~~**Phase 1 (Source)**~~: ✅ COMPLETE - Core source files use entity_registry constants
-  1. **Phase 2 (Tests)**: Update 78 test files to use constants (can be done incrementally)
-  1. ~~**Phase 3 (Tools)**~~: ✅ COMPLETE - tools/shared.py already using entity_registry
-- **Blocked by**: None
-- **Priority**: Medium (core production code fixed; test files are lower priority since
-  they don't affect runtime behavior, but should be migrated for consistency)
+- **Status**: RESOLVED (2026-01-30)
+- **What**: Hardcoded entity ID strings (`"C001"`, `"C002"`, etc.) proliferated across
+  production code and test files before a registry pattern was established.
+- **Resolution**: Created `babylon.models.entity_registry` module with canonical constants
+  and migrated all production code and test files to use these constants.
+- **Completed Phases**:
+  - ✅ **Phase 0**: Bug fix in `decomposition.py`
+  - ✅ **Phase 1**: Source file migration (`scenarios.py`, `factories.py`)
+  - ✅ **Phase 2A**: Test DomainFactory (`tests/factories/domain.py`)
+  - ✅ **Phase 2B**: Test file migration (78+ test files across 10 batches)
+  - ✅ **Phase 3**: Tools (`tools/shared.py` already using registry)
+- **Remaining legitimate occurrences** (~280 across 30 files, all intentional):
+  - Docstrings/comments documenting entity ID mappings
+  - Pattern validation tests (testing ID format `^C[0-9]{3}$`)
+  - Error message assertions (testing output format)
+  - Generic topology nodes (sequential test identifiers for graph algorithms)
+  - Test-local constants for isolated mechanics tests
+  - Territory IDs (`T001`-`T005`) which have no canonical registry
+- **Key Files**:
+  - `src/babylon/models/entity_registry.py` - Single source of truth
+  - Exports: `PERIPHERY_WORKER_ID`, `COMPRADOR_ID`, `CORE_BOURGEOISIE_ID`,
+    `LABOR_ARISTOCRACY_ID`, `CARCERAL_ENFORCER_ID`, `INTERNAL_PROLETARIAT_ID`
 
 ### metrics-singleton-vs-di
 

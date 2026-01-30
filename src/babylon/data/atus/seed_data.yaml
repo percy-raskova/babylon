@@ -1,0 +1,108 @@
+# ATUS Reproductive Labor Seed Data
+# Source: BLS American Time Use Survey, Table A-1
+# URL: https://www.bls.gov/tus/tables/a1-2022.htm
+# Year: 2022 (latest available at time of implementation)
+#
+# Values are DAILY HOURS (average for all persons age 15+)
+# Loader converts to weekly: daily_hours * 7
+#
+# Note: BLS Table A-1 reports average hours per day for persons who engaged
+# in the activity. For population averages, we use the "All persons" column
+# which accounts for participation rate (not everyone does every activity).
+
+metadata:
+  source_code: "ATUS"
+  source_name: "American Time Use Survey"
+  source_agency: "Bureau of Labor Statistics"
+  source_url: "https://www.bls.gov/tus/"
+  source_year: 2022
+  coverage_start_year: 2003
+  coverage_end_year: 2022
+  description: |
+    Pre-aggregated national averages from BLS ATUS Table A-1.
+    Used for Department III shadow labor calculations when ATUS microdata
+    is not available. Values represent average daily hours for all persons
+    age 15 and over, converted to weekly hours at load time.
+
+# Gender codes matching DimGender
+gender_codes:
+  total: "T"
+  male: "M"
+  female: "F"
+
+# National averages by category (hours per day)
+# Structure: category -> gender -> daily_hours
+national_averages:
+  # HOUSEHOLD ACTIVITIES (ATUS 02xx)
+  housework:
+    description: "Housework including cleaning, laundry, interior maintenance"
+    # Sum of: 0201 + 0203 + 0204 + 0205 + 0206 + 0207 + 0208 + 0209
+    # From Table A-1: Household activities (partial)
+    total: 0.73
+    male: 0.47
+    female: 0.97
+    participation_rate:
+      total: 0.82
+      male: 0.71
+      female: 0.92
+
+  cooking:
+    description: "Food and drink preparation (ATUS 0202)"
+    # From Table A-1: Food preparation and cleanup
+    total: 0.67
+    male: 0.40
+    female: 0.92
+    participation_rate:
+      total: 0.72
+      male: 0.51
+      female: 0.91
+
+  # CARING FOR HOUSEHOLD MEMBERS (ATUS 03xx)
+  childcare:
+    description: "Caring for and helping children (household and non-household)"
+    # Sum of: 0301 + 0302 + 0303 + 0401 + 0402 + 0403
+    # From Table A-1: Caring for and helping household members (children)
+    # Note: BLS averages are for all adults, not just parents
+    total: 0.40
+    male: 0.27
+    female: 0.53
+    participation_rate:
+      total: 0.23
+      male: 0.18
+      female: 0.28
+
+  eldercare:
+    description: "Caring for and helping adults (household and non-household)"
+    # Sum of: 0304 + 0305 + 0404 + 0405
+    # From Table A-1: Caring for and helping household members (adults)
+    total: 0.05
+    male: 0.03
+    female: 0.07
+    participation_rate:
+      total: 0.04
+      male: 0.03
+      female: 0.05
+
+  # Future: emotional_support (not captured in current ATUS categories)
+  # Would require detailed analysis of "Socializing" or custom categorization
+
+# Shadow wage data (for ShadowLaborService)
+shadow_wage:
+  description: "BLS Occupational Employment Statistics - Home Health and Personal Care Aides"
+  source: "BLS OES May 2023"
+  soc_code: "31-1120"
+  median_hourly: 15.43
+  mean_hourly: 16.12
+
+# Conversion constants
+conversions:
+  daily_to_weekly_multiplier: 7
+  minutes_to_hours_divisor: 60
+
+# Notes on data limitations
+notes:
+  - "ATUS samples ~10,000 respondents annually, too small for county-level estimates"
+  - "Published Table A-1 provides national averages only"
+  - "County variation would require restricted-use ATUS microdata"
+  - "Values here are calibration coefficients for MVP; real county data is Epoch 3"
+  - "Participation rates are approximate (not all categories track separately)"

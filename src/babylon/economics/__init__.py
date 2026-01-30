@@ -50,6 +50,7 @@ from babylon.economics.reproduction import (
     ImperialRentCalculator,
     ImperialRentResult,
     PeripheryReproductionBasket,
+    RentStructure,
 )
 
 # Shadow labor (Department III visibility)
@@ -80,6 +81,7 @@ __all__ = [
     "ImperialRentCalculator",
     "ImperialRentResult",
     "PeripheryReproductionBasket",
+    "RentStructure",
     # Shadow labor (Department III visibility)
     "ShadowLaborConfig",
     "ShadowLaborResult",

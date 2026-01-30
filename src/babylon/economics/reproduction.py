@@ -58,6 +58,62 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 from babylon.economics.tensor import ValueTensor4x3
 from babylon.models.types import Currency
 
+# Heuristic coefficient for externalized reproduction costs (Meillassoux "free gift")
+# TODO(Phase 3): Wire to Demographics module for migrant labor data
+_REPRO_EXTERNALIZATION_FACTOR = 0.2  # 20% of UE rent comes from avoided child-rearing
+
+
+class RentStructure(BaseModel):
+    """Detailed breakdown of imperial rent by source (The Rent Trinity).
+
+    Sprint 2.3 introduces a three-component model of imperial rent:
+
+    1. **Φ_UE (Unequal Exchange)** - Andrea Ricci: Value captured via wage gap
+       between core and periphery. When core wages exceed value produced,
+       the differential represents value transferred from periphery.
+
+    2. **Φ_Shadow (Shadow Labor)** - Leopoldina Fortunati: Unpaid domestic
+       reproductive labor appropriated as surplus. The invisible subsidy
+       that allows capital to pay below reproduction costs.
+
+    3. **Φ_Repro (Externalized Reproduction)** - Claude Meillassoux: The "free
+       gift" of migrant labor. Workers raised/trained in periphery, costs
+       borne by periphery, productive years harvested by core.
+
+    **Formula:**
+        Φ = Φ_UE + Φ_Shadow + Φ_Repro
+
+    Args:
+        total_phi: Total imperial rent (sum of all components).
+        component_ue: Unequal exchange component.
+        component_shadow: Shadow labor component.
+        component_repro: Externalized reproduction component.
+
+    Example:
+        >>> structure = RentStructure(
+        ...     total_phi=80.0,
+        ...     component_ue=50.0,
+        ...     component_shadow=20.0,
+        ...     component_repro=10.0,
+        ... )
+        >>> structure.total_phi
+        80.0
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    total_phi: float
+    """Total imperial rent Φ = Φ_UE + Φ_Shadow + Φ_Repro."""
+
+    component_ue: float
+    """Φ_UE: Unequal exchange via wage gap (Ricci)."""
+
+    component_shadow: float
+    """Φ_Shadow: Shadow labor subsidy from unpaid domestic work (Fortunati)."""
+
+    component_repro: float
+    """Φ_Repro: Externalized reproduction costs of migrant labor (Meillassoux)."""
+
 
 class PeripheryReproductionBasket(BaseModel):
     """Cost of reproducing a worker in the global periphery (Third World).
@@ -256,6 +312,74 @@ class ImperialRentCalculator:
         """
         return Currency(self._periphery_basket.annual_total)
 
+    @classmethod
+    def default(cls) -> ImperialRentCalculator:
+        """Create calculator with default periphery basket (~$2000/year).
+
+        Returns:
+            ImperialRentCalculator with standard World Bank periphery baseline.
+        """
+        return cls(PeripheryReproductionBasket.default())
+
+    def calculate_rent_trinity(
+        self,
+        tensor: ValueTensor4x3,
+        wage_gap_ratio: float,
+    ) -> RentStructure:
+        """Calculate imperial rent with three-component breakdown.
+
+        The Rent Trinity aggregates three sources of value capture:
+
+        1. **Φ_UE** = v_paid × (wage_gap - 1.0), if wage_gap > 1.0
+           Unequal exchange via price distortion (Ricci).
+
+        2. **Φ_Shadow** = tensor.shadow_subsidy
+           Domestic shadow labor appropriation (Fortunati).
+
+        3. **Φ_Repro** = Φ_UE × 0.2 (heuristic placeholder)
+           Externalized reproduction "free gift" (Meillassoux).
+           TODO(Phase 3): Wire to Demographics module.
+
+        Args:
+            tensor: The Marxian value tensor with visibility_g33 set.
+            wage_gap_ratio: Core wages / Periphery wages ratio.
+                1.0 = parity, 1.5 = core 50% higher, etc.
+
+        Returns:
+            RentStructure with total_phi and component breakdown.
+
+        Example:
+            >>> calculator = ImperialRentCalculator.default()
+            >>> tensor = ValueTensor4x3(...)  # with visibility_g33=0.5
+            >>> result = calculator.calculate_rent_trinity(tensor, wage_gap_ratio=1.5)
+            >>> result.total_phi  # Expanded view of exploitation
+            80.0
+        """
+        # Component 1: Unequal Exchange (Ricci)
+        # Φ_UE = v_paid × (wage_gap - 1.0), clamped to non-negative
+        v_paid = float(tensor.monetized_v)
+        wage_gap_excess = max(0.0, wage_gap_ratio - 1.0)
+        phi_ue = v_paid * wage_gap_excess
+
+        # Component 2: Shadow Labor (Fortunati)
+        # Directly from tensor's computed property
+        phi_shadow = float(tensor.shadow_subsidy)
+
+        # Component 3: Externalized Reproduction (Meillassoux)
+        # Heuristic: 20% of UE rent comes from avoided child-rearing costs
+        # TODO(Phase 3): Wire to Demographics module for migrant labor data
+        phi_repro = phi_ue * _REPRO_EXTERNALIZATION_FACTOR
+
+        # Total rent is the sum of all three components
+        total_phi = phi_ue + phi_shadow + phi_repro
+
+        return RentStructure(
+            total_phi=total_phi,
+            component_ue=phi_ue,
+            component_shadow=phi_shadow,
+            component_repro=phi_repro,
+        )
+
 
 class ImperialRentResult(BaseModel):
     """Result of imperial rent calculation for a county-year.
@@ -341,4 +465,5 @@ __all__ = [
     "ImperialRentCalculator",
     "ImperialRentResult",
     "PeripheryReproductionBasket",
+    "RentStructure",
 ]

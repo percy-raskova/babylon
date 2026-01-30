@@ -15,6 +15,7 @@ from tests.constants import TestConstants
 
 from babylon.models import EdgeType, Relationship, SocialClass, SocialRole
 from babylon.models.entities.territory import Territory
+from babylon.models.entity_registry import COMPRADOR_ID, PERIPHERY_WORKER_ID
 from babylon.models.enums import OperationalProfile, SectorType
 from babylon.models.world_state import WorldState
 
@@ -30,7 +31,7 @@ TC = TestConstants
 def worker() -> SocialClass:
     """Create a periphery worker social class."""
     return SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Periphery Worker",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         wealth=TC.Probability.MIDPOINT,
@@ -44,7 +45,7 @@ def worker() -> SocialClass:
 def owner() -> SocialClass:
     """Create a core owner social class."""
     return SocialClass(
-        id="C002",
+        id=COMPRADOR_ID,
         name="Core Owner",
         role=SocialRole.CORE_BOURGEOISIE,
         wealth=TC.Probability.MIDPOINT,
@@ -58,8 +59,8 @@ def owner() -> SocialClass:
 def exploitation_edge() -> Relationship:
     """Create an exploitation relationship from worker to owner."""
     return Relationship(
-        source_id="C001",
-        target_id="C002",
+        source_id=PERIPHERY_WORKER_ID,
+        target_id=COMPRADOR_ID,
         edge_type=EdgeType.EXPLOITATION,
         value_flow=TC.EconomicFlow.NO_FLOW,
         tension=TC.EconomicFlow.NO_TENSION,
@@ -75,7 +76,7 @@ def two_node_state(
     """Create a minimal WorldState with two nodes and one edge."""
     return WorldState(
         tick=0,
-        entities={"C001": worker, "C002": owner},
+        entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         relationships=[exploitation_edge],
     )
 
@@ -101,11 +102,11 @@ class TestWorldStateCreation:
         """Can create WorldState with entities."""
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
         )
         assert len(state.entities) == 2
-        assert "C001" in state.entities
-        assert "C002" in state.entities
+        assert PERIPHERY_WORKER_ID in state.entities
+        assert COMPRADOR_ID in state.entities
 
     def test_state_with_relationships(
         self,
@@ -116,12 +117,12 @@ class TestWorldStateCreation:
         """Can create WorldState with relationships."""
         state = WorldState(
             tick=0,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[exploitation_edge],
         )
         assert len(state.relationships) == 1
-        assert state.relationships[0].source_id == "C001"
-        assert state.relationships[0].target_id == "C002"
+        assert state.relationships[0].source_id == PERIPHERY_WORKER_ID
+        assert state.relationships[0].target_id == COMPRADOR_ID
 
     def test_state_with_event_log(self) -> None:
         """Can create WorldState with event log."""
@@ -190,26 +191,26 @@ class TestWorldStateToGraph:
     def test_to_graph_preserves_node_ids(self, two_node_state: WorldState) -> None:
         """Graph nodes have correct IDs."""
         G = two_node_state.to_graph()
-        assert "C001" in G.nodes
-        assert "C002" in G.nodes
+        assert PERIPHERY_WORKER_ID in G.nodes
+        assert COMPRADOR_ID in G.nodes
 
     def test_to_graph_preserves_node_data(self, two_node_state: WorldState) -> None:
         """Graph nodes have entity data as attributes."""
         G = two_node_state.to_graph()
-        assert G.nodes["C001"]["name"] == "Periphery Worker"
-        assert G.nodes["C001"]["wealth"] == TC.Probability.MIDPOINT
-        assert G.nodes["C002"]["name"] == "Core Owner"
+        assert G.nodes[PERIPHERY_WORKER_ID]["name"] == "Periphery Worker"
+        assert G.nodes[PERIPHERY_WORKER_ID]["wealth"] == TC.Probability.MIDPOINT
+        assert G.nodes[COMPRADOR_ID]["name"] == "Core Owner"
 
     def test_to_graph_preserves_edge_direction(self, two_node_state: WorldState) -> None:
         """Graph edges have correct direction."""
         G = two_node_state.to_graph()
-        assert G.has_edge("C001", "C002")
-        assert not G.has_edge("C002", "C001")
+        assert G.has_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID)
+        assert not G.has_edge(COMPRADOR_ID, PERIPHERY_WORKER_ID)
 
     def test_to_graph_preserves_edge_data(self, two_node_state: WorldState) -> None:
         """Graph edges have relationship data as attributes."""
         G = two_node_state.to_graph()
-        edge_data = G.edges["C001", "C002"]
+        edge_data = G.edges[PERIPHERY_WORKER_ID, COMPRADOR_ID]
         assert edge_data["edge_type"] == EdgeType.EXPLOITATION
         assert edge_data["value_flow"] == TC.EconomicFlow.NO_FLOW
         assert edge_data["tension"] == TC.EconomicFlow.NO_TENSION
@@ -243,16 +244,16 @@ class TestWorldStateFromGraph:
         G = two_node_state.to_graph()
         state = WorldState.from_graph(G, tick=0)
         assert len(state.entities) == 2
-        assert "C001" in state.entities
-        assert state.entities["C001"].name == "Periphery Worker"
+        assert PERIPHERY_WORKER_ID in state.entities
+        assert state.entities[PERIPHERY_WORKER_ID].name == "Periphery Worker"
 
     def test_from_graph_preserves_relationships(self, two_node_state: WorldState) -> None:
         """from_graph() reconstructs relationships correctly."""
         G = two_node_state.to_graph()
         state = WorldState.from_graph(G, tick=0)
         assert len(state.relationships) == 1
-        assert state.relationships[0].source_id == "C001"
-        assert state.relationships[0].target_id == "C002"
+        assert state.relationships[0].source_id == PERIPHERY_WORKER_ID
+        assert state.relationships[0].target_id == COMPRADOR_ID
 
     def test_round_trip_preserves_state(self, two_node_state: WorldState) -> None:
         """to_graph() -> from_graph() round trip preserves state."""
@@ -298,8 +299,8 @@ class TestWorldStateAddEntity:
         """add_entity() includes the new entity."""
         state = WorldState(tick=0)
         new_state = state.add_entity(worker)
-        assert "C001" in new_state.entities
-        assert new_state.entities["C001"].name == "Periphery Worker"
+        assert PERIPHERY_WORKER_ID in new_state.entities
+        assert new_state.entities[PERIPHERY_WORKER_ID].name == "Periphery Worker"
 
     def test_add_entity_preserves_tick(
         self,
@@ -316,10 +317,10 @@ class TestWorldStateAddEntity:
         owner: SocialClass,
     ) -> None:
         """add_entity() preserves existing entities."""
-        state = WorldState(tick=0, entities={"C001": worker})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker})
         new_state = state.add_entity(owner)
-        assert "C001" in new_state.entities
-        assert "C002" in new_state.entities
+        assert PERIPHERY_WORKER_ID in new_state.entities
+        assert COMPRADOR_ID in new_state.entities
 
 
 @pytest.mark.topology
@@ -333,7 +334,7 @@ class TestWorldStateAddRelationship:
         exploitation_edge: Relationship,
     ) -> None:
         """add_relationship() returns a new WorldState instance."""
-        state = WorldState(tick=0, entities={"C001": worker, "C002": owner})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner})
         new_state = state.add_relationship(exploitation_edge)
         assert new_state is not state
 
@@ -344,7 +345,7 @@ class TestWorldStateAddRelationship:
         exploitation_edge: Relationship,
     ) -> None:
         """add_relationship() does not modify the original state."""
-        state = WorldState(tick=0, entities={"C001": worker, "C002": owner})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner})
         new_state = state.add_relationship(exploitation_edge)
         assert len(state.relationships) == 0
         assert len(new_state.relationships) == 1
@@ -356,10 +357,10 @@ class TestWorldStateAddRelationship:
         exploitation_edge: Relationship,
     ) -> None:
         """add_relationship() includes the new relationship."""
-        state = WorldState(tick=0, entities={"C001": worker, "C002": owner})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner})
         new_state = state.add_relationship(exploitation_edge)
         assert len(new_state.relationships) == 1
-        assert new_state.relationships[0].source_id == "C001"
+        assert new_state.relationships[0].source_id == PERIPHERY_WORKER_ID
 
 
 # =============================================================================
@@ -488,12 +489,12 @@ class TestWorldStateTerritoriesField:
         """Territories and entities can coexist in WorldState."""
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": university_territory},
         )
         assert len(state.entities) == 1
         assert len(state.territories) == 1
-        assert "C001" in state.entities
+        assert PERIPHERY_WORKER_ID in state.entities
         assert "T001" in state.territories
 
 
@@ -578,9 +579,9 @@ class TestWorldStateToGraphWithTerritories:
         worker: SocialClass,
     ) -> None:
         """Entity nodes have _node_type='social_class' marker."""
-        state = WorldState(tick=0, entities={"C001": worker})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker})
         G = state.to_graph()
-        assert G.nodes["C001"]["_node_type"] == "social_class"
+        assert G.nodes[PERIPHERY_WORKER_ID]["_node_type"] == "social_class"
 
     def test_to_graph_preserves_territory_data(
         self,
@@ -602,12 +603,12 @@ class TestWorldStateToGraphWithTerritories:
         """to_graph() handles mixed entity and territory nodes."""
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": university_territory},
         )
         G = state.to_graph()
         assert G.number_of_nodes() == 2
-        assert G.nodes["C001"]["_node_type"] == "social_class"
+        assert G.nodes[PERIPHERY_WORKER_ID]["_node_type"] == "social_class"
         assert G.nodes["T001"]["_node_type"] == "territory"
 
 
@@ -635,14 +636,14 @@ class TestWorldStateFromGraphWithTerritories:
         """from_graph() reconstructs both entities and territories."""
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             territories={"T001": university_territory},
         )
         G = state.to_graph()
         restored = WorldState.from_graph(G, tick=1)
         assert len(restored.entities) == 1
         assert len(restored.territories) == 1
-        assert "C001" in restored.entities
+        assert PERIPHERY_WORKER_ID in restored.entities
         assert "T001" in restored.territories
 
     def test_round_trip_preserves_territories(
@@ -707,7 +708,7 @@ class TestWorldStateEconomyIntegration:
         )
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             economy=custom_economy,
         )
         assert state.economy.imperial_rent_pool == 50.0
@@ -728,7 +729,7 @@ class TestWorldStateEconomyIntegration:
         )
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             economy=custom_economy,
         )
         G = state.to_graph()
@@ -753,7 +754,7 @@ class TestWorldStateEconomyIntegration:
         )
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             economy=custom_economy,
         )
         G = state.to_graph()
@@ -791,13 +792,13 @@ class TestWorldStateEconomyIntegration:
             current_repression_level=0.8,
         )
         relationship = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
         state = WorldState(
             tick=5,
-            entities={"C001": worker, "C002": owner},
+            entities={PERIPHERY_WORKER_ID: worker, COMPRADOR_ID: owner},
             relationships=[relationship],
             economy=custom_economy,
         )
@@ -1024,7 +1025,7 @@ class TestStateFinancesIntegration:
         finances = {"USA": StateFinance(treasury=1000.0, debt_level=500.0)}
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             state_finances=finances,
         )
         assert "USA" in state.state_finances
@@ -1044,7 +1045,7 @@ class TestStateFinancesIntegration:
         finances = {"USA": StateFinance(treasury=500.0, police_budget=20.0)}
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             state_finances=finances,
         )
         G = state.to_graph()
@@ -1064,7 +1065,7 @@ class TestStateFinancesIntegration:
         }
         state = WorldState(
             tick=0,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             state_finances=finances,
         )
         G = state.to_graph()
@@ -1095,7 +1096,7 @@ class TestStateFinancesIntegration:
         }
         state = WorldState(
             tick=5,
-            entities={"C001": worker},
+            entities={PERIPHERY_WORKER_ID: worker},
             state_finances=finances,
         )
 

@@ -18,6 +18,11 @@ from tests.constants import TestConstants
 
 # These imports should fail until the model is implemented
 from babylon.models import Relationship
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType
 
 # Aliases for readability
@@ -35,12 +40,12 @@ class TestRelationshipCreation:
     def test_minimal_creation(self) -> None:
         """Can create Relationship with just required fields."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C002"
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == COMPRADOR_ID
         assert edge.edge_type == EdgeType.EXPLOITATION
         # Check defaults
         assert edge.value_flow == TC.EconomicFlow.NO_FLOW
@@ -48,16 +53,16 @@ class TestRelationshipCreation:
 
     def test_phase1_exploitation_edge(self) -> None:
         """Create the Phase 1 exploitation edge from the blueprint."""
-        # Worker (C001) is exploited by Owner (C002)
+        # Worker (PERIPHERY_WORKER_ID) is exploited by Owner (COMPRADOR_ID)
         # Value flows from worker to owner
         edge = Relationship(
-            source_id="C001",  # Worker produces value
-            target_id="C002",  # Owner extracts value
+            source_id=PERIPHERY_WORKER_ID,  # Worker produces value
+            target_id=COMPRADOR_ID,  # Owner extracts value
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,  # Φ = labor_value - wage = 100 - 20
         )
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C002"
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == COMPRADOR_ID
         assert edge.edge_type == EdgeType.EXPLOITATION
         assert edge.value_flow == TC.EconomicFlow.PHASE1_EXTRACTION
 
@@ -74,8 +79,8 @@ class TestRelationshipCreation:
     def test_with_tension(self) -> None:
         """Can create with explicit tension level."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=TC.EconomicFlow.HIGH_TENSION,  # High tension due to exploitation
         )
@@ -84,8 +89,8 @@ class TestRelationshipCreation:
     def test_with_description(self) -> None:
         """Can create with optional description."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             description="Imperial rent extraction from periphery to core",
         )
@@ -94,8 +99,8 @@ class TestRelationshipCreation:
     def test_solidarity_edge(self) -> None:
         """Can create solidarity relationship."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C003",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             edge_type=EdgeType.SOLIDARITY,
             tension=TC.EconomicFlow.NO_TENSION,  # Solidarity reduces tension
         )
@@ -105,8 +110,8 @@ class TestRelationshipCreation:
     def test_repression_edge(self) -> None:
         """Can create repression relationship."""
         edge = Relationship(
-            source_id="C002",  # Bourgeoisie
-            target_id="C001",  # Proletariat
+            source_id=COMPRADOR_ID,  # Bourgeoisie
+            target_id=PERIPHERY_WORKER_ID,  # Proletariat
             edge_type=EdgeType.REPRESSION,
             tension=TC.EconomicFlow.CRITICAL_TENSION,  # High tension from repression
         )
@@ -127,8 +132,8 @@ class TestRelationshipValidation:
         """Entities cannot have a relationship with themselves."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C001",  # Same as source
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=PERIPHERY_WORKER_ID,  # Same as source
                 edge_type=EdgeType.EXPLOITATION,
             )
 
@@ -136,8 +141,8 @@ class TestRelationshipValidation:
         """Value flow cannot be negative (Currency constraint)."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.EXPLOITATION,
                 value_flow=-10.0,
             )
@@ -146,15 +151,15 @@ class TestRelationshipValidation:
         """Tension must be [0.0, 1.0] (Intensity constraint)."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.EXPLOITATION,
                 tension=-0.1,
             )
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.EXPLOITATION,
                 tension=1.5,
             )
@@ -163,16 +168,16 @@ class TestRelationshipValidation:
         """Edge type must be a valid EdgeType enum value."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type="friendship",  # type: ignore[arg-type]
             )
 
     def test_accepts_edge_type_string_values(self) -> None:
         """Edge type accepts string values that match enum values."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type="exploitation",  # type: ignore[arg-type]
         )
         assert edge.edge_type == EdgeType.EXPLOITATION
@@ -181,7 +186,7 @@ class TestRelationshipValidation:
         """Source ID is a required field."""
         with pytest.raises(ValidationError):
             Relationship(
-                target_id="C002",
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.EXPLOITATION,
             )  # type: ignore[call-arg]
 
@@ -189,7 +194,7 @@ class TestRelationshipValidation:
         """Target ID is a required field."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
+                source_id=PERIPHERY_WORKER_ID,
                 edge_type=EdgeType.EXPLOITATION,
             )  # type: ignore[call-arg]
 
@@ -197,16 +202,16 @@ class TestRelationshipValidation:
         """Edge type is a required field."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
             )  # type: ignore[call-arg]
 
     def test_extra_fields_forbidden(self) -> None:
         """Unknown fields are rejected."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.EXPLOITATION,
                 unknown_field="value",  # type: ignore[call-arg]
             )
@@ -224,8 +229,8 @@ class TestRelationshipDefaults:
     def test_default_value_flow(self) -> None:
         """Default value_flow is 0.0 (no value transfer)."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
         )
         assert edge.value_flow == TC.EconomicFlow.NO_FLOW
@@ -233,8 +238,8 @@ class TestRelationshipDefaults:
     def test_default_tension(self) -> None:
         """Default tension is 0.0 (dormant)."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
         )
         assert edge.tension == TC.EconomicFlow.NO_TENSION
@@ -242,8 +247,8 @@ class TestRelationshipDefaults:
     def test_default_description(self) -> None:
         """Default description is empty string."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
         assert edge.description == ""
@@ -261,32 +266,32 @@ class TestRelationshipSerialization:
     def test_serialize_to_json(self) -> None:
         """Relationship serializes to valid JSON."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
             tension=TC.EconomicFlow.MODERATE_TENSION,
         )
         json_str = edge.model_dump_json()
-        assert "C001" in json_str
-        assert "C002" in json_str
+        assert PERIPHERY_WORKER_ID in json_str
+        assert COMPRADOR_ID in json_str
         assert "exploitation" in json_str
 
     def test_deserialize_from_json(self) -> None:
         """Relationship can be restored from JSON."""
-        json_str = """
-        {
-            "source_id": "C001",
-            "target_id": "C002",
+        json_str = f"""
+        {{
+            "source_id": "{PERIPHERY_WORKER_ID}",
+            "target_id": "{COMPRADOR_ID}",
             "edge_type": "exploitation",
             "value_flow": 80.0,
             "tension": 0.5,
             "description": ""
-        }
+        }}
         """
         edge = Relationship.model_validate_json(json_str)
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C002"
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == COMPRADOR_ID
         assert edge.edge_type == EdgeType.EXPLOITATION
         assert edge.value_flow == TC.EconomicFlow.PHASE1_EXTRACTION
         assert edge.tension == TC.EconomicFlow.MODERATE_TENSION
@@ -294,8 +299,8 @@ class TestRelationshipSerialization:
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
         original = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
             tension=TC.EconomicFlow.HIGH_TENSION,
@@ -314,15 +319,15 @@ class TestRelationshipSerialization:
     def test_dict_conversion(self) -> None:
         """Relationship converts to dict for database storage."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
         )
         data = edge.model_dump()
 
-        assert data["source_id"] == "C001"
-        assert data["target_id"] == "C002"
+        assert data["source_id"] == PERIPHERY_WORKER_ID
+        assert data["target_id"] == COMPRADOR_ID
         assert data["edge_type"] == "exploitation"
         assert data["value_flow"] == TC.EconomicFlow.PHASE1_EXTRACTION
 
@@ -341,8 +346,8 @@ class TestRelationshipNetworkX:
         import networkx as nx
 
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
         )
@@ -354,9 +359,11 @@ class TestRelationshipNetworkX:
             **edge.model_dump(exclude={"source_id", "target_id"}),
         )
 
-        assert G.has_edge("C001", "C002")
-        assert G["C001"]["C002"]["value_flow"] == TC.EconomicFlow.PHASE1_EXTRACTION
-        assert G["C001"]["C002"]["edge_type"] == "exploitation"
+        assert G.has_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID)
+        assert (
+            G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["value_flow"] == TC.EconomicFlow.PHASE1_EXTRACTION
+        )
+        assert G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["edge_type"] == "exploitation"
 
     def test_can_restore_from_edge_data(self) -> None:
         """Relationship can be restored from NetworkX edge attributes."""
@@ -364,8 +371,8 @@ class TestRelationshipNetworkX:
 
         G = nx.DiGraph()
         G.add_edge(
-            "C001",
-            "C002",
+            PERIPHERY_WORKER_ID,
+            COMPRADOR_ID,
             edge_type="exploitation",
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
             tension=TC.EconomicFlow.MODERATE_TENSION,
@@ -379,8 +386,8 @@ class TestRelationshipNetworkX:
             **edge_data,
         )
 
-        assert restored.source_id == "C001"
-        assert restored.target_id == "C002"
+        assert restored.source_id == PERIPHERY_WORKER_ID
+        assert restored.target_id == COMPRADOR_ID
         assert restored.edge_type == EdgeType.EXPLOITATION
         assert restored.value_flow == TC.EconomicFlow.PHASE1_EXTRACTION
 
@@ -393,13 +400,13 @@ class TestRelationshipNetworkX:
 
         # Create the two Phase 1 nodes
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.PERIPHERY_WORKER,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Factory Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.CORE_OWNER,
@@ -426,24 +433,26 @@ class TestRelationshipNetworkX:
         # Verify Phase 1 structure
         assert G.number_of_nodes() == 2
         assert G.number_of_edges() == 1
-        assert G.nodes["C001"]["role"] == "periphery_proletariat"
-        assert G.nodes["C002"]["role"] == "core_bourgeoisie"
-        assert G["C001"]["C002"]["value_flow"] == TC.EconomicFlow.PHASE1_EXTRACTION
-        assert G["C001"]["C002"]["edge_type"] == "exploitation"
+        assert G.nodes[PERIPHERY_WORKER_ID]["role"] == "periphery_proletariat"
+        assert G.nodes[COMPRADOR_ID]["role"] == "core_bourgeoisie"
+        assert (
+            G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["value_flow"] == TC.EconomicFlow.PHASE1_EXTRACTION
+        )
+        assert G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["edge_type"] == "exploitation"
 
     def test_bidirectional_relationships(self) -> None:
         """Can have edges in both directions between nodes."""
         import networkx as nx
 
         exploitation = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
         )
         repression = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.REPRESSION,
             tension=TC.Probability.VERY_HIGH,
         )
@@ -460,10 +469,10 @@ class TestRelationshipNetworkX:
             **repression.model_dump(exclude={"source_id", "target_id"}),
         )
 
-        assert G.has_edge("C001", "C002")
-        assert G.has_edge("C002", "C001")
-        assert G["C001"]["C002"]["edge_type"] == "exploitation"
-        assert G["C002"]["C001"]["edge_type"] == "repression"
+        assert G.has_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID)
+        assert G.has_edge(COMPRADOR_ID, PERIPHERY_WORKER_ID)
+        assert G[PERIPHERY_WORKER_ID][COMPRADOR_ID]["edge_type"] == "exploitation"
+        assert G[COMPRADOR_ID][PERIPHERY_WORKER_ID]["edge_type"] == "repression"
 
 
 # =============================================================================
@@ -478,17 +487,17 @@ class TestRelationshipEdgeTuple:
     def test_edge_tuple_returns_source_target(self) -> None:
         """edge_tuple returns (source_id, target_id) for NetworkX."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
-        assert edge.edge_tuple == ("C001", "C002")
+        assert edge.edge_tuple == (PERIPHERY_WORKER_ID, COMPRADOR_ID)
 
     def test_edge_data_excludes_ids(self) -> None:
         """edge_data returns attributes without source/target IDs."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
             tension=TC.EconomicFlow.MODERATE_TENSION,
@@ -539,8 +548,8 @@ class TestRelationshipComponentConstruction:
         from babylon.models.entities.relationship import FlowComponent
 
         rel = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             flow=FlowComponent(
                 value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
@@ -553,8 +562,8 @@ class TestRelationshipComponentConstruction:
     def test_flat_construction_still_works(self) -> None:
         """Flat field construction is unchanged."""
         rel = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
             tension=TC.EconomicFlow.MODERATE_TENSION,
@@ -570,8 +579,8 @@ class TestRelationshipComponentAccess:
     def test_access_flow_component(self) -> None:
         """Can access flow data via component property."""
         rel = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             value_flow=TC.EconomicFlow.PHASE1_EXTRACTION,
             tension=TC.EconomicFlow.MODERATE_TENSION,
@@ -584,8 +593,8 @@ class TestRelationshipComponentAccess:
         from babylon.models.entities.relationship import FlowComponent
 
         rel = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
         )
         assert isinstance(rel.flow, FlowComponent)
@@ -613,8 +622,8 @@ class TestSolidarityStrength:
     def test_solidarity_strength_default_zero(self) -> None:
         """solidarity_strength defaults to 0.0 (no built infrastructure)."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
         )
         assert edge.solidarity_strength == TC.Probability.ZERO
@@ -622,8 +631,8 @@ class TestSolidarityStrength:
     def test_solidarity_strength_can_be_set(self) -> None:
         """solidarity_strength can be set explicitly."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=TC.EconomicFlow.STRONG_SOLIDARITY,
         )
@@ -632,8 +641,8 @@ class TestSolidarityStrength:
     def test_solidarity_strength_accepts_zero(self) -> None:
         """Zero solidarity_strength is valid (Fascist scenario)."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=TC.Probability.ZERO,
         )
@@ -642,8 +651,8 @@ class TestSolidarityStrength:
     def test_solidarity_strength_accepts_one(self) -> None:
         """Maximum solidarity_strength (1.0) is valid."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=TC.Probability.FULL,
         )
@@ -653,8 +662,8 @@ class TestSolidarityStrength:
         """Negative solidarity_strength is invalid."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.SOLIDARITY,
                 solidarity_strength=-0.1,
             )
@@ -663,8 +672,8 @@ class TestSolidarityStrength:
         """solidarity_strength > 1.0 is invalid."""
         with pytest.raises(ValidationError):
             Relationship(
-                source_id="C001",
-                target_id="C002",
+                source_id=PERIPHERY_WORKER_ID,
+                target_id=COMPRADOR_ID,
                 edge_type=EdgeType.SOLIDARITY,
                 solidarity_strength=1.5,
             )
@@ -672,8 +681,8 @@ class TestSolidarityStrength:
     def test_solidarity_strength_in_edge_data(self) -> None:
         """solidarity_strength is included in edge_data for NetworkX."""
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=TC.EconomicFlow.HIGH_TENSION,  # Using 0.7
         )
@@ -686,8 +695,8 @@ class TestSolidarityStrength:
         # While typically used on SOLIDARITY edges, we allow it on any edge
         # for modeling flexibility (e.g., potential solidarity in exploitation)
         edge = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.EXPLOITATION,
             solidarity_strength=TC.EconomicFlow.POTENTIAL_SOLIDARITY,
         )
@@ -696,8 +705,8 @@ class TestSolidarityStrength:
     def test_solidarity_strength_json_round_trip(self) -> None:
         """solidarity_strength survives JSON round-trip."""
         original = Relationship(
-            source_id="C001",
-            target_id="C002",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=COMPRADOR_ID,
             edge_type=EdgeType.SOLIDARITY,
             solidarity_strength=0.65,  # Arbitrary value for round-trip test
         )

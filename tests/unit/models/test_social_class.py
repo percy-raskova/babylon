@@ -21,6 +21,11 @@ from tests.constants import TestConstants
 
 # These imports should fail until the model is implemented
 from babylon.models import IdeologicalProfile, SocialClass
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import SocialRole
 
 # Aliases for readability
@@ -38,11 +43,11 @@ class TestSocialClassCreation:
     def test_minimal_creation(self) -> None:
         """Can create SocialClass with just required fields."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
-        assert worker.id == "C001"
+        assert worker.id == PERIPHERY_WORKER_ID
         assert worker.name == "Periphery Proletariat"
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
         # Check defaults are applied
@@ -54,7 +59,7 @@ class TestSocialClassCreation:
     def test_phase1_blueprint_worker(self) -> None:
         """Create the Phase 1 Worker node from the blueprint."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.PERIPHERY_WORKER,
@@ -71,7 +76,7 @@ class TestSocialClassCreation:
     def test_phase1_blueprint_owner(self) -> None:
         """Create the Phase 1 Owner node from the blueprint."""
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Factory Owner",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=TC.Wealth.CORE_OWNER,
@@ -98,7 +103,7 @@ class TestSocialClassCreation:
     def test_with_survival_probabilities(self) -> None:
         """Can create with explicit survival probabilities."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             p_acquiescence=TC.Probability.HIGH,
@@ -110,7 +115,7 @@ class TestSocialClassCreation:
     def test_with_material_conditions(self) -> None:
         """Can create with material conditions for survival calculus."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             subsistence_threshold=5.0,  # Default subsistence threshold
@@ -124,7 +129,7 @@ class TestSocialClassCreation:
     def test_with_description(self) -> None:
         """Can create with optional description."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             description="Mine workers in the Global South",
@@ -175,7 +180,7 @@ class TestSocialClassValidation:
         """Wealth cannot be negative (Currency constraint)."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Test",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 wealth=-10.0,
@@ -190,7 +195,7 @@ class TestSocialClassValidation:
         """
         # Extreme negative value gets clamped to -1.0
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             ideology=-1.5,  # Clamped to -1.0 by from_legacy_ideology
@@ -200,7 +205,7 @@ class TestSocialClassValidation:
 
         # Extreme positive value gets clamped to +1.0
         worker2 = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             ideology=1.5,  # Clamped to +1.0 by from_legacy_ideology
@@ -212,14 +217,14 @@ class TestSocialClassValidation:
         """Probabilities must be [0.0, 1.0]."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Test",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 p_acquiescence=-0.1,
             )
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Test",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 p_revolution=1.5,
@@ -229,7 +234,7 @@ class TestSocialClassValidation:
         """Role must be a valid SocialRole enum value."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Test",
                 role="middle_class",  # type: ignore[arg-type]
             )
@@ -237,7 +242,7 @@ class TestSocialClassValidation:
     def test_accepts_role_string_values(self) -> None:
         """Role accepts string values that match enum values."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role="periphery_proletariat",  # type: ignore[arg-type]
         )
@@ -247,7 +252,7 @@ class TestSocialClassValidation:
         """Name is a required field."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 role=SocialRole.PERIPHERY_PROLETARIAT,
             )  # type: ignore[call-arg]
 
@@ -255,7 +260,7 @@ class TestSocialClassValidation:
         """Role is a required field."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Test",
             )  # type: ignore[call-arg]
 
@@ -263,7 +268,7 @@ class TestSocialClassValidation:
         """Unknown fields are rejected."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Test",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 unknown_field="value",  # type: ignore[call-arg]
@@ -282,7 +287,7 @@ class TestSocialClassDefaults:
     def test_default_wealth(self) -> None:
         """Default wealth is 10.0 (baseline)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -291,7 +296,7 @@ class TestSocialClassDefaults:
     def test_default_ideology(self) -> None:
         """Default ideology is IdeologicalProfile with neutral defaults."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -304,7 +309,7 @@ class TestSocialClassDefaults:
     def test_default_probabilities(self) -> None:
         """Default survival probabilities are 0.0 (not yet calculated)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -314,7 +319,7 @@ class TestSocialClassDefaults:
     def test_default_subsistence_threshold(self) -> None:
         """Default subsistence threshold is 5.0."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -323,7 +328,7 @@ class TestSocialClassDefaults:
     def test_default_organization(self) -> None:
         """Default organization is 0.1 (10% cohesion)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -332,7 +337,7 @@ class TestSocialClassDefaults:
     def test_default_repression(self) -> None:
         """Default repression_faced is 0.5 (moderate)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -341,7 +346,7 @@ class TestSocialClassDefaults:
     def test_default_description(self) -> None:
         """Default description is empty string."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -360,22 +365,25 @@ class TestSocialClassSerialization:
     def test_serialize_to_json(self) -> None:
         """SocialClass serializes to valid JSON."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=TC.Wealth.MODEST,
             ideology=TC.Ideology.LEANING_REVOLUTIONARY,
         )
         json_str = worker.model_dump_json()
-        assert '"id":"C001"' in json_str or '"id": "C001"' in json_str
+        assert (
+            f'"id":"{PERIPHERY_WORKER_ID}"' in json_str
+            or f'"id": "{PERIPHERY_WORKER_ID}"' in json_str
+        )
         assert "Mine Worker" in json_str
         assert "periphery_proletariat" in json_str
 
     def test_deserialize_from_json(self) -> None:
         """SocialClass can be restored from JSON with legacy ideology."""
-        json_str = """
-        {
-            "id": "C001",
+        json_str = f"""
+        {{
+            "id": "{PERIPHERY_WORKER_ID}",
             "name": "Mine Worker",
             "role": "periphery_proletariat",
             "wealth": 50.0,
@@ -386,10 +394,10 @@ class TestSocialClassSerialization:
             "subsistence_threshold": 5.0,
             "organization": 0.1,
             "repression_faced": 0.5
-        }
+        }}
         """
         worker = SocialClass.model_validate_json(json_str)
-        assert worker.id == "C001"
+        assert worker.id == PERIPHERY_WORKER_ID
         assert worker.name == "Mine Worker"
         assert worker.role == SocialRole.PERIPHERY_PROLETARIAT
         assert worker.wealth == TC.Wealth.MODEST
@@ -402,7 +410,7 @@ class TestSocialClassSerialization:
     def test_round_trip_preserves_values(self) -> None:
         """JSON round-trip preserves all field values."""
         original = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Test Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             description="A test class",
@@ -435,14 +443,14 @@ class TestSocialClassSerialization:
     def test_dict_conversion(self) -> None:
         """SocialClass converts to dict for database storage."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
         )
         data = worker.model_dump()
 
-        assert data["id"] == "C001"
+        assert data["id"] == PERIPHERY_WORKER_ID
         assert data["name"] == "Worker"
         assert data["role"] == "periphery_proletariat"
         assert data["wealth"] == 50.0
@@ -462,7 +470,7 @@ class TestSocialClassNetworkX:
         import networkx as nx
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
@@ -471,10 +479,10 @@ class TestSocialClassNetworkX:
         G = nx.DiGraph()
         G.add_node(worker.id, **worker.model_dump())
 
-        assert G.has_node("C001")
-        assert G.nodes["C001"]["name"] == "Mine Worker"
-        assert G.nodes["C001"]["role"] == "periphery_proletariat"
-        assert G.nodes["C001"]["wealth"] == 50.0
+        assert G.has_node(PERIPHERY_WORKER_ID)
+        assert G.nodes[PERIPHERY_WORKER_ID]["name"] == "Mine Worker"
+        assert G.nodes[PERIPHERY_WORKER_ID]["role"] == "periphery_proletariat"
+        assert G.nodes[PERIPHERY_WORKER_ID]["wealth"] == 50.0
 
     def test_can_restore_from_node_data(self) -> None:
         """SocialClass can be restored from NetworkX node attributes."""
@@ -482,8 +490,8 @@ class TestSocialClassNetworkX:
 
         G = nx.DiGraph()
         G.add_node(
-            "C001",
-            id="C001",
+            PERIPHERY_WORKER_ID,
+            id=PERIPHERY_WORKER_ID,
             name="Mine Worker",
             role="periphery_proletariat",
             description="",
@@ -496,10 +504,10 @@ class TestSocialClassNetworkX:
             repression_faced=0.5,
         )
 
-        node_data = dict(G.nodes["C001"])
+        node_data = dict(G.nodes[PERIPHERY_WORKER_ID])
         restored = SocialClass.model_validate(node_data)
 
-        assert restored.id == "C001"
+        assert restored.id == PERIPHERY_WORKER_ID
         assert restored.name == "Mine Worker"
         assert restored.role == SocialRole.PERIPHERY_PROLETARIAT
         assert restored.wealth == 50.0
@@ -509,12 +517,12 @@ class TestSocialClassNetworkX:
         import networkx as nx
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Mine Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
         owner = SocialClass(
-            id="C002",
+            id=COMPRADOR_ID,
             name="Core Factory Owner",
             role=SocialRole.CORE_BOURGEOISIE,
         )
@@ -524,8 +532,8 @@ class TestSocialClassNetworkX:
         G.add_node(owner.id, **owner.model_dump())
 
         assert G.number_of_nodes() == 2
-        assert G.nodes["C001"]["role"] == "periphery_proletariat"
-        assert G.nodes["C002"]["role"] == "core_bourgeoisie"
+        assert G.nodes[PERIPHERY_WORKER_ID]["role"] == "periphery_proletariat"
+        assert G.nodes[COMPRADOR_ID]["role"] == "core_bourgeoisie"
 
 
 # =============================================================================
@@ -588,7 +596,7 @@ class TestSocialClassComponentConstruction:
         from babylon.models.entities.social_class import EconomicComponent
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             economic=EconomicComponent(wealth=50.0, subsistence_threshold=10.0),
@@ -608,7 +616,7 @@ class TestSocialClassComponentConstruction:
         # Sprint 3.4.3: ideology in IdeologicalComponent is now IdeologicalProfile
         profile = IdeologicalProfile(class_consciousness=0.75, national_identity=0.25)
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             economic=EconomicComponent(wealth=50.0),
@@ -626,7 +634,7 @@ class TestSocialClassComponentConstruction:
     def test_flat_construction_still_works(self) -> None:
         """Flat field construction with legacy ideology is unchanged."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
@@ -642,7 +650,7 @@ class TestSocialClassComponentConstruction:
         from babylon.models.entities.social_class import EconomicComponent
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             economic=EconomicComponent(wealth=50.0),
@@ -661,7 +669,7 @@ class TestSocialClassComponentAccess:
     def test_access_economic_component(self) -> None:
         """Can access economic data via component property."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=50.0,
@@ -673,7 +681,7 @@ class TestSocialClassComponentAccess:
     def test_access_ideological_component(self) -> None:
         """Can access ideological data via component property."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             ideology=-0.5,  # Legacy conversion to IdeologicalProfile
@@ -687,7 +695,7 @@ class TestSocialClassComponentAccess:
     def test_access_survival_component(self) -> None:
         """Can access survival data via component property."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             p_acquiescence=0.6,
@@ -699,7 +707,7 @@ class TestSocialClassComponentAccess:
     def test_access_material_conditions_component(self) -> None:
         """Can access material conditions via component property."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             repression_faced=0.7,
@@ -716,7 +724,7 @@ class TestSocialClassComponentAccess:
         )
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -738,7 +746,7 @@ class TestSocialClassMetabolicDefaults:
     def test_s_bio_defaults_to_0_01(self) -> None:
         """Biological minimum defaults to 0.01 (1% of baseline)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -747,7 +755,7 @@ class TestSocialClassMetabolicDefaults:
     def test_s_class_defaults_to_0(self) -> None:
         """Social reproduction defaults to 0 (no lifestyle overhead)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
         )
@@ -761,7 +769,7 @@ class TestSocialClassMetabolicConstraints:
     def test_s_bio_accepts_zero(self) -> None:
         """Zero biological minimum is valid (edge case)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.0,
@@ -772,7 +780,7 @@ class TestSocialClassMetabolicConstraints:
         """Negative biological minimum is invalid."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Worker",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 s_bio=-0.01,
@@ -781,7 +789,7 @@ class TestSocialClassMetabolicConstraints:
     def test_s_class_accepts_zero(self) -> None:
         """Zero social reproduction is valid (subsistence living)."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_class=0.0,
@@ -792,7 +800,7 @@ class TestSocialClassMetabolicConstraints:
         """Negative social reproduction is invalid."""
         with pytest.raises(ValidationError):
             SocialClass(
-                id="C001",
+                id=PERIPHERY_WORKER_ID,
                 name="Worker",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 s_class=-0.5,
@@ -801,7 +809,7 @@ class TestSocialClassMetabolicConstraints:
     def test_s_class_accepts_high_value(self) -> None:
         """High social reproduction is valid (labor aristocracy lifestyle)."""
         bourgeois = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             s_class=10.0,
@@ -816,7 +824,7 @@ class TestSocialClassConsumptionNeeds:
     def test_consumption_needs_sums_s_bio_and_s_class(self) -> None:
         """Consumption needs = s_bio + s_class."""
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.05,
@@ -827,7 +835,7 @@ class TestSocialClassConsumptionNeeds:
     def test_consumption_needs_zero_when_both_zero(self) -> None:
         """Zero consumption when both components are zero."""
         minimal = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Minimal",
             role=SocialRole.LUMPENPROLETARIAT,
             s_bio=0.0,
@@ -838,7 +846,7 @@ class TestSocialClassConsumptionNeeds:
     def test_consumption_needs_bio_only(self) -> None:
         """Consumption equals s_bio when s_class is zero."""
         subsistence = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Subsistence",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.03,
@@ -849,14 +857,14 @@ class TestSocialClassConsumptionNeeds:
     def test_consumption_needs_class_difference(self) -> None:
         """Different classes have different consumption needs."""
         proletariat = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Proletariat",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             s_bio=0.02,
             s_class=0.01,
         )
         labor_aristocracy = SocialClass(
-            id="C002",
+            id=LABOR_ARISTOCRACY_ID,
             name="Labor Aristocracy",
             role=SocialRole.LABOR_ARISTOCRACY,
             s_bio=0.02,

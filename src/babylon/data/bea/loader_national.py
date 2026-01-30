@@ -35,6 +35,7 @@ from babylon.data.reference.schema import (
     BridgeNAICSBEA,
     DimBEAIndustry,
     DimDataSource,
+    FactBEACountyGDP,
     FactBEANationalIndustry,
 )
 
@@ -184,6 +185,8 @@ class BEANationalLoader(DataLoader):
         # Must delete facts and bridges before dimensions due to FK constraints
         # DuckDB requires commit between FK-related deletes
         session.query(FactBEANationalIndustry).delete()
+        session.commit()
+        session.query(FactBEACountyGDP).delete()
         session.commit()
         session.query(BridgeNAICSBEA).delete()
         session.commit()

@@ -1185,7 +1185,7 @@ def census(
     year: Annotated[
         int | None,
         typer.Option("--year", "-y", help="Single Census ACS 5-year vintage"),
-    ] = None,
+    ] = 2021,
     years: Annotated[
         str | None,
         typer.Option(

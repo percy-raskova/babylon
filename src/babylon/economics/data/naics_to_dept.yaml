@@ -142,19 +142,22 @@ defaults:
   # K-12 and community colleges produce general work capacity (Dept III)
   # Professional training leans Dept I; private schools = luxury (IIb)
   # Fortunati/Federici: education produces labor power itself
+  # K-12 dominance (6111=100% Dept III) pulls sector weighted average up
   61:
-    dept_IIa: 0.30
-    dept_IIb: 0.20
-    dept_III: 0.50
+    dept_IIa: 0.15
+    dept_IIb: 0.10
+    dept_III: 0.75
 
   # Health Care & Social Assistance (62)
   # CDC/CMS data: most healthcare maintains/restores labor power
   # Cosmetic/elective procedures represent <1% of total spending (~$26B of $4.5T)
-  # Nursing facilities (4.5%) and home health (3.0%) = Dept III
+  # Fortunati/Federici: healthcare fundamentally reproduces labor capacity
+  # Even curative care enables future labor (reproductive in broader sense)
+  # Nursing facilities (4.5%), home health (3.0%), plus hospital care work
   62:
-    dept_IIa: 0.75
+    dept_IIa: 0.45
     dept_IIb: 0.05
-    dept_III: 0.20
+    dept_III: 0.50
 
   # Arts, Entertainment, Recreation (71)
   # Primarily luxury consumption
@@ -263,10 +266,11 @@ overrides:
 
   # Pharmaceutical Manufacturing - necessary consumption
   3254:
-    # Essential medicines (70% IIa), elective (15% IIb), healthcare system (15% III)
-    dept_IIa: 0.70
-    dept_IIb: 0.15
-    dept_III: 0.15
+    # Essential medicines dominate (~80% IIa), elective/cosmetic small (10% IIb)
+    # Remaining 10% supports healthcare system Dept III function
+    dept_IIa: 0.80
+    dept_IIb: 0.10
+    dept_III: 0.10
 
   # Food Manufacturing - primarily necessary consumption
   311:
@@ -505,7 +509,7 @@ default_ratios:
 
   dept_IIa:
     cv_ratio: 1.0    # BEA: retail/service intermediate costs
-    sv_ratio: 0.08   # BEA: competitive wage goods, low margins
+    sv_ratio: 0.10   # BEA: competitive wage goods, low margins (minimum plausible)
 
   dept_IIb:
     cv_ratio: 1.5    # BEA: luxury goods production
@@ -513,7 +517,7 @@ default_ratios:
 
   dept_III:
     cv_ratio: 0.4    # BEA: care work, minimal fixed capital
-    sv_ratio: 0.05   # BEA: suppressed care worker margins
+    sv_ratio: 0.10   # BEA: suppressed care worker margins (minimum plausible)
 
 # =============================================================================
 # SECTOR RATIOS (BEA Industry-Level Calibration)

@@ -28,6 +28,12 @@ from babylon.engine.scenarios import (
 )
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.economy import GlobalEconomy
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
@@ -302,7 +308,7 @@ class TestEntityExtraction:
         assert latest.p_w is not None
 
         # Verify extraction from actual entity
-        entity = four_node_state.entities["C001"]
+        entity = four_node_state.entities[PERIPHERY_WORKER_ID]
         assert latest.p_w.wealth == float(entity.wealth)
         assert latest.p_w.organization == float(entity.organization)
 
@@ -319,7 +325,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.p_c is not None
 
-        entity = four_node_state.entities["C002"]
+        entity = four_node_state.entities[COMPRADOR_ID]
         assert latest.p_c.wealth == float(entity.wealth)
 
     def test_extracts_c003_as_c_b(
@@ -335,7 +341,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.c_b is not None
 
-        entity = four_node_state.entities["C003"]
+        entity = four_node_state.entities[CORE_BOURGEOISIE_ID]
         assert latest.c_b.wealth == float(entity.wealth)
 
     def test_extracts_c004_as_c_w(
@@ -351,7 +357,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.c_w is not None
 
-        entity = four_node_state.entities["C004"]
+        entity = four_node_state.entities[LABOR_ARISTOCRACY_ID]
         assert latest.c_w.wealth == float(entity.wealth)
 
     def test_handles_missing_entities_gracefully(
@@ -385,7 +391,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.p_w is not None
 
-        entity = four_node_state.entities["C001"]
+        entity = four_node_state.entities[PERIPHERY_WORKER_ID]
         assert latest.p_w.consciousness == float(entity.ideology.class_consciousness)
 
     def test_extracts_national_identity_from_ideology_profile(
@@ -401,7 +407,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.p_w is not None
 
-        entity = four_node_state.entities["C001"]
+        entity = four_node_state.entities[PERIPHERY_WORKER_ID]
         assert latest.p_w.national_identity == float(entity.ideology.national_identity)
 
     def test_extracts_agitation_from_ideology_profile(
@@ -417,7 +423,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.p_w is not None
 
-        entity = four_node_state.entities["C001"]
+        entity = four_node_state.entities[PERIPHERY_WORKER_ID]
         assert latest.p_w.agitation == float(entity.ideology.agitation)
 
     def test_extracts_survival_probabilities(
@@ -433,7 +439,7 @@ class TestEntityExtraction:
         assert latest is not None
         assert latest.p_w is not None
 
-        entity = four_node_state.entities["C001"]
+        entity = four_node_state.entities[PERIPHERY_WORKER_ID]
         assert latest.p_w.p_acquiescence == float(entity.p_acquiescence)
         assert latest.p_w.p_revolution == float(entity.p_revolution)
 
@@ -451,10 +457,15 @@ class TestEntityExtraction:
         not coincidental default matching.
         """
         # Create state with explicit non-default population
-        entity = four_node_state.entities["C001"]
+        entity = four_node_state.entities[PERIPHERY_WORKER_ID]
         entity_with_pop = entity.model_copy(update={"population": 1000})
         state = four_node_state.model_copy(
-            update={"entities": {**four_node_state.entities, "C001": entity_with_pop}}
+            update={
+                "entities": {
+                    **four_node_state.entities,
+                    PERIPHERY_WORKER_ID: entity_with_pop,
+                }
+            }
         )
 
         collector = TickStateRecorder()
@@ -657,7 +668,7 @@ class TestSummaryCalculation:
 
         # Create state with dead worker
         dead_worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Dead Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.0,  # Dead
@@ -666,7 +677,7 @@ class TestSummaryCalculation:
             repression_faced=0.5,
             subsistence_threshold=0.3,
         )
-        state = WorldState(tick=0, entities={"C001": dead_worker})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: dead_worker})
 
         collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state, config)
@@ -698,7 +709,7 @@ class TestSummaryCalculation:
 
         # Create initial state with p_acquiescence > p_revolution
         worker_stable = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
@@ -709,11 +720,11 @@ class TestSummaryCalculation:
             p_acquiescence=0.8,
             p_revolution=0.2,
         )
-        state0 = WorldState(tick=0, entities={"C001": worker_stable})
+        state0 = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker_stable})
 
         # Create crossover state with p_revolution > p_acquiescence
         worker_crossover = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.3,
@@ -724,7 +735,7 @@ class TestSummaryCalculation:
             p_acquiescence=0.3,  # Now lower
             p_revolution=0.7,  # Now higher
         )
-        state1 = WorldState(tick=1, entities={"C001": worker_crossover})
+        state1 = WorldState(tick=1, entities={PERIPHERY_WORKER_ID: worker_crossover})
 
         collector = TickStateRecorder(mode="batch")
         collector.on_simulation_start(state0, config)
@@ -1041,12 +1052,12 @@ class TestErrorHandling:
         from babylon.models.enums import SocialRole
 
         worker = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
         )
-        state = WorldState(tick=0, entities={"C001": worker}, relationships=[])
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: worker}, relationships=[])
 
         collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
@@ -1281,7 +1292,7 @@ class TestDifferentialCalculation:
 
         # Periphery worker with consciousness 0.7
         p_w = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
@@ -1289,13 +1300,13 @@ class TestDifferentialCalculation:
         )
         # Labor aristocracy with consciousness 0.3
         c_w = SocialClass(
-            id="C004",
+            id=LABOR_ARISTOCRACY_ID,
             name="Labor Aristocracy",
             role=SocialRole.LABOR_ARISTOCRACY,
             wealth=0.6,
             ideology=IdeologicalProfile(class_consciousness=0.3),  # Lower consciousness
         )
-        state = WorldState(tick=0, entities={"C001": p_w, "C004": c_w})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: p_w, LABOR_ARISTOCRACY_ID: c_w})
 
         collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
@@ -1321,13 +1332,13 @@ class TestDifferentialCalculation:
 
         # Only labor aristocracy, no periphery worker
         c_w = SocialClass(
-            id="C004",
+            id=LABOR_ARISTOCRACY_ID,
             name="Labor Aristocracy",
             role=SocialRole.LABOR_ARISTOCRACY,
             wealth=0.6,
             ideology=IdeologicalProfile(class_consciousness=0.3),
         )
-        state = WorldState(tick=0, entities={"C004": c_w})
+        state = WorldState(tick=0, entities={LABOR_ARISTOCRACY_ID: c_w})
 
         collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
@@ -1352,13 +1363,13 @@ class TestDifferentialCalculation:
 
         # Only periphery worker, no labor aristocracy
         p_w = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.5,
             ideology=IdeologicalProfile(class_consciousness=0.7),
         )
-        state = WorldState(tick=0, entities={"C001": p_w})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: p_w})
 
         collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
@@ -1381,19 +1392,19 @@ class TestDifferentialCalculation:
 
         # Periphery worker with wealth 0.2
         p_w = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Periphery Worker",
             role=SocialRole.PERIPHERY_PROLETARIAT,
             wealth=0.2,
         )
         # Core bourgeoisie with wealth 0.9
         c_b = SocialClass(
-            id="C003",
+            id=CORE_BOURGEOISIE_ID,
             name="Core Bourgeoisie",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=0.9,
         )
-        state = WorldState(tick=0, entities={"C001": p_w, "C003": c_b})
+        state = WorldState(tick=0, entities={PERIPHERY_WORKER_ID: p_w, CORE_BOURGEOISIE_ID: c_b})
 
         collector = TickStateRecorder()
         collector.on_simulation_start(state, config)
@@ -1449,15 +1460,15 @@ class TestGlobalTensionBugFix:
         # Create state with one EXPLOITATION edge (tension 0.8)
         # and one SOLIDARITY edge (tension 0.2)
         exploitation_edge = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.8,
             value_flow=10.0,
         )
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C004",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=LABOR_ARISTOCRACY_ID,
             edge_type=EdgeType.SOLIDARITY,
             tension=0.2,  # Should be IGNORED
             value_flow=0.0,
@@ -1486,8 +1497,8 @@ class TestGlobalTensionBugFix:
         from babylon.models.entities.relationship import Relationship
 
         solidarity_edge = Relationship(
-            source_id="C001",
-            target_id="C004",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=LABOR_ARISTOCRACY_ID,
             edge_type=EdgeType.SOLIDARITY,
             tension=0.9,  # High tension on SOLIDARITY (should be ignored)
             value_flow=0.0,
@@ -1513,8 +1524,8 @@ class TestGlobalTensionBugFix:
         from babylon.models.entities.relationship import Relationship
 
         wages_edge = Relationship(
-            source_id="C003",
-            target_id="C004",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=LABOR_ARISTOCRACY_ID,
             edge_type=EdgeType.WAGES,
             tension=0.7,  # Should be ignored
             value_flow=5.0,
@@ -1541,8 +1552,8 @@ class TestGlobalTensionBugFix:
 
         # Only non-exploitation edges
         tribute_edge = Relationship(
-            source_id="C002",
-            target_id="C003",
+            source_id=COMPRADOR_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             edge_type=EdgeType.TRIBUTE,
             tension=0.5,
             value_flow=10.0,
@@ -1568,15 +1579,15 @@ class TestGlobalTensionBugFix:
 
         # Two EXPLOITATION edges with different tensions
         expl1 = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.4,
             value_flow=10.0,
         )
         expl2 = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.8,
             value_flow=5.0,
@@ -1618,15 +1629,15 @@ class TestEdgeAggregationFix:
         from babylon.models.entities.relationship import Relationship
 
         expl1 = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.3,
             value_flow=10.0,
         )
         expl2 = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.7,  # Higher tension
             value_flow=5.0,
@@ -1652,15 +1663,15 @@ class TestEdgeAggregationFix:
         from babylon.models.entities.relationship import Relationship
 
         expl1 = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.3,
             value_flow=10.0,
         )
         expl2 = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.7,
             value_flow=5.0,
@@ -1686,15 +1697,15 @@ class TestEdgeAggregationFix:
         from babylon.models.entities.relationship import Relationship
 
         trib1 = Relationship(
-            source_id="C002",
-            target_id="C003",
+            source_id=COMPRADOR_ID,
+            target_id=CORE_BOURGEOISIE_ID,
             edge_type=EdgeType.TRIBUTE,
             tension=0.0,
             value_flow=8.0,
         )
         trib2 = Relationship(
-            source_id="C005",  # Another comprador
-            target_id="C003",
+            source_id="C005",  # Another comprador (no constant for C005)
+            target_id=CORE_BOURGEOISIE_ID,
             edge_type=EdgeType.TRIBUTE,
             tension=0.0,
             value_flow=12.0,
@@ -1720,15 +1731,15 @@ class TestEdgeAggregationFix:
         from babylon.models.entities.relationship import Relationship
 
         sol1 = Relationship(
-            source_id="C001",
-            target_id="C004",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id=LABOR_ARISTOCRACY_ID,
             edge_type=EdgeType.SOLIDARITY,
             tension=0.0,
             solidarity_strength=0.4,
         )
         sol2 = Relationship(
-            source_id="C001",
-            target_id="C005",
+            source_id=PERIPHERY_WORKER_ID,
+            target_id="C005",  # Another entity (no constant for C005)
             edge_type=EdgeType.SOLIDARITY,
             tension=0.0,
             solidarity_strength=0.8,  # Stronger link
@@ -1755,15 +1766,15 @@ class TestEdgeAggregationFix:
         from babylon.models.entities.relationship import Relationship
 
         expl1 = Relationship(
-            source_id="C003",
-            target_id="C001",
+            source_id=CORE_BOURGEOISIE_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.3,
             value_flow=10.0,
         )
         expl2 = Relationship(
-            source_id="C002",
-            target_id="C001",
+            source_id=COMPRADOR_ID,
+            target_id=PERIPHERY_WORKER_ID,
             edge_type=EdgeType.EXPLOITATION,
             tension=0.7,
             value_flow=5.0,
@@ -1819,7 +1830,7 @@ class TestEcologicalMetricsExtraction:
         from babylon.models.enums import SocialRole
 
         entity = SocialClass(
-            id="C001",
+            id=PERIPHERY_WORKER_ID,
             name="Consumer",
             role=SocialRole.CORE_BOURGEOISIE,
             wealth=100.0,
@@ -1829,7 +1840,7 @@ class TestEcologicalMetricsExtraction:
         state = WorldState(
             tick=0,
             territories={"T001": territory},
-            entities={"C001": entity},
+            entities={PERIPHERY_WORKER_ID: entity},
         )
 
         collector = TickStateRecorder()
@@ -1892,16 +1903,16 @@ class TestEcologicalMetricsExtraction:
         from babylon.models.enums import SocialRole
 
         entities = {
-            "C001": SocialClass(
-                id="C001",
+            PERIPHERY_WORKER_ID: SocialClass(
+                id=PERIPHERY_WORKER_ID,
                 name="Class A",
                 role=SocialRole.PERIPHERY_PROLETARIAT,
                 wealth=10.0,
                 s_bio=10.0,
                 s_class=5.0,
             ),
-            "C002": SocialClass(
-                id="C002",
+            COMPRADOR_ID: SocialClass(
+                id=COMPRADOR_ID,
                 name="Class B",
                 role=SocialRole.CORE_BOURGEOISIE,
                 wealth=100.0,

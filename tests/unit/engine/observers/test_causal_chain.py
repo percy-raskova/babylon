@@ -27,6 +27,7 @@ from babylon.engine.observer import SimulationObserver
 from babylon.models import SimulationConfig, WorldState
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.entities.social_class import SocialClass
+from babylon.models.entity_registry import PERIPHERY_WORKER_ID
 from babylon.models.enums import SocialRole
 
 # =============================================================================
@@ -58,12 +59,12 @@ def create_state(
     # Create one entity with p_revolution set
     # ID must match pattern ^C[0-9]{3}$
     entity = SocialClass(
-        id="C001",
+        id=PERIPHERY_WORKER_ID,
         name="Proletariat",
         role=SocialRole.PERIPHERY_PROLETARIAT,
         p_revolution=p_rev,
     )
-    return WorldState(tick=tick, economy=economy, entities={"C001": entity})
+    return WorldState(tick=tick, economy=economy, entities={PERIPHERY_WORKER_ID: entity})
 
 
 # =============================================================================

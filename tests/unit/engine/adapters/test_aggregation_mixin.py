@@ -7,6 +7,12 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
+
 # Import will fail until we implement the mixin (RED)
 try:
     from babylon.engine.adapters.aggregation_mixin import AggregationMixin
@@ -29,14 +35,14 @@ def graph_with_data() -> nx.DiGraph[str]:
     """Create a test graph with nodes and edges."""
     g: nx.DiGraph[str] = nx.DiGraph()
     # Add nodes with types and wealth
-    g.add_node("C001", _node_type="social_class", wealth=100.0, consciousness=0.3)
-    g.add_node("C002", _node_type="social_class", wealth=50.0, consciousness=0.5)
-    g.add_node("C003", _node_type="social_class", wealth=200.0, consciousness=0.1)
+    g.add_node(PERIPHERY_WORKER_ID, _node_type="social_class", wealth=100.0, consciousness=0.3)
+    g.add_node(COMPRADOR_ID, _node_type="social_class", wealth=50.0, consciousness=0.5)
+    g.add_node(CORE_BOURGEOISIE_ID, _node_type="social_class", wealth=200.0, consciousness=0.1)
     g.add_node("T001", _node_type="territory", heat=0.5)
     # Add edges
-    g.add_edge("C001", "C002", _edge_type="SOLIDARITY", weight=0.8)
-    g.add_edge("C001", "C003", _edge_type="EXPLOITATION", weight=0.5)
-    g.add_edge("C002", "C003", _edge_type="EXPLOITATION", weight=0.3)
+    g.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, _edge_type="SOLIDARITY", weight=0.8)
+    g.add_edge(PERIPHERY_WORKER_ID, CORE_BOURGEOISIE_ID, _edge_type="EXPLOITATION", weight=0.5)
+    g.add_edge(COMPRADOR_ID, CORE_BOURGEOISIE_ID, _edge_type="EXPLOITATION", weight=0.3)
     return g
 
 

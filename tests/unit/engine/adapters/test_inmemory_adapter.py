@@ -25,6 +25,13 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    LABOR_ARISTOCRACY_ID,
+    PERIPHERY_WORKER_ID,
+)
+
 if TYPE_CHECKING:
     pass
 
@@ -77,19 +84,25 @@ def populated_adapter() -> NetworkXAdapter:
     adapter = NetworkXAdapter()
 
     # Add social class nodes
-    adapter.add_node("C001", "social_class", wealth=100.0, consciousness=0.5)
-    adapter.add_node("C002", "social_class", wealth=80.0, consciousness=0.6)
-    adapter.add_node("C003", "social_class", wealth=50.0, consciousness=0.7)
-    adapter.add_node("C004", "social_class", wealth=500.0, consciousness=0.2)
+    adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0, consciousness=0.5)
+    adapter.add_node(COMPRADOR_ID, "social_class", wealth=80.0, consciousness=0.6)
+    adapter.add_node(CORE_BOURGEOISIE_ID, "social_class", wealth=50.0, consciousness=0.7)
+    adapter.add_node(LABOR_ARISTOCRACY_ID, "social_class", wealth=500.0, consciousness=0.2)
 
     # Add territory nodes
     adapter.add_node("T001", "territory", heat=0.3, name="Oakland")
     adapter.add_node("T002", "territory", heat=0.1, name="San Francisco")
 
     # Add edges
-    adapter.add_edge("C001", "C002", "SOLIDARITY", weight=0.8, solidarity_strength=0.8)
-    adapter.add_edge("C001", "C003", "SOLIDARITY", weight=0.6, solidarity_strength=0.6)
-    adapter.add_edge("C003", "C004", "EXPLOITATION", weight=0.9, value_flow=50.0)
+    adapter.add_edge(
+        PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY", weight=0.8, solidarity_strength=0.8
+    )
+    adapter.add_edge(
+        PERIPHERY_WORKER_ID, CORE_BOURGEOISIE_ID, "SOLIDARITY", weight=0.6, solidarity_strength=0.6
+    )
+    adapter.add_edge(
+        CORE_BOURGEOISIE_ID, LABOR_ARISTOCRACY_ID, "EXPLOITATION", weight=0.9, value_flow=50.0
+    )
     adapter.add_edge("T001", "T002", "ADJACENCY", weight=1.0)
 
     return adapter
@@ -133,35 +146,35 @@ class TestNetworkXAdapterAddNode:
 
     def test_add_node_creates_node(self, adapter: NetworkXAdapter) -> None:
         """add_node creates a node in the graph."""
-        adapter.add_node("C001", "social_class")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert node is not None
-        assert node.id == "C001"
+        assert node.id == PERIPHERY_WORKER_ID
         assert node.node_type == "social_class"
 
     def test_add_node_stores_type(self, adapter: NetworkXAdapter) -> None:
         """add_node stores node_type as internal attribute."""
-        adapter.add_node("C001", "social_class")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
 
         # Verify internal storage
-        assert adapter._graph.nodes["C001"]["_node_type"] == "social_class"
+        assert adapter._graph.nodes[PERIPHERY_WORKER_ID]["_node_type"] == "social_class"
 
     def test_add_node_stores_attributes(self, adapter: NetworkXAdapter) -> None:
         """add_node stores arbitrary attributes."""
-        adapter.add_node("C001", "social_class", wealth=100.0, consciousness=0.5)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0, consciousness=0.5)
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert node is not None
         assert node.attributes["wealth"] == 100.0
         assert node.attributes["consciousness"] == 0.5
 
     def test_add_node_overwrites_existing(self, adapter: NetworkXAdapter) -> None:
         """add_node overwrites an existing node (NetworkX behavior)."""
-        adapter.add_node("C001", "social_class", wealth=100.0)
-        adapter.add_node("C001", "social_class", wealth=200.0)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=200.0)
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert node is not None
         assert node.attributes["wealth"] == 200.0
 
@@ -172,9 +185,9 @@ class TestNetworkXAdapterGetNode:
 
     def test_get_node_returns_graphnode(self, adapter: NetworkXAdapter) -> None:
         """get_node returns GraphNode model."""
-        adapter.add_node("C001", "social_class", wealth=100.0)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert isinstance(node, GraphNode)
 
     def test_get_node_returns_none_for_missing(self, adapter: NetworkXAdapter) -> None:
@@ -187,9 +200,9 @@ class TestNetworkXAdapterGetNode:
 
         Internal attributes (prefixed with _) should not appear in user-facing data.
         """
-        adapter.add_node("C001", "social_class", wealth=100.0)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert node is not None
         assert "_node_type" not in node.attributes
 
@@ -200,19 +213,19 @@ class TestNetworkXAdapterUpdateNode:
 
     def test_update_node_modifies_attributes(self, adapter: NetworkXAdapter) -> None:
         """update_node modifies existing node attributes."""
-        adapter.add_node("C001", "social_class", wealth=100.0)
-        adapter.update_node("C001", wealth=200.0)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
+        adapter.update_node(PERIPHERY_WORKER_ID, wealth=200.0)
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert node is not None
         assert node.attributes["wealth"] == 200.0
 
     def test_update_node_adds_new_attributes(self, adapter: NetworkXAdapter) -> None:
         """update_node can add new attributes."""
-        adapter.add_node("C001", "social_class", wealth=100.0)
-        adapter.update_node("C001", consciousness=0.7)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class", wealth=100.0)
+        adapter.update_node(PERIPHERY_WORKER_ID, consciousness=0.7)
 
-        node = adapter.get_node("C001")
+        node = adapter.get_node(PERIPHERY_WORKER_ID)
         assert node is not None
         assert node.attributes["consciousness"] == 0.7
         assert node.attributes["wealth"] == 100.0  # Preserved
@@ -229,21 +242,21 @@ class TestNetworkXAdapterRemoveNode:
 
     def test_remove_node_deletes_node(self, adapter: NetworkXAdapter) -> None:
         """remove_node deletes the node from graph."""
-        adapter.add_node("C001", "social_class")
-        adapter.remove_node("C001")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.remove_node(PERIPHERY_WORKER_ID)
 
-        assert adapter.get_node("C001") is None
+        assert adapter.get_node(PERIPHERY_WORKER_ID) is None
 
     def test_remove_node_deletes_incident_edges(self, adapter: NetworkXAdapter) -> None:
         """remove_node also removes all edges connected to the node."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        adapter.remove_node("C001")
+        adapter.remove_node(PERIPHERY_WORKER_ID)
 
         # Edge should be gone
-        assert adapter.get_edge("C001", "C002", "SOLIDARITY") is None
+        assert adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY") is None
 
     def test_remove_node_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
         """remove_node raises KeyError if node does not exist."""
@@ -262,43 +275,45 @@ class TestNetworkXAdapterAddEdge:
 
     def test_add_edge_creates_edge(self, adapter: NetworkXAdapter) -> None:
         """add_edge creates a directed edge in the graph."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is not None
-        assert edge.source_id == "C001"
-        assert edge.target_id == "C002"
+        assert edge.source_id == PERIPHERY_WORKER_ID
+        assert edge.target_id == COMPRADOR_ID
         assert edge.edge_type == "SOLIDARITY"
 
     def test_add_edge_default_weight(self, adapter: NetworkXAdapter) -> None:
         """add_edge defaults weight to 1.0."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is not None
         assert edge.weight == 1.0
 
     def test_add_edge_custom_weight(self, adapter: NetworkXAdapter) -> None:
         """add_edge accepts custom weight."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY", weight=0.75)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY", weight=0.75)
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is not None
         assert edge.weight == 0.75
 
     def test_add_edge_stores_attributes(self, adapter: NetworkXAdapter) -> None:
         """add_edge stores arbitrary attributes."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "EXPLOITATION", tension=0.5, value_flow=100.0)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(
+            PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION", tension=0.5, value_flow=100.0
+        )
 
-        edge = adapter.get_edge("C001", "C002", "EXPLOITATION")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION")
         assert edge is not None
         assert edge.attributes["tension"] == 0.5
         assert edge.attributes["value_flow"] == 100.0
@@ -310,37 +325,37 @@ class TestNetworkXAdapterGetEdge:
 
     def test_get_edge_returns_graphedge(self, adapter: NetworkXAdapter) -> None:
         """get_edge returns GraphEdge model."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert isinstance(edge, GraphEdge)
 
     def test_get_edge_returns_none_for_missing_edge(self, adapter: NetworkXAdapter) -> None:
         """get_edge returns None if edge does not exist."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is None
 
     def test_get_edge_returns_none_for_wrong_type(self, adapter: NetworkXAdapter) -> None:
         """get_edge returns None if edge exists but type doesn't match."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        edge = adapter.get_edge("C001", "C002", "EXPLOITATION")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION")
         assert edge is None
 
     def test_get_edge_excludes_internal_attributes(self, adapter: NetworkXAdapter) -> None:
         """get_edge excludes internal attributes like _edge_type."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is not None
         assert "_edge_type" not in edge.attributes
 
@@ -351,35 +366,35 @@ class TestNetworkXAdapterUpdateEdge:
 
     def test_update_edge_modifies_attributes(self, adapter: NetworkXAdapter) -> None:
         """update_edge modifies existing edge attributes."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "EXPLOITATION", tension=0.3)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION", tension=0.3)
 
-        adapter.update_edge("C001", "C002", "EXPLOITATION", tension=0.8)
+        adapter.update_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION", tension=0.8)
 
-        edge = adapter.get_edge("C001", "C002", "EXPLOITATION")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "EXPLOITATION")
         assert edge is not None
         assert edge.attributes["tension"] == 0.8
 
     def test_update_edge_modifies_weight(self, adapter: NetworkXAdapter) -> None:
         """update_edge can modify edge weight."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY", weight=0.5)
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY", weight=0.5)
 
-        adapter.update_edge("C001", "C002", "SOLIDARITY", weight=0.9)
+        adapter.update_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY", weight=0.9)
 
-        edge = adapter.get_edge("C001", "C002", "SOLIDARITY")
+        edge = adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
         assert edge is not None
         assert edge.weight == 0.9
 
     def test_update_edge_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
         """update_edge raises KeyError if edge does not exist."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
 
         with pytest.raises(KeyError):
-            adapter.update_edge("C001", "C002", "SOLIDARITY", tension=0.5)
+            adapter.update_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY", tension=0.5)
 
 
 @pytest.mark.topology
@@ -388,32 +403,32 @@ class TestNetworkXAdapterRemoveEdge:
 
     def test_remove_edge_deletes_edge(self, adapter: NetworkXAdapter) -> None:
         """remove_edge deletes the edge from graph."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        adapter.remove_edge("C001", "C002", "SOLIDARITY")
+        adapter.remove_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        assert adapter.get_edge("C001", "C002", "SOLIDARITY") is None
+        assert adapter.get_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY") is None
 
     def test_remove_edge_preserves_nodes(self, adapter: NetworkXAdapter) -> None:
         """remove_edge does not delete connected nodes."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
-        adapter.add_edge("C001", "C002", "SOLIDARITY")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
+        adapter.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        adapter.remove_edge("C001", "C002", "SOLIDARITY")
+        adapter.remove_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
-        assert adapter.get_node("C001") is not None
-        assert adapter.get_node("C002") is not None
+        assert adapter.get_node(PERIPHERY_WORKER_ID) is not None
+        assert adapter.get_node(COMPRADOR_ID) is not None
 
     def test_remove_edge_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
         """remove_edge raises KeyError if edge does not exist."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
 
         with pytest.raises(KeyError):
-            adapter.remove_edge("C001", "C002", "SOLIDARITY")
+            adapter.remove_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, "SOLIDARITY")
 
 
 # =============================================================================
@@ -429,45 +444,47 @@ class TestNetworkXAdapterGetNeighborhood:
         self, populated_adapter: NetworkXAdapter
     ) -> None:
         """get_neighborhood with radius=1 returns immediate neighbors."""
-        neighborhood = populated_adapter.get_neighborhood("C001", radius=1)
+        neighborhood = populated_adapter.get_neighborhood(PERIPHERY_WORKER_ID, radius=1)
 
         # Should include C001 (center) and C002, C003 (neighbors)
         node_ids = {n.id for n in neighborhood.nodes()}
-        assert "C001" in node_ids
-        assert "C002" in node_ids
-        assert "C003" in node_ids
-        assert "C004" not in node_ids  # 2 hops away
+        assert PERIPHERY_WORKER_ID in node_ids
+        assert COMPRADOR_ID in node_ids
+        assert CORE_BOURGEOISIE_ID in node_ids
+        assert LABOR_ARISTOCRACY_ID not in node_ids  # 2 hops away
 
     def test_get_neighborhood_respects_radius(self, populated_adapter: NetworkXAdapter) -> None:
         """get_neighborhood respects radius parameter."""
-        neighborhood = populated_adapter.get_neighborhood("C001", radius=2)
+        neighborhood = populated_adapter.get_neighborhood(PERIPHERY_WORKER_ID, radius=2)
 
         # Should now include C004 (2 hops)
         node_ids = {n.id for n in neighborhood.nodes()}
-        assert "C004" in node_ids
+        assert LABOR_ARISTOCRACY_ID in node_ids
 
     def test_get_neighborhood_filters_by_edge_type(
         self, populated_adapter: NetworkXAdapter
     ) -> None:
         """get_neighborhood filters edges by type."""
         neighborhood = populated_adapter.get_neighborhood(
-            "C001", radius=2, edge_types={"SOLIDARITY"}
+            PERIPHERY_WORKER_ID, radius=2, edge_types={"SOLIDARITY"}
         )
 
         # Should NOT reach C004 (connected via EXPLOITATION)
         node_ids = {n.id for n in neighborhood.nodes()}
-        assert "C001" in node_ids
-        assert "C002" in node_ids
-        assert "C003" in node_ids
-        assert "C004" not in node_ids
+        assert PERIPHERY_WORKER_ID in node_ids
+        assert COMPRADOR_ID in node_ids
+        assert CORE_BOURGEOISIE_ID in node_ids
+        assert LABOR_ARISTOCRACY_ID not in node_ids
 
     def test_get_neighborhood_direction_out(self, populated_adapter: NetworkXAdapter) -> None:
         """get_neighborhood with direction='out' follows outgoing edges only."""
-        neighborhood = populated_adapter.get_neighborhood("C001", radius=1, direction="out")
+        neighborhood = populated_adapter.get_neighborhood(
+            PERIPHERY_WORKER_ID, radius=1, direction="out"
+        )
 
         node_ids = {n.id for n in neighborhood.nodes()}
-        assert "C002" in node_ids  # Outgoing from C001
-        assert "C003" in node_ids  # Outgoing from C001
+        assert COMPRADOR_ID in node_ids  # Outgoing from C001
+        assert CORE_BOURGEOISIE_ID in node_ids  # Outgoing from C001
 
     def test_get_neighborhood_raises_keyerror_for_missing(self, adapter: NetworkXAdapter) -> None:
         """get_neighborhood raises KeyError if node does not exist."""
@@ -481,25 +498,27 @@ class TestNetworkXAdapterShortestPath:
 
     def test_shortest_path_returns_path(self, populated_adapter: NetworkXAdapter) -> None:
         """shortest_path returns list of node IDs."""
-        path = populated_adapter.shortest_path("C001", "C004")
+        path = populated_adapter.shortest_path(PERIPHERY_WORKER_ID, LABOR_ARISTOCRACY_ID)
 
         assert path is not None
-        assert path[0] == "C001"
-        assert path[-1] == "C004"
+        assert path[0] == PERIPHERY_WORKER_ID
+        assert path[-1] == LABOR_ARISTOCRACY_ID
 
     def test_shortest_path_returns_none_for_no_path(self, adapter: NetworkXAdapter) -> None:
         """shortest_path returns None when no path exists."""
-        adapter.add_node("C001", "social_class")
-        adapter.add_node("C002", "social_class")
+        adapter.add_node(PERIPHERY_WORKER_ID, "social_class")
+        adapter.add_node(COMPRADOR_ID, "social_class")
         # No edge between them
 
-        path = adapter.shortest_path("C001", "C002")
+        path = adapter.shortest_path(PERIPHERY_WORKER_ID, COMPRADOR_ID)
         assert path is None
 
     def test_shortest_path_filters_by_edge_type(self, populated_adapter: NetworkXAdapter) -> None:
         """shortest_path respects edge_types filter."""
         # Path via SOLIDARITY only should not reach C004
-        path = populated_adapter.shortest_path("C001", "C004", edge_types={"SOLIDARITY"})
+        path = populated_adapter.shortest_path(
+            PERIPHERY_WORKER_ID, LABOR_ARISTOCRACY_ID, edge_types={"SOLIDARITY"}
+        )
         assert path is None
 
 
@@ -511,15 +530,15 @@ class TestNetworkXAdapterExecuteTraversal:
         """execute_traversal with query_type='bfs' performs BFS."""
         query = TraversalQuery(
             query_type="bfs",
-            start_nodes=["C001"],
+            start_nodes=[PERIPHERY_WORKER_ID],
             max_depth=2,
         )
 
         result = populated_adapter.execute_traversal(query)
 
         assert isinstance(result, TraversalResult)
-        assert "C001" in result.nodes
-        assert "C002" in result.nodes
+        assert PERIPHERY_WORKER_ID in result.nodes
+        assert COMPRADOR_ID in result.nodes
 
     def test_execute_traversal_connected_components(self, adapter: NetworkXAdapter) -> None:
         """execute_traversal with query_type='connected_components' finds components."""
@@ -600,7 +619,7 @@ class TestNetworkXAdapterQueryNodes:
         )
 
         assert len(nodes) == 1
-        assert nodes[0].id == "C001"
+        assert nodes[0].id == PERIPHERY_WORKER_ID
 
     def test_query_nodes_filters_by_predicate(self, populated_adapter: NetworkXAdapter) -> None:
         """query_nodes filters by predicate function."""
@@ -611,7 +630,7 @@ class TestNetworkXAdapterQueryNodes:
         )
 
         assert len(nodes) == 1
-        assert nodes[0].id == "C004"
+        assert nodes[0].id == LABOR_ARISTOCRACY_ID
 
 
 @pytest.mark.topology

@@ -7,6 +7,12 @@ from __future__ import annotations
 
 import pytest
 
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
+
 # Import will fail until we implement the mixin (RED)
 try:
     from babylon.engine.adapters.query_mixin import QueryMixin
@@ -29,15 +35,15 @@ def graph_with_data() -> nx.DiGraph[str]:
     """Create a test graph with nodes and edges."""
     g: nx.DiGraph[str] = nx.DiGraph()
     # Add nodes with types and attributes
-    g.add_node("C001", _node_type="social_class", wealth=100.0, consciousness=0.3)
-    g.add_node("C002", _node_type="social_class", wealth=50.0, consciousness=0.5)
-    g.add_node("C003", _node_type="social_class", wealth=200.0, consciousness=0.1)
+    g.add_node(PERIPHERY_WORKER_ID, _node_type="social_class", wealth=100.0, consciousness=0.3)
+    g.add_node(COMPRADOR_ID, _node_type="social_class", wealth=50.0, consciousness=0.5)
+    g.add_node(CORE_BOURGEOISIE_ID, _node_type="social_class", wealth=200.0, consciousness=0.1)
     g.add_node("T001", _node_type="territory", heat=0.5)
     g.add_node("T002", _node_type="territory", heat=0.8)
     # Add edges
-    g.add_edge("C001", "C002", _edge_type="SOLIDARITY", weight=0.8)
-    g.add_edge("C001", "C003", _edge_type="EXPLOITATION", weight=0.5)
-    g.add_edge("C002", "C003", _edge_type="EXPLOITATION", weight=0.3)
+    g.add_edge(PERIPHERY_WORKER_ID, COMPRADOR_ID, _edge_type="SOLIDARITY", weight=0.8)
+    g.add_edge(PERIPHERY_WORKER_ID, CORE_BOURGEOISIE_ID, _edge_type="EXPLOITATION", weight=0.5)
+    g.add_edge(COMPRADOR_ID, CORE_BOURGEOISIE_ID, _edge_type="EXPLOITATION", weight=0.3)
     g.add_edge("T001", "T002", _edge_type="ADJACENCY", weight=1.0)
     return g
 
@@ -81,7 +87,7 @@ class TestQueryMixinNodeQueries:
         adapter = TestAdapter(graph_with_data)
         nodes = list(adapter.query_nodes(attributes={"wealth": 100.0}))
         assert len(nodes) == 1
-        assert nodes[0].id == "C001"
+        assert nodes[0].id == PERIPHERY_WORKER_ID
 
     def test_query_nodes_filters_by_predicate(self, graph_with_data: nx.DiGraph[str]) -> None:
         """query_nodes should filter by custom predicate."""

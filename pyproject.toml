@@ -26,38 +26,50 @@ Source = "https://github.com/bogdanscarwash/babylon"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-pydantic = ">=2.10.3"
-numpy = ">=1.26.4"
-networkx = ">=3.2.1"
-sqlalchemy = ">=2.0.36"
-typer = ">=0.15.1"
-rich = ">=13.9.4"
-coloredlogs = ">=15.0.1"
-pandas = ">=2.2.3"
-pyyaml = ">=6.0.2"
-python-dotenv = ">=1.0.1"
-chromadb = ">=1.0.0"
-tokenizers = ">=0.19.1"
-backoff = ">=2.2.1"
-requests = ">=2.32.3"
-certifi = ">=2025.11.12"
-ratelimit = ">=2.2.1"
-psutil = ">=7.1.0"
-gputil = "==1.4.0"
-jsonschema = "^4.25.1"
-referencing = "^0.37.0"
-aiohttp = "^3.13.3"
-openai = "^2.9.0"
-filelock = ">=3.20.1"
-dearpygui = "^2.1.1"
-salib = "^1.5.2"
-openpyxl = "^3.1.5"
-hypothesis = "^6.149.0"
-h3 = "^4.0.0b1"
-duckdb = ">=1.0.0"  # Used for in-game simulation ledger (not ETL)
-geopandas = ">=1.0.0"
-pyproj = ">=3.6.0"
-shapely = ">=2.0.0"
+
+# === CORE SIMULATION ENGINE ===
+pydantic = ">=2.10.3"        # Schema validation, frozen models
+numpy = ">=1.26.4"           # Numeric calculations
+networkx = ">=3.2.1"         # Graph topology (Embedded Trinity)
+sqlalchemy = ">=2.0.36"      # ORM for Ledger layer
+
+# === DATA & ANALYSIS ===
+pandas = ">=2.2.3"           # Dataframes for metrics
+duckdb = ">=1.0.0"           # In-game simulation ledger (not ETL)
+jsonschema = "^4.25.1"       # JSON Schema validation
+referencing = "^0.37.0"      # JSON Schema $ref support
+openpyxl = "^3.1.5"          # Excel export
+
+# === RAG & AI INTEGRATION ===
+chromadb = ">=1.0.0"         # Vector database (Archive layer)
+openai = "^2.9.0"            # LLM provider
+tokenizers = ">=0.19.1"      # Text tokenization
+aiohttp = "^3.13.3"          # Async HTTP for AI calls
+backoff = ">=2.2.1"          # Retry with exponential backoff
+ratelimit = ">=2.2.1"        # API rate limiting
+
+# === CLI & INTERFACE ===
+typer = ">=0.15.1"           # CLI framework
+rich = ">=13.9.4"            # Rich terminal output
+coloredlogs = ">=15.0.1"     # Colored logging
+dearpygui = "^2.1.1"         # Synopticon dashboard UI
+
+# === GEOSPATIAL ===
+h3 = "^4.2"                  # Uber H3 hex grid (stable release, was ^4.0.0b1 beta)
+geopandas = ">=1.0.0"        # Geospatial dataframes
+pyproj = ">=3.6.0"           # Coordinate projections
+shapely = ">=2.0.0"          # Geometric operations
+
+# === INFRASTRUCTURE ===
+pyyaml = ">=6.0.2"           # YAML config files
+python-dotenv = ">=1.0.1"    # Environment variables
+requests = ">=2.32.3"        # HTTP client
+certifi = ">=2025.11.12"     # CA certificates (security: recent CA bundle)
+filelock = ">=3.20.1"        # File locking
+
+# === TESTING (main deps) ===
+hypothesis = "^6.149.0"      # Property-based testing
+salib = "^1.5.2"             # Sensitivity analysis
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
@@ -92,9 +104,9 @@ types-tqdm = "^4.67.0.20250809"
 vulture = "^2.14"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=7,<9"
+sphinx = ">=7,<9"                 # <9: Sphinx 9 has breaking autodoc changes
 sphinx-rtd-theme = "^3.0.2"
-sphinx-autodoc-typehints = "<3.6"
+sphinx-autodoc-typehints = "<3.6" # <3.6: v3.6+ breaks Napoleon-style docstrings
 myst-parser = "^4.0.1"
 sphinx-autobuild = "^2024.10.3"
 sphinxcontrib-mermaid = "^1.2"

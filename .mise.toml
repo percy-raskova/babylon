@@ -271,6 +271,21 @@ run = "poetry run python tools/regression_test.py compare"
 description = "Generate regression baselines (after intentional changes)"
 run = "poetry run python tools/regression_test.py generate --force"
 
+[tasks."qa:deps"]
+description = "Run dependency audit (security + outdated + dead code)"
+run = """
+echo "=== Security Scan ==="
+poetry run pip-audit || true
+echo ""
+echo "=== Outdated Packages (top 30) ==="
+poetry show --outdated | head -30
+echo ""
+echo "=== Dead Code Check (confidence >= 80%) ==="
+poetry run vulture src/babylon --min-confidence 80 | head -20 || true
+echo ""
+echo "Audit complete. Run quarterly or after major dependency changes."
+"""
+
 # =============================================================================
 # DEMO (Namespaced)
 # =============================================================================

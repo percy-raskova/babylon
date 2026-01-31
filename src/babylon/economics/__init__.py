@@ -60,6 +60,16 @@ from babylon.economics.shadow_labor import (
     ShadowLaborService,
 )
 
+# Temporal validation (Feature 003)
+from babylon.economics.temporal import (
+    AnomalyThresholdConfig,
+    DeindustrializationSignal,
+    SmoothedCoefficientSeries,
+    TemporalTransition,
+    TemporalValidationReport,
+    TemporalValidatorFacade,
+)
+
 # Tensor models
 from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
 
@@ -89,4 +99,11 @@ __all__ = [
     # Tensor models
     "DepartmentRow",
     "ValueTensor4x3",
+    # Temporal validation (Feature 003)
+    "AnomalyThresholdConfig",
+    "DeindustrializationSignal",
+    "SmoothedCoefficientSeries",
+    "TemporalTransition",
+    "TemporalValidationReport",
+    "TemporalValidatorFacade",
 ]

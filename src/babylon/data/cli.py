@@ -1621,8 +1621,11 @@ def qcew(
     ] = False,
     reset: Annotated[
         bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
+        typer.Option(
+            "--reset/--no-reset",
+            help="Clear tables before loading. Default: --no-reset (preserves existing data)",
+        ),
+    ] = False,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
@@ -1639,11 +1642,14 @@ def qcew(
     - State (fact_qcew_state_annual)
     - Metro/Micropolitan/CSA (fact_qcew_metro_annual)
 
+    By default, preserves existing data (--no-reset). Use --reset to clear all
+    QCEW data before loading.
+
     Examples:
         mise run data:qcew                           # Default years with hybrid loading
         mise run data:qcew -- --years 2021-2025      # Recent years via API
         mise run data:qcew -- --years 2015-2020 --force-files  # Historical via files
-        mise run data:qcew -- --force-api            # Force API for all years
+        mise run data:qcew -- --reset                # Clear all data first
     """
     from babylon.data.qcew import QcewLoader
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
@@ -1662,6 +1668,10 @@ def qcew(
             typer.echo("Mode: Force files for all years")
         else:
             typer.echo("Mode: Hybrid (API for 2021+, files for 2013-2020)")
+        if reset:
+            typer.echo("Reset: Clearing existing QCEW data before loading")
+        else:
+            typer.echo("Reset: Preserving existing data (use --reset to clear)")
 
     init_normalized_db()
     loader = QcewLoader(config)
@@ -2377,6 +2387,96 @@ def _print_extracted_files(files: list[Path]) -> None:
         typer.echo(f"  - {f}")
     if len(files) > 10:
         typer.echo(f"  ... and {len(files) - 10} more")
+
+
+@app.command("qcew-download")
+def qcew_download(
+    years: Annotated[
+        str | None,
+        typer.Option("--years", help="Years to download (e.g., 2020-2024 or 2020,2021,2022)"),
+    ] = None,
+    output_dir: Annotated[
+        Path,
+        typer.Option("--output-dir", "-o", help="Output directory for downloaded files"),
+    ] = Path("data/qcew"),
+    skip_existing: Annotated[
+        bool,
+        typer.Option(
+            "--skip-existing/--no-skip-existing",
+            help="Skip years with existing CSV files",
+        ),
+    ] = True,
+    extract: Annotated[
+        bool,
+        typer.Option("--extract/--no-extract", help="Extract CSVs from downloaded ZIPs"),
+    ] = True,
+    cleanup_zips: Annotated[
+        bool,
+        typer.Option("--cleanup-zips", help="Delete ZIP files after successful extraction"),
+    ] = False,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Download QCEW bulk data files from BLS.
+
+    Downloads annual QCEW singlefile ZIPs from BLS bulk data files and
+    extracts them for use by the qcew loader.
+
+    Examples:
+        mise run data:qcew-download                        # Download 2010-2024
+        mise run data:qcew-download -- --years 2020-2024   # Specific range
+        mise run data:qcew-download -- --years 2023        # Single year
+        mise run data:qcew-download -- --no-skip-existing  # Force re-download
+        mise run data:qcew-download -- --cleanup-zips      # Delete ZIPs after extract
+    """
+    from babylon.data.qcew.downloader import DownloadConfig, QcewDownloader
+
+    # Parse years - default to 2010-2024 if not specified
+    parsed_years = parse_years(years) if years else None
+    year_list: list[int] = parsed_years if parsed_years is not None else list(range(2010, 2025))
+
+    config = DownloadConfig(
+        years=year_list,
+        output_dir=output_dir,
+        skip_existing=skip_existing,
+        extract=extract,
+        cleanup_zips=cleanup_zips,
+    )
+
+    if not quiet:
+        typer.echo(f"Downloading QCEW data for years: {year_list[0]}-{year_list[-1]}")
+        typer.echo(f"Output directory: {output_dir}")
+        typer.echo(f"Skip existing: {skip_existing}")
+        typer.echo(f"Extract: {extract}")
+        if cleanup_zips:
+            typer.echo("Cleanup ZIPs: enabled")
+
+    with QcewDownloader() as downloader:
+        report = downloader.download_all(config)
+
+    # Print summary
+    if not quiet:
+        typer.echo("\n" + "=" * 60)
+        typer.secho("DOWNLOAD SUMMARY", fg=typer.colors.GREEN, bold=True)
+        typer.echo("=" * 60)
+        typer.echo(f"Years requested: {len(report.years_requested)}")
+        typer.echo(f"Downloaded: {len(report.years_downloaded)}")
+        typer.echo(f"Skipped (existing): {len(report.years_skipped)}")
+        typer.echo(f"Failed: {len(report.years_failed)}")
+        typer.echo(f"Total bytes: {report.total_bytes / 1e6:.1f} MB")
+        typer.echo(f"Success rate: {report.success_rate * 100:.0f}%")
+
+        if report.errors:
+            typer.secho("\nErrors:", fg=typer.colors.RED)
+            for error in report.errors[:10]:
+                typer.echo(f"  - {error}")
+            if len(report.errors) > 10:
+                typer.echo(f"  ... and {len(report.errors) - 10} more")
+
+    if report.has_failures:
+        raise typer.Exit(1)
 
 
 def main() -> int:

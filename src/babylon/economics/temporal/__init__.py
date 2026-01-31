@@ -32,6 +32,20 @@ from babylon.economics.temporal.models import (
     TemporalValidationReport,
     TransitionAnnotation,
 )
+from babylon.economics.temporal.protocols import (
+    AnnotationManager,
+    AnomalyDetector,
+    CoefficientSmoother,
+    DeindustrializationDetector,
+    ReportGenerator,
+    TemporalValidator,
+    ThresholdCalibrator,
+    TransitionComputer,
+)
+from babylon.economics.temporal.signals import (
+    DeindustrializationDetectorImpl,
+    compute_trend,
+)
 
 __all__: list[str] = [
     # Models
@@ -43,4 +57,16 @@ __all__: list[str] = [
     "DeindustrializationSignal",
     "TransitionAnnotation",
     "TemporalValidationReport",
+    # Protocols
+    "TransitionComputer",
+    "AnomalyDetector",
+    "CoefficientSmoother",
+    "DeindustrializationDetector",
+    "ReportGenerator",
+    "TemporalValidator",
+    "ThresholdCalibrator",
+    "AnnotationManager",
+    # Implementations (User Story 1)
+    "DeindustrializationDetectorImpl",
+    "compute_trend",
 ]

@@ -108,6 +108,40 @@ Canon = CanonicalThresholds
 
 
 # =============================================================================
+# DETROIT METRO TEST CASE (Constitution IV)
+# =============================================================================
+# The Detroit metro area serves as the foundational validation case for
+# deindustrialization signal detection (Feature 003).
+
+
+@dataclass(frozen=True)
+class DetroitMetro:
+    """Detroit metro county FIPS codes for temporal validation tests.
+
+    Detroit serves as the canonical test case for deindustrialization:
+    - Wayne County (Detroit core): Manufacturing decline, population loss
+    - Oakland County (affluent suburb): Professional services growth
+    - Macomb County (working-class suburb): Mixed manufacturing/services
+
+    Reference: Constitution Section IV, spec-003-hydrator-temporal-validation
+    """
+
+    WAYNE_FIPS: str = "26163"
+    """Wayne County - Detroit core (deindustrialized manufacturing center)."""
+
+    OAKLAND_FIPS: str = "26125"
+    """Oakland County - Affluent northern suburb (professional services)."""
+
+    MACOMB_FIPS: str = "26099"
+    """Macomb County - Working-class eastern suburb."""
+
+    @classmethod
+    def all_fips(cls) -> list[str]:
+        """Return all Detroit metro FIPS codes."""
+        return [cls.WAYNE_FIPS, cls.OAKLAND_FIPS, cls.MACOMB_FIPS]
+
+
+# =============================================================================
 # DOMAIN-SPECIFIC CONSTANTS
 # =============================================================================
 

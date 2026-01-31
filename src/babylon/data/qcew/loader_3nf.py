@@ -719,15 +719,24 @@ class QcewLoader(ApiLoaderBase):
         """Process BLS annual singlefile format (uses codes, no titles)."""
         file_record_count = 0
 
-        for chunk in parse_raw_csv_chunked(csv_file, chunk_size=50_000):
+        if verbose:
+            print(f"  Processing singlefile: {csv_file.name}")
+
+        for chunk_num, chunk in enumerate(parse_raw_csv_chunked(csv_file, chunk_size=50_000), 1):
             # Filter to requested years
             chunk = chunk[chunk["year"].isin(years_to_load)]
+
+            if verbose and chunk_num % 10 == 0:
+                print(f"    Chunk {chunk_num}: {file_record_count:,} records so far...")
 
             for _, row in chunk.iterrows():
                 self._process_singlefile_row(session, row, lookups, counts)
                 file_record_count += 1
 
             self._maybe_flush(session, counts, verbose)
+
+        if verbose:
+            print(f"  Completed {csv_file.name}: {file_record_count:,} records")
 
         return file_record_count
 

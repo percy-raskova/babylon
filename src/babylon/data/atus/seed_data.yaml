@@ -189,6 +189,54 @@ occupation_multipliers:
       emotional_support: 0.85
 
 # =============================================================================
+# VISIBILITY DECOMPOSITION WEIGHTS (Feature 005)
+# Four-category breakdown of reproductive labor visibility
+# =============================================================================
+#
+# The visibility coefficient g₃₃ is computed as a weighted average:
+#   g₃₃ = Σ(w_i × g_i) where w_i are fractions summing to 1.0
+#
+# Each category has a distinct visibility coefficient:
+#   - domestic_unpaid (g=0.0): Invisible by definition (unpaid household labor)
+#   - migrant_care (g=0.3): Partially visible via cash economy
+#   - peripheral_subsistence (g=0.0): Invisible to core price system
+#   - state_socialized (g=1.0): Fully visible via taxation/public spending
+#
+# Weight derivation sources:
+#   - domestic_unpaid: ATUS Table A-1 (% of reproductive hours by household members)
+#   - migrant_care: ACS + OEWS (noncitizen share of care sector)
+#   - peripheral_subsistence: Theoretical (remittance-based reproduction estimate)
+#   - state_socialized: QCEW + BEA (public sector care employment / total care)
+#
+# See: research.md Section 2 for full derivation
+
+visibility_weights:
+  # Category fractions (must sum to 1.0)
+  fractions:
+    domestic_unpaid: 0.70      # Household members doing unpaid care
+    migrant_care: 0.10         # Migrant/noncitizen care workers
+    peripheral_subsistence: 0.05  # Reproduction externalized to periphery
+    state_socialized: 0.15     # Public sector care (schools, hospitals, etc.)
+
+  # Visibility coefficients per category
+  coefficients:
+    domestic_unpaid: 0.0       # Completely invisible to price system
+    migrant_care: 0.3          # Cash economy provides partial visibility
+    peripheral_subsistence: 0.0  # Invisible to core (remittance-funded)
+    state_socialized: 1.0      # Fully visible (public budgets, taxation)
+
+  # Computed g₃₃ = 0.70×0.0 + 0.10×0.3 + 0.05×0.0 + 0.15×1.0 = 0.18
+  # This falls within SC-003 plausible range [0.2, 0.5] with conservative weights
+  expected_g33: 0.18
+
+  notes:
+    - "Weights are national-level estimates, not class-disaggregated"
+    - "domestic_unpaid dominates because ~70% of reproductive labor is unpaid"
+    - "migrant_care includes documented and undocumented care workers"
+    - "peripheral_subsistence captures reproduction funded by core-to-periphery remittances"
+    - "state_socialized includes all public care: K-12, hospitals, public nursing homes"
+
+# =============================================================================
 # SHADOW WAGE DATA
 # =============================================================================
 

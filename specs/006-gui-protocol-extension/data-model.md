@@ -15,9 +15,9 @@ This feature extends two existing protocols and adds one new class. No new persi
 from typing import Callable, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from babylon.protocols import SimulationState
+    from babylon.models.snapshots import SimulationSnapshot
 
-ObserverCallback = Callable[[int, "SimulationState"], None]
+ObserverCallback = Callable[[int, "SimulationSnapshot"], None]
 ```
 
 **Description**: Type alias for GUI observer callbacks.
@@ -25,9 +25,11 @@ ObserverCallback = Callable[[int, "SimulationState"], None]
 **Parameters**:
 
 - `tick: int` - Current simulation tick number (0-indexed)
-- `state: SimulationState` - Read-only interface to simulation state
+- `snapshot: SimulationSnapshot` - Immutable, frozen snapshot of state at notification time
 
 **Returns**: None
+
+**Thread Safety**: Callbacks receive a frozen Pydantic model that cannot be mutated. The snapshot is created by `ProtocolObserverAdapter.notify()` BEFORE iteration begins. GUI callbacks NEVER receive a live reference to Simulation internals.
 
 ______________________________________________________________________
 
@@ -83,57 +85,141 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## Simulation Class Extensions
+## New Classes
 
-### GUI Callback Management
+### ProtocolObserverAdapter
 
-**Location**: `src/babylon/engine/simulation.py` (extending existing class)
+**Location**: `src/babylon/engine/observer_adapter.py`
 
-**Purpose**: Manage lightweight GUI callbacks alongside existing `SimulationObserver` pattern.
+**Purpose**: Thread-safe bridge between engine observer notifications and GUI callbacks. Creates snapshot BEFORE invoking callbacks to ensure complete isolation—GUI never touches mutable Simulation internals.
 
-**New Attributes**:
+**Attributes**:
 
-| Attribute           | Type                     | Description                            |
-| ------------------- | ------------------------ | -------------------------------------- |
-| `_gui_callbacks`    | `list[ObserverCallback]` | Registered GUI callbacks               |
-| `_hex_to_territory` | `dict[str, str] \| None` | Lazy reverse index for spatial queries |
+| Attribute     | Type                     | Description                                    |
+| ------------- | ------------------------ | ---------------------------------------------- |
+| `_simulation` | `SimulationState`        | Reference to simulation for snapshot creation  |
+| `_callbacks`  | `list[ObserverCallback]` | Registered GUI callbacks                       |
+| `_lock`       | `threading.Lock`         | Synchronization for callback list modification |
 
-**New Methods**:
+**Methods**:
 
-| Method                      | Signature                                   | Description                            |
-| --------------------------- | ------------------------------------------- | -------------------------------------- |
-| `register_observer`         | `(callback: ObserverCallback) -> None`      | Add GUI callback (idempotent)          |
-| `unregister_observer`       | `(callback: ObserverCallback) -> None`      | Remove GUI callback (no-op if missing) |
-| `get_node_by_spatial_index` | `(h3_index: str) -> TerritoryState \| None` | H3 → Territory lookup                  |
-| `_notify_gui_observers`     | `() -> None`                                | Internal: notify all GUI callbacks     |
-| `_build_hex_index`          | `() -> dict[str, str]`                      | Internal: build reverse H3 index       |
+| Method       | Signature                              | Description                                     |
+| ------------ | -------------------------------------- | ----------------------------------------------- |
+| `__init__`   | `(simulation: SimulationState)`        | Initialize with simulation reference            |
+| `register`   | `(callback: ObserverCallback) -> None` | Add callback (thread-safe, idempotent)          |
+| `unregister` | `(callback: ObserverCallback) -> None` | Remove callback (thread-safe, no-op if missing) |
+| `notify`     | `(tick: int) -> None`                  | Create snapshot, then notify all callbacks      |
 
-**Thread Safety**:
+**Thread Safety Guarantees**:
 
-- Copy `_gui_callbacks` list before iteration (basic thread safety)
-- Snapshots are frozen Pydantic models (immutable, safe across threads)
-- Callback exceptions are caught and logged (per ADR003)
+1. `_lock` protects `_callbacks` list during register/unregister
+1. `notify()` creates snapshot BEFORE iterating (snapshot is immutable)
+1. Callbacks receive `SimulationSnapshot`, NOT `SimulationState` reference
+1. Callback exceptions are caught and logged (per ADR003)
 
 **Implementation Pattern**:
 
 ```python
-def _notify_gui_observers(self) -> None:
-    """Notify all registered GUI callbacks with current state.
+import threading
+import logging
 
-    Thread-safe: copies list before iteration, exceptions logged.
-    """
-    # Copy list to avoid mutation during iteration
-    callbacks = list(self._gui_callbacks)
+logger = logging.getLogger(__name__)
 
-    tick = self.get_current_tick()
-    for callback in callbacks:
-        try:
-            callback(tick, self)  # self implements SimulationState
-        except Exception as e:
-            logger.warning("Observer callback failed: %s", e)
+class ProtocolObserverAdapter:
+    """Thread-safe bridge between simulation and GUI callbacks."""
+
+    def __init__(self, simulation: SimulationState) -> None:
+        self._simulation = simulation
+        self._callbacks: list[ObserverCallback] = []
+        self._lock = threading.Lock()
+
+    def register(self, callback: ObserverCallback) -> None:
+        """Register callback (thread-safe, idempotent)."""
+        with self._lock:
+            if callback not in self._callbacks:
+                self._callbacks.append(callback)
+
+    def unregister(self, callback: ObserverCallback) -> None:
+        """Unregister callback (thread-safe, no-op if missing)."""
+        with self._lock:
+            if callback in self._callbacks:
+                self._callbacks.remove(callback)
+
+    def notify(self, tick: int) -> None:
+        """Notify all callbacks with frozen snapshot.
+
+        Thread-safe: creates snapshot before iteration, exceptions logged.
+        Callbacks receive immutable snapshot, not live simulation reference.
+        """
+        # Create snapshot while simulation is in consistent state
+        snapshot = self._simulation.get_snapshot()
+
+        # Copy callback list under lock
+        with self._lock:
+            callbacks = list(self._callbacks)
+
+        # Notify outside lock (callbacks may take time)
+        for callback in callbacks:
+            try:
+                callback(tick, snapshot)  # Frozen snapshot, not self
+            except Exception as e:
+                logger.warning("Observer callback failed: %s", e)
 ```
 
-**Note**: A separate `ProtocolObserverAdapter` class was considered but deferred (YAGNI). The Simulation class already manages observers and can directly host GUI callbacks.
+**Why This Matters**:
+
+- GUI callbacks NEVER hold a reference to mutable Simulation internals
+- Snapshot is created at a single consistent point in time
+- GUI thread can process the snapshot at leisure without races
+- Complete isolation between engine thread and GUI thread
+
+______________________________________________________________________
+
+## Simulation Class Extensions
+
+### Spatial Query and Adapter Integration
+
+**Location**: `src/babylon/engine/simulation.py` (extending existing class)
+
+**Purpose**: Implement spatial query and delegate observer management to ProtocolObserverAdapter.
+
+**New Attributes**:
+
+| Attribute           | Type                      | Description                            |
+| ------------------- | ------------------------- | -------------------------------------- |
+| `_adapter`          | `ProtocolObserverAdapter` | Thread-safe observer bridge            |
+| `_hex_to_territory` | `dict[str, str] \| None`  | Lazy reverse index for spatial queries |
+
+**New Methods**:
+
+| Method                      | Signature                                   | Description                              |
+| --------------------------- | ------------------------------------------- | ---------------------------------------- |
+| `register_observer`         | `(callback: ObserverCallback) -> None`      | Delegate to `self._adapter.register()`   |
+| `unregister_observer`       | `(callback: ObserverCallback) -> None`      | Delegate to `self._adapter.unregister()` |
+| `get_node_by_spatial_index` | `(h3_index: str) -> TerritoryState \| None` | H3 → Territory lookup                    |
+| `_notify_gui_observers`     | `() -> None`                                | Call `self._adapter.notify(tick)`        |
+| `_build_hex_index`          | `() -> dict[str, str]`                      | Internal: build reverse H3 index         |
+
+**Implementation Pattern**:
+
+```python
+def __init__(self, ...):
+    # ... existing initialization ...
+    self._adapter = ProtocolObserverAdapter(self)
+    self._hex_to_territory: dict[str, str] | None = None
+
+def register_observer(self, callback: ObserverCallback) -> None:
+    """Register GUI callback (delegates to adapter)."""
+    self._adapter.register(callback)
+
+def unregister_observer(self, callback: ObserverCallback) -> None:
+    """Unregister GUI callback (delegates to adapter)."""
+    self._adapter.unregister(callback)
+
+def _notify_gui_observers(self) -> None:
+    """Notify adapter which creates snapshot and invokes callbacks."""
+    self._adapter.notify(self.get_current_tick())
+```
 
 ______________________________________________________________________
 

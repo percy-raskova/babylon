@@ -86,21 +86,24 @@ src/babylon/
 │   ├── simulation_control.py    # MODIFY: Add register/unregister_observer
 │   └── simulation_state.py      # MODIFY: Add get_node_by_spatial_index
 ├── engine/
-│   └── simulation.py            # MODIFY: Implement new protocol methods + _gui_callbacks
+│   ├── simulation.py            # MODIFY: Implement new protocol methods
+│   └── observer_adapter.py      # NEW: ProtocolObserverAdapter class
 └── models/
     └── snapshots.py             # EXISTING: TerritoryState (return type)
 
 tests/
 ├── unit/
-│   └── protocols/
-│       ├── test_simulation_control.py  # NEW: Observer registration tests
-│       └── test_simulation_state.py    # NEW: Spatial query tests
+│   ├── protocols/
+│   │   ├── test_simulation_control.py  # NEW: Observer registration tests
+│   │   └── test_simulation_state.py    # NEW: Spatial query tests
+│   └── engine/
+│       └── test_observer_adapter.py    # NEW: Adapter unit tests
 └── integration/
     └── engine/
         └── test_gui_observer.py        # NEW: Thread-safety tests
 ```
 
-**Structure Decision**: Extending existing `src/babylon/protocols/` and `src/babylon/engine/` directories. No new classes needed—callbacks managed directly by `Simulation._gui_callbacks`.
+**Structure Decision**: New `ProtocolObserverAdapter` class in `observer_adapter.py` ensures complete thread isolation between engine and GUI. Callbacks receive frozen snapshots, never live references.
 
 ## Complexity Tracking
 
@@ -139,11 +142,14 @@ See [data-model.md](data-model.md) for entity definitions.
 
 **Key Entities**:
 
-| Entity            | Type      | Description                                 |
-| ----------------- | --------- | ------------------------------------------- |
-| SimulationControl | Protocol  | Extended with observer registration methods |
-| SimulationState   | Protocol  | Extended with spatial query method          |
-| ObserverCallback  | TypeAlias | `Callable[[int, SimulationState], None]`    |
+| Entity                  | Type      | Description                                          |
+| ----------------------- | --------- | ---------------------------------------------------- |
+| SimulationControl       | Protocol  | Extended with observer registration methods          |
+| SimulationState         | Protocol  | Extended with spatial query method                   |
+| ProtocolObserverAdapter | Class     | Thread-safe bridge: creates snapshot before callback |
+| ObserverCallback        | TypeAlias | `Callable[[int, SimulationSnapshot], None]`          |
+
+**Note**: Callback signature uses `SimulationSnapshot` (frozen), not `SimulationState` (live reference). This ensures GUI never touches mutable engine internals.
 
 ### Contracts
 
@@ -187,26 +193,34 @@ The notification occurs AFTER state reconstruction, ensuring observers receive c
 sequenceDiagram
     participant GUI as GUI Thread
     participant SIM as Simulation
+    participant ADP as ProtocolObserverAdapter
     participant CB as ObserverCallback
 
     GUI->>SIM: register_observer(callback)
-    Note over SIM: _gui_callbacks.append(callback)
+    SIM->>ADP: adapter.register(callback)
+    Note over ADP: _callbacks.append(callback)
 
     GUI->>SIM: step(1)
     activate SIM
     SIM->>SIM: run_tick()
     SIM->>SIM: _hex_to_territory = None
-    SIM->>SIM: _notify_gui_observers()
-    loop for callback in list(_gui_callbacks)
-        SIM->>CB: callback(tick, self)
-        CB->>SIM: get_snapshot()
-        SIM-->>CB: SimulationSnapshot (frozen)
+    SIM->>ADP: adapter.notify(tick)
+    activate ADP
+    ADP->>SIM: get_snapshot()
+    SIM-->>ADP: SimulationSnapshot (frozen)
+    Note over ADP: snapshot created BEFORE iterating
+    loop for callback in list(_callbacks)
+        ADP->>CB: callback(tick, snapshot)
+        Note over CB: receives frozen copy
     end
+    deactivate ADP
     deactivate SIM
 
     GUI->>SIM: unregister_observer(callback)
-    Note over SIM: _gui_callbacks.remove(callback)
+    SIM->>ADP: adapter.unregister(callback)
 ```
+
+**Thread Safety**: The adapter creates a snapshot at a single consistent point in time, BEFORE iterating callbacks. GUI callbacks receive the frozen snapshot and can process it at leisure without races.
 
 ______________________________________________________________________
 

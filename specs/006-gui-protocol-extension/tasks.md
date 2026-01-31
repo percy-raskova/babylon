@@ -62,11 +62,21 @@ ______________________________________________________________________
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Add `_gui_callbacks: list[ObserverCallback]` attribute to Simulation.__init__ in `src/babylon/engine/simulation.py` per [data-model.md#gui-callback-management](data-model.md#gui-callback-management)
-- [ ] T012 [US1] Implement `register_observer()` with idempotent duplicate handling in `src/babylon/engine/simulation.py`
-- [ ] T013 [US1] Implement `unregister_observer()` with no-op for unknown callbacks in `src/babylon/engine/simulation.py`
-- [ ] T014 [US1] Implement `_notify_gui_observers()` with list copy and exception handling in `src/babylon/engine/simulation.py` per [data-model.md#implementation-pattern](data-model.md#implementation-pattern)
-- [ ] T015 [US1] Call `_notify_gui_observers()` at end of `step()` in `src/babylon/engine/simulation.py` per [plan.md#per-tick-update-rule](plan.md#per-tick-update-rule)
+#### Adapter Infrastructure (must complete before Simulation integration)
+
+- [ ] T011 [US1] Create `src/babylon/engine/observer_adapter.py` with ProtocolObserverAdapter class per [data-model.md#protocolobserveradapter](data-model.md#protocolobserveradapter)
+- [ ] T012 [P] [US1] Unit test: adapter.register() adds callback (thread-safe) in `tests/unit/engine/test_observer_adapter.py`
+- [ ] T013 [P] [US1] Unit test: adapter.unregister() removes callback (thread-safe) in `tests/unit/engine/test_observer_adapter.py`
+- [ ] T014 [P] [US1] Unit test: adapter.notify() creates snapshot BEFORE iterating callbacks in `tests/unit/engine/test_observer_adapter.py`
+- [ ] T015 [P] [US1] Unit test: adapter.notify() catches callback exceptions and logs them in `tests/unit/engine/test_observer_adapter.py`
+
+#### Simulation Integration (delegates to adapter)
+
+- [ ] T016 [US1] Add `_adapter: ProtocolObserverAdapter` attribute to Simulation.__init__ in `src/babylon/engine/simulation.py` per [data-model.md#simulation-class-extensions](data-model.md#simulation-class-extensions)
+- [ ] T017 [US1] Implement `register_observer()` delegating to `self._adapter.register()` in `src/babylon/engine/simulation.py`
+- [ ] T018 [US1] Implement `unregister_observer()` delegating to `self._adapter.unregister()` in `src/babylon/engine/simulation.py`
+- [ ] T019 [US1] Implement `_notify_gui_observers()` calling `self._adapter.notify(tick)` in `src/babylon/engine/simulation.py`
+- [ ] T020 [US1] Call `_notify_gui_observers()` at end of `step()` in `src/babylon/engine/simulation.py` per [plan.md#per-tick-update-rule](plan.md#per-tick-update-rule)
 
 **Checkpoint**: User Story 1 complete - observers receive notifications on step()
 
@@ -82,17 +92,17 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T016 [P] [US2] Unit test: valid H3 index returns owning TerritoryState in `tests/unit/protocols/test_simulation_state.py`
-- [ ] T017 [P] [US2] Unit test: valid H3 index not claimed returns None in `tests/unit/protocols/test_simulation_state.py`
-- [ ] T018 [P] [US2] Unit test: invalid H3 format raises ValueError in `tests/unit/protocols/test_simulation_state.py`
-- [ ] T019 [P] [US2] Unit test: cache invalidated after step() in `tests/unit/protocols/test_simulation_state.py`
+- [ ] T021 [P] [US2] Unit test: valid H3 index returns owning TerritoryState in `tests/unit/protocols/test_simulation_state.py`
+- [ ] T022 [P] [US2] Unit test: valid H3 index not claimed returns None in `tests/unit/protocols/test_simulation_state.py`
+- [ ] T023 [P] [US2] Unit test: invalid H3 format raises ValueError in `tests/unit/protocols/test_simulation_state.py`
+- [ ] T024 [P] [US2] Unit test: cache invalidated after step() in `tests/unit/protocols/test_simulation_state.py`
 
 ### Implementation for User Story 2
 
-- [ ] T020 [US2] Add `_hex_to_territory: dict[str, str] | None = None` attribute to Simulation.__init__ in `src/babylon/engine/simulation.py`
-- [ ] T021 [US2] Implement `_build_hex_index()` to build reverse H3 -> territory_id mapping in `src/babylon/engine/simulation.py` per [research.md#4-spatial-index-implementation](research.md#4-spatial-index-implementation)
-- [ ] T022 [US2] Implement `get_node_by_spatial_index()` with `h3.is_valid_cell()` validation in `src/babylon/engine/simulation.py`
-- [ ] T023 [US2] Add cache invalidation `self._hex_to_territory = None` at end of step() in `src/babylon/engine/simulation.py`
+- [ ] T025 [US2] Add `_hex_to_territory: dict[str, str] | None = None` attribute to Simulation.__init__ in `src/babylon/engine/simulation.py`
+- [ ] T026 [US2] Implement `_build_hex_index()` to build reverse H3 -> territory_id mapping in `src/babylon/engine/simulation.py` per [research.md#4-spatial-index-implementation](research.md#4-spatial-index-implementation)
+- [ ] T027 [US2] Implement `get_node_by_spatial_index()` with `h3.is_valid_cell()` validation in `src/babylon/engine/simulation.py`
+- [ ] T028 [US2] Add cache invalidation `self._hex_to_territory = None` at end of step() in `src/babylon/engine/simulation.py`
 
 **Checkpoint**: User Story 2 complete - spatial queries work independently
 
@@ -108,15 +118,15 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T024 [P] [US3] Integration test: snapshot is immutable (frozen Pydantic) in `tests/integration/engine/test_gui_observer.py`
-- [ ] T025 [P] [US3] Integration test: concurrent register + step doesn't corrupt callback list in `tests/integration/engine/test_gui_observer.py`
-- [ ] T026 [P] [US3] Integration test: callback receives consistent snapshot (no partial updates) in `tests/integration/engine/test_gui_observer.py`
+- [ ] T029 [P] [US3] Integration test: snapshot is immutable (frozen Pydantic) in `tests/integration/engine/test_gui_observer.py`
+- [ ] T030 [P] [US3] Integration test: concurrent register + step doesn't corrupt callback list in `tests/integration/engine/test_gui_observer.py`
+- [ ] T031 [P] [US3] Integration test: callback receives consistent snapshot (no partial updates) in `tests/integration/engine/test_gui_observer.py`
 
 ### Implementation for User Story 3
 
-- [ ] T027 [US3] Verify `_notify_gui_observers()` copies list before iteration in `src/babylon/engine/simulation.py` (implemented in T014)
-- [ ] T028 [US3] Verify callbacks receive `self` which provides frozen snapshots via `get_snapshot()` in `src/babylon/engine/simulation.py`
-- [ ] T029 [US3] Add docstring noting thread-safety guarantees to `register_observer` in `src/babylon/engine/simulation.py`
+- [ ] T032 [US3] Verify ProtocolObserverAdapter.notify() copies list before iteration in `src/babylon/engine/observer_adapter.py` (implemented in T011)
+- [ ] T033 [US3] Verify callbacks receive `SimulationSnapshot` (frozen) not `SimulationState` (live reference) in `src/babylon/engine/observer_adapter.py`
+- [ ] T034 [US3] Add docstring noting thread-safety guarantees to `register_observer` in `src/babylon/engine/simulation.py`
 
 **Checkpoint**: User Story 3 complete - thread-safe GUI integration verified
 
@@ -126,10 +136,10 @@ ______________________________________________________________________
 
 **Purpose**: Final verification and documentation
 
-- [ ] T030 [P] Run existing test suite to verify backward compatibility (SC-005)
-- [ ] T031 [P] Run [quickstart.md](quickstart.md) examples to validate documentation
-- [ ] T032 Verify protocol implementations with `isinstance()` check in `tests/unit/protocols/test_simulation_control.py`
-- [ ] T033 Update `src/babylon/protocols/__init__.py` exports if needed
+- [ ] T035 [P] Run existing test suite to verify backward compatibility (SC-005)
+- [ ] T036 [P] Run [quickstart.md](quickstart.md) examples to validate documentation
+- [ ] T037 Verify protocol implementations with `isinstance()` check in `tests/unit/protocols/test_simulation_control.py`
+- [ ] T038 Update `src/babylon/protocols/__init__.py` exports if needed
 
 ______________________________________________________________________
 
@@ -140,6 +150,7 @@ ______________________________________________________________________
 - **Setup (Phase 1)**: No dependencies - can start immediately
 - **Foundational (Phase 2)**: Depends on Setup - BLOCKS all user stories
 - **User Stories (Phase 3-5)**: All depend on Foundational phase completion
+  - US1 Adapter (T011-T015) BLOCKS US1 Simulation Integration (T016-T020)
   - US1 and US2 have NO dependencies on each other (can run in parallel)
   - US3 depends on US1 (thread-safety of observer callbacks)
 - **Polish (Phase 6)**: Depends on all user stories being complete
@@ -173,7 +184,9 @@ graph LR
 
 **Phase 3 (US1 Tests)**: T006-T010 can all run in parallel
 
-**Phase 4 (US2 Tests)**: T016-T019 can all run in parallel
+**Phase 3 (US1 Adapter Tests)**: T012-T015 can all run in parallel (after T011 creates the file)
+
+**Phase 4 (US2 Tests)**: T021-T024 can all run in parallel
 
 **Cross-Story**: US1 and US2 can be implemented in parallel by different developers
 
@@ -182,12 +195,18 @@ ______________________________________________________________________
 ## Parallel Example: User Story 1 Tests
 
 ```bash
-# Launch all tests for User Story 1 together (they're all in the same file but test different scenarios):
+# Launch all behavioral tests for User Story 1 together:
 Task: T006 "callback receives tick and state after step()"
 Task: T007 "unregistered callback not invoked"
 Task: T008 "multiple observers invoked in registration order"
 Task: T009 "duplicate registration is idempotent"
 Task: T010 "callback exception logged but simulation continues"
+
+# Launch all adapter unit tests in parallel (after T011 creates the file):
+Task: T012 "adapter.register() adds callback (thread-safe)"
+Task: T013 "adapter.unregister() removes callback (thread-safe)"
+Task: T014 "adapter.notify() creates snapshot BEFORE iterating"
+Task: T015 "adapter.notify() catches callback exceptions"
 ```
 
 ______________________________________________________________________
@@ -198,7 +217,9 @@ ______________________________________________________________________
 
 1. Complete Phase 1: Setup (T001-T002)
 1. Complete Phase 2: Foundational (T003-T005)
-1. Complete Phase 3: User Story 1 (T006-T015)
+1. Complete Phase 3: User Story 1 (T006-T020)
+   - Adapter Infrastructure (T011-T015)
+   - Simulation Integration (T016-T020)
 1. **STOP and VALIDATE**: Test observer registration independently
 1. Deploy/demo if ready - GUI can now receive tick notifications
 

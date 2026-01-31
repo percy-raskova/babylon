@@ -78,7 +78,8 @@ ______________________________________________________________________
 - What happens when the user clicks outside all hexagons (on the background)? The selection is cleared; the Inspector shows "No territory selected".
 - What happens when profit_rate is exactly 0.0 or 1.0 (boundary values)? Colors render correctly at extremes (solid red or solid green).
 - What happens when the simulation connection is lost mid-session? The dashboard displays a connection status indicator showing "Disconnected", freezes the last known state, and automatically reconnects when the simulation becomes available again.
-- How does the system handle rapid tick updates (100+ per second)? The GUI throttles visual updates to 30 FPS (33ms minimum interval) while maintaining state accuracy.
+- How does the system handle rapid tick updates (100+ per second)? The GUI throttles visual updates to 30 FPS (33ms minimum interval), coalescing intermediate states to always display the most recent snapshot.
+- What state is preserved during auto-reconnect? The currently selected territory (if any) MUST be preserved; the Inspector continues showing the last known values until new data arrives.
 
 ## Requirements *(mandatory)*
 
@@ -97,12 +98,14 @@ ______________________________________________________________________
 - **FR-011**: System MUST NOT regenerate the full map visualization on every tick; updates MUST be incremental (JSON data push pattern).
 - **FR-012**: System MUST unregister its observer callback when the dashboard window is closed.
 - **FR-013**: System MUST log errors and connection state changes (connected, disconnected, reconnected) at DEBUG level.
+- **FR-014**: System MUST display a visible highlight (border or color shift) on hexagons belonging to the currently selected territory.
+- **FR-015**: System MUST handle SimulationState method exceptions gracefully by logging the error and displaying an error indicator, without crashing.
 
 ### Key Entities *(include if feature involves data)*
 
 - **Dashboard Window**: The main application window containing the map viewport and inspector panel.
 - **Map Viewport**: The central visualization area displaying the H3 hexagonal grid map.
-- **Inspector Panel**: A side panel displaying detailed properties of the currently selected territory.
+- **Inspector Panel**: A side panel on the right edge of the window, displaying detailed properties of the currently selected territory.
 - **Selection State**: The currently selected territory (if any), updated by user clicks or cleared when clicking empty space.
 - **Theme Configuration**: Color palette, fonts, and styling rules for the Bunker Constructivism aesthetic.
 
@@ -111,11 +114,11 @@ ______________________________________________________________________
 ### Measurable Outcomes
 
 - **SC-001**: Users can identify the geographic distribution of profit rates across the Detroit region within 5 seconds of launching the dashboard.
-- **SC-002**: Users can select any territory and view its properties within 2 clicks (one to click hex, details appear immediately).
+- **SC-002**: Users can select any territory and view its properties within 2 clicks (one to click hex, details appear within 100ms).
 - **SC-003**: Map and Inspector updates are visually apparent within 100ms of simulation tick completion (perceived as "instant").
-- **SC-004**: Dashboard remains responsive (no UI freezing) during continuous simulation runs of 1000+ ticks.
+- **SC-004**: Dashboard remains responsive (no individual frame exceeds 100ms render time) during continuous simulation runs of 1000+ ticks.
 - **SC-005**: Users unfamiliar with the system can identify high and low profit rate territories by color within 10 seconds.
-- **SC-006**: Memory usage remains stable (no unbounded growth) during extended sessions of 10,000+ ticks.
+- **SC-006**: Memory usage remains stable (growth less than 50MB over baseline) during extended sessions of 10,000+ ticks.
 
 ## Clarifications
 
@@ -133,6 +136,7 @@ ______________________________________________________________________
 - The "Value Tensor" refers to all numeric properties of TerritoryState: tick, profit_rate, equilibrium_r, plus derived values like hex_claims count.
 - Initial map rendering uses the full hex list from the simulation; only color/property updates use the incremental JSON pattern.
 - The dashboard runs in the same process as the simulation (no network communication required for MVP).
+- Observer callbacks from SimulationControl.register_observer() are invoked on the main thread; no cross-thread marshalling is required in the dashboard.
 
 ## Out of Scope
 

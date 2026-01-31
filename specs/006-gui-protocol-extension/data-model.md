@@ -83,56 +83,57 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## New Classes
+## Simulation Class Extensions
 
-### ProtocolObserverAdapter
+### GUI Callback Management
 
-**Location**: `src/babylon/engine/observer_adapter.py`
+**Location**: `src/babylon/engine/simulation.py` (extending existing class)
 
-**Purpose**: Bridge between engine observer notifications and GUI callbacks with thread-safe snapshot delivery.
+**Purpose**: Manage lightweight GUI callbacks alongside existing `SimulationObserver` pattern.
 
-**Attributes**:
+**New Attributes**:
 
-| Attribute     | Type                     | Description                                    |
-| ------------- | ------------------------ | ---------------------------------------------- |
-| `_simulation` | `SimulationState`        | Reference to simulation for snapshot creation  |
-| `_callbacks`  | `list[ObserverCallback]` | Registered GUI callbacks                       |
-| `_lock`       | `threading.Lock`         | Synchronization for callback list modification |
+| Attribute           | Type                     | Description                            |
+| ------------------- | ------------------------ | -------------------------------------- |
+| `_gui_callbacks`    | `list[ObserverCallback]` | Registered GUI callbacks               |
+| `_hex_to_territory` | `dict[str, str] \| None` | Lazy reverse index for spatial queries |
 
-**Methods**:
+**New Methods**:
 
-| Method       | Signature                              | Description                             |
-| ------------ | -------------------------------------- | --------------------------------------- |
-| `__init__`   | `(simulation: SimulationState)`        | Initialize with simulation reference    |
-| `register`   | `(callback: ObserverCallback) -> None` | Add callback (thread-safe)              |
-| `unregister` | `(callback: ObserverCallback) -> None` | Remove callback (thread-safe)           |
-| `notify`     | `(tick: int) -> None`                  | Notify all callbacks with current state |
+| Method                      | Signature                                   | Description                            |
+| --------------------------- | ------------------------------------------- | -------------------------------------- |
+| `register_observer`         | `(callback: ObserverCallback) -> None`      | Add GUI callback (idempotent)          |
+| `unregister_observer`       | `(callback: ObserverCallback) -> None`      | Remove GUI callback (no-op if missing) |
+| `get_node_by_spatial_index` | `(h3_index: str) -> TerritoryState \| None` | H3 → Territory lookup                  |
+| `_notify_gui_observers`     | `() -> None`                                | Internal: notify all GUI callbacks     |
+| `_build_hex_index`          | `() -> dict[str, str]`                      | Internal: build reverse H3 index       |
 
 **Thread Safety**:
 
-- `_lock` protects `_callbacks` list during register/unregister
-- `notify()` creates snapshot before iterating (snapshot is immutable)
+- Copy `_gui_callbacks` list before iteration (basic thread safety)
+- Snapshots are frozen Pydantic models (immutable, safe across threads)
 - Callback exceptions are caught and logged (per ADR003)
 
-**Implementation Notes**:
+**Implementation Pattern**:
 
 ```python
-def notify(self, tick: int) -> None:
-    """Notify all registered callbacks with current state.
+def _notify_gui_observers(self) -> None:
+    """Notify all registered GUI callbacks with current state.
 
-    Thread-safe: creates snapshot before iteration, exceptions logged.
+    Thread-safe: copies list before iteration, exceptions logged.
     """
-    # Snapshot under lock to get consistent callback list
-    with self._lock:
-        callbacks = list(self._callbacks)
+    # Copy list to avoid mutation during iteration
+    callbacks = list(self._gui_callbacks)
 
-    # Notify outside lock (callbacks may take time)
+    tick = self.get_current_tick()
     for callback in callbacks:
         try:
-            callback(tick, self._simulation)
+            callback(tick, self)  # self implements SimulationState
         except Exception as e:
             logger.warning("Observer callback failed: %s", e)
 ```
+
+**Note**: A separate `ProtocolObserverAdapter` class was considered but deferred (YAGNI). The Simulation class already manages observers and can directly host GUI callbacks.
 
 ______________________________________________________________________
 
@@ -158,64 +159,51 @@ ______________________________________________________________________
 
 ## Entity Relationships
 
-```
-┌─────────────────────┐
-│  SimulationControl  │ (Protocol)
-│  ───────────────────│
-│  + step()           │
-│  + reset()          │
-│  + register_observer()   ◄── NEW
-│  + unregister_observer() ◄── NEW
-└─────────────────────┘
-          │
-          │ implements
-          ▼
-┌─────────────────────┐
-│     Simulation      │ (Class)
-│  ───────────────────│
-│  _gui_callbacks     │
-│  _hex_to_territory  │ (lazy index)
-└─────────────────────┘
-          │
-          │ uses
-          ▼
-┌─────────────────────┐
-│ ProtocolObserverAdapter │ (Class)
-│  ───────────────────│    │
-│  _simulation        │────┘
-│  _callbacks         │
-│  _lock              │
-│  + notify()         │
-└─────────────────────┘
-          │
-          │ invokes
-          ▼
-┌─────────────────────┐
-│   ObserverCallback  │ (TypeAlias)
-│  ───────────────────│
-│  (tick, state) -> None
-└─────────────────────┘
+```mermaid
+classDiagram
+    class SimulationControl {
+        <<Protocol>>
+        +step(n: int) None
+        +reset() None
+        +register_observer(callback) None
+        +unregister_observer(callback) None
+    }
 
+    class SimulationState {
+        <<Protocol>>
+        +get_current_tick() int
+        +get_snapshot() SimulationSnapshot
+        +get_territory_state(id) TerritoryState
+        +get_hexes_for_territory(id) set
+        +get_node_by_spatial_index(h3) TerritoryState
+    }
 
-┌─────────────────────┐
-│   SimulationState   │ (Protocol)
-│  ───────────────────│
-│  + get_current_tick()
-│  + get_snapshot()   │
-│  + get_territory_state()
-│  + get_hexes_for_territory()
-│  + get_node_by_spatial_index() ◄── NEW
-└─────────────────────┘
-          │
-          │ returns
-          ▼
-┌─────────────────────┐
-│   TerritoryState    │ (Pydantic, frozen)
-│  ───────────────────│
-│  territory_id       │
-│  hex_claims         │
-│  profit_rate        │
-└─────────────────────┘
+    class Simulation {
+        -_gui_callbacks: list~ObserverCallback~
+        -_hex_to_territory: dict | None
+        +register_observer(callback)
+        +unregister_observer(callback)
+        +get_node_by_spatial_index(h3)
+        -_notify_gui_observers()
+        -_build_hex_index()
+    }
+
+    class ObserverCallback {
+        <<TypeAlias>>
+        Callable[[int, SimulationState], None]
+    }
+
+    class TerritoryState {
+        <<Pydantic frozen>>
+        +territory_id: str
+        +hex_claims: frozenset
+        +profit_rate: float
+    }
+
+    SimulationControl <|.. Simulation : implements
+    SimulationState <|.. Simulation : implements
+    Simulation --> ObserverCallback : invokes
+    SimulationState --> TerritoryState : returns
 ```
 
 ______________________________________________________________________

@@ -1,6 +1,11 @@
-"""ProtocolObserverAdapter contract for GUI Protocol Extension.
+"""ObserverCallback type alias for GUI Protocol Extension.
 
-This file defines the interface for the thread-safe observer adapter.
+This file defines the callback type used by GUI observers.
+
+NOTE: The ObserverAdapterProtocol defined here is an OPTIONAL extension point.
+For MVP implementation, the Simulation class directly manages callbacks via
+_gui_callbacks list. A separate adapter class can be added later if needed
+for advanced use cases (Qt signal bridging, mock testing, etc.).
 
 Feature: 006-gui-protocol-extension
 Date: 2026-01-31

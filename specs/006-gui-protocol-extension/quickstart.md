@@ -114,13 +114,13 @@ layer = pdk.Layer(
 
 ## 3. Thread-Safe GUI Integration
 
-### Using ProtocolObserverAdapter
+### PyQt6 Bridge Pattern
 
 For PyQt6 applications where the GUI runs in a separate thread:
 
 ```python
-from babylon.engine.observer_adapter import ProtocolObserverAdapter
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtWidgets import QMainWindow
 
 class GuiBridge(QObject):
     """Bridge between simulation thread and Qt GUI."""
@@ -129,14 +129,19 @@ class GuiBridge(QObject):
 
     def __init__(self, simulation):
         super().__init__()
-        self.adapter = ProtocolObserverAdapter(simulation)
-        self.adapter.register(self._on_tick)
+        self.simulation = simulation
+        # Register directly with simulation - no adapter needed
+        self.simulation.register_observer(self._on_tick)
 
     def _on_tick(self, tick: int, state):
         """Called from simulation thread."""
-        # Emit signal - Qt auto-queues to GUI thread
+        # Emit signal - Qt auto-queues to GUI thread via AutoConnection
         snapshot = state.get_snapshot()  # Immutable, safe to pass
         self.tick_updated.emit(tick, snapshot)
+
+    def cleanup(self):
+        """Unregister when done."""
+        self.simulation.unregister_observer(self._on_tick)
 
 
 # In main window
@@ -147,7 +152,7 @@ class MainWindow(QMainWindow):
         self.bridge.tick_updated.connect(self.update_display)
 
     def update_display(self, tick: int, snapshot):
-        """Called in GUI thread."""
+        """Called in GUI thread (via Qt signal marshalling)."""
         self.tick_label.setText(f"Tick: {tick}")
         self.territory_count.setText(f"Territories: {len(snapshot.territories)}")
 ```
@@ -155,8 +160,8 @@ class MainWindow(QMainWindow):
 ### Thread Safety Guarantees
 
 1. **Snapshots are immutable**: Frozen Pydantic models can be safely passed across threads
-1. **Registration is thread-safe**: `register_observer`/`unregister_observer` use internal locking
-1. **Callbacks receive consistent state**: Snapshot created before callback iteration
+1. **Registration is thread-safe**: Callback list copied before iteration
+1. **Qt handles thread marshalling**: `AutoConnection` automatically queues signals across threads
 
 ## 4. Complete Example
 

@@ -678,9 +678,11 @@ class QcewLoader(ApiLoaderBase):
                 session, csv_file, years_to_load, lookups, counts, verbose
             )
 
-            # Mark file as completed after successful processing
-            self._mark_completed(session, "qcew", 0, file_hash, "file", "T", file_record_count)
-            session.flush()
+            # Only mark file as completed if records were actually loaded
+            # This prevents false positives when year filtering yields 0 records
+            if file_record_count > 0:
+                self._mark_completed(session, "qcew", 0, file_hash, "file", "T", file_record_count)
+                session.flush()
 
         session.commit()
         self._finalize_stats(stats, lookups, counts, verbose, "File")

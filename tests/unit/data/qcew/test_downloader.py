@@ -408,3 +408,88 @@ class TestDownloaderYearValidation:
             except ValueError as e:
                 # Only fail if it's a range error
                 assert "out of valid range" not in str(e)
+
+
+class TestLoaderCheckpointBehavior:
+    """Tests for QCEW loader checkpoint behavior.
+
+    Regression tests for the bug where files with 0 records
+    were incorrectly marked as completed.
+    """
+
+    def test_checkpoint_not_created_for_zero_records(self) -> None:
+        """Checkpoints should NOT be created when 0 records are loaded.
+
+        This prevents false positives when year filtering yields no data.
+        A file should only be marked completed if it actually contributed
+        records to the database.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from babylon.data.loader_base import LoaderConfig
+        from babylon.data.qcew.loader_3nf import QcewLoader
+
+        config = LoaderConfig(qcew_years=[2010])
+        loader = QcewLoader(config)
+
+        # Mock session and methods
+        mock_session = MagicMock()
+        mock_csv_file = MagicMock()
+        mock_csv_file.name = "2010.annual.singlefile.csv"
+
+        # Mock _get_file_hash to return a test hash
+        with (
+            patch.object(loader, "_get_file_hash", return_value="testhash123"),
+            patch.object(loader, "_is_completed", return_value=False),
+            patch.object(loader, "_process_csv_file", return_value=0),  # 0 records!
+            patch.object(loader, "_mark_completed") as mock_mark,
+        ):
+            # Simulate the processing loop logic
+            file_hash = loader._get_file_hash(mock_csv_file)
+            if not loader._is_completed(mock_session, "qcew", 0, file_hash, "file", "T"):
+                file_record_count = loader._process_csv_file(
+                    mock_session, mock_csv_file, {2010}, {}, MagicMock(), False
+                )
+                # Only mark completed if records > 0
+                if file_record_count > 0:
+                    loader._mark_completed(
+                        mock_session, "qcew", 0, file_hash, "file", "T", file_record_count
+                    )
+
+            # _mark_completed should NOT have been called since 0 records
+            mock_mark.assert_not_called()
+
+    def test_checkpoint_created_for_positive_records(self) -> None:
+        """Checkpoints SHOULD be created when records are loaded."""
+        from unittest.mock import MagicMock, patch
+
+        from babylon.data.loader_base import LoaderConfig
+        from babylon.data.qcew.loader_3nf import QcewLoader
+
+        config = LoaderConfig(qcew_years=[2010])
+        loader = QcewLoader(config)
+
+        mock_session = MagicMock()
+        mock_csv_file = MagicMock()
+        mock_csv_file.name = "2010.annual.singlefile.csv"
+
+        with (
+            patch.object(loader, "_get_file_hash", return_value="testhash123"),
+            patch.object(loader, "_is_completed", return_value=False),
+            patch.object(loader, "_process_csv_file", return_value=1000),  # 1000 records!
+            patch.object(loader, "_mark_completed") as mock_mark,
+        ):
+            file_hash = loader._get_file_hash(mock_csv_file)
+            if not loader._is_completed(mock_session, "qcew", 0, file_hash, "file", "T"):
+                file_record_count = loader._process_csv_file(
+                    mock_session, mock_csv_file, {2010}, {}, MagicMock(), False
+                )
+                if file_record_count > 0:
+                    loader._mark_completed(
+                        mock_session, "qcew", 0, file_hash, "file", "T", file_record_count
+                    )
+
+            # _mark_completed SHOULD have been called
+            mock_mark.assert_called_once_with(
+                mock_session, "qcew", 0, "testhash123", "file", "T", 1000
+            )

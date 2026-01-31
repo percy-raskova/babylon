@@ -77,9 +77,16 @@ ______________________________________________________________________
 - What happens when the simulation has no territories loaded? The map displays but with no colored hexes; the Inspector shows "No territories in simulation".
 - What happens when the user clicks outside all hexagons (on the background)? The selection is cleared; the Inspector shows "No territory selected".
 - What happens when profit_rate is exactly 0.0 or 1.0 (boundary values)? Colors render correctly at extremes (solid red or solid green).
-- What happens when the simulation connection is lost mid-session? The dashboard displays a connection status indicator showing "Disconnected", freezes the last known state, and automatically reconnects when the simulation becomes available again.
+- What happens when the simulation connection is lost mid-session? The dashboard displays a connection status indicator showing "Disconnected", freezes the last known state, and automatically reconnects when the simulation becomes available again. Auto-reconnect attempts immediately when simulation becomes available; no retry backoff for MVP (same-process assumption).
 - How does the system handle rapid tick updates (100+ per second)? The GUI throttles visual updates to 30 FPS (33ms minimum interval), coalescing intermediate states to always display the most recent snapshot.
 - What state is preserved during auto-reconnect? The currently selected territory (if any) MUST be preserved; the Inspector continues showing the last known values until new data arrives.
+- What happens when a click event contains an invalid H3 index format? The system logs a warning and ignores the click; no signal is emitted.
+- What happens when clicking the same territory twice? The selection is maintained; no toggle behavior.
+- What happens when the simulation is paused? The dashboard displays the last received snapshot; no updates occur until simulation resumes.
+- What happens when SimulationSnapshot contains malformed data or observer callbacks throw exceptions? FR-015 exception handling applies; error is logged and error indicator displayed without crashing.
+- What happens if memory exceeds 50MB growth threshold? The dashboard logs a warning but continues operating; no automatic recovery for MVP (monitoring only).
+- What happens with rapid clicks (click spam)? Each click triggers immediate territory lookup; the Inspector displays the most recently clicked territory.
+- What happens when a territory has empty hex_claims? The territory has no visual representation on the map; it cannot be clicked.
 
 ## Requirements *(mandatory)*
 
@@ -124,21 +131,28 @@ ______________________________________________________________________
 
 ### Session 2026-01-31
 
-- Q: What should the GUI update throttle rate be for rapid tick updates? → A: 30 FPS (33ms)
+- Q: What should the GUI update throttle rate be for rapid tick updates? → A: 30 FPS (33ms minimum interval, measured start-to-start of visual updates)
 - Q: What should happen when connection is restored after loss? → A: Auto-reconnect (automatically resume updates)
 - Q: What observability requirements are needed for MVP? → A: Debug logging only (errors and connection state changes)
+- Q: How is SC-005 ("users unfamiliar...identify within 10 seconds") validated? → A: Manual visual review; not automatable (inherently requires user observation)
 
 ## Assumptions
 
-- The Detroit region H3 indices are available from the simulation's TerritoryState.hex_claims data.
-- The simulation engine is already implemented and exposes SimulationState and SimulationControl protocols (Feature 006).
+- The Detroit region H3 indices are available from the simulation's TerritoryState.hex_claims data at H3 resolution 5 (~252.9 km² average area per hex).
+- The simulation engine is already implemented and exposes SimulationState and SimulationControl protocols (Feature 006); implementation assumes protocol stability per specs/006-gui-protocol-extension/.
 - The "Bunker Constructivism" theme follows `ai-docs/design-system.yaml`: void (#050505), wet_concrete (#1a1a1a), data_green (#39FF14), phosphor_burn_red (#D40000), with monospace typography.
 - The "Value Tensor" refers to all numeric properties of TerritoryState: tick, profit_rate, equilibrium_r, plus derived values like hex_claims count.
-- Initial map rendering uses the full hex list from the simulation; only color/property updates use the incremental JSON pattern.
-- The dashboard runs in the same process as the simulation (no network communication required for MVP).
+- Initial map rendering uses the full hex list from the simulation; only color/property updates use the incremental JSON pattern (deck.setProps() with updated layer data; structure defined in research.md Section 2).
+- The dashboard runs in the same process as the simulation (no network communication required for MVP); this is an MVP constraint that simplifies threading; future phases may introduce inter-process communication.
 - Observer callbacks from SimulationControl.register_observer() are invoked on the main thread; no cross-thread marshalling is required in the dashboard.
-- Window layout follows `ai-docs/epochs/epoch2/pyqt-visualization.yaml`: 1460×820 minimum viewport, 30% inspector / 70% map split.
+- Window layout follows `ai-docs/epochs/epoch2/pyqt-visualization.yaml`: 1460×820 minimum viewport, 30% inspector / 70% map split (map visible in central 70% panel).
 - Color gradient for profit_rate uses data_green (#39FF14) for high values and phosphor_burn_red (#D40000) for low values per design system semantics.
+- TerritoryState model enforces profit_rate in [0.0, 1.0] range via Pydantic validation; out-of-range values are clamped at the model layer.
+- H3 indices are unique per territory by simulation design; no overlapping claims are possible.
+- Tooltips use pydeck's built-in getTooltip with default positioning and immediate display on hover.
+- The dashboard targets ~2,000 hexes (Detroit metro at H3 resolution 5) per plan.md scale specification.
+- No specific CPU usage limit is targeted for MVP; the 30 FPS throttle provides implicit CPU constraint.
+- Logging uses Python's standard logging module with default format; destination is stderr.
 
 ## Out of Scope
 
@@ -148,3 +162,4 @@ ______________________________________________________________________
 - Saving or exporting visualizations.
 - Configuration of theme or color gradients.
 - Territory comparison or multi-select features.
+- Keyboard navigation for hex selection (mouse-only for Phase 1; accessibility enhancement deferred).

@@ -16,12 +16,8 @@ See Also:
 
 from __future__ import annotations
 
-# Threshold calibration will be exported here after implementation in Phase 6
-# from babylon.economics.calibration.thresholds import (
-#     ThresholdCalibratorImpl,
-# )
+from babylon.economics.calibration.thresholds import ThresholdCalibratorImpl
 
 __all__: list[str] = [
-    # Calibration (Phase 6)
-    # "ThresholdCalibratorImpl",
+    "ThresholdCalibratorImpl",
 ]

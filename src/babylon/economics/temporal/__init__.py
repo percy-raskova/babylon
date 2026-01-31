@@ -22,6 +22,7 @@ See Also:
 
 from __future__ import annotations
 
+from babylon.economics.temporal.annotations import AnnotationManagerImpl
 from babylon.economics.temporal.anomaly import (
     AnomalyDetectorImpl,
     check_threshold_violation,
@@ -48,6 +49,7 @@ from babylon.economics.temporal.protocols import (
     ThresholdCalibrator,
     TransitionComputer,
 )
+from babylon.economics.temporal.reports import ReportGeneratorImpl
 from babylon.economics.temporal.signals import (
     DeindustrializationDetectorImpl,
     compute_trend,
@@ -93,4 +95,7 @@ __all__: list[str] = [
     # Implementations (User Story 3)
     "CoefficientSmootherImpl",
     "ewma",
+    # Implementations (Phase 6 - Report & Calibration)
+    "AnnotationManagerImpl",
+    "ReportGeneratorImpl",
 ]

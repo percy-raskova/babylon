@@ -52,6 +52,10 @@ from babylon.economics.temporal.signals import (
     DeindustrializationDetectorImpl,
     compute_trend,
 )
+from babylon.economics.temporal.smoothing import (
+    CoefficientSmootherImpl,
+    ewma,
+)
 from babylon.economics.temporal.transitions import (
     TransitionComputerImpl,
     compute_delta_percentage,
@@ -86,4 +90,7 @@ __all__: list[str] = [
     "rolling_zscore",
     "select_detection_method",
     "check_threshold_violation",
+    # Implementations (User Story 3)
+    "CoefficientSmootherImpl",
+    "ewma",
 ]

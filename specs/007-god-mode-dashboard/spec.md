@@ -132,11 +132,13 @@ ______________________________________________________________________
 
 - The Detroit region H3 indices are available from the simulation's TerritoryState.hex_claims data.
 - The simulation engine is already implemented and exposes SimulationState and SimulationControl protocols (Feature 006).
-- The "Bunker Constructivism" theme consists of: dark backgrounds (#1a1a1a to #2d2d2d), red/amber/steel accent colors (#c41e3a, #ff8c00, #708090), and sans-serif typography.
+- The "Bunker Constructivism" theme follows `ai-docs/design-system.yaml`: void (#050505), wet_concrete (#1a1a1a), data_green (#39FF14), phosphor_burn_red (#D40000), with monospace typography.
 - The "Value Tensor" refers to all numeric properties of TerritoryState: tick, profit_rate, equilibrium_r, plus derived values like hex_claims count.
 - Initial map rendering uses the full hex list from the simulation; only color/property updates use the incremental JSON pattern.
 - The dashboard runs in the same process as the simulation (no network communication required for MVP).
 - Observer callbacks from SimulationControl.register_observer() are invoked on the main thread; no cross-thread marshalling is required in the dashboard.
+- Window layout follows `ai-docs/epochs/epoch2/pyqt-visualization.yaml`: 1460×820 minimum viewport, 30% inspector / 70% map split.
+- Color gradient for profit_rate uses data_green (#39FF14) for high values and phosphor_burn_red (#D40000) for low values per design system semantics.
 
 ## Out of Scope
 

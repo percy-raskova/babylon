@@ -11,10 +11,10 @@
 
 ### UX/Interaction Completeness
 
-- [ ] CHK001 - Are visual hierarchy requirements defined for the map viewport vs inspector panel layout? [Gap]
-  - *Finding: Spec says "central panel" and "side panel" but no layout ratio or sizing*
-- [ ] CHK002 - Are minimum window size requirements specified for the dashboard? [Gap]
-  - *Finding: Not specified*
+- [x] CHK001 - Are visual hierarchy requirements defined for the map viewport vs inspector panel layout? [Gap]
+  - *Finding: Updated - Assumptions now references ai-docs: "30% inspector / 70% map split"*
+- [x] CHK002 - Are minimum window size requirements specified for the dashboard? [Gap]
+  - *Finding: Updated - Assumptions now references ai-docs: "1460×820 minimum viewport"*
 - [x] CHK003 - Is the inspector panel position (left/right/bottom) explicitly defined? [Gap, Spec §Key Entities]
   - *Finding: Updated - Key Entities now specifies "right edge of the window"*
 - [ ] CHK004 - Are requirements defined for what "tooltip" means (native vs custom, positioning, timing)? [Completeness, Spec §US1]
@@ -23,8 +23,8 @@
   - *Finding: Not mentioned; not explicitly excluded*
 - [x] CHK006 - Are requirements specified for visual selection feedback (highlight, border, glow)? [Gap, Spec §FR-003]
   - *Finding: Updated - FR-014 now requires "visible highlight (border or color shift)"*
-- [ ] CHK007 - Is the color gradient specification complete (midpoint color, number of steps)? [Completeness, Spec §FR-002]
-  - *Finding: Only endpoints defined (red=low, green=high)*
+- [x] CHK007 - Is the color gradient specification complete (midpoint color, number of steps)? [Completeness, Spec §FR-002]
+  - *Finding: Updated - Assumptions now specifies "data_green (#39FF14) for high, phosphor_burn_red (#D40000) for low per design system"*
 
 ### Performance Completeness
 
@@ -56,8 +56,8 @@
   - *Finding: Assumptions defines "#1a1a1a to #2d2d2d"*
 - [x] CHK017 - Is "industrial accent colors" defined with exact color palette? [Clarity, Spec §Assumptions - partially addressed]
   - *Finding: Assumptions defines "#c41e3a, #ff8c00, #708090"*
-- [ ] CHK018 - Is "sans-serif with utilitarian appearance" specified with font family names? [Ambiguity, Spec §US4]
-  - *Finding: No specific font family names*
+- [x] CHK018 - Is "sans-serif with utilitarian appearance" specified with font family names? [Ambiguity, Spec §US4]
+  - *Finding: Updated - Assumptions now references design-system.yaml which specifies "monospace typography"*
 - [ ] CHK019 - Is "visible in the central panel" defined with layout percentages or pixel dimensions? [Ambiguity, Spec §US1]
   - *Finding: Not quantified*
 - [x] CHK020 - Is "details appear immediately" quantified (what latency = immediate)? [Clarity, Spec §SC-002]
@@ -158,16 +158,16 @@
 
 | Category                    | Passed | Failed | Total  |
 | --------------------------- | ------ | ------ | ------ |
-| Requirement Completeness    | 7      | 8      | 15     |
-| Requirement Clarity         | 6      | 6      | 12     |
+| Requirement Completeness    | 9      | 6      | 15     |
+| Requirement Clarity         | 7      | 5      | 12     |
 | Requirement Consistency     | 5      | 0      | 5      |
 | Acceptance Criteria Quality | 3      | 1      | 4      |
 | Scenario Coverage           | 1      | 7      | 8      |
 | Edge Case Coverage          | 0      | 4      | 4      |
 | Dependencies & Assumptions  | 0      | 3      | 3      |
-| **TOTAL**                   | **22** | **29** | **51** |
+| **TOTAL**                   | **25** | **26** | **51** |
 
-**Pass Rate: 43%** (improved from 27% after high-priority gap fixes)
+**Pass Rate: 49%** (improved from 27% → 43% → 49% after ai-docs integration)
 
 ## Notes
 

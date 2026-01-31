@@ -151,6 +151,8 @@ repos:
           (?x)^(
             ai-docs/.*|
             thoughts/.*|
+            specs/.*|
+            \.specify/.*|
             CHANGELOG\.md|
             CLAUDE\.md|
             CONTRIBUTORS\.md|

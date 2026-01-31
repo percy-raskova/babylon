@@ -28,7 +28,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete
 from tqdm import tqdm
@@ -46,6 +46,7 @@ from babylon.data.qcew.parser import (
     determine_naics_level,
     extract_state_fips,
     parse_qcew_csv,
+    parse_raw_csv_chunked,
 )
 from babylon.data.reference.classifications import classify_class_composition
 from babylon.data.reference.schema import (
@@ -62,6 +63,7 @@ from babylon.data.reference.schema import (
 )
 
 if TYPE_CHECKING:
+    import pandas as pd  # type: ignore[import-untyped]
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -672,6 +674,10 @@ class QcewLoader(ApiLoaderBase):
         self._finalize_stats(stats, lookups, counts, verbose, "File")
         return stats
 
+    def _is_singlefile_format(self, csv_file: Path) -> bool:
+        """Detect if file is BLS annual singlefile format (no title columns)."""
+        return "singlefile" in csv_file.name.lower()
+
     def _process_csv_file(
         self,
         session: Session,
@@ -683,8 +689,15 @@ class QcewLoader(ApiLoaderBase):
     ) -> int:
         """Process a single CSV file. Returns count of processed records."""
         logger.debug(f"Processing {csv_file.name}...")
-        file_record_count = 0
 
+        # Route to appropriate parser based on file format
+        if self._is_singlefile_format(csv_file):
+            return self._process_singlefile(
+                session, csv_file, years_to_load, lookups, counts, verbose
+            )
+
+        # Standard "by area" format with title columns
+        file_record_count = 0
         for record in parse_qcew_csv(csv_file):
             if record.year not in years_to_load:
                 continue
@@ -693,6 +706,92 @@ class QcewLoader(ApiLoaderBase):
             self._maybe_flush(session, counts, verbose)
 
         return file_record_count
+
+    def _process_singlefile(
+        self,
+        session: Session,
+        csv_file: Path,
+        years_to_load: set[int],
+        lookups: dict[str, dict[str, int]],
+        counts: GeoCounts,
+        verbose: bool,
+    ) -> int:
+        """Process BLS annual singlefile format (uses codes, no titles)."""
+        file_record_count = 0
+
+        for chunk in parse_raw_csv_chunked(csv_file, chunk_size=50_000):
+            # Filter to requested years
+            chunk = chunk[chunk["year"].isin(years_to_load)]
+
+            for _, row in chunk.iterrows():
+                self._process_singlefile_row(session, row, lookups, counts)
+                file_record_count += 1
+
+            self._maybe_flush(session, counts, verbose)
+
+        return file_record_count
+
+    def _process_singlefile_row(
+        self,
+        session: Session,
+        row: pd.Series[Any],
+        lookups: dict[str, dict[str, int]],
+        counts: GeoCounts,
+    ) -> None:
+        """Process a single row from singlefile format."""
+        import pandas as pd  # noqa: PLC0415
+
+        agglvl = int(row["agglvl_code"]) if pd.notna(row["agglvl_code"]) else AGGLVL_COUNTY_MAX
+
+        # For singlefile, use codes as titles (or lookup from dim tables)
+        industry_code = str(row["industry_code"]).strip()
+        own_code = str(row["own_code"]).strip()
+
+        # Use code as title placeholder - dim tables store the actual titles
+        industry_id = self._get_or_create_industry(
+            session,
+            industry_code,
+            f"NAICS {industry_code}",  # Placeholder title
+            lookups["industry"],
+        )
+        ownership_id = self._get_or_create_ownership(
+            session,
+            own_code,
+            self._get_ownership_title(own_code),
+            lookups["ownership"],
+        )
+        time_id = self._get_or_create_time(session, int(row["year"]))
+
+        # Route to appropriate fact table
+        if AGGLVL_COUNTY_MIN <= agglvl <= AGGLVL_COUNTY_MAX:
+            if self._create_county_fact_singlefile(
+                session, row, lookups, industry_id, ownership_id, time_id
+            ):
+                counts.county += 1
+        elif AGGLVL_STATE_MIN <= agglvl <= AGGLVL_STATE_MAX:
+            self._create_state_fact_singlefile(
+                session, row, lookups, industry_id, ownership_id, time_id, agglvl
+            )
+            counts.state += 1
+        elif AGGLVL_METRO_MIN <= agglvl <= AGGLVL_METRO_MAX:
+            self._create_metro_fact_singlefile(
+                session, row, lookups, industry_id, ownership_id, time_id, agglvl
+            )
+            counts.metro += 1
+
+    def _get_ownership_title(self, own_code: str) -> str:
+        """Get ownership title from code."""
+        ownership_titles = {
+            "0": "Total Covered",
+            "1": "Federal Government",
+            "2": "State Government",
+            "3": "Local Government",
+            "4": "International Government",
+            "5": "Private",
+            "8": "Total Government",
+            "9": "Total UI Covered",
+        }
+        return ownership_titles.get(own_code, f"Ownership {own_code}")
 
     def _process_file_record(
         self,
@@ -835,6 +934,156 @@ class QcewLoader(ApiLoaderBase):
                 lq_employment=record.lq_employment,
                 lq_annual_pay=record.lq_avg_annual_pay,
                 disclosure_code=record.disclosure_code or None,
+                agglvl_code=agglvl,
+                area_type=area_type,
+            )
+            session.add(fact)
+
+    # -- Singlefile format fact creation methods --
+
+    def _create_county_fact_singlefile(
+        self,
+        session: Session,
+        row: pd.Series[Any],
+        lookups: dict[str, dict[str, int]],
+        industry_id: int,
+        ownership_id: int,
+        time_id: int,
+    ) -> bool:
+        """Create county-level fact from singlefile row. Returns True if created."""
+        import pandas as pd
+
+        area_fips = str(row["area_fips"]).strip()
+        county_id = lookups["county"].get(area_fips)
+        if county_id is None:
+            state_fips = area_fips[:2] if len(area_fips) >= 2 else None
+            if state_fips and state_fips in lookups["state"]:
+                # Create county with FIPS as placeholder name
+                county_id = self._get_or_create_county(
+                    session,
+                    area_fips,
+                    f"County {area_fips}",  # Placeholder - no title in singlefile
+                    lookups["state"][state_fips],
+                    lookups["county"],
+                )
+            else:
+                return False
+
+        def safe_int(val: Any) -> int | None:
+            if pd.isna(val):
+                return None
+            return int(float(val))  # Cast through float for numpy types
+
+        def safe_float(val: Any) -> float | None:
+            if pd.isna(val):
+                return None
+            return float(val)
+
+        fact = FactQcewAnnual(
+            county_id=county_id,
+            industry_id=industry_id,
+            ownership_id=ownership_id,
+            time_id=time_id,
+            establishments=safe_int(row["annual_avg_estabs"]),
+            employment=safe_int(row["annual_avg_emplvl"]),
+            total_wages_usd=safe_float(row["total_annual_wages"]),
+            avg_weekly_wage_usd=safe_int(row["annual_avg_wkly_wage"]),
+            avg_annual_pay_usd=safe_int(row["avg_annual_pay"]),
+            lq_employment=safe_float(row.get("lq_annual_avg_emplvl")),
+            lq_annual_pay=safe_float(row.get("lq_avg_annual_pay")),
+            disclosure_code=str(row.get("disclosure_code", "")).strip() or None,
+        )
+        session.add(fact)
+        return True
+
+    def _create_state_fact_singlefile(
+        self,
+        session: Session,
+        row: pd.Series[Any],
+        lookups: dict[str, dict[str, int]],
+        industry_id: int,
+        ownership_id: int,
+        time_id: int,
+        agglvl: int,
+    ) -> None:
+        """Create state-level fact from singlefile row."""
+        import pandas as pd
+
+        area_fips = str(row["area_fips"]).strip()
+        state_fips = area_fips[:2]
+        state_id = lookups["state"].get(state_fips)
+
+        if state_id:
+
+            def safe_int(val: Any) -> int | None:
+                if pd.isna(val):
+                    return None
+                return int(float(val))
+
+            def safe_float(val: Any) -> float | None:
+                if pd.isna(val):
+                    return None
+                return float(val)
+
+            fact = FactQcewStateAnnual(
+                state_id=state_id,
+                industry_id=industry_id,
+                ownership_id=ownership_id,
+                time_id=time_id,
+                establishments=safe_int(row["annual_avg_estabs"]),
+                employment=safe_int(row["annual_avg_emplvl"]),
+                total_wages_usd=safe_float(row["total_annual_wages"]),
+                avg_weekly_wage_usd=safe_int(row["annual_avg_wkly_wage"]),
+                avg_annual_pay_usd=safe_int(row["avg_annual_pay"]),
+                lq_employment=safe_float(row.get("lq_annual_avg_emplvl")),
+                lq_annual_pay=safe_float(row.get("lq_avg_annual_pay")),
+                disclosure_code=str(row.get("disclosure_code", "")).strip() or None,
+                agglvl_code=agglvl,
+            )
+            session.add(fact)
+
+    def _create_metro_fact_singlefile(
+        self,
+        session: Session,
+        row: pd.Series[Any],
+        lookups: dict[str, dict[str, int]],
+        industry_id: int,
+        ownership_id: int,
+        time_id: int,
+        agglvl: int,
+    ) -> None:
+        """Create metro-level fact from singlefile row."""
+        import pandas as pd
+
+        area_fips = str(row["area_fips"]).strip()
+        metro_id = lookups["metro"].get(area_fips)
+
+        if metro_id:
+            area_type = self._determine_metro_type(agglvl)
+
+            def safe_int(val: Any) -> int | None:
+                if pd.isna(val):
+                    return None
+                return int(float(val))
+
+            def safe_float(val: Any) -> float | None:
+                if pd.isna(val):
+                    return None
+                return float(val)
+
+            fact = FactQcewMetroAnnual(
+                metro_area_id=metro_id,
+                industry_id=industry_id,
+                ownership_id=ownership_id,
+                time_id=time_id,
+                establishments=safe_int(row["annual_avg_estabs"]),
+                employment=safe_int(row["annual_avg_emplvl"]),
+                total_wages_usd=safe_float(row["total_annual_wages"]),
+                avg_weekly_wage_usd=safe_int(row["annual_avg_wkly_wage"]),
+                avg_annual_pay_usd=safe_int(row["avg_annual_pay"]),
+                lq_employment=safe_float(row.get("lq_annual_avg_emplvl")),
+                lq_annual_pay=safe_float(row.get("lq_avg_annual_pay")),
+                disclosure_code=str(row.get("disclosure_code", "")).strip() or None,
                 agglvl_code=agglvl,
                 area_type=area_type,
             )

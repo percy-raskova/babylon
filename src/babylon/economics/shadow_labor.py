@@ -56,7 +56,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from babylon.data.atus.protocol import ReproductionLoaderProtocol
+from babylon.data.atus.protocol import (
+    ReproductionLoaderProtocol,
+    VisibilityComputerProtocol,
+)
 
 
 class ShadowLaborConfig(BaseModel):
@@ -250,34 +253,48 @@ class ShadowLaborService:
 
     1. Inject a ReproductionLoaderProtocol implementation (e.g., MockReproductionLoader)
     2. Optionally provide a ShadowLaborConfig for custom defaults
-    3. Call calculate_shadow_decomposition with county-year and optional g_33 override
+    3. Optionally provide a VisibilityComputer to compute g₃₃ from data (Feature 005)
+    4. Call calculate_shadow_decomposition with county-year and optional g_33 override
+
+    **Visibility Computer Integration (Feature 005):**
+
+    When a VisibilityComputer is provided, the service computes g₃₃ from
+    ATUS seed data weights instead of using the config default. This enables
+    the shadow_subsidy calculation to reflect actual invisibility patterns.
+
+    Priority: g_33_override > visibility_computer > config.g_33
 
     Args:
         loader: Data loader implementing ReproductionLoaderProtocol.
         config: Optional configuration (defaults to ShadowLaborConfig()).
+        visibility_computer: Optional VisibilityComputer for data-driven g₃₃.
 
     Example:
-        >>> from babylon.data.atus import MockReproductionLoader
+        >>> from babylon.data.atus import MockReproductionLoader, VisibilityComputer
         >>> loader = MockReproductionLoader()
-        >>> service = ShadowLaborService(loader=loader)
+        >>> computer = VisibilityComputer()
+        >>> service = ShadowLaborService(loader=loader, visibility_computer=computer)
         >>> result = service.calculate_shadow_decomposition("06001", 2022)
-        >>> result.v_shadow  # Shadow subsidy value
-        11668.44  # 21 hours * 52 weeks * 15.43 * 0.7
+        >>> result.g_33  # Uses computed g₃₃ from seed data
+        0.18
     """
 
     def __init__(
         self,
         loader: ReproductionLoaderProtocol,
         config: ShadowLaborConfig | None = None,
+        visibility_computer: VisibilityComputerProtocol | None = None,
     ) -> None:
-        """Initialize service with loader and optional config.
+        """Initialize service with loader, optional config, and optional computer.
 
         Args:
             loader: Data loader for reproductive labor hours.
             config: Configuration for visibility calculations.
+            visibility_computer: Optional computer for data-driven g₃₃ (Feature 005).
         """
         self._loader = loader
         self._config = config or ShadowLaborConfig()
+        self._visibility_computer = visibility_computer
 
     def calculate_shadow_decomposition(
         self,
@@ -325,8 +342,13 @@ class ShadowLaborService:
         # Convert weekly to annual hours
         annual_hours = summary.unpaid_care_hours_weekly * 52
 
-        # Determine g_33 (override takes precedence)
-        g_33 = g_33_override if g_33_override is not None else self._config.g_33
+        # Determine g_33 with priority: override > visibility_computer > config
+        if g_33_override is not None:
+            g_33 = g_33_override
+        elif self._visibility_computer is not None:
+            g_33 = self._visibility_computer.get_national_g33()
+        else:
+            g_33 = self._config.g_33
 
         return ShadowLaborResult(
             fips_code=fips_code,

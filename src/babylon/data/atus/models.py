@@ -27,7 +27,12 @@ See Also:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+import logging
+from typing import ClassVar, Self
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class ATUSActivityRecord(BaseModel):
@@ -151,7 +156,156 @@ class ATUSHouseholdSummary(BaseModel):
     )
 
 
+class VisibilityDecomposition(BaseModel):
+    """Four-category decomposition of Department III visibility (Feature 005).
+
+    The visibility coefficient g₃₃ determines what fraction of reproductive
+    labor is visible to the price system. This model decomposes g₃₃ into
+    four structural categories, each with distinct visibility characteristics.
+
+    **Categories:**
+
+    - domestic_unpaid: Household labor invisible to price system (g=0.0)
+    - migrant_care: Partially visible via cash economy (g=0.3)
+    - peripheral_subsistence: Externalized to periphery, invisible (g=0.0)
+    - state_socialized: Fully visible via public spending (g=1.0)
+
+    **Formula:**
+
+    g₃₃ = Σ(fraction_i × coefficient_i)
+
+    **Invariants:**
+
+    - Fractions must sum to 1.0 ± 0.001
+    - All fractions must be in [0.0, 1.0]
+    - total_g33 is clamped to [0.0, 1.0]
+
+    Args:
+        domestic_unpaid: Fraction of reproductive labor done unpaid at home.
+        migrant_care: Fraction done by migrant/noncitizen care workers.
+        peripheral_subsistence: Fraction externalized via remittances.
+        state_socialized: Fraction provided by public sector.
+
+    Example:
+        >>> decomp = VisibilityDecomposition(
+        ...     domestic_unpaid=0.70,
+        ...     migrant_care=0.10,
+        ...     peripheral_subsistence=0.05,
+        ...     state_socialized=0.15,
+        ... )
+        >>> decomp.total_g33
+        0.18
+
+    See Also:
+        Fortunati, Leopoldina. "The Arcane of Reproduction" (1981).
+        specs/005-atus-department-iii/spec.md
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Class-level visibility coefficients (constants per research.md)
+    G_DOMESTIC: ClassVar[float] = 0.0  # Invisible by definition
+    G_MIGRANT: ClassVar[float] = 0.3  # Partially visible via cash economy
+    G_PERIPHERAL: ClassVar[float] = 0.0  # Invisible to core price system
+    G_STATE: ClassVar[float] = 1.0  # Fully visible via taxation
+
+    # Tolerance thresholds
+    _SUM_TOLERANCE: ClassVar[float] = 0.001  # Exact sum tolerance
+    _NORMALIZE_THRESHOLD: ClassVar[float] = 0.05  # Auto-normalize if drift <= this
+    _WARN_THRESHOLD: ClassVar[float] = 0.01  # Warn if drift > this
+
+    domestic_unpaid: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fraction of reproductive labor done unpaid at home",
+    )
+    migrant_care: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fraction done by migrant/noncitizen care workers",
+    )
+    peripheral_subsistence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fraction externalized to periphery via remittances",
+    )
+    state_socialized: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Fraction provided by public sector care",
+    )
+
+    @model_validator(mode="after")
+    def validate_and_normalize_fractions(self) -> Self:
+        """Ensure fractions sum to 1.0, with optional normalization.
+
+        - If sum is within ±0.001 of 1.0: Accept as-is
+        - If sum drift is > 0.01 but <= 0.05: Normalize with warning
+        - If sum drift is > 0.05: Reject (too far from valid)
+        """
+        total = (
+            self.domestic_unpaid
+            + self.migrant_care
+            + self.peripheral_subsistence
+            + self.state_socialized
+        )
+        drift = abs(total - 1.0)
+
+        if drift <= self._SUM_TOLERANCE:
+            # Within exact tolerance, accept as-is
+            return self
+
+        if drift <= self._NORMALIZE_THRESHOLD:
+            # Normalize with warning if drift > warn threshold
+            if drift > self._WARN_THRESHOLD:
+                logger.warning(
+                    f"Visibility fractions sum to {total:.4f}, normalizing to 1.0 "
+                    f"(drift={drift:.4f})"
+                )
+            # Normalize by scaling all fractions
+            # Use object.__setattr__ since model is frozen
+            object.__setattr__(self, "domestic_unpaid", self.domestic_unpaid / total)
+            object.__setattr__(self, "migrant_care", self.migrant_care / total)
+            object.__setattr__(self, "peripheral_subsistence", self.peripheral_subsistence / total)
+            object.__setattr__(self, "state_socialized", self.state_socialized / total)
+            return self
+
+        # Drift too large, reject
+        msg = (
+            f"Visibility fractions must sum to 1.0 ± {self._NORMALIZE_THRESHOLD}. "
+            f"Got {total:.4f} (drift={drift:.4f})"
+        )
+        raise ValueError(msg)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_g33(self) -> float:
+        """Compute g₃₃ as weighted average of category coefficients.
+
+        Formula: g₃₃ = Σ(fraction_i × g_i)
+
+        The result is clamped to [0.0, 1.0] per spec.md edge case handling.
+        """
+        raw_g33 = (
+            self.domestic_unpaid * self.G_DOMESTIC
+            + self.migrant_care * self.G_MIGRANT
+            + self.peripheral_subsistence * self.G_PERIPHERAL
+            + self.state_socialized * self.G_STATE
+        )
+
+        # Clamp to valid range [0, 1] with warning if needed
+        if raw_g33 < 0.0:
+            logger.warning(f"Computed g₃₃={raw_g33:.4f} < 0.0, clamping to 0.0")
+            return 0.0
+        if raw_g33 > 1.0:
+            logger.warning(f"Computed g₃₃={raw_g33:.4f} > 1.0, clamping to 1.0")
+            return 1.0
+
+        return raw_g33
+
+
 __all__ = [
     "ATUSActivityRecord",
     "ATUSHouseholdSummary",
+    "VisibilityDecomposition",
 ]

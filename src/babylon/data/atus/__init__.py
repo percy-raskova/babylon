@@ -75,8 +75,13 @@ from babylon.data.atus.mock_loader import (
     REPLACEMENT_COST_HOURLY,
     MockReproductionLoader,
 )
-from babylon.data.atus.models import ATUSActivityRecord, ATUSHouseholdSummary
+from babylon.data.atus.models import (
+    ATUSActivityRecord,
+    ATUSHouseholdSummary,
+    VisibilityDecomposition,
+)
 from babylon.data.atus.protocol import ReproductionLoaderProtocol
+from babylon.data.atus.visibility import DataSourceUnavailableError, VisibilityComputer
 
 
 def create_atus_loader(
@@ -116,8 +121,12 @@ __all__ = [
     # Models
     "ATUSActivityRecord",
     "ATUSHouseholdSummary",
+    "VisibilityDecomposition",
     # Protocol
     "ReproductionLoaderProtocol",
+    # Visibility computation (Feature 005)
+    "VisibilityComputer",
+    "DataSourceUnavailableError",
     # Mock implementation
     "MockReproductionLoader",
     # Database loaders

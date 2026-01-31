@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from babylon.data.atus.models import ATUSHouseholdSummary
+from babylon.data.atus.models import ATUSHouseholdSummary, VisibilityDecomposition
 
 
 class ReproductionLoaderProtocol(ABC):
@@ -93,6 +93,54 @@ class ReproductionLoaderProtocol(ABC):
         ...
 
 
+class VisibilityComputerProtocol(ABC):
+    """Abstract protocol for visibility decomposition computation.
+
+    Implementations provide g₃₃ visibility coefficient computation from
+    data sources (ATUS, OEWS, QCEW weights).
+
+    **Protocol Methods:**
+    - compute_visibility: Return full decomposition with four fractions.
+    - get_national_g33: Return just the weighted coefficient.
+
+    Example:
+        >>> class MyComputer(VisibilityComputerProtocol):
+        ...     def compute_visibility(self) -> "VisibilityDecomposition":
+        ...         # Load weights and create decomposition
+        ...         ...
+        ...     def get_national_g33(self) -> float:
+        ...         return self.compute_visibility().total_g33
+
+    See Also:
+        :mod:`babylon.data.atus.visibility`: Reference implementation.
+    """
+
+    @abstractmethod
+    def compute_visibility(self) -> VisibilityDecomposition:
+        """Compute visibility decomposition from data sources.
+
+        Returns:
+            VisibilityDecomposition with four category fractions and total_g33.
+
+        Raises:
+            DataSourceUnavailableError: If required data unavailable.
+        """
+        ...
+
+    @abstractmethod
+    def get_national_g33(self) -> float:
+        """Get national-level g₃₃ visibility coefficient.
+
+        Returns:
+            Visibility coefficient in range [0.0, 1.0].
+
+        Raises:
+            DataSourceUnavailableError: If required data unavailable.
+        """
+        ...
+
+
 __all__ = [
     "ReproductionLoaderProtocol",
+    "VisibilityComputerProtocol",
 ]

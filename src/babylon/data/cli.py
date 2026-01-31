@@ -1621,8 +1621,11 @@ def qcew(
     ] = False,
     reset: Annotated[
         bool,
-        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
-    ] = True,
+        typer.Option(
+            "--reset/--no-reset",
+            help="Clear tables before loading. Default: --no-reset (preserves existing data)",
+        ),
+    ] = False,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress verbose output"),
@@ -1639,11 +1642,14 @@ def qcew(
     - State (fact_qcew_state_annual)
     - Metro/Micropolitan/CSA (fact_qcew_metro_annual)
 
+    By default, preserves existing data (--no-reset). Use --reset to clear all
+    QCEW data before loading.
+
     Examples:
         mise run data:qcew                           # Default years with hybrid loading
         mise run data:qcew -- --years 2021-2025      # Recent years via API
         mise run data:qcew -- --years 2015-2020 --force-files  # Historical via files
-        mise run data:qcew -- --force-api            # Force API for all years
+        mise run data:qcew -- --reset                # Clear all data first
     """
     from babylon.data.qcew import QcewLoader
     from babylon.data.reference.database import get_normalized_session, init_normalized_db
@@ -1662,6 +1668,10 @@ def qcew(
             typer.echo("Mode: Force files for all years")
         else:
             typer.echo("Mode: Hybrid (API for 2021+, files for 2013-2020)")
+        if reset:
+            typer.echo("Reset: Clearing existing QCEW data before loading")
+        else:
+            typer.echo("Reset: Preserving existing data (use --reset to clear)")
 
     init_normalized_db()
     loader = QcewLoader(config)

@@ -191,6 +191,18 @@ class QcewLoader(ApiLoaderBase):
             for year in self.config.qcew_years:
                 self._clear_checkpoints(session, "qcew", year)
             session.flush()
+        else:
+            # Skip years already loaded (incremental mode)
+            loaded_years = self._get_loaded_years(session)
+            if loaded_years:
+                original_api = list(api_years)
+                original_file = list(file_years)
+                api_years = [y for y in api_years if y not in loaded_years]
+                file_years = [y for y in file_years if y not in loaded_years]
+                skipped = loaded_years & set(original_api + original_file)
+                if skipped and verbose:
+                    logger.info(f"Skipping already-loaded years: {sorted(skipped)}")
+                    print(f"Skipping already-loaded years: {sorted(skipped)}")
 
         # Load data source dimension
         self._load_data_source(session, verbose)
@@ -1392,6 +1404,21 @@ class QcewLoader(ApiLoaderBase):
             session.add(fact)
 
     # -- Helper methods (preserved from original loader) --
+
+    def _get_loaded_years(self, session: Session) -> set[int]:
+        """Get years already loaded in the database.
+
+        Checks fact_qcew_annual table via time dimension join.
+        """
+        from sqlalchemy import distinct, select
+
+        stmt = (
+            select(distinct(DimTime.year))
+            .select_from(FactQcewAnnual)
+            .join(DimTime, FactQcewAnnual.time_id == DimTime.time_id)
+        )
+        result = session.execute(stmt)
+        return {row[0] for row in result}
 
     def _clear_qcew_tables(self, session: Session, verbose: bool) -> None:
         """Clear QCEW-specific tables (not shared dimensions)."""

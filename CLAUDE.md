@@ -647,6 +647,8 @@ ADR0XX_descriptive_name:
 ## Active Technologies
 - Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x (001-mvp-sim-engine)
 - SQLite (data/sqlite/marxist-data-3NF.sqlite for reference; in-memory for simulation state) (001-mvp-sim-engine)
+- Python 3.12+ + Pydantic 2.x (frozen models), NetworkX 3.x (graph), h3 4.2 (spatial indexing) (006-gui-protocol-extension)
+- N/A (in-memory protocols, no persistence changes) (006-gui-protocol-extension)
 
 ## Recent Changes
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

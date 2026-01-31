@@ -252,24 +252,28 @@ class MockSimulation:
         Returns:
             MockSimulation with Detroit territories configured.
         """
-        # Sample H3 indices at resolution 5 (representative, not real Detroit)
-        # In production, these would come from actual H3 cell generation
+        # Real H3 indices at resolution 5 for Detroit metropolitan area
+        # Generated from actual Detroit coordinates using h3.latlng_to_cell()
+        # Wayne County: Downtown Detroit (42.3314, -83.0458) + neighbors
         wayne_hexes = frozenset(
             [
-                "852a1072fffffff",
-                "852a1073fffffff",
-                "852a1074fffffff",
+                "852ab2c7fffffff",  # Detroit center
+                "852ab2c3fffffff",  # Neighbor
+                "852ab2cffffffff",  # Neighbor
+                "852ab21bfffffff",  # Neighbor
             ]
         )
+        # Oakland County: Pontiac area (42.6389, -83.2911) + neighbor
         oakland_hexes = frozenset(
             [
-                "852a1080fffffff",
-                "852a1081fffffff",
+                "852ab2dbfffffff",  # Pontiac center
+                "85274daffffffff",  # Neighbor
             ]
         )
+        # Macomb County: Warren area (42.6256, -82.9319)
         macomb_hexes = frozenset(
             [
-                "852a1090fffffff",
+                "852ab66ffffffff",  # Warren center
             ]
         )
 

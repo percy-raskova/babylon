@@ -310,7 +310,10 @@ class MapViewport(QWidget):  # type: ignore[misc]
         return result
 
     def _generate_update_js(self, layer_data: list[dict[str, object]]) -> str:
-        """Generate JavaScript for incremental deck.setProps() update.
+        """Generate JavaScript for incremental layer data update.
+
+        Finds the deck.gl instance and updates the layer data via setProps().
+        Falls back gracefully if the update mechanism isn't available.
 
         Args:
             layer_data: Pydeck-format layer data.
@@ -320,26 +323,42 @@ class MapViewport(QWidget):  # type: ignore[misc]
         """
         data_json = json.dumps(layer_data)
 
+        # JavaScript that finds the actual deck.gl instance and updates layer data
         return f"""
-        if (typeof deck !== 'undefined') {{
-            deck.setProps({{
-                layers: [new deck.H3HexagonLayer({{
-                    id: 'h3-layer',
-                    data: {data_json},
-                    getHexagon: d => d.h3,
-                    getFillColor: d => d.color,
-                    extruded: false,
-                    opacity: 0.8,
-                    pickable: true,
-                }})]
-            }});
-        }}
+        (function() {{
+            // Find the deck.gl instance - pydeck stores it in various locations
+            var deckInstance = null;
+            if (window.deck && typeof window.deck.setProps === 'function') {{
+                deckInstance = window.deck;
+            }} else if (window.deck && window.deck.deck && typeof window.deck.deck.setProps === 'function') {{
+                deckInstance = window.deck.deck;
+            }} else if (window.deckgl && typeof window.deckgl.setProps === 'function') {{
+                deckInstance = window.deckgl;
+            }}
+
+            if (deckInstance) {{
+                // Update the layer data directly
+                var currentLayers = deckInstance.props.layers || [];
+                if (currentLayers.length > 0) {{
+                    var newData = {data_json};
+                    // Clone the layer with new data
+                    var oldLayer = currentLayers[0];
+                    var newLayer = oldLayer.clone({{data: newData}});
+                    deckInstance.setProps({{layers: [newLayer]}});
+                    console.log('[Babylon] Layer data updated');
+                }}
+            }} else {{
+                console.log('[Babylon] deck.setProps not available for update');
+            }}
+        }})();
         """
 
     def _inject_webchannel_bridge(self, html: str) -> str:
         """Inject QWebChannel bridge JavaScript into pydeck HTML.
 
         This enables click events to be sent from JavaScript to Python.
+        Uses canvas click interception with deck.gl pickObject() API since
+        pydeck's to_html() wrapper doesn't expose deck.setProps().
 
         Args:
             html: Original pydeck HTML.
@@ -348,35 +367,112 @@ class MapViewport(QWidget):  # type: ignore[misc]
             HTML with QWebChannel bridge injected.
         """
         # JavaScript to inject before closing body tag
+        # Uses IIFE with closure for state management and robust element detection
         bridge_js = """
         <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
         <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize QWebChannel when available
-            if (typeof qt !== 'undefined' && qt.webChannelTransport) {
-                new QWebChannel(qt.webChannelTransport, function(channel) {
-                    window.bridge = channel.objects.bridge;
+        (function() {
+            var bridgeReady = false;
+            var clickHandlerReady = false;
 
-                    // Set up click handler for deck
-                    if (typeof deck !== 'undefined') {
-                        deck.setProps({
-                            onClick: function(info) {
-                                if (info.object && info.object.h3) {
-                                    if (window.bridge) {
-                                        window.bridge.on_hex_click(info.object.h3);
-                                    }
-                                } else {
-                                    // Background click
-                                    if (window.bridge) {
-                                        window.bridge.on_background_click();
-                                    }
-                                }
-                            }
+            // Initialize QWebChannel
+            function initBridge() {
+                if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+                    new QWebChannel(qt.webChannelTransport, function(channel) {
+                        window.bridge = channel.objects.bridge;
+                        bridgeReady = true;
+                        console.log('[Babylon] QWebChannel bridge connected');
+                    });
+                } else {
+                    console.log('[Babylon] qt.webChannelTransport not available');
+                }
+            }
+
+            // Find the deck.gl instance - pydeck stores it in various locations
+            function findDeckInstance() {
+                // Try common pydeck storage locations
+                if (window.deck && typeof window.deck.pickObject === 'function') {
+                    return window.deck;
+                }
+                if (window.deck && window.deck.deck && typeof window.deck.deck.pickObject === 'function') {
+                    return window.deck.deck;
+                }
+                if (window.deckgl && typeof window.deckgl.pickObject === 'function') {
+                    return window.deckgl;
+                }
+                // Search for deck instance on container elements
+                var containers = document.querySelectorAll('[class*="deck"]');
+                for (var i = 0; i < containers.length; i++) {
+                    if (containers[i].deck && typeof containers[i].deck.pickObject === 'function') {
+                        return containers[i].deck;
+                    }
+                }
+                return null;
+            }
+
+            // Set up click handling on canvas
+            function setupClickHandler() {
+                if (clickHandlerReady) return;
+
+                var canvas = document.querySelector('canvas');
+                if (!canvas) {
+                    console.log('[Babylon] Canvas not found, retrying...');
+                    setTimeout(setupClickHandler, 100);
+                    return;
+                }
+
+                var deckInstance = findDeckInstance();
+                if (!deckInstance) {
+                    console.log('[Babylon] Deck instance not found, retrying...');
+                    setTimeout(setupClickHandler, 100);
+                    return;
+                }
+
+                canvas.addEventListener('click', function(event) {
+                    if (!bridgeReady || !window.bridge) {
+                        console.log('[Babylon] Bridge not ready for click');
+                        return;
+                    }
+
+                    var rect = canvas.getBoundingClientRect();
+                    var x = event.clientX - rect.left;
+                    var y = event.clientY - rect.top;
+
+                    try {
+                        var picked = deckInstance.pickObject({
+                            x: x,
+                            y: y,
+                            radius: 0
                         });
+
+                        if (picked && picked.object && picked.object.h3) {
+                            console.log('[Babylon] Hex clicked:', picked.object.h3);
+                            window.bridge.on_hex_click(picked.object.h3);
+                        } else {
+                            console.log('[Babylon] Background clicked');
+                            window.bridge.on_background_click();
+                        }
+                    } catch (e) {
+                        console.log('[Babylon] pickObject error:', e);
+                        window.bridge.on_background_click();
                     }
                 });
+
+                clickHandlerReady = true;
+                console.log('[Babylon] Click handler attached to canvas');
             }
-        });
+
+            // Initialize when DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    initBridge();
+                    setTimeout(setupClickHandler, 500); // Wait for pydeck to initialize
+                });
+            } else {
+                initBridge();
+                setTimeout(setupClickHandler, 500);
+            }
+        })();
         </script>
         """
 

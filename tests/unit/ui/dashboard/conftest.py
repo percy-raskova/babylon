@@ -74,8 +74,9 @@ def sample_h3_index() -> str:
 
     Returns:
         Valid 15-character H3 hex string at resolution 5.
+        This is a real Detroit H3 index (Wayne County, Downtown Detroit).
     """
-    return "852a1072fffffff"
+    return "852ab2c7fffffff"
 
 
 @pytest.fixture

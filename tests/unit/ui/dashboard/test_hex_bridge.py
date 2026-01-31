@@ -98,9 +98,9 @@ class TestHexBridgeOnHexClick:
 
         # Set up signal spy
         with qtbot.waitSignal(bridge.hex_selected, timeout=1000) as blocker:
-            bridge.on_hex_click("852a1072fffffff")
+            bridge.on_hex_click("852ab2c7fffffff")
 
-        assert blocker.args == ["852a1072fffffff"]
+        assert blocker.args == ["852ab2c7fffffff"]
 
     def test_on_hex_click_emits_territory_selected_for_claimed_hex(
         self,
@@ -112,9 +112,9 @@ class TestHexBridgeOnHexClick:
         mock_sim = MockSimulation.with_detroit_territories()
         bridge = HexBridge(simulation=mock_sim)
 
-        # 852a1072fffffff is claimed by Wayne County (26163)
+        # 852ab2c7fffffff is claimed by Wayne County (26163)
         with qtbot.waitSignal(bridge.territory_selected, timeout=1000) as blocker:
-            bridge.on_hex_click("852a1072fffffff")
+            bridge.on_hex_click("852ab2c7fffffff")
 
         # Should emit TerritoryState
         territory = blocker.args[0]
@@ -165,7 +165,7 @@ class TestHexBridgeTerritoryLookup:
 
         # Wayne County hex
         with qtbot.waitSignal(bridge.territory_selected, timeout=1000) as blocker:
-            bridge.on_hex_click("852a1072fffffff")
+            bridge.on_hex_click("852ab2c7fffffff")
 
         territory = blocker.args[0]
         assert territory.territory_id == "26163"
@@ -181,9 +181,9 @@ class TestHexBridgeTerritoryLookup:
         mock_sim = MockSimulation.with_detroit_territories()
         bridge = HexBridge(simulation=mock_sim)
 
-        # Oakland County hex (852a1080fffffff)
+        # Oakland County hex (852ab2dbfffffff)
         with qtbot.waitSignal(bridge.territory_selected, timeout=1000) as blocker:
-            bridge.on_hex_click("852a1080fffffff")
+            bridge.on_hex_click("852ab2dbfffffff")
 
         territory = blocker.args[0]
         assert territory.territory_id == "26125"  # Oakland
@@ -239,7 +239,7 @@ class TestHexBridgeOnBackgroundClick:
         bridge = HexBridge(simulation=mock_sim)
 
         # First select a hex
-        bridge.on_hex_click("852a1072fffffff")
+        bridge.on_hex_click("852ab2c7fffffff")
 
         # Track current selection
         assert bridge.selected_territory_id == "26163"

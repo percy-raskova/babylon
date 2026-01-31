@@ -77,8 +77,8 @@ ______________________________________________________________________
 - What happens when the simulation has no territories loaded? The map displays but with no colored hexes; the Inspector shows "No territories in simulation".
 - What happens when the user clicks outside all hexagons (on the background)? The selection is cleared; the Inspector shows "No territory selected".
 - What happens when profit_rate is exactly 0.0 or 1.0 (boundary values)? Colors render correctly at extremes (solid red or solid green).
-- What happens when the simulation connection is lost mid-session? The dashboard displays a connection status indicator showing "Disconnected" and freezes the last known state.
-- How does the system handle rapid tick updates (100+ per second)? The GUI throttles visual updates to a maximum refresh rate (e.g., 30 fps) while maintaining state accuracy.
+- What happens when the simulation connection is lost mid-session? The dashboard displays a connection status indicator showing "Disconnected", freezes the last known state, and automatically reconnects when the simulation becomes available again.
+- How does the system handle rapid tick updates (100+ per second)? The GUI throttles visual updates to 30 FPS (33ms minimum interval) while maintaining state accuracy.
 
 ## Requirements *(mandatory)*
 
@@ -96,6 +96,7 @@ ______________________________________________________________________
 - **FR-010**: System MUST apply a "Bunker Constructivism" visual theme with dark backgrounds and industrial accent colors.
 - **FR-011**: System MUST NOT regenerate the full map visualization on every tick; updates MUST be incremental (JSON data push pattern).
 - **FR-012**: System MUST unregister its observer callback when the dashboard window is closed.
+- **FR-013**: System MUST log errors and connection state changes (connected, disconnected, reconnected) at DEBUG level.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -115,6 +116,14 @@ ______________________________________________________________________
 - **SC-004**: Dashboard remains responsive (no UI freezing) during continuous simulation runs of 1000+ ticks.
 - **SC-005**: Users unfamiliar with the system can identify high and low profit rate territories by color within 10 seconds.
 - **SC-006**: Memory usage remains stable (no unbounded growth) during extended sessions of 10,000+ ticks.
+
+## Clarifications
+
+### Session 2026-01-31
+
+- Q: What should the GUI update throttle rate be for rapid tick updates? → A: 30 FPS (33ms)
+- Q: What should happen when connection is restored after loss? → A: Auto-reconnect (automatically resume updates)
+- Q: What observability requirements are needed for MVP? → A: Debug logging only (errors and connection state changes)
 
 ## Assumptions
 

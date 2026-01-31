@@ -62,6 +62,7 @@ from babylon.economics.temporal.transitions import (
     TransitionComputerImpl,
     compute_delta_percentage,
 )
+from babylon.economics.temporal.validator import TemporalValidatorFacade
 
 __all__: list[str] = [
     # Models
@@ -98,4 +99,6 @@ __all__: list[str] = [
     # Implementations (Phase 6 - Report & Calibration)
     "AnnotationManagerImpl",
     "ReportGeneratorImpl",
+    # Implementations (Phase 7 - Unified Facade)
+    "TemporalValidatorFacade",
 ]

@@ -139,3 +139,145 @@ class TestDeindustrializationSignalIntegration:
         # Log values for analysis
         print(f"Wayne Dept I share: {wayne_dept_i_share:.4f}")
         print(f"Oakland Dept I share: {oakland_dept_i_share:.4f}")
+
+
+class TestTemporalValidatorIntegration:
+    """Integration tests for TemporalValidator facade (T052).
+
+    Tests verify the unified interface works end-to-end with real data.
+    """
+
+    @pytest.mark.integration
+    def test_temporal_validator_facade_exists(self) -> None:
+        """TemporalValidatorFacade can be imported."""
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        assert TemporalValidatorFacade is not None
+
+    @pytest.mark.integration
+    def test_temporal_validator_compute_transition(
+        self,
+        hydrator_session,
+    ) -> None:
+        """TemporalValidator can compute transitions."""
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        validator = TemporalValidatorFacade(hydrator=hydrator_session)
+
+        transition = validator.compute_transition(
+            fips=DetroitMetro.WAYNE_FIPS,
+            year_from=2021,
+            year_to=2022,
+        )
+
+        assert transition.fips_code == DetroitMetro.WAYNE_FIPS
+        assert transition.year_from == 2021
+        assert transition.year_to == 2022
+        assert isinstance(transition.delta_total_v, float)
+
+    @pytest.mark.integration
+    def test_temporal_validator_detect_anomalies(
+        self,
+        hydrator_session,
+    ) -> None:
+        """TemporalValidator can detect anomalies."""
+        from babylon.economics.temporal.models import AnomalyThresholdConfig
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        validator = TemporalValidatorFacade(hydrator=hydrator_session)
+        config = AnomalyThresholdConfig()
+
+        transitions = validator.detect_anomalies(
+            fips=DetroitMetro.WAYNE_FIPS,
+            years=[2021, 2022],
+            config=config,
+        )
+
+        assert len(transitions) >= 1
+        assert all(t.fips_code == DetroitMetro.WAYNE_FIPS for t in transitions)
+
+    @pytest.mark.integration
+    def test_temporal_validator_smooth_coefficients(
+        self,
+        hydrator_session,
+    ) -> None:
+        """TemporalValidator can smooth coefficients."""
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        validator = TemporalValidatorFacade(hydrator=hydrator_session)
+
+        series = validator.smooth_coefficients(
+            fips=DetroitMetro.WAYNE_FIPS,
+            years=[2021, 2022],
+            coefficient="profit_rate",
+            alpha=0.3,
+        )
+
+        assert series.fips_code == DetroitMetro.WAYNE_FIPS
+        assert series.coefficient_name == "profit_rate"
+        assert series.alpha == 0.3
+        assert len(series.smoothed_values) == len(series.years)
+
+    @pytest.mark.integration
+    def test_temporal_validator_detect_deindustrialization(
+        self,
+        hydrator_session,
+    ) -> None:
+        """TemporalValidator can detect deindustrialization."""
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        validator = TemporalValidatorFacade(hydrator=hydrator_session)
+
+        signal = validator.detect_deindustrialization(
+            core_fips=DetroitMetro.WAYNE_FIPS,
+            suburb_fips=DetroitMetro.OAKLAND_FIPS,
+            years=[2021, 2022],
+        )
+
+        assert signal.core_county == DetroitMetro.WAYNE_FIPS
+        assert signal.suburb_county == DetroitMetro.OAKLAND_FIPS
+        assert isinstance(signal.signal_strength, float)
+
+    @pytest.mark.integration
+    def test_temporal_validator_generate_report(
+        self,
+        hydrator_session,
+    ) -> None:
+        """TemporalValidator can generate comprehensive reports."""
+        from babylon.economics.temporal.models import AnomalyThresholdConfig
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        validator = TemporalValidatorFacade(hydrator=hydrator_session)
+        config = AnomalyThresholdConfig()
+
+        report = validator.generate_report(
+            fips=DetroitMetro.WAYNE_FIPS,
+            years=[2021, 2022],
+            config=config,
+        )
+
+        assert DetroitMetro.WAYNE_FIPS in report.fips_codes
+        assert report.year_range == (2021, 2022)
+        assert len(report.transitions) >= 1
+        # Report should include smoothed series
+        assert len(report.smoothed_series) > 0
+
+    @pytest.mark.integration
+    def test_temporal_validator_compute_z_scores(
+        self,
+        hydrator_session,
+    ) -> None:
+        """TemporalValidator can compute Z-scores for a component."""
+        from babylon.economics.temporal.validator import TemporalValidatorFacade
+
+        validator = TemporalValidatorFacade(hydrator=hydrator_session)
+
+        # Note: With only 2 years, Z-scores may be empty (need 5+ for rolling window)
+        z_scores = validator.compute_z_scores(
+            fips=DetroitMetro.WAYNE_FIPS,
+            years=[2021, 2022],
+            component="total_v",
+        )
+
+        # May be empty due to insufficient history
+        assert isinstance(z_scores, dict)

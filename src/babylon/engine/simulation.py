@@ -25,7 +25,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import h3
+
 from babylon.config.defines import GameDefines
+from babylon.engine.observer_adapter import ProtocolObserverAdapter
 from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
@@ -39,6 +42,7 @@ from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
     from babylon.engine.observer import SimulationObserver
+    from babylon.protocols import ObserverCallback
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +118,10 @@ class Simulation:
         self._initial_mvp_territories: dict[str, TerritoryState] = {}
         self._initial_mvp_hexes: dict[str, HexState] = {}
         self._initial_world_state: WorldState = initial_state
+
+        # GUI Protocol Extension (006): Thread-safe observer adapter
+        # Callbacks receive frozen SimulationSnapshot, not live references
+        self._adapter = ProtocolObserverAdapter(self)
 
     @classmethod
     def from_sqlite(
@@ -230,6 +238,52 @@ class Simulation:
         """
         if observer in self._observers:
             self._observers.remove(observer)
+
+    # =========================================================================
+    # GUI Protocol Extension (006): Observer Callback Registration
+    # =========================================================================
+
+    def register_observer(self, callback: ObserverCallback) -> None:
+        """Register a GUI callback for tick notifications.
+
+        Implements SimulationControl protocol.
+
+        Thread Safety:
+            Callbacks receive a frozen SimulationSnapshot, not a live reference
+            to mutable simulation state. The ProtocolObserverAdapter creates the
+            snapshot BEFORE iterating callbacks, ensuring:
+            - All callbacks see the same consistent state
+            - GUI code cannot race with engine mutations
+            - Callback processing time does not affect snapshot consistency
+
+        Callbacks are invoked in registration order. Duplicate registration
+        is idempotent (callback invoked once per tick).
+
+        Args:
+            callback: Function to call after each tick.
+                      Signature: (tick: int, snapshot: SimulationSnapshot) -> None
+        """
+        self._adapter.register(callback)
+
+    def unregister_observer(self, callback: ObserverCallback) -> None:
+        """Remove a previously registered GUI callback.
+
+        Implements SimulationControl protocol.
+
+        If the callback was not registered, this is a no-op (no error raised).
+
+        Args:
+            callback: The callback function to remove.
+        """
+        self._adapter.unregister(callback)
+
+    def _notify_gui_observers(self) -> None:
+        """Notify GUI observers with frozen snapshot.
+
+        Called at the end of each step() tick. The adapter creates a snapshot
+        BEFORE iterating callbacks to ensure thread safety.
+        """
+        self._adapter.notify(self.get_current_tick())
 
     def _notify_observers_start(self) -> None:
         """Notify observers of simulation start.
@@ -359,6 +413,10 @@ class Simulation:
             self._notify_observers_start()
             self._started = True
 
+        # GUI Protocol Extension (006): Invalidate spatial index cache (T028)
+        # Cache must be invalidated each tick since territory state may change
+        self._hex_to_territory = None
+
         previous_state = self._current_state
         # Pass persistent context to preserve state across ticks (Sprint 3.4.3)
         # Pass custom defines for scenario-specific coefficients
@@ -374,6 +432,9 @@ class Simulation:
 
         # Update MVP territory profit_rates
         self._update_mvp_profit_rates()
+
+        # GUI Protocol Extension (006): Notify GUI observers with frozen snapshot
+        self._notify_gui_observers()
 
         return new_state
 
@@ -530,6 +591,61 @@ class Simulation:
         if territory is None:
             return set()
         return set(territory.hex_claims)
+
+    # =========================================================================
+    # GUI Protocol Extension (006): Spatial Query by H3 Index
+    # =========================================================================
+
+    # Lazy cache for reverse H3 -> territory_id mapping (T025)
+    _hex_to_territory: dict[str, str] | None = None
+
+    def _build_hex_index(self) -> dict[str, str]:
+        """Build reverse H3 -> territory_id mapping (T026).
+
+        Iterates all territories and creates a reverse index from each
+        H3 hex claim to its owning territory_id.
+
+        Returns:
+            Dict mapping h3_index -> territory_id.
+        """
+        index: dict[str, str] = {}
+        for territory_id, territory in self._mvp_territories.items():
+            for h3_idx in territory.hex_claims:
+                index[h3_idx] = territory_id
+        return index
+
+    def get_node_by_spatial_index(self, h3_index: str) -> TerritoryState | None:
+        """Return the territory that claims a specific H3 hex (T027).
+
+        Implements SimulationState protocol.
+
+        This method bridges the spatial representation (H3 hexes used by
+        map visualization like pydeck) to the simulation's territory model.
+
+        Args:
+            h3_index: H3 cell index (15-character lowercase hex string).
+
+        Returns:
+            TerritoryState if a territory claims this hex, None otherwise.
+
+        Raises:
+            ValueError: If h3_index is not a valid H3 cell index.
+        """
+        # Validate H3 format using library function
+        if not h3.is_valid_cell(h3_index):
+            msg = f"Invalid H3 index: {h3_index}"
+            raise ValueError(msg)
+
+        # Build cache lazily on first query
+        if self._hex_to_territory is None:
+            self._hex_to_territory = self._build_hex_index()
+
+        # Lookup territory by hex claim
+        territory_id = self._hex_to_territory.get(h3_index)
+        if territory_id is None:
+            return None
+
+        return self._mvp_territories.get(territory_id)
 
     def _update_mvp_profit_rates(self) -> None:
         """Update territory profit_rates using placeholder decay formula.

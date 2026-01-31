@@ -18,11 +18,14 @@ This guide shows how to use the GUI protocol extensions to integrate a visualiza
 
 ```python
 from babylon.engine.simulation import Simulation
-from babylon.protocols import SimulationControl, SimulationState
+from babylon.models.snapshots import SimulationSnapshot
 
-def on_tick(tick: int, state: SimulationState) -> None:
-    """Called after each simulation tick."""
-    snapshot = state.get_snapshot()
+def on_tick(tick: int, snapshot: SimulationSnapshot) -> None:
+    """Called after each simulation tick.
+
+    Note: Callbacks receive a frozen SimulationSnapshot, not a live
+    SimulationState reference. This ensures thread safety.
+    """
     print(f"Tick {tick}: {len(snapshot.territories)} territories")
 
 # Initialize simulation
@@ -43,10 +46,12 @@ sim.unregister_observer(on_tick)
 Observers are invoked in registration order:
 
 ```python
-def observer_a(tick: int, state: SimulationState) -> None:
+from babylon.models.snapshots import SimulationSnapshot
+
+def observer_a(tick: int, snapshot: SimulationSnapshot) -> None:
     print(f"A: tick {tick}")
 
-def observer_b(tick: int, state: SimulationState) -> None:
+def observer_b(tick: int, snapshot: SimulationSnapshot) -> None:
     print(f"B: tick {tick}")
 
 sim.register_observer(observer_a)
@@ -63,7 +68,9 @@ sim.step()
 Callback exceptions are logged but don't halt simulation:
 
 ```python
-def buggy_observer(tick: int, state: SimulationState) -> None:
+from babylon.models.snapshots import SimulationSnapshot
+
+def buggy_observer(tick: int, snapshot: SimulationSnapshot) -> None:
     raise RuntimeError("Oops!")
 
 sim.register_observer(buggy_observer)
@@ -133,10 +140,13 @@ class GuiBridge(QObject):
         # Register directly with simulation - no adapter needed
         self.simulation.register_observer(self._on_tick)
 
-    def _on_tick(self, tick: int, state):
-        """Called from simulation thread."""
+    def _on_tick(self, tick: int, snapshot):
+        """Called from simulation thread.
+
+        Note: snapshot is already a frozen SimulationSnapshot,
+        safe to pass across threads.
+        """
         # Emit signal - Qt auto-queues to GUI thread via AutoConnection
-        snapshot = state.get_snapshot()  # Immutable, safe to pass
         self.tick_updated.emit(tick, snapshot)
 
     def cleanup(self):
@@ -180,10 +190,11 @@ class SimulationViewer:
         self.sim.register_observer(self._on_tick)
         self.selected_territory = None
 
-    def _on_tick(self, tick: int, state: SimulationState) -> None:
-        """Update display after each tick."""
-        snapshot = state.get_snapshot()
+    def _on_tick(self, tick: int, snapshot) -> None:
+        """Update display after each tick.
 
+        Note: snapshot is a frozen SimulationSnapshot.
+        """
         # Update tick display
         print(f"\n=== Tick {tick} ===")
 
@@ -193,7 +204,7 @@ class SimulationViewer:
 
         # Update selected territory details
         if self.selected_territory:
-            territory = state.get_territory_state(self.selected_territory)
+            territory = snapshot.territories.get(self.selected_territory)
             if territory:
                 print(f"  Selected: {territory.territory_id} @ {territory.profit_rate:.2%}")
 
@@ -234,6 +245,7 @@ For expensive GUI updates, debounce rapid tick notifications:
 
 ```python
 import time
+from babylon.models.snapshots import SimulationSnapshot
 
 class DebouncedObserver:
     def __init__(self, update_fn, min_interval: float = 0.1):
@@ -241,10 +253,10 @@ class DebouncedObserver:
         self.min_interval = min_interval
         self.last_update = 0
 
-    def __call__(self, tick: int, state: SimulationState) -> None:
+    def __call__(self, tick: int, snapshot: SimulationSnapshot) -> None:
         now = time.time()
         if now - self.last_update >= self.min_interval:
-            self.update_fn(tick, state)
+            self.update_fn(tick, snapshot)
             self.last_update = now
 ```
 
@@ -253,14 +265,16 @@ class DebouncedObserver:
 Only update when specific conditions change:
 
 ```python
+from babylon.models.snapshots import SimulationSnapshot
+
 class FilteredObserver:
     def __init__(self, update_fn, territory_id: str):
         self.update_fn = update_fn
         self.territory_id = territory_id
         self.last_profit_rate = None
 
-    def __call__(self, tick: int, state: SimulationState) -> None:
-        territory = state.get_territory_state(self.territory_id)
+    def __call__(self, tick: int, snapshot: SimulationSnapshot) -> None:
+        territory = snapshot.territories.get(self.territory_id)
         if territory and territory.profit_rate != self.last_profit_rate:
             self.update_fn(tick, territory)
             self.last_profit_rate = territory.profit_rate
@@ -268,8 +282,8 @@ class FilteredObserver:
 
 ## Error Reference
 
-| Error                          | Cause                                  | Solution                                        |
-| ------------------------------ | -------------------------------------- | ----------------------------------------------- |
-| `ValueError: Invalid H3 index` | Malformed H3 string                    | Validate with `h3.is_valid_cell()` before query |
-| Callback not invoked           | Not registered or already unregistered | Check registration state                        |
-| Stale data in callback         | Using old snapshot reference           | Always call `state.get_snapshot()` fresh        |
+| Error                          | Cause                                  | Solution                                          |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------- |
+| `ValueError: Invalid H3 index` | Malformed H3 string                    | Validate with `h3.is_valid_cell()` before query   |
+| Callback not invoked           | Not registered or already unregistered | Check registration state                          |
+| Stale data in callback         | Using old snapshot reference           | Use the snapshot passed to callback (it's frozen) |

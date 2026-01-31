@@ -16,6 +16,10 @@ See Also:
     - plan.md#Hydration Flow: Initialization sequence
     - research.md#5: Profit rate dynamics
     - quickstart.md: Usage examples
+
+Feature 006-gui-protocol-extension:
+    Added get_node_by_spatial_index() method for H3 hex -> Territory lookup.
+    Enables GUI map click handling via pydeck H3HexagonLayer events.
 """
 
 from __future__ import annotations
@@ -28,9 +32,11 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class SimulationState(Protocol):
-    """Read interface to simulation state.
+    """Read interface to simulation state with spatial query support.
 
-    This protocol defines how GUI code queries simulation state.
+    This protocol defines how GUI code queries simulation state,
+    including spatial lookups by H3 hex index.
+
     All methods are read-only - they do not modify simulation state.
 
     Example:
@@ -39,6 +45,11 @@ class SimulationState(Protocol):
         ...     for territory_id, state in snapshot.territories.items():
         ...         color = profit_rate_to_color(state.profit_rate)
         ...         render_hexes(state.hex_claims, color)
+        ...
+        >>> def on_hex_click(sim: SimulationState, h3_index: str) -> None:
+        ...     territory = sim.get_node_by_spatial_index(h3_index)
+        ...     if territory:
+        ...         print(f"Clicked on {territory.territory_id}")
     """
 
     def get_current_tick(self) -> int:
@@ -93,5 +104,36 @@ class SimulationState(Protocol):
         Returns:
             Set of H3 index strings. Empty set if territory not found or
             has no hex claims.
+        """
+        ...
+
+    def get_node_by_spatial_index(self, h3_index: str) -> TerritoryState | None:
+        """Return the territory that claims a specific H3 hex.
+
+        This method bridges the spatial representation (H3 hexes used by
+        map visualization like pydeck) to the simulation's territory model.
+
+        Args:
+            h3_index: H3 cell index (15-character lowercase hex string).
+
+        Returns:
+            TerritoryState if a territory claims this hex, None otherwise.
+
+        Raises:
+            ValueError: If h3_index is not a valid H3 cell index.
+
+        Example:
+            >>> # User clicks on map, pydeck returns H3 index
+            >>> h3_index = "852a1072fffffff"
+            >>> territory = sim.get_node_by_spatial_index(h3_index)
+            >>> if territory:
+            ...     show_territory_details(territory)
+            ... else:
+            ...     show_unclaimed_message()
+
+        Note:
+            If multiple territories claim the same hex (data error),
+            the first match is returned. This should not occur in
+            well-formed simulation data.
         """
         ...

@@ -60,17 +60,17 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T011 [P] [US1] Write unit test for MapViewport initialization in tests/unit/ui/dashboard/test_map_viewport.py
-- [ ] T012 [P] [US1] Write unit test for pydeck HTML generation in tests/unit/ui/dashboard/test_map_viewport.py
-- [ ] T013 [P] [US1] Write unit test for incremental color update (setProps pattern) in tests/unit/ui/dashboard/test_map_viewport.py
+- [x] T011 [P] [US1] Write unit test for MapViewport initialization in tests/unit/ui/dashboard/test_map_viewport.py
+- [x] T012 [P] [US1] Write unit test for pydeck HTML generation in tests/unit/ui/dashboard/test_map_viewport.py
+- [x] T013 [P] [US1] Write unit test for incremental color update (setProps pattern) in tests/unit/ui/dashboard/test_map_viewport.py
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Create MapViewport widget skeleton (QWidget + QWebEngineView) in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T015 [US1] Implement MapViewport.initialize() with pydeck HTML generation in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T016 [US1] Inject QWebChannel bridge JavaScript into pydeck HTML in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T017 [US1] Implement MapViewport.update_colors() with deck.setProps() pattern (FR-011) in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T018 [US1] Add tooltip support for hex hover (profit_rate display) in src/babylon/ui/dashboard/map_viewport.py
+- [x] T014 [US1] Create MapViewport widget skeleton (QWidget + QWebEngineView) in src/babylon/ui/dashboard/map_viewport.py
+- [x] T015 [US1] Implement MapViewport.initialize() with pydeck HTML generation in src/babylon/ui/dashboard/map_viewport.py
+- [x] T016 [US1] Inject QWebChannel bridge JavaScript into pydeck HTML in src/babylon/ui/dashboard/map_viewport.py
+- [x] T017 [US1] Implement MapViewport.update_colors() with deck.setProps() pattern (FR-011) in src/babylon/ui/dashboard/map_viewport.py
+- [x] T018 [US1] Add tooltip support for hex hover (profit_rate display) in src/babylon/ui/dashboard/map_viewport.py
 
 **Checkpoint**: Map renders Detroit hexes with profit_rate colors - User Story 1 independently testable
 

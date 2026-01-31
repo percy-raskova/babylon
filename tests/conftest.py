@@ -215,3 +215,35 @@ def mock_simulation() -> MagicMock:
     mock.tick = 0
     mock.is_running = False
     return mock
+
+
+# =============================================================================
+# PYTEST-QT FIXTURES (Feature 007: God Mode Dashboard)
+# =============================================================================
+
+
+@pytest.fixture(scope="session")
+def qapp_args() -> list[str]:
+    """Arguments passed to QApplication for pytest-qt.
+
+    Returns:
+        List of command-line arguments for QApplication initialization.
+    """
+    return ["--platform", "offscreen"]
+
+
+@pytest.fixture
+def qtbot_headless(qapp_args: list[str], qtbot):  # type: ignore[no-untyped-def]
+    """Qt test helper configured for headless operation.
+
+    This wraps the standard pytest-qt qtbot fixture with headless configuration.
+    Use this for testing Qt widgets without a display.
+
+    Args:
+        qapp_args: QApplication arguments (injected).
+        qtbot: Standard pytest-qt bot fixture (injected).
+
+    Returns:
+        The qtbot fixture, configured for headless operation.
+    """
+    return qtbot

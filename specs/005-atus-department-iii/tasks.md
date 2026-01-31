@@ -43,6 +43,8 @@ ______________________________________________________________________
 - [ ] T005 [P] [US2] Write test: fractions must sum to 1.0 ± 0.001 (should FAIL - model doesn't exist)
 - [ ] T006 [P] [US2] Write test: total_g33 computed as weighted average (should FAIL - property doesn't exist)
 - [ ] T007 [P] [US2] Write test: model rejects invalid fractions (negative, >1) (should FAIL)
+- [ ] T007a [P] [US2] Write test: fractions normalize with warning if drift > 0.01 (edge case per spec.md L84)
+- [ ] T007b [P] [US2] Write test: g₃₃ clamped to [0,1] with warning for out-of-bounds input (edge case per spec.md L82)
 
 ### Implementation for User Story 2 (TDD GREEN Phase)
 
@@ -51,7 +53,9 @@ ______________________________________________________________________
 - [ ] T010 [US2] Implement model_validator to ensure fractions sum to 1.0 ± 0.001
 - [ ] T011 [US2] Add visibility coefficient constants (g_domestic=0.0, g_migrant=0.3, g_peripheral=0.0, g_state=1.0)
 - [ ] T012 [US2] Implement computed_field total_g33 as weighted average
-- [ ] T013 [US2] Run tests - all T004-T007 should now PASS
+- [ ] T012a [US2] Implement fraction normalization with warning if drift > 0.01
+- [ ] T012b [US2] Implement g₃₃ clamping to [0,1] with warning for out-of-bounds values
+- [ ] T013 [US2] Run tests - all T004-T007b should now PASS
 
 **Checkpoint**: VisibilityDecomposition model complete and independently testable
 
@@ -118,6 +122,8 @@ ______________________________________________________________________
 ## Phase 5: Integration & Shadow Subsidy Update
 
 **Goal**: Wire VisibilityComputer into existing ShadowLaborService via dependency injection
+
+**FR-004 Coverage**: This phase satisfies FR-004 ("override default g₃₃=1.0") by injecting VisibilityComputer into ShadowLaborService. The computed g₃₃ flows through to shadow_subsidy calculation, effectively overriding the default.
 
 **Independent Test**: End-to-end test verifying shadow_subsidy uses computed g₃₃
 

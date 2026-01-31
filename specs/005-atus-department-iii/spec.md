@@ -39,7 +39,7 @@ A simulation researcher requests the visibility coefficient g₃₃ for Departme
 
 **Why this priority**: The existing `visibility_g33=1.0` default makes all reproductive labor fully visible, which contradicts Fortunati's theory. Computing g₃₃ from data enables the shadow subsidy calculation to reflect actual invisibility.
 
-**Independent Test**: Can be tested by providing the three input values and verifying g₃₃ falls within [0.2, 0.5] range per SC-004.
+**Independent Test**: Can be tested by providing the three input values and verifying g₃₃ falls within [0.2, 0.5] range per SC-003.
 
 **Acceptance Scenarios**:
 
@@ -109,6 +109,7 @@ ______________________________________________________________________
 - **SC-004**: Shadow subsidy S_shadow accounts for 50-80% of total reproductive labor value when using computed g₃₃
 - **SC-005**: Regression of domestic_hours ~ 1/income produces positive coefficient (β > 0)
 - **SC-006**: Computed values are deterministic given the same input data
+- **SC-007**: Full visibility computation completes within 5 minutes for a survey year (per clarification session)
 
 ## Assumptions
 

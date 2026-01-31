@@ -20,7 +20,7 @@ Implement g₃₃ visibility decomposition for Department III. The existing infr
 **Storage**: SQLite 3NF schema (existing `babylondata.sqlite`), YAML for mappings
 **Testing**: pytest with TDD (red-green-refactor), markers: `@pytest.mark.unit`, `@pytest.mark.integration`
 **Target Platform**: Linux (development), cross-platform compatible
-**Performance Goals**: Process ATUS survey year in ≤5 minutes (SC-008)
+**Performance Goals**: Process ATUS survey year in ≤5 minutes (SC-007)
 **Constraints**: Fail fast on BLS data source unavailability; no county-level disaggregation
 **Scale/Scope**: National-level coefficients applied uniformly; ~6 occupation groups × 5 categories = 30 coefficient combinations
 

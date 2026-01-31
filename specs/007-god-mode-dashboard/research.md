@@ -297,10 +297,148 @@ class MockSimulation:
 | setHtml vs setUrl? | Use `setHtml()` for MVP simplicity; temp files add I/O overhead |
 | H3 resolution? | Resolution 5 per TerritoryState model validation |
 
+## 10. Documentation Research (Context7 + Web)
+
+### H3 Resolution 5 Specifications
+
+From [H3 Official Documentation](https://h3geo.org/):
+
+| Resolution | Average Hexagon Area | Average Edge Length |
+|------------|---------------------|---------------------|
+| 5 | ~252.9 km² | ~8.5 km |
+
+Resolution 5 is appropriate for county-level visualization:
+- Detroit metro (~17 counties) fits comfortably
+- ~2,000 hexes covers the region
+- `highPrecision: 'auto'` works well at res 5 (coarse resolution may trigger high-precision mode)
+
+### deck.gl H3HexagonLayer Click Handling
+
+From [deck.gl Official Documentation](https://deck.gl/docs/api-reference/geo-layers/h3-hexagon-layer):
+
+```javascript
+// H3HexagonLayer with click handling
+new H3HexagonLayer({
+  id: 'h3-layer',
+  data: hexData,
+  pickable: true,  // REQUIRED for click events
+  getHexagon: d => d.hex,
+  getFillColor: d => d.color,
+  onClick: (info, event) => {
+    // info.object contains the clicked data item
+    if (info.object) {
+      console.log('Clicked hex:', info.object.hex);
+    }
+  }
+});
+```
+
+**Key Properties**:
+- `pickable: true` - Required to enable picking/click events
+- `onClick(info, event)` - Callback receives PickingInfo with `.object` property
+- `getTooltip({object})` - Built-in tooltip support
+- `coverage` - Hexagon radius multiplier (0-1), default 1
+
+### deck.gl setProps for Incremental Updates
+
+From [deck.gl Performance Guide](https://deck.gl/docs/developer-guide/performance):
+
+```javascript
+// Efficient layer updates via setProps
+deckInstance.setProps({
+  layers: [
+    new H3HexagonLayer({
+      id: 'h3-layer',  // IMPORTANT: consistent ID for layer matching
+      data: newData,
+      // ... other props
+    })
+  ]
+});
+```
+
+**Performance Notes**:
+- deck.gl compares layer props by reference
+- Only changed props trigger buffer regeneration
+- Use consistent layer IDs for efficient diffing
+- For large datasets, consider async iterables (v7.2.0+)
+
+### PyQt6 Signal/Slot Pattern
+
+From [PyQt6 Official Documentation](https://www.riverbankcomputing.com/static/Docs/PyQt6/signals_slots):
+
+```python
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
+
+class HexBridge(QObject):
+    # Define signal with type
+    hex_clicked = pyqtSignal(str)
+
+    @pyqtSlot(str)
+    def on_hex_click(self, h3_index: str) -> None:
+        """Slot called from JavaScript via QWebChannel."""
+        self.hex_clicked.emit(h3_index)
+
+# Connection
+bridge.hex_clicked.connect(inspector.display_territory_for_hex)
+
+# Disconnect
+bridge.hex_clicked.disconnect(inspector.display_territory_for_hex)
+```
+
+### pydeck HTML Generation
+
+From [pydeck Documentation](https://deckgl.readthedocs.io/en/latest/):
+
+```python
+# Generate HTML with options
+html = deck.to_html(
+    as_string=True,           # Return string, not file
+    css_background_color="#1a1a1a",  # Theme background
+    custom_libraries=[        # Inject external JS
+        {
+            "libraryName": "QWebChannelBridge",
+            "resourceUri": "qrc:///qtwebchannel/qwebchannel.js"
+        }
+    ]
+)
+```
+
+**Key Parameters**:
+- `as_string=True` - Returns HTML string for `setHtml()`
+- `css_background_color` - Background color styling
+- `custom_libraries` - Inject additional JavaScript
+- `offline=True` - Use bundled assets (no CDN)
+
+### QWebChannel Setup
+
+From [Qt6 Documentation](https://doc.qt.io/qt-6/qwebchannel.html):
+
+```python
+from PyQt6.QtWebChannel import QWebChannel
+from PyQt6.QtWebEngineCore import QWebEnginePage
+
+# Setup
+channel = QWebChannel(page)
+channel.registerObject("bridge", bridge_object)
+page.setWebChannel(channel)
+
+# In JavaScript (after loading qwebchannel.js)
+new QWebChannel(qt.webChannelTransport, function(channel) {
+    window.bridge = channel.objects.bridge;
+    // Now can call: window.bridge.on_hex_click("852a1072fffffff")
+});
+```
+
+**Note**: `qt.webChannelTransport` is automatically available when QWebChannel is set on the page.
+
 ## References
 
 - ai-docs/epochs/epoch2/pyqt-visualization.yaml
 - ai-docs/design-system.yaml
 - specs/006-gui-protocol-extension/
-- https://pydeck.gl/
-- https://doc.qt.io/qt-6/qwebchannel.html
+- [pydeck Documentation](https://deckgl.readthedocs.io/en/latest/)
+- [deck.gl H3HexagonLayer](https://deck.gl/docs/api-reference/geo-layers/h3-hexagon-layer)
+- [deck.gl Performance Guide](https://deck.gl/docs/developer-guide/performance)
+- [PyQt6 Signals and Slots](https://www.riverbankcomputing.com/static/Docs/PyQt6/signals_slots)
+- [Qt6 QWebChannel](https://doc.qt.io/qt-6/qwebchannel.html)
+- [H3 Geospatial Indexing](https://h3geo.org/)

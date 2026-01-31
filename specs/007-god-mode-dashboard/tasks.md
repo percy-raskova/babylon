@@ -147,19 +147,19 @@ ______________________________________________________________________
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T044 [P] [US4] Write unit test for DashboardWindow layout (QSplitter 70/30) in tests/unit/ui/dashboard/test_main_window.py
-- [ ] T045 [P] [US4] Write unit test for theme application (QSS) in tests/unit/ui/dashboard/test_main_window.py
-- [ ] T045a [P] [US4] Write unit test for DEBUG logging on connection state changes (FR-013) in tests/unit/ui/dashboard/test_main_window.py
+- [x] T044 [P] [US4] Write unit test for DashboardWindow layout (QSplitter 70/30) in tests/unit/ui/dashboard/test_main_window.py
+- [x] T045 [P] [US4] Write unit test for theme application (QSS) in tests/unit/ui/dashboard/test_main_window.py
+- [x] T045a [P] [US4] Write unit test for DEBUG logging on connection state changes (FR-013) in tests/unit/ui/dashboard/test_main_window.py
 
 ### Implementation for User Story 4
 
-- [ ] T046 [US4] Create DashboardWindow skeleton (QMainWindow) in src/babylon/ui/dashboard/main_window.py
-- [ ] T047 [US4] Implement QSplitter layout with 70% map, 30% inspector in src/babylon/ui/dashboard/main_window.py
-- [ ] T048 [US4] Apply QSS_THEME stylesheet to DashboardWindow in src/babylon/ui/dashboard/main_window.py
-- [ ] T049 [US4] Set minimum window size (1460×820) per layout spec in src/babylon/ui/dashboard/main_window.py
-- [ ] T050 [US4] Add status bar with connection indicator in src/babylon/ui/dashboard/main_window.py
-- [ ] T051 [US4] Add debug logging for errors and connection state changes (FR-013) in src/babylon/ui/dashboard/main_window.py
-- [ ] T052 [US4] Implement graceful exception handling per FR-015 in src/babylon/ui/dashboard/main_window.py
+- [x] T046 [US4] Create DashboardWindow skeleton (QMainWindow) in src/babylon/ui/dashboard/main_window.py
+- [x] T047 [US4] Implement QSplitter layout with 70% map, 30% inspector in src/babylon/ui/dashboard/main_window.py
+- [x] T048 [US4] Apply QSS_THEME stylesheet to DashboardWindow in src/babylon/ui/dashboard/main_window.py
+- [x] T049 [US4] Set minimum window size (1460×820) per layout spec in src/babylon/ui/dashboard/main_window.py
+- [x] T050 [US4] Add status bar with connection indicator in src/babylon/ui/dashboard/main_window.py
+- [x] T051 [US4] Add debug logging for errors and connection state changes (FR-013) in src/babylon/ui/dashboard/main_window.py
+- [x] T052 [US4] Implement graceful exception handling per FR-015 in src/babylon/ui/dashboard/main_window.py
 
 **Checkpoint**: Dashboard launches with complete theme - User Story 4 independently testable
 
@@ -169,13 +169,13 @@ ______________________________________________________________________
 
 **Purpose**: Integration, cleanup, and validation
 
-- [ ] T053 [P] Add __main__.py entry point for `python -m babylon.ui.dashboard` in src/babylon/ui/dashboard/__main__.py
-- [ ] T054 [P] Implement MockSimulation.with_detroit_territories() for dev/test in src/babylon/ui/dashboard/testing.py
-- [ ] T055 Update src/babylon/ui/__init__.py to export dashboard module
-- [ ] T056 Run full integration test suite in tests/integration/ui/test_dashboard_simulation.py
-- [ ] T057 Validate quickstart.md scenarios work end-to-end
-- [ ] T058 Memory leak verification: run 10,000 ticks, verify <50MB growth
-- [ ] T059 Performance verification: verify no frame exceeds 100ms render time
+- [x] T053 [P] Add __main__.py entry point for `python -m babylon.ui.dashboard` in src/babylon/ui/dashboard/__main__.py
+- [x] T054 [P] Implement MockSimulation.with_detroit_territories() for dev/test in src/babylon/ui/dashboard/testing.py
+- [x] T055 Update src/babylon/ui/__init__.py to export dashboard module
+- [x] T056 Run full integration test suite in tests/integration/ui/test_dashboard_simulation.py
+- [x] T057 Validate quickstart.md scenarios work end-to-end
+- [x] T058 Memory leak verification: run 10,000 ticks, verify <50MB growth
+- [x] T059 Performance verification: verify no frame exceeds 100ms render time
 
 ______________________________________________________________________
 

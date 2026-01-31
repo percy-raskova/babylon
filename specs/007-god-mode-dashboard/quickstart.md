@@ -217,8 +217,8 @@ class InspectorPanel(QWidget):
 ### Run with Mock Data
 
 ```bash
-# Launch dashboard with mock simulation (no database required)
-poetry run python -m babylon.ui.dashboard --mock
+# Launch dashboard with demo simulation (no database required)
+poetry run python -m babylon.ui.dashboard --demo
 ```
 
 ### Run Integration Tests

@@ -1,24 +1,26 @@
-"""Babylon UI components (Dear PyGui-based).
+"""Babylon UI components.
 
 This module provides the user interface components for the Babylon
-simulation engine, built on Dear PyGui with a "Bunker Constructivism" aesthetic.
+simulation engine. Two visualization backends are available:
 
-Components:
+DearPyGui Backend (Legacy):
     dpg_runner: Main dashboard entry point with render loop.
     design_system: Color palette and styling constants.
 
-Example:
-    Run the dashboard::
+PyQt6 Dashboard (God Mode):
+    dashboard: H3 hexagonal map visualization with pydeck.
 
-        from babylon.ui.dpg_runner import main
-        main()
+Example (DearPyGui)::
 
-    Or from command line::
+    from babylon.ui.dpg_runner import main
+    main()
 
-        poetry run python -m babylon.ui.dpg_runner
+Example (PyQt6 Dashboard)::
+
+    python -m babylon.ui.dashboard --demo
 """
 
-from babylon.ui import dpg_runner
+from babylon.ui import dashboard, dpg_runner
 from babylon.ui.design_system import BunkerPalette, DPGColors
 
-__all__ = ["BunkerPalette", "DPGColors", "dpg_runner"]
+__all__ = ["BunkerPalette", "DPGColors", "dashboard", "dpg_runner"]

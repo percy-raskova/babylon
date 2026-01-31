@@ -235,6 +235,11 @@ class MockSimulation:
         for h3_idx in territory.hex_claims:
             self._spatial_index[h3_idx.lower()] = territory.territory_id
 
+    @property
+    def observers(self) -> list[object]:
+        """Return list of registered observers (for testing)."""
+        return list(self._observers)
+
     @classmethod
     def with_detroit_territories(cls) -> MockSimulation:
         """Create a MockSimulation pre-populated with Detroit-area territories.

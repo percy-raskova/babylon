@@ -643,3 +643,10 @@ ADR0XX_descriptive_name:
     negative:
       - "Tradeoff 1"
 ```
+
+## Active Technologies
+- Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x (001-mvp-sim-engine)
+- SQLite (data/sqlite/marxist-data-3NF.sqlite for reference; in-memory for simulation state) (001-mvp-sim-engine)
+
+## Recent Changes
+- 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

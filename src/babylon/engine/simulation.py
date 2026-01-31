@@ -12,6 +12,12 @@ Observer Pattern Integration (Sprint 3.1):
 - Notifications occur AFTER state reconstruction (per design decision)
 - Observer errors are logged but don't halt simulation (ADR003)
 - Lifecycle hooks: on_simulation_start, on_tick, on_simulation_end
+
+MVP Simulation Engine (001-mvp-sim-engine):
+- Implements SimulationState and SimulationControl protocols
+- Tracks territory profit_rate for GUI visualization
+- Provides get_snapshot(), get_territory_state(), reset() methods
+- Deterministic profit_rate decay toward territory-specific equilibrium
 """
 
 from __future__ import annotations
@@ -24,6 +30,11 @@ from babylon.engine.services import ServiceContainer
 from babylon.engine.simulation_engine import step
 from babylon.models.config import SimulationConfig
 from babylon.models.enums import GameOutcome
+from babylon.models.snapshots import (
+    HexState,
+    SimulationSnapshot,
+    TerritoryState,
+)
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
@@ -94,6 +105,78 @@ class Simulation:
         # Persistent context that spans across ticks (Sprint 3.4.3)
         # Used for tracking state between ticks like previous_wages
         self._persistent_context: dict[str, object] = {}
+
+        # MVP Simulation Engine: Territory state tracking
+        # These are separate from WorldState.territories for GUI-facing snapshot creation
+        self._mvp_territories: dict[str, TerritoryState] = {}
+        self._mvp_hexes: dict[str, HexState] = {}
+        # Cache initial state for reset() functionality
+        self._initial_mvp_territories: dict[str, TerritoryState] = {}
+        self._initial_mvp_hexes: dict[str, HexState] = {}
+        self._initial_world_state: WorldState = initial_state
+
+    @classmethod
+    def from_sqlite(
+        cls,
+        fips_codes: list[str],
+        year: int = 2022,
+        observers: list[SimulationObserver] | None = None,
+        defines: GameDefines | None = None,
+    ) -> Simulation:
+        """Create simulation initialized from SQLite reference database.
+
+        This is the main entry point for the MVP simulation engine.
+        It hydrates territories from the reference database with profit_rate
+        computed from QCEW/BEA data.
+
+        Args:
+            fips_codes: List of 5-digit FIPS codes for counties to simulate.
+                Example: ["26163", "26125"] for Wayne and Oakland counties.
+            year: Data year for QCEW/BEA data (default 2022).
+            observers: Optional list of SimulationObserver instances.
+            defines: Optional custom GameDefines for scenario-specific coefficients.
+
+        Returns:
+            Initialized Simulation with territories hydrated from database.
+
+        Raises:
+            ValueError: If fips_codes is empty, contains duplicates that reduce
+                to fewer unique codes, or any county is not found in database.
+
+        Example:
+            >>> sim = Simulation.from_sqlite(
+            ...     fips_codes=["26163", "26125"],  # Detroit metro
+            ...     year=2022
+            ... )
+            >>> snapshot = sim.get_snapshot()
+            >>> wayne = snapshot.territories["26163"]
+            >>> print(f"Wayne County profit rate: {wayne.profit_rate}")
+
+        See Also:
+            - plan.md#Hydration Flow
+            - quickstart.md
+        """
+        from babylon.data.reference.hydrator import hydrate_territories
+
+        # Validate input
+        if not fips_codes:
+            msg = "fips_codes list cannot be empty"
+            raise ValueError(msg)
+
+        # Hydrate territories from database
+        territories, hexes = hydrate_territories(fips_codes, year)
+
+        # Create base WorldState and config
+        state = WorldState()
+        config = SimulationConfig()
+
+        # Create simulation instance
+        sim = cls(state, config, observers=observers, defines=defines)
+
+        # Initialize MVP territory state
+        sim._initialize_mvp_territories(territories=territories, hexes=hexes)
+
+        return sim
 
     @property
     def config(self) -> SimulationConfig:
@@ -230,8 +313,10 @@ class Simulation:
         if observer_events:
             self._persistent_context["_observer_events"] = observer_events
 
-    def step(self) -> WorldState:
-        """Advance simulation by one tick.
+    def step(self, n: int = 1) -> WorldState:
+        """Advance simulation by n ticks.
+
+        Implements SimulationControl protocol's step(n) method.
 
         Applies the step() function to transform the current state,
         records the new state in history, updates current_state, and
@@ -241,6 +326,30 @@ class Simulation:
 
         The persistent context is passed to step() to maintain state
         across ticks (e.g., previous_wages for bifurcation mechanic).
+
+        Args:
+            n: Number of ticks to advance. Must be positive.
+                Defaults to 1 for backward compatibility.
+
+        Returns:
+            The new WorldState after all ticks complete.
+
+        Raises:
+            ValueError: If n <= 0.
+        """
+        if n <= 0:
+            msg = f"n must be positive, got {n}"
+            raise ValueError(msg)
+
+        for _ in range(n):
+            self._step_single()
+
+        return self._current_state
+
+    def _step_single(self) -> WorldState:
+        """Advance simulation by exactly one tick (internal).
+
+        This is the core tick advancement logic, separated for use by step(n).
 
         Returns:
             The new WorldState after one tick of simulation.
@@ -263,6 +372,9 @@ class Simulation:
         # Collect observer events for next tick (Sprint 3.3)
         self._collect_observer_events()
 
+        # Update MVP territory profit_rates
+        self._update_mvp_profit_rates()
+
         return new_state
 
     def run(self, ticks: int) -> WorldState:
@@ -275,16 +387,16 @@ class Simulation:
             The final WorldState after all ticks complete.
 
         Raises:
-            ValueError: If ticks is negative
+            ValueError: If ticks is negative or zero
         """
-        if ticks < 0:
-            error_message = f"ticks must be non-negative, got {ticks}"
-            raise ValueError(error_message)
+        if ticks <= 0:
+            if ticks < 0:
+                error_message = f"ticks must be non-negative, got {ticks}"
+                raise ValueError(error_message)
+            # ticks == 0: no-op
+            return self._current_state
 
-        for _ in range(ticks):
-            self.step()
-
-        return self._current_state
+        return self.step(ticks)
 
     def get_history(self) -> list[WorldState]:
         """Return all WorldState snapshots from initial to current.
@@ -353,6 +465,145 @@ class Simulation:
                 return observer.outcome
 
         return GameOutcome.IN_PROGRESS
+
+    # =========================================================================
+    # MVP Simulation Engine: Protocol Methods (001-mvp-sim-engine)
+    # =========================================================================
+
+    # STUB: Placeholder decay rate - replace with TRPF mechanics
+    _MVP_DECAY_RATE: float = 0.05
+
+    def get_current_tick(self) -> int:
+        """Return the current tick number.
+
+        Implements SimulationState protocol.
+
+        Returns:
+            Non-negative integer representing the current simulation tick.
+            Tick 0 is the initial state before any step() calls.
+        """
+        return self._current_state.tick
+
+    def get_snapshot(self) -> SimulationSnapshot:
+        """Return a complete snapshot of the current simulation state.
+
+        Implements SimulationState protocol.
+
+        The snapshot is immutable - modifying the returned object does not
+        affect the simulation.
+
+        Returns:
+            SimulationSnapshot containing all state at the current tick.
+        """
+        return SimulationSnapshot(
+            tick=self._current_state.tick,
+            territories=dict(self._mvp_territories),
+            hexes=dict(self._mvp_hexes),
+            edges=[],  # Empty for MVP - no inter-territory edges yet
+        )
+
+    def get_territory_state(self, territory_id: str) -> TerritoryState | None:
+        """Return the state of a specific territory.
+
+        Implements SimulationState protocol.
+
+        Args:
+            territory_id: Unique identifier for the territory (FIPS code for counties).
+
+        Returns:
+            TerritoryState if the territory exists, None otherwise.
+        """
+        return self._mvp_territories.get(territory_id)
+
+    def get_hexes_for_territory(self, territory_id: str) -> set[str]:
+        """Return the H3 indices claimed by a territory.
+
+        Implements SimulationState protocol.
+
+        Args:
+            territory_id: Unique identifier for the territory.
+
+        Returns:
+            Set of H3 index strings. Empty set if territory not found.
+        """
+        territory = self._mvp_territories.get(territory_id)
+        if territory is None:
+            return set()
+        return set(territory.hex_claims)
+
+    def _update_mvp_profit_rates(self) -> None:
+        """Update territory profit_rates using placeholder decay formula.
+
+        Formula (STUB - replace with TRPF):
+            r_new = r_old * (1 - decay_rate) + equilibrium_r * decay_rate
+
+        Where:
+            decay_rate = 0.05 (configurable)
+            equilibrium_r = territory-specific initial profit_rate
+        """
+        current_tick = self._current_state.tick
+        updated_territories: dict[str, TerritoryState] = {}
+
+        for territory_id, territory in self._mvp_territories.items():
+            # Apply exponential smoothing toward equilibrium
+            old_r = territory.profit_rate
+            equilibrium_r = territory.equilibrium_r
+            new_r = old_r * (1 - self._MVP_DECAY_RATE) + equilibrium_r * self._MVP_DECAY_RATE
+
+            # Create new TerritoryState with clamped profit_rate
+            updated_territories[territory_id] = TerritoryState.with_clamped_profit_rate(
+                territory_id=territory_id,
+                controlling_polity=territory.controlling_polity,
+                hex_claims=territory.hex_claims,
+                tick=current_tick,
+                profit_rate=new_r,
+                equilibrium_r=equilibrium_r,
+            )
+
+        self._mvp_territories = updated_territories
+
+    def reset(self) -> None:
+        """Reset simulation to initial state (tick 0).
+
+        Implements SimulationControl protocol.
+
+        Restores the simulation to its state immediately after initialization:
+        - tick = 0
+        - All territory states reset to initial values
+        - profit_rate returns to initial computed values
+        - WorldState reset to initial state
+        - History cleared
+
+        Implementation note: reset() restores CACHED initial state.
+        """
+        # Reset WorldState
+        self._current_state = self._initial_world_state
+        self._history = [self._initial_world_state]
+        self._started = False
+        self._persistent_context = {}
+
+        # Reset MVP territory state
+        self._mvp_territories = dict(self._initial_mvp_territories)
+        self._mvp_hexes = dict(self._initial_mvp_hexes)
+
+    def _initialize_mvp_territories(
+        self,
+        territories: dict[str, TerritoryState],
+        hexes: dict[str, HexState],
+    ) -> None:
+        """Initialize MVP territory state from hydration.
+
+        Called by from_sqlite() class method after loading data.
+
+        Args:
+            territories: Map of territory_id to TerritoryState.
+            hexes: Map of h3_index to HexState.
+        """
+        self._mvp_territories = dict(territories)
+        self._mvp_hexes = dict(hexes)
+        # Cache for reset()
+        self._initial_mvp_territories = dict(territories)
+        self._initial_mvp_hexes = dict(hexes)
 
     def run_until_endgame(
         self,

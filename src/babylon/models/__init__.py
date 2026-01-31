@@ -74,6 +74,15 @@ from babylon.models.metrics import EdgeMetrics, EntityMetrics, SweepSummary, Tic
 # Scenario configuration for multiverse simulation
 from babylon.models.scenario import ScenarioConfig
 
+# MVP Simulation Engine: Snapshot types
+from babylon.models.snapshots import (
+    EdgeState,
+    HexState,
+    SimulationSnapshot,
+    SnapshotEdgeType,
+    TerritoryState,
+)
+
 # Sprint 3.1: Topology Metrics
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 from babylon.models.types import (
@@ -154,4 +163,10 @@ __all__ = [
     "role_to_entity_id",
     "entity_id_to_role",
     "get_slot_name",
+    # MVP Simulation Engine: Snapshot types
+    "HexState",
+    "EdgeState",
+    "TerritoryState",
+    "SimulationSnapshot",
+    "SnapshotEdgeType",
 ]

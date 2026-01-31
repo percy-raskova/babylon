@@ -68,3 +68,52 @@ def test_hpms_loader_ingests_basic_row(tmp_path: Path) -> None:
         assert row.geometry_wkt == "LINESTRING (0 0, 1 1)"
     finally:
         session.close()
+
+
+def test_hpms_loader_handles_large_geometry_field(tmp_path: Path) -> None:
+    """Loader should handle WKT geometry fields exceeding csv module default limit.
+
+    The default csv.field_size_limit() is 131,072 bytes (128 KB).
+    Real HPMS data contains WKT LineStrings up to ~300 KB.
+    This test ensures the loader can process such fields.
+    """
+    session = _make_session()
+    try:
+        # Setup state and county
+        state = DimState(state_fips="01", state_name="Alabama", state_abbrev="AL")
+        session.add(state)
+        session.flush()
+        county = DimCounty(
+            fips="01081",
+            state_id=state.state_id,
+            county_fips="081",
+            county_name="Lee County",
+        )
+        session.add(county)
+        session.commit()
+
+        # Create WKT geometry larger than 131,072 bytes (the csv module default limit)
+        # A LINESTRING with many coordinate pairs
+        num_points = 15000  # ~150KB of geometry data
+        coords = ", ".join(f"{i} {i}" for i in range(num_points))
+        large_geometry = f"LINESTRING ({coords})"
+        assert len(large_geometry) > 131072, "Test geometry must exceed csv field limit"
+
+        csv_path = tmp_path / "hpms_large.csv"
+        csv_path.write_text(
+            "AADT,COUNTY_ID,StateID,ROUTE_ID,ROUTE_NUMBER,ROUTE_SIGNING,ROUTE_QUALIFIER,"
+            "F_SYSTEM,FACILITY_TYPE,SPEED_LIMIT,THROUGH_LANES,LANE_WIDTH,SectionLength,"
+            "NHS,NHFN,URBAN_ID,YEAR_RECORD,ShapeId,line\n"
+            f"5628,81,1,AL0000010000,431,1,3,3,2,55,2,12,0.006,1,0,4033,2024,349322813,"
+            f'"{large_geometry}"\n',
+            encoding="utf-8",
+        )
+
+        loader = DotHpmsLoader(LoaderConfig())
+        stats = loader.load(session, reset=True, verbose=False, data_path=csv_path)
+
+        assert stats.facts_loaded.get("hpms_road_segments") == 1
+        row = session.execute(select(FactHpmsRoadSegment)).scalar_one()
+        assert row.geometry_wkt == large_geometry
+    finally:
+        session.close()

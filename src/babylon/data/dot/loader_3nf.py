@@ -176,6 +176,10 @@ class DotHpmsLoader(DataLoader):
         skipped_no_fips = 0
         skipped_missing_geo = 0
 
+        # Set CSV field size limit to handle large WKT geometry fields (up to ~300KB observed)
+        # Default is 131,072 bytes which is insufficient for HPMS LineString data
+        csv.field_size_limit(500_000)
+
         with csv_path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:

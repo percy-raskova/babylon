@@ -52,6 +52,9 @@ typer = ">=0.15.1"           # CLI framework
 rich = ">=13.9.4"            # Rich terminal output
 coloredlogs = ">=15.0.1"     # Colored logging
 dearpygui = "^2.1.1"         # Synopticon dashboard UI
+PyQt6 = "^6.6"               # God Mode Dashboard (Feature 007)
+PyQt6-WebEngine = "^6.6"     # WebGL map rendering via QWebEngineView
+pydeck = "^0.9"              # H3 hexagonal map visualization
 
 # === GEOSPATIAL ===
 h3 = "^4.2"                  # Uber H3 hex grid (stable release, was ^4.0.0b1 beta)
@@ -154,6 +157,7 @@ src = [
 ]
 exclude = [
     "assets/music/",
+    "specs/",
 ]
 
 [tool.ruff.lint]
@@ -210,6 +214,7 @@ exclude = [
     "build/",
     "dist/",
     "assets/music/",
+    "specs/",
 ]
 plugins = [
     "pydantic.mypy",

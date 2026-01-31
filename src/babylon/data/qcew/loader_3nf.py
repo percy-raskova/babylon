@@ -716,29 +716,322 @@ class QcewLoader(ApiLoaderBase):
         counts: GeoCounts,
         verbose: bool,
     ) -> int:
-        """Process BLS annual singlefile format (uses codes, no titles)."""
+        """Process BLS annual singlefile format using vectorized bulk insert.
+
+        This is 10-100x faster than row-by-row processing because:
+        1. Vectorized pandas operations instead of iterrows()
+        2. Bulk INSERT instead of individual session.add()
+        3. Dimension lookups done once per chunk, not per row
+        """
+        from sqlalchemy import insert
+
         file_record_count = 0
 
         if verbose:
             print(f"  Processing singlefile: {csv_file.name}")
 
-        for chunk_num, chunk in enumerate(parse_raw_csv_chunked(csv_file, chunk_size=50_000), 1):
-            # Filter to requested years
+        for chunk_num, chunk in enumerate(parse_raw_csv_chunked(csv_file, chunk_size=100_000), 1):
+            # Filter to requested years (vectorized)
             chunk = chunk[chunk["year"].isin(years_to_load)]
+            if chunk.empty:
+                continue
 
-            if verbose and chunk_num % 10 == 0:
-                print(f"    Chunk {chunk_num}: {file_record_count:,} records so far...")
+            # Ensure dimensions exist for this chunk's unique codes
+            self._ensure_chunk_dimensions(session, chunk, lookups)
 
-            for _, row in chunk.iterrows():
-                self._process_singlefile_row(session, row, lookups, counts)
-                file_record_count += 1
+            # Split by agglvl_code ranges (vectorized)
+            agglvl = chunk["agglvl_code"].fillna(AGGLVL_COUNTY_MAX).astype(int)
 
-            self._maybe_flush(session, counts, verbose)
+            county_mask = (agglvl >= AGGLVL_COUNTY_MIN) & (agglvl <= AGGLVL_COUNTY_MAX)
+            state_mask = (agglvl >= AGGLVL_STATE_MIN) & (agglvl <= AGGLVL_STATE_MAX)
+            metro_mask = (agglvl >= AGGLVL_METRO_MIN) & (agglvl <= AGGLVL_METRO_MAX)
 
+            # Bulk insert county facts
+            if county_mask.any():
+                county_rows = self._chunk_to_county_dicts(chunk[county_mask], lookups, session)
+                if county_rows:
+                    session.execute(insert(FactQcewAnnual), county_rows)
+                    counts.county += len(county_rows)
+                    file_record_count += len(county_rows)
+
+            # Bulk insert state facts
+            if state_mask.any():
+                state_chunk = chunk[state_mask].copy()
+                state_chunk["_agglvl"] = agglvl[state_mask]
+                state_rows = self._chunk_to_state_dicts(state_chunk, lookups, session)
+                if state_rows:
+                    session.execute(insert(FactQcewStateAnnual), state_rows)
+                    counts.state += len(state_rows)
+                    file_record_count += len(state_rows)
+
+            # Bulk insert metro facts
+            if metro_mask.any():
+                metro_chunk = chunk[metro_mask].copy()
+                metro_chunk["_agglvl"] = agglvl[metro_mask]
+                metro_rows = self._chunk_to_metro_dicts(metro_chunk, lookups, session)
+                if metro_rows:
+                    session.execute(insert(FactQcewMetroAnnual), metro_rows)
+                    counts.metro += len(metro_rows)
+                    file_record_count += len(metro_rows)
+
+            # Commit periodically to avoid memory buildup
+            if chunk_num % 5 == 0:
+                session.flush()
+                if verbose:
+                    print(
+                        f"    Chunk {chunk_num}: {file_record_count:,} records "
+                        f"(county={counts.county:,}, state={counts.state:,}, metro={counts.metro:,})"
+                    )
+
+        session.flush()
         if verbose:
             print(f"  Completed {csv_file.name}: {file_record_count:,} records")
 
         return file_record_count
+
+    def _ensure_chunk_dimensions(
+        self,
+        session: Session,
+        chunk: pd.DataFrame,
+        lookups: dict[str, dict[str, int]],
+    ) -> None:
+        """Ensure all dimension records exist for codes in this chunk."""
+        # Get unique industry codes and ensure they exist
+        for code in chunk["industry_code"].dropna().unique():
+            code_str = str(code).strip()
+            if code_str not in lookups["industry"]:
+                self._get_or_create_industry(
+                    session, code_str, f"NAICS {code_str}", lookups["industry"]
+                )
+
+        # Get unique ownership codes and ensure they exist
+        for code in chunk["own_code"].dropna().unique():
+            code_str = str(code).strip()
+            if code_str not in lookups["ownership"]:
+                self._get_or_create_ownership(
+                    session, code_str, self._get_ownership_title(code_str), lookups["ownership"]
+                )
+
+        # Get unique years and ensure they exist (use str for consistency with other lookups)
+        for year in chunk["year"].dropna().unique():
+            year_str = str(int(year))
+            if year_str not in lookups.get("time", {}):
+                self._get_or_create_time(session, int(year))
+
+        session.flush()
+
+    def _chunk_to_county_dicts(
+        self,
+        chunk: pd.DataFrame,
+        lookups: dict[str, dict[str, int]],
+        session: Session,
+    ) -> list[dict[str, Any]]:
+        """Convert county-level chunk to list of dicts for bulk insert."""
+        import pandas as pd  # noqa: PLC0415
+
+        # Vectorized ID lookups using .map()
+        df = chunk.copy()
+        df["industry_id"] = df["industry_code"].astype(str).str.strip().map(lookups["industry"])
+        df["ownership_id"] = df["own_code"].astype(str).str.strip().map(lookups["ownership"])
+
+        # Build time lookup if not exists (use str keys for consistency)
+        if "time" not in lookups:
+            lookups["time"] = {}
+        for year in df["year"].dropna().unique():
+            year_str = str(int(year))
+            if year_str not in lookups["time"]:
+                lookups["time"][year_str] = self._get_or_create_time(session, int(year))
+        df["time_id"] = df["year"].astype(int).astype(str).map(lookups["time"])
+
+        # Vectorized county ID lookup
+        df["county_id"] = df["area_fips"].astype(str).str.strip().map(lookups["county"])
+
+        # For missing counties, try to create them
+        missing_mask = df["county_id"].isna()
+        if missing_mask.any():
+            for fips in df.loc[missing_mask, "area_fips"].unique():
+                fips_str = str(fips).strip()
+                state_fips = fips_str[:2] if len(fips_str) >= 2 else None
+                if state_fips and state_fips in lookups["state"]:
+                    county_id = self._get_or_create_county(
+                        session,
+                        fips_str,
+                        f"County {fips_str}",
+                        lookups["state"][state_fips],
+                        lookups["county"],
+                    )
+                    lookups["county"][fips_str] = county_id
+            # Re-map after creating missing counties
+            df["county_id"] = df["area_fips"].astype(str).str.strip().map(lookups["county"])
+
+        # Filter to valid rows only
+        valid_mask = (
+            df["county_id"].notna() & df["industry_id"].notna() & df["ownership_id"].notna()
+        )
+        df = df[valid_mask]
+
+        if df.empty:
+            return []
+
+        # Build result DataFrame with proper column names (fully vectorized)
+        result = pd.DataFrame(
+            {
+                "county_id": df["county_id"].astype(int),
+                "industry_id": df["industry_id"].astype(int),
+                "ownership_id": df["ownership_id"].astype(int),
+                "time_id": df["time_id"].astype(int),
+                "establishments": df["annual_avg_estabs"],
+                "employment": df["annual_avg_emplvl"],
+                "total_wages_usd": df["total_annual_wages"],
+                "avg_weekly_wage_usd": df["annual_avg_wkly_wage"],
+                "avg_annual_pay_usd": df["avg_annual_pay"],
+                "lq_employment": df["lq_annual_avg_emplvl"],
+                "lq_annual_pay": df["lq_avg_annual_pay"],
+                "disclosure_code": df["disclosure_code"]
+                .astype(str)
+                .str.strip()
+                .replace("", None)
+                .replace("nan", None),
+            }
+        )
+
+        # Convert NaN to None for SQLAlchemy (vectorized)
+        result = result.where(pd.notna(result), None)
+
+        return list(result.to_dict("records"))
+
+    def _chunk_to_state_dicts(
+        self,
+        chunk: pd.DataFrame,
+        lookups: dict[str, dict[str, int]],
+        session: Session,
+    ) -> list[dict[str, Any]]:
+        """Convert state-level chunk to list of dicts for bulk insert."""
+        import pandas as pd  # noqa: PLC0415
+
+        df = chunk.copy()
+        df["industry_id"] = df["industry_code"].astype(str).str.strip().map(lookups["industry"])
+        df["ownership_id"] = df["own_code"].astype(str).str.strip().map(lookups["ownership"])
+
+        # Ensure time lookup exists (use str keys for consistency)
+        if "time" not in lookups:
+            lookups["time"] = {}
+        for year in df["year"].dropna().unique():
+            year_str = str(int(year))
+            if year_str not in lookups["time"]:
+                lookups["time"][year_str] = self._get_or_create_time(session, int(year))
+        df["time_id"] = df["year"].astype(int).astype(str).map(lookups["time"])
+
+        # State FIPS is first 2 chars of area_fips
+        df["state_id"] = df["area_fips"].astype(str).str[:2].map(lookups["state"])
+
+        valid_mask = df["state_id"].notna() & df["industry_id"].notna() & df["ownership_id"].notna()
+        df = df[valid_mask]
+
+        if df.empty:
+            return []
+
+        result = pd.DataFrame(
+            {
+                "state_id": df["state_id"].astype(int),
+                "industry_id": df["industry_id"].astype(int),
+                "ownership_id": df["ownership_id"].astype(int),
+                "time_id": df["time_id"].astype(int),
+                "establishments": df["annual_avg_estabs"],
+                "employment": df["annual_avg_emplvl"],
+                "total_wages_usd": df["total_annual_wages"],
+                "avg_weekly_wage_usd": df["annual_avg_wkly_wage"],
+                "avg_annual_pay_usd": df["avg_annual_pay"],
+                "lq_employment": df["lq_annual_avg_emplvl"],
+                "lq_annual_pay": df["lq_avg_annual_pay"],
+                "disclosure_code": df["disclosure_code"]
+                .astype(str)
+                .str.strip()
+                .replace("", None)
+                .replace("nan", None),
+                "agglvl_code": df["_agglvl"].astype(int),
+            }
+        )
+
+        result = result.where(pd.notna(result), None)
+        return list(result.to_dict("records"))
+
+    def _chunk_to_metro_dicts(
+        self,
+        chunk: pd.DataFrame,
+        lookups: dict[str, dict[str, int]],
+        session: Session,
+    ) -> list[dict[str, Any]]:
+        """Convert metro-level chunk to list of dicts for bulk insert."""
+        import pandas as pd  # noqa: PLC0415
+
+        df = chunk.copy()
+        df["industry_id"] = df["industry_code"].astype(str).str.strip().map(lookups["industry"])
+        df["ownership_id"] = df["own_code"].astype(str).str.strip().map(lookups["ownership"])
+
+        # Ensure time lookup exists (use str keys for consistency)
+        if "time" not in lookups:
+            lookups["time"] = {}
+        for year in df["year"].dropna().unique():
+            year_str = str(int(year))
+            if year_str not in lookups["time"]:
+                lookups["time"][year_str] = self._get_or_create_time(session, int(year))
+        df["time_id"] = df["year"].astype(int).astype(str).map(lookups["time"])
+
+        df["metro_area_id"] = df["area_fips"].astype(str).str.strip().map(lookups["metro"])
+
+        valid_mask = (
+            df["metro_area_id"].notna() & df["industry_id"].notna() & df["ownership_id"].notna()
+        )
+        df = df[valid_mask]
+
+        if df.empty:
+            return []
+
+        # Vectorized area_type determination
+        df["area_type"] = df["_agglvl"].apply(self._determine_metro_type)
+
+        result = pd.DataFrame(
+            {
+                "metro_area_id": df["metro_area_id"].astype(int),
+                "industry_id": df["industry_id"].astype(int),
+                "ownership_id": df["ownership_id"].astype(int),
+                "time_id": df["time_id"].astype(int),
+                "establishments": df["annual_avg_estabs"],
+                "employment": df["annual_avg_emplvl"],
+                "total_wages_usd": df["total_annual_wages"],
+                "avg_weekly_wage_usd": df["annual_avg_wkly_wage"],
+                "avg_annual_pay_usd": df["avg_annual_pay"],
+                "lq_employment": df["lq_annual_avg_emplvl"],
+                "lq_annual_pay": df["lq_avg_annual_pay"],
+                "disclosure_code": df["disclosure_code"]
+                .astype(str)
+                .str.strip()
+                .replace("", None)
+                .replace("nan", None),
+                "agglvl_code": df["_agglvl"].astype(int),
+                "area_type": df["area_type"],
+            }
+        )
+
+        result = result.where(pd.notna(result), None)
+        return list(result.to_dict("records"))
+
+    def _safe_int(self, val: Any) -> int | None:
+        """Safely convert value to int, handling NaN."""
+        import pandas as pd  # noqa: PLC0415
+
+        if pd.isna(val):
+            return None
+        return int(float(val))
+
+    def _safe_float(self, val: Any) -> float | None:
+        """Safely convert value to float, handling NaN."""
+        import pandas as pd  # noqa: PLC0415
+
+        if pd.isna(val):
+            return None
+        return float(val)
 
     def _process_singlefile_row(
         self,

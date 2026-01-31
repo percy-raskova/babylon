@@ -132,6 +132,11 @@ repos:
       - id: markdownlint
         name: markdownlint (md lint)
         args: [--config, .markdownlint.yaml]
+        exclude: |
+          (?x)^(
+            \.specify/.*|
+            specs/.*
+          )$
 
   - repo: https://github.com/hukkin/mdformat
     rev: 0.7.22  # Pinned: plugins not yet compatible with 1.0.0

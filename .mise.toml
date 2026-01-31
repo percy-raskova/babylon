@@ -350,6 +350,10 @@ run = "poetry run python -m babylon.data.cli energy"
 description = "Load BLS QCEW employment data into 3NF database"
 run = "poetry run python -m babylon.data.cli qcew"
 
+[tasks."data:qcew-download"]
+description = "Download QCEW bulk files from BLS (2010-2024)"
+run = "poetry run python -m babylon.data.cli qcew-download"
+
 [tasks."data:trade"]
 description = "Load UN trade data into 3NF database"
 run = "poetry run python -m babylon.data.cli trade"

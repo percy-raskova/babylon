@@ -5,6 +5,13 @@ from the BLS Open Data API or local CSV files using a hybrid approach:
 - API for recent years (2021+): Fetches directly from BLS QCEW Open Data API
 - Files for historical years (2013-2020): Reads from local CSV downloads
 
+For bulk downloads from BLS, use QcewDownloader:
+    from babylon.data.qcew import QcewDownloader, DownloadConfig
+
+    config = DownloadConfig(years=list(range(2010, 2025)))
+    with QcewDownloader() as downloader:
+        report = downloader.download_all(config)
+
 Usage:
     from babylon.data.qcew import QcewLoader
     from babylon.data.loader_base import LoaderConfig
@@ -23,6 +30,13 @@ from babylon.data.qcew.api_client import (
     QcewAPIError,
     QcewAreaRecord,
     get_state_area_code,
+)
+from babylon.data.qcew.downloader import (
+    DownloadConfig,
+    DownloadProgressCallback,
+    DownloadReport,
+    DownloadResult,
+    QcewDownloader,
 )
 from babylon.data.qcew.loader_3nf import QcewLoader
 from babylon.data.qcew.parser import (
@@ -44,6 +58,12 @@ __all__ = [
     "QcewAPIError",
     "QcewAreaRecord",
     "get_state_area_code",
+    # Bulk Downloader
+    "QcewDownloader",
+    "DownloadConfig",
+    "DownloadResult",
+    "DownloadReport",
+    "DownloadProgressCallback",
     # 3NF Loader (recommended)
     "QcewLoader",
     # Parser (legacy/offline)

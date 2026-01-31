@@ -28,6 +28,9 @@ TODO.md
 # Claude Code configuration (agent prompts, not documentation)
 .claude/
 
+# Speckit templates and governance (constitution, specs - prose-heavy)
+.specify/
+
 # GitHub templates and project files
 .github/
 

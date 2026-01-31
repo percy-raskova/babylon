@@ -86,23 +86,23 @@ ______________________________________________________________________
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T019 [P] [US2] Write unit test for InspectorPanel display modes (territory, no_selection, unclaimed, error with red border) in tests/unit/ui/dashboard/test_inspector_panel.py
-- [ ] T020 [P] [US2] Write unit test for HexBridge hex click handling in tests/unit/ui/dashboard/test_hex_bridge.py
-- [ ] T021 [P] [US2] Write unit test for territory lookup via get_node_by_spatial_index() in tests/unit/ui/dashboard/test_hex_bridge.py
+- [x] T019 [P] [US2] Write unit test for InspectorPanel display modes (territory, no_selection, unclaimed, error with red border) in tests/unit/ui/dashboard/test_inspector_panel.py
+- [x] T020 [P] [US2] Write unit test for HexBridge hex click handling in tests/unit/ui/dashboard/test_hex_bridge.py
+- [x] T021 [P] [US2] Write unit test for territory lookup via get_node_by_spatial_index() in tests/unit/ui/dashboard/test_hex_bridge.py
 
 ### Implementation for User Story 2
 
-- [ ] T022 [US2] Create InspectorPanel widget with QLabel layout in src/babylon/ui/dashboard/inspector_panel.py
-- [ ] T023 [US2] Implement InspectorPanel.display_territory() with Value Tensor fields in src/babylon/ui/dashboard/inspector_panel.py
-- [ ] T024 [US2] Implement InspectorPanel.display_no_selection() and display_unclaimed() in src/babylon/ui/dashboard/inspector_panel.py
-- [ ] T025 [US2] Implement InspectorPanel.display_error() with red border indicator in src/babylon/ui/dashboard/inspector_panel.py
-- [ ] T026 [US2] Create HexBridge QObject with pyqtSignal definitions in src/babylon/ui/dashboard/hex_bridge.py
-- [ ] T027 [US2] Implement HexBridge.on_hex_click() slot with territory resolution in src/babylon/ui/dashboard/hex_bridge.py
-- [ ] T028 [US2] Implement HexBridge.on_background_click() slot in src/babylon/ui/dashboard/hex_bridge.py
-- [ ] T029 [US2] Add QWebChannel registration in MapViewport for HexBridge in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T030 [US2] Implement MapViewport.highlight_territory() for selected hex borders (FR-014) in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T031 [US2] Implement MapViewport.clear_highlight() in src/babylon/ui/dashboard/map_viewport.py
-- [ ] T032 [US2] Connect HexBridge signals to InspectorPanel methods in src/babylon/ui/dashboard/main_window.py
+- [x] T022 [US2] Create InspectorPanel widget with QLabel layout in src/babylon/ui/dashboard/inspector_panel.py
+- [x] T023 [US2] Implement InspectorPanel.display_territory() with Value Tensor fields in src/babylon/ui/dashboard/inspector_panel.py
+- [x] T024 [US2] Implement InspectorPanel.display_no_selection() and display_unclaimed() in src/babylon/ui/dashboard/inspector_panel.py
+- [x] T025 [US2] Implement InspectorPanel.display_error() with red border indicator in src/babylon/ui/dashboard/inspector_panel.py
+- [x] T026 [US2] Create HexBridge QObject with pyqtSignal definitions in src/babylon/ui/dashboard/hex_bridge.py
+- [x] T027 [US2] Implement HexBridge.on_hex_click() slot with territory resolution in src/babylon/ui/dashboard/hex_bridge.py
+- [x] T028 [US2] Implement HexBridge.on_background_click() slot in src/babylon/ui/dashboard/hex_bridge.py
+- [x] T029 [US2] Add QWebChannel registration in MapViewport for HexBridge in src/babylon/ui/dashboard/map_viewport.py
+- [x] T030 [US2] Implement MapViewport.highlight_territory() for selected hex borders (FR-014) in src/babylon/ui/dashboard/map_viewport.py
+- [x] T031 [US2] Implement MapViewport.clear_highlight() in src/babylon/ui/dashboard/map_viewport.py
+- [x] T032 [US2] Connect HexBridge signals to InspectorPanel methods in src/babylon/ui/dashboard/main_window.py
 
 **Checkpoint**: Hex clicks update Inspector with territory details - User Story 2 independently testable
 

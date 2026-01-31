@@ -13,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QUrl  # type: ignore[import-not-found]
+from PyQt6.QtWebChannel import QWebChannel  # type: ignore[import-not-found]
 from PyQt6.QtWebEngineWidgets import QWebEngineView  # type: ignore[import-not-found]
 from PyQt6.QtWidgets import QVBoxLayout, QWidget  # type: ignore[import-not-found]
 
@@ -22,6 +23,7 @@ from babylon.ui.dashboard.theme import profit_rate_to_rgb
 if TYPE_CHECKING:
     from babylon.models.snapshots import SimulationSnapshot
     from babylon.protocols import SimulationState
+    from babylon.ui.dashboard.hex_bridge import HexBridge
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,8 @@ class MapViewport(QWidget):  # type: ignore[misc]
         self._zoom = zoom
         self._initialized = False
         self._hex_data: list[HexDisplayData] = []
+        self._channel: QWebChannel | None = None
+        self._bridge: HexBridge | None = None
 
         # Create QWebEngineView for pydeck rendering
         self._web_view = QWebEngineView(self)
@@ -225,6 +229,24 @@ class MapViewport(QWidget):  # type: ignore[misc]
         self._web_view.page().runJavaScript(update_js)
 
         logger.debug("Cleared territory highlight")
+
+    def register_bridge(self, bridge: HexBridge) -> None:
+        """Register HexBridge with QWebChannel for click handling.
+
+        This connects the JavaScript click events to Python signals.
+        Must be called after initialize() for the bridge to work.
+
+        Args:
+            bridge: HexBridge instance to register.
+        """
+        self._bridge = bridge
+
+        # Create QWebChannel and register bridge
+        self._channel = QWebChannel(self._web_view.page())
+        self._channel.registerObject("bridge", bridge)
+        self._web_view.page().setWebChannel(self._channel)
+
+        logger.info("HexBridge registered with QWebChannel")
 
     def _build_hex_data(self, snapshot: SimulationSnapshot) -> list[HexDisplayData]:
         """Build HexDisplayData list from snapshot.

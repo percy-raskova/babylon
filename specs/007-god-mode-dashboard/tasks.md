@@ -118,20 +118,20 @@ ______________________________________________________________________
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T033 [P] [US3] Write unit test for DashboardObserver throttling (30 FPS) in tests/unit/ui/dashboard/test_observer.py
-- [ ] T034 [P] [US3] Write unit test for state coalescing (rapid ticks) in tests/unit/ui/dashboard/test_observer.py
-- [ ] T035 [P] [US3] Write integration test for end-to-end tick updates in tests/integration/ui/test_dashboard_simulation.py
+- [x] T033 [P] [US3] Write unit test for DashboardObserver throttling (30 FPS) in tests/unit/ui/dashboard/test_observer.py
+- [x] T034 [P] [US3] Write unit test for state coalescing (rapid ticks) in tests/unit/ui/dashboard/test_observer.py
+- [x] T035 [P] [US3] Write integration test for end-to-end tick updates in tests/integration/ui/test_dashboard_simulation.py
 
 ### Implementation for User Story 3
 
-- [ ] T036 [US3] Create DashboardObserver with QTimer throttling in src/babylon/ui/dashboard/observer.py
-- [ ] T037 [US3] Implement DashboardObserver.on_tick() with 33ms coalescing in src/babylon/ui/dashboard/observer.py
-- [ ] T038 [US3] Implement tick_processed signal emission in src/babylon/ui/dashboard/observer.py
-- [ ] T039 [US3] Implement InspectorPanel.update_from_snapshot() for tick updates in src/babylon/ui/dashboard/inspector_panel.py
-- [ ] T040 [US3] Add register_observer() call in DashboardWindow.__init__ in src/babylon/ui/dashboard/main_window.py
-- [ ] T041 [US3] Implement unregister_observer() in DashboardWindow.closeEvent() (FR-012) in src/babylon/ui/dashboard/main_window.py
-- [ ] T042 [US3] Connect DashboardObserver.tick_processed to MapViewport.update_colors() in src/babylon/ui/dashboard/main_window.py
-- [ ] T043 [US3] Connect DashboardObserver.tick_processed to InspectorPanel.update_from_snapshot() in src/babylon/ui/dashboard/main_window.py
+- [x] T036 [US3] Create DashboardObserver with QTimer throttling in src/babylon/ui/dashboard/observer.py
+- [x] T037 [US3] Implement DashboardObserver.on_tick() with 33ms coalescing in src/babylon/ui/dashboard/observer.py
+- [x] T038 [US3] Implement tick_processed signal emission in src/babylon/ui/dashboard/observer.py
+- [x] T039 [US3] Implement InspectorPanel.update_from_snapshot() for tick updates in src/babylon/ui/dashboard/inspector_panel.py
+- [x] T040 [US3] Add register_observer() call in DashboardWindow.__init__ in src/babylon/ui/dashboard/main_window.py
+- [x] T041 [US3] Implement unregister_observer() in DashboardWindow.closeEvent() (FR-012) in src/babylon/ui/dashboard/main_window.py
+- [x] T042 [US3] Connect DashboardObserver.tick_processed to MapViewport.update_colors() in src/babylon/ui/dashboard/main_window.py
+- [x] T043 [US3] Connect DashboardObserver.tick_processed to InspectorPanel.update_from_snapshot() in src/babylon/ui/dashboard/main_window.py
 
 **Checkpoint**: Simulation step() triggers automatic UI updates - User Story 3 independently testable
 

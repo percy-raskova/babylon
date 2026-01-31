@@ -54,6 +54,21 @@ def wayne_county_territory(mock_simulation_detroit: MockSimulation) -> Territory
 
 
 @pytest.fixture
+def oakland_county_territory(mock_simulation_detroit: MockSimulation) -> TerritoryState:
+    """Get Oakland County territory from Detroit mock.
+
+    Args:
+        mock_simulation_detroit: Detroit mock simulation fixture.
+
+    Returns:
+        Oakland County TerritoryState (FIPS 26125).
+    """
+    territory = mock_simulation_detroit.get_territory_state("26125")
+    assert territory is not None
+    return territory
+
+
+@pytest.fixture
 def sample_h3_index() -> str:
     """Provide a valid H3 index for testing.
 

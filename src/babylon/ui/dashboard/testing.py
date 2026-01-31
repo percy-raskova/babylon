@@ -59,7 +59,8 @@ class MockSimulation:
         self._tick = 0
         self._territories = territories or {}
         self._hexes = hexes or {}
-        self._observers: list[ObserverCallback] = []
+        # Use list[object] to support both ObserverCallback and SimulationObserver protocol
+        self._observers: list[object] = []
         self._initial_territories = dict(self._territories)
         self._initial_hexes = dict(self._hexes)
 
@@ -88,6 +89,17 @@ class MockSimulation:
 
     def get_territory_state(self, territory_id: str) -> TerritoryState | None:
         """Return the state of a specific territory."""
+        return self._territories.get(territory_id)
+
+    def get_territory(self, territory_id: str) -> TerritoryState | None:
+        """Alias for get_territory_state for convenience.
+
+        Args:
+            territory_id: FIPS code of the territory.
+
+        Returns:
+            TerritoryState if found, None otherwise.
+        """
         return self._territories.get(territory_id)
 
     def get_hexes_for_territory(self, territory_id: str) -> set[str]:
@@ -140,8 +152,14 @@ class MockSimulation:
             self._tick += 1
             # Notify all observers with frozen snapshot
             snapshot = self.get_snapshot()
-            for callback in self._observers:
-                callback(self._tick, snapshot)
+            for observer in self._observers:
+                # Support both ObserverCallback (callable) and SimulationObserver (has on_tick)
+                if hasattr(observer, "on_tick"):
+                    # SimulationObserver protocol - call on_tick(previous, new)
+                    observer.on_tick(None, snapshot)
+                elif callable(observer):
+                    # ObserverCallback - call directly
+                    observer(self._tick, snapshot)
 
     def reset(self) -> None:
         """Reset simulation to initial state (tick 0)."""
@@ -154,23 +172,26 @@ class MockSimulation:
             for h3_idx in territory.hex_claims:
                 self._spatial_index[h3_idx.lower()] = territory_id
 
-    def register_observer(self, callback: ObserverCallback) -> None:
-        """Register a callback for tick notifications.
+    def register_observer(self, observer: ObserverCallback | object) -> None:
+        """Register a callback or observer for tick notifications.
+
+        Supports both ObserverCallback (simple function) and SimulationObserver
+        (protocol with on_tick method).
 
         Args:
-            callback: Function to call after each tick.
+            observer: Function or observer object to notify after each tick.
         """
-        if callback not in self._observers:
-            self._observers.append(callback)
+        if observer not in self._observers:
+            self._observers.append(observer)
 
-    def unregister_observer(self, callback: ObserverCallback) -> None:
-        """Remove a previously registered callback.
+    def unregister_observer(self, observer: ObserverCallback | object) -> None:
+        """Remove a previously registered callback or observer.
 
         Args:
-            callback: The callback function to remove.
+            observer: The callback function or observer to remove.
         """
-        if callback in self._observers:
-            self._observers.remove(callback)
+        if observer in self._observers:
+            self._observers.remove(observer)
 
     # =========================================================================
     # Test Helper Methods

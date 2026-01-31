@@ -8,6 +8,16 @@ Feature: 007-god-mode-dashboard
 
 from __future__ import annotations
 
+from babylon.ui.dashboard.hex_bridge import HexBridge
+from babylon.ui.dashboard.inspector_panel import InspectorPanel
+from babylon.ui.dashboard.main_window import DashboardWindow
+from babylon.ui.dashboard.map_viewport import MapViewport
+from babylon.ui.dashboard.observer import DashboardObserver
+
 __all__ = [
-    # Will be populated as components are implemented
+    "DashboardObserver",
+    "DashboardWindow",
+    "HexBridge",
+    "InspectorPanel",
+    "MapViewport",
 ]

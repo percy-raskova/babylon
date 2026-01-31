@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (  # type: ignore[import-not-found]
 from babylon.ui.dashboard.hex_bridge import HexBridge
 from babylon.ui.dashboard.inspector_panel import InspectorPanel
 from babylon.ui.dashboard.map_viewport import MapViewport
+from babylon.ui.dashboard.observer import DashboardObserver
 from babylon.ui.dashboard.theme import QSS_THEME
 
 if TYPE_CHECKING:
@@ -105,7 +106,24 @@ class DashboardWindow(QMainWindow):  # type: ignore[misc]
         self.setStatusBar(self._status_bar)
         self._update_status("Connected", tick=simulation.get_current_tick())
 
+        # Create and register DashboardObserver (T040)
+        self._observer = DashboardObserver(simulation=simulation, parent=self)
+        self._observer.tick_processed.connect(self.update_from_snapshot)
+        self._register_observer()
+
         logger.info("DashboardWindow initialized")
+
+    def _register_observer(self) -> None:
+        """Register the dashboard observer with the simulation."""
+        if hasattr(self._simulation, "register_observer"):
+            self._simulation.register_observer(self._observer)
+            logger.debug("Observer registered with simulation")
+
+    def _unregister_observer(self) -> None:
+        """Unregister the dashboard observer from the simulation."""
+        if hasattr(self._simulation, "unregister_observer"):
+            self._simulation.unregister_observer(self._observer)
+            logger.debug("Observer unregistered from simulation")
 
     def _connect_signals(self) -> None:
         """Connect HexBridge signals to InspectorPanel methods."""
@@ -182,10 +200,10 @@ class DashboardWindow(QMainWindow):  # type: ignore[misc]
     def closeEvent(self, event: QCloseEvent) -> None:
         """Handle window close event.
 
-        Unregisters observer if registered.
+        Unregisters observer from simulation (FR-012).
         """
         logger.info("DashboardWindow closing")
-        # Observer unregistration will be handled in Phase 5
+        self._unregister_observer()
         super().closeEvent(event)
 
     @property

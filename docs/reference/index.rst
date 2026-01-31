@@ -3,6 +3,18 @@ Reference
 
 Technical reference documentation for the Babylon simulation engine.
 
+Simulation Protocols
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   simulation-protocols
+
+GUI-facing protocols (``SimulationState``, ``SimulationControl``) and snapshot
+models (``TerritoryState``, ``HexState``, ``SimulationSnapshot``). These define
+the stable interface boundary for GUI development.
+
 Data Models
 -----------
 

@@ -62,9 +62,34 @@ and :py:class:`babylon.ui.design_system.DPGColors`.
 Architecture
 ------------
 
-The UI is decoupled from the simulation engine. It acts as a passive observer
-and controller, running in the main thread while the simulation can tick
-independently.
+The UI is decoupled from the simulation engine via protocols. GUI code depends
+**only** on ``SimulationState`` and ``SimulationControl`` protocols, never on
+the ``Simulation`` implementation. This enables:
+
+- Type-safe interfaces (mypy validates protocol usage)
+- Mock implementations for testing
+- Engine internals can evolve without breaking GUI
+
+Protocol-Based Design
+~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from babylon.protocols import SimulationState, SimulationControl
+
+   def render_map(sim: SimulationState) -> None:
+       """Render territories using read-only protocol."""
+       snapshot = sim.get_snapshot()
+       for tid, territory in snapshot.territories.items():
+           color = profit_rate_to_color(territory.profit_rate)
+           render_hexes(territory.hex_claims, color)
+
+   def on_step_click(sim: SimulationControl) -> None:
+       """Handle step button using control protocol."""
+       sim.step()
+
+The UI acts as a passive observer and controller, running in the main thread
+while the simulation can tick independently.
 
 Entry Point
 ~~~~~~~~~~~
@@ -121,6 +146,9 @@ Development Standards
 Reference
 ---------
 
-- :py:mod:`babylon.ui.dpg_runner` - Main runner and layout.
-- :py:mod:`babylon.ui.design_system` - Color constants and style tokens.
+- :doc:`/reference/simulation-protocols` - Protocol and snapshot API reference
+- :py:mod:`babylon.protocols` - SimulationState and SimulationControl protocols
+- :py:mod:`babylon.models.snapshots` - TerritoryState, HexState, SimulationSnapshot
+- :py:mod:`babylon.ui.dpg_runner` - Main runner and layout
+- :py:mod:`babylon.ui.design_system` - Color constants and style tokens
 - `Dear PyGui Documentation <https://dearpygui.readthedocs.io/>`_

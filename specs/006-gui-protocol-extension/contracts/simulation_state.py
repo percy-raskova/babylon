@@ -1,25 +1,13 @@
-"""SimulationState protocol definition.
+"""SimulationState protocol contract for GUI Protocol Extension.
 
-This protocol defines the read interface for simulation state.
-GUI code should depend ONLY on this protocol, not on implementation details.
+This file defines the EXTENDED protocol interface for simulation state queries.
+The Simulation class must implement all methods defined here.
 
-The protocol enables:
-- GUI code to type-check against a stable interface
-- Simulation internals to evolve without breaking GUI
-- Multiple implementations (mock, real, replay)
+Feature: 006-gui-protocol-extension
+Date: 2026-01-31
 
-Implementation:
-    The Simulation class in src/babylon/engine/simulation.py implements this protocol.
-
-See Also:
-    - data-model.md: TerritoryState, SimulationSnapshot definitions
-    - plan.md#Hydration Flow: Initialization sequence
-    - research.md#5: Profit rate dynamics
-    - quickstart.md: Usage examples
-
-Feature 006-gui-protocol-extension:
-    Added get_node_by_spatial_index() method for H3 hex -> Territory lookup.
-    Enables GUI map click handling via pydeck H3HexagonLayer events.
+Changes from baseline:
+- Added get_node_by_spatial_index() for H3 hex -> Territory lookup
 """
 
 from __future__ import annotations
@@ -40,16 +28,12 @@ class SimulationState(Protocol):
     All methods are read-only - they do not modify simulation state.
 
     Example:
-        >>> def render_map(sim: SimulationState) -> None:
-        ...     snapshot = sim.get_snapshot()
-        ...     for territory_id, state in snapshot.territories.items():
-        ...         color = profit_rate_to_color(state.profit_rate)
-        ...         render_hexes(state.hex_claims, color)
-        ...
         >>> def on_hex_click(sim: SimulationState, h3_index: str) -> None:
         ...     territory = sim.get_node_by_spatial_index(h3_index)
         ...     if territory:
         ...         print(f"Clicked on {territory.territory_id}")
+        ...     else:
+        ...         print("Unclaimed hex")
     """
 
     def get_current_tick(self) -> int:
@@ -65,11 +49,7 @@ class SimulationState(Protocol):
         """Return a complete snapshot of the current simulation state.
 
         The snapshot is immutable - modifying the returned object does not
-        affect the simulation. The snapshot contains:
-        - tick: Current tick number
-        - territories: Dict of territory_id -> TerritoryState
-        - hexes: Dict of h3_index -> HexState (invariant substrate)
-        - edges: List of EdgeState (empty for MVP)
+        affect the simulation.
 
         Returns:
             SimulationSnapshot containing all state at the current tick.
@@ -80,30 +60,21 @@ class SimulationState(Protocol):
         """Return the state of a specific territory.
 
         Args:
-            territory_id: Unique identifier for the territory (FIPS code for counties).
+            territory_id: Unique identifier for the territory (FIPS code).
 
         Returns:
             TerritoryState if the territory exists, None otherwise.
-
-        Example:
-            >>> state = sim.get_territory_state("26163")  # Wayne County
-            >>> if state:
-            ...     print(f"Profit rate: {state.profit_rate}")
         """
         ...
 
     def get_hexes_for_territory(self, territory_id: str) -> set[str]:
         """Return the H3 indices claimed by a territory.
 
-        This is a convenience method equivalent to:
-            sim.get_territory_state(id).hex_claims
-
         Args:
             territory_id: Unique identifier for the territory.
 
         Returns:
-            Set of H3 index strings. Empty set if territory not found or
-            has no hex claims.
+            Set of H3 index strings. Empty set if territory not found.
         """
         ...
 

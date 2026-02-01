@@ -271,6 +271,10 @@ run = "poetry run python tools/regression_test.py compare"
 description = "Generate regression baselines (after intentional changes)"
 run = "poetry run python tools/regression_test.py generate --force"
 
+[tasks."qa:hexagon-isolation"]
+description = "Verify hexagon UI isolation from database layer (SC-002)"
+run = "poetry run python tools/verify_hexagon_isolation.py --ci"
+
 [tasks."qa:deps"]
 description = "Run dependency audit (security + outdated + dead code)"
 run = """

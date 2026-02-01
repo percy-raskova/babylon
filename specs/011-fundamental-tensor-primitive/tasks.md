@@ -116,12 +116,12 @@ ______________________________________________________________________
 
 ### Implementation for User Story 2
 
-- [ ] T041 [P] [US2] Add tensor_year field to TerritoryState in src/babylon/models/snapshots.py
-- [ ] T042 [US2] Implement TensorConsumer protocol in visualization layer (per contracts/tensor_api.py)
-- [ ] T043 [US2] Add set_tensor_source() method to HexagonRenderer pattern in quickstart.md
-- [ ] T044 [US2] Create static import analysis script in tools/verify_hexagon_isolation.py (addresses SC-002)
-- [ ] T045 [US2] Add import analysis to CI workflow to enforce hexagon isolation
-- [ ] T046 [US2] Unit test: verify hexagon receives tensor data without DB imports in tests/unit/test_hexagon_isolation.py
+- [x] T041 [P] [US2] Add tensor_year field to TerritoryState in src/babylon/models/snapshots.py
+- [x] T042 [US2] Implement TensorConsumer protocol in visualization layer (per contracts/tensor_api.py)
+- [x] T043 [US2] Add set_tensor_source() method to HexagonRenderer pattern in quickstart.md
+- [x] T044 [US2] Create static import analysis script in tools/verify_hexagon_isolation.py (addresses SC-002)
+- [x] T045 [US2] Add import analysis to CI workflow to enforce hexagon isolation
+- [x] T046 [US2] Unit test: verify hexagon receives tensor data without DB imports in tests/unit/test_hexagon_isolation.py
 
 **Checkpoint**: Hexagon visualization isolated from database - consumer isolation complete
 

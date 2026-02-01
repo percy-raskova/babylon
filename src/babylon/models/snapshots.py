@@ -154,6 +154,11 @@ class TerritoryState(BaseModel):
         le=1.0,
         description="Territory-specific equilibrium (= initial_r at hydration)",
     )
+    tensor_year: int | None = Field(
+        default=None,
+        ge=1900,
+        description="Year for tensor lookup (may differ from tick). None if no tensor data.",
+    )
 
     @field_validator("territory_id")
     @classmethod
@@ -190,6 +195,7 @@ class TerritoryState(BaseModel):
         tick: int,
         profit_rate: float,
         equilibrium_r: float,
+        tensor_year: int | None = None,
     ) -> TerritoryState:
         """Create TerritoryState with profit_rate clamped to [0.0, 1.0].
 
@@ -202,6 +208,7 @@ class TerritoryState(BaseModel):
             tick: Current tick.
             profit_rate: Computed profit rate (may be out of range).
             equilibrium_r: Territory-specific equilibrium.
+            tensor_year: Year for tensor lookup (may differ from tick). None if no tensor data.
 
         Returns:
             TerritoryState with clamped profit_rate.
@@ -222,6 +229,7 @@ class TerritoryState(BaseModel):
             tick=tick,
             profit_rate=clamped,
             equilibrium_r=equilibrium_r,
+            tensor_year=tensor_year,
         )
 
 

@@ -13,6 +13,11 @@ from babylon.ui.dashboard.inspector_panel import InspectorPanel
 from babylon.ui.dashboard.main_window import DashboardWindow
 from babylon.ui.dashboard.map_viewport import MapViewport
 from babylon.ui.dashboard.observer import DashboardObserver
+from babylon.ui.dashboard.tensor_consumer import (
+    TensorConsumer,
+    TensorConsumerMixin,
+    TensorPrimitive,
+)
 
 __all__ = [
     "DashboardObserver",
@@ -20,4 +25,7 @@ __all__ = [
     "HexBridge",
     "InspectorPanel",
     "MapViewport",
+    "TensorConsumer",
+    "TensorConsumerMixin",
+    "TensorPrimitive",
 ]

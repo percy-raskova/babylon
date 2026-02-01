@@ -80,6 +80,9 @@ class MapViewport(QWidget):  # type: ignore[misc]
         # Create QWebEngineView for pydeck rendering
         self._web_view = QWebEngineView(self)
 
+        # Enable JavaScript console logging to Python logger
+        self._setup_js_console_logging()
+
         # Set up layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -91,6 +94,27 @@ class MapViewport(QWidget):  # type: ignore[misc]
             longitude,
             zoom,
         )
+
+    def _setup_js_console_logging(self) -> None:
+        """Connect JavaScript console messages to Python logger."""
+        from PyQt6.QtWebEngineCore import QWebEnginePage  # type: ignore[import-not-found]
+
+        # Create custom page to capture console messages
+        page = self._web_view.page()
+
+        def handle_console_message(
+            level: QWebEnginePage.JavaScriptConsoleMessageLevel,
+            message: str,
+            line: int,
+            _source: str,
+        ) -> None:
+            # Only log messages from our Babylon code (prefixed with [Babylon])
+            if "[Babylon]" in message:
+                logger.info("JS: %s", message)
+            elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorLevel:
+                logger.warning("JS Error: %s (line %d)", message, line)
+
+        page.javaScriptConsoleMessage = handle_console_message
 
     def initialize(self, simulation: SimulationState) -> None:
         """Initialize the map with simulation state.
@@ -201,6 +225,7 @@ class MapViewport(QWidget):  # type: ignore[misc]
                 self._hex_data[i] = HexDisplayData(
                     h3=hex_data.h3,
                     color=hex_data.color,
+                    profit_rate=hex_data.profit_rate,
                     territory_id=hex_data.territory_id,
                     selected=True,
                 )
@@ -219,6 +244,7 @@ class MapViewport(QWidget):  # type: ignore[misc]
                 self._hex_data[i] = HexDisplayData(
                     h3=hex_data.h3,
                     color=hex_data.color,
+                    profit_rate=hex_data.profit_rate,
                     territory_id=hex_data.territory_id,
                     selected=False,
                 )
@@ -261,12 +287,21 @@ class MapViewport(QWidget):  # type: ignore[misc]
 
         for territory_id, territory in snapshot.territories.items():
             color = profit_rate_to_rgb(territory.profit_rate)
+            profit_rate = territory.profit_rate
+
+            logger.debug(
+                "Territory %s: profit_rate=%.2f, color=%s",
+                territory_id,
+                profit_rate,
+                color,
+            )
 
             for h3_index in territory.hex_claims:
                 hex_data.append(
                     HexDisplayData(
                         h3=h3_index,
                         color=color,
+                        profit_rate=profit_rate,
                         territory_id=territory_id,
                         selected=False,
                     )
@@ -292,11 +327,8 @@ class MapViewport(QWidget):  # type: ignore[misc]
                 color = [min(255, c + 40) for c in color]
 
             territory = data.territory_id or "unclaimed"
-            # Calculate profit rate percentage for tooltip
-            # Reverse-engineer from color (approximation)
-            r, g, _b = data.color
-            # Green component increases with profit rate
-            profit_pct = f"{(g / 255.0) * 100:.1f}%"
+            # Use actual profit_rate value for tooltip
+            profit_pct = f"{data.profit_rate * 100:.1f}%"
 
             result.append(
                 {
@@ -357,8 +389,8 @@ class MapViewport(QWidget):  # type: ignore[misc]
         """Inject QWebChannel bridge JavaScript into pydeck HTML.
 
         This enables click events to be sent from JavaScript to Python.
-        Uses canvas click interception with deck.gl pickObject() API since
-        pydeck's to_html() wrapper doesn't expose deck.setProps().
+        Modifies pydeck's HTML to expose the deck instance globally, then
+        uses canvas click interception with deck.gl pickObject() API.
 
         Args:
             html: Original pydeck HTML.
@@ -366,6 +398,14 @@ class MapViewport(QWidget):  # type: ignore[misc]
         Returns:
             HTML with QWebChannel bridge injected.
         """
+        # First, expose pydeck's deckInstance to window scope
+        # pydeck creates: const deckInstance = createDeck({...})
+        # We replace it with: const deckInstance = window.deckInstance = createDeck({...})
+        html = html.replace(
+            "const deckInstance = createDeck(",
+            "const deckInstance = window.deckInstance = createDeck(",
+        )
+
         # JavaScript to inject before closing body tag
         # Uses IIFE with closure for state management and robust element detection
         bridge_js = """
@@ -374,6 +414,8 @@ class MapViewport(QWidget):  # type: ignore[misc]
         (function() {
             var bridgeReady = false;
             var clickHandlerReady = false;
+            var retryCount = 0;
+            var MAX_RETRIES = 50;  // 5 seconds max
 
             // Initialize QWebChannel
             function initBridge() {
@@ -384,28 +426,23 @@ class MapViewport(QWidget):  # type: ignore[misc]
                         console.log('[Babylon] QWebChannel bridge connected');
                     });
                 } else {
-                    console.log('[Babylon] qt.webChannelTransport not available');
+                    console.log('[Babylon] qt.webChannelTransport not available, retrying...');
+                    setTimeout(initBridge, 100);
                 }
             }
 
-            // Find the deck.gl instance - pydeck stores it in various locations
+            // Find the deck.gl instance
             function findDeckInstance() {
-                // Try common pydeck storage locations
+                // Check our exposed global (from HTML modification above)
+                if (window.deckInstance && typeof window.deckInstance.pickObject === 'function') {
+                    return window.deckInstance;
+                }
+                // Fallback checks
                 if (window.deck && typeof window.deck.pickObject === 'function') {
                     return window.deck;
                 }
-                if (window.deck && window.deck.deck && typeof window.deck.deck.pickObject === 'function') {
-                    return window.deck.deck;
-                }
                 if (window.deckgl && typeof window.deckgl.pickObject === 'function') {
                     return window.deckgl;
-                }
-                // Search for deck instance on container elements
-                var containers = document.querySelectorAll('[class*="deck"]');
-                for (var i = 0; i < containers.length; i++) {
-                    if (containers[i].deck && typeof containers[i].deck.pickObject === 'function') {
-                        return containers[i].deck;
-                    }
                 }
                 return null;
             }
@@ -414,19 +451,27 @@ class MapViewport(QWidget):  # type: ignore[misc]
             function setupClickHandler() {
                 if (clickHandlerReady) return;
 
+                retryCount++;
+                if (retryCount > MAX_RETRIES) {
+                    console.log('[Babylon] Max retries reached, giving up on click handler setup');
+                    return;
+                }
+
                 var canvas = document.querySelector('canvas');
                 if (!canvas) {
-                    console.log('[Babylon] Canvas not found, retrying...');
+                    console.log('[Babylon] Canvas not found, retry', retryCount);
                     setTimeout(setupClickHandler, 100);
                     return;
                 }
 
                 var deckInstance = findDeckInstance();
                 if (!deckInstance) {
-                    console.log('[Babylon] Deck instance not found, retrying...');
+                    console.log('[Babylon] Deck instance not found, retry', retryCount);
                     setTimeout(setupClickHandler, 100);
                     return;
                 }
+
+                console.log('[Babylon] Found deck instance:', deckInstance);
 
                 canvas.addEventListener('click', function(event) {
                     if (!bridgeReady || !window.bridge) {
@@ -438,6 +483,8 @@ class MapViewport(QWidget):  # type: ignore[misc]
                     var x = event.clientX - rect.left;
                     var y = event.clientY - rect.top;
 
+                    console.log('[Babylon] Click at canvas coords:', x, y);
+
                     try {
                         var picked = deckInstance.pickObject({
                             x: x,
@@ -445,11 +492,13 @@ class MapViewport(QWidget):  # type: ignore[misc]
                             radius: 0
                         });
 
+                        console.log('[Babylon] Pick result:', picked);
+
                         if (picked && picked.object && picked.object.h3) {
                             console.log('[Babylon] Hex clicked:', picked.object.h3);
                             window.bridge.on_hex_click(picked.object.h3);
                         } else {
-                            console.log('[Babylon] Background clicked');
+                            console.log('[Babylon] Background clicked (no object)');
                             window.bridge.on_background_click();
                         }
                     } catch (e) {

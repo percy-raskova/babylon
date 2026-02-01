@@ -21,6 +21,7 @@ class HexDisplayData(BaseModel):
     Attributes:
         h3: H3 index (15-char hex string at resolution 5).
         color: RGB color tuple derived from profit_rate.
+        profit_rate: Actual profit rate [0.0, 1.0] for tooltip display.
         territory_id: Territory that claims this hex, or None if unclaimed.
         selected: True if part of currently selected territory.
     """
@@ -29,6 +30,7 @@ class HexDisplayData(BaseModel):
 
     h3: str = Field(description="H3 index (15-char hex string)")
     color: tuple[int, int, int] = Field(description="RGB color from profit_rate")
+    profit_rate: float = Field(ge=0.0, le=1.0, description="Actual profit rate [0.0, 1.0]")
     territory_id: str | None = Field(default=None, description="Territory claiming this hex")
     selected: bool = Field(default=False, description="Part of selected territory")
 

@@ -36,6 +36,14 @@ except ImportError:
     MOCK_EXISTS = False
     MockSimulation = None  # type: ignore[misc, assignment]
 
+try:
+    from babylon.engine.simulation import Simulation
+
+    SIMULATION_EXISTS = True
+except ImportError:
+    SIMULATION_EXISTS = False
+    Simulation = None  # type: ignore[misc, assignment]
+
 
 pytestmark = [
     pytest.mark.integration,
@@ -297,6 +305,111 @@ class TestDashboardObserverErrorHandling:
         simulation.unregister_observer(observer)
 
         assert len(simulation._observers) == initial_count - 1
+
+
+class TestDashboardProfitRateRealism:
+    """Regression tests: Dashboard must display realistic profit rates from real data.
+
+    These tests prevent the bug where both --demo and production modes used
+    MockSimulation's hardcoded 0.2/0.5/0.8 profit rates instead of real QCEW data.
+
+    See claude-mem observation #24214: CRITICAL BUG IDENTIFIED.
+    """
+
+    # Detroit metropolitan FIPS codes
+    DETROIT_FIPS = ["26163", "26125", "26099"]  # Wayne, Oakland, Macomb
+
+    # Known MockSimulation demo values (realistic within Piketty range)
+    MOCK_DEMO_VALUES = {0.035, 0.055, 0.075}  # 3.5%, 5.5%, 7.5%
+
+    # Piketty's empirical range for real profit rates (r ~ 3-8%)
+    PIKETTY_R_MIN = 0.03  # Recessionary floor
+    PIKETTY_R_MAX = 0.08  # Upper bound (Piketty ceiling)
+
+    @pytest.mark.skipif(not SIMULATION_EXISTS, reason="Simulation module not available")
+    def test_real_simulation_profit_rates_not_demo_values(self) -> None:
+        """Real simulation must NOT use MockSimulation demo values.
+
+        These exact values (0.04, 0.075, 0.11) indicate MockSimulation is
+        being used instead of real QCEW data. Real profit rates should have
+        messy decimals from actual economic calculations.
+        """
+        simulation = Simulation.from_sqlite(self.DETROIT_FIPS, year=2022)
+        snapshot = simulation.get_snapshot()
+
+        for territory in snapshot.territories.values():
+            assert territory.profit_rate not in self.MOCK_DEMO_VALUES, (
+                f"Territory {territory.territory_id} has MockSimulation demo "
+                f"profit_rate={territory.profit_rate}. Real data should produce "
+                f"calculated values, not demo placeholders."
+            )
+
+    @pytest.mark.skipif(not SIMULATION_EXISTS, reason="Simulation module not available")
+    def test_real_simulation_profit_rates_realistic_range(self) -> None:
+        """Real simulation profit rates must be in Piketty's empirical range.
+
+        Real-world profit rates cluster between 3-15%, not 20-80%.
+        Values outside this range indicate data pipeline issues.
+        """
+        simulation = Simulation.from_sqlite(self.DETROIT_FIPS, year=2022)
+        snapshot = simulation.get_snapshot()
+
+        for territory in snapshot.territories.values():
+            assert self.PIKETTY_R_MIN <= territory.profit_rate <= self.PIKETTY_R_MAX, (
+                f"Territory {territory.territory_id} has unrealistic "
+                f"profit_rate={territory.profit_rate:.2%}. Expected range: "
+                f"[{self.PIKETTY_R_MIN:.0%}, {self.PIKETTY_R_MAX:.0%}]"
+            )
+
+    @pytest.mark.skipif(not MOCK_EXISTS, reason="MockSimulation module not available")
+    def test_demo_mode_uses_mock_simulation(self) -> None:
+        """--demo flag must use MockSimulation with known realistic values.
+
+        Demo mode shows predictable values within Piketty's empirical range
+        (3-8%) that don't require database access but still demonstrate
+        realistic color differentiation (red=low, amber=medium, green=high).
+        """
+        mock = MockSimulation.with_detroit_territories()
+        snapshot = mock.get_snapshot()
+
+        # Verify realistic demo values (within 3-8% Piketty range)
+        assert snapshot.territories["26163"].profit_rate == 0.075  # 7.5% - high
+        assert snapshot.territories["26125"].profit_rate == 0.055  # 5.5% - medium
+        assert snapshot.territories["26099"].profit_rate == 0.035  # 3.5% - low
+
+    @pytest.mark.skipif(not SIMULATION_EXISTS, reason="Simulation module not available")
+    def test_profit_rates_have_messy_decimals(self) -> None:
+        """Real profit rates should have non-trivial decimal precision.
+
+        Values like 0.047283 indicate real calculation; values like 0.5
+        indicate hardcoded test data.
+        """
+        simulation = Simulation.from_sqlite(self.DETROIT_FIPS, year=2022)
+        snapshot = simulation.get_snapshot()
+
+        for territory in snapshot.territories.values():
+            # Check that profit_rate is NOT a "round" number
+            # Round numbers: those that equal themselves when rounded to 1 decimal
+            rounded_1dp = round(territory.profit_rate, 1)
+            is_suspiciously_round = abs(
+                territory.profit_rate - rounded_1dp
+            ) < 0.001 and territory.profit_rate in {
+                0.1,
+                0.2,
+                0.3,
+                0.4,
+                0.5,
+                0.6,
+                0.7,
+                0.8,
+                0.9,
+                1.0,
+            }
+            assert not is_suspiciously_round, (
+                f"Territory {territory.territory_id} has suspiciously round "
+                f"profit_rate={territory.profit_rate}. Real QCEW data should "
+                f"produce non-round values."
+            )
 
 
 __all__ = []

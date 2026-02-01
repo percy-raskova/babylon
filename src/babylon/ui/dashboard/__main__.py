@@ -13,13 +13,18 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from PyQt6.QtWidgets import QApplication  # type: ignore[import-not-found]
+from PyQt6.QtWidgets import QApplication  # type: ignore[import-not-found,unused-ignore]
 
+from babylon.engine.simulation import Simulation
+from babylon.protocols import SimulationState
 from babylon.ui.dashboard.main_window import DashboardWindow
 from babylon.ui.dashboard.testing import MockSimulation
 
 if TYPE_CHECKING:
     pass
+
+# Detroit metropolitan area FIPS codes
+DETROIT_FIPS = ["26163", "26125", "26099"]  # Wayne, Oakland, Macomb counties
 
 
 def parse_args() -> argparse.Namespace:
@@ -75,14 +80,15 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Babylon God Mode Dashboard")
 
-    # Create simulation (demo mode for now)
+    # Create simulation
+    simulation: SimulationState
     if args.demo:
         logger.info("Demo mode: Using MockSimulation with Detroit territories")
         simulation = MockSimulation.with_detroit_territories()
     else:
-        # In production, this would connect to a real simulation
-        logger.info("No simulation provided, using demo data")
-        simulation = MockSimulation.with_detroit_territories()
+        # Production: Use real QCEW/BEA data from SQLite reference database
+        logger.info("Loading real simulation from SQLite database (FIPS: %s)", DETROIT_FIPS)
+        simulation = Simulation.from_sqlite(DETROIT_FIPS, year=2022)
 
     # Create and show dashboard
     window = DashboardWindow(simulation=simulation)

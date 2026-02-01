@@ -102,9 +102,9 @@ class TestInspectorPanelDisplayTerritory:
 
         panel.display_territory(wayne_county_territory)
 
-        # Wayne County has profit_rate=0.8, should show as percentage
+        # Wayne County has profit_rate=0.075 (7.5%), should show as percentage
         text = panel._get_display_text()
-        assert "80" in text or "0.8" in text
+        assert "7.5" in text or "0.075" in text
 
     def test_display_territory_shows_equilibrium_r(
         self,
@@ -117,9 +117,9 @@ class TestInspectorPanelDisplayTerritory:
 
         panel.display_territory(wayne_county_territory)
 
-        # Wayne County has equilibrium_r=0.5
+        # Wayne County has equilibrium_r=0.065 (6.5%), displayed as 0.07 (rounded)
         text = panel._get_display_text()
-        assert "0.5" in text or "50" in text
+        assert "0.07" in text or "0.065" in text
 
     def test_display_territory_shows_hex_count(
         self,

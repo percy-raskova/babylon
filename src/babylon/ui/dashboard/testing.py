@@ -244,10 +244,11 @@ class MockSimulation:
     def with_detroit_territories(cls) -> MockSimulation:
         """Create a MockSimulation pre-populated with Detroit-area territories.
 
-        Creates three counties with representative H3 hexes:
-        - 26163 (Wayne County): High profit rate (0.8)
-        - 26125 (Oakland County): Medium profit rate (0.5)
-        - 26099 (Macomb County): Low profit rate (0.2)
+        Creates three counties with representative H3 hexes and realistic
+        profit rates within Piketty's empirical range (3-8%):
+        - 26163 (Wayne County): High profit rate (0.075 = 7.5%)
+        - 26125 (Oakland County): Medium profit rate (0.055 = 5.5%)
+        - 26099 (Macomb County): Low profit rate (0.035 = 3.5%)
 
         Returns:
             MockSimulation with Detroit territories configured.
@@ -277,30 +278,33 @@ class MockSimulation:
             ]
         )
 
+        # Realistic profit rates within Piketty's empirical range (3-8%)
+        # Wayne (urban core): higher economic activity -> higher profit rate
+        # Macomb (outer suburban): lower economic density -> lower profit rate
         territories = {
             "26163": TerritoryState(
                 territory_id="26163",
                 controlling_polity="26163",
                 hex_claims=wayne_hexes,
                 tick=0,
-                profit_rate=0.8,
-                equilibrium_r=0.5,
+                profit_rate=0.075,  # 7.5% - high (green)
+                equilibrium_r=0.065,
             ),
             "26125": TerritoryState(
                 territory_id="26125",
                 controlling_polity="26125",
                 hex_claims=oakland_hexes,
                 tick=0,
-                profit_rate=0.5,
-                equilibrium_r=0.5,
+                profit_rate=0.055,  # 5.5% - medium (amber)
+                equilibrium_r=0.055,
             ),
             "26099": TerritoryState(
                 territory_id="26099",
                 controlling_polity="26099",
                 hex_claims=macomb_hexes,
                 tick=0,
-                profit_rate=0.2,
-                equilibrium_r=0.5,
+                profit_rate=0.035,  # 3.5% - low (red)
+                equilibrium_r=0.04,
             ),
         }
 

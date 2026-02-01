@@ -169,7 +169,7 @@ class TestHexBridgeTerritoryLookup:
 
         territory = blocker.args[0]
         assert territory.territory_id == "26163"
-        assert territory.profit_rate == 0.8
+        assert territory.profit_rate == 0.075  # 7.5% realistic rate
 
     def test_lookup_different_territory_hexes(
         self,

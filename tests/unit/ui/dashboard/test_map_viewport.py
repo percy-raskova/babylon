@@ -145,8 +145,8 @@ class TestMapViewportHtmlGeneration:
         viewport = MapViewport()
         qtbot.addWidget(viewport)
 
-        # Mock will have territories with different profit rates
-        # Wayne (26163): 0.8 (green), Oakland (26125): 0.5 (mid), Macomb (26099): 0.2 (red)
+        # Mock will have territories with different profit rates (Piketty range 3-8%)
+        # Wayne (26163): 0.075 (7.5% - green), Oakland (26125): 0.055 (5.5% - mid), Macomb (26099): 0.035 (3.5% - red)
         viewport.initialize(mock_simulation_detroit)
 
         # The hex display data should be populated

@@ -19,6 +19,8 @@ from babylon.data.utils.field_parsers import parse_decimal, parse_str
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from babylon.data.preflight import PreflightCheck
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_LODES_PATH = Path("data/lodes")
@@ -100,6 +102,55 @@ class LodesCrosswalkLoader(DataLoader):
 
     def get_fact_tables(self) -> list[type]:
         return []
+
+    def check_source_files(
+        self,
+        data_dir: Path,
+        online: bool = False,  # noqa: ARG002 - reserved for future network checks
+    ) -> list[PreflightCheck]:
+        """Check if LODES crosswalk file exists and is valid.
+
+        Args:
+            data_dir: Base data directory (e.g., Path("data/")).
+            online: If True, validate network endpoints (unused for LODES).
+
+        Returns:
+            List of PreflightCheck results.
+        """
+        from babylon.data.preflight import PreflightCheck
+
+        checks: list[PreflightCheck] = []
+        lodes_dir = data_dir / "lodes"
+        csv_path = _resolve_lodes_path(lodes_dir)
+
+        if csv_path is None:
+            checks.append(
+                PreflightCheck(
+                    check_id="lodes:crosswalk",
+                    status="fail",
+                    message=f"Missing LODES crosswalk in {lodes_dir}",
+                    hint="Download us_xwalk.csv from https://lehd.ces.census.gov/data/lodes/",
+                )
+            )
+        elif csv_path.stat().st_size == 0:
+            checks.append(
+                PreflightCheck(
+                    check_id="lodes:crosswalk",
+                    status="fail",
+                    message=f"LODES crosswalk is empty: {csv_path}",
+                    hint="Re-download the file - it may be corrupted",
+                )
+            )
+        else:
+            checks.append(
+                PreflightCheck(
+                    check_id="lodes:crosswalk",
+                    status="ok",
+                    message=f"Found {csv_path}",
+                )
+            )
+
+        return checks
 
     def load(
         self,

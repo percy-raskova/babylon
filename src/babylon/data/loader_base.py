@@ -14,9 +14,13 @@ Usage:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Literal
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, Protocol
 
 from sqlalchemy.orm import Session
+
+if TYPE_CHECKING:
+    from babylon.data.preflight import PreflightCheck
 
 from babylon.utils.log import redact_params, redact_url
 
@@ -696,8 +700,59 @@ class DataLoader(ABC):
         return count
 
 
+class VerificationProtocol(Protocol):
+    """Protocol for loaders that can verify their source file requirements.
+
+    Loaders implementing this protocol can be registered with the preflight
+    system to validate data availability before simulation starts.
+
+    Example:
+        class LodesCrosswalkLoader(DataLoader):
+            def check_source_files(
+                self,
+                data_dir: Path,
+                online: bool = False,
+            ) -> list[PreflightCheck]:
+                checks = []
+                crosswalk_path = data_dir / "lodes" / "us_xwalk.csv"
+                if not crosswalk_path.exists():
+                    checks.append(PreflightCheck(
+                        check_id="lodes:crosswalk",
+                        status="fail",
+                        message=f"Missing LODES crosswalk: {crosswalk_path}",
+                        hint="Download from https://lehd.ces.census.gov/data/lodes/",
+                    ))
+                return checks
+    """
+
+    def check_source_files(
+        self,
+        data_dir: Path,
+        online: bool = False,
+    ) -> list["PreflightCheck"]:
+        """Verify required source files exist and are valid.
+
+        Args:
+            data_dir: Base data directory (e.g., Path("data/")).
+            online: If True, validate network endpoints (API reachability).
+                    If False, skip network checks and report warnings instead.
+
+        Returns:
+            List of PreflightCheck results. Each check should have:
+            - check_id: Unique identifier (e.g., "lodes:crosswalk")
+            - status: "ok", "warn", or "fail"
+            - message: Human-readable description
+            - hint: Actionable guidance for failures (download URL, command)
+
+        Raises:
+            Nothing. All errors should be captured as PreflightCheck objects.
+        """
+        ...
+
+
 __all__ = [
     "DataLoader",
     "LoaderConfig",
     "LoadStats",
+    "VerificationProtocol",
 ]

@@ -71,6 +71,44 @@ class PreflightResult:
 AddCheckFn = Callable[[str, PreflightStatus, str, str | None, dict[str, object] | None], None]
 
 
+@dataclass(frozen=True)
+class ScenarioDataConfig:
+    """Configuration for scenario-specific data requirements.
+
+    Defines what data sources and geographic/temporal coverage are needed
+    for a particular simulation scenario.
+
+    Attributes:
+        name: Scenario identifier (e.g., "detroit").
+        required_loaders: List of loader names needed (e.g., ["qcew", "lodes"]).
+        county_fips: List of 5-digit county FIPS codes for geographic scope.
+        year_range: Tuple of (start_year, end_year) for temporal coverage.
+    """
+
+    name: str
+    required_loaders: list[str]
+    county_fips: list[str]
+    year_range: tuple[int, int]
+
+    def __post_init__(self) -> None:
+        """Validate configuration on creation."""
+        if not self.required_loaders:
+            raise ValueError("required_loaders cannot be empty")
+        if self.year_range[0] > self.year_range[1]:
+            raise ValueError("year_range start must be <= end")
+
+
+# Predefined scenario configurations
+SCENARIOS: dict[str, ScenarioDataConfig] = {
+    "detroit": ScenarioDataConfig(
+        name="detroit",
+        required_loaders=["qcew", "lodes", "census", "tiger"],
+        county_fips=["26163", "26125", "26099"],  # Wayne, Oakland, Macomb
+        year_range=(2010, 2025),
+    ),
+}
+
+
 def _check_env_var(
     add_check: AddCheckFn,
     name: str,
@@ -477,4 +515,83 @@ def run_preflight(
     return PreflightResult(checks=checks)
 
 
-__all__ = ["PreflightCheck", "PreflightResult", "run_preflight"]
+def run_scenario_preflight(
+    scenario_name: str,
+    base_dir: Path | None = None,
+    online: bool = False,
+) -> PreflightResult:
+    """Run preflight checks for a predefined scenario.
+
+    Validates all data sources required for a scenario before simulation starts.
+    Combines VerificationProtocol-based checks (loaders with check_source_files)
+    with existing _check_* functions for backward compatibility.
+
+    Args:
+        scenario_name: Name of scenario (e.g., "detroit").
+        base_dir: Base directory for data files (default: BaseConfig.BASE_DIR).
+        online: If True, validate network endpoints.
+
+    Returns:
+        PreflightResult with all check outcomes.
+
+    Raises:
+        ValueError: If scenario_name is not recognized.
+
+    Example:
+        >>> result = run_scenario_preflight("detroit")
+        >>> if not result.ok:
+        ...     print("Missing data:", [c.message for c in result.failures])
+    """
+    if scenario_name not in SCENARIOS:
+        available = list(SCENARIOS.keys())
+        raise ValueError(f"Unknown scenario: {scenario_name}. Available: {available}")
+
+    scenario = SCENARIOS[scenario_name]
+    resolved_base = base_dir or BaseConfig.BASE_DIR
+    data_dir = resolved_base / "data"
+
+    checks: list[PreflightCheck] = []
+
+    # Import loaders lazily to avoid circular imports
+    from babylon.data.census.loader_3nf import CensusLoader
+    from babylon.data.lodes.loader_3nf import LodesCrosswalkLoader
+    from babylon.data.tiger.loader import TIGERCountyLoader
+
+    loader_classes: dict[str, type] = {
+        "census": CensusLoader,
+        "lodes": LodesCrosswalkLoader,
+        "tiger": TIGERCountyLoader,
+    }
+
+    # Track which loaders use the new VerificationProtocol
+    protocol_loaders: set[str] = set()
+
+    # Run VerificationProtocol-based checks for loaders that implement it
+    for loader_name in scenario.required_loaders:
+        if loader_name in loader_classes:
+            loader = loader_classes[loader_name]()
+            if hasattr(loader, "check_source_files"):
+                checks.extend(loader.check_source_files(data_dir, online=online))
+                protocol_loaders.add(loader_name)
+
+    # Also run existing _check_* functions for loaders not yet migrated to protocol
+    # (e.g., qcew uses _check_qcew, not VerificationProtocol)
+    legacy_loaders = [name for name in scenario.required_loaders if name not in protocol_loaders]
+    if legacy_loaders:
+        from babylon.data.loader_base import LoaderConfig
+
+        config = LoaderConfig()  # Default config for preflight
+        existing_result = run_preflight(config, legacy_loaders, base_dir, online)
+        checks.extend(existing_result.checks)
+
+    return PreflightResult(checks=checks)
+
+
+__all__ = [
+    "PreflightCheck",
+    "PreflightResult",
+    "ScenarioDataConfig",
+    "SCENARIOS",
+    "run_preflight",
+    "run_scenario_preflight",
+]

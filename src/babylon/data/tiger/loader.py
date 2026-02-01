@@ -30,6 +30,8 @@ if TYPE_CHECKING:
     from shapely.geometry.base import BaseGeometry  # type: ignore[import-untyped]
     from sqlalchemy.orm import Session
 
+    from babylon.data.preflight import PreflightCheck
+
 logger = logging.getLogger(__name__)
 
 # Shapefile location (relative to data directory)
@@ -144,6 +146,54 @@ class TIGERCountyLoader(DataLoader):
     def get_fact_tables(self) -> list[type]:
         """Return fact table models this loader populates."""
         return []  # No fact tables, only dimension extension
+
+    def check_source_files(
+        self,
+        data_dir: Path,
+        online: bool = False,  # noqa: ARG002 - reserved for future network checks
+    ) -> list[PreflightCheck]:
+        """Check if TIGER county shapefile exists and is valid.
+
+        Args:
+            data_dir: Base data directory (e.g., Path("data/")).
+            online: If True, validate network endpoints (unused for TIGER).
+
+        Returns:
+            List of PreflightCheck results.
+        """
+        from babylon.data.preflight import PreflightCheck
+
+        checks: list[PreflightCheck] = []
+        shapefile_path = data_dir / TIGER_COUNTY_SHAPEFILE
+
+        if not shapefile_path.exists():
+            checks.append(
+                PreflightCheck(
+                    check_id="tiger:county_shapefile",
+                    status="fail",
+                    message=f"Missing TIGER shapefile: {shapefile_path}",
+                    hint="Download from https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html",
+                )
+            )
+        elif shapefile_path.stat().st_size == 0:
+            checks.append(
+                PreflightCheck(
+                    check_id="tiger:county_shapefile",
+                    status="fail",
+                    message=f"TIGER shapefile is empty: {shapefile_path}",
+                    hint="Re-download the shapefile - it may be corrupted",
+                )
+            )
+        else:
+            checks.append(
+                PreflightCheck(
+                    check_id="tiger:county_shapefile",
+                    status="ok",
+                    message=f"Found {shapefile_path}",
+                )
+            )
+
+        return checks
 
     def load(
         self,

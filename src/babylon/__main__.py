@@ -8,16 +8,40 @@ from __future__ import annotations
 
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 from babylon.config.logging_config import setup_logging
 from babylon.engine.scenarios import create_two_node_scenario
 from babylon.engine.simulation import Simulation
+
+if TYPE_CHECKING:
+    from babylon.data.preflight import PreflightResult
 
 # Initialize logging using the centralized configuration
 # This is the single entry point for all logging setup
 setup_logging()
 
 logger = logging.getLogger(__name__)
+
+
+def _print_preflight_report(result: PreflightResult) -> None:
+    """Print human-readable preflight failure report to stderr.
+
+    Args:
+        result: PreflightResult containing check outcomes.
+    """
+    print("\n❌ PREFLIGHT FAILED\n", file=sys.stderr)
+    print("Missing Data:", file=sys.stderr)
+    for check in result.failures:
+        print(f"  - {check.check_id}: {check.message}", file=sys.stderr)
+        if check.hint:
+            print(f"    Hint: {check.hint}", file=sys.stderr)
+    if result.warnings:
+        print("\nWarnings:", file=sys.stderr)
+        for check in result.warnings:
+            print(f"  - {check.check_id}: {check.message}", file=sys.stderr)
+            if check.hint:
+                print(f"    Hint: {check.hint}", file=sys.stderr)
 
 
 def get_tension(sim: Simulation) -> float:
@@ -30,6 +54,15 @@ def get_tension(sim: Simulation) -> float:
 
 def main() -> None:
     """Run a single simulation step using the Phase 2 Engine Facade."""
+    # Run preflight validation before simulation starts
+    from babylon.data.preflight import run_scenario_preflight
+
+    preflight_result = run_scenario_preflight("detroit")
+    if not preflight_result.ok:
+        _print_preflight_report(preflight_result)
+        sys.exit(1)
+    # Silent success: no output when preflight passes (per spec clarification)
+
     logger.info("Babylon - The Fall of America")
     logger.info("Initializing simulation...")
 

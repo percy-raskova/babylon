@@ -30,6 +30,7 @@ import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from tqdm import tqdm
@@ -83,6 +84,8 @@ from babylon.data.utils.logging_helpers import log_api_error
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
+
+    from babylon.data.preflight import PreflightCheck
 
 logger = logging.getLogger(__name__)
 
@@ -959,6 +962,77 @@ class CensusLoader(ApiLoaderBase):
             FactCensusPoverty,
             FactCensusIncomeSources,
         ]
+
+    def check_source_files(
+        self,
+        data_dir: Path,
+        online: bool = False,  # noqa: ARG002 - reserved for future network checks
+    ) -> list[PreflightCheck]:
+        """Check Census loader prerequisites (CBSA file and API key).
+
+        Args:
+            data_dir: Base data directory (e.g., Path("data/")).
+            online: If True, validate network endpoints (unused currently).
+
+        Returns:
+            List of PreflightCheck results.
+        """
+        import os
+
+        from babylon.data.census import cbsa_parser
+        from babylon.data.preflight import PreflightCheck
+
+        checks: list[PreflightCheck] = []
+        cbsa_path = data_dir / "census" / "cbsa_delineation_2023.xlsx"
+
+        if not cbsa_path.exists():
+            checks.append(
+                PreflightCheck(
+                    check_id="census:cbsa_file",
+                    status="fail",
+                    message=f"Missing CBSA delineation file: {cbsa_path}",
+                    hint="Download from Census Bureau delineation page.",
+                )
+            )
+        elif cbsa_parser._is_lfs_pointer(cbsa_path):  # noqa: SLF001
+            checks.append(
+                PreflightCheck(
+                    check_id="census:cbsa_file",
+                    status="fail",
+                    message=f"CBSA file is Git LFS pointer: {cbsa_path}",
+                    hint='Run `git lfs pull --include "data/census/cbsa_delineation_2023.xlsx"`',
+                )
+            )
+        elif cbsa_path.stat().st_size == 0:
+            checks.append(
+                PreflightCheck(
+                    check_id="census:cbsa_file",
+                    status="fail",
+                    message=f"CBSA file is empty: {cbsa_path}",
+                    hint="Re-download the file - it may be corrupted",
+                )
+            )
+        else:
+            checks.append(
+                PreflightCheck(
+                    check_id="census:cbsa_file",
+                    status="ok",
+                    message=f"Found {cbsa_path}",
+                )
+            )
+
+        # API key is optional but recommended
+        if not os.getenv("CENSUS_API_KEY"):
+            checks.append(
+                PreflightCheck(
+                    check_id="census:api_key",
+                    status="warn",
+                    message="CENSUS_API_KEY is not set",
+                    hint="Optional but recommended for higher rate limits",
+                )
+            )
+
+        return checks
 
     def clear_tables(self, session: Session) -> None:
         """Clear Census tables without deleting shared dimensions."""

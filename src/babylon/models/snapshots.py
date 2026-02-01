@@ -26,6 +26,11 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+# Import TensorRegistry at runtime for Pydantic type annotation support
+# This is needed because Pydantic requires the type to be defined at runtime
+# for model validation, even with arbitrary_types_allowed=True
+from babylon.economics.tensor_registry import TensorRegistry
+
 logger = logging.getLogger(__name__)
 
 
@@ -232,9 +237,11 @@ class SimulationSnapshot(BaseModel):
         territories: Map of territory_id to TerritoryState.
         hexes: Map of h3_index to HexState (invariant substrate).
         edges: List of EdgeState relationships (empty for MVP).
+        tensor_registry: Optional reference to TensorRegistry for cached
+            tensor data access without database queries.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     tick: int = Field(
         ...,
@@ -252,6 +259,11 @@ class SimulationSnapshot(BaseModel):
     edges: list[EdgeState] = Field(
         default_factory=list,
         description="List of EdgeState relationships (empty for MVP)",
+    )
+    tensor_registry: TensorRegistry | None = Field(
+        default=None,
+        description="Optional TensorRegistry for cached tensor data access",
+        exclude=True,  # Exclude from serialization
     )
 
     @model_validator(mode="after")

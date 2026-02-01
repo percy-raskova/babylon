@@ -41,6 +41,7 @@ from babylon.models.snapshots import (
 from babylon.models.world_state import WorldState
 
 if TYPE_CHECKING:
+    from babylon.economics.tensor_registry import TensorRegistry
     from babylon.engine.observer import SimulationObserver
     from babylon.protocols import ObserverCallback
 
@@ -89,6 +90,7 @@ class Simulation:
         config: SimulationConfig,
         observers: list[SimulationObserver] | None = None,
         defines: GameDefines | None = None,
+        tensor_registry: TensorRegistry | None = None,
     ) -> None:
         """Initialize simulation with initial state and configuration.
 
@@ -98,6 +100,9 @@ class Simulation:
             observers: Optional list of SimulationObserver instances to notify
             defines: Optional custom GameDefines for scenario-specific coefficients.
                      If None, loads from default defines.yaml location.
+            tensor_registry: Optional TensorRegistry for cached tensor data access.
+                     If None, tensor data is not available. If provided, it should
+                     be pre-hydrated with the relevant counties and years.
         """
         self._config = config
         self._defines = defines if defines is not None else GameDefines.load_default()
@@ -118,6 +123,10 @@ class Simulation:
         self._initial_mvp_territories: dict[str, TerritoryState] = {}
         self._initial_mvp_hexes: dict[str, HexState] = {}
         self._initial_world_state: WorldState = initial_state
+
+        # Fundamental Tensor Primitive (011): Cached economic tensor access
+        # Provides read-only access to labor-hour tensors without database queries
+        self._tensor_registry: TensorRegistry | None = tensor_registry
 
         # GUI Protocol Extension (006): Thread-safe observer adapter
         # Callbacks receive frozen SimulationSnapshot, not live references
@@ -164,7 +173,14 @@ class Simulation:
             - plan.md#Hydration Flow
             - quickstart.md
         """
-        from babylon.data.reference.hydrator import hydrate_territories
+        from pathlib import Path
+
+        from babylon.data.reference.database import get_reference_session
+        from babylon.data.reference.hydrator import StubBEASource, hydrate_territories
+        from babylon.economics.adapters import SQLiteQCEWSource
+        from babylon.economics.department_mapper import DepartmentMapper
+        from babylon.economics.hydrator import MarxianHydrator
+        from babylon.economics.tensor_registry import TensorRegistry
 
         # Validate input
         if not fips_codes:
@@ -174,12 +190,36 @@ class Simulation:
         # Hydrate territories from database
         territories, hexes = hydrate_territories(fips_codes, year)
 
+        # Create and hydrate TensorRegistry for cached economic data access
+        tensor_registry = TensorRegistry()
+
+        # Locate NAICS-to-department mapping YAML
+        economics_path = Path(__file__).parent.parent / "economics" / "data" / "naics_to_dept.yaml"
+
+        with get_reference_session() as session:
+            qcew_source = SQLiteQCEWSource(session)
+            bea_source = StubBEASource()  # Falls back to DepartmentMapper defaults
+            dept_mapper = DepartmentMapper.from_yaml(economics_path)
+
+            hydrator = MarxianHydrator(qcew_source, bea_source, dept_mapper)
+
+            # Hydrate tensor data for all counties and the specified year
+            tensor_registry.hydrate_counties(hydrator, fips_codes, [year])
+
+        logger.info(
+            "TensorRegistry hydrated with %d counties for year %d",
+            len(fips_codes),
+            year,
+        )
+
         # Create base WorldState and config
         state = WorldState()
         config = SimulationConfig()
 
-        # Create simulation instance
-        sim = cls(state, config, observers=observers, defines=defines)
+        # Create simulation instance with tensor registry
+        sim = cls(
+            state, config, observers=observers, defines=defines, tensor_registry=tensor_registry
+        )
 
         # Initialize MVP territory state
         sim._initialize_mvp_territories(territories=territories, hexes=hexes)
@@ -200,6 +240,15 @@ class Simulation:
     def services(self) -> ServiceContainer:
         """Return the persistent ServiceContainer."""
         return self._services
+
+    @property
+    def tensor_registry(self) -> TensorRegistry | None:
+        """Return the TensorRegistry for cached economic data access.
+
+        Returns:
+            TensorRegistry if initialized, None otherwise.
+        """
+        return self._tensor_registry
 
     @property
     def current_state(self) -> WorldState:
@@ -551,7 +600,8 @@ class Simulation:
         Implements SimulationState protocol.
 
         The snapshot is immutable - modifying the returned object does not
-        affect the simulation.
+        affect the simulation. The tensor_registry reference allows cached
+        tensor data access without database queries.
 
         Returns:
             SimulationSnapshot containing all state at the current tick.
@@ -561,6 +611,7 @@ class Simulation:
             territories=dict(self._mvp_territories),
             hexes=dict(self._mvp_hexes),
             edges=[],  # Empty for MVP - no inter-territory edges yet
+            tensor_registry=self._tensor_registry,
         )
 
     def get_territory_state(self, territory_id: str) -> TerritoryState | None:

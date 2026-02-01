@@ -104,7 +104,7 @@ ADR011_pure_graph_architecture:
       formula_library:
         purpose: The Laws
         pattern: f(data, config) → value
-        location: babylon.systems.formulas
+        location: babylon.formulas
       simulation_engine:
         purpose: The Time
         pattern: step(state, config) → new_state

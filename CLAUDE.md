@@ -246,7 +246,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 ## Formula System
 
-17 formulas in `src/babylon/formulas/formulas.py`:
+17 formulas in `src/babylon/formulas/` (modular structure):
 
 | Category | Formulas |
 |----------|----------|

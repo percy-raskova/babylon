@@ -648,8 +648,8 @@ architectural_decision:
     SimulationEngine calls formulas.py directly on entities.
 
   components_used:
-    - "babylon.systems.formulas (all functions)"
-    - "babylon.systems.contradiction_analysis.ContradictionAnalysis"
+    - "babylon.formulas (all functions)"
+    - "babylon.engine.systems.contradiction.ContradictionSystem"
     - "babylon.models.entities.SocialClass"
     - "babylon.models.entities.Relationship"
 

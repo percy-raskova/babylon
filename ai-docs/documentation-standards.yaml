@@ -148,7 +148,7 @@ rst_format:
     document: ":doc:`/path/to/document`"
     section: ":ref:`section-label`"
     class: ":class:`babylon.models.SocialClass`"
-    function: ":func:`babylon.systems.formulas.calculate_imperial_rent`"
+    function: ":func:`babylon.formulas.calculate_imperial_rent`"
     module: ":mod:`babylon.engine.systems`"
     external: "`Link text <https://url>`_"
 
@@ -406,7 +406,7 @@ cross_referencing:
 
   to_code:
     classes: ":class:`babylon.models.SocialClass`"
-    functions: ":func:`babylon.systems.formulas.calculate_imperial_rent`"
+    functions: ":func:`babylon.formulas.calculate_imperial_rent`"
     modules: ":mod:`babylon.engine.systems`"
 
   to_external:

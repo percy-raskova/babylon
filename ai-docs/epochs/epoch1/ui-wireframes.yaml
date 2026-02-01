@@ -1,20 +1,24 @@
 # UI Wireframes Specification
-# DearPyGui Dashboard Layout
+# DEPRECATED: DearPyGui Dashboard Layout
 #
 # "The dashboard is a bunker control room. Not a website."
 # - Bunker Constructivism Design Principle
 #
-# This document specifies the ASCII wireframe for the DearPyGui dashboard
-# as implemented in src/babylon/ui/dpg_runner.py
+# NOTE: DearPyGui support removed in Spec 010 (2026-02-01).
+# The current UI uses PyQt6 exclusively: src/babylon/ui/dashboard/
+# This document is retained for historical reference only.
 
 meta:
   created: "2025-12-26"
-  updated: "2025-12-30"
-  purpose: "Document the implemented DearPyGui dashboard layout"
-  status: "IMPLEMENTED"
-  technology: "DearPyGui (native GPU-accelerated desktop)"
-  source_of_truth: "src/babylon/ui/dpg_runner.py"
-  design_system: "src/babylon/ui/design_system.py (DPGColors)"
+  updated: "2026-02-01"
+  purpose: "HISTORICAL: Document the removed DearPyGui dashboard layout"
+  status: "DEPRECATED"
+  deprecation_reason: |
+    DearPyGui dashboard code (dpg_runner.py, DPGColors) removed in Spec 010.
+    PyQt6 dashboard in src/babylon/ui/dashboard/ is now the only UI.
+  technology: "DearPyGui (REMOVED)"
+  current_source_of_truth: "src/babylon/ui/dashboard/"
+  design_system: "src/babylon/ui/design_system.py (BunkerPalette only - DPGColors removed)"
 
 # =============================================================================
 # DESIGN PHILOSOPHY

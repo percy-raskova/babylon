@@ -140,15 +140,17 @@ The Rift slice now includes the complete **100-year null hypothesis trajectory**
 
 ### Slice 1.5: The Dashboard (90% COMPLETE)
 
-**Technology:** DearPyGui (native GPU-accelerated desktop)
+**Technology:** PyQt6 (cross-platform Qt-based desktop)
+
+> **Note:** DearPyGui support removed in Spec 010 (2026-02-01). The project now uses PyQt6 exclusively.
 
 **Files:**
-- `src/babylon/ui/dpg_runner.py` - DearPyGui dashboard (1095 lines)
-- `src/babylon/ui/design_system.py` - BunkerPalette + DPGColors
-- `tests/unit/ui/test_dpg_runner.py` - Comprehensive tests (801 lines)
+- `src/babylon/ui/dashboard/` - PyQt6 dashboard (modular architecture)
+- `src/babylon/ui/design_system.py` - BunkerPalette (DPGColors removed)
+- `tests/unit/ui/dashboard/` - Dashboard tests
 
 **Implemented Features:**
-- Native 1460x820 viewport with Bunker Constructivism aesthetic
+- PyQt6 native window with Bunker Constructivism aesthetic
 - Real-time telemetry plots (Imperial Rent, LA Stability, Wealth Trend)
 - 4-class wealth trend chart (P_w, P_c, C_b, C_w color-coded)
 - Event log with color-coded EventType display
@@ -168,7 +170,7 @@ The dashboard includes narrative feed panel wired to `NarrativeDirector`:
 - Same event, two framings displayed in real-time
 - No interactive hegemony mechanics yet—that comes in Epoch 2
 
-**Design:** See `ai-docs/ui-wireframes.yaml` for ASCII layout matching implementation.
+**Design:** See `ai-docs/epochs/epoch1/ui-wireframes.yaml` for historical ASCII layout (DPG era).
 
 ### Slice 1.6: The Endgame (NOT STARTED)
 

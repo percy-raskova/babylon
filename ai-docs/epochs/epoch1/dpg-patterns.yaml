@@ -1,24 +1,28 @@
 # DearPyGui Development Patterns & Quick Reference
 # ================================================
-# Distilled from Babylon DPG development sessions (Dec 2025)
-# Purpose: Prevent repeating past mistakes, provide quick solutions
+# DEPRECATED: DearPyGui support removed in Spec 010 (2026-02-01)
+# The Babylon UI now uses PyQt6 exclusively via src/babylon/ui/dashboard/
 #
-# C7 Library ID: /dearpygui/dearpygui (native Python GUI library)
+# This file is retained for historical reference only.
+# For current UI development, see: src/babylon/ui/dashboard/
+#
+# C7 Library ID: /dearpygui/dearpygui (no longer used)
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   created: "2025-12-30"
+  deprecated: "2026-02-01"
+  deprecation_reason: |
+    DearPyGui dashboard code (dpg_runner.py, DPGColors) removed in Spec 010
+    to eliminate confusion between legacy DPG and current PyQt6 architecture.
+    The project now uses PyQt6 exclusively for all UI components.
   purpose: |
-    Token-efficient reference for DearPyGui patterns learned during
-    Synopticon dashboard development. Consult when:
-    - Building new UI components
-    - Debugging layout issues
-    - Writing UI tests
-    - Handling state updates
+    HISTORICAL REFERENCE ONLY - DearPyGui patterns learned during
+    early Synopticon dashboard development (Dec 2025).
   cross_references:
-    - "ai-docs/design-system.yaml (colors, aesthetic)"
+    - "ai-docs/design-system.yaml (colors, aesthetic - BunkerPalette still active)"
     - "ai-docs/ui-wireframes.yaml (layout specification)"
-  source_of_truth: "src/babylon/ui/dpg_runner.py"
+  current_source_of_truth: "src/babylon/ui/dashboard/"
 
 # =============================================================================
 # CORE ARCHITECTURE PATTERN

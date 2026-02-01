@@ -4,9 +4,9 @@ GUI Development Guide
 This guide outlines the development standards and architecture for Babylon's
 graphical user interface, "The Cockpit."
 
-The interface is built using **Dear PyGui** (DPG), a GPU-accelerated Python
-GUI framework that allows for high-performance real-time visualization of
-simulation state.
+The interface is built using **PyQt6**, a cross-platform Python GUI framework
+that enables high-performance real-time visualization of simulation state
+with ECharts-based charts and H3 hexagonal map rendering.
 
 Design Philosophy: Bunker Constructivism
 ----------------------------------------
@@ -27,15 +27,14 @@ Visual Language
 Color Palette
 ~~~~~~~~~~~~~
 
-The design system is centrally defined in :py:class:`babylon.ui.design_system.BunkerPalette`
-and :py:class:`babylon.ui.design_system.DPGColors`.
+The design system is centrally defined in :py:class:`babylon.ui.design_system.BunkerPalette`.
 
 .. list-table::
    :widths: 20 20 60
    :header-rows: 1
 
    * - Color Name
-     - Hex / RGB
+     - Hex
      - Semantic Usage
    * - **VOID**
      - ``#050505``
@@ -43,7 +42,7 @@ and :py:class:`babylon.ui.design_system.DPGColors`.
    * - **DATA_GREEN**
      - ``#39FF14``
      - Positive metrics, healthy systems, logs (INFO).
-   * - **PHOSPHOR_RED**
+   * - **PHOSPHOR_BURN_RED**
      - ``#D40000``
      - Critical failures, alarms, logs (ERROR), Bourgeoisie class.
    * - **EXPOSED_COPPER**
@@ -94,11 +93,11 @@ while the simulation can tick independently.
 Entry Point
 ~~~~~~~~~~~
 
-The dashboard is launched via ``src/babylon/ui/dpg_runner.py``:
+The dashboard is launched via the ``babylon.ui.dashboard`` module:
 
 .. code-block:: bash
 
-   poetry run python -m babylon.ui.dpg_runner
+   poetry run python -m babylon.ui.dashboard
 
 Or via mise:
 
@@ -111,7 +110,7 @@ Core Components
 
 1. **Narrative Feed**: A scrolling log window displaying semantic events from the
    ``NarrativeDirector``.
-2. **Telemetry Plots**: Time-series graphs tracking key contradictions (e.g.,
+2. **Telemetry Plots**: Time-series ECharts graphs tracking key contradictions (e.g.,
    Imperial Rent vs. Stability).
 3. **Control Panel**: Play/Pause/Step controls for the simulation loop.
 4. **Topology Monitor**: (Planned) Network visualization of class/territory relations.
@@ -119,29 +118,20 @@ Core Components
 Development Standards
 ---------------------
 
-1. **GPU Acceleration**: DPG uses the GPU. Avoid blocking the main thread with heavy
-   CPU computations. Use async patterns where necessary.
+1. **PyQt6 Best Practices**: Use signals and slots for communication between components.
+   Avoid blocking the main thread with heavy CPU computations.
 2. **Type Safety**: All UI code must be strictly typed.
 3. **Design System**: Do not hardcode colors. Always import from ``babylon.ui.design_system``.
 
 .. code-block:: python
 
-   from babylon.ui.design_system import DPGColors
+   from babylon.ui.design_system import BunkerPalette
 
    # GOOD
-   dpg.add_text("System Critical", color=DPGColors.PHOSPHOR_RED)
+   label.setStyleSheet(f"color: {BunkerPalette.PHOSPHOR_BURN_RED};")
 
    # BAD
-   dpg.add_text("System Critical", color=(255, 0, 0, 255))
-
-4. **Context Managers**: Use DPG's context managers for nesting items.
-
-.. code-block:: python
-
-   with dpg.window(label="Main Window"):
-       with dpg.group(horizontal=True):
-           dpg.add_button(label="Play")
-           dpg.add_button(label="Pause")
+   label.setStyleSheet("color: #FF0000;")
 
 Reference
 ---------
@@ -149,6 +139,6 @@ Reference
 - :doc:`/reference/simulation-protocols` - Protocol and snapshot API reference
 - :py:mod:`babylon.protocols` - SimulationState and SimulationControl protocols
 - :py:mod:`babylon.models.snapshots` - TerritoryState, HexState, SimulationSnapshot
-- :py:mod:`babylon.ui.dpg_runner` - Main runner and layout
+- :py:mod:`babylon.ui.dashboard` - Main dashboard module
 - :py:mod:`babylon.ui.design_system` - Color constants and style tokens
-- `Dear PyGui Documentation <https://dearpygui.readthedocs.io/>`_
+- `PyQt6 Documentation <https://www.riverbankcomputing.com/static/Docs/PyQt6/>`_

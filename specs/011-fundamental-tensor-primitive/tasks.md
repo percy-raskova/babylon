@@ -99,10 +99,10 @@ ______________________________________________________________________
 - [x] T034 [US1] Implement TensorRegistry.hydrate_counties() in src/babylon/economics/tensor_registry.py
 - [x] T035 [US1] Modify MarxianHydrator in src/babylon/economics/hydrator.py to return ValueTensor4x3 with LaborHours
 - [x] T036 [US1] Apply SNLT conversion in hydrator: wages × factor → LaborHours
-- [ ] T037 [US1] Modify Simulation.from_sqlite() in src/babylon/engine/simulation.py to initialize TensorRegistry
-- [ ] T038 [US1] Add tensor_registry reference to SimulationSnapshot in src/babylon/models/snapshots.py
-- [ ] T039 [US1] Unit test: verify simulation accesses tensor without database query in tests/unit/economics/test_tensor_registry.py
-- [ ] T040 [US1] Integration test: SQLite → TensorRegistry → Simulation flow in tests/integration/test_tensor_data_flow.py
+- [x] T037 [US1] Modify Simulation.from_sqlite() in src/babylon/engine/simulation.py to initialize TensorRegistry
+- [x] T038 [US1] Add tensor_registry reference to SimulationSnapshot in src/babylon/models/snapshots.py
+- [x] T039 [US1] Unit test: verify simulation accesses tensor without database query in tests/unit/economics/test_tensor_registry.py
+- [x] T040 [US1] Integration test: SQLite → TensorRegistry → Simulation flow in tests/integration/test_tensor_data_flow.py
 
 **Checkpoint**: Simulation engine can consume tensor data - core functionality complete
 

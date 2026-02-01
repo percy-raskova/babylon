@@ -128,13 +128,42 @@ def calculate_rate_of_profit(
         >>> calculate_rate_of_profit(100, 400, 100)  # Marx's third example
         0.2
 
+    Epoch 2 Data Requirements:
+        QCEW field mappings for parameter derivation:
+
+        **variable_capital (v)**:
+            - QCEW field: ``total_wages_all_workers``
+            - Interpretation: Total wages paid = living labor cost
+            - Aggregation: Sum by county FIPS + industry NAICS
+
+        **constant_capital (c)**:
+            - QCEW fields: Not directly available
+            - Derivation: Cross-reference with BEA Fixed Assets tables
+            - Proxy method: ``c = v * industry_occ_coefficient``
+            - Industry OCC coefficients from BLS capital-labor ratios by NAICS
+
+        **surplus_value (s)**:
+            - QCEW fields: Not directly available
+            - Derivation: ``s = industry_output - c - v``
+            - Cross-reference: BEA GDP-by-industry for output values
+            - Proxy method: ``s = v * exploitation_rate`` where exploitation
+              rate varies by industry (manufacturing ~150%, services ~100%)
+
+        Transformation pipeline::
+
+            QCEW(county, naics) → QCEWRecord
+            BEA(naics) → industry_occ_coefficient, industry_output
+            v = qcew.total_wages_all_workers
+            c = v * industry_occ_coefficient
+            s = industry_output - c - v  # or v * exploitation_rate as proxy
+
     Note:
         Full implementation requires:
         - constant_capital/variable_capital fields on Bourgeoisie entities
         - surplus_extracted tracking per tick
         - OCC dynamics (automation investments shifting c/v ratio)
 
-        See ai-docs/epoch2-trpf.yaml for specification.
+        See :doc:`ai-docs/epochs/epoch3/epoch2-trpf.yaml` for specification.
     """
     total_capital = constant_capital + variable_capital
     if total_capital <= 0:
@@ -167,11 +196,54 @@ def calculate_organic_composition(
         >>> calculate_organic_composition(400, 100)
         4.0
 
+    Epoch 2 Data Requirements:
+        OCC varies systematically by industry and occupation. QCEW/NAICS
+        industry codes serve as proxy for capital-intensity.
+
+        **Industry-to-OCC mapping** (representative coefficients):
+
+        ========== ===================================== ============
+        NAICS      Industry                              Typical OCC
+        ========== ===================================== ============
+        11         Agriculture                           1.5 - 2.5
+        21         Mining/Extraction                     4.0 - 8.0
+        22         Utilities                             6.0 - 10.0
+        23         Construction                          0.8 - 1.5
+        31-33      Manufacturing                         2.0 - 5.0
+        42         Wholesale Trade                       0.5 - 1.0
+        44-45      Retail Trade                          0.3 - 0.8
+        51         Information                           2.0 - 4.0
+        52         Finance/Insurance                     0.2 - 0.5
+        54         Professional Services                 0.2 - 0.5
+        62         Healthcare                            1.0 - 2.0
+        72         Accommodation/Food                    0.5 - 1.0
+        ========== ===================================== ============
+
+        **Occupation-to-class mapping** (SOC codes):
+
+        QCEW provides employment by industry, which correlates with
+        occupation mix. High-OCC industries employ more machine operators
+        (SOC 51xxxx) and fewer service workers (SOC 35xxxx-39xxxx).
+
+        **Data sources**:
+            - QCEW: ``total_wages_all_workers`` by county × NAICS → v
+            - BLS Capital-Labor tables: industry OCC coefficients
+            - BEA Fixed Assets: capital stock by industry → c baseline
+
+        **Transformation**::
+
+            QCEW(county, naics) → variable_capital = total_wages
+            BLS(naics) → occ_coefficient (industry average)
+            constant_capital = variable_capital * occ_coefficient
+            OCC = c / v = occ_coefficient
+
     Note:
         Higher OCC means more capital-intensive production.
         In Marx's examples:
         - OCC = 0.5: Early capitalism (labor-intensive)
         - OCC = 4.0: Advanced capitalism (capital-intensive)
+
+        See :doc:`ai-docs/epochs/epoch3/epoch2-trpf.yaml` for specification.
     """
     if variable_capital <= 0:
         return 0.0

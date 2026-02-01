@@ -149,6 +149,7 @@ markers = [
     "property: Property-based tests using Hypothesis",
     "theory: Marxian theory validation tests (Capital Volume 2 reproduction schema)",
     "empirical: Empirical validation tests requiring real QCEW data (deselect with '-m \"not empirical\"')",
+    "benchmark: Performance and memory benchmarks for tensor operations",
 ]
 
 [tool.ruff]

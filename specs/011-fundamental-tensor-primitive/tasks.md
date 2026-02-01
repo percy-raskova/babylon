@@ -158,13 +158,15 @@ ______________________________________________________________________
 
 ### Implementation for User Story 4
 
-- [ ] T057 [P] [US4] Create DerivedTensor protocol implementation in src/babylon/economics/derived_tensors.py
-- [ ] T058 [US4] Implement ImperialRentField class computing Φ = total_v - total_value per data-model.md
-- [ ] T059 [US4] Implement geographic aggregation: TensorRegistry.get_aggregate() for STATE and NATION levels
-- [ ] T060 [US4] Add aggregation formula validation: sum(counties) must match state within 0.01% relative tolerance
-- [ ] T061 [US4] Implement cache invalidation strategy: clear aggregate cache when source tensors updated (addresses CHK025)
-- [ ] T062 [US4] Unit test: derived tensor matches manual calculation in tests/unit/economics/test_derived_tensors.py
-- [ ] T063 [US4] Unit test: geographic aggregation accuracy in tests/unit/economics/test_tensor_aggregation.py
+- [x] T057 [P] [US4] Create DerivedTensor protocol implementation in src/babylon/economics/derived_tensors.py
+  - Note: Derived values implemented as computed_field on ValueTensor4x3 (imperial_rent, profit_rate, etc.)
+- [x] T058 [US4] Implement ImperialRentField class computing Φ = total_v - total_value per data-model.md
+  - Note: Implemented as ValueTensor4x3.imperial_rent computed property
+- [x] T059 [US4] Implement geographic aggregation: TensorRegistry.get_aggregate() for STATE and NATION levels
+- [x] T060 [US4] Add aggregation formula validation: sum(counties) must match state within 0.01% relative tolerance
+- [x] T061 [US4] Implement cache invalidation strategy: clear aggregate cache when source tensors updated (addresses CHK025)
+- [x] T062 [US4] Unit test: derived tensor matches manual calculation in tests/unit/economics/test_derived_tensors.py
+- [x] T063 [US4] Unit test: geographic aggregation accuracy in tests/unit/economics/test_tensor_aggregation.py
 
 **Checkpoint**: Derived tensors functional - all economic calculations unified
 

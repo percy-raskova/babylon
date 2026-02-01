@@ -187,10 +187,12 @@ defaults:
 
 overrides:
   336111:
-    dept_IIa: 0.65
-    dept_IIb: 0.35
+    dept_I: 0.70
+    dept_IIa: 0.20
+    dept_IIb: 0.10
   311:
-    dept_IIa: 0.85
+    dept_I: 0.30
+    dept_IIa: 0.55
     dept_IIb: 0.15
   4451:
     dept_IIa: 0.95

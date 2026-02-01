@@ -25,30 +25,127 @@ Example:
 See Also:
     :mod:`babylon.economics.hydrator`: Transforms QCEW data into tensors.
     :mod:`babylon.economics.department_mapper`: Maps NAICS codes to departments.
+    :class:`NoDataSentinel`: Marker for missing tensor data.
 """
 
 from __future__ import annotations
 
 import re
-from typing import Annotated
+from typing import Annotated, Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
-from babylon.models.types import Currency, Probability
+from babylon.models.types import LaborHours, Probability, SignedLaborHours
+
+# =============================================================================
+# NO DATA SENTINEL
+# =============================================================================
+
+
+class NoDataSentinel:
+    """Marker for missing tensor data.
+
+    This sentinel object is returned when tensor data is unavailable for a
+    given FIPS/year combination. It is falsy (bool(sentinel) == False) to
+    enable clean consumer patterns using the walrus operator.
+
+    The sentinel pattern allows distinguishing between:
+    - Valid zero values (a county legitimately has zero activity)
+    - Missing data (no QCEW data exists for this county-year)
+
+    Args:
+        fips: The FIPS code that was queried.
+        year: The year that was queried.
+        reason: Human-readable explanation of why data is missing.
+
+    Example:
+        >>> sentinel = NoDataSentinel("99999", 2022, "FIPS code not in database")
+        >>> bool(sentinel)
+        False
+        >>> if tensor := registry.get("26163", 2022):
+        ...     print(tensor.profit_rate)
+        ... else:
+        ...     print(f"No data: {tensor.reason}")
+
+    Note:
+        Reason format follows the pattern "{context}: {specific_reason}".
+        Example: "get(26163, 2022): No QCEW data available for this county-year"
+    """
+
+    __slots__: Final = ("fips", "year", "reason")
+
+    def __init__(self, fips: str, year: int, reason: str) -> None:
+        """Initialize a NoDataSentinel.
+
+        Args:
+            fips: The 5-digit FIPS code that was queried.
+            year: The calendar year that was queried.
+            reason: Human-readable explanation for missing data.
+        """
+        self.fips: Final[str] = fips
+        self.year: Final[int] = year
+        self.reason: Final[str] = reason
+
+    def __bool__(self) -> bool:
+        """Return False to enable walrus operator pattern.
+
+        This allows clean code like:
+            if tensor := registry.get(fips, year):
+                use(tensor)
+            else:
+                handle_missing(tensor.reason)
+
+        Returns:
+            Always False - sentinels represent missing data.
+        """
+        return False
+
+    def __repr__(self) -> str:
+        """Return a detailed string representation.
+
+        Returns:
+            String showing fips, year, and reason.
+        """
+        return f"NoDataSentinel(fips={self.fips!r}, year={self.year}, reason={self.reason!r})"
+
+    def __eq__(self, other: object) -> bool:
+        """Check equality with another sentinel.
+
+        Args:
+            other: Another object to compare.
+
+        Returns:
+            True if other is a NoDataSentinel with same fips, year, reason.
+        """
+        if not isinstance(other, NoDataSentinel):
+            return NotImplemented
+        return self.fips == other.fips and self.year == other.year and self.reason == other.reason
+
+    def __hash__(self) -> int:
+        """Return hash for use in sets and dicts.
+
+        Returns:
+            Hash based on fips, year, and reason.
+        """
+        return hash((self.fips, self.year, self.reason))
 
 
 class DepartmentRow(BaseModel):
     """Value composition for a single Marxian department.
 
-    Represents the three-fold decomposition of commodity value:
-    - c (constant capital): Value transferred from machinery/materials
-    - v (variable capital): Value paid to workers as wages
-    - s (surplus value): Unpaid labor appropriated by capital
+    Represents the three-fold decomposition of commodity value in labor-hours:
+    - c (constant capital): Dead labor transferred from machinery/materials
+    - v (variable capital): Living labor time paid as wages
+    - s (surplus value): Unpaid labor time appropriated by capital
+
+    All values are measured in labor-hours (LaborHours type), not monetary units.
+    This follows Marx's labor theory of value where all economic quantities are
+    ultimately reducible to socially necessary labor time (SNLT).
 
     Args:
-        c: Constant capital (non-negative Currency).
-        v: Variable capital (non-negative Currency).
-        s: Surplus value (non-negative Currency).
+        c: Constant capital in labor-hours (non-negative).
+        v: Variable capital in labor-hours (non-negative).
+        s: Surplus value in labor-hours (non-negative).
 
     Example:
         >>> row = DepartmentRow(c=100.0, v=50.0, s=75.0)
@@ -62,19 +159,19 @@ class DepartmentRow(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    c: Currency = Field(description="Constant capital (dead labor: machinery, raw materials)")
-    v: Currency = Field(description="Variable capital (living labor: wages)")
-    s: Currency = Field(description="Surplus value (unpaid labor)")
+    c: LaborHours = Field(description="Constant capital (dead labor: machinery, raw materials)")
+    v: LaborHours = Field(description="Variable capital (living labor: wages)")
+    s: LaborHours = Field(description="Surplus value (unpaid labor)")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def total_value(self) -> Currency:
-        """Total commodity value (c + v + s).
+    def total_value(self) -> LaborHours:
+        """Total commodity value (c + v + s) in labor-hours.
 
         Returns:
             Sum of constant capital, variable capital, and surplus value.
         """
-        return self.c + self.v + self.s
+        return LaborHours(self.c + self.v + self.s)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -173,7 +270,7 @@ class ValueTensor4x3(BaseModel):
     naics_granularity: Probability = Field(
         description="Data quality: fraction of wages with 6-digit NAICS mapping"
     )
-    excluded_wages: Currency = Field(
+    excluded_wages: LaborHours = Field(
         description="Wages excluded from allocation (e.g., government NAICS 92)"
     )
 
@@ -199,13 +296,13 @@ class ValueTensor4x3(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def total_value(self) -> Currency:
-        """Total value across all departments.
+    def total_value(self) -> LaborHours:
+        """Total value across all departments in labor-hours.
 
         Returns:
             Sum of all department total_values.
         """
-        return (
+        return LaborHours(
             self.dept_I.total_value
             + self.dept_IIa.total_value
             + self.dept_IIb.total_value
@@ -214,8 +311,21 @@ class ValueTensor4x3(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def total_v(self) -> Currency:
-        """Total variable capital (wages) across all departments.
+    def total_c(self) -> LaborHours:
+        """Total constant capital (dead labor) across all departments.
+
+        This represents the aggregate machinery, raw materials, and other
+        means of production consumed across all four departments.
+
+        Returns:
+            Sum of c (constant capital) across all departments.
+        """
+        return LaborHours(self.dept_I.c + self.dept_IIa.c + self.dept_IIb.c + self.dept_III.c)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_v(self) -> LaborHours:
+        """Total variable capital (wages) across all departments in labor-hours.
 
         This represents the aggregate wage bill for the county - the total
         living labor employed across all four departments of production.
@@ -223,17 +333,17 @@ class ValueTensor4x3(BaseModel):
         Returns:
             Sum of v (variable capital) across all departments.
         """
-        return self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + self.dept_III.v
+        return LaborHours(self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + self.dept_III.v)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def total_s(self) -> Currency:
-        """Total surplus value across all departments.
+    def total_s(self) -> LaborHours:
+        """Total surplus value across all departments in labor-hours.
 
         Returns:
             Sum of s (surplus value) across all departments.
         """
-        return Currency(self.dept_I.s + self.dept_IIa.s + self.dept_IIb.s + self.dept_III.s)
+        return LaborHours(self.dept_I.s + self.dept_IIa.s + self.dept_IIb.s + self.dept_III.s)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -246,16 +356,78 @@ class ValueTensor4x3(BaseModel):
         Returns:
             Profit rate (s / (c + v)), or float('inf') if (c + v) = 0.
         """
-        total_c = self.dept_I.c + self.dept_IIa.c + self.dept_IIb.c + self.dept_III.c
-        denominator = total_c + self.total_v
+        denominator = self.total_c + self.total_v
         if denominator == 0.0:
             return float("inf")
         return self.total_s / denominator
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def monetized_value(self) -> Currency:
-        """Total value visible to the price system.
+    def exploitation_rate(self) -> float:
+        """Aggregate rate of exploitation across all departments.
+
+        The ratio of unpaid labor (surplus value) to paid labor (variable capital)
+        across the entire county economy. A rate of 1.0 means workers spend equal
+        time producing value they keep vs. value extracted by capital.
+
+        Formula: e = total_s / total_v
+
+        Returns:
+            Exploitation rate (s/v), or float('inf') if total_v = 0.
+        """
+        if self.total_v == 0.0:
+            return float("inf")
+        return self.total_s / self.total_v
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def organic_composition(self) -> float:
+        """Aggregate organic composition of capital across all departments.
+
+        Marx's measure of capital intensity: ratio of dead labor (machinery,
+        materials) to living labor (workers). Higher OCC indicates more
+        mechanization and capital-intensive production.
+
+        Formula: OCC = total_c / total_v
+
+        Returns:
+            Organic composition (c/v), or float('inf') if total_v = 0.
+        """
+        if self.total_v == 0.0:
+            return float("inf")
+        return self.total_c / self.total_v
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def imperial_rent(self) -> SignedLaborHours:
+        """Imperial rent extracted from or donated to the global system.
+
+        Per MLM-TW theory, imperial rent (Φ) represents the value transfer
+        between core and periphery in the world-system:
+
+        Formula: Φ = total_v - total_value
+
+        Interpretation:
+        - Φ > 0 (positive): Core position - receiving rent from periphery.
+          Workers are paid MORE than the value they produce, subsidized by
+          unequal exchange with the periphery.
+        - Φ < 0 (negative): Peripheral position - donating rent to core.
+          Workers produce MORE value than they receive in wages, with the
+          surplus extracted via unequal exchange.
+        - Φ ≈ 0: Semi-peripheral or autarkic position.
+
+        Returns:
+            Imperial rent in signed labor-hours (can be negative).
+
+        See Also:
+            :func:`babylon.formulas.calculate_imperial_rent`: Formula documentation.
+        """
+        return SignedLaborHours(self.total_v - self.total_value)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def monetized_value(self) -> LaborHours:
+        """Total value visible to the price system in labor-hours.
 
         Includes full value of Depts I, IIa, IIb, but only the visible
         fraction of Dept III based on g₃₃.
@@ -267,7 +439,7 @@ class ValueTensor4x3(BaseModel):
             Total monetized value across all departments.
         """
         visible_dept_iii = self.dept_III.total_value * self.visibility_g33
-        return Currency(
+        return LaborHours(
             self.dept_I.total_value
             + self.dept_IIa.total_value
             + self.dept_IIb.total_value
@@ -276,8 +448,8 @@ class ValueTensor4x3(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def monetized_v(self) -> Currency:
-        """Total variable capital actually paid as wages.
+    def monetized_v(self) -> LaborHours:
+        """Total variable capital actually paid as wages in labor-hours.
 
         Includes full v from Depts I, IIa, IIb, but only the visible
         fraction of Dept III v based on g₃₃.
@@ -288,12 +460,12 @@ class ValueTensor4x3(BaseModel):
             Total wages actually paid (monetized variable capital).
         """
         visible_dept_iii_v = self.dept_III.v * self.visibility_g33
-        return Currency(self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + visible_dept_iii_v)
+        return LaborHours(self.dept_I.v + self.dept_IIa.v + self.dept_IIb.v + visible_dept_iii_v)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def shadow_subsidy(self) -> Currency:
-        """Unpaid reproductive labor appropriated as surplus.
+    def shadow_subsidy(self) -> LaborHours:
+        """Unpaid reproductive labor appropriated as surplus in labor-hours.
 
         In Fortunati's framework, shadow labor is NOT merely "unpaid costs" -
         it is **appropriated surplus value**. The capitalist class benefits
@@ -308,7 +480,7 @@ class ValueTensor4x3(BaseModel):
         Returns:
             Shadow subsidy (unpaid reproductive labor value).
         """
-        return Currency(self.dept_III.v * (1 - self.visibility_g33))
+        return LaborHours(self.dept_III.v * (1 - self.visibility_g33))
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -346,5 +518,6 @@ class ValueTensor4x3(BaseModel):
 
 __all__ = [
     "DepartmentRow",
+    "NoDataSentinel",
     "ValueTensor4x3",
 ]

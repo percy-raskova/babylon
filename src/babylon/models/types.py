@@ -207,6 +207,62 @@ Note: Values are quantized to 10^-5 precision via SnapToGrid.
 """
 
 # =============================================================================
+# LABOR-HOURS TYPE [0.0, infinity)
+# =============================================================================
+
+LaborHours = Annotated[
+    float,
+    Field(
+        ge=0.0,
+        description="Non-negative labor-time measurement in hours",
+    ),
+    SnapToGrid,
+]
+"""LaborHours: [0.0, inf)
+
+Labor-time measurement in hours. Used for the fundamental tensor primitive
+where all economic values are expressed in labor-time, not monetary units.
+
+Used for:
+- Primitive tensor cells (c, v, s components)
+- Aggregated labor-time values
+- SNLT-converted wage data
+
+The distinction from Currency is semantic: Currency represents monetary
+value, LaborHours represents socially necessary labor time (SNLT).
+
+Note: Values are quantized to 10^-6 precision via SnapToGrid.
+"""
+
+# =============================================================================
+# SIGNED LABOR-HOURS TYPE (-infinity, +infinity)
+# =============================================================================
+
+SignedLaborHours = Annotated[
+    float,
+    Field(
+        description="Labor-time measurement allowing negative values",
+    ),
+    SnapToGrid,
+]
+"""SignedLaborHours: (-inf, +inf)
+
+Labor-time measurement that can be negative. Used for derived tensors
+where negative values have economic meaning.
+
+Used for:
+- Imperial rent (Φ): Positive = core (receiving rent), Negative = periphery (donating rent)
+- Net value flows between territories
+- Derived economic calculations
+
+Unlike LaborHours, this type permits negative values because:
+- Negative imperial rent indicates periphery status (donating more value than receiving)
+- Net flows can be negative (outflow > inflow)
+
+Note: Values are quantized to 10^-6 precision via SnapToGrid.
+"""
+
+# =============================================================================
 # GINI TYPE [0.0, 1.0] (Mass Line Refactor)
 # =============================================================================
 

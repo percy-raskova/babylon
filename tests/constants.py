@@ -968,6 +968,94 @@ class ShadowLaborDefaults:
 
 
 @dataclass(frozen=True)
+class TensorDefaults:
+    """Tensor primitive test constants (Spec 011).
+
+    Source: Fundamental Tensor Primitive specification.
+    Used for testing ValueTensor4x3, TensorRegistry, and SNLT conversion.
+    """
+
+    # -------------------------------------------------------------------------
+    # Year Boundaries (data availability range)
+    # -------------------------------------------------------------------------
+    MIN_YEAR: int = 2010  # Earliest year with complete data
+    MAX_YEAR: int = 2025  # Latest year with complete data
+
+    # Test years within valid range
+    YEAR_BASELINE: int = 2020  # Default test year
+    YEAR_EARLY: int = 2015  # Early in range
+    YEAR_LATE: int = 2023  # Late in range
+
+    # Invalid years (should return NoDataSentinel)
+    YEAR_TOO_EARLY: int = 1975  # Before data range
+    YEAR_TOO_LATE: int = 2030  # After data range
+
+    # -------------------------------------------------------------------------
+    # SNLT Conversion Factors
+    # -------------------------------------------------------------------------
+    SNLT_DEFAULT: float = 1.0  # No conversion (wage-proportional proxy)
+    SNLT_HIGH_PRODUCTIVITY: float = 0.90  # 10% productivity increase
+    SNLT_LOW_PRODUCTIVITY: float = 1.10  # 10% productivity decrease
+
+    # -------------------------------------------------------------------------
+    # LaborHours Values (for tensor cell tests)
+    # -------------------------------------------------------------------------
+    LABOR_ZERO: float = 0.0  # Valid zero value
+    LABOR_SMALL: float = 100.0  # Small labor allocation
+    LABOR_MODERATE: float = 1000.0  # Moderate labor allocation
+    LABOR_LARGE: float = 10000.0  # Large labor allocation
+    LABOR_HUGE: float = 1_000_000.0  # County-scale labor
+
+    # -------------------------------------------------------------------------
+    # Department Values (Marx Capital Vol 2 aligned)
+    # -------------------------------------------------------------------------
+    # Simple reproduction schema (4:1 OCC, 100% exploitation)
+    DEPT_I_C: float = 4000.0
+    DEPT_I_V: float = 1000.0
+    DEPT_I_S: float = 1000.0
+
+    DEPT_IIA_C: float = 1600.0
+    DEPT_IIA_V: float = 400.0
+    DEPT_IIA_S: float = 400.0
+
+    DEPT_IIB_C: float = 400.0
+    DEPT_IIB_V: float = 100.0
+    DEPT_IIB_S: float = 100.0
+
+    DEPT_III_C: float = 500.0
+    DEPT_III_V: float = 200.0
+    DEPT_III_S: float = 150.0
+
+    # -------------------------------------------------------------------------
+    # Aggregation Tolerance
+    # -------------------------------------------------------------------------
+    AGGREGATION_TOLERANCE_REL: float = 0.0001  # 0.01% relative tolerance
+    FLOAT_COMPARISON_TOLERANCE: float = 1e-9  # SC-008 floating-point comparison
+
+    # -------------------------------------------------------------------------
+    # Performance Thresholds (SC-005, SC-009, SC-010)
+    # -------------------------------------------------------------------------
+    GET_LATENCY_P95_MS: float = 1.0  # < 1ms for cache hit
+    GET_AGGREGATE_COLD_P95_MS: float = 100.0  # < 100ms cold cache
+    GET_AGGREGATE_WARM_P95_MS: float = 1.0  # < 1ms warm cache
+    LOAD_100X10_SECONDS: float = 5.0  # 100 counties × 10 years
+
+    # Memory limit (SC-006)
+    MEMORY_LIMIT_MB: int = 500  # Peak RSS limit
+
+    # -------------------------------------------------------------------------
+    # Cache Configuration
+    # -------------------------------------------------------------------------
+    LRU_MAXSIZE_DEFAULT: int = 10_000  # Default LRU cache size
+    LRU_MAXSIZE_TEST: int = 100  # Small cache for eviction tests
+
+    # -------------------------------------------------------------------------
+    # BEA Interpolation
+    # -------------------------------------------------------------------------
+    MAX_DELTA_YEARS: int = 5  # Maximum interpolation distance
+
+
+@dataclass(frozen=True)
 class MarxReproductionExamples:
     """Numerical examples from Marx's Capital Volume 2, Chapters 20-21.
 
@@ -1133,6 +1221,9 @@ class Thresholds:
     ImperialCircuit: type[ImperialCircuitDefaults] = ImperialCircuitDefaults
     Phase2: type[Phase2GameLoopDefaults] = Phase2GameLoopDefaults
     ShadowLabor: type[ShadowLaborDefaults] = ShadowLaborDefaults
+
+    # Tensor primitive test constants (Spec 011)
+    Tensor: type[TensorDefaults] = TensorDefaults
 
     # Marxian theory validation constants (Capital Volume 2)
     MarxReproduction: type[MarxReproductionExamples] = MarxReproductionExamples

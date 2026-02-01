@@ -1,0 +1,469 @@
+"""Unit tests for TensorRegistry.
+
+Tests for TensorRegistry that provides cached access to tensor primitives.
+"""
+
+from __future__ import annotations
+
+import pytest
+from tests.constants import TestConstants
+
+from babylon.economics.snlt import SNLTConfig
+from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
+from babylon.economics.tensor_registry import CountyHydrator, GeoLevel, TensorRegistry
+
+TC = TestConstants
+
+
+class TestTensorRegistryBasics:
+    """Tests for basic TensorRegistry functionality."""
+
+    @pytest.fixture
+    def registry(self) -> TensorRegistry:
+        """Create empty registry for tests."""
+        return TensorRegistry()
+
+    @pytest.fixture
+    def sample_tensor(self) -> ValueTensor4x3:
+        """Create sample tensor for tests."""
+        return ValueTensor4x3(
+            fips_code="26163",
+            year=2022,
+            dept_I=DepartmentRow(c=TC.Tensor.DEPT_I_C, v=TC.Tensor.DEPT_I_V, s=TC.Tensor.DEPT_I_S),
+            dept_IIa=DepartmentRow(
+                c=TC.Tensor.DEPT_IIA_C, v=TC.Tensor.DEPT_IIA_V, s=TC.Tensor.DEPT_IIA_S
+            ),
+            dept_IIb=DepartmentRow(
+                c=TC.Tensor.DEPT_IIB_C, v=TC.Tensor.DEPT_IIB_V, s=TC.Tensor.DEPT_IIB_S
+            ),
+            dept_III=DepartmentRow(
+                c=TC.Tensor.DEPT_III_C, v=TC.Tensor.DEPT_III_V, s=TC.Tensor.DEPT_III_S
+            ),
+            naics_granularity=0.85,
+            excluded_wages=5000.0,
+        )
+
+    def test_empty_registry_returns_sentinel(self, registry: TensorRegistry) -> None:
+        """Empty registry returns NoDataSentinel for any query."""
+        result = registry.get("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert not result  # Sentinel is falsy
+        assert "26163" in result.reason
+        assert "not loaded" in result.reason
+
+    def test_put_and_get_tensor(
+        self, registry: TensorRegistry, sample_tensor: ValueTensor4x3
+    ) -> None:
+        """Can store and retrieve a tensor."""
+        registry.put("26163", 2022, sample_tensor)
+        result = registry.get("26163", 2022)
+        assert isinstance(result, ValueTensor4x3)
+        assert result.fips_code == "26163"
+        assert result.year == 2022
+        assert result.dept_I.c == TC.Tensor.DEPT_I_C
+
+    def test_get_returns_cached_instance(
+        self, registry: TensorRegistry, sample_tensor: ValueTensor4x3
+    ) -> None:
+        """get() returns the same cached tensor instance."""
+        registry.put("26163", 2022, sample_tensor)
+        result1 = registry.get("26163", 2022)
+        result2 = registry.get("26163", 2022)
+        # Should be the exact same object (cached)
+        assert result1 is result2
+
+    def test_get_different_year_returns_sentinel(
+        self, registry: TensorRegistry, sample_tensor: ValueTensor4x3
+    ) -> None:
+        """get() with different year returns sentinel."""
+        registry.put("26163", 2022, sample_tensor)
+        result = registry.get("26163", 2021)
+        assert isinstance(result, NoDataSentinel)
+        assert "2021" in result.reason
+
+    def test_get_different_fips_returns_sentinel(
+        self, registry: TensorRegistry, sample_tensor: ValueTensor4x3
+    ) -> None:
+        """get() with different FIPS returns sentinel."""
+        registry.put("26163", 2022, sample_tensor)
+        result = registry.get("99999", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert "99999" in result.reason
+
+
+class TestTensorRegistryYearBoundaries:
+    """Tests for year boundary validation."""
+
+    @pytest.fixture
+    def registry(self) -> TensorRegistry:
+        """Create empty registry for tests."""
+        return TensorRegistry()
+
+    def test_year_too_early_returns_sentinel(self, registry: TensorRegistry) -> None:
+        """Year before MIN_YEAR returns NoDataSentinel."""
+        result = registry.get("26163", TC.Tensor.YEAR_TOO_EARLY)
+        assert isinstance(result, NoDataSentinel)
+        assert "outside available data range" in result.reason
+        assert str(TC.Tensor.MIN_YEAR) in result.reason
+        assert str(TC.Tensor.MAX_YEAR) in result.reason
+
+    def test_year_too_late_returns_sentinel(self, registry: TensorRegistry) -> None:
+        """Year after MAX_YEAR returns NoDataSentinel."""
+        result = registry.get("26163", TC.Tensor.YEAR_TOO_LATE)
+        assert isinstance(result, NoDataSentinel)
+        assert "outside available data range" in result.reason
+
+    def test_year_at_min_boundary_is_valid(self, registry: TensorRegistry) -> None:
+        """Year at MIN_YEAR is accepted (returns sentinel only if not loaded)."""
+        result = registry.get("26163", TC.Tensor.MIN_YEAR)
+        assert isinstance(result, NoDataSentinel)
+        # Should be "not loaded", not "outside range"
+        assert "not loaded" in result.reason
+
+    def test_year_at_max_boundary_is_valid(self, registry: TensorRegistry) -> None:
+        """Year at MAX_YEAR is accepted (returns sentinel only if not loaded)."""
+        result = registry.get("26163", TC.Tensor.MAX_YEAR)
+        assert isinstance(result, NoDataSentinel)
+        assert "not loaded" in result.reason
+
+
+class TestTensorRegistryAvailableYears:
+    """Tests for available_years() method."""
+
+    @pytest.fixture
+    def registry(self) -> TensorRegistry:
+        """Create registry with sample data."""
+        reg = TensorRegistry()
+        for year in [2020, 2021, 2022]:
+            tensor = ValueTensor4x3(
+                fips_code="26163",
+                year=year,
+                dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+                dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+                dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+                dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                naics_granularity=0.85,
+                excluded_wages=1000.0,
+            )
+            reg.put("26163", year, tensor)
+        return reg
+
+    def test_returns_loaded_years(self, registry: TensorRegistry) -> None:
+        """available_years returns set of loaded years."""
+        years = registry.available_years("26163")
+        assert years == frozenset({2020, 2021, 2022})
+
+    def test_returns_empty_for_unknown_fips(self, registry: TensorRegistry) -> None:
+        """available_years returns empty set for unknown FIPS."""
+        years = registry.available_years("99999")
+        assert years == frozenset()
+
+    def test_returns_frozenset(self, registry: TensorRegistry) -> None:
+        """available_years returns immutable frozenset."""
+        years = registry.available_years("26163")
+        assert isinstance(years, frozenset)
+
+
+class TestTensorRegistrySNLTConfig:
+    """Tests for SNLT configuration in registry."""
+
+    def test_default_snlt_config(self) -> None:
+        """Registry uses default SNLT config when none provided."""
+        registry = TensorRegistry()
+        assert registry.snlt_config.default_factor == 1.0
+
+    def test_custom_snlt_config(self) -> None:
+        """Registry accepts custom SNLT config."""
+        snlt = SNLTConfig(factors={2020: 0.95}, default_factor=1.0)
+        registry = TensorRegistry(snlt_config=snlt)
+        assert registry.snlt_config.get_factor(2020) == 0.95
+
+
+class TestTensorRegistryClear:
+    """Tests for cache clearing."""
+
+    def test_clear_removes_all_tensors(self) -> None:
+        """clear() removes all cached tensors."""
+        registry = TensorRegistry()
+        tensor = ValueTensor4x3(
+            fips_code="26163",
+            year=2022,
+            dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+            dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+            dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+            dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+            naics_granularity=0.85,
+            excluded_wages=1000.0,
+        )
+        registry.put("26163", 2022, tensor)
+        assert isinstance(registry.get("26163", 2022), ValueTensor4x3)
+
+        registry.clear()
+        result = registry.get("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+
+    def test_clear_resets_cache_info(self) -> None:
+        """clear() resets cache statistics."""
+        registry = TensorRegistry()
+        tensor = ValueTensor4x3(
+            fips_code="26163",
+            year=2022,
+            dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+            dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+            dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+            dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+            naics_granularity=0.85,
+            excluded_wages=1000.0,
+        )
+        registry.put("26163", 2022, tensor)
+        assert registry.cache_info()["county_count"] == 1
+
+        registry.clear()
+        assert registry.cache_info()["county_count"] == 0
+
+
+class TestTensorRegistryAggregation:
+    """Tests for geographic aggregation."""
+
+    @pytest.fixture
+    def registry_with_state(self) -> TensorRegistry:
+        """Create registry with multiple counties in Michigan (26)."""
+        reg = TensorRegistry()
+        # Wayne County (Detroit)
+        reg.put(
+            "26163",
+            2022,
+            ValueTensor4x3(
+                fips_code="26163",
+                year=2022,
+                dept_I=DepartmentRow(c=1000.0, v=500.0, s=500.0),
+                dept_IIa=DepartmentRow(c=800.0, v=400.0, s=400.0),
+                dept_IIb=DepartmentRow(c=600.0, v=300.0, s=300.0),
+                dept_III=DepartmentRow(c=400.0, v=200.0, s=200.0),
+                naics_granularity=0.9,
+                excluded_wages=10000.0,
+            ),
+        )
+        # Oakland County
+        reg.put(
+            "26125",
+            2022,
+            ValueTensor4x3(
+                fips_code="26125",
+                year=2022,
+                dept_I=DepartmentRow(c=500.0, v=250.0, s=250.0),
+                dept_IIa=DepartmentRow(c=400.0, v=200.0, s=200.0),
+                dept_IIb=DepartmentRow(c=300.0, v=150.0, s=150.0),
+                dept_III=DepartmentRow(c=200.0, v=100.0, s=100.0),
+                naics_granularity=0.8,
+                excluded_wages=5000.0,
+            ),
+        )
+        # Macomb County
+        reg.put(
+            "26099",
+            2022,
+            ValueTensor4x3(
+                fips_code="26099",
+                year=2022,
+                dept_I=DepartmentRow(c=300.0, v=150.0, s=150.0),
+                dept_IIa=DepartmentRow(c=240.0, v=120.0, s=120.0),
+                dept_IIb=DepartmentRow(c=180.0, v=90.0, s=90.0),
+                dept_III=DepartmentRow(c=120.0, v=60.0, s=60.0),
+                naics_granularity=0.85,
+                excluded_wages=3000.0,
+            ),
+        )
+        return reg
+
+    def test_state_aggregate_sums_counties(self, registry_with_state: TensorRegistry) -> None:
+        """State aggregate sums all county values."""
+        result = registry_with_state.get_aggregate(GeoLevel.STATE, "26", 2022)
+        assert isinstance(result, ValueTensor4x3)
+
+        # Dept I c: 1000 + 500 + 300 = 1800
+        assert result.dept_I.c == pytest.approx(1800.0)
+        # Dept I v: 500 + 250 + 150 = 900
+        assert result.dept_I.v == pytest.approx(900.0)
+        # excluded_wages: 10000 + 5000 + 3000 = 18000
+        assert result.excluded_wages == pytest.approx(18000.0)
+
+    def test_state_aggregate_no_counties_returns_sentinel(self) -> None:
+        """State with no loaded counties returns sentinel."""
+        registry = TensorRegistry()
+        result = registry.get_aggregate(GeoLevel.STATE, "99", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert "No counties found" in result.reason or "No county data" in result.reason
+
+    def test_aggregate_year_outside_range_returns_sentinel(
+        self, registry_with_state: TensorRegistry
+    ) -> None:
+        """Aggregate with year outside range returns sentinel."""
+        result = registry_with_state.get_aggregate(GeoLevel.STATE, "26", 1990)
+        assert isinstance(result, NoDataSentinel)
+        assert "outside available data range" in result.reason
+
+    def test_aggregate_cached_on_second_call(self, registry_with_state: TensorRegistry) -> None:
+        """Aggregate is cached after first computation."""
+        # First call computes
+        _ = registry_with_state.get_aggregate(GeoLevel.STATE, "26", 2022)
+        info1 = registry_with_state.cache_info()
+
+        # Second call hits cache
+        _ = registry_with_state.get_aggregate(GeoLevel.STATE, "26", 2022)
+        info2 = registry_with_state.cache_info()
+
+        assert info2["aggregate_hits"] > info1["aggregate_hits"]
+
+    def test_nation_aggregate_sums_all_counties(self, registry_with_state: TensorRegistry) -> None:
+        """Nation aggregate sums all loaded counties."""
+        result = registry_with_state.get_aggregate(GeoLevel.NATION, "US", 2022)
+        assert isinstance(result, ValueTensor4x3)
+        # Same as state since all counties are in Michigan
+        assert result.dept_I.c == pytest.approx(1800.0)
+
+
+class TestTensorRegistryCacheInvalidation:
+    """Tests for cache invalidation when data changes."""
+
+    def test_put_invalidates_aggregate_cache(self) -> None:
+        """put() invalidates aggregate cache."""
+        registry = TensorRegistry()
+
+        # Add county and compute aggregate
+        registry.put(
+            "26163",
+            2022,
+            ValueTensor4x3(
+                fips_code="26163",
+                year=2022,
+                dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+                dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+                dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+                dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                naics_granularity=0.85,
+                excluded_wages=1000.0,
+            ),
+        )
+        result1 = registry.get_aggregate(GeoLevel.STATE, "26", 2022)
+        assert isinstance(result1, ValueTensor4x3)
+        assert result1.dept_I.c == pytest.approx(100.0)
+
+        # Add another county - should invalidate cache
+        registry.put(
+            "26125",
+            2022,
+            ValueTensor4x3(
+                fips_code="26125",
+                year=2022,
+                dept_I=DepartmentRow(c=50.0, v=25.0, s=25.0),
+                dept_IIa=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                dept_IIb=DepartmentRow(c=30.0, v=15.0, s=15.0),
+                dept_III=DepartmentRow(c=20.0, v=10.0, s=10.0),
+                naics_granularity=0.8,
+                excluded_wages=500.0,
+            ),
+        )
+
+        # Aggregate should now include both counties
+        result2 = registry.get_aggregate(GeoLevel.STATE, "26", 2022)
+        assert isinstance(result2, ValueTensor4x3)
+        assert result2.dept_I.c == pytest.approx(150.0)  # 100 + 50
+
+
+class TestTensorRegistryHydrateCounties:
+    """Tests for hydrate_counties() method."""
+
+    def test_hydrate_counties_loads_multiple_tensors(self) -> None:
+        """hydrate_counties() loads tensors for all fips/year combinations."""
+        registry = TensorRegistry()
+
+        # Create a mock hydrator
+        class MockHydrator:
+            def hydrate(self, fips: str, year: int) -> ValueTensor4x3:
+                return ValueTensor4x3(
+                    fips_code=fips,
+                    year=year,
+                    dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+                    dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+                    dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+                    dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                    naics_granularity=0.85,
+                    excluded_wages=1000.0,
+                )
+
+        hydrator = MockHydrator()
+        assert isinstance(hydrator, CountyHydrator)  # Verify protocol compliance
+
+        registry.hydrate_counties(hydrator, ["26163", "26125"], [2020, 2021])
+
+        # Verify all combinations were loaded
+        assert isinstance(registry.get("26163", 2020), ValueTensor4x3)
+        assert isinstance(registry.get("26163", 2021), ValueTensor4x3)
+        assert isinstance(registry.get("26125", 2020), ValueTensor4x3)
+        assert isinstance(registry.get("26125", 2021), ValueTensor4x3)
+
+        # Verify cache info
+        assert registry.cache_info()["county_count"] == 4
+
+    def test_hydrate_counties_skips_invalid_years(self) -> None:
+        """hydrate_counties() skips years outside valid range."""
+        registry = TensorRegistry()
+
+        class MockHydrator:
+            def __init__(self) -> None:
+                self.call_count = 0
+
+            def hydrate(self, fips: str, year: int) -> ValueTensor4x3:
+                self.call_count += 1
+                return ValueTensor4x3(
+                    fips_code=fips,
+                    year=year,
+                    dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+                    dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+                    dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+                    dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                    naics_granularity=0.85,
+                    excluded_wages=1000.0,
+                )
+
+        hydrator = MockHydrator()
+
+        # Include years outside valid range (2010-2025)
+        registry.hydrate_counties(hydrator, ["26163"], [2005, 2020, 2030])
+
+        # Only 2020 should be loaded
+        assert hydrator.call_count == 1
+        assert isinstance(registry.get("26163", 2020), ValueTensor4x3)
+
+    def test_hydrate_counties_stores_sentinel_on_failure(self) -> None:
+        """hydrate_counties() stores NoDataSentinel when hydration fails."""
+        registry = TensorRegistry()
+
+        class FailingHydrator:
+            def hydrate(self, fips: str, year: int) -> ValueTensor4x3:
+                if fips == "99999":
+                    msg = "No QCEW data"
+                    raise ValueError(msg)
+                return ValueTensor4x3(
+                    fips_code=fips,
+                    year=year,
+                    dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+                    dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+                    dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+                    dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                    naics_granularity=0.85,
+                    excluded_wages=1000.0,
+                )
+
+        hydrator = FailingHydrator()
+        registry.hydrate_counties(hydrator, ["26163", "99999"], [2020])
+
+        # 26163 should succeed
+        result_ok = registry.get("26163", 2020)
+        assert isinstance(result_ok, ValueTensor4x3)
+
+        # 99999 should have a sentinel (from failed hydration)
+        result_fail = registry.get("99999", 2020)
+        assert isinstance(result_fail, NoDataSentinel)
+        assert "No QCEW data" in result_fail.reason

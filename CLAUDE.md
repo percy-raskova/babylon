@@ -655,6 +655,8 @@ ADR0XX_descriptive_name:
 - SQLite (marxist-data-3NF.sqlite for reference data) (009-data-preflight)
 - Python 3.12+ + NetworkX 3.x, Pydantic 2.x (no new dependencies) (010-cleanup-tech-debt)
 - N/A (no storage changes) (010-cleanup-tech-debt)
+- Python 3.12+ (existing stack) + Pydantic 2.x (validation), NumPy (tensor ops), SQLAlchemy 2.x (ORM) (011-fundamental-tensor-primitive)
+- SQLite (`marxist-data-3NF.sqlite` for source data; in-memory tensor cache) (011-fundamental-tensor-primitive)
 
 ## Recent Changes
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

@@ -28,7 +28,9 @@ from babylon.economics.reproduction import (
     ImperialRentCalculator,
     ImperialRentResult,
 )
+from babylon.economics.snlt import DEFAULT_SNLT_CONFIG, SNLTConfig
 from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
+from babylon.models.types import LaborHours
 
 
 class MarxianHydrator:
@@ -69,6 +71,7 @@ class MarxianHydrator:
         bea_source: BEADataSource,
         dept_mapper: DepartmentMapper,
         rent_calculator: ImperialRentCalculator | None = None,
+        snlt_config: SNLTConfig | None = None,
     ) -> None:
         """Initialize the hydrator with data sources and mapper.
 
@@ -78,27 +81,42 @@ class MarxianHydrator:
             dept_mapper: NAICS-to-department mapper with default ratios.
             rent_calculator: Optional imperial rent calculator. Required for
                 hydrate_with_rent() method.
+            snlt_config: Year-specific SNLT conversion factors. Defaults to
+                DEFAULT_SNLT_CONFIG (factor 1.0 = wage-proportional proxy).
         """
         self._qcew_source = qcew_source
         self._bea_source = bea_source
         self._dept_mapper = dept_mapper
         self._rent_calculator = rent_calculator
+        self._snlt_config = snlt_config or DEFAULT_SNLT_CONFIG
 
     def hydrate(self, fips_code: str, year: int) -> ValueTensor4x3:
-        """Transform QCEW data into a Marxian value tensor.
+        """Transform QCEW data into a Marxian value tensor with labor-hours.
 
         This is the main transformation method. It is a pure function:
         given the same inputs and data sources, it produces the same output.
+
+        The method applies SNLT (Socially Necessary Labor Time) conversion
+        to transform monetary wages into labor-hours:
+            labor_hours = wages × snlt_factor
+
+        Until SNLT conversion is fully calibrated, the default factor is 1.0,
+        meaning tensor values represent wage-proportional labor-time proxies.
+        Derived ratios (r, e, OCC) are exact; absolute magnitudes require
+        SNLT calibration.
 
         Args:
             fips_code: 5-digit FIPS county code.
             year: Data year.
 
         Returns:
-            ValueTensor4x3 with c, v, s for each department.
+            ValueTensor4x3 with c, v, s for each department in LaborHours.
         """
         # Step 1: Fetch QCEW wages by NAICS
         qcew_records = self._qcew_source.fetch_county_wages(fips_code, year)
+
+        # Get SNLT conversion factor for this year
+        snlt_factor = self._snlt_config.get_factor(year)
 
         # Step 2 & 3: Allocate wages to departments, tracking exclusions
         dept_wages: dict[Department, float] = dict.fromkeys(Department, 0.0)
@@ -124,20 +142,27 @@ class MarxianHydrator:
                     granular_wages += wages
 
         # Step 4: Compute c and s for each department using ratios
+        # Apply SNLT conversion: labor_hours = wages × snlt_factor
         dept_rows: dict[Department, DepartmentRow] = {}
 
         for dept in Department:
-            v = dept_wages[dept]
+            # v in monetary terms
+            v_money = dept_wages[dept]
 
             # Get weighted ratios from BEA or fall back to defaults
             sv_ratio = self._get_dept_sv_ratio(dept, qcew_records, year)
             cv_ratio = self._get_dept_cv_ratio(dept, qcew_records, year)
 
-            # Compute s and c from v and ratios
-            s = v * sv_ratio
-            c = v * cv_ratio
+            # Compute s and c in monetary terms
+            s_money = v_money * sv_ratio
+            c_money = v_money * cv_ratio
 
-            dept_rows[dept] = DepartmentRow(c=c, v=v, s=s)
+            # Convert to labor-hours via SNLT
+            c_hours = LaborHours(c_money * snlt_factor)
+            v_hours = LaborHours(v_money * snlt_factor)
+            s_hours = LaborHours(s_money * snlt_factor)
+
+            dept_rows[dept] = DepartmentRow(c=c_hours, v=v_hours, s=s_hours)
 
         # Step 5: Compute naics_granularity metric
         allocated_wages = total_wages - excluded_wages
@@ -146,7 +171,9 @@ class MarxianHydrator:
         # Clamp to [0, 1] for safety
         naics_granularity = max(0.0, min(1.0, naics_granularity))
 
-        # Step 6: Return immutable tensor
+        # Step 6: Convert excluded wages to labor-hours and return tensor
+        excluded_hours = LaborHours(excluded_wages * snlt_factor)
+
         return ValueTensor4x3(
             fips_code=fips_code,
             year=year,
@@ -155,7 +182,7 @@ class MarxianHydrator:
             dept_IIb=dept_rows[Department.IIb],
             dept_III=dept_rows[Department.III],
             naics_granularity=naics_granularity,
-            excluded_wages=excluded_wages,
+            excluded_wages=excluded_hours,
         )
 
     def hydrate_with_rent(self, fips_code: str, year: int) -> ImperialRentResult:

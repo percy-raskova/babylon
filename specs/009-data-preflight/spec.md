@@ -21,7 +21,11 @@ A user attempts to run the Detroit scenario simulation but is missing required d
 
 2. **Given** a user with missing TIGER shapefiles, **When** they run any geography-dependent simulation, **Then** they receive a report listing the missing shapefile path and Census Bureau download URL.
 
-3. **Given** a user with all required Detroit data present, **When** they start the Detroit scenario, **Then** preflight passes silently and simulation starts normally.
+3. **Given** a user with all required Detroit data present, **When** they start the Detroit scenario, **Then** preflight passes silently (no stdout output) and simulation starts normally.
+
+4. **Given** a user with missing QCEW files, **When** they start the Detroit scenario, **Then** they receive a report listing "QCEW: No CSV files found in data/qcew" with a BLS download hint.
+
+5. **Given** a user without CENSUS_API_KEY set, **When** they start the Detroit scenario, **Then** they receive a warning (not failure) noting the key is optional but recommended.
 
 ______________________________________________________________________
 
@@ -66,8 +70,10 @@ ______________________________________________________________________
 - **Empty files (0 bytes)**: Treated as failures; report "File exists but is empty" with re-download hint.
 - **Git LFS pointer files**: Treated as failures; report with `git lfs pull` instructions (FR-009).
 - **Unset API keys for optional loaders**: Treated as warnings; simulation may proceed with reduced functionality.
-- **Incompatible version/format**: Treated as failures; report expected format and version requirements.
+- **Incompatible version/format**: Deferred to loader. Preflight only checks existence, non-empty size, and LFS status. Format validation occurs during load().
 - **Year range exceeds data coverage**: Report partial coverage as warning; fail only if zero years available.
+- **Read permission errors**: Treated as failures; report with hint "Check file permissions: chmod +r <path>".
+- **Corrupted files (non-empty but invalid content)**: Deferred to loader. Preflight validates file presence/size/LFS only; content validation is loader responsibility.
 
 ## Requirements *(mandatory)*
 
@@ -96,11 +102,14 @@ ______________________________________________________________________
 ### Measurable Outcomes
 
 - **SC-001**: Users attempting to run Detroit scenario without required data receive a complete missing data report in under 5 seconds.
+  - *Test methodology*: Cold start (no Python cache), standard SSD, Detroit scenario with 4 data sources, measured via `time python -m babylon`.
 - **SC-002**: Preflight correctly identifies 100% of required files for the Detroit scenario (QCEW, LODES, ACS, TIGER for 3 counties, 2010-2025).
 - **SC-003**: New loaders can integrate with preflight by implementing a single-method protocol.
 - **SC-004**: Zero simulation crashes due to missing data files after preflight passes.
+  - *Test methodology*: Integration test runs Detroit simulation with all data present; verifies simulation completes first tick without FileNotFoundError.
 - **SC-005**: Preflight report includes actionable hints with download URLs for each missing data source.
 - **SC-006**: All existing preflight tests continue to pass (zero regressions).
+  - *Baseline*: Run `pytest tests/unit/data/test_preflight.py -v --collect-only` before implementation to establish test count.
 
 ## Clarifications
 
@@ -108,6 +117,25 @@ ______________________________________________________________________
 
 - Q: How should loaders be discovered by the preflight system? → A: Explicit registration (whitelist of loader classes in preflight.py)
 - Q: How should empty or corrupt data files be handled? → A: Treat as failures (same as missing - block simulation start)
+
+### Session 2026-02-01 (Checklist Review)
+
+- Q: Should QCEW implement VerificationProtocol? → A: No. Existing `_check_qcew()` function is sufficient. `run_scenario_preflight()` calls both protocol-based loaders AND existing `_check_*` functions.
+- Q: What does "silently" mean in Story 1 Scenario 3? → A: No stdout output when preflight passes (ok=True). Logging at DEBUG level is acceptable.
+- Q: Should preflight support JSON output? → A: Excluded from MVP. Console output only. PreflightResult.to_dict() exists for programmatic access.
+- Q: How to handle corrupted (non-empty but invalid) files? → A: Preflight checks existence/size/LFS only. Content validation deferred to loader's load() method.
+- Q: How to handle read permission errors? → A: Treat as failure with hint "Check file permissions".
+
+### MVP Scope Exclusions
+
+The following are explicitly **excluded from MVP scope**:
+
+- **Interrupt handling (Ctrl+C)**: Default Python behavior (raise KeyboardInterrupt)
+- **Retry logic for transient network errors**: Single attempt; fail on error
+- **Download URL validation**: Hints are static strings, not validated
+- **Logging/observability configuration**: Use existing logger; no new requirements
+- **Error message localization (i18n)**: English only
+- **Thread safety/concurrent execution**: Preflight runs sequentially, single-threaded
 
 ## Assumptions
 

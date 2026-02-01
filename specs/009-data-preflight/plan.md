@@ -1,6 +1,6 @@
 # Implementation Plan: Data Preflight & Loader Unification
 
-**Branch**: `009-data-preflight` | **Date**: 2026-01-31 | **Spec**: [spec.md](./spec.md)
+**Branch**: `009-data-preflight` | **Date**: 2026-02-01 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/009-data-preflight/spec.md`
 
 ## Summary
@@ -491,6 +491,7 @@ SCENARIOS: dict[str, ScenarioDataConfig] = {
 | **Target File** | `src/babylon/data/preflight.py` |
 | **Insert Location** | After `run_preflight()` function (after line 477) |
 | **Relationship** | Calls existing `run_preflight()` + invokes VerificationProtocol on each loader |
+| **QCEW Handling** | Uses existing `_check_qcew()` (not VerificationProtocol) per clarification |
 
 **Code to Add**:
 ```python
@@ -562,6 +563,7 @@ def run_scenario_preflight(
 | **Target File** | `src/babylon/__main__.py` |
 | **Insert Location** | At start of `main()` function (after line 32) |
 | **Exit Code** | `sys.exit(1)` on preflight failure (FR-010) |
+| **Silent Success** | No stdout when ok=True (per clarification) |
 | **Spec Reference** | [spec.md FR-005](./spec.md) - entry point integration |
 
 **Code to Add** (insert at line 33):
@@ -595,7 +597,7 @@ def main() -> None:
 
 **Verification**:
 - With missing data: simulation exits with code 1 and prints report
-- With all data present: simulation starts normally
+- With all data present: simulation starts normally (no stdout from preflight)
 
 ---
 
@@ -607,6 +609,12 @@ def main() -> None:
 |-----------|---------|----------------|
 | `tests/unit/data/test_preflight.py` | Unit tests for VerificationProtocol | [spec.md SC-003](./spec.md) |
 | `tests/integration/data/test_preflight_detroit.py` | Detroit scenario integration | [spec.md SC-002](./spec.md) |
+
+**Baseline Establishment** (run before implementation):
+```bash
+pytest tests/unit/data/test_preflight.py -v --collect-only
+# Record test count for SC-006 regression check
+```
 
 **Unit Test Cases** (from [spec.md Acceptance Scenarios](./spec.md)):
 
@@ -641,13 +649,25 @@ def test_census_loader_lfs_pointer(tmp_path):
     assert lfs_check.status == "fail"
     assert "git lfs pull" in lfs_check.hint
 
+def test_census_loader_missing_api_key(tmp_path, monkeypatch):
+    """Story 1, Scenario 5: Missing API key is warning, not failure."""
+    monkeypatch.delenv("CENSUS_API_KEY", raising=False)
+    # Set up valid CBSA file
+    cbsa = tmp_path / "census/cbsa_delineation_2023.xlsx"
+    cbsa.parent.mkdir(parents=True)
+    cbsa.write_bytes(b"valid xlsx content...")
+    loader = CensusLoader()
+    checks = loader.check_source_files(tmp_path)
+    api_check = next(c for c in checks if "api_key" in c.check_id)
+    assert api_check.status == "warn"
+
 def test_scenario_preflight_detroit_all_present(detroit_data_fixture):
     """Story 3: Detroit scenario with all data passes."""
     result = run_scenario_preflight("detroit", base_dir=detroit_data_fixture)
     assert result.ok
 ```
 
-**Integration Test Cases**:
+**Integration Test Cases** (SC-004 crash prevention):
 
 ```python
 # tests/integration/data/test_preflight_detroit.py
@@ -666,6 +686,21 @@ def test_detroit_partial_data_reports_mixed_results(tmp_path):
     result = run_scenario_preflight("detroit", base_dir=tmp_path)
     assert not result.ok
     assert len(result.failures) > 0
+
+def test_detroit_simulation_runs_after_preflight_passes(detroit_data_fixture):
+    """SC-004: Zero crashes after preflight passes."""
+    from babylon.engine.simulation import Simulation
+    from babylon.engine.scenarios import create_two_node_scenario
+
+    # Preflight passes
+    result = run_scenario_preflight("detroit", base_dir=detroit_data_fixture)
+    assert result.ok
+
+    # Simulation runs first tick without FileNotFoundError
+    initial_state, config, _defines = create_two_node_scenario()
+    sim = Simulation(initial_state=initial_state, config=config)
+    sim.step()  # Should not raise
+    assert sim.current_state.tick == 1
 ```
 
 **Verification**:
@@ -675,14 +710,37 @@ def test_detroit_partial_data_reports_mixed_results(tmp_path):
 
 ---
 
+## Checklist Gap Resolutions
+
+The following gaps from the release-gate checklist have been addressed:
+
+| CHK | Gap | Resolution |
+|-----|-----|------------|
+| CHK014 | JSON output not specified | Spec updated: "Console only for MVP; PreflightResult.to_dict() for programmatic access" |
+| CHK020 | QCEW not in FR-002 loaders | Spec updated: "Existing _check_qcew() is sufficient; run_scenario_preflight calls both" |
+| CHK021/CHK044 | Performance test methodology | Spec updated: "Cold start, standard SSD, Detroit scenario, measured via time command" |
+| CHK024 | Crash scenarios not defined | Test case added: test_detroit_simulation_runs_after_preflight_passes |
+| CHK026 | No baseline test count | Step 6 now includes baseline establishment command |
+| CHK028 | Story 1 missing examples | Spec updated: Added QCEW and ACS scenarios (4 and 5) |
+| CHK031 | "Silently" ambiguous | Spec updated: "No stdout output when ok=True" |
+| CHK035 | Version/format detection undefined | Spec updated: "Deferred to loader; preflight checks existence/size/LFS only" |
+| CHK037 | Corrupted files not handled | Spec updated: "Content validation is loader responsibility" |
+| CHK038 | Permission errors not handled | Spec updated: "Report as fail with hint: check file permissions" |
+| CHK040-CHK042 | Interrupt/retry/URL gaps | Spec updated: "Explicitly excluded from MVP scope" |
+| CHK045-CHK047 | Logging/i18n/threading gaps | Spec updated: "Explicitly excluded from MVP scope" |
+| CHK054 | NFR traceability gap | SC-001 and SC-006 are NFRs; no FR mapping needed |
+
+---
+
 ## Risk Assessment
 
 | Risk | Mitigation |
 |------|------------|
-| Breaking existing preflight tests | Run `test_preflight.py` after each change |
+| Breaking existing preflight tests | Run `test_preflight.py` after each change; establish baseline first |
 | False positives (files exist but wrong format) | Add file size > 0 check; leave format validation for loader |
 | Git LFS detection edge cases | Reuse existing `_is_lfs_pointer()` pattern |
 | Performance overhead | Preflight is I/O bound on file existence checks; <5s is achievable |
+| QCEW not using VerificationProtocol | Documented in clarifications; existing _check_qcew() remains |
 
 ## Exit Criteria
 
@@ -692,3 +750,4 @@ def test_detroit_partial_data_reports_mixed_results(tmp_path):
 - [ ] Entry point integration blocks simulation on preflight failure
 - [ ] All existing tests pass (SC-006)
 - [ ] New integration tests for Detroit scenario
+- [ ] All checklist gaps addressed in spec clarifications

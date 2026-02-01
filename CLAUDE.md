@@ -651,6 +651,8 @@ ADR0XX_descriptive_name:
 - N/A (in-memory protocols, no persistence changes) (006-gui-protocol-extension)
 - Python 3.12+ + Pydantic 2.x, NetworkX 3.x, SQLAlchemy 2.x (existing stack) (008-infrastructure-hardening)
 - In-memory (MetricsCollector stores data in dicts, no persistence layer used currently) (008-infrastructure-hardening)
+- Python 3.12+ + Pydantic 2.x (validation), SQLAlchemy 2.x (ORM), typer (CLI), tqdm (progress) (009-data-preflight)
+- SQLite (marxist-data-3NF.sqlite for reference data) (009-data-preflight)
 
 ## Recent Changes
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

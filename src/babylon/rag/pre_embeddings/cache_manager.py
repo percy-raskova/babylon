@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from babylon.metrics.collector import MetricsCollector
+from babylon.metrics.interfaces import MetricsCollectorProtocol
 from babylon.rag.exceptions import CacheError
 
 
@@ -41,14 +41,26 @@ class EmbeddingCacheManager:
     with support for LRU eviction, persistence, and metrics collection.
     """
 
-    def __init__(self, config: CacheConfig | None = None):
+    def __init__(
+        self,
+        config: CacheConfig | None = None,
+        metrics: MetricsCollectorProtocol | None = None,
+    ):
         """Initialize with configuration options.
 
         Args:
             config: Configuration for cache behavior
+            metrics: Optional metrics collector for DI (default: creates new MetricsCollector)
         """
         self.config = config or CacheConfig()
-        self.metrics = MetricsCollector()
+
+        # Initialize metrics collector via DI (Spec 008)
+        if metrics is None:
+            from babylon.metrics.collector import MetricsCollector
+
+            metrics = MetricsCollector()
+        self.metrics = metrics
+
         self.cache: dict[str, list[float]] = OrderedDict()
 
         if self.config.persist_cache:

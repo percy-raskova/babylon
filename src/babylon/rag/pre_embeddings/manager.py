@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from babylon.metrics.collector import MetricsCollector
+from babylon.metrics.interfaces import MetricsCollectorProtocol
 from babylon.rag.exceptions import PreEmbeddingError
 from babylon.rag.pre_embeddings.cache_manager import CacheConfig, EmbeddingCacheManager
 from babylon.rag.pre_embeddings.chunking import ChunkingConfig, ChunkingStrategy
@@ -46,6 +46,7 @@ class PreEmbeddingsManager:
         chunker: ChunkingStrategy | None = None,
         cache_manager: EmbeddingCacheManager | None = None,
         lifecycle_manager: Any | None = None,
+        metrics: MetricsCollectorProtocol | None = None,
     ):
         """Initialize with configuration and optional component instances.
 
@@ -55,6 +56,7 @@ class PreEmbeddingsManager:
             chunker: Custom chunker instance
             cache_manager: Custom cache manager instance
             lifecycle_manager: Lifecycle manager for object state tracking
+            metrics: Optional metrics collector for DI (default: creates new MetricsCollector)
         """
         self.config = config or PreEmbeddingsConfig()
 
@@ -64,7 +66,12 @@ class PreEmbeddingsManager:
 
         self.lifecycle_manager = lifecycle_manager
 
-        self.metrics = MetricsCollector()
+        # Initialize metrics collector via DI (Spec 008)
+        if metrics is None:
+            from babylon.metrics.collector import MetricsCollector
+
+            metrics = MetricsCollector()
+        self.metrics = metrics
 
     def process_content(self, content: str) -> list[dict[str, Any]]:
         """Process a single content item through the pre-embeddings pipeline.

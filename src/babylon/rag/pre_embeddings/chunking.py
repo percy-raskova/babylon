@@ -8,7 +8,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from babylon.metrics.collector import MetricsCollector
+from babylon.metrics.interfaces import MetricsCollectorProtocol
 from babylon.rag.exceptions import ChunkingError
 
 
@@ -41,14 +41,25 @@ class ChunkingStrategy:
     chunking and semantic chunking based on content structure.
     """
 
-    def __init__(self, config: ChunkingConfig | None = None):
+    def __init__(
+        self,
+        config: ChunkingConfig | None = None,
+        metrics: MetricsCollectorProtocol | None = None,
+    ):
         """Initialize with configuration options.
 
         Args:
             config: Configuration for chunking behavior
+            metrics: Optional metrics collector for DI (default: creates new MetricsCollector)
         """
         self.config = config or ChunkingConfig()
-        self.metrics = MetricsCollector()
+
+        # Initialize metrics collector via DI (Spec 008)
+        if metrics is None:
+            from babylon.metrics.collector import MetricsCollector
+
+            metrics = MetricsCollector()
+        self.metrics = metrics
 
     def chunk(self, content: str) -> list[str]:
         """Divide content into chunks based on configured strategy.

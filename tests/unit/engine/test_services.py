@@ -157,3 +157,97 @@ class TestServiceContainer:
             assert "memory" in str(container.database._engine.url)
         finally:
             container.database.close()
+
+    # =========================================================================
+    # Infrastructure Hardening (Spec 008) - Metrics DI Tests
+    # =========================================================================
+
+    def test_metrics_returns_valid_collector(self) -> None:
+        """T009: ServiceContainer.create().metrics returns valid collector.
+
+        SC-001: The metrics field must return a valid MetricsCollectorProtocol
+        implementation that can record metrics.
+        """
+        from babylon.engine.services import ServiceContainer
+
+        container = ServiceContainer.create()
+
+        try:
+            # Should have a metrics field
+            assert hasattr(container, "metrics")
+            assert container.metrics is not None
+
+            # Should implement the protocol (duck typing check)
+            assert hasattr(container.metrics, "record")
+            assert hasattr(container.metrics, "increment")
+            assert hasattr(container.metrics, "gauge")
+            assert hasattr(container.metrics, "time")
+            assert hasattr(container.metrics, "summary")
+            assert hasattr(container.metrics, "clear")
+
+            # Should be callable
+            container.metrics.increment("test_counter")
+            container.metrics.record("test_metric", 42.0)
+            summary = container.metrics.summary()
+            assert "counters" in summary
+        finally:
+            container.database.close()
+
+    def test_two_containers_have_independent_metrics(self) -> None:
+        """T010: Two containers have independent metrics (no shared state).
+
+        SC-002: Creating two ServiceContainer instances results in two
+        independent metrics collectors with no shared state.
+        """
+        from babylon.engine.services import ServiceContainer
+
+        container1 = ServiceContainer.create()
+        container2 = ServiceContainer.create()
+
+        try:
+            # Record to container1 only
+            container1.metrics.increment("test_counter", 5)
+            container1.metrics.record("test_metric", 100.0)
+
+            # Container2 should have independent state
+            container2.metrics.increment("test_counter", 1)
+
+            # Verify independence
+            summary1 = container1.metrics.summary()
+            summary2 = container2.metrics.summary()
+
+            assert summary1["counters"].get("test_counter", 0) == 5
+            assert summary2["counters"].get("test_counter", 0) == 1
+
+            # They should be different objects
+            assert container1.metrics is not container2.metrics
+        finally:
+            container1.database.close()
+            container2.database.close()
+
+    def test_mock_metrics_injection_works(self) -> None:
+        """T011: Mock metrics injection works for testing.
+
+        SC-001 (testing): The container should accept a custom metrics
+        implementation for test injection.
+        """
+        from unittest.mock import MagicMock
+
+        from babylon.engine.services import ServiceContainer
+        from babylon.metrics.interfaces import MetricsCollectorProtocol
+
+        # Create a mock that satisfies the protocol
+        mock_metrics = MagicMock(spec=MetricsCollectorProtocol)
+        mock_metrics.summary.return_value = {"counters": {}, "gauges": {}}
+
+        container = ServiceContainer.create(metrics=mock_metrics)
+
+        try:
+            # Should use our mock
+            assert container.metrics is mock_metrics
+
+            # Should be callable
+            container.metrics.increment("test")
+            mock_metrics.increment.assert_called_once_with("test")
+        finally:
+            container.database.close()

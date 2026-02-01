@@ -19,7 +19,7 @@ import backoff
 from ratelimit import limits, sleep_and_retry
 
 from babylon.config.llm_config import LLMConfig
-from babylon.metrics.collector import MetricsCollector
+from babylon.metrics.interfaces import MetricsCollectorProtocol
 from babylon.rag.exceptions import RagError
 
 logger = logging.getLogger(__name__)
@@ -64,6 +64,7 @@ class EmbeddingManager:
         batch_size: int | None = None,
         max_cache_size: int = 1000,
         max_concurrent_requests: int = 4,
+        metrics: MetricsCollectorProtocol | None = None,
     ):
         """Initialize the embedding manager.
 
@@ -72,12 +73,20 @@ class EmbeddingManager:
             batch_size: Number of objects to embed in each batch (default: from LLMConfig)
             max_cache_size: Maximum number of embeddings to keep in cache (default: 1000)
             max_concurrent_requests: Maximum number of concurrent embedding requests (default: 4)
+            metrics: Optional metrics collector for DI (default: creates new MetricsCollector)
 
         Raises:
             ValueError: If embedding configuration is invalid
         """
         # Validate embedding configuration
         LLMConfig.validate_embeddings()
+
+        # Initialize metrics collector via DI (Spec 008)
+        if metrics is None:
+            from babylon.metrics.collector import MetricsCollector
+
+            metrics = MetricsCollector()
+        self.metrics = metrics
 
         # Custom dimensions must match the model's output
         if (
@@ -109,9 +118,6 @@ class EmbeddingManager:
 
         # HTTP sessions per event loop (aiohttp.ClientSession is also loop-bound)
         self._sessions: dict[asyncio.AbstractEventLoop, aiohttp.ClientSession] = {}
-
-        # Initialize metrics collector
-        self.metrics = MetricsCollector()
 
         # Record initialization metrics
         provider = "ollama" if self._is_ollama else "openai"

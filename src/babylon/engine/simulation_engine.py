@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from babylon.config.defines import GameDefines
 from babylon.engine.context import TickContext
@@ -72,6 +73,7 @@ from babylon.models.events import (
     UprisingEvent,
 )
 from babylon.models.world_state import WorldState
+from babylon.utils.log import log_context_scope
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -120,13 +122,32 @@ class SimulationEngine:
     ) -> None:
         """Execute all systems in order for one tick.
 
+        All logs emitted during this method are automatically tagged with
+        tick number and a unique correlation_id (UUID) for tracing.
+
         Args:
             graph: NetworkX graph (mutated in place by systems)
-            services: ServiceContainer with config, formulas, event_bus, database
+            services: ServiceContainer with config, formulas, event_bus, database, metrics
             context: TickContext or dict passed to all systems
+
+        Spec 008: Logs within run_tick() include tick and correlation_id.
         """
-        for system in self._systems:
-            system.step(graph, services, context)
+        # T025: Extract tick number from context with fallback to 0
+        tick: int
+        if hasattr(context, "tick"):
+            tick = context.tick  # TickContext has .tick attribute
+        elif isinstance(context, dict):
+            tick = context.get("tick", 0)
+        else:
+            tick = 0
+
+        # T026: Generate per-tick UUID correlation_id
+        correlation_id = str(uuid4())
+
+        # T027: Wrap system execution with log_context_scope
+        with log_context_scope(tick=tick, correlation_id=correlation_id):
+            for system in self._systems:
+                system.step(graph, services, context)
 
 
 # ADR032: Materialist Causality System Order

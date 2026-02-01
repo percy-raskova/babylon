@@ -9,7 +9,7 @@ import time
 
 from pydantic import BaseModel, ConfigDict
 
-from babylon.metrics.collector import MetricsCollector
+from babylon.metrics.interfaces import MetricsCollectorProtocol
 from babylon.rag.exceptions import PreprocessingError
 
 
@@ -42,14 +42,25 @@ class ContentPreprocessor:
     for the chunking and embedding processes.
     """
 
-    def __init__(self, config: PreprocessingConfig | None = None):
+    def __init__(
+        self,
+        config: PreprocessingConfig | None = None,
+        metrics: MetricsCollectorProtocol | None = None,
+    ):
         """Initialize with configuration options.
 
         Args:
             config: Configuration for preprocessing behavior
+            metrics: Optional metrics collector for DI (default: creates new MetricsCollector)
         """
         self.config = config or PreprocessingConfig()
-        self.metrics = MetricsCollector()
+
+        # Initialize metrics collector via DI (Spec 008)
+        if metrics is None:
+            from babylon.metrics.collector import MetricsCollector
+
+            metrics = MetricsCollector()
+        self.metrics = metrics
 
     def preprocess(self, content: str) -> str:
         """Process raw content into normalized form.

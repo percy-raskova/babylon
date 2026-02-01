@@ -41,10 +41,13 @@ class MetricEvent(BaseModel):
 class MetricsCollector:
     """Centralized metrics collection and aggregation.
 
-    This class implements the Singleton pattern to ensure a single
-    source of truth for all metrics across the simulation.
+    This class creates independent instances for dependency injection.
+    Each ServiceContainer should have its own MetricsCollector instance.
 
-    The collector is thread-safe for concurrent metric recording.
+    Note: MetricsCollector is NOT thread-safe for concurrent access.
+    Each ServiceContainer instance MUST have its own MetricsCollector.
+    Concurrent access from multiple threads to the same collector is
+    not supported (simulation runs single-threaded).
 
     Metrics Categories:
     - performance: Timing, throughput, latency
@@ -53,30 +56,14 @@ class MetricsCollector:
     - embedding: Generation times, batch sizes, errors
     """
 
-    _instance: MetricsCollector | None = None
-    _lock: threading.Lock = threading.Lock()
-
-    def __new__(cls) -> MetricsCollector:
-        """Implement singleton pattern with thread safety."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-                    cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self) -> None:
         """Initialize the metrics collector."""
-        if getattr(self, "_initialized", False):
-            return
-
         self._metrics: dict[str, list[MetricEvent]] = {}
         self._counters: dict[str, int] = {}
         self._gauges: dict[str, float] = {}
         self._timers: dict[str, list[float]] = {}
         self._enabled: bool = BaseConfig.METRICS_ENABLED
         self._data_lock = threading.Lock()
-        self._initialized = True
 
         logger.debug("MetricsCollector initialized (enabled=%s)", self._enabled)
 
@@ -224,49 +211,8 @@ class MetricsCollector:
         """
         self.record("memory_usage", memory_bytes)
 
-    def get_counter(self, name: str) -> int:
-        """Get current counter value."""
-        with self._data_lock:
-            return self._counters.get(name, 0)
-
-    def get_gauge(self, name: str) -> float | None:
-        """Get current gauge value."""
-        with self._data_lock:
-            return self._gauges.get(name)
-
-    def get_timer_stats(self, name: str) -> dict[str, float]:
-        """Get statistics for a timer.
-
-        Returns:
-            Dict with count, sum, mean, min, max
-        """
-        with self._data_lock:
-            timings = self._timers.get(name, [])
-
-        if not timings:
-            return {"count": 0, "sum": 0.0, "mean": 0.0, "min": 0.0, "max": 0.0}
-
-        return {
-            "count": len(timings),
-            "sum": sum(timings),
-            "mean": sum(timings) / len(timings),
-            "min": min(timings),
-            "max": max(timings),
-        }
-
-    def get_metrics(self, name: str, limit: int = 100) -> list[MetricEvent]:
-        """Get recent metric events.
-
-        Args:
-            name: Metric name
-            limit: Maximum number of events to return
-
-        Returns:
-            List of recent MetricEvent objects
-        """
-        with self._data_lock:
-            events = self._metrics.get(name, [])
-            return events[-limit:]
+    # NOTE: get_counter, get_gauge, get_timer_stats, get_metrics removed (Spec 008, T040)
+    # T008 confirmed zero usage outside collector.py. Use summary() for read access.
 
     def clear(self) -> None:
         """Clear all collected metrics.

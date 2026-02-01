@@ -48,8 +48,13 @@ def mock_llm_config() -> MagicMock:
 
 @pytest.fixture
 def mock_metrics_collector() -> MagicMock:
-    """Mock MetricsCollector to avoid side effects."""
-    with patch("babylon.rag.embeddings.MetricsCollector") as mock:
+    """Mock MetricsCollector to avoid side effects.
+
+    Note: After Spec 008, MetricsCollector is imported lazily inside the
+    EmbeddingManager.__init__ if no metrics argument is provided. We patch
+    the source module to intercept the lazy import.
+    """
+    with patch("babylon.metrics.collector.MetricsCollector") as mock:
         instance = MagicMock()
         mock.return_value = instance
         yield instance

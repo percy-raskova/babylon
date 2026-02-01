@@ -485,6 +485,64 @@ class TensorRegistry:
             "aggregate_size": aggregate_info.currsize,
         }
 
+    def hydrate_state(
+        self,
+        hydrator: CountyHydrator,
+        state_fips: str,
+        years: Sequence[int],
+    ) -> None:
+        """Load tensors for all counties in a state.
+
+        This is a convenience method that queries the database for all counties
+        in a state and hydrates them in batch. Useful for state-level analysis.
+
+        Args:
+            hydrator: County-level hydrator (e.g., MarxianHydrator).
+            state_fips: 2-digit state FIPS code (e.g., "26" for Michigan).
+            years: List of years to load.
+
+        Note:
+            This method requires database access to discover counties.
+            Use hydrate_counties() if you already have a list of FIPS codes.
+
+        Example:
+            >>> from babylon.economics.hydrator import MarxianHydrator
+            >>> registry = TensorRegistry()
+            >>> # ... set up hydrator with database session ...
+            >>> registry.hydrate_state(hydrator, "26", [2020, 2021, 2022])
+            >>> # Now all Michigan counties are loaded for those years
+        """
+        # Lazy import to avoid circular dependencies
+        from babylon.data.reference.database import get_reference_session
+
+        # Query all counties in this state
+        query = """
+            SELECT fips
+            FROM dim_county
+            WHERE fips LIKE :state_prefix
+            ORDER BY fips
+        """
+
+        with get_reference_session() as session:
+            result = session.execute(
+                __import__("sqlalchemy").text(query),
+                {"state_prefix": f"{state_fips}%"},
+            )
+            fips_codes = [row[0] for row in result]
+
+        if not fips_codes:
+            logger.warning("hydrate_state: No counties found for state %s", state_fips)
+            return
+
+        logger.info(
+            "hydrate_state: Found %d counties in state %s",
+            len(fips_codes),
+            state_fips,
+        )
+
+        # Delegate to hydrate_counties
+        self.hydrate_counties(hydrator, fips_codes, years)
+
     def hydrate_counties(
         self,
         hydrator: CountyHydrator,

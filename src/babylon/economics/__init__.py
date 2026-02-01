@@ -30,7 +30,12 @@ See Also:
 """
 
 # Adapters (protocols and implementations)
-from babylon.economics.adapters import BEADataSource, QCEWDataSource, SQLiteQCEWSource
+from babylon.economics.adapters import (
+    BEADataSource,
+    InterpolatingBEASource,
+    QCEWDataSource,
+    SQLiteQCEWSource,
+)
 
 # Department mapping
 from babylon.economics.department_mapper import (
@@ -40,6 +45,13 @@ from babylon.economics.department_mapper import (
     DepartmentMapper,
     get_default_mapper,
     map_sector_value,
+)
+
+# Exceptions
+from babylon.economics.exceptions import (
+    TensorError,
+    TensorHydrationError,
+    TensorInitializationError,
 )
 
 # Hydrator
@@ -76,8 +88,13 @@ from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
 __all__ = [
     # Protocols and implementations
     "BEADataSource",
+    "InterpolatingBEASource",
     "QCEWDataSource",
     "SQLiteQCEWSource",
+    # Exceptions
+    "TensorError",
+    "TensorHydrationError",
+    "TensorInitializationError",
     # Department mapping
     "DefaultRatios",
     "Department",

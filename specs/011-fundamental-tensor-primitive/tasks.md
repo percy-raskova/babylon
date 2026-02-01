@@ -135,16 +135,16 @@ ______________________________________________________________________
 
 ### Implementation for User Story 3
 
-- [ ] T047 [P] [US3] Implement BEA ratio temporal interpolation in src/babylon/economics/adapters.py per research.md R3
-- [ ] T048 [US3] Add max_delta parameter (default 5 years) to BEA interpolation (addresses CHK054)
-- [ ] T049 [US3] Implement fallback to YAML defaults when no BEA ratio found within max_delta
-- [ ] T050 [US3] Implement TensorRegistry.hydrate_state() in src/babylon/economics/tensor_registry.py
-- [ ] T051 [US3] Add lazy loading trigger: first access to unloaded FIPS returns NoDataSentinel with reason (addresses CHK033)
-- [ ] T052 [US3] Implement year boundary validation: years outside 2010-2025 return NoDataSentinel
-- [ ] T053 [US3] Handle partial hydration: log warning for failed years, continue with successful ones (addresses CHK050)
-- [ ] T054 [US3] Handle initialization failure: raise TensorInitializationError when SQLite unavailable (addresses CHK047)
-- [ ] T055 [US3] Unit test: BEA interpolation algorithm in tests/unit/economics/test_bea_interpolation.py
-- [ ] T056 [US3] Integration test: full hydration from SQLite in tests/integration/test_tensor_hydration.py
+- [x] T047 [P] [US3] Implement BEA ratio temporal interpolation in src/babylon/economics/adapters.py per research.md R3
+- [x] T048 [US3] Add max_delta parameter (default 5 years) to BEA interpolation (addresses CHK054)
+- [x] T049 [US3] Implement fallback to YAML defaults when no BEA ratio found within max_delta
+- [x] T050 [US3] Implement TensorRegistry.hydrate_state() in src/babylon/economics/tensor_registry.py
+- [x] T051 [US3] Add lazy loading trigger: first access to unloaded FIPS returns NoDataSentinel with reason (addresses CHK033)
+- [x] T052 [US3] Implement year boundary validation: years outside 2010-2025 return NoDataSentinel
+- [x] T053 [US3] Handle partial hydration: log warning for failed years, continue with successful ones (addresses CHK050)
+- [x] T054 [US3] Handle initialization failure: raise TensorInitializationError when SQLite unavailable (addresses CHK047)
+- [x] T055 [US3] Unit test: BEA interpolation algorithm in tests/unit/economics/test_bea_interpolation.py
+- [x] T056 [US3] Integration test: full hydration from SQLite in tests/integration/test_tensor_hydration.py
 
 **Checkpoint**: Tensor loading from database complete - data layer functional
 

@@ -72,6 +72,7 @@ filelock = ">=3.20.1"        # File locking
 # === TESTING (main deps) ===
 hypothesis = "^6.149.0"      # Property-based testing
 salib = "^1.5.2"             # Sensitivity analysis
+uuid = "^1.30"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

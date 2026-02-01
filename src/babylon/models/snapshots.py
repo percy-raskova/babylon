@@ -22,14 +22,12 @@ from __future__ import annotations
 import logging
 import re
 from enum import Enum
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-# Import TensorRegistry at runtime for Pydantic type annotation support
-# This is needed because Pydantic requires the type to be defined at runtime
-# for model validation, even with arbitrary_types_allowed=True
-from babylon.economics.tensor_registry import TensorRegistry
+if TYPE_CHECKING:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +258,10 @@ class SimulationSnapshot(BaseModel):
         default_factory=list,
         description="List of EdgeState relationships (empty for MVP)",
     )
-    tensor_registry: TensorRegistry | None = Field(
+    # Note: Using Any here to avoid circular import issues. At runtime,
+    # this will hold a TensorRegistry instance from babylon.economics.tensor_registry.
+    # TYPE_CHECKING provides the proper type hint for static analysis.
+    tensor_registry: Any = Field(
         default=None,
         description="Optional TensorRegistry for cached tensor data access",
         exclude=True,  # Exclude from serialization

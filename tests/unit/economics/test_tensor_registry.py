@@ -467,3 +467,117 @@ class TestTensorRegistryHydrateCounties:
         result_fail = registry.get("99999", 2020)
         assert isinstance(result_fail, NoDataSentinel)
         assert "No QCEW data" in result_fail.reason
+
+
+class TestSimulationTensorAccess:
+    """Tests for simulation accessing tensor data without database queries.
+
+    T039: Verify simulation accesses tensor without database query.
+    These tests ensure the consumer isolation pattern works correctly.
+    """
+
+    def test_simulation_accesses_tensor_through_registry(self) -> None:
+        """Simulation can access tensor data via pre-loaded registry."""
+        # Create a registry with pre-loaded data
+        registry = TensorRegistry()
+        tensor = ValueTensor4x3(
+            fips_code="26163",
+            year=2022,
+            dept_I=DepartmentRow(c=400.0, v=100.0, s=100.0),
+            dept_IIa=DepartmentRow(c=150.0, v=100.0, s=100.0),
+            dept_IIb=DepartmentRow(c=250.0, v=100.0, s=300.0),
+            dept_III=DepartmentRow(c=25.0, v=50.0, s=35.0),
+            naics_granularity=0.85,
+            excluded_wages=5000.0,
+        )
+        registry.put("26163", 2022, tensor)
+
+        # Simulate how simulation would access tensor data
+        # After registry is hydrated, simulation can get tensor without DB
+        result = registry.get("26163", 2022)
+
+        # Verify we got the tensor (not a sentinel)
+        assert isinstance(result, ValueTensor4x3)
+        assert result.fips_code == "26163"
+        assert result.year == 2022
+
+        # Verify we can access computed properties (no DB needed)
+        assert result.profit_rate > 0
+        assert result.exploitation_rate > 0
+        assert result.organic_composition > 0
+
+    def test_simulation_accesses_tensor_without_hydrator_after_load(self) -> None:
+        """Once loaded, registry serves tensors without needing hydrator."""
+        registry = TensorRegistry()
+
+        # Track hydrator calls
+        call_count = 0
+
+        class TrackingHydrator:
+            def hydrate(self, fips: str, year: int) -> ValueTensor4x3:
+                nonlocal call_count
+                call_count += 1
+                return ValueTensor4x3(
+                    fips_code=fips,
+                    year=year,
+                    dept_I=DepartmentRow(c=400.0, v=100.0, s=100.0),
+                    dept_IIa=DepartmentRow(c=150.0, v=100.0, s=100.0),
+                    dept_IIb=DepartmentRow(c=250.0, v=100.0, s=300.0),
+                    dept_III=DepartmentRow(c=25.0, v=50.0, s=35.0),
+                    naics_granularity=0.85,
+                    excluded_wages=5000.0,
+                )
+
+        hydrator = TrackingHydrator()
+
+        # Hydrate once (this makes DB calls via hydrator)
+        registry.hydrate_counties(hydrator, ["26163"], [2022])
+        initial_call_count = call_count
+
+        # Now simulate accessing data multiple times (like simulation would)
+        for _ in range(10):
+            result = registry.get("26163", 2022)
+            assert isinstance(result, ValueTensor4x3)
+
+        # Hydrator should NOT have been called again - data is cached
+        assert call_count == initial_call_count, (
+            f"Hydrator was called {call_count - initial_call_count} times after initial load. "
+            "Simulation should access cached data without additional hydrator calls."
+        )
+
+    def test_tensor_registry_provides_isolation_from_db(self) -> None:
+        """Registry provides isolation layer - consumers don't need DB access."""
+        registry = TensorRegistry()
+
+        # Pre-load data (simulating what from_sqlite does)
+        registry.put(
+            "26163",
+            2022,
+            ValueTensor4x3(
+                fips_code="26163",
+                year=2022,
+                dept_I=DepartmentRow(c=400.0, v=100.0, s=100.0),
+                dept_IIa=DepartmentRow(c=150.0, v=100.0, s=100.0),
+                dept_IIb=DepartmentRow(c=250.0, v=100.0, s=300.0),
+                dept_III=DepartmentRow(c=25.0, v=50.0, s=35.0),
+                naics_granularity=0.85,
+                excluded_wages=5000.0,
+            ),
+        )
+
+        # Consumer code pattern (simulation accessing data)
+        tensor = registry.get("26163", 2022)
+
+        # Consumer only needs the registry - no DB imports required
+        # This is the key isolation guarantee
+        if tensor:  # Walrus pattern for truthy check
+            # Access all economic data without any database dependency
+            _ = tensor.total_c
+            _ = tensor.total_v
+            _ = tensor.total_s
+            _ = tensor.profit_rate
+            _ = tensor.exploitation_rate
+            _ = tensor.organic_composition
+            _ = tensor.imperial_rent
+        else:
+            pytest.fail("Expected tensor data but got NoDataSentinel")

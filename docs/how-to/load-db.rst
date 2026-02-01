@@ -165,4 +165,4 @@ Useful References
 - QCEW loader: ``src/babylon/data/qcew/loader_3nf.py``
 - FCC downloader: ``src/babylon/data/cli.py`` (``fcc_download`` command)
 - Readiness checks: ``src/babylon/data/preflight.py``,
-  ``src/babylon/data/normalize/schema_check.py``
+  ``src/babylon/data/reference/schema_check.py``

@@ -69,14 +69,10 @@ class TestLoaderConfigMultiYear:
         config = LoaderConfig()
         assert isinstance(config.census_years, list)
 
-    def test_census_years_defaults_to_range(self) -> None:
-        """census_years should default to 2009-2023 range."""
+    def test_census_years_defaults_to_single_year(self) -> None:
+        """census_years defaults to [2021] to avoid API rate limits."""
         config = LoaderConfig()
-        # Default is range(2009, 2024) which is 15 years
-        assert len(config.census_years) == 15
-        assert 2009 in config.census_years
-        assert 2023 in config.census_years
-        assert 2024 not in config.census_years
+        assert config.census_years == [2021]
 
     def test_can_specify_single_year(self) -> None:
         """Should be able to specify a single year as list."""

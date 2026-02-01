@@ -7,7 +7,7 @@ meta:
   purpose: "3NF database schema and API loaders for real-world data"
 
 schema:
-  location: "src/babylon/data/normalize/schema.py"
+  location: "src/babylon/data/reference/schema.py"
 
   dimensions:
     - DimState: "50 US states + territories"

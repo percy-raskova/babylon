@@ -146,7 +146,7 @@ class TestIdempotencyPattern:
     def test_clear_tables_actually_clears(self, isolated_session: Session) -> None:
         """clear_tables() should remove all data from managed tables."""
         # Create a simple test loader
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -165,7 +165,7 @@ class TestIdempotencyPattern:
 
     def test_reset_true_clears_before_load(self, isolated_session: Session) -> None:
         """load(reset=True) should clear existing data."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -182,7 +182,7 @@ class TestIdempotencyPattern:
 
     def test_reset_false_accumulates(self, isolated_session: Session) -> None:
         """load(reset=False) should not clear existing data."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -212,7 +212,7 @@ class TestTransactionAtomicity:
         """
         # SQLite supports SAVEPOINT, so this test works without skipping
 
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -252,7 +252,7 @@ class TestNoDuplicatePrimaryKeys:
 
     def test_no_duplicate_pks_after_reload(self, isolated_session: Session) -> None:
         """Reloading should not create duplicate primary keys."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -344,7 +344,7 @@ class TestDeletePlusInsertPattern:
 
     def test_delete_insert_clears_old_data(self, isolated_session: Session) -> None:
         """DELETE+INSERT should completely replace old data."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -378,7 +378,7 @@ class TestBatchBoundaryIdempotency:
         isolated_session: Session,
     ) -> None:
         """Different batch sizes should produce identical results."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         # This is a structural test - real loaders would need actual data
         loader = ConcreteTestLoader(LoaderConfig(batch_size=batch_size))
@@ -396,7 +396,7 @@ class TestEmptyDataIdempotency:
 
     def test_empty_source_produces_empty_stats(self, isolated_session: Session) -> None:
         """Empty data source should produce LoadStats with zero counts."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 
@@ -414,7 +414,7 @@ class TestEmptyDataIdempotency:
 
     def test_idempotent_on_empty(self, isolated_session: Session) -> None:
         """Running on empty source twice should produce same (empty) result."""
-        from tests.unit.data.test_normalize.test_loader_base import ConcreteTestLoader
+        from tests.unit.data.test_reference.test_loader_base import ConcreteTestLoader
 
         loader = ConcreteTestLoader()
 

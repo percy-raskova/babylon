@@ -19,11 +19,25 @@ from tqdm import tqdm
 
 from babylon.data.external.arcgis import ArcGISClient
 from babylon.data.loader_base import DataLoader, LoaderConfig, LoadStats
-from babylon.data.normalize.schema import (  # type: ignore[import-untyped]
-    DimDataSource,
-    FactElectricGrid,
-)
+from babylon.data.reference.schema import DimDataSource
 from babylon.data.utils.fips_resolver import extract_county_fips_from_attrs
+
+# FactElectricGrid is documented in ai-docs but not yet implemented in schema.py
+# TODO(Epoch 3): Add FactElectricGrid to reference.schema and remove this stub
+_FACT_ELECTRIC_GRID_AVAILABLE = False
+try:
+    from babylon.data.reference.schema import (  # type: ignore[attr-defined]
+        FactElectricGrid,
+    )
+
+    _FACT_ELECTRIC_GRID_AVAILABLE = True
+except ImportError:
+
+    class FactElectricGrid:  # type: ignore[no-redef]
+        """Stub for FactElectricGrid - not yet implemented in schema."""
+
+        source_id: int
+
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -51,6 +65,13 @@ class HIFLDElectricLoader(DataLoader):
 
     def __init__(self, config: LoaderConfig | None = None) -> None:
         """Initialize electric grid loader."""
+        if not _FACT_ELECTRIC_GRID_AVAILABLE:
+            msg = (
+                "HIFLDElectricLoader requires FactElectricGrid which is not yet "
+                "implemented in babylon.data.reference.schema. See ai-docs/epochs/epoch2/"
+                "data-infrastructure.yaml for planned schema. This loader is deferred."
+            )
+            raise NotImplementedError(msg)
         super().__init__(config)
         self._substation_client: ArcGISClient | None = None
         self._transmission_client: ArcGISClient | None = None

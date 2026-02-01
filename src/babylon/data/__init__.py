@@ -16,7 +16,7 @@ Subpackages:
     external: Bureau of Labor Statistics, Census, and FRED data integrations.
     game: Static game entity JSON data files.
     models: Pydantic models for data serialization.
-    normalize: 3NF normalized database and ETL infrastructure.
+    reference: 3NF normalized database and ETL infrastructure.
     parsers: Data parsing utilities.
 
 Modules:

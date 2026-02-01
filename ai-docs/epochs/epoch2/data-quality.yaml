@@ -67,7 +67,7 @@ missing_data:
 validation:
   schema_validation:
     tool: "Pydantic models with Field constraints"
-    location: "src/babylon/data/normalize/schema.py"
+    location: "src/babylon/data/reference/schema.py"
     examples:
       - "FIPS codes: constr(pattern=r'^[0-9]{5}$')"
       - "Percentages: confloat(ge=0, le=100)"

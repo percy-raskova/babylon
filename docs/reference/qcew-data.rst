@@ -60,7 +60,7 @@ Python API
 
     from babylon.data.qcew import QcewLoader, QcewAPIClient
     from babylon.data.loader_base import LoaderConfig
-    from babylon.data.normalize.database import get_normalized_session
+    from babylon.data.reference.database import get_normalized_session
 
     # Hybrid loading (default)
     config = LoaderConfig(qcew_years=list(range(2013, 2026)))

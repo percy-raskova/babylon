@@ -4,7 +4,7 @@
 # Related Files:
 #   - src/babylon/data/census/loader_3nf.py (main loader implementation)
 #   - src/babylon/data/normalize/schema.py (SQLAlchemy ORM models)
-#   - tests/unit/data/test_normalize/test_dim_race.py (unit tests)
+#   - tests/unit/data/test_reference/test_dim_race.py (unit tests)
 #   - tests/integration/data/test_census_enhanced.py (integration tests)
 
 metadata:
@@ -391,7 +391,7 @@ testing_strategy:
     and integration tests.
 
   unit_tests:
-    location: "tests/unit/data/test_normalize/test_dim_race.py"
+    location: "tests/unit/data/test_reference/test_dim_race.py"
     coverage:
       - "DimRace schema structure and constraints"
       - "Race code CHECK constraint validation"
@@ -427,7 +427,7 @@ usage_examples:
     description: "Load Census data for specific years"
     code: |
       from babylon.data.census.loader_3nf import CensusLoader3NF
-      from babylon.data.normalize.loader_config import LoaderConfig
+      from babylon.data.reference.loader_config import LoaderConfig
 
       config = LoaderConfig(census_years=[2020, 2021, 2022])
       loader = CensusLoader3NF(config)
@@ -450,7 +450,7 @@ usage_examples:
   race_analysis:
     description: "Query race-disaggregated income data"
     code: |
-      from babylon.data.normalize.schema import (
+      from babylon.data.reference.schema import (
           FactMedianIncome,
           DimRace,
           DimCounty,

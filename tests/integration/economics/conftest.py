@@ -309,3 +309,9 @@ def hydrator_with_rent(
         dept_mapper=dept_mapper,
         rent_calculator=rent_calculator,
     )
+
+
+@pytest.fixture
+def hydrator_session(hydrator_with_rent: MarxianHydrator) -> MarxianHydrator:
+    """Alias for hydrator_with_rent for temporal validation tests."""
+    return hydrator_with_rent

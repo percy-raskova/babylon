@@ -191,7 +191,7 @@ ______________________________________________________________________
 - [x] T075 Verify dashboard launches: `python -m babylon.ui.dashboard --demo` (final SC-008) - VERIFIED
 - [x] T076 [P] Update CLAUDE.md agent context if needed - Updated formula system path reference
 - [x] T077 [P] Review and update ai-docs with completion status - Updated game-loop-architecture.yaml, documentation-standards.yaml, ADR011
-- [ ] T078 Create final commit if any polish changes needed
+- [x] T078 Create final commit if any polish changes needed - COMMITTED: chore: update ai-docs references
 
 ______________________________________________________________________
 

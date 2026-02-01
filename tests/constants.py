@@ -16,7 +16,7 @@ Design Principles:
 Canonical Source:
     - src/babylon/data/defines.yaml (YAML configuration)
     - src/babylon/config/defines.py (GameDefines Pydantic model)
-    - src/babylon/systems/formulas/constants.py (EPSILON, LOSS_AVERSION_COEFFICIENT)
+    - src/babylon/formulas/formulas/constants.py (EPSILON, LOSS_AVERSION_COEFFICIENT)
 
 Example:
     from tests.constants import TestConstants, MarxCapitalExamples

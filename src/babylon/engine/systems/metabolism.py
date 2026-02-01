@@ -6,7 +6,7 @@ This system implements the ecological limits of capital accumulation:
 - Biocapacity regeneration and depletion
 - ECOLOGICAL_OVERSHOOT event emission when consumption > biocapacity
 
-Key formulas (from src/babylon/systems/formulas.py):
+Key formulas (from src/babylon/formulas/formulas):
 - calculate_biocapacity_delta: ΔB = R - (E × η)
 - calculate_overshoot_ratio: O = C / B
 """
@@ -18,11 +18,11 @@ import networkx as nx
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.protocol import ContextType
-from babylon.models.enums import EventType
-from babylon.systems.formulas import (
+from babylon.formulas import (
     calculate_biocapacity_delta,
     calculate_overshoot_ratio,
 )
+from babylon.models.enums import EventType
 
 
 class MetabolismSystem:
@@ -32,7 +32,7 @@ class MetabolismSystem:
     extraction systematically exceeds regeneration because profit requires
     externalizing regeneration costs.
 
-    Key formulas (from src/babylon/systems/formulas.py):
+    Key formulas (from src/babylon/formulas/formulas):
     - calculate_biocapacity_delta: ΔB = R - (E × η)
     - calculate_overshoot_ratio: O = C / B
 

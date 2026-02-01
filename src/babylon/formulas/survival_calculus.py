@@ -10,7 +10,7 @@ Core formulas for revolutionary decision-making:
 
 import math
 
-from babylon.systems.formulas.constants import EPSILON, LOSS_AVERSION_COEFFICIENT
+from babylon.formulas.constants import EPSILON, LOSS_AVERSION_COEFFICIENT
 
 
 def calculate_acquiescence_probability(

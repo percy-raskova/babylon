@@ -21,7 +21,7 @@ Theoretical Basis:
 
 import pytest
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     ClassDynamicsParams,
     SecondOrderParams,
     calculate_class_dynamics_derivative,

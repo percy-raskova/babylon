@@ -12,7 +12,7 @@ Key Formulas:
 import pytest
 from tests.constants import TestConstants
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     calculate_biocapacity_delta,
     calculate_overshoot_ratio,
 )

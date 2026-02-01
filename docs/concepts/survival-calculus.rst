@@ -100,11 +100,11 @@ elimination, not just poor scores.
 Implementation
 --------------
 
-See the survival formulas in :py:mod:`babylon.systems.formulas`:
+See the survival formulas in :py:mod:`babylon.formulas`:
 
-- :py:func:`~babylon.systems.formulas.calculate_acquiescence_probability`
-- :py:func:`~babylon.systems.formulas.calculate_revolution_probability`
-- :py:func:`~babylon.systems.formulas.calculate_crossover_threshold`
+- :py:func:`~babylon.formulas.calculate_acquiescence_probability`
+- :py:func:`~babylon.formulas.calculate_revolution_probability`
+- :py:func:`~babylon.formulas.calculate_crossover_threshold`
 
 See Also
 --------

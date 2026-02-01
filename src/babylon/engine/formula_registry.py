@@ -9,7 +9,7 @@ Sprint 3: Central Committee (Dependency Injection)
 from collections.abc import Callable
 from typing import Any
 
-from babylon.systems import formulas
+from babylon import formulas
 
 # Type alias for formula functions
 FormulaFunc = Callable[..., Any]
@@ -70,7 +70,7 @@ class FormulaRegistry:
     def default(cls) -> "FormulaRegistry":
         """Create a registry pre-populated with all standard formulas.
 
-        Registers all 12 formulas from babylon.systems.formulas:
+        Registers all 12 formulas from babylon.formulas:
         - imperial_rent
         - labor_aristocracy_ratio
         - is_labor_aristocracy

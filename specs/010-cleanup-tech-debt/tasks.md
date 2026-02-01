@@ -82,54 +82,54 @@ ______________________________________________________________________
 
 ### Implementation for User Story 2
 
-- [ ] T019 [US2] Execute `git mv src/babylon/systems src/babylon/formulas` to rename package
-- [ ] T020 [US2] Update internal imports in `src/babylon/formulas/__init__.py` (babylon.systems.formulas → babylon.formulas)
-- [ ] T021 [US2] Update internal imports in `src/babylon/formulas/formulas/__init__.py` (11 occurrences)
-- [ ] T022 [P] [US2] Update import in `src/babylon/formulas/formulas/fundamental_theorem.py`
-- [ ] T023 [P] [US2] Update import in `src/babylon/formulas/formulas/survival_calculus.py`
-- [ ] T024 [P] [US2] Update import in `src/babylon/formulas/formulas/ideological_routing.py`
-- [ ] T025 [US2] Update imports in `src/babylon/engine/formula_registry.py` (2 occurrences)
-- [ ] T026 [P] [US2] Update import in `src/babylon/engine/systems/economic.py`
-- [ ] T027 [P] [US2] Update import in `src/babylon/engine/systems/vitality.py`
-- [ ] T028 [P] [US2] Update import in `src/babylon/engine/systems/ideology.py`
-- [ ] T029 [P] [US2] Update import in `src/babylon/engine/systems/metabolism.py`
+- [x] T019 [US2] Execute `git mv src/babylon/systems src/babylon/formulas` to rename package
+- [x] T020 [US2] Update internal imports in `src/babylon/formulas/__init__.py` (babylon.systems.formulas → babylon.formulas)
+- [x] T021 [US2] Update internal imports in `src/babylon/formulas/formulas/__init__.py` (11 occurrences) - RESTRUCTURED: flattened nested formulas/formulas to formulas/
+- [x] T022 [P] [US2] Update import in `src/babylon/formulas/fundamental_theorem.py`
+- [x] T023 [P] [US2] Update import in `src/babylon/formulas/survival_calculus.py`
+- [x] T024 [P] [US2] Update import in `src/babylon/formulas/ideological_routing.py`
+- [x] T025 [US2] Update imports in `src/babylon/engine/formula_registry.py` (2 occurrences)
+- [x] T026 [P] [US2] Update import in `src/babylon/engine/systems/economic.py`
+- [x] T027 [P] [US2] Update import in `src/babylon/engine/systems/vitality.py`
+- [x] T028 [P] [US2] Update import in `src/babylon/engine/systems/ideology.py`
+- [x] T029 [P] [US2] Update import in `src/babylon/engine/systems/metabolism.py`
 
 ### Test Import Updates for User Story 2
 
-- [ ] T030 [US2] Update imports in `tests/unit/formulas/test_bourgeoisie_decision.py` (15 occurrences)
-- [ ] T031 [P] [US2] Update imports in `tests/unit/formulas/test_survival_calculus_properties.py` (2 occurrences)
-- [ ] T032 [P] [US2] Update import in `tests/unit/formulas/test_fundamental_theorem.py`
-- [ ] T033 [P] [US2] Update import in `tests/unit/formulas/test_fundamental_theorem_properties.py`
-- [ ] T034 [P] [US2] Update import in `tests/unit/formulas/test_survival_calculus.py`
-- [ ] T035 [P] [US2] Update import in `tests/unit/formulas/test_ideological_routing.py`
-- [ ] T036 [P] [US2] Update import in `tests/unit/formulas/test_solidarity.py`
-- [ ] T037 [P] [US2] Update import in `tests/unit/formulas/test_unequal_exchange.py`
-- [ ] T038 [P] [US2] Update import in `tests/unit/formulas/test_metabolic_rift.py`
-- [ ] T039 [P] [US2] Update import in `tests/unit/formulas/test_trpf.py`
-- [ ] T040 [P] [US2] Update import in `tests/unit/formulas/test_vitality.py`
-- [ ] T041 [P] [US2] Update import in `tests/unit/formulas/test_class_dynamics.py`
-- [ ] T042 [P] [US2] Update import in `tests/unit/engine/test_formula_registry.py`
-- [ ] T043 [P] [US2] Update import in `tests/unit/config/test_constants_sync.py`
-- [ ] T044 [P] [US2] Update import in `tests/integration/system/test_phase1_blueprint.py`
+- [x] T030 [US2] Update imports in `tests/unit/formulas/test_bourgeoisie_decision.py` (15 occurrences)
+- [x] T031 [P] [US2] Update imports in `tests/unit/formulas/test_survival_calculus_properties.py` (2 occurrences)
+- [x] T032 [P] [US2] Update import in `tests/unit/formulas/test_fundamental_theorem.py`
+- [x] T033 [P] [US2] Update import in `tests/unit/formulas/test_fundamental_theorem_properties.py`
+- [x] T034 [P] [US2] Update import in `tests/unit/formulas/test_survival_calculus.py`
+- [x] T035 [P] [US2] Update import in `tests/unit/formulas/test_ideological_routing.py`
+- [x] T036 [P] [US2] Update import in `tests/unit/formulas/test_solidarity.py`
+- [x] T037 [P] [US2] Update import in `tests/unit/formulas/test_unequal_exchange.py`
+- [x] T038 [P] [US2] Update import in `tests/unit/formulas/test_metabolic_rift.py`
+- [x] T039 [P] [US2] Update import in `tests/unit/formulas/test_trpf.py`
+- [x] T040 [P] [US2] Update import in `tests/unit/formulas/test_vitality.py`
+- [x] T041 [P] [US2] Update import in `tests/unit/formulas/test_class_dynamics.py`
+- [x] T042 [P] [US2] Update import in `tests/unit/engine/test_formula_registry.py`
+- [x] T043 [P] [US2] Update import in `tests/unit/config/test_constants_sync.py`
+- [x] T044 [P] [US2] Update import in `tests/integration/system/test_phase1_blueprint.py`
 
 ### Documentation Updates for User Story 2
 
-- [ ] T045 [US2] Update module paths in `docs/reference/formulas.rst` (22 occurrences)
-- [ ] T046 [P] [US2] Update cross-references in `docs/reference/class-dynamics.rst` (4 occurrences)
-- [ ] T047 [P] [US2] Update cross-reference in `docs/reference/topology.rst`
-- [ ] T048 [P] [US2] Update cross-references in `docs/concepts/survival-calculus.rst` (4 occurrences)
-- [ ] T049 [P] [US2] Update cross-reference in `docs/concepts/imperial-rent.rst`
-- [ ] T050 [P] [US2] Update cross-reference in `docs/concepts/percolation-theory.rst`
-- [ ] T051 [US2] Rename `docs/api/systems.rst` to `docs/api/formulas.rst`
-- [ ] T052 [US2] Update toctree in `docs/api/index.rst` to reference formulas.rst
-- [ ] T053 [US2] Update ai-docs YAML files referencing babylon.systems
+- [x] T045 [US2] Update module paths in `docs/reference/formulas.rst` (22 occurrences)
+- [x] T046 [P] [US2] Update cross-references in `docs/reference/class-dynamics.rst` (4 occurrences)
+- [x] T047 [P] [US2] Update cross-reference in `docs/reference/topology.rst`
+- [x] T048 [P] [US2] Update cross-references in `docs/concepts/survival-calculus.rst` (4 occurrences)
+- [x] T049 [P] [US2] Update cross-reference in `docs/concepts/imperial-rent.rst`
+- [x] T050 [P] [US2] Update cross-reference in `docs/concepts/percolation-theory.rst`
+- [x] T051 [US2] Rename `docs/api/systems.rst` to `docs/api/formulas.rst`
+- [x] T052 [US2] Update toctree in `docs/api/index.rst` to reference formulas.rst
+- [x] T053 [US2] Update CLAUDE.md, config files, and other references
 
 ### Validation for User Story 2
 
-- [ ] T054 [US2] Validate SC-004: `test -d src/babylon/formulas && ! test -d src/babylon/systems`
-- [ ] T055 [US2] Validate SC-005: `grep -r "from babylon.systems\|import babylon.systems" src/` returns empty
-- [ ] T056 [US2] Validate SC-006: `grep -r "from babylon.systems" tests/` returns empty
-- [ ] T057 [US2] Run `mise run test:all` to verify all tests pass (SC-007)
+- [x] T054 [US2] Validate SC-004: `test -d src/babylon/formulas && ! test -d src/babylon/systems`
+- [x] T055 [US2] Validate SC-005: `grep -r "from babylon.systems\|import babylon.systems" src/` returns empty
+- [x] T056 [US2] Validate SC-006: `grep -r "from babylon.systems" tests/` returns empty
+- [x] T057 [US2] Run `mise run test:all` to verify all tests pass (SC-007) - 1300 tests passed
 - [ ] T058 [US2] Run `mise run docs:strict` to verify docs build (SC-009)
 - [ ] T059 [US2] Commit: `refactor(formulas): rename babylon.systems to babylon.formulas`
 

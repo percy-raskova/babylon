@@ -7,7 +7,7 @@ Auto-generated API documentation from source code.
    :maxdepth: 2
 
    models
-   systems
+   formulas
    engine
 
 Core Modules
@@ -22,14 +22,14 @@ Models
 
    babylon.models
 
-Systems
-^^^^^^^
+Formulas
+^^^^^^^^
 
 .. autosummary::
    :toctree: _autosummary
    :recursive:
 
-   babylon.systems
+   babylon.formulas
 
 Engine
 ^^^^^^

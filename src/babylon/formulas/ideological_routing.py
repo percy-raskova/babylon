@@ -29,11 +29,11 @@ Routing Split::
 
 See Also
 --------
-:mod:`~babylon.systems.formulas.fundamental_theorem` : Consciousness drift
-:mod:`~babylon.systems.formulas.solidarity` : Solidarity transmission
+:mod:`~babylon.formulas.fundamental_theorem` : Consciousness drift
+:mod:`~babylon.formulas.solidarity` : Solidarity transmission
 """
 
-from babylon.systems.formulas.constants import LOSS_AVERSION_COEFFICIENT
+from babylon.formulas.constants import LOSS_AVERSION_COEFFICIENT
 
 # Routing scale factor (converts agitation to consciousness change)
 _ROUTING_SCALE = 0.1

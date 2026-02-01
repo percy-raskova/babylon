@@ -14,14 +14,7 @@ These tests prove that the mathematical core works end-to-end.
 import networkx as nx
 import pytest
 
-from babylon.models import Relationship, SocialClass
-from babylon.models.entity_registry import (
-    COMPRADOR_ID,
-    CORE_BOURGEOISIE_ID,
-    PERIPHERY_WORKER_ID,
-)
-from babylon.models.enums import EdgeType, SocialRole
-from babylon.systems.formulas import (
+from babylon.formulas import (
     calculate_acquiescence_probability,
     calculate_consciousness_drift,
     calculate_imperial_rent,
@@ -29,6 +22,13 @@ from babylon.systems.formulas import (
     calculate_revolution_probability,
     is_labor_aristocracy,
 )
+from babylon.models import Relationship, SocialClass
+from babylon.models.entity_registry import (
+    COMPRADOR_ID,
+    CORE_BOURGEOISIE_ID,
+    PERIPHERY_WORKER_ID,
+)
+from babylon.models.enums import EdgeType, SocialRole
 
 # =============================================================================
 # THE PHASE 1 BLUEPRINT TEST

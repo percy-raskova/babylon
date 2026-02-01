@@ -1,7 +1,7 @@
 """Simulation configuration for the Babylon engine.
 
 SimulationConfig holds all global coefficients and parameters used by
-the formulas in babylon.systems.formulas. This model provides:
+the formulas in babylon.formulas. This model provides:
 - Type-safe validation of all parameters
 - Sensible defaults matching ai-docs/game-loop-architecture.yaml
 - Immutability during simulation runs

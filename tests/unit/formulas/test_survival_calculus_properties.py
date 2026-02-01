@@ -16,13 +16,13 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     apply_loss_aversion,
     calculate_acquiescence_probability,
     calculate_crossover_threshold,
     calculate_revolution_probability,
 )
-from babylon.systems.formulas.constants import LOSS_AVERSION_COEFFICIENT
+from babylon.formulas.constants import LOSS_AVERSION_COEFFICIENT
 
 # =============================================================================
 # P(S|A) - ACQUIESCENCE PROBABILITY PROPERTIES

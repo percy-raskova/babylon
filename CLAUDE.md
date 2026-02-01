@@ -246,7 +246,7 @@ from babylon.models import SocialClass, Territory, Relationship, WorldState, Sim
 
 ## Formula System
 
-17 formulas in `src/babylon/systems/formulas.py`:
+17 formulas in `src/babylon/formulas/formulas.py`:
 
 | Category | Formulas |
 |----------|----------|
@@ -653,6 +653,8 @@ ADR0XX_descriptive_name:
 - In-memory (MetricsCollector stores data in dicts, no persistence layer used currently) (008-infrastructure-hardening)
 - Python 3.12+ + Pydantic 2.x (validation), SQLAlchemy 2.x (ORM), typer (CLI), tqdm (progress) (009-data-preflight)
 - SQLite (marxist-data-3NF.sqlite for reference data) (009-data-preflight)
+- Python 3.12+ + NetworkX 3.x, Pydantic 2.x (no new dependencies) (010-cleanup-tech-debt)
+- N/A (no storage changes) (010-cleanup-tech-debt)
 
 ## Recent Changes
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

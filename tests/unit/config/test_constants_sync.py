@@ -15,7 +15,7 @@ import pytest
 from tests.constants import TestConstants
 
 from babylon.config.defines import GameDefines
-from babylon.systems.formulas.constants import EPSILON, LOSS_AVERSION_COEFFICIENT
+from babylon.formulas.constants import EPSILON, LOSS_AVERSION_COEFFICIENT
 
 TC = TestConstants
 

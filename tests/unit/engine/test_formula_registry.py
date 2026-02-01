@@ -146,8 +146,8 @@ class TestFormulaRegistry:
 
     def test_default_formulas_match_module_functions(self) -> None:
         """default() registry formulas are the actual module functions."""
+        from babylon import formulas
         from babylon.engine.formula_registry import FormulaRegistry
-        from babylon.systems import formulas
 
         registry = FormulaRegistry.default()
 

@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Any
 
 import networkx as nx
 
+from babylon.formulas import calculate_ideological_routing
 from babylon.models.enums import EdgeType
-from babylon.systems.formulas import calculate_ideological_routing
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer

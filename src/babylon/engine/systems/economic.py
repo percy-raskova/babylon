@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 
 from babylon.engine.event_bus import Event
+from babylon.formulas import BourgeoisieDecision
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.enums import EdgeType, EventType, SocialRole
-from babylon.systems.formulas import BourgeoisieDecision
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer

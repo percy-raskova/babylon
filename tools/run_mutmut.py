@@ -27,7 +27,7 @@ except ImportError:
 
 
 CRITICAL_PATHS = [
-    "src/babylon/systems/formulas.py",
+    "src/babylon/formulas/formulas.py",
     "src/babylon/engine/systems/economic.py",
     "src/babylon/engine/systems/survival.py",
 ]

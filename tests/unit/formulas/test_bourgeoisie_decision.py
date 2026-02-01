@@ -22,7 +22,7 @@ import pytest
 from tests.constants import TestConstants
 
 # Import will fail initially (Red Phase)
-# from babylon.systems.formulas import calculate_bourgeoisie_decision
+# from babylon.formulas import calculate_bourgeoisie_decision
 
 # Alias for readability
 TC = TestConstants.BourgeoisieDecision
@@ -52,7 +52,7 @@ class TestBourgeoisieDecisionProsperity:
 
         This is the "bread and circuses" strategy.
         """
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.8,
@@ -71,7 +71,7 @@ class TestBourgeoisieDecisionProsperity:
 
         Even with resources, high tension doesn't trigger bribery.
         """
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.8,
@@ -100,7 +100,7 @@ class TestBourgeoisieDecisionAusterity:
 
         When workers aren't organized, bourgeoisie can extract more.
         """
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
@@ -119,7 +119,7 @@ class TestBourgeoisieDecisionAusterity:
 
         When workers are organized, bourgeoisie must use force.
         """
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
@@ -148,7 +148,7 @@ class TestBourgeoisieDecisionCrisis:
 
         The system is collapsing - both wage cuts and repression spike.
         """
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.05,
@@ -164,7 +164,7 @@ class TestBourgeoisieDecisionCrisis:
 
     def test_crisis_zone_with_high_tension(self) -> None:
         """Crisis zone is crisis regardless of tension level."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
             pool_ratio=0.08,
@@ -188,7 +188,7 @@ class TestBourgeoisieDecisionNeutral:
 
     def test_neutral_zone_is_no_change(self) -> None:
         """Mid-range pool = maintain status quo."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.5,
@@ -214,7 +214,7 @@ class TestBourgeoisieDecisionBoundaries:
 
     def test_exactly_at_high_threshold(self) -> None:
         """Pool ratio exactly at high threshold (0.7) counts as prosperity."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
             pool_ratio=TC.POOL_HIGH_THRESHOLD,  # Exactly at threshold
@@ -228,7 +228,7 @@ class TestBourgeoisieDecisionBoundaries:
 
     def test_exactly_at_low_threshold(self) -> None:
         """Pool ratio exactly at low threshold (0.3) counts as neutral."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
             pool_ratio=TC.POOL_LOW_THRESHOLD,  # Exactly at threshold
@@ -243,7 +243,7 @@ class TestBourgeoisieDecisionBoundaries:
 
     def test_exactly_at_critical_threshold(self) -> None:
         """Pool ratio exactly at critical threshold (0.1) counts as austerity."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         decision, _, _ = calculate_bourgeoisie_decision(
             pool_ratio=TC.POOL_CRITICAL_THRESHOLD,  # Exactly at threshold
@@ -268,7 +268,7 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
 
     def test_bribery_wage_increase_magnitude(self) -> None:
         """Bribery wage increase should be around 5%."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         _, wage_delta, _ = calculate_bourgeoisie_decision(
             pool_ratio=0.8,
@@ -282,7 +282,7 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
 
     def test_austerity_wage_decrease_magnitude(self) -> None:
         """Austerity wage decrease should be around 5%."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         _, wage_delta, _ = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
@@ -296,7 +296,7 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
 
     def test_iron_fist_repression_increase_magnitude(self) -> None:
         """Iron fist repression increase should be around 10%."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         _, _, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.25,
@@ -310,7 +310,7 @@ class TestBourgeoisieDecisionDeltaMagnitudes:
 
     def test_crisis_has_both_deltas(self) -> None:
         """Crisis should have significant wage cut AND repression increase."""
-        from babylon.systems.formulas import calculate_bourgeoisie_decision
+        from babylon.formulas import calculate_bourgeoisie_decision
 
         _, wage_delta, repression_delta = calculate_bourgeoisie_decision(
             pool_ratio=0.05,

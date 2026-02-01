@@ -23,7 +23,7 @@ Key Formulas:
 
 # Re-export constants
 # Re-export Class Dynamics formulas (FRED DFA-derived)
-from babylon.systems.formulas.class_dynamics import (
+from babylon.formulas.class_dynamics import (
     ClassDynamicsParams,
     SecondOrderParams,
     calculate_class_dynamics_derivative,
@@ -33,19 +33,19 @@ from babylon.systems.formulas.class_dynamics import (
     calculate_wealth_flow,
     invert_wealth_to_population,
 )
-from babylon.systems.formulas.constants import (
+from babylon.formulas.constants import (
     EPSILON,
     LOSS_AVERSION_COEFFICIENT,
 )
 
 # Re-export Dynamic Balance formulas
-from babylon.systems.formulas.dynamic_balance import (
+from babylon.formulas.dynamic_balance import (
     BourgeoisieDecision,
     calculate_bourgeoisie_decision,
 )
 
 # Re-export Fundamental Theorem formulas
-from babylon.systems.formulas.fundamental_theorem import (
+from babylon.formulas.fundamental_theorem import (
     calculate_consciousness_drift,
     calculate_imperial_rent,
     calculate_labor_aristocracy_ratio,
@@ -53,19 +53,19 @@ from babylon.systems.formulas.fundamental_theorem import (
 )
 
 # Re-export Ideological Routing formula
-from babylon.systems.formulas.ideological_routing import calculate_ideological_routing
+from babylon.formulas.ideological_routing import calculate_ideological_routing
 
 # Re-export Metabolic Rift formulas
-from babylon.systems.formulas.metabolic_rift import (
+from babylon.formulas.metabolic_rift import (
     calculate_biocapacity_delta,
     calculate_overshoot_ratio,
 )
 
 # Re-export Solidarity Transmission formula
-from babylon.systems.formulas.solidarity import calculate_solidarity_transmission
+from babylon.formulas.solidarity import calculate_solidarity_transmission
 
 # Re-export Survival Calculus formulas
-from babylon.systems.formulas.survival_calculus import (
+from babylon.formulas.survival_calculus import (
     apply_loss_aversion,
     calculate_acquiescence_probability,
     calculate_crossover_threshold,
@@ -73,7 +73,7 @@ from babylon.systems.formulas.survival_calculus import (
 )
 
 # Re-export TRPF formulas (Marx, Capital Vol. 3)
-from babylon.systems.formulas.trpf import (
+from babylon.formulas.trpf import (
     calculate_organic_composition,
     calculate_rate_of_profit,
     calculate_rent_pool_decay,
@@ -81,7 +81,7 @@ from babylon.systems.formulas.trpf import (
 )
 
 # Re-export Unequal Exchange formulas
-from babylon.systems.formulas.unequal_exchange import (
+from babylon.formulas.unequal_exchange import (
     calculate_exchange_ratio,
     calculate_exploitation_rate,
     calculate_value_transfer,
@@ -89,7 +89,7 @@ from babylon.systems.formulas.unequal_exchange import (
 )
 
 # Re-export Vitality formulas (Mass Line Refactor)
-from babylon.systems.formulas.vitality import calculate_mortality_rate
+from babylon.formulas.vitality import calculate_mortality_rate
 
 __all__ = [
     # Constants

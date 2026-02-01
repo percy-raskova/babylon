@@ -13,7 +13,7 @@ Key Formulas:
 import pytest
 from tests.constants import TestConstants
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     calculate_consciousness_drift,
     calculate_imperial_rent,
     calculate_labor_aristocracy_ratio,

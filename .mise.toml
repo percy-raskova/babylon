@@ -106,7 +106,7 @@ run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing
 
 [tasks."test:doctest"]
 description = "Run doctest examples in formulas module"
-run = "poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v"
+run = "poetry run pytest --doctest-modules src/babylon/formulas/formulas.py -v"
 
 # =============================================================================
 # SIMULATION (Namespaced)
@@ -456,7 +456,7 @@ description = "Run mutation testing on formulas only (~5-10 min)"
 run = """
 echo "Running mutation testing on formulas..."
 poetry run mutmut run \
-  --paths-to-mutate=src/babylon/systems/formulas.py \
+  --paths-to-mutate=src/babylon/formulas/formulas.py \
   --runner="poetry run pytest tests/unit/formulas -x -q --tb=no"
 poetry run mutmut results
 """
@@ -466,7 +466,7 @@ description = "Run mutation testing on simulation systems (~15-30 min)"
 run = """
 echo "Running mutation testing on simulation systems..."
 poetry run mutmut run \
-  --paths-to-mutate=src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py,src/babylon/systems/formulas.py \
+  --paths-to-mutate=src/babylon/engine/systems/economic.py,src/babylon/engine/systems/survival.py,src/babylon/formulas/formulas.py \
   --runner="poetry run pytest tests/unit/engine tests/unit/formulas -x -q --tb=no"
 poetry run mutmut results
 """

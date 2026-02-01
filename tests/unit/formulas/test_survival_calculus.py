@@ -17,7 +17,7 @@ Key Formulas:
 import pytest
 from tests.constants import TestConstants
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     apply_loss_aversion,
     calculate_acquiescence_probability,
     calculate_crossover_threshold,

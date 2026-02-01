@@ -44,7 +44,7 @@ proletarian solidarity.
 Implementation
 --------------
 
-See the :py:func:`babylon.systems.formulas.calculate_imperial_rent` function
+See the :py:func:`babylon.formulas.calculate_imperial_rent` function
 for the implementation details.
 
 See Also

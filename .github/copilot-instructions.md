@@ -153,7 +153,7 @@ SimulationEngine.run_tick(graph, services, context)
 - `src/babylon/engine/event_bus.py` - Publish/subscribe events (12 EventTypes)
 - `src/babylon/engine/formula_registry.py` - 17 hot-swappable formulas
 - `src/babylon/config/defines.py` - GameDefines (all tunable coefficients)
-- `src/babylon/systems/formulas.py` - Mathematical formulas (17 total)
+- `src/babylon/formulas/formulas.py` - Mathematical formulas (17 total)
 
 **Observer System:**
 
@@ -236,7 +236,7 @@ Before submitting any PR:
 ```bash
 mise run check                      # Fast CI gate (lint + format + typecheck + test:unit)
 mise run test:all                   # All non-AI tests
-poetry run pytest --doctest-modules src/babylon/systems/formulas/  # If you modified formulas
+poetry run pytest --doctest-modules src/babylon/formulas/formulas/  # If you modified formulas
 ```
 
 ## Key Files Reference

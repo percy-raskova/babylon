@@ -146,7 +146,7 @@ jobs:
         run: poetry install --no-interaction --with docs
 
       - name: Run doctest examples
-        run: poetry run pytest --doctest-modules src/babylon/systems/formulas.py -v
+        run: poetry run pytest --doctest-modules src/babylon/formulas/formulas.py -v
 
       - name: Build documentation
         run: |

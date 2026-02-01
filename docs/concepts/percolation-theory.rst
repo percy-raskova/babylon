@@ -342,4 +342,4 @@ See Also
 - :doc:`/reference/topology` - API reference for topology functions
 - :doc:`/concepts/imperial-rent` - Economic foundation (why consciousness emerges)
 - :py:mod:`babylon.engine.topology_monitor` - Implementation details
-- :py:mod:`babylon.systems.formulas` - Mathematical formulas
+- :py:mod:`babylon.formulas` - Mathematical formulas

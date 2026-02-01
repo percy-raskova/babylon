@@ -19,7 +19,7 @@ for the same exchange value.
 
 import pytest
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     calculate_exchange_ratio,
     calculate_exploitation_rate,
     calculate_value_transfer,

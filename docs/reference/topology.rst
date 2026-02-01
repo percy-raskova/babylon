@@ -445,4 +445,4 @@ See Also
 - :doc:`/reference/events` - Complete event type reference (includes PhaseTransitionEvent)
 - :doc:`/concepts/imperial-rent` - Related economic mechanics
 - :py:mod:`babylon.engine.systems.solidarity` - Solidarity transmission system
-- :py:mod:`babylon.systems.formulas` - Mathematical formulas
+- :py:mod:`babylon.formulas` - Mathematical formulas

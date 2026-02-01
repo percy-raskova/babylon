@@ -321,7 +321,7 @@ Basic Derivative Calculation
 
 .. code-block:: python
 
-   from babylon.systems.formulas import (
+   from babylon.formulas import (
        ClassDynamicsParams,
        calculate_class_dynamics_derivative,
    )
@@ -340,7 +340,7 @@ Simulating Wealth Dynamics
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_class_dynamics_derivative
+   from babylon.formulas import calculate_class_dynamics_derivative
 
    # Initial shares (2015 Q1 FRED data)
    shares = [0.307, 0.393, 0.289, 0.011]
@@ -359,7 +359,7 @@ Modeling Class Consciousness
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_class_dynamics_derivative
+   from babylon.formulas import calculate_class_dynamics_derivative
 
    shares = (0.30, 0.36, 0.30, 0.04)
 
@@ -380,7 +380,7 @@ Inverting the Distribution
 
 .. code-block:: python
 
-   from babylon.systems.formulas import invert_wealth_to_population
+   from babylon.formulas import invert_wealth_to_population
 
    # 2025 Q2 FRED data (as percentages)
    shares = (30.7, 36.4, 30.3, 2.5)

@@ -51,7 +51,6 @@ ratelimit = ">=2.2.1"        # API rate limiting
 typer = ">=0.15.1"           # CLI framework
 rich = ">=13.9.4"            # Rich terminal output
 coloredlogs = ">=15.0.1"     # Colored logging
-dearpygui = "^2.1.1"         # Synopticon dashboard UI
 PyQt6 = "^6.6"               # God Mode Dashboard (Feature 007)
 PyQt6-WebEngine = "^6.6"     # WebGL map rendering via QWebEngineView
 pydeck = "^0.9"              # H3 hexagonal map visualization
@@ -73,6 +72,7 @@ filelock = ">=3.20.1"        # File locking
 hypothesis = "^6.149.0"      # Property-based testing
 salib = "^1.5.2"             # Sensitivity analysis
 uuid = "^1.30"
+contextvars = "^2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
@@ -247,7 +247,7 @@ update_changelog_on_bump = true
 
 [tool.mutmut]
 paths_to_mutate = [
-    "src/babylon/systems/formulas.py",
+    "src/babylon/formulas/formulas.py",
     "src/babylon/engine/systems/economic.py",
     "src/babylon/engine/systems/survival.py",
 ]

@@ -22,7 +22,7 @@ This implements the Fascist Bifurcation scenario:
 import pytest
 from tests.constants import TestConstants
 
-from babylon.systems.formulas import calculate_solidarity_transmission
+from babylon.formulas import calculate_solidarity_transmission
 
 # Alias for readability
 TC = TestConstants.Solidarity

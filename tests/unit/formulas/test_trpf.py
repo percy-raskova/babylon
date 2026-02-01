@@ -16,7 +16,7 @@ Theoretical Basis: Marx, Capital Vol. 3, Chapters 13-15
 import pytest
 from tests.constants import TestConstants
 
-from babylon.systems.formulas import (
+from babylon.formulas import (
     calculate_organic_composition,
     calculate_rate_of_profit,
     calculate_rent_pool_decay,

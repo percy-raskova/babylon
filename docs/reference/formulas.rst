@@ -3,7 +3,7 @@ Formulas Reference
 
 Complete specification of mathematical formulas used in the Babylon
 simulation engine. All formulas are implemented in
-:py:mod:`babylon.systems.formulas`.
+:py:mod:`babylon.formulas`.
 
 Constants
 ---------
@@ -45,7 +45,7 @@ Where:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_imperial_rent
+   from babylon.formulas import calculate_imperial_rent
 
    rent = calculate_imperial_rent(
        alpha=0.8,
@@ -68,7 +68,7 @@ When ratio > 1, the class is **labor aristocracy** (benefiting from imperial ren
 
 .. code-block:: python
 
-   from babylon.systems.formulas import (
+   from babylon.formulas import (
        calculate_labor_aristocracy_ratio,
        is_labor_aristocracy,
    )
@@ -122,7 +122,7 @@ This energy routes based on solidarity:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_consciousness_drift
+   from babylon.formulas import calculate_consciousness_drift
 
    drift = calculate_consciousness_drift(
        core_wages=80.0,
@@ -161,7 +161,7 @@ Russia 1917 (crisis + organization → revolution).
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_ideological_routing
+   from babylon.formulas import calculate_ideological_routing
 
    new_class, new_nation, new_agitation = calculate_ideological_routing(
        wage_change=-20.0,
@@ -198,7 +198,7 @@ At the threshold (W = S_min), probability is exactly 0.5.
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_acquiescence_probability
+   from babylon.formulas import calculate_acquiescence_probability
 
    prob = calculate_acquiescence_probability(
        wealth=100.0,
@@ -225,7 +225,7 @@ Where:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_revolution_probability
+   from babylon.formulas import calculate_revolution_probability
 
    prob = calculate_revolution_probability(
        cohesion=0.8,
@@ -248,7 +248,7 @@ becomes a rational survival strategy.
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_crossover_threshold
+   from babylon.formulas import calculate_crossover_threshold
 
    threshold = calculate_crossover_threshold(
        cohesion=0.6,
@@ -273,7 +273,7 @@ Applies Kahneman-Tversky loss aversion (losses weighted 2.25x):
 
 .. code-block:: python
 
-   from babylon.systems.formulas import apply_loss_aversion
+   from babylon.formulas import apply_loss_aversion
 
    perceived_gain = apply_loss_aversion(100.0)   # Returns 100.0
    perceived_loss = apply_loss_aversion(-100.0)  # Returns -225.0
@@ -304,7 +304,7 @@ When :math:`\rho > 1`, periphery gives more value than it receives.
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_exchange_ratio
+   from babylon.formulas import calculate_exchange_ratio
 
    ratio = calculate_exchange_ratio(
        periphery_labor_hours=100.0,
@@ -326,7 +326,7 @@ Converts exchange ratio to percentage:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_exploitation_rate
+   from babylon.formulas import calculate_exploitation_rate
 
    rate = calculate_exploitation_rate(exchange_ratio=4.0)  # Returns 300.0
 
@@ -343,7 +343,7 @@ Calculates actual value transferred:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_value_transfer
+   from babylon.formulas import calculate_value_transfer
 
    transfer = calculate_value_transfer(
        production_value=1000.0,
@@ -365,7 +365,7 @@ Where :math:`\eta` is price elasticity (typically negative).
 
 .. code-block:: python
 
-   from babylon.systems.formulas import prebisch_singer_effect
+   from babylon.formulas import prebisch_singer_effect
 
    new_price = prebisch_singer_effect(
        initial_price=100.0,
@@ -394,7 +394,7 @@ Transmission only occurs if ``source_consciousness > activation_threshold``.
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_solidarity_transmission
+   from babylon.formulas import calculate_solidarity_transmission
 
    delta = calculate_solidarity_transmission(
        source_consciousness=0.8,
@@ -480,7 +480,7 @@ Models bourgeoisie policy decisions based on imperial rent pool and tension:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_bourgeoisie_decision
+   from babylon.formulas import calculate_bourgeoisie_decision
 
    decision, wage_delta, repression_delta = calculate_bourgeoisie_decision(
        pool_ratio=0.8,
@@ -513,7 +513,7 @@ When :math:`\Delta B < 0`, the system is depleting faster than regenerating.
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_biocapacity_delta
+   from babylon.formulas import calculate_biocapacity_delta
 
    delta = calculate_biocapacity_delta(
        regeneration_rate=0.02,   # 2% max restored per tick
@@ -544,7 +544,7 @@ than the planet can regenerate).
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_overshoot_ratio
+   from babylon.formulas import calculate_overshoot_ratio
 
    ratio = calculate_overshoot_ratio(
        total_consumption=200.0,
@@ -586,7 +586,7 @@ concentration exposes marginal workers to attrition.
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_mortality_rate
+   from babylon.formulas import calculate_mortality_rate
 
    attrition = calculate_mortality_rate(
        wealth_per_capita=0.5,
@@ -618,7 +618,7 @@ Where:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_trpf_multiplier
+   from babylon.formulas import calculate_trpf_multiplier
 
    mult = calculate_trpf_multiplier(
        tick=1000,
@@ -639,7 +639,7 @@ Models imperial rent pool depletion:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_rent_pool_decay
+   from babylon.formulas import calculate_rent_pool_decay
 
    new_pool = calculate_rent_pool_decay(
        current_pool=100.0,
@@ -665,7 +665,7 @@ Where:
 
 .. code-block:: python
 
-   from babylon.systems.formulas import calculate_rate_of_profit
+   from babylon.formulas import calculate_rate_of_profit
 
    rate = calculate_rate_of_profit(
        surplus_value=100.0,
@@ -745,4 +745,4 @@ See Also
 - :doc:`/concepts/george-jackson-model` - Consciousness bifurcation theory
 - :doc:`/concepts/carceral-geography` - Territory and heat dynamics
 - :doc:`/reference/systems` - Systems that use these formulas
-- :py:mod:`babylon.systems.formulas` - Source code
+- :py:mod:`babylon.formulas` - Source code

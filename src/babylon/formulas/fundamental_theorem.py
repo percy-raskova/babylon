@@ -7,7 +7,7 @@ Core formulas:
 - Consciousness Drift: dPsi/dt = k(1 - Wc/Vc) - lambda*Psi + bifurcation
 """
 
-from babylon.systems.formulas.constants import LOSS_AVERSION_COEFFICIENT
+from babylon.formulas.constants import LOSS_AVERSION_COEFFICIENT
 
 
 def calculate_imperial_rent(

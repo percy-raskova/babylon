@@ -740,6 +740,20 @@ termcolor = ">=1.1.0,<4.0.0"
 tomlkit = ">=0.8.0,<1.0.0"
 
 [[package]]
+name = "contextvars"
+version = "2.4"
+description = "PEP 567 Backport"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "contextvars-2.4.tar.gz", hash = "sha256:f38c908aaa59c14335eeea12abea5f443646216c4e29380d7bf34d2018e2c39e"},
+]
+
+[package.dependencies]
+immutables = ">=0.9"
+
+[[package]]
 name = "contourpy"
 version = "1.3.3"
 description = "Python library for calculating contours of 2D quadrilateral grids"
@@ -975,42 +989,6 @@ typing_extensions = {version = ">=4.6,<5.0", markers = "python_version < \"3.13\
 json-validation = ["jsonschema[format-nongpl] (>=4.25,<5.0)", "referencing (>=0.28.4)"]
 validation = ["jsonschema[format-nongpl] (>=4.25,<5.0)", "lxml (>=4,<7)", "referencing (>=0.28.4)"]
 xml-validation = ["lxml (>=4,<7)"]
-
-[[package]]
-name = "dearpygui"
-version = "2.1.1"
-description = "DearPyGui: A simple Python GUI Toolkit"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "dearpygui-2.1.1-cp310-cp310-macosx_10_6_x86_64.whl", hash = "sha256:4cb99ac64125c4b454eb79c52c37c92e64d8dcd1646d14bb23e061930124f090"},
-    {file = "dearpygui-2.1.1-cp310-cp310-macosx_13_0_arm64.whl", hash = "sha256:fa3b3f2617d01b3de93bc4632129d5155d34aba708c72df05af1eaf0369a6394"},
-    {file = "dearpygui-2.1.1-cp310-cp310-manylinux1_x86_64.whl", hash = "sha256:886e3b4f91f9e75de0aa1fd5a51ea1cd862f047fbb1edd5bdcbec3d29c66f5cb"},
-    {file = "dearpygui-2.1.1-cp310-cp310-win_amd64.whl", hash = "sha256:5bf454047f7dc7c77c98721fd98aaaf276fa82f954699c95dfe80916a7060136"},
-    {file = "dearpygui-2.1.1-cp311-cp311-macosx_10_6_x86_64.whl", hash = "sha256:8a7c8608b365f4b380b7326679023595fecd04b78c514f2cfd349b0a1108bd0e"},
-    {file = "dearpygui-2.1.1-cp311-cp311-macosx_13_0_arm64.whl", hash = "sha256:ee87153fdd494ccead8c2345553acd7a9ee61c031e3223f4160aa560709248a3"},
-    {file = "dearpygui-2.1.1-cp311-cp311-manylinux1_x86_64.whl", hash = "sha256:964fbb3735017b919efa58104b2d7e9b84a168ff5c1031ae0652d5bc0a48bf5b"},
-    {file = "dearpygui-2.1.1-cp311-cp311-win_amd64.whl", hash = "sha256:6141184ff59fa4b8df1b81b077cb8cc2b2ef9c0ff92e69c6063062b6d251f426"},
-    {file = "dearpygui-2.1.1-cp312-cp312-macosx_10_6_x86_64.whl", hash = "sha256:238aea7b4be7376f564dae8edd563b280ec1483a03786022969938507691e017"},
-    {file = "dearpygui-2.1.1-cp312-cp312-macosx_13_0_arm64.whl", hash = "sha256:c27ca6ecd4913555b717f3bb341c0b6a27d6c9fdc9932f0b3c31ae2ef893ae35"},
-    {file = "dearpygui-2.1.1-cp312-cp312-manylinux1_x86_64.whl", hash = "sha256:8c071e9c165d89217bdcdaf769c6069252fcaee50bf369489add524107932273"},
-    {file = "dearpygui-2.1.1-cp312-cp312-win_amd64.whl", hash = "sha256:9f2291313d2035f8a4108e13f60d8c1a0e7c19af7554a7739a3fd15b3d5af8f7"},
-    {file = "dearpygui-2.1.1-cp313-cp313-macosx_10_6_x86_64.whl", hash = "sha256:5bab324eb6d61213e74a1937b501eff8ca713e7478d5bd6465b6456921194ca0"},
-    {file = "dearpygui-2.1.1-cp313-cp313-macosx_13_0_arm64.whl", hash = "sha256:958a794ed9c622842c70d80548fa943162f8b9f56c27f9a9a32eff5beef10945"},
-    {file = "dearpygui-2.1.1-cp313-cp313-manylinux1_x86_64.whl", hash = "sha256:ce692d9531d797cf31c85439e774d27fa67c5918e21e7e18d64987d1cb65ff2c"},
-    {file = "dearpygui-2.1.1-cp313-cp313-win_amd64.whl", hash = "sha256:0901c6ba9c717599df9469576184ca851de6cde242b2d9f9ab10bc35a7219656"},
-    {file = "dearpygui-2.1.1-cp314-cp314-macosx_10_6_x86_64.whl", hash = "sha256:6d8f807ea0c75d64407926db442255b609c6883dfcc85559acfd8f66569f7d61"},
-    {file = "dearpygui-2.1.1-cp314-cp314-macosx_13_0_arm64.whl", hash = "sha256:16cba0c621914c28abc056940143900677d964c60fe2432aeb45c4054cb84adc"},
-    {file = "dearpygui-2.1.1-cp314-cp314-manylinux1_x86_64.whl", hash = "sha256:8a71dfb779772cd36b56858c15e333fb2487fb19a9319d796896cb0cd0efcd2c"},
-    {file = "dearpygui-2.1.1-cp314-cp314-win_amd64.whl", hash = "sha256:7c719adbc382f688c84c576e8d752cfe861b41b9d83ed1fd065e20944c11afbf"},
-    {file = "dearpygui-2.1.1-cp38-cp38-macosx_10_6_x86_64.whl", hash = "sha256:6e121f2cea353827d0f04f8a811849630985a0b769b0c10847e3a4c89f9f0cd9"},
-    {file = "dearpygui-2.1.1-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:e3666f5ff7518efb3b1a5fccdd503123a62157ef0625494d8165a716c8b4525f"},
-    {file = "dearpygui-2.1.1-cp38-cp38-win_amd64.whl", hash = "sha256:ea8957ede6a7221b0853a1a4877dec3d75e6aad18271f43751265b98e4f972c3"},
-    {file = "dearpygui-2.1.1-cp39-cp39-macosx_10_6_x86_64.whl", hash = "sha256:ef1ed13a00889e39492f8a4c20ec43a95d928cfc5bccc0897e645ca8785f5427"},
-    {file = "dearpygui-2.1.1-cp39-cp39-manylinux1_x86_64.whl", hash = "sha256:d14abb9509b60e0e6e25bef7643a417f94e6a4477360688734a78a6c51171cc6"},
-    {file = "dearpygui-2.1.1-cp39-cp39-win_amd64.whl", hash = "sha256:91b0e81d92246e1d2ebd2e95ba06f88edbfebe4b39cee581f7da239368953a67"},
-]
 
 [[package]]
 name = "decli"
@@ -1936,6 +1914,68 @@ files = [
     {file = "imagesize-1.4.1-py2.py3-none-any.whl", hash = "sha256:0d8d18d08f840c19d0ee7ca1fd82490fdc3729b7ac93f49870406ddde8ef8d8b"},
     {file = "imagesize-1.4.1.tar.gz", hash = "sha256:69150444affb9cb0d5cc5a92b3676f0b2fb7cd9ae39e947a5e11a36b4497cd4a"},
 ]
+
+[[package]]
+name = "immutables"
+version = "0.21"
+description = "Immutable Collections"
+optional = false
+python-versions = ">=3.8.0"
+groups = ["main"]
+files = [
+    {file = "immutables-0.21-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:14cb09d4f4577ad9ab8770a340dc2158e0a5ab5775cb34c75960167a31104212"},
+    {file = "immutables-0.21-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:22ba593f95044ac60d2af463f3dc86cd0e223f8c51df85dff65d663d93e19f51"},
+    {file = "immutables-0.21-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:25afc81a7bcf26c8364f85e52a14e0095344343e79493c73b0e9a765310a0bed"},
+    {file = "immutables-0.21-cp310-cp310-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:eac6e2868567289f88c6810f296940c328a1d38c9abc841eed04963102a27d12"},
+    {file = "immutables-0.21-cp310-cp310-musllinux_1_2_aarch64.whl", hash = "sha256:ba8bca21a1d034f4577ede1e9553a681dd01199c06b563f1a8316f2623b64985"},
+    {file = "immutables-0.21-cp310-cp310-musllinux_1_2_x86_64.whl", hash = "sha256:39337bfb42f83dd787a81e2d00e90efa17c4a39a9cf1210b8a50dafe32438aae"},
+    {file = "immutables-0.21-cp310-cp310-win32.whl", hash = "sha256:b24aa98f6cdae4ba15baf3aa00e84223bafcd0d3fd7f0443474527ec951845e1"},
+    {file = "immutables-0.21-cp310-cp310-win_amd64.whl", hash = "sha256:715f8e5f8e1c35f036f9ac62eaf8b672eec1cdc2b4f9b73864cc64eccc76661c"},
+    {file = "immutables-0.21-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:5d780c38067047911a2e06a86ba063ba0055618ab5573c8198ef3f368e321303"},
+    {file = "immutables-0.21-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:9aab9d0f0016f6e0bfe7e4a4cb831ef20063da6468b1bbc71d06ef285781ee9e"},
+    {file = "immutables-0.21-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7ff83390b05d3372acb9a0c928f6cc20c78e74ca20ed88eb941f84a63b65e444"},
+    {file = "immutables-0.21-cp311-cp311-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d01497713e71509c4481ffccdbe3a47b94969345f4e92f814d6626f7c0a4c304"},
+    {file = "immutables-0.21-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:bc7844c9fbb5bece5bfdf2bf8ea74d308f42f40b0665fd25c58abf56d7db024a"},
+    {file = "immutables-0.21-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:984106fa4345efd9f96de22e9949fc97bac8598bdebee03c20b2497a88bff3b7"},
+    {file = "immutables-0.21-cp311-cp311-win32.whl", hash = "sha256:1bdb5200518518601377e4877d5034e7c535e9ea8a9d601ed8b0eedef0c7becd"},
+    {file = "immutables-0.21-cp311-cp311-win_amd64.whl", hash = "sha256:dd00c34f431c54c95e7b84bfdbdeacb4f039a6a24eb0c1f7aa4b168bb9a6ad0a"},
+    {file = "immutables-0.21-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:ef1ed262094b755903122c3c3a83ad0e0d5c3ab7887cda12b2fe878769d1ee0d"},
+    {file = "immutables-0.21-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ce604f81d9d8f26e60b52ebcb56bb5c0462c8ea50fb17868487d15f048a2f13e"},
+    {file = "immutables-0.21-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b48b116aaca4500398058b5a87814857a60c4cb09417fecc12d7da0f5639b73d"},
+    {file = "immutables-0.21-cp312-cp312-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:dad7c0c74b285cc0e555ec0e97acbdc6f1862fcd16b99abd612df3243732e741"},
+    {file = "immutables-0.21-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:e44346e2221a5a676c880ca8e0e6429fa24d1a4ae562573f5c04d7f2e759b030"},
+    {file = "immutables-0.21-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:8b10139b529a460e53fe8be699ebd848c54c8a33ebe67763bcfcc809a475a26f"},
+    {file = "immutables-0.21-cp312-cp312-win32.whl", hash = "sha256:fc512d808662614feb17d2d92e98f611d69669a98c7af15910acf1dc72737038"},
+    {file = "immutables-0.21-cp312-cp312-win_amd64.whl", hash = "sha256:461dcb0f58a131045155e52a2c43de6ec2fe5ba19bdced6858a3abb63cee5111"},
+    {file = "immutables-0.21-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:79674b51aa8dd983f9ac55f7f67b433b1df84a6b4f28ab860588389a5659485b"},
+    {file = "immutables-0.21-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:93c8350f8f7d0d9693f708229d9d0578e6f3b785ce6da4bced1da97137aacfad"},
+    {file = "immutables-0.21-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:583d2a63e444ce1538cc2bda56ae1f4a1a11473dbc0377c82b516bc7eec3b81e"},
+    {file = "immutables-0.21-cp313-cp313-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b274a52da9b106db55eceb93fc1aea858c4e6f4740189e3548e38613eafc2021"},
+    {file = "immutables-0.21-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:338bede057250b33716a3e4892e15df0bf5a5ddbf1d67ead996b3e680b49ef9e"},
+    {file = "immutables-0.21-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:8781c89583b68f604cf30f0978b722165824c3075888639fde771bf1a3e12dc0"},
+    {file = "immutables-0.21-cp313-cp313-win32.whl", hash = "sha256:e97ea83befad873712f283c0cccd630f70cba753e207b4868af28d5b85e9dc54"},
+    {file = "immutables-0.21-cp313-cp313-win_amd64.whl", hash = "sha256:cfcb23bd898f5a4ef88692b42c51f52ca7373a35ba4dcc215060a668639eb5da"},
+    {file = "immutables-0.21-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:07a37d8699255402a10784d4d45f2bcc00ca7dba8da763207a834b15767e6c62"},
+    {file = "immutables-0.21-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:9139fd80bb05501216f49c4306bb80d0c1a08c3f0f621ed2939bf52d7f762661"},
+    {file = "immutables-0.21-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:fc6fc7e917e281361ad243be1a3cb56a7633de88ee67c94cdf5651958ead30d9"},
+    {file = "immutables-0.21-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f6a577f55eaaf763b685eef9710edbeb7ee95e2e5f54e7e5e0fd0f60ae2eb648"},
+    {file = "immutables-0.21-cp38-cp38-musllinux_1_2_aarch64.whl", hash = "sha256:ca912c1bb35615ccbe361a6bb76e6fd43827394102467967d5599d78b50dd0f4"},
+    {file = "immutables-0.21-cp38-cp38-musllinux_1_2_x86_64.whl", hash = "sha256:586e88ca7ed44b7bb2cd7b212abd2637b51bd95bdb4856ab111b44715a62071c"},
+    {file = "immutables-0.21-cp38-cp38-win32.whl", hash = "sha256:21adc6b478a58692c79c5bf316b39d3fd0552441d2b38eef1782a7555deee484"},
+    {file = "immutables-0.21-cp38-cp38-win_amd64.whl", hash = "sha256:ecff5274357dc18aae053e5e10b8eee5e9b4d6cc774d34148c992cb2eb787ec3"},
+    {file = "immutables-0.21-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:e2aadf3bdd90daa0e8cb9c3cde4070e1021036e3b57f571a007ce24f323e47a9"},
+    {file = "immutables-0.21-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:5f8f507731d4d15e0c579aa77d8482471f988dc0f451e4bf3853ec36ccd42627"},
+    {file = "immutables-0.21-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:cb9a378a4480381d7d3d63b0d201cf610eae0bf70e26a9306e3e631c9bd64010"},
+    {file = "immutables-0.21-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:4a7b5920bbfcaf038894c8ce4ed2eff0b31c3559810a61806db751be8ab4d703"},
+    {file = "immutables-0.21-cp39-cp39-musllinux_1_2_aarch64.whl", hash = "sha256:8b90702d1fe313e8273ae7abb46fc0f0a87b47c1c9a83aed9a161301146e655c"},
+    {file = "immutables-0.21-cp39-cp39-musllinux_1_2_x86_64.whl", hash = "sha256:71cbbc6fbe7e7321648047ff9273f4605f8bd5ce456841a65ef151080e9d3481"},
+    {file = "immutables-0.21-cp39-cp39-win32.whl", hash = "sha256:c44f286c47dc0d4d7b5bf19fbe975e6d57c56d2878cea413e1ec7a4bfffb2727"},
+    {file = "immutables-0.21-cp39-cp39-win_amd64.whl", hash = "sha256:cf15314c39484b8947a4e20c3526021272510592fb2807b5136a2fcd6ab0151b"},
+    {file = "immutables-0.21.tar.gz", hash = "sha256:b55ffaf0449790242feb4c56ab799ea7af92801a0a43f9e2f4f8af2ab24dfc4a"},
+]
+
+[package.extras]
+test = ["flake8 (>=5.0,<6.0)", "mypy (>=1.4,<2.0)", "pycodestyle (>=2.9,<3.0)", "pytest (>=7.4,<8.0)"]
 
 [[package]]
 name = "importlib-metadata"
@@ -7691,4 +7731,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "52f67f57d2b0e1d217d0af7e8127d1b39de331b7b4587040ae6d21f811c51dcc"
+content-hash = "f50019eb1e415d0adcbcdc97497d14a3e8955f96506f9739488bdb8784d59566"

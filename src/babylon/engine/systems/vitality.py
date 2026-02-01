@@ -37,8 +37,8 @@ from typing import TYPE_CHECKING, Any
 import networkx as nx
 
 from babylon.engine.event_bus import Event
+from babylon.formulas import calculate_mortality_rate
 from babylon.models.enums import EventType
-from babylon.systems.formulas import calculate_mortality_rate
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer

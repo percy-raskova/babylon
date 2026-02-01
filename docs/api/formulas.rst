@@ -1,14 +1,9 @@
-Systems
-=======
-
-Simulation systems that transform world state each tick.
-
 Formulas
---------
+========
 
 Mathematical formulas implementing MLM-TW theory.
 
-.. automodule:: babylon.systems.formulas
+.. automodule:: babylon.formulas
    :members:
    :undoc-members:
    :show-inheritance:

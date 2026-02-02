@@ -80,7 +80,7 @@ mutmut = "^3.4.0"
 sphinx = ">=7,<9"
 sphinx-rtd-theme = "^3.0.2"
 sphinx-autodoc-typehints = "<3.6"
-myst-parser = "^4.0.1"
+myst-parser = "^5.0.0"
 sphinx-autobuild = "^2024.10.3"
 sphinxcontrib-mermaid = "^1.2"
 

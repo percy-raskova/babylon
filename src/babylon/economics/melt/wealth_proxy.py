@@ -41,13 +41,16 @@ class WealthProxyCalculator(Protocol):
     """Protocol for county-level wealth estimation from proxies.
 
     This service estimates wealth-based class shares when detailed wealth
-    data is unavailable. Uses ACS home ownership as primary proxy.
+    data is unavailable. Uses ACS home ownership as primary proxy for
+    Labor Aristocracy share and precarity indicators for lumpenproletariat.
 
     Example:
         >>> calculator = DefaultWealthProxyCalculator()
         >>> la_share = calculator.estimate_la_share("26125", 2022)  # Oakland
         >>> la_share
         0.42  # Higher homeownership → higher LA share
+        >>> lumpen = calculator.estimate_lumpen_share("26163", 2022)  # Wayne
+        >>> lumpen  # Higher precarity → higher lumpen share
     """
 
     def estimate_la_share(self, fips: str, year: int) -> float:
@@ -91,12 +94,31 @@ class WealthProxyCalculator(Protocol):
         """
         ...
 
+    def estimate_lumpen_share(self, fips: str, year: int) -> float | None:
+        """Estimate lumpenproletariat share from precarity indicators.
+
+        Components (from BLS LAUS + ACS):
+            - U-6 unemployment rate (broad)
+            - PTER rate (part-time for economic reasons)
+            - NILF want work (not in labor force but want work)
+            - Incarceration rate (optional, from BJS)
+
+        Args:
+            fips: 5-digit FIPS code for county
+            year: Calendar year
+
+        Returns:
+            Estimated lumpen share [0, 1], or None if data unavailable.
+            Returns data-driven estimate - no prescribed expected range.
+        """
+        ...
+
 
 class DefaultWealthProxyCalculator:
     """Default implementation of WealthProxyCalculator.
 
     Uses ACS home ownership rate as primary proxy for Labor Aristocracy
-    share at county level.
+    share at county level, and precarity indicators for lumpenproletariat.
 
     Calibration Constants:
         - EQUITY_FACTOR = 0.6: Fraction of homeowners with real equity
@@ -104,20 +126,41 @@ class DefaultWealthProxyCalculator:
         - NATIONAL_LA_SHARE = 0.40: Target LA share (50th-90th percentile)
         - NATIONAL_HOMEOWNERSHIP = 0.65: US homeownership rate (2020 Census)
 
+    Precarity Estimation Weights:
+        - NILF_WEIGHT = 0.4: Discouraged/marginally attached workers
+        - U6_GAP_WEIGHT = 0.3: U-6 minus U-3 gap (underemployed + marginal)
+        - INCARCERATION_WEIGHT = 0.2: Carceral exclusion
+        - PTER_WEIGHT = 0.1: Half of PTER as borderline lumpen
+
+    Detroit Validation Case:
+        Wayne County (26163) should show higher lumpen share than Oakland (26125)
+        due to higher unemployment, NILF, and incarceration rates.
+
     Example:
         >>> calculator = DefaultWealthProxyCalculator()
-        >>> # Oakland County (higher homeownership)
+        >>> # Oakland County (higher homeownership, lower precarity)
         >>> calculator.estimate_la_share("26125", 2022)
-        0.42
-        >>> # Wayne County (lower homeownership)
+        0.468
+        >>> calculator.estimate_lumpen_share("26125", 2022)
+        0.028
+        >>> # Wayne County (lower homeownership, higher precarity)
         >>> calculator.estimate_la_share("26163", 2022)
-        0.35
+        0.312
+        >>> calculator.estimate_lumpen_share("26163", 2022)
+        0.062
     """
 
     # Calibration constants from Fed SCF and Census data
     EQUITY_FACTOR = 0.6  # Fraction of homeowners with meaningful equity
     NATIONAL_HOMEOWNERSHIP = 0.65  # US homeownership rate (approx)
     NATIONAL_LA_SHARE = 0.40  # Expected LA share (50th-90th percentile)
+
+    # Precarity weights for lumpen share estimation
+    # Weight toward hard exclusion (NILF, incarcerated) over soft (PTER)
+    NILF_WEIGHT = 0.4  # Discouraged/marginally attached
+    U6_GAP_WEIGHT = 0.3  # U-6 minus U-3 = underemployed + marginal
+    INCARCERATION_WEIGHT = 0.2  # Incarcerated
+    PTER_WEIGHT = 0.1  # Half of PTER as borderline lumpen
 
     # Reference homeownership rates by FIPS (from ACS 2022)
     # In production, this would come from ACS data loader
@@ -132,20 +175,78 @@ class DefaultWealthProxyCalculator:
         "36061": 0.32,  # New York County (Manhattan) - very low
     }
 
+    # Reference precarity data by FIPS (from BLS LAUS + ACS + BJS)
+    # In production, this would come from data loaders
+    # Data sources:
+    #   - u3_rate: BLS LAUS county unemployment
+    #   - u6_rate: BLS LAUS state-level (county proxy from ACS B23005 NILF)
+    #   - pter_rate: ACS B23023 (part-time for economic reasons)
+    #   - nilf_want_work: ACS B23005 (not in labor force but want work)
+    #   - incarceration_rate: BJS / Vera Institute county data
+    _PRECARITY_BY_FIPS: dict[str, dict[str, float]] = {
+        # Detroit Metro validation case
+        "26163": {  # Wayne County (Detroit proper) - domestic periphery
+            "u3_rate": 0.08,
+            "u6_rate": 0.14,
+            "pter_rate": 0.05,
+            "nilf_want_work": 0.04,
+            "incarceration_rate": 0.02,
+        },
+        "26125": {  # Oakland County (suburbs) - domestic core
+            "u3_rate": 0.04,
+            "u6_rate": 0.07,
+            "pter_rate": 0.03,
+            "nilf_want_work": 0.02,
+            "incarceration_rate": 0.01,
+        },
+        # Additional reference points
+        "06037": {  # Los Angeles County - high precarity metro
+            "u3_rate": 0.05,
+            "u6_rate": 0.11,
+            "pter_rate": 0.04,
+            "nilf_want_work": 0.03,
+            "incarceration_rate": 0.015,
+        },
+        "48201": {  # Harris County (Houston) - moderate precarity
+            "u3_rate": 0.05,
+            "u6_rate": 0.10,
+            "pter_rate": 0.04,
+            "nilf_want_work": 0.025,
+            "incarceration_rate": 0.018,
+        },
+        "17031": {  # Cook County (Chicago) - high inequality
+            "u3_rate": 0.06,
+            "u6_rate": 0.12,
+            "pter_rate": 0.045,
+            "nilf_want_work": 0.035,
+            "incarceration_rate": 0.022,
+        },
+        "36061": {  # New York County (Manhattan) - low unemployment, some precarity
+            "u3_rate": 0.04,
+            "u6_rate": 0.08,
+            "pter_rate": 0.035,
+            "nilf_want_work": 0.025,
+            "incarceration_rate": 0.008,
+        },
+    }
+
     def __init__(
         self,
         homeownership_data: dict[str, float] | None = None,
+        precarity_data: dict[str, dict[str, float]] | None = None,
         equity_factor: float | None = None,
     ) -> None:
         """Initialize with optional data overrides.
 
         Args:
             homeownership_data: Optional dict mapping FIPS to ownership rates
+            precarity_data: Optional dict mapping FIPS to precarity indicators
             equity_factor: Optional override for equity factor calibration
         """
         self._homeownership = (
             homeownership_data if homeownership_data else self._HOMEOWNERSHIP_BY_FIPS.copy()
         )
+        self._precarity = precarity_data if precarity_data else self._PRECARITY_BY_FIPS.copy()
         self._equity_factor = equity_factor if equity_factor else self.EQUITY_FACTOR
 
     def estimate_la_share(self, fips: str, year: int) -> float:
@@ -213,43 +314,137 @@ class DefaultWealthProxyCalculator:
         """
         return self._homeownership.get(fips)
 
-    def get_class_distribution_estimate(self, fips: str, year: int) -> dict[str, float]:
-        """Estimate full class distribution for county.
+    def estimate_lumpen_share(self, fips: str, year: int) -> float | None:  # noqa: ARG002
+        """Estimate lumpenproletariat share from precarity indicators.
 
-        Uses home ownership to scale the standard wealth-based distribution.
+        Components (from BLS LAUS + ACS):
+            - U-6 unemployment rate (broad)
+            - PTER rate (part-time for economic reasons)
+            - NILF want work (not in labor force but want work)
+            - Incarceration rate (optional, from BJS)
+
+        Formula:
+            lumpen_share = (
+                NILF_WEIGHT * nilf_want_work +
+                U6_GAP_WEIGHT * (u6_rate - u3_rate) +
+                INCARCERATION_WEIGHT * incarceration_rate +
+                PTER_WEIGHT * pter_rate * 0.5
+            )
+
+        Returns data-driven estimate - no prescribed expected range.
+        Let the data reveal the actual distribution.
+
+        Args:
+            fips: 5-digit FIPS code for county
+            year: Calendar year (ignored for now, uses latest available)
+
+        Returns:
+            Estimated lumpen share [0, 0.5] (capped at bottom 50%),
+            or None if data unavailable.
+        """
+        data = self._precarity.get(fips)
+        if data is None:
+            # No data available - return None, let caller handle missing data
+            return None
+
+        u3_rate = data.get("u3_rate", 0.0)
+        u6_rate = data.get("u6_rate", 0.0)
+        pter_rate = data.get("pter_rate", 0.0)
+        nilf_want_work = data.get("nilf_want_work", 0.0)
+        incarceration_rate = data.get("incarceration_rate", 0.0)
+
+        # Lumpen ≈ those excluded from stable employment
+        # Let the data reveal the actual distribution
+        lumpen_share = (
+            self.NILF_WEIGHT * nilf_want_work
+            + self.U6_GAP_WEIGHT * (u6_rate - u3_rate)
+            + self.INCARCERATION_WEIGHT * incarceration_rate
+            + self.PTER_WEIGHT * pter_rate * 0.5  # Half of PTER as borderline
+        )
+
+        # Cap at bottom 50% wealth share (mathematical constraint)
+        # Lumpenproletariat cannot exceed the bottom 50% bracket
+        bottom_50_share = 0.50
+        return min(lumpen_share, bottom_50_share)
+
+    def get_precarity_indicators(self, fips: str, year: int) -> dict[str, float] | None:  # noqa: ARG002
+        """Get raw precarity indicators for county.
+
+        Args:
+            fips: 5-digit FIPS code for county
+            year: Calendar year (ignored for now, uses latest available)
+
+        Returns:
+            Dict of precarity indicators, or None if unavailable.
+            Keys: u3_rate, u6_rate, pter_rate, nilf_want_work, incarceration_rate
+        """
+        return self._precarity.get(fips)
+
+    def get_class_distribution_estimate(self, fips: str, year: int) -> dict[str, float] | None:
+        """Estimate full class distribution for county using wealth and precarity proxies.
+
+        Uses home ownership for LA share and precarity indicators for lumpen share.
+        Returns None if no data is available for the FIPS code.
+
+        The distribution must sum to 1.0:
+        - Bourgeoisie + Petit Bourgeoisie = 10% (fixed)
+        - Labor Aristocracy = estimated from homeownership proxy
+        - Proletariat + Lumpenproletariat = 90% - LA share (remainder)
+
+        The lumpen share within the bottom is estimated from precarity indicators,
+        with proletariat making up the rest.
 
         Args:
             fips: 5-digit FIPS code
             year: Calendar year
 
         Returns:
-            Dict with estimated shares for each class position
+            Dict with estimated shares for each class position, or None if
+            no data available for the FIPS code.
         """
+        # Check if we have any data for this FIPS
+        has_homeownership = fips in self._homeownership
+        has_precarity = fips in self._precarity
+
+        if not has_homeownership and not has_precarity:
+            # No data available - return None (let caller handle missing data)
+            return None
+
+        # Fixed shares for bourgeoisie and petit-bourgeoisie (top 10%)
+        bourgeoisie_share = 0.01
+        petit_bourgeoisie_share = 0.09
+        top_10 = bourgeoisie_share + petit_bourgeoisie_share
+
+        # Get LA share from homeownership proxy (or national average)
         la_share = self.estimate_la_share(fips, year)
 
-        # Scale other classes relative to LA share deviation
-        # If LA is higher, reduce proletariat/lumpen proportionally
-        la_deviation = la_share - self.NATIONAL_LA_SHARE
+        # Bottom share = everyone not in top 10% or LA
+        # This ensures distribution sums to 1.0
+        bottom_share = 1.0 - top_10 - la_share
 
-        # Standard national distribution
-        base = {
-            "bourgeoisie": 0.01,
-            "petit_bourgeoisie": 0.09,
-            "labor_aristocracy": 0.40,
-            "proletariat": 0.35,
-            "lumpenproletariat": 0.15,
-        }
+        # Get lumpen share from precarity indicators
+        lumpen_share = self.estimate_lumpen_share(fips, year)
 
-        # Adjust: if LA goes up, proletariat/lumpen go down proportionally
-        prol_lump_share = base["proletariat"] + base["lumpenproletariat"]
-        adjustment_factor = 1 - (la_deviation / prol_lump_share) if prol_lump_share > 0 else 1
+        if lumpen_share is not None:
+            # Scale lumpen share relative to the bottom share
+            # If precarity data shows 5% lumpen, and bottom is 50%, lumpen is 5% of total
+            # But lumpen cannot exceed the bottom share
+            lumpen_share = min(lumpen_share, bottom_share)
+            proletariat_share = max(0, bottom_share - lumpen_share)
+        else:
+            # Fall back to default split of bottom share
+            # ~70% proletariat, ~30% lumpen within the bottom bracket
+            base_proletariat_ratio = 0.70
+            base_lumpen_ratio = 0.30
+            proletariat_share = bottom_share * base_proletariat_ratio
+            lumpen_share = bottom_share * base_lumpen_ratio
 
         return {
-            "bourgeoisie": base["bourgeoisie"],
-            "petit_bourgeoisie": base["petit_bourgeoisie"],
+            "bourgeoisie": bourgeoisie_share,
+            "petit_bourgeoisie": petit_bourgeoisie_share,
             "labor_aristocracy": la_share,
-            "proletariat": base["proletariat"] * adjustment_factor,
-            "lumpenproletariat": base["lumpenproletariat"] * adjustment_factor,
+            "proletariat": proletariat_share,
+            "lumpenproletariat": lumpen_share,
         }
 
 

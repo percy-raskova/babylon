@@ -130,6 +130,102 @@ class ClassPosition(Enum):
     """
 
 
+class PrecarityStatus(Enum):
+    """Degree of exclusion from stable labor market participation.
+
+    Used to distinguish proletariat from lumpenproletariat within the
+    bottom 50% wealth bracket. The theoretical criterion is not simply
+    employment, but the degree of stable integration into the labor market.
+
+    The precarity spectrum captures gradations of labor market exclusion:
+
+    | Status | Description | Classification |
+    |--------|-------------|----------------|
+    | STABLE | Regular W-2, predictable hours | Proletariat |
+    | PRECARIOUS | Employed but unstable (PTER, gig, multiple jobs) | Proletariat |
+    | MARGINALLY_ATTACHED | Want work, searched recently, not currently | Lumpenproletariat |
+    | EXCLUDED | Discouraged, incarcerated, disabled w/o accommodation | Lumpenproletariat |
+
+    Key Populations in Lumpen Category:
+        - Unemployed (U-3)
+        - Discouraged workers (stopped looking)
+        - Incarcerated and recently released
+        - Undocumented workers with suppressed access
+        - Disabled without workplace accommodation
+        - Chronically homeless
+
+    Data Sources:
+        - U-6 unemployment rate (BLS LAUS)
+        - PTER rate - part-time for economic reasons (ACS B23023)
+        - NILF want work (ACS B23005)
+        - Incarceration rate (BJS / Vera Institute)
+
+    Example:
+        >>> from babylon.economics.melt import PrecarityStatus, ClassPosition
+        >>> from babylon.economics.melt import DefaultClassPositionClassifier
+        >>> classifier = DefaultClassPositionClassifier()
+        >>> # Stable employment → Proletariat
+        >>> classifier.classify_by_wealth_and_precarity(30.0, PrecarityStatus.STABLE)
+        <ClassPosition.PROLETARIAT: 4>
+        >>> # Excluded from labor market → Lumpenproletariat
+        >>> classifier.classify_by_wealth_and_precarity(30.0, PrecarityStatus.EXCLUDED)
+        <ClassPosition.LUMPENPROLETARIAT: 5>
+
+    See Also:
+        :class:`ClassPosition`: The class position enum
+        :class:`ClassPositionClassifier`: Service for classification
+        :meth:`DefaultWealthProxyCalculator.estimate_lumpen_share`: County estimation
+    """
+
+    STABLE = auto()
+    """Regular W-2 employment with predictable hours.
+
+    Workers with stable employment contracts, regular schedules, and
+    predictable income. They sell their labor power regularly and are
+    integrated into the formal economy. Classification: PROLETARIAT.
+    """
+
+    PRECARIOUS = auto()
+    """Employed but with unstable attachment to labor market.
+
+    Workers who are technically employed but face instability:
+    - Part-time for economic reasons (PTER)
+    - Gig economy workers (Uber, TaskRabbit, etc.)
+    - Multiple part-time jobs without benefits
+    - Day laborers with irregular work
+
+    Classification: PROLETARIAT (borderline - still selling labor)
+    """
+
+    MARGINALLY_ATTACHED = auto()
+    """Want work, searched recently, but not currently searching.
+
+    Workers who have given up active job search due to discouragement
+    or temporary circumstances but still want employment. They are
+    outside the active labor force but not fully excluded.
+
+    BLS Definition: "Persons not in the labor force who want and are
+    available for work and who have looked for a job sometime in the
+    prior 12 months, but who are not currently looking."
+
+    Classification: LUMPENPROLETARIAT (excluded from regular labor sale)
+    """
+
+    EXCLUDED = auto()
+    """Fully excluded from formal labor market participation.
+
+    Workers who face structural barriers to labor market participation:
+    - Discouraged workers (believe no work available)
+    - Currently incarcerated
+    - Recently released with employment barriers
+    - Disabled without workplace accommodation
+    - Chronically homeless
+    - Undocumented with suppressed labor market access
+
+    Classification: LUMPENPROLETARIAT (outside exploitation circuit)
+    """
+
+
 # Legacy alias for backward compatibility
 SUBPROLETARIAT = ClassPosition.LUMPENPROLETARIAT
 """DEPRECATED: Use LUMPENPROLETARIAT for excluded workers.
@@ -143,4 +239,4 @@ and LUMPENPROLETARIAT (excluded from labor market).
 """
 
 
-__all__ = ["ClassPosition", "SUBPROLETARIAT"]
+__all__ = ["ClassPosition", "PrecarityStatus", "SUBPROLETARIAT"]

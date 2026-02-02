@@ -33,6 +33,69 @@ This separation resolves the 30-50% vs 50-70% LA share debate:
 | Proletariat | Bottom 50%, employed | ~35% | ~0% | No net wealth, sells labor |
 | Lumpenproletariat | Bottom 50%, excluded | ~15% | ~0% | Outside formal labor market |
 
+### Theoretical Clarification: Proletariat vs Lumpenproletariat
+
+The distinction within the bottom 50% wealth bracket is based on **precarity** -
+the degree of exclusion from stable participation in the formal labor market.
+
+| Defining Feature | Proletariat | Lumpenproletariat |
+|------------------|-------------|-------------------|
+| Labor relation | Sells labor power regularly | Excluded from stable labor sale |
+| Relation to capital | Exploited but integrated | Outside exploitation circuit |
+| Employment status | Employed (stable or unstable) | Marginally attached or excluded |
+
+#### Precarity Spectrum (PrecarityStatus Enum)
+
+| Status | Description | Classification |
+|--------|-------------|----------------|
+| STABLE | Regular W-2 employment, predictable hours | Proletariat |
+| PRECARIOUS | Employed but unstable (PTER, gig, multiple jobs) | Proletariat (borderline) |
+| MARGINALLY_ATTACHED | Want work, searched recently, not currently searching | Lumpenproletariat |
+| EXCLUDED | Discouraged workers, incarcerated, disabled w/o accommodation | Lumpenproletariat |
+
+#### Key Populations in Lumpenproletariat Category
+
+- Unemployed (U-3)
+- Discouraged workers (stopped looking)
+- Incarcerated and recently released
+- Undocumented workers with suppressed access
+- Disabled without workplace accommodation
+- Chronically homeless
+
+#### County-Level Precarity Proxy
+
+The lumpenproletariat share is estimated from precarity indicators using weighted formula:
+
+```
+lumpen_share = (
+    0.4 × nilf_want_work +          # Marginally attached
+    0.3 × (u6_rate - u3_rate) +     # Underemployed + marginal
+    0.2 × incarceration_rate +      # Carceral exclusion
+    0.1 × pter_rate × 0.5           # Borderline precarious
+)
+```
+
+**Data Sources**:
+
+| Indicator | Source | ACS Table | Resolution |
+|-----------|--------|-----------|------------|
+| U-3 unemployment | BLS LAUS | - | County, monthly |
+| U-6 unemployment | BLS LAUS | - | State, monthly |
+| PTER rate | ACS | B23023 | County, annual |
+| NILF want work | ACS | B23005 | County, annual |
+| Incarceration | BJS / Vera | - | County, annual |
+| Disability employment gap | ACS | C18120 | County, annual |
+
+**Note**: U-6 is only available at state level. County-level proxy uses ACS B23005 (NILF who want work).
+
+#### Data-Driven Distribution
+
+The proletariat/lumpenproletariat split within the bottom 50% **emerges from the data**,
+not from prescribed ranges:
+- Lumpen share derived from precarity indicators
+- Proletariat share = bottom 50% - lumpen share
+- County-level variation naturally emerges from local labor market conditions
+
 ### What the Income Formulas Now Mean
 
 | Formula | Measures | Used For |

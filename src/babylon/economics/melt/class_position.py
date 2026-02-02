@@ -33,7 +33,7 @@ import warnings
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Protocol
 
-from babylon.economics.melt.types import ClassPosition
+from babylon.economics.melt.types import ClassPosition, PrecarityStatus
 
 if TYPE_CHECKING:
     from babylon.economics.melt.parameters import NationalParameters
@@ -126,6 +126,44 @@ class ClassPositionClassifier(Protocol):
             <ClassPosition.PROLETARIAT: 4>
             >>> classifier.classify_by_wealth_and_employment(30.0, employed=False)
             <ClassPosition.LUMPENPROLETARIAT: 5>
+        """
+        ...
+
+    def classify_by_wealth_and_precarity(
+        self, wealth_percentile: float, precarity: PrecarityStatus
+    ) -> ClassPosition:
+        """Full classification using wealth + precarity status.
+
+        This is the canonical method for proletariat/lumpenproletariat
+        distinction. Uses precarity (degree of labor market exclusion)
+        rather than binary employment status.
+
+        The precarity spectrum:
+            - STABLE, PRECARIOUS → PROLETARIAT (sells labor, even if unstable)
+            - MARGINALLY_ATTACHED, EXCLUDED → LUMPENPROLETARIAT (outside labor sale)
+
+        For wealth percentile >= 50 (Labor Aristocracy and above), precarity
+        status is ignored - wealth determines class position.
+
+        Args:
+            wealth_percentile: Wealth percentile 0-100
+            precarity: PrecarityStatus indicating degree of labor market exclusion
+
+        Returns:
+            Full ClassPosition with nuanced proletariat/lumpen distinction
+
+        Example:
+            >>> classifier.classify_by_wealth_and_precarity(30.0, PrecarityStatus.STABLE)
+            <ClassPosition.PROLETARIAT: 4>
+            >>> classifier.classify_by_wealth_and_precarity(30.0, PrecarityStatus.EXCLUDED)
+            <ClassPosition.LUMPENPROLETARIAT: 5>
+            >>> # Precarity ignored above 50th percentile
+            >>> classifier.classify_by_wealth_and_precarity(70.0, PrecarityStatus.EXCLUDED)
+            <ClassPosition.LABOR_ARISTOCRACY: 3>
+
+        See Also:
+            :class:`PrecarityStatus`: The precarity spectrum enum
+            :meth:`classify_by_wealth_and_employment`: Simpler binary method
         """
         ...
 
@@ -282,6 +320,34 @@ class DefaultClassPositionClassifier:
             return self.classify_by_wealth_percentile(wealth_percentile)
         if employed:
             return ClassPosition.PROLETARIAT
+        return ClassPosition.LUMPENPROLETARIAT
+
+    def classify_by_wealth_and_precarity(
+        self, wealth_percentile: float, precarity: PrecarityStatus
+    ) -> ClassPosition:
+        """Full classification using wealth + precarity status.
+
+        This is the canonical method for proletariat/lumpenproletariat
+        distinction. Uses precarity (degree of labor market exclusion)
+        rather than binary employment status.
+
+        Args:
+            wealth_percentile: Wealth percentile 0-100
+            precarity: PrecarityStatus indicating degree of labor market exclusion
+
+        Returns:
+            Full ClassPosition with nuanced proletariat/lumpen distinction
+        """
+        # Above 50th percentile: wealth determines class, precarity ignored
+        if wealth_percentile >= self.LABOR_ARISTOCRACY_THRESHOLD:
+            return self.classify_by_wealth_percentile(wealth_percentile)
+
+        # Bottom 50%: precarity determines proletariat vs lumpenproletariat
+        # STABLE and PRECARIOUS still sell labor (even if unstable)
+        if precarity in (PrecarityStatus.STABLE, PrecarityStatus.PRECARIOUS):
+            return ClassPosition.PROLETARIAT
+
+        # MARGINALLY_ATTACHED and EXCLUDED are outside regular labor sale
         return ClassPosition.LUMPENPROLETARIAT
 
     def classify(self, wage: float, params: NationalParameters) -> ClassPosition:

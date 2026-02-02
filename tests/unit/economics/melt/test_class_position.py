@@ -22,7 +22,13 @@ import warnings
 
 import pytest
 
-from babylon.economics.melt import ClassPosition, DefaultClassPositionClassifier, NationalParameters
+from babylon.economics.melt import (
+    ClassPosition,
+    DefaultClassPositionClassifier,
+    NationalParameters,
+    PrecarityStatus,
+)
+from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
 
 
 class TestClassPositionEnum:
@@ -634,3 +640,266 @@ class TestImperialRentSeparateFromClass:
         # The average should be slightly positive (US is net extractor)
         # But not dramatically so (most workers are proletariat)
         assert -0.2 < avg_phi_per_hour < 0.3  # Reasonable bounds
+
+
+class TestPrecarityStatusEnum:
+    """Tests for PrecarityStatus enum definition."""
+
+    def test_enum_has_exactly_four_values(self) -> None:
+        """Test that PrecarityStatus enum has exactly 4 values."""
+        assert len(PrecarityStatus) == 4
+
+    def test_enum_values_exist(self) -> None:
+        """Test that all expected enum values exist."""
+        assert PrecarityStatus.STABLE is not None
+        assert PrecarityStatus.PRECARIOUS is not None
+        assert PrecarityStatus.MARGINALLY_ATTACHED is not None
+        assert PrecarityStatus.EXCLUDED is not None
+
+    def test_enum_values_have_correct_order(self) -> None:
+        """Test enum values are in order (stable to excluded)."""
+        assert PrecarityStatus.STABLE.value < PrecarityStatus.PRECARIOUS.value
+        assert PrecarityStatus.PRECARIOUS.value < PrecarityStatus.MARGINALLY_ATTACHED.value
+        assert PrecarityStatus.MARGINALLY_ATTACHED.value < PrecarityStatus.EXCLUDED.value
+
+
+class TestPrecarityBasedClassification:
+    """Tests for precarity-based proletariat/lumpen distinction."""
+
+    @pytest.fixture
+    def classifier(self) -> DefaultClassPositionClassifier:
+        """Provide classifier instance."""
+        return DefaultClassPositionClassifier()
+
+    def test_stable_employment_is_proletariat(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Stable W-2 employment → Proletariat."""
+        result = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=30.0,
+            precarity=PrecarityStatus.STABLE,
+        )
+        assert result == ClassPosition.PROLETARIAT
+
+    def test_precarious_employment_is_proletariat(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Precarious (gig, PTER) employment → Proletariat (borderline)."""
+        result = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=30.0,
+            precarity=PrecarityStatus.PRECARIOUS,
+        )
+        assert result == ClassPosition.PROLETARIAT
+
+    def test_marginally_attached_is_lumpen(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Marginally attached (want work, not searching) → Lumpenproletariat."""
+        result = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=30.0,
+            precarity=PrecarityStatus.MARGINALLY_ATTACHED,
+        )
+        assert result == ClassPosition.LUMPENPROLETARIAT
+
+    def test_excluded_is_lumpen(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Excluded (discouraged, incarcerated) → Lumpenproletariat."""
+        result = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=30.0,
+            precarity=PrecarityStatus.EXCLUDED,
+        )
+        assert result == ClassPosition.LUMPENPROLETARIAT
+
+    def test_precarity_ignored_above_50th_percentile(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Precarity status is irrelevant for wealth ≥ 50th percentile."""
+        for precarity in PrecarityStatus:
+            result = classifier.classify_by_wealth_and_precarity(
+                wealth_percentile=70.0,
+                precarity=precarity,
+            )
+            assert result == ClassPosition.LABOR_ARISTOCRACY
+
+    def test_precarity_ignored_for_bourgeoisie(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Precarity status is irrelevant for bourgeoisie (top 1%)."""
+        for precarity in PrecarityStatus:
+            result = classifier.classify_by_wealth_and_precarity(
+                wealth_percentile=99.5,
+                precarity=precarity,
+            )
+            assert result == ClassPosition.BOURGEOISIE
+
+    def test_all_precarity_levels_at_boundary(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test classification at 50th percentile boundary."""
+        # At exactly 50th percentile, precarity should NOT matter (wealth determines class)
+        for precarity in PrecarityStatus:
+            result = classifier.classify_by_wealth_and_precarity(
+                wealth_percentile=50.0,
+                precarity=precarity,
+            )
+            assert result == ClassPosition.LABOR_ARISTOCRACY
+
+    def test_just_below_la_threshold(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test classification just below LA threshold (49.9th percentile)."""
+        # Just below 50th percentile, precarity DOES matter
+        stable = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=49.9,
+            precarity=PrecarityStatus.STABLE,
+        )
+        assert stable == ClassPosition.PROLETARIAT
+
+        excluded = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=49.9,
+            precarity=PrecarityStatus.EXCLUDED,
+        )
+        assert excluded == ClassPosition.LUMPENPROLETARIAT
+
+    def test_backward_compat_with_employment(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Verify backward compatibility mapping between employment and precarity."""
+        # employed=True should map to STABLE behavior (Proletariat)
+        employed_result = classifier.classify_by_wealth_and_employment(
+            wealth_percentile=30.0,
+            employed=True,
+        )
+        precarity_result = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=30.0,
+            precarity=PrecarityStatus.STABLE,
+        )
+        assert employed_result == precarity_result == ClassPosition.PROLETARIAT
+
+        # employed=False should map to EXCLUDED behavior (Lumpenproletariat)
+        unemployed_result = classifier.classify_by_wealth_and_employment(
+            wealth_percentile=30.0,
+            employed=False,
+        )
+        excluded_result = classifier.classify_by_wealth_and_precarity(
+            wealth_percentile=30.0,
+            precarity=PrecarityStatus.EXCLUDED,
+        )
+        assert unemployed_result == excluded_result == ClassPosition.LUMPENPROLETARIAT
+
+
+class TestCountyLumpenShareEstimation:
+    """Tests for county-level lumpenproletariat share estimation."""
+
+    @pytest.fixture
+    def calculator(self) -> DefaultWealthProxyCalculator:
+        """Provide calculator instance."""
+        return DefaultWealthProxyCalculator()
+
+    def test_wayne_higher_lumpen_than_oakland(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Wayne County (Detroit) should have higher lumpen share than Oakland.
+
+        This validates the core-periphery distinction within Detroit metro.
+        Wayne (domestic periphery) has higher unemployment, NILF, and
+        incarceration rates than Oakland (domestic core).
+        """
+        wayne_lumpen = calculator.estimate_lumpen_share("26163", 2022)
+        oakland_lumpen = calculator.estimate_lumpen_share("26125", 2022)
+
+        assert wayne_lumpen is not None
+        assert oakland_lumpen is not None
+        assert wayne_lumpen > oakland_lumpen
+
+    def test_unknown_fips_returns_none(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Unknown FIPS should return None (no prescribed default)."""
+        # Unknown FIPS returns None - let caller handle missing data
+        lumpen = calculator.estimate_lumpen_share("99999", 2022)
+
+        assert lumpen is None
+
+    def test_lumpen_share_positive(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Lumpen share should be positive for known FIPS codes."""
+        for fips in ["26163", "26125", "06037", "48201", "17031", "36061"]:
+            lumpen = calculator.estimate_lumpen_share(fips, 2022)
+            assert lumpen is not None
+            assert lumpen > 0
+
+    def test_lumpen_share_capped_at_bottom_50(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Lumpen share should be capped at 0.50 (bottom 50% bracket)."""
+        for fips in ["26163", "26125", "06037", "48201", "17031", "36061"]:
+            lumpen = calculator.estimate_lumpen_share(fips, 2022)
+            assert lumpen is not None
+            assert lumpen <= 0.50
+
+    def test_full_distribution_sums_correctly(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Class distribution should sum to ~1.0."""
+        dist = calculator.get_class_distribution_estimate("26163", 2022)
+
+        assert dist is not None
+        total = sum(dist.values())
+        assert abs(total - 1.0) < 0.05  # Allow small deviation
+
+    def test_unknown_fips_distribution_returns_none(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Unknown FIPS should return None for distribution."""
+        dist = calculator.get_class_distribution_estimate("99999", 2022)
+
+        assert dist is None
+
+    def test_precarity_indicators_accessible(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """Raw precarity indicators should be accessible for known FIPS."""
+        indicators = calculator.get_precarity_indicators("26163", 2022)
+
+        assert indicators is not None
+        assert "u3_rate" in indicators
+        assert "u6_rate" in indicators
+        assert "pter_rate" in indicators
+        assert "nilf_want_work" in indicators
+        assert "incarceration_rate" in indicators
+
+    def test_la_plus_lumpen_proletariat_bottom_50(
+        self,
+        calculator: DefaultWealthProxyCalculator,
+    ) -> None:
+        """LA share + proletariat + lumpen should cover non-bourgeois population.
+
+        The bottom 50% is split between proletariat and lumpenproletariat.
+        LA is the 50th-90th percentile (40% base).
+        Together these three should total ~90% (with 10% bourgeoisie/PB).
+        """
+        dist = calculator.get_class_distribution_estimate("26163", 2022)
+
+        assert dist is not None
+        non_bourgeois = dist["labor_aristocracy"] + dist["proletariat"] + dist["lumpenproletariat"]
+        # Should be approximately 90% (100% - 1% bourgeoisie - 9% PB)
+        assert abs(non_bourgeois - 0.90) < 0.10

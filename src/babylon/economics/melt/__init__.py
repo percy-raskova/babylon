@@ -84,7 +84,7 @@ from babylon.economics.melt.melt_calculator import (
     MELTCalculator,
 )
 from babylon.economics.melt.parameters import NationalParameters
-from babylon.economics.melt.types import SUBPROLETARIAT, ClassPosition
+from babylon.economics.melt.types import SUBPROLETARIAT, ClassPosition, PrecarityStatus
 from babylon.economics.melt.wealth_proxy import (
     DefaultWealthProxyCalculator,
     WealthProxyCalculator,
@@ -93,6 +93,7 @@ from babylon.economics.melt.wealth_proxy import (
 __all__ = [
     # Types
     "ClassPosition",
+    "PrecarityStatus",
     "SUBPROLETARIAT",  # Deprecated alias for backward compatibility
     # Parameters
     "NationalParameters",

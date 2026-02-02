@@ -657,6 +657,8 @@ ADR0XX_descriptive_name:
 - N/A (no storage changes) (010-cleanup-tech-debt)
 - Python 3.12+ (existing stack) + Pydantic 2.x (validation), NumPy (tensor ops), SQLAlchemy 2.x (ORM) (011-fundamental-tensor-primitive)
 - SQLite (`marxist-data-3NF.sqlite` for source data; in-memory tensor cache) (011-fundamental-tensor-primitive)
+- Python 3.11+ + TensorRegistry, ValueTensor4x3, NoDataSentinel from spec 011; CapitalStockCalculator from spec 012; BEA GDP data, QCEW employment data (013-melt-basket-visibility)
+- In-memory cache (follows TensorRegistry pattern); no new database tables (013-melt-basket-visibility)
 
 ## Recent Changes
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

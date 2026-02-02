@@ -25,10 +25,10 @@ ______________________________________________________________________
 
 **Purpose**: Create module structure and shared types
 
-- [ ] T001 Create `src/babylon/economics/throughput/` package directory with `__init__.py`
-- [ ] T002 [P] Create `src/babylon/economics/throughput/types.py` with ThroughputMetrics and WageShareEstimate Pydantic models
-- [ ] T003 [P] Create `tests/unit/economics/throughput/__init__.py` test package structure
-- [ ] T004 [P] Create `tests/integration/economics/__init__.py` if not exists
+- [x] T001 Create `src/babylon/economics/throughput/` package directory with `__init__.py`
+- [x] T002 [P] Create `src/babylon/economics/throughput/types.py` with ThroughputMetrics and WageShareEstimate Pydantic models
+- [x] T003 [P] Create `tests/unit/economics/throughput/__init__.py` test package structure
+- [x] T004 [P] Create `tests/integration/economics/__init__.py` if not exists
 
 ______________________________________________________________________
 
@@ -40,8 +40,8 @@ ______________________________________________________________________
 
 ### Data Source Protocols
 
-- [ ] T005 [P] Create `BEACountyGDPSource` protocol in `src/babylon/economics/throughput/data_sources.py`
-- [ ] T006 [P] Create `QCEWCountyNAICSSource` protocol in `src/babylon/economics/throughput/data_sources.py`
+- [x] T005 [P] Create `BEACountyGDPSource` protocol in `src/babylon/economics/throughput/data_sources.py`
+- [x] T006 [P] Create `QCEWCountyNAICSSource` protocol in `src/babylon/economics/throughput/data_sources.py`
 
 ### BEA County GDP Loader (D-002)
 
@@ -53,10 +53,10 @@ ______________________________________________________________________
 
 ### NAICS Depth Mapping (FR-003)
 
-- [ ] T009 Create `src/babylon/economics/throughput/naics_depth.py` with NAICS_DEPTH_MAPPING constant
+- [x] T009 Create `src/babylon/economics/throughput/naics_depth.py` with NAICS_DEPTH_MAPPING constant
   - Copy from `specs/014-throughput-position/contracts/naics_depth_mapping.py`
   - Implement `get_depth()` and `validate_depth()` functions
-- [ ] T010 Write unit tests for NAICS mapping in `tests/unit/economics/throughput/test_naics_depth.py`
+- [x] T010 Write unit tests for NAICS mapping in `tests/unit/economics/throughput/test_naics_depth.py`
   - Test all 20+ NAICS sector mappings
   - Test unknown NAICS code returns None
   - Test depth validation bounds [0.0, 5.0]

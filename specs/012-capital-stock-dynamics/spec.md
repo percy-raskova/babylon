@@ -94,6 +94,10 @@ Policy analysts need state-level and national capital stock totals for macro-lev
 
 2. **Given** K computed for all US counties, **When** requesting K[NATION, "US", 2022], **Then** the system returns the national capital stock total.
 
+3. **Given** only 40% of Michigan counties have valid K data (below 50% threshold), **When** requesting K[STATE, "26", 2022], **Then** the system returns NoDataSentinel with reason "Insufficient county coverage (40%)".
+
+4. **Given** 60% of Michigan counties have valid K data (above 50% threshold), **When** requesting K[STATE, "26", 2022], **Then** the system returns the sum of available county K values with a warning noting partial coverage.
+
 ______________________________________________________________________
 
 ### Edge Cases
@@ -137,9 +141,9 @@ Test: OCC[Oakland] > OCC[Wayne] consistently across 2010-2024, demonstrating OCC
   e[fips, t] = Σ_μ s^μ[fips, t] / Σ_μ v^μ[fips, t]
   ```
 - **FR-007**: System MUST derive all values from the cached TensorRegistry, never querying the database directly
-- **FR-008**: System MUST handle missing year data gracefully by skipping gaps and logging warnings
-- **FR-009**: System MUST return NoDataSentinel when requested data cannot be computed
-- **FR-010**: System MUST support aggregation of capital stock to state and national levels
+- **FR-008**: System MUST handle missing year data by skipping the gap year and continuing K accumulation from the last available year's values, logging a warning with the skipped year(s)
+- **FR-009**: System MUST return NoDataSentinel with descriptive `.reason` attribute (e.g., "Year outside data range", "No tensor data for county") when requested data cannot be computed
+- **FR-010**: System MUST support aggregation of capital stock to state and national levels, requiring at least 50% of constituent counties to have valid K data; return NoDataSentinel with reason "Insufficient county coverage (X%)" if threshold not met
 - **FR-011**: System MUST support configurable depreciation rates for sensitivity analysis (range: 0.01 to 0.20)
 - **FR-012**: System MUST clamp capital stock K to non-negative values (K >= 0)
 
@@ -155,7 +159,7 @@ Test: OCC[Oakland] > OCC[Wayne] consistently across 2010-2024, demonstrating OCC
 
 ### Measurable Outcomes
 
-- **SC-001**: Capital stock K can be computed for all counties with primitive tensor data in under 100ms per county time series (2010-2024)
+- **SC-001**: Capital stock K can be computed for all counties with primitive tensor data in under 100ms per county time series (2010-2024). Measured via pytest-benchmark with 100 iterations on a standard development machine; cold cache (first call) and warm cache (subsequent calls) measured separately.
 - **SC-002**: Profit rate validates TVT Prediction 9 (TRPF):
   - H₀: dr/dt ≥ 0 (no TRPF)
   - H₁: dr/dt < 0 (TRPF operative)

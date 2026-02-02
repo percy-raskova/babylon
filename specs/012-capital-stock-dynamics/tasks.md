@@ -176,9 +176,10 @@ ______________________________________________________________________
 
 ### Tests for User Story 5 (TDD)
 
-- [ ] T061 [P] [US5] Write test for get_K_aggregate STATE returns sum of county K values in tests/unit/economics/test_capital_stock.py
-- [ ] T062 [P] [US5] Write test for get_K_aggregate NATION returns sum of all county K values in tests/unit/economics/test_capital_stock.py
-- [ ] T063 [P] [US5] Write test for get_K_aggregate returns NoDataSentinel when no county data in tests/unit/economics/test_capital_stock.py
+- [ ] T061 [P] [US5] Write test for get_K_aggregate STATE returns sum of county K values when ≥50% coverage in tests/unit/economics/test_capital_stock.py
+- [ ] T062 [P] [US5] Write test for get_K_aggregate NATION returns sum of all county K values when ≥50% coverage in tests/unit/economics/test_capital_stock.py
+- [ ] T063 [P] [US5] Write test for get_K_aggregate returns NoDataSentinel with "Insufficient county coverage (X%)" when <50% counties have data in tests/unit/economics/test_capital_stock.py
+- [ ] T063a [P] [US5] Write test for get_K_aggregate logs warning when partial coverage (≥50% but <100%) in tests/unit/economics/test_capital_stock.py
 
 ### Implementation for User Story 5
 
@@ -219,6 +220,7 @@ ______________________________________________________________________
 - [ ] T077 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/depreciation.py
 - [ ] T078 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/capital_stock.py
 - [ ] T079 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/derived_metrics.py
+- [ ] T079a [P] Document profit_rate_flow vs profit_rate_stock distinction in derived_metrics.py docstring: flow-based r = s/(c+v) is per-period turnover; stock-based r = s/(K+v) uses accumulated capital per TVT Section 3.6
 - [ ] T080 [P] Add type hints and validate with mypy for all new modules
 - [ ] T081 Run quickstart.md examples manually to verify they work
 - [ ] T082 Update ai-docs/state.yaml with new components (CapitalStockCalculator, DerivedTensorMetrics)

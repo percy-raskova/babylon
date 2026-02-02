@@ -106,6 +106,7 @@ class CapitalStockCalculatorProtocol(Protocol):
         """Get aggregated capital stock for state or nation.
 
         Aggregates are computed as the sum of constituent county K values.
+        Requires at least 50% of counties to have valid K data.
 
         Args:
             level: Aggregation level (STATE or NATION).
@@ -116,7 +117,12 @@ class CapitalStockCalculatorProtocol(Protocol):
 
         Returns:
             Aggregated capital stock (sum of county K values),
-            or NoDataSentinel if insufficient county data.
+            or NoDataSentinel with reason "Insufficient county coverage (X%)"
+            if less than 50% of counties have valid K data.
+
+        Note:
+            When coverage is ≥50% but <100%, the aggregation proceeds
+            with a warning logged noting partial coverage.
 
         Example:
             >>> michigan_K = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2022)

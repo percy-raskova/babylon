@@ -290,6 +290,8 @@ class DerivedTensorMetrics:
 | get_K with year < MIN_YEAR | NoDataSentinel returned | "Year outside data range" |
 | K computation yields negative | Clamp to 0.0 | Capital cannot be negative |
 | Missing year in time series | Skip year | Continue from last available |
+| get_K_aggregate with <50% county coverage | NoDataSentinel returned | "Insufficient county coverage (X%)" |
+| get_K_aggregate with ≥50% but <100% coverage | Sum available + warning | Log partial coverage warning |
 
 ### DerivedTensorMetrics
 

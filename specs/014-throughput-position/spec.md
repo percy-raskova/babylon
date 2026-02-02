@@ -158,6 +158,10 @@ ______________________________________________________________________
 - What happens for very small counties with few employers? Flag as low-confidence estimate due to small sample.
 - What happens when computing λ and wages exceed GDP/employment? Indicates data quality issue - flag for review.
 
+**Small County Thresholds**: Two distinct thresholds apply:
+1. **Suppression (SUPPRESSED)**: Inherit BEA disclosure flags, which typically suppress counties with <3 reporting establishments in an industry to protect business confidentiality. These cannot be computed due to data unavailability.
+2. **Analytical Floor (INSUFFICIENT_DATA)**: Exclude counties with <1,000 total QCEW employment from ratio calculations. These counties have statistically unreliable τ_through values due to small sample sizes. Return NoDataSentinel with reason "INSUFFICIENT_DATA: county employment below 1,000 analytical threshold".
+
 ### Validation Case: Detroit Metro (Wayne vs Oakland)
 
 The Detroit metro area provides a key validation case demonstrating domestic core-periphery dynamics:
@@ -179,6 +183,8 @@ The Detroit metro area provides a key validation case demonstrating domestic cor
   τ_through[fips, year] = GDP[fips, year] / (employment[fips, year] × 2080)
   ```
   Units: $/labor-hour (throughput, not value creation)
+
+  **GDP Unit Specification**: All GDP values MUST use BEA CAGDP1 "chained 2017 dollars" (real GDP). This ensures consistent purchasing power comparisons across years and counties. Nominal GDP values MUST NOT be mixed with chained values in ratio calculations, as this produces meaningless results. When loading BEA data, verify the series uses LineCode 1 (Real GDP) not LineCode 3 (Current-dollar GDP).
 
 - **FR-002**: System MUST compute throughput position relative to national MELT:
   ```
@@ -221,9 +227,19 @@ The Detroit metro area provides a key validation case demonstrating domestic cor
   ```
   Note: This is a proxy; true λ requires additional institutional data.
 
-- **FR-006**: System MUST integrate with national MELT (τ) from Feature 013 to compute π.
+- **FR-006**: System SHOULD integrate with national MELT (τ) from Feature 013 to compute π when available.
+
+  **MELT Dependency Clarification**: MELT integration is optional enrichment, not a hard dependency. The core throughput metrics have different MELT requirements:
+  - **τ_through** (throughput intensity): Computable from GDP/employment alone. Does NOT require MELT.
+  - **D** (supply chain depth): Computable from NAICS employment alone. Does NOT require MELT.
+  - **λ_proxy** (wage share): Computable from wages/τ_through. Does NOT require MELT.
+  - **π** (throughput position): REQUIRES national MELT for normalization. If MELTCalculator is unavailable, return NoDataSentinel for π only while still returning valid τ_through, D, and λ_proxy values.
+
+  This design ensures partial results are available even when Feature 013 integration fails.
 
 - **FR-007**: System MUST return data unavailable indicators with descriptive reasons when required data cannot be computed.
+
+  **NoDataSentinel Propagation**: When upstream data sources (BEA, QCEW, or Feature 013 MELTCalculator) return NoDataSentinel, throughput calculations MUST propagate it as a union type (`ThroughputMetrics | NoDataSentinel`). Callers are responsible for handling the sentinel case. The system MUST NOT silently convert NoDataSentinel to NaN, zero, or default values, as this masks data quality issues and produces misleading results.
 
 - **FR-008**: System MUST validate computed values against sanity ranges:
   - τ_through: $20-200/hour expected range (flag outliers outside $10-500)
@@ -236,7 +252,8 @@ The Detroit metro area provides a key validation case demonstrating domestic cor
 ### Key Entities
 
 - **ThroughputMetrics**: Container for county-level throughput analysis results.
-  - Attributes: fips, year, tau_through ($/hour), pi (dimensionless ratio), supply_chain_depth (0-5 scale), is_estimated (boolean)
+  - Attributes: fips, year, tau_through ($/hour), pi (dimensionless ratio | None), supply_chain_depth (0-5 scale), is_estimated (boolean)
+  - Note: pi may be None when MELT is unavailable; tau_through and supply_chain_depth are always populated when data exists
 
 - **NAICSDepthMapping**: Mapping from 2-digit NAICS codes to supply chain depth values (0-5 scale).
 
@@ -299,7 +316,7 @@ The Detroit metro area provides a key validation case demonstrating domestic cor
 
 ## Dependencies
 
-- **D-001**: Requires Feature 013 (MELT and Basket Visibility) for national MELT (τ) used in π calculation.
+- **D-001**: Optionally uses Feature 013 (MELT and Basket Visibility) for national MELT (τ) used in π calculation. Note: τ_through, D, and λ_proxy are computable without Feature 013; only π requires MELT. See FR-006 for graceful degradation behavior.
 
 - **D-002**: Requires BEA CAGDP1 county GDP data - new data loader needed.
 

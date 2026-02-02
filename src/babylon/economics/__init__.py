@@ -11,6 +11,7 @@ This package provides the Marxian value transformation layer:
 - depreciation: DepreciationConfig for capital stock computation (Feature 012)
 - capital_stock: CapitalStockCalculator for TRPF analysis (Feature 012)
 - derived_metrics: DerivedTensorMetrics for stock-based profit rate (Feature 012)
+- melt: MELT and basket visibility for Labor Aristocracy thresholds (Feature 013)
 
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
@@ -30,12 +31,21 @@ Example:
     ...     DepreciationConfig,
     ...     DerivedTensorMetrics,
     ... )
+    >>> from babylon.economics import (
+    ...     ClassPosition,
+    ...     NationalParameters,
+    ...     DefaultMELTCalculator,
+    ...     DefaultBasketVisibilityCalculator,
+    ...     DefaultClassPositionClassifier,
+    ...     DefaultImperialRentCalculator as TVTImperialRentCalculator,
+    ... )
 
 See Also:
     :mod:`babylon.models.types`: Currency and other constrained types.
     :mod:`babylon.economics.reproduction`: Imperial rent calculation details.
     :mod:`babylon.economics.shadow_labor`: Shadow labor visibility details.
     :mod:`babylon.economics.capital_stock`: Capital stock computation details.
+    :mod:`babylon.economics.melt`: MELT and basket visibility details (Feature 013).
 """
 
 # Adapters (protocols and implementations)
@@ -70,6 +80,24 @@ from babylon.economics.exceptions import (
 
 # Hydrator
 from babylon.economics.hydrator import MarxianHydrator
+
+# MELT and Basket Visibility (Feature 013)
+from babylon.economics.melt import (
+    BasketVisibilityCalculator,
+    ClassPosition,
+    ClassPositionClassifier,
+    DefaultBasketVisibilityCalculator,
+    DefaultClassPositionClassifier,
+    DefaultMELTCalculator,
+    MELTCalculator,
+    NationalParameters,
+)
+from babylon.economics.melt import (
+    DefaultImperialRentCalculator as TVTImperialRentCalculator,
+)
+from babylon.economics.melt import (
+    ImperialRentCalculator as TVTImperialRentCalculatorProtocol,
+)
 
 # Imperial rent (Emmanuel-Amin framework)
 from babylon.economics.reproduction import (
@@ -141,4 +169,15 @@ __all__ = [
     "CapitalStockCalculator",
     "DepreciationConfig",
     "DerivedTensorMetrics",
+    # MELT and Basket Visibility (Feature 013)
+    "ClassPosition",
+    "NationalParameters",
+    "MELTCalculator",
+    "BasketVisibilityCalculator",
+    "ClassPositionClassifier",
+    "TVTImperialRentCalculatorProtocol",
+    "DefaultMELTCalculator",
+    "DefaultBasketVisibilityCalculator",
+    "DefaultClassPositionClassifier",
+    "TVTImperialRentCalculator",
 ]

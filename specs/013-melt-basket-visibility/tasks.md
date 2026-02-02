@@ -35,15 +35,15 @@ ______________________________________________________________________
 
 **Purpose**: Project initialization and module structure
 
-- [ ] T001 Create module structure at `src/babylon/economics/melt/` with `__init__.py`
-- [ ] T002 [P] Create `src/babylon/economics/melt/types.py` with ClassPosition enum per contracts/class_position.py
-- [ ] T003 [P] Create `src/babylon/economics/melt/parameters.py` with NationalParameters model per contracts/national_parameters.py
-- [ ] T004 [P] Create stub files for calculators:
+- [x] T001 Create module structure at `src/babylon/economics/melt/` with `__init__.py`
+- [x] T002 [P] Create `src/babylon/economics/melt/types.py` with ClassPosition enum per contracts/class_position.py
+- [x] T003 [P] Create `src/babylon/economics/melt/parameters.py` with NationalParameters model per contracts/national_parameters.py
+- [x] T004 [P] Create stub files for calculators:
   - `src/babylon/economics/melt/melt_calculator.py`
   - `src/babylon/economics/melt/basket_visibility.py`
   - `src/babylon/economics/melt/class_position.py`
   - `src/babylon/economics/melt/imperial_rent.py`
-- [ ] T005 Update `src/babylon/economics/__init__.py` to export new module symbols
+- [x] T005 Update `src/babylon/economics/__init__.py` to export new module symbols
 
 ______________________________________________________________________
 
@@ -53,24 +53,24 @@ ______________________________________________________________________
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Document data source protocols in `src/babylon/economics/melt/data_sources.py`:
+- [x] T006 Document data source protocols in `src/babylon/economics/melt/data_sources.py`:
   - `BEADataSource` protocol (GDP by year)
   - `QCEWDataSource` protocol (employment by year)
   - `CPIDataSource` protocol (inflation adjustment) [CHK044]
-- [ ] T007 Document TensorRegistry integration pattern in module docstring referencing `src/babylon/economics/tensor.py` patterns for NoDataSentinel [CHK040]
-- [ ] T008 Add Feature 012 integration points to module docstring:
+- [x] T007 Document TensorRegistry integration pattern in module docstring referencing `src/babylon/economics/tensor.py` patterns for NoDataSentinel [CHK040]
+- [x] T008 Add Feature 012 integration points to module docstring:
   - Reference `CapitalStockCalculator` service pattern
   - Reference `TensorRegistry.get_tensor()` cache pattern
   - Document how NationalParameters will integrate with ValueTensor [CHK039]
-- [ ] T009 Specify cache invalidation strategy in `parameters.py` docstring:
+- [x] T009 Specify cache invalidation strategy in `parameters.py` docstring:
   - Annual parameters cached by (year) key
   - Cache invalidated on: data source refresh, year boundary crossing
   - Thread-safe access via immutable NationalParameters [CHK042]
-- [ ] T010 Define CPI data source for V_reproduction in `data_sources.py`:
+- [x] T010 Define CPI data source for V_reproduction in `data_sources.py`:
   - BLS CPI-U (All Urban Consumers) series CUUR0000SA0
   - Base year: 2024 for $12/hour subsistence floor
   - Formula: V_reproduction(year) = $12 × (CPI_2024 / CPI_year) [CHK044]
-- [ ] T011 Create `tests/unit/economics/melt/` directory structure with `conftest.py`
+- [x] T011 Create `tests/unit/economics/melt/` directory structure with `conftest.py`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -86,7 +86,7 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T012 [P] [US1] Create `tests/unit/economics/melt/test_melt_calculator.py`:
+- [x] T012 [P] [US1] Create `tests/unit/economics/melt/test_melt_calculator.py`:
   - Test τ computation with mock GDP and employment data
   - Test NoDataSentinel return with descriptive reason for missing GDP [CHK030]
   - Test NoDataSentinel return with DISTINCT reason for missing employment [CHK030]
@@ -96,18 +96,18 @@ ______________________________________________________________________
 
 ### Implementation for User Story 1
 
-- [ ] T013 [US1] Implement `DefaultMELTCalculator` in `src/babylon/economics/melt/melt_calculator.py`:
+- [x] T013 [US1] Implement `DefaultMELTCalculator` in `src/babylon/economics/melt/melt_calculator.py`:
   - `get_melt(year: int) -> float | NoDataSentinel`
   - Formula: τ = GDP / (employment × 2080)
   - Return NoDataSentinel with reason "GDP data unavailable for year {year}" [CHK030]
   - Return NoDataSentinel with reason "Employment data unavailable for year {year}" [CHK030]
-- [ ] T014 [US1] Implement `validate_melt(tau: float) -> tuple[bool, str | None]`:
+- [x] T014 [US1] Implement `validate_melt(tau: float) -> tuple[bool, str | None]`:
   - Expected range: $55-75/hour (valid=True, message=None)
   - Warning range: $40-100/hour (valid=True, message=warning)
   - Fail range: <$20 or >$200/hour (valid=False, message=error)
   - Empirical basis: BEA NIPA + QCEW 2010-2024 regression
-- [ ] T015 [US1] Implement `data_range` property returning (2010, 2024)
-- [ ] T016 [US1] Create mock data source implementations for testing:
+- [x] T015 [US1] Implement `data_range` property returning (2010, 2024)
+- [x] T016 [US1] Create mock data source implementations for testing:
   - `MockBEADataSource` with configurable GDP values
   - `MockQCEWDataSource` with configurable employment values
 
@@ -123,7 +123,7 @@ ______________________________________________________________________
 
 ### Tests for User Story 2
 
-- [ ] T017 [P] [US2] Create `tests/unit/economics/melt/test_class_position.py`:
+- [x] T017 [P] [US2] Create `tests/unit/economics/melt/test_class_position.py`:
   - Test ClassPosition enum has exactly 3 values
   - Test classification: wage > τ_effective → LABOR_ARISTOCRACY
   - Test classification: τ_effective >= wage > V_reproduction → PROLETARIAT
@@ -134,16 +134,16 @@ ______________________________________________________________________
 
 ### Implementation for User Story 2
 
-- [ ] T018 [US2] Finalize ClassPosition enum in `types.py`:
+- [x] T018 [US2] Finalize ClassPosition enum in `types.py`:
   - LABOR_ARISTOCRACY = auto()
   - PROLETARIAT = auto()
   - SUBPROLETARIAT = auto()
   - Add docstring explaining wage-based classification limitation
   - Document: Cannot identify bourgeoisie (non-wage) or lumpen (excluded from production)
-- [ ] T019 [US2] Implement `DefaultClassPositionClassifier` in `class_position.py`:
+- [x] T019 [US2] Implement `DefaultClassPositionClassifier` in `class_position.py`:
   - `classify(wage: float, params: NationalParameters) -> ClassPosition`
   - `classify_distribution(wages: Sequence[float], params: NationalParameters) -> dict[ClassPosition, float]`
-- [ ] T020 [US2] Add validation for NationalParameters consistency:
+- [x] T020 [US2] Add validation for NationalParameters consistency:
   - τ_effective == τ × γ_basket (within 0.01 tolerance)
   - V_reproduction < τ_effective (required for valid classification)
 
@@ -159,7 +159,7 @@ ______________________________________________________________________
 
 ### Tests for User Story 3
 
-- [ ] T021 [P] [US3] Create `tests/unit/economics/melt/test_basket_visibility.py`:
+- [x] T021 [P] [US3] Create `tests/unit/economics/melt/test_basket_visibility.py`:
   - Test γ_basket formula: γ_basket = 1 / (α/γ_import + (1-α))
   - Test MVP mode returns (0.68, True) when no data
   - Test edge case α=0: returns γ_basket=1.0 (no imports, no subsidy)
@@ -171,19 +171,19 @@ ______________________________________________________________________
 
 ### Implementation for User Story 3
 
-- [ ] T022 [US3] Implement `DefaultBasketVisibilityCalculator` in `basket_visibility.py`:
+- [x] T022 [US3] Implement `DefaultBasketVisibilityCalculator` in `basket_visibility.py`:
   - `get_gamma_basket(year: int, alpha: float | None, gamma_import: float | None) -> tuple[float, bool]`
   - When alpha/gamma_import not provided, return MVP values with estimated=True
   - Formula: γ_basket = 1 / (α/γ_import + (1-α))
-- [ ] T023 [US3] Implement `validate_gamma_basket(gamma: float) -> tuple[bool, str | None]`:
+- [x] T023 [US3] Implement `validate_gamma_basket(gamma: float) -> tuple[bool, str | None]`:
   - Expected range: 0.60-0.80 (valid=True, message=None)
   - Warning range: 0.40-0.95 (valid=True, message=warning)
   - Fail range: <0.1 or >1.0 (valid=False, message=error)
-- [ ] T024 [US3] Implement MVP constant properties:
+- [x] T024 [US3] Implement MVP constant properties:
   - `mvp_gamma_basket` = 0.68
   - `mvp_alpha` = 0.25 (Hickel et al. methodology)
   - `mvp_gamma_import` = 0.35 (weighted average ERDI)
-- [ ] T025 [US3] Add docstring documenting MVP derivation:
+- [x] T025 [US3] Add docstring documenting MVP derivation:
   - α ≈ 0.25: Import share per Hickel et al. (2022) methodology
   - γ_import ≈ 0.35: Trade-weighted average ERDI of US partners
   - γ_basket = 1 / (0.25/0.35 + 0.75) ≈ 0.68
@@ -200,7 +200,7 @@ ______________________________________________________________________
 
 ### Tests for User Story 4
 
-- [ ] T026 [P] [US4] Create `tests/unit/economics/melt/test_county_classification.py`:
+- [x] T026 [P] [US4] Create `tests/unit/economics/melt/test_county_classification.py`:
   - Test classify_distribution returns dict with all 3 ClassPosition keys
   - Test shares sum to 1.0 (within floating point tolerance)
   - Test empty wage list returns equal shares (0.333...)
@@ -208,10 +208,10 @@ ______________________________________________________________________
 
 ### Implementation for User Story 4
 
-- [ ] T027 [US4] Extend `classify_distribution` in `class_position.py`:
+- [x] T027 [US4] Extend `classify_distribution` in `class_position.py`:
   - Accept `weights: Sequence[float] | None` for employment-weighted aggregation
   - Return `dict[ClassPosition, float]` with shares summing to 1.0
-- [ ] T028 [US4] Add FIPS code documentation for Detroit validation case:
+- [x] T028 [US4] Add FIPS code documentation for Detroit validation case:
   - Wayne County (Detroit proper): FIPS 26163
   - Oakland County (suburbs): FIPS 26125
   - Expected: Oakland LA share > Wayne LA share
@@ -228,7 +228,7 @@ ______________________________________________________________________
 
 ### Tests for User Story 5
 
-- [ ] T029 [P] [US5] Create `tests/unit/economics/melt/test_imperial_rent.py`:
+- [x] T029 [P] [US5] Create `tests/unit/economics/melt/test_imperial_rent.py`:
   - Test Φ_hour formula: Φ_hour = (W/τ) × (1/γ_basket) - 1
   - Test L_commanded formula: L_commanded = (W/τ) × (1/γ_basket)
   - Test relationship: Φ_hour = L_commanded - 1
@@ -240,16 +240,16 @@ ______________________________________________________________________
 
 ### Implementation for User Story 5
 
-- [ ] T030 [US5] Implement `DefaultImperialRentCalculator` in `imperial_rent.py`:
+- [x] T030 [US5] Implement `DefaultImperialRentCalculator` in `imperial_rent.py`:
   - `compute_phi_hour(wage: float, params: NationalParameters) -> float`
   - `compute_labor_commanded(wage: float, params: NationalParameters) -> float`
   - `is_labor_aristocracy(wage: float, params: NationalParameters) -> bool`
-- [ ] T031 [US5] Implement `get_theoretical_bounds(params: NationalParameters) -> dict[str, float]`:
+- [x] T031 [US5] Implement `get_theoretical_bounds(params: NationalParameters) -> dict[str, float]`:
   - `phi_at_zero`: Limit as W → 0 (approaches -1)
   - `phi_at_threshold`: Φ_hour when W = τ_effective (equals 0)
   - `phi_at_tau`: Φ_hour when W = τ (depends on γ_basket)
   - `l_cmd_at_threshold`: L_commanded when W = τ_effective (equals 1)
-- [ ] T032 [US5] Add algebraic proof in docstring:
+- [x] T032 [US5] Add algebraic proof in docstring:
   ```
   Break-Even Proof:
   At W = τ_effective = τ × γ_basket:

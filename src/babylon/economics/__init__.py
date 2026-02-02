@@ -8,6 +8,9 @@ This package provides the Marxian value transformation layer:
 - adapters: Data source protocols for QCEW and BEA data
 - reproduction: Imperial rent calculation (Emmanuel-Amin framework)
 - shadow_labor: Shadow labor visibility calculations (Department III)
+- depreciation: DepreciationConfig for capital stock computation (Feature 012)
+- capital_stock: CapitalStockCalculator for TRPF analysis (Feature 012)
+- derived_metrics: DerivedTensorMetrics for stock-based profit rate (Feature 012)
 
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
@@ -22,11 +25,17 @@ Example:
     ...     ShadowLaborResult,
     ...     ShadowLaborService,
     ... )
+    >>> from babylon.economics import (
+    ...     CapitalStockCalculator,
+    ...     DepreciationConfig,
+    ...     DerivedTensorMetrics,
+    ... )
 
 See Also:
     :mod:`babylon.models.types`: Currency and other constrained types.
     :mod:`babylon.economics.reproduction`: Imperial rent calculation details.
     :mod:`babylon.economics.shadow_labor`: Shadow labor visibility details.
+    :mod:`babylon.economics.capital_stock`: Capital stock computation details.
 """
 
 # Adapters (protocols and implementations)
@@ -37,6 +46,9 @@ from babylon.economics.adapters import (
     SQLiteQCEWSource,
 )
 
+# Capital stock dynamics (Feature 012)
+from babylon.economics.capital_stock import CapitalStockCalculator
+
 # Department mapping
 from babylon.economics.department_mapper import (
     DefaultRatios,
@@ -46,6 +58,8 @@ from babylon.economics.department_mapper import (
     get_default_mapper,
     map_sector_value,
 )
+from babylon.economics.depreciation import DepreciationConfig
+from babylon.economics.derived_metrics import DerivedTensorMetrics
 
 # Exceptions
 from babylon.economics.exceptions import (
@@ -123,4 +137,8 @@ __all__ = [
     "TemporalTransition",
     "TemporalValidationReport",
     "TemporalValidatorFacade",
+    # Capital stock dynamics (Feature 012)
+    "CapitalStockCalculator",
+    "DepreciationConfig",
+    "DerivedTensorMetrics",
 ]

@@ -25,13 +25,13 @@ ______________________________________________________________________
 
 **Purpose**: Create new modules and establish base structure
 
-- [ ] T001 Create depreciation.py module skeleton in src/babylon/economics/depreciation.py
-- [ ] T002 Create capital_stock.py module skeleton in src/babylon/economics/capital_stock.py
-- [ ] T003 Create derived_metrics.py module skeleton in src/babylon/economics/derived_metrics.py
-- [ ] T004 [P] Create test_depreciation.py skeleton in tests/unit/economics/test_depreciation.py
-- [ ] T005 [P] Create test_capital_stock.py skeleton in tests/unit/economics/test_capital_stock.py
-- [ ] T006 [P] Create test_derived_metrics.py skeleton in tests/unit/economics/test_derived_metrics.py
-- [ ] T007 Update src/babylon/economics/__init__.py with new module exports
+- [X] T001 Create depreciation.py module skeleton in src/babylon/economics/depreciation.py
+- [X] T002 Create capital_stock.py module skeleton in src/babylon/economics/capital_stock.py
+- [X] T003 Create derived_metrics.py module skeleton in src/babylon/economics/derived_metrics.py
+- [X] T004 [P] Create test_depreciation.py skeleton in tests/unit/economics/test_depreciation.py
+- [X] T005 [P] Create test_capital_stock.py skeleton in tests/unit/economics/test_capital_stock.py
+- [X] T006 [P] Create test_derived_metrics.py skeleton in tests/unit/economics/test_derived_metrics.py
+- [X] T007 Update src/babylon/economics/__init__.py with new module exports
 
 ______________________________________________________________________
 
@@ -43,20 +43,20 @@ ______________________________________________________________________
 
 ### Tests for Foundational Phase (TDD)
 
-- [ ] T008 [P] Write test for DepreciationConfig default rate (0.07) in tests/unit/economics/test_depreciation.py
-- [ ] T009 [P] Write test for DepreciationConfig validation rejects rate < 0.01 in tests/unit/economics/test_depreciation.py
-- [ ] T010 [P] Write test for DepreciationConfig validation rejects rate > 0.20 in tests/unit/economics/test_depreciation.py
-- [ ] T011 [P] Write test for DepreciationConfig.slow() factory (δ=0.05) in tests/unit/economics/test_depreciation.py
-- [ ] T012 [P] Write test for DepreciationConfig.fast() factory (δ=0.10) in tests/unit/economics/test_depreciation.py
-- [ ] T013 [P] Write test for DepreciationConfig.steady_state_K() formula in tests/unit/economics/test_depreciation.py
-- [ ] T014 [P] Write test for DepreciationConfig.next_K() perpetual inventory formula in tests/unit/economics/test_depreciation.py
+- [X] T008 [P] Write test for DepreciationConfig default rate (0.07) in tests/unit/economics/test_depreciation.py
+- [X] T009 [P] Write test for DepreciationConfig validation rejects rate < 0.01 in tests/unit/economics/test_depreciation.py
+- [X] T010 [P] Write test for DepreciationConfig validation rejects rate > 0.20 in tests/unit/economics/test_depreciation.py
+- [X] T011 [P] Write test for DepreciationConfig.slow() factory (δ=0.05) in tests/unit/economics/test_depreciation.py
+- [X] T012 [P] Write test for DepreciationConfig.fast() factory (δ=0.10) in tests/unit/economics/test_depreciation.py
+- [X] T013 [P] Write test for DepreciationConfig.steady_state_K() formula in tests/unit/economics/test_depreciation.py
+- [X] T014 [P] Write test for DepreciationConfig.next_K() perpetual inventory formula in tests/unit/economics/test_depreciation.py
 
 ### Implementation for Foundational Phase
 
-- [ ] T015 Implement DepreciationConfig frozen dataclass with rate validation in src/babylon/economics/depreciation.py
-- [ ] T016 Add slow(), fast(), default() factory methods in src/babylon/economics/depreciation.py
-- [ ] T017 Add steady_state_K() and next_K() helper methods in src/babylon/economics/depreciation.py
-- [ ] T018 Run tests to verify all T008-T014 pass
+- [X] T015 Implement DepreciationConfig frozen dataclass with rate validation in src/babylon/economics/depreciation.py
+- [X] T016 Add slow(), fast(), default() factory methods in src/babylon/economics/depreciation.py
+- [X] T017 Add steady_state_K() and next_K() helper methods in src/babylon/economics/depreciation.py
+- [X] T018 Run tests to verify all T008-T014 pass
 
 **Checkpoint**: DepreciationConfig complete - user story implementation can begin
 
@@ -70,25 +70,25 @@ ______________________________________________________________________
 
 ### Tests for User Story 1 (TDD)
 
-- [ ] T019 [P] [US1] Write test for get_K returns NoDataSentinel when tensor missing in tests/unit/economics/test_capital_stock.py
-- [ ] T020 [P] [US1] Write test for get_K returns NoDataSentinel for year < MIN_YEAR in tests/unit/economics/test_capital_stock.py
-- [ ] T021 [P] [US1] Write test for initial K_0 = total_c/δ formula in tests/unit/economics/test_capital_stock.py
-- [ ] T022 [P] [US1] Write test for K[t] = K[t-1]×(1-δ) + total_c[t-1] formula in tests/unit/economics/test_capital_stock.py
-- [ ] T023 [P] [US1] Write test for K clamped to non-negative (K >= 0) in tests/unit/economics/test_capital_stock.py
-- [ ] T024 [P] [US1] Write test for compute_time_series returns dict[year, K] in tests/unit/economics/test_capital_stock.py
-- [ ] T025 [P] [US1] Write test for compute_time_series skips missing years with warning in tests/unit/economics/test_capital_stock.py
-- [ ] T026 [P] [US1] Write test for cache_info returns statistics in tests/unit/economics/test_capital_stock.py
+- [X] T019 [P] [US1] Write test for get_K returns NoDataSentinel when tensor missing in tests/unit/economics/test_capital_stock.py
+- [X] T020 [P] [US1] Write test for get_K returns NoDataSentinel for year < MIN_YEAR in tests/unit/economics/test_capital_stock.py
+- [X] T021 [P] [US1] Write test for initial K_0 = total_c/δ formula in tests/unit/economics/test_capital_stock.py
+- [X] T022 [P] [US1] Write test for K[t] = K[t-1]×(1-δ) + total_c[t-1] formula in tests/unit/economics/test_capital_stock.py
+- [X] T023 [P] [US1] Write test for K clamped to non-negative (K >= 0) in tests/unit/economics/test_capital_stock.py
+- [X] T024 [P] [US1] Write test for compute_time_series returns dict[year, K] in tests/unit/economics/test_capital_stock.py
+- [X] T025 [P] [US1] Write test for compute_time_series skips missing years with warning in tests/unit/economics/test_capital_stock.py
+- [X] T026 [P] [US1] Write test for cache_info returns statistics in tests/unit/economics/test_capital_stock.py
 
 ### Implementation for User Story 1
 
-- [ ] T027 [US1] Implement CapitalStockCalculator.__init__ with registry and depreciation params in src/babylon/economics/capital_stock.py
-- [ ] T028 [US1] Add depreciation_rate property in src/babylon/economics/capital_stock.py
-- [ ] T029 [US1] Implement _cache dict and thread lock in src/babylon/economics/capital_stock.py
-- [ ] T030 [US1] Implement compute_time_series() with perpetual inventory method in src/babylon/economics/capital_stock.py
-- [ ] T031 [US1] Implement get_K() using cache lookup or compute_time_series in src/babylon/economics/capital_stock.py
-- [ ] T032 [US1] Implement clear_cache() and cache_info() methods in src/babylon/economics/capital_stock.py
-- [ ] T033 [US1] Add logging for missing year warnings in src/babylon/economics/capital_stock.py
-- [ ] T034 [US1] Run tests to verify T019-T026 pass
+- [X] T027 [US1] Implement CapitalStockCalculator.__init__ with registry and depreciation params in src/babylon/economics/capital_stock.py
+- [X] T028 [US1] Add depreciation_rate property in src/babylon/economics/capital_stock.py
+- [X] T029 [US1] Implement _cache dict and thread lock in src/babylon/economics/capital_stock.py
+- [X] T030 [US1] Implement compute_time_series() with perpetual inventory method in src/babylon/economics/capital_stock.py
+- [X] T031 [US1] Implement get_K() using cache lookup or compute_time_series in src/babylon/economics/capital_stock.py
+- [X] T032 [US1] Implement clear_cache() and cache_info() methods in src/babylon/economics/capital_stock.py
+- [X] T033 [US1] Add logging for missing year warnings in src/babylon/economics/capital_stock.py
+- [X] T034 [US1] Run tests to verify T019-T026 pass
 
 **Checkpoint**: User Story 1 complete - capital stock K[fips, year] is accessible and testable
 
@@ -102,22 +102,22 @@ ______________________________________________________________________
 
 ### Tests for User Story 2 (TDD)
 
-- [ ] T035 [P] [US2] Write test for DerivedTensorMetrics creation with all fields in tests/unit/economics/test_derived_metrics.py
-- [ ] T036 [P] [US2] Write test for profit_rate_stock = s/(K+v) formula in tests/unit/economics/test_derived_metrics.py
-- [ ] T037 [P] [US2] Write test for profit_rate_stock returns inf when K+v=0 in tests/unit/economics/test_derived_metrics.py
-- [ ] T038 [P] [US2] Write test for profit_rate_flow property delegates to tensor in tests/unit/economics/test_derived_metrics.py
-- [ ] T039 [P] [US2] Write test for to_dict() returns expected keys in tests/unit/economics/test_derived_metrics.py
-- [ ] T040 [P] [US2] Write test for get_metrics returns DerivedTensorMetrics in tests/unit/economics/test_capital_stock.py
-- [ ] T041 [P] [US2] Write test for get_metrics returns NoDataSentinel when K unavailable in tests/unit/economics/test_capital_stock.py
+- [X] T035 [P] [US2] Write test for DerivedTensorMetrics creation with all fields in tests/unit/economics/test_derived_metrics.py
+- [X] T036 [P] [US2] Write test for profit_rate_stock = s/(K+v) formula in tests/unit/economics/test_derived_metrics.py
+- [X] T037 [P] [US2] Write test for profit_rate_stock returns inf when K+v=0 in tests/unit/economics/test_derived_metrics.py
+- [X] T038 [P] [US2] Write test for profit_rate_flow property delegates to tensor in tests/unit/economics/test_derived_metrics.py
+- [X] T039 [P] [US2] Write test for to_dict() returns expected keys in tests/unit/economics/test_derived_metrics.py
+- [X] T040 [P] [US2] Write test for get_metrics returns DerivedTensorMetrics in tests/unit/economics/test_capital_stock.py
+- [X] T041 [P] [US2] Write test for get_metrics returns NoDataSentinel when K unavailable in tests/unit/economics/test_capital_stock.py
 
 ### Implementation for User Story 2
 
-- [ ] T042 [US2] Implement DerivedTensorMetrics frozen dataclass in src/babylon/economics/derived_metrics.py
-- [ ] T043 [US2] Add profit_rate_flow property delegating to tensor.profit_rate in src/babylon/economics/derived_metrics.py
-- [ ] T044 [US2] Add to_dict() method for analysis export in src/babylon/economics/derived_metrics.py
-- [ ] T045 [US2] Implement get_metrics() in CapitalStockCalculator in src/babylon/economics/capital_stock.py
-- [ ] T046 [US2] Handle division by zero (K+v=0) returning float('inf') in src/babylon/economics/capital_stock.py
-- [ ] T047 [US2] Run tests to verify T035-T041 pass
+- [X] T042 [US2] Implement DerivedTensorMetrics frozen dataclass in src/babylon/economics/derived_metrics.py
+- [X] T043 [US2] Add profit_rate_flow property delegating to tensor.profit_rate in src/babylon/economics/derived_metrics.py
+- [X] T044 [US2] Add to_dict() method for analysis export in src/babylon/economics/derived_metrics.py
+- [X] T045 [US2] Implement get_metrics() in CapitalStockCalculator in src/babylon/economics/capital_stock.py
+- [X] T046 [US2] Handle division by zero (K+v=0) returning float('inf') in src/babylon/economics/capital_stock.py
+- [X] T047 [US2] Run tests to verify T035-T041 pass
 
 **Checkpoint**: User Stories 1 & 2 complete - K and profit rate r are accessible
 
@@ -131,16 +131,16 @@ ______________________________________________________________________
 
 ### Tests for User Story 3 (TDD)
 
-- [ ] T048 [P] [US3] Write test for organic_composition = c/v formula in tests/unit/economics/test_derived_metrics.py
-- [ ] T049 [P] [US3] Write test for exploitation_rate = s/v formula in tests/unit/economics/test_derived_metrics.py
-- [ ] T050 [P] [US3] Write test for OCC returns inf when v=0 in tests/unit/economics/test_derived_metrics.py
-- [ ] T051 [P] [US3] Write test for exploitation_rate returns inf when v=0 in tests/unit/economics/test_derived_metrics.py
+- [X] T048 [P] [US3] Write test for organic_composition = c/v formula in tests/unit/economics/test_derived_metrics.py
+- [X] T049 [P] [US3] Write test for exploitation_rate = s/v formula in tests/unit/economics/test_derived_metrics.py
+- [X] T050 [P] [US3] Write test for OCC returns inf when v=0 in tests/unit/economics/test_derived_metrics.py
+- [X] T051 [P] [US3] Write test for exploitation_rate returns inf when v=0 in tests/unit/economics/test_derived_metrics.py
 
 ### Implementation for User Story 3
 
-- [ ] T052 [US3] Verify OCC and exploitation_rate are computed in DerivedTensorMetrics in src/babylon/economics/derived_metrics.py
-- [ ] T053 [US3] Ensure division-by-zero produces float('inf') consistently in src/babylon/economics/derived_metrics.py
-- [ ] T054 [US3] Run tests to verify T048-T051 pass
+- [X] T052 [US3] Verify OCC and exploitation_rate are computed in DerivedTensorMetrics in src/babylon/economics/derived_metrics.py
+- [X] T053 [US3] Ensure division-by-zero produces float('inf') consistently in src/babylon/economics/derived_metrics.py
+- [X] T054 [US3] Run tests to verify T048-T051 pass
 
 **Checkpoint**: User Stories 1, 2, & 3 complete - K, r, OCC, e all accessible
 
@@ -154,15 +154,15 @@ ______________________________________________________________________
 
 ### Tests for User Story 4 (TDD)
 
-- [ ] T055 [P] [US4] Write test for K with δ=0.05 > K with δ=0.07 in tests/unit/economics/test_capital_stock.py
-- [ ] T056 [P] [US4] Write test for K with δ=0.10 < K with δ=0.07 in tests/unit/economics/test_capital_stock.py
-- [ ] T057 [P] [US4] Write test for multiple calculators with different configs are independent in tests/unit/economics/test_capital_stock.py
+- [X] T055 [P] [US4] Write test for K with δ=0.05 > K with δ=0.07 in tests/unit/economics/test_capital_stock.py
+- [X] T056 [P] [US4] Write test for K with δ=0.10 < K with δ=0.07 in tests/unit/economics/test_capital_stock.py
+- [X] T057 [P] [US4] Write test for multiple calculators with different configs are independent in tests/unit/economics/test_capital_stock.py
 
 ### Implementation for User Story 4
 
-- [ ] T058 [US4] Verify CapitalStockCalculator correctly uses injected DepreciationConfig in src/babylon/economics/capital_stock.py
-- [ ] T059 [US4] Add example in docstring showing sensitivity analysis pattern in src/babylon/economics/capital_stock.py
-- [ ] T060 [US4] Run tests to verify T055-T057 pass
+- [X] T058 [US4] Verify CapitalStockCalculator correctly uses injected DepreciationConfig in src/babylon/economics/capital_stock.py
+- [X] T059 [US4] Add example in docstring showing sensitivity analysis pattern in src/babylon/economics/capital_stock.py
+- [X] T060 [US4] Run tests to verify T055-T057 pass
 
 **Checkpoint**: User Stories 1-4 complete - sensitivity analysis enabled
 
@@ -176,17 +176,17 @@ ______________________________________________________________________
 
 ### Tests for User Story 5 (TDD)
 
-- [ ] T061 [P] [US5] Write test for get_K_aggregate STATE returns sum of county K values when ≥50% coverage in tests/unit/economics/test_capital_stock.py
-- [ ] T062 [P] [US5] Write test for get_K_aggregate NATION returns sum of all county K values when ≥50% coverage in tests/unit/economics/test_capital_stock.py
-- [ ] T063 [P] [US5] Write test for get_K_aggregate returns NoDataSentinel with "Insufficient county coverage (X%)" when <50% counties have data in tests/unit/economics/test_capital_stock.py
-- [ ] T063a [P] [US5] Write test for get_K_aggregate logs warning when partial coverage (≥50% but <100%) in tests/unit/economics/test_capital_stock.py
+- [X] T061 [P] [US5] Write test for get_K_aggregate STATE returns sum of county K values when ≥50% coverage in tests/unit/economics/test_capital_stock.py
+- [X] T062 [P] [US5] Write test for get_K_aggregate NATION returns sum of all county K values when ≥50% coverage in tests/unit/economics/test_capital_stock.py
+- [X] T063 [P] [US5] Write test for get_K_aggregate returns NoDataSentinel with "Insufficient county coverage (X%)" when <50% counties have data in tests/unit/economics/test_capital_stock.py
+- [X] T063a [P] [US5] Write test for get_K_aggregate logs warning when partial coverage (≥50% but <100%) in tests/unit/economics/test_capital_stock.py
 
 ### Implementation for User Story 5
 
-- [ ] T064 [US5] Implement get_K_aggregate() for STATE level in src/babylon/economics/capital_stock.py
-- [ ] T065 [US5] Implement get_K_aggregate() for NATION level in src/babylon/economics/capital_stock.py
-- [ ] T066 [US5] Add aggregation cache with invalidation in src/babylon/economics/capital_stock.py
-- [ ] T067 [US5] Run tests to verify T061-T063 pass
+- [X] T064 [US5] Implement get_K_aggregate() for STATE level in src/babylon/economics/capital_stock.py
+- [X] T065 [US5] Implement get_K_aggregate() for NATION level in src/babylon/economics/capital_stock.py
+- [X] T066 [US5] Add aggregation cache with invalidation in src/babylon/economics/capital_stock.py
+- [X] T067 [US5] Run tests to verify T061-T063 pass
 
 **Checkpoint**: All user stories complete - full capital stock dynamics functionality
 
@@ -198,18 +198,18 @@ ______________________________________________________________________
 
 ### Integration Tests
 
-- [ ] T068 [P] Write integration test for full pipeline: registry → calculator → metrics in tests/integration/economics/test_trpf_validation.py
-- [ ] T069 [P] Write integration test for Detroit validation case (Wayne vs Oakland OCC) in tests/integration/economics/test_trpf_validation.py
-- [ ] T070 Write test for SC-002: profit rate linear regression shows negative slope in tests/integration/economics/test_trpf_validation.py
-- [ ] T071 Write test for SC-003: OCC-CoreIndex correlation > 0.3 in tests/integration/economics/test_trpf_validation.py
-- [ ] T072 Write test for SC-004: TRPF robust across δ ∈ {0.05, 0.07, 0.10} in tests/integration/economics/test_trpf_validation.py
-- [ ] T073 Write test for SC-005: state aggregate = sum(county K) within 0.01% in tests/integration/economics/test_trpf_validation.py
+- [X] T068 [P] Write integration test for full pipeline: registry → calculator → metrics in tests/integration/economics/test_trpf_validation.py
+- [X] T069 [P] Write integration test for Detroit validation case (Wayne vs Oakland OCC) in tests/integration/economics/test_trpf_validation.py
+- [X] T070 Write test for SC-002: profit rate linear regression shows negative slope in tests/integration/economics/test_trpf_validation.py
+- [X] T071 Write test for SC-003: OCC-CoreIndex correlation > 0.3 in tests/integration/economics/test_trpf_validation.py
+- [X] T072 Write test for SC-004: TRPF robust across δ ∈ {0.05, 0.07, 0.10} in tests/integration/economics/test_trpf_validation.py
+- [X] T073 Write test for SC-005: state aggregate = sum(county K) within 0.01% in tests/integration/economics/test_trpf_validation.py
 
 ### Validation Runs
 
-- [ ] T074 Run all unit tests to verify passing
-- [ ] T075 Run integration tests with synthetic data to verify TRPF validation
-- [ ] T076 Verify SC-006: existing TensorRegistry tests still pass
+- [X] T074 Run all unit tests to verify passing
+- [X] T075 Run integration tests with synthetic data to verify TRPF validation
+- [X] T076 Verify SC-006: existing TensorRegistry tests still pass
 
 ______________________________________________________________________
 
@@ -217,14 +217,14 @@ ______________________________________________________________________
 
 **Purpose**: Documentation, cleanup, and finalization
 
-- [ ] T077 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/depreciation.py
-- [ ] T078 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/capital_stock.py
-- [ ] T079 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/derived_metrics.py
-- [ ] T079a [P] Document profit_rate_flow vs profit_rate_stock distinction in derived_metrics.py docstring: flow-based r = s/(c+v) is per-period turnover; stock-based r = s/(K+v) uses accumulated capital per TVT Section 3.6
-- [ ] T080 [P] Add type hints and validate with mypy for all new modules
+- [X] T077 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/depreciation.py
+- [X] T078 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/capital_stock.py
+- [X] T079 [P] Add module docstrings per Sphinx RST format in src/babylon/economics/derived_metrics.py
+- [X] T079a [P] Document profit_rate_flow vs profit_rate_stock distinction in derived_metrics.py docstring: flow-based r = s/(c+v) is per-period turnover; stock-based r = s/(K+v) uses accumulated capital per TVT Section 3.6
+- [X] T080 [P] Add type hints and validate with mypy for all new modules
 - [ ] T081 Run quickstart.md examples manually to verify they work
 - [ ] T082 Update ai-docs/state.yaml with new components (CapitalStockCalculator, DerivedTensorMetrics)
-- [ ] T083 Final commit with all changes
+- [X] T083 Final commit with all changes
 
 ______________________________________________________________________
 

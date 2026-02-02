@@ -269,11 +269,11 @@ ______________________________________________________________________
 
 ### Integration Tests
 
-- [ ] T033 [P] Create `tests/integration/economics/test_melt_integration.py`:
+- [x] T033 [P] Create `tests/integration/economics/test_melt_integration.py`:
   - Test full pipeline: MELT → γ_basket → NationalParameters → ClassPosition → Φ_hour
   - Test NationalParameters construction from calculator outputs
   - Test quickstart.md examples execute without error
-- [ ] T034 Verify Detroit Metro validation case:
+- [x] T034 Verify Detroit Metro validation case:
   - Create test with mock Wayne/Oakland wage distributions
   - Assert Oakland LA share > Wayne LA share
 
@@ -297,21 +297,21 @@ ______________________________________________________________________
 
 ### Documentation
 
-- [ ] T038 [P] Update `src/babylon/economics/__init__.py` with complete exports:
+- [x] T038 [P] Update `src/babylon/economics/__init__.py` with complete exports:
   - ClassPosition, NationalParameters
   - MELTCalculator, BasketVisibilityCalculator
   - ClassPositionClassifier, ImperialRentCalculator
   - Default implementations
-- [ ] T039 [P] Add TVT axiom references to all calculator docstrings:
+- [x] T039 [P] Add TVT axiom references to all calculator docstrings:
   - MELTCalculator: TVT Axiom B3
   - BasketVisibilityCalculator: TVT Axiom D3
   - ClassPositionClassifier: TVT Axioms C1, E1-E2
   - ImperialRentCalculator: TVT Axioms E3-E4
-- [ ] T040 Update CLAUDE.md Active Technologies section with Feature 013
+- [x] T040 Update CLAUDE.md Active Technologies section with Feature 013
 
 ### Checklist Gap Resolution Tasks
 
-- [ ] T050 [P] Create `tests/unit/economics/melt/test_literature_validation.py` [CHK038]:
+- [x] T050 [P] Create `tests/unit/economics/melt/test_literature_validation.py` [CHK038]:
   - Test τ ≈ $65/hour (2022) within ±10% of BEA/QCEW derived value
   - Test γ_basket ≈ 0.68 within ±10% of Hickel et al. derived value
   - Document literature sources in test docstring
@@ -323,9 +323,9 @@ ______________________________________________________________________
   - Define: "average US worker wage" = median hourly wage from QCEW
   - 2022 median: ~$28/hour (BLS QCEW)
   - Assert: Φ_hour($28, params_2022) > 0 validates SC-004
-- [ ] T053 [P] Create `tests/integration/economics/test_melt_regression.py` [CHK050]:
+- [x] T053 [P] Create `tests/integration/economics/test_melt_regression.py` [CHK050]:
   - Test existing ValueTensor consumers still work after melt module addition
-  - Test TensorRegistry.get_tensor() not affected
+  - Test TensorRegistry.get() not affected
   - Test no import errors from existing economics module users
 
 ### Final Validation

@@ -661,4 +661,5 @@ ADR0XX_descriptive_name:
 - In-memory cache (follows TensorRegistry pattern); no new database tables (013-melt-basket-visibility)
 
 ## Recent Changes
+- 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)
 - 001-mvp-sim-engine: Added Python 3.12+ + NetworkX 3.x, Pydantic 2.x, SQLAlchemy 2.x

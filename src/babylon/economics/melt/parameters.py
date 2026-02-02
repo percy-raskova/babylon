@@ -2,9 +2,19 @@
 
 Feature: 013-melt-basket-visibility
 Date: 2026-02-01
+Revision: 2026-02-02 (added wealth distribution fields)
 
 This module defines the immutable container for annual national parameters
-used in Labor Aristocracy threshold determination.
+used in class position determination and imperial rent calculation.
+
+Theoretical Clarification (2026-02-02):
+    Class position and imperial rent are now treated as separate concerns:
+    - **Class position**: Determined by wealth percentile (stock)
+    - **Imperial rent (Φ_hour)**: Flow-based extraction rate
+
+    The income-based fields (τ_effective, v_reproduction) are retained for
+    imperial rent calculation and backward compatibility, but class position
+    should use wealth percentile thresholds.
 
 Cache Invalidation Strategy (CHK042):
     NationalParameters instances are designed for caching:
@@ -14,6 +24,7 @@ Cache Invalidation Strategy (CHK042):
     3. **Invalidation Conditions**:
        - Data source refresh (BEA GDP or QCEW employment data updated)
        - Year boundary crossing (simulation advances to new year)
+       - Fed SCF update (triennial wealth survey)
        - Explicit cache clear by caller
     4. **Thread Safety**: No locking needed due to immutability
 
@@ -44,10 +55,19 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 class NationalParameters(BaseModel):
-    """Annual national parameters for class position determination.
+    """Annual national parameters for class position and imperial rent.
 
-    This frozen Pydantic model holds all parameters needed to classify
-    wages into class positions and compute imperial rent metrics.
+    This frozen Pydantic model holds all parameters needed for:
+    - Class position classification (wealth-based)
+    - Imperial rent calculation (income-based)
+
+    Theoretical Clarification:
+        Class position and imperial rent are separate concerns:
+        - **Class position**: Wealth percentile thresholds (p50, p90, p99)
+        - **Imperial rent (Φ_hour)**: Income thresholds (τ_effective, v_reproduction)
+
+        The income-based thresholds are retained for imperial rent calculation
+        and backward compatibility with existing classification code.
 
     Immutability Rationale:
         Parameters are point-in-time snapshots. Once computed for a year,
@@ -55,7 +75,7 @@ class NationalParameters(BaseModel):
 
         1. Safe caching without invalidation concerns
         2. Thread-safe sharing across consumers
-        3. Consistent class position calculations
+        3. Consistent calculations across all consumers
 
     Monetary Units:
         All monetary values are in current-year dollars (not inflation-adjusted)
@@ -66,7 +86,9 @@ class NationalParameters(BaseModel):
         - B3: τ = GDP / L (MELT definition)
         - D3: γ_basket = 1 / (α/γ_import + (1-α))
         - D4: τ_effective = τ × γ_basket
-        - E1: V_reproduction (subsistence floor)
+        - E1 (Revised): Wealth percentile thresholds for class position
+        - E2 (Revised): Imperial rent is separate from class position
+        - E3-E4: Imperial rent formulas (unchanged)
 
     Example:
         >>> params = NationalParameters(
@@ -81,13 +103,14 @@ class NationalParameters(BaseModel):
         ... )
         >>> params.tau_effective
         44.2
-        >>> params.is_mvp
-        True
+        >>> params.p50_wealth_threshold  # LA threshold
+        142000.0
 
     See Also:
         :class:`MELTCalculator`: Computes τ from BEA/QCEW data
         :class:`BasketVisibilityCalculator`: Computes γ_basket
-        :mod:`babylon.economics.tensor`: NoDataSentinel for missing data
+        :class:`ClassPositionClassifier`: Wealth-based classification
+        :class:`ImperialRentCalculator`: Income-based extraction rate
     """
 
     model_config = ConfigDict(frozen=True)
@@ -141,6 +164,33 @@ class NationalParameters(BaseModel):
     estimated: bool = Field(
         default=False,
         description="True if using MVP hardcoded values (not computed from data)",
+    )
+
+    # Wealth distribution fields (from Fed SCF, optional)
+    # These are used for wealth-based class position classification
+
+    median_wealth: float | None = Field(
+        default=None,
+        ge=0,
+        description="Median net worth in $ (Fed SCF). 2022 value: ~$192,900",
+    )
+
+    p50_wealth_threshold: float | None = Field(
+        default=None,
+        ge=0,
+        description="50th percentile wealth threshold (LA lower bound). 2022: ~$142,000",
+    )
+
+    p90_wealth_threshold: float | None = Field(
+        default=None,
+        ge=0,
+        description="90th percentile wealth threshold (LA upper / PB lower). 2022: ~$1,880,000",
+    )
+
+    p99_wealth_threshold: float | None = Field(
+        default=None,
+        ge=0,
+        description="99th percentile wealth threshold (PB upper / Bourgeoisie lower). 2022: ~$13,000,000",
     )
 
     @computed_field  # type: ignore[prop-decorator]

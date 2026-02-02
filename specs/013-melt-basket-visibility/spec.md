@@ -2,9 +2,44 @@
 
 **Feature Branch**: `013-melt-basket-visibility`
 **Created**: 2026-02-01
-**Status**: Draft
+**Revised**: 2026-02-02 (wealth-based class position)
+**Status**: Implementation Complete
 **Input**: User description: "Create a specification for MELT and Basket Visibility Computation for determining Labor Aristocracy thresholds. MELT (τ) bridges labor-time and money-price. There is ONE national MELT per currency zone. γ_basket measures the imperial subsidy on the consumption basket. Together, τ and γ_basket determine the Labor Aristocracy threshold."
-**TVT Reference**: Implements Axiom Groups B (Single-System Temporalism, particularly B3 and B4), C (International Value Transfer), D (Consumption Basket Visibility), and E (Class Position) from `ai-docs/brainstorms/tensor/tvt_mathematical_formalization.md`
+**TVT Reference**: Implements Axiom Groups B (Single-System Temporalism), C (International Value Transfer), D (Consumption Basket Visibility), and E (Class Position - REVISED) from `ai-docs/brainstorms/tensor/tvt_mathematical_formalization.md`
+
+## Theoretical Clarification: Class vs Imperial Rent (2026-02-02)
+
+**Class position** is determined by **wealth percentile** (accumulated extraction):
+- LA = 50th-90th percentile wealth (~40% of population)
+- They have positive net wealth and material stake in the system
+
+**Imperial rent (Φ_hour)** measures **extraction rate** (flow):
+- A proletarian CAN have Φ_hour > 0 (benefit from cheap imports)
+- They consume rather than accumulate the imperial subsidy
+- Φ_hour is used for aggregate drain validation (Hickel), NOT class position
+
+This separation resolves the 30-50% vs 50-70% LA share debate:
+- 40% LA emerges naturally from wealth distribution (50th-90th percentile)
+- γ_basket stays empirically grounded (0.68)
+- No parameter tuning required
+
+### Class Structure (Wealth-Based)
+
+| Class | Wealth Percentile | Pop Share | Wealth Share | Primary Characteristic |
+|-------|-------------------|-----------|--------------|------------------------|
+| Bourgeoisie | Top 1% | 1% | ~33% | Owns means of production |
+| Petit Bourgeoisie | 90th-99th | 9% | ~33% | Small capital, professional-managerial |
+| Labor Aristocracy | 50th-90th | 40% | ~33% | Positive net wealth, system stake |
+| Proletariat | Bottom 50%, employed | ~35% | ~0% | No net wealth, sells labor |
+| Lumpenproletariat | Bottom 50%, excluded | ~15% | ~0% | Outside formal labor market |
+
+### What the Income Formulas Now Mean
+
+| Formula | Measures | Used For |
+|---------|----------|----------|
+| τ_effective = τ × γ_basket | Imperial rent threshold | Φ_hour sign (net extractor or not) |
+| Φ_hour = (W/τ)(1/γ_basket) - 1 | Hourly extraction rate | Aggregate drain validation (Hickel) |
+| W vs τ_effective | Income position | Rate of wealth accumulation, NOT class |
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -195,21 +230,22 @@ Test: labor_aristocracy_share[Oakland] > labor_aristocracy_share[Wayne] consiste
 
 ### Key Entities
 
-- **ClassPosition**: Enumeration for wage-based class position in imperial rent analysis:
+- **ClassPosition**: Enumeration for wealth-based class position (revised 2026-02-02):
   ```
-  ClassPosition ∈ {LABOR_ARISTOCRACY, PROLETARIAT, SUBPROLETARIAT}
+  ClassPosition ∈ {BOURGEOISIE, PETIT_BOURGEOISIE, LABOR_ARISTOCRACY, PROLETARIAT, LUMPENPROLETARIAT}
   ```
-  | Position | Condition | Imperial Rent | Description |
-  |----------|-----------|---------------|-------------|
-  | LABOR_ARISTOCRACY | W > τ_effective | Φ_hour > 0 | Net extractor of peripheral labor |
-  | PROLETARIAT | τ_effective ≥ W > V_reproduction | Φ_hour ≤ 0 | Exploited but self-reproducing |
-  | SUBPROLETARIAT | W ≤ V_reproduction | Φ_hour << 0 | Working but below reproduction cost |
+  | Position | Wealth Percentile | Pop Share | Description |
+  |----------|-------------------|-----------|-------------|
+  | BOURGEOISIE | ≥ 99% | 1% | Owns means of production |
+  | PETIT_BOURGEOISIE | 90-99% | 9% | Small capital, professional-managerial |
+  | LABOR_ARISTOCRACY | 50-90% | 40% | Positive net wealth, system stake |
+  | PROLETARIAT | < 50%, employed | ~35% | Sells labor, no net wealth |
+  | LUMPENPROLETARIAT | < 50%, excluded | ~15% | Outside formal labor market |
 
-  **Scope limitation**: This classification is *wage-based* for imperial rent analysis. It classifies workers by their wage relative to value thresholds. It does **not** identify:
-  - **Bourgeoisie** (non-wage income from capital ownership)
-  - **Lumpen** (excluded from production entirely, V_produced ≈ 0)
+  **Key insight**: Class position is determined by **wealth percentile** (stock), NOT income (flow).
+  A proletarian CAN have Φ_hour > 0 while remaining proletarian—they consume rather than accumulate the imperial subsidy.
 
-  Bourgeoisie and lumpen require different data (capital income, production participation) outside this feature's scope. Note: Subproletariat ≠ Lumpen. A subproletarian is *working* but paid below reproduction cost. A lumpen is *excluded* from wage labor entirely.
+  **Backward compatibility**: The deprecated income-based classification (W vs τ_effective) is retained for imperial rent calculation and backward compatibility. Old SUBPROLETARIAT maps to LUMPENPROLETARIAT.
 
 - **MELTCalculator**: Service that computes national MELT τ[year] from BEA GDP and QCEW employment. Caches computed values per year. Returns τ in $/labor-hour units, or NoDataSentinel with descriptive reason if data unavailable.
 
@@ -242,6 +278,13 @@ Test: labor_aristocracy_share[Oakland] > labor_aristocracy_share[Wayne] consiste
 - **SC-003**: County-level classification produces expected core-periphery differentiation: Oakland County shows higher labor_aristocracy_share than Wayne County.
 
 - **SC-004**: Imperial rent calculation produces values consistent with Hickel et al. estimates: average US worker Φ_hour > 0 (net extractors).
+
+  **Definition of "average wage"**: Per CHK048 resolution, "average US worker" refers to the **arithmetic mean** hourly wage from QCEW national data (~$35/hour in 2022), not the median (~$28/hour). The mean is used because:
+  1. Hickel et al. use aggregate measures that weight by total compensation
+  2. SC-004 tests the *national average* extraction rate, not the typical worker's rate
+  3. Mean wage > τ_effective validates the TVT prediction that "on average" US consumption extracts imperial rent
+
+  **Clarification**: The **median** worker (at ~$28/hour) has Φ_hour < 0 (is exploited). This is expected: 50-60% of workers are proletariat. SC-004 uses mean to validate aggregate imperial rent flow, not individual worker experience.
 
 - **SC-005**: System handles missing data gracefully, with NoDataSentinel returns for 100% of edge cases (no crashes or exceptions).
 

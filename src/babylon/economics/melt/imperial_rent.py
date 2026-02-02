@@ -2,8 +2,21 @@
 
 Feature: 013-melt-basket-visibility
 Date: 2026-02-01
+Revision: 2026-02-02 (clarified separation from class position)
 
 This module implements the TVT imperial rent formulas per Axioms E3 and E4.
+
+IMPORTANT - Separation from Class Position:
+    Imperial rent (Φ_hour) measures **extraction rate** (flow), NOT class position.
+    A proletarian (bottom 50% wealth) CAN have Φ_hour > 0 (benefit from cheap
+    imports) while remaining proletarian. They consume the imperial subsidy
+    rather than accumulating it as wealth.
+
+    Class position is determined by wealth percentile via ClassPositionClassifier.
+    Imperial rent is a separate concern used for:
+    - Aggregate drain validation (Hickel et al. estimates)
+    - Understanding extraction dynamics
+    - Modeling consumption patterns
 
 Note: This is distinct from the Emmanuel-Amin imperial rent calculator
 in babylon.economics.reproduction. Both theoretical frameworks coexist.
@@ -11,6 +24,9 @@ in babylon.economics.reproduction. Both theoretical frameworks coexist.
 TVT Axiom Reference:
     - E3: Φ_hour = (W/τ) × (1/γ_basket) - 1
     - E4: L_commanded = (W/τ) × (1/γ_basket)
+
+See Also:
+    :class:`ClassPositionClassifier`: Wealth-based class position (separate concern)
 """
 
 from __future__ import annotations
@@ -24,21 +40,34 @@ if TYPE_CHECKING:
 class ImperialRentCalculator(Protocol):
     """Protocol for imperial rent computation (TVT Axioms E3-E4).
 
-    This service computes hourly imperial rent metrics:
+    IMPORTANT: Imperial rent measures extraction RATE (flow), NOT class position.
+
+    A proletarian (bottom 50% wealth) CAN have Φ_hour > 0 (benefit from cheap
+    imports) while remaining proletarian. They consume the imperial subsidy
+    rather than accumulating it as wealth.
+
+    Class position is determined by wealth percentile via ClassPositionClassifier.
+    This calculator provides extraction metrics for:
+    - Aggregate drain validation (Hickel et al. $10T+/year estimates)
+    - Understanding extraction dynamics across income levels
+    - Modeling consumption patterns and their imperial rent implications
 
     Φ_hour (Imperial Rent per Hour):
         Φ_hour = (W/τ) × (1/γ_basket) - 1
 
         Interpretation:
-        - Φ_hour > 0: Worker extracts labor from periphery (Labor Aristocracy)
+        - Φ_hour > 0: Worker extracts labor via consumption (has imperial subsidy)
         - Φ_hour = 0: Break-even (wage equals τ_effective)
-        - Φ_hour < 0: Worker is net exploited (Proletariat/Subproletariat)
+        - Φ_hour < 0: Worker is net exploited (gives more labor than receives)
+
+        NOTE: Positive Φ_hour does NOT mean "Labor Aristocracy" - that's
+        a wealth-based classification. Use ClassPositionClassifier instead.
 
     L_commanded (Labor Commanded per Hour):
         L_commanded = (W/τ) × (1/γ_basket)
 
         Interpretation:
-        - L_commanded > 1: Commands more labor than expended (Labor Aristocracy)
+        - L_commanded > 1: Commands more labor than expended
         - L_commanded = 1: Break-even
         - L_commanded < 1: Commands less labor than expended (exploited)
 
@@ -49,21 +78,24 @@ class ImperialRentCalculator(Protocol):
                = 1 - 1 = 0 ✓
 
     Theoretical Bounds:
-        - Φ_hour approaches -1 as W approaches 0 (minimum exploitation)
+        - Φ_hour approaches -1 as W approaches 0 (maximum exploitation)
         - Φ_hour = 0 at W = τ_effective (break-even)
-        - Φ_hour > 0 for W > τ_effective (extraction)
+        - Φ_hour > 0 for W > τ_effective (extraction through consumption)
 
     TVT Axiom Reference:
-        - E3: Φ_hour formula
-        - E4: L_commanded formula
+        - E3: Φ_hour formula (unchanged)
+        - E4: L_commanded formula (unchanged)
 
     Example:
         >>> calculator = DefaultImperialRentCalculator()
         >>> params = get_national_parameters(2022)
         >>> phi = calculator.compute_phi_hour(wage=65.0, params=params)
-        >>> print(f"Worker extracts {phi:.2f} hours of peripheral labor per hour worked")
+        >>> print(f"Worker's consumption extracts {phi:.2f} hours per hour worked")
+        >>> # NOTE: This is extraction rate, NOT class position!
+        >>> # Use ClassPositionClassifier for class position.
 
     See Also:
+        :class:`ClassPositionClassifier`: Wealth-based class position (SEPARATE CONCERN)
         :class:`NationalParameters`: Contains τ, γ_basket thresholds
         :mod:`babylon.economics.reproduction`: Emmanuel-Amin framework (alternative)
     """
@@ -73,26 +105,34 @@ class ImperialRentCalculator(Protocol):
 
         Formula: Φ_hour = (W/τ) × (1/γ_basket) - 1
 
+        IMPORTANT: This measures extraction RATE, not class position.
+        A proletarian can have Φ_hour > 0 while remaining proletarian
+        (they consume rather than accumulate the imperial subsidy).
+
         Args:
             wage: Hourly wage in $/hour (W)
             params: National parameters containing τ and γ_basket
 
         Returns:
             Φ_hour in labor-hours extracted per hour worked.
-            Can be negative (worker is net exploited).
+            Positive = extraction through consumption.
+            Negative = net exploited.
 
         Example:
-            >>> # Labor Aristocracy: $65/hr with τ=$65, γ_basket=0.68
+            >>> # High earner with $65/hr, τ=$65, γ_basket=0.68
             >>> calculator.compute_phi_hour(65.0, params)
-            0.47  # Extracts 0.47 hours of peripheral labor per hour
+            0.47  # Consumption extracts 0.47 hours per hour worked
 
-            >>> # Proletariat: $30/hr with τ=$65, γ_basket=0.68
+            >>> # $30/hr worker with same params
             >>> calculator.compute_phi_hour(30.0, params)
             -0.32  # Net exploited, gives 0.32 hours more than receives
 
             >>> # Break-even: $44/hr (= τ_effective)
             >>> calculator.compute_phi_hour(44.0, params)
-            0.0  # Neither extracts nor is extracted
+            0.0  # Neutral extraction rate
+
+        Note:
+            For class position, use ClassPositionClassifier.classify_by_wealth_percentile()
         """
         ...
 

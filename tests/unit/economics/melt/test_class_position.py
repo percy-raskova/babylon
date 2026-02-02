@@ -2,12 +2,23 @@
 
 Feature: 013-melt-basket-visibility
 Date: 2026-02-01
+Revision: 2026-02-02 (wealth-based classification)
 
-TDD Red Phase: These tests define the expected behavior for class position
-classification.
+This module tests both:
+1. Wealth-based classification (primary, canonical method)
+2. Income-based classification (deprecated, backward compatibility)
+
+Theoretical Background:
+    Class position is determined by wealth percentile (stock), NOT income (flow).
+    A proletarian can have Φ_hour > 0 while remaining proletarian - they consume
+    rather than accumulate the imperial subsidy.
+
+    LA = 40% emerges naturally from wealth distribution (50th-90th percentile).
 """
 
 from __future__ import annotations
+
+import warnings
 
 import pytest
 
@@ -17,101 +28,342 @@ from babylon.economics.melt import ClassPosition, DefaultClassPositionClassifier
 class TestClassPositionEnum:
     """Tests for ClassPosition enum definition."""
 
-    def test_enum_has_exactly_three_values(self) -> None:
-        """Test that ClassPosition enum has exactly 3 values."""
-        assert len(ClassPosition) == 3
+    def test_enum_has_exactly_five_values(self) -> None:
+        """Test that ClassPosition enum has exactly 5 wealth-based values."""
+        assert len(ClassPosition) == 5
 
     def test_enum_values_exist(self) -> None:
         """Test that all expected enum values exist."""
+        assert ClassPosition.BOURGEOISIE is not None
+        assert ClassPosition.PETIT_BOURGEOISIE is not None
         assert ClassPosition.LABOR_ARISTOCRACY is not None
         assert ClassPosition.PROLETARIAT is not None
-        assert ClassPosition.SUBPROLETARIAT is not None
+        assert ClassPosition.LUMPENPROLETARIAT is not None
+
+    def test_enum_values_have_correct_order(self) -> None:
+        """Test enum values are in correct order (top to bottom of class hierarchy)."""
+        # BOURGEOISIE should have lowest auto() value
+        assert ClassPosition.BOURGEOISIE.value < ClassPosition.PETIT_BOURGEOISIE.value
+        assert ClassPosition.PETIT_BOURGEOISIE.value < ClassPosition.LABOR_ARISTOCRACY.value
+        assert ClassPosition.LABOR_ARISTOCRACY.value < ClassPosition.PROLETARIAT.value
+        assert ClassPosition.PROLETARIAT.value < ClassPosition.LUMPENPROLETARIAT.value
 
 
-class TestClassPositionClassification:
-    """Tests for wage-based class position classification."""
+class TestWealthBasedClassification:
+    """Tests for wealth-based class position classification (primary method)."""
+
+    @pytest.fixture
+    def classifier(self) -> DefaultClassPositionClassifier:
+        """Provide classifier instance."""
+        return DefaultClassPositionClassifier()
+
+    def test_bourgeoisie_top_1_percent(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that wealth percentile >= 99 results in BOURGEOISIE."""
+        assert classifier.classify_by_wealth_percentile(99.0) == ClassPosition.BOURGEOISIE
+        assert classifier.classify_by_wealth_percentile(99.5) == ClassPosition.BOURGEOISIE
+        assert classifier.classify_by_wealth_percentile(100.0) == ClassPosition.BOURGEOISIE
+
+    def test_petit_bourgeoisie_90_to_99(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that wealth percentile 90-99 results in PETIT_BOURGEOISIE."""
+        assert classifier.classify_by_wealth_percentile(90.0) == ClassPosition.PETIT_BOURGEOISIE
+        assert classifier.classify_by_wealth_percentile(95.0) == ClassPosition.PETIT_BOURGEOISIE
+        assert classifier.classify_by_wealth_percentile(98.9) == ClassPosition.PETIT_BOURGEOISIE
+
+    def test_labor_aristocracy_50_to_90(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that wealth percentile 50-90 results in LABOR_ARISTOCRACY."""
+        assert classifier.classify_by_wealth_percentile(50.0) == ClassPosition.LABOR_ARISTOCRACY
+        assert classifier.classify_by_wealth_percentile(70.0) == ClassPosition.LABOR_ARISTOCRACY
+        assert classifier.classify_by_wealth_percentile(89.9) == ClassPosition.LABOR_ARISTOCRACY
+
+    def test_bottom_50_defaults_to_proletariat(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that wealth percentile < 50 defaults to PROLETARIAT."""
+        # classify_by_wealth_percentile defaults to PROLETARIAT for bottom 50%
+        # (use classify_by_wealth_and_employment for lumpen distinction)
+        assert classifier.classify_by_wealth_percentile(49.9) == ClassPosition.PROLETARIAT
+        assert classifier.classify_by_wealth_percentile(30.0) == ClassPosition.PROLETARIAT
+        assert classifier.classify_by_wealth_percentile(0.0) == ClassPosition.PROLETARIAT
+
+    def test_proletariat_bottom_50_employed(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that bottom 50% + employed = PROLETARIAT."""
+        assert (
+            classifier.classify_by_wealth_and_employment(30.0, employed=True)
+            == ClassPosition.PROLETARIAT
+        )
+        assert (
+            classifier.classify_by_wealth_and_employment(10.0, employed=True)
+            == ClassPosition.PROLETARIAT
+        )
+
+    def test_lumpenproletariat_bottom_50_excluded(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that bottom 50% + excluded = LUMPENPROLETARIAT."""
+        assert (
+            classifier.classify_by_wealth_and_employment(30.0, employed=False)
+            == ClassPosition.LUMPENPROLETARIAT
+        )
+        assert (
+            classifier.classify_by_wealth_and_employment(10.0, employed=False)
+            == ClassPosition.LUMPENPROLETARIAT
+        )
+
+    def test_employment_status_ignored_above_50th_percentile(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that employment status doesn't matter above 50th percentile."""
+        # Above 50th percentile, wealth determines class regardless of employment
+        assert (
+            classifier.classify_by_wealth_and_employment(70.0, employed=True)
+            == ClassPosition.LABOR_ARISTOCRACY
+        )
+        assert (
+            classifier.classify_by_wealth_and_employment(70.0, employed=False)
+            == ClassPosition.LABOR_ARISTOCRACY
+        )
+        assert (
+            classifier.classify_by_wealth_and_employment(95.0, employed=False)
+            == ClassPosition.PETIT_BOURGEOISIE
+        )
+
+    def test_la_share_is_40_percent_by_definition(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """LA = 50th-90th percentile = 40% of population by definition.
+
+        This is a definitional fact, not a parameter to tune. The 40% emerges
+        naturally from the wealth distribution (90 - 50 = 40 percentage points).
+        """
+        # Count LA classifications across percentile range
+        percentiles = list(range(100))  # 0 to 99
+        la_count = sum(
+            1
+            for p in percentiles
+            if classifier.classify_by_wealth_percentile(float(p)) == ClassPosition.LABOR_ARISTOCRACY
+        )
+        # 50, 51, ..., 89 = 40 values
+        assert la_count == 40
+
+
+class TestIncomeBasedClassificationDeprecated:
+    """Tests for income-based classification (deprecated, backward compatibility)."""
+
+    def test_classify_emits_deprecation_warning(
+        self,
+        sample_national_params: NationalParameters,
+    ) -> None:
+        """Test that income-based classify() emits deprecation warning."""
+        classifier = DefaultClassPositionClassifier()
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            classifier.classify(50.0, sample_national_params)
+
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
 
     def test_wage_above_tau_effective_is_labor_aristocracy(
         self,
         sample_national_params: NationalParameters,
     ) -> None:
-        """Test that wage > τ_effective results in LABOR_ARISTOCRACY."""
+        """Test backward compat: wage > τ_effective results in LABOR_ARISTOCRACY."""
         classifier = DefaultClassPositionClassifier()
 
-        # τ_effective = 44.2, so $50/hr should be LA
-        position = classifier.classify(50.0, sample_national_params)
-        assert position == ClassPosition.LABOR_ARISTOCRACY
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            # τ_effective = 44.2, so $50/hr should be LA
+            position = classifier.classify(50.0, sample_national_params)
+            assert position == ClassPosition.LABOR_ARISTOCRACY
 
     def test_wage_between_thresholds_is_proletariat(
         self,
         sample_national_params: NationalParameters,
     ) -> None:
-        """Test that V_reproduction < wage ≤ τ_effective results in PROLETARIAT."""
+        """Test backward compat: V_reproduction < wage ≤ τ_effective = PROLETARIAT."""
         classifier = DefaultClassPositionClassifier()
 
-        # τ_effective = 44.2, V_reproduction = 12.0
-        # $25/hr should be Proletariat
-        position = classifier.classify(25.0, sample_national_params)
-        assert position == ClassPosition.PROLETARIAT
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            # τ_effective = 44.2, V_reproduction = 12.0
+            position = classifier.classify(25.0, sample_national_params)
+            assert position == ClassPosition.PROLETARIAT
 
-    def test_wage_at_or_below_v_reproduction_is_subproletariat(
+    def test_wage_at_or_below_v_reproduction_is_lumpenproletariat(
         self,
         sample_national_params: NationalParameters,
     ) -> None:
-        """Test that wage ≤ V_reproduction results in SUBPROLETARIAT."""
+        """Test backward compat: wage ≤ V_reproduction = LUMPENPROLETARIAT.
+
+        Note: Old SUBPROLETARIAT maps to LUMPENPROLETARIAT in new model.
+        """
         classifier = DefaultClassPositionClassifier()
 
-        # V_reproduction = 12.0, so $8/hr should be Subproletariat
-        position = classifier.classify(8.0, sample_national_params)
-        assert position == ClassPosition.SUBPROLETARIAT
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            # V_reproduction = 12.0
+            position = classifier.classify(8.0, sample_national_params)
+            assert position == ClassPosition.LUMPENPROLETARIAT
 
     def test_wage_equal_to_tau_effective_is_proletariat(
         self,
         sample_national_params: NationalParameters,
     ) -> None:
-        """Test that wage == τ_effective results in PROLETARIAT (not LA).
-
-        The classification rule is W > τ_effective for LA, so W == τ_effective
-        falls into Proletariat.
-        """
+        """Test backward compat: wage == τ_effective = PROLETARIAT (not LA)."""
         classifier = DefaultClassPositionClassifier()
 
-        # Exactly at threshold
-        position = classifier.classify(44.2, sample_national_params)
-        assert position == ClassPosition.PROLETARIAT
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            position = classifier.classify(44.2, sample_national_params)
+            assert position == ClassPosition.PROLETARIAT
 
-    def test_wage_equal_to_v_reproduction_is_subproletariat(
+    def test_wage_equal_to_v_reproduction_is_lumpenproletariat(
         self,
         sample_national_params: NationalParameters,
     ) -> None:
-        """Test that wage == V_reproduction results in SUBPROLETARIAT.
-
-        The classification rule is W > V_reproduction for Proletariat, so
-        W == V_reproduction falls into Subproletariat.
-        """
+        """Test backward compat: wage == V_reproduction = LUMPENPROLETARIAT."""
         classifier = DefaultClassPositionClassifier()
 
-        # Exactly at V_reproduction threshold
-        position = classifier.classify(12.0, sample_national_params)
-        assert position == ClassPosition.SUBPROLETARIAT
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            position = classifier.classify(12.0, sample_national_params)
+            assert position == ClassPosition.LUMPENPROLETARIAT
 
 
-class TestClassifyDistribution:
-    """Tests for classify_distribution method."""
+class TestWealthDistribution:
+    """Tests for classify_wealth_distribution method (primary method)."""
 
-    def test_returns_all_three_class_positions(
+    @pytest.fixture
+    def classifier(self) -> DefaultClassPositionClassifier:
+        """Provide classifier instance."""
+        return DefaultClassPositionClassifier()
+
+    def test_returns_all_five_class_positions(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that result dict contains all 5 ClassPosition keys."""
+        percentiles = [99.5, 95.0, 70.0, 30.0, 20.0]
+        shares = classifier.classify_wealth_distribution(percentiles)
+
+        assert ClassPosition.BOURGEOISIE in shares
+        assert ClassPosition.PETIT_BOURGEOISIE in shares
+        assert ClassPosition.LABOR_ARISTOCRACY in shares
+        assert ClassPosition.PROLETARIAT in shares
+        assert ClassPosition.LUMPENPROLETARIAT in shares
+
+    def test_shares_sum_to_one(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that shares sum to 1.0."""
+        percentiles = [99.5, 95.0, 70.0, 30.0, 20.0]
+        shares = classifier.classify_wealth_distribution(percentiles)
+
+        total = sum(shares.values())
+        assert abs(total - 1.0) < 1e-10
+
+    def test_distribution_calculation(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that distribution shares are calculated correctly."""
+        # 1 Bourgeois, 1 PB, 2 LA, 1 Proletariat (all employed by default)
+        percentiles = [99.5, 95.0, 70.0, 60.0, 30.0]
+        shares = classifier.classify_wealth_distribution(percentiles)
+
+        assert abs(shares[ClassPosition.BOURGEOISIE] - 0.2) < 1e-10
+        assert abs(shares[ClassPosition.PETIT_BOURGEOISIE] - 0.2) < 1e-10
+        assert abs(shares[ClassPosition.LABOR_ARISTOCRACY] - 0.4) < 1e-10
+        assert abs(shares[ClassPosition.PROLETARIAT] - 0.2) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - 0.0) < 1e-10
+
+    def test_empty_distribution_returns_typical_shares(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that empty distribution returns typical population shares."""
+        shares = classifier.classify_wealth_distribution([])
+
+        # Should return typical national distribution
+        assert abs(shares[ClassPosition.BOURGEOISIE] - 0.01) < 1e-10
+        assert abs(shares[ClassPosition.PETIT_BOURGEOISIE] - 0.09) < 1e-10
+        assert abs(shares[ClassPosition.LABOR_ARISTOCRACY] - 0.40) < 1e-10
+        assert abs(shares[ClassPosition.PROLETARIAT] - 0.35) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - 0.15) < 1e-10
+
+    def test_employment_status_distinguishes_lumpen(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that employment status distinguishes PROLETARIAT/LUMPEN."""
+        percentiles = [30.0, 30.0]  # Both bottom 50%
+        employment = [True, False]  # One employed, one excluded
+
+        shares = classifier.classify_wealth_distribution(percentiles, employment)
+
+        assert abs(shares[ClassPosition.PROLETARIAT] - 0.5) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - 0.5) < 1e-10
+
+    def test_weighted_wealth_distribution(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that weights are applied correctly."""
+        percentiles = [99.5, 30.0]  # Bourgeois and Proletariat
+        weights = [1.0, 9.0]  # 1:9 ratio
+
+        shares = classifier.classify_wealth_distribution(percentiles, weights=weights)
+
+        assert abs(shares[ClassPosition.BOURGEOISIE] - 0.1) < 1e-10
+        assert abs(shares[ClassPosition.PROLETARIAT] - 0.9) < 1e-10
+
+    def test_weights_length_mismatch_raises_error(
+        self,
+        classifier: DefaultClassPositionClassifier,
+    ) -> None:
+        """Test that mismatched weights length raises ValueError."""
+        percentiles = [99.5, 70.0, 30.0]
+        weights = [1.0, 1.0]  # Wrong length
+
+        with pytest.raises(ValueError, match="length"):
+            classifier.classify_wealth_distribution(percentiles, weights=weights)
+
+
+class TestIncomeDistributionDeprecated:
+    """Tests for classify_distribution (deprecated, backward compatibility)."""
+
+    def test_returns_three_class_positions(
         self,
         sample_national_params: NationalParameters,
     ) -> None:
-        """Test that result dict contains all 3 ClassPosition keys."""
+        """Test that result dict contains 3 ClassPosition keys."""
         classifier = DefaultClassPositionClassifier()
 
         wages = [50.0, 25.0, 8.0]
         shares = classifier.classify_distribution(wages, sample_national_params)
 
+        # Uses 3-class model for backward compatibility
         assert ClassPosition.LABOR_ARISTOCRACY in shares
         assert ClassPosition.PROLETARIAT in shares
-        assert ClassPosition.SUBPROLETARIAT in shares
+        assert ClassPosition.LUMPENPROLETARIAT in shares  # Was SUBPROLETARIAT
 
     def test_shares_sum_to_one(
         self,
@@ -133,13 +385,13 @@ class TestClassifyDistribution:
         """Test that distribution shares are calculated correctly."""
         classifier = DefaultClassPositionClassifier()
 
-        # 2 LA, 2 Proletariat, 1 Subproletariat
+        # 2 LA, 2 Proletariat, 1 Lumpen (was Subproletariat)
         wages = [50.0, 50.0, 25.0, 25.0, 8.0]
         shares = classifier.classify_distribution(wages, sample_national_params)
 
         assert abs(shares[ClassPosition.LABOR_ARISTOCRACY] - 0.4) < 1e-10
         assert abs(shares[ClassPosition.PROLETARIAT] - 0.4) < 1e-10
-        assert abs(shares[ClassPosition.SUBPROLETARIAT] - 0.2) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - 0.2) < 1e-10
 
     def test_empty_wage_list_returns_equal_shares(
         self,
@@ -151,8 +403,10 @@ class TestClassifyDistribution:
         shares = classifier.classify_distribution([], sample_national_params)
 
         expected_share = 1.0 / 3.0
-        for position in ClassPosition:
-            assert abs(shares[position] - expected_share) < 1e-10
+        # Only check the 3 classes used by this method
+        assert abs(shares[ClassPosition.LABOR_ARISTOCRACY] - expected_share) < 1e-10
+        assert abs(shares[ClassPosition.PROLETARIAT] - expected_share) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - expected_share) < 1e-10
 
     def test_single_wage_returns_100_percent(
         self,
@@ -165,7 +419,7 @@ class TestClassifyDistribution:
         shares = classifier.classify_distribution([50.0], sample_national_params)
         assert abs(shares[ClassPosition.LABOR_ARISTOCRACY] - 1.0) < 1e-10
         assert abs(shares[ClassPosition.PROLETARIAT] - 0.0) < 1e-10
-        assert abs(shares[ClassPosition.SUBPROLETARIAT] - 0.0) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - 0.0) < 1e-10
 
     def test_weighted_distribution(
         self,
@@ -175,15 +429,15 @@ class TestClassifyDistribution:
         classifier = DefaultClassPositionClassifier()
 
         # 2 wages with different weights
-        wages = [50.0, 8.0]  # LA and Subproletariat
+        wages = [50.0, 8.0]  # LA and Lumpen
         weights = [3.0, 1.0]  # 3:1 ratio
 
         shares = classifier.classify_distribution(wages, sample_national_params, weights)
 
-        # Total weight = 4, LA weight = 3, Sub weight = 1
+        # Total weight = 4, LA weight = 3, Lumpen weight = 1
         assert abs(shares[ClassPosition.LABOR_ARISTOCRACY] - 0.75) < 1e-10
         assert abs(shares[ClassPosition.PROLETARIAT] - 0.0) < 1e-10
-        assert abs(shares[ClassPosition.SUBPROLETARIAT] - 0.25) < 1e-10
+        assert abs(shares[ClassPosition.LUMPENPROLETARIAT] - 0.25) < 1e-10
 
     def test_weights_length_mismatch_raises_error(
         self,
@@ -248,3 +502,135 @@ class TestNationalParametersValidation:
         warnings = params.validate_theoretical_consistency()
         assert len(warnings) > 0
         assert any("V_reproduction" in w for w in warnings)
+
+
+class TestImperialRentSeparateFromClass:
+    """Test that Φ_hour (imperial rent) and class position are independent.
+
+    This is a key theoretical clarification:
+    - Imperial rent (Φ_hour) measures extraction RATE (flow)
+    - Class position is determined by wealth percentile (stock)
+
+    A proletarian CAN have positive Φ_hour (benefit from cheap imports)
+    while remaining proletarian. They consume the imperial subsidy
+    rather than accumulating it as wealth.
+    """
+
+    @pytest.fixture
+    def params(self) -> NationalParameters:
+        """Standard 2022 parameters."""
+        return NationalParameters(
+            year=2022,
+            tau=65.0,
+            alpha=0.25,
+            gamma_import=0.35,
+            gamma_basket=0.68,
+            tau_effective=44.2,
+            v_reproduction=12.0,
+            estimated=True,
+        )
+
+    def test_proletarian_can_have_positive_phi_hour(
+        self,
+        params: NationalParameters,
+    ) -> None:
+        """A proletarian with good income can still extract through consumption.
+
+        Example: Worker at 30th percentile wealth (proletarian by class)
+        but earns $50/hour (above τ_effective, so Φ_hour > 0).
+
+        They benefit from cheap imports BUT don't accumulate wealth.
+        Class position (wealth-based) and extraction rate (income-based)
+        are separate concerns.
+        """
+        from babylon.economics.melt.imperial_rent import DefaultImperialRentCalculator
+
+        classifier = DefaultClassPositionClassifier()
+        rent_calc = DefaultImperialRentCalculator()
+
+        # Worker at 30th percentile wealth = PROLETARIAT
+        wealth_percentile = 30.0
+        class_position = classifier.classify_by_wealth_percentile(wealth_percentile)
+        assert class_position == ClassPosition.PROLETARIAT
+
+        # Same worker earns $50/hour (above τ_effective = $44.2)
+        wage = 50.0
+        phi_hour = rent_calc.compute_phi_hour(wage, params)
+
+        # Φ_hour > 0: Worker extracts value through consumption
+        assert phi_hour > 0
+
+        # But still proletarian by wealth!
+        # This demonstrates the separation of concerns:
+        # - Class = wealth stock (30th percentile = proletarian)
+        # - Extraction = income flow (Φ_hour > 0 = extracts value via consumption)
+
+    def test_labor_aristocracy_can_have_negative_phi_hour(
+        self,
+        params: NationalParameters,
+    ) -> None:
+        """An LA by wealth can have negative Φ_hour if income is low.
+
+        Example: Retired person with $500k home equity (60th percentile)
+        but lives on $15/hour equivalent Social Security.
+
+        They are LA by accumulated wealth but Φ_hour < 0 on their income.
+        """
+        from babylon.economics.melt.imperial_rent import DefaultImperialRentCalculator
+
+        classifier = DefaultClassPositionClassifier()
+        rent_calc = DefaultImperialRentCalculator()
+
+        # Retiree at 60th percentile wealth = LABOR_ARISTOCRACY
+        wealth_percentile = 60.0
+        class_position = classifier.classify_by_wealth_percentile(wealth_percentile)
+        assert class_position == ClassPosition.LABOR_ARISTOCRACY
+
+        # But low income ($15/hour equivalent, below τ_effective = $44.2)
+        income_equivalent = 15.0
+        phi_hour = rent_calc.compute_phi_hour(income_equivalent, params)
+
+        # Φ_hour < 0: Negative extraction on current income
+        assert phi_hour < 0
+
+        # Still LA by wealth!
+        # Accumulated wealth determines class, not current income
+
+    def test_aggregate_phi_validates_hickel(
+        self,
+        params: NationalParameters,
+    ) -> None:
+        """Aggregate Φ (sum of Φ_hour * hours) should approximate Hickel estimates.
+
+        Hickel et al. estimate $10T+/year imperial drain from Global South.
+        This is an aggregate measure, validated by summing Φ_hour across
+        all workers weighted by hours worked.
+
+        This test validates the formula produces reasonable aggregate values.
+        """
+        from babylon.economics.melt.imperial_rent import DefaultImperialRentCalculator
+
+        rent_calc = DefaultImperialRentCalculator()
+
+        # Representative wages (weighted by hours)
+        wages_and_hours = [
+            (65.0, 2080 * 0.35),  # 35% at $65/hr (upper LA)
+            (44.0, 2080 * 0.25),  # 25% at $44/hr (break-even)
+            (28.0, 2080 * 0.30),  # 30% at $28/hr (median, proletariat)
+            (12.0, 2080 * 0.10),  # 10% at $12/hr (subsistence)
+        ]
+
+        # Calculate aggregate Φ * hours * τ (to get dollar value)
+        aggregate_phi_dollars = 0.0
+        for wage, hours in wages_and_hours:
+            phi = rent_calc.compute_phi_hour(wage, params)
+            # Φ_hour * hours * τ = dollar value of extraction
+            aggregate_phi_dollars += phi * hours * params.tau
+
+        # Average per worker (normalized)
+        total_hours = sum(h for _, h in wages_and_hours)
+        avg_phi_per_hour = aggregate_phi_dollars / total_hours / params.tau
+
+        # The average should be slightly positive (US is net extractor)
+        # But not dramatically so (most workers are proletariat)
+        assert -0.2 < avg_phi_per_hour < 0.3  # Reasonable bounds

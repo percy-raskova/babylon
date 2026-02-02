@@ -1,687 +1,424 @@
-# TVT Data Gaps and Implementation Analysis
+# TVT Data Gaps and Implementation Analysis (v2)
 
 **Status**: Implementation Planning Document
-**Purpose**: Identify data gaps, rank solutions by rigor vs. complexity tradeoff
-**Context**: Babylon simulation engine—rigor matters, but playable approximations are acceptable
+**Purpose**: Identify data gaps for revised single-MELT + γ_basket model
+**Revision**: Aligned with tvt_mathematical_formalization_v2.md
 
 ---
 
 ## 1. Critical Data Requirements
 
-For Topological Value Theory to function, we need:
+### 1.1 National MELT (τ)
 
-| Quantity | Symbol | Required For | Current Status |
-|----------|--------|--------------|----------------|
-| Labor hours by location | L[fips] | τ (MELT) calculation | **GAP** (but see §2.1) |
-| GDP by location | GDP[fips] | τ (MELT) calculation | Available (BEA) |
-| Wages by location/industry | W[fips, naics] | T^μ_ν tensor | Available (QCEW) |
-| Capital stock | K[fips] | Profit rate r | **GAP** |
-| Net commuter flows | F[a,b] | Domestic value transfer | Available (LODES) |
-| Ownership income by county | Y_capital[fips] | Where surplus lands | Available (ACS) |
-| Hours distribution | H[fips, class] | Class composition signal | **GAP** |
-| Depreciation rates | δ | Capital stock evolution | Available (BEA) |
-| PPP ratios | PPP/XR | International γ | Available (FRED) |
-| Unpaid labor hours | L_unpaid | γ_III (Dept III visibility) | **GAP** (needs ATUS) |
+| Component | Source | Resolution | Status |
+|-----------|--------|------------|--------|
+| GDP | BEA | National, annual | ✅ Have |
+| Total employment | QCEW | National, quarterly | ✅ Have |
+| Mean hours worked | ACS B23020 | National, annual | ⚠️ Need to verify |
 
-### 1.1 The Domestic vs International Distinction
+**Calculation:**
+```
+τ = GDP / (employment × mean_hours)
+```
 
-**Critical insight**: The mechanism of value transfer differs between scales:
+**Fallback:**
+```
+τ = GDP / (employment × 2080)
+```
 
-| Scale | Mechanism | Data Required |
-|-------|-----------|---------------|
-| International | PPP/exchange rate compression (γ_exchange) | Penn World Tables, trade data |
-| Domestic (US) | Commuting, ownership patterns, hours access | LODES, ACS, hours data |
+The 2080 assumption is acceptable for τ because we use τ consistently across calculations. The error is systematic and cancels in class position comparisons.
 
-Everyone in the US spends dollars. A homeless person's dollar commands the same global labor as a hedge fund manager's dollar. The imperial rent is embedded in the *currency*, not distributed proportionally to domestic class position.
+**Expected range:** τ ≈ $55-75/hour for contemporary US.
 
-This means **domestic core/periphery requires different indicators than international γ**.
+### 1.2 Basket Visibility (γ_basket)
+
+| Component | Source | Resolution | Status |
+|-----------|--------|------------|--------|
+| Import share (α) | BEA Trade in Goods | National, annual | ⚠️ Need loader |
+| Import value by origin | Census Trade | National, monthly | ⚠️ Need loader |
+| ERDI by country | Penn World Tables 10.0 | National, annual | ❌ Need loader |
+
+**Calculation:**
+```
+γ_import = Σ_origin (import_share[origin] × (1/ERDI[origin]))
+α = consumer_imports / total_consumption
+γ_basket = 1 / (α/γ_import + (1 - α))
+```
+
+**This is the key new data requirement.** Without ERDI data, we cannot compute γ_basket and therefore cannot determine class position.
+
+### 1.3 Reproduction Cost (V_reproduction)
+
+| Component | Source | Resolution | Status |
+|-----------|--------|------------|--------|
+| Poverty threshold | Census | National, annual | ✅ Available |
+| Regional Price Parity | BEA RPP | State/Metro, annual | ⚠️ Need loader |
+| Consumer expenditure | BLS CEX | National, annual | ⚠️ Need loader |
+
+**Empirical anchor:** V_reproduction ≈ $12/hour (2024 dollars)
+
+**Derivation:**
+- Federal poverty line (family of 4): ~$31,000/year
+- Single adult poverty: ~$15,000/year
+- At 2080 hours: $15,000/2080 ≈ $7.20/hour (absolute floor)
+- Actual subsistence (with housing, healthcare): ~$25,000/year
+- At 2080 hours: $25,000/2080 ≈ $12/hour
+
+**Regional adjustment:**
+```
+V_reproduction[fips] = V_reproduction_national × RPP[fips] / 100
+```
+
+Where RPP (Regional Price Parity) adjusts for local cost of living.
+
+### 1.4 Wage Distribution
+
+| Component | Source | Resolution | Status |
+|-----------|--------|------------|--------|
+| Wages by county | QCEW | County, quarterly | ✅ Have |
+| Wage distribution | BLS OES | Metro/State, annual | ⚠️ Have partial |
+| Hours by wage level | ACS | County, annual | ⚠️ Need to verify |
+
+**Gap:** QCEW gives total wages, not distribution. Need OES or ACS for wage percentiles to classify workers into class positions.
 
 ---
 
-## 2. Gap Analysis and Solutions
+## 2. Penn World Tables Loader (Priority 1)
 
-### Gap 1: Labor Hours (L) — Hours as Class Signal
+### 2.1 Data Description
 
-**The Problem**: QCEW provides employment (headcount) and wages, not hours worked. τ = GDP/L requires L.
+Penn World Tables (PWT) 10.0 provides:
+- `pl_gdpo`: Price level of output-side GDP (US = 1.0)
+- `cgdpo`: Output-side GDP at current PPP
+- `rgdpo`: Output-side GDP at constant 2017 national prices
 
-**Critical insight**: Hours are not just a data gap—they're a *class signal*:
-
-| Class Position | Hours Dynamic |
-|----------------|---------------|
-| Labor Aristocracy | Hoards hours (overtime, salaried blur, multiple income streams) |
-| Proletariat | Hours rationed by capital ("my hours got cut") |
-| Lumpen | Excluded from formal labor (QCEW hours ≈ 0) |
-
-The *distribution* of hours across a county's population indicates class composition. A county with the same employment but higher total hours has different class structure—more labor aristocracy, less precarious proletariat.
-
-**Solution Options**:
-
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: Fixed hours** | L = employment × 2080 hrs/year | ★★☆☆☆ | ★☆☆☆☆ | **Only for τ ratios** |
-| **B: Industry-adjusted** | L = Σ(emp_i × avg_hours_i) using BLS industry data | ★★★☆☆ | ★★☆☆☆ | Good upgrade path |
-| **C: ACS hours** | Use ACS "usual hours worked" at county level | ★★★★☆ | ★★☆☆☆ | **Best for class signal** |
-| **D: CPS microdata** | Current Population Survey has actual hours | ★★★★★ | ★★★★★ | Research-grade |
-
-**When Option A is acceptable**:
-
-For computing τ ratios (GDP per worker), the hours assumption cancels:
-
+**ERDI calculation:**
 ```
-τ_ratio = τ_a / τ_b
-        = (GDP_a / (emp_a × 2080)) / (GDP_b / (emp_b × 2080))
-        = (GDP_a / emp_a) / (GDP_b / emp_b)
+ERDI[country, year] = 1 / pl_gdpo[country, year]
 ```
 
-The 2080 constant vanishes in ratios.
+When pl_gdpo < 1 (cheaper than US): ERDI > 1 (more labor-hours per dollar)
 
-**When Option A fails**:
+### 2.2 Required Countries
 
-For class composition analysis, the *distribution* of hours matters. If Oakland has 1.1 average hours per employed person vs Wayne's 0.9, that's a class signal the 2080 assumption obscures.
+Top US import sources (by consumer goods value):
+1. China
+2. Mexico
+3. Canada
+4. Japan
+5. Germany
+6. Vietnam
+7. South Korea
+8. India
+9. Taiwan
+10. Ireland
 
-**Recommended approach**:
-- Use Option A for τ calculations (acceptable approximation)
-- Use Option C (ACS) separately for hours distribution as class indicator
-- Treat these as **two different quantities**, not interchangeable
+Plus: Bangladesh, Indonesia, Thailand, Malaysia (textiles/electronics)
 
-**ACS Hours Data**:
-
-ACS variable B23020 provides "Mean usual hours worked" by county. This can be decomposed by occupation/industry to get at class-differentiated hours access.
-
----
-
-### Gap 2: Capital Stock (K)
-
-**The Problem**: TRPF requires r = s / (K + v). Our tensor gives flows (c, v, s per year), not stocks.
-
-**Solution Options**:
-
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: Flow proxy** | r ≈ s / (c + v) (current period only) | ★★☆☆☆ | ★☆☆☆☆ | Acceptable for trends |
-| **B: Perpetual inventory** | K_t = K_{t-1}(1-δ) + c_t, initialized from 2010 | ★★★★☆ | ★★☆☆☆ | **Recommended** |
-| **C: BEA fixed assets** | Use BEA county-level fixed asset estimates | ★★★★★ | ★★★☆☆ | If data available |
-| **D: Vintage tracking** | Track each year's investment separately with asset-specific δ | ★★★★★ | ★★★★☆ | Future enhancement |
-
-**Implementation for Option B**:
+### 2.3 Loader Specification
 
 ```python
-def compute_capital_stock(c_flows: list[float], delta: float = 0.07) -> list[float]:
-    """Perpetual inventory method for capital stock.
+# src/babylon/data/pwt/loader.py
 
-    Args:
-        c_flows: Time series of constant capital flows [c_2010, c_2011, ...]
-        delta: Annual depreciation rate (BEA average ≈ 7%)
+class PWTLoader:
+    """Load Penn World Tables ERDI data."""
 
-    Returns:
-        Time series of capital stocks [K_2010, K_2011, ...]
-    """
-    K = []
-    for t, c in enumerate(c_flows):
-        if t == 0:
-            # Initialize: assume steady state K_0 = c_0 / δ
-            K.append(c / delta)
+    def load(self, session: Session) -> LoadStats:
+        """Load PWT data into normalized database."""
+        # Download from: https://www.rug.nl/ggdc/productivity/pwt/
+        # Format: Excel (.xlsx)
+        pass
+
+    def get_erdi(self, country_code: str, year: int) -> float:
+        """Get ERDI for a country-year."""
+        pass
+
+    def get_gamma_import(self, import_shares: dict[str, float], year: int) -> float:
+        """Compute γ_import from import shares and ERDI."""
+        gamma = 0.0
+        for country, share in import_shares.items():
+            erdi = self.get_erdi(country, year)
+            gamma += share * (1 / erdi)
+        return gamma
+```
+
+### 2.4 Schema
+
+```sql
+CREATE TABLE pwt_erdi (
+    country_code TEXT,      -- ISO 3166-1 alpha-3
+    country_name TEXT,
+    year INTEGER,
+    erdi REAL,              -- 1 / pl_gdpo
+    pl_gdpo REAL,           -- Original price level
+    PRIMARY KEY (country_code, year)
+);
+
+CREATE INDEX idx_pwt_year ON pwt_erdi(year);
+```
+
+---
+
+## 3. Import Share Data (Priority 1)
+
+### 3.1 Data Sources
+
+**Census USA Trade Online:**
+- Imports by country by HS code
+- Monthly, back to 1996
+- URL: https://usatrade.census.gov/
+
+**BEA Trade in Goods and Services:**
+- Annual trade data by country
+- Breaks down by goods vs services
+
+### 3.2 Consumer Goods Filter
+
+Not all imports are consumed by workers. Need to filter to consumer goods:
+
+| HS Chapter | Category | Include? |
+|------------|----------|----------|
+| 01-24 | Food & agricultural | ✅ Yes |
+| 25-27 | Mineral products | ❌ No (industrial) |
+| 28-38 | Chemicals | ⚠️ Partial (pharmaceuticals yes) |
+| 39-40 | Plastics/rubber | ⚠️ Partial |
+| 41-43 | Leather | ✅ Yes |
+| 50-63 | Textiles/apparel | ✅ Yes |
+| 64-67 | Footwear | ✅ Yes |
+| 84-85 | Electronics/machinery | ⚠️ Partial (consumer electronics yes) |
+| 87 | Vehicles | ✅ Yes |
+| 94-96 | Furniture/misc | ✅ Yes |
+
+### 3.3 Calculation
+
+```python
+def compute_alpha(year: int) -> float:
+    """Import share of consumption basket."""
+    consumer_imports = get_consumer_imports(year)  # Filtered by HS
+    total_pce = get_personal_consumption_expenditure(year)  # BEA
+    return consumer_imports / total_pce
+
+def compute_import_shares(year: int) -> dict[str, float]:
+    """Import share by origin country."""
+    imports_by_country = get_consumer_imports_by_country(year)
+    total = sum(imports_by_country.values())
+    return {c: v/total for c, v in imports_by_country.items()}
+```
+
+---
+
+## 4. Revised Calculation Pipeline
+
+### 4.1 Annual National Computation
+
+```python
+def compute_national_parameters(year: int) -> dict:
+    """Compute τ, γ_basket, τ_effective for a year."""
+
+    # Step 1: National MELT
+    gdp = get_gdp_national(year)
+    employment = get_employment_national(year)
+    hours = employment * 2080  # or use ACS mean hours
+    tau = gdp / hours
+
+    # Step 2: Import visibility
+    import_shares = compute_import_shares(year)
+    gamma_import = pwt_loader.get_gamma_import(import_shares, year)
+
+    # Step 3: Basket visibility
+    alpha = compute_alpha(year)
+    gamma_basket = 1 / (alpha/gamma_import + (1 - alpha))
+
+    # Step 4: Effective threshold
+    tau_effective = tau * gamma_basket
+
+    # Step 5: Reproduction floor (inflation-adjusted)
+    v_reproduction = 12.00 * cpi_adjustment(year, base_year=2024)
+
+    return {
+        'year': year,
+        'tau': tau,
+        'alpha': alpha,
+        'gamma_import': gamma_import,
+        'gamma_basket': gamma_basket,
+        'tau_effective': tau_effective,
+        'v_reproduction': v_reproduction,
+    }
+```
+
+### 4.2 County-Level Classification
+
+```python
+def classify_county_workforce(fips: str, year: int, params: dict) -> dict:
+    """Classify workers in a county by class position."""
+
+    tau_eff = params['tau_effective']
+    v_rep = params['v_reproduction']
+
+    # Get wage distribution (from OES or ACS)
+    wage_dist = get_wage_distribution(fips, year)
+
+    # Classify
+    results = {
+        'labor_aristocracy': 0,
+        'proletariat': 0,
+        'subproletariat': 0,
+    }
+
+    for wage_bin, count in wage_dist.items():
+        hourly = wage_bin  # Assume already hourly
+        if hourly > tau_eff:
+            results['labor_aristocracy'] += count
+        elif hourly > v_rep:
+            results['proletariat'] += count
         else:
-            K.append(K[t-1] * (1 - delta) + c)
-    return K
+            results['subproletariat'] += count
+
+    total = sum(results.values())
+    return {k: v/total for k, v in results.items()}
 ```
-
-**Initialization assumption**: At t=0 (2010), assume economy was in steady state where investment = depreciation. This gives K_0 = c_0 / δ.
-
-**Hand-wave acceptable?** YES. The initialization error decays exponentially—by year 5, it contributes <50% of K; by year 10, <25%. With 15 years of data, the late-period K is dominated by observed flows.
 
 ---
 
-### Gap 3: Net Commuter Flows (Domestic Value Transfer)
+## 5. Acceptable Approximations
 
-**The Problem**: Within the US, value transfer doesn't operate through PPP differentials (everyone uses dollars). We need different indicators for domestic core/periphery.
+### 5.1 Single National γ_basket
 
-**Why commuter flows matter**: Workers carry labor-power from home (where it's reproduced) to work (where it's consumed). Net commuter flows reveal where labor LIVES vs where value SURFACES:
+**Approximation:** Use one γ_basket for the whole country.
 
-- If Wayne residents work in Oakland: labor reproduced in Wayne, value appears in Oakland GDP
-- Oakland captures value without reproducing the workers who produce it
+**Justification:** Within a currency zone, everyone buys from the same global market at the same prices. Regional variation in consumption patterns is secondary.
 
-**Solution Options**:
+**Error bound:** ±5% on γ_basket (rural vs urban consumption patterns differ slightly).
 
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: LODES OD data** | Origin-Destination employment statistics | ★★★★☆ | ★★☆☆☆ | **Recommended** |
-| **B: ACS commute** | "Place of work" vs residence | ★★★☆☆ | ★★☆☆☆ | Backup option |
-| **C: Gravity model** | F[a,b] ∝ (pop_a × pop_b) / distance² | ★★☆☆☆ | ★☆☆☆☆ | Fallback only |
+### 5.2 Fixed Hours Assumption
 
-**LODES Data Structure** (you have the crosswalk):
+**Approximation:** L = employment × 2080
 
-LODES provides Origin-Destination Employment Statistics:
-- `w_geocode`: Workplace census block
-- `h_geocode`: Home census block
-- `S000`: Total jobs
-- `SA01-SA03`: Age brackets
-- `SE01-SE03`: Earnings brackets
+**Justification:** Systematic error that cancels when comparing wages to τ.
 
-Aggregate to county level:
-```sql
-SELECT
-    SUBSTR(h_geocode, 1, 5) as home_county,
-    SUBSTR(w_geocode, 1, 5) as work_county,
-    SUM(S000) as commuter_flow
-FROM lodes_od
-GROUP BY home_county, work_county;
-```
+**Error bound:** ±10-15% on τ level, but ratios (W/τ) are accurate.
 
-**Net flow calculation**:
-```sql
-WITH flows AS (
-    SELECT
-        home_county, work_county, SUM(S000) as workers
-    FROM lodes_od
-    GROUP BY home_county, work_county
-)
-SELECT
-    a.home_county as county,
-    SUM(CASE WHEN a.work_county != a.home_county THEN a.workers ELSE 0 END) as outflow,
-    SUM(CASE WHEN b.home_county != b.work_county THEN b.workers ELSE 0 END) as inflow,
-    inflow - outflow as net_commuter_flow
-FROM flows a
-LEFT JOIN flows b ON a.home_county = b.work_county
-GROUP BY a.home_county;
-```
+### 5.3 V_reproduction as Constant
 
-**Prediction**: Oakland has positive net commuter inflow (draws workers); Wayne has negative (exports workers).
+**Approximation:** V_reproduction = $12/hour nationally, RPP-adjusted by region.
+
+**Justification:** Subsistence floor doesn't vary much across locations after RPP adjustment. The poverty line methodology is well-established.
+
+**Error bound:** ±15% regionally.
 
 ---
 
-### Gap 4: Ownership Patterns (Where Surplus Lands)
+## 6. Implementation Priority
 
-**The Problem**: Knowing where value is produced (QCEW) and where labor lives (LODES) isn't enough. We need to know where the *owners* live—where surplus value surfaces as capital income.
+| Task | Priority | Blocking? | Effort |
+|------|----------|-----------|--------|
+| Penn World Tables loader | P0 | Yes - no γ_basket without it | Medium |
+| Census trade data loader | P0 | Yes - no import shares without it | Medium |
+| National MELT calculation | P0 | Yes - foundation for everything | Low |
+| OES wage distribution loader | P1 | Yes for county classification | Medium |
+| BEA RPP loader | P2 | Refinement only | Low |
+| BLS CEX loader | P3 | Refinement only | Medium |
 
-**The Solution**: ACS income by source at county level.
+### 6.1 MVP Pathway
 
-Census ACS breaks down income by source:
-- Wages/salary income → v (labor income)
-- Self-employment income → mixed (petty bourgeoisie)
-- Interest, dividends, rental income → capital income (ownership returns)
+For minimum viable class position calculation:
 
-**Key metric—Ownership Ratio**:
-```sql
-SELECT
-    fips,
-    year,
-    (interest_income + dividend_income + rental_income) as capital_income,
-    wage_salary_income as labor_income,
-    capital_income / NULLIF(labor_income, 0) as ownership_ratio
-FROM acs_income_by_source
-WHERE fips IN ('26163', '26125');
-```
+1. **Hardcode γ_basket ≈ 0.68** (estimate from literature)
+2. **Compute τ from BEA GDP + QCEW employment**
+3. **τ_effective = τ × 0.68**
+4. **V_reproduction = $12/hour**
+5. **Use QCEW average wages** (not distribution) for county-level approximation
 
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: ACS income by source** | Direct county-level ownership income | ★★★★☆ | ★★☆☆☆ | **Recommended** |
-| **B: IRS SOI data** | Tax return data by county | ★★★★★ | ★★★☆☆ | More detailed but lagged |
-| **C: Piketty/WID calibration** | National capital share as benchmark | ★★★☆☆ | ★☆☆☆☆ | For validation only |
+This gets you running immediately. Refine with real ERDI/import data later.
 
-**Piketty's role is calibration, not direct measurement**:
+### 6.2 Estimated γ_basket
 
-- WID gives national capital share of income (~30-40%)
-- If Oakland's ownership_ratio >> national average → "owner-residence" county
-- If Wayne's ownership_ratio << national average → "worker-residence" county
+From Hickel et al. and trade data:
 
-**Prediction**: Oakland has higher ownership_ratio than Wayne. Surplus produced in Wayne surfaces as capital income for Oakland residents.
+| Year | α (approx) | γ_import (approx) | γ_basket (approx) |
+|------|------------|-------------------|-------------------|
+| 2010 | 0.20 | 0.40 | 0.71 |
+| 2015 | 0.22 | 0.38 | 0.69 |
+| 2020 | 0.18 | 0.42 | 0.73 |
+| 2024 | 0.20 | 0.35 | 0.68 |
 
-**Implementation priority**: HIGH. This directly measures where surplus lands, independent of where it's produced.
+Note: γ_import has been declining (more extraction) but α fluctuates with trade policy.
 
 ---
 
-### Gap 5: Department III Visibility (γ_III)
+## 7. Validation Tests
 
-**The Problem**: γ_III = paid_hours / (paid_hours + unpaid_hours). QCEW has paid; ATUS has unpaid.
-
-**Solution Options**:
-
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: National constant** | Use national ATUS ratio for all counties | ★★☆☆☆ | ★☆☆☆☆ | **MVP acceptable** |
-| **B: Demographic proxy** | γ_III[fips] = f(female_labor_force_participation[fips]) | ★★★☆☆ | ★★☆☆☆ | Better variation |
-| **C: Full ATUS load** | Load ATUS, allocate to counties via ACS demographics | ★★★★☆ | ★★★☆☆ | Spec 005 exists |
-| **D: Time diary imputation** | Model unpaid work from ACS household characteristics | ★★★★★ | ★★★★☆ | Academic research |
-
-**Option A Implementation**:
-
-National ATUS data (approximate):
-- Average unpaid household labor: ~4 hours/day for women, ~2.5 hours/day for men
-- Paid care sector (NAICS 624, etc.): ~5% of employment
-
-Rough calculation:
-```
-unpaid_annual = (4 + 2.5) / 2 × 365 × adult_population
-paid_annual = care_sector_employment × 2080
-
-γ_III_national ≈ paid_annual / (paid_annual + unpaid_annual)
-             ≈ 0.15 to 0.25 (varies by assumptions)
-```
-
-**Option B Implementation**:
-
-Female labor force participation (FLFP) correlates with commodified care:
-- High FLFP → more paid childcare, elder care → higher γ_III
-- Low FLFP → more unpaid domestic labor → lower γ_III
-
-```
-γ_III[fips] = α + β × FLFP[fips]
-```
-
-Calibrate α, β from national ATUS.
-
-**Hand-wave acceptable?** YES for MVP. Department III visibility varies less across US counties than across countries. The main insight (γ_III << 1) holds regardless of precise value.
-
----
-
-### Gap 6: Reserve Army Pressure
-
-**The Problem**: Capital Volume I shows that the reserve army disciplines labor—it's the mechanism that explains WHY hours get rationed, wages suppressed, and workers accept precarious conditions. We need to measure this pressure.
-
-**Theoretical Foundation** (from Capital Vol I, Ch 25):
-
-Marx identifies three forms of the reserve army:
-1. **Floating**: Regularly expelled/absorbed by industry cycles (standard unemployment)
-2. **Latent**: Available for absorption but not actively seeking (discouraged workers)
-3. **Stagnant**: Irregularly employed, precarious (gig workers, PTER)
-
-**Solution Options**:
-
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: U-3 only** | Standard unemployment rate | ★★☆☆☆ | ★☆☆☆☆ | Too narrow |
-| **B: U-6 composite** | Broad unemployment including marginally attached | ★★★★☆ | ★★☆☆☆ | **Recommended** |
-| **C: Full decomposition** | Separate floating/latent/stagnant | ★★★★★ | ★★★★☆ | Research-grade |
-
-**Option B Implementation**:
-
-BLS publishes alternative unemployment measures:
-- U-3: Official unemployment rate
-- U-6: U-3 + marginally attached + PTER (part-time for economic reasons)
-- PTER: "My hours got cut"
-- Discouraged: Want work but stopped looking
-
-```sql
-SELECT
-    fips,
-    year,
-    u6_rate,
-    pter_rate,
-    discouraged_rate,
-    -- Composite measure
-    (0.5 * u6_rate + 0.3 * pter_rate + 0.2 * discouraged_rate) as reserve_army_pressure
-FROM bls_laus
-WHERE fips IN ('26163', '26125');
-```
-
-**Data Sources**:
-- BLS Local Area Unemployment Statistics (LAUS): County-level U-3, U-6
-- ACS Employment Status tables: PTER, discouraged workers at county level
-- BLS Current Population Survey: National detail (use for calibration)
-
-**Validation Criteria**:
-- ReserveArmyPressure[Wayne] > ReserveArmyPressure[Oakland] for most years
-- Wayne should spike dramatically 2008-2012 (auto crisis)
-- Post-spike, Wayne's suppressed wages (lower v growth) should correlate with elevated reserve army
-
-**Hand-wave acceptable?** Partially. U-6 is well-defined but doesn't capture informal/gig economy fully. The qualitative insight (reserve army disciplines labor) is robust even if quantification is approximate.
-
----
-
-### Gap 7: Dispossession Tracking
-
-**The Problem**: Primitive accumulation is not just historical origin but ONGOING process. Gentrification IS primitive accumulation operating post-frontier. We need to track dispossession events to understand how core/periphery geography is PRODUCED.
-
-**Theoretical Foundation** (from Capital Vol I, Part 8):
-
-Marx: "The so-called primitive accumulation is nothing else than the historical process of divorcing the producer from the means of production."
-
-Contemporary forms:
-- **Foreclosure**: Divorces homeowner from accumulated equity
-- **Eviction**: Divorces tenant from place-based social capital
-- **Tax sale**: Divorces property owner from land
-- **Gentrification**: Divorces community from neighborhood amenities they produced
-
-**Solution Options**:
-
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: Eviction Lab only** | County-level eviction rates | ★★★☆☆ | ★★☆☆☆ | Good starting point |
-| **B: Eviction + Foreclosure** | Add ATTOM/CoreLogic foreclosure data | ★★★★☆ | ★★★☆☆ | **Recommended** |
-| **C: Full dispossession ledger** | Track individual events with destinations | ★★★★★ | ★★★★★ | Research-grade |
-
-**Option B Implementation**:
+### 7.1 Internal Consistency
 
 ```python
-class DispossessionRate(BaseModel):
-    """Dispossession metrics for a territory."""
+def test_tau_sanity():
+    tau = compute_tau(2023)
+    assert 50 < tau < 80, f"τ = {tau} outside expected range"
 
-    fips_code: str
-    year: int
+def test_gamma_basket_sanity():
+    params = compute_national_parameters(2023)
+    assert 0.5 < params['gamma_basket'] < 0.9
 
-    foreclosure_rate: float
-    """Foreclosures per 1000 housing units."""
-
-    eviction_rate: float
-    """Evictions per 1000 renter households."""
-
-    tax_sale_rate: float
-    """Tax foreclosures per 1000 parcels."""
-
-    @computed_field
-    def composite_dispossession(self) -> float:
-        """Weighted dispossession pressure."""
-        return (
-            0.5 * self.foreclosure_rate +
-            0.3 * self.eviction_rate +
-            0.2 * self.tax_sale_rate
-        )
+def test_class_shares_sum():
+    shares = classify_county_workforce('26163', 2023, params)
+    total = sum(shares.values())
+    assert abs(total - 1.0) < 0.01
 ```
 
-**Data Sources**:
-- Eviction Lab (Princeton): County-level eviction rates
-- ATTOM Data Solutions: Foreclosure rates (commercial, may need subscription)
-- CoreLogic: Alternative foreclosure data
-- County treasurer records: Tax sale data (varies by county)
-- HUD: Some foreclosure data available
+### 7.2 Empirical Predictions
 
-**Validation Criteria (Detroit)**:
-- Wayne County dispossession should spike 2008-2012
-- Peak should precede demographic change by 2-3 years
-- Post-crisis, institutional investor purchases should accelerate
-- Known gentrifying areas should show elevated pre-displacement dispossession
+| Prediction | Test |
+|------------|------|
+| τ_effective < τ | Direct computation |
+| Labor aristocracy 30-50% nationally | Sum county classifications |
+| Oakland labor_arist > Wayne labor_arist | Compare counties |
+| Subproletariat correlates with undocumented pop | Regress against ACS citizenship data |
 
-**Connection to Other Indicators**:
-- Dispossession PRODUCES reserve army (displaced people need work)
-- Dispossession CONCENTRATES ownership (increases Oakland's OwnershipRatio)
-- Dispossession is the MECHANISM that creates domestic core/periphery
-
-**Hand-wave acceptable?** For MVP, yes—use Eviction Lab (freely available) and proxy foreclosure from FRED mortgage delinquency rates. Full dispossession tracking requires commercial data or county-level scraping.
-
----
-
-### Gap 8: D-P-D' Lifecycle Data
-
-**The Problem**: The D-P-D' lifecycle circuit (Dependent → Productive → Dependent') operates on generational timescales (~80 years). We need data to track population by phase, transitions between phases, and the inheritance mechanism that reproduces class structure.
-
-**Theoretical Foundation** (from D-P-D' theory):
-
-The three functions of D-P-D' require different data:
-1. **Ideological reproduction**: Difficult to quantify (survey data on values transmission)
-2. **Legitimation (D' promise credibility)**: Measurable via pension coverage, Social Security metrics, healthcare access
-3. **Class reproduction (inheritance)**: Partially measurable via wealth surveys, mobility data
-
-**Solution Options**:
-
-| Option | Description | Rigor | Complexity | Recommendation |
-|--------|-------------|-------|------------|----------------|
-| **A: Age cohorts only** | Track Pop_D, Pop_P, Pop_D' from Census | ★★☆☆☆ | ★☆☆☆☆ | MVP baseline |
-| **B: Add mobility data** | Chetty Opportunity Atlas for inheritance proxy | ★★★★☆ | ★★☆☆☆ | **Recommended** |
-| **C: Full inheritance tracking** | Fed SCF + estate data + inter vivos transfers | ★★★★★ | ★★★★★ | Research-grade |
-
-**Option A Implementation (Population by Phase)**:
+### 7.3 Sensitivity Analysis
 
 ```python
-class DPDState(BaseModel):
-    """D-P-D' population distribution."""
-
-    fips_code: str
-    year: int
-
-    pop_D: int      # Ages 0-17
-    pop_P: int      # Ages 18-64, not disabled
-    pop_D_prime: int  # Ages 65+ or disabled
-
-    @computed_field
-    def dependency_ratio(self) -> float:
-        return (self.pop_D + self.pop_D_prime) / self.pop_P
+def sensitivity_gamma_basket():
+    """Test how class shares change with γ_basket."""
+    for gamma in [0.55, 0.60, 0.65, 0.70, 0.75, 0.80]:
+        params = {'tau': 65, 'gamma_basket': gamma,
+                  'tau_effective': 65 * gamma, 'v_reproduction': 12}
+        shares = classify_county_workforce('26163', 2023, params)
+        print(f"γ={gamma}: LA={shares['labor_aristocracy']:.2%}")
 ```
 
-Data source: Census ACS age tables (already have loaders).
-
-**Option B Implementation (Add Mobility)**:
-
-Chetty's Opportunity Atlas provides county-level intergenerational mobility:
-- Probability of child reaching top quintile given parent quintile
-- Mean income rank of children by parent income rank
-
-This proxies inheritance mechanism effectiveness:
-- High mobility = inheritance mechanism weak (class not reproducing)
-- Low mobility = inheritance mechanism strong (class sticky)
-
-```sql
-SELECT
-    fips,
-    kfr_pooled_pooled_p25,  -- Expected rank for children of 25th percentile parents
-    kfr_pooled_pooled_p75,  -- Expected rank for children of 75th percentile parents
-    (kfr_pooled_pooled_p75 - kfr_pooled_pooled_p25) as mobility_gap
-FROM chetty_opportunity_atlas
-WHERE fips IN ('26163', '26125');
-```
-
-**Prediction**: Oakland has higher mobility_gap (more class reproduction) than Wayne.
-
-**Legitimation Index Data**:
-
-| Component | Data Source | Resolution |
-|-----------|-------------|------------|
-| Pension coverage | BLS National Compensation Survey | National/state |
-| SS replacement rate | SSA data | National |
-| Healthcare security | ACS health insurance tables | County |
-| Home ownership | ACS tenure tables | County |
-| Retirement confidence | EBRI Retirement Confidence Survey | National |
-
-```python
-class LegitimationIndex(BaseModel):
-    """Credibility of the D' promise."""
-
-    fips_code: str
-    year: int
-
-    pension_coverage: float  # Fraction with pension access
-    ss_replacement: float    # SS benefits / prior earnings
-    healthcare_secure: float # Fraction with secure coverage
-    home_ownership: float    # Fraction owning home
-    retirement_confidence: float  # Survey-based expectation
-
-    @computed_field
-    def legitimation_index(self) -> float:
-        return (
-            0.25 * self.pension_coverage +
-            0.25 * self.ss_replacement +
-            0.25 * self.healthcare_secure +
-            0.15 * self.home_ownership +
-            0.10 * self.retirement_confidence
-        )
-```
-
-**Data Sources Summary**:
-
-| Data | Source | Resolution | Status |
-|------|--------|------------|--------|
-| Population by age | Census ACS | County, annual | Have loaders |
-| Disability rates | ACS, SSA | County, annual | Need to verify tables |
-| Intergenerational mobility | Chetty Opportunity Atlas | County | New loader needed |
-| Life expectancy | CDC WONDER | County, annual | New loader needed |
-| Pension coverage | BLS NCS | National/state | Limited resolution |
-| Health insurance | ACS | County | Have loaders |
-| Home ownership | ACS tenure | County | Have loaders |
-
-**Validation Criteria**:
-
-1. DependencyRatio should correlate with care sector employment (higher ratio = more care workers needed)
-2. Low intergenerational mobility should correlate with high OwnershipRatio (sticky class = concentrated ownership)
-3. corr(DispossessionRate[t], Mobility[t+10]) < 0 (dispossession breaks inheritance → lower mobility)
-4. Wayne should show shorter life expectancy than Oakland (differential P-phase length = eugenics signature)
-
-**Hand-wave acceptable?** Yes for MVP. Use Census age cohorts + Chetty mobility data. Full legitimation index requires national data applied uniformly (less useful for county comparison). Inheritance tracking would require longitudinal wealth data we don't have.
+If labor aristocracy share swings wildly (e.g., 20% to 70%) across reasonable γ_basket range, the classification is fragile. If it stays within ~10 percentage points, the model is robust.
 
 ---
 
-## 3. The Domestic Core/Periphery Indicator Set
+## 8. Open Questions
 
-For domestic (US) analysis, we use **five indicators** instead of international γ:
+### 8.1 Service Imports
 
-| Indicator | Data Source | What It Captures | Priority |
-|-----------|-------------|------------------|----------|
-| **τ ratio** (GDP/worker) | BEA + QCEW | Where value surfaces | P0 |
-| **Net commuter flow** | LODES | Where labor lives vs works | P1 |
-| **Ownership ratio** | ACS income by source | Where owners live | P1 |
-| **Hours distribution** | ACS hours worked | Class composition | P2 |
-| **Reserve army pressure** | BLS LAUS, ACS | Labor discipline mechanism | P1 |
+Current formulation focuses on goods imports. But services are increasingly traded:
+- Call centers (India, Philippines)
+- Software development (India, Eastern Europe)
+- Cloud computing (global)
 
-**Combined interpretation**:
+These don't show up in HS-code trade data but represent real labor arbitrage.
 
-A **core** county has:
-- High τ (high GDP per worker)
-- Positive net commuter inflow (imports labor)
-- High ownership ratio (capital income concentration)
-- Higher average hours (labor aristocracy hours-hoarding)
-- Low reserve army pressure (tight labor market)
+**Potential resolution:** Add service imports from BEA trade data, assign country-level ERDI.
 
-A **periphery** county has the inverse pattern.
+### 8.2 Domestic Production by Immigrant Labor
 
-**Reserve Army Pressure** (from Capital Vol I, Ch 25):
+Goods produced domestically by undocumented workers carry implicit γ < 1:
+- Their wages are suppressed below V_reproduction
+- The products are consumed at "normal" prices
+- Value transfer happens without crossing a border
 
-The reserve army explains WHY hours get rationed. Capital can cut hours because there's always someone desperate enough to accept what's offered.
+**Potential resolution:** Model domestic subproletariat production as having γ_domestic < 1, separate from γ_basket.
 
-Components:
-- U-6 unemployment (broad measure including marginally attached)
-- PTER rate (Part-Time for Economic Reasons — "my hours got cut")
-- Discouraged worker rate
+### 8.3 Financialization
 
-```sql
-SELECT
-    fips,
-    year,
-    u6_rate,
-    pter_rate,
-    discouraged_rate,
-    (0.5 * u6_rate + 0.3 * pter_rate + 0.2 * discouraged_rate) as reserve_army_pressure
-FROM bls_laus_extended
-WHERE fips IN ('26163', '26125');
-```
+Workers may receive imperial rent through:
+- Pension funds invested in peripheral extraction
+- 401k holding multinational stocks
+- Home equity gains from Fed policy
 
-**Prediction**: Wayne has higher ReserveArmyPressure than Oakland, especially during/after 2008-2012 crisis.
+This isn't captured by wage vs τ_effective comparison.
 
-**Composite index** (future work):
-```
-CoreIndex[fips] = w1×τ_pct + w2×commute_pct + w3×ownership_pct + w4×hours_pct - w5×reserve_pct
-```
-
-Note: Reserve army pressure is SUBTRACTED (inverted) — high pressure indicates periphery.
-Weights initially equal (0.20 each), calibrate empirically.
-
----
-
-## 4. Implementation Priority Matrix
-
-Combining rigor, complexity, and theoretical importance:
-
-| Gap | Recommended Solution | Priority | Blocking? |
-|-----|---------------------|----------|-----------|
-| τ (productivity) | GDP / (emp × 2080) | P0 | No—have data |
-| Net commuter flows | LODES OD | P1 | Yes for domestic core/periphery |
-| Ownership ratio | ACS income by source | P1 | Yes for surplus destination |
-| Reserve army pressure | BLS LAUS + ACS | P1 | Yes for labor discipline mechanism |
-| Capital stock | Perpetual inventory | P1 | Yes for TRPF |
-| Hours distribution | ACS hours worked | P2 | Enhances class composition |
-| Dept III visibility | National constant | P3 | Refinement only |
-| Dispossession tracking | Eviction Lab + ATTOM | P2 | Yes for gentrification mechanics |
-| D-P-D' lifecycle | Census age + Chetty mobility | P2 | Yes for intergenerational dynamics |
-| Legitimation index | ACS + national surveys | P3 | Enhances bifurcation model |
-
----
-
-## 4. Data Source Rigor Rankings
-
-### Tier 1: High Rigor (Direct Federal Measurement)
-
-| Source | What It Provides | Caveats |
-|--------|------------------|---------|
-| QCEW | Employment, wages by NAICS by county | Suppression for small cells |
-| BEA GDP | Output by county | 2-year lag |
-| Census ACS | Demographics, income, commuting | Survey-based, MOE issues |
-| LODES | Origin-destination employment | Privacy-protected (fuzzing) |
-
-### Tier 2: Medium Rigor (Derived/Modeled)
-
-| Source | What It Provides | Caveats |
-|--------|------------------|---------|
-| BEA I-O Tables | Inter-industry flow coefficients | National, not regional |
-| FRED PPP | International price comparisons | Lagged, country-level |
-| BLS Productivity | Output per hour by industry | National, not county |
-
-### Tier 3: Lower Rigor (Requires Imputation)
-
-| Quantity | Derivation | Uncertainty |
-|----------|------------|-------------|
-| County hours worked | Employment × 2080 | ±10-15% |
-| Capital stock | Perpetual inventory | Sensitive to initialization |
-| γ_III by county | Demographic proxy | Could be off by 0.1-0.2 |
-
----
-
-## 5. Recommended Implementation Sequence
-
-### Phase 1: Core Tensor (Current Sprint)
-
-1. Implement τ approximation: `τ[fips] = GDP[fips] / (employment[fips] × 2080)`
-2. Compute γ for Wayne/Oakland: `γ = τ_Wayne / τ_Oakland`
-3. Run falsification tests 1-3
-
-**Data required**: QCEW (have), BEA GDP (verify loaded)
-
-### Phase 2: Capital Dynamics
-
-1. Implement perpetual inventory for K
-2. Compute profit rate time series: `r = s / (K + v)`
-3. Test TRPF prediction
-
-**Data required**: BEA depreciation rates (national by asset class)
-
-### Phase 3: Flow Topology
-
-1. Load LODES origin-destination data
-2. Build commuter flow matrix F[a,b] for Detroit metro
-3. Compute flow-weighted γ for multi-county analysis
-
-**Data required**: LODES OD files (have crosswalk, need main files)
-
-### Phase 4: Department III Refinement
-
-1. Implement demographic proxy for γ_III
-2. Load ATUS national data
-3. Validate against Spec 005
-
-**Data required**: ATUS (new load), ACS demographics (have)
-
----
-
-## 6. Acceptable Hand-Waves (Documented)
-
-For simulation purposes, the following approximations are acceptable:
-
-| Approximation | Justification | Error Bound |
-|---------------|---------------|-------------|
-| L = emp × 2080 | Cancels in γ ratios | Exact for γ, ±15% for τ |
-| K_0 = c_0 / δ | Decays to <25% influence by t=10 | ±20% early, ±5% late |
-| γ_III = national constant | Within-US variation is small | ±0.1 |
-| Commuting ≈ value flow | Labor flows dominate at metro scale | Unknown but directionally correct |
-| No goods flow data | Acceptable for metro; problematic for state+ | Underestimates inter-regional transfer |
-
-These hand-waves do not invalidate the theory—they introduce quantitative uncertainty while preserving qualitative predictions. The simulation can identify *which approximations matter* through sensitivity analysis.
-
----
-
-## 7. Sensitivity Analysis Protocol
-
-Before trusting any result, run:
-
-1. **Hours assumption**: Vary assumed hours/year from 1800-2200. Does γ ranking change?
-2. **Depreciation rate**: Vary δ from 0.05-0.10. Does TRPF trend reverse?
-3. **Initialization**: Try K_0 = c_0/δ vs K_0 = 2×c_0/δ. When does difference become negligible?
-4. **γ_III value**: Vary from 0.15-0.35. Does shadow subsidy ranking change?
-
-If qualitative conclusions are robust to these variations, the approximations are acceptable. If conclusions flip, that parameter needs better data.
+**Potential resolution:** Out of scope for MVP. The wage-based classification captures the primary mechanism.

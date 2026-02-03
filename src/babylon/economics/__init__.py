@@ -12,6 +12,7 @@ This package provides the Marxian value transformation layer:
 - capital_stock: CapitalStockCalculator for TRPF analysis (Feature 012)
 - derived_metrics: DerivedTensorMetrics for stock-based profit rate (Feature 012)
 - melt: MELT and basket visibility for Labor Aristocracy thresholds (Feature 013)
+- throughput: Throughput position and domestic value geography (Feature 014)
 
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
@@ -46,6 +47,7 @@ See Also:
     :mod:`babylon.economics.shadow_labor`: Shadow labor visibility details.
     :mod:`babylon.economics.capital_stock`: Capital stock computation details.
     :mod:`babylon.economics.melt`: MELT and basket visibility details (Feature 013).
+    :mod:`babylon.economics.throughput`: Throughput position details (Feature 014).
 """
 
 # Adapters (protocols and implementations)
@@ -127,6 +129,24 @@ from babylon.economics.temporal import (
 # Tensor models
 from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
 
+# Throughput Position and Domestic Value Geography (Feature 014)
+from babylon.economics.throughput import (
+    NAICS_2DIGIT_SECTORS,
+    NAICS_DEPTH_MAPPING,
+    BEACountyGDPSource,
+    DefaultSupplyChainAnalyzer,
+    DefaultThroughputCalculator,
+    QCEWCountyNAICSSource,
+    SQLiteBEACountyGDPSource,
+    SQLiteQCEWCountyNAICSSource,
+    SupplyChainAnalyzer,
+    ThroughputCalculator,
+    ThroughputMetrics,
+    WageShareEstimate,
+    get_depth,
+    validate_depth,
+)
+
 __all__ = [
     # Protocols and implementations
     "BEADataSource",
@@ -180,4 +200,19 @@ __all__ = [
     "DefaultBasketVisibilityCalculator",
     "DefaultClassPositionClassifier",
     "TVTImperialRentCalculator",
+    # Throughput Position and Domestic Value Geography (Feature 014)
+    "ThroughputMetrics",
+    "WageShareEstimate",
+    "NAICS_DEPTH_MAPPING",
+    "NAICS_2DIGIT_SECTORS",
+    "get_depth",
+    "validate_depth",
+    "BEACountyGDPSource",
+    "QCEWCountyNAICSSource",
+    "ThroughputCalculator",
+    "SupplyChainAnalyzer",
+    "DefaultThroughputCalculator",
+    "DefaultSupplyChainAnalyzer",
+    "SQLiteBEACountyGDPSource",
+    "SQLiteQCEWCountyNAICSSource",
 ]

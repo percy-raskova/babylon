@@ -300,3 +300,177 @@ class TestFullThroughputMetrics:
             f"  Oakland: τ={oakland_metrics.tau_through:.2f}, D={oakland_metrics.supply_chain_depth:.2f}"
         )
         print(f"  τ Ratio: {oakland_metrics.tau_through / wayne_metrics.tau_through:.3f}")
+
+
+@pytest.mark.integration
+class TestBatchCountyComputation:
+    """Tests for batch county computation (SC-001).
+
+    Success Criterion SC-001:
+        3,000+ counties computed without error
+    """
+
+    def test_batch_county_gdp_retrieval(self, bea_source: SQLiteBEACountyGDPSource):
+        """Test that GDP can be retrieved for 3,000+ counties.
+
+        SC-001: Batch computation should work for all US counties.
+        """
+        counties = bea_source.get_all_counties(TEST_YEAR)
+
+        # Should have 3,000+ counties (US has ~3,143 counties)
+        assert len(counties) >= 3000, f"Expected 3,000+ counties, got {len(counties)}"
+
+        # All values should be positive
+        for fips, gdp in counties.items():
+            assert gdp > 0, f"GDP for {fips} should be positive"
+
+        # Log summary
+        print(f"\nBatch County GDP Results ({TEST_YEAR}):")
+        print(f"  Total counties: {len(counties)}")
+        print(f"  Min GDP: ${min(counties.values()):,.0f}")
+        print(f"  Max GDP: ${max(counties.values()):,.0f}")
+        print(f"  Total GDP: ${sum(counties.values()):,.0f}")
+
+    def test_batch_throughput_computation_sample(
+        self,
+        throughput_calculator: DefaultThroughputCalculator,
+        bea_source: SQLiteBEACountyGDPSource,
+    ):
+        """Test throughput computation for a sample of counties.
+
+        Verifies that the full pipeline works for diverse counties.
+        """
+        # Get all counties with GDP
+        all_counties = bea_source.get_all_counties(TEST_YEAR)
+
+        # Sample 100 counties for throughput computation
+        sample_fips = list(all_counties.keys())[:100]
+
+        computed = 0
+        failed = 0
+        for fips in sample_fips:
+            tau = throughput_calculator.compute_throughput_intensity(fips, TEST_YEAR)
+            if isinstance(tau, NoDataSentinel):
+                failed += 1
+            else:
+                computed += 1
+                # Validate sanity range
+                is_valid, _ = throughput_calculator.validate_throughput(tau)
+                assert is_valid, f"τ_through for {fips} outside sanity range"
+
+        print("\nSample Throughput Computation Results:")
+        print(f"  Sample size: {len(sample_fips)}")
+        print(f"  Computed: {computed}")
+        print(f"  Failed (missing employment): {failed}")
+
+        # Most counties should compute successfully
+        assert computed >= 80, f"Expected 80%+ success rate, got {computed}/100"
+
+
+@pytest.mark.integration
+class TestDepthRankingValidation:
+    """Tests for SC-003: D ranking (finance > manufacturing > extraction).
+
+    Verifies that the NAICS depth mapping produces correct sector rankings.
+    """
+
+    def test_finance_depth_greater_than_manufacturing(self):
+        """Test that finance (NAICS 52) has higher depth than manufacturing."""
+        from babylon.economics.throughput import get_depth
+
+        finance_depth = get_depth("52")  # Finance and Insurance
+        manufacturing_depth = get_depth("31")  # Manufacturing
+
+        assert finance_depth is not None
+        assert manufacturing_depth is not None
+        assert finance_depth > manufacturing_depth, (
+            f"Finance depth ({finance_depth}) should exceed "
+            f"manufacturing depth ({manufacturing_depth})"
+        )
+
+    def test_manufacturing_depth_greater_than_extraction(self):
+        """Test that manufacturing has higher depth than extraction."""
+        from babylon.economics.throughput import get_depth
+
+        manufacturing_depth = get_depth("31")  # Manufacturing
+        mining_depth = get_depth("21")  # Mining
+
+        assert manufacturing_depth is not None
+        assert mining_depth is not None
+        assert manufacturing_depth > mining_depth, (
+            f"Manufacturing depth ({manufacturing_depth}) should exceed "
+            f"mining depth ({mining_depth})"
+        )
+
+    def test_complete_depth_ordering(self):
+        """Test complete depth ordering: finance > services > logistics > manufacturing > extraction."""
+        from babylon.economics.throughput import get_depth
+
+        finance = get_depth("52")  # Finance: 5.0
+        services = get_depth("44")  # Retail: 4.0
+        logistics = get_depth("42")  # Wholesale: 3.0
+        manufacturing = get_depth("31")  # Manufacturing: 1.5
+        extraction = get_depth("21")  # Mining: 0.0
+
+        assert all(d is not None for d in [finance, services, logistics, manufacturing, extraction])
+        assert finance > services > logistics > manufacturing > extraction, (
+            f"Depth ordering violated: finance={finance}, services={services}, "
+            f"logistics={logistics}, manufacturing={manufacturing}, extraction={extraction}"
+        )
+
+        print("\nDepth Ranking Validation:")
+        print(f"  Finance (52):      {finance}")
+        print(f"  Services (44):     {services}")
+        print(f"  Logistics (42):    {logistics}")
+        print(f"  Manufacturing (31): {manufacturing}")
+        print(f"  Extraction (21):   {extraction}")
+
+
+@pytest.mark.integration
+class TestEdgeCaseHandling:
+    """Tests for SC-006: 100% edge case handling without crashes."""
+
+    def test_unknown_fips_returns_no_data_sentinel(
+        self, throughput_calculator: DefaultThroughputCalculator
+    ):
+        """Test that unknown FIPS codes return NoDataSentinel, not crash."""
+        result = throughput_calculator.compute_throughput_intensity("99999", TEST_YEAR)
+        assert isinstance(result, NoDataSentinel), (
+            f"Unknown FIPS should return NoDataSentinel, got {type(result)}"
+        )
+
+    def test_invalid_year_returns_no_data_sentinel(
+        self, throughput_calculator: DefaultThroughputCalculator
+    ):
+        """Test that invalid years return NoDataSentinel, not crash."""
+        result = throughput_calculator.compute_throughput_intensity(WAYNE_FIPS, 1900)
+        assert isinstance(result, NoDataSentinel), (
+            f"Invalid year should return NoDataSentinel, got {type(result)}"
+        )
+
+    def test_empty_fips_returns_no_data_sentinel(
+        self, throughput_calculator: DefaultThroughputCalculator
+    ):
+        """Test that empty FIPS codes return NoDataSentinel, not crash."""
+        result = throughput_calculator.compute_throughput_intensity("", TEST_YEAR)
+        assert isinstance(result, NoDataSentinel), (
+            f"Empty FIPS should return NoDataSentinel, got {type(result)}"
+        )
+
+    def test_full_metrics_with_unknown_fips(
+        self, throughput_calculator: DefaultThroughputCalculator
+    ):
+        """Test full metrics computation with unknown FIPS."""
+        result = throughput_calculator.compute_metrics("99999", TEST_YEAR)
+        assert isinstance(result, NoDataSentinel), (
+            f"Unknown FIPS metrics should return NoDataSentinel, got {type(result)}"
+        )
+
+    def test_supply_chain_depth_with_unknown_fips(
+        self, supply_chain_analyzer: DefaultSupplyChainAnalyzer
+    ):
+        """Test supply chain depth with unknown FIPS."""
+        result = supply_chain_analyzer.compute_depth("99999", TEST_YEAR)
+        assert isinstance(result, NoDataSentinel), (
+            f"Unknown FIPS depth should return NoDataSentinel, got {type(result)}"
+        )

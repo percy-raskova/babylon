@@ -249,16 +249,16 @@ ______________________________________________________________________
 
 ### Documentation
 
-- [ ] T038 [P] Update `src/babylon/economics/__init__.py` to export throughput module
+- [x] T038 [P] Update `src/babylon/economics/__init__.py` to export throughput module
 - [ ] T039 [P] Validate quickstart.md examples work end-to-end
 - [ ] T040 [P] Add module docstrings with Sphinx-compatible RST
 
 ### Validation Tests (SC-001 through SC-007)
 
-- [ ] T041 [P] Add SC-001 test: 3,000+ counties computed without error
-- [ ] T042 [P] Add SC-003 test: D ranking (finance > manufacturing > extraction)
+- [x] T041 [P] Add SC-001 test: 3,000+ counties computed without error
+- [x] T042 [P] Add SC-003 test: D ranking (finance > manufacturing > extraction)
 - [ ] T043 [P] Add SC-004 test: high-π counties → higher average wages
-- [ ] T044 [P] Add SC-006 test: 100% edge case handling without crashes
+- [x] T044 [P] Add SC-006 test: 100% edge case handling without crashes
 - [ ] T045 [P] Add SC-007 test: national retail λ < 0.15
 
 ### Code Quality

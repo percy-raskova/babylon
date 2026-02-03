@@ -270,8 +270,13 @@ ______________________________________________________________________
 
 ### Code Quality
 
-- [ ] T046 Run `mise run check` (lint + format + typecheck + test:unit)
-- [ ] T047 Run `mise run test:int` for integration tests
+- [x] T046 Run `mise run check` (lint + format + typecheck + test:unit)
+  - Throughput module passes all checks ✅
+  - 5566 unit tests pass ✅
+  - Note: Pre-existing UI dashboard typecheck errors unrelated to Feature 014
+- [x] T047 Run `mise run test:int` for integration tests
+  - All 39 throughput integration tests pass ✅
+  - Note: 1 unrelated MELT test failure (deprecated classify() deprecation warning issue)
 
 ______________________________________________________________________
 

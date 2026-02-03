@@ -98,3 +98,47 @@ class MetricsCollectorProtocol(Protocol):
         Used primarily for testing or resetting between game sessions.
         """
         ...
+
+    def record_metric(
+        self,
+        name: str,
+        value: float,
+        context: str = "",
+        object_id: str | None = None,
+        context_level: str | None = None,
+    ) -> None:
+        """Record a named metric with context.
+
+        Args:
+            name: Metric name.
+            value: Metric value.
+            context: Optional context string.
+            object_id: Optional object identifier.
+            context_level: Optional context level.
+        """
+        ...
+
+    def record_cache_event(self, level: str, hit: bool) -> None:
+        """Record a cache hit or miss event.
+
+        Args:
+            level: Cache level (e.g., "L1", "L2", "embedding").
+            hit: Whether this was a cache hit (True) or miss (False).
+        """
+        ...
+
+    def record_token_usage(self, tokens: int) -> None:
+        """Record token usage.
+
+        Args:
+            tokens: Number of tokens used.
+        """
+        ...
+
+    def record_memory_usage(self, memory_bytes: float) -> None:
+        """Record memory usage.
+
+        Args:
+            memory_bytes: Memory usage in bytes.
+        """
+        ...

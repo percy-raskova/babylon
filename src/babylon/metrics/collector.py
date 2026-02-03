@@ -159,6 +159,25 @@ class MetricsCollector:
                 self._timers[name] = []
             self._timers[name].append(duration)
 
+    def _compute_timer_stats(self, timings: list[float]) -> dict[str, float]:
+        """Compute statistics for timing measurements (internal use).
+
+        Args:
+            timings: List of timing measurements in seconds.
+
+        Returns:
+            Dict with count, sum, mean, min, max statistics.
+        """
+        if not timings:
+            return {"count": 0, "sum": 0.0, "mean": 0.0, "min": 0.0, "max": 0.0}
+        return {
+            "count": len(timings),
+            "sum": sum(timings),
+            "mean": sum(timings) / len(timings),
+            "min": min(timings),
+            "max": max(timings),
+        }
+
     def record_metric(
         self,
         name: str,
@@ -237,7 +256,10 @@ class MetricsCollector:
             return {
                 "counters": dict(self._counters),
                 "gauges": dict(self._gauges),
-                "timers": {name: self.get_timer_stats(name) for name in self._timers},
+                "timers": {
+                    name: self._compute_timer_stats(timings)
+                    for name, timings in self._timers.items()
+                },
                 "metric_series_count": len(self._metrics),
                 "total_events": sum(len(events) for events in self._metrics.values()),
             }

@@ -1891,6 +1891,71 @@ def lodes(
         raise typer.Exit(1)
 
 
+@app.command("lodes-od")
+def lodes_od(
+    data_dir: Annotated[
+        Path | None,
+        typer.Option("--data-dir", help="Path to LODES OD data directory"),
+    ] = None,
+    states: Annotated[
+        str | None,
+        typer.Option("--states", help="State FIPS codes (e.g., 26,39 for MI,OH)"),
+    ] = None,
+    years: Annotated[
+        str | None,
+        typer.Option("--years", help="Years to load (e.g., 2020,2021,2022)"),
+    ] = None,
+    reset: Annotated[
+        bool,
+        typer.Option("--reset/--no-reset", help="Clear tables before loading"),
+    ] = True,
+    quiet: Annotated[
+        bool,
+        typer.Option("--quiet", "-q", help="Suppress verbose output"),
+    ] = False,
+) -> None:
+    """Load LODES Origin-Destination commuter flow data into 3NF database.
+
+    Aggregates LEHD LODES OD block-level data to county-to-county flows
+    for commuter-adjusted throughput analysis (Feature 014, T034-T036).
+
+    Data source: https://lehd.ces.census.gov/data/lodes/LODES8/
+    Files: {state}_od_main_JT00_{year}.csv.gz
+
+    Example:
+        # Load Michigan 2022 data
+        mise run data:lodes-od -- --states 26 --years 2022
+
+        # Load all states, all years (default: 2020-2022)
+        mise run data:lodes-od
+    """
+    from babylon.data.lodes import LODESODLoader
+    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+
+    year_list = parse_years(years) if years else [2020, 2021, 2022]
+    config = LoaderConfig(state_fips_list=parse_states(states), verbose=not quiet)
+
+    if not quiet:
+        typer.echo(f"Loading LODES OD data for years {year_list}...")
+
+    init_normalized_db()
+    loader = LODESODLoader(config)
+
+    with get_normalized_session() as session:
+        stats = loader.load(
+            session,
+            reset=reset,
+            verbose=not quiet,
+            data_dir=data_dir or Path("data/lodes/od"),
+            years=year_list,
+            states=parse_states(states),
+        )
+
+    print_stats(stats)
+    if stats.has_errors:
+        raise typer.Exit(1)
+
+
 @app.command()
 def hifld_prisons(
     reset: Annotated[

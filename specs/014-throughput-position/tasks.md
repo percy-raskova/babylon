@@ -225,19 +225,44 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-## Phase 7: User Story 5 - Track Commuter Flows (Priority: P3 - Future Enhancement)
+## Phase 7: User Story 5 - Track Commuter Flows (Priority: P3)
 
 **Goal**: Integrate LODES commuter flow data for residence-work mismatch analysis
 
-**Status**: DEFERRED - Marked as FE-002 in spec.md
+**Status**: COMPLETE - Implemented as T034-T036
 
-### Placeholder Tasks (Future)
+### LODES Commuter Flow Integration
 
-- [ ] T034 [US5] [FUTURE] Define LODESDataSource protocol
-- [ ] T035 [US5] [FUTURE] Implement LODES data loader
-- [ ] T036 [US5] [FUTURE] Add commuter-adjusted throughput calculation
+- [x] T034 [US5] Define `LODESCommuterFlowSource` protocol in `src/babylon/economics/throughput/data_sources.py`
+  - 6 methods: get_inbound_commuters, get_outbound_commuters, get_internal_workers,
+    get_net_commuter_balance, get_residence_employment, get_commuter_flows
+  - Unit tests in `tests/unit/economics/throughput/test_lodes_protocol.py`
+  - Detroit metro scenario tests validate Wayne (job importer) vs Oakland (job exporter)
+- [x] T035 [US5] Implement LODES OD data loader and adapter
+  - T035a: `FactLodesCommuterFlow` schema in `src/babylon/data/reference/schema.py`
+    - Composite PK (home_county_id, work_county_id, time_id)
+    - Age and earnings breakdowns (SA01-03, SE01-03)
+    - Indexes for inbound/outbound queries
+  - T035b: `LODESODLoader` in `src/babylon/data/lodes/loader_od.py`
+    - Loads {state}_od_main_JT00_{year}.csv.gz files
+    - Pre-aggregates block-level data to county pairs in memory
+    - Checkpointing for resume capability
+  - T035c: `SQLiteLODESCommuterFlowSource` adapter in `src/babylon/economics/throughput/adapters_lodes.py`
+    - Implements LODESCommuterFlowSource protocol
+    - Queries FactLodesCommuterFlow with county/time joins
+  - CLI: `mise run data:lodes-od` command in cli.py and .mise.toml
+- [x] T036 [US5] Add commuter-adjusted throughput calculation
+  - `CommuterAdjustedMetrics` type in `src/babylon/economics/throughput/types.py`
+    - tau_through_workplace, tau_through_residence, pi_workplace, pi_residence
+    - net_commuter_balance, commuter_ratio, is_job_importer, has_commuter_data
+  - Extended `DefaultThroughputCalculator` with optional commuter_source
+    - `compute_residence_throughput()` method
+    - `compute_commuter_adjusted_metrics()` method
+  - Unit tests in `tests/unit/economics/throughput/test_commuter_adjusted.py`
+  - Integration tests in `tests/integration/economics/test_throughput_validation.py`
+    - TestLODESAdapterIntegration, TestDetroitCommuterPatterns, TestCommuterAdjustedMetricsIntegration
 
-**Note**: US5 is out of scope for MVP. These tasks are placeholders for FE-002.
+**Checkpoint**: Commuter-adjusted throughput computable. Detroit validation: Oakland (job exporter), Wayne (job importer).
 
 ______________________________________________________________________
 

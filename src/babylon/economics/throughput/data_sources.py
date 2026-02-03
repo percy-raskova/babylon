@@ -164,4 +164,122 @@ class QCEWCountyNAICSSource(Protocol):
         ...
 
 
-__all__ = ["BEACountyGDPSource", "QCEWCountyNAICSSource"]
+class LODESCommuterFlowSource(Protocol):
+    """Protocol for LODES Origin-Destination commuter flow data.
+
+    Data Source:
+        LEHD LODES (Longitudinal Employer-Household Dynamics Origin-Destination)
+        Loaded via mise run data:lodes-od
+        Stored in: FactLodesCommuterFlow table
+
+    Database Schema:
+        - FactLodesCommuterFlow: home_county_id, work_county_id, time_id, total_jobs,
+          jobs_age_29_under, jobs_age_30_54, jobs_age_55_plus, jobs_earn_low,
+          jobs_earn_mid, jobs_earn_high
+        - DimCounty: county_id, fips (5-char string)
+        - DimTime: time_id, year
+
+    Key Concepts:
+        - **Inbound commuters**: Workers who live elsewhere but work in this county
+        - **Outbound commuters**: Workers who live in this county but work elsewhere
+        - **Internal workers**: Workers who both live and work in the same county
+        - **Net balance**: Inbound - Outbound (positive = job importer)
+        - **Residence employment**: Employment based on where workers LIVE
+
+    Use Case:
+        Standard throughput τ_through = GDP / (employment × 2080) uses workplace
+        employment (jobs located in county). For bedroom communities like Oakland
+        County, MI, this underestimates the throughput their RESIDENTS participate
+        in. Commuter-adjusted metrics use residence-based employment to capture
+        the throughput workers are actually connected to.
+
+    Example:
+        >>> source = SQLiteLODESCommuterFlowSource(session_factory)
+        >>> balance = source.get_net_commuter_balance("26125", 2022)  # Oakland County
+        >>> print(f"Net commuter balance: {balance:+,}")  # Negative = exporter
+        Net commuter balance: -150,000
+    """
+
+    def get_inbound_commuters(self, work_fips: str, year: int) -> int | None:
+        """Get total workers commuting INTO this county for work.
+
+        Args:
+            work_fips: 5-character FIPS code of work county
+            year: Calendar year
+
+        Returns:
+            Count of workers who live elsewhere but work here, or None if unavailable
+        """
+        ...
+
+    def get_outbound_commuters(self, home_fips: str, year: int) -> int | None:
+        """Get total workers commuting OUT of this county for work.
+
+        Args:
+            home_fips: 5-character FIPS code of residence county
+            year: Calendar year
+
+        Returns:
+            Count of workers who live here but work elsewhere, or None if unavailable
+        """
+        ...
+
+    def get_internal_workers(self, fips: str, year: int) -> int | None:
+        """Get workers who both live and work in this county.
+
+        Args:
+            fips: 5-character FIPS code
+            year: Calendar year
+
+        Returns:
+            Count of workers with same home and work county, or None if unavailable
+        """
+        ...
+
+    def get_net_commuter_balance(self, fips: str, year: int) -> int | None:
+        """Get net commuter balance for a county.
+
+        Formula: Inbound - Outbound
+        - Positive: County is a NET JOB IMPORTER (more workers commute in)
+        - Negative: County is a NET JOB EXPORTER (more workers commute out)
+
+        Args:
+            fips: 5-character FIPS code
+            year: Calendar year
+
+        Returns:
+            Net commuter balance (can be negative), or None if unavailable
+        """
+        ...
+
+    def get_residence_employment(self, fips: str, year: int) -> int | None:
+        """Get employment based on worker residence (not workplace).
+
+        Formula: Internal + Outbound = workers who LIVE in this county
+        This differs from QCEW employment which counts jobs LOCATED in county.
+
+        Args:
+            fips: 5-character FIPS code
+            year: Calendar year
+
+        Returns:
+            Residence-based employment count, or None if unavailable
+        """
+        ...
+
+    def get_commuter_flows(self, home_fips: str, work_fips: str, year: int) -> int | None:
+        """Get commuter flow between specific county pair.
+
+        Args:
+            home_fips: 5-character FIPS code of residence county
+            work_fips: 5-character FIPS code of work county
+            year: Calendar year
+
+        Returns:
+            Count of workers living in home_fips working in work_fips,
+            or None if unavailable
+        """
+        ...
+
+
+__all__ = ["BEACountyGDPSource", "QCEWCountyNAICSSource", "LODESCommuterFlowSource"]

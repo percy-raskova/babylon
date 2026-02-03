@@ -1707,6 +1707,66 @@ class BridgeLodesBlock(NormalizedBase):
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(9, 6))
 
 
+class FactLodesCommuterFlow(NormalizedBase):
+    """County-to-county commuter flow data from LEHD LODES Origin-Destination.
+
+    Aggregates LODES OD (Origin-Destination) block-level data to county pairs.
+    Each row represents commuter flows from home county to work county for a year.
+
+    Data Source:
+        LEHD LODES8 Origin-Destination files
+        https://lehd.ces.census.gov/data/lodes/LODES8/
+        Format: {state}_od_main_JT00_{year}.csv.gz
+
+    Key Fields:
+        - home_county_id: Where workers LIVE
+        - work_county_id: Where workers WORK
+        - total_jobs (S000): Total number of jobs
+        - Age breakdown: SA01 (29 and under), SA02 (30-54), SA03 (55+)
+        - Earnings breakdown: SE01 ($1250/mo or less), SE02 ($1251-$3333/mo),
+          SE03 (>$3333/mo)
+
+    Use Cases:
+        - Commuter-adjusted throughput: τ_residence vs τ_workplace
+        - Identify bedroom communities (high outbound) vs job centers (high inbound)
+        - Labor market boundary analysis
+
+    Note:
+        Data is pre-aggregated at load time (block→county) for query performance.
+        LODES has 18-24 month publication lag; 2022 data typically available mid-2024.
+    """
+
+    __tablename__ = "fact_lodes_commuter_flow"
+
+    home_county_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_county.county_id"), primary_key=True
+    )
+    work_county_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_county.county_id"), primary_key=True
+    )
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), primary_key=True)
+
+    # Total jobs (S000)
+    total_jobs: Mapped[int] = mapped_column(nullable=False)
+
+    # Age breakdown (SA01, SA02, SA03)
+    jobs_age_29_under: Mapped[int | None] = mapped_column()  # SA01
+    jobs_age_30_54: Mapped[int | None] = mapped_column()  # SA02
+    jobs_age_55_plus: Mapped[int | None] = mapped_column()  # SA03
+
+    # Earnings breakdown (SE01, SE02, SE03)
+    jobs_earn_low: Mapped[int | None] = mapped_column()  # SE01: $1250/mo or less
+    jobs_earn_mid: Mapped[int | None] = mapped_column()  # SE02: $1251-$3333/mo
+    jobs_earn_high: Mapped[int | None] = mapped_column()  # SE03: >$3333/mo
+
+    __table_args__ = (
+        # Query: "Who works in county X?" (inbound commuters)
+        Index("idx_lodes_work_time", "work_county_id", "time_id"),
+        # Query: "Where do county X residents work?" (outbound commuters)
+        Index("idx_lodes_home_time", "home_county_id", "time_id"),
+    )
+
+
 # =============================================================================
 # EMPLOYMENT INDUSTRY
 # =============================================================================

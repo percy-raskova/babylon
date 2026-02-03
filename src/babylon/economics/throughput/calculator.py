@@ -12,12 +12,13 @@ import logging
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from babylon.economics.tensor import NoDataSentinel
-from babylon.economics.throughput.types import ThroughputMetrics
+from babylon.economics.throughput.types import CommuterAdjustedMetrics, ThroughputMetrics
 
 if TYPE_CHECKING:
     from babylon.economics.melt import MELTCalculator
     from babylon.economics.throughput.data_sources import (
         BEACountyGDPSource,
+        LODESCommuterFlowSource,
         QCEWCountyNAICSSource,
     )
     from babylon.economics.throughput.supply_chain import SupplyChainAnalyzer
@@ -123,6 +124,7 @@ class DefaultThroughputCalculator:
     """Default implementation of ThroughputCalculator.
 
     Computes throughput metrics using injected data sources.
+    Optionally supports commuter-adjusted metrics via LODES data.
     """
 
     def __init__(
@@ -131,6 +133,7 @@ class DefaultThroughputCalculator:
         qcew_source: QCEWCountyNAICSSource,
         supply_chain_analyzer: SupplyChainAnalyzer,
         melt_calculator: MELTCalculator | None = None,
+        commuter_source: LODESCommuterFlowSource | None = None,
     ) -> None:
         """Initialize the calculator with data sources.
 
@@ -139,11 +142,14 @@ class DefaultThroughputCalculator:
             qcew_source: Source for county employment data (QCEW)
             supply_chain_analyzer: Analyzer for supply chain depth
             melt_calculator: Optional MELT calculator for π computation
+            commuter_source: Optional LODES commuter flow source for
+                commuter-adjusted metrics (T034-T036)
         """
         self._gdp_source = gdp_source
         self._qcew_source = qcew_source
         self._supply_chain = supply_chain_analyzer
         self._melt_calculator = melt_calculator
+        self._commuter_source = commuter_source
 
     def compute_throughput_intensity(self, fips: str, year: int) -> float | NoDataSentinel:
         """Compute throughput intensity for a county.
@@ -313,6 +319,148 @@ class DefaultThroughputCalculator:
                 f"${TAU_THROUGH_EXPECTED_MAX}/hour",
             )
         return (True, None)
+
+    # =========================================================================
+    # Commuter-Adjusted Methods (T034-T036)
+    # =========================================================================
+
+    def compute_residence_throughput(self, fips: str, year: int) -> float | NoDataSentinel:
+        """Compute throughput intensity using residence-based employment.
+
+        Instead of using workplace employment (jobs located in county),
+        uses residence employment (workers who LIVE in county) from LODES.
+
+        Formula: τ_residence = GDP / (residence_employment × 2080)
+
+        This is useful for bedroom communities where workers commute to
+        nearby job centers. Their "connection" to throughput is better
+        captured by where they work (and thus what throughput they handle)
+        rather than jobs in their home county.
+
+        Args:
+            fips: 5-character county FIPS code
+            year: Calendar year
+
+        Returns:
+            τ_residence in $/labor-hour, or NoDataSentinel if unavailable
+        """
+        if self._commuter_source is None:
+            return NoDataSentinel(
+                fips, year, "Commuter source unavailable: LODESCommuterFlowSource not provided"
+            )
+
+        # Get county GDP
+        gdp = self._gdp_source.get_county_gdp(fips, year)
+        if gdp is None:
+            return NoDataSentinel(fips, year, f"GDP unavailable for FIPS {fips} in {year}")
+
+        # Get residence employment from LODES
+        residence_emp = self._commuter_source.get_residence_employment(fips, year)
+        if residence_emp is None:
+            return NoDataSentinel(
+                fips, year, f"LODES residence employment unavailable for FIPS {fips} in {year}"
+            )
+
+        # Check analytical threshold
+        if residence_emp < MINIMUM_EMPLOYMENT_THRESHOLD:
+            return NoDataSentinel(
+                fips,
+                year,
+                f"INSUFFICIENT_DATA: residence employment {residence_emp} below "
+                f"{MINIMUM_EMPLOYMENT_THRESHOLD} analytical threshold",
+            )
+
+        # Compute τ_residence = GDP / (L_residence × 2080)
+        labor_hours = residence_emp * HOURS_PER_YEAR
+        tau_residence = gdp / labor_hours
+
+        return tau_residence
+
+    def compute_commuter_adjusted_metrics(
+        self, fips: str, year: int
+    ) -> CommuterAdjustedMetrics | NoDataSentinel:
+        """Compute full commuter-adjusted throughput metrics for a county.
+
+        Combines standard workplace-based metrics with residence-based metrics
+        from LODES data to provide a complete picture of throughput position
+        adjusted for commuter flows.
+
+        Key insight:
+            For bedroom communities (net job exporters):
+            - τ_workplace underestimates worker throughput (few local jobs)
+            - τ_residence better reflects where workers actually engage throughput
+            - pi_residence should be closer to nearby job center's pi_workplace
+
+            For job centers (net job importers):
+            - τ_workplace reflects actual job-based throughput
+            - τ_residence shows what residents alone could sustain
+            - The gap indicates dependence on commuter workforce
+
+        Args:
+            fips: 5-character county FIPS code
+            year: Calendar year
+
+        Returns:
+            CommuterAdjustedMetrics container, or NoDataSentinel if unavailable
+        """
+        # First compute standard workplace-based throughput (required)
+        tau_workplace = self.compute_throughput_intensity(fips, year)
+        if isinstance(tau_workplace, NoDataSentinel):
+            return tau_workplace
+
+        # Compute workplace π (optional - depends on MELT)
+        pi_workplace: float | None = None
+        if self._melt_calculator is not None:
+            pi_result = self.compute_throughput_position(fips, year)
+            if not isinstance(pi_result, NoDataSentinel):
+                pi_workplace = pi_result
+
+        # Default values for when commuter data unavailable
+        tau_residence: float | None = None
+        pi_residence: float | None = None
+        net_commuter_balance: int = 0
+        commuter_ratio: float | None = None
+        is_job_importer: bool = False
+        has_commuter_data: bool = False
+
+        # Try to get commuter-adjusted metrics
+        if self._commuter_source is not None:
+            # Get net commuter balance
+            balance = self._commuter_source.get_net_commuter_balance(fips, year)
+            if balance is not None:
+                has_commuter_data = True
+                net_commuter_balance = balance
+                is_job_importer = balance > 0
+
+                # Compute residence-based throughput
+                tau_res_result = self.compute_residence_throughput(fips, year)
+                if not isinstance(tau_res_result, NoDataSentinel):
+                    tau_residence = tau_res_result
+
+                    # Compute residence π if MELT available
+                    if self._melt_calculator is not None:
+                        tau_national = self._melt_calculator.get_melt(year)
+                        if not isinstance(tau_national, NoDataSentinel):
+                            pi_residence = tau_residence / tau_national
+
+                # Compute commuter ratio (residence_emp / workplace_emp)
+                residence_emp = self._commuter_source.get_residence_employment(fips, year)
+                workplace_emp = self._qcew_source.get_county_total_employment(fips, year)
+                if residence_emp is not None and workplace_emp is not None and workplace_emp > 0:
+                    commuter_ratio = residence_emp / workplace_emp
+
+        return CommuterAdjustedMetrics(
+            fips=fips,
+            year=year,
+            tau_through_workplace=tau_workplace,
+            pi_workplace=pi_workplace,
+            tau_through_residence=tau_residence,
+            pi_residence=pi_residence,
+            net_commuter_balance=net_commuter_balance,
+            commuter_ratio=commuter_ratio,
+            is_job_importer=is_job_importer,
+            has_commuter_data=has_commuter_data,
+        )
 
 
 __all__ = [

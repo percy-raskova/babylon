@@ -46,6 +46,11 @@ from babylon.economics.throughput.adapters import (
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
 )
+from babylon.economics.throughput.analysis import (
+    CorrelationResult,
+    compute_high_pi_wage_correlation,
+    correlate_throughput_with_class,
+)
 from babylon.economics.throughput.calculator import (
     DefaultThroughputCalculator,
     ThroughputCalculator,
@@ -90,4 +95,8 @@ __all__ = [
     "SQLiteBEACountyGDPSource",
     "SQLiteQCEWCountyNAICSSource",
     "NAICS_2DIGIT_SECTORS",
+    # Correlation Analysis
+    "CorrelationResult",
+    "correlate_throughput_with_class",
+    "compute_high_pi_wage_correlation",
 ]

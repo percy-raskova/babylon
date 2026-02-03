@@ -1,4 +1,4 @@
-"""Unit tests for SQLite data source adapters.
+"""Integration tests for SQLite data source adapters.
 
 These tests verify the adapters correctly query the 3NF database
 and return properly formatted data for throughput position calculations.
@@ -8,6 +8,9 @@ Tests use real data from marxist-data-3NF.sqlite loaded via:
     mise run data:qcew
 
 Feature: 014-throughput-position
+
+Note: These tests are marked as integration tests since they require
+      the actual database to be populated with data.
 """
 
 from __future__ import annotations
@@ -20,6 +23,9 @@ from babylon.economics.throughput.adapters import (
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
 )
+
+# Mark all tests in this module as integration tests (require actual database)
+pytestmark = pytest.mark.integration
 
 # Test constants - validated values from data exploration
 WAYNE_FIPS = "26163"  # Wayne County, MI (Detroit)

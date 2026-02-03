@@ -221,9 +221,22 @@ class DefaultThroughputCalculator:
                         PI_EXPECTED_MAX,
                     )
 
-        # Determine data quality
+        # Determine data quality based on sector coverage
         data_quality: Literal["high", "medium", "low"] = "high"
         is_estimated = False
+
+        sector_coverage = self._supply_chain.get_sector_coverage(fips, year)
+        if not isinstance(sector_coverage, NoDataSentinel):
+            sectors_with_data, sectors_mapped, _ = sector_coverage
+            if sectors_with_data > 0:
+                coverage_ratio = sectors_mapped / sectors_with_data
+                if coverage_ratio < 0.5:
+                    data_quality = "low"
+                    is_estimated = True
+                elif coverage_ratio < 0.8:
+                    data_quality = "medium"
+                    is_estimated = True
+                # else: high quality (>= 80% coverage)
 
         return ThroughputMetrics(
             fips=fips,

@@ -153,9 +153,10 @@ ______________________________________________________________________
   - Wired to SQLite adapters via integration tests ✅
 - [x] T023 [US2] Add depth validation per FR-008
   - ValueError if computed D outside [0.0, 5.0] ✅ (validate_depth() in supply_chain.py:169)
-- [ ] T024 [US2] Add partial data handling
-  - Flag as partial estimate if some NAICS sectors suppressed
-  - Include data quality indicator in ThroughputMetrics
+- [x] T024 [US2] Add partial data handling
+  - get_sector_coverage() method added to SupplyChainAnalyzer ✅
+  - Data quality determined by sector coverage ratio ✅
+  - is_estimated=True when coverage < 80% ✅
 - [x] T025 [US2] Export US2 components in `src/babylon/economics/throughput/__init__.py`
 
 **Checkpoint**: D computable for any county. Finance centers show D > 4.0.

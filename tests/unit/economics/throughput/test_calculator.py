@@ -47,6 +47,8 @@ def mock_supply_chain() -> MagicMock:
     """Create a mock SupplyChainAnalyzer."""
     analyzer = MagicMock()
     analyzer.compute_depth.return_value = 3.0  # Default depth
+    # Default: 10 sectors, 8 mapped, 100k employment (80% coverage = high quality)
+    analyzer.get_sector_coverage.return_value = (10, 8, 100000)
     return analyzer
 
 

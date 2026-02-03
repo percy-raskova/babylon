@@ -107,6 +107,27 @@ class SupplyChainAnalyzer(Protocol):
         """
         ...
 
+    def get_sector_coverage(self, fips: str, year: int) -> tuple[int, int, int] | NoDataSentinel:
+        """Get sector coverage statistics for data quality assessment.
+
+        Returns information about how many NAICS sectors had data available
+        vs how many were mapped in the depth calculation. Used by
+        ThroughputCalculator to set data_quality field.
+
+        Args:
+            fips: 5-character county FIPS code
+            year: Calendar year
+
+        Returns:
+            Tuple of (sectors_with_data, sectors_mapped, employment_covered),
+            or NoDataSentinel if county data unavailable.
+
+            - sectors_with_data: Number of NAICS sectors with employment data
+            - sectors_mapped: Number of sectors that have depth mappings
+            - employment_covered: Total employment in mapped sectors
+        """
+        ...
+
 
 class DefaultSupplyChainAnalyzer:
     """Default implementation of SupplyChainAnalyzer.
@@ -240,6 +261,33 @@ class DefaultSupplyChainAnalyzer:
         if not sector_employment:
             return NoDataSentinel(fips, year, f"No NAICS employment data for FIPS {fips} in {year}")
         return sector_employment
+
+    def get_sector_coverage(self, fips: str, year: int) -> tuple[int, int, int] | NoDataSentinel:
+        """Get sector coverage statistics for data quality assessment.
+
+        Args:
+            fips: 5-character county FIPS code
+            year: Calendar year
+
+        Returns:
+            Tuple of (sectors_with_data, sectors_mapped, employment_covered),
+            or NoDataSentinel if county data unavailable.
+        """
+        sector_employment = self._qcew_source.get_county_employment_by_naics(fips, year)
+        if not sector_employment:
+            return NoDataSentinel(fips, year, f"No NAICS employment data for FIPS {fips} in {year}")
+
+        sectors_with_data = len(sector_employment)
+        sectors_mapped = 0
+        employment_covered = 0
+
+        for naics, employment in sector_employment.items():
+            depth = get_depth(naics)
+            if depth is not None:
+                sectors_mapped += 1
+                employment_covered += employment
+
+        return (sectors_with_data, sectors_mapped, employment_covered)
 
     def _determine_confidence(
         self, employment: int | None, lambda_proxy: float

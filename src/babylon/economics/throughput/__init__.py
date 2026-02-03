@@ -41,6 +41,11 @@ See Also:
     :mod:`babylon.economics.tensor`: NoDataSentinel pattern
 """
 
+from babylon.economics.throughput.adapters import (
+    NAICS_2DIGIT_SECTORS,
+    SQLiteBEACountyGDPSource,
+    SQLiteQCEWCountyNAICSSource,
+)
 from babylon.economics.throughput.calculator import (
     DefaultThroughputCalculator,
     ThroughputCalculator,
@@ -81,4 +86,8 @@ __all__ = [
     # Default Implementations
     "DefaultThroughputCalculator",
     "DefaultSupplyChainAnalyzer",
+    # SQLite Adapters
+    "SQLiteBEACountyGDPSource",
+    "SQLiteQCEWCountyNAICSSource",
+    "NAICS_2DIGIT_SECTORS",
 ]

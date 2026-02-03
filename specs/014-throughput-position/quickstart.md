@@ -65,10 +65,10 @@ from babylon.economics.melt import DefaultMELTCalculator
 
 # Initialize with data sources
 melt_calculator = DefaultMELTCalculator(bea_source, qcew_source)
-throughput_calculator = DefaultThroughputCalculator(
-    county_gdp_source, county_qcew_source, melt_calculator
-)
 supply_chain_analyzer = DefaultSupplyChainAnalyzer(county_qcew_source)
+throughput_calculator = DefaultThroughputCalculator(
+    county_gdp_source, county_qcew_source, supply_chain_analyzer, melt_calculator
+)
 
 # Compute throughput position for Wayne County (Detroit)
 wayne_fips = "26163"
@@ -114,8 +114,9 @@ Compute the wage share proxy for specific industries:
 
 ```python
 # Retail wage share (the "Walmart effect")
+# Note: QCEW uses combined NAICS codes (e.g., "44-45" for retail/wholesale)
 retail_lambda = supply_chain_analyzer.compute_wage_share_proxy(
-    fips="26163", naics="44", year=2022
+    fips="26163", naics="44-45", year=2022
 )
 print(f"Retail λ_proxy: {retail_lambda.lambda_proxy:.2f}")  # ~0.08
 
@@ -142,8 +143,9 @@ melt_calc = DefaultMELTCalculator(bea_source, qcew_source)
 tau_national = melt_calc.get_melt(2022)  # National MELT ~$65/hour
 
 # Feature 014: Domestic geography
+supply_chain = DefaultSupplyChainAnalyzer(county_qcew_source)
 throughput_calc = DefaultThroughputCalculator(
-    county_gdp_source, county_qcew_source, melt_calc
+    county_gdp_source, county_qcew_source, supply_chain, melt_calc
 )
 pi = throughput_calc.compute_throughput_position("36061", 2022)  # Manhattan
 # π ~= 2.8 (major coordination chokepoint)

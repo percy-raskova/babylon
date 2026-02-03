@@ -68,7 +68,7 @@ class WageShareEstimate(BaseModel, frozen=True):
 
     Attributes:
         fips: 5-character county FIPS code
-        naics: 2-digit NAICS sector code
+        naics: NAICS sector code (2-digit "44" or combined "44-45")
         year: Calendar year for data
         lambda_proxy: Wage share proxy (0.0-1.0 expected, may exceed 1.0 for data issues)
         confidence: Confidence level based on data quality
@@ -78,7 +78,7 @@ class WageShareEstimate(BaseModel, frozen=True):
     Example:
         >>> estimate = WageShareEstimate(
         ...     fips="26163",
-        ...     naics="44",  # Retail
+        ...     naics="44-45",  # Retail Trade (combined NAICS)
         ...     year=2022,
         ...     lambda_proxy=0.08,
         ...     confidence="high",
@@ -88,7 +88,7 @@ class WageShareEstimate(BaseModel, frozen=True):
     """
 
     fips: str = Field(..., min_length=5, max_length=5, pattern=r"^\d{5}$")
-    naics: str = Field(..., min_length=2, max_length=2, pattern=r"^\d{2}$")
+    naics: str = Field(..., min_length=2, max_length=5, pattern=r"^\d{2}(-\d{2})?$")
     year: int = Field(..., ge=2001, le=2030)
     lambda_proxy: float = Field(..., ge=0.0, description="Wage share proxy")
     confidence: Literal["high", "medium", "low"] = Field(default="high")

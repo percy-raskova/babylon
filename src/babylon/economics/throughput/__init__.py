@@ -31,7 +31,10 @@ Example:
     ...     NAICS_DEPTH_MAPPING,
     ... )
     >>> # Compute throughput position for Wayne County (Detroit)
-    >>> calculator = DefaultThroughputCalculator(gdp_source, qcew_source, melt_calc)
+    >>> supply_chain = DefaultSupplyChainAnalyzer(qcew_source)
+    >>> calculator = DefaultThroughputCalculator(
+    ...     gdp_source, qcew_source, supply_chain, melt_calc
+    ... )
     >>> metrics = calculator.compute_metrics("26163", 2022)
     >>> print(f"Wayne County π = {metrics.pi:.2f}")
     Wayne County π = 0.90

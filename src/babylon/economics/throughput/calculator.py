@@ -104,6 +104,20 @@ class ThroughputCalculator(Protocol):
         """
         ...
 
+    def compute_all_counties(self, year: int) -> dict[str, ThroughputMetrics | NoDataSentinel]:
+        """Compute throughput metrics for all counties with available data.
+
+        Batch processing method for computing metrics across all US counties.
+        Performance target: 3,000+ counties in <30s.
+
+        Args:
+            year: Calendar year
+
+        Returns:
+            Dict mapping FIPS codes to ThroughputMetrics or NoDataSentinel
+        """
+        ...
+
 
 class DefaultThroughputCalculator:
     """Default implementation of ThroughputCalculator.
@@ -247,6 +261,32 @@ class DefaultThroughputCalculator:
             is_estimated=is_estimated,
             data_quality=data_quality,
         )
+
+    def compute_all_counties(self, year: int) -> dict[str, ThroughputMetrics | NoDataSentinel]:
+        """Compute throughput metrics for all counties with available data.
+
+        Batch processing for computing metrics across all US counties.
+        Uses the GDP source's get_all_counties() to find available counties.
+
+        Args:
+            year: Calendar year
+
+        Returns:
+            Dict mapping FIPS codes to ThroughputMetrics or NoDataSentinel
+        """
+        results: dict[str, ThroughputMetrics | NoDataSentinel] = {}
+
+        # Get all counties with GDP data
+        all_counties = self._gdp_source.get_all_counties(year)
+        if not all_counties:
+            return results
+
+        # Compute metrics for each county
+        for fips in all_counties:
+            metrics = self.compute_metrics(fips, year)
+            results[fips] = metrics
+
+        return results
 
     def validate_throughput(self, tau_through: float) -> tuple[bool, str | None]:
         """Validate throughput intensity against sanity ranges."""

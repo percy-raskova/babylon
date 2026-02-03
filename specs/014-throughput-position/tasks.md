@@ -43,13 +43,34 @@ ______________________________________________________________________
 - [x] T005 [P] Create `BEACountyGDPSource` protocol in `src/babylon/economics/throughput/data_sources.py`
 - [x] T006 [P] Create `QCEWCountyNAICSSource` protocol in `src/babylon/economics/throughput/data_sources.py`
 
-### BEA County GDP Loader (D-002)
+### SQLite Data Adapters (D-002, D-003, D-004)
 
-- [ ] T007 Create `src/babylon/data/loaders/bea_cagdp1.py` BEA CAGDP1 county GDP loader
-  - Must use "chained 2017 dollars" (LineCode 1, real GDP)
-  - Handle BEA API authentication
-  - Return NoDataSentinel for missing counties
-- [ ] T008 Write unit tests for BEA loader in `tests/unit/data/loaders/test_bea_cagdp1.py`
+**Note**: Data loaders already exist (`mise run data:bea-county`, `mise run data:qcew`).
+Data is stored in `FactBEACountyGDP` and `FactQcewAnnual` tables.
+These tasks create adapters that implement the protocols by querying SQLite.
+
+- [ ] T007 Create `SQLiteBEACountyGDPSource` adapter in `src/babylon/economics/throughput/adapters.py`
+  - Implement `BEACountyGDPSource` protocol
+  - Query `FactBEACountyGDP` joined with `DimCounty`, `DimTime`, `DimBEAIndustry`
+  - **CRITICAL**: Filter to `line_number=1` (All industries) to avoid 4.5x overcounting
+  - Convert `gdp_millions` to dollars (multiply by 1,000,000)
+  - Return None for missing counties (not NoDataSentinel - protocol returns Optional)
+- [ ] T007a Write unit tests for SQLiteBEACountyGDPSource in `tests/unit/economics/throughput/test_adapters.py`
+  - Test Wayne County (26163) returns ~$113.8B for 2022
+  - Test Oakland County (26125) returns ~$127.7B for 2022
+  - Test unknown FIPS returns None
+
+- [ ] T008 Create `SQLiteQCEWCountyNAICSSource` adapter in `src/babylon/economics/throughput/adapters.py`
+  - Implement `QCEWCountyNAICSSource` protocol
+  - Query `FactQcewAnnual` joined with `DimCounty`, `DimTime`, `DimIndustry`, `DimOwnership`
+  - **CRITICAL**: For totals, filter `own_code='0'` AND `naics_code='10'`
+  - For sector queries, filter `own_code='0'` AND specific NAICS code
+  - Handle disclosure_code for suppressed data
+- [ ] T008a Write unit tests for SQLiteQCEWCountyNAICSSource in `tests/unit/economics/throughput/test_adapters.py`
+  - Test Wayne County (26163) total employment ~714,597 for 2022
+  - Test Oakland County (26125) total employment ~717,269 for 2022
+  - Test sector breakdown (NAICS 52 for finance, etc.)
+  - Test suppressed sectors return None
 
 ### NAICS Depth Mapping (FR-003)
 
@@ -73,37 +94,35 @@ ______________________________________________________________________
 
 ### Tests for User Story 1
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+> **NOTE**: Some tests exist with mock data. Integration tests need SQLite adapters.
 
-- [ ] T011 [P] [US1] Unit test for τ_through computation in `tests/unit/economics/throughput/test_calculator.py`
+- [x] T011 [P] [US1] Unit test for τ_through computation in `tests/unit/economics/throughput/test_calculator.py`
   - Test formula: τ_through = GDP / (employment × 2080)
   - Test with mock GDP and employment values
   - Test NoDataSentinel propagation when GDP unavailable
   - Test NoDataSentinel propagation when employment unavailable
-- [ ] T012 [P] [US1] Unit test for π computation in `tests/unit/economics/throughput/test_calculator.py`
+- [x] T012 [P] [US1] Unit test for π computation in `tests/unit/economics/throughput/test_calculator.py`
   - Test formula: π = τ_through / τ_national
   - Test π returns NoDataSentinel when MELT unavailable (FR-006)
   - Test τ_through still computed when MELT unavailable
 - [ ] T013 [US1] Integration test for Detroit validation in `tests/integration/economics/test_throughput_validation.py`
+  - **REQUIRES**: SQLite adapters from T007-T008
   - Test Oakland (26125) π > Wayne (26163) π for year 2022
+  - Expected: Oakland π=1.051, Wayne π=0.941
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Create `ThroughputCalculator` protocol in `src/babylon/economics/throughput/calculator.py`
-  - Copy interface from `specs/014-throughput-position/contracts/throughput_calculator.py`
-- [ ] T015 [US1] Implement `DefaultThroughputCalculator` in `src/babylon/economics/throughput/calculator.py`
-  - Inject BEACountyGDPSource and QCEWCountyNAICSSource
-  - Inject optional MELTCalculator from Feature 013
-  - Implement `compute_throughput_intensity()` method (FR-001)
-  - Implement `compute_throughput_position()` method (FR-002)
-  - Implement `compute_metrics()` method returning ThroughputMetrics
+- [x] T014 [US1] Create `ThroughputCalculator` protocol in `src/babylon/economics/throughput/calculator.py`
+- [x] T015 [US1] Implement `DefaultThroughputCalculator` in `src/babylon/economics/throughput/calculator.py`
+  - **NOTE**: Currently uses injected data source protocols
+  - **NEEDS**: Wire to SQLite adapters from T007-T008 for real data
 - [ ] T016 [US1] Add sanity range validation per FR-008
   - τ_through: warn if outside $10-500/hour
   - π: warn if outside 0.2-3.0
 - [ ] T017 [US1] Handle NoDataSentinel propagation per FR-007
   - Return ThroughputMetrics | NoDataSentinel union type
   - Include descriptive reason in NoDataSentinel
-- [ ] T018 [US1] Export US1 components in `src/babylon/economics/throughput/__init__.py`
+- [x] T018 [US1] Export US1 components in `src/babylon/economics/throughput/__init__.py`
 
 **Checkpoint**: τ_through and π computable for any county. Detroit validation passes.
 
@@ -117,30 +136,27 @@ ______________________________________________________________________
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Unit test for D computation in `tests/unit/economics/throughput/test_supply_chain.py`
+- [x] T019 [P] [US2] Unit test for D computation in `tests/unit/economics/throughput/test_supply_chain.py`
   - Test formula: D = Σ(employment × depth) / Σ employment
   - Test with mock NAICS employment distribution
   - Test D in range [0.0, 5.0]
   - Test NoDataSentinel when no NAICS data
-- [ ] T020 [P] [US2] Unit test for sector employment retrieval in `tests/unit/economics/throughput/test_supply_chain.py`
+- [x] T020 [P] [US2] Unit test for sector employment retrieval in `tests/unit/economics/throughput/test_supply_chain.py`
   - Test get_sector_employment() returns dict[str, int]
   - Test suppressed sectors excluded
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Create `SupplyChainAnalyzer` protocol in `src/babylon/economics/throughput/supply_chain.py`
-  - Copy interface from `specs/014-throughput-position/contracts/supply_chain_analyzer.py`
-- [ ] T022 [US2] Implement `DefaultSupplyChainAnalyzer` in `src/babylon/economics/throughput/supply_chain.py`
-  - Inject QCEWCountyNAICSSource
-  - Implement `compute_depth()` method (FR-004)
-  - Implement `get_naics_depth()` method using NAICS_DEPTH_MAPPING
-  - Implement `get_sector_employment()` method
+- [x] T021 [US2] Create `SupplyChainAnalyzer` protocol in `src/babylon/economics/throughput/supply_chain.py`
+- [x] T022 [US2] Implement `DefaultSupplyChainAnalyzer` in `src/babylon/economics/throughput/supply_chain.py`
+  - **NOTE**: Currently uses injected data source protocols
+  - **NEEDS**: Wire to SQLite adapters from T008 for real data
 - [ ] T023 [US2] Add depth validation per FR-008
   - ValueError if computed D outside [0.0, 5.0]
 - [ ] T024 [US2] Add partial data handling
   - Flag as partial estimate if some NAICS sectors suppressed
   - Include data quality indicator in ThroughputMetrics
-- [ ] T025 [US2] Export US2 components in `src/babylon/economics/throughput/__init__.py`
+- [x] T025 [US2] Export US2 components in `src/babylon/economics/throughput/__init__.py`
 
 **Checkpoint**: D computable for any county. Finance centers show D > 4.0.
 

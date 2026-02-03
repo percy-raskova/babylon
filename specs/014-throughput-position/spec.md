@@ -318,13 +318,91 @@ The Detroit metro area provides a key validation case demonstrating domestic cor
 
 - **D-001**: Optionally uses Feature 013 (MELT and Basket Visibility) for national MELT (τ) used in π calculation. Note: τ_through, D, and λ_proxy are computable without Feature 013; only π requires MELT. See FR-006 for graceful degradation behavior.
 
-- **D-002**: Requires BEA CAGDP1 county GDP data - new data loader needed.
+- **D-002**: ✅ BEA county GDP data - **EXISTS** in `FactBEACountyGDP` table. Load via `mise run data:bea-county`. Years 2001-2023, 3,091 counties.
 
-- **D-003**: Requires QCEW county employment by NAICS - may exist in data pipeline, verify availability.
+- **D-003**: ✅ QCEW county employment by NAICS - **EXISTS** in `FactQcewAnnual` table. Load via `mise run data:qcew`. Years 2010-2024, 3,284 counties.
 
-- **D-004**: Requires QCEW county wages by NAICS - may exist in data pipeline, verify availability.
+- **D-004**: ✅ QCEW county wages by NAICS - **EXISTS** in `FactQcewAnnual.avg_weekly_wage_usd` and `avg_annual_pay_usd` columns.
 
 - **D-005**: Optionally requires LODES (Longitudinal Employer-Household Dynamics) for commuter flow analysis - new loader needed for future enhancement.
+
+## Data Access Patterns *(critical implementation detail)*
+
+### BEA County GDP Query Pattern
+
+**CRITICAL**: Must filter to `line_number=1` (All industries) to avoid double-counting.
+
+```python
+from babylon.data.reference.schema import (
+    FactBEACountyGDP, DimCounty, DimTime, DimBEAIndustry
+)
+
+# Get the "All industries" industry (line 1)
+total_bea = session.query(DimBEAIndustry).filter(
+    DimBEAIndustry.line_number == 1
+).first()
+
+# Query county GDP
+gdp_millions = session.query(FactBEACountyGDP.gdp_millions).join(DimTime).filter(
+    FactBEACountyGDP.county_id == county.county_id,
+    FactBEACountyGDP.bea_industry_id == total_bea.bea_industry_id,
+    DimTime.year == 2022
+).scalar()
+
+gdp_dollars = float(gdp_millions) * 1_000_000
+```
+
+**Without line_number filter**: Sums to ~$117T (4.5x overcounting)
+**With line_number=1 filter**: Correct ~$25.6T (matches actual 2022 US GDP)
+
+### QCEW Employment Query Pattern
+
+**CRITICAL**: Must filter to `own_code='0'` (Total) AND `naics_code='10'` (Total).
+
+```python
+from babylon.data.reference.schema import (
+    FactQcewAnnual, DimCounty, DimTime, DimIndustry, DimOwnership
+)
+
+# Get reference dimensions
+total_own = session.query(DimOwnership).filter(DimOwnership.own_code == '0').first()
+total_ind = session.query(DimIndustry).filter(DimIndustry.naics_code == '10').first()
+
+# Query county employment
+employment = session.query(FactQcewAnnual.employment).join(DimTime).filter(
+    FactQcewAnnual.county_id == county.county_id,
+    FactQcewAnnual.ownership_id == total_own.ownership_id,
+    FactQcewAnnual.industry_id == total_ind.industry_id,
+    DimTime.year == 2022
+).scalar()
+```
+
+### QCEW Employment by NAICS Sector
+
+For supply chain depth calculation, query individual NAICS sectors:
+
+```python
+# Get 2-digit NAICS sectors (e.g., '52' for Finance)
+finance_ind = session.query(DimIndustry).filter(DimIndustry.naics_code == '52').first()
+
+sector_emp = session.query(FactQcewAnnual.employment).join(DimTime).filter(
+    FactQcewAnnual.county_id == county.county_id,
+    FactQcewAnnual.ownership_id == total_own.ownership_id,
+    FactQcewAnnual.industry_id == finance_ind.industry_id,
+    DimTime.year == 2022
+).scalar()
+```
+
+### Validated Reference Values (2022)
+
+| Metric | National | Wayne County | Oakland County |
+|--------|----------|--------------|----------------|
+| GDP | $25.56T | $113.8B | $127.7B |
+| Employment | 150.9M | 714,597 | 717,269 |
+| τ_through | $81.40/hr | $76.58/hr | $85.58/hr |
+| π | 1.000 | 0.941 | 1.051 |
+
+**Detroit Validation**: Oakland π (1.051) > Wayne π (0.941) ✅
 
 ## Future Enhancements
 

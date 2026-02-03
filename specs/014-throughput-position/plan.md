@@ -16,8 +16,8 @@ Key formulas:
 ## Technical Context
 
 **Language/Version**: Python 3.11+
-**Primary Dependencies**: Feature 013 (MELTCalculator for national τ); BEA CAGDP1 county GDP data (new loader needed); QCEW county employment by NAICS
-**Storage**: In-memory cache (follows TensorRegistry pattern); no new database tables
+**Primary Dependencies**: Feature 013 (MELTCalculator for national τ); BEA county GDP data (✅ exists in FactBEACountyGDP); QCEW county employment (✅ exists in FactQcewAnnual)
+**Storage**: Queries existing 3NF database (marxist-data-3NF.sqlite); no new tables needed
 **Testing**: pytest with markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.math`
 **Target Platform**: Linux server (simulation engine context)
 **Project Type**: Single Python package extension to existing `babylon.economics` module
@@ -80,8 +80,8 @@ src/babylon/economics/
 │   └── data_sources.py              # NEW: BEACountyGDPSource, QCEWCountyNAICSSource
 └── __init__.py                      # EXTEND: Export new throughput module
 
-src/babylon/data/loaders/
-└── bea_cagdp1.py                    # NEW: BEA county GDP data loader
+src/babylon/economics/throughput/
+└── adapters.py                      # NEW: SQLite adapters for BEA/QCEW data
 
 tests/unit/economics/throughput/
 ├── __init__.py
@@ -93,7 +93,7 @@ tests/integration/economics/
 └── test_throughput_validation.py    # NEW: Detroit validation, literature tests
 ```
 
-**Structure Decision**: Single project (extends existing `babylon.economics` module). Creates new `throughput/` subpackage parallel to existing `melt/` subpackage. New BEA county GDP loader in `data/loaders/` follows established patterns.
+**Structure Decision**: Single project (extends existing `babylon.economics` module). Creates new `throughput/` subpackage parallel to existing `melt/` subpackage. SQLite adapters query existing `FactBEACountyGDP` and `FactQcewAnnual` tables loaded via `mise run data:bea-county` and `mise run data:qcew`.
 
 ## Complexity Tracking
 
@@ -130,15 +130,20 @@ tests/integration/economics/
 - Clean separation enables independent testing and future development
 - Follows established pattern of subpackages for distinct feature sets
 
-### D4: MVP County GDP via BEA CAGDP1
+### D4: County GDP via Existing FactBEACountyGDP Table
 
-**Decision**: Implement new BEA CAGDP1 county GDP data loader for τ_through computation.
+**Decision**: Create SQLite adapter that queries existing `FactBEACountyGDP` table.
 
 **Rationale**:
-- Feature 013 used national GDP (BEA NIPA); this feature requires county-level GDP
-- BEA CAGDP1 (County Annual GDP) is the authoritative source
-- New loader follows established patterns from dimension_loader.py
-- Supports D-002 dependency requirement
+- Data loader already exists: `mise run data:bea-county` (BEACountyGDPLoader)
+- Data stored in `FactBEACountyGDP` with 1.99M records, 3,091 counties, 2001-2023
+- Only need adapter implementing `BEACountyGDPSource` protocol
+- **CRITICAL**: Must filter to `line_number=1` (All industries) to avoid 4.5x overcounting
+
+**Validated Values (2022)**:
+- National GDP: $25.56T (correct, matches actual US GDP)
+- Wayne County: $113.8B
+- Oakland County: $127.7B
 
 ### D5: Wage Share as Proxy (λ_proxy)
 
@@ -172,11 +177,13 @@ tests/integration/economics/
 - Run `/speckit.tasks` to generate detailed tasks
 
 ### Phase 3: Core Implementation
-- Implement NAICSDepthMapping constant (FR-003)
-- Implement ThroughputMetrics and WageShareEstimate types
-- Implement ThroughputCalculator with τ_through and π computation (FR-001, FR-002)
-- Implement SupplyChainAnalyzer with weighted depth computation (FR-004)
-- Implement BEACountyGDPSource data loader
+- Implement NAICSDepthMapping constant (FR-003) ✅ DONE
+- Implement ThroughputMetrics and WageShareEstimate types ✅ DONE
+- Implement ThroughputCalculator protocol ✅ DONE
+- Implement SupplyChainAnalyzer protocol ✅ DONE
+- **NEW**: Implement SQLiteBEACountyGDPSource adapter (queries FactBEACountyGDP)
+- **NEW**: Implement SQLiteQCEWCountyNAICSSource adapter (queries FactQcewAnnual)
+- Wire adapters into DefaultThroughputCalculator and DefaultSupplyChainAnalyzer
 - Implement wage share proxy calculation (FR-005)
 
 ### Phase 4: Integration

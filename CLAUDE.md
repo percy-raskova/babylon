@@ -659,6 +659,8 @@ ADR0XX_descriptive_name:
 - SQLite (`marxist-data-3NF.sqlite` for source data; in-memory tensor cache) (011-fundamental-tensor-primitive)
 - Python 3.11+ + TensorRegistry, ValueTensor4x3, NoDataSentinel from spec 011; CapitalStockCalculator from spec 012; BEA GDP data, QCEW employment data (013-melt-basket-visibility)
 - In-memory cache (follows TensorRegistry pattern); no new database tables (013-melt-basket-visibility)
+- Python 3.12+ (existing stack) + Pydantic 2.x, SQLAlchemy 2.x (existing), ATUS infrastructure (Feature 005) (015-gamma-visibility-tensor)
+- In-memory computation; reads from existing ATUS/QCEW data sources (015-gamma-visibility-tensor)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

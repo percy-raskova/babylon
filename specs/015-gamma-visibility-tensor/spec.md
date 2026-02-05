@@ -124,7 +124,7 @@ ______________________________________________________________________
 ### Measurable Outcomes
 
 - **SC-001**: Reproductive visibility computed for national aggregate falls within [0.20, 0.40] range
-- **SC-002**: Reproductive visibility shows positive correlation with female labor force participation across available years
+- **SC-002**: Reproductive visibility shows expected directional behavior: higher paid care employment produces higher γ_III (validated via synthetic scenarios with varying paid/unpaid hour ratios). Full multi-year correlation with BLS female labor force participation deferred to FE-003.
 - **SC-003**: Reproductive shadow subsidy magnitude is $1.5-3.5 trillion/year (order of magnitude check)
 - **SC-004**: Import visibility computed from trade data falls within [0.40, 0.70] range
 - **SC-005**: Basket visibility computed from import share and import visibility falls within [0.60, 0.85] range
@@ -159,5 +159,5 @@ ______________________________________________________________________
 
 - **FE-001**: County-level reproductive visibility estimation via demographic proxy allocation
 - **FE-002**: Penn World Tables loader for ERDI data (vs hardcoded values)
-- **FE-003**: Time series analysis of visibility trends and commodification dynamics
+- **FE-003**: Time series analysis of visibility trends and commodification dynamics, including multi-year correlation of γ_III with BLS female labor force participation rates (original SC-002)
 - **FE-004**: Integration with profit rate calculations (true vs apparent profit rate)

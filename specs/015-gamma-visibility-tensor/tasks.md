@@ -46,8 +46,10 @@ ______________________________________________________________________
 - [ ] T010 Define validation functions (validate_gamma_iii, validate_gamma_import, validate_gamma_basket) in `src/babylon/economics/gamma/validation.py`
 - [ ] T011 [P] Write unit tests for all Pydantic types in `tests/unit/economics/gamma/test_types.py`
 - [ ] T012 [P] Write unit tests for validation functions in `tests/unit/economics/gamma/test_validation.py`
+- [ ] T012a Define weighted_average_gamma() utility function in `src/babylon/economics/gamma/types.py` that computes Σ(weight × γ) / Σ(weight) per FR-011
+- [ ] T012b [P] Write unit test for weighted_average_gamma() verifying intensive aggregation (sum of weights, not sum of values) in `tests/unit/economics/gamma/test_types.py`
 
-**Checkpoint**: Foundation ready - types validated, protocols defined
+**Checkpoint**: Foundation ready - types validated, protocols defined, intensive aggregation utility available
 
 ______________________________________________________________________
 
@@ -182,6 +184,7 @@ ______________________________________________________________________
 
 - [ ] T056 Write integration test for full gamma tensor computation in `tests/integration/economics/test_gamma_validation.py`
 - [ ] T057 [P] Add Detroit Metro validation scenario (γ_III, γ_import, γ_basket, both Φ values) in `tests/integration/economics/test_gamma_validation.py`
+- [ ] T057a [P] Write integration test for SC-002: verify γ_III increases when paid_care_hours increases relative to unpaid_care_hours (synthetic directional test) in `tests/integration/economics/test_gamma_validation.py`
 - [ ] T058 [P] Validate quickstart.md examples work as documented
 - [ ] T059 Run full test suite and verify all tests pass (`mise run test:unit`)
 - [ ] T060 Run code quality checks (`mise run check`)
@@ -284,7 +287,7 @@ ______________________________________________________________________
 | Phase | Tasks | Story | Description |
 |-------|-------|-------|-------------|
 | Phase 1 | T001-T003 | Setup | Package structure |
-| Phase 2 | T004-T012 | Foundational | Types, protocols, validation |
+| Phase 2 | T004-T012b | Foundational | Types, protocols, validation, aggregation |
 | Phase 3 | T013-T023 | US1 (P1) | γ_III calculation |
 | Phase 4 | T024-T031 | US2 (P1) | Φ_III shadow subsidy |
 | Phase 5 | T032-T040 | US3 (P2) | γ_import calculation |
@@ -292,8 +295,8 @@ ______________________________________________________________________
 | Phase 7 | T050-T055 | US5 (P3) | Φ_imperial calculation |
 | Phase 8 | T056-T061 | Integration | Validation & polish |
 
-**Total Tasks**: 61
-**MVP Tasks** (US1+US2): 31 tasks
+**Total Tasks**: 64
+**MVP Tasks** (US1+US2): 33 tasks
 **P1 Priority**: 19 tasks (T013-T031)
 **P2 Priority**: 18 tasks (T032-T049)
 **P3 Priority**: 6 tasks (T050-T055)

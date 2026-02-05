@@ -118,10 +118,12 @@ Import share α = 35.0%
 
 ```python
 from babylon.economics.gamma import (
+    DefaultGammaIIICalculator,
     DefaultShadowSubsidyCalculator,
     ShadowSubsidy,
 )
 from babylon.economics.melt import DefaultMELTCalculator
+from babylon.economics.tensor import NoDataSentinel
 
 # Create calculators
 subsidy_calc = DefaultShadowSubsidyCalculator()
@@ -131,11 +133,14 @@ melt_calc = DefaultMELTCalculator()
 melt_result = melt_calc.compute_melt(year=2022)
 tau = melt_result.melt if not isinstance(melt_result, NoDataSentinel) else None
 
+# First compute γ_III (or use a pre-computed result)
+gamma_calc = DefaultGammaIIICalculator()
+gamma_result = gamma_calc.compute(year=2022)
+
 # Compute reproductive shadow subsidy (Φ_III)
 phi_iii = subsidy_calc.compute_phi_iii(
-    gamma_iii=0.33,
-    unpaid_hours=50e9,  # 50 billion hours
-    melt=tau,           # $65/hour
+    gamma_iii=gamma_result,  # GammaIII model with paid/unpaid hours
+    melt=tau,                # $65/hour (or None for labor-hours only)
 )
 
 print(f"Φ_III = ${phi_iii.phi_iii_dollars/1e12:.2f}T")

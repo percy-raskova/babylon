@@ -2,38 +2,25 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.2.0 → 1.3.0
-Bump Rationale: New Article added (VIII. Visual Design Principles) - MINOR
+Version Change: 1.3.0 → 1.3.1
+Bump Rationale: Added data sources to III.4 table - PATCH
 
 Modified Principles:
-  - II.5 AI Observes, Never Controls: Added cross-reference to VIII.1
+  - III.4 Data Source Traceability: Added PWT and Census Trade to approved sources
 
-Added Sections:
-  - VIII. Visual Design Principles (new article with 8 sub-principles)
-    - VIII.1 UI Observes, Never Controls
-    - VIII.2 Color as Data
-    - VIII.3 Data-Ink Maximization
-    - VIII.4 The Graph Is Primary
-    - VIII.5 Signifier Legibility
-    - VIII.6 Semantic Invariance
-    - VIII.7 Smallest Effective Difference
-    - VIII.8 Feedback and Feedforward
+Added Sections: None
 
 Removed Sections: None
 
-Renamed Sections:
-  - VI. Anti-Patterns → VII. Anti-Patterns
-  - VII. Governance → IX. Governance
+Renamed Sections: None
 
 Templates Requiring Updates:
-  ✅ plan-template.md - No changes needed (Constitution Check is dynamic)
-  ✅ spec-template.md - No changes needed (requirements-focused)
-  ✅ tasks-template.md - No changes needed (execution-focused)
-  ✅ commands/ - No updates needed
+  ✅ No template changes needed (data source table is reference, not structural)
 
 Follow-up TODOs: None
 
 Previous Version History:
+  1.3.0 (2026-01-31): Added VIII. Visual Design Principles (new article)
   1.2.0 (2026-01-30): Added I.8-I.11 (Tragedy, Metabolic Rift, Terminal Crisis, Pedagogy),
                       II.5-II.6 (AI Observes, State/Engine separation)
   1.1.0 (2026-01-30): Added I.7 Quantitative Accumulation → Qualitative Transformation
@@ -423,6 +410,8 @@ Every derived quantity MUST trace to specific federal data sources:
 | ATUS        | Time use (reproductive labor proxy)           |
 | CDC WONDER  | Mortality (structural violence proxy)         |
 | Piketty/WID | Coefficient calibration (wealth distribution) |
+| PWT         | ERDI, PPP conversion factors (unequal exchange) |
+| Census Trade | Import shares by country of origin              |
 
 New data sources require explicit addition to this list with justification.
 
@@ -747,4 +736,4 @@ Non-compliant code MUST be flagged and corrected before merge.
 
 ______________________________________________________________________
 
-**Version**: 1.3.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-01-31
+**Version**: 1.3.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-05

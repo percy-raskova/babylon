@@ -202,7 +202,7 @@ class GammaImportCalculator(Protocol):
 
 class GammaBasketCalculator(Protocol):
     """Compute composite basket visibility."""
-    def compute(self, year: int) -> GammaBasket | NoDataSentinel: ...
+    def compute(self, year: int, alpha: float, gamma_import: float) -> GammaBasket | NoDataSentinel: ...
 
 class ShadowSubsidyCalculator(Protocol):
     """Compute shadow subsidies Φ_III and Φ_imperial."""

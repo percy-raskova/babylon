@@ -5,7 +5,7 @@
 **Scope**: Comprehensive (Formula/Math, Data Integration, Validation Ranges)
 **Timing**: Pre-Implementation Review
 **Priority**: All High-Priority Gates
-**Reviewed**: 2026-02-04
+**Reviewed**: 2026-02-05
 
 ## CHK001-CHK010: Formula & Math Correctness
 
@@ -288,11 +288,11 @@
 
 ### CHK033: Constants Without Data Sources (VII.6)
 - [x] MVP ERDI hardcoded with explicit data source reference
-- [x] Care fraction coefficients have literature citations
+- [ ] Care fraction coefficients have literature citations
 - [x] FTE hours (2080) derivation documented
 
 **Source**: plan.md:41; data-model.md:240-243; research.md:65
-**Verified**: Sources provided (Penn World Tables 10.01)
+**Verified**: ERDI sourced (Penn World Tables 10.01); FTE derivation present; **GAP**: Care fractions (0.60, 0.30, 0.80, 1.00) are engineering estimates in research.md:80-81 but lack formal citations (consistent with CHK008 and GAP-001)
 
 ### CHK034: Primitives vs Derived (II.2)
 - [x] γ is derived from labor-hour primitives
@@ -443,10 +443,10 @@
 | Formula & Math | CHK001-CHK010 | 28/30 | 3/3 |
 | Data Integration | CHK011-CHK020 | 28/30 | 3/3 |
 | Validation Ranges | CHK021-CHK030 | 30/30 | 3/3 |
-| Constitution | CHK031-CHK040 | 30/30 | 3/3 |
+| Constitution | CHK031-CHK040 | 29/30 | 3/3 |
 | Edge Cases | CHK041-CHK050 | 25/30 | 2/3 |
 
-**Total Items**: 141/150 sub-items passed (94%)
+**Total Items**: 140/150 sub-items passed (93%)
 **Critical Items**: 14/15 passed (93%)
 
 ## Identified Gaps
@@ -467,4 +467,4 @@
 - [x] No blocking ambiguities remain (gaps are minor/moderate, not blocking)
 - [x] Ready for `/speckit.tasks` task generation
 
-**Reviewer**: Claude Code (automated) **Date**: 2026-02-04
+**Reviewer**: Claude Code (Opus 4.6, post-analyze review) **Date**: 2026-02-05

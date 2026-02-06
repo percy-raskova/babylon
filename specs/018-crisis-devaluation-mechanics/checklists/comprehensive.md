@@ -59,9 +59,9 @@
 
 ## Dimensional Consistency (added 2026-02-06, post-checklist)
 
-- [ ] CHK031 - Which profit rate formula does the crisis detector consume — flow-based `s/(c+v)` from ValueTensor4x3 or stock-based `s/(K+v)` from DerivedRateCalculator? The spec (FR-001, A-001) says "stock-based profit rate" but the DerivedRateCalculator has a dimensional inconsistency: `s` and `v` are computed in dollars while `K` is in labor-hours. Must be reconciled before implementation. [Conflict, Code §derived_rates.py vs §capital_stock.py]
-- [ ] CHK032 - If the stock-based rate `s/(K+v)` is used (where `K ≈ 14.3 × c` at δ=0.07), the rate will be an order of magnitude lower than the flow-based rate. The `r_threshold` default of 0.05 (5%) was derived from Piketty data which aligns with the flow-based range (3-8%), not the stock-based range (~0.5%). If stock-based is chosen, `r_threshold` must be recalibrated. [Calibration, Spec §FR-001 vs Code §tensor.py]
-- [ ] CHK033 - Does the spec need to specify that all components of the profit rate formula (s, K or c, v) must be in the same unit system (either all labor-hours or all dollars)? Currently A-001 references "stock-based profit rate" without specifying dimensional requirements. [Clarity, Spec §A-001]
+- [x] CHK031 - Which profit rate formula does the crisis detector consume — flow-based `s/(c+v)` from ValueTensor4x3 or stock-based `s/(K+v)` from DerivedRateCalculator? **RESOLVED**: Flow-based rate `s/(c+v)` from ValueTensor4x3 chosen. Dimensionally consistent (all labor-hours), validated at 3-8%, directly compatible with `r_threshold = 0.05`. FR-001 and A-001 updated. Stock-based dimensional bug filed as Feature 017 bugfix.
+- [x] CHK032 - If the stock-based rate `s/(K+v)` is used, the rate will be an order of magnitude lower than the flow-based rate. **RESOLVED**: Moot — flow-based rate chosen, so `r_threshold = 0.05` applies without recalibration.
+- [x] CHK033 - Does the spec need to specify that all components of the profit rate formula must be in the same unit system? **RESOLVED**: Flow-based rate uses ValueTensor4x3 which is entirely in labor-hours. Dimensional consistency is inherent in the data source, no additional spec language needed.
 
 ## Notes
 
@@ -69,5 +69,5 @@
 - ~~CHK005 (bifurcation combination formula) is the second highest priority — without it, the metric cannot be implemented or tested.~~ **RESOLVED** with full additive formula in FR-011.
 - ~~CHK001 (r_threshold default) was the third priority.~~ **RESOLVED** with 0.05 (5%) default derived from WID/Piketty empirical analysis.
 - Items are numbered CHK001-CHK033 sequentially for cross-referencing.
-- 9 of 33 items resolved (CHK001, CHK002, CHK004, CHK005, CHK010, CHK011, CHK016, CHK021, CHK029). 24 items remain open for planning-phase resolution.
-- **CHK031-CHK033 are high priority**: The dimensional mismatch in the tick pipeline profit rate formula must be resolved before r_threshold can be implemented. See `docs/concepts/piketty-profit-rate.rst` §Dimensional Analysis for the full investigation and resolution options.
+- 12 of 33 items resolved (CHK001, CHK002, CHK004, CHK005, CHK010, CHK011, CHK016, CHK021, CHK029, CHK031, CHK032, CHK033). 21 items remain open for planning-phase resolution.
+- ~~**CHK031-CHK033 are high priority**: The dimensional mismatch in the tick pipeline profit rate formula must be resolved before r_threshold can be implemented.~~ **RESOLVED**: Flow-based rate chosen for crisis detection. Stock-based dimensional bug filed as Feature 017 bugfix. See `docs/concepts/piketty-profit-rate.rst` §Calibration Epistemology for full analysis.

@@ -13,6 +13,7 @@ This package provides the Marxian value transformation layer:
 - derived_metrics: DerivedTensorMetrics for stock-based profit rate (Feature 012)
 - melt: MELT and basket visibility for Labor Aristocracy thresholds (Feature 013)
 - throughput: Throughput position and domestic value geography (Feature 014)
+- gamma: Gamma visibility tensor for shadow subsidies (Feature 015)
 
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
@@ -48,6 +49,7 @@ See Also:
     :mod:`babylon.economics.capital_stock`: Capital stock computation details.
     :mod:`babylon.economics.melt`: MELT and basket visibility details (Feature 013).
     :mod:`babylon.economics.throughput`: Throughput position details (Feature 014).
+    :mod:`babylon.economics.gamma`: Gamma visibility tensor details (Feature 015).
 """
 
 # Adapters (protocols and implementations)
@@ -78,6 +80,22 @@ from babylon.economics.exceptions import (
     TensorError,
     TensorHydrationError,
     TensorInitializationError,
+)
+
+# Gamma Visibility Tensor (Feature 015)
+from babylon.economics.gamma import (
+    DefaultGammaBasketCalculator,
+    DefaultGammaIIICalculator,
+    DefaultGammaImportCalculator,
+    DefaultShadowSubsidyCalculator,
+    GammaBasket,
+    GammaBasketCalculator,
+    GammaIII,
+    GammaIIICalculator,
+    GammaImport,
+    GammaImportCalculator,
+    ShadowSubsidy,
+    ShadowSubsidyCalculator,
 )
 
 # Hydrator
@@ -215,4 +233,17 @@ __all__ = [
     "DefaultSupplyChainAnalyzer",
     "SQLiteBEACountyGDPSource",
     "SQLiteQCEWCountyNAICSSource",
+    # Gamma Visibility Tensor (Feature 015)
+    "GammaIII",
+    "GammaImport",
+    "GammaBasket",
+    "ShadowSubsidy",
+    "GammaIIICalculator",
+    "GammaImportCalculator",
+    "GammaBasketCalculator",
+    "ShadowSubsidyCalculator",
+    "DefaultGammaIIICalculator",
+    "DefaultGammaImportCalculator",
+    "DefaultGammaBasketCalculator",
+    "DefaultShadowSubsidyCalculator",
 ]

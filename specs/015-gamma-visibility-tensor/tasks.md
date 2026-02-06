@@ -25,9 +25,9 @@ ______________________________________________________________________
 
 **Purpose**: Create gamma package structure and foundational types
 
-- [ ] T001 Create gamma package directory structure at `src/babylon/economics/gamma/`
-- [ ] T002 [P] Create package `__init__.py` with exports at `src/babylon/economics/gamma/__init__.py`
-- [ ] T003 [P] Create test package structure at `tests/unit/economics/gamma/__init__.py`
+- [X] T001 Create gamma package directory structure at `src/babylon/economics/gamma/`
+- [X] T002 [P] Create package `__init__.py` with exports at `src/babylon/economics/gamma/__init__.py`
+- [X] T003 [P] Create test package structure at `tests/unit/economics/gamma/__init__.py`
 
 ______________________________________________________________________
 
@@ -37,17 +37,17 @@ ______________________________________________________________________
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Define GammaIII Pydantic model in `src/babylon/economics/gamma/types.py`
-- [ ] T005 [P] Define GammaImport Pydantic model in `src/babylon/economics/gamma/types.py`
-- [ ] T006 [P] Define GammaBasket Pydantic model in `src/babylon/economics/gamma/types.py`
-- [ ] T007 [P] Define ShadowSubsidy Pydantic model in `src/babylon/economics/gamma/types.py`
-- [ ] T008 [P] Define ERDIData Pydantic model with MVP_ERDI_VALUES constants in `src/babylon/economics/gamma/types.py`
-- [ ] T009 Define data source protocols (UnpaidCareHoursSource, PaidCareHoursSource, ERDISource) in `src/babylon/economics/gamma/data_sources.py`
-- [ ] T010 Define validation functions (validate_gamma_iii, validate_gamma_import, validate_gamma_basket) in `src/babylon/economics/gamma/validation.py`
-- [ ] T011 [P] Write unit tests for all Pydantic types in `tests/unit/economics/gamma/test_types.py`
-- [ ] T012 [P] Write unit tests for validation functions in `tests/unit/economics/gamma/test_validation.py`
-- [ ] T012a Define weighted_average_gamma() utility function in `src/babylon/economics/gamma/types.py` that computes Σ(weight × γ) / Σ(weight) per FR-011
-- [ ] T012b [P] Write unit test for weighted_average_gamma() verifying intensive aggregation (sum of weights, not sum of values) in `tests/unit/economics/gamma/test_types.py`
+- [X] T004 [P] Define GammaIII Pydantic model in `src/babylon/economics/gamma/types.py`
+- [X] T005 [P] Define GammaImport Pydantic model in `src/babylon/economics/gamma/types.py`
+- [X] T006 [P] Define GammaBasket Pydantic model in `src/babylon/economics/gamma/types.py`
+- [X] T007 [P] Define ShadowSubsidy Pydantic model in `src/babylon/economics/gamma/types.py`
+- [X] T008 [P] Define ERDIData Pydantic model with MVP_ERDI_VALUES constants in `src/babylon/economics/gamma/types.py`
+- [X] T009 Define data source protocols (UnpaidCareHoursSource, PaidCareHoursSource, ERDISource) in `src/babylon/economics/gamma/data_sources.py`
+- [X] T010 Define validation functions (validate_gamma_iii, validate_gamma_import, validate_gamma_basket) in `src/babylon/economics/gamma/validation.py`
+- [X] T011 [P] Write unit tests for all Pydantic types in `tests/unit/economics/gamma/test_types.py`
+- [X] T012 [P] Write unit tests for validation functions in `tests/unit/economics/gamma/test_validation.py`
+- [X] T012a Define weighted_average_gamma() utility function in `src/babylon/economics/gamma/types.py` that computes Σ(weight × γ) / Σ(weight) per FR-011
+- [X] T012b [P] Write unit test for weighted_average_gamma() verifying intensive aggregation (sum of weights, not sum of values) in `tests/unit/economics/gamma/test_types.py`
 
 **Checkpoint**: Foundation ready - types validated, protocols defined, intensive aggregation utility available
 
@@ -63,20 +63,20 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T013 [P] [US1] Unit test for GammaIIICalculator.compute() in `tests/unit/economics/gamma/test_gamma_iii.py`
-- [ ] T014 [P] [US1] Unit test for GammaIIICalculator.get_paid_care_hours() in `tests/unit/economics/gamma/test_gamma_iii.py`
-- [ ] T015 [P] [US1] Unit test for GammaIIICalculator.get_unpaid_care_hours() in `tests/unit/economics/gamma/test_gamma_iii.py`
-- [ ] T016 [P] [US1] Unit test for NoDataSentinel return when ATUS unavailable in `tests/unit/economics/gamma/test_gamma_iii.py`
-- [ ] T017 [P] [US1] Unit test for Fortunati exploitation rate calculation in `tests/unit/economics/gamma/test_gamma_iii.py`
+- [X] T013 [P] [US1] Unit test for GammaIIICalculator.compute() in `tests/unit/economics/gamma/test_gamma_iii.py`
+- [X] T014 [P] [US1] Unit test for GammaIIICalculator.get_paid_care_hours() in `tests/unit/economics/gamma/test_gamma_iii.py`
+- [X] T015 [P] [US1] Unit test for GammaIIICalculator.get_unpaid_care_hours() in `tests/unit/economics/gamma/test_gamma_iii.py`
+- [X] T016 [P] [US1] Unit test for NoDataSentinel return when ATUS unavailable in `tests/unit/economics/gamma/test_gamma_iii.py`
+- [X] T017 [P] [US1] Unit test for Fortunati exploitation rate calculation in `tests/unit/economics/gamma/test_gamma_iii.py`
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Create QCEW care sector adapter with NAICS codes 61, 62, 624, 814 in `src/babylon/economics/gamma/adapters.py`
-- [ ] T019 [US1] Implement care fraction coefficients (education=0.60, healthcare=0.30, social=0.80, household=1.00) in `src/babylon/economics/gamma/adapters.py`
-- [ ] T020 [US1] Implement GammaIIICalculator protocol in `src/babylon/economics/gamma/gamma_iii.py`
-- [ ] T021 [US1] Implement DefaultGammaIIICalculator with ATUS/QCEW integration in `src/babylon/economics/gamma/gamma_iii.py`
-- [ ] T022 [US1] Add logging for out-of-range warnings (γ_III outside [0.20, 0.40]) in `src/babylon/economics/gamma/gamma_iii.py`
-- [ ] T023 [US1] Update package exports for GammaIIICalculator in `src/babylon/economics/gamma/__init__.py`
+- [X] T018 [US1] Create QCEW care sector adapter with NAICS codes 61, 62, 624, 814 in `src/babylon/economics/gamma/adapters.py`
+- [X] T019 [US1] Implement care fraction coefficients (education=0.60, healthcare=0.30, social=0.80, household=1.00) in `src/babylon/economics/gamma/adapters.py`
+- [X] T020 [US1] Implement GammaIIICalculator protocol in `src/babylon/economics/gamma/gamma_iii.py`
+- [X] T021 [US1] Implement DefaultGammaIIICalculator with ATUS/QCEW integration in `src/babylon/economics/gamma/gamma_iii.py`
+- [X] T022 [US1] Add logging for out-of-range warnings (γ_III outside [0.20, 0.40]) in `src/babylon/economics/gamma/gamma_iii.py`
+- [X] T023 [US1] Update package exports for GammaIIICalculator in `src/babylon/economics/gamma/__init__.py`
 
 **Checkpoint**: γ_III computes correctly from ATUS/QCEW data, tests pass
 
@@ -90,17 +90,17 @@ ______________________________________________________________________
 
 ### Tests for User Story 2
 
-- [ ] T024 [P] [US2] Unit test for compute_phi_iii() with MELT available in `tests/unit/economics/gamma/test_shadow_subsidy.py`
-- [ ] T025 [P] [US2] Unit test for compute_phi_iii() with MELT unavailable (labor-hours fallback) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
-- [ ] T026 [P] [US2] Unit test for magnitude validation ($1.5-3.5T range) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
+- [X] T024 [P] [US2] Unit test for compute_phi_iii() with MELT available in `tests/unit/economics/gamma/test_shadow_subsidy.py`
+- [X] T025 [P] [US2] Unit test for compute_phi_iii() with MELT unavailable (labor-hours fallback) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
+- [X] T026 [P] [US2] Unit test for magnitude validation ($1.5-3.5T range) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
 
 ### Implementation for User Story 2
 
-- [ ] T027 [US2] Implement ShadowSubsidyCalculator protocol in `src/babylon/economics/gamma/shadow_subsidy.py`
-- [ ] T028 [US2] Implement DefaultShadowSubsidyCalculator.compute_phi_iii() in `src/babylon/economics/gamma/shadow_subsidy.py`
-- [ ] T029 [US2] Integrate with MELT calculator from Feature 013 in `src/babylon/economics/gamma/shadow_subsidy.py`
-- [ ] T030 [US2] Add labor-hours fallback when MELT unavailable in `src/babylon/economics/gamma/shadow_subsidy.py`
-- [ ] T031 [US2] Update package exports for ShadowSubsidyCalculator in `src/babylon/economics/gamma/__init__.py`
+- [X] T027 [US2] Implement ShadowSubsidyCalculator protocol in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T028 [US2] Implement DefaultShadowSubsidyCalculator.compute_phi_iii() in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T029 [US2] Integrate with MELT calculator from Feature 013 in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T030 [US2] Add labor-hours fallback when MELT unavailable in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T031 [US2] Update package exports for ShadowSubsidyCalculator in `src/babylon/economics/gamma/__init__.py`
 
 **Checkpoint**: Φ_III computes to ~$2.3T, both dollar and labor-hour outputs work
 
@@ -114,18 +114,18 @@ ______________________________________________________________________
 
 ### Tests for User Story 3
 
-- [ ] T032 [P] [US3] Unit test for GammaImportCalculator.compute() in `tests/unit/economics/gamma/test_gamma_import.py`
-- [ ] T033 [P] [US3] Unit test for GammaImportCalculator.get_erdi() with MVP values in `tests/unit/economics/gamma/test_gamma_import.py`
-- [ ] T034 [P] [US3] Unit test for import share validation (sum=1.0) in `tests/unit/economics/gamma/test_gamma_import.py`
-- [ ] T035 [P] [US3] Unit test for fallback ERDI values (Core=1.0, Periphery=2.0) in `tests/unit/economics/gamma/test_gamma_import.py`
+- [X] T032 [P] [US3] Unit test for GammaImportCalculator.compute() in `tests/unit/economics/gamma/test_gamma_import.py`
+- [X] T033 [P] [US3] Unit test for GammaImportCalculator.get_erdi() with MVP values in `tests/unit/economics/gamma/test_gamma_import.py`
+- [X] T034 [P] [US3] Unit test for import share validation (sum=1.0) in `tests/unit/economics/gamma/test_gamma_import.py`
+- [X] T035 [P] [US3] Unit test for fallback ERDI values (Core=1.0, Periphery=2.0) in `tests/unit/economics/gamma/test_gamma_import.py`
 
 ### Implementation for User Story 3
 
-- [ ] T036 [US3] Implement GammaImportCalculator protocol in `src/babylon/economics/gamma/gamma_import.py`
-- [ ] T037 [US3] Implement DefaultGammaImportCalculator with MVP ERDI values in `src/babylon/economics/gamma/gamma_import.py`
-- [ ] T038 [US3] Add import share validation (sum must equal 1.0 ± 0.01) in `src/babylon/economics/gamma/gamma_import.py`
-- [ ] T039 [US3] Add logging for out-of-range warnings (γ_import outside [0.40, 0.70]) in `src/babylon/economics/gamma/gamma_import.py`
-- [ ] T040 [US3] Update package exports for GammaImportCalculator in `src/babylon/economics/gamma/__init__.py`
+- [X] T036 [US3] Implement GammaImportCalculator protocol in `src/babylon/economics/gamma/gamma_import.py`
+- [X] T037 [US3] Implement DefaultGammaImportCalculator with MVP ERDI values in `src/babylon/economics/gamma/gamma_import.py`
+- [X] T038 [US3] Add import share validation (sum must equal 1.0 ± 0.01) in `src/babylon/economics/gamma/gamma_import.py`
+- [X] T039 [US3] Add logging for out-of-range warnings (γ_import outside [0.40, 0.70]) in `src/babylon/economics/gamma/gamma_import.py`
+- [X] T040 [US3] Update package exports for GammaImportCalculator in `src/babylon/economics/gamma/__init__.py`
 
 **Checkpoint**: γ_import computes to ~0.65 from MVP ERDI values, tests pass
 
@@ -139,18 +139,18 @@ ______________________________________________________________________
 
 ### Tests for User Story 4
 
-- [ ] T041 [P] [US4] Unit test for GammaBasketCalculator.compute() in `tests/unit/economics/gamma/test_gamma_basket.py`
-- [ ] T042 [P] [US4] Unit test for edge case α=0 (γ_basket=1.0) in `tests/unit/economics/gamma/test_gamma_basket.py`
-- [ ] T043 [P] [US4] Unit test for edge case α=1 (γ_basket=γ_import) in `tests/unit/economics/gamma/test_gamma_basket.py`
-- [ ] T044 [P] [US4] Unit test for constraint γ_basket ≥ γ_import in `tests/unit/economics/gamma/test_gamma_basket.py`
+- [X] T041 [P] [US4] Unit test for GammaBasketCalculator.compute() in `tests/unit/economics/gamma/test_gamma_basket.py`
+- [X] T042 [P] [US4] Unit test for edge case α=0 (γ_basket=1.0) in `tests/unit/economics/gamma/test_gamma_basket.py`
+- [X] T043 [P] [US4] Unit test for edge case α=1 (γ_basket=γ_import) in `tests/unit/economics/gamma/test_gamma_basket.py`
+- [X] T044 [P] [US4] Unit test for constraint γ_basket ≥ γ_import in `tests/unit/economics/gamma/test_gamma_basket.py`
 
 ### Implementation for User Story 4
 
-- [ ] T045 [US4] Implement GammaBasketCalculator protocol in `src/babylon/economics/gamma/gamma_basket.py`
-- [ ] T046 [US4] Implement DefaultGammaBasketCalculator with harmonic mean formula in `src/babylon/economics/gamma/gamma_basket.py`
-- [ ] T047 [US4] Add validation for γ_basket ≥ γ_import constraint in `src/babylon/economics/gamma/gamma_basket.py`
-- [ ] T048 [US4] Add logging for out-of-range warnings (γ_basket outside [0.60, 0.85]) in `src/babylon/economics/gamma/gamma_basket.py`
-- [ ] T049 [US4] Update package exports for GammaBasketCalculator in `src/babylon/economics/gamma/__init__.py`
+- [X] T045 [US4] Implement GammaBasketCalculator protocol in `src/babylon/economics/gamma/gamma_basket.py`
+- [X] T046 [US4] Implement DefaultGammaBasketCalculator with harmonic mean formula in `src/babylon/economics/gamma/gamma_basket.py`
+- [X] T047 [US4] Add validation for γ_basket ≥ γ_import constraint in `src/babylon/economics/gamma/gamma_basket.py`
+- [X] T048 [US4] Add logging for out-of-range warnings (γ_basket outside [0.60, 0.85]) in `src/babylon/economics/gamma/gamma_basket.py`
+- [X] T049 [US4] Update package exports for GammaBasketCalculator in `src/babylon/economics/gamma/__init__.py`
 
 **Checkpoint**: γ_basket computes to ~0.74 for typical US basket, edge cases handled
 
@@ -164,15 +164,15 @@ ______________________________________________________________________
 
 ### Tests for User Story 5
 
-- [ ] T050 [P] [US5] Unit test for compute_phi_imperial() in `tests/unit/economics/gamma/test_shadow_subsidy.py`
-- [ ] T051 [P] [US5] Unit test for magnitude validation ($1.0-4.0T range) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
-- [ ] T052 [P] [US5] Unit test for total shadow subsidy (Φ_III + Φ_imperial) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
+- [X] T050 [P] [US5] Unit test for compute_phi_imperial() in `tests/unit/economics/gamma/test_shadow_subsidy.py`
+- [X] T051 [P] [US5] Unit test for magnitude validation ($1.0-4.0T range) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
+- [X] T052 [P] [US5] Unit test for total shadow subsidy (Φ_III + Φ_imperial) in `tests/unit/economics/gamma/test_shadow_subsidy.py`
 
 ### Implementation for User Story 5
 
-- [ ] T053 [US5] Implement DefaultShadowSubsidyCalculator.compute_phi_imperial() in `src/babylon/economics/gamma/shadow_subsidy.py`
-- [ ] T054 [US5] Implement compute_total_shadow() combining both subsidies in `src/babylon/economics/gamma/shadow_subsidy.py`
-- [ ] T055 [US5] Add magnitude validation logging for imperial subsidy in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T053 [US5] Implement DefaultShadowSubsidyCalculator.compute_phi_imperial() in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T054 [US5] Implement compute_total_shadow() combining both subsidies in `src/babylon/economics/gamma/shadow_subsidy.py`
+- [X] T055 [US5] Add magnitude validation logging for imperial subsidy in `src/babylon/economics/gamma/shadow_subsidy.py`
 
 **Checkpoint**: Imperial shadow subsidy computes to ~$3.9T, total shadow computes correctly
 
@@ -182,13 +182,13 @@ ______________________________________________________________________
 
 **Purpose**: End-to-end validation and cross-cutting concerns
 
-- [ ] T056 Write integration test for full gamma tensor computation in `tests/integration/economics/test_gamma_validation.py`
-- [ ] T057 [P] Add Detroit Metro validation scenario (γ_III, γ_import, γ_basket, both Φ values) in `tests/integration/economics/test_gamma_validation.py`
-- [ ] T057a [P] Write integration test for SC-002: verify γ_III increases when paid_care_hours increases relative to unpaid_care_hours (synthetic directional test) in `tests/integration/economics/test_gamma_validation.py`
-- [ ] T058 [P] Validate quickstart.md examples work as documented
-- [ ] T059 Run full test suite and verify all tests pass (`mise run test:unit`)
-- [ ] T060 Run code quality checks (`mise run check`)
-- [ ] T061 Update specs/015-gamma-visibility-tensor/tasks.md status to complete
+- [X] T056 Write integration test for full gamma tensor computation in `tests/integration/economics/test_gamma_validation.py`
+- [X] T057 [P] Add Detroit Metro validation scenario (γ_III, γ_import, γ_basket, both Φ values) in `tests/integration/economics/test_gamma_validation.py`
+- [X] T057a [P] Write integration test for SC-002: verify γ_III increases when paid_care_hours increases relative to unpaid_care_hours (synthetic directional test) in `tests/integration/economics/test_gamma_validation.py`
+- [X] T058 [P] Validate quickstart.md examples work as documented
+- [X] T059 Run full test suite and verify all tests pass (`mise run test:unit`)
+- [X] T060 Run code quality checks (`mise run check`)
+- [X] T061 Update specs/015-gamma-visibility-tensor/tasks.md status to complete
 
 ______________________________________________________________________
 

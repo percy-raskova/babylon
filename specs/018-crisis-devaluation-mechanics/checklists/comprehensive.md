@@ -10,7 +10,7 @@
 
 - [x] CHK001 - Is a default value specified for `r_threshold` (the profit rate crisis trigger)? **RESOLVED**: FR-001 now specifies `r_threshold` default of 0.05 (5%) derived from WID/Piketty empirical analysis. FR-023 also lists the default.
 - [x] CHK002 - Is a default value specified for the wage compression floor ratio in FR-017? **RESOLVED**: FR-023 now specifies `wage_compression_floor_ratio` default of 0.8 (80% of subsistence cost).
-- [ ] CHK003 - Are the new EventType enum values enumerated for FR-022? The spec says "new event types for phase transitions, dispossession cascade milestones, and bifurcation risk threshold crossings" but does not name or count them. [Gap, Spec §FR-022]
+- [x] CHK003 - Are the new EventType enum values enumerated for FR-022? **RESOLVED**: research.md R8 enumerates three values: CRISIS_PHASE_TRANSITION, DISPOSSESSION_CASCADE, BIFURCATION_THRESHOLD. data-model.md §EventType confirms with descriptions. tasks.md T006 assigns implementation.
 - [x] CHK004 - Is the behavior of the bifurcation risk metric during non-crisis periods specified? **RESOLVED**: FR-011 now states "During non-crisis periods, the bifurcation risk metric is 0 (neutral)."
 - [x] CHK005 - Is the combination formula for bifurcation risk specified? **RESOLVED**: FR-011 now contains the full additive combination formula: `raw_score = -w_s * solidarity_density + w_b * class_burden_ratio; dampened_score = raw_score * (1 - legitimation); bifurcation = clamp(dampened_score, -1, +1)` with configurable weights.
 - [ ] CHK006 - Is the consecutive-period counter reset behavior explicitly specified when a county exits crisis (enters recovery) and later re-enters crisis? Implicitly the counter resets, but no FR states this. [Gap, Spec §FR-002]
@@ -28,9 +28,9 @@
 ## Requirement Consistency
 
 - [ ] CHK014 - Do the crisis phase names in US2 acceptance scenarios align with the phase definitions in FR-003? US2 AS1 says "early crisis (crisis active for 1-4 periods)" but FR-003 defines "onset" at period N and "early" at N+1 through N+4 — if N=3, "crisis active for 1-4 periods" spans both onset and early phases. [Consistency, Spec §US2 vs §FR-003]
-- [ ] CHK015 - Does SC-001 use the correct timescale unit? SC-001 says "activates within 1 tick of the Nth period" but the clarification establishes that the detector evaluates per crisis period (13 ticks), not per tick. Should this say "within 1 crisis period"? [Consistency, Spec §SC-001 vs §Clarifications]
+- [x] CHK015 - Does SC-001 use the correct timescale unit? **RESOLVED**: SC-001 uses "N periods" and "M recovery periods" (crisis period units). "Within 1 tick" refers to detection latency within the annual pipeline run — batch-within-step (R5) evaluates all quarterly boundaries in one Step 5 invocation, so detection is visible within the same pipeline tick. Wording is loose but technically accurate.
 - [x] CHK016 - Is the crisis evaluation frequency consistent between FR-001 and FR-019? **RESOLVED**: FR-019 now specifies batch-within-step design: Step 5 processes all quarterly crisis evaluations within each annual pipeline run. A-002 and C-001 updated to align.
-- [ ] CHK017 - Is the relationship between US4 phase "post-crisis" (mentioned in US4 header) and FR-003 phase list (which has "normal" but no "post-crisis") consistent? US4 mentions 5 phases including "post-crisis" but FR-003 defines only NORMAL, ONSET, EARLY, DEEP, RECOVERY. [Consistency, Spec §US4 vs §FR-003]
+- [x] CHK017 - Is the relationship between US4 phase "post-crisis" (mentioned in US4 header) and FR-003 phase list (which has "normal" but no "post-crisis") consistent? **RESOLVED**: US4 header uses "post-crisis" as informal summary; all four acceptance scenarios (AS1-AS4) correctly use FR-003 phases (normal, onset, early, deep, recovery). "Post-crisis" maps to NORMAL after RECOVERY completes. No implementation ambiguity.
 
 ## Acceptance Criteria Quality
 
@@ -42,7 +42,7 @@
 
 - [x] CHK021 - Is the scenario of a county with zero solidarity edges addressed? **RESOLVED**: FR-012 now specifies "When the county has fewer than 2 distinct ClassPosition categories present, solidarity density is 0."
 - [ ] CHK022 - Is the scenario of `crisis_period_ticks` not evenly dividing the annual cycle addressed? Default 13 divides evenly (52/13=4), but if configured differently (e.g., 10), there is a tick alignment issue. Should configuration validation enforce divisibility? [Edge Case, Gap]
-- [ ] CHK023 - Is the scenario of a county entering crisis for the first time (no prior CrisisState) specified? How is CrisisState initialized — all zeros, or a sentinel? [Edge Case, Gap]
+- [x] CHK023 - Is the scenario of a county entering crisis for the first time (no prior CrisisState) specified? **RESOLVED**: data-model.md defines `CrisisState.normal()` factory method returning NORMAL state with all counters zero. CountyEconomicState defaults to `crisis_state: CrisisState = CrisisState.normal()`. Invariant: phase==NORMAL implies consecutive_below==0, crisis_start_period is None, crisis_duration==0.
 - [ ] CHK024 - Is the interaction between wage compression (FR-016) and the ImperialRentSystem's wage modifications specified? Both systems modify wage rates; which takes precedence, and are they additive or sequential? [Coverage, Gap]
 - [ ] CHK025 - Is the scenario where crisis deepens while bifurcation risk is near a threshold crossing addressed? Does the system emit a bifurcation threshold event, and if so, at what threshold(s)? FR-022 mentions "bifurcation risk threshold crossings" but no thresholds are defined. [Gap, Spec §FR-022]
 
@@ -69,5 +69,5 @@
 - ~~CHK005 (bifurcation combination formula) is the second highest priority — without it, the metric cannot be implemented or tested.~~ **RESOLVED** with full additive formula in FR-011.
 - ~~CHK001 (r_threshold default) was the third priority.~~ **RESOLVED** with 0.05 (5%) default derived from WID/Piketty empirical analysis.
 - Items are numbered CHK001-CHK033 sequentially for cross-referencing.
-- 12 of 33 items resolved (CHK001, CHK002, CHK004, CHK005, CHK010, CHK011, CHK016, CHK021, CHK029, CHK031, CHK032, CHK033). 21 items remain open for planning-phase resolution.
+- 16 of 33 items resolved (CHK001, CHK002, CHK003, CHK004, CHK005, CHK010, CHK011, CHK015, CHK016, CHK017, CHK021, CHK023, CHK029, CHK031, CHK032, CHK033). 17 items remain open for implementation-phase resolution.
 - ~~**CHK031-CHK033 are high priority**: The dimensional mismatch in the tick pipeline profit rate formula must be resolved before r_threshold can be implemented.~~ **RESOLVED**: Flow-based rate chosen for crisis detection. Stock-based dimensional bug filed as Feature 017 bugfix. See `docs/concepts/piketty-profit-rate.rst` §Calibration Epistemology for full analysis.

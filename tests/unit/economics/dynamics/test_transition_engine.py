@@ -1,10 +1,12 @@
 """Tests for the class transition engine.
 
 Feature: 016-class-dynamics-engine
-Tasks: T020a, T020b
+Tasks: T020a, T020b, T034
 """
 
 from __future__ import annotations
+
+import logging
 
 import pytest
 from tests.unit.economics.dynamics.conftest import (
@@ -620,3 +622,65 @@ class TestMultiPeriodValidation:
             assert dist.labor_aristocracy_share <= 1.0
             assert dist.proletariat_share <= 1.0
             assert dist.lumpenproletariat_share <= 1.0
+
+
+class TestValidationLogging:
+    """Tests for FR-011: validation results logged per period (T034)."""
+
+    def test_warning_logged_for_unusual_rates(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """FR-011: Unusual transition rates produce warning-level log entries."""
+        engine = _make_engine(crisis_amplifier=2.5, recovery_dampener=0.3)
+        dist = ClassDistribution(
+            fips="26163",
+            year=2010,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        crisis_cond = EconomicConditions(
+            fips="26163",
+            year=2010,
+            unemployment_rate=0.15,
+            median_wage=35000.0,
+            melt=58.0,
+            phi_hour=3.00,
+            foreclosure_rate=0.046,
+            bankruptcy_rate=0.013,
+            eviction_rate=0.070,
+            crisis=True,
+        )
+
+        with caplog.at_level(logging.WARNING, logger="babylon.economics.dynamics"):
+            engine.simulate_transitions(dist, crisis_cond)
+
+        # Should have logged at least one validation warning
+        warning_messages = [r.message for r in caplog.records if r.levelno >= logging.WARNING]
+        assert len(warning_messages) > 0
+        assert any(
+            "validation" in msg.lower() or "outside" in msg.lower() for msg in warning_messages
+        )
+
+    def test_no_warning_for_normal_rates(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        stable_distribution: ClassDistribution,
+        stable_conditions: EconomicConditions,
+    ) -> None:
+        """FR-011: Normal conditions produce no validation warnings."""
+        engine = _make_engine()
+
+        with caplog.at_level(logging.WARNING, logger="babylon.economics.dynamics"):
+            engine.simulate_transitions(stable_distribution, stable_conditions)
+
+        # Should have no validation warnings for stable conditions
+        warning_messages = [
+            r.message
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "validation" in r.message.lower()
+        ]
+        assert len(warning_messages) == 0

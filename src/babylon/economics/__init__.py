@@ -14,6 +14,7 @@ This package provides the Marxian value transformation layer:
 - melt: MELT and basket visibility for Labor Aristocracy thresholds (Feature 013)
 - throughput: Throughput position and domestic value geography (Feature 014)
 - gamma: Gamma visibility tensor for shadow subsidies (Feature 015)
+- dynamics: Class dynamics engine for modeling class position transitions (Feature 016)
 
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
@@ -50,6 +51,7 @@ See Also:
     :mod:`babylon.economics.melt`: MELT and basket visibility details (Feature 013).
     :mod:`babylon.economics.throughput`: Throughput position details (Feature 014).
     :mod:`babylon.economics.gamma`: Gamma visibility tensor details (Feature 015).
+    :mod:`babylon.economics.dynamics`: Class dynamics engine details (Feature 016).
 """
 
 # Adapters (protocols and implementations)
@@ -74,6 +76,19 @@ from babylon.economics.department_mapper import (
 )
 from babylon.economics.depreciation import DepreciationConfig
 from babylon.economics.derived_metrics import DerivedTensorMetrics
+
+# Class Dynamics Engine (Feature 016)
+from babylon.economics.dynamics import (
+    ClassDistribution,
+    DefaultAccumulationCalculator,
+    DefaultClassTransitionEngine,
+    DefaultCrisisAmplifier,
+    DefaultDispossessionCalculator,
+    DefaultSavingsRateSchedule,
+    EconomicConditions,
+    HardcodedNationalDispossessionSource,
+    TransitionRates,
+)
 
 # Exceptions
 from babylon.economics.exceptions import (
@@ -246,4 +261,14 @@ __all__ = [
     "DefaultGammaImportCalculator",
     "DefaultGammaBasketCalculator",
     "DefaultShadowSubsidyCalculator",
+    # Class Dynamics Engine (Feature 016)
+    "ClassDistribution",
+    "EconomicConditions",
+    "TransitionRates",
+    "DefaultAccumulationCalculator",
+    "DefaultClassTransitionEngine",
+    "DefaultCrisisAmplifier",
+    "DefaultDispossessionCalculator",
+    "DefaultSavingsRateSchedule",
+    "HardcodedNationalDispossessionSource",
 ]

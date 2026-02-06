@@ -61,9 +61,10 @@ Replaces `crisis: bool` on `CountyEconomicState`. Tracks the full crisis lifecyc
 **Factory method**: `CrisisState.normal()` returns the default NORMAL state (all counters zero).
 
 **Invariants**:
-- When `phase == NORMAL`: `consecutive_below == 0`, `crisis_start_period is None`, `crisis_duration == 0`
+- When `phase == NORMAL`: `consecutive_below == 0`, `consecutive_recovery == 0`, `crisis_start_period is None`, `crisis_duration == 0`, `peak_severity is None`, `cumulative_wage_compression == 0.0`. This invariant is enforced on every transition to NORMAL (counter reset).
 - When `phase == RECOVERY`: `consecutive_recovery >= 1`
 - `cumulative_wage_compression` only increases during DEEP phase
+- **Interrupted recovery** (RECOVERY → DEEP): `consecutive_recovery` resets to 0, `crisis_duration` and `cumulative_wage_compression` carry forward from pre-recovery values, `peak_severity` may update if new profit rate is lower than previous peak.
 
 **Constitution II.2 Justification**: CrisisState contains accumulated temporal state (the consecutive-period counter, crisis duration) that depends on history and cannot be recomputed from current-tick primitives. Analogous to `SmoothedCoefficients` (also accumulated/persisted). This is NOT a derived quantity.
 
@@ -127,6 +128,8 @@ New `crisis` category in GameDefines (FR-023). All configurable crisis parameter
 | bifurcation_solidarity_weight | float | 1.0 | w_s in bifurcation formula |
 | bifurcation_burden_weight | float | 1.0 | w_b in bifurcation formula |
 | class_burden_epsilon | float | 0.001 | Division-by-zero guard in burden ratio |
+| bifurcation_event_threshold | float | 0.5 | |score| >= threshold emits BIFURCATION_THRESHOLD event |
+| dispossession_cascade_milestones | list[float] | [0.05, 0.10, 0.15] | LA share decline milestones for DISPOSSESSION_CASCADE events |
 | profiles | dict[CrisisPhase, PhasedAmplificationProfile] | FR-006 table | Per-phase multipliers |
 
 **Location**: `GameDefines.crisis` (new field on existing `GameDefines` in `babylon.config.defines`)
@@ -174,20 +177,21 @@ Add three new values to the existing `EventType` StrEnum in `babylon.models.enum
 stateDiagram-v2
     [*] --> NORMAL
 
-    NORMAL --> NORMAL: r >= r_threshold OR consecutive_below < N
+    NORMAL --> NORMAL: r >= r_threshold (resets consecutive_below)
+    NORMAL --> NORMAL: r < r_threshold but consecutive_below < N
     NORMAL --> ONSET: consecutive_below == N
 
-    ONSET --> EARLY: crisis persists (next period)
+    ONSET --> EARLY: automatic (next period)
 
-    EARLY --> EARLY: duration < N+5
-    EARLY --> DEEP: duration >= N+5
+    EARLY --> EARLY: crisis_duration < N+4 (automatic, r-independent)
+    EARLY --> DEEP: crisis_duration >= N+4 (automatic, r-independent)
 
-    DEEP --> DEEP: r < r_threshold
+    DEEP --> DEEP: consecutive_recovery < M
     DEEP --> RECOVERY: consecutive_recovery == M
 
     RECOVERY --> RECOVERY: recovery_remaining > 0
-    RECOVERY --> NORMAL: recovery_remaining == 0
-    RECOVERY --> DEEP: r drops below threshold (interrupted recovery)
+    RECOVERY --> NORMAL: recovery_remaining == 0 (all counters reset)
+    RECOVERY --> DEEP: r < r_threshold (interrupted recovery, consecutive_recovery resets)
 
     note right of NORMAL
         consecutive_below accumulates
@@ -198,16 +202,26 @@ stateDiagram-v2
         Crisis detected at period N
         Emit CRISIS_PHASE_TRANSITION event
         Emit ECONOMIC_CRISIS event
+        Progression to EARLY is automatic
+    end note
+
+    note right of EARLY
+        Strictly linear: no early recovery
+        Progression is duration-based, not r-based
+        Even if r recovers, phase continues to DEEP
     end note
 
     note right of DEEP
         Wage compression active
         Maximum amplification
+        Only phase where recovery can begin
+        consecutive_recovery tracks r >= r_threshold
     end note
 
     note right of RECOVERY
-        Hysteresis: rates recover as (1 - h^k)
+        Hysteresis: rates recover as (1 - h^k), k=1 first period
         Duration: min(crisis_duration, R_cap)
+        Interrupted if r drops below threshold
     end note
 ```
 

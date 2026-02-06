@@ -40,7 +40,7 @@ ______________________________________________________________________
 
 ### Configuration
 
-- [ ] T010 Add `CrisisDefines` frozen Pydantic model to `src/babylon/config/defines.py` with all 12+ parameters from FR-023: crisis_period_ticks (13), r_threshold (0.05), n_consecutive (3), m_recovery (2), r_cap (8), hysteresis_coefficient (0.5), wage_compression_rate (0.02), wage_compression_floor_ratio (0.8), bifurcation_solidarity_weight (1.0), bifurcation_burden_weight (1.0), class_burden_epsilon (0.001), profiles (dict[CrisisPhase, PhasedAmplificationProfile] with FR-006 defaults)
+- [ ] T010 Add `CrisisDefines` frozen Pydantic model to `src/babylon/config/defines.py` with all 14 parameters from FR-023: crisis_period_ticks (13), r_threshold (0.05), n_consecutive (3), m_recovery (2), r_cap (8), hysteresis_coefficient (0.5), wage_compression_rate (0.02), wage_compression_floor_ratio (0.8), bifurcation_solidarity_weight (1.0), bifurcation_burden_weight (1.0), class_burden_epsilon (0.001), bifurcation_event_threshold (0.5), dispossession_cascade_milestones ([0.05, 0.10, 0.15]), profiles (dict[CrisisPhase, PhasedAmplificationProfile] with FR-006 defaults)
 - [ ] T011 Add `crisis: CrisisDefines` field to `GameDefines` in `src/babylon/config/defines.py` (FR-023)
 
 ### CountyEconomicState Migration
@@ -50,10 +50,10 @@ ______________________________________________________________________
 
 ### Foundational Tests
 
-- [ ] T014 [P] Write unit tests for CrisisPhase enum values and ordering in `tests/unit/economics/tick/test_types.py`
-- [ ] T015 [P] Write unit tests for CrisisState model validation, `.normal()` factory, and invariants (phase=NORMAL implies counters zero) in `tests/unit/economics/tick/test_types.py`
-- [ ] T016 [P] Write unit tests for BifurcationRiskMetric model validation, `.neutral()` factory, and clamping constraints in `tests/unit/economics/tick/test_types.py`
-- [ ] T017 [P] Write unit tests for PhasedAmplificationProfile model validation (multiplier constraints) in `tests/unit/economics/tick/test_types.py`
+- [ ] T014 Write unit tests for CrisisPhase enum values and ordering in `tests/unit/economics/tick/test_types.py`
+- [ ] T015 Write unit tests for CrisisState model validation, `.normal()` factory, and invariants (phase=NORMAL implies counters zero, interrupted recovery resets, NORMAL re-entry counter reset) in `tests/unit/economics/tick/test_types.py`
+- [ ] T016 Write unit tests for BifurcationRiskMetric model validation, `.neutral()` factory, and clamping constraints in `tests/unit/economics/tick/test_types.py`
+- [ ] T017 Write unit tests for PhasedAmplificationProfile model validation (multiplier constraints) in `tests/unit/economics/tick/test_types.py`
 - [ ] T018 [P] Write unit tests for CrisisDefines model with default profiles matching FR-006 table in `tests/unit/economics/test_defines.py` or appropriate location
 - [ ] T019 Update existing tests that reference `CountyEconomicState.crisis` (bool) to use `crisis_state` field across `tests/unit/economics/tick/` and `tests/unit/economics/dynamics/` (backward compat migration)
 
@@ -114,6 +114,9 @@ ______________________________________________________________________
 - [ ] T041 [US2] Implement hysteresis recovery logic in `PhasedCrisisAmplifier`: recovery period index tracking, `effective = normal * (1 - h^k)` formula (FR-009)
 - [ ] T042 [US2] Update Step 6 in `src/babylon/economics/tick/system.py` to call `amplify_phased(rates, county.crisis_state.phase)` instead of `amplify(rates, crisis=county.crisis)` (FR-019, FR-021)
 - [ ] T043 [US2] Update existing `tests/unit/economics/dynamics/test_crisis.py` to test the new PhasedCrisisAmplifier interface
+
+- [ ] T074 [US2] Implement DISPOSSESSION_CASCADE event emission in Step 6 of `src/babylon/economics/tick/system.py`: track cumulative LA share decline from crisis-start baseline, emit DISPOSSESSION_CASCADE event when decline crosses milestone thresholds from `CrisisDefines.dispossession_cascade_milestones` (default: [0.05, 0.10, 0.15]). Payload: county FIPS, cumulative LA decline, milestone crossed (FR-022)
+- [ ] T075 [P] [US2] Write test for DISPOSSESSION_CASCADE event emission at milestone thresholds in `tests/unit/economics/dynamics/test_phased_amplifier.py`
 
 **Checkpoint**: Phased amplification passes all US2 acceptance scenarios. Backward-compatible protocol interface works. `poetry run pytest tests/unit/economics/dynamics/test_phased_amplifier.py -v`
 
@@ -186,6 +189,8 @@ ______________________________________________________________________
 - [ ] T067 Run backward-compatibility validation: verify `EconomicConditions.crisis` boolean field is correctly derived from `crisis_state.phase != NORMAL` in Step 6 synthesis (data-model.md Modified Entities: EconomicConditions)
 - [ ] T068 Run existing economics test suite to verify no regressions: `poetry run pytest tests/unit/economics/ -v`
 - [ ] T069 Run full test suite: `poetry run pytest tests/ -k "crisis" -v`
+- [ ] T076 [P] Write SC-002 integration test in `tests/unit/economics/crisis/test_crisis_lifecycle.py`: simulate 2008-2012 conditions (sustained profit rate decline of 15-25% from baseline), verify LA share declines by >= 5pp and lumpenproletariat share increases by >= 5pp
+- [ ] T077 [P] Write SC-008 performance validation test in `tests/unit/economics/crisis/test_crisis_lifecycle.py`: run 50-county, 20-year simulation and assert crisis detection + dispossession cascade + bifurcation risk complete within per-tick time budget (no measurable degradation)
 
 ### Cleanup
 
@@ -273,19 +278,19 @@ ______________________________________________________________________
 
 | Metric | Count |
 |--------|-------|
-| Total tasks | 73 |
+| Total tasks | 77 |
 | Phase 1 (Setup) | 4 |
 | Phase 2 (Foundational) | 15 |
 | Phase 3 (US1+US4) | 14 |
-| Phase 4 (US2) | 10 |
+| Phase 4 (US2) | 12 |
 | Phase 5 (US3) | 12 |
 | Phase 6 (US5) | 7 |
-| Phase 7 (Polish) | 11 |
-| Test tasks (RED) | 30 |
-| Implementation tasks (GREEN) | 27 |
+| Phase 7 (Polish) | 13 |
+| Test tasks (RED) | 33 |
+| Implementation tasks (GREEN) | 28 |
 | Infrastructure tasks | 16 |
-| Parallelizable [P] tasks | 35 |
-| MVP scope (Phases 1-4) | 43 tasks |
+| Parallelizable [P] tasks | 34 |
+| MVP scope (Phases 1-4) | 45 tasks |
 
 ______________________________________________________________________
 

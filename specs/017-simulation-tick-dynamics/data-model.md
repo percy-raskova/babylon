@@ -125,10 +125,12 @@ Per-county derived economic indicators computed from updated state. Read-only ou
 |-------|------|-----------|-------------|
 | fips | str | len=5 | County FIPS code |
 | year | int | ge=2007, le=2040 | Rate year |
-| profit_rate | float or None | | r = s / (K + v), None if K unavailable |
-| organic_composition | float or None | ge=0 | OCC = c / v, None if data unavailable |
-| exploitation_rate | float or None | ge=0 | e = s / v, None if data unavailable |
+| profit_rate | float or None | | r = s / (K + v), None if K unavailable or if K=0 and v=0 (division by zero) |
+| organic_composition | float or None | ge=0 | OCC = c / v, None if v=0 (division by zero) or data unavailable |
+| exploitation_rate | float or None | ge=0 | e = s / v, None if v=0 (division by zero) or data unavailable |
 | phi_hour | float | ge=0 | Imperial rent per labor-hour |
+
+**Division-by-zero handling**: All rate fields use `Optional[float]`. None indicates a mathematically undefined result (e.g., `v=0` makes OCC and exploitation rate undefined). This is distinct from `NoDataSentinel`, which indicates data unavailability during initialization mode. During simulation ticks, None for a derived rate is a valid mathematical outcome, not an error.
 
 ## State Transition Diagram
 

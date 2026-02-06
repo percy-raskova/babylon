@@ -62,7 +62,7 @@ As a simulation researcher, I need to execute one complete tick of state evoluti
 1. **Given** a complete simulation state at year 2015 with known class distribution, **When** I execute one tick, **Then** the output state has year 2016, updated class distribution (shares sum to 1.0), and computed derived rates (profit rate, imperial rent)
 2. **Given** a stable economic year (low unemployment, no crisis), **When** I execute one tick, **Then** class distribution changes are small (total share change less than 2% across all classes)
 3. **Given** a crisis economic year (high unemployment, elevated foreclosure), **When** I execute one tick, **Then** downward transitions are amplified and the tick produces crisis-related events
-4. **Given** execution of the update rules, **When** I verify the ordering, **Then** steps execute in strict dependency order: (1) load data, (2) national params, (3) county state, (4) imperial rent, (5) dispossession check, (6) class transitions, (7) derived rates
+4. **Given** execution of the update rules, **When** I verify the ordering, **Then** steps execute in strict dependency order: (1) load data, (2) national params, (3a) county state, (3b) coefficient smoothing, (4) imperial rent, (5) dispossession check, (6) class transitions, (7) validate and commit class distribution, (8) derived rates — where steps 3a and 3b execute in parallel after step 2
 
 ______________________________________________________________________
 
@@ -126,6 +126,7 @@ ______________________________________________________________________
 - **How does the system handle the first tick (no previous state)?** The initial state must be provided with seed values for class distribution, capital stock, and coefficients. The first tick does not perform smoothing (no previous value to smooth against); it uses raw computed values.
 - **What happens when class distribution from Feature 016 violates the sum-to-one invariant?** The tick validates the invariant after class transitions and raises an error if violated (within tolerance of 0.001). This is a hard constraint that must never be silently ignored.
 - **What happens during years with overlapping data vintage changes?** (e.g., BEA revises prior-year GDP) The tick uses the most recent data available at computation time. No retroactive adjustment of prior ticks.
+- **What happens when derived rate formulas produce division by zero?** For profit rate `r = s / (K + v)`: if `K = 0` and `v = 0`, profit_rate = None. For OCC `c / v` and exploitation rate `e = s / v`: if `v = 0`, both = None. DerivedRates uses `Optional[float]` for all rate fields; None indicates a mathematically undefined result (distinct from NoDataSentinel, which indicates data unavailability during initialization).
 
 ## Requirements *(mandatory)*
 
@@ -133,19 +134,52 @@ ______________________________________________________________________
 
 - **FR-001**: System MUST compute national parameters (MELT tau, basket visibility gamma_basket, reproductive visibility gamma_III) once per tick year using existing Feature 013 and Feature 015 calculators
 - **FR-002**: System MUST compute county-level economic state (value tensor, capital stock, throughput position, supply chain depth) per county per tick year using existing Feature 011, 012, and 014 calculators
-- **FR-003**: System MUST execute tick update rules in strict dependency order: (1) load new economic data, (2) compute national parameters, (3) compute county-level state, (4) compute imperial rent flows, (5) check dispossession triggers, (6) simulate class transitions, (7) update class distribution, (8) compute derived rates
+- **FR-003**: System MUST execute tick update rules in strict dependency order: (1) load new economic data (initialization only — during simulation ticks, state is produced by the engine), (2) compute national parameters, (3a) compute county-level state (K, pi, D per county) and (3b) apply coefficient smoothing (these two steps execute in parallel after step 2), (4) compute imperial rent flows (phi_hour per county), (5) check dispossession triggers (crisis flag detection), (6) simulate class transitions via `ClassTransitionEngine.simulate_transitions()` producing updated ClassDistribution, (7) validate sum-to-one invariant and commit updated class distribution shares, (8) compute derived rates (r, OCC, e, Phi_aggregate)
+  **Pipeline Step I/O Mapping**:
+
+  | Step | Inputs | Outputs | Calculator |
+  |------|--------|---------|------------|
+  | 1 | External sources (QCEW, BEA, ATUS, FRED) | Raw data | Data connectors (initialization only) |
+  | 2 | GDP, employment, ATUS, import data | NationalTickParameters (tau, gamma_basket, gamma_III) | `MELTCalculator.get_melt()`, `BasketVisibilityCalculator.get_gamma_basket()`, `GammaIIICalculator.compute()` |
+  | 3a | National tau, QCEW/BEA county data | K, pi, D per county | `CapitalStockCalculator.get_K()`, `ThroughputCalculator.compute_metrics()` |
+  | 3b | Raw gammas, previous smoothed values | SmoothedCoefficients | `CoefficientSmoother.smooth()` |
+  | 4 | County wages, national params, pi | phi_hour per county | `ImperialRentCalculator.compute_phi_hour()` |
+  | 5 | unemployment, profit rate history | crisis flag per county | `ThresholdCrisisDetector.is_crisis()` |
+  | 6 | EconomicConditions, ClassDistribution | Updated ClassDistribution | `ClassTransitionEngine.simulate_transitions()` |
+  | 7 | Updated ClassDistribution | Validated distribution (sum-to-one confirmed) | Invariant validator |
+  | 8 | s, v, c, K, phi_hour per county | DerivedRates, Phi_aggregate, TickSummary | `DerivedRateCalculator` |
+
 - **FR-004**: System MUST chain tick outputs to tick inputs: the state produced at tick t becomes the input state at tick t+1
-- **FR-005**: System MUST distinguish between quantities and coefficients: quantities (T, K, flows, unemployment, precarity indicators) update to new data values each tick; coefficients (gamma_basket, gamma_III, thresholds) update via alpha-smoothing formula: `smoothed[t] = smoothed[t-1] + alpha x (raw[t] - smoothed[t-1])`
+- **FR-005**: System MUST distinguish between quantities and coefficients. **Quantities** (update directly each tick): T (value tensor), K (capital stock — via perpetual inventory dynamics), unemployment_rate, u6_rate, pter_rate, nilf_rate, median_wage, employment, foreclosure_rate, bankruptcy_rate, eviction_rate, supply_chain_depth (computed fresh each tick). **Coefficients** (update via alpha-smoothing): gamma_basket, gamma_III, gamma_import. Smoothing formula: `smoothed[t] = smoothed[t-1] + alpha x (raw[t] - smoothed[t-1])`. This classification is exhaustive for all fields in CountyEconomicState and NationalTickParameters
 - **FR-006**: System MUST apply alpha-smoothing with a configurable smoothing parameter alpha (default: 0.3) for coefficient updates
-- **FR-007**: System MUST compute aggregate imperial rent (Phi_aggregate) per tick year as the sum of all county-level imperial rent flows
+
+  **Required Calculator Protocol Methods** (verified against Features 011-016 implementations):
+
+  | Calculator | Method | Signature | Returns |
+  |------------|--------|-----------|---------|
+  | MELTCalculator | `get_melt` | `(year: int)` | `float \| NoDataSentinel` |
+  | BasketVisibilityCalculator | `get_gamma_basket` | `(year: int, alpha: float \| None = None, gamma_import: float \| None = None)` | `tuple[float, bool]` |
+  | GammaIIICalculator | `compute` | `(year: int)` | `GammaIII \| NoDataSentinel` |
+  | CapitalStockCalculator | `get_K` | `(fips: str, year: int)` | `float \| NoDataSentinel` |
+  | CapitalStockCalculator | `get_metrics` | `(fips: str, year: int)` | `DerivedTensorMetrics \| NoDataSentinel` |
+  | ThroughputCalculator | `compute_metrics` | `(fips: str, year: int)` | `ThroughputMetrics \| NoDataSentinel` |
+  | ClassTransitionEngine | `simulate_transitions` | `(dist: ClassDistribution, conditions: EconomicConditions)` | `ClassDistribution \| NoDataSentinel` |
+  | ImperialRentCalculator | `compute_phi_hour` | `(wage: float, params: NationalParameters)` | `float` |
+
+- **FR-007**: System MUST compute aggregate imperial rent (Phi_aggregate) per tick year using the annualization formula: `Phi_aggregate = sum over all counties of (phi_hour x county_employment x 2080)`, where phi_hour is imperial rent per labor-hour (from `ImperialRentCalculator.compute_phi_hour()`), county_employment is total county employment, and 2080 is annual hours per worker (52 weeks x 40 hours)
 - **FR-008**: System MUST compute derived rates (profit rate r, organic composition OCC, exploitation rate e) per county per tick from the updated state
 - **FR-009**: System MUST validate class distribution invariant (shares non-negative, sum to 1.0 within tolerance 0.001) after every tick's class transition step
 - **FR-010**: During initialization from census data (historical validation mode), the system MUST propagate unavailability indicators through the pipeline: if a required input is unavailable, dependent outputs also return unavailability indicators with causal chain identifying the original missing source. During simulation ticks, all county values are produced by the engine and unavailability does not occur
 - **FR-011**: System MUST support multi-tick execution by iterating single ticks over a year range, accumulating state across ticks
 - **FR-012**: System MUST accept an initial simulation state with seed values for class distribution, capital stock, and initial coefficient values for the starting year
 - **FR-013**: System MUST integrate with Feature 016 class transition engine to update class distributions using EconomicConditions synthesized from the tick's computed state
-- **FR-014**: System MUST synthesize EconomicConditions (unemployment rate, median wage, MELT, phi_hour, foreclosure rate, bankruptcy rate, eviction rate, crisis flag) from the tick's computed state. During initialization, precarity indicators (U-6, PTER, NILF) are seeded from FRED/BLS data. During simulation ticks, precarity indicators are derived from class distribution and transition rates (e.g., lumpen share and precaritization rate inform U-6)
-- **FR-015**: System MUST detect crisis conditions based on economic indicators (profit rate decline, unemployment spike) and set the crisis flag consumed by the class transition engine's crisis amplifier
+- **FR-014**: System MUST synthesize EconomicConditions (unemployment rate, median wage, MELT, phi_hour, foreclosure rate, bankruptcy rate, eviction rate, crisis flag) from the tick's computed state. During initialization, precarity indicators (U-6, PTER, NILF) are seeded from FRED/BLS data. During simulation ticks, precarity indicators are derived from class distribution and transition rates using the following formulas:
+  - `U-6 ≈ lumpen_share + precaritization_rate x proletariat_share`
+  - `PTER ≈ precaritization_rate x proletariat_share x pter_fraction` (configurable, default 0.4)
+  - `NILF ≈ lumpen_share x nilf_fraction` (configurable, default 0.6)
+
+  Coefficients (pter_fraction, nilf_fraction) are traceable to BLS cross-tabulation ratios and are configurable for calibration. **Handoff rule**: The first simulation tick overwrites initialized FRED/BLS precarity values with derived values (no blending); from that point forward, precarity is entirely endogenous
+- **FR-015**: System MUST detect crisis conditions using configurable thresholds and set the crisis flag consumed by the class transition engine's crisis amplifier. A county enters crisis when either: (1) `unemployment_rate > unemployment_threshold` (configurable, default 0.08 / 8%), or (2) year-over-year profit rate decline exceeds `profit_rate_decline_threshold` (configurable, default 0.15 / 15%). Both thresholds are exposed as configuration parameters with documented defaults
 - **FR-016**: During initialization from census data, the system MUST carry forward the previous tick's class distribution unchanged for any county where data unavailability prevents transition computation. During simulation ticks, all counties produce values and this fallback is not needed
 - **FR-017**: System MUST use FIPS codes consistent with existing economics modules for all county-level identification
 - **FR-018**: System MUST handle the first tick specially: use raw computed values instead of smoothed coefficients (no previous value exists for smoothing)
@@ -155,6 +189,11 @@ ______________________________________________________________________
 - **FR-022**: The ServiceContainer MUST be extended with economics calculator fields (MELTCalculator, BasketVisibilityCalculator, GammaIIICalculator, CapitalStockCalculator, ThroughputCalculator, ClassTransitionEngine, ImperialRentCalculator) so that the tick dynamics System and other Systems can access them via dependency injection
 - **FR-023**: The tick dynamics System MUST store its computed state (national parameters, county economic state, tick summary) in the shared graph metadata so that downstream Systems in the causality chain can consume it
 - **FR-024**: The tick dynamics System MUST handle the timescale difference between annual tick computation and the engine's weekly tick cycle by gating full pipeline execution to year boundaries (every `weeks_per_year` engine ticks) and providing cached annual results on intermediate ticks
+- **FR-025**: During simulation ticks, if a required upstream calculator (Features 011-016) raises an exception, the tick pipeline MUST halt with an enhanced error context including the pipeline step number, calculator name, county FIPS code (if applicable), and the original exception. Calculator exceptions during simulation MUST NOT be silently converted to NoDataSentinel; NoDataSentinel is reserved for initialization mode only
+- **FR-026**: The county set MUST be fixed for the duration of a simulation run. The set of county FIPS codes is defined at initialization and MUST NOT change between ticks. No counties may be added or removed after the simulation begins
+- **FR-027**: During initialization from census data, the system MUST behave according to county success rate: 0% initialized = halt with diagnostic summary (per FR-020); 1-89% initialized = proceed with a warning listing all failed counties and their failure reasons; >=90% initialized = proceed normally. All thresholds are relative to the configured county set size
+- **FR-028**: When a multi-tick simulation reaches year 2040 (the upper bound of the year constraint) and the next tick would produce year 2041, the system MUST halt and return the final valid state at year 2040 with a diagnostic indicating expected termination at year boundary (not an error condition)
+- **FR-029**: When consecutive ticks produce near-identical state (all class distribution share changes < 0.001 across all counties), the system MUST continue execution normally. Economic equilibrium/convergence is an observable outcome, not an error or halt trigger. The TickSummary SHOULD note convergence detection for analysis purposes
 
 ### Key Entities
 
@@ -190,11 +229,12 @@ ______________________________________________________________________
 - Bourgeoisie and petit-bourgeoisie class shares are externally determined and relatively stable (per Feature 016 constraint); the tick dynamics engine primarily evolves LA/proletariat/lumpen shares
 - One tick of the economics pipeline equals one year of simulation time; however, the engine operates at weekly timescale (~52 engine ticks per year). The tick dynamics System gates its full pipeline execution to year boundaries and provides cached annual results on intermediate engine ticks
 - The MVP operates on 10-20 representative counties spanning diverse economic profiles (deindustrialized Rust Belt, financial hub, agricultural, tech corridor, etc.); the county set is configurable as part of the initial state and can scale to all ~3,100 US counties in future enhancements
-- Crisis detection uses a simple threshold-based approach for the MVP: unemployment exceeding a configurable threshold (default: 8%) or profit rate declining more than a configurable percentage (default: 15%) year-over-year
+- Crisis detection uses a simple threshold-based approach for the MVP (see FR-015 for normative requirements and configurable threshold defaults)
 
 ## Constraints
 
-- Tick update rules MUST execute in the specified dependency order; parallel execution within a tick is only permitted for independent steps at the same dependency level (e.g., county-level computations within step 3 can be parallelized across counties)
+- Tick update rules MUST execute in the specified dependency order. Explicit parallelization boundaries: Steps 3a (county-level state) and 3b (coefficient smoothing) MAY execute in parallel after Step 2 completes; within Step 3a, individual county computations MAY execute in parallel across counties. All other steps (1, 2, 4, 5, 6, 7, 8) MUST execute sequentially in order
+- SimulationTickState MUST be immutable (frozen Pydantic model with `ConfigDict(frozen=True)`). All state updates MUST produce new instances via `model_copy(update={...})`; in-place mutation is prohibited
 - The tick pipeline MUST NOT modify or re-compute data from prior ticks; each tick is a forward-only transformation
 - The tick MUST be a pure function of its inputs: given SimulationTickState at t and economic data for year t, it produces SimulationTickState at t+1 deterministically
 - Coefficient smoothing alpha MUST be in range (0, 1]; alpha=0 is not permitted as it would freeze coefficients permanently

@@ -136,6 +136,10 @@ During simulation ticks, precarity indicators are derived from class state:
 
 Coefficients (0.4, 0.6) are configurable and traceable to BLS cross-tabulation ratios.
 
+### D6. Precarity Handoff Rule
+
+The first simulation tick overwrites initialized FRED/BLS precarity values (U-6, PTER, NILF) with values derived from class distribution (D5 formulas). There is no blending, weighted transition, or calibration step — the handoff is a clean overwrite. Rationale: initialization values seed the simulation from external data, but once the simulation is running, precarity must be endogenous (derived from class state) to maintain internal consistency. Blending would create a hybrid regime where precarity partially depends on external data and partially on internal state, violating the principle that simulation ticks are self-contained.
+
 ## Complexity Tracking
 
 No constitution violations to justify.

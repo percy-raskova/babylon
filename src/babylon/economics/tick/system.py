@@ -36,6 +36,7 @@ from babylon.economics.tick.graph_bridge import (
     write_tick_state_to_graph,
 )
 from babylon.economics.tick.precarity import PrecarityDeriver
+from babylon.economics.tick.smoothing import CoefficientSmoother
 from babylon.economics.tick.types import (
     CountyEconomicState,
     NationalTickParameters,
@@ -75,6 +76,7 @@ class TickDynamicsSystem:
     def __init__(self) -> None:
         self._crisis_detector = ThresholdCrisisDetector()
         self._precarity_deriver = PrecarityDeriver()
+        self._smoother = CoefficientSmoother(alpha=0.3)
 
     @property
     def name(self) -> str:
@@ -282,17 +284,18 @@ class TickDynamicsSystem:
             if g3_result and not isinstance(g3_result, type(None)):
                 gamma_III_raw = g3_result.gamma_iii
 
-        # Apply smoothing if previous coefficients exist
-        gamma_basket = gamma_basket_raw
-        gamma_III = gamma_III_raw
-        if prev_coefficients is not None and prev_coefficients.is_initialized:
-            alpha = prev_coefficients.alpha
-            gamma_basket = prev_coefficients.gamma_basket + alpha * (
-                gamma_basket_raw - prev_coefficients.gamma_basket
-            )
-            gamma_III = prev_coefficients.gamma_III + alpha * (
-                gamma_III_raw - prev_coefficients.gamma_III
-            )
+        # Apply smoothing via CoefficientSmoother
+        is_init = prev_coefficients is not None and prev_coefficients.is_initialized
+        gamma_basket = self._smoother.smooth(
+            raw=gamma_basket_raw,
+            previous=prev_coefficients.gamma_basket if prev_coefficients else gamma_basket_raw,
+            is_initialized=is_init,
+        )
+        gamma_III = self._smoother.smooth(
+            raw=gamma_III_raw,
+            previous=prev_coefficients.gamma_III if prev_coefficients else gamma_III_raw,
+            is_initialized=is_init,
+        )
 
         tau_effective = tau * gamma_basket
 

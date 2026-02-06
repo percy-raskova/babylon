@@ -15,6 +15,7 @@ This package provides the Marxian value transformation layer:
 - throughput: Throughput position and domestic value geography (Feature 014)
 - gamma: Gamma visibility tensor for shadow subsidies (Feature 015)
 - dynamics: Class dynamics engine for modeling class position transitions (Feature 016)
+- tick: Simulation tick dynamics pipeline integrating Features 012-016 (Feature 017)
 
 Example:
     >>> from babylon.economics import MarxianHydrator, DepartmentMapper
@@ -52,6 +53,7 @@ See Also:
     :mod:`babylon.economics.throughput`: Throughput position details (Feature 014).
     :mod:`babylon.economics.gamma`: Gamma visibility tensor details (Feature 015).
     :mod:`babylon.economics.dynamics`: Class dynamics engine details (Feature 016).
+    :mod:`babylon.economics.tick`: Simulation tick dynamics pipeline (Feature 017).
 """
 
 # Adapters (protocols and implementations)
@@ -180,6 +182,22 @@ from babylon.economics.throughput import (
     validate_depth,
 )
 
+# Simulation Tick Dynamics (Feature 017)
+from babylon.economics.tick import (
+    CoefficientSmoother,
+    CountyEconomicState,
+    DefaultTickInitializer,
+    DerivedRateCalculator,
+    DerivedRates,
+    NationalTickParameters,
+    PrecarityDeriver,
+    SimulationTickState,
+    SmoothedCoefficients,
+    ThresholdCrisisDetector,
+    TickDynamicsSystem,
+    TickSummary,
+)
+
 __all__ = [
     # Protocols and implementations
     "BEADataSource",
@@ -271,4 +289,17 @@ __all__ = [
     "DefaultDispossessionCalculator",
     "DefaultSavingsRateSchedule",
     "HardcodedNationalDispossessionSource",
+    # Simulation Tick Dynamics (Feature 017)
+    "TickDynamicsSystem",
+    "SimulationTickState",
+    "NationalTickParameters",
+    "CountyEconomicState",
+    "SmoothedCoefficients",
+    "TickSummary",
+    "DerivedRates",
+    "CoefficientSmoother",
+    "DefaultTickInitializer",
+    "DerivedRateCalculator",
+    "PrecarityDeriver",
+    "ThresholdCrisisDetector",
 ]

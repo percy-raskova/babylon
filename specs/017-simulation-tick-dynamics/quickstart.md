@@ -111,17 +111,14 @@ services = ServiceContainer.create(
 ### Initialize from Census Data
 
 ```python
-from babylon.economics.tick import TickInitializer
+from babylon.economics.tick import DefaultTickInitializer, write_tick_state_to_graph
 
-# Seed initial state from census data
-initializer = TickInitializer(
-    melt_calculator=melt_calc,
-    capital_calculator=capital_calc,
-    throughput_calculator=throughput_calc,
-)
+# Seed initial state from census data via ServiceContainer
+initializer = DefaultTickInitializer()
 initial_state = initializer.initialize(
     year=2010,
     county_fips=["26163", "26125", "36061"],
+    services=services,  # ServiceContainer with calculator fields set
 )
 
 # Write initial state to graph for engine consumption

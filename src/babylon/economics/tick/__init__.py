@@ -19,5 +19,44 @@ See Also:
     :mod:`babylon.economics.dynamics`: Class dynamics engine (Feature 016)
 """
 
-# Public API stubs - populated in Phase 9 (T032)
-__all__: list[str] = []
+from babylon.economics.tick.crisis_detector import ThresholdCrisisDetector
+from babylon.economics.tick.derived_rates import DerivedRateCalculator
+from babylon.economics.tick.graph_bridge import (
+    TICK_DYNAMICS_KEY,
+    read_tick_state_from_graph,
+    write_tick_state_to_graph,
+)
+from babylon.economics.tick.initializer import DefaultTickInitializer
+from babylon.economics.tick.precarity import PrecarityDeriver
+from babylon.economics.tick.smoothing import CoefficientSmoother
+from babylon.economics.tick.system import TickDynamicsSystem
+from babylon.economics.tick.types import (
+    CountyEconomicState,
+    DerivedRates,
+    NationalTickParameters,
+    SimulationTickState,
+    SmoothedCoefficients,
+    TickSummary,
+)
+
+__all__ = [
+    # System
+    "TickDynamicsSystem",
+    # Types
+    "CountyEconomicState",
+    "DerivedRates",
+    "NationalTickParameters",
+    "SimulationTickState",
+    "SmoothedCoefficients",
+    "TickSummary",
+    # Graph Bridge
+    "TICK_DYNAMICS_KEY",
+    "read_tick_state_from_graph",
+    "write_tick_state_to_graph",
+    # Components
+    "CoefficientSmoother",
+    "DefaultTickInitializer",
+    "DerivedRateCalculator",
+    "PrecarityDeriver",
+    "ThresholdCrisisDetector",
+]

@@ -52,7 +52,10 @@ class TestWriteTickStateToGraph:
         assert node_data["tick_throughput_position"] == 0.90
         assert node_data["tick_supply_chain_depth"] == 2.1
         assert node_data["tick_phi_hour"] == 3.50
-        assert node_data["tick_crisis"] is False
+        assert node_data["tick_crisis_phase"] == "normal"
+        assert node_data["tick_crisis_duration"] == 0
+        assert node_data["tick_bifurcation_score"] == 0.0
+        assert node_data["tick_wage_compression"] == 0.0
         assert node_data["tick_unemployment_rate"] == 0.053
         assert node_data["tick_median_wage"] == 21.0
 
@@ -123,7 +126,7 @@ class TestReadTickStateFromGraph:
         assert recovered.capital_stock == original.capital_stock
         assert recovered.throughput_position == original.throughput_position
         assert recovered.phi_hour == original.phi_hour
-        assert recovered.crisis == original.crisis
+        assert recovered.crisis_state.phase == original.crisis_state.phase
 
     def test_round_trip_preserves_class_distribution(
         self,

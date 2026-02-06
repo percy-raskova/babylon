@@ -21,7 +21,10 @@ import networkx as nx
 
 from babylon.economics.dynamics.types import ClassDistribution
 from babylon.economics.tick.types import (
+    BifurcationRiskMetric,
     CountyEconomicState,
+    CrisisPhase,
+    CrisisState,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -68,7 +71,10 @@ def write_tick_state_to_graph(
         node_data["tick_throughput_position"] = county.throughput_position
         node_data["tick_supply_chain_depth"] = county.supply_chain_depth
         node_data["tick_phi_hour"] = county.phi_hour
-        node_data["tick_crisis"] = county.crisis
+        node_data["tick_crisis_phase"] = county.crisis_state.phase.value
+        node_data["tick_crisis_duration"] = county.crisis_state.crisis_duration
+        node_data["tick_bifurcation_score"] = county.bifurcation_risk.score
+        node_data["tick_wage_compression"] = county.crisis_state.cumulative_wage_compression
         node_data["tick_class_distribution"] = {
             "bourgeoisie": county.class_distribution.bourgeoisie_share,
             "petit_bourgeoisie": county.class_distribution.petit_bourgeoisie_share,
@@ -142,7 +148,14 @@ def read_tick_state_from_graph(
             employment=node_data.get("tick_employment", 100000.0),
             class_distribution=class_dist,
             phi_hour=node_data.get("tick_phi_hour", 0.0),
-            crisis=node_data.get("tick_crisis", False),
+            crisis_state=CrisisState(
+                phase=CrisisPhase(node_data.get("tick_crisis_phase", "normal")),
+                crisis_duration=node_data.get("tick_crisis_duration", 0),
+                cumulative_wage_compression=node_data.get("tick_wage_compression", 0.0),
+            ),
+            bifurcation_risk=BifurcationRiskMetric(
+                score=node_data.get("tick_bifurcation_score", 0.0),
+            ),
         )
 
     return SimulationTickState(

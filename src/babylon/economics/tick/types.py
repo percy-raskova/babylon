@@ -1,6 +1,6 @@
 """Type definitions for the Simulation Tick Dynamics pipeline.
 
-Feature: 017-simulation-tick-dynamics
+Feature: 017-simulation-tick-dynamics, 018-crisis-devaluation-mechanics
 Date: 2026-02-06
 
 Frozen Pydantic models for the per-tick state evolution pipeline:
@@ -10,6 +10,10 @@ Frozen Pydantic models for the per-tick state evolution pipeline:
     - SmoothedCoefficients: Alpha-smoothed coefficient history
     - TickSummary: Aggregate statistics after tick completion
     - DerivedRates: Per-county derived economic indicators
+    - CrisisPhase: 5-phase crisis lifecycle enum (Feature 018)
+    - CrisisState: Per-county crisis status (Feature 018)
+    - BifurcationRiskMetric: Political trajectory indicator (Feature 018)
+    - PhasedAmplificationProfile: Phase-dependent multipliers (Feature 018)
 
 See Also:
     :mod:`babylon.economics.dynamics.types`: ClassDistribution, EconomicConditions
@@ -18,9 +22,167 @@ See Also:
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.economics.dynamics.types import ClassDistribution
+
+
+class CrisisPhase(StrEnum):
+    """Crisis lifecycle phases for multi-period crisis detection.
+
+    Feature: 018-crisis-devaluation-mechanics (FR-003)
+
+    Crisis progresses through 5 phases based on consecutive periods
+    of profit rate decline below threshold:
+
+    Values:
+        NORMAL: No active crisis.
+        ONSET: Period N (first detection).
+        EARLY: Periods N+1 through N+4.
+        DEEP: Period N+5 onward.
+        RECOVERY: Profit rate above threshold for M consecutive periods.
+    """
+
+    NORMAL = "normal"
+    ONSET = "onset"
+    EARLY = "early"
+    DEEP = "deep"
+    RECOVERY = "recovery"
+
+
+class PhasedAmplificationProfile(BaseModel):
+    """Phase-dependent multipliers for class transition rates.
+
+    Feature: 018-crisis-devaluation-mechanics (FR-006)
+
+    Downward rates (dispossession, precaritization) are amplified during
+    crisis. Upward rates (accumulation, stabilization) are dampened.
+
+    Args:
+        dispossession_multiplier: LA -> Proletariat rate multiplier.
+        precaritization_multiplier: Proletariat -> Lumpen rate multiplier.
+        accumulation_multiplier: Proletariat -> LA rate multiplier (dampened).
+        stabilization_multiplier: Lumpen -> Proletariat rate multiplier (dampened).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    dispossession_multiplier: float = Field(
+        ..., gt=0, description="LA -> Proletariat rate multiplier"
+    )
+    precaritization_multiplier: float = Field(
+        ..., gt=0, description="Proletariat -> Lumpen rate multiplier"
+    )
+    accumulation_multiplier: float = Field(
+        ..., gt=0, le=1, description="Proletariat -> LA rate multiplier (dampened)"
+    )
+    stabilization_multiplier: float = Field(
+        ..., gt=0, le=1, description="Lumpen -> Proletariat rate multiplier (dampened)"
+    )
+
+
+class CrisisState(BaseModel):
+    """Per-county crisis status tracking the full lifecycle.
+
+    Feature: 018-crisis-devaluation-mechanics (FR-002, FR-003)
+
+    Immutable state object updated each crisis evaluation period.
+    Tracks phase, duration counters, and severity metrics.
+
+    Args:
+        phase: Current crisis lifecycle phase.
+        consecutive_below: Periods consecutively below r_threshold.
+        consecutive_recovery: Periods consecutively above r_threshold (during recovery).
+        crisis_start_period: Period index when crisis was first detected (None if NORMAL).
+        crisis_duration: Total periods in crisis (ONSET through DEEP).
+        peak_severity: Lowest profit rate observed during this crisis (None if NORMAL).
+        cumulative_wage_compression: Total wage compression applied [0, 1].
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    phase: CrisisPhase = Field(
+        default=CrisisPhase.NORMAL, description="Current crisis lifecycle phase"
+    )
+    consecutive_below: int = Field(
+        default=0, ge=0, description="Periods consecutively below r_threshold"
+    )
+    consecutive_recovery: int = Field(
+        default=0, ge=0, description="Periods consecutively above r_threshold in recovery"
+    )
+    crisis_start_period: int | None = Field(
+        default=None, description="Period when crisis first detected"
+    )
+    crisis_duration: int = Field(default=0, ge=0, description="Total periods in active crisis")
+    peak_severity: float | None = Field(
+        default=None, description="Lowest profit rate during this crisis"
+    )
+    cumulative_wage_compression: float = Field(
+        default=0.0, ge=0, le=1, description="Total wage compression applied"
+    )
+
+    @classmethod
+    def normal(cls) -> CrisisState:
+        """Factory for a clean NORMAL state with all counters zeroed.
+
+        Returns:
+            CrisisState in NORMAL phase with all counters at zero.
+        """
+        return cls(
+            phase=CrisisPhase.NORMAL,
+            consecutive_below=0,
+            consecutive_recovery=0,
+            crisis_start_period=None,
+            crisis_duration=0,
+            peak_severity=None,
+            cumulative_wage_compression=0.0,
+        )
+
+
+class BifurcationRiskMetric(BaseModel):
+    """Political trajectory indicator during crisis.
+
+    Feature: 018-crisis-devaluation-mechanics (FR-011)
+
+    Synthesizes solidarity topology, legitimation, and class burden
+    into a directional score [-1, +1] where -1 is revolutionary
+    and +1 is fascist.
+
+    Args:
+        score: Composite bifurcation score [-1, +1].
+        solidarity_density: Fraction of cross-class SOLIDARITY edges [0, 1].
+        legitimation: Inverse of aggregate agitation [0, 1].
+        class_burden_ratio: |delta_LA| / max(|delta_Prol|, epsilon) clamped [0, 1].
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    score: float = Field(default=0.0, ge=-1, le=1, description="Composite bifurcation score")
+    solidarity_density: float = Field(
+        default=0.0, ge=0, le=1, description="Cross-class SOLIDARITY edge fraction"
+    )
+    legitimation: float = Field(
+        default=1.0, ge=0, le=1, description="Inverse of aggregate agitation"
+    )
+    class_burden_ratio: float = Field(
+        default=0.0, ge=0, le=1, description="LA burden relative to proletariat"
+    )
+
+    @classmethod
+    def neutral(cls) -> BifurcationRiskMetric:
+        """Factory for a neutral metric (no crisis, no bifurcation risk).
+
+        Returns:
+            BifurcationRiskMetric with score=0, full legitimation.
+        """
+        return cls(
+            score=0.0,
+            solidarity_density=0.0,
+            legitimation=1.0,
+            class_burden_ratio=0.0,
+        )
 
 
 class NationalTickParameters(BaseModel):
@@ -117,7 +279,8 @@ class CountyEconomicState(BaseModel):
         employment: Total county employment.
         class_distribution: Five-class share distribution.
         phi_hour: Imperial rent per hour (Feature 013).
-        crisis: Crisis flag for this county-year.
+        crisis_state: Crisis lifecycle state (Feature 018).
+        bifurcation_risk: Political trajectory indicator (Feature 018).
 
     Example:
         >>> state = CountyEconomicState(
@@ -128,7 +291,6 @@ class CountyEconomicState(BaseModel):
         ...     pter_rate=0.04, nilf_rate=0.06,
         ...     median_wage=21.0, employment=500000.0,
         ...     class_distribution=dist, phi_hour=3.50,
-        ...     crisis=False,
         ... )
     """
 
@@ -147,7 +309,14 @@ class CountyEconomicState(BaseModel):
     employment: float = Field(..., ge=0, description="Total county employment")
     class_distribution: ClassDistribution = Field(..., description="Five-class share distribution")
     phi_hour: float = Field(..., ge=0, description="Imperial rent per hour")
-    crisis: bool = Field(default=False, description="Crisis flag for this county-year")
+    crisis_state: CrisisState = Field(
+        default_factory=CrisisState.normal,
+        description="Crisis lifecycle state for this county-year (Feature 018)",
+    )
+    bifurcation_risk: BifurcationRiskMetric = Field(
+        default_factory=BifurcationRiskMetric.neutral,
+        description="Political trajectory indicator (Feature 018)",
+    )
 
 
 class SmoothedCoefficients(BaseModel):
@@ -270,9 +439,13 @@ class SimulationTickState(BaseModel):
 
 
 __all__ = [
+    "BifurcationRiskMetric",
     "CountyEconomicState",
+    "CrisisPhase",
+    "CrisisState",
     "DerivedRates",
     "NationalTickParameters",
+    "PhasedAmplificationProfile",
     "SimulationTickState",
     "SmoothedCoefficients",
     "TickSummary",

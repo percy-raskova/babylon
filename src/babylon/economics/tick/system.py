@@ -40,6 +40,8 @@ from babylon.economics.tick.precarity import PrecarityDeriver
 from babylon.economics.tick.smoothing import CoefficientSmoother
 from babylon.economics.tick.types import (
     CountyEconomicState,
+    CrisisPhase,
+    CrisisState,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -249,7 +251,6 @@ class TickDynamicsSystem:
                     employment=data.get("tick_employment", 100_000.0),
                     class_distribution=dist,
                     phi_hour=data.get("tick_phi_hour", 0.0),
-                    crisis=data.get("tick_crisis", False),
                 )
         return states
 
@@ -367,7 +368,7 @@ class TickDynamicsSystem:
             median_wage = prev.median_wage if prev else 21.0
             employment = prev.employment if prev else 100_000.0
             phi_hour = prev.phi_hour if prev else 0.0
-            crisis = prev.crisis if prev else False
+            crisis_state = prev.crisis_state if prev else CrisisState.normal()
 
             # Preserve class distribution
             if prev is not None:
@@ -409,7 +410,7 @@ class TickDynamicsSystem:
                 employment=employment,
                 class_distribution=class_dist,
                 phi_hour=phi_hour,
-                crisis=crisis,
+                crisis_state=crisis_state,
             )
 
         return states
@@ -525,7 +526,7 @@ class TickDynamicsSystem:
             county_states: Current county states.
 
         Returns:
-            Updated county states with crisis flags.
+            Updated county states with crisis state.
         """
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
@@ -534,7 +535,8 @@ class TickDynamicsSystem:
                 current_profit_rate=None,  # Derived rates computed in Phase 8
                 previous_profit_rate=None,
             )
-            updated[fips] = county.model_copy(update={"crisis": crisis})
+            crisis_state = CrisisState(phase=CrisisPhase.DEEP) if crisis else CrisisState.normal()
+            updated[fips] = county.model_copy(update={"crisis_state": crisis_state})
         return updated
 
     def _simulate_transitions(
@@ -570,7 +572,7 @@ class TickDynamicsSystem:
                 foreclosure_rate=DEFAULT_FORECLOSURE_RATE,
                 bankruptcy_rate=DEFAULT_BANKRUPTCY_RATE,
                 eviction_rate=DEFAULT_EVICTION_RATE,
-                crisis=county.crisis,
+                crisis=county.crisis_state.phase != CrisisPhase.NORMAL,
             )
 
             # Clamp distribution year for transition engine

@@ -184,3 +184,89 @@ class TestDefinesIntegration:
         """
         defines = GameDefines()
         assert hasattr(defines, "timescale")
+
+
+# =============================================================================
+# CRISIS DEFINES TESTS (Feature 018, T018)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestCrisisDefines:
+    """Tests for CrisisDefines configuration (Feature 018).
+
+    CrisisDefines configures the multi-period crisis detector,
+    phased amplification, bifurcation risk, and wage compression.
+    """
+
+    def test_crisis_defines_exists(self) -> None:
+        """CrisisDefines exists on GameDefines."""
+        defines = GameDefines()
+        assert hasattr(defines, "crisis")
+
+    def test_crisis_period_ticks_default(self) -> None:
+        """Default crisis_period_ticks is 13 (quarterly, prime)."""
+        defines = GameDefines()
+        assert defines.crisis.crisis_period_ticks == 13
+
+    def test_r_threshold_default(self) -> None:
+        """Default r_threshold is 0.05 (5% profit rate)."""
+        defines = GameDefines()
+        assert defines.crisis.r_threshold == 0.05
+
+    def test_n_consecutive_default(self) -> None:
+        """Default n_consecutive is 3 periods."""
+        defines = GameDefines()
+        assert defines.crisis.n_consecutive == 3
+
+    def test_m_recovery_default(self) -> None:
+        """Default m_recovery is 2 periods."""
+        defines = GameDefines()
+        assert defines.crisis.m_recovery == 2
+
+    def test_r_cap_default(self) -> None:
+        """Default r_cap is 8 periods."""
+        defines = GameDefines()
+        assert defines.crisis.r_cap == 8
+
+    def test_hysteresis_coefficient_default(self) -> None:
+        """Default hysteresis_coefficient is 0.5."""
+        defines = GameDefines()
+        assert defines.crisis.hysteresis_coefficient == 0.5
+
+    def test_wage_compression_rate_default(self) -> None:
+        """Default wage_compression_rate is 0.02 (2% per DEEP period)."""
+        defines = GameDefines()
+        assert defines.crisis.wage_compression_rate == 0.02
+
+    def test_wage_compression_floor_ratio_default(self) -> None:
+        """Default wage_compression_floor_ratio is 0.8."""
+        defines = GameDefines()
+        assert defines.crisis.wage_compression_floor_ratio == 0.8
+
+    def test_bifurcation_weights_default(self) -> None:
+        """Default bifurcation weights are both 1.0."""
+        defines = GameDefines()
+        assert defines.crisis.bifurcation_solidarity_weight == 1.0
+        assert defines.crisis.bifurcation_burden_weight == 1.0
+
+    def test_class_burden_epsilon_default(self) -> None:
+        """Default class_burden_epsilon is 0.001."""
+        defines = GameDefines()
+        assert defines.crisis.class_burden_epsilon == 0.001
+
+    def test_bifurcation_event_threshold_default(self) -> None:
+        """Default bifurcation_event_threshold is 0.5."""
+        defines = GameDefines()
+        assert defines.crisis.bifurcation_event_threshold == 0.5
+
+    def test_dispossession_cascade_milestones_default(self) -> None:
+        """Default milestones are [0.05, 0.10, 0.15]."""
+        defines = GameDefines()
+        assert defines.crisis.dispossession_cascade_milestones == [0.05, 0.10, 0.15]
+
+    def test_crisis_defines_frozen(self) -> None:
+        """CrisisDefines is frozen."""
+        defines = GameDefines()
+        with pytest.raises((TypeError, ValueError)):
+            defines.crisis.r_threshold = 0.10  # type: ignore[misc]

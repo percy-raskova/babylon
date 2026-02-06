@@ -74,7 +74,6 @@ def _make_graph_with_state(year: int = 2015) -> nx.DiGraph[str]:
         employment=500_000.0,
         class_distribution=dist,
         phi_hour=3.50,
-        crisis=False,
     )
     params = NationalTickParameters(
         year=year,

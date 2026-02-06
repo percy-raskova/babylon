@@ -182,6 +182,10 @@ class EventType(StrEnum):
     CLASS_DECOMPOSITION = "class_decomposition"  # LA splits into enforcers + proletariat
     CONTROL_RATIO_CRISIS = "control_ratio_crisis"  # Prisoners > guards × capacity
     TERMINAL_DECISION = "terminal_decision"  # Revolution or genocide bifurcation
+    # Crisis and Devaluation Mechanics (Feature 018)
+    CRISIS_PHASE_TRANSITION = "crisis_phase_transition"  # Phase lifecycle change
+    DISPOSSESSION_CASCADE = "dispossession_cascade"  # LA share decline milestone
+    BIFURCATION_THRESHOLD = "bifurcation_threshold"  # |score| crosses threshold
 
 
 class OperationalProfile(StrEnum):

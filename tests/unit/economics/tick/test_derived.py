@@ -45,7 +45,6 @@ def _make_county(
         employment=employment,
         class_distribution=dist,
         phi_hour=phi_hour,
-        crisis=False,
     )
 
 

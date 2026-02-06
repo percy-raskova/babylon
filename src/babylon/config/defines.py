@@ -18,6 +18,102 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class CrisisDefines(BaseModel):
+    """Crisis and Devaluation Mechanics coefficients (Feature 018).
+
+    Configures the multi-period crisis detector, phased amplification,
+    bifurcation risk assessment, and wage compression mechanics.
+
+    See Also:
+        :mod:`babylon.economics.tick.types`: CrisisPhase, CrisisState
+        ``specs/018-crisis-devaluation-mechanics/spec.md``: FR-023
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Crisis detection (FR-001, FR-003)
+    crisis_period_ticks: int = Field(
+        default=13,
+        ge=1,
+        le=52,
+        description="Ticks per crisis evaluation period (13 = quarterly, prime for desync)",
+    )
+    r_threshold: float = Field(
+        default=0.05,
+        gt=0,
+        le=1,
+        description="Profit rate threshold below which crisis accumulates",
+    )
+    n_consecutive: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Consecutive below-threshold periods for crisis onset",
+    )
+    m_recovery: int = Field(
+        default=2,
+        ge=1,
+        le=20,
+        description="Consecutive above-threshold periods for recovery start",
+    )
+    r_cap: int = Field(
+        default=8,
+        ge=1,
+        le=52,
+        description="Maximum recovery duration (periods)",
+    )
+
+    # Hysteresis and wage compression (FR-009, FR-016, FR-017)
+    hysteresis_coefficient: float = Field(
+        default=0.5,
+        gt=0,
+        lt=1,
+        description="Recovery hysteresis: effective = normal * (1 - h^k)",
+    )
+    wage_compression_rate: float = Field(
+        default=0.02,
+        ge=0,
+        le=0.5,
+        description="Per-period wage compression during DEEP crisis",
+    )
+    wage_compression_floor_ratio: float = Field(
+        default=0.8,
+        ge=0,
+        le=1,
+        description="Wage floor as fraction of subsistence (below = accumulation halt)",
+    )
+
+    # Bifurcation risk (FR-011 through FR-014)
+    bifurcation_solidarity_weight: float = Field(
+        default=1.0,
+        ge=0,
+        description="Weight for solidarity density in bifurcation formula (w_s)",
+    )
+    bifurcation_burden_weight: float = Field(
+        default=1.0,
+        ge=0,
+        description="Weight for class burden ratio in bifurcation formula (w_b)",
+    )
+    class_burden_epsilon: float = Field(
+        default=0.001,
+        gt=0,
+        le=0.1,
+        description="Division-by-zero guard for class burden ratio",
+    )
+    bifurcation_event_threshold: float = Field(
+        default=0.5,
+        ge=0,
+        le=1,
+        description="|score| threshold for BIFURCATION_THRESHOLD event emission",
+    )
+
+    # Dispossession cascade milestones (FR-022)
+    dispossession_cascade_milestones: list[float] = Field(
+        default=[0.05, 0.10, 0.15],
+        description="LA share decline milestones for DISPOSSESSION_CASCADE events",
+    )
+
+
 class EconomyDefines(BaseModel):
     """Economic system coefficients."""
 
@@ -1022,6 +1118,7 @@ class GameDefines(BaseModel):
     throughout a simulation run.
 
     Structure follows the YAML file organization:
+    - crisis: Crisis detection and devaluation mechanics (Feature 018)
     - economy: Imperial rent extraction and value flow
     - survival: P(S|A) and P(S|R) survival calculus
     - solidarity: Consciousness transmission
@@ -1039,6 +1136,7 @@ class GameDefines(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    crisis: CrisisDefines = Field(default_factory=CrisisDefines)
     economy: EconomyDefines = Field(default_factory=EconomyDefines)
     survival: SurvivalDefines = Field(default_factory=SurvivalDefines)
     vitality: VitalityDefines = Field(default_factory=VitalityDefines)
@@ -1142,6 +1240,7 @@ class GameDefines(BaseModel):
         )
 
         return cls(
+            crisis=CrisisDefines(**data.get("crisis", {})),
             economy=EconomyDefines(**data.get("economy", {})),
             survival=SurvivalDefines(**data.get("survival", {})),
             vitality=VitalityDefines(**data.get("vitality", {})),

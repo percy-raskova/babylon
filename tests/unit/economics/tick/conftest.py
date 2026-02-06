@@ -286,7 +286,6 @@ def sample_county_state(stable_distribution: ClassDistribution) -> CountyEconomi
         employment=500_000.0,
         class_distribution=stable_distribution,
         phi_hour=3.50,
-        crisis=False,
     )
 
 

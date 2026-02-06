@@ -11,9 +11,13 @@ from pydantic import ValidationError
 
 from babylon.economics.dynamics.types import ClassDistribution
 from babylon.economics.tick.types import (
+    BifurcationRiskMetric,
     CountyEconomicState,
+    CrisisPhase,
+    CrisisState,
     DerivedRates,
     NationalTickParameters,
+    PhasedAmplificationProfile,
     SimulationTickState,
     SmoothedCoefficients,
     TickSummary,
@@ -333,3 +337,222 @@ class TestSimulationTickState:
         """Verify frozen model rejects mutation."""
         with pytest.raises(ValidationError):
             sample_tick_state.year = 2016  # type: ignore[misc]
+
+
+class TestCrisisPhase:
+    """Tests for CrisisPhase StrEnum (Feature 018, T014)."""
+
+    def test_all_phases_exist(self) -> None:
+        """Verify all 5 lifecycle phases are defined."""
+        assert CrisisPhase.NORMAL == "normal"
+        assert CrisisPhase.ONSET == "onset"
+        assert CrisisPhase.EARLY == "early"
+        assert CrisisPhase.DEEP == "deep"
+        assert CrisisPhase.RECOVERY == "recovery"
+
+    def test_enum_count(self) -> None:
+        """Verify exactly 5 phases."""
+        assert len(CrisisPhase) == 5
+
+    def test_definition_order(self) -> None:
+        """Verify phases are defined in lifecycle order."""
+        phases = list(CrisisPhase)
+        assert phases == [
+            CrisisPhase.NORMAL,
+            CrisisPhase.ONSET,
+            CrisisPhase.EARLY,
+            CrisisPhase.DEEP,
+            CrisisPhase.RECOVERY,
+        ]
+
+    def test_is_str_enum(self) -> None:
+        """Verify CrisisPhase values are strings for JSON serialization."""
+        for phase in CrisisPhase:
+            assert isinstance(phase, str)
+            assert isinstance(phase.value, str)
+
+
+class TestCrisisState:
+    """Tests for CrisisState frozen model (Feature 018, T015)."""
+
+    def test_normal_factory(self) -> None:
+        """Verify .normal() returns NORMAL with all counters zero."""
+        state = CrisisState.normal()
+        assert state.phase == CrisisPhase.NORMAL
+        assert state.consecutive_below == 0
+        assert state.consecutive_recovery == 0
+        assert state.crisis_start_period is None
+        assert state.crisis_duration == 0
+        assert state.peak_severity is None
+        assert state.cumulative_wage_compression == 0.0
+
+    def test_default_construction_is_normal(self) -> None:
+        """Verify default construction matches .normal()."""
+        state = CrisisState()
+        assert state.phase == CrisisPhase.NORMAL
+        assert state.consecutive_below == 0
+
+    def test_frozen_immutability(self) -> None:
+        """Verify CrisisState is frozen."""
+        state = CrisisState.normal()
+        with pytest.raises(ValidationError):
+            state.phase = CrisisPhase.DEEP  # type: ignore[misc]
+
+    def test_consecutive_below_non_negative(self) -> None:
+        """Verify consecutive_below ge=0."""
+        with pytest.raises(ValidationError, match="consecutive_below"):
+            CrisisState(consecutive_below=-1)
+
+    def test_crisis_duration_non_negative(self) -> None:
+        """Verify crisis_duration ge=0."""
+        with pytest.raises(ValidationError, match="crisis_duration"):
+            CrisisState(crisis_duration=-1)
+
+    def test_cumulative_wage_compression_bounds(self) -> None:
+        """Verify cumulative_wage_compression [0, 1]."""
+        with pytest.raises(ValidationError, match="cumulative_wage_compression"):
+            CrisisState(cumulative_wage_compression=-0.1)
+        with pytest.raises(ValidationError, match="cumulative_wage_compression"):
+            CrisisState(cumulative_wage_compression=1.1)
+
+    def test_valid_deep_crisis_state(self) -> None:
+        """Verify construction of a deep crisis state."""
+        state = CrisisState(
+            phase=CrisisPhase.DEEP,
+            consecutive_below=8,
+            consecutive_recovery=0,
+            crisis_start_period=10,
+            crisis_duration=8,
+            peak_severity=0.02,
+            cumulative_wage_compression=0.06,
+        )
+        assert state.phase == CrisisPhase.DEEP
+        assert state.crisis_duration == 8
+        assert state.peak_severity == 0.02
+
+    def test_model_copy_creates_new_state(self) -> None:
+        """Verify model_copy works for state transitions."""
+        state = CrisisState.normal()
+        updated = state.model_copy(update={"phase": CrisisPhase.ONSET, "consecutive_below": 3})
+        assert updated.phase == CrisisPhase.ONSET
+        assert updated.consecutive_below == 3
+        assert state.phase == CrisisPhase.NORMAL  # original unchanged
+
+
+class TestBifurcationRiskMetric:
+    """Tests for BifurcationRiskMetric frozen model (Feature 018, T016)."""
+
+    def test_neutral_factory(self) -> None:
+        """Verify .neutral() returns score=0, full legitimation."""
+        metric = BifurcationRiskMetric.neutral()
+        assert metric.score == 0.0
+        assert metric.solidarity_density == 0.0
+        assert metric.legitimation == 1.0
+        assert metric.class_burden_ratio == 0.0
+
+    def test_score_bounds(self) -> None:
+        """Verify score constrained to [-1, +1]."""
+        with pytest.raises(ValidationError, match="score"):
+            BifurcationRiskMetric(score=-1.1)
+        with pytest.raises(ValidationError, match="score"):
+            BifurcationRiskMetric(score=1.1)
+
+    def test_score_boundary_values(self) -> None:
+        """Verify score accepts exact boundary values."""
+        rev = BifurcationRiskMetric(score=-1.0)
+        assert rev.score == -1.0
+        fas = BifurcationRiskMetric(score=1.0)
+        assert fas.score == 1.0
+
+    def test_solidarity_density_bounds(self) -> None:
+        """Verify solidarity_density [0, 1]."""
+        with pytest.raises(ValidationError, match="solidarity_density"):
+            BifurcationRiskMetric(solidarity_density=-0.1)
+        with pytest.raises(ValidationError, match="solidarity_density"):
+            BifurcationRiskMetric(solidarity_density=1.1)
+
+    def test_legitimation_bounds(self) -> None:
+        """Verify legitimation [0, 1]."""
+        with pytest.raises(ValidationError, match="legitimation"):
+            BifurcationRiskMetric(legitimation=-0.1)
+        with pytest.raises(ValidationError, match="legitimation"):
+            BifurcationRiskMetric(legitimation=1.1)
+
+    def test_class_burden_ratio_bounds(self) -> None:
+        """Verify class_burden_ratio [0, 1]."""
+        with pytest.raises(ValidationError, match="class_burden_ratio"):
+            BifurcationRiskMetric(class_burden_ratio=-0.1)
+        with pytest.raises(ValidationError, match="class_burden_ratio"):
+            BifurcationRiskMetric(class_burden_ratio=1.1)
+
+    def test_frozen_immutability(self) -> None:
+        """Verify BifurcationRiskMetric is frozen."""
+        metric = BifurcationRiskMetric.neutral()
+        with pytest.raises(ValidationError):
+            metric.score = 0.5  # type: ignore[misc]
+
+
+class TestPhasedAmplificationProfile:
+    """Tests for PhasedAmplificationProfile frozen model (Feature 018, T017)."""
+
+    def test_valid_normal_profile(self) -> None:
+        """Verify normal phase profile (all 1.0)."""
+        profile = PhasedAmplificationProfile(
+            dispossession_multiplier=1.0,
+            precaritization_multiplier=1.0,
+            accumulation_multiplier=1.0,
+            stabilization_multiplier=1.0,
+        )
+        assert profile.dispossession_multiplier == 1.0
+
+    def test_valid_deep_profile(self) -> None:
+        """Verify deep crisis profile matches FR-006 defaults."""
+        profile = PhasedAmplificationProfile(
+            dispossession_multiplier=3.0,
+            precaritization_multiplier=3.5,
+            accumulation_multiplier=0.1,
+            stabilization_multiplier=0.2,
+        )
+        assert profile.dispossession_multiplier == 3.0
+        assert profile.accumulation_multiplier == 0.1
+
+    def test_dispossession_multiplier_must_be_positive(self) -> None:
+        """Verify dispossession_multiplier gt=0."""
+        with pytest.raises(ValidationError, match="dispossession_multiplier"):
+            PhasedAmplificationProfile(
+                dispossession_multiplier=0.0,
+                precaritization_multiplier=1.0,
+                accumulation_multiplier=1.0,
+                stabilization_multiplier=1.0,
+            )
+
+    def test_accumulation_multiplier_le_one(self) -> None:
+        """Verify accumulation_multiplier le=1 (dampening only)."""
+        with pytest.raises(ValidationError, match="accumulation_multiplier"):
+            PhasedAmplificationProfile(
+                dispossession_multiplier=1.0,
+                precaritization_multiplier=1.0,
+                accumulation_multiplier=1.1,
+                stabilization_multiplier=1.0,
+            )
+
+    def test_stabilization_multiplier_le_one(self) -> None:
+        """Verify stabilization_multiplier le=1 (dampening only)."""
+        with pytest.raises(ValidationError, match="stabilization_multiplier"):
+            PhasedAmplificationProfile(
+                dispossession_multiplier=1.0,
+                precaritization_multiplier=1.0,
+                accumulation_multiplier=1.0,
+                stabilization_multiplier=1.1,
+            )
+
+    def test_frozen_immutability(self) -> None:
+        """Verify PhasedAmplificationProfile is frozen."""
+        profile = PhasedAmplificationProfile(
+            dispossession_multiplier=1.0,
+            precaritization_multiplier=1.0,
+            accumulation_multiplier=1.0,
+            stabilization_multiplier=1.0,
+        )
+        with pytest.raises(ValidationError):
+            profile.dispossession_multiplier = 2.0  # type: ignore[misc]

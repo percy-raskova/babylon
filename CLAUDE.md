@@ -661,6 +661,8 @@ ADR0XX_descriptive_name:
 - In-memory cache (follows TensorRegistry pattern); no new database tables (013-melt-basket-visibility)
 - Python 3.12+ (existing stack) + Pydantic 2.x, SQLAlchemy 2.x (existing), ATUS infrastructure (Feature 005) (015-gamma-visibility-tensor)
 - In-memory computation; reads from existing ATUS/QCEW data sources (015-gamma-visibility-tensor)
+- Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), existing economics module infrastructure (Feature 013 ClassPosition, NoDataSentinel from tensor.py) (016-class-dynamics-engine)
+- In-memory computation; no new database tables. Reads from existing data sources via protocol pattern. (016-class-dynamics-engine)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

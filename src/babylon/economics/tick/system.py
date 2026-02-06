@@ -31,6 +31,7 @@ import networkx as nx
 
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
 from babylon.economics.tick.crisis_detector import ThresholdCrisisDetector
+from babylon.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
     write_tick_state_to_graph,
@@ -42,6 +43,7 @@ from babylon.economics.tick.types import (
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
+    TickSummary,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +79,7 @@ class TickDynamicsSystem:
         self._crisis_detector = ThresholdCrisisDetector()
         self._precarity_deriver = PrecarityDeriver()
         self._smoother = CoefficientSmoother(alpha=0.3)
+        self._rate_calculator = DerivedRateCalculator()
 
     @property
     def name(self) -> str:
@@ -158,12 +161,16 @@ class TickDynamicsSystem:
         # Step 7: Validate class distribution invariant
         self._validate_distributions(county_states)
 
-        # Assemble state (tick_summary added in Phase 8)
+        # Step 8: Compute derived rates and assemble TickSummary
+        tick_summary = self._compute_tick_summary(year, county_states, national_params)
+
+        # Assemble final state
         new_state = SimulationTickState(
             year=year,
             national_params=national_params,
             county_states=county_states,
             coefficients=coefficients,
+            tick_summary=tick_summary,
         )
 
         # Write to graph
@@ -627,6 +634,72 @@ class TickDynamicsSystem:
                     f"class shares sum to {total:.6f}, expected 1.0"
                 )
                 raise ValueError(msg)
+
+    def _compute_tick_summary(
+        self,
+        year: int,
+        county_states: dict[str, CountyEconomicState],
+        national_params: NationalTickParameters,
+    ) -> TickSummary:
+        """Step 8: Compute derived rates and assemble TickSummary.
+
+        Args:
+            year: Current year.
+            county_states: County states after transitions.
+            national_params: National parameters.
+
+        Returns:
+            TickSummary with aggregate statistics.
+        """
+        # Compute per-county derived rates
+        profit_rates: list[float] = []
+        occ_values: list[float] = []
+        exploitation_values: list[float] = []
+
+        for county in county_states.values():
+            rates = self._rate_calculator.compute_county_rates(county, national_params)
+            if rates.profit_rate is not None:
+                profit_rates.append(rates.profit_rate)
+            if rates.organic_composition is not None:
+                occ_values.append(rates.organic_composition)
+            if rates.exploitation_rate is not None:
+                exploitation_values.append(rates.exploitation_rate)
+
+        # Aggregate phi
+        phi_aggregate = self._rate_calculator.compute_phi_aggregate(county_states)
+
+        # Weighted-average class distribution
+        total_employment = sum(c.employment for c in county_states.values())
+        national_dist: dict[str, float] = {
+            "bourgeoisie": 0.0,
+            "petit_bourgeoisie": 0.0,
+            "labor_aristocracy": 0.0,
+            "proletariat": 0.0,
+            "lumpenproletariat": 0.0,
+        }
+        if total_employment > 0:
+            for county in county_states.values():
+                weight = county.employment / total_employment
+                d = county.class_distribution
+                national_dist["bourgeoisie"] += d.bourgeoisie_share * weight
+                national_dist["petit_bourgeoisie"] += d.petit_bourgeoisie_share * weight
+                national_dist["labor_aristocracy"] += d.labor_aristocracy_share * weight
+                national_dist["proletariat"] += d.proletariat_share * weight
+                national_dist["lumpenproletariat"] += d.lumpenproletariat_share * weight
+
+        clamped_year = min(max(year, 2007), 2040)
+        return TickSummary(
+            year=clamped_year,
+            counties_processed=len(county_states),
+            phi_aggregate=phi_aggregate,
+            national_melt=national_params.tau,
+            mean_profit_rate=sum(profit_rates) / len(profit_rates) if profit_rates else 0.0,
+            mean_occ=sum(occ_values) / len(occ_values) if occ_values else 0.0,
+            mean_exploitation_rate=(
+                sum(exploitation_values) / len(exploitation_values) if exploitation_values else 0.0
+            ),
+            national_class_distribution=national_dist,
+        )
 
 
 __all__ = ["TickDynamicsSystem"]

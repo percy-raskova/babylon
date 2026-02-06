@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from babylon.config.defines import GameDefines
+from babylon.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
@@ -173,15 +174,16 @@ _DEFAULT_SYSTEMS: list[System] = [
     VitalitySystem(),  # 1. Biological cost + death (The Drain + The Reaper)
     TerritorySystem(),  # 2. Land state updates (Carceral Geography)
     ProductionSystem(),  # 3. Value creation (The Labor)
-    SolidaritySystem(),  # 4. Organization calculation (Political Organization)
-    ImperialRentSystem(),  # 5. Value extraction (The Extraction)
-    DecompositionSystem(),  # 6. LA decomposition (Terminal Crisis Dynamics)
-    ControlRatioSystem(),  # 7. Guard:prisoner ratio (Terminal Crisis Dynamics)
-    MetabolismSystem(),  # 8. Environmental degradation (The Consequence)
-    SurvivalSystem(),  # 9. Risk assessment (Survival Calculus)
-    StruggleSystem(),  # 10. Action/Revolt (George Floyd Dynamic)
-    ConsciousnessSystem(),  # 11. Ideological drift (Bifurcation)
-    ContradictionSystem(),  # 12. Tension aggregation (The Reckoning)
+    TickDynamicsSystem(),  # 4. Tick dynamics (Economic State Evolution)
+    SolidaritySystem(),  # 5. Organization calculation (Political Organization)
+    ImperialRentSystem(),  # 6. Value extraction (The Extraction)
+    DecompositionSystem(),  # 7. LA decomposition (Terminal Crisis Dynamics)
+    ControlRatioSystem(),  # 8. Guard:prisoner ratio (Terminal Crisis Dynamics)
+    MetabolismSystem(),  # 9. Environmental degradation (The Consequence)
+    SurvivalSystem(),  # 10. Risk assessment (Survival Calculus)
+    StruggleSystem(),  # 11. Action/Revolt (George Floyd Dynamic)
+    ConsciousnessSystem(),  # 12. Ideological drift (Bifurcation)
+    ContradictionSystem(),  # 13. Tension aggregation (The Reckoning)
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)

@@ -290,7 +290,7 @@ class TestQuickstartExamples:
 
         assert classifier.classify(50.0, params) == ClassPosition.LABOR_ARISTOCRACY
         assert classifier.classify(25.0, params) == ClassPosition.PROLETARIAT
-        assert classifier.classify(8.0, params) == ClassPosition.SUBPROLETARIAT
+        assert classifier.classify(8.0, params) == ClassPosition.LUMPENPROLETARIAT
 
     def test_imperial_rent_computation(self) -> None:
         """Test imperial rent computation example from quickstart."""

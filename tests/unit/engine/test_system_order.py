@@ -23,15 +23,16 @@ class TestMaterialistCausalityOrder:
     1. Vitality (biological cost + death) - Dead entities don't work
     2. Territory (land state) - Land conditions affect production
     3. Production (value creation) - Value must exist before extraction
-    4. Solidarity (organization) - Organization affects bargaining
-    5. ImperialRent (extraction) - Landlord eats after harvest
-    6. Decomposition (LA crisis) - Class breakdown on super-wage crisis
-    7. ControlRatio (terminal decision) - Guard:prisoner ratio + bifurcation
-    8. Metabolism (environment) - Ecological residue of production
-    9. Survival (risk assessment) - P(S|A), P(S|R) from material state
-    10. Struggle (action/revolt) - Agency responds to survival odds
-    11. Consciousness (ideology drift) - Ideology responds to material
-    12. Contradiction (tension) - Final systemic accounting
+    4. TickDynamics (economic state) - Annual economic state evolution
+    5. Solidarity (organization) - Organization affects bargaining
+    6. ImperialRent (extraction) - Landlord eats after harvest
+    7. Decomposition (LA crisis) - Class breakdown on super-wage crisis
+    8. ControlRatio (terminal decision) - Guard:prisoner ratio + bifurcation
+    9. Metabolism (environment) - Ecological residue of production
+    10. Survival (risk assessment) - P(S|A), P(S|R) from material state
+    11. Struggle (action/revolt) - Agency responds to survival odds
+    12. Consciousness (ideology drift) - Ideology responds to material
+    13. Contradiction (tension) - Final systemic accounting
     """
 
     def test_system_order_is_materialist(self) -> None:
@@ -41,6 +42,7 @@ class TestMaterialistCausalityOrder:
             "vitality",  # VitalitySystem
             "Territory",  # TerritorySystem
             "production",  # ProductionSystem
+            "tick_dynamics",  # TickDynamicsSystem
             "Solidarity",  # SolidaritySystem
             "Imperial Rent",  # ImperialRentSystem
             "Decomposition",  # DecompositionSystem (Terminal Crisis)
@@ -130,6 +132,6 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must run last - systemic tension aggregates all effects"
         )
 
-    def test_all_twelve_systems_present(self) -> None:
-        """All 12 core systems must be registered."""
-        assert len(_DEFAULT_SYSTEMS) == 12, f"Expected 12 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_thirteen_systems_present(self) -> None:
+        """All 13 core systems must be registered."""
+        assert len(_DEFAULT_SYSTEMS) == 13, f"Expected 13 systems, got {len(_DEFAULT_SYSTEMS)}"

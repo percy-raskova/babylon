@@ -5,6 +5,14 @@
 **Status**: Draft
 **Input**: User description: "Create a specification for Crisis and Devaluation Mechanics. TRPF creates pressure toward crisis as profit rates decline. Crisis triggers accelerated class transitions (dispossession, precaritization). This is where the George Jackson bifurcation becomes relevant."
 
+## Clarifications
+
+### Session 2026-02-06
+
+- Q: Should unemployment remain as a crisis trigger alongside profit rate, or is profit rate the sole trigger? → A: Profit rate only. Unemployment is a lagging indicator — a downstream symptom of crisis (manifesting via the dispossession cascade) rather than a cause. The existing unemployment-based trigger in ThresholdCrisisDetector is removed; crisis detection is driven purely by TRPF dynamics.
+- Q: How is the legitimation index derived for bifurcation risk? → A: Inverse of aggregate agitation: `legitimation = 1 - mean(agitation)` across county nodes. Uses the existing `agitation` field from IdeologicalProfile. As material conditions worsen, agitation rises, legitimation drops, and bifurcation unlocks.
+- Q: How long does the recovery phase last before returning to normal? → A: Proportional to crisis duration with a cap: `recovery_duration = min(crisis_duration, R_cap)` where R_cap is configurable (default: 8 periods). Longer crises leave deeper structural scars requiring proportionally longer recovery.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Crisis Detection from Declining Profit Rates (Priority: P1)
@@ -113,7 +121,7 @@ ______________________________________________________________________
 
 - **FR-001**: System MUST detect crisis onset when the stock-based profit rate `r[t]` falls below a configurable threshold `r_threshold` for N consecutive annual periods, where N is configurable (default: 3 periods).
 - **FR-002**: System MUST track crisis duration as the number of consecutive periods where `r[t] < r_threshold`, persisted across ticks in the county economic state.
-- **FR-003**: System MUST classify crisis into phases based on duration: "normal" (no crisis), "onset" (period N), "early" (periods N+1 through N+4), "deep" (period N+5 onward), and "recovery" (profit rate above threshold for M consecutive periods, default M=2).
+- **FR-003**: System MUST classify crisis into phases based on duration: "normal" (no crisis), "onset" (period N), "early" (periods N+1 through N+4), "deep" (period N+5 onward), and "recovery" (profit rate above threshold for M consecutive periods, default M=2). Recovery phase duration is proportional to crisis duration: `recovery_duration = min(crisis_duration, R_cap)` where R_cap is configurable (default: 8 periods). After recovery_duration periods, phase transitions to "normal".
 - **FR-004**: System MUST emit a crisis phase-change event whenever a county transitions between phases, including the county identifier, previous phase, new phase, current profit rate, and crisis duration.
 - **FR-005**: System MUST handle missing profit rate data (None values from division-by-zero in derived rates) by neither counting toward nor resetting the consecutive-period accumulator.
 
@@ -138,7 +146,7 @@ ______________________________________________________________________
 
 - **FR-011**: System MUST compute a bifurcation risk metric during active crisis periods that indicates the trajectory toward revolutionary solidarity versus fascist reaction, expressed as a value in `[-1, +1]` where -1 is fully revolutionary and +1 is fully fascist.
 - **FR-012**: System MUST incorporate cross-class solidarity density into the bifurcation risk calculation, where higher cross-class solidarity edge density pushes the metric toward the revolutionary end (-1).
-- **FR-013**: System MUST incorporate legitimation index into the bifurcation risk calculation, where higher legitimation (belief in system recovery) dampens both extremes toward the center (0).
+- **FR-013**: System MUST incorporate legitimation index into the bifurcation risk calculation, computed as `legitimation = 1 - mean(agitation)` across nodes in the county, where higher legitimation dampens both extremes toward the center (0). Uses the existing `agitation` field from IdeologicalProfile.
 - **FR-014**: System MUST incorporate class burden distribution into the bifurcation risk calculation, where disproportionate labor aristocracy losses (LA share declining faster than proletariat share) push the metric toward the fascist end (+1).
 - **FR-015**: System MUST persist the bifurcation risk metric in the county economic state so that it is available to downstream systems (ConsciousnessSystem, StruggleSystem) in subsequent ticks.
 
@@ -151,10 +159,10 @@ ______________________________________________________________________
 #### Integration
 
 - **FR-019**: System MUST integrate with the existing `TickDynamicsSystem` pipeline, replacing the current Step 5 (crisis detection) and modifying Step 6 (class transitions) to use phase-dependent amplification.
-- **FR-020**: System MUST replace the existing `ThresholdCrisisDetector` with the new multi-period `CrisisDetector`, maintaining backward compatibility by accepting the same county-level inputs (unemployment rate, current profit rate, previous profit rate) plus new inputs (crisis history, profit rate time series).
+- **FR-020**: System MUST replace the existing `ThresholdCrisisDetector` with the new multi-period `CrisisDetector`. The new detector removes unemployment rate as a crisis trigger (unemployment is a lagging indicator, a symptom of crisis rather than a cause). Required inputs: current profit rate, crisis history (CrisisState), and profit rate time series. Unemployment-based detection logic is removed, not preserved.
 - **FR-021**: System MUST replace or extend the existing `DefaultCrisisAmplifier` with a `PhasedCrisisAmplifier` that consumes crisis phase information to select appropriate amplification multipliers.
 - **FR-022**: System MUST emit events of type `ECONOMIC_CRISIS` (existing) for crisis onset and new event types for phase transitions, dispossession cascade milestones, and bifurcation risk threshold crossings.
-- **FR-023**: All configurable parameters (r_threshold, N, M, amplification multipliers, hysteresis coefficient, wage compression rate) MUST be defined in `GameDefines` under a new `crisis` category.
+- **FR-023**: All configurable parameters (r_threshold, N, M, R_cap, amplification multipliers, hysteresis coefficient, wage compression rate) MUST be defined in `GameDefines` under a new `crisis` category.
 
 ### Key Entities
 
@@ -184,7 +192,7 @@ ______________________________________________________________________
 - **A-003**: The existing George Jackson Bifurcation implementation in ConsciousnessSystem continues to handle per-tick ideological routing. The bifurcation risk metric introduced here is a crisis-period summary indicator, not a replacement for per-tick routing.
 - **A-004**: Bourgeoisie and petit-bourgeoisie class shares are structurally fixed during crisis (their dynamics are governed by different mechanisms outside this feature's scope).
 - **A-005**: The phased amplification multipliers in FR-006 are initial defaults subject to calibration. The specification defines the mechanism, not the final tuned values.
-- **A-006**: Legitimation index is derived from existing simulation state (e.g., inverse of aggregate agitation, or a function of recent wage trajectory) rather than requiring new external data sources.
+- **A-006**: Legitimation index is derived as `legitimation = 1 - mean(agitation)` across county nodes, using the existing `agitation` field from IdeologicalProfile. No new external data sources required.
 
 ## Constraints
 

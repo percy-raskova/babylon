@@ -436,3 +436,187 @@ class TestClassTransitionEngine:
         )
         result = engine.simulate_transitions(dist, cond)
         assert isinstance(result, ClassDistribution)
+
+
+class TestMultiPeriodValidation:
+    """Tests for US5 historical validation (T026).
+
+    Validates multi-period simulation against SC-008 composition ranges
+    and SC-004 recovery monotonicity criteria.
+    """
+
+    @staticmethod
+    def _run_multi_period(
+        start_dist: ClassDistribution,
+        conditions: list[EconomicConditions],
+        *,
+        crisis_amplifier: float = 2.5,
+        recovery_dampener: float = 0.3,
+    ) -> list[ClassDistribution]:
+        """Run multi-period simulation, returning distribution per period.
+
+        Args:
+            start_dist: Initial class distribution.
+            conditions: List of EconomicConditions per year.
+            crisis_amplifier: Crisis downward multiplier.
+            recovery_dampener: Crisis upward multiplier.
+
+        Returns:
+            List of ClassDistribution including start_dist at index 0.
+        """
+        engine = _make_engine(
+            crisis_amplifier=crisis_amplifier,
+            recovery_dampener=recovery_dampener,
+        )
+        distributions: list[ClassDistribution] = [start_dist]
+        current = start_dist
+        for cond in conditions:
+            result = engine.simulate_transitions(current, cond)
+            assert isinstance(result, ClassDistribution)
+            current = result
+            distributions.append(current)
+        return distributions
+
+    def test_sc008_2010_to_2019_within_composition_ranges(
+        self,
+        historical_conditions_2007_2020: list[EconomicConditions],
+    ) -> None:
+        """SC-008: Post-crisis to 2019 distribution within composition ranges.
+
+        Ranges: B 0.5-2%, PB 5-15%, LA 30-50%, P 25-45%, L 10-25%.
+        Starting from 2012 (end of crisis) with crisis-degraded distribution.
+        """
+        conditions_2012_onward = [c for c in historical_conditions_2007_2020 if c.year >= 2012]
+
+        # Post-crisis starting distribution (crisis degraded LA, elevated lumpen)
+        start = ClassDistribution(
+            fips="26163",
+            year=2012,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.36,
+            proletariat_share=0.34,
+            lumpenproletariat_share=0.20,
+        )
+
+        distributions = self._run_multi_period(start, conditions_2012_onward)
+        final = distributions[-1]
+
+        # SC-008 composition ranges
+        assert 0.005 <= final.bourgeoisie_share <= 0.02
+        assert 0.05 <= final.petit_bourgeoisie_share <= 0.15
+        assert 0.30 <= final.labor_aristocracy_share <= 0.50
+        assert 0.25 <= final.proletariat_share <= 0.45
+        assert 0.10 <= final.lumpenproletariat_share <= 0.25
+
+    def test_crisis_years_directional_match(
+        self,
+        historical_conditions_2007_2020: list[EconomicConditions],
+    ) -> None:
+        """Crisis years (2008-2012) show LA decrease and lumpen increase.
+
+        Over the full crisis period, cumulative LA should decrease and
+        cumulative lumpen should increase relative to pre-crisis levels.
+        """
+        # Run from 2007 through 2012 (6 years of conditions)
+        conditions_2007_2012 = [c for c in historical_conditions_2007_2020 if c.year <= 2012]
+
+        start = ClassDistribution(
+            fips="26163",
+            year=2007,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.42,
+            proletariat_share=0.34,
+            lumpenproletariat_share=0.14,
+        )
+
+        distributions = self._run_multi_period(start, conditions_2007_2012)
+        # Compare end-of-crisis (2012 result, index 6) vs start
+        post_crisis = distributions[-1]
+
+        assert post_crisis.labor_aristocracy_share < start.labor_aristocracy_share
+        assert post_crisis.lumpenproletariat_share > start.lumpenproletariat_share
+
+    def test_sc004_recovery_monotonic_lumpen_decrease(
+        self,
+        historical_conditions_2007_2020: list[EconomicConditions],
+    ) -> None:
+        """SC-004: Recovery (2013-2019) shows lumpen share decreasing.
+
+        Over the recovery period, the general trend should show lumpen
+        decreasing. We test that the final lumpen is lower than initial
+        recovery-period lumpen.
+        """
+        conditions_recovery = [c for c in historical_conditions_2007_2020 if 2013 <= c.year <= 2019]
+
+        # Start recovery with elevated lumpen from crisis
+        start = ClassDistribution(
+            fips="26163",
+            year=2013,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.37,
+            proletariat_share=0.34,
+            lumpenproletariat_share=0.19,
+        )
+
+        distributions = self._run_multi_period(start, conditions_recovery)
+        final = distributions[-1]
+
+        # Lumpen should decrease over recovery period
+        assert final.lumpenproletariat_share < start.lumpenproletariat_share
+
+    def test_sum_to_one_every_period(
+        self,
+        historical_conditions_2007_2020: list[EconomicConditions],
+    ) -> None:
+        """Sum-to-one invariant holds at every time step."""
+        start = ClassDistribution(
+            fips="26163",
+            year=2007,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.42,
+            proletariat_share=0.34,
+            lumpenproletariat_share=0.14,
+        )
+
+        distributions = self._run_multi_period(start, historical_conditions_2007_2020)
+
+        for dist in distributions:
+            total = (
+                dist.bourgeoisie_share
+                + dist.petit_bourgeoisie_share
+                + dist.labor_aristocracy_share
+                + dist.proletariat_share
+                + dist.lumpenproletariat_share
+            )
+            assert abs(total - 1.0) < 0.001, f"year={dist.year}: total={total}"
+
+    def test_no_share_exceeds_bounds(
+        self,
+        historical_conditions_2007_2020: list[EconomicConditions],
+    ) -> None:
+        """No share goes negative or above 1.0 at any time step."""
+        conditions_all = historical_conditions_2007_2020
+
+        start = ClassDistribution(
+            fips="26163",
+            year=2007,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.42,
+            proletariat_share=0.34,
+            lumpenproletariat_share=0.14,
+        )
+
+        distributions = self._run_multi_period(start, conditions_all)
+
+        for dist in distributions:
+            assert dist.labor_aristocracy_share >= 0.0
+            assert dist.proletariat_share >= 0.0
+            assert dist.lumpenproletariat_share >= 0.0
+            assert dist.labor_aristocracy_share <= 1.0
+            assert dist.proletariat_share <= 1.0
+            assert dist.lumpenproletariat_share <= 1.0

@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # Default parameters
 _DEFAULT_WEALTH_THRESHOLD: float = 142_000.0
 _DEFAULT_EVICTION_WEIGHT: float = 0.5
-_DEFAULT_BASE_STABILIZATION: float = 0.10
+_DEFAULT_BASE_STABILIZATION: float = 0.15
 _MAX_ACCUMULATION_RATE: float = 0.08  # Warning upper bound
 
 

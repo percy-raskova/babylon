@@ -238,3 +238,174 @@ def mock_savings_source() -> MockSavingsRateSource:
 def mock_crisis_amplifier() -> MockCrisisAmplifier:
     """Passthrough crisis amplifier (no amplification)."""
     return MockCrisisAmplifier()
+
+
+# =============================================================================
+# Historical Data Fixtures (T027)
+# =============================================================================
+
+# Plausible national economic conditions 2007-2020.
+# Unemployment: BLS LAUS annual averages.
+# Wages: BLS OES national median approximations.
+# MELT/phi_hour: Plausible values from Feature 013 calibration range.
+# Dispossession rates: Match hardcoded_data.py source tables.
+# Crisis flags: Great Recession 2008-2012 per SC-002 definition.
+_HISTORICAL_CONDITIONS: dict[int, dict[str, float | bool]] = {
+    2007: {
+        "unemployment_rate": 0.046,
+        "median_wage": 40000.0,
+        "melt": 60.0,
+        "phi_hour": 3.30,
+        "foreclosure_rate": 0.018,
+        "bankruptcy_rate": 0.007,
+        "eviction_rate": 0.064,
+        "crisis": False,
+    },
+    2008: {
+        "unemployment_rate": 0.058,
+        "median_wage": 39000.0,
+        "melt": 59.0,
+        "phi_hour": 3.20,
+        "foreclosure_rate": 0.023,
+        "bankruptcy_rate": 0.008,
+        "eviction_rate": 0.065,
+        "crisis": True,
+    },
+    2009: {
+        "unemployment_rate": 0.093,
+        "median_wage": 37000.0,
+        "melt": 58.0,
+        "phi_hour": 3.00,
+        "foreclosure_rate": 0.028,
+        "bankruptcy_rate": 0.010,
+        "eviction_rate": 0.064,
+        "crisis": True,
+    },
+    2010: {
+        "unemployment_rate": 0.096,
+        "median_wage": 35000.0,
+        "melt": 58.0,
+        "phi_hour": 3.00,
+        "foreclosure_rate": 0.046,
+        "bankruptcy_rate": 0.013,
+        "eviction_rate": 0.070,
+        "crisis": True,
+    },
+    2011: {
+        "unemployment_rate": 0.089,
+        "median_wage": 36000.0,
+        "melt": 59.0,
+        "phi_hour": 3.10,
+        "foreclosure_rate": 0.035,
+        "bankruptcy_rate": 0.011,
+        "eviction_rate": 0.072,
+        "crisis": True,
+    },
+    2012: {
+        "unemployment_rate": 0.081,
+        "median_wage": 37000.0,
+        "melt": 60.0,
+        "phi_hour": 3.20,
+        "foreclosure_rate": 0.025,
+        "bankruptcy_rate": 0.009,
+        "eviction_rate": 0.070,
+        "crisis": True,
+    },
+    2013: {
+        "unemployment_rate": 0.074,
+        "median_wage": 39000.0,
+        "melt": 61.0,
+        "phi_hour": 3.30,
+        "foreclosure_rate": 0.015,
+        "bankruptcy_rate": 0.008,
+        "eviction_rate": 0.067,
+        "crisis": False,
+    },
+    2014: {
+        "unemployment_rate": 0.062,
+        "median_wage": 41000.0,
+        "melt": 62.0,
+        "phi_hour": 3.40,
+        "foreclosure_rate": 0.010,
+        "bankruptcy_rate": 0.007,
+        "eviction_rate": 0.066,
+        "crisis": False,
+    },
+    2015: {
+        "unemployment_rate": 0.053,
+        "median_wage": 43000.0,
+        "melt": 62.0,
+        "phi_hour": 3.50,
+        "foreclosure_rate": 0.006,
+        "bankruptcy_rate": 0.006,
+        "eviction_rate": 0.063,
+        "crisis": False,
+    },
+    2016: {
+        "unemployment_rate": 0.049,
+        "median_wage": 44000.0,
+        "melt": 63.0,
+        "phi_hour": 3.60,
+        "foreclosure_rate": 0.005,
+        "bankruptcy_rate": 0.006,
+        "eviction_rate": 0.061,
+        "crisis": False,
+    },
+    2017: {
+        "unemployment_rate": 0.044,
+        "median_wage": 45000.0,
+        "melt": 63.0,
+        "phi_hour": 3.60,
+        "foreclosure_rate": 0.005,
+        "bankruptcy_rate": 0.006,
+        "eviction_rate": 0.062,
+        "crisis": False,
+    },
+    2018: {
+        "unemployment_rate": 0.039,
+        "median_wage": 46000.0,
+        "melt": 64.0,
+        "phi_hour": 3.70,
+        "foreclosure_rate": 0.005,
+        "bankruptcy_rate": 0.006,
+        "eviction_rate": 0.062,
+        "crisis": False,
+    },
+    2019: {
+        "unemployment_rate": 0.037,
+        "median_wage": 48000.0,
+        "melt": 65.0,
+        "phi_hour": 3.80,
+        "foreclosure_rate": 0.004,
+        "bankruptcy_rate": 0.006,
+        "eviction_rate": 0.060,
+        "crisis": False,
+    },
+}
+
+
+@pytest.fixture
+def historical_conditions_2007_2020() -> list[EconomicConditions]:
+    """Historical economic conditions 2007-2019 for multi-period validation.
+
+    Returns EconomicConditions for each year from 2007 through 2019,
+    using plausible national values derived from BLS/BEA sources.
+    """
+    conditions: list[EconomicConditions] = []
+    for year in range(2007, 2020):
+        data = _HISTORICAL_CONDITIONS[year]
+        conditions.append(
+            EconomicConditions(
+                fips="26163",
+                year=year,
+                unemployment_rate=float(data["unemployment_rate"]),
+                median_wage=float(data["median_wage"]),
+                melt=float(data["melt"]),
+                phi_hour=float(data["phi_hour"]),
+                foreclosure_rate=float(data["foreclosure_rate"]),
+                bankruptcy_rate=float(data["bankruptcy_rate"]),
+                eviction_rate=float(data["eviction_rate"]),
+                crisis=bool(data["crisis"]),
+            )
+        )
+    return conditions

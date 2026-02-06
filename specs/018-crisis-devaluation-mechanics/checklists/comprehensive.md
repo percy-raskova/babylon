@@ -1,0 +1,64 @@
+# Comprehensive Requirements Quality Checklist: Crisis and Devaluation Mechanics
+
+**Purpose**: Full requirements quality audit of spec.md — testing whether the requirements are complete, clear, consistent, and measurable before proceeding to implementation planning.
+**Created**: 2026-02-06
+**Feature**: [spec.md](../spec.md)
+**Depth**: Standard (comprehensive, all domains)
+**Audience**: Author & reviewer (pre-plan gate)
+
+## Requirement Completeness
+
+- [ ] CHK001 - Is a default value specified for `r_threshold` (the profit rate crisis trigger)? Every other configurable parameter in FR-023 has a default, but r_threshold does not. [Gap, Spec §FR-001]
+- [ ] CHK002 - Is a default value specified for the wage compression floor ratio in FR-017 ("configurable floor relative to subsistence cost")? [Gap, Spec §FR-017]
+- [ ] CHK003 - Are the new EventType enum values enumerated for FR-022? The spec says "new event types for phase transitions, dispossession cascade milestones, and bifurcation risk threshold crossings" but does not name or count them. [Gap, Spec §FR-022]
+- [ ] CHK004 - Is the behavior of the bifurcation risk metric during non-crisis periods specified? FR-011 says it is computed "during active crisis periods" but does not define the value when crisis is inactive (0? None? Last crisis value persisted?). [Gap, Spec §FR-011]
+- [ ] CHK005 - Is the combination formula for bifurcation risk specified? FR-012, FR-013, and FR-014 each describe directional influence of individual inputs (solidarity, legitimation, class burden) but no requirement specifies how these three inputs are combined into the single [-1, +1] score — additive, multiplicative, weighted? [Gap, Spec §FR-011 through FR-014]
+- [ ] CHK006 - Is the consecutive-period counter reset behavior explicitly specified when a county exits crisis (enters recovery) and later re-enters crisis? Implicitly the counter resets, but no FR states this. [Gap, Spec §FR-002]
+- [ ] CHK007 - Does the CrisisState entity include a field for the profit rate time series (or rolling window) needed by the multi-period detector? FR-020 lists "profit rate time series" as a required input, but the CrisisState attributes in Key Entities do not include it. [Gap, Spec §Key Entities]
+- [ ] CHK008 - Is the "contributing factors breakdown" attribute of BifurcationRiskMetric defined with specific structure (dict, list, named fields)? [Clarity, Spec §Key Entities]
+
+## Requirement Clarity
+
+- [ ] CHK009 - Is the hysteresis recovery period index `k` in FR-009 defined with its starting value? If k=0 at recovery start, `(1 - h^0) = 0` means zero recovery in the first period. If k=1, half recovery immediately. This materially affects behavior. [Clarity, Spec §FR-009]
+- [ ] CHK010 - Is "cross-class solidarity edge density" in FR-012 defined precisely? Does "cross-class" mean edges between nodes of different ClassPosition, different SocialRole, or any SOLIDARITY edge regardless of class? [Clarity, Spec §FR-012]
+- [ ] CHK011 - Is the "class burden ratio" in FR-014 defined as rate of change (delta per period) or absolute level difference? Over what time window is "LA share declining faster than proletariat share" measured? [Clarity, Spec §FR-014]
+- [ ] CHK012 - Is wage compression in FR-016 compounding or linear? "Reducing the effective wage rate by 2% per period" could mean `wage * (1 - 0.02)^k` (compounding) or `wage * (1 - 0.02*k)` (linear). These diverge significantly over many periods. [Clarity, Spec §FR-016]
+- [ ] CHK013 - Are "simulated 2008-2012 conditions" in SC-002 defined with specific input parameters (profit rate trajectory, initial class distribution)? Without concrete inputs, SC-002 is not reproducibly testable. [Clarity, Spec §SC-002]
+
+## Requirement Consistency
+
+- [ ] CHK014 - Do the crisis phase names in US2 acceptance scenarios align with the phase definitions in FR-003? US2 AS1 says "early crisis (crisis active for 1-4 periods)" but FR-003 defines "onset" at period N and "early" at N+1 through N+4 — if N=3, "crisis active for 1-4 periods" spans both onset and early phases. [Consistency, Spec §US2 vs §FR-003]
+- [ ] CHK015 - Does SC-001 use the correct timescale unit? SC-001 says "activates within 1 tick of the Nth period" but the clarification establishes that the detector evaluates per crisis period (13 ticks), not per tick. Should this say "within 1 crisis period"? [Consistency, Spec §SC-001 vs §Clarifications]
+- [ ] CHK016 - Is the crisis evaluation frequency consistent between FR-001 and FR-019? FR-001 says "The detector evaluates once per crisis period" (quarterly, every 13 ticks) but FR-019 says changes are "confined to Step 5" of TickDynamicsSystem which runs annually (every 52 ticks). If the detector runs quarterly but its host pipeline runs annually, how is it invoked? [Conflict, Spec §FR-001 vs §FR-019]
+- [ ] CHK017 - Is the relationship between US4 phase "post-crisis" (mentioned in US4 header) and FR-003 phase list (which has "normal" but no "post-crisis") consistent? US4 mentions 5 phases including "post-crisis" but FR-003 defines only NORMAL, ONSET, EARLY, DEEP, RECOVERY. [Consistency, Spec §US4 vs §FR-003]
+
+## Acceptance Criteria Quality
+
+- [ ] CHK018 - Can SC-008 ("no measurable performance degradation") be objectively verified? What is the baseline measurement, what constitutes "measurable", and what tool/method is used? [Measurability, Spec §SC-008]
+- [ ] CHK019 - Are the acceptance scenario thresholds in US2 quantified? US2 AS1 says "precaritization rate is amplified" and "dispossession rate amplification is minimal" — are these measurable against the FR-006 multiplier table? [Measurability, Spec §US2]
+- [ ] CHK020 - Is SC-004's solidarity density threshold (60%, 20%) traceable to a requirement? No FR specifies these threshold values — they appear only in success criteria. [Traceability, Spec §SC-004]
+
+## Scenario Coverage
+
+- [ ] CHK021 - Is the scenario of a county with zero solidarity edges addressed? Bifurcation risk computation (FR-012) uses cross-class solidarity density — is the behavior defined when the denominator (total possible edges) or numerator (solidarity edges) is zero? [Edge Case, Gap]
+- [ ] CHK022 - Is the scenario of `crisis_period_ticks` not evenly dividing the annual cycle addressed? Default 13 divides evenly (52/13=4), but if configured differently (e.g., 10), there is a tick alignment issue. Should configuration validation enforce divisibility? [Edge Case, Gap]
+- [ ] CHK023 - Is the scenario of a county entering crisis for the first time (no prior CrisisState) specified? How is CrisisState initialized — all zeros, or a sentinel? [Edge Case, Gap]
+- [ ] CHK024 - Is the interaction between wage compression (FR-016) and the ImperialRentSystem's wage modifications specified? Both systems modify wage rates; which takes precedence, and are they additive or sequential? [Coverage, Gap]
+- [ ] CHK025 - Is the scenario where crisis deepens while bifurcation risk is near a threshold crossing addressed? Does the system emit a bifurcation threshold event, and if so, at what threshold(s)? FR-022 mentions "bifurcation risk threshold crossings" but no thresholds are defined. [Gap, Spec §FR-022]
+
+## State Machine Completeness
+
+- [ ] CHK026 - Are all valid phase transitions enumerated? The spec implies NORMAL->ONSET->EARLY->DEEP->RECOVERY->NORMAL, but are other transitions possible (e.g., EARLY->RECOVERY if profit rates recover before reaching DEEP)? [Completeness, Spec §FR-003]
+- [ ] CHK027 - Is the phase transition from ONSET directly to RECOVERY specified? If crisis onset is detected (period N) but profit rates recover at period N+1, does the county skip EARLY and go to RECOVERY, or revert to NORMAL? [Completeness, Spec §FR-003]
+- [ ] CHK028 - Is the interrupted recovery scenario (edge case #5) specified with enough precision to determine which phase the county returns to? "Crisis resumes from the current depth" — does this mean it returns to DEEP, or to the phase corresponding to total accumulated crisis duration? [Clarity, Spec §Edge Cases]
+
+## Dependencies & Assumptions
+
+- [ ] CHK029 - Is assumption A-002 (crisis evaluates at its own configurable interval) reconciled with constraint C-001 (changes confined to TickDynamicsSystem pipeline Steps 5 and 6)? If the pipeline runs annually but crisis evaluates quarterly, a new invocation mechanism is needed — contradicting C-001. [Conflict, Spec §A-002 vs §C-001]
+- [ ] CHK030 - Is the dependency on IdeologicalProfile's `agitation` field (used for legitimation index) documented in the Dependencies section? Currently only Features 012, 016, 017 are listed; the ConsciousnessSystem dependency for reading agitation is listed as "consumed by" but should also be "reads from". [Completeness, Spec §Dependencies]
+
+## Notes
+
+- CHK016 and CHK029 both flag the same fundamental issue: the crisis evaluation frequency (quarterly) conflicts with the TickDynamicsSystem pipeline frequency (annual). This is the highest-priority item to resolve before planning.
+- CHK005 (bifurcation combination formula) is the second highest priority — without it, the metric cannot be implemented or tested.
+- Items are numbered CHK001-CHK030 sequentially for cross-referencing.

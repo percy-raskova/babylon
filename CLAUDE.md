@@ -665,6 +665,8 @@ ADR0XX_descriptive_name:
 - In-memory computation; no new database tables. Reads from existing data sources via protocol pattern. (016-class-dynamics-engine)
 - Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), existing economics module infrastructure (Features 011-016) (017-simulation-tick-dynamics)
 - In-memory computation; no new database tables. Reads from existing data sources via protocol pattern during initialization. (017-simulation-tick-dynamics)
+- Python 3.12+ + Pydantic 2.x (frozen models), NetworkX 3.x (solidarity graph), existing economics module (Features 011-017) (018-crisis-devaluation-mechanics)
+- In-memory computation; no new database tables. CrisisState persists via CountyEconomicState in the graph bridge. (018-crisis-devaluation-mechanics)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

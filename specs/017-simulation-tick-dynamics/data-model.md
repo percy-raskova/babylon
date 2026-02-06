@@ -78,6 +78,7 @@ Per-county per-year economic snapshot. During initialization, fields are seeded 
 | pter_rate | float | ge=0, le=1 | Part-time for economic reasons |
 | nilf_rate | float | ge=0, le=1 | Not in labor force rate |
 | median_wage | float | ge=0 | County median hourly wage |
+| employment | float | ge=0 | Total county employment (used in Phi_aggregate annualization) |
 | class_distribution | ClassDistribution | required | Five-class share distribution |
 | phi_hour | float | ge=0 | Imperial rent per hour (from Feature 013) |
 | crisis | bool | | Crisis flag for this county-year |

@@ -5,7 +5,7 @@
 
 ## Summary
 
-Feature 017 integrates all prior economic calculators (Features 012-016) into a unified per-tick state evolution pipeline. The system operates in two modes: (1) initialization from census data (QCEW, BEA, ATUS, FRED/BLS) to seed initial state, and (2) simulation tick execution where the engine produces all county values deterministically. The core deliverable is a `TickSimulator` service that accepts `SimulationTickState` at year t and produces state at year t+1 via an 8-step dependency-ordered pipeline including national parameter computation, county-level economic state, class distribution transitions, and derived rate calculations. Alpha-smoothing provides stability for coefficients while quantities update directly.
+Feature 017 integrates all prior economic calculators (Features 012-016) into a unified per-tick state evolution pipeline. The system operates in two modes: (1) initialization from census data (QCEW, BEA, ATUS, FRED/BLS) to seed initial state, and (2) simulation tick execution where the engine produces all county values deterministically. The core deliverable is a `TickDynamicsSystem` conforming to the engine's System protocol that reads `SimulationTickState` at year t from the graph and produces state at year t+1 via an 8-step dependency-ordered pipeline including national parameter computation, county-level economic state, class distribution transitions, and derived rate calculations. Alpha-smoothing provides stability for coefficients while quantities update directly.
 
 ## Technical Context
 
@@ -31,7 +31,7 @@ Feature 017 integrates all prior economic calculators (Features 012-016) into a 
 | II.2 Primitives vs Derived | PASS | Tick recomputes all derived quantities (r, OCC, e) from primitives per tick; never stores derived across ticks |
 | II.4 Quantities vs Coefficients | PASS | Core design principle: quantities update directly, coefficients alpha-smooth (FR-005/FR-006) |
 | II.5 AI Observes, Never Controls | PASS | No AI involvement; purely mechanical computation |
-| II.6 State is Data, Engine is Transformation | PASS | SimulationTickState is immutable data; TickSimulator.tick() is pure transformation |
+| II.6 State is Data, Engine is Transformation | PASS | SimulationTickState is immutable data; TickDynamicsSystem.step() is pure transformation |
 | III.1 No Magic Constants | PASS | All coefficients trace to data sources or are configurable with documented defaults |
 | III.2 Falsifiability Required | PASS | Historical validation (SC-002) tests predictions against Fed SCF data |
 | III.4 Data Source Traceability | PASS | All data sources listed: QCEW, BEA, ATUS, FRED/BLS, Fed SCF. FRED series for precarity indicators identified in research.md |
@@ -121,11 +121,11 @@ All new fields are optional (default `None`) to preserve backward compatibility 
 
 ### D3. Dual State Representation
 
-SimulationTickState remains a frozen Pydantic model (`ConfigDict(frozen=True)`) for initialization and testing contexts. Within the engine System chain, the equivalent state is stored in the shared graph: Territory nodes hold county economic state, and `graph.graph["tick_dynamics"]` holds national parameters, smoothed coefficients, and tick summary. The TickDynamicsSystem reads from and writes to the graph following the same in-place mutation pattern as all other Systems. For standalone use (historical validation, testing), the system also supports a pure function interface: `tick(state_t) -> state_t_plus_1`.
+SimulationTickState remains a frozen Pydantic model (`ConfigDict(frozen=True)`) for initialization and testing contexts. Within the engine System chain, the equivalent state is stored in the shared graph: Territory nodes hold county economic state, and `graph.graph["tick_dynamics"]` holds national parameters, smoothed coefficients, and tick summary. The TickDynamicsSystem reads from and writes to the graph following the same in-place mutation pattern as all other Systems. A standalone pure function interface (`tick(state_t) -> state_t_plus_1`) is a potential future enhancement for historical validation and testing outside the engine, but is not in scope for the current implementation.
 
 ### D4. Initialization Separation
 
-Initialization from census data is a separate concern from tick execution. `TickInitializer` handles the one-time seeding, while `TickSimulator` handles ongoing tick-to-tick evolution. This separation means the tick simulator never needs to handle NoDataSentinel -- that's an initialization concern.
+Initialization from census data is a separate concern from tick execution. `TickInitializer` handles the one-time seeding, while `TickDynamicsSystem` handles ongoing tick-to-tick evolution. This separation means the tick dynamics system never needs to handle NoDataSentinel -- that's an initialization concern.
 
 ### D5. Precarity Derivation Formulas
 

@@ -26,11 +26,13 @@ The engine operates at weekly timescale (~52 ticks/year). The TickDynamicsSystem
 
 1. Load economic data (initialization only)
 2. Compute national parameters (tau, gamma_basket, gamma_III)
-3. Compute county-level state (K, pi, D per county)
+3. Two parallel branches after Step 2:
+   - **3a.** Compute county-level state (K, pi, D per county)
+   - **3b.** Apply coefficient smoothing (alpha-smooth gamma values)
 4. Compute imperial rent flows (phi_hour per county)
 5. Check dispossession triggers (crisis flag)
 6. Simulate class transitions (Feature 016 engine)
-7. Update class distribution (validate invariant)
+7. Validate sum-to-one invariant and commit class distribution
 8. Compute derived rates (r, OCC, e, Phi_aggregate)
 
 ### Coefficient vs Quantity

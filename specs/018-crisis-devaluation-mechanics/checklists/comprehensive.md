@@ -57,10 +57,17 @@
 - [x] CHK029 - Is assumption A-002 reconciled with constraint C-001? **RESOLVED**: A-002 and C-001 both updated to describe batch-within-step design. Step 5 internally iterates over quarterly boundaries within the annual pipeline run, keeping all crisis logic within the pipeline.
 - [ ] CHK030 - Is the dependency on IdeologicalProfile's `agitation` field (used for legitimation index) documented in the Dependencies section? Currently only Features 012, 016, 017 are listed; the ConsciousnessSystem dependency for reading agitation is listed as "consumed by" but should also be "reads from". [Completeness, Spec §Dependencies]
 
+## Dimensional Consistency (added 2026-02-06, post-checklist)
+
+- [ ] CHK031 - Which profit rate formula does the crisis detector consume — flow-based `s/(c+v)` from ValueTensor4x3 or stock-based `s/(K+v)` from DerivedRateCalculator? The spec (FR-001, A-001) says "stock-based profit rate" but the DerivedRateCalculator has a dimensional inconsistency: `s` and `v` are computed in dollars while `K` is in labor-hours. Must be reconciled before implementation. [Conflict, Code §derived_rates.py vs §capital_stock.py]
+- [ ] CHK032 - If the stock-based rate `s/(K+v)` is used (where `K ≈ 14.3 × c` at δ=0.07), the rate will be an order of magnitude lower than the flow-based rate. The `r_threshold` default of 0.05 (5%) was derived from Piketty data which aligns with the flow-based range (3-8%), not the stock-based range (~0.5%). If stock-based is chosen, `r_threshold` must be recalibrated. [Calibration, Spec §FR-001 vs Code §tensor.py]
+- [ ] CHK033 - Does the spec need to specify that all components of the profit rate formula (s, K or c, v) must be in the same unit system (either all labor-hours or all dollars)? Currently A-001 references "stock-based profit rate" without specifying dimensional requirements. [Clarity, Spec §A-001]
+
 ## Notes
 
 - ~~CHK016 and CHK029 both flag the same fundamental issue: the crisis evaluation frequency (quarterly) conflicts with the TickDynamicsSystem pipeline frequency (annual). This is the highest-priority item to resolve before planning.~~ **RESOLVED** via batch-within-step design in FR-019, A-002, C-001.
 - ~~CHK005 (bifurcation combination formula) is the second highest priority — without it, the metric cannot be implemented or tested.~~ **RESOLVED** with full additive formula in FR-011.
 - ~~CHK001 (r_threshold default) was the third priority.~~ **RESOLVED** with 0.05 (5%) default derived from WID/Piketty empirical analysis.
-- Items are numbered CHK001-CHK030 sequentially for cross-referencing.
-- 9 of 30 items resolved (CHK001, CHK002, CHK004, CHK005, CHK010, CHK011, CHK016, CHK021, CHK029). 21 items remain open for planning-phase resolution.
+- Items are numbered CHK001-CHK033 sequentially for cross-referencing.
+- 9 of 33 items resolved (CHK001, CHK002, CHK004, CHK005, CHK010, CHK011, CHK016, CHK021, CHK029). 24 items remain open for planning-phase resolution.
+- **CHK031-CHK033 are high priority**: The dimensional mismatch in the tick pipeline profit rate formula must be resolved before r_threshold can be implemented. See `docs/concepts/piketty-profit-rate.rst` §Dimensional Analysis for the full investigation and resolution options.

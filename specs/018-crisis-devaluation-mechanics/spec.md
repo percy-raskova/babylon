@@ -120,7 +120,7 @@ ______________________________________________________________________
 
 #### Crisis Detection
 
-- **FR-001**: System MUST detect crisis onset when the stock-based profit rate `r[t]` falls below a configurable threshold `r_threshold` for N consecutive crisis periods, where N is configurable (default: 3 periods). A crisis period is defined as `crisis_period_ticks` ticks (default: 13 ticks = 1 quarter). The detector evaluates once per crisis period, not every tick.
+- **FR-001**: System MUST detect crisis onset when the stock-based profit rate `r[t]` falls below a configurable threshold `r_threshold` (default: 0.05, i.e. 5%) for N consecutive crisis periods, where N is configurable (default: 3 periods). A crisis period is defined as `crisis_period_ticks` ticks (default: 13 ticks = 1 quarter). The detector evaluates once per crisis period, not every tick. The default `r_threshold` of 5% is derived from Piketty's rate of return framework (`r = capital_share / wealth_income_ratio`) applied to World Inequality Database data for the US (1970-2024): every significant recession since 2000 occurred when the computed `r` fell to or below 5.1%, with the P10 of the full historical distribution at 5.09%.
 - **FR-002**: System MUST track crisis duration as the number of consecutive crisis periods where `r[t] < r_threshold`, persisted across ticks in the county economic state.
 - **FR-003**: System MUST classify crisis into phases based on duration: "normal" (no crisis), "onset" (period N), "early" (periods N+1 through N+4), "deep" (period N+5 onward), and "recovery" (profit rate above threshold for M consecutive periods, default M=2). Recovery phase duration is proportional to crisis duration: `recovery_duration = min(crisis_duration, R_cap)` where R_cap is configurable (default: 8 periods). After recovery_duration periods, phase transitions to "normal".
 - **FR-004**: System MUST emit a crisis phase-change event whenever a county transitions between phases, including the county identifier, previous phase, new phase, current profit rate, and crisis duration.
@@ -145,10 +145,18 @@ ______________________________________________________________________
 
 #### Bifurcation Risk
 
-- **FR-011**: System MUST compute a bifurcation risk metric during active crisis periods that indicates the trajectory toward revolutionary solidarity versus fascist reaction, expressed as a value in `[-1, +1]` where -1 is fully revolutionary and +1 is fully fascist.
-- **FR-012**: System MUST incorporate cross-class solidarity density into the bifurcation risk calculation, where higher cross-class solidarity edge density pushes the metric toward the revolutionary end (-1).
-- **FR-013**: System MUST incorporate legitimation index into the bifurcation risk calculation, computed as `legitimation = 1 - mean(agitation)` across nodes in the county, where higher legitimation dampens both extremes toward the center (0). Uses the existing `agitation` field from IdeologicalProfile.
-- **FR-014**: System MUST incorporate class burden distribution into the bifurcation risk calculation, where disproportionate labor aristocracy losses (LA share declining faster than proletariat share) push the metric toward the fascist end (+1).
+- **FR-011**: System MUST compute a bifurcation risk metric during active crisis periods that indicates the trajectory toward revolutionary solidarity versus fascist reaction, expressed as a value in `[-1, +1]` where -1 is fully revolutionary and +1 is fully fascist. During non-crisis periods, the bifurcation risk metric is 0 (neutral). The combination formula is:
+
+  ```
+  raw_score = -w_s * solidarity_density + w_b * class_burden_ratio
+  dampened_score = raw_score * (1 - legitimation)
+  bifurcation = clamp(dampened_score, -1, +1)
+  ```
+
+  Where `w_s` (solidarity weight, default: 1.0) and `w_b` (burden weight, default: 1.0) are configurable in GameDefines, `solidarity_density` is [0, 1] (FR-012), `legitimation` is [0, 1] (FR-013), and `class_burden_ratio` is [0, +inf) normalized to [0, 1] via `min(ratio, 1.0)` (FR-014). High solidarity pushes revolutionary (negative), high LA burden pushes fascist (positive), and high legitimation dampens both toward zero. The additive structure ensures each input has independent, interpretable influence.
+- **FR-012**: System MUST incorporate cross-class solidarity density into the bifurcation risk calculation, defined as the fraction of possible SOLIDARITY edges between nodes of different ClassPosition that actually exist (range [0, 1]). Higher cross-class solidarity edge density pushes the metric toward the revolutionary end (-1). When the county has fewer than 2 distinct ClassPosition categories present, solidarity density is 0.
+- **FR-013**: System MUST incorporate legitimation index into the bifurcation risk calculation, computed as `legitimation = 1 - mean(agitation)` across nodes in the county (range [0, 1]), where higher legitimation dampens both extremes toward the center (0). Uses the existing `agitation` field from IdeologicalProfile.
+- **FR-014**: System MUST incorporate class burden distribution into the bifurcation risk calculation, where disproportionate labor aristocracy losses (LA share declining faster than proletariat share) push the metric toward the fascist end (+1). The class burden ratio is defined as `|delta_LA| / max(|delta_Prol|, epsilon)` where delta is the per-period share change and epsilon is a small constant (default: 0.001) to prevent division by zero. The ratio is clamped to [0, 1] via `min(ratio, 1.0)` before use in the combination formula.
 - **FR-015**: System MUST persist the bifurcation risk metric in the county economic state so that it is available to downstream systems (ConsciousnessSystem, StruggleSystem) in subsequent ticks.
 
 #### Wage Compression
@@ -159,11 +167,11 @@ ______________________________________________________________________
 
 #### Integration
 
-- **FR-019**: System MUST integrate with the existing `TickDynamicsSystem` pipeline, replacing the current Step 5 (crisis detection) and modifying Step 6 (class transitions) to use phase-dependent amplification.
+- **FR-019**: System MUST integrate with the existing `TickDynamicsSystem` pipeline, replacing the current Step 5 (crisis detection) and modifying Step 6 (class transitions) to use phase-dependent amplification. The TickDynamicsSystem pipeline runs annually (every 52 ticks). Within each annual pipeline invocation, Step 5 processes all quarterly crisis evaluations that fall within that annual cycle (4 evaluations at the default 13-tick crisis period). This batch-within-step design confines crisis logic to Step 5 while respecting the quarterly evaluation cadence: Step 5 iterates over each crisis period boundary that occurred since the last pipeline run, evaluating profit rates and advancing phase counters for each.
 - **FR-020**: System MUST replace the existing `ThresholdCrisisDetector` with the new multi-period `CrisisDetector`. The new detector removes unemployment rate as a crisis trigger (unemployment is a lagging indicator, a symptom of crisis rather than a cause). Required inputs: current profit rate, crisis history (CrisisState), and profit rate time series. Unemployment-based detection logic is removed, not preserved.
 - **FR-021**: System MUST replace or extend the existing `DefaultCrisisAmplifier` with a `PhasedCrisisAmplifier` that consumes crisis phase information to select appropriate amplification multipliers.
 - **FR-022**: System MUST emit events of type `ECONOMIC_CRISIS` (existing) for crisis onset and new event types for phase transitions, dispossession cascade milestones, and bifurcation risk threshold crossings.
-- **FR-023**: All configurable parameters (crisis_period_ticks, r_threshold, N, M, R_cap, amplification multipliers, hysteresis coefficient, wage compression rate) MUST be defined in `GameDefines` under a new `crisis` category.
+- **FR-023**: All configurable parameters MUST be defined in `GameDefines` under a new `crisis` category: `crisis_period_ticks` (default: 13), `r_threshold` (default: 0.05), `N` (default: 3), `M` (default: 2), `R_cap` (default: 8), amplification multipliers (per FR-006 table), hysteresis coefficient `h` (default: 0.5), wage compression rate (default: 0.02), wage compression floor ratio (default: 0.8, i.e. 80% of subsistence cost), bifurcation solidarity weight `w_s` (default: 1.0), bifurcation burden weight `w_b` (default: 1.0), and class burden epsilon (default: 0.001).
 
 ### Key Entities
 
@@ -189,7 +197,7 @@ ______________________________________________________________________
 ## Assumptions
 
 - **A-001**: The stock-based profit rate (`r = s / (K + v)`) from the DerivedRateCalculator is the primary crisis indicator. Flow-based profit rate is not used for crisis detection.
-- **A-002**: Crisis operates at a configurable period timescale (`crisis_period_ticks`, default: 13 ticks = quarterly), not the weekly engine tick timescale. The TickDynamicsSystem pipeline runs annually (every 52 ticks); the crisis detector evaluates at its own configurable interval. All period-based parameters (N, M, R_cap, phase durations) are measured in crisis periods.
+- **A-002**: Crisis operates at a configurable period timescale (`crisis_period_ticks`, default: 13 ticks = quarterly), not the weekly engine tick timescale. The TickDynamicsSystem pipeline runs annually (every 52 ticks); Step 5 of the pipeline batch-processes all quarterly crisis evaluations within each annual cycle (see FR-019). This preserves the constraint that all crisis logic lives within the pipeline (C-001) while respecting the quarterly cadence. All period-based parameters (N, M, R_cap, phase durations) are measured in crisis periods.
 - **A-003**: The existing George Jackson Bifurcation implementation in ConsciousnessSystem continues to handle per-tick ideological routing. The bifurcation risk metric introduced here is a crisis-period summary indicator, not a replacement for per-tick routing.
 - **A-004**: Bourgeoisie and petit-bourgeoisie class shares are structurally fixed during crisis (their dynamics are governed by different mechanisms outside this feature's scope).
 - **A-005**: The phased amplification multipliers in FR-006 are initial defaults subject to calibration. The specification defines the mechanism, not the final tuned values.
@@ -197,7 +205,7 @@ ______________________________________________________________________
 
 ## Constraints
 
-- **C-001**: Must integrate with the existing 8-step TickDynamicsSystem pipeline without restructuring the pipeline itself. Changes are confined to Step 5 (crisis detection) and Step 6 (class transitions) plus new derived outputs.
+- **C-001**: Must integrate with the existing 8-step TickDynamicsSystem pipeline without restructuring the pipeline itself. Changes are confined to Step 5 (crisis detection, including batch quarterly evaluation) and Step 6 (class transitions) plus new derived outputs. Step 5 may internally iterate over multiple crisis periods per annual pipeline invocation, but this is an implementation detail within the step, not a structural change to the pipeline.
 - **C-002**: Must maintain backward compatibility with existing `CrisisAmplifier` protocol. The new `PhasedCrisisAmplifier` must satisfy the existing protocol interface while adding phase-awareness.
 - **C-003**: All new state (CrisisState, BifurcationRiskMetric) must be serializable in the `CountyEconomicState` or `SimulationTickState` for cross-tick persistence.
 - **C-004**: Must not introduce new external data source dependencies. All inputs come from existing calculators and the simulation's own state history.

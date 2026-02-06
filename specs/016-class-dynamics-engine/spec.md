@@ -5,6 +5,13 @@
 **Status**: Draft
 **Input**: User description: "Create a specification for the Class Dynamics Engine - integrates wealth-based class position, imperial rent, throughput, and visibility into a unified dynamics engine that models how class positions change over time through accumulation, dispossession, precaritization, and stabilization"
 
+## Clarifications
+
+### Session 2026-02-05
+
+- Q: How should the MVP handle dispossession data sources (foreclosure, bankruptcy, eviction)? → A: Hardcoded national averages by year (e.g., 2008 foreclosure = 2.3%, 2015 = 0.5%) with county adapter protocol for future extension to real per-county data loaders
+- Q: What form should the savings rate function take? → A: Class-based step function with one savings rate per ClassPosition (e.g., LA=12%, proletariat=3%, lumpen=0%), adjusted by imperial rent subsidy
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Compute Wealth Accumulation Rate (Priority: P1)
@@ -103,9 +110,9 @@ ______________________________________________________________________
 
 ### Functional Requirements
 
-- **FR-001**: System MUST compute annual wealth accumulation rate as net income (wage minus consumption) multiplied by savings rate, where savings rate is a function of income level and imperial rent subsidy
+- **FR-001**: System MUST compute annual wealth accumulation rate as net income (wage minus consumption) multiplied by savings rate, where savings rate is a class-based step function: one base rate per ClassPosition (e.g., LA approximately 12%, proletariat approximately 3%, lumpen 0%), adjusted upward by imperial rent subsidy effect on consumption
 - **FR-002**: System MUST model four class transition pathways: LA-to-proletariat (dispossession), proletariat-to-LA (accumulation), proletariat-to-lumpen (precaritization), and lumpen-to-proletariat (stabilization)
-- **FR-003**: System MUST compute composite dispossession risk from foreclosure rate, bankruptcy rate, and eviction rate, with each component weighted by its class-transition relevance
+- **FR-003**: System MUST compute composite dispossession risk from foreclosure rate, bankruptcy rate, and eviction rate, with each component weighted by its class-transition relevance. MVP uses hardcoded national averages by year with a data source protocol enabling future per-county data loaders
 - **FR-004**: System MUST preserve class distribution invariant: all shares non-negative and sum to 1.0 after every transition simulation
 - **FR-005**: System MUST accept class distribution and economic conditions as inputs and produce updated class distribution as output for one simulation period
 - **FR-006**: System MUST distinguish between dispossession mechanisms: foreclosure affects primarily LA-to-proletariat, eviction affects primarily proletariat-to-lumpen, bankruptcy affects both pathways
@@ -122,8 +129,9 @@ ______________________________________________________________________
 
 - **ClassDistribution**: Five-class share distribution for a county-year (bourgeoisie, petit-bourgeoisie, labor aristocracy, proletariat, lumpenproletariat), constrained to sum to 1.0
 - **EconomicConditions**: Aggregate economic state for a county-year including unemployment rate, wage level, MELT, imperial rent, foreclosure rate, bankruptcy rate, eviction rate, and crisis flag
-- **TransitionRates**: Matrix of transition probabilities between class positions for one simulation period, distinguishing accumulation, dispossession, precaritization, and stabilization flows
+- **TransitionRates**: Sparse transition structure for the three dynamic classes (LA, proletariat, lumpenproletariat) covering four named pathways (accumulation, dispossession, precaritization, stabilization) per simulation period; bourgeoisie and petit-bourgeoisie rows/columns are zero (externally determined)
 - **AccumulationResult**: Computed wealth change rate for a given income/consumption/savings configuration, including imperial rent subsidy effect
+- **SavingsRateSchedule**: Class-based step function mapping each ClassPosition to a base savings rate, with imperial rent adjustment factor
 - **DispossessionRisk**: Composite risk assessment from multiple data sources (foreclosure, bankruptcy, eviction) with per-source availability tracking
 
 ## Success Criteria *(mandatory)*
@@ -146,8 +154,8 @@ ______________________________________________________________________
 - MELT calculator exists from Feature 013 for labor-time to price-space conversion
 - Gamma visibility tensor exists from Feature 015 for consumption basket subsidy quantification
 - Throughput position exists from Feature 014 for domestic geographic wage variation
-- Foreclosure, bankruptcy, and eviction data will be sourced from public datasets (Eviction Lab, US Courts, ATTOM/CoreLogic); initial implementation may use hardcoded representative values
-- Savings rate by income level available from Fed Survey of Consumer Finances (SCF)
+- MVP dispossession data uses hardcoded national averages by year (covering at minimum 2007-2020 to capture crisis and recovery dynamics), exposed behind a data source protocol that enables future replacement with real per-county data loaders (Eviction Lab, US Courts, ATTOM/CoreLogic)
+- Savings rate uses a class-based step function with one rate per ClassPosition, calibrated against Fed Survey of Consumer Finances (SCF) aggregate data
 - Bourgeoisie and petit-bourgeoisie shares are relatively stable and determined externally; the dynamics engine primarily models LA/proletariat/lumpen transitions
 - Transition rates are computed annually (one simulation period = one year)
 
@@ -175,3 +183,4 @@ ______________________________________________________________________
 - **FE-004**: Racial stratification of transition rates (differential foreclosure/eviction rates by race within counties)
 - **FE-005**: Integration with TRPF (Tendency of the Rate of Profit to Fall) system for endogenous crisis generation
 - **FE-006**: Household-level microsimulation (individual wealth trajectories rather than aggregate share flows)
+- **FE-007**: Real per-county dispossession data loaders (Eviction Lab API, US Courts bankruptcy, ATTOM/CoreLogic foreclosure) replacing hardcoded national averages

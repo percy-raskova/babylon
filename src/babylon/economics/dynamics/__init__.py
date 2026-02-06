@@ -27,6 +27,9 @@ See Also:
 from babylon.economics.dynamics.accumulation import (
     DefaultAccumulationCalculator,
 )
+from babylon.economics.dynamics.crisis import (
+    DefaultCrisisAmplifier,
+)
 from babylon.economics.dynamics.data_sources import (
     AccumulationCalculator,
     ClassTransitionEngine,
@@ -83,6 +86,7 @@ __all__ = [
     "HOURS_PER_YEAR",
     # Implementations
     "DefaultAccumulationCalculator",
+    "DefaultCrisisAmplifier",
     "DefaultDispossessionCalculator",
     # Validation
     "validate_class_shares",

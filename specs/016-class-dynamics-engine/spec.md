@@ -110,20 +110,22 @@ ______________________________________________________________________
 
 ### Functional Requirements
 
-- **FR-001**: System MUST compute annual wealth accumulation rate as net income (wage minus consumption) multiplied by savings rate, where savings rate is a class-based step function: one base rate per ClassPosition (e.g., LA approximately 12%, proletariat approximately 3%, lumpen 0%), adjusted upward by imperial rent subsidy effect on consumption
+- **FR-001**: System MUST compute annual wealth accumulation rate as net income (wage minus consumption) multiplied by savings rate, where savings rate is a class-based step function: one base rate per ClassPosition (defaults per research.md §4: LA 12%, proletariat 3%, lumpen 0%), adjusted upward by imperial rent subsidy effect on consumption (phi adjustment formula per research.md §4)
 - **FR-002**: System MUST model four class transition pathways: LA-to-proletariat (dispossession), proletariat-to-LA (accumulation), proletariat-to-lumpen (precaritization), and lumpen-to-proletariat (stabilization)
-- **FR-003**: System MUST compute composite dispossession risk from foreclosure rate, bankruptcy rate, and eviction rate, with each component weighted by its class-transition relevance. MVP uses hardcoded national averages by year with a data source protocol enabling future per-county data loaders
+- **FR-003**: System MUST compute composite dispossession risk from foreclosure rate, bankruptcy rate, and eviction rate, with each component weighted by its class-transition relevance (component weights per research.md §3). MVP uses hardcoded national averages by year with a data source protocol enabling future per-county data loaders
 - **FR-004**: System MUST preserve class distribution invariant: all shares non-negative and sum to 1.0 after every transition simulation
 - **FR-005**: System MUST accept class distribution and economic conditions as inputs and produce updated class distribution as output for one simulation period
 - **FR-006**: System MUST distinguish between dispossession mechanisms: foreclosure affects primarily LA-to-proletariat, eviction affects primarily proletariat-to-lumpen, bankruptcy affects both pathways
 - **FR-007**: System MUST integrate with existing wealth-based ClassPosition classification from Feature 013
 - **FR-008**: System MUST integrate imperial rent (from Feature 013) as a consumption subsidy that accelerates accumulation for workers with positive imperial rent flow
-- **FR-009**: System MUST support crisis amplification where transition rates increase non-linearly during crisis conditions
+- **FR-009**: System MUST support crisis amplification via multiplicative amplifier on transition rates during crisis conditions: downward rates (dispossession, precaritization) multiplied by a crisis factor, upward rates (accumulation, stabilization) multiplied by a recovery dampener (default amplifier=2.5, dampener=0.3; see research.md §5)
 - **FR-010**: System MUST return descriptive unavailability indicators (following NoDataSentinel pattern) when required data sources are missing, with distinct messages per data source
 - **FR-011**: System MUST validate computed transition rates against expected ranges and log warnings for anomalous values
 - **FR-012**: System MUST treat bourgeoisie and petit-bourgeoisie shares as externally determined (from Fed SCF wealth data); dynamics engine focuses on LA/proletariat/lumpen transitions
 - **FR-013**: System MUST compute transition rates as continuous flows (not discrete jumps) to maintain smooth class distribution evolution
 - **FR-014**: System MUST support per-county computation using FIPS codes consistent with existing economics modules
+- **FR-015**: System MUST compute precaritization rate (proletariat-to-lumpen) as a function of unemployment rate and eviction rate, where higher unemployment and eviction rates produce higher precaritization flow
+- **FR-016**: System MUST compute stabilization rate (lumpen-to-proletariat) as an inverse function of unemployment rate, where lower unemployment produces higher stabilization flow (re-entry into stable employment)
 
 ### Key Entities
 
@@ -139,9 +141,9 @@ ______________________________________________________________________
 ### Measurable Outcomes
 
 - **SC-001**: Class distribution remains stable (total share change less than 2% per period) under non-crisis economic conditions
-- **SC-002**: Crisis years (2008-2012 economic conditions) produce at least 2x the transition magnitude of stable years (2015-2018 conditions)
-- **SC-003**: Foreclosure rate shows positive correlation with LA-to-proletariat transition rate across counties
-- **SC-004**: Recovery periods show gradual upward mobility: lumpen share decreasing and proletariat/LA shares increasing over consecutive periods
+- **SC-002**: Crisis years (2008-2012 economic conditions) produce at least 2x the transition magnitude (measured as sum of absolute share changes across LA, proletariat, and lumpen) of stable years (2015-2018 conditions)
+- **SC-003**: Foreclosure rate shows positive correlation with LA-to-proletariat transition rate across years (2007-2020 national data); higher foreclosure years produce higher dispossession rates
+- **SC-004**: Recovery periods show upward mobility over consecutive periods: lumpen share decreases monotonically and proletariat or LA share increases, with per-period share changes within validation Warning bounds (see research.md §7)
 - **SC-005**: Output class distributions always sum to 1.0 (within tolerance of 0.001) and contain no negative shares
 - **SC-006**: Imperial rent subsidy produces measurable difference in accumulation rate: workers with positive imperial rent accumulate faster than equivalent workers without, validated via synthetic test scenarios
 - **SC-007**: All edge cases (missing data, zero shares, extreme values) handled without system errors

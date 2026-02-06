@@ -345,14 +345,25 @@ For crisis detection, the simulation uses Piketty's formulation because:
    (capital share and wealth-to-income ratio are derived quantities)
 2. It captures the financialization dynamics that characterize modern
    crises (asset bubbles inflate :math:`\beta`, suppressing *r*)
-3. It aligns with the empirical WID dataset, enabling validation
-   against 50+ years of observed data
+3. It aligns with the empirical WID dataset, providing a reference
+   framework for threshold calibration (see :ref:`calibration-epistemology`)
 
 The Marxist profit rate remains central to the simulation's
 :doc:`imperial-rent` calculations and the
 :py:func:`~babylon.formulas.trpf.calculate_rate_of_profit` formula.
 The two rates are complementary: Piketty's *r* detects macro-level
 crisis onset, while the Marxist *r'* drives micro-level class dynamics.
+
+.. note::
+
+   The historical Marxist range (12--22%) cited above is from academic
+   studies using BEA data with different decomposition methods. Babylon's
+   :class:`~babylon.economics.tensor.ValueTensor4x3` produces lower rates
+   (3--8%) because its BEA-calibrated ``sv_ratio`` values (0.10--0.15 at
+   the department level) allocate less surplus value per unit of variable
+   capital than classical Marxist estimates. This is not an error --- it
+   reflects specific calibration choices documented in
+   :ref:`calibration-epistemology`.
 
 Dimensional Analysis: Hours, Dollars, and the MELT Bridge
 ---------------------------------------------------------
@@ -379,11 +390,12 @@ identical. The 5% threshold derived from dollar-denominated WID data
 applies equally to an hours-denominated tensor --- **provided all
 components of the formula use the same unit system**.
 
-This is confirmed empirically: the
-:class:`~babylon.economics.tensor.ValueTensor4x3` computes
+The :class:`~babylon.economics.tensor.ValueTensor4x3` computes
 ``profit_rate = total_s / (total_c + total_v)`` entirely in labor-hours,
-and validates against Piketty's 3--8% bounds in integration tests
-(``PIKETTY_R_MIN = 0.03``, ``PIKETTY_R_MAX = 0.08``).
+and its integration tests assert results fall within Piketty's 3--8%
+bounds (``PIKETTY_R_MIN = 0.03``, ``PIKETTY_R_MAX = 0.08``). However,
+this convergence requires careful interpretation --- see
+:ref:`calibration-epistemology` below.
 
 Two Profit Rates in the Codebase
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -547,11 +559,105 @@ This calibration question is deferred to Feature 018 implementation
 planning, where empirical validation against hydrated county data will
 determine the correct rate formula and threshold pairing.
 
+.. _calibration-epistemology:
+
+Calibration Epistemology
+------------------------
+
+The simulation's profit rates fall within Piketty's 3--8% empirical
+bounds. This section explains *why* they do so, distinguishing between
+independent empirical convergence and calibrated conformance.
+
+Calibration History
+^^^^^^^^^^^^^^^^^^^
+
+The calibration of Babylon's economic tensor has gone through two phases:
+
+**v1.0.0 (placeholder ratios)**: Initial ``sv_ratio`` values
+(surplus-to-variable capital ratio) were set to ~0.50 across all
+departments, producing profit rates above 50%. These were acknowledged
+as unrealistic placeholders.
+
+**v1.1.0 (BEA/CEX calibration)**: The ``sv_ratio`` and ``cv_ratio``
+parameters were rederived from Bureau of Economic Analysis Use Tables
+(TII105-A for intermediate inputs, TVA113-A for value added) and
+Consumer Expenditure Survey data. This brought profit rates into the
+3--8% range.
+
+The production configuration (``naics_to_dept.yaml``) explicitly states
+its calibration target::
+
+   # Target: Profit rate r = s/(c+v) within Piketty's 3-8% empirical bounds
+
+This transparency is intentional: the department-level default ratios
+**were** calibrated to produce Piketty-range rates.
+
+What Is and Is Not Independent
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Independent (bottom-up) elements**:
+
+- Sector-level ratios are derived from BEA data without regard for the
+  Piketty target. Individual sectors freely violate the bounds: Mining
+  produces ~11% profit rates, Real Estate ~38%, Healthcare ~3.8%. These
+  reflect the actual structure of each industry's cost decomposition.
+- The NAICS-to-department mapping follows BEA industry classifications,
+  not any outcome target.
+- Employment allocations come from QCEW (Quarterly Census of Employment
+  and Wages) data, which is entirely external to the calibration.
+
+**Calibrated (top-down) elements**:
+
+- Department-level default ``sv_ratio`` values (Dept I: 0.12, Dept IIa:
+  0.10, Dept IIb: 0.15, Dept III: 0.10) were chosen to produce aggregate
+  profit rates within the Piketty range when applied to a representative
+  county's employment mix.
+- The Piketty guardrail tests (``PIKETTY_R_MIN = 0.03``,
+  ``PIKETTY_R_MAX = 0.08``) enforce this conformance in CI, rejecting
+  parameter sets that produce out-of-range rates.
+
+**The mixed strategy**: When a county's NAICS employment data maps to
+specific sectors with BEA-derived ratios, those ratios dominate
+(independent). When employment maps to sectors without specific
+overrides, the department defaults apply (calibrated). The aggregate
+rate for a typical county reflects a weighted blend of both.
+
+Epistemological Status
+^^^^^^^^^^^^^^^^^^^^^^
+
+The convergence between the simulation's profit rates and Piketty's
+empirical range is **neither coincidental nor fully independent**:
+
+- It is **not coincidental** because both the BEA data (used for
+  calibration) and Piketty's WID data (used for the target) measure the
+  same underlying economy through national accounts. Two lenses on the
+  same reality should produce compatible results.
+- It is **not fully independent** because the department-level defaults
+  were tuned to the target range. A researcher who calibrated ``sv_ratio``
+  to produce 15% profit rates could equally claim "Marxist validation"
+  against classical estimates.
+- It is **defensible** because the sector-level ratios --- which are
+  independently derived --- cluster around the same range when
+  employment-weighted, suggesting the department defaults are not
+  forcing an unnatural outcome but approximating what the BEA data
+  produces at finer granularity.
+
+The honest characterization: Babylon's profit rates are **empirically
+grounded** (rooted in BEA national accounts data) and
+**Piketty-constrained** (department defaults calibrated to the target
+range), but they are not an **independent prediction** that can be cited
+as confirmation of theory. The Piketty bounds function as a reality
+check --- a guardrail ensuring the calibration stays within observed
+economic parameters --- not as a test of the underlying Marxist
+decomposition.
+
 Corroborating Sources
 ---------------------
 
-The 5% threshold was cross-validated against multiple independent
-analyses:
+The 5% threshold is corroborated by independently published profit rate
+analyses. These sources use different methodologies and data periods,
+providing triangulation rather than independent validation of the
+simulation's calibration:
 
 **Fred Moseley** (1947--1977): Documented US profit rate decline from
 22% to 12%, establishing the postwar compression trajectory. The 12%

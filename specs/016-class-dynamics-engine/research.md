@@ -97,6 +97,24 @@ This is NOT a general Markov chain; it's a constrained flow network with specifi
 | 2019 | 6.0% | Stable |
 | 2020 | 2.0% | Moratorium |
 
+### §3a. Composite Dispossession Weighting
+
+The composite dispossession risk combines three data sources into pathway-specific rates. Each source maps to specific class transitions per FR-006:
+
+| Source | Primary Pathway | Weight in LA→P rate | Weight in P→L rate |
+|--------|----------------|--------------------|--------------------|
+| Foreclosure | LA → Proletariat | 0.6 | 0.1 |
+| Bankruptcy | Both pathways | 0.3 | 0.3 |
+| Eviction | Proletariat → Lumpen | 0.1 | 0.6 |
+
+**LA→Proletariat (dispossession) rate**: `0.6 * foreclosure_rate + 0.3 * bankruptcy_rate + 0.1 * eviction_rate`
+
+**P→Lumpen component from dispossession**: `0.1 * foreclosure_rate + 0.3 * bankruptcy_rate + 0.6 * eviction_rate`
+
+Note: The P→Lumpen dispossession component feeds into precaritization alongside unemployment (see FR-015). The DispossessionCalculator outputs both pathway-specific rates.
+
+**Rationale**: Foreclosure primarily destroys accumulated home equity (the wealth that distinguishes LA from proletariat). Eviction primarily affects renters who are already proletariat, pushing them into labor market exclusion. Bankruptcy affects both pathways depending on the debtor's initial position. Weights are calibrated heuristics subject to refinement with per-county data (FE-007).
+
 ## 4. Savings Rate Schedule
 
 **Decision**: Class-based step function with one base rate per ClassPosition.
@@ -127,6 +145,8 @@ This is NOT a general Markov chain; it's a constrained flow network with specifi
 - Downward rates (dispossession, precaritization) multiplied by crisis_amplifier (default 2.5)
 - Upward rates (accumulation, stabilization) multiplied by recovery_dampener (default 0.3)
 - Net effect: dramatic acceleration of downward mobility + freeze on upward mobility
+
+**Calibration rationale**: The 2.5x crisis amplifier is derived from comparing peak-crisis to stable-year dispossession rates in the hardcoded data. Foreclosure rates: 2010 peak (4.6%) / 2015 stable (0.6%) = 7.7x. Bankruptcy: 2010 (1.3%) / 2015 (0.6%) = 2.2x. Eviction: 2011 (7.2%) / 2015 (6.3%) = 1.1x. The weighted average across mechanisms (~2-3x) suggests 2.5x as a reasonable composite amplifier. The 0.3x recovery dampener reflects that upward mobility (hiring, wage growth) responds more slowly than downward shocks during crisis — consistent with labor market hysteresis literature. Both values should be validated against SC-002 (2x transition magnitude requirement) and tuned within validation Warning bounds during US5 implementation.
 
 **Alternatives considered**:
 - Feedback loops (unemployment -> foreclosure -> more unemployment): Deferred to FE-005 (TRPF integration). Current model treats crisis as an exogenous condition.

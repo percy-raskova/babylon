@@ -17,7 +17,7 @@ Implement a Class Dynamics Engine that models how class positions (LA, proletari
 **Project Type**: Single project - new subpackage under existing economics module
 **Performance Goals**: Compute one county-year transition in <10ms (trivial for in-memory computation over ~3,200 US counties)
 **Constraints**: All class shares non-negative and sum to 1.0 (hard invariant). Continuous flows only (no discrete jumps). Frozen Pydantic models for all result types.
-**Scale/Scope**: ~3,200 US counties x annual computation. 9 source modules + 1 adapter + validation. ~100 unit tests.
+**Scale/Scope**: ~3,200 US counties x annual computation. 9 source modules + validation module. ~100 unit tests.
 
 ## Constitution Check
 

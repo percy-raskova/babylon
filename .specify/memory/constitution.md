@@ -2,11 +2,11 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.3.0 → 1.3.1
-Bump Rationale: Added data sources to III.4 table - PATCH
+Version Change: 1.3.1 → 1.3.2
+Bump Rationale: Added dispossession data sources to III.4 table - PATCH
 
 Modified Principles:
-  - III.4 Data Source Traceability: Added PWT and Census Trade to approved sources
+  - III.4 Data Source Traceability: Added Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF to approved sources
 
 Added Sections: None
 
@@ -20,6 +20,7 @@ Templates Requiring Updates:
 Follow-up TODOs: None
 
 Previous Version History:
+  1.3.1 (2026-02-05): Added PWT and Census Trade to III.4 approved sources
   1.3.0 (2026-01-31): Added VIII. Visual Design Principles (new article)
   1.2.0 (2026-01-30): Added I.8-I.11 (Tragedy, Metabolic Rift, Terminal Crisis, Pedagogy),
                       II.5-II.6 (AI Observes, State/Engine separation)
@@ -412,6 +413,10 @@ Every derived quantity MUST trace to specific federal data sources:
 | Piketty/WID | Coefficient calibration (wealth distribution) |
 | PWT         | ERDI, PPP conversion factors (unequal exchange) |
 | Census Trade | Import shares by country of origin              |
+| Eviction Lab | Eviction filing rates by county (dispossession) |
+| US Courts    | Personal bankruptcy filings by district (dispossession) |
+| ATTOM/CoreLogic | Foreclosure filing/completion rates (dispossession) |
+| Fed SCF      | Savings rates by income bracket (class accumulation) |
 
 New data sources require explicit addition to this list with justification.
 
@@ -736,4 +741,4 @@ Non-compliant code MUST be flagged and corrected before merge.
 
 ______________________________________________________________________
 
-**Version**: 1.3.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-05
+**Version**: 1.3.2 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-05

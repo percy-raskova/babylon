@@ -166,6 +166,15 @@ ClassTransitionEngine.simulate_transitions()
 TransitionRates(t)
     |
     v
+Rate Conversion (intermediate step):
+    accumulation rate = min(annual_accumulation / wealth_threshold, max_rate)
+        where wealth_threshold is the LA entry wealth level
+        and max_rate caps at validation Warning upper bound (0.08)
+    dispossession rate = DispossessionCalculator composite (see research.md §3a)
+    precaritization rate = FR-015 formula from EconomicConditions
+    stabilization rate = FR-016 formula from EconomicConditions
+    |
+    v
 Apply flows:
     LA'     = LA     - dispossession*LA     + accumulation*Proletariat
     Prol'   = Prol   + dispossession*LA     - accumulation*Proletariat

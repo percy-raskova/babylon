@@ -24,7 +24,7 @@ As a simulation researcher, I need to compute the annual wealth accumulation rat
 
 **Acceptance Scenarios**:
 
-1. **Given** a worker with annual wage income of $60,000, consumption of $50,000, and savings rate of 15%, **When** I compute wealth accumulation, **Then** the annual wealth gain is approximately $1,500 (surplus times savings rate)
+1. **Given** a worker with annual wage income of $60,000, consumption of $50,000, and savings rate of 15% (test parameter, not the default schedule rate), **When** I compute wealth accumulation, **Then** the annual wealth gain is approximately $1,500 (surplus times savings rate)
 2. **Given** a worker with wage income of $40,000 and consumption of $39,500 (near-subsistence), **When** I compute wealth accumulation, **Then** the annual wealth gain is near zero regardless of imperial rent benefit
 3. **Given** a worker with imperial rent subsidy (consumption subsidized by cheap imports), **When** I compare accumulation to an identical worker without subsidy, **Then** the subsidized worker accumulates faster because effective consumption cost is lower
 4. **Given** a worker experiencing negative wealth shock (medical debt, foreclosure), **When** I compute accumulation, **Then** the result is negative, reflecting wealth destruction
@@ -110,9 +110,9 @@ ______________________________________________________________________
 
 ### Functional Requirements
 
-- **FR-001**: System MUST compute annual wealth accumulation rate as net income (wage minus consumption) multiplied by savings rate, where savings rate is a class-based step function: one base rate per ClassPosition (defaults per research.md §4: LA 12%, proletariat 3%, lumpen 0%), adjusted upward by imperial rent subsidy effect on consumption (phi adjustment formula per research.md §4)
+- **FR-001**: System MUST compute annual wealth accumulation rate where consumption is derived as `wage * (1 - savings_rate)` and annual accumulation is `(wage - consumption) * savings_rate`. Savings rate is a class-based step function: one base rate per ClassPosition (defaults per research.md §4: LA 12%, proletariat 3%, lumpen 0%), adjusted upward by imperial rent subsidy effect: `effective_savings = base_rate + min(phi_hour * 2080 / wage, 0.05)` (phi adjustment formula per research.md §4)
 - **FR-002**: System MUST model four class transition pathways: LA-to-proletariat (dispossession), proletariat-to-LA (accumulation), proletariat-to-lumpen (precaritization), and lumpen-to-proletariat (stabilization)
-- **FR-003**: System MUST compute composite dispossession risk from foreclosure rate, bankruptcy rate, and eviction rate, with each component weighted by its class-transition relevance (component weights per research.md §3). MVP uses hardcoded national averages by year with a data source protocol enabling future per-county data loaders
+- **FR-003**: System MUST compute composite dispossession risk from foreclosure rate, bankruptcy rate, and eviction rate, with each component weighted by its class-transition relevance (composite weighting formula per research.md §3a). MVP uses hardcoded national averages by year with a data source protocol enabling future per-county data loaders
 - **FR-004**: System MUST preserve class distribution invariant: all shares non-negative and sum to 1.0 after every transition simulation
 - **FR-005**: System MUST accept class distribution and economic conditions as inputs and produce updated class distribution as output for one simulation period
 - **FR-006**: System MUST distinguish between dispossession mechanisms: foreclosure affects primarily LA-to-proletariat, eviction affects primarily proletariat-to-lumpen, bankruptcy affects both pathways
@@ -124,8 +124,8 @@ ______________________________________________________________________
 - **FR-012**: System MUST treat bourgeoisie and petit-bourgeoisie shares as externally determined (from Fed SCF wealth data); dynamics engine focuses on LA/proletariat/lumpen transitions
 - **FR-013**: System MUST compute transition rates as continuous flows (not discrete jumps) to maintain smooth class distribution evolution
 - **FR-014**: System MUST support per-county computation using FIPS codes consistent with existing economics modules
-- **FR-015**: System MUST compute precaritization rate (proletariat-to-lumpen) as a function of unemployment rate and eviction rate, where higher unemployment and eviction rates produce higher precaritization flow
-- **FR-016**: System MUST compute stabilization rate (lumpen-to-proletariat) as an inverse function of unemployment rate, where lower unemployment produces higher stabilization flow (re-entry into stable employment)
+- **FR-015**: System MUST compute precaritization rate (proletariat-to-lumpen) as a multiplicative function of unemployment rate and eviction rate: `precaritization = unemployment_rate * eviction_weight + eviction_rate * (1 - eviction_weight)` where eviction_weight balances the two inputs (default 0.5). Higher unemployment and eviction rates produce higher precaritization flow
+- **FR-016**: System MUST compute stabilization rate (lumpen-to-proletariat) as `stabilization = base_stabilization * (1 - unemployment_rate)` where base_stabilization is the maximum stabilization rate under zero unemployment (default 0.10 per research.md §7 expected range upper bound). Lower unemployment produces higher stabilization flow
 
 ### Key Entities
 

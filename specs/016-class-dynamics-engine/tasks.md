@@ -35,7 +35,7 @@ ______________________________________________________________________
 - [ ] T005 [P] [Foundation] Write tests for DefaultSavingsRateSchedule in `tests/unit/economics/dynamics/test_savings_schedule.py` — cover 5 ClassPosition rates, phi_adjustment capping, edge cases (zero wage, zero phi)
 - [ ] T006 [P] [Foundation] Write tests for three-tier validation (Expected/Warning/Fail) in `tests/unit/economics/dynamics/test_validation.py` — cover transition rate ranges and class share ranges from research.md Section 7
 - [ ] T007 [Foundation] Implement all frozen Pydantic types in `src/babylon/economics/dynamics/types.py` — ClassDistribution, EconomicConditions, TransitionRates, AccumulationResult, DispossessionRisk, SavingsRateSchedule per data-model.md entities
-- [ ] T008 [Foundation] Implement DispossessionDataSource and SavingsRateSource protocols in `src/babylon/economics/dynamics/data_sources.py` — runtime-checkable Protocol classes per data-model.md Section "Data Source Protocols"
+- [ ] T008 [Foundation] Implement all protocols in `src/babylon/economics/dynamics/data_sources.py` — DispossessionDataSource, SavingsRateSource (runtime-checkable Protocol classes per data-model.md), and define AccumulationCalculator, DispossessionCalculator, ClassTransitionEngine, CrisisAmplifier protocol stubs in their respective files (`accumulation.py`, `dispossession.py`, `transition_engine.py`, `crisis.py`) — protocols only, no implementations yet
 - [ ] T009 [Foundation] Implement HardcodedNationalDispossessionSource in `src/babylon/economics/dynamics/hardcoded_data.py` — national averages by year (2007-2020) from research.md Section 3 tables, returns None for out-of-range years
 - [ ] T010 [Foundation] Implement DefaultSavingsRateSchedule in `src/babylon/economics/dynamics/savings_schedule.py` — class-based step function (B=0.38, PB=0.20, LA=0.12, P=0.03, L=0.00) with phi_adjustment = min(phi_hour * 2080 / wage, 0.05) per research.md Section 4
 - [ ] T011 [Foundation] Implement three-tier validation functions in `src/babylon/economics/dynamics/validation.py` — `validate_transition_rates()` and `validate_class_shares()` per research.md Section 7 ranges, following gamma/validation.py pattern
@@ -108,7 +108,13 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T020 [US3] Write tests for ClassTransitionEngine protocol compliance and DefaultClassTransitionEngine in `tests/unit/economics/dynamics/test_transition_engine.py` — cover:
+- [ ] T020a [P] [US3] Write tests for precaritization rate computation (FR-015) and stabilization rate computation (FR-016) in `tests/unit/economics/dynamics/test_transition_engine.py` — cover:
+  - Precaritization: higher unemployment + higher eviction -> higher precaritization rate
+  - Precaritization: zero unemployment + zero eviction -> zero precaritization
+  - Stabilization: low unemployment -> high stabilization rate (near base_stabilization)
+  - Stabilization: high unemployment -> near-zero stabilization rate
+  - Both: output rates within validation Expected/Warning bounds (research.md §7)
+- [ ] T020b [US3] Write tests for ClassTransitionEngine protocol compliance and DefaultClassTransitionEngine in `tests/unit/economics/dynamics/test_transition_engine.py` — cover:
   - Scenario 1: Stable conditions -> small perturbations, sum = 1.0 (SC-001, SC-005)
   - Scenario 2: Crisis conditions -> LA decreases, lumpen increases
   - Scenario 3: Recovery conditions -> lumpen decreases, upward mobility (SC-004)
@@ -127,9 +133,9 @@ ______________________________________________________________________
 
 ## Phase 6: User Story 4 - Model Crisis Amplification (Priority: P2)
 
-**Goal**: Amplify transition rates during crisis periods. Downward rates increase non-linearly, upward rates dampened.
+**Goal**: Amplify transition rates during crisis periods via multiplicative amplifier (2.5x downward, 0.3x upward per FR-009).
 
-**Independent Test**: Compare transition magnitudes under normal vs crisis conditions. Validate crisis produces non-linear acceleration of downward transitions.
+**Independent Test**: Compare transition magnitudes under normal vs crisis conditions. Validate crisis produces multiplicative amplification of downward transitions.
 
 ### Tests for User Story 4
 
@@ -245,8 +251,8 @@ ______________________________________________________________________
 | Foundational | 11 | T003-T006 [P] |
 | US1 Accumulation | 3 | - |
 | US2 Dispossession | 3 | - |
-| US3 Transitions | 3 | - |
+| US3 Transitions | 4 | T020a [P] |
 | US4 Crisis | 3 | - |
 | US5 Validation | 3 | - |
 | Polish | 6 | T029-T031 [P] |
-| **Total** | **34** | |
+| **Total** | **35** | |

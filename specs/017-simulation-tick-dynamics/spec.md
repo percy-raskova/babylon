@@ -5,6 +5,14 @@
 **Status**: Draft
 **Input**: User description: "Create a specification for Simulation Tick Dynamics - integrates all prior economic phases (012-016) into unified per-tick state evolution with national parameters, county-level state, and derived fields"
 
+## Clarifications
+
+### Session 2026-02-06
+
+- Q: What percentage of county failures within a tick should trigger a halt vs allowing the tick to proceed? → A: Data unavailability only applies during initialization from census data (historical validation mode), not during simulation ticks. During simulation, the engine produces all county values; there are no missing counties because the simulation state IS the data source. Census/BEA/QCEW data is only used for seeding initial state.
+- Q: Where do precarity indicators (U-6, PTER, NILF) come from? → A: FRED/BLS data seeds initial precarity values during initialization; the simulation derives them from class distribution and transition rates during ticks. The specific FRED series for U-6, PTER, and NILF need further investigation during planning phase to identify the correct connectors.
+- Q: How many counties should the MVP support? → A: 10-20 representative counties across diverse economic profiles (deindustrialized Rust Belt, financial hub, agricultural, tech corridor, etc.) to validate the pipeline across different economic contexts.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Compute National Economic Parameters Per Tick (Priority: P1)
@@ -20,7 +28,7 @@ As a simulation researcher, I need to compute the national-level economic parame
 1. **Given** QCEW employment data and BEA GDP data for year 2015, **When** I compute national parameters for that tick, **Then** the returned MELT (tau) equals GDP / (employment x 2080) consistent with Feature 013 calculator output
 2. **Given** ATUS care data and QCEW care sector data for year 2015, **When** I compute national parameters, **Then** gamma_III (reproductive visibility) matches Feature 015 calculator output for the same year
 3. **Given** import/ERDI data for year 2015, **When** I compute national parameters, **Then** gamma_basket (basket visibility) matches Feature 013 calculator output for the same year
-4. **Given** a year where BEA GDP data is unavailable (e.g., 2023 if not yet released), **When** I compute national parameters, **Then** the system returns an unavailability indicator identifying the specific missing data source
+4. **Given** initialization from census data for a year where BEA GDP data is unavailable (e.g., 2023 if not yet released), **When** I attempt to seed national parameters, **Then** the system returns an unavailability indicator identifying the specific missing data source
 
 ______________________________________________________________________
 
@@ -35,7 +43,7 @@ As a simulation researcher, I need to compute the full county-level economic sta
 **Acceptance Scenarios**:
 
 1. **Given** a county FIPS code and year with complete QCEW and BEA data, **When** I compute county economic state, **Then** the capital stock (K) matches Feature 012 calculator output and the throughput position (pi) matches Feature 014 calculator output
-2. **Given** a county with partial data availability (e.g., BEA GDP available but QCEW suppressed), **When** I compute county state, **Then** available fields are computed and unavailable fields return descriptive unavailability indicators with the specific missing source identified
+2. **Given** initialization from census data for a county with partial data availability (e.g., BEA GDP available but QCEW suppressed), **When** I seed county state, **Then** available fields are computed and unavailable fields return descriptive unavailability indicators with the specific missing source identified
 3. **Given** national parameters already computed for the tick year, **When** I compute county throughput position, **Then** pi = tau_through / tau_national uses the national MELT from the current tick (not a stale cached value)
 4. **Given** the same county computed across two consecutive tick years, **When** I compare capital stock values, **Then** K[t+1] = K[t] x (1 - delta) + investment[t], demonstrating proper temporal accumulation
 
@@ -71,7 +79,7 @@ As a simulation researcher, I need to run a sequence of ticks covering a histori
 1. **Given** an initial state at year 2010 with plausible class distribution, **When** I run 14 ticks through 2024, **Then** each intermediate state is valid (shares sum to 1.0, no negative shares) and the final distribution falls within expected ranges (bourgeoisie 0.5-2%, petit-bourgeoisie 5-15%, LA 30-50%, proletariat 25-45%, lumpen 10-25%)
 2. **Given** the 2010-2024 simulation, **When** I examine the 2008-2012 sub-period (crisis years), **Then** LA share declines and lumpen share increases, matching the directional pattern of the Great Recession
 3. **Given** the 2010-2024 simulation, **When** I examine aggregate imperial rent (Phi_aggregate) per year, **Then** values maintain Hickel-scale magnitude (hundreds of billions annually for the US)
-4. **Given** any tick in the sequence produces a data unavailability indicator, **When** I inspect the output, **Then** the simulation either uses the last available value (coefficient smoothing) or halts with a clear diagnostic message
+4. **Given** a historical validation run where census data coverage ends before the target year range, **When** I inspect the initialization output, **Then** the system reports which years lack sufficient census data for seeding and uses the last available values for initialization
 
 ______________________________________________________________________
 
@@ -105,15 +113,15 @@ As a simulation researcher, I need the tick to compute derived economic indicato
 1. **Given** an updated county state with known surplus (s), variable capital (v), and capital stock (K), **When** I compute derived rates, **Then** profit rate r = s / (K + v), OCC = c / v, and exploitation rate e = s / v match manual calculations
 2. **Given** all county imperial rent flows for a tick year, **When** I compute aggregate imperial rent (Phi_aggregate), **Then** the sum represents total national imperial rent for that year
 3. **Given** a multi-tick simulation, **When** I plot profit rate over time, **Then** TRPF (Tendency of the Rate of Profit to Fall) is observable as a declining trend with counter-tendencies
-4. **Given** a county with missing capital stock data, **When** I compute derived rates, **Then** rates depending on K return unavailability indicators while rates computable without K (e.g., exploitation rate e = s / v) are still computed
+4. **Given** initialization from census data where a county's capital stock cannot be seeded (missing BEA data), **When** I compute derived rates for that county, **Then** rates depending on K return unavailability indicators while rates computable without K (e.g., exploitation rate e = s / v) are still computed
 
 ______________________________________________________________________
 
 ### Edge Cases
 
-- **What happens when QCEW or BEA data is unavailable for a specific year?** The tick proceeds with available data; unavailable fields propagate descriptive unavailability indicators through the pipeline. Dependent computations that require the missing field also return unavailability indicators.
-- **What happens when a county has no QCEW employment records?** County is skipped for throughput computation; class distribution is carried forward from the previous tick unchanged.
-- **What happens when all counties in a tick produce data errors?** The tick halts and returns a diagnostic summary listing all county-level failures. The simulation state is not advanced.
+- **What happens when QCEW or BEA data is unavailable during initialization?** This only applies when seeding initial state from census data (historical validation mode). The initialization proceeds with available data; unavailable fields propagate descriptive unavailability indicators. During simulation ticks, the engine produces all values and data gaps cannot occur.
+- **What happens when a county has no QCEW employment records during initialization?** County is skipped for initial state seeding; it receives no initial class distribution. This only affects census-data initialization, not simulation ticks.
+- **What happens when all counties fail during initialization?** Initialization halts and returns a diagnostic summary listing all county-level failures. The simulation cannot start without at least one initialized county.
 - **What happens when the coefficient smoothing alpha is set to extreme values?** Alpha must be in range (0, 1]. Alpha near 0 means very slow adaptation (coefficient barely moves). Alpha=1 means no smoothing (coefficient tracks raw data exactly). Values outside (0, 1] are rejected with a validation error.
 - **How does the system handle the first tick (no previous state)?** The initial state must be provided with seed values for class distribution, capital stock, and coefficients. The first tick does not perform smoothing (no previous value to smooth against); it uses raw computed values.
 - **What happens when class distribution from Feature 016 violates the sum-to-one invariant?** The tick validates the invariant after class transitions and raises an error if violated (within tolerance of 0.001). This is a hard constraint that must never be silently ignored.
@@ -132,23 +140,23 @@ ______________________________________________________________________
 - **FR-007**: System MUST compute aggregate imperial rent (Phi_aggregate) per tick year as the sum of all county-level imperial rent flows
 - **FR-008**: System MUST compute derived rates (profit rate r, organic composition OCC, exploitation rate e) per county per tick from the updated state
 - **FR-009**: System MUST validate class distribution invariant (shares non-negative, sum to 1.0 within tolerance 0.001) after every tick's class transition step
-- **FR-010**: System MUST propagate unavailability indicators through the pipeline: if a required input is unavailable, dependent outputs also return unavailability indicators with causal chain identifying the original missing source
+- **FR-010**: During initialization from census data (historical validation mode), the system MUST propagate unavailability indicators through the pipeline: if a required input is unavailable, dependent outputs also return unavailability indicators with causal chain identifying the original missing source. During simulation ticks, all county values are produced by the engine and unavailability does not occur
 - **FR-011**: System MUST support multi-tick execution by iterating single ticks over a year range, accumulating state across ticks
 - **FR-012**: System MUST accept an initial simulation state with seed values for class distribution, capital stock, and initial coefficient values for the starting year
 - **FR-013**: System MUST integrate with Feature 016 class transition engine to update class distributions using EconomicConditions synthesized from the tick's computed state
-- **FR-014**: System MUST synthesize EconomicConditions (unemployment rate, median wage, MELT, phi_hour, foreclosure rate, bankruptcy rate, eviction rate, crisis flag) from the tick's computed national and county-level state for consumption by the class transition engine
+- **FR-014**: System MUST synthesize EconomicConditions (unemployment rate, median wage, MELT, phi_hour, foreclosure rate, bankruptcy rate, eviction rate, crisis flag) from the tick's computed state. During initialization, precarity indicators (U-6, PTER, NILF) are seeded from FRED/BLS data. During simulation ticks, precarity indicators are derived from class distribution and transition rates (e.g., lumpen share and precaritization rate inform U-6)
 - **FR-015**: System MUST detect crisis conditions based on economic indicators (profit rate decline, unemployment spike) and set the crisis flag consumed by the class transition engine's crisis amplifier
-- **FR-016**: System MUST carry forward the previous tick's class distribution unchanged for any county where data unavailability prevents transition computation
+- **FR-016**: During initialization from census data, the system MUST carry forward the previous tick's class distribution unchanged for any county where data unavailability prevents transition computation. During simulation ticks, all counties produce values and this fallback is not needed
 - **FR-017**: System MUST use FIPS codes consistent with existing economics modules for all county-level identification
 - **FR-018**: System MUST handle the first tick specially: use raw computed values instead of smoothed coefficients (no previous value exists for smoothing)
 - **FR-019**: System MUST produce a per-tick summary including: year, number of counties processed, aggregate imperial rent, national MELT, mean profit rate, and class distribution aggregated across all processed counties
-- **FR-020**: System MUST halt tick execution and return a diagnostic summary if zero counties can be processed (complete data failure for a year)
+- **FR-020**: During initialization from census data, the system MUST halt and return a diagnostic summary if zero counties can be initialized for a year (complete data failure). During simulation ticks, this cannot occur because the engine produces all values
 
 ### Key Entities
 
 - **SimulationTickState**: Complete state at a point in time, containing the year, national parameters, per-county economic state, per-county class distributions, and smoothed coefficients. Serves as both tick output and next tick input.
 - **NationalTickParameters**: Year-scoped national economic context including MELT (tau), basket visibility (gamma_basket), reproductive visibility (gamma_III), and their smoothed variants. Computed once per tick, shared by all counties.
-- **CountyEconomicState**: Per-county per-year economic snapshot including value tensor (T), capital stock (K), throughput position (pi), supply chain depth (D), precarity indicators (U-6, PTER, NILF), and class distribution. Computed per county per tick.
+- **CountyEconomicState**: Per-county per-year economic snapshot including value tensor (T), capital stock (K), throughput position (pi), supply chain depth (D), precarity indicators (U-6, PTER, NILF), and class distribution. During initialization, precarity indicators are seeded from FRED/BLS data; during simulation ticks, they are derived from the engine's class distribution and transition rates.
 - **TickSummary**: Aggregate statistics for a completed tick including year, county count, aggregate imperial rent (Phi_aggregate), national MELT, mean profit rate, and national class distribution summary.
 - **SmoothedCoefficients**: Container for alpha-smoothed coefficients that persist across ticks, including gamma_basket, gamma_III, and any threshold values subject to smoothing. Carries both the smoothed value and the raw value for diagnostics.
 - **UpdateRule**: Ordered step in the tick pipeline with its dependencies, inputs, outputs, and the calculator/engine it delegates to. Defines the execution DAG for one tick.
@@ -164,11 +172,12 @@ ______________________________________________________________________
 - **SC-005**: Coefficient smoothing reduces year-over-year coefficient variance by at least 50% compared to raw values when tested against noisy synthetic data
 - **SC-006**: Class distribution invariant (sum to 1.0, non-negative shares) holds after every tick in a 14-year simulation without exception
 - **SC-007**: Derived rates (profit rate, OCC, exploitation rate) computed per tick show plausible trends: profit rate exhibits gradual decline with counter-tendencies; OCC rises over time
-- **SC-008**: Data unavailability for a single county does not prevent other counties from completing the tick; at least 90% of counties with available data complete successfully per tick
+- **SC-008**: During initialization from census data, data unavailability for a single county does not prevent other counties from being initialized; at least 90% of counties with available data initialize successfully. During simulation ticks, all counties always produce values
 - **SC-009**: Tick execution order is deterministic: given identical inputs, the same tick produces identical outputs regardless of execution environment
 
 ## Assumptions
 
+- The system operates in two modes: (1) initialization from census data, where QCEW/BEA/ATUS data seeds the initial state and data gaps are possible, and (2) simulation ticks, where the engine produces all county values and data unavailability cannot occur
 - All Feature 012-016 calculators are implemented and provide their documented interfaces (get_melt, compute_metrics, simulate_transitions, etc.)
 - Economic data sources (QCEW, BEA, ATUS, Fed SCF) are available for the 2010-2024 range with expected coverage gaps (BEA may lag 1-2 years)
 - Feature 016 class transition engine handles one period of class dynamics and produces valid ClassDistribution outputs
@@ -176,7 +185,7 @@ ______________________________________________________________________
 - The existing TensorRegistry (Feature 011) provides ValueTensor4x3 data for county-year lookups
 - Bourgeoisie and petit-bourgeoisie class shares are externally determined and relatively stable (per Feature 016 constraint); the tick dynamics engine primarily evolves LA/proletariat/lumpen shares
 - One tick equals one year of simulation time
-- The simulation operates on a set of counties (not all ~3,100 US counties necessarily); the county set is configurable as part of the initial state
+- The MVP operates on 10-20 representative counties spanning diverse economic profiles (deindustrialized Rust Belt, financial hub, agricultural, tech corridor, etc.); the county set is configurable as part of the initial state and can scale to all ~3,100 US counties in future enhancements
 - Crisis detection uses a simple threshold-based approach for the MVP: unemployment exceeding a configurable threshold (default: 8%) or profit rate declining more than a configurable percentage (default: 15%) year-over-year
 
 ## Constraints
@@ -197,7 +206,7 @@ ______________________________________________________________________
 - **Requires**: Feature 014 (Throughput Position) for ThroughputCalculator and ThroughputMetrics
 - **Requires**: Feature 015 (Gamma Visibility Tensor) for GammaIIICalculator and ShadowSubsidyCalculator
 - **Requires**: Feature 016 (Class Dynamics Engine) for ClassTransitionEngine, ClassDistribution, EconomicConditions
-- **Data**: QCEW employment data (2010-2024), BEA GDP data (2010-2022+), ATUS care data (2003-2024), Fed SCF wealth surveys, Eviction Lab/US Courts/ATTOM dispossession data (via Feature 016 hardcoded MVPs)
+- **Data**: QCEW employment data (2010-2024), BEA GDP data (2010-2022+), ATUS care data (2003-2024), Fed SCF wealth surveys, Eviction Lab/US Courts/ATTOM dispossession data (via Feature 016 hardcoded MVPs), FRED/BLS data for precarity indicators (U-6, PTER, NILF -- specific series TBD during planning)
 
 ## Future Enhancements
 

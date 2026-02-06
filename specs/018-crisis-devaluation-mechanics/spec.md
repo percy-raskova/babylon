@@ -12,6 +12,7 @@
 - Q: Should unemployment remain as a crisis trigger alongside profit rate, or is profit rate the sole trigger? → A: Profit rate only. Unemployment is a lagging indicator — a downstream symptom of crisis (manifesting via the dispossession cascade) rather than a cause. The existing unemployment-based trigger in ThresholdCrisisDetector is removed; crisis detection is driven purely by TRPF dynamics.
 - Q: How is the legitimation index derived for bifurcation risk? → A: Inverse of aggregate agitation: `legitimation = 1 - mean(agitation)` across county nodes. Uses the existing `agitation` field from IdeologicalProfile. As material conditions worsen, agitation rises, legitimation drops, and bifurcation unlocks.
 - Q: How long does the recovery phase last before returning to normal? → A: Proportional to crisis duration with a cap: `recovery_duration = min(crisis_duration, R_cap)` where R_cap is configurable (default: 8 periods). Longer crises leave deeper structural scars requiring proportionally longer recovery.
+- Q: What timescale do crisis "periods" operate on? → A: Configurable as a multiple of ticks. Default: quarterly (12 ticks, since 1 tick = 1 week). Crises don't happen or resolve in weeks — the crisis evaluation interval (`crisis_period_ticks`, default 12) defines how often the detector evaluates profit rates and advances phase counters. All period-based parameters (N consecutive periods, M recovery periods, R_cap, phase durations) are measured in these crisis periods, not raw ticks.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -119,8 +120,8 @@ ______________________________________________________________________
 
 #### Crisis Detection
 
-- **FR-001**: System MUST detect crisis onset when the stock-based profit rate `r[t]` falls below a configurable threshold `r_threshold` for N consecutive annual periods, where N is configurable (default: 3 periods).
-- **FR-002**: System MUST track crisis duration as the number of consecutive periods where `r[t] < r_threshold`, persisted across ticks in the county economic state.
+- **FR-001**: System MUST detect crisis onset when the stock-based profit rate `r[t]` falls below a configurable threshold `r_threshold` for N consecutive crisis periods, where N is configurable (default: 3 periods). A crisis period is defined as `crisis_period_ticks` ticks (default: 12 ticks = 1 quarter). The detector evaluates once per crisis period, not every tick.
+- **FR-002**: System MUST track crisis duration as the number of consecutive crisis periods where `r[t] < r_threshold`, persisted across ticks in the county economic state.
 - **FR-003**: System MUST classify crisis into phases based on duration: "normal" (no crisis), "onset" (period N), "early" (periods N+1 through N+4), "deep" (period N+5 onward), and "recovery" (profit rate above threshold for M consecutive periods, default M=2). Recovery phase duration is proportional to crisis duration: `recovery_duration = min(crisis_duration, R_cap)` where R_cap is configurable (default: 8 periods). After recovery_duration periods, phase transitions to "normal".
 - **FR-004**: System MUST emit a crisis phase-change event whenever a county transitions between phases, including the county identifier, previous phase, new phase, current profit rate, and crisis duration.
 - **FR-005**: System MUST handle missing profit rate data (None values from division-by-zero in derived rates) by neither counting toward nor resetting the consecutive-period accumulator.
@@ -162,7 +163,7 @@ ______________________________________________________________________
 - **FR-020**: System MUST replace the existing `ThresholdCrisisDetector` with the new multi-period `CrisisDetector`. The new detector removes unemployment rate as a crisis trigger (unemployment is a lagging indicator, a symptom of crisis rather than a cause). Required inputs: current profit rate, crisis history (CrisisState), and profit rate time series. Unemployment-based detection logic is removed, not preserved.
 - **FR-021**: System MUST replace or extend the existing `DefaultCrisisAmplifier` with a `PhasedCrisisAmplifier` that consumes crisis phase information to select appropriate amplification multipliers.
 - **FR-022**: System MUST emit events of type `ECONOMIC_CRISIS` (existing) for crisis onset and new event types for phase transitions, dispossession cascade milestones, and bifurcation risk threshold crossings.
-- **FR-023**: All configurable parameters (r_threshold, N, M, R_cap, amplification multipliers, hysteresis coefficient, wage compression rate) MUST be defined in `GameDefines` under a new `crisis` category.
+- **FR-023**: All configurable parameters (crisis_period_ticks, r_threshold, N, M, R_cap, amplification multipliers, hysteresis coefficient, wage compression rate) MUST be defined in `GameDefines` under a new `crisis` category.
 
 ### Key Entities
 
@@ -188,7 +189,7 @@ ______________________________________________________________________
 ## Assumptions
 
 - **A-001**: The stock-based profit rate (`r = s / (K + v)`) from the DerivedRateCalculator is the primary crisis indicator. Flow-based profit rate is not used for crisis detection.
-- **A-002**: Crisis operates at the annual timescale (same as the TickDynamicsSystem pipeline), not the weekly engine tick timescale.
+- **A-002**: Crisis operates at a configurable period timescale (`crisis_period_ticks`, default: 12 ticks = quarterly), not the weekly engine tick timescale. The TickDynamicsSystem pipeline runs annually (every 52 ticks); the crisis detector evaluates at its own configurable interval. All period-based parameters (N, M, R_cap, phase durations) are measured in crisis periods.
 - **A-003**: The existing George Jackson Bifurcation implementation in ConsciousnessSystem continues to handle per-tick ideological routing. The bifurcation risk metric introduced here is a crisis-period summary indicator, not a replacement for per-tick routing.
 - **A-004**: Bourgeoisie and petit-bourgeoisie class shares are structurally fixed during crisis (their dynamics are governed by different mechanisms outside this feature's scope).
 - **A-005**: The phased amplification multipliers in FR-006 are initial defaults subject to calibration. The specification defines the mechanism, not the final tuned values.

@@ -35,6 +35,9 @@ from babylon.economics.dynamics.data_sources import (
     DispossessionDataSource,
     SavingsRateSource,
 )
+from babylon.economics.dynamics.dispossession import (
+    DefaultDispossessionCalculator,
+)
 
 # MVP data sources
 from babylon.economics.dynamics.hardcoded_data import (
@@ -80,6 +83,7 @@ __all__ = [
     "HOURS_PER_YEAR",
     # Implementations
     "DefaultAccumulationCalculator",
+    "DefaultDispossessionCalculator",
     # Validation
     "validate_class_shares",
     "validate_transition_rates",

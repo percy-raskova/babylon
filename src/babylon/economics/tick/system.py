@@ -30,10 +30,12 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+from babylon.economics.tick.crisis_detector import ThresholdCrisisDetector
 from babylon.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
     write_tick_state_to_graph,
 )
+from babylon.economics.tick.precarity import PrecarityDeriver
 from babylon.economics.tick.types import (
     CountyEconomicState,
     NationalTickParameters,
@@ -69,6 +71,10 @@ class TickDynamicsSystem:
         >>> system = TickDynamicsSystem()
         >>> system.step(graph, services, context)
     """
+
+    def __init__(self) -> None:
+        self._crisis_detector = ThresholdCrisisDetector()
+        self._precarity_deriver = PrecarityDeriver()
 
     @property
     def name(self) -> str:
@@ -131,6 +137,9 @@ class TickDynamicsSystem:
             else self._get_territory_fips(graph)
         )
         county_states = self._compute_county_states(year, county_fips, services, prev_county_states)
+
+        # Step 3a+: Derive precarity indicators from class distribution
+        county_states = self._derive_precarity(county_states)
 
         # Step 3b: Update smoothed coefficients
         coefficients = self._update_coefficients(national_params, prev_coefficients)
@@ -395,6 +404,32 @@ class TickDynamicsSystem:
 
         return states
 
+    def _derive_precarity(
+        self,
+        county_states: dict[str, CountyEconomicState],
+    ) -> dict[str, CountyEconomicState]:
+        """Derive precarity indicators (U-6, PTER, NILF) from class shares.
+
+        Uses lumpenproletariat share as the precaritization rate.
+
+        Args:
+            county_states: Current county states.
+
+        Returns:
+            Updated county states with derived precarity indicators.
+        """
+        updated: dict[str, CountyEconomicState] = {}
+        for fips, county in county_states.items():
+            precaritization_rate = county.class_distribution.lumpenproletariat_share
+            u6, pter, nilf = self._precarity_deriver.derive(
+                unemployment_rate=county.unemployment_rate,
+                precaritization_rate=precaritization_rate,
+            )
+            updated[fips] = county.model_copy(
+                update={"u6_rate": u6, "pter_rate": pter, "nilf_rate": nilf}
+            )
+        return updated
+
     def _update_coefficients(
         self,
         national_params: NationalTickParameters,
@@ -474,9 +509,7 @@ class TickDynamicsSystem:
         self,
         county_states: dict[str, CountyEconomicState],
     ) -> dict[str, CountyEconomicState]:
-        """Step 5: Check crisis triggers.
-
-        Default thresholds: unemployment > 0.08.
+        """Step 5: Check crisis triggers using ThresholdCrisisDetector.
 
         Args:
             county_states: Current county states.
@@ -486,7 +519,11 @@ class TickDynamicsSystem:
         """
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
-            crisis = county.unemployment_rate > 0.08
+            crisis = self._crisis_detector.is_crisis(
+                unemployment_rate=county.unemployment_rate,
+                current_profit_rate=None,  # Derived rates computed in Phase 8
+                previous_profit_rate=None,
+            )
             updated[fips] = county.model_copy(update={"crisis": crisis})
         return updated
 

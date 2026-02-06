@@ -30,7 +30,10 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
-from babylon.economics.tick.crisis_detector import ThresholdCrisisDetector
+from babylon.economics.tick.crisis_detector import (
+    MultiPeriodCrisisDetector,
+    ThresholdCrisisDetector,
+)
 from babylon.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.economics.tick.graph_bridge import (
     read_tick_state_from_graph,
@@ -78,7 +81,8 @@ class TickDynamicsSystem:
     """
 
     def __init__(self) -> None:
-        self._crisis_detector = ThresholdCrisisDetector()
+        self._legacy_crisis_detector = ThresholdCrisisDetector()
+        self._crisis_detector: MultiPeriodCrisisDetector | None = None
         self._precarity_deriver = PrecarityDeriver()
         self._smoother = CoefficientSmoother(alpha=0.3)
         self._rate_calculator = DerivedRateCalculator()
@@ -154,8 +158,8 @@ class TickDynamicsSystem:
         # Step 4: Compute imperial rent flows
         county_states = self._compute_imperial_rent(county_states, national_params, services)
 
-        # Step 5: Check crisis triggers
-        county_states = self._check_crisis_triggers(county_states)
+        # Step 5: Check crisis triggers (batch-within-step quarterly evaluation)
+        county_states = self._check_crisis_triggers(county_states, services, tick)
 
         # Step 6: Simulate class transitions
         county_states = self._simulate_transitions(county_states, national_params, services)
@@ -519,25 +523,136 @@ class TickDynamicsSystem:
     def _check_crisis_triggers(
         self,
         county_states: dict[str, CountyEconomicState],
+        services: ServiceContainer,
+        tick: int,
     ) -> dict[str, CountyEconomicState]:
-        """Step 5: Check crisis triggers using ThresholdCrisisDetector.
+        """Step 5: Check crisis triggers using MultiPeriodCrisisDetector.
+
+        Batch-within-step quarterly evaluation (FR-019): the annual pipeline
+        evaluates 4 quarterly crisis periods per run. For each county, the
+        detector is invoked 4 times with the current profit rate.
 
         Args:
             county_states: Current county states.
+            services: ServiceContainer with event_bus, defines, tensor_registry.
+            tick: Current tick number.
 
         Returns:
             Updated county states with crisis state.
         """
+        # Lazily initialize detector from GameDefines
+        if self._crisis_detector is None:
+            crisis_cfg = services.defines.crisis
+            self._crisis_detector = MultiPeriodCrisisDetector(
+                r_threshold=crisis_cfg.r_threshold,
+                n_consecutive=crisis_cfg.n_consecutive,
+                m_recovery=crisis_cfg.m_recovery,
+                r_cap=crisis_cfg.r_cap,
+            )
+
+        # Number of quarterly evaluations per annual pipeline run
+        quarterly_evals = 4
+
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
-            crisis = self._crisis_detector.is_crisis(
-                unemployment_rate=county.unemployment_rate,
-                current_profit_rate=None,  # Derived rates computed in Phase 8
-                previous_profit_rate=None,
-            )
-            crisis_state = CrisisState(phase=CrisisPhase.DEEP) if crisis else CrisisState.normal()
+            profit_rate = self._get_profit_rate(fips, services)
+            crisis_state = county.crisis_state
+
+            for _ in range(quarterly_evals):
+                prev_phase = crisis_state.phase
+                crisis_state = self._crisis_detector.evaluate(profit_rate, crisis_state)
+                new_phase = crisis_state.phase
+
+                # Emit events on phase transitions (FR-004, FR-022)
+                if new_phase != prev_phase:
+                    self._emit_crisis_event(
+                        services,
+                        tick,
+                        fips,
+                        prev_phase,
+                        new_phase,
+                        profit_rate,
+                        crisis_state.crisis_duration,
+                    )
+
             updated[fips] = county.model_copy(update={"crisis_state": crisis_state})
         return updated
+
+    def _get_profit_rate(
+        self,
+        fips: str,
+        services: ServiceContainer,
+    ) -> float | None:
+        """Retrieve profit rate for a county from TensorRegistry.
+
+        Args:
+            fips: County FIPS code.
+            services: ServiceContainer with optional tensor_registry.
+
+        Returns:
+            Profit rate or None if unavailable.
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        if tensor_registry is None:
+            return None
+        tensor = tensor_registry.get(fips) if hasattr(tensor_registry, "get") else None
+        if tensor is None:
+            return None
+        return getattr(tensor, "profit_rate", None)
+
+    @staticmethod
+    def _emit_crisis_event(
+        services: ServiceContainer,
+        tick: int,
+        fips: str,
+        prev_phase: CrisisPhase,
+        new_phase: CrisisPhase,
+        profit_rate: float | None,
+        crisis_duration: int,
+    ) -> None:
+        """Emit crisis phase-change events (FR-004, FR-022).
+
+        Args:
+            services: ServiceContainer with event_bus.
+            tick: Current simulation tick.
+            fips: County FIPS code.
+            prev_phase: Previous crisis phase.
+            new_phase: New crisis phase.
+            profit_rate: Current profit rate.
+            crisis_duration: Current crisis duration.
+        """
+        # Lazy imports to avoid circular dependency (engine -> economics -> engine)
+        from babylon.engine.event_bus import Event
+        from babylon.models.enums import EventType
+
+        # CRISIS_PHASE_TRANSITION on every phase change
+        services.event_bus.publish(
+            Event(
+                type=EventType.CRISIS_PHASE_TRANSITION.value,
+                tick=tick,
+                payload={
+                    "fips": fips,
+                    "previous_phase": prev_phase.value,
+                    "new_phase": new_phase.value,
+                    "profit_rate": profit_rate,
+                    "crisis_duration": crisis_duration,
+                },
+            )
+        )
+
+        # ECONOMIC_CRISIS at crisis onset (NORMAL -> ONSET)
+        if prev_phase == CrisisPhase.NORMAL and new_phase == CrisisPhase.ONSET:
+            services.event_bus.publish(
+                Event(
+                    type=EventType.ECONOMIC_CRISIS.value,
+                    tick=tick,
+                    payload={
+                        "fips": fips,
+                        "phase": new_phase.value,
+                        "profit_rate": profit_rate,
+                    },
+                )
+            )
 
     def _simulate_transitions(
         self,

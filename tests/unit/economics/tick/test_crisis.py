@@ -1,12 +1,17 @@
-"""Tests for ThresholdCrisisDetector.
+"""Tests for crisis detectors.
 
-Feature: 017-simulation-tick-dynamics
-Task: T014
+Feature: 017-simulation-tick-dynamics (ThresholdCrisisDetector)
+Feature: 018-crisis-devaluation-mechanics (MultiPeriodCrisisDetector)
+Tasks: T014, T033
 """
 
 from __future__ import annotations
 
-from babylon.economics.tick.crisis_detector import ThresholdCrisisDetector
+from babylon.economics.tick.crisis_detector import (
+    MultiPeriodCrisisDetector,
+    ThresholdCrisisDetector,
+)
+from babylon.economics.tick.types import CrisisPhase, CrisisState
 
 
 class TestThresholdCrisisDetector:
@@ -154,3 +159,54 @@ class TestThresholdCrisisDetector:
             )
             is True
         )
+
+
+class TestMultiPeriodCrisisDetectorBasic:
+    """Basic tests for MultiPeriodCrisisDetector interface (T033).
+
+    Detailed lifecycle tests are in test_multi_period_detector.py.
+    This class verifies the public API and constructor defaults.
+    """
+
+    def test_default_constructor(self) -> None:
+        """Verify default constructor uses CrisisDefines defaults."""
+        detector = MultiPeriodCrisisDetector()
+        state = CrisisState.normal()
+
+        # Should not crash with None profit rate
+        result = detector.evaluate(None, state)
+        assert result.phase == CrisisPhase.NORMAL
+
+    def test_evaluate_returns_crisis_state(self) -> None:
+        """Verify evaluate returns CrisisState."""
+        detector = MultiPeriodCrisisDetector(r_threshold=0.10)
+        state = CrisisState.normal()
+
+        result = detector.evaluate(0.05, state)
+        assert isinstance(result, CrisisState)
+
+    def test_configurable_parameters(self) -> None:
+        """Verify constructor accepts all CrisisDefines parameters."""
+        detector = MultiPeriodCrisisDetector(
+            r_threshold=0.08,
+            n_consecutive=5,
+            m_recovery=3,
+            r_cap=10,
+        )
+        state = CrisisState.normal()
+
+        # 4 below threshold should not trigger (need 5)
+        for _ in range(4):
+            state = detector.evaluate(0.05, state)
+        assert state.phase == CrisisPhase.NORMAL
+
+        # 5th triggers
+        state = detector.evaluate(0.05, state)
+        assert state.phase == CrisisPhase.ONSET
+
+    def test_exports_from_module(self) -> None:
+        """Verify both detectors are exported from crisis_detector module."""
+        from babylon.economics.tick import crisis_detector
+
+        assert hasattr(crisis_detector, "ThresholdCrisisDetector")
+        assert hasattr(crisis_detector, "MultiPeriodCrisisDetector")

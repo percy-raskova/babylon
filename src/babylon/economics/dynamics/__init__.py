@@ -23,6 +23,10 @@ See Also:
 
 # Types
 # Data source protocols
+# Implementations
+from babylon.economics.dynamics.accumulation import (
+    DefaultAccumulationCalculator,
+)
 from babylon.economics.dynamics.data_sources import (
     AccumulationCalculator,
     ClassTransitionEngine,
@@ -74,6 +78,8 @@ __all__ = [
     "HardcodedNationalDispossessionSource",
     "DefaultSavingsRateSchedule",
     "HOURS_PER_YEAR",
+    # Implementations
+    "DefaultAccumulationCalculator",
     # Validation
     "validate_class_shares",
     "validate_transition_rates",

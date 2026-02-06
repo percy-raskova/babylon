@@ -63,19 +63,21 @@ src/babylon/economics/tick/
     types.py              # SimulationTickState, NationalTickParameters,
                           #   CountyEconomicState, SmoothedCoefficients,
                           #   TickSummary, DerivedRates
-    protocols.py          # TickSimulator protocol, TickInitializer protocol
-    simulator.py          # DefaultTickSimulator (8-step pipeline)
+    system.py             # TickDynamicsSystem (System protocol, 8-step pipeline)
     initializer.py        # DefaultTickInitializer (census data seeding)
     smoothing.py          # CoefficientSmoother (alpha-smoothing logic)
     crisis_detector.py    # ThresholdCrisisDetector (unemployment/profit-rate thresholds)
     derived_rates.py      # DerivedRateCalculator (r, OCC, e, Phi_aggregate)
     precarity.py          # PrecarityDeriver (class distribution -> U-6/PTER/NILF)
+    graph_bridge.py       # Read/write tick state from/to NetworkX graph
+
+src/babylon/engine/services.py  # Extended with economics calculator fields
 
 tests/unit/economics/tick/
     __init__.py
-    conftest.py           # Mock calculators, stable/crisis fixtures
+    conftest.py           # Mock calculators, stable/crisis fixtures, graph builders
     test_types.py         # Pydantic model validation
-    test_simulator.py     # Single-tick pipeline tests (US1, US2, US3)
+    test_system.py        # TickDynamicsSystem step() tests (US1, US2, US3)
     test_initializer.py   # Census data seeding tests
     test_smoothing.py     # Alpha-smoothing behavior tests (US5)
     test_crisis.py        # Crisis detection threshold tests
@@ -83,43 +85,43 @@ tests/unit/economics/tick/
     test_precarity.py     # Precarity derivation tests
 
 tests/integration/economics/
-    test_tick_integration.py  # Multi-tick validation (US4), full pipeline
+    test_tick_integration.py  # Multi-tick validation (US4), engine integration
 ```
 
-**Structure Decision**: Extends the existing `src/babylon/economics/` package with a new `tick/` subpackage, following the same pattern as `dynamics/`, `melt/`, `gamma/`, and `throughput/` subpackages. Test structure mirrors source layout under `tests/unit/economics/tick/`.
+**Structure Decision**: Extends the existing `src/babylon/economics/` package with a new `tick/` subpackage and extends `src/babylon/engine/services.py` with economics calculator fields. The `TickDynamicsSystem` in `system.py` conforms to the engine's System protocol and is registered in `_DEFAULT_SYSTEMS`. A `graph_bridge.py` module handles reading/writing tick state from/to the shared NetworkX graph. Test structure mirrors source layout under `tests/unit/economics/tick/`.
 
 ## Design Decisions
 
-### D1. Standalone TickSimulator vs Engine System
+### D1. Engine System Integration (TickDynamicsSystem)
 
-The TickSimulator is a standalone service in `economics/tick/`, NOT a System in the engine's System chain. The engine Systems operate on per-node graph mutations at weekly timescale; Feature 017 operates on county-level aggregate state at annual timescale. See research.md R2 for full rationale.
+The tick dynamics pipeline is implemented as a `TickDynamicsSystem` conforming to the engine's System protocol (`step(graph, services, context) -> None`), registered in the `_DEFAULT_SYSTEMS` list in the materialist causality chain. This follows the principle that all simulation mechanics integrate through the existing engine infrastructure rather than building parallel systems.
 
-### D2. Protocol-Based Dependency Injection
+**Position in causality chain**: After `ProductionSystem` (value creation) and before `ImperialRentSystem` (value extraction). The TickDynamicsSystem provides county-level economic context (capital stock, throughput, class distributions) that downstream Systems can consume from graph metadata.
 
-All calculator dependencies are injected via constructor following the Protocol pattern established by Features 013-016. This enables clean mock substitution in tests:
+**Timescale bridging**: The engine operates at weekly timescale (~52 ticks/year). The TickDynamicsSystem gates full pipeline execution to year boundaries (`context.tick % weeks_per_year == 0`). On intermediate ticks, the System provides cached annual results from graph metadata without re-executing the pipeline.
+
+**Graph integration**: County-level state is stored in Territory nodes (via FIPS codes) and national parameters in graph metadata (`graph.graph["tick_dynamics"]`). This allows downstream Systems to access economics data through the standard graph interface. See research.md R2 for full rationale.
+
+### D2. ServiceContainer Extension for Economics Calculators
+
+The `ServiceContainer` is extended with economics calculator fields so that `TickDynamicsSystem` (and potentially other Systems) can access them via the standard dependency injection pattern. This follows the existing ServiceContainer pattern rather than introducing a separate DI mechanism.
 
 ```
-TickSimulator Protocol:
-    tick(state: SimulationTickState) -> SimulationTickState
-
-DefaultTickSimulator(
-    melt_calculator: MELTCalculator,
-    basket_calculator: BasketVisibilityCalculator,
-    gamma_calculator: GammaIIICalculator,
-    capital_calculator: CapitalStockCalculator,
-    throughput_calculator: ThroughputCalculator,
-    transition_engine: ClassTransitionEngine,
-    imperial_rent_calculator: ImperialRentCalculator,
-    crisis_detector: CrisisDetector,
-    coefficient_smoother: CoefficientSmoother,
-    derived_rate_calculator: DerivedRateCalculator,
-    precarity_deriver: PrecarityDeriver,
-)
+ServiceContainer (extended fields):
+    melt_calculator: MELTCalculator | None
+    basket_calculator: BasketVisibilityCalculator | None
+    gamma_calculator: GammaIIICalculator | None
+    capital_calculator: CapitalStockCalculator | None
+    throughput_calculator: ThroughputCalculator | None
+    transition_engine: ClassTransitionEngine | None
+    imperial_rent_calculator: ImperialRentCalculator | None
 ```
 
-### D3. Immutable State Chain
+All new fields are optional (default `None`) to preserve backward compatibility -- existing tests and Systems that don't need economics calculators continue to work unchanged. The `ServiceContainer.create()` factory method accepts optional calculator parameters. Internal helpers (CrisisDetector, CoefficientSmoother, DerivedRateCalculator, PrecarityDeriver) are owned by `TickDynamicsSystem` directly, not injected via ServiceContainer, as they are not shared across Systems.
 
-SimulationTickState is frozen (Pydantic `ConfigDict(frozen=True)`). Each tick produces a NEW state instance. The tick function is pure: `tick(state_t) -> state_t_plus_1`. No side effects, no shared mutable state.
+### D3. Dual State Representation
+
+SimulationTickState remains a frozen Pydantic model (`ConfigDict(frozen=True)`) for initialization and testing contexts. Within the engine System chain, the equivalent state is stored in the shared graph: Territory nodes hold county economic state, and `graph.graph["tick_dynamics"]` holds national parameters, smoothed coefficients, and tick summary. The TickDynamicsSystem reads from and writes to the graph following the same in-place mutation pattern as all other Systems. For standalone use (historical validation, testing), the system also supports a pure function interface: `tick(state_t) -> state_t_plus_1`.
 
 ### D4. Initialization Separation
 

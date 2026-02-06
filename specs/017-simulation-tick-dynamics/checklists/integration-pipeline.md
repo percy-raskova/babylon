@@ -44,8 +44,8 @@
 
 ## Cross-Artifact Consistency
 
-- [ ] CHK022 - Does the spec's Constraint about integrating "with the existing System protocol" conflict with the plan's Design Decision D1 (standalone service, NOT a System)? [Conflict, Spec Constraints vs Plan D1]
-- [ ] CHK023 - Are the 8 pipeline steps in FR-003 consistent with the pipeline DAG in data-model.md? The DAG shows Step 3 split into 3a (county state) and 3b (coefficient smoothing) as parallel branches, which FR-003 does not specify [Consistency, Spec FR-003 vs data-model.md]
+- [x] CHK022 - Does the spec's Constraint about integrating "with the existing System protocol" conflict with the plan's Design Decision D1 (standalone service, NOT a System)? [Conflict, Spec Constraints vs Plan D1] **RESOLVED**: Plan D1 rewritten to TickDynamicsSystem conforming to System protocol. Spec constraint strengthened with FR-021 through FR-024. All documents aligned.
+- [ ] CHK023 - Are the 8 pipeline steps in FR-003 consistent with the pipeline DAG in data-model.md? The DAG shows Step 3 split into 3a (county state) and 3b (coefficient smoothing) as parallel branches, which FR-003 does not specify [Consistency, Spec FR-003 vs data-model.md] *Note: data-model.md updated with graph integration section; DAG itself unchanged*
 - [ ] CHK024 - Does the spec's SC-002 expected range for class distributions (bourgeoisie 0.5-2%, LA 30-50%) align with the plan's validation expectations and Feature 016's defaults (bourgeoisie 1%, LA 40%)? [Consistency, Spec SC-002]
 
 ## Edge Case & Scenario Coverage
@@ -61,4 +61,4 @@
 - Items referencing `[Gap]` indicate requirements that may need to be added to the spec
 - Items referencing `[Conflict]` indicate contradictions between spec sections or between spec and plan
 - Items referencing `[Ambiguity]` indicate requirements that need more precise language
-- CHK022 (System protocol conflict) is the highest-priority item as it represents a direct contradiction between the spec and the implementation plan
+- CHK022 (System protocol conflict) has been RESOLVED: spec strengthened with FR-021-024, plan D1/D2/D3 rewritten, research R2/R7/R8 updated, data-model and quickstart fully updated for System integration architecture

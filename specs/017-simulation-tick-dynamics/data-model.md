@@ -191,3 +191,62 @@ These existing entities are consumed but not modified by Feature 017:
 - **ThroughputMetrics** (Feature 014): Throughput position and supply chain depth
 - **GammaIII** (Feature 015): Reproductive visibility ratio
 - **NoDataSentinel**: Unavailability indicator (used only during initialization mode)
+
+## Graph Integration (Engine System Bridge)
+
+The TickDynamicsSystem stores its state in the shared NetworkX graph so that downstream Systems in the materialist causality chain can consume it.
+
+### Territory Node Attributes (county-level state)
+
+Territory nodes with FIPS codes carry county economic state as node attributes:
+
+| Attribute | Type | Source Step | Description |
+|-----------|------|-------------|-------------|
+| `tick_capital_stock` | float | Step 3a | Capital stock K |
+| `tick_throughput_position` | float | Step 3a | Throughput pi |
+| `tick_supply_chain_depth` | float | Step 3a | Supply chain depth D |
+| `tick_phi_hour` | float | Step 4 | Imperial rent per hour |
+| `tick_crisis` | bool | Step 5 | Crisis flag |
+| `tick_class_distribution` | dict | Step 7 | Five-class share distribution |
+| `tick_unemployment_rate` | float | Step 7 | County unemployment |
+| `tick_median_wage` | float | Step 7 | County median wage |
+| `tick_profit_rate` | float or None | Step 8 | Derived profit rate r |
+| `tick_occ` | float or None | Step 8 | Organic composition of capital |
+| `tick_exploitation_rate` | float or None | Step 8 | Exploitation rate e |
+
+Attribute names are prefixed with `tick_` to distinguish from existing Territory attributes.
+
+### Graph Metadata (national-level state)
+
+National parameters and tick summary are stored in `graph.graph["tick_dynamics"]`:
+
+```python
+graph.graph["tick_dynamics"] = {
+    "year": int,                          # Current simulation year
+    "national_params": NationalTickParameters,  # National economic context
+    "coefficients": SmoothedCoefficients,       # Alpha-smoothed coefficients
+    "tick_summary": TickSummary,                # Aggregate statistics
+    "is_year_boundary": bool,                   # Whether this tick ran the pipeline
+}
+```
+
+### Extended ServiceContainer
+
+```mermaid
+classDiagram
+    class ServiceContainer {
+        +config: SimulationConfig
+        +database: DatabaseConnection
+        +event_bus: EventBus
+        +formulas: FormulaRegistry
+        +defines: GameDefines
+        +metrics: MetricsCollectorProtocol
+        +melt_calculator: MELTCalculator | None
+        +basket_calculator: BasketVisibilityCalculator | None
+        +gamma_calculator: GammaIIICalculator | None
+        +capital_calculator: CapitalStockCalculator | None
+        +throughput_calculator: ThroughputCalculator | None
+        +transition_engine: ClassTransitionEngine | None
+        +imperial_rent_calculator: ImperialRentCalculator | None
+    }
+```

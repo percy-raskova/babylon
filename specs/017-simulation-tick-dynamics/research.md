@@ -13,17 +13,21 @@
 - Single-mode design where every tick queries external data sources. Rejected: creates unnecessary coupling to data availability during ongoing simulation, and conflicts with the pure-function constraint.
 - Lazy initialization where counties initialize on first access. Rejected: makes tick execution non-deterministic and harder to test.
 
-## R2. Integration Point: Standalone Pipeline vs Engine System
+## R2. Integration Point: Engine System (TickDynamicsSystem)
 
-**Decision**: Feature 017 implements as a standalone `TickSimulator` service (Protocol + DefaultTickSimulator) in `src/babylon/economics/tick/`, not as a new System in the engine's System chain.
+**Decision**: Feature 017 implements as a `TickDynamicsSystem` conforming to the engine's System protocol (`step(graph, services, context) -> None`), registered in the `_DEFAULT_SYSTEMS` materialist causality chain. The ServiceContainer is extended with economics calculator fields for dependency injection.
 
-**Rationale**: The existing simulation engine operates on a graph of SocialClass and Territory nodes with in-place mutation. Feature 017 operates on aggregated county-level economic state (FIPS-coded counties, class distributions, tensor data). These are fundamentally different abstraction levels. The tick simulator orchestrates Feature 012-016 calculators into a pipeline that produces `SimulationTickState` -- this is a higher-level orchestration than the per-node graph mutation the engine Systems perform.
+**Rationale**: All simulation mechanics must integrate through the existing engine infrastructure rather than building parallel systems. The System protocol is the established interface for simulation components, and the ServiceContainer is the established DI mechanism. While the tick dynamics pipeline operates at a different abstraction level (county aggregates vs per-node mutations) and timescale (annual vs weekly), these differences are bridged within the System implementation:
 
-Future enhancement FE-007 can bridge the two by having an engine System read from the tick simulator's output state.
+1. **Abstraction level**: Territory nodes in the graph carry FIPS codes and economic attributes. The TickDynamicsSystem reads county data from Territory nodes, runs the 8-step pipeline, and writes results back to Territory nodes and graph metadata. Downstream Systems access results through the standard graph interface.
+2. **Timescale**: The System gates full pipeline execution to year boundaries (`context.tick % weeks_per_year == 0`). On intermediate weekly ticks, cached annual results remain in graph metadata without re-computation.
+3. **State storage**: National parameters and tick summary are stored in `graph.graph["tick_dynamics"]`. County-level state is stored on Territory nodes. This follows the same pattern as ProductionSystem storing `la_production` in graph metadata.
+
+**ServiceContainer extension**: Economics calculator fields (MELTCalculator, CapitalStockCalculator, etc.) are added as optional fields (default `None`) to preserve backward compatibility. Only Systems that need economics calculators access them.
 
 **Alternatives considered**:
-- New System in the engine's `_DEFAULT_SYSTEMS` list. Rejected: System protocol expects `step(graph, services, context) -> None` with in-place graph mutation. County-level economic orchestration doesn't fit this pattern -- it produces new aggregate state, not node-level mutations.
-- Extend ServiceContainer with all calculators. Rejected for MVP: would require wiring 6+ calculator services into ServiceContainer, which is a larger refactor than needed. The tick simulator can own its calculator dependencies independently.
+- Standalone service outside the engine System chain. Rejected: creates a parallel system that doesn't integrate with existing infrastructure. Other Systems cannot access economics data through the standard graph interface, and the materialist causality ordering is broken.
+- Separate DI container for economics calculators. Rejected: the ServiceContainer already exists for this purpose. Adding fields is simpler and more consistent than introducing a second DI mechanism.
 
 ## R3. Precarity Indicator Data Sources (FRED Series)
 
@@ -102,29 +106,30 @@ Future enhancement FE-007 can bridge the two by having an engine System read fro
 
 ## R7. Existing Calculator Integration Pattern
 
-**Decision**: The `TickSimulator` owns its calculator dependencies via constructor injection, following the same Protocol pattern used throughout `babylon.economics`.
+**Decision**: Economics calculators are injected via the extended ServiceContainer, following the existing DI pattern. The `TickDynamicsSystem` accesses them through `services.melt_calculator`, `services.capital_calculator`, etc.
 
-**Pattern** (from Feature 016's `DefaultClassTransitionEngine`):
+**ServiceContainer extension** (new optional fields):
 ```
-TickSimulator(
-    melt_calculator: MELTCalculator,
-    basket_calculator: BasketVisibilityCalculator,
-    gamma_calculator: GammaIIICalculator,
-    capital_calculator: CapitalStockCalculator,
-    throughput_calculator: ThroughputCalculator,
-    transition_engine: ClassTransitionEngine,
-    imperial_rent_calculator: ImperialRentCalculator,
+ServiceContainer(
+    # ... existing fields (config, database, event_bus, formulas, defines, metrics) ...
+    melt_calculator: MELTCalculator | None = None,
+    basket_calculator: BasketVisibilityCalculator | None = None,
+    gamma_calculator: GammaIIICalculator | None = None,
+    capital_calculator: CapitalStockCalculator | None = None,
+    throughput_calculator: ThroughputCalculator | None = None,
+    transition_engine: ClassTransitionEngine | None = None,
+    imperial_rent_calculator: ImperialRentCalculator | None = None,
 )
 ```
 
-Each calculator is injected as a Protocol, enabling mock substitution in tests. The TickSimulator coordinates the call order but doesn't duplicate any calculator logic.
+Each calculator is typed as a Protocol, enabling mock substitution in tests. Optional fields preserve backward compatibility -- existing code that doesn't use economics calculators continues unchanged. The TickDynamicsSystem coordinates the call order but doesn't duplicate any calculator logic. Internal helpers (CrisisDetector, CoefficientSmoother, DerivedRateCalculator, PrecarityDeriver) are owned by the System directly, not shared via ServiceContainer.
 
-## R8. Timescale: Annual vs Weekly Ticks
+## R8. Timescale: Annual System Within Weekly Engine
 
-**Decision**: Feature 017 ticks are annual (one tick = one year). This is distinct from the existing engine's weekly ticks.
+**Decision**: Feature 017's economics pipeline is annual (one pipeline execution = one year). Within the engine's weekly tick cycle, the TickDynamicsSystem gates execution to year boundaries and provides cached results on intermediate ticks.
 
 **Rationale**: All Feature 012-016 calculators operate on annual data (QCEW annual, BEA annual GDP, ATUS annual surveys). The class transition engine (Feature 016) models annual transitions. Forcing weekly granularity would require interpolating annual data to weekly, adding noise without information.
 
-The existing engine uses `defines.timescale.weeks_per_year` for weekly conversion. Feature 017 operates at the annual level and does not need this conversion.
+**Gating mechanism**: The TickDynamicsSystem checks `context.tick % defines.timescale.weeks_per_year == 0`. On year-boundary ticks, the full 8-step pipeline executes and writes results to graph metadata and Territory nodes. On intermediate weekly ticks, the System is a no-op (cached results from the last annual execution remain in the graph for other Systems to consume).
 
-**Integration note**: When FE-007 bridges tick dynamics into the engine System chain, the annual results would be spread across ~52 weekly engine ticks via interpolation or step-function application.
+**Downstream System access**: Other Systems (ImperialRentSystem, SurvivalSystem, etc.) can read economics data from graph metadata (`graph.graph["tick_dynamics"]`) or Territory node attributes on any tick within the year. The data represents the most recent annual computation.

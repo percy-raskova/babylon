@@ -151,6 +151,10 @@ ______________________________________________________________________
 - **FR-018**: System MUST handle the first tick specially: use raw computed values instead of smoothed coefficients (no previous value exists for smoothing)
 - **FR-019**: System MUST produce a per-tick summary including: year, number of counties processed, aggregate imperial rent, national MELT, mean profit rate, and class distribution aggregated across all processed counties
 - **FR-020**: During initialization from census data, the system MUST halt and return a diagnostic summary if zero counties can be initialized for a year (complete data failure). During simulation ticks, this cannot occur because the engine produces all values
+- **FR-021**: The tick dynamics pipeline MUST be implemented as a System conforming to the engine's System protocol (`step(graph, services, context) -> None`), registered in the materialist causality chain alongside existing Systems
+- **FR-022**: The ServiceContainer MUST be extended with economics calculator fields (MELTCalculator, BasketVisibilityCalculator, GammaIIICalculator, CapitalStockCalculator, ThroughputCalculator, ClassTransitionEngine, ImperialRentCalculator) so that the tick dynamics System and other Systems can access them via dependency injection
+- **FR-023**: The tick dynamics System MUST store its computed state (national parameters, county economic state, tick summary) in the shared graph metadata so that downstream Systems in the causality chain can consume it
+- **FR-024**: The tick dynamics System MUST handle the timescale difference between annual tick computation and the engine's weekly tick cycle by gating full pipeline execution to year boundaries (every `weeks_per_year` engine ticks) and providing cached annual results on intermediate ticks
 
 ### Key Entities
 
@@ -184,7 +188,7 @@ ______________________________________________________________________
 - MVP dispossession data from Feature 016 uses hardcoded national averages by year, sufficient for tick integration
 - The existing TensorRegistry (Feature 011) provides ValueTensor4x3 data for county-year lookups
 - Bourgeoisie and petit-bourgeoisie class shares are externally determined and relatively stable (per Feature 016 constraint); the tick dynamics engine primarily evolves LA/proletariat/lumpen shares
-- One tick equals one year of simulation time
+- One tick of the economics pipeline equals one year of simulation time; however, the engine operates at weekly timescale (~52 engine ticks per year). The tick dynamics System gates its full pipeline execution to year boundaries and provides cached annual results on intermediate engine ticks
 - The MVP operates on 10-20 representative counties spanning diverse economic profiles (deindustrialized Rust Belt, financial hub, agricultural, tech corridor, etc.); the county set is configurable as part of the initial state and can scale to all ~3,100 US counties in future enhancements
 - Crisis detection uses a simple threshold-based approach for the MVP: unemployment exceeding a configurable threshold (default: 8%) or profit rate declining more than a configurable percentage (default: 15%) year-over-year
 
@@ -196,7 +200,8 @@ ______________________________________________________________________
 - Coefficient smoothing alpha MUST be in range (0, 1]; alpha=0 is not permitted as it would freeze coefficients permanently
 - The tick MUST NOT generate new economic data; it consumes data produced by external data sources and existing calculators
 - Class distribution invariant (sum to 1.0, non-negative) is a hard constraint; any violation halts execution with a diagnostic error
-- The tick pipeline MUST integrate with the existing System protocol used by the simulation engine, allowing it to be composed with other Systems in the materialist causality chain
+- The tick pipeline MUST be implemented as a System conforming to the engine's System protocol (`step(graph, services, context) -> None`), composable with other Systems in the materialist causality chain. The System protocol may be extended (e.g., ServiceContainer fields) if needed to accommodate economics calculator injection, but the core `step()` contract must be preserved
+- The tick dynamics System MUST be positioned in the materialist causality chain after ProductionSystem and before downstream Systems that consume economic state (e.g., ImperialRentSystem), ensuring county-level economic context is available to subsequent Systems within each engine tick
 
 ## Dependencies
 
@@ -216,4 +221,4 @@ ______________________________________________________________________
 - **FE-004**: Event emission per tick (DispossessionEvent, CrisisOnsetEvent, RecoveryEvent) for integration with the existing EventBus and observer infrastructure
 - **FE-005**: Endogenous crisis detection via TRPF (Tendency of the Rate of Profit to Fall) analysis from Feature 012 profit rate trends, replacing threshold-based crisis flags
 - **FE-006**: Inter-county migration modeling where workers move between counties in response to economic conditions, affecting county-level class distributions
-- **FE-007**: Integration with the existing simulation engine System chain (ImperialRentSystem, SurvivalSystem, etc.) so that tick-level economics feed into agent-level dynamics
+- **FE-007**: Bidirectional feedback between tick-level economics and agent-level dynamics, where agent-level outcomes (e.g., struggle events, consciousness shifts) feed back into the next annual tick's economic inputs

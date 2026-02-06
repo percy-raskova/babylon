@@ -5,14 +5,22 @@
 
 ## What This Feature Does
 
-Feature 017 orchestrates all prior economic calculators (Features 012-016) into a unified per-tick state evolution pipeline. It takes a complete simulation state at year t, runs an 8-step update pipeline, and produces the state at year t+1.
+Feature 017 orchestrates all prior economic calculators (Features 012-016) into a unified per-tick state evolution pipeline, integrated as a System in the engine's materialist causality chain. It takes county-level economic data from the shared graph, runs an 8-step update pipeline on year boundaries, and writes results back to the graph for downstream Systems to consume.
 
 ## Key Concepts
 
+### Engine System Integration
+
+The `TickDynamicsSystem` conforms to the engine's System protocol (`step(graph, services, context) -> None`) and is registered in `_DEFAULT_SYSTEMS` after ProductionSystem and before ImperialRentSystem. Economics calculators are injected via the extended ServiceContainer.
+
 ### Two Modes
 
-1. **Initialization**: Seeds the initial `SimulationTickState` from census data (QCEW, BEA, ATUS, FRED/BLS). Data gaps are expected and handled via NoDataSentinel.
-2. **Simulation**: Executes tick pipeline. The engine produces ALL county values -- no external data queries during simulation ticks.
+1. **Initialization**: Seeds the initial state from census data (QCEW, BEA, ATUS, FRED/BLS). Data gaps are expected and handled via NoDataSentinel.
+2. **Simulation**: Executes tick pipeline within the engine's System chain. The engine produces ALL county values -- no external data queries during simulation ticks.
+
+### Timescale Bridging
+
+The engine operates at weekly timescale (~52 ticks/year). The TickDynamicsSystem gates full pipeline execution to year boundaries (`context.tick % weeks_per_year == 0`). On intermediate weekly ticks, cached annual results remain in the graph without re-computation.
 
 ### Tick Pipeline (8 Steps)
 
@@ -34,19 +42,22 @@ Feature 017 orchestrates all prior economic calculators (Features 012-016) into 
 
 ```
 src/babylon/economics/tick/
-    __init__.py           # Public API: TickSimulator protocol + factory
+    __init__.py           # Public API: TickDynamicsSystem + factory
     types.py              # SimulationTickState, NationalTickParameters, etc.
-    simulator.py          # DefaultTickSimulator implementation
+    system.py             # TickDynamicsSystem (System protocol implementation)
     initializer.py        # Census data initialization logic
     smoothing.py          # Alpha-smoothing for coefficients
     crisis_detector.py    # Threshold-based crisis detection
     derived_rates.py      # Profit rate, OCC, exploitation rate computation
     precarity.py          # Precarity indicator derivation from class state
+    graph_bridge.py       # Read/write tick state from/to NetworkX graph
+
+src/babylon/engine/services.py  # Extended with economics calculator fields
 
 tests/unit/economics/tick/
-    conftest.py           # Mock calculators, fixtures
+    conftest.py           # Mock calculators, graph builders, fixtures
     test_types.py         # Model validation tests
-    test_simulator.py     # Single-tick execution tests
+    test_system.py        # TickDynamicsSystem step() tests
     test_initializer.py   # Census data seeding tests
     test_smoothing.py     # Alpha-smoothing tests
     test_crisis.py        # Crisis detection tests
@@ -54,18 +65,37 @@ tests/unit/economics/tick/
     test_precarity.py     # Precarity derivation tests
 
 tests/integration/economics/
-    test_tick_integration.py  # Multi-tick pipeline tests
+    test_tick_integration.py  # Multi-tick pipeline, engine integration tests
 ```
 
 ## Usage Pattern
 
-### Initialize from Census Data
+### Register System in Engine
 
 ```python
-from babylon.economics.tick import create_tick_simulator, TickInitializer
+from babylon.economics.tick import TickDynamicsSystem
+from babylon.engine.simulation_engine import _DEFAULT_SYSTEMS
 
-# Build simulator with all calculator dependencies
-simulator = create_tick_simulator(
+# TickDynamicsSystem is registered in _DEFAULT_SYSTEMS at module level:
+# _DEFAULT_SYSTEMS = [
+#     VitalitySystem(),
+#     TerritorySystem(),
+#     ProductionSystem(),
+#     TickDynamicsSystem(),    # <-- After Production, before ImperialRent
+#     SolidaritySystem(),
+#     ImperialRentSystem(),
+#     ...
+# ]
+```
+
+### Create ServiceContainer with Economics Calculators
+
+```python
+from babylon.engine.services import ServiceContainer
+
+services = ServiceContainer.create(
+    config=config,
+    defines=defines,
     melt_calculator=melt_calc,
     basket_calculator=basket_calc,
     gamma_calculator=gamma_calc,
@@ -74,6 +104,12 @@ simulator = create_tick_simulator(
     transition_engine=transition_engine,
     imperial_rent_calculator=rent_calc,
 )
+```
+
+### Initialize from Census Data
+
+```python
+from babylon.economics.tick import TickInitializer
 
 # Seed initial state from census data
 initializer = TickInitializer(
@@ -83,51 +119,40 @@ initializer = TickInitializer(
 )
 initial_state = initializer.initialize(
     year=2010,
-    county_fips=["26163", "26125", "36061", ...],
+    county_fips=["26163", "26125", "36061"],
 )
+
+# Write initial state to graph for engine consumption
+graph = world_state.to_graph()
+write_tick_state_to_graph(graph, initial_state)
 ```
 
-### Execute Single Tick
+### Access Tick Data from Graph (Downstream Systems)
 
 ```python
-# Advance one year
-next_state = simulator.tick(initial_state)
-assert next_state.year == 2011
-assert all(
-    cs.class_distribution.total_share_check()
-    for cs in next_state.county_states.values()
-)
-```
+# In another System's step() method:
+def step(self, graph, services, context):
+    tick_data = graph.graph.get("tick_dynamics", {})
+    national_melt = tick_data.get("national_params", {}).get("tau")
 
-### Execute Multi-Tick Simulation
-
-```python
-# Run 2010-2024
-state = initial_state
-history: list[SimulationTickState] = [state]
-
-for _ in range(14):
-    state = simulator.tick(state)
-    history.append(state)
-
-# Validate final distribution
-final_dist = state.tick_summary.national_class_distribution
-assert 0.30 <= final_dist["labor_aristocracy"] <= 0.50
+    # Access county data from Territory nodes
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") == "territory":
+            capital_stock = data.get("tick_capital_stock", 0.0)
+            crisis = data.get("tick_crisis", False)
 ```
 
 ### Access Tick Summary
 
 ```python
-summary = state.tick_summary
-print(f"Year: {summary.year}")
-print(f"Counties: {summary.counties_processed}")
-print(f"Phi_aggregate: ${summary.phi_aggregate:,.0f}")
-print(f"Mean profit rate: {summary.mean_profit_rate:.4f}")
+tick_data = graph.graph.get("tick_dynamics", {})
+summary = tick_data.get("tick_summary")
+# summary.year, summary.counties_processed, summary.phi_aggregate, etc.
 ```
 
 ## Dependencies
 
-Feature 017 depends on all prior economics features:
+Feature 017 depends on all prior economics features and the engine infrastructure:
 
 | Feature | What It Provides | Used For |
 |---------|-----------------|----------|
@@ -137,6 +162,7 @@ Feature 017 depends on all prior economics features:
 | 014 | ThroughputCalculator | County throughput position pi |
 | 015 | GammaIIICalculator | Reproductive visibility gamma_III |
 | 016 | ClassTransitionEngine | Class distribution evolution |
+| Engine | System protocol, ServiceContainer, SimulationEngine | Integration infrastructure |
 
 ## Testing
 
@@ -144,7 +170,7 @@ Feature 017 depends on all prior economics features:
 # Unit tests
 poetry run pytest tests/unit/economics/tick/ -v
 
-# Integration tests
+# Integration tests (including engine integration)
 poetry run pytest tests/integration/economics/test_tick_integration.py -v
 
 # All economics tests

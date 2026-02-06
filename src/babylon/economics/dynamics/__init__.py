@@ -50,6 +50,9 @@ from babylon.economics.dynamics.savings_schedule import (
     HOURS_PER_YEAR,
     DefaultSavingsRateSchedule,
 )
+from babylon.economics.dynamics.transition_engine import (
+    DefaultClassTransitionEngine,
+)
 from babylon.economics.dynamics.types import (
     AccumulationResult,
     ClassDistribution,
@@ -86,6 +89,7 @@ __all__ = [
     "HOURS_PER_YEAR",
     # Implementations
     "DefaultAccumulationCalculator",
+    "DefaultClassTransitionEngine",
     "DefaultCrisisAmplifier",
     "DefaultDispossessionCalculator",
     # Validation

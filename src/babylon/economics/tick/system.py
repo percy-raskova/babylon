@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 import networkx as nx
 
+from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
 from babylon.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
@@ -42,6 +43,7 @@ from babylon.economics.tick.graph_bridge import (
 from babylon.economics.tick.precarity import PrecarityDeriver
 from babylon.economics.tick.smoothing import CoefficientSmoother
 from babylon.economics.tick.types import (
+    BifurcationRiskMetric,
     CountyEconomicState,
     CrisisPhase,
     CrisisState,
@@ -83,6 +85,7 @@ class TickDynamicsSystem:
     def __init__(self) -> None:
         self._legacy_crisis_detector = ThresholdCrisisDetector()
         self._crisis_detector: MultiPeriodCrisisDetector | None = None
+        self._bifurcation_calculator: BifurcationRiskCalculator | None = None
         self._precarity_deriver = PrecarityDeriver()
         self._smoother = CoefficientSmoother(alpha=0.3)
         self._rate_calculator = DerivedRateCalculator()
@@ -167,6 +170,15 @@ class TickDynamicsSystem:
             national_params,
             services,
             prev_county_states,
+            tick,
+        )
+
+        # Step 5b: Compute bifurcation risk (FR-011, uses prev + curr distributions)
+        county_states = self._compute_bifurcation_risk(
+            county_states,
+            prev_county_states,
+            graph,
+            services,
             tick,
         )
 
@@ -716,6 +728,111 @@ class TickDynamicsSystem:
                     },
                 )
             )
+
+    def _compute_bifurcation_risk(
+        self,
+        county_states: dict[str, CountyEconomicState],
+        prev_county_states: dict[str, CountyEconomicState] | None,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        tick: int,
+    ) -> dict[str, CountyEconomicState]:
+        """Step 5b: Compute bifurcation risk for each county (FR-011).
+
+        Uses solidarity density from graph topology, legitimation from
+        agitation levels, and class burden ratio from distribution deltas
+        to assess political trajectory during active crisis.
+
+        Args:
+            county_states: Current county states (after transitions).
+            prev_county_states: Previous county states (before transitions).
+            graph: Simulation graph with social class nodes and edges.
+            services: ServiceContainer with event_bus and defines.
+            tick: Current simulation tick.
+
+        Returns:
+            Updated county states with bifurcation risk metrics.
+        """
+        if prev_county_states is None:
+            return county_states
+
+        # Lazily initialize calculator from GameDefines
+        if self._bifurcation_calculator is None:
+            crisis_cfg = services.defines.crisis
+            self._bifurcation_calculator = BifurcationRiskCalculator(
+                solidarity_weight=crisis_cfg.bifurcation_solidarity_weight,
+                burden_weight=crisis_cfg.bifurcation_burden_weight,
+                epsilon=crisis_cfg.class_burden_epsilon,
+            )
+
+        threshold = services.defines.crisis.bifurcation_event_threshold
+
+        updated: dict[str, CountyEconomicState] = {}
+        for fips, county in county_states.items():
+            prev_county = prev_county_states.get(fips)
+            if prev_county is None:
+                updated[fips] = county
+                continue
+
+            metric = self._bifurcation_calculator.compute(
+                graph,
+                fips,
+                county.crisis_state,
+                prev_county.class_distribution,
+                county.class_distribution,
+            )
+
+            # FR-022: Emit BIFURCATION_THRESHOLD when |score| exceeds threshold
+            if abs(metric.score) >= threshold:
+                self._emit_bifurcation_event(
+                    services,
+                    tick,
+                    fips,
+                    metric,
+                    threshold,
+                )
+
+            updated[fips] = county.model_copy(update={"bifurcation_risk": metric})
+
+        return updated
+
+    @staticmethod
+    def _emit_bifurcation_event(
+        services: ServiceContainer,
+        tick: int,
+        fips: str,
+        metric: BifurcationRiskMetric,
+        threshold: float,
+    ) -> None:
+        """Emit BIFURCATION_THRESHOLD event (FR-022).
+
+        Args:
+            services: ServiceContainer with event_bus.
+            tick: Current simulation tick.
+            fips: County FIPS code.
+            metric: Computed bifurcation risk metric.
+            threshold: |score| threshold that was exceeded.
+        """
+        # Lazy imports to avoid circular dependency (engine -> economics -> engine)
+        from babylon.engine.event_bus import Event
+        from babylon.models.enums import EventType
+
+        direction = "revolutionary" if metric.score < 0 else "fascist"
+        services.event_bus.publish(
+            Event(
+                type=EventType.BIFURCATION_THRESHOLD.value,
+                tick=tick,
+                payload={
+                    "fips": fips,
+                    "score": round(metric.score, 6),
+                    "direction": direction,
+                    "solidarity_density": round(metric.solidarity_density, 6),
+                    "legitimation": round(metric.legitimation, 6),
+                    "class_burden_ratio": round(metric.class_burden_ratio, 6),
+                    "threshold": threshold,
+                },
+            )
+        )
 
     def _simulate_transitions(
         self,

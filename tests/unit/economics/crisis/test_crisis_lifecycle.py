@@ -405,3 +405,147 @@ class TestSC002Scenario:
         assert la_decline >= 0.05, f"LA decline {la_decline:.3f} < 0.05"
         # SC-002: Lumpenproletariat share increases by >= 5pp
         assert lumpen_increase >= 0.05, f"Lumpen increase {lumpen_increase:.3f} < 0.05"
+
+
+# =============================================================================
+# T077: SC-008 performance validation
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestSC008Performance:
+    """SC-008: Crisis subsystems complete within per-tick time budget.
+
+    50 counties × 20 years × 4 quarterly evaluations = 4000 evaluations.
+    All crisis detection, amplification, bifurcation, and wage compression
+    must complete within a generous wall-clock budget.
+    """
+
+    def test_50_county_20_year_simulation_performance(self) -> None:
+        """50-county, 20-year crisis lifecycle completes within 2 seconds.
+
+        Exercises all crisis subsystems at scale to verify no performance
+        degradation from multi-period detection.
+        """
+        import time
+
+        from babylon.economics.crisis.wage_compression import (
+            apply_wage_compression,
+        )
+        from babylon.economics.dynamics.types import ClassDistribution
+
+        n_counties = 50
+        n_years = 20
+        quarterly_per_year = 4
+
+        detector = MultiPeriodCrisisDetector(
+            r_threshold=0.10,
+            n_consecutive=3,
+            m_recovery=2,
+            r_cap=8,
+        )
+        amplifier = PhasedCrisisAmplifier()
+        bifurcation_calc = BifurcationRiskCalculator()
+
+        # Build a simple graph with solidarity edges
+        g: nx.DiGraph[str] = nx.DiGraph()
+        for i in range(n_counties):
+            fips = f"{26000 + i:05d}"
+            g.add_node(fips, _node_type="territory")
+            for role in ["labor_aristocracy", "proletariat", "lumpenproletariat"]:
+                g.add_node(
+                    f"{fips}_{role}",
+                    _node_type="social_class",
+                    role=role,
+                    ideology={
+                        "agitation": 0.4,
+                        "class_consciousness": 0.3,
+                        "national_identity": 0.5,
+                    },
+                    territory=fips,
+                )
+            g.add_edge(
+                f"{fips}_proletariat",
+                f"{fips}_lumpenproletariat",
+                edge_type="solidarity",
+            )
+
+        # Initialize per-county state
+        states = [CrisisState.normal() for _ in range(n_counties)]
+        prev_dist = ClassDistribution(
+            fips="00000",
+            year=2007,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        curr_dist = ClassDistribution(
+            fips="00000",
+            year=2008,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.37,
+            proletariat_share=0.37,
+            lumpenproletariat_share=0.16,
+        )
+
+        base_rates = TransitionRates(
+            fips="00000",
+            year=2008,
+            dispossession=0.02,
+            accumulation=0.01,
+            precaritization=0.03,
+            stabilization=0.05,
+        )
+
+        # Alternate profit rates: low years trigger crisis, high years recover
+        profit_rates = [0.04 if y % 5 < 3 else 0.15 for y in range(n_years)]
+
+        start = time.perf_counter()
+
+        for year_idx in range(n_years):
+            r = profit_rates[year_idx]
+            for county_idx in range(n_counties):
+                fips = f"{26000 + county_idx:05d}"
+
+                # Quarterly crisis detection (4 evaluations per year)
+                for _q in range(quarterly_per_year):
+                    states[county_idx] = detector.evaluate(r, states[county_idx])
+
+                phase = states[county_idx].phase
+
+                # Phased amplification
+                amplifier.amplify_phased(base_rates, phase)
+
+                # Bifurcation risk
+                bifurcation_calc.compute(g, fips, states[county_idx], prev_dist, curr_dist)
+
+                # Wage compression (only during DEEP)
+                if phase == CrisisPhase.DEEP:
+                    # Create minimal county for compression
+                    from babylon.economics.tick.types import CountyEconomicState
+
+                    county = CountyEconomicState(
+                        fips=fips,
+                        year=2008 + year_idx,
+                        capital_stock=1e9,
+                        throughput_position=0.9,
+                        supply_chain_depth=2.1,
+                        unemployment_rate=0.08,
+                        u6_rate=0.12,
+                        pter_rate=0.04,
+                        nilf_rate=0.06,
+                        median_wage=15.0,
+                        employment=350000.0,
+                        phi_hour=3.5,
+                        crisis_state=states[county_idx],
+                        class_distribution=prev_dist,
+                    )
+                    apply_wage_compression(county, 0.02)
+
+        elapsed = time.perf_counter() - start
+
+        # SC-008: Must complete within 2 seconds (generous budget)
+        assert elapsed < 2.0, f"50-county × 20-year simulation took {elapsed:.2f}s (budget: 2.0s)"

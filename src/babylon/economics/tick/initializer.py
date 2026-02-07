@@ -201,7 +201,6 @@ class DefaultTickInitializer:
                 employment=_DEFAULT_EMPLOYMENT,
                 class_distribution=dist,
                 phi_hour=0.0,
-                crisis=False,
             )
 
         return states

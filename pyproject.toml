@@ -66,7 +66,7 @@ pyyaml = ">=6.0.2"           # YAML config files
 python-dotenv = ">=1.0.1"    # Environment variables
 requests = ">=2.32.3"        # HTTP client
 certifi = ">=2025.11.12"     # CA certificates (security: recent CA bundle)
-filelock = ">=3.20.1"        # File locking
+filelock = ">=3.20.3"        # File locking (CVE-2026-22701)
 
 # === TESTING (main deps) ===
 hypothesis = "^6.149.0"      # Property-based testing

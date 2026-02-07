@@ -43,6 +43,7 @@ if TYPE_CHECKING:
     from babylon.economics.dynamics.types import (
         EconomicConditions,
     )
+    from babylon.economics.tick.types import CrisisPhase
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +108,16 @@ class DefaultClassTransitionEngine:
         self,
         dist: ClassDistribution,
         conditions: EconomicConditions,
+        crisis_phase: CrisisPhase | None = None,
     ) -> ClassDistribution | NoDataSentinel:
         """Simulate one period of class distribution transitions.
 
         Args:
             dist: Current class distribution.
             conditions: Economic conditions for this period.
+            crisis_phase: Optional crisis phase for phased amplification.
+                When provided, uses amplify_phased() for phase-specific
+                multipliers (Feature 018). Falls back to amplify() if None.
 
         Returns:
             Updated ClassDistribution or NoDataSentinel if data unavailable.
@@ -153,7 +158,11 @@ class DefaultClassTransitionEngine:
             precaritization=precaritization_rate,
             stabilization=stabilization_rate,
         )
-        rates = self._crisis_amp.amplify(rates, conditions.crisis)
+        # Use phase-aware amplification when available (Feature 018)
+        if crisis_phase is not None and hasattr(self._crisis_amp, "amplify_phased"):
+            rates = self._crisis_amp.amplify_phased(rates, crisis_phase)
+        else:
+            rates = self._crisis_amp.amplify(rates, conditions.crisis)
 
         # Validate and log
         self._log_validation(rates)

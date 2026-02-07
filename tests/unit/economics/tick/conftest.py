@@ -168,6 +168,7 @@ class MockClassTransitionEngine:
         self,
         dist: ClassDistribution,
         conditions: EconomicConditions,
+        crisis_phase: Any = None,
     ) -> ClassDistribution | NoDataSentinel:
         """Return distribution with small LA shift."""
         la = dist.labor_aristocracy_share + self._delta_la

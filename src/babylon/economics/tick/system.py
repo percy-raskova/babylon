@@ -161,8 +161,14 @@ class TickDynamicsSystem:
         # Step 5: Check crisis triggers (batch-within-step quarterly evaluation)
         county_states = self._check_crisis_triggers(county_states, services, tick)
 
-        # Step 6: Simulate class transitions
-        county_states = self._simulate_transitions(county_states, national_params, services)
+        # Step 6: Simulate class transitions (with cascade tracking)
+        county_states = self._simulate_transitions(
+            county_states,
+            national_params,
+            services,
+            prev_county_states,
+            tick,
+        )
 
         # Step 7: Validate class distribution invariant
         self._validate_distributions(county_states)
@@ -654,11 +660,70 @@ class TickDynamicsSystem:
                 )
             )
 
+    @staticmethod
+    def _check_dispossession_cascade(
+        fips: str,
+        new_dist: ClassDistribution,
+        prev_county_states: dict[str, CountyEconomicState],
+        services: ServiceContainer,
+        tick: int,
+    ) -> None:
+        """Emit DISPOSSESSION_CASCADE at LA share decline milestones (FR-022).
+
+        Compares current LA share to the previous tick's LA share (baseline)
+        and emits an event for the highest milestone crossed by the decline.
+        Default milestones: 5, 10, 15 percentage points.
+
+        Args:
+            fips: County FIPS code.
+            new_dist: New class distribution after transitions.
+            prev_county_states: Previous tick's county states (baseline).
+            services: ServiceContainer with event_bus and defines.
+            tick: Current simulation tick.
+        """
+        prev_county = prev_county_states.get(fips)
+        if prev_county is None:
+            return
+
+        baseline_la = prev_county.class_distribution.labor_aristocracy_share
+        current_la = new_dist.labor_aristocracy_share
+        decline = baseline_la - current_la
+
+        if decline <= 0:
+            return
+
+        milestones: list[float] = services.defines.crisis.dispossession_cascade_milestones
+        crossed: float | None = None
+        for milestone in sorted(milestones):
+            if decline >= milestone:
+                crossed = milestone
+
+        if crossed is not None:
+            # Lazy imports to avoid circular dependency
+            from babylon.engine.event_bus import Event
+            from babylon.models.enums import EventType
+
+            services.event_bus.publish(
+                Event(
+                    type=EventType.DISPOSSESSION_CASCADE.value,
+                    tick=tick,
+                    payload={
+                        "fips": fips,
+                        "cumulative_la_decline": round(decline, 6),
+                        "milestone_crossed": crossed,
+                        "current_la_share": round(current_la, 6),
+                        "baseline_la_share": round(baseline_la, 6),
+                    },
+                )
+            )
+
     def _simulate_transitions(
         self,
         county_states: dict[str, CountyEconomicState],
         national_params: NationalTickParameters,
         services: ServiceContainer,
+        prev_county_states: dict[str, CountyEconomicState] | None = None,
+        tick: int = 0,
     ) -> dict[str, CountyEconomicState]:
         """Step 6: Simulate class transitions using Feature 016 engine.
 
@@ -666,6 +731,8 @@ class TickDynamicsSystem:
             county_states: Current county states.
             national_params: National parameters.
             services: ServiceContainer with transition engine.
+            prev_county_states: Previous county states (for cascade tracking).
+            tick: Current tick number (for event emission).
 
         Returns:
             Updated county states with new class distributions.
@@ -675,8 +742,9 @@ class TickDynamicsSystem:
 
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
-            # Synthesize EconomicConditions
+            # Synthesize EconomicConditions with phase-aware amplification
             clamped_year = min(max(county.year, 2007), 2030)
+            crisis_phase = county.crisis_state.phase
             conditions = EconomicConditions(
                 fips=fips,
                 year=clamped_year,
@@ -687,7 +755,7 @@ class TickDynamicsSystem:
                 foreclosure_rate=DEFAULT_FORECLOSURE_RATE,
                 bankruptcy_rate=DEFAULT_BANKRUPTCY_RATE,
                 eviction_rate=DEFAULT_EVICTION_RATE,
-                crisis=county.crisis_state.phase != CrisisPhase.NORMAL,
+                crisis=crisis_phase != CrisisPhase.NORMAL,
             )
 
             # Clamp distribution year for transition engine
@@ -703,7 +771,11 @@ class TickDynamicsSystem:
                     lumpenproletariat_share=dist.lumpenproletariat_share,
                 )
 
-            result = services.transition_engine.simulate_transitions(dist, conditions)
+            result = services.transition_engine.simulate_transitions(
+                dist,
+                conditions,
+                crisis_phase=crisis_phase,
+            )
 
             if result and isinstance(result, ClassDistribution):
                 # Clamp the result year
@@ -718,6 +790,17 @@ class TickDynamicsSystem:
                         proletariat_share=result.proletariat_share,
                         lumpenproletariat_share=result.lumpenproletariat_share,
                     )
+
+                # FR-022: Emit DISPOSSESSION_CASCADE at milestone thresholds
+                if crisis_phase != CrisisPhase.NORMAL and prev_county_states:
+                    self._check_dispossession_cascade(
+                        fips,
+                        result,
+                        prev_county_states,
+                        services,
+                        tick,
+                    )
+
                 updated[fips] = county.model_copy(update={"class_distribution": result})
             else:
                 updated[fips] = county

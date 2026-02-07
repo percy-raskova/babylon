@@ -1,13 +1,14 @@
 """Tests for PhasedCrisisAmplifier.
 
 Feature: 018-crisis-devaluation-mechanics
-Tasks: T034-T039, T075
+Tasks: T034-T039, T042, T075
 
 Tests phase-dependent amplification of class transition rates:
 - US2 acceptance scenarios (early/deep/recovery amplification)
 - Confinement to dynamic classes
 - Rate clamping to [0, 1]
 - Backward compatibility with CrisisAmplifier protocol
+- Phase-aware integration via transition engine (T042)
 """
 
 from __future__ import annotations
@@ -263,3 +264,167 @@ class TestBackwardCompatibility:
         assert result.accumulation == pytest.approx(rates.accumulation)
         assert result.precaritization == pytest.approx(rates.precaritization)
         assert result.stabilization == pytest.approx(rates.stabilization)
+
+
+# =============================================================================
+# T042: Phase-aware integration via transition engine
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestPhasedAmplificationInTransitionEngine:
+    """T042: Transition engine uses amplify_phased when crisis_phase provided."""
+
+    def test_engine_uses_amplify_phased_with_phase(self) -> None:
+        """Engine calls amplify_phased when crisis_phase is passed."""
+        from unittest.mock import MagicMock
+
+        from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+        from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+
+        # Create mocks
+        acc_calc = MagicMock()
+        acc_calc.compute.return_value = MagicMock(annual_accumulation=5000.0)
+
+        disp_calc = MagicMock()
+        disp_result = MagicMock()
+        disp_result.la_to_p_rate = 0.02
+        disp_calc.compute.return_value = disp_result
+
+        crisis_amp = PhasedCrisisAmplifier()
+
+        engine = DefaultClassTransitionEngine(
+            accumulation_calculator=acc_calc,
+            dispossession_calculator=disp_calc,
+            crisis_amplifier=crisis_amp,
+        )
+
+        dist = ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        conditions = EconomicConditions(
+            fips="26163",
+            year=2015,
+            unemployment_rate=0.05,
+            median_wage=35000.0,
+            melt=62.0,
+            phi_hour=3.50,
+            foreclosure_rate=0.006,
+            bankruptcy_rate=0.006,
+            eviction_rate=0.063,
+            crisis=True,
+        )
+
+        # With crisis_phase=EARLY, should use EARLY multipliers (not DEEP)
+        result = engine.simulate_transitions(dist, conditions, crisis_phase=CrisisPhase.EARLY)
+        assert isinstance(result, ClassDistribution)
+
+    def test_engine_falls_back_to_amplify_without_phase(self) -> None:
+        """Engine uses amplify() when crisis_phase is None."""
+        from unittest.mock import MagicMock, patch
+
+        from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+        from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+
+        acc_calc = MagicMock()
+        acc_calc.compute.return_value = MagicMock(annual_accumulation=5000.0)
+
+        disp_calc = MagicMock()
+        disp_result = MagicMock()
+        disp_result.la_to_p_rate = 0.02
+        disp_calc.compute.return_value = disp_result
+
+        crisis_amp = PhasedCrisisAmplifier()
+
+        engine = DefaultClassTransitionEngine(
+            accumulation_calculator=acc_calc,
+            dispossession_calculator=disp_calc,
+            crisis_amplifier=crisis_amp,
+        )
+
+        dist = ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        conditions = EconomicConditions(
+            fips="26163",
+            year=2015,
+            unemployment_rate=0.05,
+            median_wage=35000.0,
+            melt=62.0,
+            phi_hour=3.50,
+            foreclosure_rate=0.006,
+            bankruptcy_rate=0.006,
+            eviction_rate=0.063,
+            crisis=True,
+        )
+
+        # Without crisis_phase, should call amplify() -> maps True to DEEP
+        with patch.object(crisis_amp, "amplify", wraps=crisis_amp.amplify) as mock_amp:
+            result = engine.simulate_transitions(dist, conditions)
+            mock_amp.assert_called_once()
+        assert isinstance(result, ClassDistribution)
+
+    def test_early_phase_less_severe_than_deep(self) -> None:
+        """EARLY amplification produces less LA decline than DEEP."""
+        from unittest.mock import MagicMock
+
+        from babylon.economics.dynamics.transition_engine import DefaultClassTransitionEngine
+        from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+
+        acc_calc = MagicMock()
+        acc_calc.compute.return_value = MagicMock(annual_accumulation=5000.0)
+
+        disp_calc = MagicMock()
+        disp_result = MagicMock()
+        disp_result.la_to_p_rate = 0.02
+        disp_calc.compute.return_value = disp_result
+
+        crisis_amp = PhasedCrisisAmplifier()
+
+        engine = DefaultClassTransitionEngine(
+            accumulation_calculator=acc_calc,
+            dispossession_calculator=disp_calc,
+            crisis_amplifier=crisis_amp,
+        )
+
+        dist = ClassDistribution(
+            fips="26163",
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        conditions = EconomicConditions(
+            fips="26163",
+            year=2015,
+            unemployment_rate=0.05,
+            median_wage=35000.0,
+            melt=62.0,
+            phi_hour=3.50,
+            foreclosure_rate=0.006,
+            bankruptcy_rate=0.006,
+            eviction_rate=0.063,
+            crisis=True,
+        )
+
+        early = engine.simulate_transitions(dist, conditions, crisis_phase=CrisisPhase.EARLY)
+        deep = engine.simulate_transitions(dist, conditions, crisis_phase=CrisisPhase.DEEP)
+
+        assert isinstance(early, ClassDistribution)
+        assert isinstance(deep, ClassDistribution)
+        # DEEP should have lower LA (more dispossession) than EARLY
+        assert deep.labor_aristocracy_share < early.labor_aristocracy_share

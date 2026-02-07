@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     )
     from babylon.economics.melt.types import ClassPosition
     from babylon.economics.tensor import NoDataSentinel
+    from babylon.economics.tick.types import CrisisPhase
 
 
 class DispossessionDataSource(Protocol):
@@ -177,12 +178,14 @@ class ClassTransitionEngine(Protocol):
         self,
         dist: ClassDistribution,
         conditions: EconomicConditions,
+        crisis_phase: CrisisPhase | None = None,
     ) -> ClassDistribution | NoDataSentinel:
         """Simulate one period of class distribution transitions.
 
         Args:
             dist: Current class distribution.
             conditions: Economic conditions for this period.
+            crisis_phase: Optional crisis phase for phased amplification.
 
         Returns:
             Updated ClassDistribution or NoDataSentinel if data unavailable.

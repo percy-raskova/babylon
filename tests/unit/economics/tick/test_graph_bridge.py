@@ -15,6 +15,9 @@ from babylon.economics.tick.graph_bridge import (
     write_tick_state_to_graph,
 )
 from babylon.economics.tick.types import (
+    BifurcationRiskMetric,
+    CrisisPhase,
+    CrisisState,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -143,3 +146,54 @@ class TestReadTickStateFromGraph:
         assert recovered_dist.bourgeoisie_share == original_dist.bourgeoisie_share
         assert recovered_dist.proletariat_share == original_dist.proletariat_share
         assert recovered_dist.lumpenproletariat_share == original_dist.lumpenproletariat_share
+
+    def test_round_trip_preserves_crisis_state(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify crisis state attributes survive round-trip (T065)."""
+        graph = build_territory_graph()
+        # Modify county to have active crisis with compression and bifurcation
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        crisis = CrisisState(
+            phase=CrisisPhase.DEEP,
+            consecutive_below=6,
+            consecutive_recovery=0,
+            crisis_start_period=3,
+            crisis_duration=8,
+            peak_severity=0.03,
+            cumulative_wage_compression=0.15,
+        )
+        bifurcation = BifurcationRiskMetric(
+            score=-0.42,
+            solidarity_density=0.75,
+            legitimation=0.60,
+            class_burden_ratio=0.30,
+        )
+        modified_county = original_county.model_copy(
+            update={
+                "crisis_state": crisis,
+                "bifurcation_risk": bifurcation,
+            }
+        )
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        write_tick_state_to_graph(graph, modified_state)
+
+        # Verify raw graph attributes
+        node_data = graph.nodes[WAYNE_FIPS]
+        assert node_data["tick_crisis_phase"] == "deep"
+        assert node_data["tick_crisis_duration"] == 8
+        assert node_data["tick_bifurcation_score"] == -0.42
+        assert node_data["tick_wage_compression"] == 0.15
+
+        # Verify round-trip reconstruction
+        result = read_tick_state_from_graph(graph)
+        assert result is not None
+        recovered = result.county_states[WAYNE_FIPS]
+        assert recovered.crisis_state.phase == CrisisPhase.DEEP
+        assert recovered.crisis_state.crisis_duration == 8
+        assert recovered.crisis_state.cumulative_wage_compression == 0.15
+        assert recovered.bifurcation_risk.score == -0.42

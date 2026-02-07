@@ -248,9 +248,47 @@ update_changelog_on_bump = true
 
 [tool.mutmut]
 paths_to_mutate = [
-    "src/babylon/formulas/formulas.py",
+    # Tier 1: Formulas (pure math)
+    "src/babylon/formulas/fundamental_theorem.py",
+    "src/babylon/formulas/survival_calculus.py",
+    "src/babylon/formulas/unequal_exchange.py",
+    "src/babylon/formulas/dynamic_balance.py",
+    "src/babylon/formulas/ideological_routing.py",
+    "src/babylon/formulas/solidarity.py",
+    "src/babylon/formulas/metabolic_rift.py",
+    "src/babylon/formulas/vitality.py",
+    "src/babylon/formulas/trpf.py",
+    "src/babylon/formulas/class_dynamics.py",
+    # Tier 2: Engine Systems (state transitions)
     "src/babylon/engine/systems/economic.py",
+    "src/babylon/engine/systems/struggle.py",
+    "src/babylon/engine/systems/territory.py",
+    "src/babylon/engine/systems/solidarity.py",
+    "src/babylon/engine/systems/ideology.py",
     "src/babylon/engine/systems/survival.py",
+    "src/babylon/engine/systems/vitality.py",
+    "src/babylon/engine/systems/production.py",
+    "src/babylon/engine/systems/control_ratio.py",
+    "src/babylon/engine/systems/decomposition.py",
+    "src/babylon/engine/systems/metabolism.py",
+    "src/babylon/engine/systems/contradiction.py",
+    # Tier 3: Economics Core (tensor/capital math)
+    "src/babylon/economics/tensor.py",
+    "src/babylon/economics/capital_stock.py",
+    "src/babylon/economics/reproduction.py",
+    "src/babylon/economics/depreciation.py",
+    "src/babylon/economics/derived_metrics.py",
+    "src/babylon/economics/shadow_labor.py",
+    "src/babylon/economics/department_mapper.py",
+    "src/babylon/economics/melt/melt_calculator.py",
+    "src/babylon/economics/melt/imperial_rent.py",
+    "src/babylon/economics/melt/class_position.py",
+    "src/babylon/economics/crisis/bifurcation.py",
+    "src/babylon/economics/crisis/wage_compression.py",
+    "src/babylon/economics/tick/system.py",
+    "src/babylon/economics/tick/crisis_detector.py",
+    "src/babylon/economics/tick/derived_rates.py",
+    "src/babylon/economics/dynamics/transition_engine.py",
 ]
 tests_dir = [
     "tests/unit/",

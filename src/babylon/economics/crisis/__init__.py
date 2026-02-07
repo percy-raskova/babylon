@@ -6,6 +6,9 @@ mechanics for modeling economic crisis lifecycle dynamics.
 See Also:
     :mod:`babylon.economics.tick.types`: CrisisPhase, CrisisState
     :mod:`babylon.economics.tick.crisis_detector`: MultiPeriodCrisisDetector
+    :mod:`babylon.economics.crisis.bifurcation`: BifurcationRiskCalculator
 """
 
-__all__: list[str] = []
+from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
+
+__all__ = ["BifurcationRiskCalculator"]

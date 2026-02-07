@@ -10,5 +10,13 @@ See Also:
 """
 
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
+from babylon.economics.crisis.wage_compression import (
+    apply_wage_compression,
+    should_halt_accumulation,
+)
 
-__all__ = ["BifurcationRiskCalculator"]
+__all__ = [
+    "BifurcationRiskCalculator",
+    "apply_wage_compression",
+    "should_halt_accumulation",
+]

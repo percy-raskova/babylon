@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
+from babylon.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
 from babylon.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
@@ -571,15 +572,30 @@ class TickDynamicsSystem:
         # Number of quarterly evaluations per annual pipeline run
         quarterly_evals = 4
 
+        wage_compression_rate = services.defines.crisis.wage_compression_rate
+
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
             profit_rate = self._get_profit_rate(fips, services)
             crisis_state = county.crisis_state
+            median_wage = county.median_wage
 
             for _ in range(quarterly_evals):
                 prev_phase = crisis_state.phase
                 crisis_state = self._crisis_detector.evaluate(profit_rate, crisis_state)
                 new_phase = crisis_state.phase
+
+                # FR-016: Apply wage compression per DEEP quarter
+                if new_phase == CrisisPhase.DEEP:
+                    median_wage = median_wage * (1.0 - wage_compression_rate)
+                    prev_cumulative = crisis_state.cumulative_wage_compression
+                    new_cumulative = min(
+                        1.0 - (1.0 - prev_cumulative) * (1.0 - wage_compression_rate),
+                        1.0,
+                    )
+                    crisis_state = crisis_state.model_copy(
+                        update={"cumulative_wage_compression": new_cumulative}
+                    )
 
                 # Emit events on phase transitions (FR-004, FR-022)
                 if new_phase != prev_phase:
@@ -593,7 +609,12 @@ class TickDynamicsSystem:
                         crisis_state.crisis_duration,
                     )
 
-            updated[fips] = county.model_copy(update={"crisis_state": crisis_state})
+            updated[fips] = county.model_copy(
+                update={
+                    "crisis_state": crisis_state,
+                    "median_wage": median_wage,
+                }
+            )
         return updated
 
     def _get_profit_rate(
@@ -857,16 +878,24 @@ class TickDynamicsSystem:
         if services.transition_engine is None:
             return county_states
 
+        floor_ratio = services.defines.crisis.wage_compression_floor_ratio
+
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
             # Synthesize EconomicConditions with phase-aware amplification
             clamped_year = min(max(county.year, 2007), 2030)
             crisis_phase = county.crisis_state.phase
+
+            # FR-017: Halt accumulation when wages below subsistence floor
+            effective_wage = county.median_wage * 2080  # hourly -> annual
+            if should_halt_accumulation(county.median_wage, DEFAULT_V_REPRODUCTION, floor_ratio):
+                effective_wage = 0.0  # Zero wage -> zero accumulation
+
             conditions = EconomicConditions(
                 fips=fips,
                 year=clamped_year,
                 unemployment_rate=county.unemployment_rate,
-                median_wage=county.median_wage * 2080,  # hourly -> annual
+                median_wage=effective_wage,
                 melt=national_params.tau,
                 phi_hour=county.phi_hour,
                 foreclosure_rate=DEFAULT_FORECLOSURE_RATE,

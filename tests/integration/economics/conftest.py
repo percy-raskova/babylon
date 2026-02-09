@@ -7,15 +7,20 @@ pipeline, including:
 - DepartmentMapper with test configuration
 - MarxianHydrator instances (with and without imperial rent)
 - PeripheryReproductionBasket and ImperialRentCalculator
+- Real QCEW database fixtures for end-to-end validation
 """
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Generator
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
+from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
 
+from babylon.economics.adapters import SQLiteQCEWSource
 from babylon.economics.department_mapper import DepartmentMapper
 from babylon.economics.hydrator import MarxianHydrator
 from babylon.economics.reproduction import (
@@ -23,8 +28,201 @@ from babylon.economics.reproduction import (
     PeripheryReproductionBasket,
 )
 
-if TYPE_CHECKING:
-    pass
+# =============================================================================
+# DATABASE PATH CANDIDATES (mirrors tests/integration/tensors/conftest.py)
+# =============================================================================
+
+_DB_PATH_CANDIDATES = [
+    Path("data/sqlite/marxist-data-3NF.sqlite"),
+    Path("data/babylon.db"),
+    Path("data/databases/babylon.db"),
+    Path("data/qcew.db"),
+    Path("data/databases/qcew.db"),
+]
+
+
+def _find_qcew_database() -> Path | None:
+    """Find the QCEW database from candidate paths.
+
+    Returns:
+        Path to the database, or None if not found.
+    """
+    for candidate in _DB_PATH_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _verify_qcew_tables_exist(db_path: Path) -> bool:
+    """Verify that the required QCEW tables exist in the database.
+
+    Args:
+        db_path: Path to the SQLite database.
+
+    Returns:
+        True if all required tables exist, False otherwise.
+    """
+    required_tables = {
+        "fact_qcew_annual",
+        "dim_county",
+        "dim_industry",
+        "dim_time",
+    }
+
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        existing_tables = {row[0] for row in cursor.fetchall()}
+        conn.close()
+        return required_tables.issubset(existing_tables)
+    except sqlite3.Error:
+        return False
+
+
+# =============================================================================
+# DATABASE FIXTURES
+# =============================================================================
+
+
+@pytest.fixture(scope="session")
+def qcew_db_path() -> Path:
+    """Path to QCEW database with required tables.
+
+    Skips the test if the database is not found or doesn't have
+    the required QCEW tables.
+
+    Returns:
+        Path to the QCEW SQLite database file.
+    """
+    db_path = _find_qcew_database()
+    if db_path is None:
+        pytest.skip(f"QCEW database not found. Searched: {[str(p) for p in _DB_PATH_CANDIDATES]}")
+
+    if not _verify_qcew_tables_exist(db_path):
+        pytest.skip(
+            f"Database {db_path} does not have required QCEW tables "
+            "(fact_qcew_annual, dim_county, dim_industry, dim_time)"
+        )
+
+    return db_path
+
+
+@pytest.fixture(scope="session")
+def qcew_engine(qcew_db_path: Path) -> Generator[Engine, None, None]:
+    """SQLAlchemy engine for QCEW database with FK enforcement.
+
+    Args:
+        qcew_db_path: Path to the database file.
+
+    Yields:
+        SQLAlchemy Engine configured for the QCEW database.
+    """
+    engine = create_engine(
+        f"sqlite:///{qcew_db_path}",
+        echo=False,
+        connect_args={"check_same_thread": False},
+    )
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def qcew_session(qcew_engine: Engine) -> Generator[Session, None, None]:
+    """Function-scoped session for QCEW queries with auto-rollback.
+
+    Args:
+        qcew_engine: SQLAlchemy engine from qcew_engine fixture.
+
+    Yields:
+        SQLAlchemy Session for database queries.
+    """
+    session_factory = sessionmaker(bind=qcew_engine, autoflush=False, autocommit=False)
+    session = session_factory()
+
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
+@pytest.fixture
+def real_qcew_source(qcew_session: Session) -> SQLiteQCEWSource:
+    """QCEW data source reading from the 3NF normalized database.
+
+    Args:
+        qcew_session: SQLAlchemy session for database queries.
+
+    Returns:
+        SQLiteQCEWSource configured with the test session.
+    """
+    return SQLiteQCEWSource(qcew_session)
+
+
+# Path to production NAICS-to-department mapping configuration
+_PRODUCTION_MAPPER_PATH = Path(__file__).parent.parent.parent.parent / (
+    "src/babylon/economics/data/naics_to_dept.yaml"
+)
+
+
+@pytest.fixture(scope="session")
+def production_mapper() -> DepartmentMapper:
+    """Load production DepartmentMapper from YAML config.
+
+    Returns:
+        DepartmentMapper configured from production YAML.
+    """
+    if not _PRODUCTION_MAPPER_PATH.exists():
+        pytest.skip(f"Production mapper config not found at {_PRODUCTION_MAPPER_PATH}")
+    return DepartmentMapper.from_yaml(_PRODUCTION_MAPPER_PATH)
+
+
+class NullBEADataSource:
+    """BEA data source returning None for all queries.
+
+    When BEA data is unavailable, the hydrator falls back to department
+    default ratios from the YAML config.
+    """
+
+    def get_sv_ratio(self, naics_code: str, year: int) -> float | None:  # noqa: ARG002
+        """Always returns None to trigger fallback to defaults."""
+        return None
+
+    def get_cv_ratio(self, naics_code: str, year: int) -> float | None:  # noqa: ARG002
+        """Always returns None to trigger fallback to defaults."""
+        return None
+
+
+@pytest.fixture
+def production_hydrator(
+    real_qcew_source: SQLiteQCEWSource,
+    production_mapper: DepartmentMapper,
+) -> MarxianHydrator:
+    """Hydrator configured with real QCEW data and production mapper.
+
+    Uses real QCEW wage data with null BEA source (falls back to YAML
+    default ratios) and production department mapper configuration.
+
+    Args:
+        real_qcew_source: SQLiteQCEWSource for real QCEW data.
+        production_mapper: Production DepartmentMapper.
+
+    Returns:
+        MarxianHydrator configured for empirical validation.
+    """
+    return MarxianHydrator(
+        qcew_source=real_qcew_source,
+        bea_source=NullBEADataSource(),
+        dept_mapper=production_mapper,
+    )
 
 
 # =============================================================================

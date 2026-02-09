@@ -161,12 +161,14 @@ class TestCommuterAdjustedMetricsType:
 
     def test_frozen(self) -> None:
         """Model is immutable (frozen)."""
+        from pydantic import ValidationError
+
         metrics = CommuterAdjustedMetrics(
             fips="26163",
             year=2022,
             tau_through_workplace=58.5,
         )
-        with pytest.raises(TypeError):  # Pydantic frozen model raises TypeError
+        with pytest.raises(ValidationError):  # Pydantic 2.x frozen model raises ValidationError
             metrics.tau_through_workplace = 60.0  # type: ignore[misc]
 
 

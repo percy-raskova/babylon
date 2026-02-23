@@ -667,6 +667,8 @@ ADR0XX_descriptive_name:
 - In-memory computation; no new database tables. Reads from existing data sources via protocol pattern during initialization. (017-simulation-tick-dynamics)
 - Python 3.12+ + Pydantic 2.x (frozen models), NetworkX 3.x (solidarity graph), existing economics module (Features 011-017) (018-crisis-devaluation-mechanics)
 - In-memory computation; no new database tables. CrisisState persists via CountyEconomicState in the graph bridge. (018-crisis-devaluation-mechanics)
+- Python 3.12+ + Pydantic 2.x, NetworkX 3.x, SQLAlchemy 2.x (all existing) (020-detroit-vertical-slice)
+- SQLite (marxist-data-3NF.sqlite) — read-only during simulation (020-detroit-vertical-slice)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

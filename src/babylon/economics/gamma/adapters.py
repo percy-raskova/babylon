@@ -131,8 +131,62 @@ class QCEWCareAdapter:
         return total_care_hours / 1_000_000_000
 
 
+# =============================================================================
+# MVP UNPAID CARE HOURS (ATUS Estimates)
+# =============================================================================
+
+# ATUS unpaid care estimates (billions of hours/year, national aggregate)
+# Sources: BLS American Time Use Survey 2015-2022
+# 2023 value carried forward from 2022 (survey data pending)
+_ATUS_UNPAID_CARE_HOURS: dict[int, float] = {
+    2015: 32.0,
+    2016: 32.2,
+    2017: 32.5,
+    2018: 32.8,
+    2019: 33.0,
+    2020: 35.0,  # COVID-19 pandemic increased unpaid care burden
+    2021: 34.5,
+    2022: 33.0,
+    2023: 33.0,  # Carried forward from 2022
+}
+
+
+class MVPUnpaidCareHoursSource:
+    """Hardcoded ATUS estimates for unpaid care hours.
+
+    Implements the ``UnpaidCareHoursSource`` protocol using hardcoded
+    national aggregate estimates derived from the American Time Use Survey.
+
+    Returns None for years outside the 2015-2023 range.
+
+    Example:
+        >>> source = MVPUnpaidCareHoursSource()
+        >>> source.get_unpaid_care_hours(2022)
+        33.0
+        >>> source.get_unpaid_care_hours(2010) is None
+        True
+
+    See Also:
+        :mod:`babylon.economics.gamma.data_sources`: UnpaidCareHoursSource protocol
+        :class:`babylon.economics.dynamics.hardcoded_data.HardcodedNationalDispossessionSource`:
+            Pattern reference for hardcoded MVP data sources
+    """
+
+    def get_unpaid_care_hours(self, year: int) -> float | None:
+        """Get annual unpaid care hours for a given year.
+
+        Args:
+            year: Calendar year (2015-2023 for available data).
+
+        Returns:
+            Unpaid care hours in billions, or None if data unavailable.
+        """
+        return _ATUS_UNPAID_CARE_HOURS.get(year)
+
+
 __all__ = [
     "CARE_NAICS_CODES",
     "HOURS_PER_YEAR",
+    "MVPUnpaidCareHoursSource",
     "QCEWCareAdapter",
 ]

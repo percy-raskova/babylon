@@ -47,6 +47,7 @@ class ServiceContainer:
         - throughput_calculator: Throughput position computation (Feature 014)
         - transition_engine: Class transition engine (Feature 016)
         - imperial_rent_calculator: Imperial rent computation (Feature 013)
+        - tensor_registry: Cached economic tensor data (Feature 011)
 
     Example:
         >>> container = ServiceContainer.create()
@@ -74,6 +75,7 @@ class ServiceContainer:
     throughput_calculator: Any = field(default=None)
     transition_engine: Any = field(default=None)
     imperial_rent_calculator: Any = field(default=None)
+    tensor_registry: Any = field(default=None)
 
     @classmethod
     def create(
@@ -89,6 +91,7 @@ class ServiceContainer:
         throughput_calculator: Any = None,
         transition_engine: Any = None,
         imperial_rent_calculator: Any = None,
+        tensor_registry: Any = None,
     ) -> ServiceContainer:
         """Factory method to create a fully-initialized container.
 
@@ -107,6 +110,7 @@ class ServiceContainer:
             throughput_calculator: Optional ThroughputCalculator (Feature 014).
             transition_engine: Optional ClassTransitionEngine (Feature 016).
             imperial_rent_calculator: Optional ImperialRentCalculator (Feature 013).
+            tensor_registry: Optional TensorRegistry for cached tensor data (Feature 011).
 
         Returns:
             ServiceContainer with all services initialized
@@ -131,4 +135,5 @@ class ServiceContainer:
             throughput_calculator=throughput_calculator,
             transition_engine=transition_engine,
             imperial_rent_calculator=imperial_rent_calculator,
+            tensor_registry=tensor_registry,
         )

@@ -369,6 +369,7 @@ def step(
     config: SimulationConfig,
     persistent_context: dict[str, Any] | None = None,
     defines: GameDefines | None = None,
+    calculator_overrides: dict[str, Any] | None = None,
 ) -> WorldState:
     """Advance simulation by one tick using the modular engine.
 
@@ -383,6 +384,8 @@ def step(
             ConsciousnessSystem's previous_wages for bifurcation mechanic).
         defines: Optional custom GameDefines. If None, loads from default
             defines.yaml location. Use this for scenario-specific calibration.
+        calculator_overrides: Optional dict of calculator instances to inject
+            into ServiceContainer (e.g., melt_calculator, tensor_registry).
 
     Returns:
         New WorldState at tick + 1
@@ -413,7 +416,8 @@ def step(
     # Create ServiceContainer for this tick
     # Use provided defines, or load from default YAML
     effective_defines = defines if defines is not None else GameDefines.load_default()
-    services = ServiceContainer.create(config, effective_defines)
+    overrides = calculator_overrides or {}
+    services = ServiceContainer.create(config, effective_defines, **overrides)
 
     # Create typed TickContext for this tick
     # persistent_data is initialized from caller's persistent_context if provided

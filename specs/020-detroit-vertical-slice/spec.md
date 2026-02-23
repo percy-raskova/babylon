@@ -5,6 +5,12 @@
 **Status**: Draft
 **Input**: Wire existing data layer, economics calculators, and game engine into a single pipeline producing validatable Detroit 2010-2025 time series output.
 
+## Clarifications
+
+### Session 2026-02-23
+
+- Q: When a year boundary occurs but tensor data for the next year is missing, what should the system do? → A: Carry forward the most recent available year's tensor data and log a warning (Option A).
+
 ## Problem Statement
 
 Babylon has three functional but disconnected layers:
@@ -91,7 +97,7 @@ ______________________________________________________________________
 
 - What happens when QCEW data is missing for a specific FIPS/year combination? TensorRegistry returns NoDataSentinel; all systems consuming tensor data must handle this gracefully without crashing.
 - What happens when BEA GDP data is unavailable for MELT calculation? The current StubBEASource returns None, causing DepartmentMapper YAML defaults to provide fallback s/v and c/v ratios. This behavior must be preserved.
-- What happens when a year boundary occurs but the next year's tensor data doesn't exist in the registry? The system should use the most recent available year's data or degrade gracefully with a logged warning.
+- What happens when a year boundary occurs but the next year's tensor data doesn't exist in the registry? The system MUST carry forward the most recent available year's tensor data and log a warning indicating which year's data is being reused. This ensures a gap-free time series.
 - What happens when all ticks complete but one county had no data for the entire span? Time series output should include the county with sentinel/missing markers, not omit it silently.
 - What happens when the database file is missing or inaccessible? Simulation creation should fail fast with a clear error message.
 - What happens when the existing non-database simulation path is used? All calculator fields should remain None (backward compatibility), and the engine should run exactly as before.
@@ -108,6 +114,7 @@ ______________________________________________________________________
 - **FR-006**: ProductionSystem MUST fall back to `base_labor_power` from GameDefines when no tensor data exists for a territory
 - **FR-007**: Simulation creation from the database MUST hydrate the TensorRegistry for ALL requested years (not just a single year)
 - **FR-008**: TickDynamicsSystem MUST use fresh tensor data from the registry when crossing a year boundary
+- **FR-015**: When tensor data is missing for a year boundary, the system MUST carry forward the most recent available year's tensor data and log a warning (no gaps in time series output)
 - **FR-009**: System MUST provide a method to extract time series data from a completed multi-year simulation run
 - **FR-010**: Time series records MUST contain: year, FIPS code, class distribution, profit rate, imperial rent per hour, and throughput position
 - **FR-011**: A validation script MUST run the Detroit time series and compare model output against Census/ACS income distribution data

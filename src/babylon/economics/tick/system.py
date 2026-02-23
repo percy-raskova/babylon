@@ -32,6 +32,7 @@ import networkx as nx
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+from babylon.economics.tensor import NoDataSentinel
 from babylon.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
     ThresholdCrisisDetector,
@@ -136,7 +137,7 @@ class TickDynamicsSystem:
             prev_coefficients = existing_state.coefficients
             prev_county_states = existing_state.county_states
         else:
-            year = self._determine_year(tick)
+            year = self._determine_year(tick, graph)
             prev_coefficients = None
             prev_county_states = self._bootstrap_county_states(graph, year)
 
@@ -201,16 +202,21 @@ class TickDynamicsSystem:
         # Write to graph
         write_tick_state_to_graph(graph, new_state)
 
-    def _determine_year(self, tick: int) -> int:
-        """Determine simulation year from tick number.
+    def _determine_year(self, tick: int, graph: nx.DiGraph[str] | None = None) -> int:
+        """Determine simulation year from tick number and graph metadata.
 
         Args:
             tick: Current tick number.
+            graph: Optional graph to read base_year from metadata.
 
         Returns:
-            Estimated year (2010 + tick // WEEKS_PER_YEAR).
+            Estimated year (base_year + tick // WEEKS_PER_YEAR).
+            Default base_year is 2010 if not set in graph metadata.
         """
-        return 2010 + tick // WEEKS_PER_YEAR
+        base_year = 2010
+        if graph is not None:
+            base_year = graph.graph.get("base_year", 2010)
+        return base_year + tick // WEEKS_PER_YEAR
 
     def _get_territory_fips(self, graph: nx.DiGraph[str]) -> list[str]:
         """Extract FIPS codes from territory nodes in graph.
@@ -576,7 +582,7 @@ class TickDynamicsSystem:
 
         updated: dict[str, CountyEconomicState] = {}
         for fips, county in county_states.items():
-            profit_rate = self._get_profit_rate(fips, services)
+            profit_rate = self._get_profit_rate(fips, county.year, services)
             crisis_state = county.crisis_state
             median_wage = county.median_wage
 
@@ -620,12 +626,17 @@ class TickDynamicsSystem:
     def _get_profit_rate(
         self,
         fips: str,
+        year: int,
         services: ServiceContainer,
     ) -> float | None:
         """Retrieve profit rate for a county from TensorRegistry.
 
+        Uses carry-forward logic: if data is unavailable for the requested
+        year, falls back to the most recent available year (T014).
+
         Args:
             fips: County FIPS code.
+            year: Target year for lookup.
             services: ServiceContainer with optional tensor_registry.
 
         Returns:
@@ -634,8 +645,23 @@ class TickDynamicsSystem:
         tensor_registry = getattr(services, "tensor_registry", None)
         if tensor_registry is None:
             return None
-        tensor = tensor_registry.get(fips) if hasattr(tensor_registry, "get") else None
-        if tensor is None:
+
+        tensor = tensor_registry.get(fips, year)
+        # Carry-forward: if current year unavailable, use most recent (T014)
+        if isinstance(tensor, NoDataSentinel) and hasattr(tensor_registry, "available_years"):
+            available = tensor_registry.available_years(fips)
+            candidates = [y for y in available if y <= year]
+            if candidates:
+                carry_year = max(candidates)
+                logger.info(
+                    "FIPS %s: using %d tensor data for year %d",
+                    fips,
+                    carry_year,
+                    year,
+                )
+                tensor = tensor_registry.get(fips, carry_year)
+
+        if isinstance(tensor, NoDataSentinel):
             return None
         return getattr(tensor, "profit_rate", None)
 

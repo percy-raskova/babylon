@@ -569,6 +569,61 @@ class Simulation:
         """
         return list(self._history)
 
+    def get_time_series(self) -> list[dict[str, Any]]:
+        """Extract time series records from completed simulation.
+
+        Iterates history and extracts economic state data at each year
+        boundary (every 52 ticks) from the TickDynamicsSystem output.
+
+        Returns:
+            List of dicts, each containing: year, fips, class_distribution
+            shares, profit_rate, phi_hour, throughput_position, and data_source.
+
+        Example:
+            >>> sim = Simulation.from_sqlite(["26163"], year=2022, years=[2022])
+            >>> sim.run(52)
+            >>> ts = sim.get_time_series()
+            >>> for record in ts:
+            ...     print(f"{record['year']} {record['fips']}: LA={record['la_share']:.2f}")
+        """
+        from babylon.economics.tick.graph_bridge import read_tick_state_from_graph
+
+        records: list[dict[str, Any]] = []
+
+        for state in self._history:
+            # Only check year boundaries (tick % 52 == 0 except tick 0)
+            if state.tick == 0:
+                continue
+            if state.tick % 52 != 0:
+                continue
+
+            # Read tick state from graph
+            graph = state.to_graph()
+            tick_state = read_tick_state_from_graph(graph)
+            if tick_state is None:
+                continue
+
+            # Extract county records
+            for fips, county in tick_state.county_states.items():
+                dist = county.class_distribution
+                records.append(
+                    {
+                        "year": tick_state.year,
+                        "fips": fips,
+                        "bourgeoisie_share": dist.bourgeoisie_share,
+                        "petit_bourgeoisie_share": dist.petit_bourgeoisie_share,
+                        "la_share": dist.labor_aristocracy_share,
+                        "proletariat_share": dist.proletariat_share,
+                        "lumpen_share": dist.lumpenproletariat_share,
+                        "profit_rate": county.capital_stock,  # from tensor
+                        "phi_hour": county.phi_hour,
+                        "throughput_position": county.throughput_position,
+                        "data_source": "simulation",
+                    }
+                )
+
+        return records
+
     def update_state(self, new_state: WorldState) -> None:
         """Update the current state mid-simulation.
 

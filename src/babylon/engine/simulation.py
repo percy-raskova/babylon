@@ -23,7 +23,8 @@ MVP Simulation Engine (001-mvp-sim-engine):
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 import h3
 
@@ -91,6 +92,7 @@ class Simulation:
         observers: list[SimulationObserver] | None = None,
         defines: GameDefines | None = None,
         tensor_registry: TensorRegistry | None = None,
+        calculator_overrides: dict[str, Any] | None = None,
     ) -> None:
         """Initialize simulation with initial state and configuration.
 
@@ -103,6 +105,8 @@ class Simulation:
             tensor_registry: Optional TensorRegistry for cached tensor data access.
                      If None, tensor data is not available. If provided, it should
                      be pre-hydrated with the relevant counties and years.
+            calculator_overrides: Optional dict of calculator instances to inject
+                     into ServiceContainer on each tick (Feature 020).
         """
         self._config = config
         self._defines = defines if defines is not None else GameDefines.load_default()
@@ -128,6 +132,14 @@ class Simulation:
         # Provides read-only access to labor-hour tensors without database queries
         self._tensor_registry: TensorRegistry | None = tensor_registry
 
+        # Detroit Vertical Slice (020): Calculator overrides for step()
+        # When set, these are passed to step() to inject real calculators
+        self._calculator_overrides: dict[str, Any] | None = calculator_overrides
+
+        # Detroit Vertical Slice (020): Base year for multi-year simulations
+        # Used by TickDynamicsSystem to determine current simulation year
+        self._base_year: int | None = None
+
         # GUI Protocol Extension (006): Thread-safe observer adapter
         # Callbacks receive frozen SimulationSnapshot, not live references
         self._adapter = ProtocolObserverAdapter(self)
@@ -139,6 +151,7 @@ class Simulation:
         year: int = 2022,
         observers: list[SimulationObserver] | None = None,
         defines: GameDefines | None = None,
+        years: Sequence[int] | None = None,
     ) -> Simulation:
         """Create simulation initialized from SQLite reference database.
 
@@ -152,6 +165,9 @@ class Simulation:
             year: Data year for QCEW/BEA data (default 2022).
             observers: Optional list of SimulationObserver instances.
             defines: Optional custom GameDefines for scenario-specific coefficients.
+            years: Optional sequence of years for multi-year time series.
+                When provided, tensor data is hydrated for all specified years
+                and the economics calculator factory is wired automatically.
 
         Returns:
             Initialized Simulation with territories hydrated from database.
@@ -203,23 +219,44 @@ class Simulation:
 
             hydrator = MarxianHydrator(qcew_source, bea_source, dept_mapper)
 
-            # Hydrate tensor data for all counties and the specified year
-            tensor_registry.hydrate_counties(hydrator, fips_codes, [year])
+            # Hydrate tensor data for all counties and requested years
+            hydration_years = list(years) if years is not None else [year]
+            tensor_registry.hydrate_counties(hydrator, fips_codes, hydration_years)
 
         logger.info(
-            "TensorRegistry hydrated with %d counties for year %d",
+            "TensorRegistry hydrated with %d counties for %d year(s)",
             len(fips_codes),
-            year,
+            len(hydration_years),
         )
+
+        # Wire calculator factory if multi-year mode requested
+        calculator_overrides: dict[str, Any] | None = None
+        if years is not None:
+            from babylon.data.reference.database import get_normalized_session_factory
+            from babylon.economics.factory import create_economics_services
+
+            calc_session_factory = get_normalized_session_factory()
+            calculator_overrides = create_economics_services(calc_session_factory, tensor_registry)
 
         # Create base WorldState and config
         state = WorldState()
         config = SimulationConfig()
 
-        # Create simulation instance with tensor registry
+        # Create simulation instance with tensor registry and calculator overrides
         sim = cls(
-            state, config, observers=observers, defines=defines, tensor_registry=tensor_registry
+            state,
+            config,
+            observers=observers,
+            defines=defines,
+            tensor_registry=tensor_registry,
+            calculator_overrides=calculator_overrides,
         )
+
+        # Set base year for multi-year simulations (T013)
+        if years is not None:
+            sim._base_year = min(years)
+        else:
+            sim._base_year = year
 
         # Initialize MVP territory state
         sim._initialize_mvp_territories(territories=territories, hexes=hexes)
@@ -467,9 +504,21 @@ class Simulation:
         self._hex_to_territory = None
 
         previous_state = self._current_state
+
+        # Inject base_year into persistent context for TickDynamicsSystem (T013)
+        if self._base_year is not None:
+            self._persistent_context["_base_year"] = self._base_year
+
         # Pass persistent context to preserve state across ticks (Sprint 3.4.3)
         # Pass custom defines for scenario-specific coefficients
-        new_state = step(previous_state, self._config, self._persistent_context, self._defines)
+        # Pass calculator overrides for wired economics (Feature 020)
+        new_state = step(
+            previous_state,
+            self._config,
+            self._persistent_context,
+            self._defines,
+            calculator_overrides=self._calculator_overrides,
+        )
         self._current_state = new_state
         self._history.append(new_state)
 

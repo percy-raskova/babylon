@@ -413,6 +413,10 @@ def step(
     G = state.to_graph()
     events: list[str] = list(state.event_log)
 
+    # Set base_year on graph for TickDynamicsSystem (Feature 020, T013)
+    if persistent_context and "_base_year" in persistent_context:
+        G.graph["base_year"] = persistent_context["_base_year"]
+
     # Create ServiceContainer for this tick
     # Use provided defines, or load from default YAML
     effective_defines = defines if defines is not None else GameDefines.load_default()

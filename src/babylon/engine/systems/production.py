@@ -26,16 +26,20 @@ Historical Materialist Principle:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import networkx as nx
 
+from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
+
+logger = logging.getLogger(__name__)
 
 # Direct producers: receive production directly (self-employed/exploited)
 _DIRECT_PRODUCER_ROLES: frozenset[SocialRole] = frozenset({SocialRole.PERIPHERY_PROLETARIAT})
@@ -124,8 +128,21 @@ class ProductionSystem:
             # Mass Line: Scale production by population (demographic block size)
             population = data.get("population", 1)
 
+            # Determine effective labor power from tensor or fallback (Feature 020)
+            effective_labor_power = base_labor_power  # default fallback
+            tensor_registry = getattr(services, "tensor_registry", None)
+            if tensor_registry is not None:
+                fips_code = territory_data.get("fips_code")
+                if fips_code is not None:
+                    current_year = graph.graph.get("base_year", 2022)
+                    tensor = tensor_registry.get(fips_code, current_year)
+                    if not isinstance(tensor, NoDataSentinel):
+                        # Use variable capital as proxy for productive capacity
+                        # Convert annual to weekly (same as base_labor_power)
+                        effective_labor_power = tensor.total_v / weeks_per_year
+
             # Calculate production value
-            produced_value = (base_labor_power * population) * bio_ratio
+            produced_value = (effective_labor_power * population) * bio_ratio
             current_wealth = data.get("wealth", 0.0)
 
             # Route production based on role type

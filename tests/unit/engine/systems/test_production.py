@@ -4,16 +4,20 @@ TDD tests for the Material Reality Refactor.
 Workers generate wealth from labor × biocapacity.
 Only active workers in territories can produce.
 
+Feature 020: Tests for tensor-aware production (T010).
+
 These tests are written BEFORE implementation (RED phase of TDD).
 """
 
 from __future__ import annotations
 
 from collections.abc import Generator
+from unittest.mock import MagicMock
 
 import networkx as nx
 import pytest
 
+from babylon.economics.tensor import DepartmentRow, NoDataSentinel, ValueTensor4x3
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.production import ProductionSystem
 from babylon.models.enums import EdgeType, SocialRole
@@ -303,3 +307,131 @@ class TestProductionPopulationScaling:
 
         # Wealth unchanged (0 population = 0 production)
         assert graph.nodes["PERIPHERY_WORKER_ID"]["wealth"] == pytest.approx(5.0)
+
+
+def _make_tensor(
+    fips: str = "26163", year: int = 2022, total_v: float = 520000.0
+) -> ValueTensor4x3:
+    """Create a ValueTensor4x3 with a given total_v (split across 4 departments)."""
+    v_per_dept = total_v / 4.0
+    dept = DepartmentRow(c=100.0, v=v_per_dept, s=50.0)
+    return ValueTensor4x3(
+        fips_code=fips,
+        year=year,
+        dept_I=dept,
+        dept_IIa=dept,
+        dept_IIb=dept,
+        dept_III=dept,
+        naics_granularity=0.85,
+        excluded_wages=0.0,
+    )
+
+
+@pytest.mark.unit
+class TestTensorAwareProduction:
+    """Tests for tensor-driven production in ProductionSystem (Feature 020, T010)."""
+
+    def test_tensor_lookup_uses_total_v(self) -> None:
+        """When tensor_registry provides data, production uses total_v."""
+        total_v = 520000.0  # annual variable capital in labor-hours
+        tensor = _make_tensor(total_v=total_v)
+
+        mock_registry = MagicMock()
+        mock_registry.get.return_value = tensor
+
+        services = ServiceContainer.create(tensor_registry=mock_registry)
+        weeks_per_year = services.defines.timescale.weeks_per_year
+
+        graph: nx.DiGraph = nx.DiGraph()
+        graph.graph["base_year"] = 2022
+        _create_worker_node(graph, "W1", wealth=0.0, population=1)
+        _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
+        graph.nodes["T1"]["fips_code"] = "26163"
+        _create_tenancy_edge(graph, "W1", "T1")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 0})
+
+        expected = (total_v / weeks_per_year) * 1.0  # population=1, bio_ratio=1.0
+        assert graph.nodes["W1"]["wealth"] == pytest.approx(expected)
+        services.database.close()
+
+    def test_no_data_sentinel_falls_back_to_base_labor_power(self) -> None:
+        """When tensor_registry returns NoDataSentinel, use base_labor_power."""
+        mock_registry = MagicMock()
+        mock_registry.get.return_value = NoDataSentinel("26163", 2022, "no data")
+
+        services = ServiceContainer.create(tensor_registry=mock_registry)
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+
+        graph: nx.DiGraph = nx.DiGraph()
+        graph.graph["base_year"] = 2022
+        _create_worker_node(graph, "W1", wealth=0.0)
+        _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
+        graph.nodes["T1"]["fips_code"] = "26163"
+        _create_tenancy_edge(graph, "W1", "T1")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 0})
+
+        expected = (annual_labor_power / weeks_per_year) * 1.0
+        assert graph.nodes["W1"]["wealth"] == pytest.approx(expected)
+        services.database.close()
+
+    def test_no_tensor_registry_falls_back_to_base_labor_power(self) -> None:
+        """When tensor_registry is None, use base_labor_power (backward compat)."""
+        services = ServiceContainer.create()  # tensor_registry=None
+        annual_labor_power = services.defines.economy.base_labor_power
+        weeks_per_year = services.defines.timescale.weeks_per_year
+
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_worker_node(graph, "W1", wealth=0.0)
+        _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
+        _create_tenancy_edge(graph, "W1", "T1")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 0})
+
+        expected = (annual_labor_power / weeks_per_year) * 1.0
+        assert graph.nodes["W1"]["wealth"] == pytest.approx(expected)
+        services.database.close()
+
+    def test_two_fips_different_tensors(self) -> None:
+        """Two territories with different tensors produce different values."""
+        tensor_wayne = _make_tensor(fips="26163", total_v=520000.0)
+        tensor_oakland = _make_tensor(fips="26125", total_v=260000.0)
+
+        mock_registry = MagicMock()
+
+        def get_tensor(fips: str, year: int) -> ValueTensor4x3:
+            if fips == "26163":
+                return tensor_wayne
+            return tensor_oakland
+
+        mock_registry.get.side_effect = get_tensor
+
+        services = ServiceContainer.create(tensor_registry=mock_registry)
+        weeks_per_year = services.defines.timescale.weeks_per_year
+
+        graph: nx.DiGraph = nx.DiGraph()
+        graph.graph["base_year"] = 2022
+
+        _create_worker_node(graph, "W1", wealth=0.0)
+        _create_territory_node(graph, "T1", biocapacity=100.0, max_biocapacity=100.0)
+        graph.nodes["T1"]["fips_code"] = "26163"
+        _create_tenancy_edge(graph, "W1", "T1")
+
+        _create_worker_node(graph, "W2", wealth=0.0)
+        _create_territory_node(graph, "T2", biocapacity=100.0, max_biocapacity=100.0)
+        graph.nodes["T2"]["fips_code"] = "26125"
+        _create_tenancy_edge(graph, "W2", "T2")
+
+        system = ProductionSystem()
+        system.step(graph, services, {"tick": 0})
+
+        assert graph.nodes["W1"]["wealth"] == pytest.approx(520000.0 / weeks_per_year)
+        assert graph.nodes["W2"]["wealth"] == pytest.approx(260000.0 / weeks_per_year)
+        # Wayne should produce 2x Oakland
+        assert graph.nodes["W1"]["wealth"] == pytest.approx(2.0 * graph.nodes["W2"]["wealth"])
+        services.database.close()

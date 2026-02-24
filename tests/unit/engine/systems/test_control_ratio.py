@@ -482,3 +482,269 @@ class TestTerminalDecision:
         assert event.payload["outcome"] == "revolution"
         # Weighted average: (2000*0.6 + 500*0.2) / 2500 = 0.52
         assert event.payload["avg_organization"] == pytest.approx(0.52)
+
+
+@pytest.mark.topology
+class TestControlRatioMutationKillers:
+    """Targeted tests to kill mutation survivors in ControlRatioSystem.step."""
+
+    def test_exactly_at_capacity_no_crisis(self, services: ServiceContainer) -> None:
+        """prisoners == enforcers * capacity → no crisis (tests <= boundary)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        # 100 enforcers * 4 capacity = 400 max; prisoners exactly 400
+        graph.add_node(
+            "Enforcer",
+            role=SocialRole.CARCERAL_ENFORCER,
+            population=100,
+            active=True,
+            _node_type="social_class",
+        )
+        graph.add_node(
+            "Int_P",
+            role=SocialRole.INTERNAL_PROLETARIAT,
+            population=400,
+            active=True,
+            organization=0.5,
+            _node_type="social_class",
+        )
+
+        captured: list[Event] = []
+        services.event_bus.subscribe(EventType.CONTROL_RATIO_CRISIS, lambda e: captured.append(e))
+
+        system = ControlRatioSystem()
+        system.step(graph, services, _create_test_context())
+
+        assert len(captured) == 0, "Exactly at capacity → no crisis"
+
+    def test_one_over_capacity_triggers_crisis(self, services: ServiceContainer) -> None:
+        """prisoners == enforcers * capacity + 1 → crisis (tests <= vs <)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        # 100 enforcers * 4 = 400 max; prisoners = 401
+        graph.add_node(
+            "Enforcer",
+            role=SocialRole.CARCERAL_ENFORCER,
+            population=100,
+            active=True,
+            _node_type="social_class",
+        )
+        graph.add_node(
+            "Int_P",
+            role=SocialRole.INTERNAL_PROLETARIAT,
+            population=401,
+            active=True,
+            organization=0.5,
+            _node_type="social_class",
+        )
+
+        captured: list[Event] = []
+        services.event_bus.subscribe(EventType.CONTROL_RATIO_CRISIS, lambda e: captured.append(e))
+
+        system = ControlRatioSystem()
+        system.step(graph, services, _create_test_context())
+
+        assert len(captured) == 1, "One over capacity → crisis"
+        assert captured[0].payload["over_capacity_by"] == 1
+
+    def test_delay_gate_blocks_early(self, services: ServiceContainer) -> None:
+        """tick < decomp_tick + delay → return early (no processing)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_unstable_carceral_state(graph)
+
+        captured: list[Event] = []
+        services.event_bus.subscribe(EventType.CONTROL_RATIO_CRISIS, lambda e: captured.append(e))
+
+        delay = services.defines.carceral.control_ratio_delay  # 52
+        # decomp at tick 10, delay=52, so need tick >= 62 to process
+        context: dict[str, object] = {
+            "tick": 10 + delay - 1,  # tick=61, just before threshold
+            "_class_decomposition_tick": 10,
+        }
+
+        system = ControlRatioSystem()
+        system.step(graph, services, context)
+
+        assert len(captured) == 0, "Delay gate blocks early tick"
+
+    def test_delay_gate_opens_exactly(self, services: ServiceContainer) -> None:
+        """tick == decomp_tick + delay → processes (tests < vs <=)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_unstable_carceral_state(graph)
+
+        captured: list[Event] = []
+        services.event_bus.subscribe(EventType.CONTROL_RATIO_CRISIS, lambda e: captured.append(e))
+
+        delay = services.defines.carceral.control_ratio_delay  # 52
+        context: dict[str, object] = {
+            "tick": 10 + delay,  # tick=62, exactly at threshold
+            "_class_decomposition_tick": 10,
+        }
+
+        system = ControlRatioSystem()
+        system.step(graph, services, context)
+
+        assert len(captured) == 1, "Delay gate opens at exact tick"
+
+    def test_terminal_delay_blocks(self, services: ServiceContainer) -> None:
+        """tick == crisis_tick → terminal delay blocks (needs crisis_tick + delay)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_unstable_carceral_state(graph)
+
+        terminal_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.TERMINAL_DECISION, lambda e: terminal_events.append(e)
+        )
+
+        tick = 100
+        context: dict[str, object] = {
+            "tick": tick,
+            "_class_decomposition_tick": tick - 100,
+            "_control_ratio_crisis_tick": tick,  # Crisis just happened
+            "_control_crisis_emitted": True,
+        }
+
+        system = ControlRatioSystem()
+        system.step(graph, services, context)
+
+        # tick=100 < crisis_tick(100) + delay(1) = 101 → blocks
+        assert len(terminal_events) == 0, "Terminal delay blocks at crisis_tick"
+
+    def test_terminal_delay_fires(self, services: ServiceContainer) -> None:
+        """tick == crisis_tick + terminal_delay → fires terminal decision."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_unstable_carceral_state(graph)
+
+        terminal_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.TERMINAL_DECISION, lambda e: terminal_events.append(e)
+        )
+
+        terminal_delay = services.defines.carceral.terminal_decision_delay  # 1
+        crisis_tick = 100
+        context: dict[str, object] = {
+            "tick": crisis_tick + terminal_delay,  # tick=101
+            "_class_decomposition_tick": 0,
+            "_control_ratio_crisis_tick": crisis_tick,
+            "_control_crisis_emitted": True,
+        }
+
+        system = ControlRatioSystem()
+        system.step(graph, services, context)
+
+        assert len(terminal_events) == 1, "Terminal fires at crisis_tick + delay"
+
+    def test_crisis_emitted_once_on_repeated_steps(self, services: ServiceContainer) -> None:
+        """Step twice at same unstable state → only 1 crisis event total."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_unstable_carceral_state(graph)
+
+        captured: list[Event] = []
+        services.event_bus.subscribe(EventType.CONTROL_RATIO_CRISIS, lambda e: captured.append(e))
+
+        system = ControlRatioSystem()
+        context = _create_test_context(tick=200)
+        system.step(graph, services, context)
+        assert len(captured) == 1
+
+        # Step again — crisis flag should prevent re-emission
+        context["tick"] = 201
+        system.step(graph, services, context)
+        assert len(captured) == 1, "Crisis emitted only once"
+
+    def test_terminal_emitted_flag_causes_early_return(self, services: ServiceContainer) -> None:
+        """_terminal_decision_emitted=True → immediate return, no processing."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_unstable_carceral_state(graph)
+
+        crisis_events: list[Event] = []
+        terminal_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.CONTROL_RATIO_CRISIS, lambda e: crisis_events.append(e)
+        )
+        services.event_bus.subscribe(
+            EventType.TERMINAL_DECISION, lambda e: terminal_events.append(e)
+        )
+
+        context: dict[str, object] = {
+            "tick": 200,
+            "_class_decomposition_tick": 0,
+            "_terminal_decision_emitted": True,  # Already fired
+        }
+
+        system = ControlRatioSystem()
+        system.step(graph, services, context)
+
+        assert len(crisis_events) == 0, "No crisis when terminal already emitted"
+        assert len(terminal_events) == 0, "No terminal re-emission"
+
+    def test_avg_organization_exact_calculation(self, services: ServiceContainer) -> None:
+        """Weighted avg org = sum(pop*org) / total_pop, verify exact value."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "Enforcer",
+            role=SocialRole.CARCERAL_ENFORCER,
+            population=10,
+            active=True,
+            _node_type="social_class",
+        )
+        # Pop=300, org=0.8 → weighted=240
+        graph.add_node(
+            "Int_P",
+            role=SocialRole.INTERNAL_PROLETARIAT,
+            population=300,
+            active=True,
+            organization=0.8,
+            _node_type="social_class",
+        )
+        # Pop=200, org=0.3 → weighted=60
+        graph.add_node(
+            "Lumpen",
+            role=SocialRole.LUMPENPROLETARIAT,
+            population=200,
+            active=True,
+            organization=0.3,
+            _node_type="social_class",
+        )
+        # Total pop=500, org_sum=300, avg=300/500=0.6
+
+        terminal_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.TERMINAL_DECISION, lambda e: terminal_events.append(e)
+        )
+
+        system = ControlRatioSystem()
+        system.step(graph, services, _create_test_context(include_crisis_tick=True))
+
+        assert len(terminal_events) == 1
+        assert terminal_events[0].payload["avg_organization"] == pytest.approx(0.6)
+
+    def test_revolution_at_exact_threshold(self, services: ServiceContainer) -> None:
+        """avg_org == revolution_threshold (0.5) → revolution (>= boundary)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "Enforcer",
+            role=SocialRole.CARCERAL_ENFORCER,
+            population=10,
+            active=True,
+            _node_type="social_class",
+        )
+        # All prisoners with org=0.5 exactly
+        graph.add_node(
+            "Int_P",
+            role=SocialRole.INTERNAL_PROLETARIAT,
+            population=500,
+            active=True,
+            organization=0.5,
+            _node_type="social_class",
+        )
+
+        terminal_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.TERMINAL_DECISION, lambda e: terminal_events.append(e)
+        )
+
+        system = ControlRatioSystem()
+        system.step(graph, services, _create_test_context(include_crisis_tick=True))
+
+        assert len(terminal_events) == 1
+        assert terminal_events[0].payload["outcome"] == "revolution"
+        assert terminal_events[0].payload["avg_organization"] == pytest.approx(0.5)

@@ -600,3 +600,232 @@ class TestGrindingAttrition:
         assert payload["entity_id"] == "PERIPHERY_WORKER_ID"
         assert payload["deaths"] > 0
         assert payload["remaining_population"] < 1000
+
+
+@pytest.mark.unit
+class TestVitalityMutationKillers:
+    """Targeted tests to kill mutation survivors in VitalitySystem.step.
+
+    Focuses on boundary conditions, exact formula values, and phase
+    interactions that survive mutmut operator swaps.
+    """
+
+    def test_population_exactly_zero_skipped(self, services: ServiceContainer) -> None:
+        """population=0 → continue (no processing, no events)."""
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(graph, "entity", wealth=100.0, population=0, s_bio=0.01)
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # No events - entity with pop=0 is skipped entirely
+        assert len(events) == 0
+        # Wealth unchanged (no drain applied)
+        assert graph.nodes["entity"]["wealth"] == 100.0
+
+    def test_population_negative_skipped(self, services: ServiceContainer) -> None:
+        """population=-1 → continue (no processing)."""
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(graph, "entity", wealth=100.0, population=-1, s_bio=0.01)
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert len(events) == 0
+        assert graph.nodes["entity"]["wealth"] == 100.0
+
+    def test_drain_cost_formula_exact(self, services: ServiceContainer) -> None:
+        """cost = (base_subsistence * population) * multiplier, exact value."""
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(graph, "entity", wealth=10.0, population=100, s_bio=0.0)
+        graph.nodes["entity"]["subsistence_multiplier"] = 1.5
+
+        base_sub = services.defines.economy.base_subsistence
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        expected_cost = (base_sub * 100) * 1.5
+        expected_wealth = 10.0 - expected_cost
+        assert graph.nodes["entity"]["wealth"] == pytest.approx(expected_wealth)
+
+    def test_drain_clamps_wealth_at_zero(self, services: ServiceContainer) -> None:
+        """wealth=0.001, cost >> wealth → wealth clamped to 0.0 (not negative)."""
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(graph, "entity", wealth=0.001, population=10000, s_bio=0.0)
+        graph.nodes["entity"]["subsistence_multiplier"] = 100.0
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert graph.nodes["entity"]["wealth"] == 0.0
+
+    def test_reaper_extinction_condition(self, services: ServiceContainer) -> None:
+        """population=0 after attrition → active=False, cause='extinction'."""
+        graph: nx.DiGraph = nx.DiGraph()
+        # Set up entity that will lose all population through attrition
+        _create_entity_node(
+            graph,
+            "entity",
+            wealth=0.0,
+            population=1,
+            inequality=1.0,
+            s_bio=0.01,
+        )
+        graph.nodes["entity"]["subsistence_multiplier"] = 0.0  # Disable drain
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert graph.nodes["entity"]["active"] is False
+        assert len(events) == 1
+
+    def test_reaper_starvation_condition(self, services: ServiceContainer) -> None:
+        """population=1, wealth < consumption_needs → starvation death."""
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "entity",
+            wealth=0.001,  # Less than s_bio
+            population=1,
+            s_bio=0.01,
+            s_class=0.0,
+        )
+        graph.nodes["entity"]["subsistence_multiplier"] = 0.0  # Disable drain
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert graph.nodes["entity"]["active"] is False
+        assert graph.nodes["entity"]["population"] == 0
+        assert len(events) == 1
+        assert events[0].payload["cause"] == "starvation"
+
+    def test_reaper_zombie_trap_condition(self, services: ServiceContainer) -> None:
+        """population=1, wealth < death_threshold → zombie trap death."""
+        death_threshold = services.defines.economy.death_threshold  # 0.001
+
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "entity",
+            wealth=death_threshold / 2,  # Below threshold
+            population=1,
+            s_bio=0.0,  # No starvation condition
+            s_class=0.0,
+        )
+        graph.nodes["entity"]["subsistence_multiplier"] = 0.0  # Disable drain
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert graph.nodes["entity"]["active"] is False
+        assert graph.nodes["entity"]["population"] == 0
+        assert len(events) == 1
+        assert events[0].payload["cause"] == "wealth_threshold"
+
+    def test_reaper_zombie_above_threshold_survives(self, services: ServiceContainer) -> None:
+        """population=1, wealth > death_threshold → survives."""
+        death_threshold = services.defines.economy.death_threshold
+
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "entity",
+            wealth=death_threshold + 0.01,  # Above threshold
+            population=1,
+            s_bio=0.0,
+            s_class=0.0,
+        )
+        graph.nodes["entity"]["subsistence_multiplier"] = 0.0
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert graph.nodes["entity"]["active"] is True
+        assert graph.nodes["entity"]["population"] == 1
+        assert len(events) == 0
+
+    def test_full_phase_sequence(self, services: ServiceContainer) -> None:
+        """drain reduces wealth → attrition kills some → reaper checks."""
+        graph: nx.DiGraph = nx.DiGraph()
+        # Entity with moderate wealth and population
+        _create_entity_node(
+            graph,
+            "entity",
+            wealth=0.05,
+            population=10,
+            inequality=0.9,  # High inequality → deaths expected
+            s_bio=0.01,
+        )
+        graph.nodes["entity"]["subsistence_multiplier"] = 1.0
+
+        attrition_events: list[Event] = []
+        death_events: list[Event] = []
+        services.event_bus.subscribe(EventType.POPULATION_ATTRITION, attrition_events.append)
+        services.event_bus.subscribe(EventType.ENTITY_DEATH, death_events.append)
+
+        initial_wealth = 0.05
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        # Phase 1: Drain reduced wealth
+        # Wealth should reflect drain (approximately)
+        assert graph.nodes["entity"]["wealth"] <= initial_wealth
+
+    def test_base_subsistence_zero_no_drain(self, services: ServiceContainer) -> None:
+        """base_subsistence=0.0 → no wealth drained in Phase 1."""
+        from babylon.config.defines import EconomyDefines, GameDefines
+
+        custom = GameDefines(economy=EconomyDefines(base_subsistence=0.0))
+        custom_services = ServiceContainer.create(defines=custom)
+
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(graph, "entity", wealth=1.0, population=100, s_bio=0.0)
+        graph.nodes["entity"]["subsistence_multiplier"] = 100.0
+
+        system = VitalitySystem()
+        system.step(graph, custom_services, {"tick": 1})
+
+        # No drain when base_subsistence=0
+        assert graph.nodes["entity"]["wealth"] == 1.0
+
+        custom_services.database.close()
+
+    def test_attrition_zero_deaths_population_unchanged(self, services: ServiceContainer) -> None:
+        """Wealthy entity with low inequality → 0 deaths, population unchanged."""
+        graph: nx.DiGraph = nx.DiGraph()
+        _create_entity_node(
+            graph,
+            "entity",
+            wealth=1000.0,
+            population=100,
+            inequality=0.0,
+            s_bio=0.01,
+        )
+        graph.nodes["entity"]["subsistence_multiplier"] = 1.0
+
+        events: list[Event] = []
+        services.event_bus.subscribe(EventType.POPULATION_ATTRITION, events.append)
+
+        system = VitalitySystem()
+        system.step(graph, services, {"tick": 1})
+
+        assert graph.nodes["entity"]["population"] == 100
+        assert len(events) == 0

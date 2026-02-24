@@ -543,3 +543,225 @@ class TestClassDynamicsIntegration:
             # Verify conservation
             total = sum(shares)
             assert total == pytest.approx(1.0, abs=0.001)
+
+
+@pytest.mark.math
+class TestClassDynamicsDerivativeAlgebra:
+    """Targeted tests for killing mutation survivors in calculate_class_dynamics_derivative.
+
+    Tests isolate individual extraction flows, resistance multipliers,
+    constraint enforcement, and gamma injection to catch sign/swap/removal mutations.
+    """
+
+    def test_dw1_inflow_from_w4_only(self) -> None:
+        """dW₁ should contain α₄₁·W₄·(1-r₄) inflow term."""
+        # Only α₄₁ is nonzero, all δ = 0 to isolate
+        params = ClassDynamicsParams(
+            alpha_41=0.1,
+            alpha_31=0.0,
+            alpha_21=0.0,
+            alpha_32=0.0,
+            alpha_42=0.0,
+            alpha_43=0.0,
+            delta_1=0.0,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.0,
+        )
+        shares = (0.3, 0.3, 0.2, 0.2)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        # dW₁ = α₄₁ × W₄ × (1-r₄) = 0.1 × 0.2 × 1.0 = 0.02
+        assert dw[0] == pytest.approx(0.02, abs=1e-10)
+
+    def test_dw1_inflow_from_w3_only(self) -> None:
+        """dW₁ should contain α₃₁·W₃·(1-r₃) inflow term."""
+        params = ClassDynamicsParams(
+            alpha_41=0.0,
+            alpha_31=0.05,
+            alpha_21=0.0,
+            alpha_32=0.0,
+            alpha_42=0.0,
+            alpha_43=0.0,
+            delta_1=0.0,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.0,
+        )
+        shares = (0.3, 0.3, 0.2, 0.2)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        # dW₁ = α₃₁ × W₃ = 0.05 × 0.2 = 0.01
+        assert dw[0] == pytest.approx(0.01, abs=1e-10)
+
+    def test_dw1_outflow_from_delta_only(self) -> None:
+        """dW₁ should contain -δ₁·W₁ redistribution outflow."""
+        params = ClassDynamicsParams(
+            alpha_41=0.0,
+            alpha_31=0.0,
+            alpha_21=0.0,
+            alpha_32=0.0,
+            alpha_42=0.0,
+            alpha_43=0.0,
+            delta_1=0.05,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.0,
+        )
+        shares = (0.4, 0.3, 0.2, 0.1)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        # dW₁ = -δ₁ × W₁ = -0.05 × 0.4 = -0.02
+        assert dw[0] == pytest.approx(-0.02, abs=1e-10)
+
+    def test_dw2_cross_class_flows(self) -> None:
+        """dW₂ should contain α₃₂·W₃ and α₄₂·W₄ inflows, α₂₁·W₂ outflow."""
+        params = ClassDynamicsParams(
+            alpha_41=0.0,
+            alpha_31=0.0,
+            alpha_21=0.02,
+            alpha_32=0.03,
+            alpha_42=0.04,
+            alpha_43=0.0,
+            delta_1=0.0,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.0,
+        )
+        shares = (0.25, 0.25, 0.25, 0.25)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        # dW₂ = α₃₂·W₃ + α₄₂·W₄ - α₂₁·W₂ - δ₂·W₂
+        #      = 0.03×0.25 + 0.04×0.25 - 0.02×0.25 - 0
+        #      = 0.0075 + 0.01 - 0.005 = 0.0125
+        assert dw[1] == pytest.approx(0.0125, abs=1e-10)
+
+    def test_full_resistance_blocks_all_extraction(self) -> None:
+        """When all r=1.0, only δ terms remain (all extraction blocked)."""
+        params = ClassDynamicsParams(
+            alpha_41=0.1,
+            alpha_31=0.1,
+            alpha_21=0.1,
+            alpha_32=0.1,
+            alpha_42=0.1,
+            alpha_43=0.1,
+            delta_1=0.01,
+            delta_2=0.02,
+            delta_3=0.01,
+            gamma_3=0.0,
+        )
+        shares = (0.25, 0.25, 0.25, 0.25)
+        resistances = (1.0, 1.0, 1.0, 1.0)
+        dw = calculate_class_dynamics_derivative(shares, params=params, resistances=resistances)
+
+        # All extraction terms multiply by (1-1.0) = 0, only δ terms survive
+        # dW₁ = 0 + 0 + 0 - δ₁×W₁ = -0.01×0.25 = -0.0025
+        assert dw[0] == pytest.approx(-0.0025, abs=1e-10)
+        # dW₂ = 0 + 0 - 0 - δ₂×W₂ = -0.02×0.25 = -0.005
+        assert dw[1] == pytest.approx(-0.005, abs=1e-10)
+        # dW₃ = 0 + 0 - 0 - 0 - δ₃×W₃ = -0.01×0.25 = -0.0025
+        assert dw[2] == pytest.approx(-0.0025, abs=1e-10)
+
+    def test_zero_resistance_allows_full_extraction(self) -> None:
+        """When all r=0.0, extraction terms apply at full rate."""
+        params = ClassDynamicsParams(
+            alpha_41=0.1,
+            alpha_31=0.0,
+            alpha_21=0.0,
+            alpha_32=0.0,
+            alpha_42=0.0,
+            alpha_43=0.0,
+            delta_1=0.0,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.0,
+        )
+        shares = (0.25, 0.25, 0.25, 0.25)
+        resistances = (0.0, 0.0, 0.0, 0.0)
+        dw = calculate_class_dynamics_derivative(shares, params=params, resistances=resistances)
+
+        # dW₁ = α₄₁ × W₄ × (1-0) = 0.1 × 0.25 = 0.025
+        assert dw[0] == pytest.approx(0.025, abs=1e-10)
+
+    def test_derivatives_sum_to_zero_with_varied_params(self) -> None:
+        """Conservation constraint: sum(dW) = 0 for arbitrary parameters."""
+        params = ClassDynamicsParams(
+            alpha_41=0.05,
+            alpha_31=0.03,
+            alpha_21=0.02,
+            alpha_32=0.04,
+            alpha_42=0.01,
+            alpha_43=0.06,
+            delta_1=0.02,
+            delta_2=0.03,
+            delta_3=0.01,
+            gamma_3=0.05,
+        )
+        shares = (0.15, 0.35, 0.30, 0.20)
+        resistances = (0.1, 0.2, 0.3, 0.4)
+        dw = calculate_class_dynamics_derivative(shares, params=params, resistances=resistances)
+
+        assert abs(sum(dw)) < 1e-10, f"Sum constraint violated: {sum(dw)}"
+
+    def test_dw4_equals_negative_sum_of_others(self) -> None:
+        """dW₄ = -(dW₁ + dW₂ + dW₃) — explicit constraint check."""
+        params = ClassDynamicsParams(
+            alpha_41=0.08,
+            alpha_31=0.02,
+            alpha_21=0.01,
+            alpha_32=0.03,
+            alpha_42=0.02,
+            alpha_43=0.04,
+            delta_1=0.01,
+            delta_2=0.02,
+            delta_3=0.015,
+            gamma_3=0.03,
+        )
+        shares = (0.20, 0.30, 0.35, 0.15)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        expected_dw4 = -(dw[0] + dw[1] + dw[2])
+        assert dw[3] == pytest.approx(expected_dw4, abs=1e-10)
+
+    def test_gamma_injection_appears_only_in_dw3(self) -> None:
+        """γ₃ should appear only in dW₃, not dW₁ or dW₂."""
+        # All α and δ = 0 to isolate γ₃
+        params = ClassDynamicsParams(
+            alpha_41=0.0,
+            alpha_31=0.0,
+            alpha_21=0.0,
+            alpha_32=0.0,
+            alpha_42=0.0,
+            alpha_43=0.0,
+            delta_1=0.0,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.1,
+        )
+        shares = (0.25, 0.25, 0.25, 0.25)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        # dW₁ = 0, dW₂ = 0, dW₃ = γ₃ = 0.1
+        assert dw[0] == pytest.approx(0.0, abs=1e-10)
+        assert dw[1] == pytest.approx(0.0, abs=1e-10)
+        assert dw[2] == pytest.approx(0.1, abs=1e-10)
+
+    def test_gamma_injection_reflected_in_dw4(self) -> None:
+        """γ₃ in dW₃ causes compensating dW₄ = -γ₃."""
+        params = ClassDynamicsParams(
+            alpha_41=0.0,
+            alpha_31=0.0,
+            alpha_21=0.0,
+            alpha_32=0.0,
+            alpha_42=0.0,
+            alpha_43=0.0,
+            delta_1=0.0,
+            delta_2=0.0,
+            delta_3=0.0,
+            gamma_3=0.1,
+        )
+        shares = (0.25, 0.25, 0.25, 0.25)
+        dw = calculate_class_dynamics_derivative(shares, params=params)
+
+        # dW₄ = -(0 + 0 + 0.1) = -0.1
+        assert dw[3] == pytest.approx(-0.1, abs=1e-10)

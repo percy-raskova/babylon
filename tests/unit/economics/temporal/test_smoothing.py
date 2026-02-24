@@ -181,3 +181,170 @@ class TestVarianceReduction:
         # Variance reduction should be computed
         reduction = series.variance_reduction
         assert 0.0 < reduction < 1.0
+
+
+class TestEwmaMutationKillers:
+    """Mutation-killing tests for ewma() and _extract_coefficient."""
+
+    def test_ewma_second_value_uses_alpha_weight(self) -> None:
+        """Verify S_1 = α * X_1 + (1-α) * S_0 exactly."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        result = ewma([10.0, 20.0], alpha=0.4)
+        # S_0 = 10.0
+        # S_1 = 0.4 * 20.0 + 0.6 * 10.0 = 8.0 + 6.0 = 14.0
+        assert result[0] == 10.0
+        assert result[1] == pytest.approx(14.0)
+
+    def test_ewma_third_value_chains_correctly(self) -> None:
+        """Verify S_2 chains from S_1 (not S_0 or X_1)."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        result = ewma([10.0, 20.0, 30.0], alpha=0.5)
+        # S_0 = 10.0
+        # S_1 = 0.5 * 20.0 + 0.5 * 10.0 = 15.0
+        # S_2 = 0.5 * 30.0 + 0.5 * 15.0 = 22.5
+        assert result[2] == pytest.approx(22.5)
+
+    def test_ewma_alpha_half_midpoint(self) -> None:
+        """α=0.5 gives exact midpoint between current and previous smoothed."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        result = ewma([0.0, 100.0], alpha=0.5)
+        assert result[1] == pytest.approx(50.0)
+
+    def test_ewma_preserves_length(self) -> None:
+        """Output length equals input length exactly."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        for n in (1, 2, 5, 10):
+            values = [float(i) for i in range(n)]
+            assert len(ewma(values, 0.3)) == n
+
+    def test_ewma_first_element_always_equals_input(self) -> None:
+        """S_0 = X_0 regardless of alpha."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        for alpha in (0.0, 0.1, 0.5, 0.9, 1.0):
+            result = ewma([42.0, 100.0], alpha=alpha)
+            assert result[0] == 42.0
+
+    def test_ewma_negative_values(self) -> None:
+        """EWMA handles negative values correctly."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        result = ewma([-10.0, -20.0], alpha=0.3)
+        # S_1 = 0.3 * (-20) + 0.7 * (-10) = -6 + (-7) = -13
+        assert result[1] == pytest.approx(-13.0)
+
+    def test_ewma_large_alpha_tracks_input_closely(self) -> None:
+        """α close to 1.0 tracks raw input closely."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        raw = [0.0, 100.0, 0.0, 100.0]
+        result = ewma(raw, alpha=0.99)
+        # S_1 ≈ 0.99 * 100 + 0.01 * 0 = 99.0
+        assert result[1] == pytest.approx(99.0)
+
+    def test_ewma_small_alpha_resists_change(self) -> None:
+        """α close to 0.0 resists change from initial value."""
+        from babylon.economics.temporal.smoothing import ewma
+
+        raw = [1.0, 100.0, 100.0, 100.0]
+        result = ewma(raw, alpha=0.01)
+        # S_1 = 0.01 * 100 + 0.99 * 1.0 = 1.99
+        assert result[1] == pytest.approx(1.99)
+        # Even after 3 more values of 100, still close to initial
+        assert result[3] < 5.0
+
+
+class TestExtractCoefficientMutationKillers:
+    """Mutation-killing tests for _extract_coefficient."""
+
+    def _make_mock_tensor(
+        self,
+        profit_rate: float = 0.1,
+        exploitation_rate: float = 0.5,
+        total_v: float = 100.0,
+        dept_I_v: float = 10.0,
+        dept_IIa_v: float = 30.0,
+        dept_IIb_v: float = 40.0,
+        dept_III_v: float = 20.0,
+    ) -> object:
+        """Create a mock tensor with the required attributes."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            profit_rate=profit_rate,
+            exploitation_rate=exploitation_rate,
+            total_v=total_v,
+            dept_I=SimpleNamespace(v=dept_I_v),
+            dept_IIa=SimpleNamespace(v=dept_IIa_v),
+            dept_IIb=SimpleNamespace(v=dept_IIb_v),
+            dept_III=SimpleNamespace(v=dept_III_v),
+        )
+
+    def test_extract_profit_rate(self) -> None:
+        """Extracts profit_rate correctly."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(profit_rate=0.25)
+        assert smoother._extract_coefficient(tensor, "profit_rate") == pytest.approx(0.25)
+
+    def test_extract_exploitation_rate(self) -> None:
+        """Extracts exploitation_rate correctly (distinct from profit_rate)."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(profit_rate=0.1, exploitation_rate=0.8)
+        assert smoother._extract_coefficient(tensor, "exploitation_rate") == pytest.approx(0.8)
+
+    def test_extract_dept_I_share(self) -> None:
+        """Extracts dept_I share = dept_I.v / total_v."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(total_v=200.0, dept_I_v=50.0)
+        assert smoother._extract_coefficient(tensor, "dept_I_share") == pytest.approx(0.25)
+
+    def test_extract_dept_IIa_share(self) -> None:
+        """Extracts dept_IIa share distinctly from other departments."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(total_v=100.0, dept_IIa_v=45.0)
+        assert smoother._extract_coefficient(tensor, "dept_IIa_share") == pytest.approx(0.45)
+
+    def test_extract_dept_IIb_share(self) -> None:
+        """Extracts dept_IIb share distinctly."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(total_v=100.0, dept_IIb_v=35.0)
+        assert smoother._extract_coefficient(tensor, "dept_IIb_share") == pytest.approx(0.35)
+
+    def test_extract_dept_III_share(self) -> None:
+        """Extracts dept_III share distinctly."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(total_v=100.0, dept_III_v=15.0)
+        assert smoother._extract_coefficient(tensor, "dept_III_share") == pytest.approx(0.15)
+
+    def test_extract_dept_share_zero_total_v_returns_zero(self) -> None:
+        """When total_v is 0, all dept shares return 0.0."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor(total_v=0.0)
+        assert smoother._extract_coefficient(tensor, "dept_I_share") == 0.0
+
+    def test_extract_unknown_coefficient_raises(self) -> None:
+        """Unknown coefficient raises ValueError."""
+        from babylon.economics.temporal.smoothing import CoefficientSmootherImpl
+
+        smoother = CoefficientSmootherImpl(hydrator=None)  # type: ignore[arg-type]
+        tensor = self._make_mock_tensor()
+        with pytest.raises(ValueError, match="Unknown coefficient"):
+            smoother._extract_coefficient(tensor, "nonexistent")

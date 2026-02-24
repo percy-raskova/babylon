@@ -161,3 +161,64 @@ class TestDeindustrializationDetectorImpl:
                 suburb_fips="26125",
                 years=[2020],  # Only 1 year
             )
+
+
+class TestComputeTrendMutationKillers:
+    """Mutation-killing tests for compute_trend OLS formula."""
+
+    def test_exact_slope_two_points(self) -> None:
+        """Two points define exact slope."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        # (0, 0) to (1, 5) => slope = 5
+        assert compute_trend([0, 1], [0.0, 5.0]) == pytest.approx(5.0)
+
+    def test_slope_sign_positive(self) -> None:
+        """Rising values produce positive slope."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        assert compute_trend([1, 2, 3], [1.0, 2.0, 3.0]) > 0
+
+    def test_slope_sign_negative(self) -> None:
+        """Falling values produce negative slope."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        assert compute_trend([1, 2, 3], [3.0, 2.0, 1.0]) < 0
+
+    def test_constant_values_zero_slope(self) -> None:
+        """Constant values produce exactly zero slope."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        assert compute_trend([1, 2, 3, 4], [5.0, 5.0, 5.0, 5.0]) == 0.0
+
+    def test_slope_uses_correct_formula(self) -> None:
+        """Verify OLS numerator/denominator computation."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        # x = [0, 1, 2], y = [1, 3, 2]
+        # x_mean = 1, y_mean = 2
+        # num = (0-1)(1-2) + (1-1)(3-2) + (2-1)(2-2) = 1 + 0 + 0 = 1
+        # den = (0-1)^2 + (1-1)^2 + (2-1)^2 = 1 + 0 + 1 = 2
+        # slope = 1/2 = 0.5
+        assert compute_trend([0, 1, 2], [1.0, 3.0, 2.0]) == pytest.approx(0.5)
+
+    def test_zero_denominator_returns_zero(self) -> None:
+        """All same x values (zero variance) returns 0.0."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        # All x values are 5 — denominator is 0
+        assert compute_trend([5, 5], [1.0, 2.0]) == 0.0
+
+    def test_empty_raises(self) -> None:
+        """Empty input raises ValueError."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        with pytest.raises(ValueError, match="at least 2"):
+            compute_trend([], [])
+
+    def test_mismatched_lengths_raises(self) -> None:
+        """Different length inputs raise ValueError."""
+        from babylon.economics.temporal.signals import compute_trend
+
+        with pytest.raises(ValueError, match="length"):
+            compute_trend([1, 2], [1.0])

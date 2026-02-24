@@ -379,3 +379,117 @@ default_ratios:
         # Verify ratios loaded
         assert mapper.get_default_cv_ratio(Department.I) == 3.0
         assert mapper.get_default_sv_ratio(Department.IIb) == 3.0
+
+
+class TestDepartmentMapperMutationKillers:
+    """Mutation-killing tests for department_mapper pure logic."""
+
+    def test_allocation_post_init_exact_boundary(self) -> None:
+        """Weights summing to exactly 1.001 are accepted (within 0.001 tolerance)."""
+        # 0.6 + 0.4 + 0.0 + 0.001 = 1.001 (within 0.001 of 1.0)
+        DepartmentAllocation(dept_I=0.6, dept_IIa=0.4, dept_IIb=0.0, dept_III=0.001)
+
+    def test_allocation_post_init_above_tolerance_rejects(self) -> None:
+        """Weights summing to 1.002 are rejected (exceeds 0.001 tolerance)."""
+        with pytest.raises(ValueError, match="must sum to 1.0"):
+            DepartmentAllocation(dept_I=0.6, dept_IIa=0.4, dept_IIb=0.002)
+
+    def test_allocate_all_four_departments_present(self) -> None:
+        """allocate() returns all four Department keys."""
+        alloc = DepartmentAllocation(dept_I=0.25, dept_IIa=0.25, dept_IIb=0.25, dept_III=0.25)
+        result = alloc.allocate(100.0)
+        assert set(result.keys()) == {Department.I, Department.IIa, Department.IIb, Department.III}
+
+    def test_allocate_multiplies_correctly(self) -> None:
+        """allocate() uses multiplication, not addition or other ops."""
+        alloc = DepartmentAllocation(dept_I=0.0, dept_IIa=0.0, dept_IIb=0.0, dept_III=1.0)
+        result = alloc.allocate(42.0)
+        assert result[Department.III] == pytest.approx(42.0)
+        assert result[Department.I] == pytest.approx(0.0)
+
+    def test_is_excluded_strips_whitespace(self) -> None:
+        """is_excluded handles whitespace in codes."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded={"92"})
+        # The code does str(naics_code).strip() so whitespace is handled
+        assert mapper.is_excluded("92") is True
+
+    def test_is_excluded_checks_2digit_prefix(self) -> None:
+        """is_excluded checks code[:2] against excluded set."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded={"92"})
+        assert mapper.is_excluded("923456") is True
+
+    def test_get_allocation_cascading_lookup_order(self) -> None:
+        """get_allocation tries 6,5,4,3,2-digit prefixes in order."""
+        overrides = {
+            "33": DepartmentAllocation(dept_I=1.0),  # 2-digit
+            "336": DepartmentAllocation(dept_IIa=1.0),  # 3-digit
+        }
+        mapper = DepartmentMapper(defaults={}, overrides=overrides, excluded=set())
+        # "336999" should match "336" (3-digit), not "33" (2-digit)
+        alloc = mapper.get_allocation("336999")
+        assert alloc is not None
+        assert alloc.dept_IIa == 1.0
+
+    def test_get_allocation_falls_back_to_defaults(self) -> None:
+        """get_allocation falls back to 2-digit defaults when no overrides match."""
+        defaults = {"44": DepartmentAllocation(dept_IIa=1.0)}
+        mapper = DepartmentMapper(defaults=defaults, overrides={}, excluded=set())
+        alloc = mapper.get_allocation("441110")
+        assert alloc is not None
+        assert alloc.dept_IIa == 1.0
+
+    def test_get_default_cv_ratio_unconfigured_returns_one(self) -> None:
+        """Unconfigured department returns default 1.0 for cv_ratio."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded=set())
+        assert mapper.get_default_cv_ratio(Department.I) == 1.0
+
+    def test_get_default_sv_ratio_unconfigured_returns_one(self) -> None:
+        """Unconfigured department returns default 1.0 for sv_ratio."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded=set())
+        assert mapper.get_default_sv_ratio(Department.I) == 1.0
+
+    def test_get_sector_sv_ratio_known_sector(self) -> None:
+        """get_sector_sv_ratio returns ratio for configured sector."""
+        from babylon.economics.department_mapper import DefaultRatios
+
+        mapper = DepartmentMapper(
+            defaults={},
+            overrides={},
+            excluded=set(),
+            sector_ratios={"31": DefaultRatios(cv_ratio=3.0, sv_ratio=2.0)},
+        )
+        assert mapper.get_sector_sv_ratio("31") == pytest.approx(2.0)
+
+    def test_get_sector_sv_ratio_unknown_returns_none(self) -> None:
+        """get_sector_sv_ratio returns None for unknown sector."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded=set())
+        assert mapper.get_sector_sv_ratio("99") is None
+
+    def test_get_sector_cv_ratio_known_sector(self) -> None:
+        """get_sector_cv_ratio returns ratio for configured sector."""
+        from babylon.economics.department_mapper import DefaultRatios
+
+        mapper = DepartmentMapper(
+            defaults={},
+            overrides={},
+            excluded=set(),
+            sector_ratios={"31": DefaultRatios(cv_ratio=3.0, sv_ratio=2.0)},
+        )
+        assert mapper.get_sector_cv_ratio("31") == pytest.approx(3.0)
+
+    def test_get_sector_cv_ratio_unknown_returns_none(self) -> None:
+        """get_sector_cv_ratio returns None for unknown sector."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded=set())
+        assert mapper.get_sector_cv_ratio("99") is None
+
+    def test_allocate_batch_empty_records(self) -> None:
+        """allocate_batch with empty records returns zeros."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded=set())
+        result = mapper.allocate_batch([])
+        assert all(v == 0.0 for v in result.values())
+
+    def test_allocate_value_unknown_returns_none(self) -> None:
+        """allocate_value with unknown NAICS returns None."""
+        mapper = DepartmentMapper(defaults={}, overrides={}, excluded=set())
+        result = mapper.allocate_value("999999", 100.0)
+        assert result is None

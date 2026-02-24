@@ -291,3 +291,64 @@ class TestRentTrinityDefaultCalculator:
         calculator = ImperialRentCalculator.default()
         # Standard periphery basket is ~$2000/year
         assert calculator.periphery_baseline > 0
+
+
+class TestReproductionMutationKillers:
+    """Mutation-killing tests for reproduction.py untested paths."""
+
+    def test_periphery_basket_annual_total_sums_all_components(self) -> None:
+        """annual_total sums all 5 cost components exactly."""
+        from babylon.economics.reproduction import PeripheryReproductionBasket
+
+        basket = PeripheryReproductionBasket(
+            annual_food_cost=100.0,
+            annual_shelter_cost=200.0,
+            annual_clothing_cost=300.0,
+            annual_healthcare_cost=400.0,
+            annual_other_cost=500.0,
+        )
+        assert basket.annual_total == pytest.approx(1500.0)
+
+    def test_imperial_rent_result_wage_multiple(self) -> None:
+        """wage_multiple = core_wages / periphery_baseline."""
+        from babylon.economics.reproduction import ImperialRentResult
+
+        tensor = ValueTensor4x3(
+            fips_code="26163",
+            year=2022,
+            dept_I=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            dept_IIa=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            dept_IIb=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            dept_III=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            naics_granularity=0.8,
+            excluded_wages=0.0,
+        )
+        result = ImperialRentResult(
+            tensor=tensor,
+            periphery_baseline=2000.0,
+            core_wages=50000.0,
+            imperial_rent=48000.0,
+        )
+        assert result.wage_multiple == pytest.approx(25.0)
+
+    def test_imperial_rent_result_rent_ratio(self) -> None:
+        """imperial_rent_ratio = imperial_rent / core_wages."""
+        from babylon.economics.reproduction import ImperialRentResult
+
+        tensor = ValueTensor4x3(
+            fips_code="26163",
+            year=2022,
+            dept_I=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            dept_IIa=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            dept_IIb=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            dept_III=DepartmentRow(c=10.0, v=10.0, s=10.0),
+            naics_granularity=0.8,
+            excluded_wages=0.0,
+        )
+        result = ImperialRentResult(
+            tensor=tensor,
+            periphery_baseline=2000.0,
+            core_wages=50000.0,
+            imperial_rent=48000.0,
+        )
+        assert result.imperial_rent_ratio == pytest.approx(0.96)

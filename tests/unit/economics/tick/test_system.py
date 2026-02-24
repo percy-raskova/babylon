@@ -1012,6 +1012,182 @@ class TestSimulateTransitions:
 
 
 # =============================================================================
+# _simulate_transitions — mutation killers for boundary/type/multi-county
+# =============================================================================
+
+
+class TestSimulateTransitionsMutationKillers:
+    """Targeted tests to kill mutation survivors in _simulate_transitions."""
+
+    def test_year_clamped_at_lower_bound(self) -> None:
+        """county year=2007 (minimum valid) → stays 2007 in conditions."""
+        system = TickDynamicsSystem()
+        county = _make_county(year=2007)
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params(year=2007)
+        engine = CapturingTransitionEngine()
+        services = _make_services(transition_engine=engine)
+
+        system._simulate_transitions(states, params, services)
+
+        conditions = engine.calls[0][1]
+        assert conditions.year == 2007
+
+    def test_year_within_range_unchanged(self) -> None:
+        """county year=2015 → stays 2015 (no clamping applied)."""
+        system = TickDynamicsSystem()
+        county = _make_county(year=2015)
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params(year=2015)
+        engine = CapturingTransitionEngine()
+        services = _make_services(transition_engine=engine)
+
+        system._simulate_transitions(states, params, services)
+
+        conditions = engine.calls[0][1]
+        assert conditions.year == 2015
+
+    def test_distribution_year_reclamped_when_mismatched(self) -> None:
+        """county.year=2035 → clamped=2030; dist.year=2015 → reclamped to 2030."""
+        system = TickDynamicsSystem()
+        # County year=2035 (valid in CountyEconomicState: ge=2007, le=2040)
+        # But dist must have year in [2007,2030], so create at 2015
+        dist = ClassDistribution(
+            fips=WAYNE_FIPS,
+            year=2015,
+            bourgeoisie_share=0.01,
+            petit_bourgeoisie_share=0.09,
+            labor_aristocracy_share=0.40,
+            proletariat_share=0.35,
+            lumpenproletariat_share=0.15,
+        )
+        county = _make_county(year=2035, class_distribution=dist)
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params(year=2035)
+        engine = CapturingTransitionEngine()
+        services = _make_services(transition_engine=engine)
+
+        system._simulate_transitions(states, params, services)
+
+        # Engine receives dist with clamped year=2030 (from county.year clamp)
+        passed_dist = engine.calls[0][0]
+        assert passed_dist.year == 2030
+
+    def test_distribution_year_matching_no_reclamp(self) -> None:
+        """dist.year already == clamped_year → no reconstruction."""
+        system = TickDynamicsSystem()
+        county = _make_county(year=2015)
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params()
+        engine = CapturingTransitionEngine()
+        services = _make_services(transition_engine=engine)
+
+        system._simulate_transitions(states, params, services)
+
+        passed_dist = engine.calls[0][0]
+        assert passed_dist.year == 2015
+        # Shares should be unchanged
+        assert passed_dist.labor_aristocracy_share == pytest.approx(0.40)
+
+    def test_sentinel_result_preserves_county(self) -> None:
+        """NoDataSentinel result (falsy) preserves original county."""
+        from babylon.economics.tensor import NoDataSentinel
+
+        system = TickDynamicsSystem()
+        county = _make_county()
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params()
+
+        class SentinelReturningEngine:
+            """Returns NoDataSentinel from simulate_transitions."""
+
+            def simulate_transitions(
+                self, dist: Any, conditions: Any, crisis_phase: Any = None
+            ) -> NoDataSentinel:
+                return NoDataSentinel(fips=WAYNE_FIPS, year=2015, reason="test sentinel")
+
+        services = _make_services(transition_engine=SentinelReturningEngine())
+        result = system._simulate_transitions(states, params, services)
+
+        # Original county preserved
+        assert result[WAYNE_FIPS].class_distribution.labor_aristocracy_share == pytest.approx(0.40)
+
+    def test_crisis_phase_passed_to_engine(self) -> None:
+        """crisis_phase from county.crisis_state.phase passed to engine."""
+        system = TickDynamicsSystem()
+        crisis = _deep_crisis_state()
+        county = _make_county(crisis_state=crisis)
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params()
+        engine = CapturingTransitionEngine()
+        services = _make_services(transition_engine=engine)
+
+        system._simulate_transitions(states, params, services)
+
+        crisis_phase_arg = engine.calls[0][2]
+        assert crisis_phase_arg == CrisisPhase.DEEP
+
+    def test_multiple_counties_mixed_results(self) -> None:
+        """2 counties: one succeeds, one gets None → mixed output."""
+        system = TickDynamicsSystem()
+        county_wayne = _make_county(fips=WAYNE_FIPS)
+        county_oakland = _make_county(fips=OAKLAND_FIPS)
+        states = {WAYNE_FIPS: county_wayne, OAKLAND_FIPS: county_oakland}
+        params = _make_national_params()
+
+        call_count = 0
+
+        class AlternatingEngine:
+            """Returns valid result for first county, None for second."""
+
+            def simulate_transitions(
+                self, dist: Any, conditions: Any, crisis_phase: Any = None
+            ) -> ClassDistribution | None:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return dist  # Valid ClassDistribution
+                return None  # Second county fails
+
+        services = _make_services(transition_engine=AlternatingEngine())
+        result = system._simulate_transitions(states, params, services)
+
+        # Both counties should be present in result
+        assert WAYNE_FIPS in result
+        assert OAKLAND_FIPS in result
+
+    def test_result_year_matches_clamped_year(self) -> None:
+        """Engine returns dist with in-range year=2020; verify result preserved."""
+        system = TickDynamicsSystem()
+        county = _make_county(year=2020)
+        states = {WAYNE_FIPS: county}
+        params = _make_national_params(year=2020)
+
+        class YearShiftEngine:
+            """Returns ClassDistribution with shifted shares."""
+
+            def simulate_transitions(
+                self, dist: Any, conditions: Any, crisis_phase: Any = None
+            ) -> ClassDistribution:
+                return ClassDistribution(
+                    fips=WAYNE_FIPS,
+                    year=2020,
+                    bourgeoisie_share=dist.bourgeoisie_share,
+                    petit_bourgeoisie_share=dist.petit_bourgeoisie_share,
+                    labor_aristocracy_share=0.38,
+                    proletariat_share=0.37,
+                    lumpenproletariat_share=dist.lumpenproletariat_share,
+                )
+
+        services = _make_services(transition_engine=YearShiftEngine())
+        result = system._simulate_transitions(states, params, services)
+
+        # Result should use the engine output
+        assert result[WAYNE_FIPS].class_distribution.year == 2020
+        assert result[WAYNE_FIPS].class_distribution.labor_aristocracy_share == pytest.approx(0.38)
+
+
+# =============================================================================
 # step() context extraction — kills ~62 survivors
 # =============================================================================
 

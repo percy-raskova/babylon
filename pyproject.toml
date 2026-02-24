@@ -272,6 +272,7 @@ paths_to_mutate = [
     "src/babylon/engine/systems/decomposition.py",
     "src/babylon/engine/systems/metabolism.py",
     "src/babylon/engine/systems/contradiction.py",
+    "src/babylon/engine/systems/event_template.py",
     # Tier 3: Economics Core (tensor/capital math)
     "src/babylon/economics/tensor.py",
     "src/babylon/economics/capital_stock.py",
@@ -280,15 +281,50 @@ paths_to_mutate = [
     "src/babylon/economics/derived_metrics.py",
     "src/babylon/economics/shadow_labor.py",
     "src/babylon/economics/department_mapper.py",
+    "src/babylon/economics/snlt.py",
+    "src/babylon/economics/tensor_registry.py",
+    "src/babylon/economics/hydrator.py",
+    # Tier 3a: MELT & basket visibility
     "src/babylon/economics/melt/melt_calculator.py",
     "src/babylon/economics/melt/imperial_rent.py",
     "src/babylon/economics/melt/class_position.py",
+    "src/babylon/economics/melt/basket_visibility.py",
+    "src/babylon/economics/melt/wealth_proxy.py",
+    # Tier 3b: Throughput position
+    "src/babylon/economics/throughput/calculator.py",
+    "src/babylon/economics/throughput/supply_chain.py",
+    "src/babylon/economics/throughput/naics_depth.py",
+    "src/babylon/economics/throughput/analysis.py",
+    # Tier 3c: Gamma visibility
+    "src/babylon/economics/gamma/gamma_iii.py",
+    "src/babylon/economics/gamma/gamma_basket.py",
+    "src/babylon/economics/gamma/gamma_import.py",
+    "src/babylon/economics/gamma/shadow_subsidy.py",
+    "src/babylon/economics/gamma/validation.py",
+    # Tier 3d: Class dynamics
+    "src/babylon/economics/dynamics/accumulation.py",
+    "src/babylon/economics/dynamics/dispossession.py",
+    "src/babylon/economics/dynamics/savings_schedule.py",
+    "src/babylon/economics/dynamics/crisis.py",
+    "src/babylon/economics/dynamics/validation.py",
+    "src/babylon/economics/dynamics/transition_engine.py",
+    # Tier 3e: Crisis & tick pipeline
     "src/babylon/economics/crisis/bifurcation.py",
     "src/babylon/economics/crisis/wage_compression.py",
     "src/babylon/economics/tick/system.py",
     "src/babylon/economics/tick/crisis_detector.py",
     "src/babylon/economics/tick/derived_rates.py",
-    "src/babylon/economics/dynamics/transition_engine.py",
+    "src/babylon/economics/tick/precarity.py",
+    "src/babylon/economics/tick/smoothing.py",
+    "src/babylon/economics/tick/graph_bridge.py",
+    "src/babylon/economics/tick/initializer.py",
+    # Tier 3f: Temporal validation
+    "src/babylon/economics/temporal/transitions.py",
+    "src/babylon/economics/temporal/anomaly.py",
+    "src/babylon/economics/temporal/smoothing.py",
+    "src/babylon/economics/temporal/signals.py",
+    # Tier 3g: Calibration
+    "src/babylon/economics/calibration/thresholds.py",
 ]
 tests_dir = [
     "tests/unit/",

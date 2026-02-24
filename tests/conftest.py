@@ -33,6 +33,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from hypothesis import HealthCheck, settings
+
+# Register a Hypothesis profile for mutmut runs.
+# mutmut executes tests from a different executor context, which triggers
+# Hypothesis's differing_executors health check (false positive).
+settings.register_profile(
+    "mutmut",
+    suppress_health_check=[HealthCheck.differing_executors],
+)
+# Activate mutmut profile when HYPOTHESIS_PROFILE=mutmut is set
+settings.load_profile(os.environ.get("HYPOTHESIS_PROFILE", "default"))
 
 # NOTE: babylon imports are done lazily inside fixtures to support mutmut.
 # mutmut only copies mutated files to mutants/src/, not the full package.

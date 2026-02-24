@@ -11,6 +11,7 @@ View with: poetry run mutmut results
 """
 
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -58,6 +59,17 @@ def main() -> int:
     # Always use unit tests only (integration tests have multiprocessing conflicts)
     config.setdefault("tool", {}).setdefault("mutmut", {})["tests_dir"] = ["tests/unit/"]
 
+    # Exclude test directories that don't exercise mutation targets
+    # (CLI tools, slow subprocess tests, etc.)
+    pytest_opts = (
+        config.setdefault("tool", {}).setdefault("pytest", {}).setdefault("ini_options", {})
+    )
+    norecursedirs = list(pytest_opts.get("norecursedirs", []))
+    for exclude_dir in ["tests/unit/tools", "tests/unit/ai"]:
+        if exclude_dir not in norecursedirs:
+            norecursedirs.append(exclude_dir)
+    pytest_opts["norecursedirs"] = norecursedirs
+
     print(f"Mutation testing paths: {paths}")
 
     # Create temporary pyproject.toml with our paths
@@ -75,9 +87,12 @@ def main() -> int:
 
         try:
             # --max-children=1 avoids multiprocessing conflict with pytest-asyncio
+            env = os.environ.copy()
+            env["HYPOTHESIS_PROFILE"] = "mutmut"
             result = subprocess.run(
                 [sys.executable, "-m", "mutmut", "run", "--max-children=1"],
                 check=False,
+                env=env,
             )
             return result.returncode
         finally:

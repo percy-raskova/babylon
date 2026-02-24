@@ -9,7 +9,13 @@ Tests should FAIL before implementation and PASS after.
 
 from __future__ import annotations
 
-from babylon.economics.gamma.gamma_iii import DefaultGammaIIICalculator
+import math
+
+from babylon.economics.gamma.gamma_iii import (
+    MAX_YEAR,
+    MIN_YEAR,
+    DefaultGammaIIICalculator,
+)
 from babylon.economics.gamma.types import GammaIII
 from babylon.economics.tensor import NoDataSentinel
 
@@ -225,3 +231,127 @@ class TestFortunatExploitation:
         assert isinstance(result, GammaIII)
         # gamma = 5/50 = 0.1, Fortunati = 0.9/0.1 = 9.0
         assert result.fortunati_exploitation > 5.0
+
+
+class TestGammaIIIMutationKillers:
+    """Targeted tests to kill mutation survivors in DefaultGammaIIICalculator.compute.
+
+    Targets boundary conditions, arithmetic edge cases, and sentinel propagation
+    that survive mutmut operator swaps (< vs <=, + vs -, sentinel short-circuits).
+    """
+
+    def test_year_at_exact_min_boundary(self) -> None:
+        """year=MIN_YEAR should return valid GammaIII, not sentinel."""
+        unpaid = MockUnpaidCareHoursSource({MIN_YEAR: 30.0})
+        paid = MockPaidCareHoursSource({MIN_YEAR: 10.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(MIN_YEAR)
+
+        assert isinstance(result, GammaIII)
+        assert result.year == MIN_YEAR
+
+    def test_year_one_below_min_returns_sentinel(self) -> None:
+        """year=MIN_YEAR-1 should return sentinel (boundary off-by-one)."""
+        unpaid = MockUnpaidCareHoursSource({MIN_YEAR - 1: 30.0})
+        paid = MockPaidCareHoursSource({MIN_YEAR - 1: 10.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(MIN_YEAR - 1)
+
+        assert isinstance(result, NoDataSentinel)
+        assert str(MIN_YEAR - 1) in result.reason
+
+    def test_year_at_exact_max_boundary(self) -> None:
+        """year=MAX_YEAR should return valid GammaIII, not sentinel."""
+        unpaid = MockUnpaidCareHoursSource({MAX_YEAR: 30.0})
+        paid = MockPaidCareHoursSource({MAX_YEAR: 10.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(MAX_YEAR)
+
+        assert isinstance(result, GammaIII)
+        assert result.year == MAX_YEAR
+
+    def test_year_one_above_max_returns_sentinel(self) -> None:
+        """year=MAX_YEAR+1 should return sentinel (boundary off-by-one)."""
+        unpaid = MockUnpaidCareHoursSource({MAX_YEAR + 1: 30.0})
+        paid = MockPaidCareHoursSource({MAX_YEAR + 1: 10.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(MAX_YEAR + 1)
+
+        assert isinstance(result, NoDataSentinel)
+        assert str(MAX_YEAR + 1) in result.reason
+
+    def test_zero_total_care_hours_returns_sentinel(self) -> None:
+        """paid=0, unpaid=0 should return sentinel (division by zero guard)."""
+        unpaid = MockUnpaidCareHoursSource({2022: 0.0})
+        paid = MockPaidCareHoursSource({2022: 0.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(2022)
+
+        assert isinstance(result, NoDataSentinel)
+        assert "zero" in result.reason.lower()
+
+    def test_gamma_zero_when_only_unpaid(self) -> None:
+        """paid=0, unpaid=100 → gamma=0.0, fortunati=inf."""
+        unpaid = MockUnpaidCareHoursSource({2022: 100.0})
+        paid = MockPaidCareHoursSource({2022: 0.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(2022)
+
+        assert isinstance(result, GammaIII)
+        assert result.gamma_iii == 0.0
+        assert math.isinf(result.fortunati_exploitation)
+
+    def test_gamma_one_when_only_paid(self) -> None:
+        """paid=100, unpaid=0 → gamma=1.0, fortunati=0.0."""
+        unpaid = MockUnpaidCareHoursSource({2022: 0.0})
+        paid = MockPaidCareHoursSource({2022: 100.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(2022)
+
+        assert isinstance(result, GammaIII)
+        assert result.gamma_iii == 1.0
+        assert result.fortunati_exploitation == 0.0
+
+    def test_fortunati_formula_exact_value(self) -> None:
+        """gamma=0.4 → fortunati=(1-0.4)/0.4=1.5 exactly."""
+        # paid/(paid+unpaid) = 0.4 → paid=40, unpaid=60
+        unpaid = MockUnpaidCareHoursSource({2022: 60.0})
+        paid = MockPaidCareHoursSource({2022: 40.0})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(2022)
+
+        assert isinstance(result, GammaIII)
+        assert abs(result.gamma_iii - 0.4) < 1e-10
+        assert abs(result.fortunati_exploitation - 1.5) < 1e-10
+
+    def test_sentinel_from_unpaid_propagates(self) -> None:
+        """When unpaid source returns None, compute returns sentinel early."""
+        unpaid = MockUnpaidCareHoursSource({})  # No data → None → sentinel
+        paid = MockPaidCareHoursSource({2022: 16.5})
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(2022)
+
+        assert isinstance(result, NoDataSentinel)
+        assert "ATUS" in result.reason
+        assert result.year == 2022
+
+    def test_sentinel_from_paid_propagates(self) -> None:
+        """When paid source returns None, compute returns sentinel early."""
+        unpaid = MockUnpaidCareHoursSource({2022: 33.0})
+        paid = MockPaidCareHoursSource({})  # No data → None → sentinel
+        calculator = DefaultGammaIIICalculator(unpaid, paid)
+
+        result = calculator.compute(2022)
+
+        assert isinstance(result, NoDataSentinel)
+        assert "QCEW" in result.reason
+        assert result.year == 2022

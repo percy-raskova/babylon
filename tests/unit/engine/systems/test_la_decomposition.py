@@ -298,3 +298,233 @@ class TestLADecomposition:
 
         assert len(captured_events) == 1
         assert "narrative_hint" in captured_events[0].payload
+
+
+@pytest.mark.unit
+class TestDecompositionDelayAndTrigger:
+    """Targeted tests to kill mutation survivors in DecompositionSystem.step.
+
+    Focuses on delay boundaries, approaching-death formula, population split
+    precision, and state machine precedence.
+    """
+
+    def test_decomposition_at_exact_delay_boundary(self, services: ServiceContainer) -> None:
+        """Decomposition fires exactly when tick == superwage_tick + delay."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        system = DecompositionSystem()
+        delay = services.defines.carceral.decomposition_delay  # 52 ticks default
+
+        # Set crisis tick to 10, current tick to exactly 10 + delay = 62
+        context: dict[str, object] = {
+            "tick": 10 + delay,
+            "_superwage_crisis_tick": 10,
+        }
+
+        system.step(graph, services, context)
+
+        # Decomposition should have fired at exact boundary
+        assert graph.nodes["C_w"]["active"] is False
+
+    def test_no_decomposition_one_tick_before_delay(self, services: ServiceContainer) -> None:
+        """No decomposition when tick == superwage_tick + delay - 1."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        system = DecompositionSystem()
+        delay = services.defines.carceral.decomposition_delay
+
+        # One tick short of delay
+        context: dict[str, object] = {
+            "tick": 10 + delay - 1,
+            "_superwage_crisis_tick": 10,
+        }
+
+        system.step(graph, services, context)
+
+        # Should NOT have decomposed yet
+        assert graph.nodes["C_w"]["active"] is True
+
+    def test_decomposition_with_zero_delay(self) -> None:
+        """With delay=0, decomposition fires at superwage_tick itself."""
+        from babylon.config.defines import CarceralDefines, GameDefines
+
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        # Create services with zero-delay carceral config
+        zero_delay_carceral = CarceralDefines(decomposition_delay=0)
+        zero_delay_defines = GameDefines(carceral=zero_delay_carceral)
+        zero_delay_services = ServiceContainer.create(defines=zero_delay_defines)
+
+        system = DecompositionSystem()
+        context: dict[str, object] = {
+            "tick": 5,
+            "_superwage_crisis_tick": 5,
+        }
+
+        system.step(graph, zero_delay_services, context)
+
+        assert graph.nodes["C_w"]["active"] is False
+        zero_delay_services.database.close()
+
+    def test_approaching_death_triggers_superwage_event(self, services: ServiceContainer) -> None:
+        """LA approaching death (wealth < subsistence + 2*consumption) emits SUPERWAGE_CRISIS."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        # Set LA wealth close to death threshold
+        graph.nodes["C_w"]["subsistence_threshold"] = 100.0
+        graph.nodes["C_w"]["s_bio"] = 20.0
+        graph.nodes["C_w"]["s_class"] = 10.0
+        # wealth < subsistence + 2*(s_bio + s_class) = 100 + 2*30 = 160
+        graph.nodes["C_w"]["wealth"] = 159.0
+
+        captured_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.SUPERWAGE_CRISIS,
+            lambda e: captured_events.append(e),
+        )
+
+        system = DecompositionSystem()
+        # No prior crisis in context
+        context: dict[str, object] = {"tick": 5}
+
+        system.step(graph, services, context)
+
+        # Should emit SUPERWAGE_CRISIS event
+        assert len(captured_events) == 1, "Should emit SUPERWAGE_CRISIS for approaching death"
+
+    def test_not_approaching_death_above_formula(self, services: ServiceContainer) -> None:
+        """LA not approaching death when wealth > subsistence + 2*consumption."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        graph.nodes["C_w"]["subsistence_threshold"] = 100.0
+        graph.nodes["C_w"]["s_bio"] = 20.0
+        graph.nodes["C_w"]["s_class"] = 10.0
+        # wealth > subsistence + 2*(s_bio + s_class) = 100 + 60 = 160
+        graph.nodes["C_w"]["wealth"] = 161.0
+
+        captured_events: list[Event] = []
+        services.event_bus.subscribe(
+            EventType.SUPERWAGE_CRISIS,
+            lambda e: captured_events.append(e),
+        )
+
+        system = DecompositionSystem()
+        context: dict[str, object] = {"tick": 5}
+
+        system.step(graph, services, context)
+
+        # Should NOT emit SUPERWAGE_CRISIS
+        assert len(captured_events) == 0
+        # LA should remain active
+        assert graph.nodes["C_w"]["active"] is True
+
+    def test_about_to_die_triggers_immediate_decomposition(
+        self, services: ServiceContainer
+    ) -> None:
+        """LA about to die (wealth < subsistence) triggers immediate decomposition."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        # Set LA below subsistence (about to die)
+        graph.nodes["C_w"]["subsistence_threshold"] = 100.0
+        graph.nodes["C_w"]["wealth"] = 50.0  # Below subsistence
+
+        system = DecompositionSystem()
+        # No prior crisis, and delay hasn't elapsed
+        context: dict[str, object] = {"tick": 5}
+
+        system.step(graph, services, context)
+
+        # Fallback trigger: LA decomposes immediately
+        assert graph.nodes["C_w"]["active"] is False
+
+    def test_enforcer_population_is_int_truncated(self, services: ServiceContainer) -> None:
+        """Population split uses int() truncation, not rounding."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        # 101 population → 15% = 15.15 → int() = 15
+        graph.nodes["C_w"]["population"] = 101
+        enforcer_before = graph.nodes["Enforcer"]["population"]
+
+        system = DecompositionSystem()
+        system.step(graph, services, _create_test_context())
+
+        expected_gain = int(101 * 0.15)  # 15, not 16
+        assert expected_gain == 15
+        assert graph.nodes["Enforcer"]["population"] == enforcer_before + expected_gain
+
+    def test_wealth_split_proportional(self, services: ServiceContainer) -> None:
+        """Wealth is transferred in exact proportion (no int truncation)."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        graph.nodes["C_w"]["wealth"] = 333.33
+        enforcer_wealth_before = graph.nodes["Enforcer"]["wealth"]
+
+        system = DecompositionSystem()
+        system.step(graph, services, _create_test_context())
+
+        # Enforcer gets exact fraction of wealth (float, no truncation)
+        expected_enforcer_wealth = enforcer_wealth_before + (333.33 * 0.15)
+        assert graph.nodes["Enforcer"]["wealth"] == pytest.approx(expected_enforcer_wealth)
+
+        # Internal proletariat gets exact fraction
+        expected_proletariat_wealth = 333.33 * 0.85
+        assert graph.nodes["Int_P"]["wealth"] == pytest.approx(expected_proletariat_wealth)
+
+    def test_fallback_overrides_delay_when_about_to_die(self, services: ServiceContainer) -> None:
+        """Fallback trigger (about to die) overrides delay - decomposes immediately."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        # LA is about to die (below subsistence)
+        graph.nodes["C_w"]["subsistence_threshold"] = 100.0
+        graph.nodes["C_w"]["wealth"] = 50.0
+
+        system = DecompositionSystem()
+        # Crisis detected but delay NOT elapsed (tick 11, crisis at 10, delay=52)
+        context: dict[str, object] = {
+            "tick": 11,
+            "_superwage_crisis_tick": 10,
+        }
+
+        system.step(graph, services, context)
+
+        # Fallback wins: decomposition happens despite delay not elapsed
+        assert graph.nodes["C_w"]["active"] is False
+
+    def test_completion_flag_prevents_reentry(self, services: ServiceContainer) -> None:
+        """_decomposition_complete flag prevents repeated decomposition."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        system = DecompositionSystem()
+        context: dict[str, object] = {
+            "tick": 200,
+            "_superwage_crisis_tick": 10,
+            "_decomposition_complete": True,  # Already done
+        }
+
+        system.step(graph, services, context)
+
+        # LA should remain unchanged (flag blocks re-entry)
+        assert graph.nodes["C_w"]["active"] is True
+
+    def test_completion_flag_set_after_decomposition(self, services: ServiceContainer) -> None:
+        """After decomposition, _decomposition_complete is set in context."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        _create_pre_crisis_circuit(graph)
+
+        system = DecompositionSystem()
+        context = _create_test_context(tick=200)
+
+        system.step(graph, services, context)
+
+        assert context.get("_decomposition_complete") is True
+        assert context.get("_class_decomposition_tick") == 200

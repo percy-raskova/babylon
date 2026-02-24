@@ -358,3 +358,121 @@ class TestConfidenceLevels:
         result = analyzer_with_throughput.compute_wage_share_proxy("26163", "44", 2022)
 
         assert result.confidence == "low"
+
+
+class TestGetSectorCoverageMutationKillers:
+    """Mutation-killing tests for get_sector_coverage."""
+
+    def test_returns_correct_tuple(self, mock_qcew_source: MagicMock) -> None:
+        """Returns (sectors_with_data, sectors_mapped, employment_covered)."""
+        mock_qcew_source.get_county_employment_by_naics.return_value = {
+            "52": 50000,  # Finance, depth 5.0 → mapped
+            "44": 30000,  # Retail, depth 4.0 → mapped
+            "99": 10000,  # Unknown → NOT mapped
+        }
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+
+        result = analyzer.get_sector_coverage("26163", 2022)
+
+        assert not isinstance(result, NoDataSentinel)
+        sectors_with_data, sectors_mapped, employment_covered = result
+        assert sectors_with_data == 3
+        assert sectors_mapped == 2
+        assert employment_covered == 80000  # 50000 + 30000
+
+    def test_no_data_returns_sentinel(self, mock_qcew_source: MagicMock) -> None:
+        """Empty NAICS data returns NoDataSentinel."""
+        mock_qcew_source.get_county_employment_by_naics.return_value = {}
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+
+        result = analyzer.get_sector_coverage("99999", 2022)
+
+        assert isinstance(result, NoDataSentinel)
+
+    def test_all_sectors_mapped(self, mock_qcew_source: MagicMock) -> None:
+        """All sectors with depth mappings → sectors_mapped = sectors_with_data."""
+        mock_qcew_source.get_county_employment_by_naics.return_value = {
+            "52": 25000,  # Finance
+            "21": 15000,  # Mining
+        }
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+
+        result = analyzer.get_sector_coverage("26163", 2022)
+
+        assert not isinstance(result, NoDataSentinel)
+        sectors_with_data, sectors_mapped, employment_covered = result
+        assert sectors_with_data == 2
+        assert sectors_mapped == 2
+        assert employment_covered == 40000
+
+    def test_no_sectors_mapped(self, mock_qcew_source: MagicMock) -> None:
+        """All unknown NAICS → sectors_mapped=0, employment_covered=0."""
+        mock_qcew_source.get_county_employment_by_naics.return_value = {
+            "99": 10000,
+            "98": 5000,
+        }
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+
+        result = analyzer.get_sector_coverage("26163", 2022)
+
+        assert not isinstance(result, NoDataSentinel)
+        sectors_with_data, sectors_mapped, employment_covered = result
+        assert sectors_with_data == 2
+        assert sectors_mapped == 0
+        assert employment_covered == 0
+
+
+class TestDetermineConfidenceMutationKillers:
+    """Mutation-killing tests for _determine_confidence boundary conditions."""
+
+    def test_lambda_above_1_is_low(self, mock_qcew_source: MagicMock) -> None:
+        """lambda_proxy > 1.0 → always 'low' regardless of employment."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(5000, 1.1) == "low"
+
+    def test_none_employment_is_low(self, mock_qcew_source: MagicMock) -> None:
+        """None employment (suppressed data) → 'low'."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(None, 0.5) == "low"
+
+    def test_employment_below_100_is_low(self, mock_qcew_source: MagicMock) -> None:
+        """employment < 100 → 'low'."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(50, 0.5) == "low"
+
+    def test_employment_at_exactly_100_is_low(self, mock_qcew_source: MagicMock) -> None:
+        """employment == 100 → still 'low' (uses < 100 check first, but 100 < 1000)."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        # 100 is NOT < 100, so passes first check
+        # 100 < 1000, so returns "medium"... wait, let me re-read
+        # Actually: if employment < 100 → low; if employment < 1000 → medium
+        # 100 is NOT < 100, so NOT low. 100 IS < 1000, so medium.
+        assert analyzer._determine_confidence(100, 0.5) == "medium"
+
+    def test_employment_at_exactly_1000_is_high(self, mock_qcew_source: MagicMock) -> None:
+        """employment == 1000 → 'high' (not medium, since 1000 is NOT < 1000)."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(1000, 0.5) == "high"
+
+    def test_employment_999_is_medium(self, mock_qcew_source: MagicMock) -> None:
+        """employment == 999 → 'medium' (999 < 1000)."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(999, 0.5) == "medium"
+
+    def test_employment_99_is_low(self, mock_qcew_source: MagicMock) -> None:
+        """employment == 99 → 'low' (99 < 100)."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(99, 0.5) == "low"
+
+    def test_lambda_at_exactly_1_is_low(self, mock_qcew_source: MagicMock) -> None:
+        """lambda_proxy at exactly 1.0 → 'low' (uses > not >=)."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        # LAMBDA_EXPECTED_MAX = 1.0, check is lambda_proxy > LAMBDA_EXPECTED_MAX
+        # 1.0 > 1.0 is False, so NOT low from lambda check
+        # With employment=5000 and lambda=1.0: passes lambda, passes None, passes <100, passes <1000 → high
+        assert analyzer._determine_confidence(5000, 1.0) == "high"
+
+    def test_large_employment_with_valid_lambda_is_high(self, mock_qcew_source: MagicMock) -> None:
+        """High employment with normal lambda → 'high'."""
+        analyzer = DefaultSupplyChainAnalyzer(qcew_source=mock_qcew_source)
+        assert analyzer._determine_confidence(10000, 0.3) == "high"

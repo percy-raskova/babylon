@@ -6,6 +6,8 @@ clamping logic, and missing data handling.
 
 from __future__ import annotations
 
+import pytest
+
 from babylon.economics.melt.wealth_proxy import DefaultWealthProxyCalculator
 
 
@@ -199,3 +201,212 @@ class TestEstimateLumpenShareMutationKillers:
         calc = DefaultWealthProxyCalculator(precarity_data=data)
         result = calc.estimate_lumpen_share("00000", 2022)
         assert result == 0.0
+
+
+class TestEstimateLaShareMutationKillers:
+    """Mutation-killing tests for estimate_la_share."""
+
+    def test_known_fips_uses_formula(self) -> None:
+        """LA share = homeownership * equity_factor."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.70},
+            equity_factor=0.6,
+        )
+        result = calc.estimate_la_share("00000", 2022)
+        assert abs(result - 0.70 * 0.6) < 1e-10
+
+    def test_unknown_fips_returns_national_average(self) -> None:
+        """Unknown FIPS falls back to NATIONAL_LA_SHARE."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={})
+        result = calc.estimate_la_share("99999", 2022)
+        assert result == DefaultWealthProxyCalculator.NATIONAL_LA_SHARE
+
+    def test_custom_equity_factor(self) -> None:
+        """Custom equity_factor changes the LA share result."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.80},
+            equity_factor=0.5,
+        )
+        result = calc.estimate_la_share("00000", 2022)
+        assert abs(result - 0.80 * 0.5) < 1e-10
+
+    def test_homeownership_zero_returns_zero(self) -> None:
+        """Homeownership=0 produces LA share=0."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.0})
+        result = calc.estimate_la_share("00000", 2022)
+        assert result == 0.0
+
+    def test_homeownership_one_returns_equity_factor(self) -> None:
+        """Homeownership=1.0 produces LA share = equity_factor."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 1.0})
+        result = calc.estimate_la_share("00000", 2022)
+        assert abs(result - DefaultWealthProxyCalculator.EQUITY_FACTOR) < 1e-10
+
+
+class TestEstimateWealthPercentileMutationKillers:
+    """Mutation-killing tests for estimate_wealth_percentile."""
+
+    def test_unknown_fips_returns_50_true(self) -> None:
+        """Unknown FIPS returns (50.0, True)."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={})
+        percentile, is_est = calc.estimate_wealth_percentile("99999", 2022)
+        assert percentile == 50.0
+        assert is_est is True
+
+    def test_national_average_homeownership_returns_50(self) -> None:
+        """Homeownership at national average produces ~50th percentile."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": DefaultWealthProxyCalculator.NATIONAL_HOMEOWNERSHIP}
+        )
+        percentile, is_est = calc.estimate_wealth_percentile("00000", 2022)
+        # ratio = 0.65/0.65 = 1.0, percentile = 50*1.0 = 50
+        assert percentile == pytest.approx(50.0)
+        assert is_est is True
+
+    def test_high_homeownership_clamped_at_95(self) -> None:
+        """Very high homeownership clamped at 95th percentile."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 1.0})
+        percentile, _ = calc.estimate_wealth_percentile("00000", 2022)
+        # ratio = 1.0/0.65 = 1.538, 50*1.538 = 76.9 → not clamped
+        # Need even higher to hit 95: 95/50 = 1.9, 1.9*0.65 = 1.235 (>1)
+        # So with homeownership=2.0 (artificial), 50*2.0/0.65 = 153.8 → clamped to 95
+        calc2 = DefaultWealthProxyCalculator(homeownership_data={"00000": 2.0})
+        percentile2, _ = calc2.estimate_wealth_percentile("00000", 2022)
+        assert percentile2 == 95.0
+
+    def test_low_homeownership_clamped_at_5(self) -> None:
+        """Very low homeownership clamped at 5th percentile."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.01})
+        percentile, _ = calc.estimate_wealth_percentile("00000", 2022)
+        # ratio = 0.01/0.65 = 0.0154, 50*0.0154 = 0.77 → clamped to 5
+        assert percentile == 5.0
+
+    def test_is_estimated_always_true(self) -> None:
+        """is_estimated is always True for county data."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.65})
+        _, is_est = calc.estimate_wealth_percentile("00000", 2022)
+        assert is_est is True
+
+    def test_exact_percentile_formula(self) -> None:
+        """Verify exact percentile = min(95, max(5, 50 * ratio))."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.78})
+        percentile, _ = calc.estimate_wealth_percentile("00000", 2022)
+        expected = 50.0 * (0.78 / DefaultWealthProxyCalculator.NATIONAL_HOMEOWNERSHIP)
+        assert percentile == pytest.approx(expected, rel=1e-9)
+
+
+class TestGetClassDistributionMutationKillers:
+    """Mutation-killing tests for get_class_distribution_estimate."""
+
+    def test_no_data_returns_none(self) -> None:
+        """No homeownership or precarity data returns None."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={}, precarity_data={})
+        result = calc.get_class_distribution_estimate("99999", 2022)
+        assert result is None
+
+    def test_distribution_sums_to_one(self) -> None:
+        """All class shares sum to 1.0."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.65},
+            precarity_data={
+                "00000": {
+                    "u3_rate": 0.05,
+                    "u6_rate": 0.10,
+                    "pter_rate": 0.04,
+                    "nilf_want_work": 0.03,
+                    "incarceration_rate": 0.015,
+                }
+            },
+        )
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        total = sum(result.values())
+        assert total == pytest.approx(1.0, rel=1e-9)
+
+    def test_bourgeoisie_fixed_at_1pct(self) -> None:
+        """Bourgeoisie share is always 0.01."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.65})
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        assert result["bourgeoisie"] == 0.01
+
+    def test_petit_bourgeoisie_fixed_at_9pct(self) -> None:
+        """Petit bourgeoisie share is always 0.09."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.65})
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        assert result["petit_bourgeoisie"] == 0.09
+
+    def test_la_share_from_homeownership(self) -> None:
+        """LA share comes from estimate_la_share formula."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.70})
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        expected_la = 0.70 * DefaultWealthProxyCalculator.EQUITY_FACTOR
+        assert result["labor_aristocracy"] == pytest.approx(expected_la, rel=1e-9)
+
+    def test_fallback_split_when_no_precarity_data(self) -> None:
+        """Without precarity data, bottom split is 70% proletariat, 30% lumpen."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.65},
+            precarity_data={},  # No precarity data
+        )
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        la = result["labor_aristocracy"]
+        bottom = 1.0 - 0.10 - la
+        assert result["proletariat"] == pytest.approx(bottom * 0.70, rel=1e-9)
+        assert result["lumpenproletariat"] == pytest.approx(bottom * 0.30, rel=1e-9)
+
+    def test_with_precarity_lumpen_capped_at_bottom_share(self) -> None:
+        """Lumpen share cannot exceed bottom share (1.0 - top10 - la)."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={"00000": 0.90},  # High LA → small bottom
+            precarity_data={
+                "00000": {
+                    "u3_rate": 0.0,
+                    "u6_rate": 0.0,
+                    "pter_rate": 0.0,
+                    "nilf_want_work": 2.0,  # Would produce huge lumpen
+                    "incarceration_rate": 0.0,
+                }
+            },
+        )
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        la = result["labor_aristocracy"]
+        bottom = 1.0 - 0.10 - la
+        assert result["lumpenproletariat"] <= bottom + 1e-10
+        assert result["proletariat"] >= -1e-10
+
+    def test_only_precarity_data_present(self) -> None:
+        """With only precarity data (no homeownership), uses national LA average."""
+        calc = DefaultWealthProxyCalculator(
+            homeownership_data={},
+            precarity_data={
+                "00000": {
+                    "u3_rate": 0.05,
+                    "u6_rate": 0.10,
+                    "pter_rate": 0.04,
+                    "nilf_want_work": 0.03,
+                    "incarceration_rate": 0.015,
+                }
+            },
+        )
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        assert result["labor_aristocracy"] == DefaultWealthProxyCalculator.NATIONAL_LA_SHARE
+
+    def test_all_five_classes_present(self) -> None:
+        """Result dict has all 5 class keys."""
+        calc = DefaultWealthProxyCalculator(homeownership_data={"00000": 0.65})
+        result = calc.get_class_distribution_estimate("00000", 2022)
+        assert result is not None
+        expected_keys = {
+            "bourgeoisie",
+            "petit_bourgeoisie",
+            "labor_aristocracy",
+            "proletariat",
+            "lumpenproletariat",
+        }
+        assert set(result.keys()) == expected_keys

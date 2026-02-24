@@ -595,3 +595,393 @@ class TestComputeMetricsDataQuality:
         expected_tau = 50_000_000_000.0 / (200_000 * 2080)
         assert result.tau_through == pytest.approx(expected_tau, rel=1e-6)
         assert result.supply_chain_depth == 2.5
+
+
+# =============================================================================
+# MUTATION-KILLING TESTS: compute_all_counties, commuter methods
+# =============================================================================
+
+
+class TestComputeAllCountiesMutationKillers:
+    """Mutation-killing tests for compute_all_counties."""
+
+    def test_returns_metrics_for_each_county(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+        mock_melt_calculator: MagicMock,
+    ) -> None:
+        """compute_all_counties returns metrics for each county with GDP data."""
+        mock_gdp_source.get_all_counties.return_value = ["26163", "26125"]
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            melt_calculator=mock_melt_calculator,
+        )
+        results = calc.compute_all_counties(2022)
+
+        assert len(results) == 2
+        assert "26163" in results
+        assert "26125" in results
+        assert isinstance(results["26163"], ThroughputMetrics)
+
+    def test_empty_county_list_returns_empty_dict(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """No counties with GDP data → empty dict."""
+        mock_gdp_source.get_all_counties.return_value = []
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+        )
+        results = calc.compute_all_counties(2022)
+
+        assert results == {}
+
+    def test_none_county_list_returns_empty_dict(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """None from get_all_counties → empty dict."""
+        mock_gdp_source.get_all_counties.return_value = None
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+        )
+        results = calc.compute_all_counties(2022)
+
+        assert results == {}
+
+    def test_mixed_success_and_failure(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Some counties succeed, some return NoDataSentinel."""
+        mock_gdp_source.get_all_counties.return_value = ["26163", "99999"]
+
+        def gdp_side_effect(fips: str, year: int) -> float | None:
+            if fips == "26163":
+                return 50_000_000_000.0
+            return None
+
+        mock_gdp_source.get_county_gdp.side_effect = gdp_side_effect
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+        )
+        results = calc.compute_all_counties(2022)
+
+        assert len(results) == 2
+        assert isinstance(results["26163"], ThroughputMetrics)
+        assert isinstance(results["99999"], NoDataSentinel)
+
+
+class TestResidenceThroughputMutationKillers:
+    """Mutation-killing tests for compute_residence_throughput."""
+
+    def test_no_commuter_source_returns_sentinel(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """No commuter source → NoDataSentinel."""
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=None,
+        )
+        result = calc.compute_residence_throughput("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert "Commuter source unavailable" in result.reason
+
+    def test_no_gdp_returns_sentinel(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """No GDP data → NoDataSentinel."""
+        mock_commuter = MagicMock()
+        mock_gdp_source.get_county_gdp.return_value = None
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_residence_throughput("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert "GDP unavailable" in result.reason
+
+    def test_no_residence_employment_returns_sentinel(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """No residence employment → NoDataSentinel."""
+        mock_commuter = MagicMock()
+        mock_commuter.get_residence_employment.return_value = None
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_residence_throughput("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert "residence employment unavailable" in result.reason
+
+    def test_insufficient_residence_employment_returns_sentinel(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Residence employment below threshold → INSUFFICIENT_DATA."""
+        mock_commuter = MagicMock()
+        mock_commuter.get_residence_employment.return_value = 500
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_residence_throughput("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+        assert "INSUFFICIENT_DATA" in result.reason
+
+    def test_valid_residence_throughput_computed(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Valid data → τ_residence = GDP / (residence_emp × 2080)."""
+        mock_commuter = MagicMock()
+        mock_commuter.get_residence_employment.return_value = 150_000
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_residence_throughput("26163", 2022)
+
+        assert isinstance(result, float)
+        expected = 50_000_000_000.0 / (150_000 * HOURS_PER_YEAR)
+        assert result == pytest.approx(expected, rel=1e-6)
+
+    def test_at_threshold_passes(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Residence employment at exactly threshold → computes successfully."""
+        mock_commuter = MagicMock()
+        mock_commuter.get_residence_employment.return_value = MINIMUM_EMPLOYMENT_THRESHOLD
+        mock_gdp_source.get_county_gdp.return_value = 10_000_000_000.0
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_residence_throughput("26163", 2022)
+        assert isinstance(result, float)
+
+
+class TestCommuterAdjustedMetricsMutationKillers:
+    """Mutation-killing tests for compute_commuter_adjusted_metrics."""
+
+    def test_no_commuter_source_returns_defaults(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+        mock_melt_calculator: MagicMock,
+    ) -> None:
+        """Without commuter source, returns workplace metrics + commuter defaults."""
+        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            melt_calculator=mock_melt_calculator,
+            commuter_source=None,
+        )
+        result = calc.compute_commuter_adjusted_metrics("26163", 2022)
+
+        assert isinstance(result, CommuterAdjustedMetrics)
+        assert result.tau_through_workplace > 0
+        assert result.has_commuter_data is False
+        assert result.tau_through_residence is None
+        assert result.net_commuter_balance == 0
+
+    def test_tau_workplace_sentinel_propagates(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """NoDataSentinel from τ_workplace propagates."""
+        mock_gdp_source.get_county_gdp.return_value = None
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+        )
+        result = calc.compute_commuter_adjusted_metrics("26163", 2022)
+        assert isinstance(result, NoDataSentinel)
+
+    def test_with_commuter_data_job_importer(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+        mock_melt_calculator: MagicMock,
+    ) -> None:
+        """Positive net balance → is_job_importer=True."""
+        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+
+        mock_commuter = MagicMock()
+        mock_commuter.get_net_commuter_balance.return_value = 50000  # Positive: job importer
+        mock_commuter.get_residence_employment.return_value = 150_000
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            melt_calculator=mock_melt_calculator,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_commuter_adjusted_metrics("26163", 2022)
+
+        assert isinstance(result, CommuterAdjustedMetrics)
+        assert result.has_commuter_data is True
+        assert result.is_job_importer is True
+        assert result.net_commuter_balance == 50000
+
+    def test_with_commuter_data_job_exporter(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+        mock_melt_calculator: MagicMock,
+    ) -> None:
+        """Negative net balance → is_job_importer=False."""
+        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+
+        mock_commuter = MagicMock()
+        mock_commuter.get_net_commuter_balance.return_value = -30000  # Negative: bedroom community
+        mock_commuter.get_residence_employment.return_value = 250_000
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            melt_calculator=mock_melt_calculator,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_commuter_adjusted_metrics("26163", 2022)
+
+        assert isinstance(result, CommuterAdjustedMetrics)
+        assert result.is_job_importer is False
+        assert result.net_commuter_balance == -30000
+
+    def test_commuter_ratio_computed(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """commuter_ratio = residence_emp / workplace_emp."""
+        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+
+        mock_commuter = MagicMock()
+        mock_commuter.get_net_commuter_balance.return_value = 0
+        mock_commuter.get_residence_employment.return_value = 300_000
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_commuter_adjusted_metrics("26163", 2022)
+
+        assert isinstance(result, CommuterAdjustedMetrics)
+        # 300000 / 200000 = 1.5
+        assert result.commuter_ratio == pytest.approx(1.5, rel=1e-6)
+
+    def test_balance_none_means_no_commuter_data(
+        self,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """None balance from commuter source → has_commuter_data=False."""
+        from babylon.economics.throughput.types import CommuterAdjustedMetrics
+
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+
+        mock_commuter = MagicMock()
+        mock_commuter.get_net_commuter_balance.return_value = None
+
+        calc = DefaultThroughputCalculator(
+            gdp_source=mock_gdp_source,
+            qcew_source=mock_qcew_source,
+            supply_chain_analyzer=mock_supply_chain,
+            commuter_source=mock_commuter,
+        )
+        result = calc.compute_commuter_adjusted_metrics("26163", 2022)
+
+        assert isinstance(result, CommuterAdjustedMetrics)
+        assert result.has_commuter_data is False

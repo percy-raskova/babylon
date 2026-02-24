@@ -56,19 +56,14 @@ def main() -> int:
     else:
         paths = config.get("tool", {}).get("mutmut", {}).get("paths_to_mutate", ["src/"])
 
-    # Always use unit tests only (integration tests have multiprocessing conflicts)
-    config.setdefault("tool", {}).setdefault("mutmut", {})["tests_dir"] = ["tests/unit/"]
-
-    # Exclude test directories that don't exercise mutation targets
-    # (CLI tools, slow subprocess tests, etc.)
-    pytest_opts = (
-        config.setdefault("tool", {}).setdefault("pytest", {}).setdefault("ini_options", {})
-    )
-    norecursedirs = list(pytest_opts.get("norecursedirs", []))
-    for exclude_dir in ["tests/unit/tools", "tests/unit/ai"]:
-        if exclude_dir not in norecursedirs:
-            norecursedirs.append(exclude_dir)
-    pytest_opts["norecursedirs"] = norecursedirs
+    # Only run tests that exercise mutation targets (formulas, engine, economics).
+    # All other test dirs (data, rag, ui, tools, metrics, etc.) test code outside
+    # paths_to_mutate — running them wastes cycles for zero mutation signal.
+    config.setdefault("tool", {}).setdefault("mutmut", {})["tests_dir"] = [
+        "tests/unit/formulas/",
+        "tests/unit/engine/",
+        "tests/unit/economics/",
+    ]
 
     print(f"Mutation testing paths: {paths}")
 

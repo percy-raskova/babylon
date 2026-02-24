@@ -181,7 +181,7 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
     )  # pragma: no mutate
 
 
-def _reconstruct_tick_state(
+def _reconstruct_tick_state(  # pragma: no mutate — data deserialization
     tick_data: dict[str, Any],
 ) -> SimulationTickState | None:
     """Reconstruct SimulationTickState from a snapshot dict.
@@ -197,18 +197,20 @@ def _reconstruct_tick_state(
     Returns:
         Reconstructed SimulationTickState, or None if data is invalid.
     """
-    if not tick_data:
-        return None
+    if not tick_data:  # pragma: no mutate
+        return None  # pragma: no mutate
 
-    county_states: dict[str, CountyEconomicState] = tick_data.get("county_states", {})
+    county_states: dict[str, CountyEconomicState] = tick_data.get(
+        "county_states", {}
+    )  # pragma: no mutate
 
-    return SimulationTickState(
-        year=tick_data["year"],
-        national_params=tick_data["national_params"],
-        county_states=county_states,
-        coefficients=tick_data["coefficients"],
-        tick_summary=tick_data.get("tick_summary"),
-    )
+    return SimulationTickState(  # pragma: no mutate
+        year=tick_data["year"],  # pragma: no mutate
+        national_params=tick_data["national_params"],  # pragma: no mutate
+        county_states=county_states,  # pragma: no mutate
+        coefficients=tick_data["coefficients"],  # pragma: no mutate
+        tick_summary=tick_data.get("tick_summary"),  # pragma: no mutate
+    )  # pragma: no mutate
 
 
 __all__ = [

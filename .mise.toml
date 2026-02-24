@@ -456,66 +456,23 @@ make all-pdf
 # =============================================================================
 
 [tasks."mutate:full"]
-description = "Run full mutation testing on all tiers (long run)"
-run = "poetry run python tools/run_mutmut.py"
-
-[tasks."mutate:critical"]
-description = "Run mutation testing on critical paths only (~30 min)"
-run = "poetry run python tools/run_mutmut.py --critical"
-
-[tasks."mutate:formulas"]
-description = "Run mutation testing on formulas only (~15-30 min)"
+description = "Run full mutation testing, then generate report"
 run = """
-echo "Running mutation testing on formulas..."
-poetry run mutmut run \
-  --paths-to-mutate=src/babylon/formulas/ \
-  --runner="poetry run pytest tests/unit/formulas -x -q --tb=no"
-poetry run mutmut results
+poetry run python tools/run_mutmut.py
+poetry run python tools/mutmut_report.py report
 """
 
-[tasks."mutate:systems"]
-description = "Run mutation testing on engine systems (~30-60 min)"
-run = """
-echo "Running mutation testing on engine systems..."
-poetry run mutmut run \
-  --paths-to-mutate=src/babylon/engine/systems/ \
-  --runner="poetry run pytest tests/unit/engine -x -q --tb=no"
-poetry run mutmut results
-"""
+[tasks."mutate:report"]
+description = "Parse mutation results and print summary (--diff for baseline comparison)"
+run = "poetry run python tools/mutmut_report.py report $@"
 
-[tasks."mutate:economics"]
-description = "Run mutation testing on economics modules (~30-60 min)"
-run = """
-echo "Running mutation testing on economics..."
-poetry run mutmut run \
-  --paths-to-mutate=src/babylon/economics/ \
-  --runner="poetry run pytest tests/unit/economics -x -q --tb=no"
-poetry run mutmut results
-"""
+[tasks."mutate:baseline"]
+description = "Snapshot current mutation scores as baseline"
+run = "poetry run python tools/mutmut_report.py baseline"
 
-[tasks."mutate:file"]
-description = "Run mutation testing on a specific file"
-run = """
-if [ -z "$1" ]; then
-  echo "Usage: mise run mutate:file <path/to/file.py>"
-  exit 1
-fi
-echo "Running mutation testing on $1..."
-poetry run mutmut run --paths-to-mutate="$1"
-poetry run mutmut results
-"""
-
-[tasks."mutate:results"]
-description = "Show mutation testing results summary"
-run = "poetry run mutmut results"
-
-[tasks."mutate:show"]
-description = "Show specific mutant details (usage: mise run mutate:show 42)"
-run = "poetry run mutmut show ${1:-1}"
-
-[tasks."mutate:html"]
-description = "Generate HTML report of mutation testing results"
-run = "poetry run mutmut html && echo 'Report: html/index.html'"
+[tasks."mutate:clear"]
+description = "Clear all mutation testing results"
+run = 'rm -rf mutants/ && echo "Mutation results cleared."'
 
 # =============================================================================
 # CI / HOOKS

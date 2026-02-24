@@ -26,51 +26,37 @@ Source = "https://github.com/bogdanscarwash/babylon"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-
-# === CORE SIMULATION ENGINE ===
-pydantic = ">=2.10.3"        # Schema validation, frozen models
-numpy = ">=1.26.4"           # Numeric calculations
-networkx = ">=3.2.1"         # Graph topology (Embedded Trinity)
-sqlalchemy = ">=2.0.36"      # ORM for Ledger layer
-
-# === DATA & ANALYSIS ===
-pandas = ">=2.2.3"           # Dataframes for metrics
-jsonschema = "^4.25.1"       # JSON Schema validation
-referencing = "^0.37.0"      # JSON Schema $ref support
-openpyxl = "^3.1.5"          # Excel export
-
-# === RAG & AI INTEGRATION ===
-chromadb = ">=1.0.0"         # Vector database (Archive layer)
-openai = "^2.9.0"            # LLM provider
-tokenizers = ">=0.19.1"      # Text tokenization
-aiohttp = "^3.13.3"          # Async HTTP for AI calls
-backoff = ">=2.2.1"          # Retry with exponential backoff
-ratelimit = ">=2.2.1"        # API rate limiting
-
-# === CLI & INTERFACE ===
-typer = ">=0.15.1"           # CLI framework
-rich = ">=13.9.4"            # Rich terminal output
-coloredlogs = ">=15.0.1"     # Colored logging
-PyQt6 = "^6.6"               # God Mode Dashboard (Feature 007)
-PyQt6-WebEngine = "^6.6"     # WebGL map rendering via QWebEngineView
-pydeck = "^0.9"              # H3 hexagonal map visualization
-
-# === GEOSPATIAL ===
-h3 = "^4.2"                  # Uber H3 hex grid (stable release, was ^4.0.0b1 beta)
-geopandas = ">=1.0.0"        # Geospatial dataframes
-pyproj = ">=3.6.0"           # Coordinate projections
-shapely = ">=2.0.0"          # Geometric operations
-
-# === INFRASTRUCTURE ===
-pyyaml = ">=6.0.2"           # YAML config files
-python-dotenv = ">=1.0.1"    # Environment variables
-requests = ">=2.32.3"        # HTTP client
-certifi = ">=2025.11.12"     # CA certificates (security: recent CA bundle)
-filelock = ">=3.20.3"        # File locking (CVE-2026-22701)
-
-# === TESTING (main deps) ===
-hypothesis = "^6.149.0"      # Property-based testing
-salib = "^1.5.2"             # Sensitivity analysis
+pydantic = ">=2.10.3"
+numpy = ">=1.26.4"
+networkx = ">=3.2.1"
+sqlalchemy = ">=2.0.36"
+pandas = ">=2.2.3"
+jsonschema = "^4.25.1"
+referencing = "^0.37.0"
+openpyxl = "^3.1.5"
+chromadb = ">=1.0.0"
+openai = "^2.9.0"
+tokenizers = ">=0.19.1"
+aiohttp = "^3.13.3"
+backoff = ">=2.2.1"
+ratelimit = ">=2.2.1"
+typer = ">=0.15.1"
+rich = ">=13.9.4"
+coloredlogs = ">=15.0.1"
+PyQt6 = "^6.6"
+PyQt6-WebEngine = "^6.6"
+pydeck = "^0.9"
+h3 = "^4.2"
+geopandas = ">=1.0.0"
+pyproj = ">=3.6.0"
+shapely = ">=2.0.0"
+pyyaml = ">=6.0.2"
+python-dotenv = ">=1.0.1"
+requests = ">=2.32.3"
+certifi = ">=2025.11.12"
+filelock = ">=3.20.3"
+hypothesis = "^6.149.0"
+salib = "^1.5.2"
 uuid = "^1.30"
 contextvars = "^2.4"
 
@@ -94,7 +80,7 @@ mido = "^1.3.3"
 linkify-it-py = "^2.0.3"
 pip-audit = "^2.7.3"
 pytest-playwright = "^0.7.2"
-pytest-qt = "^4.4"           # PyQt6 widget testing
+pytest-qt = "^4.4"
 radon = "^6.0.1"
 xenon = "^0.9.3"
 pytest-randomly = "^4.0.1"
@@ -109,9 +95,9 @@ types-tqdm = "^4.67.0.20250809"
 vulture = "^2.14"
 
 [tool.poetry.group.docs.dependencies]
-sphinx = ">=7,<9"                 # <9: Sphinx 9 has breaking autodoc changes
+sphinx = ">=7,<9"
 sphinx-rtd-theme = "^3.0.2"
-sphinx-autodoc-typehints = "<3.6" # <3.6: v3.6+ breaks Napoleon-style docstrings
+sphinx-autodoc-typehints = "<3.6"
 myst-parser = "^4.0.1"
 sphinx-autobuild = "^2024.10.3"
 sphinxcontrib-mermaid = "^1.2"
@@ -190,10 +176,13 @@ known-first-party = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests use fixtures for side-effects (cleanup, module state reset)
-"tests/**" = ["ARG001", "ARG002"]
-# Tools are data generators/scripts, complexity limits don't apply
-"tools/**" = ["C901"]
+"tests/**" = [
+    "ARG001",
+    "ARG002",
+]
+"tools/**" = [
+    "C901",
+]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -224,7 +213,6 @@ plugins = [
     "pydantic.mypy",
 ]
 
-# Packages without type stubs - explicit ignore rather than inline comments
 [[tool.mypy.overrides]]
 module = [
     "alembic.*",
@@ -249,7 +237,6 @@ update_changelog_on_bump = true
 
 [tool.mutmut]
 paths_to_mutate = [
-    # Tier 1: Formulas (pure math)
     "src/babylon/formulas/fundamental_theorem.py",
     "src/babylon/formulas/survival_calculus.py",
     "src/babylon/formulas/unequal_exchange.py",
@@ -260,7 +247,6 @@ paths_to_mutate = [
     "src/babylon/formulas/vitality.py",
     "src/babylon/formulas/trpf.py",
     "src/babylon/formulas/class_dynamics.py",
-    # Tier 2: Engine Systems (state transitions)
     "src/babylon/engine/systems/economic.py",
     "src/babylon/engine/systems/struggle.py",
     "src/babylon/engine/systems/territory.py",
@@ -274,7 +260,6 @@ paths_to_mutate = [
     "src/babylon/engine/systems/metabolism.py",
     "src/babylon/engine/systems/contradiction.py",
     "src/babylon/engine/systems/event_template.py",
-    # Tier 3: Economics Core (tensor/capital math)
     "src/babylon/economics/tensor.py",
     "src/babylon/economics/capital_stock.py",
     "src/babylon/economics/reproduction.py",
@@ -285,31 +270,26 @@ paths_to_mutate = [
     "src/babylon/economics/snlt.py",
     "src/babylon/economics/tensor_registry.py",
     "src/babylon/economics/hydrator.py",
-    # Tier 3a: MELT & basket visibility
     "src/babylon/economics/melt/melt_calculator.py",
     "src/babylon/economics/melt/imperial_rent.py",
     "src/babylon/economics/melt/class_position.py",
     "src/babylon/economics/melt/basket_visibility.py",
     "src/babylon/economics/melt/wealth_proxy.py",
-    # Tier 3b: Throughput position
     "src/babylon/economics/throughput/calculator.py",
     "src/babylon/economics/throughput/supply_chain.py",
     "src/babylon/economics/throughput/naics_depth.py",
     "src/babylon/economics/throughput/analysis.py",
-    # Tier 3c: Gamma visibility
     "src/babylon/economics/gamma/gamma_iii.py",
     "src/babylon/economics/gamma/gamma_basket.py",
     "src/babylon/economics/gamma/gamma_import.py",
     "src/babylon/economics/gamma/shadow_subsidy.py",
     "src/babylon/economics/gamma/validation.py",
-    # Tier 3d: Class dynamics
     "src/babylon/economics/dynamics/accumulation.py",
     "src/babylon/economics/dynamics/dispossession.py",
     "src/babylon/economics/dynamics/savings_schedule.py",
     "src/babylon/economics/dynamics/crisis.py",
     "src/babylon/economics/dynamics/validation.py",
     "src/babylon/economics/dynamics/transition_engine.py",
-    # Tier 3e: Crisis & tick pipeline
     "src/babylon/economics/crisis/bifurcation.py",
     "src/babylon/economics/crisis/wage_compression.py",
     "src/babylon/economics/tick/system.py",
@@ -319,16 +299,16 @@ paths_to_mutate = [
     "src/babylon/economics/tick/smoothing.py",
     "src/babylon/economics/tick/graph_bridge.py",
     "src/babylon/economics/tick/initializer.py",
-    # Tier 3f: Temporal validation
     "src/babylon/economics/temporal/transitions.py",
     "src/babylon/economics/temporal/anomaly.py",
     "src/babylon/economics/temporal/smoothing.py",
     "src/babylon/economics/temporal/signals.py",
-    # Tier 3g: Calibration
     "src/babylon/economics/calibration/thresholds.py",
 ]
 tests_dir = [
-    "tests/unit/",
+    "tests/unit/formulas/",
+    "tests/unit/engine/",
+    "tests/unit/economics/",
 ]
 also_copy = [
     "src/",
@@ -339,18 +319,18 @@ debug = false
 [tool.rstcheck]
 report_level = "WARNING"
 ignore_roles = [
-    "hope",      # Custom Necropolis Codex role (docs/_ext/hope_roles.py)
-    "hopedim",   # Custom Necropolis Codex role (docs/_ext/hope_roles.py)
+    "hope",
+    "hopedim",
 ]
 ignore_directives = [
-    "mermaid",           # sphinxcontrib-mermaid
-    "todo",              # sphinx.ext.todo
-    "automodule",        # sphinx.ext.autodoc
-    "autoclass",         # sphinx.ext.autodoc
-    "autofunction",      # sphinx.ext.autodoc
-    "autosummary",       # sphinx.ext.autosummary
-    "toctree",           # Sphinx core
-    "only",              # Sphinx core (conditional)
+    "mermaid",
+    "todo",
+    "automodule",
+    "autoclass",
+    "autofunction",
+    "autosummary",
+    "toctree",
+    "only",
 ]
 ignore_substitutions = [
     "release",
@@ -358,8 +338,8 @@ ignore_substitutions = [
 ]
 
 [tool.hypothesis]
-deadline = 500  # ms - allow time for complex formulas
-max_examples = 100  # balance thoroughness vs speed
+deadline = 500
+max_examples = 100
 
 [tool.babylon.logging]
 default_level = "INFO"

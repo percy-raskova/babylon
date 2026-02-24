@@ -147,11 +147,16 @@ class TickDynamicsSystem:
             return
 
         # Step 3a: Compute county-level state
-        county_fips = (
-            list(prev_county_states.keys())
-            if prev_county_states
-            else self._get_territory_fips(graph)
-        )
+        # Try: previous state keys > graph territory nodes > tensor_registry FIPS
+        if prev_county_states:
+            county_fips = list(prev_county_states.keys())
+        else:
+            county_fips = self._get_territory_fips(graph)
+            # Feature 020: Fall back to tensor_registry when graph has no territories
+            if not county_fips:
+                tensor_registry = getattr(services, "tensor_registry", None)
+                if tensor_registry is not None:
+                    county_fips = list(tensor_registry.all_fips())
         county_states = self._compute_county_states(year, county_fips, services, prev_county_states)
 
         # Step 3a+: Derive precarity indicators from class distribution

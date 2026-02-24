@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func
+from sqlalchemy.exc import OperationalError
 
 from babylon.data.reference.schema import (
     DimCounty,
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# Flag to log the missing-table warning only once per process
+_LODES_TABLE_MISSING_WARNED: bool = False
 
 
 class SQLiteLODESCommuterFlowSource:
@@ -56,6 +60,16 @@ class SQLiteLODESCommuterFlowSource:
         # Cache lookups for efficiency
         self._county_id_cache: dict[str, int | None] = {}
         self._time_id_cache: dict[int, int | None] = {}
+
+    def _handle_missing_table(self) -> None:
+        """Log a warning once if the LODES table is missing."""
+        global _LODES_TABLE_MISSING_WARNED  # noqa: PLW0603
+        if not _LODES_TABLE_MISSING_WARNED:
+            logger.warning(
+                "fact_lodes_commuter_flow table not found. "
+                "Run 'mise run data:lodes-od' to load LODES data."
+            )
+            _LODES_TABLE_MISSING_WARNED = True
 
     def _get_county_id(self, session: Session, fips: str) -> int | None:
         """Get county_id for a FIPS code, with caching."""
@@ -87,26 +101,30 @@ class SQLiteLODESCommuterFlowSource:
         Returns:
             Count of inbound commuters, or None if no data available
         """
-        with self._session_factory() as session:
-            work_county_id = self._get_county_id(session, work_fips)
-            if work_county_id is None:
-                return None
+        try:
+            with self._session_factory() as session:
+                work_county_id = self._get_county_id(session, work_fips)
+                if work_county_id is None:
+                    return None
 
-            time_id = self._get_time_id(session, year)
-            if time_id is None:
-                return None
+                time_id = self._get_time_id(session, year)
+                if time_id is None:
+                    return None
 
-            result = (
-                session.query(func.sum(FactLodesCommuterFlow.total_jobs))
-                .filter(
-                    FactLodesCommuterFlow.work_county_id == work_county_id,
-                    FactLodesCommuterFlow.home_county_id != work_county_id,
-                    FactLodesCommuterFlow.time_id == time_id,
+                result = (
+                    session.query(func.sum(FactLodesCommuterFlow.total_jobs))
+                    .filter(
+                        FactLodesCommuterFlow.work_county_id == work_county_id,
+                        FactLodesCommuterFlow.home_county_id != work_county_id,
+                        FactLodesCommuterFlow.time_id == time_id,
+                    )
+                    .scalar()
                 )
-                .scalar()
-            )
 
-            return int(result) if result is not None else None
+                return int(result) if result is not None else None
+        except OperationalError:
+            self._handle_missing_table()
+            return None
 
     def get_outbound_commuters(self, home_fips: str, year: int) -> int | None:
         """Get total workers commuting OUT of this county for work.
@@ -120,26 +138,30 @@ class SQLiteLODESCommuterFlowSource:
         Returns:
             Count of outbound commuters, or None if no data available
         """
-        with self._session_factory() as session:
-            home_county_id = self._get_county_id(session, home_fips)
-            if home_county_id is None:
-                return None
+        try:
+            with self._session_factory() as session:
+                home_county_id = self._get_county_id(session, home_fips)
+                if home_county_id is None:
+                    return None
 
-            time_id = self._get_time_id(session, year)
-            if time_id is None:
-                return None
+                time_id = self._get_time_id(session, year)
+                if time_id is None:
+                    return None
 
-            result = (
-                session.query(func.sum(FactLodesCommuterFlow.total_jobs))
-                .filter(
-                    FactLodesCommuterFlow.home_county_id == home_county_id,
-                    FactLodesCommuterFlow.work_county_id != home_county_id,
-                    FactLodesCommuterFlow.time_id == time_id,
+                result = (
+                    session.query(func.sum(FactLodesCommuterFlow.total_jobs))
+                    .filter(
+                        FactLodesCommuterFlow.home_county_id == home_county_id,
+                        FactLodesCommuterFlow.work_county_id != home_county_id,
+                        FactLodesCommuterFlow.time_id == time_id,
+                    )
+                    .scalar()
                 )
-                .scalar()
-            )
 
-            return int(result) if result is not None else None
+                return int(result) if result is not None else None
+        except OperationalError:
+            self._handle_missing_table()
+            return None
 
     def get_internal_workers(self, fips: str, year: int) -> int | None:
         """Get workers who both live and work in this county.
@@ -153,26 +175,30 @@ class SQLiteLODESCommuterFlowSource:
         Returns:
             Count of internal workers, or None if no data available
         """
-        with self._session_factory() as session:
-            county_id = self._get_county_id(session, fips)
-            if county_id is None:
-                return None
+        try:
+            with self._session_factory() as session:
+                county_id = self._get_county_id(session, fips)
+                if county_id is None:
+                    return None
 
-            time_id = self._get_time_id(session, year)
-            if time_id is None:
-                return None
+                time_id = self._get_time_id(session, year)
+                if time_id is None:
+                    return None
 
-            result = (
-                session.query(FactLodesCommuterFlow.total_jobs)
-                .filter(
-                    FactLodesCommuterFlow.home_county_id == county_id,
-                    FactLodesCommuterFlow.work_county_id == county_id,
-                    FactLodesCommuterFlow.time_id == time_id,
+                result = (
+                    session.query(FactLodesCommuterFlow.total_jobs)
+                    .filter(
+                        FactLodesCommuterFlow.home_county_id == county_id,
+                        FactLodesCommuterFlow.work_county_id == county_id,
+                        FactLodesCommuterFlow.time_id == time_id,
+                    )
+                    .scalar()
                 )
-                .scalar()
-            )
 
-            return int(result) if result is not None else None
+                return int(result) if result is not None else None
+        except OperationalError:
+            self._handle_missing_table()
+            return None
 
     def get_net_commuter_balance(self, fips: str, year: int) -> int | None:
         """Get net commuter balance for a county.
@@ -209,26 +235,30 @@ class SQLiteLODESCommuterFlowSource:
         Returns:
             Residence-based employment count, or None if unavailable
         """
-        with self._session_factory() as session:
-            home_county_id = self._get_county_id(session, fips)
-            if home_county_id is None:
-                return None
+        try:
+            with self._session_factory() as session:
+                home_county_id = self._get_county_id(session, fips)
+                if home_county_id is None:
+                    return None
 
-            time_id = self._get_time_id(session, year)
-            if time_id is None:
-                return None
+                time_id = self._get_time_id(session, year)
+                if time_id is None:
+                    return None
 
-            # Sum all jobs where this county is the HOME county (worker lives here)
-            result = (
-                session.query(func.sum(FactLodesCommuterFlow.total_jobs))
-                .filter(
-                    FactLodesCommuterFlow.home_county_id == home_county_id,
-                    FactLodesCommuterFlow.time_id == time_id,
+                # Sum all jobs where this county is the HOME county (worker lives here)
+                result = (
+                    session.query(func.sum(FactLodesCommuterFlow.total_jobs))
+                    .filter(
+                        FactLodesCommuterFlow.home_county_id == home_county_id,
+                        FactLodesCommuterFlow.time_id == time_id,
+                    )
+                    .scalar()
                 )
-                .scalar()
-            )
 
-            return int(result) if result is not None else None
+                return int(result) if result is not None else None
+        except OperationalError:
+            self._handle_missing_table()
+            return None
 
     def get_workplace_employment(self, fips: str, year: int) -> int | None:
         """Get employment based on workplace location.
@@ -243,26 +273,30 @@ class SQLiteLODESCommuterFlowSource:
         Returns:
             Workplace-based employment count, or None if unavailable
         """
-        with self._session_factory() as session:
-            work_county_id = self._get_county_id(session, fips)
-            if work_county_id is None:
-                return None
+        try:
+            with self._session_factory() as session:
+                work_county_id = self._get_county_id(session, fips)
+                if work_county_id is None:
+                    return None
 
-            time_id = self._get_time_id(session, year)
-            if time_id is None:
-                return None
+                time_id = self._get_time_id(session, year)
+                if time_id is None:
+                    return None
 
-            # Sum all jobs where this county is the WORK county (job is here)
-            result = (
-                session.query(func.sum(FactLodesCommuterFlow.total_jobs))
-                .filter(
-                    FactLodesCommuterFlow.work_county_id == work_county_id,
-                    FactLodesCommuterFlow.time_id == time_id,
+                # Sum all jobs where this county is the WORK county (job is here)
+                result = (
+                    session.query(func.sum(FactLodesCommuterFlow.total_jobs))
+                    .filter(
+                        FactLodesCommuterFlow.work_county_id == work_county_id,
+                        FactLodesCommuterFlow.time_id == time_id,
+                    )
+                    .scalar()
                 )
-                .scalar()
-            )
 
-            return int(result) if result is not None else None
+                return int(result) if result is not None else None
+        except OperationalError:
+            self._handle_missing_table()
+            return None
 
     def get_commuter_flows(self, home_fips: str, work_fips: str, year: int) -> int | None:
         """Get commuter flow between specific county pair.
@@ -276,30 +310,34 @@ class SQLiteLODESCommuterFlowSource:
             Count of workers living in home_fips working in work_fips,
             or None if unavailable
         """
-        with self._session_factory() as session:
-            home_county_id = self._get_county_id(session, home_fips)
-            if home_county_id is None:
-                return None
+        try:
+            with self._session_factory() as session:
+                home_county_id = self._get_county_id(session, home_fips)
+                if home_county_id is None:
+                    return None
 
-            work_county_id = self._get_county_id(session, work_fips)
-            if work_county_id is None:
-                return None
+                work_county_id = self._get_county_id(session, work_fips)
+                if work_county_id is None:
+                    return None
 
-            time_id = self._get_time_id(session, year)
-            if time_id is None:
-                return None
+                time_id = self._get_time_id(session, year)
+                if time_id is None:
+                    return None
 
-            result = (
-                session.query(FactLodesCommuterFlow.total_jobs)
-                .filter(
-                    FactLodesCommuterFlow.home_county_id == home_county_id,
-                    FactLodesCommuterFlow.work_county_id == work_county_id,
-                    FactLodesCommuterFlow.time_id == time_id,
+                result = (
+                    session.query(FactLodesCommuterFlow.total_jobs)
+                    .filter(
+                        FactLodesCommuterFlow.home_county_id == home_county_id,
+                        FactLodesCommuterFlow.work_county_id == work_county_id,
+                        FactLodesCommuterFlow.time_id == time_id,
+                    )
+                    .scalar()
                 )
-                .scalar()
-            )
 
-            return int(result) if result is not None else None
+                return int(result) if result is not None else None
+        except OperationalError:
+            self._handle_missing_table()
+            return None
 
 
 __all__ = ["SQLiteLODESCommuterFlowSource"]

@@ -364,6 +364,46 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
     return None
 
 
+def _restore_graph_context(
+    G: nx.DiGraph[str],
+    persistent_context: dict[str, Any] | None,
+) -> None:
+    """Restore graph-level state from persistent_context before systems run.
+
+    Feature 020: TickDynamicsSystem writes tick_dynamics to graph.graph, but
+    it's lost during the WorldState round-trip (to_graph/from_graph). We
+    persist it in the context dict so it survives across ticks.
+    """
+    if not persistent_context:
+        return
+    if "_base_year" in persistent_context:
+        G.graph["base_year"] = persistent_context["_base_year"]
+    if "_tick_dynamics" in persistent_context:
+        G.graph["tick_dynamics"] = persistent_context["_tick_dynamics"]
+
+
+def _save_graph_context(
+    G: nx.DiGraph[str],
+    persistent_context: dict[str, Any] | None,
+    tick: int,
+) -> None:
+    """Save tick_dynamics from graph into persistent_context after systems run.
+
+    Feature 020: Persists tick_dynamics so it survives the WorldState round-trip.
+    Also accumulates year-boundary snapshots for get_time_series().
+    """
+    if persistent_context is None or "tick_dynamics" not in G.graph:
+        return
+    tick_dynamics_data = G.graph["tick_dynamics"]
+    persistent_context["_tick_dynamics"] = tick_dynamics_data
+    # Accumulate snapshots at year boundaries for time series extraction
+    if tick % 52 == 0:
+        snapshots: list[dict[str, Any]] = persistent_context.setdefault(
+            "_tick_dynamics_snapshots", []
+        )
+        snapshots.append(tick_dynamics_data)
+
+
 def step(
     state: WorldState,
     config: SimulationConfig,
@@ -398,7 +438,10 @@ def step(
         5. Event capture (log significant changes)
     """
     # Short-circuit for empty state (no entities AND no territories)
-    if not state.entities and not state.territories:
+    # Skip short-circuit when calculator_overrides are present (Feature 020):
+    # TickDynamicsSystem can still compute economic state from TensorRegistry
+    # even without traditional entity/territory nodes in the graph.
+    if not state.entities and not state.territories and not calculator_overrides:
         return state.model_copy(update={"tick": state.tick + 1})
 
     # Cost-checking: Log warnings for insolvent states (Epoch 1: The Ledger)
@@ -413,9 +456,8 @@ def step(
     G = state.to_graph()
     events: list[str] = list(state.event_log)
 
-    # Set base_year on graph for TickDynamicsSystem (Feature 020, T013)
-    if persistent_context and "_base_year" in persistent_context:
-        G.graph["base_year"] = persistent_context["_base_year"]
+    # Feature 020: Restore graph-level state from persistent_context
+    _restore_graph_context(G, persistent_context)
 
     # Create ServiceContainer for this tick
     # Use provided defines, or load from default YAML
@@ -432,6 +474,9 @@ def step(
 
     # Run all systems through the engine
     _DEFAULT_ENGINE.run_tick(G, services, context)
+
+    # Feature 020: Persist tick_dynamics for WorldState round-trip survival
+    _save_graph_context(G, persistent_context, state.tick)
 
     # Sync any changes from context.persistent_data back to caller's dict
     if persistent_context is not None:

@@ -572,8 +572,9 @@ class Simulation:
     def get_time_series(self) -> list[dict[str, Any]]:
         """Extract time series records from completed simulation.
 
-        Iterates history and extracts economic state data at each year
-        boundary (every 52 ticks) from the TickDynamicsSystem output.
+        Reads accumulated tick dynamics snapshots stored in persistent_context
+        by the step() function at each year boundary. Each snapshot contains
+        county-level economic state computed by TickDynamicsSystem.
 
         Returns:
             List of dicts, each containing: year, fips, class_distribution
@@ -586,24 +587,21 @@ class Simulation:
             >>> for record in ts:
             ...     print(f"{record['year']} {record['fips']}: LA={record['la_share']:.2f}")
         """
-        from babylon.economics.tick.graph_bridge import read_tick_state_from_graph
+        from babylon.economics.tick.graph_bridge import (
+            _reconstruct_tick_state,
+        )
 
         records: list[dict[str, Any]] = []
 
-        for state in self._history:
-            # Only check year boundaries (tick % 52 == 0 except tick 0)
-            if state.tick == 0:
-                continue
-            if state.tick % 52 != 0:
-                continue
+        # Read accumulated snapshots from persistent context
+        raw_snapshots = self._persistent_context.get("_tick_dynamics_snapshots", [])
+        snapshots: list[dict[str, Any]] = raw_snapshots if isinstance(raw_snapshots, list) else []
 
-            # Read tick state from graph
-            graph = state.to_graph()
-            tick_state = read_tick_state_from_graph(graph)
+        for snap_data in snapshots:
+            tick_state = _reconstruct_tick_state(snap_data)
             if tick_state is None:
                 continue
 
-            # Extract county records
             for fips, county in tick_state.county_states.items():
                 dist = county.class_distribution
                 records.append(

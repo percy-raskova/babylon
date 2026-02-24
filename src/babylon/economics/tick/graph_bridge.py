@@ -49,13 +49,15 @@ def write_tick_state_to_graph(
         graph: Mutable NetworkX graph (modified in-place).
         state: Simulation tick state to write.
     """
-    # Write national-level metadata
+    # Write national-level metadata (includes county_states for persistence
+    # through the WorldState round-trip when territory nodes don't exist)
     graph.graph[TICK_DYNAMICS_KEY] = {
         "year": state.year,
         "national_params": state.national_params,
         "coefficients": state.coefficients,
         "tick_summary": state.tick_summary,
         "is_year_boundary": True,
+        "county_states": state.county_states,
     }
 
     # Write county-level state to Territory nodes
@@ -114,7 +116,9 @@ def read_tick_state_from_graph(
     tick_summary: TickSummary | None = tick_data.get("tick_summary")
     year: int = tick_data["year"]
 
-    # Reconstruct county states from territory nodes
+    # Reconstruct county states from territory nodes (preferred) or from
+    # the tick_data dict (fallback for when graph has no territory nodes,
+    # e.g. Feature 020 from_sqlite path)
     county_states: dict[str, CountyEconomicState] = {}
     for node_id, node_data in graph.nodes(data=True):
         if node_data.get("_node_type") != "territory":
@@ -158,6 +162,10 @@ def read_tick_state_from_graph(
             ),
         )
 
+    # Fallback: use county_states stored directly in tick_data dict
+    if not county_states and "county_states" in tick_data:
+        county_states = tick_data["county_states"]
+
     return SimulationTickState(
         year=year,
         national_params=national_params,
@@ -167,8 +175,39 @@ def read_tick_state_from_graph(
     )
 
 
+def _reconstruct_tick_state(
+    tick_data: dict[str, Any],
+) -> SimulationTickState | None:
+    """Reconstruct SimulationTickState from a snapshot dict.
+
+    Used by Simulation.get_time_series() to read accumulated snapshots
+    stored in persistent_context. Unlike read_tick_state_from_graph(),
+    this reads county_states directly from the dict (no graph nodes needed).
+
+    Args:
+        tick_data: Dict with keys: year, national_params, coefficients,
+            tick_summary, county_states.
+
+    Returns:
+        Reconstructed SimulationTickState, or None if data is invalid.
+    """
+    if not tick_data:
+        return None
+
+    county_states: dict[str, CountyEconomicState] = tick_data.get("county_states", {})
+
+    return SimulationTickState(
+        year=tick_data["year"],
+        national_params=tick_data["national_params"],
+        county_states=county_states,
+        coefficients=tick_data["coefficients"],
+        tick_summary=tick_data.get("tick_summary"),
+    )
+
+
 __all__ = [
     "TICK_DYNAMICS_KEY",
+    "_reconstruct_tick_state",
     "read_tick_state_from_graph",
     "write_tick_state_to_graph",
 ]

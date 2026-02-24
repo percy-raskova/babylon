@@ -399,6 +399,15 @@ class TensorRegistry:
             visibility_g33=max(0.0, min(1.0, avg_visibility)),
         )
 
+    def all_fips(self) -> frozenset[str]:
+        """Get all FIPS codes with cached tensor data.
+
+        Returns:
+            Frozen set of 5-digit FIPS codes.
+        """
+        with self._county_lock:
+            return frozenset(fips for fips, _year in self._county_cache)
+
     def available_years(self, fips: str) -> frozenset[int]:
         """Get available years for a county.
 

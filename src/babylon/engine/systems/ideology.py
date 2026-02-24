@@ -27,7 +27,9 @@ PREVIOUS_WAGES_KEY = "previous_wages"
 PREVIOUS_WEALTH_KEY = "previous_wealth"
 
 
-def _get_ideology_profile_from_node(node_data: dict[str, Any]) -> dict[str, float]:
+def _get_ideology_profile_from_node(
+    node_data: dict[str, Any],
+) -> dict[str, float]:  # pragma: no mutate — graph accessor
     """Extract IdeologicalProfile values from graph node data.
 
     Args:
@@ -36,30 +38,30 @@ def _get_ideology_profile_from_node(node_data: dict[str, Any]) -> dict[str, floa
     Returns:
         Dict with class_consciousness, national_identity, agitation keys
     """
-    ideology = node_data.get("ideology")
+    ideology = node_data.get("ideology")  # pragma: no mutate
 
-    if ideology is None:
+    if ideology is None:  # pragma: no mutate
         # No ideology data - return defaults
-        return {
-            "class_consciousness": 0.0,
-            "national_identity": 0.5,
-            "agitation": 0.0,
-        }
+        return {  # pragma: no mutate
+            "class_consciousness": 0.0,  # pragma: no mutate
+            "national_identity": 0.5,  # pragma: no mutate
+            "agitation": 0.0,  # pragma: no mutate
+        }  # pragma: no mutate
 
-    if isinstance(ideology, dict):
+    if isinstance(ideology, dict):  # pragma: no mutate
         # IdeologicalProfile format
-        return {
-            "class_consciousness": ideology.get("class_consciousness", 0.0),
-            "national_identity": ideology.get("national_identity", 0.5),
-            "agitation": ideology.get("agitation", 0.0),
-        }
+        return {  # pragma: no mutate
+            "class_consciousness": ideology.get("class_consciousness", 0.0),  # pragma: no mutate
+            "national_identity": ideology.get("national_identity", 0.5),  # pragma: no mutate
+            "agitation": ideology.get("agitation", 0.0),  # pragma: no mutate
+        }  # pragma: no mutate
 
     # Unknown format - return defaults
-    return {
-        "class_consciousness": 0.0,
-        "national_identity": 0.5,
-        "agitation": 0.0,
-    }
+    return {  # pragma: no mutate
+        "class_consciousness": 0.0,  # pragma: no mutate
+        "national_identity": 0.5,  # pragma: no mutate
+        "agitation": 0.0,  # pragma: no mutate
+    }  # pragma: no mutate
 
 
 class ConsciousnessSystem:

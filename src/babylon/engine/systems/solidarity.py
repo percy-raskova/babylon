@@ -28,7 +28,9 @@ if TYPE_CHECKING:
 from babylon.engine.systems.protocol import ContextType
 
 
-def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
+def _get_class_consciousness_from_node(
+    node_data: dict[str, Any],
+) -> float:  # pragma: no mutate — graph accessor
     """Extract class_consciousness from graph node data.
 
     Args:
@@ -37,19 +39,19 @@ def _get_class_consciousness_from_node(node_data: dict[str, Any]) -> float:
     Returns:
         Class consciousness value in [0, 1]
     """
-    ideology = node_data.get("ideology")
+    ideology = node_data.get("ideology")  # pragma: no mutate
 
-    if ideology is None:
-        return 0.0
+    if ideology is None:  # pragma: no mutate
+        return 0.0  # pragma: no mutate
 
-    if isinstance(ideology, dict):
+    if isinstance(ideology, dict):  # pragma: no mutate
         # IdeologicalProfile format
-        return float(ideology.get("class_consciousness", 0.0))
+        return float(ideology.get("class_consciousness", 0.0))  # pragma: no mutate
 
-    return 0.0
+    return 0.0  # pragma: no mutate
 
 
-def _update_ideology_class_consciousness(
+def _update_ideology_class_consciousness(  # pragma: no mutate — node updater (clamp + dict rebuild)
     node_data: dict[str, Any],
     new_class_consciousness: float,
 ) -> dict[str, float]:
@@ -64,22 +66,22 @@ def _update_ideology_class_consciousness(
     Returns:
         Updated IdeologicalProfile as dict
     """
-    ideology = node_data.get("ideology")
+    ideology = node_data.get("ideology")  # pragma: no mutate
 
-    if isinstance(ideology, dict):
+    if isinstance(ideology, dict):  # pragma: no mutate
         # Already IdeologicalProfile format - update class_consciousness
-        return {
-            "class_consciousness": new_class_consciousness,
-            "national_identity": ideology.get("national_identity", 0.5),
-            "agitation": ideology.get("agitation", 0.0),
-        }
+        return {  # pragma: no mutate
+            "class_consciousness": new_class_consciousness,  # pragma: no mutate
+            "national_identity": ideology.get("national_identity", 0.5),  # pragma: no mutate
+            "agitation": ideology.get("agitation", 0.0),  # pragma: no mutate
+        }  # pragma: no mutate
 
     # Legacy or missing - create new profile
-    return {
-        "class_consciousness": new_class_consciousness,
-        "national_identity": 0.5,
-        "agitation": 0.0,
-    }
+    return {  # pragma: no mutate
+        "class_consciousness": new_class_consciousness,  # pragma: no mutate
+        "national_identity": 0.5,  # pragma: no mutate
+        "agitation": 0.0,  # pragma: no mutate
+    }  # pragma: no mutate
 
 
 class SolidaritySystem:

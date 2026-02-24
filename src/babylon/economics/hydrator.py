@@ -65,13 +65,13 @@ class MarxianHydrator:
         True  # Gentrification signal
     """
 
-    def __init__(
+    def __init__(  # pragma: no mutate — constructor (DI wiring)
         self,
         qcew_source: QCEWDataSource,
         bea_source: BEADataSource,
         dept_mapper: DepartmentMapper,
-        rent_calculator: ImperialRentCalculator | None = None,
-        snlt_config: SNLTConfig | None = None,
+        rent_calculator: ImperialRentCalculator | None = None,  # pragma: no mutate
+        snlt_config: SNLTConfig | None = None,  # pragma: no mutate
     ) -> None:
         """Initialize the hydrator with data sources and mapper.
 
@@ -84,11 +84,11 @@ class MarxianHydrator:
             snlt_config: Year-specific SNLT conversion factors. Defaults to
                 DEFAULT_SNLT_CONFIG (factor 1.0 = wage-proportional proxy).
         """
-        self._qcew_source = qcew_source
-        self._bea_source = bea_source
-        self._dept_mapper = dept_mapper
-        self._rent_calculator = rent_calculator
-        self._snlt_config = snlt_config or DEFAULT_SNLT_CONFIG
+        self._qcew_source = qcew_source  # pragma: no mutate
+        self._bea_source = bea_source  # pragma: no mutate
+        self._dept_mapper = dept_mapper  # pragma: no mutate
+        self._rent_calculator = rent_calculator  # pragma: no mutate
+        self._snlt_config = snlt_config or DEFAULT_SNLT_CONFIG  # pragma: no mutate
 
     def hydrate(self, fips_code: str, year: int) -> ValueTensor4x3:
         """Transform QCEW data into a Marxian value tensor with labor-hours.

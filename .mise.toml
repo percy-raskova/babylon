@@ -275,6 +275,14 @@ run = "poetry run python tools/regression_test.py generate --force"
 description = "Verify hexagon UI isolation from database layer (SC-002)"
 run = "poetry run python tools/verify_hexagon_isolation.py --ci"
 
+[tasks."qa:patterns"]
+description = "Run semgrep architectural pattern checks (all severities)"
+run = "semgrep --config .semgrep.yml src/"
+
+[tasks."qa:patterns-strict"]
+description = "Run semgrep pattern checks (ERROR only, CI mode)"
+run = "semgrep --config .semgrep.yml --severity ERROR --error src/"
+
 [tasks."qa:deps"]
 description = "Run dependency audit (security + outdated + dead code)"
 run = """

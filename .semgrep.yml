@@ -1,0 +1,156 @@
+# Semgrep Architectural Pattern Enforcement for Babylon
+#
+# Severity strategy:
+#   ERROR   — blocks pre-commit. Architectural invariants that must never be violated.
+#   WARNING — informational. Shows in `mise run qa:patterns`, invisible to pre-commit.
+#             Developers suppress with `# nosemgrep: rule-id` + justification.
+#
+# Pre-commit runs: semgrep --severity ERROR --error --quiet
+# Full scan runs:  semgrep --config .semgrep.yml src/
+
+rules:
+  # =========================================================================
+  # LAYER BOUNDARY: Formulas must not import engine/data/rag/models/ui/metrics
+  # =========================================================================
+
+  - id: babylon.layer-boundary.formulas-no-from-import
+    message: >-
+      Formulas layer must not import from engine/data/rag/models/ui/metrics.
+      Formulas are pure math — they receive values, not service objects.
+    severity: ERROR
+    languages: [python]
+    pattern-regex: "^from babylon\\.(engine|data|rag|models|ui|metrics)"
+    paths:
+      include:
+        - "**/formulas/"
+      exclude:
+        - "**/formulas/constants.py"
+        - "**/formulas/__init__.py"
+
+  - id: babylon.layer-boundary.formulas-no-bare-import
+    message: >-
+      Formulas layer must not import from engine/data/rag/models/ui/metrics.
+      Formulas are pure math — they receive values, not service objects.
+    severity: ERROR
+    languages: [python]
+    pattern-regex: "^import babylon\\.(engine|data|rag|models|ui|metrics)"
+    paths:
+      include:
+        - "**/formulas/"
+      exclude:
+        - "**/formulas/constants.py"
+        - "**/formulas/__init__.py"
+
+  # =========================================================================
+  # DEPENDENCY INJECTION: No direct MetricsCollector instantiation
+  # =========================================================================
+
+  - id: babylon.di.no-direct-metrics-collector
+    message: >-
+      Use dependency injection for MetricsCollector.
+      Inject via ServiceContainer, don't instantiate directly.
+    severity: WARNING
+    languages: [python]
+    pattern: MetricsCollector()
+    paths:
+      exclude:
+        - "**/engine/services.py"
+        - "**/rag/"
+        - "**/metrics/"
+        - "**/tests/"
+
+  # =========================================================================
+  # TECHNICAL DEBT: Track STUB markers in production code
+  # =========================================================================
+
+  - id: babylon.debt.stub-marker
+    message: >-
+      STUB marker found — this code is a known placeholder.
+      Track in backlog and replace with real implementation.
+    severity: WARNING
+    languages: [python]
+    pattern-regex: "# STUB"
+    paths:
+      include:
+        - "**/src/"
+
+  # =========================================================================
+  # PURITY: No print() in formulas or engine systems
+  # =========================================================================
+
+  - id: babylon.purity.no-print-in-core
+    message: >-
+      No print() in formulas or engine systems.
+      Use logging or EventBus for output. Formulas must be pure.
+    severity: ERROR
+    languages: [python]
+    pattern: print(...)
+    paths:
+      include:
+        - "**/formulas/"
+        - "**/engine/systems/"
+
+  # =========================================================================
+  # IMMUTABILITY: Pydantic models in types.py must be frozen
+  # =========================================================================
+
+  - id: babylon.immutability.frozen-pydantic-in-types
+    message: >-
+      Pydantic model '$NAME' in types.py should be frozen.
+      Add: model_config = ConfigDict(frozen=True) or use class Name(BaseModel, frozen=True).
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern: |
+          class $NAME(BaseModel):
+              ...
+      - pattern-not: |
+          class $NAME(BaseModel):
+              model_config = ConfigDict(..., frozen=True, ...)
+              ...
+      - pattern-not: |
+          class $NAME(BaseModel, frozen=True):
+              ...
+    paths:
+      include:
+        - "**/economics/**/types.py"
+        - "**/models/**/types.py"
+
+  # =========================================================================
+  # CONSTANTS: Detect hardcoded overflow guards with magic numbers
+  # =========================================================================
+
+  - id: babylon.constants.magic-overflow-guard
+    message: >-
+      Hardcoded overflow guard detected. Extract bounds to named constants
+      in GameDefines or module-level variables for documentation.
+    severity: WARNING
+    languages: [python]
+    patterns:
+      - pattern: max($LOW, min($HIGH, $VAR))
+      - metavariable-comparison:
+          metavariable: $LOW
+          comparison: $LOW < -10 or $LOW > 10
+    paths:
+      include:
+        - "**/formulas/"
+      exclude:
+        - "**/formulas/__init__.py"
+        - "**/formulas/constants.py"
+
+  # =========================================================================
+  # LAYER BOUNDARY: No raw NetworkX calls in systems/formulas/economics
+  # =========================================================================
+
+  - id: babylon.layer-boundary.no-raw-networkx
+    message: >-
+      No raw NetworkX function calls in systems/formulas/economics.
+      Use GraphProtocol adapter methods instead of nx.some_function().
+    severity: ERROR
+    languages: [python]
+    pattern: nx.$METHOD(...)
+    paths:
+      include:
+        - "**/engine/systems/"
+        - "**/formulas/"
+        - "**/economics/"

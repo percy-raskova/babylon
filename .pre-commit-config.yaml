@@ -73,6 +73,19 @@ repos:
         stages: [pre-commit]
 
   # ==========================================================================
+  # SEMGREP - Architectural Pattern Enforcement
+  # ==========================================================================
+  - repo: local
+    hooks:
+      - id: semgrep
+        name: semgrep (patterns)
+        entry: semgrep --config .semgrep.yml --severity ERROR --error --quiet
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+  # ==========================================================================
   # COMMITIZEN - Conventional Commits
   # ==========================================================================
   - repo: https://github.com/commitizen-tools/commitizen

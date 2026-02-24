@@ -34,14 +34,30 @@ WAYNE_FIPS: str = "26163"
 
 
 class MockMELTCalculator:
-    """Mock MELTCalculator returning known tau values."""
+    """Mock MELTCalculator returning known tau values.
 
-    def __init__(self, tau: float = 62.0) -> None:
+    Args:
+        tau: Fixed tau value to return.
+        force_sentinel: If True, always return NoDataSentinel regardless of year.
+        accept_any_year: If True, skip year-range validation (return tau for any year).
+    """
+
+    def __init__(
+        self,
+        tau: float = 62.0,
+        *,
+        force_sentinel: bool = False,
+        accept_any_year: bool = False,
+    ) -> None:
         self._tau = tau
+        self._force_sentinel = force_sentinel
+        self._accept_any_year = accept_any_year
 
     def get_melt(self, year: int) -> float | NoDataSentinel:
         """Return fixed tau."""
-        if year < 2007 or year > 2040:
+        if self._force_sentinel:
+            return NoDataSentinel(fips="USA", year=year, reason="Forced sentinel for testing")
+        if not self._accept_any_year and (year < 2007 or year > 2040):
             return NoDataSentinel(fips="USA", year=year, reason=f"Year {year} out of range")
         return self._tau
 
@@ -191,6 +207,70 @@ class MockImperialRentCalculator:
 
     def is_labor_aristocracy(self, wage: float, params: Any) -> bool:
         return self._phi_hour > 0
+
+
+class MockTensor:
+    """Mock tensor with configurable profit_rate attribute."""
+
+    def __init__(self, profit_rate: float | None = None) -> None:
+        self.profit_rate = profit_rate
+
+
+class MockTensorRegistry:
+    """Mock TensorRegistry for profit rate lookup tests.
+
+    Args:
+        data: Dict mapping (fips, year) tuples to MockTensor objects.
+    """
+
+    def __init__(self, data: dict[tuple[str, int], Any] | None = None) -> None:
+        self._data = data or {}
+
+    def get(self, fips: str, year: int) -> Any:
+        """Return tensor or NoDataSentinel for (fips, year)."""
+        return self._data.get(
+            (fips, year),
+            NoDataSentinel(fips=fips, year=year, reason="no data"),
+        )
+
+    def available_years(self, fips: str) -> list[int]:
+        """Return sorted list of years with data for this fips."""
+        return sorted(y for f, y in self._data if f == fips)
+
+    def all_fips(self) -> list[str]:
+        """Return sorted list of all FIPS codes with data."""
+        return sorted({f for f, _ in self._data})
+
+
+class MockEventBus:
+    """Captures published events for assertion in tests."""
+
+    def __init__(self) -> None:
+        self.events: list[Any] = []
+
+    def publish(self, event: Any) -> None:
+        """Capture event for later assertion."""
+        self.events.append(event)
+
+    def subscribe(self, *args: Any, **kwargs: Any) -> None:
+        """No-op for compatibility."""
+
+
+class CapturingTransitionEngine:
+    """Captures transition inputs for assertion, returns dist unchanged."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[ClassDistribution, EconomicConditions, Any]] = []
+
+    def simulate_transitions(
+        self,
+        dist: ClassDistribution,
+        conditions: EconomicConditions,
+        crisis_phase: Any = None,
+    ) -> ClassDistribution:
+        """Capture call args, return input dist unchanged."""
+        self.calls.append((dist, conditions, crisis_phase))
+        return dist
 
 
 # =============================================================================

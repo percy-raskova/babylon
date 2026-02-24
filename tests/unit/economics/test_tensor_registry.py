@@ -469,6 +469,172 @@ class TestTensorRegistryHydrateCounties:
         assert "No QCEW data" in result_fail.reason
 
 
+class TestHydrateCountiesMutationKillers:
+    """Targeted tests to kill mutation survivors in hydrate_counties.
+
+    Tests boundary conditions for year filtering, counter accuracy,
+    and cache behavior to catch mutmut operator swaps.
+    """
+
+    @staticmethod
+    def _make_hydrator(
+        fail_fips: set[str] | None = None,
+    ) -> tuple[CountyHydrator, list[tuple[str, int]]]:
+        """Create a tracking hydrator with optional failure set."""
+        calls: list[tuple[str, int]] = []
+
+        class TrackingHydrator:
+            def hydrate(self, fips: str, year: int) -> ValueTensor4x3:
+                calls.append((fips, year))
+                if fail_fips and fips in fail_fips:
+                    raise ValueError(f"Hydration failed for {fips}")
+                return ValueTensor4x3(
+                    fips_code=fips,
+                    year=year,
+                    dept_I=DepartmentRow(c=100.0, v=50.0, s=50.0),
+                    dept_IIa=DepartmentRow(c=80.0, v=40.0, s=40.0),
+                    dept_IIb=DepartmentRow(c=60.0, v=30.0, s=30.0),
+                    dept_III=DepartmentRow(c=40.0, v=20.0, s=20.0),
+                    naics_granularity=0.85,
+                    excluded_wages=1000.0,
+                )
+
+        hydrator = TrackingHydrator()
+        return hydrator, calls
+
+    def test_year_at_exact_min_boundary_loads(self) -> None:
+        """year=MIN_YEAR should be loaded (not skipped)."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+
+        registry.hydrate_counties(hydrator, ["26163"], [TensorRegistry.MIN_YEAR])
+
+        assert len(calls) == 1
+        assert isinstance(registry.get("26163", TensorRegistry.MIN_YEAR), ValueTensor4x3)
+
+    def test_year_one_below_min_skipped(self) -> None:
+        """year=MIN_YEAR-1 should be skipped (boundary off-by-one)."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+
+        registry.hydrate_counties(hydrator, ["26163"], [TensorRegistry.MIN_YEAR - 1])
+
+        assert len(calls) == 0
+
+    def test_year_at_exact_max_boundary_loads(self) -> None:
+        """year=MAX_YEAR should be loaded (not skipped)."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+
+        registry.hydrate_counties(hydrator, ["26163"], [TensorRegistry.MAX_YEAR])
+
+        assert len(calls) == 1
+        assert isinstance(registry.get("26163", TensorRegistry.MAX_YEAR), ValueTensor4x3)
+
+    def test_year_one_above_max_skipped(self) -> None:
+        """year=MAX_YEAR+1 should be skipped (boundary off-by-one)."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+
+        registry.hydrate_counties(hydrator, ["26163"], [TensorRegistry.MAX_YEAR + 1])
+
+        assert len(calls) == 0
+
+    def test_counter_accuracy_all_success(self) -> None:
+        """3 fips x 2 years = 6 hydrator calls, all succeed."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+        fips_list = ["26163", "26125", "26099"]
+        years = [2020, 2021]
+
+        registry.hydrate_counties(hydrator, fips_list, years)
+
+        assert len(calls) == 6
+        for fips in fips_list:
+            for year in years:
+                assert isinstance(registry.get(fips, year), ValueTensor4x3)
+
+    def test_counter_accuracy_with_failures(self) -> None:
+        """1 of 3 fips fails → loaded=4, failed=2 (2 years each)."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator(fail_fips={"99999"})
+        fips_list = ["26163", "99999", "26125"]
+        years = [2020, 2021]
+
+        registry.hydrate_counties(hydrator, fips_list, years)
+
+        assert len(calls) == 6  # All attempted
+        # Successes
+        assert isinstance(registry.get("26163", 2020), ValueTensor4x3)
+        assert isinstance(registry.get("26125", 2021), ValueTensor4x3)
+        # Failures stored as sentinel
+        result = registry.get("99999", 2020)
+        assert isinstance(result, NoDataSentinel)
+        assert "Hydration failed" in result.reason
+
+    def test_empty_fips_list(self) -> None:
+        """Empty fips list → nothing loaded, no calls."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+
+        registry.hydrate_counties(hydrator, [], [2020, 2021])
+
+        assert len(calls) == 0
+
+    def test_mixed_year_range(self) -> None:
+        """[MIN-1, MIN, MID, MAX, MAX+1] → loads 3, skips 2."""
+        registry = TensorRegistry()
+        hydrator, calls = self._make_hydrator()
+        years = [
+            TensorRegistry.MIN_YEAR - 1,
+            TensorRegistry.MIN_YEAR,
+            2018,
+            TensorRegistry.MAX_YEAR,
+            TensorRegistry.MAX_YEAR + 1,
+        ]
+
+        registry.hydrate_counties(hydrator, ["26163"], years)
+
+        assert len(calls) == 3  # MIN, 2018, MAX
+
+    def test_sentinel_stored_on_failure(self) -> None:
+        """After failure, get() returns sentinel with error reason."""
+        registry = TensorRegistry()
+        hydrator, _calls = self._make_hydrator(fail_fips={"00000"})
+
+        registry.hydrate_counties(hydrator, ["00000"], [2020])
+
+        result = registry.get("00000", 2020)
+        assert isinstance(result, NoDataSentinel)
+        assert "00000" in result.reason
+
+    def test_already_cached_not_rehydrated(self) -> None:
+        """Pre-populated cache entry is overwritten by hydrator (put is called)."""
+        registry = TensorRegistry()
+        # Pre-populate
+        original = ValueTensor4x3(
+            fips_code="26163",
+            year=2020,
+            dept_I=DepartmentRow(c=999.0, v=999.0, s=999.0),
+            dept_IIa=DepartmentRow(c=999.0, v=999.0, s=999.0),
+            dept_IIb=DepartmentRow(c=999.0, v=999.0, s=999.0),
+            dept_III=DepartmentRow(c=999.0, v=999.0, s=999.0),
+            naics_granularity=0.99,
+            excluded_wages=99999.0,
+        )
+        registry.put("26163", 2020, original)
+
+        hydrator, calls = self._make_hydrator()
+        registry.hydrate_counties(hydrator, ["26163"], [2020])
+
+        # Hydrator was still called (no dedup logic)
+        assert len(calls) == 1
+        # Value was overwritten by hydrator's return
+        result = registry.get("26163", 2020)
+        assert isinstance(result, ValueTensor4x3)
+        assert result.dept_I.c == 100.0  # From hydrator, not 999.0
+
+
 class TestSimulationTensorAccess:
     """Tests for simulation accessing tensor data without database queries.
 

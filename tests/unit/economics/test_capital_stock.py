@@ -475,3 +475,145 @@ class TestClearCache:
         assert info["time_series_count"] == 0
         assert info["hits"] == 0
         assert info["misses"] == 0
+
+
+# =============================================================================
+# TARGETED MUTATION SURVIVOR TESTS: get_K_aggregate
+# =============================================================================
+
+
+class TestGetKAggregateTargeted:
+    """Targeted tests to kill mutation survivors in get_K_aggregate.
+
+    Focuses on: GeoLevel routing, coverage threshold boundaries,
+    sentinel filtering, and year boundary checks.
+    """
+
+    def test_county_level_delegates_to_get_K(self, mock_registry: MockRegistry) -> None:
+        """GeoLevel.COUNTY should call get_K directly, returning single county K."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        mock_registry.put("26163", 2020, create_test_tensor("26163", 2020, total_c=70.0))
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+
+        direct_K = calculator.get_K("26163", 2020)
+        aggregate_K = calculator.get_K_aggregate(GeoLevel.COUNTY, "26163", 2020)
+
+        assert isinstance(direct_K, float)
+        assert isinstance(aggregate_K, float)
+        assert aggregate_K == pytest.approx(direct_K)
+
+    def test_state_level_aggregates_matching_counties(self, mock_registry: MockRegistry) -> None:
+        """GeoLevel.STATE should sum K for counties with matching state prefix."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        # Michigan counties (state 26) with different total_c
+        mock_registry.put("26163", 2020, create_test_tensor("26163", 2020, total_c=70.0))
+        mock_registry.put("26125", 2020, create_test_tensor("26125", 2020, total_c=140.0))
+        # Illinois county (state 17) - should NOT be included for state "26"
+        mock_registry.put("17031", 2020, create_test_tensor("17031", 2020, total_c=210.0))
+
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+        # Populate caches
+        for fips in ["26163", "26125", "17031"]:
+            calculator.get_K(fips, 2020)
+
+        state_K = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2020)
+
+        assert isinstance(state_K, float)
+        # K_0 = total_c / 0.07 → 1000 + 2000 = 3000 (Michigan only)
+        assert state_K == pytest.approx(3000.0)
+
+    def test_national_level_aggregates_all_counties(self, mock_registry: MockRegistry) -> None:
+        """GeoLevel.NATION should sum K for all cached counties."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        for fips in ["26163", "17031", "06037"]:
+            mock_registry.put(fips, 2020, create_test_tensor(fips, 2020, total_c=70.0))
+
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+        for fips in ["26163", "17031", "06037"]:
+            calculator.get_K(fips, 2020)
+
+        national_K = calculator.get_K_aggregate(GeoLevel.NATION, "US", 2020)
+
+        assert isinstance(national_K, float)
+        # 3 × 1000 = 3000
+        assert national_K == pytest.approx(3000.0)
+
+    def test_returns_sentinel_when_coverage_below_50pct(self, mock_registry: MockRegistry) -> None:
+        """Coverage < 50% should return NoDataSentinel."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        # All 5 counties have data for year 2010 (puts them in cache),
+        # but only 2 have data for year 2020
+        for fips in ["26163", "26125", "26099", "26049", "26065"]:
+            mock_registry.put(fips, 2010, create_test_tensor(fips, 2010, total_c=70.0))
+        for fips in ["26163", "26125"]:
+            mock_registry.put(fips, 2020, create_test_tensor(fips, 2020, total_c=70.0))
+
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+
+        # Populate caches for all 5 counties (creates cache entries via year 2010)
+        for fips in ["26163", "26125", "26099", "26049", "26065"]:
+            calculator.get_K(fips, 2010)
+
+        # 2 of 5 = 40% < 50% for year 2020
+        result = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2020)
+
+        assert isinstance(result, NoDataSentinel)
+        assert "Insufficient county coverage" in result.reason
+
+    def test_returns_value_at_exactly_50pct_coverage(self, mock_registry: MockRegistry) -> None:
+        """Coverage == 50% should pass threshold (not sentinel)."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        # All 4 counties have data for year 2010 (puts them in cache),
+        # only 2 have data for year 2020 (50% exactly)
+        for fips in ["26163", "26125", "26099", "26049"]:
+            mock_registry.put(fips, 2010, create_test_tensor(fips, 2010, total_c=70.0))
+        for fips in ["26163", "26125"]:
+            mock_registry.put(fips, 2020, create_test_tensor(fips, 2020, total_c=70.0))
+
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+        for fips in ["26163", "26125", "26099", "26049"]:
+            calculator.get_K(fips, 2010)
+
+        # 2 of 4 = 50% → passes (threshold is strict <, not <=)
+        result = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2020)
+
+        assert isinstance(result, float)
+
+    def test_filters_out_sentinel_county_results(self, mock_registry: MockRegistry) -> None:
+        """Only float K values should be summed; NoDataSentinel filtered out."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        # 3 counties, 2 with data, 1 without
+        mock_registry.put("26163", 2020, create_test_tensor("26163", 2020, total_c=70.0))
+        mock_registry.put("26125", 2020, create_test_tensor("26125", 2020, total_c=70.0))
+        # 26099 missing → NoDataSentinel
+
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+        for fips in ["26163", "26125", "26099"]:
+            calculator.get_K(fips, 2020)
+
+        # 2 of 3 = 66% ≥ 50%, but only valid K values summed
+        result = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2020)
+
+        assert isinstance(result, float)
+        # Only the two valid counties contribute
+        assert result == pytest.approx(2000.0)
+
+    def test_year_boundary_returns_sentinel(self, mock_registry: MockRegistry) -> None:
+        """Year outside MIN_YEAR..MAX_YEAR should return NoDataSentinel."""
+        from babylon.economics.tensor_registry import GeoLevel
+
+        calculator = CapitalStockCalculator(mock_registry)  # type: ignore[arg-type]
+
+        result_low = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2005)
+        result_high = calculator.get_K_aggregate(GeoLevel.STATE, "26", 2030)
+
+        assert isinstance(result_low, NoDataSentinel)
+        assert isinstance(result_high, NoDataSentinel)
+        assert "outside available data range" in result_low.reason
+        assert "outside available data range" in result_high.reason

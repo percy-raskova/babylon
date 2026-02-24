@@ -464,7 +464,7 @@ make all-pdf
 # =============================================================================
 
 [tasks."mutate:full"]
-description = "Run full mutation testing, then generate report"
+description = "Run mutation testing (incremental — skips cached results), then generate report"
 run = """
 poetry run python tools/run_mutmut.py
 poetry run python tools/mutmut_report.py report

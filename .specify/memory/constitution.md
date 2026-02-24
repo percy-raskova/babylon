@@ -2,24 +2,39 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.3.1 → 1.3.2
-Bump Rationale: Added dispossession data sources to III.4 table - PATCH
+Version Change: 1.4.0 → 1.5.0
+Bump Rationale: Four new theoretical commitments added (I.12-I.15) - MINOR
 
-Modified Principles:
-  - III.4 Data Source Traceability: Added Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF to approved sources
+Modified Principles: None
 
-Added Sections: None
+Added Sections:
+  - I.12 Catastrophe Surface Dynamics (continuous controls, discontinuous jumps)
+  - I.13 Principal Contradiction (one contradiction leads per tick)
+  - I.14 Contradiction Internals (aspect/character/trajectory)
+  - I.15 Edge Mode Transition Topology (state machine for mode changes)
 
 Removed Sections: None
 
 Renamed Sections: None
 
+Cross-References Added:
+  - I.12 references I.7 (quantitative→qualitative relationship)
+  - I.13 references I.7 (shifts as discrete events)
+  - I.14 references I.13 (trajectory feeds principal contradiction selection)
+  - I.15 references I.14 (transitions depend on contradiction internals)
+
 Templates Requiring Updates:
-  ✅ No template changes needed (data source table is reference, not structural)
+  ✅ plan-template.md: No hardcoded principle numbers
+  ✅ spec-template.md: No constitution references
+  ✅ tasks-template.md: No constitution references
+  ✅ checklist-template.md: No constitution references
+  ✅ agent-file-template.md: No constitution references
 
 Follow-up TODOs: None
 
 Previous Version History:
+  1.4.0 (2026-02-24): Added V. Player Action Vocabulary (9 verbs, dual grouping)
+  1.3.2 (2026-02-05): Added dispossession data sources to III.4 table
   1.3.1 (2026-02-05): Added PWT and Census Trade to III.4 approved sources
   1.3.0 (2026-01-31): Added VIII. Visual Design Principles (new article)
   1.2.0 (2026-01-30): Added I.8-I.11 (Tragedy, Metabolic Rift, Terminal Crisis, Pedagogy),
@@ -240,6 +255,128 @@ The game does not prescribe the correct path. The simulation reveals consequence
 
 **Rationale**: The simulation's pedagogical power comes from showing, not telling. A teenager who has never read Marx plays this game and starts asking the right questions—because they watched the imperial circuit consume itself, not because someone told them it would.
 
+### 12. Catastrophe Surface Dynamics
+
+Material conditions change continuously. Exploitation intensifies or relaxes tick by tick. Wages rise and fall. Capital flows. These are measurable quantities with real data sources, moving through continuous (or fine-grained discrete) ranges.
+
+But the qualitative character of social relations does NOT slide along a gradient. A relationship is extractive or it isn't. A population is in revolt or it isn't. The transition between states is prepared by continuous accumulation, but the transition itself is a phase change.
+
+**Mathematical Structure**: This maps to catastrophe theory. Control parameters (exploitation rate, immiseration, imperial rent) move continuously through a control space. The system state occupies one sheet of the catastrophe surface until it hits a fold, then jumps discontinuously to another sheet.
+
+- The **jump** is the revolution, the fascist consolidation, the crisis
+- The **continuous motion** is political economy grinding forward between jumps
+- The **fold** is the threshold where quantitative accumulation (I.7) triggers qualitative transformation
+
+**Relationship to I.7**: Principle I.7 establishes that thresholds exist and transformations are discrete. This principle specifies the GEOMETRY — the catastrophe surface provides the mathematical structure connecting continuous control parameters to discontinuous state jumps. I.7 is the what; I.12 is the how.
+
+**Implementation Requirements**:
+
+1. **Control parameters MUST be continuous.** Exploitation rate, immiseration index, imperial rent — these are floats updated each tick from data-grounded formulas.
+
+1. **State variables MUST be discrete.** Edge modes, system phase, class position — these are enums that change only at fold crossings.
+
+1. **The catastrophe surface MUST be explicit.** For each phase transition, document which control parameters define the surface and where the folds are. The fold locations are the thresholds from I.7, but now understood as geometric features of a surface, not arbitrary constants.
+
+**Rationale**: Without this geometry, phase transitions appear arbitrary. With it, they are predictable consequences of continuous parameter evolution — the same way a bridge doesn't gradually sag but holds until a critical load, then collapses.
+
+### 13. Principal Contradiction
+
+At every stage of development, one contradiction plays the leading role. The others are secondary and subordinate. This is not a narrative flourish — it determines which accumulator matters most and which threshold crossing triggers the cascade.
+
+**Mao's Claim**: "There are many contradictions in the process of development of a complex thing, and one of them is necessarily the principal contradiction whose existence and development determines or influences the existence and development of the other contradictions."
+
+**Simulation Consequences**:
+
+- The simulation MUST identify which contradiction is principal at each tick
+- The principal contradiction determines which dynamics are primary (drive state evolution) and which are secondary (respond to the principal)
+- The principal contradiction shifts over time as material conditions change
+
+**Detroit Example**:
+
+| Period | Principal Contradiction | Secondary |
+| ----------- | ------------------------------------------------ | ----------------------------------- |
+| 2008-2012 | Finance capital vs productive economy | Race, housing, employment |
+| 2013-2016 | Creditors vs municipal population (bankruptcy) | Deindustrialization aftermath |
+| 2017-2020 | Gentrifying capital vs displaced communities | Labor market restructuring |
+| 2021-2025 | Carceral state vs surplus population | Ecological crisis, rent extraction |
+
+**Implementation Requirements**:
+
+1. **Contradictions MUST be enumerable.** The simulation maintains a finite set of named contradictions with measurable intensity.
+
+1. **One contradiction MUST be marked principal per tick.** The selection mechanism compares contradiction intensities weighted by their structural position (how many other contradictions they influence).
+
+1. **The principal contradiction routes dynamics.** Systems that process the principal contradiction execute with full effect. Systems processing secondary contradictions execute with dampened or modified effect.
+
+1. **Shifts in principal contradiction are events.** When the principal contradiction changes, this is a discrete event (I.7) that the engine records and the observer narrates.
+
+**Rationale**: Without principal contradiction identification, the simulation treats all dynamics as equally weighted — producing an undifferentiated soup of interacting forces. Real historical development has a legible structure because one contradiction drives the period.
+
+### 14. Contradiction Internals
+
+Every contradiction has internal structure beyond its type. Three properties define a contradiction's state:
+
+**Aspect (Directionality)**: The two sides of a contradiction are uneven. One side is dominant, the other subordinate. When the dominant side switches, "the nature of a thing changes accordingly" (Mao). This is a phase transition with added structure — the SAME contradiction persists but with poles reversed. The proletariat goes from ruled to ruling. The extractive edge doesn't just flip to antagonistic — the direction of power along it reverses.
+
+**Character (Antagonistic vs Non-Antagonistic)**: A meta-category that cuts across edge modes. A TRANSACTIONAL edge can contain a non-antagonistic contradiction (normal market friction) or an antagonistic one (systematic exploitation wearing a commercial mask). The edge mode looks the same from outside, but the internal character differs. This is the difference between a stable market relationship and one about to explode.
+
+**Trajectory (First and Second Derivatives)**: The contradiction accumulator carries not just magnitude but rate of change:
+
+| First Derivative | Second Derivative | Interpretation |
+| ---------------- | ----------------- | -------------------------------------------------------- |
+| Positive | Positive | Racing toward rupture — contradiction intensifying and accelerating |
+| Positive | Negative | Still intensifying but losing steam — counter-tendencies gaining ground |
+| Negative | Positive | Being sublated but the sublation is weakening — fragile stability |
+| Negative | Negative | Being managed and the management is strengthening — genuine resolution |
+
+**Implementation Requirements**:
+
+1. **Edges MUST be directed.** An EXTRACTIVE edge from Oakland County to Wayne County is NOT the same as one from Wayne to Oakland. The graph MUST use directed edges to capture aspect.
+
+1. **Aspect reversal MUST be a distinct event type.** When the dominant side of a contradiction switches, this is recorded as a phase transition event, not a gradual drift.
+
+1. **Every edge MUST carry a contradiction character flag** (antagonistic or non-antagonistic) independent of its edge mode. This flag determines which qualitative leap occurs when the accumulator crosses a threshold.
+
+1. **Contradiction accumulators MUST track first and second derivatives.** The trajectory determines whether a contradiction is accelerating toward rupture or being managed. Both derivatives MUST be computed each tick and available to the principal contradiction selection mechanism (I.13).
+
+**Rationale**: Without internal structure, contradictions are black boxes that merely accumulate toward thresholds. With aspect, character, and trajectory, contradictions become the rich analytical objects that Mao's framework requires — and the simulation can distinguish between a contradiction being managed and one wearing the mask of management while racing toward explosion.
+
+### 15. Edge Mode Transition Topology
+
+Not all edge mode transitions are equally real. The four modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC) do not freely interconvert. A state machine governs which transitions are permissible and what conditions enable each.
+
+**Permissible Transitions** (each requires specific conditions):
+
+| From | To | Condition | Example |
+| ------------- | ------------- | ----------------------------------------------- | ------------------------------------------ |
+| TRANSACTIONAL | EXTRACTIVE | Power asymmetry + opportunity | Market relationship becomes exploitation |
+| TRANSACTIONAL | SOLIDARISTIC | Sustained mutual aid + shared crisis | Neighbors become comrades |
+| TRANSACTIONAL | ANTAGONISTIC | Antagonistic contradiction intensifies | Commercial partners become enemies |
+| EXTRACTIVE | TRANSACTIONAL | Resistance forces renegotiation | Strike wins concessions |
+| EXTRACTIVE | ANTAGONISTIC | Extraction becomes unbearable | Plantation revolt |
+| SOLIDARISTIC | ANTAGONISTIC | Betrayal or irreconcilable split | Party splits, comrades become enemies |
+| SOLIDARISTIC | TRANSACTIONAL | Solidarity atrophies without maintenance | Former comrades drift to arm's-length |
+| ANTAGONISTIC | TRANSACTIONAL | Ceasefire, exhaustion, negotiation | Post-conflict normalization |
+| ANTAGONISTIC | SOLIDARISTIC | Shared enemy produces alliance | United front against fascism |
+
+**Prohibited Transitions** (require intermediate steps):
+
+| From | To | Why | Required Path |
+| ---------- | ------------ | ------------------------------------------------ | ----------------------------------- |
+| EXTRACTIVE | SOLIDARISTIC | Cannot build solidarity while actively exploiting | EXTRACTIVE → TRANSACTIONAL → SOLIDARISTIC |
+
+**Implementation Requirements**:
+
+1. **The transition state machine MUST be explicit.** Every permissible transition has a named condition. The engine MUST reject transitions not in the table.
+
+1. **Prohibited transitions MUST require intermediate states.** EXTRACTIVE → SOLIDARISTIC MUST pass through TRANSACTIONAL. The code MUST enforce this — no shortcutting the state machine.
+
+1. **Transition conditions MUST reference contradiction internals (I.14).** Whether a transition fires depends on the contradiction's character (antagonistic vs non-antagonistic) and trajectory (first/second derivatives), not just the accumulator magnitude.
+
+1. **The transition topology MUST be versioned.** As historical analysis reveals additional transitions or conditions, the state machine is updated as a constitutional amendment, not a code change.
+
+**Rationale**: Without transition topology, edge mode changes are arbitrary — any mode can become any other given sufficient pressure. This contradicts the dialectical insight that qualitative transformations have specific preconditions. You cannot build solidarity on top of active exploitation; you must first end the extraction. The state machine encodes this structural reality.
+
 ## II. Architecture Principles
 
 ### 1. Four-Node Recursive Pattern
@@ -319,7 +456,7 @@ The AI (LLM) layer generates narrative FROM state changes. It never determines m
 
 **Rationale**: Letting AI control mechanics makes the simulation non-deterministic, untestable, and unverifiable. The horror of the system is revealed through SHOWING what the math produces, not through AI-generated drama.
 
-**See Also**: Article VIII (Visual Design Principles) extends this observer pattern to the UI layer.
+**See Also**: Article VII (Visual Design Principles) extends this observer pattern to the UI layer.
 
 ### 6. State is Data, Engine is Transformation
 
@@ -472,7 +609,67 @@ The model MUST reproduce observed class transitions and gentrification trajector
 
 If the model cannot reproduce Detroit 2010-2025, the theory or implementation is wrong.
 
-## V. Scope Control
+## V. Player Action Vocabulary
+
+The player interacts with the simulation through nine verbs. These verbs are exhaustive—every player action maps to exactly one verb. Every verb maps to a specific graph operation.
+
+### The Nine Verbs
+
+| Verb | Domain | Description |
+| --------------- | -------------------- | --------------------------------------------------------------------------- |
+| **Educate** | Political education | Consciousness-raising, propaganda, agitation, ideological development |
+| **Aid** | Mutual support | Mutual aid, material support, reproduction cost reduction for base |
+| **Attack** | Armed action | Ambushes, guerrilla operations, retributive strikes |
+| **Mobilize** | Mass action | Rallies, strikes, demonstrations, protests, boycotts |
+| **Campaign** | Electoral action | Reformist political engagement, legislative pressure |
+| **Move** | Logistics | Relocate cadre, allocate resources, supply lines, infrastructure, fundraising, expropriation |
+| **Investigate** | Intelligence | Reconnaissance, counter-surveillance, assessing conditions |
+| **Reproduce** | Recruitment | Training, cadre development, converting sympathizers → members → cadre |
+| **Negotiate** | Diplomacy | United fronts, coalitions, alliances, ceasefires, inter-organizational agreements |
+
+### Strategic Function Grouping (Player-Facing)
+
+The player's mental model organizes verbs by strategic purpose:
+
+| Function | Verbs | Purpose |
+| ----------------------------------------- | -------------------------------- | -------------------------------------------- |
+| **Build your organization** | Educate, Reproduce, Investigate | Internal capacity development |
+| **Project power** | Attack, Mobilize, Campaign | External action against targets |
+| **Manage relationships and resources** | Aid, Move, Negotiate | Logistics, alliances, material support |
+
+This is the grouping the UI presents. Three groups of three.
+
+### Target Type Grouping (Engine-Facing)
+
+The engine processes verbs by what part of the graph they modify:
+
+| Target | Verbs | Graph Operation |
+| ----------------------- | -------------------------------- | ------------------------------------------------------------------- |
+| **Your organization** | Reproduce, Move, Investigate | Modify agent's internal state (node attributes) |
+| **Populations** | Educate, Aid, Mobilize | Modify edges between organization and social class nodes |
+| **Other actors** | Attack, Campaign, Negotiate | Modify edges between organizations or between organization and state |
+
+This grouping determines implementation. Each target type maps to a distinct graph operation:
+
+- **Organization verbs** mutate the player's agent node (cadre count, resource allocation, intelligence level)
+- **Population verbs** create, strengthen, or transform edges between the organization and class nodes (consciousness transmission, solidarity building, mass mobilization)
+- **Other-actor verbs** create, modify, or destroy edges between organizational nodes (alliances, hostilities, negotiations with state or rival organizations)
+
+### Implementation Requirements
+
+1. **Both groupings are true simultaneously.** The strategic grouping (build/project/manage) is what the player sees in the UI. The target grouping (org/population/actor) is how the engine processes them.
+
+1. **Every verb MUST map to a graph operation.** No verb produces effects outside the graph. This maintains the architecture principle that the graph is the discretized manifold (II.3).
+
+1. **Verbs are atomic actions.** A single verb execution produces a single graph mutation per tick. Complex strategies emerge from verb sequencing, not from compound verbs.
+
+1. **All nine verbs MUST be available.** The game does not prevent any action (I.11, Emergent Pedagogy). Consequences are modeled; choices are not restricted.
+
+1. **Verb effects are deterministic given state.** The outcome of a verb depends on current graph state (material conditions, organization level, enemy disposition). The engine computes results; the AI narrates them (II.5).
+
+**Rationale**: Nine verbs is the complete action vocabulary for revolutionary organization. Fewer verbs force unrealistic abstraction (combining armed action with mass mobilization). More verbs fragment decisions without adding strategic depth. The dual grouping ensures the player thinks strategically while the engine operates mechanically.
+
+## VI. Scope Control
 
 ### 1. Material Base First
 
@@ -502,7 +699,7 @@ Before implementing any proposed feature, verify:
 
 If neither: DEFER. The feature may be theoretically interesting but is not currently testable.
 
-## VI. Visual Design Principles
+## VII. Visual Design Principles
 
 This article governs all visual and interaction design decisions. The aesthetic lineage is Constructivist information design—form follows function, art as tool for analysis. We are closer to Bloomberg Terminal than to cyberpunk mood board.
 
@@ -662,7 +859,7 @@ The following are explicitly forbidden:
 1. **Context-dependent color meaning** — semantic invariance required
 1. **Mood over meaning** — aesthetic choices MUST be semantically grounded
 
-## VII. Anti-Patterns
+## VIII. Anti-Patterns
 
 The following patterns MUST be rejected upon detection:
 
@@ -702,13 +899,13 @@ See Section III.1 and III.4. Every number must trace to primitives or data.
 
 ### 7. Superstructure Before Base
 
-See Section V.1. Implement material dynamics before ideological or repressive mechanics.
+See Section VI.1. Implement material dynamics before ideological or repressive mechanics.
 
 ### 8. Decorative Visualization
 
-See Section VI.10. Visual elements that carry no data are prohibited. Every visual choice MUST encode meaning or enable navigation.
+See Section VII.10. Visual elements that carry no data are prohibited. Every visual choice MUST encode meaning or enable navigation.
 
-## VIII. Governance
+## IX. Governance
 
 ### Amendment Procedure
 
@@ -735,10 +932,10 @@ All features, formulas, and systems MUST be verifiable against this constitution
 - Formula modification
 - Data source addition
 - Scope expansion
-- **UI component implementation** (must verify against Article VI)
+- **UI component implementation** (must verify against Article VII)
 
 Non-compliant code MUST be flagged and corrected before merge.
 
 ______________________________________________________________________
 
-**Version**: 1.3.2 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-05
+**Version**: 1.5.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-24

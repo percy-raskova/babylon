@@ -393,3 +393,205 @@ class TestValidation:
         is_valid, warning = calculator.validate_throughput(600.0)
         assert is_valid is False
         assert "above maximum" in warning
+
+
+# =============================================================================
+# TARGETED MUTATION SURVIVOR TESTS: compute_metrics data quality
+# =============================================================================
+
+
+class TestComputeMetricsDataQuality:
+    """Targeted tests to kill mutation survivors in compute_metrics.
+
+    Focuses on data quality classification (sector coverage → low/medium/high),
+    is_estimated flag, sentinel propagation, and pi-optional behavior.
+    """
+
+    def test_data_quality_low_when_coverage_below_50pct(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Data quality = 'low' when sector coverage ratio < 0.5."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+        # 10 sectors with data, 3 mapped (30% coverage)
+        mock_supply_chain.get_sector_coverage.return_value = (10, 3, 100000)
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.data_quality == "low"
+        assert result.is_estimated is True
+
+    def test_data_quality_medium_when_coverage_50_to_80pct(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Data quality = 'medium' when 0.5 <= coverage ratio < 0.8."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+        # 10 sectors with data, 6 mapped (60% coverage)
+        mock_supply_chain.get_sector_coverage.return_value = (10, 6, 100000)
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.data_quality == "medium"
+        assert result.is_estimated is True
+
+    def test_data_quality_high_when_coverage_above_80pct(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Data quality = 'high' when coverage ratio >= 0.8."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+        # 10 sectors with data, 9 mapped (90% coverage)
+        mock_supply_chain.get_sector_coverage.return_value = (10, 9, 100000)
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.data_quality == "high"
+        assert result.is_estimated is False
+
+    def test_data_quality_at_exact_50pct_boundary(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """At exactly 50% coverage, data quality should be 'medium' (not 'low')."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+        # 10 sectors, 5 mapped (exactly 50%)
+        mock_supply_chain.get_sector_coverage.return_value = (10, 5, 100000)
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.data_quality == "medium"
+        assert result.is_estimated is True
+
+    def test_data_quality_at_exact_80pct_boundary(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """At exactly 80% coverage, data quality should be 'high' (not 'medium')."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+        # 10 sectors, 8 mapped (exactly 80%)
+        mock_supply_chain.get_sector_coverage.return_value = (10, 8, 100000)
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.data_quality == "high"
+        assert result.is_estimated is False
+
+    def test_is_estimated_true_when_not_full_coverage(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """is_estimated should be True when coverage < 80% (low or medium)."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+        # 70% coverage → medium quality, estimated
+        mock_supply_chain.get_sector_coverage.return_value = (10, 7, 100000)
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.is_estimated is True
+
+    def test_returns_sentinel_when_tau_unavailable(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+    ) -> None:
+        """compute_metrics propagates NoDataSentinel from τ_through failure."""
+        mock_gdp_source.get_county_gdp.return_value = None
+
+        result = calculator.compute_metrics("99999", 2022)
+
+        assert isinstance(result, NoDataSentinel)
+        assert "GDP unavailable" in result.reason
+
+    def test_returns_sentinel_when_depth_unavailable(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """compute_metrics propagates NoDataSentinel from depth failure."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = NoDataSentinel(
+            "26163", 2022, "No NAICS data"
+        )
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, NoDataSentinel)
+
+    def test_pi_optional_when_no_melt(
+        self,
+        calculator_no_melt: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """compute_metrics returns valid ThroughputMetrics with pi=None when no MELT."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 3.0
+
+        result = calculator_no_melt.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        assert result.pi is None
+        assert result.tau_through > 0
+        assert result.supply_chain_depth == 3.0
+
+    def test_result_contains_valid_tau_and_depth(
+        self,
+        calculator: DefaultThroughputCalculator,
+        mock_gdp_source: MagicMock,
+        mock_qcew_source: MagicMock,
+        mock_supply_chain: MagicMock,
+    ) -> None:
+        """Valid compute_metrics result should have non-sentinel τ and depth."""
+        mock_gdp_source.get_county_gdp.return_value = 50_000_000_000.0
+        mock_qcew_source.get_county_total_employment.return_value = 200_000
+        mock_supply_chain.compute_depth.return_value = 2.5
+
+        result = calculator.compute_metrics("26163", 2022)
+
+        assert isinstance(result, ThroughputMetrics)
+        # τ_through = 50B / (200k × 2080) = $120.19
+        expected_tau = 50_000_000_000.0 / (200_000 * 2080)
+        assert result.tau_through == pytest.approx(expected_tau, rel=1e-6)
+        assert result.supply_chain_depth == 2.5

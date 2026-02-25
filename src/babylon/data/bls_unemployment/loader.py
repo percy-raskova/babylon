@@ -111,8 +111,17 @@ def _fetch_bls_batch(
 
 
 def _parse_bls_int(value: str) -> int:
-    """Parse BLS comma-formatted integer string."""
-    return int(value.replace(",", "") or "0")
+    """Parse BLS comma-formatted integer string.
+
+    BLS uses '-' for suppressed/unavailable data and 'N/A' for not applicable.
+    """
+    cleaned = value.replace(",", "").strip()
+    if not cleaned or cleaned in ("-", "N/A", "n/a", "(P)", "(p)"):
+        return 0
+    try:
+        return int(cleaned)
+    except ValueError:
+        return 0
 
 
 class BLSUnemploymentLoader(DataLoader):

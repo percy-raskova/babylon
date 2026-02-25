@@ -217,7 +217,7 @@ ______________________________________________________________________
 - The housing value decomposition is particularly relevant for the Detroit focus area (Wayne County vs Oakland County) but will be implemented generically for all counties.
 - Credit cycle phase detection uses heuristic thresholds rather than econometric modeling; threshold constants will be traceable to primary data sources per the project's threshold traceability standard.
 - Imperial rent (Feature 013) already represents one component of counter-tendencies to TRPF (foreign trade / unequal exchange), so US5's counter-tendency tracker will reference existing phi_hour rather than duplicate it.
-- The profit rate equalization / prices-of-production transformation (values -> prices) is out of scope for this feature; the system continues to use labor-values directly.
+- The profit rate equalization / prices-of-production transformation (values -> prices) is out of scope for this feature; the system continues to use labor-values directly. The surplus distribution operates at county-aggregate level where Marx's first equality holds (total surplus = total profit). Federal data sources provide distribution shares already in price-space. The transformation matrix would only be required for per-industry surplus redistribution within counties, which is not in scope.
 
 ## Scope Boundaries
 

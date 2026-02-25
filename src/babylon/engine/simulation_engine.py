@@ -42,9 +42,12 @@ from babylon.engine.context import TickContext
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
 from babylon.engine.systems.contradiction import ContradictionSystem
+from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.control_ratio import ControlRatioSystem
 from babylon.engine.systems.decomposition import DecompositionSystem
 from babylon.engine.systems.economic import ImperialRentSystem
+from babylon.engine.systems.edge_transition import EdgeTransitionSystem
+from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
@@ -99,6 +102,9 @@ class SimulationEngine:
     10. Struggle (agency)
     11. Consciousness (ideology)
     12. Contradiction (tension)
+    13. ContradictionField (field computation) - Feature 002
+    14. FieldDerivative (derivatives + principal) - Feature 002
+    15. EdgeTransition (predicates + state machine) - Feature 002
     """
 
     def __init__(self, systems: list[System]) -> None:
@@ -184,6 +190,10 @@ _DEFAULT_SYSTEMS: list[System] = [
     StruggleSystem(),  # 11. Action/Revolt (George Floyd Dynamic)
     ConsciousnessSystem(),  # 12. Ideological drift (Bifurcation)
     ContradictionSystem(),  # 13. Tension aggregation (The Reckoning)
+    # Dialectical Field Topology (Feature 002)
+    ContradictionFieldSystem(),  # 14. Contradiction field computation
+    FieldDerivativeSystem(),  # 15. Spatial/temporal derivatives + principal
+    EdgeTransitionSystem(),  # 16. Compound predicates + edge mode transitions
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)
@@ -360,7 +370,9 @@ def _convert_bus_event_to_pydantic(event: Event) -> SimulationEvent | None:  # n
             revolution_threshold=payload.get("revolution_threshold", 0.0),
         )
 
-    # Unsupported event type (e.g., SOLIDARITY_AWAKENING) - graceful degradation
+    # Feature 002 events (EDGE_MODE_TRANSITION, PRINCIPAL_CONTRADICTION_SHIFT,
+    # CO_OPTIVE_BREAKDOWN, LATENT_CONTRADICTION_RELEASE, ASPECT_REVERSAL)
+    # and other unsupported event types - graceful degradation
     return None
 
 

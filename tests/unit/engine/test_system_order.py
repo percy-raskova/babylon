@@ -52,6 +52,10 @@ class TestMaterialistCausalityOrder:
             "Struggle",  # StruggleSystem
             "Consciousness Drift",  # ConsciousnessSystem
             "Contradiction Tension",  # ContradictionSystem
+            # Dialectical Field Topology (Feature 002)
+            "contradiction_field",  # ContradictionFieldSystem
+            "field_derivative",  # FieldDerivativeSystem
+            "edge_transition",  # EdgeTransitionSystem
         ]
         actual_order = [s.name for s in _DEFAULT_SYSTEMS]
         assert actual_order == expected_order, (
@@ -127,11 +131,15 @@ class TestMaterialistCausalityOrder:
         )
 
     def test_contradiction_runs_last(self) -> None:
-        """ContradictionSystem must run last."""
-        assert _DEFAULT_SYSTEMS[-1].name == "Contradiction Tension", (
-            "ContradictionSystem must run last - systemic tension aggregates all effects"
+        """ContradictionSystem must run before field topology systems."""
+        # ContradictionSystem is at position 12 (0-indexed), followed by
+        # ContradictionFieldSystem, FieldDerivativeSystem, EdgeTransitionSystem
+        system_names = [s.name for s in _DEFAULT_SYSTEMS]
+        contradiction_idx = system_names.index("Contradiction Tension")
+        assert contradiction_idx < len(_DEFAULT_SYSTEMS) - 1, (
+            "ContradictionSystem must be registered"
         )
 
-    def test_all_thirteen_systems_present(self) -> None:
-        """All 13 core systems must be registered."""
-        assert len(_DEFAULT_SYSTEMS) == 13, f"Expected 13 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_sixteen_systems_present(self) -> None:
+        """All 16 systems must be registered (13 core + 3 field topology)."""
+        assert len(_DEFAULT_SYSTEMS) == 16, f"Expected 16 systems, got {len(_DEFAULT_SYSTEMS)}"

@@ -14,20 +14,21 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.models.entity_registry import CORE_BOURGEOISIE_ID
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
 
 
 def _find_entity_by_role(
-    graph: nx.DiGraph[str],
+    graph: GraphProtocol,
     role: SocialRole,
     *,
     include_inactive: bool = False,
@@ -35,22 +36,21 @@ def _find_entity_by_role(
     """Find the first entity with the specified social role.
 
     Args:
-        graph: The simulation graph
+        graph: The simulation graph (protocol or raw)
         role: The SocialRole to search for
         include_inactive: If True, include inactive entities
 
     Returns:
         Tuple of (node_id, node_data) or None if not found
     """
-    for node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") == "territory":
-            continue
+    for node in graph.query_nodes(node_type="social_class"):
+        attrs = node.attributes
 
         # Skip inactive unless explicitly requested
-        if not include_inactive and not data.get("active", True):
+        if not include_inactive and not attrs.get("active", True):
             continue
 
-        node_role = data.get("role")
+        node_role = attrs.get("role")
         if isinstance(node_role, str):
             try:
                 node_role = SocialRole(node_role)
@@ -58,7 +58,7 @@ def _find_entity_by_role(
                 continue
 
         if node_role == role:
-            return (node_id, data)
+            return (node.id, attrs)
 
     return None
 
@@ -79,7 +79,7 @@ class DecompositionSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -89,6 +89,12 @@ class DecompositionSystem:
         and delays CLASS_DECOMPOSITION by the configured number of ticks.
         This ensures phase staggering (temporal separation between phases).
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
         if hasattr(context, "persistent_data"):
@@ -196,14 +202,14 @@ class DecompositionSystem:
 
     def _execute_decomposition(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         tick: int,
     ) -> bool:
         """Execute LA decomposition based on carceral defines.
 
         Args:
-            graph: The simulation graph
+            graph: The simulation graph (protocol or raw)
             services: Service container
             tick: Current simulation tick
 
@@ -245,19 +251,22 @@ class DecompositionSystem:
             enforcer_id, enforcer_data = enforcer
             current_pop = enforcer_data.get("population", 0)
             current_wealth = enforcer_data.get("wealth", 0.0)
-            graph.nodes[enforcer_id]["population"] = current_pop + enforcer_pop_gain
-            graph.nodes[enforcer_id]["wealth"] = current_wealth + enforcer_wealth_gain
-            graph.nodes[enforcer_id]["active"] = True  # Activate dormant entity
+            graph.update_node(
+                enforcer_id,
+                population=current_pop + enforcer_pop_gain,
+                wealth=current_wealth + enforcer_wealth_gain,
+                active=True,
+            )
 
         # Transfer to INTERNAL_PROLETARIAT
         if internal_proletariat is not None:
             ip_id, _ = internal_proletariat
-            graph.nodes[ip_id]["population"] = proletariat_pop
-            graph.nodes[ip_id]["wealth"] = proletariat_wealth
-            graph.nodes[ip_id]["active"] = True  # Activate dormant entity
+            graph.update_node(
+                ip_id, population=proletariat_pop, wealth=proletariat_wealth, active=True
+            )
 
         # Deactivate Labor Aristocracy (decomposed)
-        graph.nodes[la_id]["active"] = False
+        graph.update_node(la_id, active=False)
 
         # Emit CLASS_DECOMPOSITION event
         services.event_bus.publish(

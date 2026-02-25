@@ -17,12 +17,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.models.enums import EventType, SocialRole
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -49,21 +50,20 @@ def _get_role(data: dict[str, Any]) -> SocialRole | None:
     return None
 
 
-def _count_enforcer_population(graph: nx.DiGraph[str]) -> int:
+def _count_enforcer_population(graph: GraphProtocol) -> int:
     """Count total population of active CARCERAL_ENFORCER entities."""
     total = 0
-    for _node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") == "territory":
+    for node in graph.query_nodes(node_type="social_class"):
+        attrs = node.attributes
+        if not attrs.get("active", True):
             continue
-        if not data.get("active", True):
-            continue
-        if _get_role(data) == SocialRole.CARCERAL_ENFORCER:
-            total += data.get("population", 0)
+        if _get_role(attrs) == SocialRole.CARCERAL_ENFORCER:
+            total += attrs.get("population", 0)
     return total
 
 
 def _count_prisoner_population_and_org(
-    graph: nx.DiGraph[str],
+    graph: GraphProtocol,
 ) -> tuple[int, float]:
     """Count prisoner population and weighted organization sum.
 
@@ -73,14 +73,13 @@ def _count_prisoner_population_and_org(
     """
     total_pop = 0
     org_sum = 0.0
-    for _node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") == "territory":
+    for node in graph.query_nodes(node_type="social_class"):
+        attrs = node.attributes
+        if not attrs.get("active", True):
             continue
-        if not data.get("active", True):
-            continue
-        if _get_role(data) in _PRISONER_ROLES:
-            pop = data.get("population", 0)
-            org = data.get("organization", 0.0)
+        if _get_role(attrs) in _PRISONER_ROLES:
+            pop = attrs.get("population", 0)
+            org = attrs.get("organization", 0.0)
             total_pop += pop
             org_sum += pop * org
     return total_pop, org_sum
@@ -99,7 +98,7 @@ class ControlRatioSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -110,6 +109,12 @@ class ControlRatioSystem:
         - Emits CONTROL_RATIO_CRISIS when prisoners exceed capacity
         - Waits terminal_decision_delay before emitting TERMINAL_DECISION
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
         tick = context.get("tick", 0)
         # Handle both TickContext (with persistent_data) and raw dict
         if hasattr(context, "persistent_data"):

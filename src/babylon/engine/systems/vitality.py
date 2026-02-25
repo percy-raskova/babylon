@@ -34,13 +34,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.formulas import calculate_mortality_rate
 from babylon.models.enums import EventType
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -82,7 +83,7 @@ class VitalitySystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -92,40 +93,47 @@ class VitalitySystem:
         Phase 2 - Grinding Attrition: Calculate coverage ratio threshold deaths.
         Phase 3 - The Reaper: Mark extinct entities as inactive.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         tick: int = context.get("tick", 0)
         base_subsistence = services.defines.economy.base_subsistence
 
-        for node_id, data in graph.nodes(data=True):
-            # Skip non-entity nodes (territories, etc.)
-            if data.get("_node_type") != "social_class":
-                continue
+        for node in graph.query_nodes(node_type="social_class"):
+            attrs = node.attributes
 
             # Skip already-dead entities
-            if not data.get("active", True):
+            if not attrs.get("active", True):
                 continue
 
-            population = data.get("population", 1)
+            population = attrs.get("population", 1)
 
             # Skip entities with zero population (already extinct)
             if population <= 0:
                 continue
 
             # Phase 1: The Drain (Population-Scaled Subsistence Burn)
+            wealth = attrs.get("wealth", 0.0)
             if base_subsistence > 0:
-                wealth = data.get("wealth", 0.0)
-                multiplier = data.get("subsistence_multiplier", 1.0)
+                multiplier = attrs.get("subsistence_multiplier", 1.0)
                 # Phase 3 change: Scale by population
                 cost = (base_subsistence * population) * multiplier
-                graph.nodes[node_id]["wealth"] = max(0.0, wealth - cost)
+                wealth = max(0.0, wealth - cost)
+                graph.update_node(node.id, wealth=wealth)
 
             # Phase 2: Grinding Attrition (Coverage Ratio Threshold Mortality)
-            deaths, attrition_rate = self._calculate_deaths(
-                graph.nodes[node_id],
-            )
+            # Re-read node after wealth update for accurate mortality calc
+            updated = graph.get_node(node.id)
+            updated_attrs = updated.attributes if updated else attrs
+            deaths, attrition_rate = self._calculate_deaths(updated_attrs)
 
             if deaths > 0:
                 new_population = max(0, population - deaths)
-                graph.nodes[node_id]["population"] = new_population
+                graph.update_node(node.id, population=new_population)
 
                 # Emit POPULATION_ATTRITION event (Phase 3 change)
                 services.event_bus.publish(
@@ -133,7 +141,7 @@ class VitalitySystem:
                         type=EventType.POPULATION_ATTRITION,
                         tick=tick,
                         payload={
-                            "entity_id": node_id,
+                            "entity_id": node.id,
                             "deaths": deaths,
                             "remaining_population": new_population,
                             "attrition_rate": attrition_rate,
@@ -142,10 +150,13 @@ class VitalitySystem:
                 )
 
             # Phase 3: The Reaper (Extinction Check)
-            current_population = graph.nodes[node_id].get("population", 1)
-            wealth = graph.nodes[node_id].get("wealth", 0.0)
-            s_bio = data.get("s_bio", 0.0)
-            s_class = data.get("s_class", 0.0)
+            # Re-read after potential population/wealth updates
+            current = graph.get_node(node.id)
+            current_attrs = current.attributes if current else attrs
+            current_population = current_attrs.get("population", 1)
+            wealth = current_attrs.get("wealth", 0.0)
+            s_bio = attrs.get("s_bio", 0.0)
+            s_class = attrs.get("s_class", 0.0)
             consumption_needs = s_bio + s_class
 
             # Zombie Prevention Failsafe (Sprint 1.X D2: High-Fidelity State)
@@ -159,11 +170,12 @@ class VitalitySystem:
             is_starving = current_population == 1 and wealth < consumption_needs
 
             if is_extinct or is_starving or is_zombie_trapped:
-                graph.nodes[node_id]["active"] = False
+                updates: dict[str, Any] = {"active": False}
                 if is_starving and current_population == 1:
-                    graph.nodes[node_id]["population"] = 0
+                    updates["population"] = 0
                 if is_zombie_trapped:
-                    graph.nodes[node_id]["population"] = 0
+                    updates["population"] = 0
+                graph.update_node(node.id, **updates)
 
                 # Determine cause of death
                 if is_extinct:
@@ -179,7 +191,7 @@ class VitalitySystem:
                         type=EventType.ENTITY_DEATH,
                         tick=tick,
                         payload={
-                            "entity_id": node_id,
+                            "entity_id": node.id,
                             "wealth": wealth,
                             "consumption_needs": consumption_needs,
                             "s_bio": s_bio,

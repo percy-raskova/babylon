@@ -13,7 +13,7 @@ Key formulas (from src/babylon/formulas/formulas):
 
 from __future__ import annotations
 
-import networkx as nx
+from typing import TYPE_CHECKING
 
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
@@ -23,6 +23,11 @@ from babylon.formulas import (
     calculate_overshoot_ratio,
 )
 from babylon.models.enums import EventType
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
 
 
 class MetabolismSystem:
@@ -47,7 +52,7 @@ class MetabolismSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -57,48 +62,53 @@ class MetabolismSystem:
         then checks if global consumption exceeds global biocapacity (overshoot).
 
         Args:
-            graph: Mutable NetworkX graph with territory and social_class nodes.
+            graph: Graph via GraphProtocol or raw nx.DiGraph (auto-wrapped).
             services: ServiceContainer with config, formulas, event_bus, database.
             context: Dict or TickContext with 'tick' (int) key.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Get metabolism parameters from GameDefines
         entropy_factor = services.defines.metabolism.entropy_factor
         overshoot_threshold = services.defines.metabolism.overshoot_threshold
 
         # Phase 1: Update each territory's biocapacity
-        for node_id, data in graph.nodes(data=True):
-            if data.get("_node_type") != "territory":
-                continue
+        for node in graph.query_nodes(node_type="territory"):
+            attrs = node.attributes
 
             # Calculate biocapacity change using formula
             delta = calculate_biocapacity_delta(
-                regeneration_rate=data.get("regeneration_rate", 0.02),
-                max_biocapacity=data.get("max_biocapacity", 100.0),
-                extraction_intensity=data.get("extraction_intensity", 0.0),
-                current_biocapacity=data.get("biocapacity", 100.0),
+                regeneration_rate=attrs.get("regeneration_rate", 0.02),
+                max_biocapacity=attrs.get("max_biocapacity", 100.0),
+                extraction_intensity=attrs.get("extraction_intensity", 0.0),
+                current_biocapacity=attrs.get("biocapacity", 100.0),
                 entropy_factor=entropy_factor,
             )
 
             # Calculate new biocapacity with clamping
-            current = data.get("biocapacity", 100.0)
-            max_cap = data.get("max_biocapacity", 100.0)
+            current = attrs.get("biocapacity", 100.0)
+            max_cap = attrs.get("max_biocapacity", 100.0)
             new_biocapacity = max(0.0, min(max_cap, current + delta))
 
-            # Mutate graph node in place
-            graph.nodes[node_id]["biocapacity"] = new_biocapacity
+            graph.update_node(node.id, biocapacity=new_biocapacity)
 
         # Phase 2: Calculate global aggregates (after biocapacity updates)
         total_biocapacity = sum(
-            data.get("biocapacity", 0.0)
-            for _, data in graph.nodes(data=True)
-            if data.get("_node_type") == "territory"
+            node.attributes.get("biocapacity", 0.0)
+            for node in graph.query_nodes(node_type="territory")
         )
 
         # Mass Line: Scale consumption by population, skip inactive (dead) entities
         total_consumption = sum(
-            (data.get("s_bio", 0.0) + data.get("s_class", 0.0)) * data.get("population", 1)
-            for _, data in graph.nodes(data=True)
-            if data.get("_node_type") == "social_class" and data.get("active", True)
+            (node.attributes.get("s_bio", 0.0) + node.attributes.get("s_class", 0.0))
+            * node.attributes.get("population", 1)
+            for node in graph.query_nodes(node_type="social_class")
+            if node.attributes.get("active", True)
         )
 
         # Phase 3: Check overshoot and emit event if ratio exceeds threshold

@@ -73,6 +73,11 @@ class ServiceContainer:
     # Field topology services (Feature 002 - optional, default None)
     field_registry: Any = field(default=None)
 
+    # Capital Volume I data sources (Feature 021 - optional, default None)
+    reserve_army_data_source: Any = field(default=None)
+    dispossession_data_source: Any = field(default=None)
+    productivity_data_source: Any = field(default=None)
+
     # Economics calculator services (Feature 017 - all optional, default None)
     melt_calculator: Any = field(default=None)
     basket_calculator: Any = field(default=None)
@@ -90,6 +95,9 @@ class ServiceContainer:
         defines: GameDefines | None = None,
         metrics: MetricsCollectorProtocol | None = None,
         *,
+        reserve_army_data_source: Any = None,
+        dispossession_data_source: Any = None,
+        productivity_data_source: Any = None,
         field_registry: Any = None,
         melt_calculator: Any = None,
         basket_calculator: Any = None,
@@ -136,6 +144,9 @@ class ServiceContainer:
             formulas=FormulaRegistry.default(),
             defines=defines if defines is not None else GameDefines(),
             metrics=metrics,
+            reserve_army_data_source=reserve_army_data_source,
+            dispossession_data_source=dispossession_data_source,
+            productivity_data_source=productivity_data_source,
             field_registry=field_registry,
             melt_calculator=melt_calculator,
             basket_calculator=basket_calculator,

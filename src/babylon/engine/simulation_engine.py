@@ -45,6 +45,7 @@ from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.control_ratio import ControlRatioSystem
 from babylon.engine.systems.decomposition import DecompositionSystem
+from babylon.engine.systems.dispossession_events import DispossessionEventSystem
 from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
@@ -52,6 +53,7 @@ from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.protocol import ContextType, System
+from babylon.engine.systems.reserve_army import ReserveArmySystem
 from babylon.engine.systems.solidarity import SolidaritySystem
 from babylon.engine.systems.struggle import StruggleSystem
 from babylon.engine.systems.survival import SurvivalSystem
@@ -181,19 +183,21 @@ _DEFAULT_SYSTEMS: list[System] = [
     TerritorySystem(),  # 2. Land state updates (Carceral Geography)
     ProductionSystem(),  # 3. Value creation (The Labor)
     TickDynamicsSystem(),  # 4. Tick dynamics (Economic State Evolution)
-    SolidaritySystem(),  # 5. Organization calculation (Political Organization)
-    ImperialRentSystem(),  # 6. Value extraction (The Extraction)
-    DecompositionSystem(),  # 7. LA decomposition (Terminal Crisis Dynamics)
-    ControlRatioSystem(),  # 8. Guard:prisoner ratio (Terminal Crisis Dynamics)
-    MetabolismSystem(),  # 9. Environmental degradation (The Consequence)
-    SurvivalSystem(),  # 10. Risk assessment (Survival Calculus)
-    StruggleSystem(),  # 11. Action/Revolt (George Floyd Dynamic)
-    ConsciousnessSystem(),  # 12. Ideological drift (Bifurcation)
-    ContradictionSystem(),  # 13. Tension aggregation (The Reckoning)
+    ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
+    SolidaritySystem(),  # 6. Organization calculation (Political Organization)
+    ImperialRentSystem(),  # 7. Value extraction (The Extraction)
+    DispossessionEventSystem(),  # 8. Dispossession events + value transfer (Feature 021)
+    DecompositionSystem(),  # 9. LA decomposition (Terminal Crisis Dynamics)
+    ControlRatioSystem(),  # 10. Guard:prisoner ratio (Terminal Crisis Dynamics)
+    MetabolismSystem(),  # 11. Environmental degradation (The Consequence)
+    SurvivalSystem(),  # 12. Risk assessment (Survival Calculus)
+    StruggleSystem(),  # 13. Action/Revolt (George Floyd Dynamic)
+    ConsciousnessSystem(),  # 14. Ideological drift (Bifurcation)
+    ContradictionSystem(),  # 15. Tension aggregation (The Reckoning)
     # Dialectical Field Topology (Feature 002)
-    ContradictionFieldSystem(),  # 14. Contradiction field computation
-    FieldDerivativeSystem(),  # 15. Spatial/temporal derivatives + principal
-    EdgeTransitionSystem(),  # 16. Compound predicates + edge mode transitions
+    ContradictionFieldSystem(),  # 16. Contradiction field computation
+    FieldDerivativeSystem(),  # 17. Spatial/temporal derivatives + principal
+    EdgeTransitionSystem(),  # 18. Compound predicates + edge mode transitions
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)

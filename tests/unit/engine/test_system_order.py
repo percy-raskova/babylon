@@ -24,15 +24,17 @@ class TestMaterialistCausalityOrder:
     2. Territory (land state) - Land conditions affect production
     3. Production (value creation) - Value must exist before extraction
     4. TickDynamics (economic state) - Annual economic state evolution
-    5. Solidarity (organization) - Organization affects bargaining
-    6. ImperialRent (extraction) - Landlord eats after harvest
-    7. Decomposition (LA crisis) - Class breakdown on super-wage crisis
-    8. ControlRatio (terminal decision) - Guard:prisoner ratio + bifurcation
-    9. Metabolism (environment) - Ecological residue of production
-    10. Survival (risk assessment) - P(S|A), P(S|R) from material state
-    11. Struggle (action/revolt) - Agency responds to survival odds
-    12. Consciousness (ideology drift) - Ideology responds to material
-    13. Contradiction (tension) - Final systemic accounting
+    5. ReserveArmy (wage pressure) - Reserve army disciplines wages (Feature 021)
+    6. Solidarity (organization) - Organization affects bargaining
+    7. ImperialRent (extraction) - Landlord eats after harvest
+    8. DispossessionEvents (value transfer) - Dispossession transfers wealth (Feature 021)
+    9. Decomposition (LA crisis) - Class breakdown on super-wage crisis
+    10. ControlRatio (terminal decision) - Guard:prisoner ratio + bifurcation
+    11. Metabolism (environment) - Ecological residue of production
+    12. Survival (risk assessment) - P(S|A), P(S|R) from material state
+    13. Struggle (action/revolt) - Agency responds to survival odds
+    14. Consciousness (ideology drift) - Ideology responds to material
+    15. Contradiction (tension) - Final systemic accounting
     """
 
     def test_system_order_is_materialist(self) -> None:
@@ -43,8 +45,11 @@ class TestMaterialistCausalityOrder:
             "Territory",  # TerritorySystem
             "production",  # ProductionSystem
             "tick_dynamics",  # TickDynamicsSystem
+            # Capital Volume I (Feature 021)
+            "reserve_army",  # ReserveArmySystem - wage pressure
             "Solidarity",  # SolidaritySystem
             "Imperial Rent",  # ImperialRentSystem
+            "dispossession_events",  # DispossessionEventSystem - value transfer
             "Decomposition",  # DecompositionSystem (Terminal Crisis)
             "ControlRatio",  # ControlRatioSystem (Terminal Crisis)
             "Metabolism",  # MetabolismSystem
@@ -140,6 +145,6 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_sixteen_systems_present(self) -> None:
-        """All 16 systems must be registered (13 core + 3 field topology)."""
-        assert len(_DEFAULT_SYSTEMS) == 16, f"Expected 16 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_eighteen_systems_present(self) -> None:
+        """All 18 systems must be registered (13 core + 2 Volume I + 3 field topology)."""
+        assert len(_DEFAULT_SYSTEMS) == 18, f"Expected 18 systems, got {len(_DEFAULT_SYSTEMS)}"

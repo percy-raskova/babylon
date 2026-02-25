@@ -64,6 +64,7 @@ Every derived quantity MUST trace to specific federal data sources:
 | US Courts    | Personal bankruptcy filings by district (dispossession) |
 | ATTOM/CoreLogic | Foreclosure filing/completion rates (dispossession) |
 | Fed SCF      | Savings rates by income bracket (class accumulation) |
+| Fed Z.1 Financial Accounts | Sectoral balance sheets, credit aggregates, fictitious capital stock (Feature 024) |
 
 New data sources require explicit addition to this list with justification.
 

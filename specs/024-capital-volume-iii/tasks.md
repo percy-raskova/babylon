@@ -24,11 +24,11 @@
 
 **Purpose**: Create package directories, shared test infrastructure, and constitution prerequisite
 
-- [ ] T001 Amend Constitution III.4 in `.specify/memory/constitution.md` to add Fed Z.1 Financial Accounts as approved data source (MUST precede any Z.1 protocol or loader work)
-- [ ] T002 Create package directories for all six new modules: `src/babylon/economics/distribution/`, `src/babylon/economics/credit/`, `src/babylon/economics/rent/`, `src/babylon/economics/counter_tendencies/`, `src/babylon/economics/monetary/`, `src/babylon/economics/financial_crisis/`
-- [ ] T003 [P] Create test package directories: `tests/unit/economics/distribution/`, `tests/unit/economics/credit/`, `tests/unit/economics/rent/`, `tests/unit/economics/counter_tendencies/`, `tests/unit/economics/monetary/`, `tests/unit/economics/financial_crisis/`
-- [ ] T004 [P] Create `__init__.py` for all six new source packages with module docstrings per the `circulation/__init__.py` pattern
-- [ ] T005 [P] Create `__init__.py` for all six new test packages
+- [x] T001 Amend Constitution III.4 in `.specify/memory/constitution.md` to add Fed Z.1 Financial Accounts as approved data source (MUST precede any Z.1 protocol or loader work)
+- [x] T002 Create package directories for all six new modules: `src/babylon/economics/distribution/`, `src/babylon/economics/credit/`, `src/babylon/economics/rent/`, `src/babylon/economics/counter_tendencies/`, `src/babylon/economics/monetary/`, `src/babylon/economics/financial_crisis/`
+- [x] T003 [P] Create test package directories: `tests/unit/economics/distribution/`, `tests/unit/economics/credit/`, `tests/unit/economics/rent/`, `tests/unit/economics/counter_tendencies/`, `tests/unit/economics/monetary/`, `tests/unit/economics/financial_crisis/`
+- [x] T004 [P] Create `__init__.py` for all six new source packages with module docstrings per the `circulation/__init__.py` pattern
+- [x] T005 [P] Create `__init__.py` for all six new test packages
 
 ______________________________________________________________________
 

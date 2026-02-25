@@ -39,18 +39,18 @@ Economic Theory
    :maxdepth: 1
 
    tensor-theory
+   economics-pipeline-theory
    imperial-rent
    volume-i-theory
    piketty-profit-rate
    survival-calculus
    reproductive-labor
 
-The mathematical foundations: the Marxian value tensor (labor-hours, four
-departments, Fortunati visibility), Imperial Rent extraction, Capital
-Volume I production dynamics (reserve army, dispossession, working day),
-labor aristocracy, the survival calculus that drives agent behavior,
-Piketty's rate of return framework for crisis detection, and the
-proletarian feminist analysis of reproductive labor and shadow wages.
+The mathematical foundations: the Marxian value tensor, the economics
+pipeline (capital stock, MELT, throughput, visibility, class dynamics),
+Imperial Rent extraction, Capital Volume I production dynamics, labor
+aristocracy, survival calculus, Piketty's rate of return framework,
+and proletarian feminist analysis of reproductive labor.
 
 Consciousness & Organization
 ----------------------------

@@ -8,4 +8,49 @@ See Also:
     :mod:`babylon.economics.financial_crisis`: Integrated crisis assessment
 """
 
-__all__: list[str] = []
+# Types and constants
+# Credit cycle detection
+from babylon.economics.credit.credit_cycle import (
+    CreditCycleDetector,
+    DefaultCreditCycleDetector,
+)
+
+# Interest rate computation
+from babylon.economics.credit.interest import (
+    DefaultInterestCalculator,
+    InterestCalculator,
+)
+from babylon.economics.credit.types import (
+    CREDIT_FRAGILITY_THRESHOLD,
+    FINANCIALIZATION_BUBBLE,
+    INTEREST_BURDEN_SQUEEZE,
+    OVEREXTENSION_DEFAULT_RATE,
+    RECOVERY_CONSECUTIVE_PERIODS,
+    STAGNATION_CREDIT_GROWTH,
+    VALID_CREDIT_TRANSITIONS,
+    CreditCyclePhase,
+    CreditState,
+    InterestRateState,
+)
+
+__all__: list[str] = [
+    # Types (enums and models)
+    "CreditCyclePhase",
+    "InterestRateState",
+    "CreditState",
+    # Transition map
+    "VALID_CREDIT_TRANSITIONS",
+    # Threshold constants
+    "INTEREST_BURDEN_SQUEEZE",
+    "FINANCIALIZATION_BUBBLE",
+    "CREDIT_FRAGILITY_THRESHOLD",
+    "STAGNATION_CREDIT_GROWTH",
+    "OVEREXTENSION_DEFAULT_RATE",
+    "RECOVERY_CONSECUTIVE_PERIODS",
+    # Interest calculation
+    "InterestCalculator",
+    "DefaultInterestCalculator",
+    # Credit cycle detection
+    "CreditCycleDetector",
+    "DefaultCreditCycleDetector",
+]

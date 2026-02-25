@@ -8,6 +8,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
 
 class CreditCyclePhase(StrEnum):
     """Credit cycle phase for multi-period credit dynamics.
@@ -110,3 +112,60 @@ RECOVERY_CONSECUTIVE_PERIODS: Final[int] = 2
 Traceability: Matches Feature 018 CrisisPhase m_recovery parameter
 (default=2) for consistency across crisis detection systems.
 """
+
+
+# ============================================================================
+# PYDANTIC MODELS (US2)
+# ============================================================================
+
+
+class InterestRateState(BaseModel):
+    """National interest rate environment snapshot.
+
+    Captures the FRED-sourced interest rate data for a given year.
+    The effective_rate computed field provides the borrowing cost
+    relevant for industrial capital (base rate + credit spread).
+
+    Feature: 024-capital-volume-iii (FR-002, FR-003)
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int = Field(..., ge=2007, le=2040)
+    base_rate: float = Field(..., ge=0.0, description="Federal funds rate (FEDFUNDS)")
+    treasury_10y: float = Field(..., ge=0.0, description="10-year Treasury yield (DGS10)")
+    baa_spread: float = Field(..., ge=0.0, description="Baa corporate spread (BAA10Y)")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def effective_rate(self) -> float:
+        """Effective borrowing rate = base_rate + baa_spread."""
+        return self.base_rate + self.baa_spread
+
+
+class CreditState(BaseModel):
+    """National credit system health snapshot.
+
+    Tracks aggregate credit conditions and the current credit cycle phase.
+    The credit_fragility computed field provides a crisis signal when
+    the product of default_rate and spread_to_treasuries exceeds the
+    CREDIT_FRAGILITY_THRESHOLD constant.
+
+    Feature: 024-capital-volume-iii (FR-002, FR-006)
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int = Field(..., ge=2007, le=2040)
+    total_credit: float = Field(..., ge=0.0, description="Total credit market debt (TCMDO)")
+    credit_expansion_rate: float = Field(default=0.0, description="YoY credit growth rate")
+    default_rate: float = Field(default=0.0, ge=0.0, le=1.0, description="Loan default fraction")
+    spread_to_treasuries: float = Field(default=0.0, ge=0.0, description="Risk premium (BAA10Y)")
+    phase: CreditCyclePhase = Field(default=CreditCyclePhase.EXPANSION)
+    prev_phase: CreditCyclePhase | None = Field(default=None)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def credit_fragility(self) -> float:
+        """Credit fragility index = default_rate * spread_to_treasuries."""
+        return self.default_rate * self.spread_to_treasuries

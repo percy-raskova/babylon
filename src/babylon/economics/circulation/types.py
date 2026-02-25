@@ -658,18 +658,21 @@ class DepreciationFundState(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def replacement_cycle_position(self) -> ReplacementCyclePosition:
-        """Classify the replacement cycle based on fund adequacy ratio.
+        """Classify the replacement cycle based on replacement-to-depreciation ratio.
+
+        Uses replacement_expenditure / annual_depreciation_flow to determine
+        where in the investment cycle this economy sits.
 
         Thresholds (from BEA Fixed Asset Tables):
-            - > 1.5: INVESTMENT_BOOM (excess funds drive replacement wave)
-            - > 1.0: EXPANSION (adequate for timely replacement)
-            - > 0.7: MAINTENANCE (covers basics, no expansion)
+            - > 1.5: INVESTMENT_BOOM (excess investment drives replacement wave)
+            - > 1.0: EXPANSION (investing more than depreciation)
+            - > 0.7: MAINTENANCE (covers basics, gradual decline)
             - <= 0.7: DISINVESTMENT (capital stock deteriorating)
 
         Returns:
             ReplacementCyclePosition enum value.
         """
-        ratio = self.accumulated_depreciation / self.annual_depreciation_flow
+        ratio = self.replacement_expenditure / self.annual_depreciation_flow
         if ratio > REPLACEMENT_BOOM_RATIO:
             return ReplacementCyclePosition.INVESTMENT_BOOM
         if ratio > REPLACEMENT_EXPANSION_RATIO:
@@ -877,10 +880,10 @@ class RealizationCrisis(BaseModel):
         >>> crisis = RealizationCrisis(
         ...     fips_code="26163", year=2015,
         ...     commodity_value_produced=1000000.0,
-        ...     commodity_value_realized=850000.0,
+        ...     commodity_value_realized=900000.0,
         ... )
         >>> crisis.realization_rate
-        0.85
+        0.9
         >>> crisis.crisis_severity
         <CrisisSeverity.MILD_SLOWDOWN: 'mild_slowdown'>
     """
@@ -923,20 +926,20 @@ class RealizationCrisis(BaseModel):
         """Classify realization crisis severity based on realization rate.
 
         Thresholds (from NBER recession classification):
-            - >= 0.95: NORMAL (healthy demand)
-            - >= 0.85: MILD_SLOWDOWN (emerging demand deficiency)
-            - >= 0.70: RECESSION (significant demand destruction)
-            - < 0.70: CRISIS (systemic realization failure)
+            - > 0.95: NORMAL (healthy demand)
+            - > 0.85: MILD_SLOWDOWN (emerging demand deficiency)
+            - > 0.70: RECESSION (significant demand destruction)
+            - <= 0.70: CRISIS (systemic realization failure)
 
         Returns:
             CrisisSeverity enum value.
         """
         rate = self.commodity_value_realized / self.commodity_value_produced
-        if rate >= REALIZATION_RATE_NORMAL:
+        if rate > REALIZATION_RATE_NORMAL:
             return CrisisSeverity.NORMAL
-        if rate >= REALIZATION_RATE_SLOWDOWN:
+        if rate > REALIZATION_RATE_SLOWDOWN:
             return CrisisSeverity.MILD_SLOWDOWN
-        if rate >= REALIZATION_RATE_RECESSION:
+        if rate > REALIZATION_RATE_RECESSION:
             return CrisisSeverity.RECESSION
         return CrisisSeverity.CRISIS
 
@@ -1013,19 +1016,21 @@ class DisproportionalityCrisis(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def imbalance_direction(self) -> str:
-        """Human-readable description of the imbalance direction.
+        """Direction of departmental imbalance.
 
         Returns:
-            'over-industrialized', 'under-industrialized', or 'balanced'.
+            'OVERPRODUCTION_MEANS_PRODUCTION' if Dept I overshoots,
+            'OVERPRODUCTION_CONSUMPTION_GOODS' if Dept II overshoots,
+            or 'BALANCED' if shares match.
         """
         total = self.dept_i_output + self.dept_ii_output
         actual = 0.0 if total == 0.0 else self.dept_i_output / total
         diff = actual - self.dept_i_share_required
         if diff > 0.0:
-            return "over-industrialized"
+            return "OVERPRODUCTION_MEANS_PRODUCTION"
         if diff < 0.0:
-            return "under-industrialized"
-        return "balanced"
+            return "OVERPRODUCTION_CONSUMPTION_GOODS"
+        return "BALANCED"
 
 
 class PureCirculationCosts(BaseModel):

@@ -38,22 +38,22 @@ ______________________________________________________________________
 
 **CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Define `CreditCyclePhase` StrEnum (EXPANSION, OVEREXTENSION, CRISIS, RECOVERY, STAGNATION) in `src/babylon/economics/credit/types.py` following `CrisisPhase` pattern from `tick/types.py`
-- [ ] T007 [P] Define `ValueBasis` StrEnum (NOMINAL, REAL, LABOR_TIME) in `src/babylon/economics/monetary/types.py`
-- [ ] T008 [P] Define `RentCategory` StrEnum (AGRICULTURAL, RESOURCE, URBAN) in `src/babylon/economics/rent/types.py`
-- [ ] T009 Define threshold constants with `Final[float]` and traceability docstrings in `src/babylon/economics/credit/types.py`: INTEREST_BURDEN_SQUEEZE, FINANCIALIZATION_BUBBLE, CREDIT_FRAGILITY_THRESHOLD, STAGNATION_CREDIT_GROWTH, OVEREXTENSION_DEFAULT_RATE, RECOVERY_CONSECUTIVE_PERIODS
-- [ ] T010 [P] Define threshold constants in `src/babylon/economics/distribution/types.py`: DEBT_SPIRAL_THRESHOLD, DISTRIBUTION_EPSILON
-- [ ] T011 [P] Define threshold constants in `src/babylon/economics/counter_tendencies/types.py`: COUNTER_TENDENCY_WEIGHTS (6-element list)
-- [ ] T012 Define data source protocols in `src/babylon/economics/distribution/data_sources.py`: `RentalIncomeSource`, `TaxOnSurplusSource`, `InterestIncomeSource` per contracts/distribution_formulas.py
-- [ ] T013 [P] Define data source protocols in `src/babylon/economics/credit/data_sources.py`: `InterestRateSource`, `CreditAggregateSource`, `Z1FinancialAccountsSource` per contracts/credit_formulas.py
-- [ ] T014 [P] Define data source protocols in `src/babylon/economics/rent/data_sources.py`: `HousingDataSource`, `CountyRentalIncomeSource` per contracts/rent_formulas.py
-- [ ] T015 [P] Define data source protocols in `src/babylon/economics/monetary/data_sources.py`: `PriceIndexSource` per contracts/monetary_formulas.py
-- [ ] T016 Create shared test conftest with mock data sources in `tests/unit/economics/distribution/conftest.py` following `melt/conftest.py` pattern (MockRentalIncomeSource, MockTaxOnSurplusSource, MockInterestIncomeSource with realistic defaults)
-- [ ] T017 [P] Create shared test conftest in `tests/unit/economics/credit/conftest.py` (MockInterestRateSource, MockCreditAggregateSource, MockZ1Source with realistic FRED-derived defaults)
-- [ ] T018 [P] Create shared test conftest in `tests/unit/economics/rent/conftest.py` (MockHousingDataSource, MockCountyRentalIncomeSource with Census-derived defaults)
-- [ ] T019 [P] Create shared test conftest in `tests/unit/economics/counter_tendencies/conftest.py`
-- [ ] T020 [P] Create shared test conftest in `tests/unit/economics/monetary/conftest.py` (MockPriceIndexSource with CPI/deflator defaults)
-- [ ] T021 [P] Create shared test conftest in `tests/unit/economics/financial_crisis/conftest.py`
+- [x] T006 Define `CreditCyclePhase` StrEnum (EXPANSION, OVEREXTENSION, CRISIS, RECOVERY, STAGNATION) in `src/babylon/economics/credit/types.py` following `CrisisPhase` pattern from `tick/types.py`
+- [x] T007 [P] Define `ValueBasis` StrEnum (NOMINAL, REAL, LABOR_TIME) in `src/babylon/economics/monetary/types.py`
+- [x] T008 [P] Define `RentCategory` StrEnum (AGRICULTURAL, RESOURCE, URBAN) in `src/babylon/economics/rent/types.py`
+- [x] T009 Define threshold constants with `Final[float]` and traceability docstrings in `src/babylon/economics/credit/types.py`: INTEREST_BURDEN_SQUEEZE, FINANCIALIZATION_BUBBLE, CREDIT_FRAGILITY_THRESHOLD, STAGNATION_CREDIT_GROWTH, OVEREXTENSION_DEFAULT_RATE, RECOVERY_CONSECUTIVE_PERIODS
+- [x] T010 [P] Define threshold constants in `src/babylon/economics/distribution/types.py`: DEBT_SPIRAL_THRESHOLD, DISTRIBUTION_EPSILON
+- [x] T011 [P] Define threshold constants in `src/babylon/economics/counter_tendencies/types.py`: COUNTER_TENDENCY_WEIGHTS (6-element list)
+- [x] T012 Define data source protocols in `src/babylon/economics/distribution/data_sources.py`: `RentalIncomeSource`, `TaxOnSurplusSource`, `InterestIncomeSource` per contracts/distribution_formulas.py
+- [x] T013 [P] Define data source protocols in `src/babylon/economics/credit/data_sources.py`: `InterestRateSource`, `CreditAggregateSource`, `Z1FinancialAccountsSource` per contracts/credit_formulas.py
+- [x] T014 [P] Define data source protocols in `src/babylon/economics/rent/data_sources.py`: `HousingDataSource`, `CountyRentalIncomeSource` per contracts/rent_formulas.py
+- [x] T015 [P] Define data source protocols in `src/babylon/economics/monetary/data_sources.py`: `PriceIndexSource` per contracts/monetary_formulas.py
+- [x] T016 Create shared test conftest with mock data sources in `tests/unit/economics/distribution/conftest.py` following `melt/conftest.py` pattern (MockRentalIncomeSource, MockTaxOnSurplusSource, MockInterestIncomeSource with realistic defaults)
+- [x] T017 [P] Create shared test conftest in `tests/unit/economics/credit/conftest.py` (MockInterestRateSource, MockCreditAggregateSource, MockZ1Source with realistic FRED-derived defaults)
+- [x] T018 [P] Create shared test conftest in `tests/unit/economics/rent/conftest.py` (MockHousingDataSource, MockCountyRentalIncomeSource with Census-derived defaults)
+- [x] T019 [P] Create shared test conftest in `tests/unit/economics/counter_tendencies/conftest.py`
+- [x] T020 [P] Create shared test conftest in `tests/unit/economics/monetary/conftest.py` (MockPriceIndexSource with CPI/deflator defaults)
+- [x] T021 [P] Create shared test conftest in `tests/unit/economics/financial_crisis/conftest.py`
 
 **Checkpoint**: Foundation ready — all enums, thresholds, protocols, and mock data sources in place. User story implementation can begin.
 

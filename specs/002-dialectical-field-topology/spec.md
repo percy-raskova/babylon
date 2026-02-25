@@ -1,6 +1,6 @@
 # Feature Specification: Dialectical Field Topology
 
-**Feature Branch**: `001-dialectical-field-topology`
+**Feature Branch**: `002-dialectical-field-topology`
 **Created**: 2026-02-25
 **Status**: Draft
 **Input**: Spec prompt `ai-docs/spec-prompts/spec-019-dialectical-field-topology.md`, `ai-docs/spec-prompts/edge-mode-completeness-analysis.md`

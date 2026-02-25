@@ -146,6 +146,12 @@ class TestLoaderConfigDataclass:
             "qcew_years",
             "materials_years",
             "bea_county_years",
+            # Capital Volume I (Feature 021)
+            "bls_unemployment_years",
+            "eviction_lab_years",
+            "foreclosure_years",
+            "census_housing_years",
+            "bls_productivity_years",
             "state_fips_list",
             "include_territories",
             "batch_size",

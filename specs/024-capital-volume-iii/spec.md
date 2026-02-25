@@ -5,6 +5,16 @@
 **Status**: Draft
 **Input**: User description: "Capital Volume III Integration: Distribution of Surplus Value - Interest, Rent, and Fictitious Capital"
 
+## Clarifications
+
+### Session 2026-02-25
+
+- Q: How should national-level financial data (FRED interest rates, credit aggregates, fictitious capital) map to county-level simulation state? → A: Hybrid model -- national financial state (interest rates, credit aggregates, fictitious capital stock, credit cycle phase) stored as shared national parameters; only rent and housing data are county-specific. Counties reference shared national values plus county-specific adjustments (e.g., county profit rate determines local interest burden).
+- Q: How are the surplus value distribution shares (interest, rent, taxes, profit) determined? → A: Data-driven from federal sources (BEA rental income for rent, FRED interest data for interest, IRS tax data for taxes). Profit of enterprise is the residual: p = s - i - r - t.
+- Q: Are concrete data loader implementations part of this feature or deferred? → A: Full data loaders included. This feature implements FRED API integration (interest rates, credit aggregates), Fed Z.1 financial accounts parsing, and Census/ACS housing data ingestion alongside the protocol interfaces.
+- Q: What is the complete valid transition graph for credit cycle phases? → A: Directed cycle with shortcuts. Main cycle: EXPANSION → OVEREXTENSION → CRISIS → RECOVERY → EXPANSION. Shortcuts to STAGNATION: OVEREXTENSION → STAGNATION and RECOVERY → STAGNATION. No other transitions are valid.
+- Q: How should surplus value distribution handle negative surplus? → A: Interest and rent obligations persist at data-driven levels (contractual, not voluntary). Enterprise profit absorbs the full shortfall as a negative value (loss). The accounting identity s = p + i + r + t still holds with p < 0. A separate debt accumulation field tracks cumulative shortfall across ticks to model the debt spiral.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Surplus Value Distribution Accounting (Priority: P1)
@@ -21,7 +31,7 @@ The accounting identity `s = profit_of_enterprise + interest + rent + taxes` mus
 
 **Acceptance Scenarios**:
 
-1. **Given** a county with computed surplus value `s`, **When** the distribution step runs, **Then** interest, rent, taxes, and enterprise profit are each non-negative and sum to `s` within floating-point epsilon.
+1. **Given** a county with computed surplus value `s >= 0`, **When** the distribution step runs, **Then** interest, rent, and taxes are each non-negative and the four components sum to `s` within floating-point epsilon. Enterprise profit may be negative if claims exceed surplus.
 2. **Given** a county with zero surplus value, **When** distribution runs, **Then** all distribution components are zero (no value can be distributed that was not produced).
 3. **Given** rising interest rates, **When** distribution runs across multiple ticks, **Then** the interest share of surplus rises while enterprise profit share falls (interest crowds out profit).
 
@@ -139,7 +149,7 @@ ______________________________________________________________________
 
 ### Edge Cases
 
-- What happens when surplus value is negative (losses)? Distribution must handle the case where enterprise "profit" is negative (loss) but interest and rent are still owed, creating a debt spiral.
+- What happens when surplus value is negative (losses)? Interest and rent obligations persist at data-driven levels. Enterprise profit absorbs the full shortfall (goes negative). A cumulative debt accumulation field tracks the running shortfall across ticks, modeling the debt spiral that deepens crisis.
 - What happens when the profit rate equals zero? Interest must be zero (cannot borrow at rate exceeding profit), and credit should contract.
 - What happens when fictitious capital data is unavailable for a county? Use `NoDataSentinel` with appropriate reason string; do not guess.
 - What happens when credit expansion reaches extreme values? Apply reasonable upper bounds to prevent numerical overflow in financialization ratio.
@@ -150,12 +160,12 @@ ______________________________________________________________________
 
 ### Functional Requirements
 
-- **FR-001**: System MUST decompose surplus value into four distribution channels (profit of enterprise, interest, ground rent, taxes) that sum to total surplus within floating-point epsilon.
+- **FR-001**: System MUST decompose surplus value into four distribution channels (profit of enterprise, interest, ground rent, taxes) that sum to total surplus within floating-point epsilon. Interest, rent, and taxes are derived from federal data sources; profit of enterprise is the residual (p = s - i - r - t).
 - **FR-002**: System MUST track interest-bearing capital dynamics including effective interest rate, credit expansion/contraction rate, default rate, and credit spread relative to risk-free rate.
 - **FR-003**: System MUST enforce the constraint that effective interest rate for industrial borrowers does not exceed the county profit rate.
 - **FR-004**: System MUST track fictitious capital stock across five categories: government debt, corporate equity, corporate debt, household debt, and derivatives notional value.
 - **FR-005**: System MUST compute the financialization index (total fictitious claims divided by real GDP) as a crisis indicator.
-- **FR-006**: System MUST classify credit cycle phase as one of: EXPANSION, OVEREXTENSION, CRISIS, RECOVERY, or STAGNATION based on profit rate trend and credit growth.
+- **FR-006**: System MUST classify credit cycle phase as one of: EXPANSION, OVEREXTENSION, CRISIS, RECOVERY, or STAGNATION based on profit rate trend and credit growth. Valid transitions: EXPANSION → OVEREXTENSION → CRISIS → RECOVERY → EXPANSION (main cycle), plus OVEREXTENSION → STAGNATION and RECOVERY → STAGNATION (shortcuts). No other transitions are permitted.
 - **FR-007**: System MUST decompose ground rent into three categories: agricultural rent, resource rent, and urban/building-site rent.
 - **FR-008**: System MUST decompose housing value into three components: construction labor-value, capitalized ground rent, and speculative premium.
 - **FR-009**: System MUST compute the fictitious fraction of housing price (capitalized rent plus speculative premium divided by market price).
@@ -166,18 +176,22 @@ ______________________________________________________________________
 - **FR-014**: System MUST persist all new county-level financial state via the existing graph bridge pattern (tick_* prefixed territory node attributes).
 - **FR-015**: System MUST return `NoDataSentinel` with descriptive reason when federal data sources (FRED, Z.1, Census) lack coverage for a requested county-year combination.
 - **FR-016**: System MUST detect the pathological state where rent plus interest claims exceed total surplus value and flag it as a structural crisis condition.
+- **FR-017**: System MUST provide concrete data loaders for FRED (interest rates: FEDFUNDS, T10Y2Y, BAA-AAA spread; credit aggregates: TCMDO; government debt: GFDEBTN; stock market cap: WILSHIRE), Fed Z.1 Financial Accounts (sectoral debt and equity totals), and Census/ACS housing data (median home values, gross rent, construction cost indices).
+- **FR-018**: Each data loader MUST implement the corresponding protocol interface and handle missing data by returning NoDataSentinel with source-specific reason strings.
+- **FR-019**: System MUST track cumulative debt accumulation at the county level when enterprise profit is negative (interest + rent + taxes exceed surplus). Debt increases when p < 0 and decreases when positive surplus is applied to retire accumulated debt.
 
 ### Key Entities
 
 - **SurplusValueDistribution**: Represents the decomposition of total surplus value into competing claims (profit of enterprise, interest, rent, taxes) for a given county-year. Validates the accounting identity s = p + i + r + t.
-- **InterestRateState**: Captures the interest rate environment for a territory including base rate, class-differentiated spreads, and effective borrowing rates.
-- **CreditState**: Tracks credit system health including expansion rate, default rate, spread to risk-free rate, and money velocity.
-- **FictitiousCapitalStock**: Accumulated financial claims (government debt, corporate equity/debt, household debt, derivatives) with ratio-to-real computation.
+- **InterestRateState**: Captures the national interest rate environment including base rate, class-differentiated spreads, and effective borrowing rates. Stored at national level; county-level interest burden derived from national rate combined with county profit rate.
+- **CreditState**: Tracks national credit system health including expansion rate, default rate, spread to risk-free rate, and money velocity. Stored at national level.
+- **FictitiousCapitalStock**: Accumulated national financial claims (government debt, corporate equity/debt, household debt, derivatives) with ratio-to-real computation. Stored at national level.
 - **CreditCyclePhase**: Categorical state of the credit cycle (EXPANSION, OVEREXTENSION, CRISIS, RECOVERY, STAGNATION).
-- **RentExtraction**: Ground rent decomposition by category (agricultural, resource, urban) with share-of-surplus computation.
-- **HousingValueDecomposition**: Housing price split into construction value, capitalized ground rent, and speculative premium with fictitious fraction.
+- **RentExtraction**: Ground rent decomposition by category (agricultural, resource, urban) with share-of-surplus computation. Stored at county level.
+- **HousingValueDecomposition**: Housing price split into construction value, capitalized ground rent, and speculative premium with fictitious fraction. Stored at county level.
 - **CounterTendencyStrength**: Aggregate measure of the six identified counter-tendencies to TRPF with net signed indicator.
 - **CreditCrisisIndicator**: Composite indicator combining overproduction signal, profit squeeze, and liquidity crisis flags.
+- **DebtAccumulation**: Tracks cumulative shortfall when enterprise profit is negative across ticks. Stored at county level. Increases when p < 0 (interest + rent + taxes > surplus), decreases when p > 0 and surplus is applied to retire accumulated debt.
 - **MonetaryAdjustment**: Conversion factors between nominal, real, and labor-time value bases for a given year.
 
 ## Success Criteria *(mandatory)*
@@ -186,7 +200,7 @@ ______________________________________________________________________
 
 - **SC-001**: Surplus value accounting identity (s = p + i + r + t) holds within epsilon for 100% of county-year observations in simulation runs.
 - **SC-002**: Interest rate constraint (effective rate <= county profit rate) is never violated across all simulation ticks.
-- **SC-003**: Credit cycle phase transitions follow valid state machine paths (no jump from EXPANSION to CRISIS without OVEREXTENSION) in 100% of observations.
+- **SC-003**: Credit cycle phase transitions follow the valid state machine (EXPANSION → OVEREXTENSION → CRISIS → RECOVERY → EXPANSION main cycle, plus OVEREXTENSION → STAGNATION and RECOVERY → STAGNATION shortcuts) in 100% of observations.
 - **SC-004**: Financialization index correctly identifies known historical crisis preconditions when backtested against pre-2008 data patterns.
 - **SC-005**: Net counter-tendency sign correlates with profit rate direction (positive net = rising/stable, negative = falling) in at least 80% of simulation ticks.
 - **SC-006**: Housing value decomposition components sum to market price within epsilon for all county observations.
@@ -218,7 +232,7 @@ ______________________________________________________________________
 - Integrated financial crisis assessment
 - Value basis conversion (nominal, real, labor-time)
 - Graph bridge integration for all new metrics
-- Data source protocols for FRED, Z.1, Census housing data
+- Data source protocols and concrete data loaders for FRED, Z.1, Census housing data
 
 ### Out of Scope
 

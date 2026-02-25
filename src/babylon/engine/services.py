@@ -39,6 +39,9 @@ class ServiceContainer:
         - defines: Centralized game coefficients (Paradox Refactor)
         - metrics: Telemetry collector for observability (Spec 008)
 
+    Field Topology (Feature 002, optional for backward compatibility):
+        - field_registry: Contradiction field computation registry
+
     Economics (Feature 017, all optional for backward compatibility):
         - melt_calculator: National MELT computation (Feature 013)
         - basket_calculator: Basket visibility computation (Feature 013)
@@ -67,6 +70,9 @@ class ServiceContainer:
     defines: GameDefines
     metrics: MetricsCollectorProtocol
 
+    # Field topology services (Feature 002 - optional, default None)
+    field_registry: Any = field(default=None)
+
     # Economics calculator services (Feature 017 - all optional, default None)
     melt_calculator: Any = field(default=None)
     basket_calculator: Any = field(default=None)
@@ -84,6 +90,7 @@ class ServiceContainer:
         defines: GameDefines | None = None,
         metrics: MetricsCollectorProtocol | None = None,
         *,
+        field_registry: Any = None,
         melt_calculator: Any = None,
         basket_calculator: Any = None,
         gamma_calculator: Any = None,
@@ -103,6 +110,7 @@ class ServiceContainer:
             defines: Optional custom defines. If None, uses default GameDefines.
             metrics: Optional custom metrics collector. If None, creates a new
                 MetricsCollector instance. Pass a mock for testing.
+            field_registry: Optional FieldRegistry for contradiction fields (Feature 002).
             melt_calculator: Optional MELTCalculator (Feature 013).
             basket_calculator: Optional BasketVisibilityCalculator (Feature 013).
             gamma_calculator: Optional GammaIIICalculator (Feature 015).
@@ -128,6 +136,7 @@ class ServiceContainer:
             formulas=FormulaRegistry.default(),
             defines=defines if defines is not None else GameDefines(),
             metrics=metrics,
+            field_registry=field_registry,
             melt_calculator=melt_calculator,
             basket_calculator=basket_calculator,
             gamma_calculator=gamma_calculator,

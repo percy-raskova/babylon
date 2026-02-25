@@ -1105,6 +1105,68 @@ class TimescaleDefines(BaseModel):
         return self.tick_duration_days * self.weeks_per_year
 
 
+class ContradictionFieldDefines(BaseModel):
+    """Contradiction field topology coefficients (Feature 002).
+
+    Configures normalization bounds, history window depth, and transition
+    thresholds for the dialectical field topology systems.
+
+    See Also:
+        ``specs/002-dialectical-field-topology/spec.md``: FR-001 through FR-019
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Normalization bounds (FR-001, EC-007)
+    field_min: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Minimum normalized field value",
+    )
+    field_max: float = Field(
+        default=10.0,
+        gt=0.0,
+        description="Maximum normalized field value",
+    )
+
+    # History window for temporal derivatives (FR-006)
+    history_window: int = Field(
+        default=3,
+        ge=2,
+        le=10,
+        description="Rolling tick window for temporal derivative computation",
+    )
+
+    # Curvature parameters (FR-005, R-004)
+    curvature_alpha: float = Field(
+        default=0.5,
+        gt=0.0,
+        le=1.0,
+        description="Self-loop weight for Ollivier-Ricci probability measures",
+    )
+
+    # CO-OPTIVE mechanics (FR-014 through FR-017)
+    co_optive_suppression_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of df/dt suppressed by CO-OPTIVE edges",
+    )
+    latent_release_multiplier: float = Field(
+        default=1.5,
+        ge=1.0,
+        le=5.0,
+        description="Multiplier applied to released latent contradictions",
+    )
+
+    # Transition thresholds (FR-010)
+    default_transition_priority: int = Field(
+        default=0,
+        ge=0,
+        description="Default priority for transitions without explicit priority",
+    )
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -1132,6 +1194,7 @@ class GameDefines(BaseModel):
     - carceral: Carceral equilibrium (Terminal Crisis Dynamics)
     - endgame: Endgame detection thresholds
     - initial: Initial conditions
+    - contradiction_field: Dialectical field topology (Feature 002)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -1154,6 +1217,9 @@ class GameDefines(BaseModel):
     precision: PrecisionDefines = Field(default_factory=PrecisionDefines)
     timescale: TimescaleDefines = Field(default_factory=TimescaleDefines)
     external_data: ExternalDataDefines = Field(default_factory=ExternalDataDefines)
+    contradiction_field: ContradictionFieldDefines = Field(
+        default_factory=ContradictionFieldDefines
+    )
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -1258,6 +1324,7 @@ class GameDefines(BaseModel):
             precision=PrecisionDefines(**data.get("precision", {})),
             timescale=TimescaleDefines(**data.get("timescale", {})),
             external_data=external_data,
+            contradiction_field=ContradictionFieldDefines(**data.get("contradiction_field", {})),
         )
 
     @classmethod

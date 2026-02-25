@@ -12,6 +12,8 @@ Enums defined:
 - OperationalProfile: Territory visibility stance (Sprint 3.5.1)
 - SectorType: Strategic sector categories (Sprint 3.5.1)
 - TerritoryType: Settler-colonial hierarchy classification (Sprint 3.7)
+- EdgeMode: Qualitative contradiction mode on edges (Feature 002)
+- ContradictionCharacter: Antagonistic vs non-antagonistic flag (Feature 002)
 """
 
 from enum import StrEnum
@@ -186,6 +188,12 @@ class EventType(StrEnum):
     CRISIS_PHASE_TRANSITION = "crisis_phase_transition"  # Phase lifecycle change
     DISPOSSESSION_CASCADE = "dispossession_cascade"  # LA share decline milestone
     BIFURCATION_THRESHOLD = "bifurcation_threshold"  # |score| crosses threshold
+    # Dialectical Field Topology (Feature 002)
+    EDGE_MODE_TRANSITION = "edge_mode_transition"  # Edge qualitative mode change
+    PRINCIPAL_CONTRADICTION_SHIFT = "principal_contradiction_shift"  # Principal field changed
+    CO_OPTIVE_BREAKDOWN = "co_optive_breakdown"  # Co-optation failure with bifurcation
+    LATENT_CONTRADICTION_RELEASE = "latent_contradiction_release"  # Suppressed df/dt spike
+    ASPECT_REVERSAL = "aspect_reversal"  # Dominant party switches on directed edge
 
 
 class OperationalProfile(StrEnum):
@@ -321,3 +329,49 @@ class GameOutcome(StrEnum):
     REVOLUTIONARY_VICTORY = "revolutionary_victory"
     ECOLOGICAL_COLLAPSE = "ecological_collapse"
     FASCIST_CONSOLIDATION = "fascist_consolidation"
+
+
+class EdgeMode(StrEnum):
+    """Qualitative mode of an edge in the contradiction field topology.
+
+    Dialectical Field Topology (Feature 002): EdgeMode is distinct from
+    EdgeType. EdgeType describes the mechanical nature of a relationship
+    (exploitation, solidarity, etc.). EdgeMode describes the qualitative
+    character of the contradiction on that edge — how the contradiction
+    manifests dialectically.
+
+    Reference: R-002 (EdgeMode vs EdgeType distinction)
+    Reference: FR-010 (transition topology — 17 permissible transitions)
+
+    Values:
+        ANTAGONISTIC: Irreconcilable contradiction (class vs class)
+        SOLIDARISTIC: Mutual-aid contradiction resolution
+        DORMANT: Contradiction exists but not yet manifest
+        EMERGENT: Contradiction becoming active, not yet qualitatively defined
+        CO_OPTIVE: Contradiction suppressed via material concession
+    """
+
+    ANTAGONISTIC = "antagonistic"
+    SOLIDARISTIC = "solidaristic"
+    DORMANT = "dormant"
+    EMERGENT = "emergent"
+    CO_OPTIVE = "co_optive"
+
+
+class ContradictionCharacter(StrEnum):
+    """Character flag for contradictions on edges.
+
+    Dialectical Field Topology (Feature 002), FR-018: Every edge carrying
+    an edge_mode also carries a contradiction_character flag indicating
+    whether the contradiction is antagonistic (irreconcilable within the
+    current mode of production) or non-antagonistic.
+
+    Reference: Constitution I.14 (antagonistic vs non-antagonistic contradictions)
+
+    Values:
+        ANTAGONISTIC: Irreconcilable within current mode of production
+        NON_ANTAGONISTIC: Resolvable without systemic transformation
+    """
+
+    ANTAGONISTIC = "antagonistic"
+    NON_ANTAGONISTIC = "non_antagonistic"

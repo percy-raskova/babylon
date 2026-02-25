@@ -125,6 +125,24 @@ The five Volume I mechanisms feed into existing simulation systems to create a c
 
 ______________________________________________________________________
 
+### User Story 7 — Data Loaders for Production Dynamics (Priority: P1)
+
+The simulation ingests real-world labor market, housing, and productivity data from federal statistical sources to populate the Reserve Army, Dispossession, and Working Day mechanisms. Without empirical data, these mechanisms can only operate on synthetic inputs and cannot be calibrated or falsified against the Detroit case study.
+
+**Why this priority**: The success criteria (SC-001, SC-002, SC-003, SC-007) all require calibration against empirical data. The Reserve Army requires BLS unemployment decompositions. Dispossession requires Eviction Lab filings and foreclosure rates. The Working Day requires BLS hours and productivity indices. The existing data loader infrastructure (DataLoader ABC, LoaderConfig, checkpoint system) provides a proven pattern to follow.
+
+**Independent Test**: Can be tested by running each loader against its source API or bulk files and verifying that the ingested data matches expected row counts, covers the target geographic scope (Wayne, Oakland, Macomb counties), and passes schema validation against the 3NF reference database.
+
+**Acceptance Scenarios**:
+
+1. **Given** BLS bulk data files for unemployment categories (U-3, U-6, PTER, discouraged workers, marginally attached), **When** the BLS unemployment loader runs, **Then** the system ingests county-level unemployment decompositions for Wayne, Oakland, and Macomb counties across the target year range (2005-2020) into the reference database.
+2. **Given** Eviction Lab data files with eviction filings and executions by county, **When** the Eviction Lab loader runs, **Then** the system ingests county-level eviction rates for the target counties and years, with each record linked to the appropriate FIPS code and time period.
+3. **Given** CoreLogic/ATTOM foreclosure data, **When** the foreclosure loader runs, **Then** the system ingests county-level foreclosure rates with the 2008-2012 crisis period fully covered for the Detroit metro area.
+4. **Given** Census ACS data for housing tenure, migration, and institutional ownership, **When** the Census housing loader runs, **Then** the system captures tenure changes, net migration by income bracket, and institutional investor ownership shares at the county level.
+5. **Given** BLS data for average weekly hours and productivity indices by industry, **When** the BLS hours/productivity loader runs, **Then** the system ingests sector-level working day metrics linked to NAICS codes for the target counties and years.
+
+______________________________________________________________________
+
 ### Edge Cases
 
 - What happens when reserve_ratio approaches 1.0 (near-total unemployment)? Wage pressure should saturate at a ceiling rather than diverge.
@@ -133,6 +151,9 @@ ______________________________________________________________________
 - What happens when Herfindahl index is exactly at classification boundaries (0.15, 0.25)? Boundary behavior must be deterministic and documented.
 - What happens when reserve army inflows exceed the total labor force? Flows must be clamped to prevent negative employed population.
 - What happens when a dispossession event's value exceeds the territory's total wealth? The transfer should be clamped to available wealth, not create negative wealth.
+- What happens when a data source API is unavailable or rate-limited? Loaders should respect rate limits, retry with backoff, and abort cleanly with a descriptive error after max retries.
+- What happens when BLS unemployment categories don't sum to expected totals for a county-year? The loader should flag the discrepancy and use the raw values with a data quality warning.
+- What happens when Eviction Lab data has gaps for certain years or counties? The system should record the gap as a NoDataSentinel with a descriptive reason, not silently fill with zeros.
 
 ---
 
@@ -157,6 +178,13 @@ ______________________________________________________________________
 - **FR-015**: System MUST provide exploitation mode visibility modifiers to consciousness dynamics, where absolute extraction has higher visibility than relative extraction.
 - **FR-016**: System MUST provide all five mechanisms' state data to the simulation engine's event bus for observation and narrative generation.
 - **FR-017**: System MUST provide falsification criteria that can be tested against empirical data: (a) higher U-6 predicts lower subsequent wage growth, (b) dispossession events predict downward class mobility, (c) absolute exploitation sectors show different consciousness patterns than relative exploitation sectors, (d) formal subsumption correlates with higher organizing capacity.
+- **FR-018**: System MUST ingest BLS unemployment data (U-3, U-6, PTER, discouraged workers, marginally attached) at the county level for the Detroit metro area (Wayne, Oakland, Macomb counties) covering 2005-2020, following the existing DataLoader/LoaderConfig pattern with idempotent loads and checkpoint support.
+- **FR-019**: System MUST ingest Eviction Lab data (eviction filings and executions by county) for the target counties and year range, storing records in the 3NF reference database linked to FIPS codes and time periods.
+- **FR-020**: System MUST ingest foreclosure rate data (CoreLogic/ATTOM or equivalent public source) at the county level, with complete coverage of the 2008-2012 crisis period for the Detroit metro area.
+- **FR-021**: System MUST ingest Census ACS housing data (tenure changes, migration patterns, institutional ownership rates) at the county level for the target geographic scope and years.
+- **FR-022**: System MUST ingest BLS hours and productivity data (average weekly hours by industry, output per hour, unit labor costs) at the sector level for the target counties and years, linked to NAICS codes.
+- **FR-023**: All data loaders MUST implement the existing VerificationProtocol for preflight validation, reporting data availability and completeness before simulation runs.
+- **FR-024**: All data loaders MUST support incremental loading via the existing checkpoint system, allowing interrupted loads to resume without re-processing already-ingested data.
 
 ### Key Entities
 
@@ -186,7 +214,7 @@ ______________________________________________________________________
 
 ## Assumptions
 
-1. **Data availability**: BLS unemployment categories (U-3, U-6, PTER, discouraged workers) are sufficient to decompose the reserve army into Marx's four categories. The mapping is: U-3 approximates floating, (U-6 minus U-3) approximates latent, part-time for economic reasons approximates stagnant. Pauperized requires supplementary Census data.
+1. **Data availability**: BLS unemployment categories (U-3, U-6, PTER, discouraged workers) are sufficient to decompose the reserve army into Marx's four categories. The mapping is: U-3 approximates floating, (U-6 minus U-3) approximates latent, part-time for economic reasons approximates stagnant. Pauperized requires supplementary Census data. Note: The existing FRED loader already ingests state-level unemployment data (`FactFredStateUnemployment`, `FactFredIndustryUnemployment`); the new BLS loader provides the finer-grained county-level decomposition needed for reserve army composition.
 2. **Existing dispossession calculator**: Feature 016's `DefaultDispossessionCalculator` provides dispossession *rates* for class transitions. This feature adds discrete *events* and *value tracking* on top of that foundation rather than replacing it.
 3. **Phillips curve approximation**: Wage pressure from the reserve army can be empirically calibrated using Phillips curve literature as a starting approximation, with Marx's insight that the relationship is structurally determined (not a policy tradeoff) guiding the functional form.
 4. **Sector classification stability**: Subsumption mode and exploitation mode classifications change slowly relative to simulation tick frequency. They can be treated as quasi-static within a single tick and updated periodically.
@@ -202,6 +230,7 @@ ______________________________________________________________________
 - **Feature 013 (MELT/Basket)**: Working day and subsumption affect the monetary expression of labor time and basket composition.
 - **Feature 002 (Dialectical Field Topology)**: Concentration/centralization metrics may inform contradiction field intensities in future integration.
 - **Existing Simulation Engine**: All five mechanisms must register as Systems or integrate with existing Systems in the simulation engine's tick pipeline.
+- **Existing Data Infrastructure**: Data loaders extend the `DataLoader` ABC, `LoaderConfig`, and `VerificationProtocol` from `src/babylon/data/`. The 3NF reference database schema must accommodate new fact tables for unemployment decomposition, eviction rates, foreclosure rates, housing tenure, and productivity indices.
 
 ---
 
@@ -216,11 +245,17 @@ ______________________________________________________________________
 - Capital concentration/centralization metrics and monopoly tendency classification
 - Integration with tensor (v), class transition engine, consciousness dynamics, and event bus
 - Detroit metro case study calibration (Wayne, Oakland, Macomb counties)
+- Data loaders for P1/P2 mechanisms:
+  - BLS unemployment loader (U-3, U-6, PTER, discouraged workers) — Reserve Army
+  - BLS hours and productivity loader (average weekly hours, output per hour, unit labor costs) — Working Day
+  - Eviction Lab loader (eviction filings and executions by county) — Dispossession
+  - CoreLogic/ATTOM foreclosure loader (foreclosure rates by county) — Dispossession
+  - Census housing loader (tenure changes, migration patterns, institutional ownership) — Dispossession
 
 ### Out of Scope
 
 - Commodity fetishism modeling (deferred — requires consciousness model extensions beyond current architecture)
-- Data loader implementation for external sources (BLS, Eviction Lab, Census, CoreLogic, O*NET) — separate feature
+- Data loaders for P3 mechanisms (separate feature): O*NET skill data (Subsumption), Census Business Dynamics Statistics (Concentration), SEC M&A filings (Concentration), Pitchbook/Preqin PE ownership (Concentration)
 - UI/dashboard visualization of Volume I metrics — separate feature
 - Historical time-series data ingestion pipeline — separate feature
 - International reserve army dynamics (cross-border labor migration at scale)

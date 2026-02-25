@@ -7,14 +7,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.formulas import BourgeoisieDecision
 from babylon.models.entities.economy import GlobalEconomy
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -55,11 +56,17 @@ class ImperialRentSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Execute 5-phase circuit. Economy state in graph.graph['economy']."""
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
         # Load economy from graph metadata (or create default)
         economy = self._load_economy(graph, services)
         initial_pool = services.defines.economy.initial_rent_pool
@@ -87,7 +94,7 @@ class ImperialRentSystem:
 
     def _process_subsistence_phase(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
     ) -> None:
         """DEPRECATED: Subsistence burn moved to VitalitySystem (ADR032).
@@ -99,36 +106,39 @@ class ImperialRentSystem:
             Subsistence burn now happens in VitalitySystem.step() before
             economic phases run.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         base_subsistence = services.defines.economy.base_subsistence
 
         if base_subsistence <= 0:
             return  # No operational costs configured
 
-        for node_id in graph.nodes():
-            node_data = graph.nodes[node_id]
-
-            # Skip non-SocialClass nodes (territories, etc.)
-            if node_data.get("_node_type") != "social_class":
-                continue
+        for node in graph.query_nodes(node_type="social_class"):
+            attrs = node.attributes
 
             # Skip inactive (dead) entities
-            if not node_data.get("active", True):
+            if not attrs.get("active", True):
                 continue
 
-            wealth = node_data.get("wealth", 0.0)
+            wealth = attrs.get("wealth", 0.0)
 
             if wealth <= 0:
                 continue
 
             # LINEAR burn: base * class_multiplier (not percentage!)
             # Higher multipliers = faster burn = elites die faster without income
-            multiplier = node_data.get("subsistence_multiplier", 1.0)
+            multiplier = attrs.get("subsistence_multiplier", 1.0)
             cost = base_subsistence * multiplier
-            graph.nodes[node_id]["wealth"] = max(0.0, wealth - cost)
+            graph.update_node(node.id, wealth=max(0.0, wealth - cost))
 
     def _process_extraction_phase(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
         tick_context: dict[str, Any] | None = None,
@@ -138,6 +148,13 @@ class ImperialRentSystem:
         Applies TRPF Surrogate: extraction efficiency declines over time,
         modeling Marx's Tendency of the Rate of Profit to Fall (Capital Vol. 3).
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         calculate_imperial_rent = services.formulas.get("imperial_rent")
 
         # Epoch 0: Convert annual extraction rate to per-tick (weekly) rate
@@ -146,9 +163,6 @@ class ImperialRentSystem:
         base_extraction_efficiency = annual_extraction_efficiency / weeks_per_year
 
         # TRPF Surrogate: Apply time-dependent efficiency decay
-        # Models Marx's Tendency of the Rate of Profit to Fall (Capital Vol. 3)
-        # As organic composition of capital rises, profit rate falls
-        # See ai-docs/epoch2-trpf.yaml for full OCC implementation in Epoch 2
         tick = context.get("tick", 0)
         trpf_coefficient = services.defines.economy.trpf_coefficient
         trpf_floor = services.defines.economy.trpf_efficiency_floor
@@ -159,29 +173,25 @@ class ImperialRentSystem:
         if tick_context is None:
             tick_context = {"tribute_inflow": 0.0, "current_pool": 0.0}
 
-        for source_id, target_id, data in graph.edges(data=True):
-            edge_type = data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.EXPLOITATION:
-                continue
-
-            # Get source (worker) data
-            worker_data = graph.nodes[source_id]
+        for edge in graph.query_edges(edge_type=EdgeType.EXPLOITATION):
+            # Get source (worker) and target nodes
+            worker_node = graph.get_node(edge.source_id)
+            target_node = graph.get_node(edge.target_id)
+            worker_attrs = worker_node.attributes if worker_node else {}
+            target_attrs = target_node.attributes if target_node else {}
 
             # Skip inactive (dead) workers - can't extract from the dead
-            if not worker_data.get("active", True):
+            if not worker_attrs.get("active", True):
                 continue
 
             # Skip inactive (dead) targets - can't receive extraction
-            if not graph.nodes[target_id].get("active", True):
+            if not target_attrs.get("active", True):
                 continue
 
-            worker_wealth = worker_data.get("wealth", 0.0)
+            worker_wealth = worker_attrs.get("wealth", 0.0)
 
             # Extract class consciousness (handles both IdeologicalProfile and legacy)
-            consciousness = _get_class_consciousness_from_node(worker_data)
+            consciousness = _get_class_consciousness_from_node(worker_attrs)
 
             # Calculate imperial rent
             rent = calculate_imperial_rent(
@@ -194,15 +204,17 @@ class ImperialRentSystem:
             rent = min(rent, worker_wealth)
 
             # Transfer wealth
-            graph.nodes[source_id]["wealth"] = max(0.0, worker_wealth - rent)
-            graph.nodes[target_id]["wealth"] = graph.nodes[target_id].get("wealth", 0.0) + rent
+            graph.update_node(edge.source_id, wealth=max(0.0, worker_wealth - rent))
+            target_wealth = target_attrs.get("wealth", 0.0)
+            graph.update_node(edge.target_id, wealth=target_wealth + rent)
 
             # Record value flow
-            graph.edges[source_id, target_id]["value_flow"] = rent
+            graph.update_edge(
+                edge.source_id, edge.target_id, EdgeType.EXPLOITATION, value_flow=rent
+            )
 
             # Track direct extraction to CORE_BOURGEOISIE as tribute_inflow
-            # This handles 2-node scenarios where extraction skips comprador
-            target_role = graph.nodes[target_id].get("role")
+            target_role = target_attrs.get("role")
             if isinstance(target_role, str):
                 target_role = SocialRole(target_role)
             if target_role == SocialRole.CORE_BOURGEOISIE:
@@ -217,8 +229,8 @@ class ImperialRentSystem:
                         type=EventType.SURPLUS_EXTRACTION,
                         tick=tick,
                         payload={
-                            "source_id": source_id,
-                            "target_id": target_id,
+                            "source_id": edge.source_id,
+                            "target_id": edge.target_id,
                             "amount": rent,
                             "mechanism": "imperial_rent",
                         },
@@ -227,33 +239,39 @@ class ImperialRentSystem:
 
     def _process_tribute_phase(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,  # noqa: ARG002 - Used for config.comprador_cut
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],  # noqa: ARG002 - Used for pool tracking
     ) -> None:
         """Phase 2: Comprador tribute via TRIBUTE edges. FEEDS POOL."""
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         _ = context  # Unused but kept for API consistency
         comprador_cut = services.defines.economy.comprador_cut
 
-        for source_id, target_id, data in graph.edges(data=True):
-            edge_type = data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.TRIBUTE:
-                continue
+        for edge in graph.query_edges(edge_type=EdgeType.TRIBUTE):
+            # Get source (comprador) and target nodes
+            source_node = graph.get_node(edge.source_id)
+            target_node = graph.get_node(edge.target_id)
+            source_attrs = source_node.attributes if source_node else {}
+            target_attrs = target_node.attributes if target_node else {}
 
             # Skip inactive (dead) compradors - can't pay tribute when dead
-            if not graph.nodes[source_id].get("active", True):
+            if not source_attrs.get("active", True):
                 continue
 
             # Skip inactive (dead) targets - can't receive tribute
-            if not graph.nodes[target_id].get("active", True):
+            if not target_attrs.get("active", True):
                 continue
 
             # Get comprador wealth
-            comprador_wealth = graph.nodes[source_id].get("wealth", 0.0)
+            comprador_wealth = source_attrs.get("wealth", 0.0)
 
             if comprador_wealth <= 0:
                 continue
@@ -263,16 +281,17 @@ class ImperialRentSystem:
             tribute_amount = comprador_wealth - cut_amount
 
             # Transfer tribute (comprador keeps only the cut)
-            graph.nodes[source_id]["wealth"] = cut_amount
-            graph.nodes[target_id]["wealth"] = (
-                graph.nodes[target_id].get("wealth", 0.0) + tribute_amount
-            )
+            graph.update_node(edge.source_id, wealth=cut_amount)
+            target_wealth = target_attrs.get("wealth", 0.0)
+            graph.update_node(edge.target_id, wealth=target_wealth + tribute_amount)
 
             # Record value flow
-            graph.edges[source_id, target_id]["value_flow"] = tribute_amount
+            graph.update_edge(
+                edge.source_id, edge.target_id, EdgeType.TRIBUTE, value_flow=tribute_amount
+            )
 
             # Sprint 3.4.4: Track tribute to Core Bourgeoisie as pool inflow
-            target_role = graph.nodes[target_id].get("role")
+            target_role = target_attrs.get("role")
             if isinstance(target_role, str):
                 target_role = SocialRole(target_role)
             if target_role == SocialRole.CORE_BOURGEOISIE:
@@ -281,7 +300,7 @@ class ImperialRentSystem:
 
     def _process_wages_phase(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,  # noqa: ARG002 - API consistency with other phases
         tick_context: dict[str, Any],
@@ -294,6 +313,13 @@ class ImperialRentSystem:
 
         Only the super_wage_bonus depletes the pool, not the productivity portion.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         _ = context  # Unused but kept for API consistency
         # Use dynamic wage rate from economy, not static config
         # Epoch 0: Convert annual rate to per-tick (weekly) rate
@@ -314,23 +340,22 @@ class ImperialRentSystem:
         available_pool = tick_context["current_pool"]
 
         # Get LA production from ProductionSystem (Amin/Wallerstein model)
-        la_production = graph.graph.get("la_production", {})
+        la_production = graph.get_graph_attr("la_production", {})
 
-        for source_id, target_id, data in graph.edges(data=True):
-            edge_type = data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.WAGES:
-                continue
+        for edge in graph.query_edges(edge_type=EdgeType.WAGES):
+            # Get source (bourgeoisie) and target (worker) nodes
+            source_node = graph.get_node(edge.source_id)
+            target_node = graph.get_node(edge.target_id)
+            source_attrs = source_node.attributes if source_node else {}
+            target_attrs = target_node.attributes if target_node else {}
 
             # Check for SUPERWAGE_CRISIS BEFORE skipping inactive entities
             # The crisis is about the SYSTEM'S inability to pay wages, not individual status
-            bourgeoisie_active = graph.nodes[source_id].get("active", True)
-            worker_active = graph.nodes[target_id].get("active", True)
+            bourgeoisie_active = source_attrs.get("active", True)
+            worker_active = target_attrs.get("active", True)
 
             # Get what LA produced this tick (now owned by employer)
-            productivity_value = la_production.get(target_id, 0.0)
+            productivity_value = la_production.get(edge.target_id, 0.0)
 
             # Calculate super-wage bonus from rent pool (the "imperial bribe")
             tribute_inflow = tick_context.get("tribute_inflow", 0.0)
@@ -343,15 +368,15 @@ class ImperialRentSystem:
                 # Terminal Crisis: Pool exhausted, super-wages can't be paid
                 # LA will only receive productivity (if any) - no imperial bribe
                 tick = context.get("tick", 0)  # TickContext supports .get()
-                bourgeoisie_wealth = graph.nodes[source_id].get("wealth", 0.0)
+                bourgeoisie_wealth = source_attrs.get("wealth", 0.0)
 
                 services.event_bus.publish(
                     Event(
                         type=EventType.SUPERWAGE_CRISIS,
                         tick=tick,
                         payload={
-                            "payer_id": source_id,
-                            "receiver_id": target_id,
+                            "payer_id": edge.source_id,
+                            "receiver_id": edge.target_id,
                             "productivity_value": productivity_value,
                             "super_wage_bonus": super_wage_bonus,
                             "available_pool": available_pool,
@@ -376,7 +401,7 @@ class ImperialRentSystem:
                 continue
 
             # Get bourgeoisie wealth
-            bourgeoisie_wealth = graph.nodes[source_id].get("wealth", 0.0)
+            bourgeoisie_wealth = source_attrs.get("wealth", 0.0)
 
             if bourgeoisie_wealth <= 0:
                 continue
@@ -390,24 +415,21 @@ class ImperialRentSystem:
             total_wages = min(total_wages, bourgeoisie_wealth)
 
             # Transfer total wages (productivity + bonus)
-            graph.nodes[source_id]["wealth"] = bourgeoisie_wealth - total_wages
-            current_wealth = graph.nodes[target_id].get("wealth", 0.0)
+            graph.update_node(edge.source_id, wealth=bourgeoisie_wealth - total_wages)
+            current_wealth = target_attrs.get("wealth", 0.0)
             new_nominal_wealth = current_wealth + total_wages
-            graph.nodes[target_id]["wealth"] = new_nominal_wealth
-
-            # PPP Model: Calculate effective wealth (what the wages can actually buy)
-            # The PPP bonus represents cheap commodities from periphery exploitation
-            ppp_bonus = total_wages * (ppp_multiplier - 1.0)
-            effective_wealth = new_nominal_wealth + ppp_bonus
-            unearned_increment = ppp_bonus
-
-            # Store PPP values on the worker node
-            graph.nodes[target_id]["effective_wealth"] = effective_wealth
-            graph.nodes[target_id]["unearned_increment"] = unearned_increment
-            graph.nodes[target_id]["ppp_multiplier"] = ppp_multiplier
+            graph.update_node(
+                edge.target_id,
+                wealth=new_nominal_wealth,
+                effective_wealth=new_nominal_wealth + total_wages * (ppp_multiplier - 1.0),
+                unearned_increment=total_wages * (ppp_multiplier - 1.0),
+                ppp_multiplier=ppp_multiplier,
+            )
 
             # Record value flow (nominal)
-            graph.edges[source_id, target_id]["value_flow"] = total_wages
+            graph.update_edge(
+                edge.source_id, edge.target_id, EdgeType.WAGES, value_flow=total_wages
+            )
 
             # Track ONLY the bonus as pool outflow (productivity is not from pool)
             # This is the key insight: productivity passes through, bonus depletes
@@ -419,12 +441,19 @@ class ImperialRentSystem:
 
     def _process_subsidy_phase(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
         tick_context: dict[str, Any],
     ) -> None:
         """Phase 4: CLIENT_STATE subsidy (Iron Lung). DRAINS POOL. Emits IMPERIAL_SUBSIDY."""
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         subsidy_trigger_threshold = services.defines.economy.subsidy_trigger_threshold
         subsidy_conversion_rate = services.defines.economy.subsidy_conversion_rate
 
@@ -432,40 +461,38 @@ class ImperialRentSystem:
         calculate_acquiescence = services.formulas.get("acquiescence_probability")
         calculate_revolution = services.formulas.get("revolution_probability")
 
-        for source_id, target_id, data in graph.edges(data=True):
-            edge_type = data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.CLIENT_STATE:
-                continue
+        for edge in graph.query_edges(edge_type=EdgeType.CLIENT_STATE):
+            # Get source (bourgeoisie) and target (client state) nodes
+            source_node = graph.get_node(edge.source_id)
+            target_node = graph.get_node(edge.target_id)
+            source_attrs = source_node.attributes if source_node else {}
+            target_attrs = target_node.attributes if target_node else {}
 
             # Skip inactive (dead) bourgeoisie - can't provide subsidy when dead
-            if not graph.nodes[source_id].get("active", True):
+            if not source_attrs.get("active", True):
                 continue
 
             # Skip inactive (dead) client states - can't receive subsidy when dead
-            if not graph.nodes[target_id].get("active", True):
+            if not target_attrs.get("active", True):
                 continue
 
             # Get target (client state) data
-            target_data = graph.nodes[target_id]
-            target_wealth = target_data.get("wealth", 0.0)
-            target_organization = target_data.get(
+            target_wealth = target_attrs.get("wealth", 0.0)
+            target_organization = target_attrs.get(
                 "organization", services.defines.DEFAULT_ORGANIZATION
             )
-            target_repression = target_data.get(
+            target_repression = target_attrs.get(
                 "repression_faced", services.defines.DEFAULT_REPRESSION_FACED
             )
-            target_subsistence = target_data.get(
+            target_subsistence = target_attrs.get(
                 "subsistence_threshold", services.defines.DEFAULT_SUBSISTENCE
             )
 
             # Get source (core bourgeoisie) wealth
-            source_wealth = graph.nodes[source_id].get("wealth", 0.0)
+            source_wealth = source_attrs.get("wealth", 0.0)
 
             # Get subsidy cap from edge data
-            subsidy_cap = data.get("subsidy_cap", 0.0)
+            subsidy_cap = edge.attributes.get("subsidy_cap", 0.0)
 
             # Calculate survival probabilities for target
             p_acquiescence = calculate_acquiescence(
@@ -507,17 +534,17 @@ class ImperialRentSystem:
                 continue
 
             # Apply subsidy: wealth converts to repression capacity
-            # Source loses wealth
-            graph.nodes[source_id]["wealth"] = source_wealth - max_subsidy
+            # Source loses wealth, target gains repression capacity (NOT wealth)
+            graph.update_node(edge.source_id, wealth=source_wealth - max_subsidy)
 
-            # Target gains repression capacity (NOT wealth)
-            # Wealth converts at the subsidy_conversion_rate
             repression_boost = max_subsidy * subsidy_conversion_rate
             new_repression = min(1.0, target_repression + repression_boost)
-            graph.nodes[target_id]["repression_faced"] = new_repression
+            graph.update_node(edge.target_id, repression_faced=new_repression)
 
             # Record subsidy in edge
-            graph.edges[source_id, target_id]["value_flow"] = max_subsidy
+            graph.update_edge(
+                edge.source_id, edge.target_id, EdgeType.CLIENT_STATE, value_flow=max_subsidy
+            )
 
             # Sprint 3.4.4: Track subsidy as pool outflow
             tick_context["subsidy_outflow"] += max_subsidy
@@ -530,8 +557,8 @@ class ImperialRentSystem:
                     type=EventType.IMPERIAL_SUBSIDY,
                     tick=tick,
                     payload={
-                        "source_id": source_id,
-                        "target_id": target_id,
+                        "source_id": edge.source_id,
+                        "target_id": edge.target_id,
                         "amount": max_subsidy,
                         "repression_boost": repression_boost,
                         "mechanism": "client_state_subsidy",
@@ -542,13 +569,19 @@ class ImperialRentSystem:
 
     def _process_decision_phase(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
         tick_context: dict[str, Any],
         initial_pool: float,
     ) -> None:
         """Phase 5: Bourgeoisie heuristics. Updates wage_rate/repression. Emits ECONOMIC_CRISIS."""
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
         # Get decision formula
         calculate_decision = services.formulas.get("bourgeoisie_decision")
 
@@ -623,7 +656,7 @@ class ImperialRentSystem:
                 )
             )
 
-    def _calculate_aggregate_tension(self, graph: nx.DiGraph[str]) -> float:
+    def _calculate_aggregate_tension(self, graph: nx.DiGraph[str] | GraphProtocol) -> float:
         """Calculate aggregate tension across class relationships.
 
         Returns the average tension value across all edges in the graph.
@@ -635,9 +668,16 @@ class ImperialRentSystem:
         Returns:
             Average tension, or 0.0 if no edges have tension values
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         tensions = []
-        for _, _, data in graph.edges(data=True):
-            tension = data.get("tension", 0.0)
+        for edge in graph.query_edges():
+            tension = edge.attributes.get("tension", 0.0)
             if isinstance(tension, int | float):
                 tensions.append(float(tension))
 
@@ -648,7 +688,7 @@ class ImperialRentSystem:
 
     def _load_economy(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
     ) -> GlobalEconomy:
         """Load GlobalEconomy from graph metadata, or create default.
@@ -660,7 +700,7 @@ class ImperialRentSystem:
         Returns:
             GlobalEconomy instance
         """
-        economy_data = graph.graph.get("economy")
+        economy_data = graph.get_graph_attr("economy")
         if economy_data is not None:
             return GlobalEconomy.model_validate(economy_data)
 
@@ -673,7 +713,7 @@ class ImperialRentSystem:
 
     def _save_economy(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         tick_context: dict[str, Any],
         services: ServiceContainer | None = None,
     ) -> None:
@@ -700,4 +740,4 @@ class ImperialRentSystem:
             current_super_wage_rate=tick_context["wage_rate"],
             current_repression_level=tick_context["repression_level"],
         )
-        graph.graph["economy"] = economy.model_dump()
+        graph.set_graph_attr("economy", economy.model_dump())

@@ -29,12 +29,13 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-import networkx as nx
-
 from babylon.economics.tensor import NoDataSentinel
 from babylon.models.enums import EdgeType, SocialRole
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -70,7 +71,7 @@ class ProductionSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         _context: ContextType,
     ) -> None:
@@ -87,6 +88,13 @@ class ProductionSystem:
         NOTE: base_labor_power is an annual rate, converted to weekly here
         to match ImperialRentSystem's timescale conversion.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Convert annual production to weekly (same as extraction_efficiency)
         annual_labor_power = services.defines.economy.base_labor_power
         weeks_per_year = services.defines.timescale.weeks_per_year
@@ -98,43 +106,42 @@ class ProductionSystem:
         # Track LA production for wages phase (Amin/Wallerstein model)
         la_production: dict[str, float] = {}
 
-        for node_id, data in graph.nodes(data=True):
-            # Skip non-entity nodes (territories, etc.)
-            if data.get("_node_type") != "social_class":
-                continue
+        for node in graph.query_nodes(node_type="social_class"):
+            attrs = node.attributes
 
             # Skip inactive (dead) workers
-            if not data.get("active", True):
+            if not attrs.get("active", True):
                 continue
 
             # Skip non-producer roles (bourgeoisie)
-            role = data.get("role")
+            role = attrs.get("role")
             if role not in _PRODUCER_ROLES:
                 continue
 
             # Find territory via TENANCY edge
-            territory_id = self._find_tenancy_target(graph, node_id)
+            territory_id = self._find_tenancy_target(graph, node.id)
             if territory_id is None:
                 continue
 
             # Calculate production based on territory biocapacity
-            territory_data = graph.nodes[territory_id]
-            biocapacity = territory_data.get("biocapacity", 0.0)
-            max_biocapacity = territory_data.get("max_biocapacity", 1.0)
+            territory_node = graph.get_node(territory_id)
+            territory_attrs = territory_node.attributes if territory_node else {}
+            biocapacity = territory_attrs.get("biocapacity", 0.0)
+            max_biocapacity = territory_attrs.get("max_biocapacity", 1.0)
 
             # Calculate biocapacity ratio (avoid division by zero)
             bio_ratio = 0.0 if max_biocapacity <= 0 else biocapacity / max_biocapacity
 
             # Mass Line: Scale production by population (demographic block size)
-            population = data.get("population", 1)
+            population = attrs.get("population", 1)
 
             # Determine effective labor power from tensor or fallback (Feature 020)
             effective_labor_power = base_labor_power  # default fallback
             tensor_registry = getattr(services, "tensor_registry", None)
             if tensor_registry is not None:
-                fips_code = territory_data.get("fips_code")
+                fips_code = territory_attrs.get("fips_code")
                 if fips_code is not None:
-                    current_year = graph.graph.get("base_year", 2022)
+                    current_year = graph.get_graph_attr("base_year", 2022)
                     tensor = tensor_registry.get(fips_code, current_year)
                     if not isinstance(tensor, NoDataSentinel):
                         # Use variable capital as proxy for productive capacity
@@ -143,26 +150,29 @@ class ProductionSystem:
 
             # Calculate production value
             produced_value = (effective_labor_power * population) * bio_ratio
-            current_wealth = data.get("wealth", 0.0)
+            current_wealth = attrs.get("wealth", 0.0)
 
             # Route production based on role type
             if role in _DIRECT_PRODUCER_ROLES:
                 # Direct producers: production goes to worker wealth
-                graph.nodes[node_id]["wealth"] = current_wealth + produced_value
+                graph.update_node(node.id, wealth=current_wealth + produced_value)
             elif role in _EMPLOYED_PRODUCER_ROLES:
                 # Employed producers (LA): production routes to employer
                 # Wages phase will pay back productivity + super-wage bonus
-                employer_id = self._find_employer(graph, node_id)
+                employer_id = self._find_employer(graph, node.id)
                 if employer_id is not None:
                     # Route production to employer's wealth
-                    employer_wealth = graph.nodes[employer_id].get("wealth", 0.0)
-                    graph.nodes[employer_id]["wealth"] = employer_wealth + produced_value
+                    employer_node = graph.get_node(employer_id)
+                    employer_wealth = (
+                        employer_node.attributes.get("wealth", 0.0) if employer_node else 0.0
+                    )
+                    graph.update_node(employer_id, wealth=employer_wealth + produced_value)
                     # Store production for wages phase
-                    la_production[node_id] = produced_value
+                    la_production[node.id] = produced_value
                 else:
                     # Fallback: no employer found, LA produces directly
                     # This shouldn't happen in a properly configured scenario
-                    graph.nodes[node_id]["wealth"] = current_wealth + produced_value
+                    graph.update_node(node.id, wealth=current_wealth + produced_value)
 
             # Accumulate production by territory for extraction_intensity
             if territory_id and produced_value > 0:
@@ -171,12 +181,12 @@ class ProductionSystem:
                 )
 
         # Store LA production for wages phase (ImperialRentSystem)
-        graph.graph["la_production"] = la_production
+        graph.set_graph_attr("la_production", la_production)
 
         # Set extraction_intensity on all territories
         self._update_extraction_intensities(graph, territory_production)
 
-    def _find_tenancy_target(self, graph: nx.DiGraph[str], worker_id: str) -> str | None:
+    def _find_tenancy_target(self, graph: GraphProtocol, worker_id: str) -> str | None:
         """Find the territory a worker occupies via TENANCY edge.
 
         Args:
@@ -186,12 +196,12 @@ class ProductionSystem:
         Returns:
             Territory node ID if found, None otherwise.
         """
-        for _, target_id, edge_data in graph.out_edges(worker_id, data=True):
-            if edge_data.get("edge_type") == EdgeType.TENANCY:
-                return target_id
+        for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
+            if edge.source_id == worker_id:
+                return edge.target_id
         return None
 
-    def _find_employer(self, graph: nx.DiGraph[str], worker_id: str) -> str | None:
+    def _find_employer(self, graph: GraphProtocol, worker_id: str) -> str | None:
         """Find employer via incoming WAGES edge (employer -> worker).
 
         In the Amin/Wallerstein model, the Labor Aristocracy works for the
@@ -205,14 +215,14 @@ class ProductionSystem:
         Returns:
             Employer node ID if found, None otherwise.
         """
-        for source_id, _, edge_data in graph.in_edges(worker_id, data=True):
-            if edge_data.get("edge_type") == EdgeType.WAGES:
-                return source_id
+        for edge in graph.query_edges(edge_type=EdgeType.WAGES):
+            if edge.target_id == worker_id:
+                return edge.source_id
         return None
 
     def _update_extraction_intensities(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         territory_production: dict[str, float],
     ) -> None:
         """Update extraction_intensity on territory nodes.
@@ -226,12 +236,10 @@ class ProductionSystem:
             graph: The world graph with territory nodes.
             territory_production: Map of territory_id -> total production this tick.
         """
-        for node_id, data in graph.nodes(data=True):
-            if data.get("_node_type") != "territory":
-                continue
-
-            total_production = territory_production.get(node_id, 0.0)
-            max_biocapacity = data.get("max_biocapacity", 100.0)
+        for node in graph.query_nodes(node_type="territory"):
+            attrs = node.attributes
+            total_production = territory_production.get(node.id, 0.0)
+            max_biocapacity = attrs.get("max_biocapacity", 100.0)
 
             intensity = min(1.0, total_production / max_biocapacity) if max_biocapacity > 0 else 0.0
-            graph.nodes[node_id]["extraction_intensity"] = intensity
+            graph.update_node(node.id, extraction_intensity=intensity)

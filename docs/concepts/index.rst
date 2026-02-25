@@ -57,11 +57,14 @@ Consciousness & Organization
    :maxdepth: 1
 
    george-jackson-model
+   dialectical-field-theory
    percolation-theory
    topology
 
 How revolutionary consciousness forms, spreads, and condenses into
-organized movements capable of collective action.
+organized movements capable of collective action. The dialectical field
+topology framework formalizes Mao's *On Contradiction* as computable
+field operations on the simulation graph.
 
 State Repression
 ----------------

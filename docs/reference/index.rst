@@ -102,8 +102,11 @@ Topology System
    :maxdepth: 1
 
    topology
+   dialectical-field-topology
 
-Percolation theory metrics, TopologyMonitor observer, and resilience testing.
+Percolation theory metrics, TopologyMonitor observer, resilience testing,
+and the dialectical field topology framework (contradiction fields,
+derivatives, curvature, edge mode state machine).
 
 Design System
 -------------

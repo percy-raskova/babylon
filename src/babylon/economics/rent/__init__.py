@@ -8,4 +8,33 @@ See Also:
     :mod:`babylon.economics.tensor`: ValueTensor4x3 production data
 """
 
-__all__: list[str] = []
+from babylon.economics.rent.calculator import (
+    DefaultHousingDecompositionCalculator,
+    DefaultRentCalculator,
+    HousingDecompositionCalculator,
+    RentCalculator,
+)
+from babylon.economics.rent.data_sources import (
+    CountyRentalIncomeSource,
+    HousingDataSource,
+)
+from babylon.economics.rent.types import (
+    HousingValueDecomposition,
+    RentCategory,
+    RentExtraction,
+)
+
+__all__: list[str] = [
+    # Types
+    "RentCategory",
+    "RentExtraction",
+    "HousingValueDecomposition",
+    # Protocols
+    "RentCalculator",
+    "HousingDecompositionCalculator",
+    "CountyRentalIncomeSource",
+    "HousingDataSource",
+    # Implementations
+    "DefaultRentCalculator",
+    "DefaultHousingDecompositionCalculator",
+]

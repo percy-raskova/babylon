@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
 # ============================================================================
 # THRESHOLD CONSTANTS (Module-Level)
 # ============================================================================
@@ -22,3 +24,88 @@ rate increase (0.20) higher than other counter-tendencies because these
 are the primary mechanisms sustaining core profit rates. The remaining
 four tendencies receive equal weight (0.15 each). Sum = 1.0.
 """
+
+_IMPERIAL_RENT_EPSILON: Final[float] = 1e-10
+"""Epsilon for imperial rent normalization (prevents division by zero)."""
+
+
+class CounterTendencyStrength(BaseModel):
+    """Aggregate measure of six TRPF counter-tendencies.
+
+    Feature: 024-capital-volume-iii (FR-010, FR-011)
+
+    Tracks the six counter-tendencies to the tendency of the rate of
+    profit to fall (Capital Vol. III, Ch. 14):
+
+    1. Increasing exploitation rate (rising s/v)
+    2. Wage suppression (productivity-wage gap)
+    3. Cheapening of constant capital elements
+    4. Relative surplus population (reserve army)
+    5. Imperial rent / unequal exchange
+    6. Fictitious profits (financial sector)
+
+    The computed ``net_counter_tendency`` is a weighted sum using
+    :data:`COUNTER_TENDENCY_WEIGHTS`. Positive values indicate
+    counter-tendencies dominating; negative indicates TRPF dominating.
+
+    Args:
+        year: Calendar year.
+        exploitation_rate_change: Year-over-year change in s/v ratio.
+        wage_suppression: Productivity growth minus wage growth gap (>= 0).
+        constant_capital_cheapening: Rate of change in capital goods prices.
+        reserve_army_size: U-6 unemployment rate [0, 1].
+        imperial_rent_flow: Net unequal exchange Phi (dollars, >= 0).
+        fictitious_profit_share: Financial sector share of total profits [0, 1].
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int = Field(..., ge=2007, le=2040)
+    exploitation_rate_change: float = Field(default=0.0, description="Delta(s/v) YoY")
+    wage_suppression: float = Field(
+        default=0.0, ge=0.0, description="Productivity growth - wage growth gap"
+    )
+    constant_capital_cheapening: float = Field(
+        default=0.0, description="Rate of decline in capital goods prices"
+    )
+    reserve_army_size: float = Field(default=0.0, ge=0.0, le=1.0, description="U-6 unemployment")
+    imperial_rent_flow: float = Field(default=0.0, ge=0.0, description="Net unequal exchange Phi")
+    fictitious_profit_share: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Financial sector profit share"
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def net_counter_tendency(self) -> float:
+        """Weighted sum of counter-tendency indicators.
+
+        Positive = counter-tendencies dominating (profit rate sustained).
+        Negative = TRPF dominating (profit rate falling).
+
+        Indicator mapping:
+
+        - [0] exploitation_rate_change: direct (rising s/v = positive CT)
+        - [1] wage_suppression: direct (gap = positive CT)
+        - [2] -constant_capital_cheapening: inverted (negative price change
+          = cheapening = positive CT)
+        - [3] reserve_army_size: direct (high unemployment = positive CT)
+        - [4] imperial_rent_flow: normalized to [0, 1] binary indicator
+        - [5] fictitious_profit_share: direct
+        """
+        imperial_normalized: float
+        if self.imperial_rent_flow > 0:
+            imperial_normalized = self.imperial_rent_flow / max(
+                self.imperial_rent_flow, _IMPERIAL_RENT_EPSILON
+            )
+        else:
+            imperial_normalized = 0.0
+
+        indicators: list[float] = [
+            self.exploitation_rate_change,
+            self.wage_suppression,
+            -self.constant_capital_cheapening,
+            self.reserve_army_size,
+            imperial_normalized,
+            self.fictitious_profit_share,
+        ]
+        return sum(w * v for w, v in zip(indicators, COUNTER_TENDENCY_WEIGHTS, strict=True))

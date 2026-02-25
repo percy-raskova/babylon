@@ -192,6 +192,7 @@ ______________________________________________________________________
 - **CounterTendencyStrength**: Aggregate measure of the six identified counter-tendencies to TRPF with net signed indicator.
 - **CreditCrisisIndicator**: Composite indicator combining overproduction signal, profit squeeze, and liquidity crisis flags.
 - **DebtAccumulation**: Tracks cumulative shortfall when enterprise profit is negative across ticks. Stored at county level. Increases when p < 0 (interest + rent + taxes > surplus), decreases when p > 0 and surplus is applied to retire accumulated debt.
+- **NationalFinancialParameters**: Container for all national-level financial state computed once per tick: InterestRateState, CreditState, FictitiousCapitalStock, CounterTendencyStrength, and MonetaryAdjustment. Extends the existing NationalTickParameters pattern.
 - **MonetaryAdjustment**: Conversion factors between nominal, real, and labor-time value bases for a given year.
 
 ## Success Criteria *(mandatory)*

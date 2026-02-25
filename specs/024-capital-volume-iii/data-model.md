@@ -194,6 +194,17 @@ Computed fields:
 Methods:
 - `update(enterprise_profit)`: If profit < 0, add |profit| to debt. If profit > 0, subtract min(profit, debt) from debt.
 
+### CreditCrisisIndicator
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| overproduction_signal | bool | — | Inventories rising, capacity utilization falling |
+| profit_squeeze | bool | — | Profit rate falling while debt service rising |
+| liquidity_crisis | bool | — | Spread spiking, credit contracting |
+
+Computed fields:
+- `crisis_probability`: sum(signals) / 3
+
 ### FinancialCrisisAssessment
 
 | Field | Type | Constraints | Description |
@@ -204,9 +215,10 @@ Methods:
 | overaccumulation | bool | — | Financialization ratio > threshold |
 | credit_fragility | bool | — | Default rate * spread > threshold |
 | claims_exceed_surplus | bool | — | i + r + t > s |
+| credit_crisis_indicator | CreditCrisisIndicator | — | Composite credit-specific signals |
 
 Computed fields:
-- `active_signals`: Count of True flags
+- `active_signals`: Count of True flags (profit_squeeze, overaccumulation, credit_fragility, claims_exceed_surplus)
 - `crisis_probability`: active_signals / 4
 
 ## Extended Existing Entities

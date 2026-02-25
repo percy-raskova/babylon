@@ -39,14 +39,16 @@ Economic Theory
    :maxdepth: 1
 
    imperial-rent
+   volume-i-theory
    piketty-profit-rate
    survival-calculus
    reproductive-labor
 
-The mathematical foundations: Imperial Rent extraction, labor aristocracy,
-the survival calculus that drives agent behavior, Piketty's rate of return
-framework for crisis detection, and the proletarian feminist analysis of
-reproductive labor and shadow wages.
+The mathematical foundations: Imperial Rent extraction, Capital Volume I
+production dynamics (reserve army, dispossession, working day), labor
+aristocracy, the survival calculus that drives agent behavior, Piketty's
+rate of return framework for crisis detection, and the proletarian
+feminist analysis of reproductive labor and shadow wages.
 
 Consciousness & Organization
 ----------------------------

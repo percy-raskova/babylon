@@ -37,9 +37,11 @@ Mathematical Formulas
 
    formulas
    class-dynamics
+   volume-i-production
 
 All simulation formulas: imperial rent, survival calculus, consciousness
-drift, solidarity transmission, dynamic balance, and class wealth dynamics ODEs.
+drift, solidarity transmission, dynamic balance, class wealth dynamics ODEs,
+and Capital Volume I production dynamics (reserve army, dispossession, working day).
 
 Simulation Systems
 ------------------

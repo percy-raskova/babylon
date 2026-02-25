@@ -35,6 +35,10 @@ repos:
           - sqlalchemy>=2.0
           - chromadb>=1.0
           - python-dotenv>=1.0
+          - xgi>=0.10
+          - pandas>=2.0
+          - scipy>=1.11
+          - openpyxl>=3.1
           - aiohttp>=3.0
           - backoff>=2.0
           - ratelimit>=2.0

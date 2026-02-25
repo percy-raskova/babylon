@@ -17,7 +17,7 @@ from collections import defaultdict
 from typing import Any
 
 import networkx as nx
-import xgi  # type: ignore[import-untyped,import-not-found,unused-ignore]
+import xgi  # type: ignore[import-untyped]
 
 from babylon.models.entities.community import (
     LEGAL_STATUS_MULTIPLIERS,

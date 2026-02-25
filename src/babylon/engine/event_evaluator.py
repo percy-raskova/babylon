@@ -15,6 +15,7 @@ from babylon.models.enums import EdgeType
 if TYPE_CHECKING:
     import networkx as nx
 
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.models.entities.event_template import (
         EdgeCondition,
         EventTemplate,
@@ -26,22 +27,36 @@ if TYPE_CHECKING:
     )
 
 
+def _ensure_protocol(graph: nx.DiGraph[str] | GraphProtocol) -> GraphProtocol:
+    """Wrap raw nx.DiGraph in GraphProtocol adapter if needed."""
+    from babylon.engine.graph_protocol import GraphProtocol
+
+    if isinstance(graph, GraphProtocol):
+        return graph
+
+    from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+    return NetworkXAdapter.wrap(graph)
+
+
 def evaluate_template(
     template: EventTemplate,
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
     current_tick: int,
 ) -> Resolution | None:
     """Evaluate an EventTemplate against the current graph state.
 
     Args:
         template: The EventTemplate to evaluate.
-        graph: NetworkX graph representing WorldState.
+        graph: Graph representing WorldState.
         current_tick: Current simulation tick.
 
     Returns:
         The matching Resolution if preconditions met and a resolution matches,
         None otherwise.
     """
+    graph = _ensure_protocol(graph)
+
     # Check cooldown
     if template.is_on_cooldown(current_tick):
         return None
@@ -62,17 +77,19 @@ def evaluate_template(
 
 def evaluate_preconditions(
     preconditions: PreconditionSet,
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> bool:
     """Evaluate a PreconditionSet against the graph.
 
     Args:
         preconditions: Set of conditions to evaluate.
-        graph: NetworkX graph to evaluate against.
+        graph: Graph to evaluate against.
 
     Returns:
         True if preconditions are satisfied, False otherwise.
     """
+    graph = _ensure_protocol(graph)
+
     results: list[bool] = []
 
     for node_cond in preconditions.node_conditions:
@@ -95,22 +112,25 @@ def evaluate_preconditions(
 
 def evaluate_node_condition(
     condition: NodeCondition,
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> bool:
     """Evaluate a NodeCondition against matching nodes.
 
     Args:
         condition: The node condition to evaluate.
-        graph: NetworkX graph to evaluate against.
+        graph: Graph to evaluate against.
 
     Returns:
         True if condition is satisfied, False otherwise.
     """
+    graph = _ensure_protocol(graph)
+
     matching_nodes = filter_nodes(graph, condition.node_filter)
     values: list[float] = []
 
     for node_id in matching_nodes:
-        node_data = graph.nodes[node_id]
+        node = graph.get_node(node_id)
+        node_data = node.attributes if node else {}
         value = get_nested_value(node_data, condition.path)
         if value is not None:
             values.append(value)
@@ -160,17 +180,19 @@ def _collect_edge_value(
 
 def evaluate_edge_condition(
     condition: EdgeCondition,
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> bool:
     """Evaluate an EdgeCondition against edges.
 
     Args:
         condition: The edge condition to evaluate.
-        graph: NetworkX graph to evaluate against.
+        graph: Graph to evaluate against.
 
     Returns:
         True if condition is satisfied, False otherwise.
     """
+    graph = _ensure_protocol(graph)
+
     matching_nodes = filter_nodes(graph, condition.node_filter)
 
     edge_values: list[float] = []
@@ -178,14 +200,18 @@ def evaluate_edge_condition(
 
     for node_id in matching_nodes:
         # Collect from both incoming and outgoing edges
-        all_edges = list(graph.in_edges(node_id, data=True)) + list(
-            graph.out_edges(node_id, data=True)
-        )
-
-        for source, target, edge_data in all_edges:
-            if (source, target) in seen_edges:
+        for edge in graph.query_edges():
+            if edge.source_id != node_id and edge.target_id != node_id:
                 continue
-            seen_edges.add((source, target))
+
+            edge_key = (edge.source_id, edge.target_id)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+
+            # Build edge_data dict for _collect_edge_value compatibility
+            edge_data = dict(edge.attributes)
+            edge_data["edge_type"] = edge.edge_type
 
             value = _collect_edge_value(edge_data, condition.edge_type, condition.metric)
             if value is not None:
@@ -206,40 +232,37 @@ def evaluate_edge_condition(
 
 def evaluate_graph_condition(
     condition: GraphCondition,
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> bool:
     """Evaluate a GraphCondition against graph-level metrics.
 
     Args:
         condition: The graph condition to evaluate.
-        graph: NetworkX graph to evaluate against.
+        graph: Graph to evaluate against.
 
     Returns:
         True if condition is satisfied, False otherwise.
     """
+    graph = _ensure_protocol(graph)
+
     value = calculate_graph_metric(graph, condition.metric)
     return compare(value, condition.operator, condition.threshold)
 
 
-def _calculate_edge_density(graph: nx.DiGraph[str], edge_type: EdgeType) -> float:
+def _calculate_edge_density(graph: GraphProtocol, edge_type: EdgeType) -> float:
     """Calculate edge density for a specific edge type."""
-    type_str = edge_type.value
-    edge_count = sum(
-        1
-        for _, _, d in graph.edges(data=True)
-        if d.get("edge_type") == edge_type or d.get("edge_type") == type_str
-    )
-    num_nodes = graph.number_of_nodes()
+    edge_count = sum(1 for edge in graph.query_edges(edge_type=edge_type))
+    num_nodes = graph.count_nodes()
     max_edges = num_nodes * (num_nodes - 1)
     return edge_count / max_edges if max_edges > 0 else 0.0
 
 
-def _get_social_nodes(graph: nx.DiGraph[str]) -> list[dict[str, Any]]:
+def _get_social_nodes(graph: GraphProtocol) -> list[dict[str, Any]]:
     """Get all non-territory nodes from graph."""
-    return [data for _, data in graph.nodes(data=True) if data.get("_node_type") != "territory"]
+    return [node.attributes for node in graph.query_nodes() if node.node_type != "territory"]
 
 
-def _calculate_average_ideology_field(graph: nx.DiGraph[str], field: str) -> float:
+def _calculate_average_ideology_field(graph: GraphProtocol, field: str) -> float:
     """Calculate average of an ideology field across social nodes."""
     values = []
     for node_data in _get_social_nodes(graph):
@@ -249,7 +272,7 @@ def _calculate_average_ideology_field(graph: nx.DiGraph[str], field: str) -> flo
     return sum(values) / len(values) if values else 0.0
 
 
-def _calculate_gini(graph: nx.DiGraph[str]) -> float:
+def _calculate_gini(graph: GraphProtocol) -> float:
     """Calculate Gini coefficient for wealth distribution."""
     wealth_values = [data.get("wealth", 0.0) for data in _get_social_nodes(graph)]
 
@@ -264,16 +287,18 @@ def _calculate_gini(graph: nx.DiGraph[str]) -> float:
     return cumulative / (n * total) if total > 0 else 0.0
 
 
-def calculate_graph_metric(graph: nx.DiGraph[str], metric: str) -> float:
+def calculate_graph_metric(graph: nx.DiGraph[str] | GraphProtocol, metric: str) -> float:
     """Calculate a graph-level aggregate metric.
 
     Args:
-        graph: NetworkX graph to analyze.
+        graph: Graph to analyze.
         metric: Name of the metric to calculate.
 
     Returns:
         The calculated metric value.
     """
+    graph = _ensure_protocol(graph)
+
     # Dispatch table for metric calculations
     dispatch: dict[str, Any] = {
         "solidarity_density": lambda: _calculate_edge_density(graph, EdgeType.SOLIDARITY),
@@ -291,26 +316,31 @@ def calculate_graph_metric(graph: nx.DiGraph[str], metric: str) -> float:
 
 
 def filter_nodes(
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
     node_filter: NodeFilter | None,
 ) -> list[str]:
     """Filter nodes based on NodeFilter criteria.
 
     Args:
-        graph: NetworkX graph containing nodes.
+        graph: Graph containing nodes.
         node_filter: Filter criteria, or None for all nodes.
 
     Returns:
         List of node IDs matching the filter.
     """
+    graph = _ensure_protocol(graph)
+
     if node_filter is None:
-        return list(graph.nodes())
+        return [node.id for node in graph.query_nodes()]
 
     result: list[str] = []
-    for node_id in graph.nodes():
-        node_data = graph.nodes[node_id]
-        if node_filter.matches(str(node_id), dict(node_data)):
-            result.append(str(node_id))
+    for node in graph.query_nodes():
+        # NodeFilter.matches() expects _node_type in the data dict
+        node_data = dict(node.attributes)
+        if node.node_type is not None:
+            node_data["_node_type"] = node.node_type
+        if node_filter.matches(node.id, node_data):
+            result.append(node.id)
 
     return result
 
@@ -413,7 +443,7 @@ def aggregate_and_compare(
 
 def get_matching_nodes_for_resolution(
     template: EventTemplate,
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> list[str]:
     """Get nodes that match the template's node conditions.
 
@@ -421,17 +451,20 @@ def get_matching_nodes_for_resolution(
 
     Args:
         template: The EventTemplate being resolved.
-        graph: NetworkX graph to search.
+        graph: Graph to search.
 
     Returns:
         List of node IDs that satisfy the node conditions.
     """
+    graph = _ensure_protocol(graph)
+
     matching: set[str] = set()
 
     for node_cond in template.preconditions.node_conditions:
         filtered = filter_nodes(graph, node_cond.node_filter)
         for node_id in filtered:
-            node_data = graph.nodes[node_id]
+            node = graph.get_node(node_id)
+            node_data = node.attributes if node else {}
             value = get_nested_value(node_data, node_cond.path)
             if value is not None and compare(value, node_cond.operator, node_cond.threshold):
                 matching.add(node_id)

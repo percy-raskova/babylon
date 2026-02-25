@@ -12,8 +12,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.engine.event_evaluator import (
     evaluate_template,
@@ -22,6 +20,9 @@ from babylon.engine.event_evaluator import (
 from babylon.engine.systems.protocol import ContextType
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
     from babylon.models.entities.event_template import (
         EventTemplate,
@@ -83,17 +84,24 @@ class EventTemplateSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Evaluate templates and apply matching resolutions.
 
         Args:
-            graph: Mutable NetworkX graph representing WorldState.
+            graph: Mutable graph representing WorldState.
             services: ServiceContainer with config, formulas, event_bus, database.
             context: TickContext or dict with 'tick' (int) and optional metadata.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Extract tick from context
         tick = context.tick if hasattr(context, "tick") else context.get("tick", 0)
 
@@ -120,7 +128,7 @@ class EventTemplateSystem:
         self,
         template: EventTemplate,
         resolution: Resolution,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         tick: int,
     ) -> None:
@@ -129,7 +137,7 @@ class EventTemplateSystem:
         Args:
             template: The triggered EventTemplate.
             resolution: The selected Resolution.
-            graph: NetworkX graph to modify.
+            graph: Graph to modify.
             services: ServiceContainer with event_bus.
             tick: Current simulation tick.
         """
@@ -161,14 +169,14 @@ class EventTemplateSystem:
     def _apply_effect(
         self,
         effect: TemplateEffect,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         matching_nodes: list[str],
     ) -> None:
         """Apply a single effect to the graph.
 
         Args:
             effect: The TemplateEffect to apply.
-            graph: NetworkX graph to modify.
+            graph: Graph to modify.
             matching_nodes: Nodes matching template preconditions.
         """
         # Handle ${node_id} substitution
@@ -183,65 +191,52 @@ class EventTemplateSystem:
     def _apply_effect_to_node(
         self,
         effect: TemplateEffect,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         node_id: str,
     ) -> None:
         """Apply an effect to a specific node.
 
         Args:
             effect: The TemplateEffect to apply.
-            graph: NetworkX graph containing the node.
+            graph: Graph containing the node.
             node_id: ID of the node to modify.
         """
-        if node_id not in graph.nodes:
+        node = graph.get_node(node_id)
+        if node is None:
             logger.warning("Effect target node %s not found in graph", node_id)
             return
 
-        node_data = graph.nodes[node_id]
+        attrs = node.attributes
 
         # Handle nested attribute paths (e.g., ideology.class_consciousness)
         path_parts = effect.attribute.split(".")
 
         if len(path_parts) == 1:
             # Simple attribute
-            current = node_data.get(effect.attribute, 0.0)
+            current = attrs.get(effect.attribute, 0.0)
             new_value = effect.apply_to(float(current))
-            graph.nodes[node_id][effect.attribute] = new_value
+            graph.update_node(node_id, **{effect.attribute: new_value})
         else:
-            # Nested attribute - navigate to parent, then modify leaf
-            parent_path = ".".join(path_parts[:-1])
+            # Nested attribute - copy root dict, modify copy, write back
+            root_key = path_parts[0]
+            root_value = attrs.get(root_key, {})
+
+            # If root value isn't a dict, we can't navigate nested paths
+            if not isinstance(root_value, dict):
+                return
+
+            root_dict = dict(root_value)
+
+            # Navigate to parent of leaf, creating intermediate dicts
+            parent: dict[str, Any] = root_dict
+            for key in path_parts[1:-1]:
+                if key not in parent or not isinstance(parent[key], dict):
+                    parent[key] = {}
+                parent = parent[key]
+
             leaf_key = path_parts[-1]
+            current = parent.get(leaf_key, 0.0)
+            new_value = effect.apply_to(float(current))
+            parent[leaf_key] = new_value
 
-            # Get or create parent dict
-            parent = self._get_or_create_nested_dict(node_data, parent_path)
-            if parent is not None:
-                current = parent.get(leaf_key, 0.0)
-                new_value = effect.apply_to(float(current))
-                parent[leaf_key] = new_value
-
-    def _get_or_create_nested_dict(
-        self,
-        data: dict[str, Any],
-        path: str,
-    ) -> dict[str, Any] | None:
-        """Navigate to a nested dict, creating intermediate dicts if needed.
-
-        Args:
-            data: Root dictionary.
-            path: Dot-notation path to the nested dict.
-
-        Returns:
-            The nested dictionary, or None if path is invalid.
-        """
-        keys = path.split(".")
-        current: Any = data
-
-        for key in keys:
-            if isinstance(current, dict):
-                if key not in current:
-                    current[key] = {}
-                current = current[key]
-            else:
-                return None
-
-        return current if isinstance(current, dict) else None
+            graph.update_node(node_id, **{root_key: root_dict})

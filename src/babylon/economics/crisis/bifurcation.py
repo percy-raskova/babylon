@@ -32,9 +32,11 @@ from babylon.economics.tick.types import (
     CrisisPhase,
     CrisisState,
 )
+from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
     from babylon.economics.dynamics.types import ClassDistribution
+    from babylon.engine.graph_protocol import GraphProtocol
 
 
 class BifurcationRiskCalculator:
@@ -67,7 +69,7 @@ class BifurcationRiskCalculator:
 
     def compute(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         fips: str,
         crisis_state: CrisisState,
         previous_distribution: ClassDistribution,
@@ -85,6 +87,13 @@ class BifurcationRiskCalculator:
         Returns:
             BifurcationRiskMetric with score, components.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # FR-011: Non-crisis returns neutral
         if crisis_state.phase == CrisisPhase.NORMAL:
             return BifurcationRiskMetric.neutral()
@@ -111,7 +120,7 @@ class BifurcationRiskCalculator:
 
     def _compute_solidarity_density(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         fips: str,
     ) -> float:
         """Compute cross-class solidarity density (FR-012).
@@ -126,15 +135,23 @@ class BifurcationRiskCalculator:
         Returns:
             Solidarity density [0, 1].
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Find social class nodes in this county
         county_nodes: list[tuple[str, str]] = []  # (node_id, role)
-        for node_id, data in graph.nodes(data=True):
-            if data.get("_node_type") != "social_class":
+        for node in graph.query_nodes():
+            if node.node_type != "social_class":
                 continue
-            if data.get("territory") != fips:
+            attrs = node.attributes
+            if attrs.get("territory") != fips:
                 continue
-            role = data.get("role", "")
-            county_nodes.append((node_id, str(role)))
+            role = attrs.get("role", "")
+            county_nodes.append((node.id, str(role)))
 
         # Need >= 2 distinct classes
         distinct_roles = {role for _, role in county_nodes}
@@ -157,16 +174,15 @@ class BifurcationRiskCalculator:
             for nid_b, role_b in county_nodes:
                 if nid_a == nid_b or role_a == role_b:
                     continue
-                if graph.has_edge(nid_a, nid_b):
-                    edge_data = graph.edges[nid_a, nid_b]
-                    if edge_data.get("edge_type") == "solidarity":
-                        actual += 1
+                edge = graph.get_edge(nid_a, nid_b, EdgeType.SOLIDARITY)
+                if edge is not None:
+                    actual += 1
 
         return actual / possible
 
     def _compute_legitimation(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         fips: str,
     ) -> float:
         """Compute legitimation index (FR-013).
@@ -180,13 +196,21 @@ class BifurcationRiskCalculator:
         Returns:
             Legitimation index [0, 1].
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         agitations: list[float] = []
-        for _node_id, data in graph.nodes(data=True):
-            if data.get("_node_type") != "social_class":
+        for node in graph.query_nodes():
+            if node.node_type != "social_class":
                 continue
-            if data.get("territory") != fips:
+            attrs = node.attributes
+            if attrs.get("territory") != fips:
                 continue
-            ideology = data.get("ideology", {})
+            ideology = attrs.get("ideology", {})
             if isinstance(ideology, dict):
                 agitation = ideology.get("agitation", 0.0)
             else:

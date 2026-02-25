@@ -56,6 +56,7 @@ from babylon.economics.tick.types import (
 )
 
 if TYPE_CHECKING:
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
     from babylon.engine.systems.protocol import ContextType
 
@@ -99,17 +100,24 @@ class TickDynamicsSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Execute tick dynamics pipeline on year boundaries.
 
         Args:
-            graph: Mutable NetworkX graph (modified in-place).
+            graph: Mutable NetworkX graph or GraphProtocol (modified in-place).
             services: ServiceContainer with calculator services.
             context: TickContext or dict with tick number.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Extract tick number
         tick: int
         if hasattr(context, "tick"):
@@ -207,7 +215,9 @@ class TickDynamicsSystem:
         # Write to graph
         write_tick_state_to_graph(graph, new_state)
 
-    def _determine_year(self, tick: int, graph: nx.DiGraph[str] | None = None) -> int:
+    def _determine_year(
+        self, tick: int, graph: nx.DiGraph[str] | GraphProtocol | None = None
+    ) -> int:
         """Determine simulation year from tick number and graph metadata.
 
         Args:
@@ -220,43 +230,64 @@ class TickDynamicsSystem:
         """
         base_year = 2010
         if graph is not None:
-            base_year = graph.graph.get("base_year", 2010)
+            from babylon.engine.graph_protocol import GraphProtocol
+
+            if not isinstance(graph, GraphProtocol):
+                from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+                graph = NetworkXAdapter.wrap(graph)
+            base_year = graph.get_graph_attr("base_year", 2010)
         return base_year + tick // WEEKS_PER_YEAR
 
-    def _get_territory_fips(self, graph: nx.DiGraph[str]) -> list[str]:
+    def _get_territory_fips(self, graph: nx.DiGraph[str] | GraphProtocol) -> list[str]:
         """Extract FIPS codes from territory nodes in graph.
 
         Args:
-            graph: NetworkX graph.
+            graph: NetworkX graph or GraphProtocol.
 
         Returns:
             List of FIPS codes for territory nodes.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         fips_list: list[str] = []
-        for node_id, data in graph.nodes(data=True):
-            if data.get("_node_type") == "territory":
-                fips_list.append(str(node_id))
+        for node in graph.query_nodes():
+            if node.node_type == "territory":
+                fips_list.append(str(node.id))
         return fips_list
 
     def _bootstrap_county_states(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         year: int,
     ) -> dict[str, CountyEconomicState]:
         """Bootstrap county states from graph territory nodes.
 
         Args:
-            graph: NetworkX graph with territory nodes.
+            graph: NetworkX graph or GraphProtocol with territory nodes.
             year: Current year.
 
         Returns:
             Dict of FIPS -> CountyEconomicState with defaults.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         states: dict[str, CountyEconomicState] = {}
-        for node_id, data in graph.nodes(data=True):
-            if data.get("_node_type") != "territory":
+        for node in graph.query_nodes():
+            if node.node_type != "territory":
                 continue
-            fips = str(node_id)
+            fips = str(node.id)
+            data = node.attributes
 
             # Read existing tick_ attributes if present
             if "tick_capital_stock" in data:
@@ -785,7 +816,7 @@ class TickDynamicsSystem:
         self,
         county_states: dict[str, CountyEconomicState],
         prev_county_states: dict[str, CountyEconomicState] | None,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         tick: int,
     ) -> dict[str, CountyEconomicState]:

@@ -15,9 +15,12 @@ See Also:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import networkx as nx
+
+if TYPE_CHECKING:
+    from babylon.engine.graph_protocol import GraphProtocol
 
 from babylon.economics.dynamics.types import ClassDistribution
 from babylon.economics.tick.types import (
@@ -36,7 +39,7 @@ TICK_DYNAMICS_KEY: str = "tick_dynamics"
 
 
 def write_tick_state_to_graph(  # pragma: no mutate — data serialization
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
     state: SimulationTickState,
 ) -> None:
     """Write SimulationTickState to the shared NetworkX graph.
@@ -46,56 +49,67 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
     stored in ``graph.graph["tick_dynamics"]``.
 
     Args:
-        graph: Mutable NetworkX graph (modified in-place).
+        graph: Mutable NetworkX graph or GraphProtocol (modified in-place).
         state: Simulation tick state to write.
     """
+    from babylon.engine.graph_protocol import GraphProtocol
+
+    if not isinstance(graph, GraphProtocol):
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        graph = NetworkXAdapter.wrap(graph)
+
     # Write national-level metadata (includes county_states for persistence
     # through the WorldState round-trip when territory nodes don't exist)
-    graph.graph[TICK_DYNAMICS_KEY] = {  # pragma: no mutate
-        "year": state.year,  # pragma: no mutate
-        "national_params": state.national_params,  # pragma: no mutate
-        "coefficients": state.coefficients,  # pragma: no mutate
-        "tick_summary": state.tick_summary,  # pragma: no mutate
-        "is_year_boundary": True,  # pragma: no mutate
-        "county_states": state.county_states,  # pragma: no mutate
-    }  # pragma: no mutate
+    graph.set_graph_attr(
+        TICK_DYNAMICS_KEY,
+        {  # pragma: no mutate
+            "year": state.year,  # pragma: no mutate
+            "national_params": state.national_params,  # pragma: no mutate
+            "coefficients": state.coefficients,  # pragma: no mutate
+            "tick_summary": state.tick_summary,  # pragma: no mutate
+            "is_year_boundary": True,  # pragma: no mutate
+            "county_states": state.county_states,  # pragma: no mutate
+        },
+    )  # pragma: no mutate
 
     # Write county-level state to Territory nodes
     for fips, county in state.county_states.items():  # pragma: no mutate
-        if fips not in graph.nodes:  # pragma: no mutate
+        node = graph.get_node(fips)  # pragma: no mutate
+        if node is None:  # pragma: no mutate
             continue  # pragma: no mutate
-        node_data = graph.nodes[fips]  # pragma: no mutate
         # Only write to territory nodes
-        if node_data.get("_node_type") != "territory":  # pragma: no mutate
+        if node.node_type != "territory":  # pragma: no mutate
             continue  # pragma: no mutate
 
-        node_data["tick_capital_stock"] = county.capital_stock  # pragma: no mutate
-        node_data["tick_throughput_position"] = county.throughput_position  # pragma: no mutate
-        node_data["tick_supply_chain_depth"] = county.supply_chain_depth  # pragma: no mutate
-        node_data["tick_phi_hour"] = county.phi_hour  # pragma: no mutate
-        node_data["tick_crisis_phase"] = county.crisis_state.phase.value  # pragma: no mutate
-        node_data["tick_crisis_duration"] = county.crisis_state.crisis_duration  # pragma: no mutate
-        node_data["tick_bifurcation_score"] = county.bifurcation_risk.score  # pragma: no mutate
-        node_data["tick_wage_compression"] = (
-            county.crisis_state.cumulative_wage_compression
+        graph.update_node(  # pragma: no mutate
+            fips,  # pragma: no mutate
+            tick_capital_stock=county.capital_stock,  # pragma: no mutate
+            tick_throughput_position=county.throughput_position,  # pragma: no mutate
+            tick_supply_chain_depth=county.supply_chain_depth,  # pragma: no mutate
+            tick_phi_hour=county.phi_hour,  # pragma: no mutate
+            tick_crisis_phase=county.crisis_state.phase.value,  # pragma: no mutate
+            tick_crisis_duration=county.crisis_state.crisis_duration,  # pragma: no mutate
+            tick_bifurcation_score=county.bifurcation_risk.score,  # pragma: no mutate
+            tick_wage_compression=county.crisis_state.cumulative_wage_compression,  # pragma: no mutate
+            tick_class_distribution={  # pragma: no mutate
+                "bourgeoisie": county.class_distribution.bourgeoisie_share,  # pragma: no mutate
+                "petit_bourgeoisie": county.class_distribution.petit_bourgeoisie_share,  # pragma: no mutate
+                "labor_aristocracy": county.class_distribution.labor_aristocracy_share,  # pragma: no mutate
+                "proletariat": county.class_distribution.proletariat_share,  # pragma: no mutate
+                "lumpenproletariat": county.class_distribution.lumpenproletariat_share,  # pragma: no mutate
+            },  # pragma: no mutate
+            tick_unemployment_rate=county.unemployment_rate,  # pragma: no mutate
+            tick_median_wage=county.median_wage,  # pragma: no mutate
+            # Derived rates (from DerivedRates if available)
+            tick_profit_rate=None,  # pragma: no mutate
+            tick_occ=None,  # pragma: no mutate
+            tick_exploitation_rate=None,  # pragma: no mutate
         )  # pragma: no mutate
-        node_data["tick_class_distribution"] = {  # pragma: no mutate
-            "bourgeoisie": county.class_distribution.bourgeoisie_share,  # pragma: no mutate
-            "petit_bourgeoisie": county.class_distribution.petit_bourgeoisie_share,  # pragma: no mutate
-            "labor_aristocracy": county.class_distribution.labor_aristocracy_share,  # pragma: no mutate
-            "proletariat": county.class_distribution.proletariat_share,  # pragma: no mutate
-            "lumpenproletariat": county.class_distribution.lumpenproletariat_share,  # pragma: no mutate
-        }  # pragma: no mutate
-        node_data["tick_unemployment_rate"] = county.unemployment_rate  # pragma: no mutate
-        node_data["tick_median_wage"] = county.median_wage  # pragma: no mutate
-        # Derived rates (from DerivedRates if available)
-        node_data["tick_profit_rate"] = None  # pragma: no mutate
-        node_data["tick_occ"] = None  # pragma: no mutate
-        node_data["tick_exploitation_rate"] = None  # pragma: no mutate
 
 
 def read_tick_state_from_graph(  # pragma: no mutate — data serialization
-    graph: nx.DiGraph[str],
+    graph: nx.DiGraph[str] | GraphProtocol,
 ) -> SimulationTickState | None:
     """Read SimulationTickState from the shared NetworkX graph.
 
@@ -103,13 +117,20 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
     ``write_tick_state_to_graph()``.
 
     Args:
-        graph: NetworkX graph containing tick dynamics attributes.
+        graph: NetworkX graph or GraphProtocol containing tick dynamics attributes.
 
     Returns:
         Reconstructed SimulationTickState, or None if no tick dynamics
         data is present in the graph.
     """
-    tick_data: dict[str, Any] | None = graph.graph.get(TICK_DYNAMICS_KEY)  # pragma: no mutate
+    from babylon.engine.graph_protocol import GraphProtocol
+
+    if not isinstance(graph, GraphProtocol):
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        graph = NetworkXAdapter.wrap(graph)
+
+    tick_data: dict[str, Any] | None = graph.get_graph_attr(TICK_DYNAMICS_KEY)  # pragma: no mutate
     if tick_data is None:  # pragma: no mutate
         return None  # pragma: no mutate
 
@@ -122,13 +143,14 @@ def read_tick_state_from_graph(  # pragma: no mutate — data serialization
     # the tick_data dict (fallback for when graph has no territory nodes,
     # e.g. Feature 020 from_sqlite path)
     county_states: dict[str, CountyEconomicState] = {}  # pragma: no mutate
-    for node_id, node_data in graph.nodes(data=True):  # pragma: no mutate
-        if node_data.get("_node_type") != "territory":  # pragma: no mutate
+    for node in graph.query_nodes():  # pragma: no mutate
+        if node.node_type != "territory":  # pragma: no mutate
             continue  # pragma: no mutate
+        node_data = node.attributes  # pragma: no mutate
         if "tick_capital_stock" not in node_data:  # pragma: no mutate
             continue  # pragma: no mutate
 
-        fips = str(node_id)  # pragma: no mutate
+        fips = str(node.id)  # pragma: no mutate
         dist_dict = node_data.get("tick_class_distribution", {})  # pragma: no mutate
         class_dist = ClassDistribution(  # pragma: no mutate
             fips=fips,  # pragma: no mutate

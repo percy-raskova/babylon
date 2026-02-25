@@ -14,6 +14,8 @@ Enums defined:
 - TerritoryType: Settler-colonial hierarchy classification (Sprint 3.7)
 - EdgeMode: Qualitative contradiction mode on edges (Feature 002)
 - ContradictionCharacter: Antagonistic vs non-antagonistic flag (Feature 002)
+- DispossessionType: Categories of ongoing primitive accumulation (Feature 021)
+- ExploitationMode: Surplus value extraction mode classification (Feature 021)
 """
 
 from enum import StrEnum
@@ -194,6 +196,46 @@ class EventType(StrEnum):
     CO_OPTIVE_BREAKDOWN = "co_optive_breakdown"  # Co-optation failure with bifurcation
     LATENT_CONTRADICTION_RELEASE = "latent_contradiction_release"  # Suppressed df/dt spike
     ASPECT_REVERSAL = "aspect_reversal"  # Dominant party switches on directed edge
+    # Capital Volume I Production Dynamics (Feature 021)
+    RESERVE_ARMY_PRESSURE = "reserve_army_pressure"  # Reserve army wage pressure applied
+    DISPOSSESSION_EVENT = "dispossession_event"  # Aggregate dispossession recorded
+    VALUE_TRANSFER = "value_transfer"  # Inter-territory value transfer from dispossession
+    EXPLOITATION_MODE_SHIFT = "exploitation_mode_shift"  # Exploitation mode reclassified
+
+
+class DispossessionType(StrEnum):
+    """Categories of ongoing primitive accumulation.
+
+    Eight types of extra-economic wealth seizure that transfer value from
+    working-class households to capital. These represent Marx's "primitive
+    accumulation" as an ongoing process, not a historical phase.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-004).
+    """
+
+    FORECLOSURE = "foreclosure"
+    EVICTION = "eviction"
+    TAX_SALE = "tax_sale"
+    EMINENT_DOMAIN = "eminent_domain"
+    WAGE_THEFT = "wage_theft"
+    INCARCERATION_SEIZURE = "incarceration_seizure"
+    PENSION_DEFAULT = "pension_default"
+    GENTRIFICATION_DISPLACEMENT = "gentrification_displacement"
+
+
+class ExploitationMode(StrEnum):
+    """Dominant mode of surplus value extraction for a territory-sector.
+
+    Classifies how surplus value is extracted: by lengthening the working
+    day (absolute), by increasing productivity during a fixed day (relative),
+    or a blend of both.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-007).
+    """
+
+    ABSOLUTE_DOMINANT = "absolute_dominant"
+    RELATIVE_DOMINANT = "relative_dominant"
+    MIXED = "mixed"
 
 
 class OperationalProfile(StrEnum):

@@ -351,6 +351,13 @@ class MockGraphAdapter:
         """Aggregate stub."""
         return {}
 
+    def get_graph_attr(self, key: str, default: Any = None) -> Any:
+        """Get graph attribute stub."""
+        return default
+
+    def set_graph_attr(self, key: str, value: Any) -> None:
+        """Set graph attribute stub."""
+
 
 @pytest.mark.topology
 class TestProtocolCompliance:

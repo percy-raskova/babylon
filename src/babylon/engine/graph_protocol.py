@@ -13,11 +13,12 @@ Design Principles:
     - Minimal but complete: Just enough methods to cover all System needs
     - Lazy evaluation: Return iterators/generators, not materialized lists
 
-Protocol Methods (16 total):
+Protocol Methods (18 total):
     Node CRUD: add_node, get_node, update_node, remove_node
     Edge CRUD: add_edge, get_edge, update_edge, remove_edge
     Traversal: get_neighborhood, execute_traversal, shortest_path
     Set Ops: query_nodes, query_edges, count_nodes, count_edges, aggregate
+    Graph Attrs: get_graph_attr, set_graph_attr
 """
 
 from __future__ import annotations
@@ -339,5 +340,33 @@ class GraphProtocol(Protocol):
         Example:
             >>> graph.aggregate("nodes", group_by="type")
             {"social_class": 4, "territory": 2}
+        """
+        ...
+
+    # ─────────────────────────────────────────────────────────────────────
+    # GRAPH-LEVEL ATTRIBUTES
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_graph_attr(self, key: str, default: Any = None) -> Any:
+        """Retrieve a graph-level attribute.
+
+        Graph attributes store global metadata (e.g., economy state,
+        base_year, tick_dynamics). Maps to a metadata table in DuckDB.
+
+        Args:
+            key: Attribute name to retrieve.
+            default: Value to return if attribute not present.
+
+        Returns:
+            The attribute value or default.
+        """
+        ...
+
+    def set_graph_attr(self, key: str, value: Any) -> None:
+        """Set a graph-level attribute.
+
+        Args:
+            key: Attribute name to set.
+            value: Value to store.
         """
         ...

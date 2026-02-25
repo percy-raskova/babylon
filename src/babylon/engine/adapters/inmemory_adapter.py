@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 class NetworkXAdapter(AggregationMixin, QueryMixin):
     """Reference implementation of GraphProtocol using NetworkX.
 
-    Wraps nx.DiGraph and provides all 16 GraphProtocol methods.
+    Wraps nx.DiGraph and provides all 18 GraphProtocol methods.
     Node types are stored as '_node_type' attribute, edge types as '_edge_type'.
 
     Inherits from mixins:
@@ -58,6 +58,54 @@ class NetworkXAdapter(AggregationMixin, QueryMixin):
     def __init__(self) -> None:
         """Initialize with empty DiGraph."""
         self._graph: nx.DiGraph[str] = nx.DiGraph()
+
+    @classmethod
+    def wrap(cls, graph: nx.DiGraph[str]) -> NetworkXAdapter:
+        """Wrap an existing nx.DiGraph in a protocol adapter.
+
+        Normalizes edge keys: raw graphs from ``WorldState.to_graph()`` store
+        ``edge_type`` (from Pydantic ``model_dump()``), but the adapter uses
+        ``_edge_type``. This method adds ``_edge_type`` alongside existing
+        ``edge_type`` so protocol methods work correctly.  Similarly normalizes
+        ``node_type`` → ``_node_type`` for node type discrimination.
+
+        The adapter holds a **reference** to the graph (not a copy), so
+        mutations via protocol methods flow through to the original graph.
+
+        Args:
+            graph: An existing NetworkX DiGraph to wrap.
+
+        Returns:
+            A NetworkXAdapter backed by the given graph.
+        """
+        adapter = cls.__new__(cls)
+        adapter._graph = graph
+
+        # Normalize node type keys: node_type → _node_type
+        for node_id in graph.nodes:
+            data = graph.nodes[node_id]
+            if "_node_type" not in data and "node_type" in data:
+                data["_node_type"] = data["node_type"]
+
+        # Normalize edge type keys: edge_type → _edge_type
+        for _u, _v, data in graph.edges(data=True):
+            if "_edge_type" not in data and "edge_type" in data:
+                data["_edge_type"] = data["edge_type"]
+
+        return adapter
+
+    @property
+    def underlying_graph(self) -> nx.DiGraph[str]:
+        """Access the underlying NetworkX DiGraph.
+
+        Used by ``WorldState.from_graph()`` to unwrap the adapter back to a
+        raw graph, and by ``topology_monitor`` for NetworkX-specific algorithms
+        (copy-and-purge resilience testing) that have no protocol equivalent.
+
+        Returns:
+            The raw nx.DiGraph backing this adapter.
+        """
+        return self._graph
 
     # ─────────────────────────────────────────────────────────────────────
     # NODE OPERATIONS (CRUD)
@@ -524,6 +572,31 @@ class NetworkXAdapter(AggregationMixin, QueryMixin):
             return None
         except nx.NodeNotFound:
             return None
+
+    # ─────────────────────────────────────────────────────────────────────
+    # GRAPH-LEVEL ATTRIBUTES
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_graph_attr(self, key: str, default: Any = None) -> Any:
+        """Retrieve a graph-level attribute.
+
+        Args:
+            key: Attribute name to retrieve.
+            default: Value to return if attribute not present.
+
+        Returns:
+            The attribute value or default.
+        """
+        return self._graph.graph.get(key, default)
+
+    def set_graph_attr(self, key: str, value: Any) -> None:
+        """Set a graph-level attribute.
+
+        Args:
+            key: Attribute name to set.
+            value: Value to store.
+        """
+        self._graph.graph[key] = value
 
     # Query methods inherited from QueryMixin:
     # - query_nodes(), query_edges(), count_nodes(), count_edges()

@@ -3,7 +3,7 @@
 **Feature Branch**: `001-dialectical-field-topology`
 **Created**: 2026-02-25
 **Status**: Draft
-**Input**: Spec prompt `ai-docs/spec-prompts/spec-019-dialectical-field-topology.md`
+**Input**: Spec prompt `ai-docs/spec-prompts/spec-019-dialectical-field-topology.md`, `ai-docs/spec-prompts/edge-mode-completeness-analysis.md`
 **Dependencies**: Feature 017 (Tick Dynamics), Feature 018 (Crisis/Devaluation), Feature 016 (Class Dynamics)
 
 ---
@@ -144,6 +144,24 @@ As an empirical researcher, I want to compare computed field values and gradient
 
 ______________________________________________________________________
 
+### User Story 8 - CO-OPTIVE Edge Mode and the George Jackson Bifurcation (Priority: P2)
+
+As a simulation researcher, I want CO-OPTIVE edges to model relationships where a more powerful party offers material concessions in exchange for political quiescence (imperial rent to labor aristocracy, welfare state to working class, reform as fascist mechanism), so that I can trace how the breakdown of co-optation produces either revolutionary or fascist outcomes depending on solidarity topology.
+
+**Why this priority**: The CO-OPTIVE mode is the primary mechanism through which the George Jackson bifurcation is determined *before* crisis arrives. Without it, the model cannot distinguish between a stable pre-crisis period (co-optation intact) and an unstable one (co-optation eroding), and cannot predict when the bifurcation becomes active. It is essential for the field dynamics to be theoretically complete but depends on the field computation infrastructure (US1, US2) being functional.
+
+**Independent Test**: Can be fully tested by configuring a graph with CO-OPTIVE edges, verifying that df/dt suppression operates correctly during stable co-optation, then triggering co-optation breakdown and verifying the latent contradiction release produces a df/dt spike that correctly routes through the bifurcation based on solidarity topology.
+
+**Acceptance Scenarios**:
+
+1. **Given** a CO-OPTIVE edge from imperial system to core working class with material concessions flowing, **When** the exploitation contradiction field is computed at the co-opted node, **Then** df/dt is suppressed proportional to the concession magnitude compared to the same node without co-optation.
+2. **Given** stable co-optation suppressing exploitation df/dt, **When** the principal contradiction is identified, **Then** the principal contradiction is something other than exploitation (e.g., displacement or immiseration) because exploitation's derivative is suppressed.
+3. **Given** a crisis event that erodes the material basis for co-optation (declining imperial rent), **When** the CO-OPTIVE edge transitions to ANTAGONISTIC, **Then** the latent contradiction is released as a spike in exploitation df/dt, and exploitation reasserts itself as the principal contradiction.
+4. **Given** CO-OPTIVE breakdown with solidaristic edges crossing the colonial divide, **When** the resulting ANTAGONISTIC edge is evaluated, **Then** antagonism is directed upward (revolutionary potential).
+5. **Given** CO-OPTIVE breakdown without cross-divide solidarity, **When** the resulting ANTAGONISTIC edge is evaluated, **Then** antagonism is directed laterally (fascist potential).
+
+______________________________________________________________________
+
 ### Edge Cases
 
 - **EC-001: Insufficient history for derivatives.** At ticks 0 and 1, second derivatives are undefined. The system returns None (not 0.0) for d2f/dt2 and compound predicates requiring d2f/dt2 cannot fire. Predicates referencing undefined derivatives evaluate to False for that conjunct.
@@ -153,6 +171,9 @@ ______________________________________________________________________
 - **EC-005: Curvature on single-edge nodes.** Nodes connected by a single edge have only one curvature value. Mean curvature equals that value. This is topologically degenerate (no redundancy), and curvature will typically be strongly negative (bottleneck).
 - **EC-006: Division by zero in Ollivier-Ricci.** If a node has degree 1, the Wasserstein distance computation requires a uniform distribution over the single neighbor plus the node itself. The implementation handles this per the standard Ollivier formulation with self-loop probability alpha.
 - **EC-007: Field value explosion.** If any contradiction accumulator exceeds a configurable maximum bound (default: 10.0 on normalized scale), a diagnostic is logged and the value is clamped. This indicates a modeling error or runaway feedback loop.
+- **EC-008: CO-OPTIVE breakdown latent contradiction spike.** When a CO-OPTIVE edge transitions away, the accumulated latent contradiction (suppressed df/dt over the duration of co-optation) is released. The resulting df/dt spike may temporarily exceed the normal range. The system MUST handle this spike without triggering field value explosion (EC-007) by accounting for the latent release as a named mechanism in continuity accounting.
+- **EC-009: Multiple CO-OPTIVE edges at one node.** A node may be co-opted by multiple parties simultaneously (e.g., receiving both imperial rent and welfare state benefits). The total suppression effect is the sum of individual CO-OPTIVE edge suppressions. When one CO-OPTIVE edge breaks down but others remain, only the portion of latent contradiction attributable to the broken edge is released.
+- **EC-010: CO-OPTIVE edge without distributable surplus.** If the co-opting party's surplus falls to zero, the CO-OPTIVE edge cannot be maintained. The system MUST transition the edge to another mode (EXTRACTIVE if power asymmetry remains, ANTAGONISTIC if the co-opted party resists). A CO-OPTIVE edge with zero material flow is an invalid state.
 
 ---
 
@@ -189,17 +210,42 @@ ______________________________________________________________________
 
 #### Edge Mode Transition Topology
 
-- **FR-010**: Permissible edge mode transitions MUST be defined as a directed state machine. The initial transitions:
+- **FR-010**: Permissible edge mode transitions MUST be defined as a directed state machine across five modes: EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC, and CO-OPTIVE. The initial transitions:
   - EXTRACTIVE to ANTAGONISTIC: extraction contested (exploitation contradiction at source exceeds threshold AND df/dt > 0)
   - EXTRACTIVE to TRANSACTIONAL: extraction broken (organizing success event)
+  - EXTRACTIVE to CO-OPTIVE: concessions offered to prevent resistance (extracted party's antagonism accumulator exceeds threshold AND extracting party has distributable surplus)
   - TRANSACTIONAL to SOLIDARISTIC: mutual aid established (organizing work event with sustained duration)
   - TRANSACTIONAL to ANTAGONISTIC: market failure (crisis event)
   - TRANSACTIONAL to EXTRACTIVE: power asymmetry emerges (wealth differential exceeds threshold)
+  - TRANSACTIONAL to CO-OPTIVE: one party gains enough power to offer above-market benefits for loyalty (power asymmetry increases past threshold)
   - SOLIDARISTIC to TRANSACTIONAL: solidarity degrades under pressure (crisis intensity > edge resilience)
   - SOLIDARISTIC to ANTAGONISTIC: betrayal (betrayal event)
   - ANTAGONISTIC to TRANSACTIONAL: conflict resolved (negotiation or exhaustion event)
   - ANTAGONISTIC to ANTAGONISTIC: conflict persists (default when no resolution met)
+  - ANTAGONISTIC to CO-OPTIVE: conflict resolved through concession rather than victory (negotiation event with asymmetric outcome — one party gives more than it gains). This is "reform" — resolving antagonism through co-optation rather than structural change.
+  - CO-OPTIVE to TRANSACTIONAL: co-optation normalizes into pure market relations (concessions become expected "market rate" rather than political pacification). This is successful hegemony — co-optation becomes invisible.
+  - CO-OPTIVE to ANTAGONISTIC: **the critical transition** — material basis for co-optation erodes (crisis, declining imperial rent, austerity). Whether resulting antagonism is directed upward (revolutionary) or laterally (fascist) depends on solidarity topology. This is the George Jackson bifurcation operating on CO-OPTIVE breakdown.
+  - CO-OPTIVE to SOLIDARISTIC: the rarest and most strategically important transition — co-opted party recognizes co-optation *as such* and chooses class solidarity over material benefit. Requires both political education (recognizing co-optation) and existing solidaristic edges across the colonial divide (having somewhere to go).
+  - CO-OPTIVE to EXTRACTIVE: concessions withdrawn but power asymmetry remains (relationship reverts to pure extraction without ameliorating material flows)
   - Transitions not listed (e.g., EXTRACTIVE to SOLIDARISTIC directly) are prohibited; they require passing through intermediate states.
+
+#### CO-OPTIVE Field Dynamics
+
+- **FR-014**: CO-OPTIVE edges MUST suppress the temporal derivative df/dt of the exploitation contradiction field at the co-opted node. This is the formal expression of "reform prevents revolution." The suppression factor MUST be proportional to the material magnitude of concessions flowing along the CO-OPTIVE edge. When the CO-OPTIVE edge degrades or transitions to another mode, the suppression lifts and the contradiction accumulator resumes its trajectory.
+- **FR-015**: CO-OPTIVE edges MUST be a named mechanism in the continuity accounting system (FR-009). The continuity residual at a co-opted node MUST show the difference between the expected contradiction (based on material conditions) and the observed contradiction (suppressed by co-optation). This residual is the "latent contradiction" — contradiction that is suppressed in expression but not resolved in substance. When co-optation breaks down, the latent contradiction MUST be released, producing a spike in df/dt.
+- **FR-016**: During periods of stable co-optation, the principal contradiction identification (FR-008) MUST account for the fact that co-optation suppresses df/dt of the exploitation field. The principal contradiction may appear to be something other than exploitation precisely because co-optation has suppressed exploitation's first derivative. When co-optation breaks down, exploitation's df/dt spikes and it reasserts itself as principal. This "return of the repressed" dynamic MUST be observable in the tick summaries.
+
+#### CO-OPTIVE Edge Classification
+
+- **FR-017**: The CO-OPTIVE edge mode MUST represent asymmetric, bidirectional value flow where the more powerful party offers material concessions to the less powerful party in exchange for political quiescence, loyalty, or non-opposition. The five-mode system is:
+
+  | Mode | Direction | Value Flow | Political Content | Stability |
+  |------|-----------|------------|-------------------|-----------|
+  | EXTRACTIVE | Unidirectional | From exploited to exploiter | Produces resistance | Unstable (generates antagonism) |
+  | TRANSACTIONAL | Bidirectional, symmetric | Market exchange | Politically neutral | Stable until disrupted |
+  | SOLIDARISTIC | Bidirectional, mutual | Shared reproduction | Builds collective power | Stable under pressure (tested by crisis) |
+  | ANTAGONISTIC | Oppositional | Contested/destroyed | Open conflict | Unstable (resolves toward new arrangement) |
+  | CO-OPTIVE | Bidirectional, asymmetric | Concessions for quiescence | Prevents resistance | Stable while material basis persists; fragile to crisis |
 
 #### Integration
 
@@ -212,7 +258,9 @@ ______________________________________________________________________
 - **Contradiction Field**: A named scalar field defined at every social-class node per tick. Has a type (exploitation, immiseration, imperial rent, displacement), a value, and associated spatial/temporal derivatives. Derived from economic calculator outputs.
 - **Field Derivatives**: Spatial (gradient per edge, Laplacian per node) and temporal (first and second derivative per node). Computed each tick from field values and history. Undefined when insufficient history exists.
 - **Compound Predicate**: A declarative conjunction of threshold conditions over field values and derivatives. Governs discrete state transitions. Each conjunct specifies a field, a derivative order, and a threshold comparison.
-- **Edge Mode Transition**: A permitted discrete change between edge modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC) governed by compound predicates. Defined as a directed state machine with named conditions.
+- **Edge Mode Transition**: A permitted discrete change between edge modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC, CO-OPTIVE) governed by compound predicates. Defined as a directed state machine with named conditions.
+- **CO-OPTIVE Edge**: An asymmetric, bidirectional relationship where the more powerful party offers material concessions (imperial rent, welfare, reform) to the less powerful party in exchange for political quiescence. Suppresses contradiction field derivatives at the co-opted node. Stable while material basis persists; fragile to crisis. Its breakdown is the trigger for the George Jackson bifurcation.
+- **Latent Contradiction**: The difference between expected contradiction (based on material conditions alone) and observed contradiction (suppressed by co-optation). Accumulated over the duration of co-optation and released when co-optation breaks down. Tracked via the continuity accounting system as a named mechanism.
 - **Principal Contradiction**: The contradiction field with the largest maximum absolute first derivative across all nodes at a given tick. Changes in principal contradiction are significant events.
 - **Continuity Residual**: The per-node, per-tick accounting of contradiction change minus gradient-implied flow. Non-zero residuals indicate sources, sinks, or unaccounted displacement.
 - **Ollivier-Ricci Curvature**: A structural property of each edge measuring bottleneck vs. redundancy in the local topology. Computed via optimal transport. Cached and recomputed only on topology change.
@@ -231,6 +279,9 @@ ______________________________________________________________________
 - **SC-006**: Principal contradiction identification correctly switches between exploitation and immiseration fields when the scenario is configured to make one then the other have the largest absolute df/dt.
 - **SC-007**: Continuity residuals for a closed system (no named source/sink mechanisms active) sum to zero across all nodes within floating-point tolerance.
 - **SC-008**: For the Detroit test case (2010-2025 QCEW data), the exploitation field gradient along the Wayne-to-Oakland edge is negative (exploitation decreasing from periphery to core), consistent with empirical wage and employment differentials.
+- **SC-009**: CO-OPTIVE edges suppress df/dt at the co-opted node by at least 50% compared to the same material conditions without co-optation, and this suppression is released as a measurable df/dt spike when co-optation breaks down.
+- **SC-010**: During stable co-optation, the principal contradiction at co-opted nodes is correctly identified as something other than exploitation (reflecting suppressed exploitation df/dt), and after co-optation breakdown, exploitation reasserts as principal within 1-2 ticks.
+- **SC-011**: The George Jackson bifurcation outcome (revolutionary vs. fascist) is correctly determined by solidarity topology: CO-OPTIVE breakdown with cross-divide solidarity produces upward-directed antagonism, while breakdown without cross-divide solidarity produces lateral antagonism.
 
 ---
 
@@ -245,14 +296,15 @@ ______________________________________________________________________
 - Compound threshold predicates incorporating field value, derivatives, Laplacian, and curvature
 - Principal contradiction identification per tick
 - Continuity accounting: per-tick balance sheet for contradiction flow
-- Edge mode transition state machine with declarative conditions
+- Edge mode transition state machine with declarative conditions (five modes including CO-OPTIVE)
+- CO-OPTIVE edge mode with derivative suppression, latent contradiction tracking, and bifurcation dynamics
 - Validation against Detroit metro data (Wayne/Oakland, 2010-2025)
 
 ### Out of Scope
 
 - GUI visualization of fields or gradients (deferred to dashboard features)
 - Full differential geometry beyond graph Laplacian and Ollivier-Ricci (no Riemann tensors, connection coefficients, or parallel transport)
-- Continuous edge weights replacing categorical edge modes (the four-mode system is retained)
+- Continuous edge weights replacing categorical edge modes (the five-mode system is retained)
 - Climate or environmental fields (deferred)
 - Inter-metro or international graph edges (Detroit test case only)
 - Edge-weighted graph Laplacian (different edge modes contributing differently to spatial derivatives)
@@ -279,7 +331,7 @@ ______________________________________________________________________
 - **DEP-002**: Feature 016 (Class Dynamics) for class position assignments used in node stratification.
 - **DEP-003**: Feature 018 (Crisis/Devaluation) for crisis events that trigger edge mode transitions and field discontinuities.
 - **DEP-004**: Existing economic calculators (exploitation rate, profit rate, imperial rent) providing the source values from which contradiction fields are derived.
-- **DEP-005**: Existing graph structure with categorical edge modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC).
+- **DEP-005**: Existing graph structure with categorical edge modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC), extended to include CO-OPTIVE per the edge mode completeness analysis.
 - **DEP-006**: Existing Ollivier-Ricci curvature methodology validated in babylon_ricci_final.csv.
 
 ---
@@ -293,3 +345,4 @@ The following predictions follow from the field framework and are testable again
 - **P-003**: The temporal second derivative d2f/dt2 for the exploitation field at Wayne County changes sign between 2013-2016, corresponding to the transition from post-crisis intensification to gentrification-driven partial displacement.
 - **P-004**: Edges with negative Ollivier-Ricci curvature (bottleneck topology) sustain steeper contradiction gradients than edges with positive curvature (redundant topology), when controlling for field magnitude.
 - **P-005**: The principal contradiction in the Detroit metro graph shifts from exploitation (2010-2014, post-crisis austerity) to displacement (2015-2020, gentrification period), identifiable by the crossover in maximum |df/dt| between the two fields.
+- **P-006**: The transition from CO-OPTIVE to ANTAGONISTIC in the Detroit metro graph correlates with austerity indicators (declining public employment, reduced social services, foreclosure crisis) in Wayne County, 2008-2012. The breakdown of co-optation (withdrawal of New Deal-era labor compromises, public sector austerity, foreclosure wave) precedes the spike in exploitation df/dt that reasserts exploitation as the principal contradiction.

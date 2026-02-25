@@ -31,10 +31,11 @@
 
 ## Notes
 
-- Spec derived from detailed spec prompt (spec-019-dialectical-field-topology.md) which provided comprehensive functional requirements, edge cases, and success criteria
+- Spec derived from detailed spec prompt (spec-019-dialectical-field-topology.md) and expanded with edge mode completeness analysis (edge-mode-completeness-analysis.md)
 - The mathematical formulas (Laplacian, gradient, curvature) are domain concepts, not implementation details - they define WHAT the system computes
-- All 7 user stories have independent tests and acceptance scenarios
-- All 7 edge cases have defined system behavior
-- All 13 functional requirements are testable with specific acceptance conditions
-- All 8 success criteria are measurable and verifiable
-- 5 falsifiable theoretical predictions included for empirical validation
+- CO-OPTIVE edge mode added based on MLM theoretical audit (Mao, Lenin, Dimitrov, Jackson, Marx) — represents asymmetric concessions-for-quiescence relationships missing from the original 4-mode system
+- All 8 user stories have independent tests and acceptance scenarios (US8 added for CO-OPTIVE dynamics)
+- All 10 edge cases have defined system behavior (EC-008 through EC-010 added for CO-OPTIVE specifics)
+- All 17 functional requirements are testable with specific acceptance conditions (FR-014 through FR-017 added)
+- All 11 success criteria are measurable and verifiable (SC-009 through SC-011 added for CO-OPTIVE validation)
+- 6 falsifiable theoretical predictions included for empirical validation (P-006 added for CO-OPTIVE breakdown in Detroit)

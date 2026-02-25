@@ -12,12 +12,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.formulas import calculate_ideological_routing
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -82,11 +83,18 @@ class ConsciousnessSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
         """Apply consciousness drift to all entities with bifurcation routing."""
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Handle both TickContext (with persistent_data) and raw dict
         # TickContext stores persistent data in .persistent_data attribute
         # Raw dict stores persistent data directly
@@ -110,62 +118,54 @@ class ConsciousnessSystem:
         current_wages: dict[str, float] = {}
         current_wealth_map: dict[str, float] = {}
 
-        for node_id in graph.nodes():
-            node_data = graph.nodes[node_id]
-
-            # Skip non-social-class nodes (e.g., territories)
-            if node_data.get("_node_type") == "territory":
-                continue
+        for node in graph.query_nodes(node_type="social_class"):
+            attrs = node.attributes
 
             # Skip inactive (dead) entities - dead can't develop consciousness
-            if not node_data.get("active", True):
+            if not attrs.get("active", True):
                 continue
 
             # Calculate wages received (sum of incoming WAGES edges)
             core_wages = 0.0
-            for _, _, data in graph.in_edges(node_id, data=True):
-                edge_type = data.get("edge_type")
-                if isinstance(edge_type, str):
-                    edge_type = EdgeType(edge_type)
-                if edge_type == EdgeType.WAGES:
-                    core_wages += data.get("value_flow", 0.0)
+            for edge in graph.query_edges(edge_type=EdgeType.WAGES):
+                if edge.target_id == node.id:
+                    core_wages += edge.attributes.get("value_flow", 0.0)
 
             # Store current wages for next tick
-            current_wages[node_id] = core_wages
+            current_wages[node.id] = core_wages
 
             # Calculate wage_change for bifurcation mechanic
-            prev_wage = previous_wages.get(node_id, core_wages)
+            prev_wage = previous_wages.get(node.id, core_wages)
             wage_change = core_wages - prev_wage
 
             # Periphery Dynamics Extension: Calculate wealth_change for extraction detection
             # Periphery workers have wealth extracted via EXPLOITATION edges, not wage cuts
-            current_wealth = float(node_data.get("wealth", 0.0))
+            current_wealth = float(attrs.get("wealth", 0.0))
             # Default to current wealth if first tick (no previous baseline)
-            prev_wealth = previous_wealth.get(node_id, current_wealth)
+            prev_wealth = previous_wealth.get(node.id, current_wealth)
             wealth_change = current_wealth - prev_wealth
-            current_wealth_map[node_id] = current_wealth
+            current_wealth_map[node.id] = current_wealth
 
             # Calculate solidarity_pressure from incoming SOLIDARITY edges
             # Sum of solidarity_strength from all incoming SOLIDARITY edges
             solidarity_pressure = 0.0
             activation_threshold = services.defines.solidarity.activation_threshold
 
-            for source_id, _, data in graph.in_edges(node_id, data=True):
-                edge_type = data.get("edge_type")
-                if isinstance(edge_type, str):
-                    edge_type = EdgeType(edge_type)
-                if edge_type == EdgeType.SOLIDARITY:
+            for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
+                if edge.target_id == node.id:
                     # Get solidarity_strength from edge
-                    strength = data.get("solidarity_strength", 0.0)
+                    strength = edge.attributes.get("solidarity_strength", 0.0)
                     if strength > 0:
                         # Only count if source has revolutionary consciousness
-                        source_profile = _get_ideology_profile_from_node(graph.nodes[source_id])
+                        src_node = graph.get_node(edge.source_id)
+                        src_attrs = src_node.attributes if src_node else {}
+                        source_profile = _get_ideology_profile_from_node(src_attrs)
                         source_consciousness = source_profile["class_consciousness"]
                         if source_consciousness > activation_threshold:
                             solidarity_pressure += strength
 
             # Get current ideological profile
-            current_profile = _get_ideology_profile_from_node(node_data)
+            current_profile = _get_ideology_profile_from_node(attrs)
 
             # Apply ideological routing formula (Sprint 3.4.3 + Periphery Dynamics)
             new_class, new_nation, new_agitation = calculate_ideological_routing(
@@ -178,11 +178,14 @@ class ConsciousnessSystem:
             )
 
             # Update the ideology in the graph as a dict (IdeologicalProfile format)
-            graph.nodes[node_id]["ideology"] = {
-                "class_consciousness": new_class,
-                "national_identity": new_nation,
-                "agitation": new_agitation,
-            }
+            graph.update_node(
+                node.id,
+                ideology={
+                    "class_consciousness": new_class,
+                    "national_identity": new_nation,
+                    "agitation": new_agitation,
+                },
+            )
 
         # Update previous wages and wealth for next tick in persistent storage
         persistent[PREVIOUS_WAGES_KEY] = current_wages

@@ -17,12 +17,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.models.enums import EdgeType, EventType
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -100,7 +101,7 @@ class SolidaritySystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -113,6 +114,13 @@ class SolidaritySystem:
         4. Apply delta to target class_consciousness
         5. Emit events for narrative layer
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Get formula from registry
         calculate_solidarity_transmission = services.formulas.get("solidarity_transmission")
 
@@ -121,35 +129,34 @@ class SolidaritySystem:
         mass_awakening_threshold = services.defines.solidarity.mass_awakening_threshold
 
         # Process all SOLIDARITY edges
-        for source_id, target_id, data in graph.edges(data=True):
-            edge_type = data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.SOLIDARITY:
-                continue
+        for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
+            # Read source and target nodes once
+            src_node = graph.get_node(edge.source_id)
+            tgt_node = graph.get_node(edge.target_id)
 
             # Skip inactive (dead) nodes - dead can't transmit or receive consciousness
-            if not graph.nodes[source_id].get("active", True):
+            if src_node and not src_node.attributes.get("active", True):
                 continue
-            if not graph.nodes[target_id].get("active", True):
+            if tgt_node and not tgt_node.attributes.get("active", True):
                 continue
 
             # Get solidarity_strength from edge (NOT auto-calculated!)
-            solidarity_strength = data.get("solidarity_strength", 0.0)
+            solidarity_strength = edge.attributes.get("solidarity_strength", 0.0)
 
             if solidarity_strength <= 0:
                 continue  # Fascist Bifurcation: no infrastructure, no transmission
 
             # Get source consciousness (from IdeologicalProfile)
-            source_consciousness = _get_class_consciousness_from_node(graph.nodes[source_id])
+            src_attrs = src_node.attributes if src_node else {}
+            source_consciousness = _get_class_consciousness_from_node(src_attrs)
 
             # Check activation threshold
             if source_consciousness <= activation_threshold:
                 continue  # Source not in active struggle
 
             # Get target consciousness
-            target_consciousness = _get_class_consciousness_from_node(graph.nodes[target_id])
+            tgt_attrs = tgt_node.attributes if tgt_node else {}
+            target_consciousness = _get_class_consciousness_from_node(tgt_attrs)
             old_consciousness = target_consciousness
 
             # Calculate transmission delta
@@ -169,10 +176,8 @@ class SolidaritySystem:
             new_consciousness = max(0.0, min(1.0, new_consciousness))
 
             # Update ideology profile with new class_consciousness
-            graph.nodes[target_id]["ideology"] = _update_ideology_class_consciousness(
-                graph.nodes[target_id],
-                new_consciousness,
-            )
+            new_ideology = _update_ideology_class_consciousness(tgt_attrs, new_consciousness)
+            graph.update_node(edge.target_id, ideology=new_ideology)
 
             # Emit CONSCIOUSNESS_TRANSMISSION event
             tick = context.get("tick", 0)
@@ -181,8 +186,8 @@ class SolidaritySystem:
                     type=EventType.CONSCIOUSNESS_TRANSMISSION,
                     tick=tick,
                     payload={
-                        "source_id": source_id,
-                        "target_id": target_id,
+                        "source_id": edge.source_id,
+                        "target_id": edge.target_id,
                         "delta": delta,
                         "solidarity_strength": solidarity_strength,
                         "source_consciousness": source_consciousness,
@@ -199,10 +204,10 @@ class SolidaritySystem:
                         type=EventType.MASS_AWAKENING,
                         tick=tick,
                         payload={
-                            "target_id": target_id,
+                            "target_id": edge.target_id,
                             "old_consciousness": old_consciousness,
                             "new_consciousness": new_consciousness,
-                            "triggering_source": source_id,
+                            "triggering_source": edge.source_id,
                         },
                     )
                 )

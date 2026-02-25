@@ -34,12 +34,13 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING, Any
 
-import networkx as nx
-
 from babylon.engine.event_bus import Event
 from babylon.models.enums import EdgeType, EventType, SocialRole
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -194,27 +195,30 @@ def _update_agitation(  # pragma: no mutate — node updater (clamp + dict rebui
 
 
 def _find_entity_by_role(
-    graph: nx.DiGraph[str],
+    graph: GraphProtocol,
     role: SocialRole,
 ) -> tuple[str, dict[str, Any]] | None:
     """Find the first entity with the specified social role.
 
     Args:
-        graph: The simulation graph
+        graph: The simulation graph (protocol)
         role: The SocialRole to search for
 
     Returns:
         Tuple of (node_id, node_data) or None if not found
     """
-    for node_id, data in graph.nodes(data=True):
-        if data.get("_node_type") == "territory":
+    for node in graph.query_nodes():
+        # Skip territory nodes (only process entity/social_class nodes)
+        if node.node_type == "territory":
             continue
+
+        attrs = node.attributes
 
         # Skip inactive (dead) entities
-        if not data.get("active", True):
+        if not attrs.get("active", True):
             continue
 
-        node_role = data.get("role")
+        node_role = attrs.get("role")
         if isinstance(node_role, str):
             try:
                 node_role = SocialRole(node_role)
@@ -222,7 +226,7 @@ def _find_entity_by_role(
                 continue
 
         if node_role == role:
-            return (node_id, data)
+            return (node.id, attrs)
 
     return None
 
@@ -252,7 +256,7 @@ class StruggleSystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -261,6 +265,13 @@ class StruggleSystem:
         Processes PERIPHERY_PROLETARIAT and LUMPENPROLETARIAT nodes,
         checking for spark events and uprising conditions.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         # Get defines
         spark_scale = services.defines.struggle.spark_probability_scale
         resistance_threshold = services.defines.struggle.resistance_threshold
@@ -272,17 +283,19 @@ class StruggleSystem:
         # Track uprisings for potential multi-node coordination
         uprising_nodes: list[str] = []
 
-        for node_id, data in graph.nodes(data=True):
-            # Skip non-social-class nodes (territories)
-            if data.get("_node_type") == "territory":
+        for node in graph.query_nodes():
+            # Skip territory nodes
+            if node.node_type == "territory":
                 continue
 
+            attrs = node.attributes
+
             # Skip inactive (dead) entities - dead don't participate in struggle
-            if not data.get("active", True):
+            if not attrs.get("active", True):
                 continue
 
             # Check if this is a struggling class
-            role_str = data.get("role", "")
+            role_str = attrs.get("role", "")
             try:
                 role = SocialRole(role_str) if isinstance(role_str, str) else role_str
             except ValueError:
@@ -292,10 +305,10 @@ class StruggleSystem:
                 continue
 
             # Get relevant attributes
-            repression = data.get("repression_faced", services.defines.DEFAULT_REPRESSION_FACED)
-            agitation = _get_agitation_from_node(data)
-            p_acq = data.get("p_acquiescence", 0.5)
-            p_rev = data.get("p_revolution", 0.0)
+            repression = attrs.get("repression_faced", services.defines.DEFAULT_REPRESSION_FACED)
+            agitation = _get_agitation_from_node(attrs)
+            p_acq = attrs.get("p_acquiescence", 0.5)
+            p_rev = attrs.get("p_revolution", 0.0)
 
             # Step 1: Calculate and roll for EXCESSIVE_FORCE spark
             spark_probability = repression * spark_scale
@@ -308,7 +321,7 @@ class StruggleSystem:
                         type=EventType.EXCESSIVE_FORCE,
                         tick=tick,
                         payload={
-                            "node_id": node_id,
+                            "node_id": node.id,
                             "repression": repression,
                             "spark_probability": spark_probability,
                         },
@@ -326,36 +339,42 @@ class StruggleSystem:
                 continue
 
             # Step 3: Execute Uprising
-            uprising_nodes.append(node_id)
+            uprising_nodes.append(node.id)
 
             # Economic damage: wealth *= (1 - destruction_rate)
-            current_wealth = data.get("wealth", 0.0)
+            current_wealth = attrs.get("wealth", 0.0)
             new_wealth = current_wealth * (1.0 - wealth_destruction)
-            graph.nodes[node_id]["wealth"] = new_wealth
+            graph.update_node(node.id, wealth=new_wealth)
 
             # Solidarity infrastructure gain: increase solidarity_strength on edges
             solidarity_gained = 0.0
             edges_updated = 0
 
-            for source_id, _target_id, edge_data in graph.in_edges(node_id, data=True):
-                edge_type = edge_data.get("edge_type")
-                if isinstance(edge_type, str):
-                    edge_type = EdgeType(edge_type)
+            for edge in graph.query_edges(edge_type=EdgeType.SOLIDARITY):
+                if edge.target_id != node.id:
+                    continue
 
-                if edge_type == EdgeType.SOLIDARITY:
-                    current_strength = edge_data.get("solidarity_strength", 0.0)
-                    new_strength = min(1.0, current_strength + solidarity_gain)
-                    graph.edges[source_id, node_id]["solidarity_strength"] = new_strength
-                    solidarity_gained += new_strength - current_strength
-                    edges_updated += 1
+                current_strength = edge.attributes.get("solidarity_strength", 0.0)
+                new_strength = min(1.0, current_strength + solidarity_gain)
+                graph.update_edge(
+                    edge.source_id,
+                    edge.target_id,
+                    EdgeType.SOLIDARITY,
+                    solidarity_strength=new_strength,
+                )
+                solidarity_gained += new_strength - current_strength
+                edges_updated += 1
 
             # Class consciousness boost from shared struggle
-            consciousness_before = _get_class_consciousness_from_node(data)
+            consciousness_before = _get_class_consciousness_from_node(attrs)
             consciousness_boost = solidarity_gain * 0.5  # Half of solidarity gain
-            graph.nodes[node_id]["ideology"] = _update_class_consciousness(
-                data, consciousness_boost
-            )
-            consciousness_after = _get_class_consciousness_from_node(graph.nodes[node_id])
+            new_ideology = _update_class_consciousness(attrs, consciousness_boost)
+            graph.update_node(node.id, ideology=new_ideology)
+
+            # Re-read updated node for consciousness_after
+            updated_node = graph.get_node(node.id)
+            updated_attrs = updated_node.attributes if updated_node else {}
+            consciousness_after = _get_class_consciousness_from_node(updated_attrs)
 
             # Emit UPRISING event
             services.event_bus.publish(
@@ -363,7 +382,7 @@ class StruggleSystem:
                     type=EventType.UPRISING,
                     tick=tick,
                     payload={
-                        "node_id": node_id,
+                        "node_id": node.id,
                         "trigger": "spark" if spark_occurred else "revolutionary_pressure",
                         "agitation": agitation,
                         "repression": repression,
@@ -386,7 +405,7 @@ class StruggleSystem:
                         type=EventType.SOLIDARITY_SPIKE,
                         tick=tick,
                         payload={
-                            "node_id": node_id,
+                            "node_id": node.id,
                             "solidarity_gained": solidarity_gained,
                             "edges_affected": edges_updated,
                             "triggered_by": "uprising",
@@ -400,7 +419,7 @@ class StruggleSystem:
 
     def _check_power_vacuum(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -466,7 +485,7 @@ class StruggleSystem:
 
     def _apply_revolutionary_offensive(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         p_w_id: str,
         p_w_data: dict[str, Any],
@@ -481,13 +500,9 @@ class StruggleSystem:
         """
         defines = services.defines.struggle
 
-        # Set p_revolution to maximum
-        graph.nodes[p_w_id]["p_revolution"] = 1.0
-
-        # Boost agitation
-        graph.nodes[p_w_id]["ideology"] = _update_agitation(
-            p_w_data, defines.revolutionary_agitation_boost
-        )
+        # Set p_revolution to maximum and boost agitation
+        new_ideology = _update_agitation(p_w_data, defines.revolutionary_agitation_boost)
+        graph.update_node(p_w_id, p_revolution=1.0, ideology=new_ideology)
 
         # Emit REVOLUTIONARY_OFFENSIVE event
         services.event_bus.publish(
@@ -507,7 +522,7 @@ class StruggleSystem:
 
     def _apply_fascist_revanchism(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         p_w_id: str,  # noqa: ARG002 - kept for API consistency
         revolutionary_capacity: float,
@@ -531,14 +546,13 @@ class StruggleSystem:
             core_worker_id = c_w_id
 
             # Boost national identity (clamped)
-            graph.nodes[c_w_id]["ideology"] = _update_national_identity(
-                c_w_data, defines.fascist_identity_boost
-            )
+            new_ideology = _update_national_identity(c_w_data, defines.fascist_identity_boost)
 
             # Boost acquiescence (clamped)
             current_acq = c_w_data.get("p_acquiescence", 0.5)
             new_acq = min(1.0, current_acq + defines.fascist_acquiescence_boost)
-            graph.nodes[c_w_id]["p_acquiescence"] = new_acq
+
+            graph.update_node(c_w_id, ideology=new_ideology, p_acquiescence=new_acq)
 
         # Emit FASCIST_REVANCHISM event
         services.event_bus.publish(
@@ -559,7 +573,7 @@ class StruggleSystem:
 
     def _check_peripheral_revolt(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -595,22 +609,16 @@ class StruggleSystem:
         if p_rev <= p_acq:
             return  # No revolt - acquiescence is rational
 
-        # Revolt triggered! Sever all outgoing EXPLOITATION edges
-        edges_to_remove: list[tuple[str, str]] = []
+        # Revolt triggered! Collect outgoing EXPLOITATION edges to sever
+        edges_to_remove: list[tuple[str, str, str]] = []
 
-        for source_id, target_id, edge_data in graph.out_edges(p_w_id, data=True):
-            edge_type = edge_data.get("edge_type")
-            if isinstance(edge_type, str):
-                try:
-                    edge_type = EdgeType(edge_type)
-                except ValueError:
-                    continue
+        for edge in graph.query_edges(edge_type=EdgeType.EXPLOITATION):
+            if edge.source_id == p_w_id:
+                edges_to_remove.append((edge.source_id, edge.target_id, EdgeType.EXPLOITATION))
 
-            if edge_type == EdgeType.EXPLOITATION:
-                edges_to_remove.append((source_id, target_id))
-
-        # Remove edges in batch (avoid modifying graph during iteration)
-        graph.remove_edges_from(edges_to_remove)
+        # Remove edges individually (protocol has no batch remove)
+        for source_id, target_id, edge_type in edges_to_remove:
+            graph.remove_edge(source_id, target_id, edge_type)
 
         # Emit PERIPHERAL_REVOLT event
         services.event_bus.publish(

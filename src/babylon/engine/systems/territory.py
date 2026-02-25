@@ -20,8 +20,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-import networkx as nx
-
 from babylon.models.enums import (
     DisplacementPriorityMode,
     EdgeType,
@@ -30,6 +28,9 @@ from babylon.models.enums import (
 )
 
 if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
 from babylon.engine.systems.protocol import ContextType
@@ -77,7 +78,7 @@ class TerritorySystem:
 
     def step(
         self,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -92,6 +93,13 @@ class TerritorySystem:
         Sprint 3.7.1: Context can contain 'displacement_mode' to override
         the default EXTRACTION mode for sink node routing.
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
+
         self._process_heat_dynamics(graph, services)
         self._process_eviction_pipeline(graph, services, context)
         self._process_spillover(graph, services)
@@ -99,7 +107,7 @@ class TerritorySystem:
 
     def _process_heat_dynamics(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
     ) -> None:
         """Process heat accumulation/decay based on operational profile.
@@ -110,17 +118,15 @@ class TerritorySystem:
         heat_decay_rate = services.defines.territory.heat_decay_rate
         high_profile_heat_gain = services.defines.territory.high_profile_heat_gain
 
-        for node_id, data in graph.nodes(data=True):
-            # Only process territory nodes
-            if data.get("_node_type") != "territory":
-                continue
+        for node in graph.query_nodes(node_type="territory"):
+            attrs = node.attributes
 
-            profile = data.get("profile")
+            profile = attrs.get("profile")
             # Convert string to enum if needed
             if isinstance(profile, str):
                 profile = OperationalProfile(profile)
 
-            current_heat = data.get("heat", 0.0)
+            current_heat = attrs.get("heat", 0.0)
 
             if profile == OperationalProfile.HIGH_PROFILE:
                 # High profile gains heat
@@ -130,12 +136,12 @@ class TerritorySystem:
                 new_heat = current_heat * (1.0 - heat_decay_rate)
 
             # Clamp to [0, 1]
-            graph.nodes[node_id]["heat"] = max(0.0, min(1.0, new_heat))
+            graph.update_node(node.id, heat=max(0.0, min(1.0, new_heat)))
 
     def _find_sink_node(
         self,
         source_node_id: str,
-        graph: nx.DiGraph[str],
+        graph: nx.DiGraph[str] | GraphProtocol,
         mode: DisplacementPriorityMode,
     ) -> str | None:
         """Find a sink node connected to the source via ADJACENCY edge.
@@ -157,6 +163,12 @@ class TerritorySystem:
         Returns:
             The node ID of the highest-priority adjacent sink, or None
         """
+        from babylon.engine.graph_protocol import GraphProtocol
+
+        if not isinstance(graph, GraphProtocol):
+            from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+            graph = NetworkXAdapter.wrap(graph)
         # Get priority order for the given mode
         priority_order = self._PRIORITY_BY_MODE.get(
             mode, self._PRIORITY_BY_MODE[DisplacementPriorityMode.EXTRACTION]
@@ -165,25 +177,21 @@ class TerritorySystem:
         # Collect all adjacent sink nodes
         adjacent_sinks: dict[TerritoryType, str] = {}
 
-        for _, target_id, edge_data in graph.out_edges(source_node_id, data=True):
-            edge_type = edge_data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.ADJACENCY:
+        for edge in graph.query_edges(edge_type=EdgeType.ADJACENCY):
+            if edge.source_id != source_node_id:
                 continue
 
-            target_data = graph.nodes.get(target_id, {})
-            if target_data.get("_node_type") != "territory":
+            target_node = graph.get_node(edge.target_id)
+            if target_node is None or target_node.node_type != "territory":
                 continue
 
-            territory_type = target_data.get("territory_type")
+            territory_type = target_node.attributes.get("territory_type")
             if isinstance(territory_type, str):
                 territory_type = TerritoryType(territory_type)
 
             # Check if it's a sink node type
             if territory_type in priority_order:
-                adjacent_sinks[territory_type] = target_id
+                adjacent_sinks[territory_type] = edge.target_id
 
         # Return highest priority sink based on mode
         for sink_type in priority_order:
@@ -194,7 +202,7 @@ class TerritorySystem:
 
     def _process_eviction_pipeline(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
         context: ContextType,
     ) -> None:
@@ -225,34 +233,35 @@ class TerritorySystem:
         # Collect population transfers (to avoid order-dependent updates)
         transfers: dict[str, int] = {}
 
-        for node_id, data in graph.nodes(data=True):
-            # Only process territory nodes
-            if data.get("_node_type") != "territory":
-                continue
+        for node in graph.query_nodes(node_type="territory"):
+            attrs = node.attributes
 
-            current_heat = data.get("heat", 0.0)
-            under_eviction = data.get("under_eviction", False)
+            current_heat = attrs.get("heat", 0.0)
+            under_eviction = attrs.get("under_eviction", False)
 
             # Check if eviction should start
             if current_heat >= eviction_threshold and not under_eviction:
-                graph.nodes[node_id]["under_eviction"] = True
+                graph.update_node(node.id, under_eviction=True)
                 under_eviction = True
 
             # Process ongoing eviction effects
             if under_eviction:
                 # Rent spike
-                current_rent = data.get("rent_level", 1.0)
-                graph.nodes[node_id]["rent_level"] = current_rent * rent_spike_multiplier
-
+                current_rent = attrs.get("rent_level", 1.0)
                 # Population displacement
-                current_pop = data.get("population", 0)
+                current_pop = attrs.get("population", 0)
                 displaced_pop = int(current_pop * displacement_rate)
                 new_pop = current_pop - displaced_pop
-                graph.nodes[node_id]["population"] = new_pop
+
+                graph.update_node(
+                    node.id,
+                    rent_level=current_rent * rent_spike_multiplier,
+                    population=new_pop,
+                )
 
                 # Find sink node for population transfer
                 if displaced_pop > 0:
-                    sink_id = self._find_sink_node(node_id, graph, mode)
+                    sink_id = self._find_sink_node(node.id, graph, mode)
                     if sink_id is not None:
                         if sink_id not in transfers:
                             transfers[sink_id] = 0
@@ -260,12 +269,13 @@ class TerritorySystem:
 
         # Apply population transfers to sink nodes
         for sink_id, incoming_pop in transfers.items():
-            current_pop = graph.nodes[sink_id].get("population", 0)
-            graph.nodes[sink_id]["population"] = current_pop + incoming_pop
+            sink_node = graph.get_node(sink_id)
+            current_pop = sink_node.attributes.get("population", 0) if sink_node else 0
+            graph.update_node(sink_id, population=current_pop + incoming_pop)
 
     def _process_spillover(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
     ) -> None:
         """Process heat spillover via ADJACENCY edges.
@@ -278,41 +288,35 @@ class TerritorySystem:
         # Collect spillover amounts first (to avoid order-dependent updates)
         spillover_amounts: dict[str, float] = {}
 
-        for source_id, target_id, data in graph.edges(data=True):
-            edge_type = data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.ADJACENCY:
-                continue
-
+        for edge in graph.query_edges(edge_type=EdgeType.ADJACENCY):
             # Verify both nodes are territories
-            source_data = graph.nodes.get(source_id, {})
-            target_data = graph.nodes.get(target_id, {})
+            source_node = graph.get_node(edge.source_id)
+            target_node = graph.get_node(edge.target_id)
 
-            if source_data.get("_node_type") != "territory":
+            if source_node is None or source_node.node_type != "territory":
                 continue
-            if target_data.get("_node_type") != "territory":
+            if target_node is None or target_node.node_type != "territory":
                 continue
 
             # Calculate spillover
-            source_heat = source_data.get("heat", 0.0)
+            source_heat = source_node.attributes.get("heat", 0.0)
             spillover = source_heat * spillover_rate
 
             # Accumulate spillover for target
-            if target_id not in spillover_amounts:
-                spillover_amounts[target_id] = 0.0
-            spillover_amounts[target_id] += spillover
+            if edge.target_id not in spillover_amounts:
+                spillover_amounts[edge.target_id] = 0.0
+            spillover_amounts[edge.target_id] += spillover
 
         # Apply accumulated spillover
         for node_id, spillover in spillover_amounts.items():
-            current_heat = graph.nodes[node_id].get("heat", 0.0)
+            node = graph.get_node(node_id)
+            current_heat = node.attributes.get("heat", 0.0) if node else 0.0
             new_heat = min(1.0, current_heat + spillover)
-            graph.nodes[node_id]["heat"] = new_heat
+            graph.update_node(node_id, heat=new_heat)
 
     def _process_necropolitics(
         self,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
         services: ServiceContainer,
     ) -> None:
         """Process necropolitical effects on sink nodes.
@@ -328,29 +332,27 @@ class TerritorySystem:
         """
         decay_rate = services.defines.territory.concentration_camp_decay_rate
 
-        for node_id, data in graph.nodes(data=True):
-            # Only process territory nodes
-            if data.get("_node_type") != "territory":
-                continue
+        for node in graph.query_nodes(node_type="territory"):
+            attrs = node.attributes
 
-            territory_type = data.get("territory_type")
+            territory_type = attrs.get("territory_type")
             if isinstance(territory_type, str):
                 territory_type = TerritoryType(territory_type)
 
             # CONCENTRATION_CAMP: population decay (elimination)
             if territory_type == TerritoryType.CONCENTRATION_CAMP:
-                current_pop = data.get("population", 0)
+                current_pop = attrs.get("population", 0)
                 new_pop = int(current_pop * (1.0 - decay_rate))
-                graph.nodes[node_id]["population"] = new_pop
+                graph.update_node(node.id, population=new_pop)
 
             # PENAL_COLONY: suppress organization of connected classes
             elif territory_type == TerritoryType.PENAL_COLONY:
-                self._suppress_organization(node_id, graph)
+                self._suppress_organization(node.id, graph)
 
     def _suppress_organization(
         self,
         territory_id: str,
-        graph: nx.DiGraph[str],
+        graph: GraphProtocol,
     ) -> None:
         """Suppress organization of SocialClass nodes connected to a territory.
 
@@ -363,17 +365,13 @@ class TerritorySystem:
             graph: The simulation graph
         """
         # Find all SocialClass nodes with TENANCY edge to this territory
-        for source_id, _target_id, edge_data in graph.in_edges(territory_id, data=True):
-            edge_type = edge_data.get("edge_type")
-            if isinstance(edge_type, str):
-                edge_type = EdgeType(edge_type)
-
-            if edge_type != EdgeType.TENANCY:
+        for edge in graph.query_edges(edge_type=EdgeType.TENANCY):
+            if edge.target_id != territory_id:
                 continue
 
-            source_data = graph.nodes.get(source_id, {})
-            if source_data.get("_node_type") != "social_class":
+            source_node = graph.get_node(edge.source_id)
+            if source_node is None or source_node.node_type != "social_class":
                 continue
 
             # Suppress organization
-            graph.nodes[source_id]["organization"] = 0.0
+            graph.update_node(edge.source_id, organization=0.0)

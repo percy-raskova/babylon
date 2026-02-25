@@ -61,17 +61,29 @@ class TestCommunityState:
             cs = CommunityState(community_type=ct)
             assert cs.community_type == ct
 
-    def test_hegemonic_communities_exist(self) -> None:
-        """Hegemonic community types (WHITE, CISGENDER, HETEROSEXUAL, ABLED) exist."""
-        hegemonic = {
-            CommunityType.WHITE,
-            CommunityType.CISGENDER,
-            CommunityType.HETEROSEXUAL,
-            CommunityType.ABLED,
+    def test_three_category_taxonomy(self) -> None:
+        """All three hyperedge categories represented in CommunityType."""
+        # Category 1: Contradiction Pairs (both sides)
+        cat1_hegemonic = {CommunityType.SETTLER, CommunityType.PATRIARCHAL}
+        cat1_marginalized = {
+            CommunityType.NEW_AFRIKAN,
+            CommunityType.FIRST_NATIONS,
+            CommunityType.CHICANO,
+            CommunityType.WOMEN,
+            CommunityType.TRANS,
         }
-        for ct in hegemonic:
-            cs = CommunityState(community_type=ct)
-            assert cs.community_type == ct
+        # Category 2: Institutional Exclusion (marginalized only)
+        cat2 = {
+            CommunityType.DISABLED,
+            CommunityType.QUEER,
+            CommunityType.UNDOCUMENTED,
+            CommunityType.INCARCERATED,
+        }
+        # Category 3: Lifecycle Phases
+        cat3 = {CommunityType.YOUTH, CommunityType.ADULT, CommunityType.ELDER}
+
+        all_types = cat1_hegemonic | cat1_marginalized | cat2 | cat3
+        assert all_types == set(CommunityType)
 
 
 @pytest.mark.unit

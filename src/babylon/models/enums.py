@@ -424,45 +424,49 @@ class ContradictionCharacter(StrEnum):
 
 
 class CommunityType(StrEnum):
-    """Identity community types for hypergraph membership.
+    """Community types for hypergraph membership (Constitution II.7).
 
-    Hypergraph Community Layer (Feature 022): Communities are represented
-    as XGI hyperedges connecting all member agents simultaneously.
-    Each type represents a structural community category derived from
-    theoretical analysis (Constitution II.7).
+    Three structurally distinct categories — NOT a spectrum.
 
-    Values:
-        NEW_AFRIKAN: New Afrikan / Black internal nation
-        FIRST_NATIONS: Indigenous / First Nations peoples
-        CHICANO: Chicano / Mexican-American nation
-        WHITE: White settler nation (hegemonic)
-        QUEER: Queer / LGBQ sexuality
-        HETEROSEXUAL: Heterosexual (hegemonic sexuality)
-        TRANS: Transgender / gender non-conforming
-        CISGENDER: Cisgender (hegemonic gender identity)
-        DISABLED: Disabled / disability community
-        ABLED: Able-bodied (hegemonic ability)
-        UNDOCUMENTED: Undocumented immigration status
-        WOMEN: Women (reproductive labor allocation)
+    Category 1 — Contradiction Pairs (both sides real hyperedges):
+        SETTLER: Settler nation (hegemonic). Institutions: HOAs, police unions, border militias.
+        NEW_AFRIKAN: New Afrikan / Black internal nation (marginalized)
+        FIRST_NATIONS: Indigenous / First Nations peoples (marginalized)
+        CHICANO: Chicano / Mexican-American nation (marginalized)
+        PATRIARCHAL: Patriarchal order (hegemonic). Institutions: gendered wage systems, family structure.
+        WOMEN: Women — reproductive labor allocation (marginalized)
+        TRANS: Transgender / gender non-conforming (marginalized)
+
+    Category 2 — Institutional Exclusion (only marginalized side):
+        DISABLED: Disabled community. Built environment assumes able-bodiedness.
+        QUEER: Queer / LGBQ. Institutional heteronormativity.
+        UNDOCUMENTED: Undocumented. Legal exclusion from protections.
+        INCARCERATED: Incarcerated. Carceral system, civil death.
+
+    Category 3 — Lifecycle Phases (D-P-D' Circuit):
+        YOUTH: D phase. Pre-productive, dependent, receives socialization.
+        ADULT: P phase. Sells labor-power. Where C-M-C and M-C-M' operate.
+        ELDER: D' phase. Post-productive. Legitimation bargain (pensions, Social Security).
     """
 
-    # Internal nations
+    # Category 1: Contradiction Pairs — hegemonic
+    SETTLER = "settler"
+    PATRIARCHAL = "patriarchal"
+    # Category 1: Contradiction Pairs — marginalized
     NEW_AFRIKAN = "new_afrikan"
     FIRST_NATIONS = "first_nations"
     CHICANO = "chicano"
-    WHITE = "white"
-    # Sexuality
-    QUEER = "queer"
-    HETEROSEXUAL = "heterosexual"
-    # Gender identity
-    TRANS = "trans"
-    CISGENDER = "cisgender"
-    # Ability
-    DISABLED = "disabled"
-    ABLED = "abled"
-    # Other identity categories
-    UNDOCUMENTED = "undocumented"
     WOMEN = "women"
+    TRANS = "trans"
+    # Category 2: Institutional Exclusion — marginalized only
+    DISABLED = "disabled"
+    QUEER = "queer"
+    UNDOCUMENTED = "undocumented"
+    INCARCERATED = "incarcerated"
+    # Category 3: Lifecycle Phases — D-P-D' Circuit
+    YOUTH = "youth"
+    ADULT = "adult"
+    ELDER = "elder"
 
 
 class LegalStatus(StrEnum):

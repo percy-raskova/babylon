@@ -1261,6 +1261,18 @@ class CirculationCrisisState(BaseModel):
     )
 
     @classmethod
+    def default(cls) -> CirculationCrisisState:
+        """Factory for a minimal default state (no-arg, for default_factory).
+
+        Uses placeholder FIPS and year. Suitable for CountyEconomicState
+        field default where FIPS/year are set at a higher level.
+
+        Returns:
+            CirculationCrisisState with zeroed sub-models.
+        """
+        return cls.initial(fips="00000", year=2010)
+
+    @classmethod
     def initial(cls, fips: str, year: int) -> CirculationCrisisState:
         """Factory for a zeroed initial state.
 

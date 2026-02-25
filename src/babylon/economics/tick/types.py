@@ -26,6 +26,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from babylon.economics.circulation.types import CirculationCrisisState
 from babylon.economics.dynamics.types import ClassDistribution
 
 
@@ -316,6 +317,10 @@ class CountyEconomicState(BaseModel):
     bifurcation_risk: BifurcationRiskMetric = Field(
         default_factory=BifurcationRiskMetric.neutral,
         description="Political trajectory indicator (Feature 018)",
+    )
+    circulation_state: CirculationCrisisState = Field(
+        default_factory=CirculationCrisisState.default,
+        description="Capital circulation state (Feature 023)",
     )
 
 

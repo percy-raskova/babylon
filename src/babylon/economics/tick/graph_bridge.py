@@ -105,6 +105,30 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
             tick_profit_rate=None,  # pragma: no mutate
             tick_occ=None,  # pragma: no mutate
             tick_exploitation_rate=None,  # pragma: no mutate
+            # Circulation state (Feature 023)
+            tick_liquidity_ratio=county.circulation_state.circuit_state.liquidity_ratio,  # pragma: no mutate
+            tick_commodity_overhang=county.circulation_state.circuit_state.commodity_overhang,  # pragma: no mutate
+            tick_replacement_cycle=(  # pragma: no mutate
+                county.circulation_state.depreciation_fund.replacement_cycle_position.value  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_inventory_diagnosis=(  # pragma: no mutate
+                county.circulation_state.inventory_state.inventory_problem.value  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_realization_crisis=(  # pragma: no mutate
+                county.circulation_state.latest_assessment.realization_crisis  # pragma: no mutate
+                if county.circulation_state.latest_assessment is not None  # pragma: no mutate
+                else False  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_turnover_crisis=(  # pragma: no mutate
+                county.circulation_state.latest_assessment.turnover_crisis  # pragma: no mutate
+                if county.circulation_state.latest_assessment is not None  # pragma: no mutate
+                else False  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_reproduction_crisis=(  # pragma: no mutate
+                county.circulation_state.latest_assessment.reproduction_crisis  # pragma: no mutate
+                if county.circulation_state.latest_assessment is not None  # pragma: no mutate
+                else False  # pragma: no mutate
+            ),  # pragma: no mutate
         )  # pragma: no mutate
 
 

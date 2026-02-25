@@ -669,6 +669,8 @@ ADR0XX_descriptive_name:
 - In-memory computation; no new database tables. CrisisState persists via CountyEconomicState in the graph bridge. (018-crisis-devaluation-mechanics)
 - Python 3.12+ + Pydantic 2.x, NetworkX 3.x, SQLAlchemy 2.x (all existing) (020-detroit-vertical-slice)
 - SQLite (marxist-data-3NF.sqlite) — read-only during simulation (020-detroit-vertical-slice)
+- Python 3.12+ + NetworkX 3.x (graph), Pydantic 2.x (models), scipy (Wasserstein-1 LP for curvature) (002-dialectical-field-topology)
+- In-memory via GraphProtocol (`update_node`, `update_edge`) + `context.persistent_data` for cross-tick history (002-dialectical-field-topology)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

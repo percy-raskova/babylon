@@ -93,6 +93,13 @@ class LoaderConfig:
     # Temporal - BEA county data (None = all available years)
     bea_county_years: list[int] | None = None
 
+    # Temporal - Capital Volume I data sources (Feature 021)
+    bls_unemployment_years: list[int] = field(default_factory=lambda: list(range(2005, 2021)))
+    eviction_lab_years: list[int] = field(default_factory=lambda: list(range(2005, 2021)))
+    foreclosure_years: list[int] = field(default_factory=lambda: list(range(2005, 2021)))
+    census_housing_years: list[int] = field(default_factory=lambda: list(range(2005, 2021)))
+    bls_productivity_years: list[int] = field(default_factory=lambda: list(range(2005, 2021)))
+
     # Geographic scope
     state_fips_list: list[str] | None = None  # None = all 52 (50 + DC + PR)
     include_territories: bool = False  # VI, GU, AS, MP

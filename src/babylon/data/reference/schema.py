@@ -2039,6 +2039,159 @@ class FactATUSReproductiveLabor(NormalizedBase):
 
 
 # =============================================================================
+# CAPITAL VOLUME I FACT TABLES (Feature 021)
+# =============================================================================
+
+
+class FactBLSUnemploymentDecomposition(NormalizedBase):
+    """County-level unemployment decomposition from BLS LAUS.
+
+    Stores detailed labor force status decomposition needed for reserve army
+    composition analysis. U-3 approximates floating reserve, (U-6 - U-3)
+    approximates latent reserve, PTER approximates stagnant reserve.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-001, FR-014).
+    """
+
+    __tablename__ = "fact_bls_unemployment_decomposition"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    labor_force: Mapped[int] = mapped_column(Integer, nullable=False)
+    employed: Mapped[int] = mapped_column(Integer, nullable=False)
+    unemployed_u3: Mapped[int] = mapped_column(Integer, nullable=False)
+    unemployed_u6: Mapped[int] = mapped_column(Integer, nullable=False)
+    part_time_economic: Mapped[int] = mapped_column(Integer, nullable=False)
+    discouraged: Mapped[int] = mapped_column(Integer, nullable=False)
+    marginally_attached: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("idx_bls_unemp_county", "county_id"),
+        Index("idx_bls_unemp_time", "time_id"),
+        UniqueConstraint("county_id", "time_id", name="uq_bls_unemp_county_time"),
+    )
+
+
+class FactEvictionLabFiling(NormalizedBase):
+    """County-level eviction filings and executions from Eviction Lab.
+
+    Provides eviction activity data for dispossession event tracking and
+    territorial dispossession intensity computation.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-005, FR-015).
+    """
+
+    __tablename__ = "fact_eviction_lab_filing"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    filings: Mapped[int] = mapped_column(Integer, nullable=False)
+    executions: Mapped[int] = mapped_column(Integer, nullable=False)
+    filing_rate: Mapped[Decimal] = mapped_column(Numeric(8, 6), nullable=False)
+    execution_rate: Mapped[Decimal] = mapped_column(Numeric(8, 6), nullable=False)
+    renter_households: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("idx_eviction_county", "county_id"),
+        Index("idx_eviction_time", "time_id"),
+        UniqueConstraint("county_id", "time_id", name="uq_eviction_county_time"),
+    )
+
+
+class FactForeclosureRate(NormalizedBase):
+    """County-level foreclosure rates from HUD/FRED/state sources.
+
+    Provides foreclosure activity data for dispossession event tracking.
+    Critical for the 2008-2012 crisis period in the Detroit metro area.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-005, FR-016).
+    """
+
+    __tablename__ = "fact_foreclosure_rate"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    filings: Mapped[int] = mapped_column(Integer, nullable=False)
+    completions: Mapped[int] = mapped_column(Integer, nullable=False)
+    filing_rate: Mapped[Decimal] = mapped_column(Numeric(8, 6), nullable=False)
+    completion_rate: Mapped[Decimal] = mapped_column(Numeric(8, 6), nullable=False)
+    mortgaged_units: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("idx_foreclosure_county", "county_id"),
+        Index("idx_foreclosure_time", "time_id"),
+        UniqueConstraint("county_id", "time_id", name="uq_foreclosure_county_time"),
+    )
+
+
+class FactCensusInstitutionalOwnership(NormalizedBase):
+    """County-level housing institutional ownership from Census ACS.
+
+    Tracks ownership patterns and renter migration for dispossession
+    intensity computation and territorial value transfer analysis.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-005, FR-017).
+    """
+
+    __tablename__ = "fact_census_institutional_ownership"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    county_id: Mapped[int] = mapped_column(ForeignKey("dim_county.county_id"), nullable=False)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    total_units: Mapped[int] = mapped_column(Integer, nullable=False)
+    owner_occupied: Mapped[int] = mapped_column(Integer, nullable=False)
+    renter_occupied: Mapped[int] = mapped_column(Integer, nullable=False)
+    institutional_owned: Mapped[int] = mapped_column(Integer, nullable=False)
+    absentee_owned: Mapped[int] = mapped_column(Integer, nullable=False)
+    net_migration_renters: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        Index("idx_inst_ownership_county", "county_id"),
+        Index("idx_inst_ownership_time", "time_id"),
+        UniqueConstraint("county_id", "time_id", name="uq_inst_ownership_county_time"),
+    )
+
+
+class FactBLSProductivity(NormalizedBase):
+    """Sector-level hours and productivity from BLS CES / Productivity program.
+
+    Provides average weekly hours and productivity indices for working day
+    characterization and exploitation mode classification.
+
+    Feature 021: Capital Volume I Production Dynamics (FR-007, FR-018).
+    """
+
+    __tablename__ = "fact_bls_productivity"
+
+    fact_id: Mapped[int] = mapped_column(primary_key=True)
+    industry_id: Mapped[int] = mapped_column(ForeignKey("dim_industry.industry_id"), nullable=False)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+
+    avg_weekly_hours: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    avg_hourly_earnings: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False)
+    output_per_hour: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    unit_labor_costs: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+
+    __table_args__ = (
+        Index("idx_bls_prod_industry", "industry_id"),
+        Index("idx_bls_prod_time", "time_id"),
+        UniqueConstraint("industry_id", "time_id", name="uq_bls_prod_industry_time"),
+    )
+
+
+# =============================================================================
 # EXPORTS
 # =============================================================================
 
@@ -2144,4 +2297,10 @@ __all__ = [
     # ATUS Reproductive Labor
     "DimATUSActivityCategory",
     "FactATUSReproductiveLabor",
+    # Capital Volume I (Feature 021)
+    "FactBLSUnemploymentDecomposition",
+    "FactEvictionLabFiling",
+    "FactForeclosureRate",
+    "FactCensusInstitutionalOwnership",
+    "FactBLSProductivity",
 ]

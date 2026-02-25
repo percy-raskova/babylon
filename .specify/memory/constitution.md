@@ -2,25 +2,39 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.6.1 → 1.7.0
-Bump Rationale: State AI verb vocabulary added to Article V — MINOR (new section)
+Version Change: 1.7.0 → 1.8.0
+Bump Rationale: 3 new theoretical commitments + hyperedge categories + anti-pattern — MINOR
 
 Modified Principles:
-  - V renamed "Player Action Vocabulary" → "Action Vocabulary" (now covers both actors)
+  - II.7 expanded with three hyperedge categories (contradiction pairs,
+    institutional exclusion, lifecycle phases)
 
 Added Sections:
-  - V.State AI Verbs: 6 top-level verbs (Administer, Develop, Research, Co-opt, Repress, Withdraw)
-  - V.State AI Target Type Grouping
-  - V.State AI Verb Implementation Requirements
+  - I.16 Organization vs Institution (voluntary coordination vs crystallized relations)
+  - I.17 OODA Loop as Organizational Metabolism (action capacity per turn)
+  - I.18 Material-Ideological Distinction on Hyperedges (class-in-itself vs class-for-itself)
+  - II.7 Category 1: Contradiction Pairs (only marginalized side as hyperedge)
+  - II.7 Category 2: Institutional Exclusion (denial of access, not bilateral contradiction)
+  - II.7 Category 3: Lifecycle Phases / D-P-D' Circuit (temporal, not identity)
+  - VIII.10 Hegemonic Community as Hyperedge (anti-pattern)
 
 Removed Sections: None
 
 Cross-References Added:
-  - V.Develop references territory layer (II.3 manifold)
-  - V.Co-opt:Divide references edge topology (I.6, I.15)
-  - V.Repress escalation references legitimacy cost
-  - V.Withdraw modes reference player Investigate verb
-  - V.Research references technologies.json
+  - I.16 references V (player builds orgs, state operates institutions)
+  - I.17 references V (OODA constrains verb availability per tick)
+  - I.18 references I.7 (gap between material/ideological = political struggle terrain)
+  - VIII.10 references II.7 Category 1
+
+Follow-up TODOs:
+  - CODE: Restructure CommunityType enum per three-category taxonomy:
+    Category 1 hegemonic: rename WHITE→SETTLER, add PATRIARCHAL
+    Category 1 marginalized: keep NEW_AFRIKAN, FIRST_NATIONS, CHICANO, WOMEN, TRANS
+    Category 2 exclusion: keep DISABLED, QUEER, UNDOCUMENTED; add INCARCERATED
+    Category 2 remove: ABLED, HETEROSEXUAL, CISGENDER (institutional defaults, not communities)
+    Category 3 lifecycle: add YOUTH, ADULT, ELDER
+  - CODE: Update tests to reflect new taxonomy
+  - SPEC: Update Feature 022 spec FR-003 with corrected community types
 
 Templates Requiring Updates:
   ✅ plan-template.md: No hardcoded principle numbers
@@ -29,9 +43,8 @@ Templates Requiring Updates:
   ✅ checklist-template.md: No constitution references
   ✅ agent-file-template.md: No constitution references
 
-Follow-up TODOs: None
-
 Previous Version History:
+  1.7.0 (2026-02-25): Added V. State AI Verbs (6 verbs, asymmetric)
   1.6.1 (2026-02-25): Structural reorganization — annex architecture, core condensed ~78%
   1.6.0 (2026-02-25): Added II.7 Edges vs Hyperedges, VIII.9 Community as Pairwise Edge
   1.5.0 (2026-02-24): Added I.12-I.15 (Catastrophe Surface, Principal Contradiction,
@@ -86,6 +99,12 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **15. Edge Mode Transitions** — State machine governs permissible transitions. Prohibited: EXTRACTIVE → SOLIDARISTIC (requires TRANSACTIONAL intermediate). Conditions reference contradiction internals. Topology versioned as constitutional amendment.
 
+**16. Organization vs Institution** — Organization = voluntary coordination, can be destroyed. Institution = crystallized social relations, survives member turnover. Organizations become institutions through formalization. The player builds organizations; the state operates institutions. Destroying an organization kills it. Destroying an institution requires replacing the social relations it crystallizes.
+
+**17. OODA Loop as Organizational Metabolism** — Every organization/institution has an OODA profile (Observe-Orient-Decide-Act) determining action capacity per turn. Trade-offs: speed vs coherence, autonomy vs coordination, democracy vs reaction time. Decentralized orgs observe fast but orient slowly. Hierarchical institutions decide fast but observe poorly. The profile constrains which verbs are available and how many per tick.
+
+**18. Material-Ideological Distinction on Hyperedges** — Every community hyperedge has two dimensions: material basis (objective structural position, exists regardless of member consciousness) and ideological dimension (whether members conceive of themselves as having collective interests opposed to hegemonic order). The GAP between material position and ideological consciousness is the terrain of political struggle. This is class-in-itself vs class-for-itself, generalized across all contradiction axes.
+
 ## II. Architecture Principles
 
 > Full article: `constitution/article-ii-architecture.md`
@@ -102,7 +121,11 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **6. State is Data, Engine is Transformation** — WorldState: frozen Pydantic, `model_copy()` for changes. Engine: pure `step()`. Hydration: SQLite → WorldState → NetworkX → Systems → back. No DB I/O during tick.
 
-**7. Edges vs Hyperedges (NetworkX + XGI)** — Dyadic flows between two entities → NetworkX edge. N-ary membership → XGI hyperedge. Two layers MUST remain separate. Hyperedge overlap = solidarity potential; edge = actuality. Edges per tick; hyperedges α-smooth.
+**7. Edges vs Hyperedges (NetworkX + XGI)** — Dyadic flows between two entities → NetworkX edge. N-ary membership → XGI hyperedge. Two layers MUST remain separate. Hyperedge overlap = solidarity potential; edge = actuality. Edges per tick; hyperedges α-smooth. Three hyperedge categories:
+
+- **Category 1 — Contradiction Pairs**: Both hegemonic and marginalized sides are real hyperedges with members, institutions, and political projects. SETTLER ↔ NEW_AFRIKAN/FIRST_NATIONS/CHICANO (land, imperial rent, carceral labor). PATRIARCHAL ↔ WOMEN/TRANS (unwaged reproductive labor, Dept III). Hegemonic hyperedges recruit, organize, and defend extraction positions.
+- **Category 2 — Institutional Exclusion**: Only the marginalized side exists as a real hyperedge. No paired oppressor community — oppression flows through institutional defaults. DISABLED (built environment assumes able-bodiedness), QUEER (institutional heteronormativity), UNDOCUMENTED (legal exclusion), INCARCERATED (carceral system, civil death).
+- **Category 3 — Lifecycle Phases (D-P-D' Circuit)**: Temporal positions in the intergenerational lifecycle. NOT identity communities — structural phases with distinct material conditions. YOUTH (D: pre-productive, dependent), ADULT (P: sells labor-power), ELDER (D': post-productive, legitimation bargain). Dependency ratio = (Pop_D + Pop_D') / Pop_P.
 
 ## III. Methodological Constraints
 
@@ -176,6 +199,7 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 7. **Superstructure Before Base** — See VI.1.
 8. **Decorative Visualization** — See VII.10.
 9. **Community as Pairwise Edge** — Community = XGI hyperedge, not combinatorial pairwise edges. See II.7.
+10. **Oppressor Hyperedge for Institutional Exclusion** — Category 2 communities (DISABLED, QUEER, UNDOCUMENTED, INCARCERATED) have NO paired oppressor hyperedge. ABLED is absence of disability, not a political community. HETEROSEXUAL is unmarked default, not solidarity community. Contrast with Category 1 where BOTH sides exist (SETTLER has institutions, recruits, defends extraction). See II.7.
 
 ## IX. Governance
 
@@ -187,4 +211,4 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 ______________________________________________________________________
 
-**Version**: 1.7.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-25
+**Version**: 1.8.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-25

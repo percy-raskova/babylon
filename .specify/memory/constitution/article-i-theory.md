@@ -327,3 +327,76 @@ Not all edge mode transitions are equally real. The four modes (EXTRACTIVE, TRAN
 1. **The transition topology MUST be versioned.** As historical analysis reveals additional transitions or conditions, the state machine is updated as a constitutional amendment, not a code change.
 
 **Rationale**: Without transition topology, edge mode changes are arbitrary — any mode can become any other given sufficient pressure. This contradicts the dialectical insight that qualitative transformations have specific preconditions. You cannot build solidarity on top of active exploitation; you must first end the extraction. The state machine encodes this structural reality.
+
+### 16. Organization vs Institution
+
+Two distinct entity types with fundamentally different properties:
+
+**Organization** = voluntary coordination. Can be destroyed. Depends on active participation. When members leave or are arrested, the organization degrades. The player builds organizations through Reproduce, Educate, and Move verbs.
+
+**Institution** = crystallized social relations. Survives member turnover. The relations persist independent of specific individuals occupying roles. The state operates institutions — the police department continues functioning when officers retire. Destroying an institution requires replacing the social relations it crystallizes, not just removing personnel.
+
+**Formalization transforms organizations into institutions.** A mutual aid network (organization) that acquires bylaws, property, and paid staff becomes a nonprofit (institution). A guerrilla cell (organization) that establishes a party structure with dues, discipline, and succession protocols becomes a vanguard party (institution).
+
+**Implementation Requirements**:
+
+1. **Organizations and institutions MUST be distinct entity types.** They share some attributes (membership, resources, OODA profile) but differ in durability, formalization level, and response to disruption.
+
+1. **Disruption effects differ by type.** Arresting all members of an organization destroys it. Arresting all current members of an institution degrades it but does not destroy it — new members are recruited into existing roles.
+
+1. **Formalization is a one-way threshold crossing (I.7).** Once an organization becomes an institution, it does not revert without deliberate de-formalization or collapse.
+
+**Rationale**: Without this distinction, the simulation cannot model the difference between destroying the Black Panther Party (organization, destroyed by COINTELPRO) and destroying the NYPD (institution, survives any personnel change). Revolutionary strategy requires building organizations that can become institutions; counterrevolutionary strategy targets organizations before they formalize.
+
+### 17. OODA Loop as Organizational Metabolism
+
+Every organization and institution has an OODA profile (Observe-Orient-Decide-Act) that determines its action capacity per turn.
+
+**The OODA Loop**:
+
+- **Observe**: Gather information about the environment. Intelligence, reconnaissance, surveillance.
+- **Orient**: Interpret observations through ideological lens. Analysis, threat assessment, opportunity recognition.
+- **Decide**: Choose action from available verbs. Command authority, democratic process, consensus.
+- **Act**: Execute the chosen verb. Logistics, discipline, operational capacity.
+
+**Trade-offs** (each organization sits somewhere on these axes):
+
+| Axis | One End | Other End |
+| ---- | ------- | --------- |
+| Speed vs Coherence | Fast but disjointed (flash mob) | Slow but unified (party congress) |
+| Autonomy vs Coordination | Cells act independently (guerrilla) | Central command directs all (army) |
+| Democracy vs Reaction Time | Full consensus (assembly) | Commander decides (vanguard) |
+
+**Implementation Requirements**:
+
+1. **Every organization/institution MUST have an OODA profile.** The profile is a set of coefficients determining how many verbs are available per tick, how quickly the entity can shift strategy, and what information it can access.
+
+1. **OODA profile constrains verb availability.** An organization with slow Observe cannot use Investigate effectively. An institution with slow Decide cannot respond to rapidly changing conditions. The profile does not forbid verbs — it modulates their effectiveness and cost.
+
+1. **State institutions have characteristic OODA profiles.** The FBI observes well but orients poorly (sees threats through countersubversion lens). The military decides fast but acts inflexibly. These profiles are data-driven, not hardcoded.
+
+**Rationale**: Without OODA profiles, all organizations are functionally identical — they differ only in size and resources. Real organizational effectiveness depends on how quickly and coherently an entity can cycle through observation, interpretation, decision, and action. Boyd's insight: the entity that completes OODA cycles faster gains initiative.
+
+### 18. Material-Ideological Distinction on Community Hyperedges
+
+Every community hyperedge carries two independent dimensions:
+
+**Material basis (objective)**: The concrete extraction, exclusion, or structural position that defines the hyperedge. This exists regardless of whether members recognize it. A Black person in Detroit has a material position within the SETTLER ↔ NEW_AFRIKAN contradiction pair whether or not they identify as having separate material interests from the settler nation.
+
+**Ideological dimension (subjective)**: Whether members of the hyperedge conceive of themselves as having collective interests that are structurally opposed to the hegemonic order. A trans person has material interests not served by integration into patriarchy — but they must conceive of themselves as having those interests for solidarity to be politically actionable.
+
+**The GAP between material position and ideological consciousness is the terrain of political struggle.** This is Marx's class-in-itself vs class-for-itself, generalized across all contradiction axes:
+
+- A community where material basis = 1.0 and ideological consciousness = 0.0 is a class-in-itself: objectively positioned but not yet self-aware as a collective political subject.
+- A community where both = 1.0 is a class-for-itself: conscious of its position and organized to act on it.
+- The player's Educate verb operates precisely in this gap — raising ideological consciousness to match material reality.
+
+**Implementation Requirements**:
+
+1. **Every community hyperedge MUST track both dimensions independently.** Material basis is derived from data (reproduction costs, rent access, structural position). Ideological consciousness is a separate float that changes through organizing (player Educate verb) and state action (Co-opt:Propagandize).
+
+1. **Solidarity potential MUST weight both dimensions.** High material overlap with zero ideological consciousness produces low solidarity potential. The math cannot assume that shared material conditions automatically produce shared consciousness — that is the economism error (VIII.3).
+
+1. **The gap MUST be measurable.** For each community, `gap = material_basis - ideological_consciousness`. This gap is the primary target of the player's political education work and the state's ideological co-optation.
+
+**Rationale**: Without this distinction, the simulation collapses into either economism (material conditions automatically produce consciousness) or voluntarism (consciousness can be willed into existence without material basis). Both are theoretical errors that the MLM-TW framework explicitly rejects (I.7 rationale). The material-ideological gap operationalizes the dialectical relationship between being and consciousness.

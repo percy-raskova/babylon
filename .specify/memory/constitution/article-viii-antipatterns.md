@@ -64,3 +64,24 @@ H.add_edge(community_members, id="black_church_detroit")
 ```
 
 Community is not a relationship between agents. It is a thing agents belong to. Flattening hyperedges into cliques destroys collective semantics, inflates edge count combinatorially, and makes community-level operations (state targeting, membership queries) impossible to express naturally. See II.7.
+
+### 10. Oppressor Hyperedge for Institutional Exclusion
+
+**Wrong**: Creating paired oppressor hyperedges for Category 2 (institutional exclusion) communities.
+
+```python
+# WRONG: Creating ABLED as paired oppressor for DISABLED
+H.add_edge(abled_agents, id="abled")
+H.add_edge(heterosexual_agents, id="heterosexual")
+```
+
+**Right**: Category 2 has no paired oppressor. Oppression flows through institutional defaults.
+
+```python
+# RIGHT: Only the excluded side is a hyperedge
+H.add_edge(disabled_agents, id="disabled")
+H.add_edge(queer_agents, id="queer")
+# ABLED is absence of disability, not a political community
+```
+
+ABLED is not a political community — it is the institutional default. HETEROSEXUAL is the unmarked norm, not a solidarity community. Contrast with Category 1 (contradiction pairs) where BOTH sides are real hyperedges: SETTLER has institutions (HOAs, police unions, border militias), recruits members, and actively defends its extraction position. The distinction: Category 1 oppressors organize as a community; Category 2 oppression operates through structural defaults without requiring community formation. See II.7.

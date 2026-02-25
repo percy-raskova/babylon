@@ -151,3 +151,35 @@ The simulation uses two complementary graph structures. The decision rule is cat
 1. **Cross-layer computation is explicit.** When solidarity potential (derived from hyperedge overlap) informs edge creation or transformation, the computation MUST clearly bridge the two layers with documented functions.
 
 **Rationale**: Collapsing community membership into pairwise edges loses the n-ary structure. A community of 50 members is one hyperedge, not 1,225 pairwise edges. More importantly, the state can target the hyperedge directly (surveil the community), which has no natural representation as operations on 1,225 individual edges. The ontological distinction — flows vs membership — maps cleanly to the technical distinction between graphs and hypergraphs.
+
+**Three Hyperedge Categories**:
+
+**Category 1 — Contradiction Pairs**: Both hegemonic and marginalized sides are real hyperedges with members, institutions, political projects, and material extraction flows between them.
+
+| Hegemonic Hyperedge | Marginalized Hyperedge(s) | Material Basis of Extraction |
+| ------------------- | ------------------------- | ---------------------------- |
+| SETTLER | NEW_AFRIKAN, FIRST_NATIONS, CHICANO | Land, imperial rent, carceral labor, property value regimes |
+| PATRIARCHAL | WOMEN, TRANS | Unwaged reproductive labor (Dept III), wage gap, care externalization |
+
+SETTLER has institutions (HOAs, police unions, suburban school boards, border militias), material infrastructure (property value regimes, redlining legacies), and active political projects. It recruits, organizes, and defends its extraction position.
+
+PATRIARCHAL has institutions (patriarchal family structure, gendered wage systems, religious hierarchies) and extracts reproductive labor (Federici). Trans men do not occupy the same material position in patriarchy as cis men — PATRIARCHAL membership is defined by material position in extraction, not gender identity.
+
+**Category 2 — Institutional Exclusion**: Only the marginalized side exists as a real hyperedge. No paired oppressor community. Oppression flows through institutional defaults and resource allocation.
+
+| Hyperedge | Material Basis | Why No Paired Oppressor |
+| --------- | -------------- | ----------------------- |
+| DISABLED | Built environment assumes able-bodiedness; higher reproduction costs | ABLED is absence of disability, not a political community |
+| QUEER | Institutional heteronormativity; exclusion from protections | HETEROSEXUAL is unmarked default |
+| UNDOCUMENTED | Legal exclusion from labor protections, healthcare, housing | CITIZEN is legal status, not solidarity community |
+| INCARCERATED | Carceral system; sub-minimum labor extraction; civil death | FREE is absence of incarceration |
+
+**Category 3 — Lifecycle Phases (D-P-D' Circuit)**: Temporal positions in the intergenerational lifecycle. NOT identity communities — structural phases with distinct material conditions.
+
+| Hyperedge | D-P-D' Phase | Material Position |
+| --------- | ------------ | ----------------- |
+| YOUTH | D (Dependent) | Pre-productive. Cannot sell labor-power. Receives care, socialization, ideological transmission. |
+| ADULT | P (Productive) | Sells labor-power. Where C-M-C and M-C-M' operate. |
+| ELDER | D' (Dependent') | Post-productive. The D' promise (Social Security, pensions) is the legitimation bargain. |
+
+Universal traversal, temporal permeability. Dependency ratio = (Pop_D + Pop_D') / Pop_P.

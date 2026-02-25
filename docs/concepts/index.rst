@@ -42,14 +42,16 @@ Economic Theory
    economics-pipeline-theory
    imperial-rent
    volume-i-theory
+   capital-circulation
    piketty-profit-rate
    survival-calculus
    reproductive-labor
 
 The mathematical foundations: the Marxian value tensor, the economics
 pipeline (capital stock, MELT, throughput, visibility, class dynamics),
-Imperial Rent extraction, Capital Volume I production dynamics, labor
-aristocracy, survival calculus, Piketty's rate of return framework,
+Imperial Rent extraction, Capital Volume I production dynamics,
+Capital Volume II circulation dynamics (turnover, reproduction, crisis),
+labor aristocracy, survival calculus, Piketty's rate of return framework,
 and proletarian feminist analysis of reproductive labor.
 
 Consciousness & Organization

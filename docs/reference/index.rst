@@ -54,11 +54,13 @@ Simulation Systems
 
    systems
    community-system
+   circulation-system
    demographics
 
 API reference for the simulation systems (19 total), the community
-hypergraph layer (Feature 022), and demographics mechanics including
-the Mass Line population block paradigm.
+hypergraph layer (Feature 022), the Capital Volume II circulation
+layer (Feature 023), and demographics mechanics including the Mass
+Line population block paradigm.
 
 Economic Data Sources
 ---------------------

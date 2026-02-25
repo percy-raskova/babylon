@@ -6114,6 +6114,28 @@ doc = ["intersphinx_registry", "jupyterlite-pyodide-kernel", "jupyterlite-sphinx
 test = ["Cython", "array-api-strict (>=2.3.1)", "asv", "gmpy2", "hypothesis (>=6.30)", "meson", "mpmath", "ninja ; sys_platform != \"emscripten\"", "pooch", "pytest (>=8.0.0)", "pytest-cov", "pytest-timeout", "pytest-xdist", "scikit-umfpack", "threadpoolctl"]
 
 [[package]]
+name = "seaborn"
+version = "0.13.2"
+description = "Statistical data visualization"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "seaborn-0.13.2-py3-none-any.whl", hash = "sha256:636f8336facf092165e27924f223d3c62ca560b1f2bb5dff7ab7fad265361987"},
+    {file = "seaborn-0.13.2.tar.gz", hash = "sha256:93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7"},
+]
+
+[package.dependencies]
+matplotlib = ">=3.4,<3.6.1 || >3.6.1"
+numpy = ">=1.20,<1.24.0 || >1.24.0"
+pandas = ">=1.2"
+
+[package.extras]
+dev = ["flake8", "flit", "mypy", "pandas-stubs", "pre-commit", "pytest", "pytest-cov", "pytest-xdist"]
+docs = ["ipykernel", "nbconvert", "numpydoc", "pydata_sphinx_theme (==0.10.0rc2)", "pyyaml", "sphinx (<6.0.0)", "sphinx-copybutton", "sphinx-design", "sphinx-issues"]
+stats = ["scipy (>=1.7)", "statsmodels (>=0.12)"]
+
+[[package]]
 name = "setproctitle"
 version = "1.3.7"
 description = "A Python module to customize the process title"
@@ -7624,6 +7646,36 @@ radon = ">=4,<7"
 requests = ">=2.0,<3.0"
 
 [[package]]
+name = "xgi"
+version = "0.10"
+description = "XGI is a Python package for higher-order networks."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "xgi-0.10-py3-none-any.whl", hash = "sha256:e01e9627997fa23b120013c256407dcd1b755425a8457532ddc257913704e193"},
+    {file = "xgi-0.10.tar.gz", hash = "sha256:d10721819d4481cc79ffcbd224f18b94dd77034282f90ddd6c0856541efb1dd9"},
+]
+
+[package.dependencies]
+matplotlib = ">=3.4"
+networkx = ">=2.7"
+numpy = ">=1.23.5"
+pandas = ">=1.3"
+requests = ">=2.0"
+scipy = ">=1.15"
+seaborn = ">=0.10"
+
+[package.extras]
+all = ["xgi[benchmark,developer,docs,release,test,tutorial]"]
+benchmark = ["pytest (>=7.2)", "pytest-benchmark (>=5.0)"]
+developer = ["black[jupyter] (>=24.3)", "isort (==5.10.1)", "nbqa", "pylint (>=3.0)"]
+docs = ["ipykernel", "matplotlib (>=3.3)", "nbsphinx", "nbsphinx-link", "numpydoc (>=1.1)", "pillow (>=8.2)", "pydata-sphinx-theme", "sphinx (>=6.0,<7.0)", "sphinx-design", "sphinx-gallery", "sphinx-rtd-theme (>=1.2)", "sphinx_copybutton"]
+release = ["build (>=1.2.1)", "twine (>=3.4)", "wheel (>=0.36)"]
+test = ["pytest (>=7.2)", "pytest-cov (>=4.0)"]
+tutorial = ["ipython (<=8.12.0)", "jupyter (>=1.0)"]
+
+[[package]]
 name = "yamllint"
 version = "1.38.0"
 description = "A linter for YAML files."
@@ -7810,4 +7862,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "bde444c1eda16e7ae52189b4ca22adcd1d9a2ebfd824cd3971b3d78dba922f36"
+content-hash = "61bf92e71ff17d6b5ce89654ac06adf1b4dbe6e6f88475822d81948f70579dac"

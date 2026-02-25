@@ -28,7 +28,7 @@ ______________________________________________________________________
 - [ ] T001 Add `EdgeMode` enum with 5 values (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC, CO_OPTIVE) to `src/babylon/models/enums.py`
 - [ ] T002 Add scipy to project dependencies via `pyproject.toml` (for Ollivier-Ricci curvature LP solver)
 - [ ] T003 [P] Add `ContradictionFieldDefines` frozen Pydantic model to `src/babylon/config/defines.py` with field normalization bounds (exploitation: [0, 5], immiseration: [0, 3], imperial_rent: [0, 2], displacement: [-0.1, 0.1]) and transition thresholds
-- [ ] T004 [P] Add new `EventType` values to `src/babylon/models/enums.py` for edge mode transitions: EDGE_MODE_TRANSITION, PRINCIPAL_CONTRADICTION_SHIFT, CO_OPTIVE_BREAKDOWN, LATENT_CONTRADICTION_RELEASE
+- [ ] T004 [P] Add new `EventType` values to `src/babylon/models/enums.py` for edge mode transitions: EDGE_MODE_TRANSITION, PRINCIPAL_CONTRADICTION_SHIFT, CO_OPTIVE_BREAKDOWN, LATENT_CONTRADICTION_RELEASE, ASPECT_REVERSAL. Add `ContradictionCharacter` enum with values ANTAGONISTIC, NON_ANTAGONISTIC to `src/babylon/models/enums.py`.
 
 ______________________________________________________________________
 
@@ -127,16 +127,19 @@ ______________________________________________________________________
 ### Tests for User Story 4
 
 - [ ] T022 [P] [US4] Write unit tests for compound predicate evaluation in `tests/unit/engine/test_edge_transition_system.py`: test predicate with all conjuncts met → True, test predicate with one conjunct unmet → False, test predicate referencing d2f/dt2 at tick 1 (insufficient history) → False (EC-001), test predicate referencing edge_mode → correct comparison
-- [ ] T023 [P] [US4] Write unit tests for transition state machine in `tests/unit/engine/test_edge_transition_system.py`: test each permissible transition from FR-010 (18 transitions), test prohibited transition (EXTRACTIVE → SOLIDARISTIC) raises error, test multiple eligible transitions resolved by priority (EC-003), test self-transition ANTAGONISTIC → ANTAGONISTIC (conflict persists)
+- [ ] T023 [P] [US4] Write unit tests for transition state machine in `tests/unit/engine/test_edge_transition_system.py`: test each permissible transition from FR-010 (17 transitions including ANTAGONISTIC → SOLIDARISTIC from I.15), test prohibited transition (EXTRACTIVE → SOLIDARISTIC) raises error, test multiple eligible transitions resolved by priority (EC-003), test self-transition ANTAGONISTIC → ANTAGONISTIC (conflict persists)
 
 ### Implementation for User Story 4
 
 - [ ] T024 [US4] Create `CompoundPredicate`, `PredicateCondition`, and `EdgeModeTransition` frozen Pydantic models in `src/babylon/engine/systems/edge_transition.py`. `PredicateCondition` has fields: field (str), metric (str: "value"|"df_dt"|"d2f_dt2"|"laplacian"|"curvature"|"edge_mode"), operator (str), threshold (float|str), scope (str: "source"|"target"|"edge"). `CompoundPredicate` has conditions list. `EdgeModeTransition` has from_mode, to_mode, predicate, priority, description.
 - [ ] T025 [US4] Implement predicate evaluation function in `src/babylon/engine/systems/edge_transition.py`: given a `CompoundPredicate`, source node attrs, target node attrs, and edge attrs, evaluate all conjuncts. Return False if any conjunct references undefined derivative. Return True only when ALL conjuncts True.
-- [ ] T026 [US4] Define the 18 permissible transitions from FR-010 as a list of `EdgeModeTransition` objects in `src/babylon/engine/systems/edge_transition.py`. Include default compound predicates for each transition based on the conditions described in FR-010 (thresholds from GameDefines).
+- [ ] T026 [US4] Define the 17 permissible transitions from FR-010 as a list of `EdgeModeTransition` objects in `src/babylon/engine/systems/edge_transition.py`. Include ANTAGONISTIC → SOLIDARISTIC (constitution I.15: shared enemy produces alliance). Include default compound predicates for each transition based on the conditions described in FR-010 (thresholds from GameDefines).
 - [ ] T027 [US4] Create `EdgeTransitionSystem` class in `src/babylon/engine/systems/edge_transition.py` per contract. Implement `step()`: auto-wrap guard, iterate all edges with `edge_mode` attribute, for each edge collect eligible transitions from current mode, evaluate predicates, select highest-priority firing transition (EC-003), apply transition via `graph.update_edge()`, emit EDGE_MODE_TRANSITION event.
 - [ ] T028 [US4] Make tests from T022 and T023 pass. Iterate until all green.
 - [ ] T029 [US4] Add `EdgeTransitionSystem` export to `src/babylon/engine/systems/__init__.py`
+- [ ] T029b [P] [US4] Write unit tests for contradiction character flag (FR-018) in `tests/unit/engine/test_edge_transition_system.py`: test that edges carry `contradiction_character` attribute (ANTAGONISTIC or NON_ANTAGONISTIC), test compound predicate can reference character flag, test that character flag is independent of edge mode (TRANSACTIONAL edge can be ANTAGONISTIC character)
+- [ ] T029c [P] [US4] Write unit tests for aspect reversal event (FR-019) in `tests/unit/engine/test_edge_transition_system.py`: test that when dominant side of contradiction switches, ASPECT_REVERSAL event is emitted with edge identifier and new dominant party
+- [ ] T029d [US4] Implement contradiction character flag on edges in `EdgeTransitionSystem`: ensure all edges with `edge_mode` also carry `contradiction_character` (default NON_ANTAGONISTIC), make character flag available to compound predicate evaluation. Implement aspect reversal detection and ASPECT_REVERSAL event emission when dominant party switches on a directed edge.
 
 **Checkpoint**: US4 complete. Edge mode transitions fire based on declarative compound predicates.
 
@@ -224,11 +227,12 @@ ______________________________________________________________________
 
 - [ ] T046 [P] [US7] Write integration test for exploitation field geography in `tests/integration/test_field_topology_integration.py`: load Detroit metro graph with QCEW-derived economic attributes, run 10-tick simulation, assert Wayne County exploitation > Oakland County exploitation (SC-001, SC-002), assert exploitation gradient Wayne→Oakland is negative (SC-008)
 - [ ] T047 [P] [US7] Write integration test for Laplacian signs in `tests/integration/test_field_topology_integration.py`: assert Laplacian at Wayne County proletariat is negative (pressure peak), assert Laplacian at Oakland County petit bourgeoisie is positive or near-zero (SC-002)
+- [ ] T047b [P] [US7] Write integration test for temporal derivative year-range patterns in `tests/integration/test_field_topology_integration.py`: given Wayne County data for 2010-2014 (post-crisis recovery), assert d2f/dt2 is positive (accelerating contradiction); given data for 2018-2022 (gentrification period), assert d2f/dt2 is negative (decelerating contradiction), consistent with gentrification timeline (US7-AS3)
 
 ### Implementation for User Story 7
 
 - [ ] T048 [US7] Create test fixture with Detroit metro graph and QCEW-derived economic attributes in `tests/integration/conftest.py`: create nodes for Wayne County proletariat, Oakland County petit bourgeoisie, and at least one connecting edge with realistic exploitation rates, wages, and population values from QCEW data
-- [ ] T049 [US7] Make tests from T046 and T047 pass by verifying existing system implementations produce correct results with realistic data. If tests fail, investigate whether field computation or normalization needs calibration and adjust normalization bounds in `ContradictionFieldDefines`.
+- [ ] T049 [US7] Make tests from T046, T047, and T047b pass by verifying existing system implementations produce correct results with realistic data. If tests fail, investigate whether field computation or normalization needs calibration and adjust normalization bounds in `ContradictionFieldDefines`.
 
 **Checkpoint**: US7 complete. Detroit empirical validation confirms field framework reproduces known economic geography.
 
@@ -238,7 +242,7 @@ ______________________________________________________________________
 
 **Purpose**: Wire the 3 new systems into the simulation engine execution order and run full integration
 
-- [ ] T050 Register all 3 new systems in `src/babylon/engine/simulation_engine.py`: add imports for ContradictionFieldSystem, FieldDerivativeSystem, EdgeTransitionSystem. Append to `_DEFAULT_SYSTEMS` list at positions 14, 15, 16 (after ContradictionSystem). Update docstring to reflect 15-system order.
+- [ ] T050 Register all 3 new systems in `src/babylon/engine/simulation_engine.py`: add imports for ContradictionFieldSystem, FieldDerivativeSystem, EdgeTransitionSystem. Append to `_DEFAULT_SYSTEMS` list at positions 14, 15, 16 (after ContradictionSystem). Update docstring to reflect 16-system order.
 - [ ] T051 Write multi-tick integration test in `tests/integration/test_field_topology_integration.py`: run 10-tick simulation with full engine (all 16 systems), verify contradiction fields evolve over ticks, verify derivatives computed from tick 1 onward, verify edge mode transitions fire when conditions met, verify no runtime errors across all systems
 - [ ] T052 Make integration test from T051 pass. Debug any system interaction issues.
 

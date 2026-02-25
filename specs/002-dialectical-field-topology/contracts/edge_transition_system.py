@@ -6,6 +6,7 @@ Handles CO-OPTIVE suppression, latent contradiction, and bifurcation.
 
 Reference: FR-007 (compound predicates), FR-010 (transition topology)
 Reference: FR-014-017 (CO-OPTIVE field dynamics)
+Reference: FR-018 (contradiction character flag), FR-019 (aspect reversal)
 Reference: R-002 (EdgeMode vs EdgeType), R-005 (predicate design)
 Reference: R-006 (system ordering — position 16)
 
@@ -33,17 +34,20 @@ class EdgeTransitionSystemContract:
         - Edge: field_gradients: dict[str, float]
         - Edge: ricci_curvature: float
         - Edge: edge_mode: str (EdgeMode enum value)
+        - Edge: contradiction_character: str (ContradictionCharacter enum)
         - Edge: co_optive_suppressed_fields: list[str] (for CO-OPTIVE edges)
         - persistent_data["latent_contradictions"]: accumulated suppression
 
     Outputs (written to graph):
         - Edge: edge_mode: str (updated if transition fires)
+        - Edge: contradiction_character: str (updated if character changes)
         - Node: contradiction_fields: dict[str, float]
             (modified if CO-OPTIVE suppression active or latent release)
-        - Events emitted via event_bus for transitions
+        - Events emitted via event_bus for transitions and aspect reversals
 
     Invariants:
         - Only transitions defined in the state machine (FR-010) are permitted
+        - ANTAGONISTIC → SOLIDARISTIC requires shared enemy (I.15)
         - Prohibited transitions raise errors
         - Multiple eligible transitions resolved by priority (EC-003)
         - CO-OPTIVE edges with zero material flow must transition (EC-010)
@@ -52,6 +56,8 @@ class EdgeTransitionSystemContract:
         - Multiple CO-OPTIVE edges at one node: independent suppression
           and independent release (EC-009)
         - Bifurcation direction: solidarity magnitude comparison (SC-011)
+        - Every edge carries contradiction_character flag (FR-018)
+        - Aspect reversal emits ASPECT_REVERSAL event (FR-019)
     """
 
     @property
@@ -88,6 +94,9 @@ class EdgeTransitionSystemContract:
                       within-group > cross-divide → fascist
                     - Emit appropriate event (REVOLUTIONARY_OFFENSIVE
                       or FASCIST_REVANCHISM)
-            5. Emit transition events for all mode changes
+            5. Aspect reversal detection:
+                a. For each directed edge, check if dominant party switched
+                b. If reversed, emit ASPECT_REVERSAL event (FR-019)
+            6. Emit transition events for all mode changes
         """
         ...

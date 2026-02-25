@@ -132,7 +132,7 @@ As a simulation researcher, I want Ollivier-Ricci curvature computed for each ed
 
 **Acceptance Scenarios**:
 
-1. **Given** the Detroit metro graph topology, **When** Ollivier-Ricci curvature is computed, **Then** values match previously validated values from babylon_ricci_final.csv within floating-point tolerance.
+1. **Given** graphs with analytically known curvature (complete graph K4, path graph P4, star graph S4), **When** Ollivier-Ricci curvature is computed, **Then** values match analytically expected curvature within floating-point tolerance (positive for complete graphs, negative for bridge edges in path graphs).
 2. **Given** no topology changes between ticks 5 and 10, **When** curvature is queried at tick 10, **Then** the cached values from tick 5 are returned without recomputation.
 3. **Given** a node added to the graph at tick 7, **When** the next curvature computation runs, **Then** all affected edges have updated curvature values.
 
@@ -231,6 +231,7 @@ ______________________________________________________________________
   - SOLIDARISTIC to TRANSACTIONAL: solidarity degrades under pressure (crisis intensity > edge resilience)
   - SOLIDARISTIC to ANTAGONISTIC: betrayal (betrayal event)
   - ANTAGONISTIC to TRANSACTIONAL: conflict resolved (negotiation or exhaustion event)
+  - ANTAGONISTIC to SOLIDARISTIC: shared enemy produces alliance (united front event — requires common external antagonist AND pre-existing transactional edges between parties)
   - ANTAGONISTIC to ANTAGONISTIC: conflict persists (default when no resolution met)
   - ANTAGONISTIC to CO-OPTIVE: conflict resolved through concession rather than victory (negotiation event with asymmetric outcome — one party gives more than it gains). This is "reform" — resolving antagonism through co-optation rather than structural change.
   - CO-OPTIVE to TRANSACTIONAL: co-optation normalizes into pure market relations (concessions become expected "market rate" rather than political pacification). This is successful hegemony — co-optation becomes invisible.
@@ -257,11 +258,16 @@ ______________________________________________________________________
   | ANTAGONISTIC | Oppositional | Contested/destroyed | Open conflict | Unstable (resolves toward new arrangement) |
   | CO-OPTIVE | Bidirectional, asymmetric | Concessions for quiescence | Prevents resistance | Stable while material basis persists; fragile to crisis |
 
+#### Contradiction Internals (Constitution I.14)
+
+- **FR-018**: Every edge MUST carry a `contradiction_character` flag with value `ANTAGONISTIC` or `NON_ANTAGONISTIC`, independent of its edge mode. The flag determines which qualitative leap occurs when an accumulator crosses a threshold. For example, a TRANSACTIONAL edge with ANTAGONISTIC character contains systematic exploitation wearing a commercial mask and is closer to rupture than a TRANSACTIONAL edge with NON_ANTAGONISTIC character. The flag is writable via `graph.update_edge()` and readable by compound predicates (FR-007).
+- **FR-019**: Aspect reversal — when the dominant side of a contradiction switches (e.g., the exploited party gains power over the formerly exploiting party) — MUST be recorded as a distinct event type (`ASPECT_REVERSAL`). This is a phase transition where the same contradiction persists but with poles reversed. The event MUST include the edge identifier and the new dominant party.
+
 #### Integration
 
 - **FR-011**: The contradiction field layer MUST read from existing economic calculator outputs (exploitation rate, profit rate, imperial rent, wage levels). It MUST NOT duplicate economic calculations.
 - **FR-012**: Temporal derivatives MUST be computed from tick-keyed history tables established by Feature 017 (Tick Dynamics). No new persistence mechanism is introduced.
-- **FR-013**: Ollivier-Ricci curvature computation MUST use optimal transport (Wasserstein-1 distance between neighborhood probability distributions), consistent with the existing Ricci analysis already performed in the project (babylon_ricci_final.csv).
+- **FR-013**: Ollivier-Ricci curvature computation MUST use optimal transport (Wasserstein-1 distance between neighborhood probability distributions). Correctness MUST be validated against graphs with analytically known curvature (complete graphs, path graphs, star graphs), not against external data files.
 
 ### Key Entities
 
@@ -284,7 +290,7 @@ ______________________________________________________________________
 - **SC-001**: Given a 10-tick simulation of the Detroit metro graph, every social-class node has a defined value for all four contradiction fields at every tick, with no undefined values after tick 0.
 - **SC-002**: The graph Laplacian at a high-exploitation node (Wayne County proletariat) is negative (pressure peak), while the Laplacian at a low-exploitation node (Oakland County petit bourgeoisie) is positive or near-zero, consistent with the empirical exploitation differential.
 - **SC-003**: Temporal derivatives df/dt computed from tick history match analytically expected values for a test case with known linear field growth (error < 1e-6).
-- **SC-004**: Ollivier-Ricci curvature values match previously validated values from babylon_ricci_final.csv for the same graph topology (within floating-point tolerance).
+- **SC-004**: Ollivier-Ricci curvature values match analytically expected values for known graph topologies (complete graph K4: positive curvature, path graph P4: negative curvature at bridge edges, star graph S4: known hub curvature) within floating-point tolerance.
 - **SC-005**: A compound threshold predicate referencing field magnitude AND first derivative AND Laplacian correctly triggers a state transition when all conditions are met, and does not trigger when any single condition is unmet.
 - **SC-006**: Principal contradiction identification correctly switches between exploitation and immiseration fields when the scenario is configured to make one then the other have the largest absolute df/dt.
 - **SC-007**: Continuity residuals for a closed system (no named source/sink mechanisms active) sum to zero across all nodes within floating-point tolerance.
@@ -329,7 +335,7 @@ ______________________________________________________________________
 - **A-001**: Contradiction fields are scalar-valued at nodes. Vector-valued or tensor-valued contradiction fields are deferred.
 - **A-002**: The graph Laplacian is unweighted (all edges contribute equally). Edge-weighted Laplacians are a future extension.
 - **A-003**: Temporal derivatives use unit time steps (dt = 1 tick). The current architecture assumes fixed tick duration per Feature 017.
-- **A-004**: Ollivier-Ricci curvature uses the standard formulation with self-loop probability alpha = 0.5, consistent with existing babylon_ricci_final.csv analysis.
+- **A-004**: Ollivier-Ricci curvature uses the standard formulation with self-loop probability alpha = 0.5. Validated against analytically known graph topologies.
 - **A-005**: The continuity equation is a diagnostic tool, not a hard constraint. Real contradictions can be genuinely created (new exploitation established) or genuinely resolved (exploitation abolished).
 - **A-006**: Field values are normalized to [0.0, 10.0] for cross-field comparability. The normalization preserves relative ordering and derivative signs.
 
@@ -342,7 +348,7 @@ ______________________________________________________________________
 - **DEP-003**: Feature 018 (Crisis/Devaluation) for crisis events that trigger edge mode transitions and field discontinuities.
 - **DEP-004**: Existing economic calculators (exploitation rate, profit rate, imperial rent) providing the source values from which contradiction fields are derived.
 - **DEP-005**: Existing graph structure with categorical edge modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC), extended to include CO-OPTIVE per the edge mode completeness analysis.
-- **DEP-006**: Existing Ollivier-Ricci curvature methodology validated in babylon_ricci_final.csv.
+- **DEP-006**: Ollivier-Ricci curvature methodology validated against analytically known graph topologies (complete, path, star graphs).
 
 ---
 

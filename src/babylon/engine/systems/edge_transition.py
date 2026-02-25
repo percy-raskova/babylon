@@ -567,6 +567,18 @@ class EdgeTransitionSystem:
             tick_val = context.get("tick", 0)
             tick = int(tick_val) if tick_val is not None else 0
 
+        # Access persistent_data for latent contradictions
+        persistent_data = _get_persistent_data(context)
+        latent: dict[str, dict[str, float]] = persistent_data.setdefault(
+            "latent_contradictions", {}
+        )
+
+        # ─── Phase 1: CO-OPTIVE suppression ─────────────────────────
+        _co_optive_suppression(graph, latent, services)
+
+        # ─── Phase 2: Predicate evaluation + transitions ────────────
+        co_optive_breakdowns: list[tuple[str, str, str]] = []
+
         # Process all edges with edge_mode
         for edge in graph.query_edges():
             edge_attrs = dict(edge.attributes)
@@ -633,8 +645,121 @@ class EdgeTransitionSystem:
                         )
                     )
 
+                    # Track CO-OPTIVE breakdowns for latent release
+                    if current_mode == EdgeMode.CO_OPTIVE:
+                        co_optive_breakdowns.append(
+                            (edge.source_id, edge.target_id, edge.edge_type)
+                        )
+
             # Aspect reversal detection (FR-019)
             _check_aspect_reversal(graph, edge, source_attrs, target_attrs, services, tick)
+
+        # ─── Phase 3: CO-OPTIVE breakdown handling ──────────────────
+        _handle_co_optive_breakdowns(graph, co_optive_breakdowns, latent, services, tick)
+
+
+def _co_optive_suppression(
+    graph: GraphProtocol,
+    latent: dict[str, dict[str, float]],
+    services: ServiceContainer,
+) -> None:
+    """Suppress df/dt at co-opted nodes for declared fields (FR-014).
+
+    For each CO-OPTIVE edge, accumulates the suppressed df/dt amount
+    in the latent_contradictions store.
+
+    Args:
+        graph: Graph protocol instance.
+        latent: Mutable dict of node_id -> field_name -> accumulated value.
+        services: For defines access.
+    """
+    suppression_rate = services.defines.contradiction_field.co_optive_suppression_rate
+
+    for edge in graph.query_edges():
+        edge_attrs = dict(edge.attributes)
+        mode_str = edge_attrs.get("edge_mode")
+        if mode_str is None:
+            continue
+        try:
+            mode = EdgeMode(mode_str)
+        except ValueError:
+            continue
+        if mode != EdgeMode.CO_OPTIVE:
+            continue
+
+        suppressed_fields: list[str] = edge_attrs.get("co_optive_suppressed_fields", [])
+        if not suppressed_fields:
+            continue
+
+        # Co-opted node is the source (the exploited party)
+        src_node = graph.get_node(edge.source_id)
+        if src_node is None:
+            continue
+
+        node_latent = latent.setdefault(edge.source_id, {})
+        derivs: dict[str, dict[str, float | None]] = src_node.attributes.get(
+            "field_derivatives", {}
+        )
+
+        for field_name in suppressed_fields:
+            field_deriv = derivs.get(field_name, {})
+            df_dt = field_deriv.get("df_dt")
+            if df_dt is not None and df_dt > 0:
+                suppressed = df_dt * suppression_rate
+                node_latent[field_name] = node_latent.get(field_name, 0.0) + suppressed
+
+
+def _handle_co_optive_breakdowns(
+    _graph: GraphProtocol,
+    breakdowns: list[tuple[str, str, str]],
+    latent: dict[str, dict[str, float]],
+    services: ServiceContainer,
+    tick: int,
+) -> None:
+    """Handle CO-OPTIVE breakdowns: release latent contradictions (FR-015).
+
+    When a CO-OPTIVE edge transitions away, the accumulated latent
+    contradiction is released as a spike, and a breakdown event is emitted.
+
+    Args:
+        _graph: Graph protocol instance (reserved for future latent spike writes).
+        breakdowns: List of (source_id, target_id, edge_type) that broke down.
+        latent: Mutable latent_contradictions dict.
+        services: For event bus and defines.
+        tick: Current tick number.
+    """
+    multiplier = services.defines.contradiction_field.latent_release_multiplier
+
+    for source_id, target_id, _edge_type in breakdowns:
+        node_latent = latent.pop(source_id, {})
+        if not node_latent:
+            continue
+
+        # Emit CO-OPTIVE breakdown event
+        services.event_bus.publish(
+            Event(
+                type=EventType.CO_OPTIVE_BREAKDOWN,
+                tick=tick,
+                payload={
+                    "source_id": source_id,
+                    "target_id": target_id,
+                    "latent_released": dict(node_latent),
+                    "multiplier": multiplier,
+                },
+            )
+        )
+
+        # Emit latent contradiction release event
+        services.event_bus.publish(
+            Event(
+                type=EventType.LATENT_CONTRADICTION_RELEASE,
+                tick=tick,
+                payload={
+                    "node_id": source_id,
+                    "released_fields": {f: v * multiplier for f, v in node_latent.items()},
+                },
+            )
+        )
 
 
 def _check_aspect_reversal(
@@ -699,3 +824,21 @@ def _check_aspect_reversal(
                 },
             )
         )
+
+
+def _get_persistent_data(context: ContextType) -> dict[str, Any]:
+    """Extract persistent_data from context (TickContext or dict).
+
+    Args:
+        context: TickContext or dict with persistent_data key.
+
+    Returns:
+        Mutable persistent_data dict.
+    """
+    if hasattr(context, "persistent_data"):
+        result: dict[str, Any] = context.persistent_data
+        return result
+    if isinstance(context, dict):
+        data: dict[str, Any] = context.setdefault("persistent_data", {})
+        return data
+    return {}

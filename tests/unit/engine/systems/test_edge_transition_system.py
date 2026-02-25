@@ -267,3 +267,100 @@ class TestAspectReversal:
         reversal_events = [e for e in events if e.type == EventType.ASPECT_REVERSAL]
         # Should detect the reversal
         assert len(reversal_events) >= 1
+
+
+@pytest.mark.unit
+class TestCoOptiveMechanics:
+    """Tests for CO-OPTIVE suppression and latent contradiction (US8)."""
+
+    def test_co_optive_suppresses_df_dt(self) -> None:
+        """CO-OPTIVE edges suppress df/dt at co-opted node for declared fields."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            wealth=5.0,
+            contradiction_fields={"exploitation": 7.0, "immiseration": 3.0},
+            field_derivatives={
+                "exploitation": {"laplacian": 0.0, "df_dt": 2.0, "d2f_dt2": None},
+                "immiseration": {"laplacian": 0.0, "df_dt": 1.0, "d2f_dt2": None},
+            },
+        )
+        graph.add_node(
+            "C002",
+            _node_type="social_class",
+            wealth=30.0,
+            contradiction_fields={"exploitation": 1.0, "immiseration": 0.0},
+            field_derivatives={
+                "exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None},
+                "immiseration": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None},
+            },
+        )
+        graph.add_edge(
+            "C001",
+            "C002",
+            edge_type=EdgeType.EXPLOITATION,
+            edge_mode=EdgeMode.CO_OPTIVE,
+            contradiction_character=ContradictionCharacter.NON_ANTAGONISTIC,
+            co_optive_suppressed_fields=["exploitation"],
+            value_flow=5.0,
+        )
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        persistent_data: dict[str, object] = {}
+        context: dict[str, object] = {"tick": 1, "persistent_data": persistent_data}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        # Latent contradictions should be accumulated
+        latent = persistent_data.get("latent_contradictions", {})
+        assert isinstance(latent, dict)
+
+    def test_co_optive_breakdown_emits_event(self) -> None:
+        """CO-OPTIVE breakdown emits CO_OPTIVE_BREAKDOWN event."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            wealth=5.0,
+            contradiction_fields={"exploitation": 8.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 3.0, "d2f_dt2": None}},
+        )
+        graph.add_node(
+            "C002",
+            _node_type="social_class",
+            wealth=30.0,
+            contradiction_fields={"exploitation": 1.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_edge(
+            "C001",
+            "C002",
+            edge_type=EdgeType.EXPLOITATION,
+            edge_mode=EdgeMode.CO_OPTIVE,
+            contradiction_character=ContradictionCharacter.ANTAGONISTIC,
+            co_optive_suppressed_fields=["exploitation"],
+            value_flow=5.0,
+        )
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        persistent_data: dict[str, object] = {
+            "latent_contradictions": {
+                "C001": {"exploitation": 5.0},
+            }
+        }
+        context: dict[str, object] = {"tick": 2, "persistent_data": persistent_data}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        # The CO-OPTIVE edge should transition to ANTAGONISTIC
+        # (exploitation df/dt=3.0 > 1.0 threshold)
+        edge_data = graph.edges["C001", "C002"]
+        assert edge_data["edge_mode"] == EdgeMode.ANTAGONISTIC
+
+        # Check for breakdown event
+        events = services.event_bus.get_history()
+        breakdown_events = [e for e in events if e.type == EventType.CO_OPTIVE_BREAKDOWN]
+        assert len(breakdown_events) >= 1

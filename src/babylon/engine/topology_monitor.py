@@ -40,6 +40,7 @@ from babylon.models.events import PhaseTransitionEvent, SimulationEvent
 from babylon.models.topology_metrics import ResilienceResult, TopologySnapshot
 
 if TYPE_CHECKING:
+    from babylon.engine.graph_protocol import GraphProtocol
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
 
@@ -70,44 +71,54 @@ DEFAULT_SURVIVAL_THRESHOLD = 0.4  # L_max must survive at 40% of original
 
 
 def extract_solidarity_subgraph(
-    G: nx.DiGraph[str],
+    G: nx.DiGraph[str] | GraphProtocol,
     min_strength: float = 0.0,
 ) -> nx.Graph[str]:
     """Extract undirected solidarity network from WorldState graph.
 
     Creates an undirected graph containing only social_class nodes and
     SOLIDARITY edges above the minimum strength threshold. Used for
-    connected component analysis.
+    connected component analysis via nx.connected_components.
 
     Args:
-        G: Directed graph from WorldState.to_graph()
+        G: Graph from WorldState.to_graph() (raw or protocol-wrapped)
         min_strength: Minimum solidarity_strength to include edge (default 0)
 
     Returns:
-        Undirected Graph containing only solidarity connections.
+        Undirected nx.Graph containing only solidarity connections.
         Isolated social_class nodes are included.
 
     Note:
         Territory nodes are excluded as they represent spatial substrate,
         not class positions in the solidarity network.
+        Returns raw nx.Graph because component analysis requires NetworkX algorithms.
     """
-    # Create undirected graph for component analysis
+    from babylon.engine.graph_protocol import GraphProtocol
+
+    if not isinstance(G, GraphProtocol):
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        G = NetworkXAdapter.wrap(G)
+
+    # Create undirected graph for component analysis (NetworkX-specific)
     solidarity_graph: nx.Graph[str] = nx.Graph()
 
     # Add all social_class nodes (even if isolated)
-    for node_id, data in G.nodes(data=True):
-        if data.get("_node_type") == "social_class":
-            solidarity_graph.add_node(node_id)
+    for node in G.query_nodes(node_type="social_class"):
+        solidarity_graph.add_node(node.id)
+
+    # Collect social_class node IDs for edge filtering
+    social_nodes = set(solidarity_graph.nodes())
 
     # Add SOLIDARITY edges above threshold
-    for u, v, data in G.edges(data=True):
+    for edge in G.query_edges(edge_type=EdgeType.SOLIDARITY):
+        strength = edge.attributes.get("solidarity_strength", 0.0)
         if (
-            data.get("edge_type") == EdgeType.SOLIDARITY
-            and data.get("solidarity_strength", 0.0) > min_strength
-            and G.nodes[u].get("_node_type") == "social_class"
-            and G.nodes[v].get("_node_type") == "social_class"
+            strength > min_strength
+            and edge.source_id in social_nodes
+            and edge.target_id in social_nodes
         ):
-            solidarity_graph.add_edge(u, v)
+            solidarity_graph.add_edge(edge.source_id, edge.target_id)
 
     return solidarity_graph
 
@@ -144,7 +155,7 @@ def calculate_component_metrics(
     return (num_components, max_component_size, percolation_ratio)
 
 
-def calculate_liquidity(G: nx.DiGraph[str]) -> tuple[int, int]:
+def calculate_liquidity(G: nx.DiGraph[str] | GraphProtocol) -> tuple[int, int]:
     """Calculate liquidity metrics (potential vs actual solidarity).
 
     Measures the strength of the solidarity network by counting edges
@@ -153,27 +164,33 @@ def calculate_liquidity(G: nx.DiGraph[str]) -> tuple[int, int]:
     - Actual (cadre): edges > 0.5 strength
 
     Args:
-        G: Directed graph from WorldState.to_graph()
+        G: Graph from WorldState.to_graph() (raw or protocol-wrapped)
 
     Returns:
         Tuple of (potential_liquidity, actual_liquidity)
     """
+    from babylon.engine.graph_protocol import GraphProtocol
+
+    if not isinstance(G, GraphProtocol):
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        G = NetworkXAdapter.wrap(G)
+
     potential = 0
     actual = 0
 
-    for _, _, data in G.edges(data=True):
-        if data.get("edge_type") == EdgeType.SOLIDARITY:
-            strength = data.get("solidarity_strength", 0.0)
-            if strength > POTENTIAL_MIN_STRENGTH:
-                potential += 1
-            if strength > ACTUAL_MIN_STRENGTH:
-                actual += 1
+    for edge in G.query_edges(edge_type=EdgeType.SOLIDARITY):
+        strength = edge.attributes.get("solidarity_strength", 0.0)
+        if strength > POTENTIAL_MIN_STRENGTH:
+            potential += 1
+        if strength > ACTUAL_MIN_STRENGTH:
+            actual += 1
 
     return (potential, actual)
 
 
 def check_resilience(
-    G: nx.DiGraph[str],
+    G: nx.DiGraph[str] | GraphProtocol,
     removal_rate: float = DEFAULT_REMOVAL_RATE,
     survival_threshold: float = DEFAULT_SURVIVAL_THRESHOLD,
     seed: int | None = None,
@@ -429,13 +446,14 @@ class TopologyMonitor:
             state: Current WorldState to analyze
             is_start: Whether this is the initial snapshot
         """
-        # Convert to graph
-        graph = state.to_graph()
+        from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
+
+        # Convert to graph and wrap for protocol access
+        raw_graph = state.to_graph()
+        graph: GraphProtocol = NetworkXAdapter.wrap(raw_graph)
 
         # Count social_class nodes
-        total_nodes = sum(
-            1 for _, data in graph.nodes(data=True) if data.get("_node_type") == "social_class"
-        )
+        total_nodes = sum(1 for _ in graph.query_nodes(node_type="social_class"))
 
         # Extract solidarity subgraph and calculate metrics
         solidarity_graph = extract_solidarity_subgraph(graph)

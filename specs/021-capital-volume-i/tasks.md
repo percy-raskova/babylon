@@ -161,8 +161,8 @@ ______________________________________________________________________
 ### TDD RED Phase (US4)
 
 - [ ] T058 [US4] Write integration tests for reserve army → median_wage → tensor v feedback in tests/integration/test_volume_i_integration.py
-- [ ] T059 [P] [US4] Write integration tests for dispossession events → class transition engine in tests/integration/test_volume_i_integration.py
-- [ ] T060 [P] [US4] Write integration tests for exploitation mode visibility → consciousness dynamics in tests/integration/test_volume_i_integration.py
+- [ ] T059 [US4] Write integration tests for dispossession events → class transition engine in tests/integration/test_volume_i_integration.py
+- [ ] T060 [US4] Write integration tests for exploitation mode visibility → consciousness dynamics in tests/integration/test_volume_i_integration.py
 
 ### TDD GREEN Phase (US4)
 
@@ -182,11 +182,13 @@ ______________________________________________________________________
 **Purpose**: Final validation, edge case handling, and full test suite verification
 
 - [ ] T067 [P] Verify all edge cases from spec: reserve_ratio saturation, zero dispossession, empty sectors, flow clamping, value transfer clamping in tests/unit/ (add missing edge case tests)
-- [ ] T068 [P] Run full lint + typecheck + test suite with `mise run check`
-- [ ] T069 Update src/babylon/engine/systems/__init__.py with new system exports
-- [ ] T070 Verify EventType count test in tests/unit/topology/test_phase_transition.py matches new count (30 + 4 = 34)
-- [ ] T071 Run `mise run qa:verify` to validate formula correctness including wage pressure sigmoid
-- [ ] T072 Run quickstart.md validation — verify documented architecture matches implementation
+- [ ] T068 [P] Add SC-001 falsification test: verify reserve army wage pressure produces negative correlation with subsequent wage growth using loaded BLS data for Wayne/Oakland/Macomb counties in tests/integration/test_falsification_criteria.py
+- [ ] T069 [P] Add SC-007 calibration test: verify Wayne County dispossession intensity exceeds Oakland County by at least 3x during 2008-2012 using loaded Eviction Lab and foreclosure data in tests/integration/test_falsification_criteria.py
+- [ ] T070 [P] Run full lint + typecheck + test suite with `mise run check`
+- [ ] T071 Update src/babylon/engine/systems/__init__.py with new system exports
+- [ ] T072 Verify EventType count test in tests/unit/topology/test_phase_transition.py matches new count (30 + 4 = 34)
+- [ ] T073 Run `mise run qa:verify` to validate formula correctness including wage pressure sigmoid
+- [ ] T074 Run quickstart.md validation — verify documented architecture matches implementation
 
 ______________________________________________________________________
 
@@ -262,7 +264,7 @@ ______________________________________________________________________
 4. US3 (Working Day) → Test independently → Commit
 5. US5 (Data Loaders) → Test against sample data → Commit
 6. US4 (Integration) → Multi-tick feedback loops verified → Commit
-7. Polish → Full suite green → Commit
+7. Polish + Calibration → Full suite green + falsification tests pass → Commit
 
 ### Parallel Team Strategy
 

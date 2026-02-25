@@ -5,7 +5,7 @@
 
 ## Summary
 
-Implement three production dynamics mechanisms from Marx's Capital Volume I: Reserve Army of Labor (wage discipline from unemployment), Primitive Accumulation/Dispossession Events (aggregate tracking of value transfers), and Working Day Classification (absolute vs. relative exploitation modes). Includes five data loaders for empirical calibration against the Detroit metro case study (Wayne, Oakland, Macomb counties, 2005-2020). Two new Systems (#17 ReserveArmySystem, #18 DispossessionEventSystem) integrate into the simulation engine's materialist causality pipeline. Reserve army wage pressure modifies `CountyEconomicState.median_wage` via a bounded sigmoid; dispossession events feed the existing Feature 016 class transition engine; working day visibility modifiers connect to consciousness dynamics.
+Implement three production dynamics mechanisms from Marx's Capital Volume I: Reserve Army of Labor (wage discipline from unemployment), Primitive Accumulation/Dispossession Events (aggregate tracking of value transfers), and Working Day Classification (absolute vs. relative exploitation modes). Includes five data loaders for empirical calibration against the Detroit metro case study (Wayne, Oakland, Macomb counties, 2005-2020). Two new Systems (ReserveArmySystem inserted at position 5, DispossessionEventSystem inserted at position 8 in _DEFAULT_SYSTEMS) integrate into the simulation engine's materialist causality pipeline. Reserve army wage pressure modifies `CountyEconomicState.median_wage` via a bounded sigmoid; dispossession events feed the existing Feature 016 class transition engine; working day visibility modifiers connect to consciousness dynamics.
 
 ## Technical Context
 
@@ -48,7 +48,7 @@ specs/021-capital-volume-i/
 ├── spec.md              # Feature specification (complete)
 ├── plan.md              # This file
 ├── research.md          # Phase 0 output (8 research decisions)
-├── data-model.md        # Phase 1 output (6 entities, 5 fact tables)
+├── data-model.md        # Phase 1 output (5 entities + 2 enums, 5 fact tables)
 ├── quickstart.md        # Phase 1 output (architecture overview)
 ├── contracts/           # Phase 1 output (3 contracts)
 │   ├── reserve_army_system.py

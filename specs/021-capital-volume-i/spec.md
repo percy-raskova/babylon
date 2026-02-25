@@ -136,13 +136,13 @@ ______________________________________________________________________
 
 - **FR-001**: System MUST compute reserve army state from labor market data, decomposing the surplus population into floating (between jobs), latent (underemployed/discouraged), stagnant (chronic irregular employment), and pauperized (unable to work) categories.
 - **FR-002**: System MUST compute a reserve ratio (total reserve as fraction of labor force) and derive a wage pressure coefficient that quantifies downward pressure on variable capital.
-- **FR-003**: System MUST model reserve army flow dynamics: inflows from mechanization displacement, firm failures, and deskilling redundancy; outflows from expansion absorption, new sector absorption, and emigration.
+- **FR-003**: System MUST model reserve army flow dynamics: inflows from mechanization displacement and firm failures; outflows from expansion absorption, new sector absorption, and emigration. (Deskilling redundancy inflow deferred to Subsumption feature.)
 - **FR-004**: System MUST record aggregate dispossession events per territory per tick, one record per dispossession type (foreclosure, eviction, tax sale, eminent domain, wage theft, incarceration seizure, pension default, gentrification displacement), each containing the event count, total value transferred, affected class category, and receiving entity category.
 - **FR-005**: System MUST compute aggregate territory-level dispossession intensity from weighted individual event types.
 - **FR-006**: System MUST track value transfers between territories resulting from dispossession events, maintaining a balanced accounting (value lost = value gained + deadweight loss).
 - **FR-007**: System MUST classify each territory-sector pair by exploitation mode: ABSOLUTE_DOMINANT (long hours, low productivity growth), RELATIVE_DOMINANT (standard hours, high productivity growth), or MIXED.
-- **FR-008**: System MUST compute working day characteristics: average weekly hours, necessary labor hours, surplus labor hours, and labor intensity index.
-- **FR-009**: System MUST integrate reserve army wage pressure into the tensor's variable capital (v) computation, such that higher reserve ratios produce measurably lower v.
+- **FR-008**: System MUST compute working day characteristics: average weekly hours and labor intensity index. (Necessary labor hours and surplus labor hours are derived from these two primitives plus MELT data from Feature 013; they are computed on demand, not stored.)
+- **FR-009**: System MUST integrate reserve army wage pressure into the territory's wage computation (CountyEconomicState.median_wage), such that higher reserve ratios produce measurably lower wages feeding downstream into variable capital.
 - **FR-010**: System MUST integrate dispossession events with the class transition engine (Feature 016), triggering appropriate class position changes when dispossession occurs.
 - **FR-011**: System MUST provide exploitation mode visibility modifiers to consciousness dynamics, where absolute extraction has higher visibility than relative extraction.
 - **FR-012**: System MUST provide all three mechanisms' state data to the simulation engine's event bus for observation and narrative generation.

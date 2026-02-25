@@ -67,16 +67,16 @@ ______________________________________________________________________
 
 ### Tests for User Story 1
 
-- [ ] T022 [P] [US1] RED: Write type tests for `SurplusValueDistribution` in `tests/unit/economics/distribution/test_distribution_types.py` — frozen model, computed fields (profit_of_enterprise, distribution_complete, financialization_share, rentier_share, claims_exceed_surplus), zero surplus, negative profit edge case, rent-alone-exceeds-surplus edge case
-- [ ] T023 [US1] RED: Write type tests for `DebtAccumulation` in `tests/unit/economics/distribution/test_debt_accumulation.py` — frozen model, update method (profit < 0 increases debt, profit > 0 decreases debt, debt >= 0 invariant)
-- [ ] T024 [P] [US1] RED: Write calculator tests in `tests/unit/economics/distribution/test_calculator.py` — compute_distribution returns valid distribution, accounting identity holds within EPSILON, zero surplus produces all-zero distribution, rising interest crowds out profit, claims exceeding surplus flags structural crisis, NoDataSentinel returned when data sources return None
+- [x] T022 [P] [US1] RED: Write type tests for `SurplusValueDistribution` in `tests/unit/economics/distribution/test_distribution_types.py` — frozen model, computed fields (profit_of_enterprise, distribution_complete, financialization_share, rentier_share, claims_exceed_surplus), zero surplus, negative profit edge case, rent-alone-exceeds-surplus edge case
+- [x] T023 [US1] RED: Write type tests for `DebtAccumulation` in `tests/unit/economics/distribution/test_debt_accumulation.py` — frozen model, update method (profit < 0 increases debt, profit > 0 decreases debt, debt >= 0 invariant)
+- [x] T024 [P] [US1] RED: Write calculator tests in `tests/unit/economics/distribution/test_calculator.py` — compute_distribution returns valid distribution, accounting identity holds within EPSILON, zero surplus produces all-zero distribution, rising interest crowds out profit, claims exceeding surplus flags structural crisis, NoDataSentinel returned when data sources return None
 
 ### Implementation for User Story 1
 
-- [ ] T025 [US1] GREEN: Implement `SurplusValueDistribution` and `DebtAccumulation` frozen Pydantic models in `src/babylon/economics/distribution/types.py` with computed fields per data-model.md
-- [ ] T026 [US1] GREEN: Implement `DistributionCalculator` protocol and `DefaultDistributionCalculator` in `src/babylon/economics/distribution/calculator.py` per contracts/distribution_formulas.py — data-driven shares (interest from FRED, rent from BEA, taxes from IRS), profit as residual, NoDataSentinel for missing data
-- [ ] T027 [US1] Update `src/babylon/economics/distribution/__init__.py` with grouped `__all__` exports (Types, Protocols, Default implementations)
-- [ ] T028 [US1] REFACTOR: Verify all distribution tests pass, run `mypy --strict` on distribution module
+- [x] T025 [US1] GREEN: Implement `SurplusValueDistribution` and `DebtAccumulation` frozen Pydantic models in `src/babylon/economics/distribution/types.py` with computed fields per data-model.md
+- [x] T026 [US1] GREEN: Implement `DistributionCalculator` protocol and `DefaultDistributionCalculator` in `src/babylon/economics/distribution/calculator.py` per contracts/distribution_formulas.py — data-driven shares (interest from FRED, rent from BEA, taxes from IRS), profit as residual, NoDataSentinel for missing data
+- [x] T027 [US1] Update `src/babylon/economics/distribution/__init__.py` with grouped `__all__` exports (Types, Protocols, Default implementations)
+- [x] T028 [US1] REFACTOR: Verify all distribution tests pass, run `mypy --strict` on distribution module
 
 **Checkpoint**: Surplus value distribution with accounting identity validation and debt tracking — independently testable with mock data.
 
@@ -90,17 +90,17 @@ ______________________________________________________________________
 
 ### Tests for User Story 2
 
-- [ ] T029 [US2] RED: Write type tests for `InterestRateState` and `CreditState` in `tests/unit/economics/credit/test_credit_types.py` — frozen models, computed effective_rate, computed credit_fragility, field constraints
-- [ ] T030 [P] [US2] RED: Write interest calculator tests in `tests/unit/economics/credit/test_interest.py` — compute_interest_rate_state from FRED data, county interest burden capped at profit rate (FR-003), zero profit rate yields zero interest, NoDataSentinel when FRED data unavailable
-- [ ] T031 [P] [US2] RED: Write credit cycle detector tests in `tests/unit/economics/credit/test_credit_cycle.py` — all valid transitions (EXPANSION->OVEREXTENSION, OVEREXTENSION->CRISIS, CRISIS->RECOVERY, RECOVERY->EXPANSION, OVEREXTENSION->STAGNATION, RECOVERY->STAGNATION), reject invalid transitions, STAGNATION is terminal
+- [x] T029 [US2] RED: Write type tests for `InterestRateState` and `CreditState` in `tests/unit/economics/credit/test_credit_types.py` — frozen models, computed effective_rate, computed credit_fragility, field constraints
+- [x] T030 [P] [US2] RED: Write interest calculator tests in `tests/unit/economics/credit/test_interest.py` — compute_interest_rate_state from FRED data, county interest burden capped at profit rate (FR-003), zero profit rate yields zero interest, NoDataSentinel when FRED data unavailable
+- [x] T031 [P] [US2] RED: Write credit cycle detector tests in `tests/unit/economics/credit/test_credit_cycle.py` — all valid transitions (EXPANSION->OVEREXTENSION, OVEREXTENSION->CRISIS, CRISIS->RECOVERY, RECOVERY->EXPANSION, OVEREXTENSION->STAGNATION, RECOVERY->STAGNATION), reject invalid transitions, STAGNATION is terminal
 
 ### Implementation for User Story 2
 
-- [ ] T032 [US2] GREEN: Implement `InterestRateState` and `CreditState` frozen Pydantic models in `src/babylon/economics/credit/types.py`
-- [ ] T033 [US2] GREEN: Implement `InterestCalculator` protocol and `DefaultInterestCalculator` in `src/babylon/economics/credit/interest.py` — effective rate capped at county profit rate (FR-003)
-- [ ] T034 [US2] GREEN: Implement `CreditCycleDetector` protocol and `DefaultCreditCycleDetector` in `src/babylon/economics/credit/credit_cycle.py` — directed state machine per FR-006 with transition validation
-- [ ] T035 [US2] Update `src/babylon/economics/credit/__init__.py` with grouped `__all__` exports
-- [ ] T036 [US2] REFACTOR: Verify all credit tests pass, run `mypy --strict` on credit module
+- [x] T032 [US2] GREEN: Implement `InterestRateState` and `CreditState` frozen Pydantic models in `src/babylon/economics/credit/types.py`
+- [x] T033 [US2] GREEN: Implement `InterestCalculator` protocol and `DefaultInterestCalculator` in `src/babylon/economics/credit/interest.py` — effective rate capped at county profit rate (FR-003)
+- [x] T034 [US2] GREEN: Implement `CreditCycleDetector` protocol and `DefaultCreditCycleDetector` in `src/babylon/economics/credit/credit_cycle.py` — directed state machine per FR-006 with transition validation
+- [x] T035 [US2] Update `src/babylon/economics/credit/__init__.py` with grouped `__all__` exports
+- [x] T036 [US2] REFACTOR: Verify all credit tests pass, run `mypy --strict` on credit module
 
 **Checkpoint**: Interest rate modeling and credit cycle detection — independently testable with mock FRED data.
 

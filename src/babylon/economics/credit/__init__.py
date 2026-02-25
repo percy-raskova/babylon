@@ -15,6 +15,12 @@ from babylon.economics.credit.credit_cycle import (
     DefaultCreditCycleDetector,
 )
 
+# Fictitious capital computation
+from babylon.economics.credit.fictitious_capital import (
+    DefaultFictitiousCapitalCalculator,
+    FictitiousCapitalCalculator,
+)
+
 # Interest rate computation
 from babylon.economics.credit.interest import (
     DefaultInterestCalculator,
@@ -30,6 +36,7 @@ from babylon.economics.credit.types import (
     VALID_CREDIT_TRANSITIONS,
     CreditCyclePhase,
     CreditState,
+    FictitiousCapitalStock,
     InterestRateState,
 )
 
@@ -38,6 +45,7 @@ __all__: list[str] = [
     "CreditCyclePhase",
     "InterestRateState",
     "CreditState",
+    "FictitiousCapitalStock",
     # Transition map
     "VALID_CREDIT_TRANSITIONS",
     # Threshold constants
@@ -53,4 +61,7 @@ __all__: list[str] = [
     # Credit cycle detection
     "CreditCycleDetector",
     "DefaultCreditCycleDetector",
+    # Fictitious capital computation
+    "FictitiousCapitalCalculator",
+    "DefaultFictitiousCapitalCalculator",
 ]

@@ -169,3 +169,51 @@ class CreditState(BaseModel):
     def credit_fragility(self) -> float:
         """Credit fragility index = default_rate * spread_to_treasuries."""
         return self.default_rate * self.spread_to_treasuries
+
+
+# ============================================================================
+# FICTITIOUS CAPITAL (US3, FR-004, FR-005)
+# ============================================================================
+
+
+class FictitiousCapitalStock(BaseModel):
+    """Accumulated financial claims on future value production.
+
+    Feature: 024-capital-volume-iii (FR-004, FR-005)
+    Derivatives tracked but excluded from primary index (double-counting).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    year: int = Field(..., ge=2007, le=2040)
+    government_debt: float = Field(..., ge=0.0, description="Federal debt (GFDEBTN)")
+    corporate_equity: float = Field(..., ge=0.0, description="Stock market cap (Wilshire)")
+    corporate_debt: float = Field(..., ge=0.0, description="Corporate bonds and loans (Z.1)")
+    household_debt: float = Field(..., ge=0.0, description="Mortgages, consumer, student (Z.1)")
+    derivatives_notional: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Derivative contracts (tracked, excluded from index)",
+    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_claims(self) -> float:
+        """Total fictitious capital excluding derivatives."""
+        return (
+            self.government_debt + self.corporate_equity + self.corporate_debt + self.household_debt
+        )
+
+    def ratio_to_real(self, real_gdp: float) -> float:
+        """Financialization index = total_claims / real_gdp.
+
+        Args:
+            real_gdp: Real GDP in current dollars.
+
+        Returns:
+            Ratio of total financial claims to real production.
+            Returns float('inf') if real_gdp <= 0.
+        """
+        if real_gdp <= 0.0:
+            return float("inf")
+        return self.total_claims / real_gdp

@@ -675,6 +675,8 @@ ADR0XX_descriptive_name:
 - SQLite (marxist-data-3NF.sqlite for reference data); in-memory via GraphProtocol for simulation state (021-capital-volume-i)
 - Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (existing flow graph), XGI 0.10 (hypergraph — already in pyproject.toml) (022-hypergraph-community-layer)
 - In-memory via GraphProtocol + XGI Hypergraph. No new database tables. Community state persists via WorldState serialization. (022-hypergraph-community-layer)
+- Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), existing economics module infrastructure (Features 011-018) (023-capital-volume-ii)
+- In-memory via GraphProtocol. No new database tables. Circulation state persists via CountyEconomicState in the graph bridge. (023-capital-volume-ii)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

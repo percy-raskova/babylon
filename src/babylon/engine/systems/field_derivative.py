@@ -22,7 +22,9 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
     from babylon.engine.services import ServiceContainer
 
+from babylon.engine.event_bus import Event
 from babylon.engine.systems.protocol import ContextType
+from babylon.models.enums import EventType
 
 logger = logging.getLogger(__name__)
 
@@ -72,14 +74,22 @@ class FieldDerivativeSystem:
             "contradiction_history", {}
         )
 
+        # Extract tick for event emission
+        tick: int = 0
+        if hasattr(context, "tick"):
+            tick = context.tick
+        elif isinstance(context, dict):
+            tick_val = context.get("tick", 0)
+            tick = int(tick_val) if tick_val is not None else 0
+
         # ─── Phase 1: Spatial gradients on edges ────────────────────
         _compute_edge_gradients(graph, field_names)
 
         # ─── Phase 2: Laplacian + temporal derivatives on nodes ─────
         _compute_node_derivatives(graph, field_names, history)
 
-    # ─── Principal contradiction (Phase 5, added later) ─────────────
-    # ─── Continuity residuals (Phase 8, added later) ────────────────
+        # ─── Phase 3: Principal contradiction identification ────────
+        _identify_principal_contradiction(graph, field_names, persistent_data, services, tick)
 
 
 def _compute_edge_gradients(
@@ -221,6 +231,92 @@ def _collect_neighbor_fields(
                 result[field_name].append(n_fields[field_name])
 
     return result
+
+
+def _identify_principal_contradiction(
+    graph: GraphProtocol,
+    field_names: list[str],
+    persistent_data: dict[str, Any],
+    services: ServiceContainer,
+    tick: int,
+) -> None:
+    """Identify the principal contradiction from temporal derivatives.
+
+    The principal contradiction is the field with the maximum |df/dt|
+    across all nodes. Tie-breaking: total magnitude, then exploitation
+    preferred (EC-004).
+
+    Args:
+        graph: Graph with field_derivatives on nodes.
+        field_names: Registered field names.
+        persistent_data: For tracking previous principal.
+        services: ServiceContainer for event_bus access.
+        tick: Current tick number.
+    """
+    # Collect max |df/dt| per field across all nodes
+    field_max_abs_df_dt: dict[str, float] = dict.fromkeys(field_names, 0.0)
+    field_total_magnitude: dict[str, float] = dict.fromkeys(field_names, 0.0)
+
+    for node in graph.query_nodes(node_type="social_class"):
+        derivs: dict[str, dict[str, float | None]] = node.attributes.get("field_derivatives", {})
+        for field_name in field_names:
+            field_deriv = derivs.get(field_name, {})
+            df_dt = field_deriv.get("df_dt")
+            if df_dt is not None:
+                abs_val = abs(df_dt)
+                if abs_val > field_max_abs_df_dt[field_name]:
+                    field_max_abs_df_dt[field_name] = abs_val
+                field_total_magnitude[field_name] += abs_val
+
+    # Find the field with maximum |df/dt|
+    principal_field: str | None = None
+    max_df_dt = 0.0
+
+    # Sort by: max |df/dt| desc, total magnitude desc, exploitation preferred
+    candidates = sorted(
+        field_names,
+        key=lambda f: (
+            field_max_abs_df_dt[f],
+            field_total_magnitude[f],
+            1.0 if f == "exploitation" else 0.0,
+        ),
+        reverse=True,
+    )
+
+    if candidates and field_max_abs_df_dt[candidates[0]] > 0.0:
+        principal_field = candidates[0]
+        max_df_dt = field_max_abs_df_dt[candidates[0]]
+
+    # Check if principal changed from previous tick
+    previous_principal: str | None = persistent_data.get("_previous_principal_field")
+    changed = principal_field != previous_principal
+
+    # Write to graph-level attribute
+    graph.set_graph_attr(
+        "principal_contradiction",
+        {
+            "field_name": principal_field,
+            "max_abs_df_dt": max_df_dt,
+            "changed": changed,
+        },
+    )
+
+    # Emit event if principal changed and we have a real principal
+    if changed and principal_field is not None:
+        services.event_bus.publish(
+            Event(
+                type=EventType.PRINCIPAL_CONTRADICTION_SHIFT,
+                tick=tick,
+                payload={
+                    "previous_field": previous_principal,
+                    "new_field": principal_field,
+                    "max_abs_df_dt": max_df_dt,
+                },
+            )
+        )
+
+    # Store for next tick comparison
+    persistent_data["_previous_principal_field"] = principal_field
 
 
 def _get_persistent_data(context: ContextType) -> dict[str, Any]:

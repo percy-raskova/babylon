@@ -33,6 +33,15 @@ from babylon.formulas.class_dynamics import (
     calculate_wealth_flow,
     invert_wealth_to_population,
 )
+
+# Re-export Community Layer formulas (Feature 022)
+from babylon.formulas.community import (
+    calculate_infrastructure_decay,
+    calculate_solidarity_amplification,
+    calculate_solidarity_potential,
+    calculate_threat_score,
+    compute_community_cost_modifier,
+)
 from babylon.formulas.constants import (
     EPSILON,
     LOSS_AVERSION_COEFFICIENT,
@@ -141,4 +150,10 @@ __all__ = [
     "invert_wealth_to_population",
     # Curvature (Dialectical Field Topology)
     "compute_ollivier_ricci",
+    # Community Layer (Feature 022)
+    "calculate_solidarity_potential",
+    "calculate_threat_score",
+    "calculate_infrastructure_decay",
+    "calculate_solidarity_amplification",
+    "compute_community_cost_modifier",
 ]

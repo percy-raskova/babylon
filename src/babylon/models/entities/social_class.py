@@ -280,6 +280,9 @@ class SocialClass(BaseModel):
         # Remove computed fields that may be present from serialization (Slice 1.4)
         data.pop("consumption_needs", None)
 
+        # Ensure community_memberships stays as-is (Feature 022)
+        # No unpacking needed — it's a flat list, not a component
+
         return data
 
     # Required fields
@@ -388,6 +391,17 @@ class SocialClass(BaseModel):
     inequality: Gini = Field(
         default=0.0,
         description="Intra-class Gini coefficient. 0=equality, 1=tyranny (bottom gets nothing)",
+    )
+
+    # Community membership (Feature 022 - Hypergraph Community Layer)
+    community_memberships: list[Any] = Field(
+        default_factory=list,
+        description="Community memberships as CommunityMembership objects",
+    )
+    community_cost_modifier: float = Field(
+        default=1.0,
+        ge=0.0,
+        description="Compound reproduction cost modifier from community memberships",
     )
 
     @model_validator(mode="after")

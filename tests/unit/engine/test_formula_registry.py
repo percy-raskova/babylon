@@ -82,8 +82,8 @@ class TestFormulaRegistry:
         registry.register("formula", replacement)
         assert registry.get("formula")(5.0) == 50.0
 
-    def test_default_registers_all_thirteen_formulas(self) -> None:
-        """default() factory creates registry with all 13 standard formulas."""
+    def test_default_registers_all_formulas(self) -> None:
+        """default() factory creates registry with all standard formulas."""
         from babylon.engine.formula_registry import FormulaRegistry
 
         registry = FormulaRegistry.default()
@@ -104,9 +104,13 @@ class TestFormulaRegistry:
             "prebisch_singer",
             "solidarity_transmission",  # Sprint 3.4.2
             "bourgeoisie_decision",  # Sprint 3.4.4
+            "solidarity_potential",  # Feature 022
+            "threat_score",  # Feature 022
+            "infrastructure_decay",  # Feature 022
+            "solidarity_amplification",  # Feature 022
         ]
 
-        assert len(formulas) == 14
+        assert len(formulas) == 18
         for name in expected_formulas:
             assert name in formulas, f"Missing formula: {name}"
 

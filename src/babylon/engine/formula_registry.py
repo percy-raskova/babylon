@@ -113,4 +113,10 @@ class FormulaRegistry:
         # Dynamic Balance formulas (Sprint 3.4.4)
         registry.register("bourgeoisie_decision", formulas.calculate_bourgeoisie_decision)
 
+        # Community Layer formulas (Feature 022)
+        registry.register("solidarity_potential", formulas.calculate_solidarity_potential)
+        registry.register("threat_score", formulas.calculate_threat_score)
+        registry.register("infrastructure_decay", formulas.calculate_infrastructure_decay)
+        registry.register("solidarity_amplification", formulas.calculate_solidarity_amplification)
+
         return registry

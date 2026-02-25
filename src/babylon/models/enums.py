@@ -418,3 +418,92 @@ class ContradictionCharacter(StrEnum):
 
     ANTAGONISTIC = "antagonistic"
     NON_ANTAGONISTIC = "non_antagonistic"
+
+
+# Hypergraph Community Layer (Feature 022)
+
+
+class CommunityType(StrEnum):
+    """Identity community types for hypergraph membership.
+
+    Hypergraph Community Layer (Feature 022): Communities are represented
+    as XGI hyperedges connecting all member agents simultaneously.
+    Each type represents a structural community category derived from
+    theoretical analysis (Constitution II.7).
+
+    Values:
+        NEW_AFRIKAN: New Afrikan / Black internal nation
+        FIRST_NATIONS: Indigenous / First Nations peoples
+        CHICANO: Chicano / Mexican-American nation
+        WHITE: White settler nation (hegemonic)
+        QUEER: Queer / LGBQ sexuality
+        HETEROSEXUAL: Heterosexual (hegemonic sexuality)
+        TRANS: Transgender / gender non-conforming
+        CISGENDER: Cisgender (hegemonic gender identity)
+        DISABLED: Disabled / disability community
+        ABLED: Able-bodied (hegemonic ability)
+        UNDOCUMENTED: Undocumented immigration status
+        WOMEN: Women (reproductive labor allocation)
+    """
+
+    # Internal nations
+    NEW_AFRIKAN = "new_afrikan"
+    FIRST_NATIONS = "first_nations"
+    CHICANO = "chicano"
+    WHITE = "white"
+    # Sexuality
+    QUEER = "queer"
+    HETEROSEXUAL = "heterosexual"
+    # Gender identity
+    TRANS = "trans"
+    CISGENDER = "cisgender"
+    # Ability
+    DISABLED = "disabled"
+    ABLED = "abled"
+    # Other identity categories
+    UNDOCUMENTED = "undocumented"
+    WOMEN = "women"
+
+
+class LegalStatus(StrEnum):
+    """Legal designation status for community-level state repression.
+
+    Hypergraph Community Layer (Feature 022): Escalation is strictly
+    one-way for state action. De-escalation requires political struggle
+    (player action). Each level increases the threat multiplier applied
+    to community members.
+
+    Values:
+        LEGAL: Normal status, minimal state attention (multiplier 0.1)
+        SURVEILLED: Active monitoring (multiplier 0.5)
+        DESIGNATED_EXTREMIST: Formal extremist designation (multiplier 1.0)
+        DESIGNATED_TERRORIST: Formal terrorist designation (multiplier 2.0)
+        CRIMINALIZED: Membership itself criminalized (multiplier 3.0)
+    """
+
+    LEGAL = "legal"
+    SURVEILLED = "surveilled"
+    DESIGNATED_EXTREMIST = "designated_extremist"
+    DESIGNATED_TERRORIST = "designated_terrorist"
+    CRIMINALIZED = "criminalized"
+
+
+class MembershipRole(StrEnum):
+    """Agent integration level within a community.
+
+    Hypergraph Community Layer (Feature 022): Determines membership
+    strength weight and visibility profile for threat score computation.
+
+    Values:
+        CORE_ORGANIZER: Infrastructure maintainers, visible leaders (weight 1.0)
+        ACTIVE: Regular participants, known within community (weight 0.7)
+        PARTICIPANT: Occasional engagement (weight 0.4)
+        PERIPHERAL: Marginal connection (weight 0.2)
+        SYMPATHIZER: External ally, not legible as member (weight 0.1)
+    """
+
+    CORE_ORGANIZER = "core_organizer"
+    ACTIVE = "active"
+    PARTICIPANT = "participant"
+    PERIPHERAL = "peripheral"
+    SYMPATHIZER = "sympathizer"

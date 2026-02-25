@@ -109,13 +109,13 @@ class TestServiceContainer:
 
         try:
             formulas = container.formulas.list_formulas()
-            assert (
-                len(formulas) == 14
-            )  # 12 original + solidarity_transmission + bourgeoisie_decision
+            assert len(formulas) == 18  # 14 original + 4 community layer (Feature 022)
             assert "imperial_rent" in formulas
             assert "revolution_probability" in formulas
             assert "solidarity_transmission" in formulas  # Sprint 3.4.2
             assert "bourgeoisie_decision" in formulas  # Sprint 3.4.4
+            assert "solidarity_potential" in formulas  # Feature 022
+            assert "threat_score" in formulas  # Feature 022
         finally:
             container.database.close()
 

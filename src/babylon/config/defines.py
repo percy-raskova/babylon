@@ -1322,6 +1322,57 @@ class WorkingDayDefines(BaseModel):
     )
 
 
+class CommunityDefines(BaseModel):
+    """Hypergraph community layer coefficients (Feature 022).
+
+    Controls alpha-smoothing decay rates for community state,
+    solidarity potential computation bonuses and penalties,
+    and infrastructure maintenance parameters.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Alpha-smoothing decay rates (per tick)
+    heat_decay_alpha: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Rate at which community heat decays toward 0 without provocation",
+    )
+    cohesion_decay_alpha: float = Field(
+        default=0.03,
+        ge=0.0,
+        le=1.0,
+        description="Rate at which cohesion decays without organizing work",
+    )
+    infrastructure_decay_alpha: float = Field(
+        default=0.04,
+        ge=0.0,
+        le=1.0,
+        description="Rate at which infrastructure decays without maintenance",
+    )
+
+    # Solidarity potential coefficients
+    community_overlap_bonus: float = Field(
+        default=0.1,
+        ge=0.0,
+        description="Solidarity potential bonus per shared community membership",
+    )
+    rent_differential_penalty: float = Field(
+        default=0.05,
+        ge=0.0,
+        description="Solidarity potential penalty per unit of imperial rent differential",
+    )
+
+    # Infrastructure maintenance
+    core_organizer_maintenance_factor: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Infrastructure maintenance contribution per CORE_ORGANIZER member",
+    )
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -1353,6 +1404,7 @@ class GameDefines(BaseModel):
     - reserve_army: Reserve army of labor coefficients (Feature 021)
     - dispossession: Dispossession event intensity weights (Feature 021)
     - working_day: Working day characterization thresholds (Feature 021)
+    - community: Hypergraph community layer coefficients (Feature 022)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -1382,6 +1434,8 @@ class GameDefines(BaseModel):
     reserve_army: ReserveArmyDefines = Field(default_factory=ReserveArmyDefines)
     dispossession: DispossessionDefines = Field(default_factory=DispossessionDefines)
     working_day: WorkingDayDefines = Field(default_factory=WorkingDayDefines)
+    # Hypergraph Community Layer (Feature 022)
+    community: CommunityDefines = Field(default_factory=CommunityDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -1487,6 +1541,7 @@ class GameDefines(BaseModel):
             timescale=TimescaleDefines(**data.get("timescale", {})),
             external_data=external_data,
             contradiction_field=ContradictionFieldDefines(**data.get("contradiction_field", {})),
+            community=CommunityDefines(**data.get("community", {})),
         )
 
     @classmethod

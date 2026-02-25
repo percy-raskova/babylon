@@ -673,6 +673,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol (`update_node`, `update_edge`) + `context.persistent_data` for cross-tick history (002-dialectical-field-topology)
 - Python 3.12+ (existing stack) + Pydantic 2.x (frozen models), NetworkX 3.x (graph), SQLAlchemy 2.x (ORM), SciPy (sigmoid optimization) (021-capital-volume-i)
 - SQLite (marxist-data-3NF.sqlite for reference data); in-memory via GraphProtocol for simulation state (021-capital-volume-i)
+- Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (existing flow graph), XGI 0.10 (hypergraph — already in pyproject.toml) (022-hypergraph-community-layer)
+- In-memory via GraphProtocol + XGI Hypergraph. No new database tables. Community state persists via WorldState serialization. (022-hypergraph-community-layer)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

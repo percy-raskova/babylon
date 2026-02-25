@@ -88,6 +88,9 @@ class ServiceContainer:
     imperial_rent_calculator: Any = field(default=None)
     tensor_registry: Any = field(default=None)
 
+    # Hypergraph community layer (Feature 022 - optional, default None)
+    community_hypergraph: Any = field(default=None)
+
     @classmethod
     def create(
         cls,
@@ -107,6 +110,7 @@ class ServiceContainer:
         transition_engine: Any = None,
         imperial_rent_calculator: Any = None,
         tensor_registry: Any = None,
+        community_hypergraph: Any = None,
     ) -> ServiceContainer:
         """Factory method to create a fully-initialized container.
 
@@ -127,6 +131,7 @@ class ServiceContainer:
             transition_engine: Optional ClassTransitionEngine (Feature 016).
             imperial_rent_calculator: Optional ImperialRentCalculator (Feature 013).
             tensor_registry: Optional TensorRegistry for cached tensor data (Feature 011).
+            community_hypergraph: Optional XGI Hypergraph for community membership (Feature 022).
 
         Returns:
             ServiceContainer with all services initialized
@@ -156,4 +161,5 @@ class ServiceContainer:
             transition_engine=transition_engine,
             imperial_rent_calculator=imperial_rent_calculator,
             tensor_registry=tensor_registry,
+            community_hypergraph=community_hypergraph,
         )

@@ -29,6 +29,16 @@ Quantities flux continuously. States transition discretely. The transition condi
 
 ---
 
+## Clarifications
+
+### Session 2026-02-25
+
+- Q: What computational criterion determines whether antagonism from CO-OPTIVE breakdown is directed "upward" (revolutionary) or "laterally" (fascist)? → A: Solidarity magnitude comparison — antagonism is directed upward if total solidarity strength across the colonial divide exceeds total within-group solidarity strength at the co-opted node; lateral (fascist) otherwise.
+- Q: Which contradiction fields does a CO-OPTIVE edge suppress? → A: Per-edge configurable — each CO-OPTIVE edge specifies which contradiction fields it suppresses (e.g., imperial rent edge suppresses exploitation + immiseration; welfare edge suppresses immiseration only).
+- Q: Is the set of contradiction fields fixed at four or extensible? → A: Open set — core computation (gradient, Laplacian, derivatives, principal contradiction) is field-name-agnostic. New fields can be registered without changing computation logic. Four initial fields ship with the feature.
+
+---
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Contradiction Field Computation (Priority: P1)
@@ -157,8 +167,8 @@ As a simulation researcher, I want CO-OPTIVE edges to model relationships where 
 1. **Given** a CO-OPTIVE edge from imperial system to core working class with material concessions flowing, **When** the exploitation contradiction field is computed at the co-opted node, **Then** df/dt is suppressed proportional to the concession magnitude compared to the same node without co-optation.
 2. **Given** stable co-optation suppressing exploitation df/dt, **When** the principal contradiction is identified, **Then** the principal contradiction is something other than exploitation (e.g., displacement or immiseration) because exploitation's derivative is suppressed.
 3. **Given** a crisis event that erodes the material basis for co-optation (declining imperial rent), **When** the CO-OPTIVE edge transitions to ANTAGONISTIC, **Then** the latent contradiction is released as a spike in exploitation df/dt, and exploitation reasserts itself as the principal contradiction.
-4. **Given** CO-OPTIVE breakdown with solidaristic edges crossing the colonial divide, **When** the resulting ANTAGONISTIC edge is evaluated, **Then** antagonism is directed upward (revolutionary potential).
-5. **Given** CO-OPTIVE breakdown without cross-divide solidarity, **When** the resulting ANTAGONISTIC edge is evaluated, **Then** antagonism is directed laterally (fascist potential).
+4. **Given** CO-OPTIVE breakdown where the co-opted node's total solidarity strength across the colonial divide exceeds its within-group solidarity strength, **When** the resulting ANTAGONISTIC edge is evaluated, **Then** antagonism is directed upward (revolutionary potential).
+5. **Given** CO-OPTIVE breakdown where the co-opted node's within-group solidarity strength exceeds its cross-divide solidarity strength, **When** the resulting ANTAGONISTIC edge is evaluated, **Then** antagonism is directed laterally (fascist potential).
 
 ______________________________________________________________________
 
@@ -183,7 +193,7 @@ ______________________________________________________________________
 
 #### Contradiction Field
 
-- **FR-001**: System MUST define a set of named contradiction fields, each computed as a scalar value at every social-class node per tick. Initial fields: exploitation contradiction (from exploitation rate e = s/v), immiseration contradiction (from real wage trajectory), imperial rent contradiction (from imperial rent differential to graph mean), and displacement contradiction (from population change rate).
+- **FR-001**: System MUST define an extensible set of named contradiction fields, each computed as a scalar value at every social-class node per tick. The field set is open — core computation logic (gradient, Laplacian, temporal derivatives, principal contradiction identification) MUST be field-name-agnostic, allowing new fields to be registered without modifying computation code. Initial fields shipping with this feature: exploitation contradiction (from exploitation rate e = s/v), immiseration contradiction (from real wage trajectory), imperial rent contradiction (from imperial rent differential to graph mean), and displacement contradiction (from population change rate).
 - **FR-002**: Each contradiction field value MUST be persisted in tick-keyed history, enabling retrieval of f(i, t) for any node i at any historical tick t within the simulation run.
 
 #### Spatial Derivatives
@@ -231,7 +241,7 @@ ______________________________________________________________________
 
 #### CO-OPTIVE Field Dynamics
 
-- **FR-014**: CO-OPTIVE edges MUST suppress the temporal derivative df/dt of the exploitation contradiction field at the co-opted node. This is the formal expression of "reform prevents revolution." The suppression factor MUST be proportional to the material magnitude of concessions flowing along the CO-OPTIVE edge. When the CO-OPTIVE edge degrades or transitions to another mode, the suppression lifts and the contradiction accumulator resumes its trajectory.
+- **FR-014**: Each CO-OPTIVE edge MUST declare which contradiction fields it suppresses (one or more of: exploitation, immiseration, imperial rent, displacement). The suppression applies to the temporal derivative df/dt of the declared fields at the co-opted node. For example, an imperial rent CO-OPTIVE edge suppresses exploitation and immiseration, while a welfare state CO-OPTIVE edge suppresses immiseration only. The suppression factor MUST be proportional to the material magnitude of concessions flowing along the CO-OPTIVE edge. When the CO-OPTIVE edge degrades or transitions to another mode, the suppression lifts and the affected contradiction accumulators resume their trajectories.
 - **FR-015**: CO-OPTIVE edges MUST be a named mechanism in the continuity accounting system (FR-009). The continuity residual at a co-opted node MUST show the difference between the expected contradiction (based on material conditions) and the observed contradiction (suppressed by co-optation). This residual is the "latent contradiction" — contradiction that is suppressed in expression but not resolved in substance. When co-optation breaks down, the latent contradiction MUST be released, producing a spike in df/dt.
 - **FR-016**: During periods of stable co-optation, the principal contradiction identification (FR-008) MUST account for the fact that co-optation suppresses df/dt of the exploitation field. The principal contradiction may appear to be something other than exploitation precisely because co-optation has suppressed exploitation's first derivative. When co-optation breaks down, exploitation's df/dt spikes and it reasserts itself as principal. This "return of the repressed" dynamic MUST be observable in the tick summaries.
 
@@ -255,11 +265,11 @@ ______________________________________________________________________
 
 ### Key Entities
 
-- **Contradiction Field**: A named scalar field defined at every social-class node per tick. Has a type (exploitation, immiseration, imperial rent, displacement), a value, and associated spatial/temporal derivatives. Derived from economic calculator outputs.
+- **Contradiction Field**: A named scalar field defined at every social-class node per tick. The set of fields is extensible (open registry); four ship initially (exploitation, immiseration, imperial rent, displacement). Each has a value and associated spatial/temporal derivatives. Derived from economic calculator outputs.
 - **Field Derivatives**: Spatial (gradient per edge, Laplacian per node) and temporal (first and second derivative per node). Computed each tick from field values and history. Undefined when insufficient history exists.
 - **Compound Predicate**: A declarative conjunction of threshold conditions over field values and derivatives. Governs discrete state transitions. Each conjunct specifies a field, a derivative order, and a threshold comparison.
 - **Edge Mode Transition**: A permitted discrete change between edge modes (EXTRACTIVE, TRANSACTIONAL, SOLIDARISTIC, ANTAGONISTIC, CO-OPTIVE) governed by compound predicates. Defined as a directed state machine with named conditions.
-- **CO-OPTIVE Edge**: An asymmetric, bidirectional relationship where the more powerful party offers material concessions (imperial rent, welfare, reform) to the less powerful party in exchange for political quiescence. Suppresses contradiction field derivatives at the co-opted node. Stable while material basis persists; fragile to crisis. Its breakdown is the trigger for the George Jackson bifurcation.
+- **CO-OPTIVE Edge**: An asymmetric, bidirectional relationship where the more powerful party offers material concessions (imperial rent, welfare, reform) to the less powerful party in exchange for political quiescence. Each CO-OPTIVE edge declares which contradiction fields it suppresses (per-edge configurable). Stable while material basis persists; fragile to crisis. Its breakdown is the trigger for the George Jackson bifurcation.
 - **Latent Contradiction**: The difference between expected contradiction (based on material conditions alone) and observed contradiction (suppressed by co-optation). Accumulated over the duration of co-optation and released when co-optation breaks down. Tracked via the continuity accounting system as a named mechanism.
 - **Principal Contradiction**: The contradiction field with the largest maximum absolute first derivative across all nodes at a given tick. Changes in principal contradiction are significant events.
 - **Continuity Residual**: The per-node, per-tick accounting of contradiction change minus gradient-implied flow. Non-zero residuals indicate sources, sinks, or unaccounted displacement.
@@ -281,7 +291,7 @@ ______________________________________________________________________
 - **SC-008**: For the Detroit test case (2010-2025 QCEW data), the exploitation field gradient along the Wayne-to-Oakland edge is negative (exploitation decreasing from periphery to core), consistent with empirical wage and employment differentials.
 - **SC-009**: CO-OPTIVE edges suppress df/dt at the co-opted node by at least 50% compared to the same material conditions without co-optation, and this suppression is released as a measurable df/dt spike when co-optation breaks down.
 - **SC-010**: During stable co-optation, the principal contradiction at co-opted nodes is correctly identified as something other than exploitation (reflecting suppressed exploitation df/dt), and after co-optation breakdown, exploitation reasserts as principal within 1-2 ticks.
-- **SC-011**: The George Jackson bifurcation outcome (revolutionary vs. fascist) is correctly determined by solidarity topology: CO-OPTIVE breakdown with cross-divide solidarity produces upward-directed antagonism, while breakdown without cross-divide solidarity produces lateral antagonism.
+- **SC-011**: The George Jackson bifurcation outcome (revolutionary vs. fascist) is correctly determined by solidarity magnitude comparison: CO-OPTIVE breakdown produces upward-directed antagonism when the co-opted node's total solidarity strength across the colonial divide exceeds its within-group solidarity strength, and lateral antagonism otherwise.
 
 ---
 

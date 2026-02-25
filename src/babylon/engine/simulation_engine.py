@@ -41,6 +41,7 @@ from babylon.economics.tick.system import TickDynamicsSystem
 from babylon.engine.context import TickContext
 from babylon.engine.event_bus import Event
 from babylon.engine.services import ServiceContainer
+from babylon.engine.systems.community import CommunitySystem
 from babylon.engine.systems.contradiction import ContradictionSystem
 from babylon.engine.systems.contradiction_field import ContradictionFieldSystem
 from babylon.engine.systems.control_ratio import ControlRatioSystem
@@ -184,7 +185,8 @@ _DEFAULT_SYSTEMS: list[System] = [
     ProductionSystem(),  # 3. Value creation (The Labor)
     TickDynamicsSystem(),  # 4. Tick dynamics (Economic State Evolution)
     ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
-    SolidaritySystem(),  # 6. Organization calculation (Political Organization)
+    CommunitySystem(),  # 6. Community hypergraph layer (Feature 022)
+    SolidaritySystem(),  # 7. Organization calculation (Political Organization)
     ImperialRentSystem(),  # 7. Value extraction (The Extraction)
     DispossessionEventSystem(),  # 8. Dispossession events + value transfer (Feature 021)
     DecompositionSystem(),  # 9. LA decomposition (Terminal Crisis Dynamics)

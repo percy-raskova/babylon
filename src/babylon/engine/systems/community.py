@@ -284,6 +284,11 @@ class CommunitySystem:
             agent_memberships,
             community_states,
         )
+        _apply_community_decay(
+            community_states,
+            agent_memberships,
+            services,
+        )
 
 
 def _collect_memberships(
@@ -407,3 +412,52 @@ def _compute_cost_modifiers(
     for node_id, memberships in agent_memberships.items():
         modifier = compute_community_cost_modifier(memberships, community_states)
         graph.update_node(node_id, community_cost_modifier=modifier)
+
+
+def _apply_community_decay(
+    community_states: dict[CommunityType, CommunityState],
+    agent_memberships: dict[str, list[CommunityMembership]],
+    services: Any,
+) -> None:
+    """Apply alpha-smoothing decay to community state (heat, cohesion, infrastructure).
+
+    Modifies community_states dict in place with new frozen CommunityState objects.
+    Infrastructure decay uses CORE_ORGANIZER count for maintenance factor.
+    """
+    from babylon.formulas.community import calculate_infrastructure_decay
+    from babylon.models.enums import MembershipRole
+
+    defines = services.defines.community
+
+    # Count CORE_ORGANIZERs per community
+    organizer_counts: dict[CommunityType, int] = {}
+    for memberships in agent_memberships.values():
+        for mem in memberships:
+            if mem.role == MembershipRole.CORE_ORGANIZER:
+                organizer_counts[mem.community_type] = (
+                    organizer_counts.get(mem.community_type, 0) + 1
+                )
+
+    for comm_type, state in list(community_states.items()):
+        # Heat decays toward 0
+        new_heat = float(state.heat) * (1.0 - defines.heat_decay_alpha)
+
+        # Cohesion decays toward 0
+        new_cohesion = float(state.cohesion) * (1.0 - defines.cohesion_decay_alpha)
+
+        # Infrastructure decays with CORE_ORGANIZER maintenance
+        core_count = organizer_counts.get(comm_type, 0)
+        new_infra = calculate_infrastructure_decay(
+            float(state.infrastructure),
+            defines.infrastructure_decay_alpha,
+            core_count,
+            defines.core_organizer_maintenance_factor,
+        )
+
+        community_states[comm_type] = state.model_copy(
+            update={
+                "heat": max(0.0, new_heat),
+                "cohesion": max(0.0, new_cohesion),
+                "infrastructure": new_infra,
+            },
+        )

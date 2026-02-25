@@ -35,6 +35,10 @@ from babylon.models.entities import (
     Trigger,
     TriggerCondition,
 )
+from babylon.models.entities.community import (
+    CommunityMembership,
+    CommunityState,
+)
 
 # Entity Registry (single source of truth for entity IDs)
 from babylon.models.entity_registry import (
@@ -52,8 +56,11 @@ from babylon.models.entity_registry import (
     role_to_entity_id,
 )
 from babylon.models.enums import (
+    CommunityType,
     EdgeType,
     IntensityLevel,
+    LegalStatus,
+    MembershipRole,
     ResolutionType,
     SocialRole,
 )
@@ -169,4 +176,10 @@ __all__ = [
     "TerritoryState",
     "SimulationSnapshot",
     "SnapshotEdgeType",
+    # Community Layer (Feature 022)
+    "CommunityType",
+    "LegalStatus",
+    "MembershipRole",
+    "CommunityState",
+    "CommunityMembership",
 ]

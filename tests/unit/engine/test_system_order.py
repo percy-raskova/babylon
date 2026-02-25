@@ -47,6 +47,7 @@ class TestMaterialistCausalityOrder:
             "tick_dynamics",  # TickDynamicsSystem
             # Capital Volume I (Feature 021)
             "reserve_army",  # ReserveArmySystem - wage pressure
+            "community",  # CommunitySystem - hypergraph layer (Feature 022)
             "Solidarity",  # SolidaritySystem
             "Imperial Rent",  # ImperialRentSystem
             "dispossession_events",  # DispossessionEventSystem - value transfer
@@ -146,5 +147,5 @@ class TestMaterialistCausalityOrder:
         )
 
     def test_all_eighteen_systems_present(self) -> None:
-        """All 18 systems must be registered (13 core + 2 Volume I + 3 field topology)."""
-        assert len(_DEFAULT_SYSTEMS) == 18, f"Expected 18 systems, got {len(_DEFAULT_SYSTEMS)}"
+        """All 19 systems must be registered (13 core + 2 Volume I + 1 community + 3 field topology)."""
+        assert len(_DEFAULT_SYSTEMS) == 19, f"Expected 19 systems, got {len(_DEFAULT_SYSTEMS)}"

@@ -143,10 +143,10 @@ ______________________________________________________________________
 
 **Purpose**: Wire CommunitySystem into the engine pipeline, implement alpha-smoothing, run full integration.
 
-- [ ] T031 Implement alpha-smoothing decay phase in CommunitySystem.step(): heat decays toward 0, cohesion decays toward 0, infrastructure decays toward 0 with core_organizer maintenance factor, using CommunityDefines rates in src/babylon/engine/systems/community.py
-- [ ] T032 Register CommunitySystem at position 6 in _DEFAULT_SYSTEMS (before SolidaritySystem) in src/babylon/engine/simulation_engine.py with import and materialist-causality comment
+- [x] T031 Implement alpha-smoothing decay phase in CommunitySystem.step(): heat decays toward 0, cohesion decays toward 0, infrastructure decays toward 0 with core_organizer maintenance factor, using CommunityDefines rates in src/babylon/engine/systems/community.py
+- [x] T032 Register CommunitySystem at position 6 in _DEFAULT_SYSTEMS (before SolidaritySystem) in src/babylon/engine/simulation_engine.py with import and materialist-causality comment
 - [ ] T033 [P] Write integration tests for full pipeline: community layer active during multi-tick simulation, solidarity amplification visible to SolidaritySystem, threat scores aggregate correctly across ticks in tests/integration/test_community_integration.py
-- [ ] T034 [P] Add community model and enum exports to src/babylon/models/__init__.py and system exports to src/babylon/engine/systems/__init__.py
+- [x] T034 [P] Add community model and enum exports to src/babylon/models/__init__.py and system exports to src/babylon/engine/systems/__init__.py
 - [ ] T035 Run mise run check to verify lint (ruff), type checking (mypy --strict on new files), and all tests pass
 
 ______________________________________________________________________

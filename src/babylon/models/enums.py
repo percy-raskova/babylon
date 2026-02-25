@@ -342,19 +342,20 @@ class EdgeMode(StrEnum):
 
     Reference: R-002 (EdgeMode vs EdgeType distinction)
     Reference: FR-010 (transition topology — 17 permissible transitions)
+    Reference: FR-017 (CO-OPTIVE edge classification table)
 
     Values:
-        ANTAGONISTIC: Irreconcilable contradiction (class vs class)
-        SOLIDARISTIC: Mutual-aid contradiction resolution
-        DORMANT: Contradiction exists but not yet manifest
-        EMERGENT: Contradiction becoming active, not yet qualitatively defined
-        CO_OPTIVE: Contradiction suppressed via material concession
+        EXTRACTIVE: Unidirectional value flow from exploited to exploiter
+        TRANSACTIONAL: Bidirectional symmetric market exchange
+        SOLIDARISTIC: Bidirectional mutual aid, shared reproduction
+        ANTAGONISTIC: Oppositional, open conflict over contested value
+        CO_OPTIVE: Bidirectional asymmetric — concessions for quiescence
     """
 
-    ANTAGONISTIC = "antagonistic"
+    EXTRACTIVE = "extractive"
+    TRANSACTIONAL = "transactional"
     SOLIDARISTIC = "solidaristic"
-    DORMANT = "dormant"
-    EMERGENT = "emergent"
+    ANTAGONISTIC = "antagonistic"
     CO_OPTIVE = "co_optive"
 
 

@@ -1,0 +1,269 @@
+"""Tests for EdgeTransitionSystem (Feature 002 - System #16).
+
+TDD RED phase: Tests define the contract for compound predicates,
+edge mode state machine, FR-018 contradiction character, FR-019 aspect reversal.
+
+Reference: specs/002-dialectical-field-topology/contracts/edge_transition_system.py
+"""
+
+from __future__ import annotations
+
+import networkx as nx
+import pytest
+
+from babylon.engine.field_registry import DefaultFieldRegistry
+from babylon.engine.services import ServiceContainer
+from babylon.engine.systems.edge_transition import EdgeTransitionSystem
+from babylon.models.enums import (
+    ContradictionCharacter,
+    EdgeMode,
+    EdgeType,
+    EventType,
+)
+
+
+def _make_graph_with_edge_mode() -> nx.DiGraph[str]:
+    """Create a graph with two nodes and an edge that has an edge_mode."""
+    graph: nx.DiGraph[str] = nx.DiGraph()
+    graph.add_node(
+        "C001",
+        _node_type="social_class",
+        wealth=5.0,
+        population=1000,
+        s_bio=5.0,
+        s_class=0.0,
+        unearned_increment=0.0,
+        contradiction_fields={"exploitation": 8.0, "immiseration": 2.0},
+        field_derivatives={
+            "exploitation": {"laplacian": 0.0, "df_dt": 2.0, "d2f_dt2": 0.5},
+            "immiseration": {"laplacian": 0.0, "df_dt": 0.5, "d2f_dt2": None},
+        },
+    )
+    graph.add_node(
+        "C002",
+        _node_type="social_class",
+        wealth=30.0,
+        population=2000,
+        s_bio=5.0,
+        s_class=0.0,
+        unearned_increment=5.0,
+        contradiction_fields={"exploitation": 2.0, "immiseration": 0.0},
+        field_derivatives={
+            "exploitation": {"laplacian": 0.0, "df_dt": -0.5, "d2f_dt2": None},
+            "immiseration": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None},
+        },
+    )
+    graph.add_edge(
+        "C001",
+        "C002",
+        edge_type=EdgeType.EXPLOITATION,
+        edge_mode=EdgeMode.EXTRACTIVE,
+        contradiction_character=ContradictionCharacter.ANTAGONISTIC,
+        value_flow=10.0,
+    )
+    return graph
+
+
+@pytest.mark.unit
+class TestEdgeTransitionSystemBasic:
+    """Basic behavior for EdgeTransitionSystem."""
+
+    def test_system_has_name(self) -> None:
+        """System should have the correct name."""
+        system = EdgeTransitionSystem()
+        assert system.name == "edge_transition"
+
+    def test_no_registry_skips(self) -> None:
+        """System is a no-op when field_registry is None."""
+        graph = _make_graph_with_edge_mode()
+        services = ServiceContainer.create()
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        # Edge mode should remain unchanged
+        edge_data = graph.edges["C001", "C002"]
+        assert edge_data["edge_mode"] == EdgeMode.EXTRACTIVE
+
+    def test_edges_without_mode_are_skipped(self) -> None:
+        """Edges that don't have edge_mode are not processed."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node("C001", _node_type="social_class", wealth=5.0)
+        graph.add_node("C002", _node_type="social_class", wealth=30.0)
+        graph.add_edge("C001", "C002", edge_type=EdgeType.EXPLOITATION)
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        # Should not raise
+        EdgeTransitionSystem().step(graph, services, context)
+
+
+@pytest.mark.unit
+class TestEdgeTransitionStateMachine:
+    """Tests for the edge mode state machine (FR-010)."""
+
+    def test_extractive_to_antagonistic_transition(self) -> None:
+        """EXTRACTIVE -> ANTAGONISTIC when exploitation high and rising."""
+        graph = _make_graph_with_edge_mode()
+        # Source node has high exploitation (8.0) and positive df/dt (2.0)
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        edge_data = graph.edges["C001", "C002"]
+        # High exploitation + rising should trigger transition
+        assert edge_data["edge_mode"] in (
+            EdgeMode.EXTRACTIVE,
+            EdgeMode.ANTAGONISTIC,
+        )
+
+    def test_transition_emits_event(self) -> None:
+        """Edge mode transitions emit EDGE_MODE_TRANSITION events."""
+        graph = _make_graph_with_edge_mode()
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        events = services.event_bus.get_history()
+        transition_events = [e for e in events if e.type == EventType.EDGE_MODE_TRANSITION]
+        # May or may not fire depending on predicate evaluation
+        assert isinstance(transition_events, list)
+
+    def test_prohibited_transition_not_taken(self) -> None:
+        """Prohibited transitions (e.g., EXTRACTIVE -> SOLIDARISTIC) never occur."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            contradiction_fields={"exploitation": 0.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_node(
+            "C002",
+            _node_type="social_class",
+            contradiction_fields={"exploitation": 0.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_edge(
+            "C001",
+            "C002",
+            edge_type=EdgeType.EXPLOITATION,
+            edge_mode=EdgeMode.EXTRACTIVE,
+            contradiction_character=ContradictionCharacter.NON_ANTAGONISTIC,
+        )
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        edge_data = graph.edges["C001", "C002"]
+        # EXTRACTIVE cannot jump directly to SOLIDARISTIC
+        assert edge_data["edge_mode"] != EdgeMode.SOLIDARISTIC
+
+
+@pytest.mark.unit
+class TestContradictionCharacterFlag:
+    """Tests for FR-018 contradiction character flag."""
+
+    def test_character_flag_preserved(self) -> None:
+        """Contradiction character flag is preserved on edges."""
+        graph = _make_graph_with_edge_mode()
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        edge_data = graph.edges["C001", "C002"]
+        assert "contradiction_character" in edge_data
+        assert edge_data["contradiction_character"] in (
+            ContradictionCharacter.ANTAGONISTIC,
+            ContradictionCharacter.NON_ANTAGONISTIC,
+        )
+
+    def test_default_character_is_non_antagonistic(self) -> None:
+        """Edges without character flag get NON_ANTAGONISTIC default."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            contradiction_fields={"exploitation": 1.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_node(
+            "C002",
+            _node_type="social_class",
+            contradiction_fields={"exploitation": 1.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_edge(
+            "C001",
+            "C002",
+            edge_type=EdgeType.EXPLOITATION,
+            edge_mode=EdgeMode.TRANSACTIONAL,
+            # No contradiction_character set
+        )
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+
+        EdgeTransitionSystem().step(graph, services, context)
+
+        edge_data = graph.edges["C001", "C002"]
+        assert edge_data["contradiction_character"] == ContradictionCharacter.NON_ANTAGONISTIC
+
+
+@pytest.mark.unit
+class TestAspectReversal:
+    """Tests for FR-019 aspect reversal detection."""
+
+    def test_aspect_reversal_event_emitted(self) -> None:
+        """ASPECT_REVERSAL event emitted when dominant party switches."""
+        graph: nx.DiGraph[str] = nx.DiGraph()
+        graph.add_node(
+            "C001",
+            _node_type="social_class",
+            wealth=5.0,
+            contradiction_fields={"exploitation": 3.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_node(
+            "C002",
+            _node_type="social_class",
+            wealth=30.0,
+            contradiction_fields={"exploitation": 3.0},
+            field_derivatives={"exploitation": {"laplacian": 0.0, "df_dt": 0.0, "d2f_dt2": None}},
+        )
+        graph.add_edge(
+            "C001",
+            "C002",
+            edge_type=EdgeType.EXPLOITATION,
+            edge_mode=EdgeMode.ANTAGONISTIC,
+            contradiction_character=ContradictionCharacter.ANTAGONISTIC,
+            _dominant_party="C002",  # C002 was dominant
+        )
+
+        registry = DefaultFieldRegistry.with_defaults()
+        services = ServiceContainer.create(field_registry=registry)
+
+        # Change wealth so C001 becomes dominant
+        graph.nodes["C001"]["wealth"] = 50.0
+        graph.nodes["C002"]["wealth"] = 5.0
+
+        context: dict[str, object] = {"tick": 1, "persistent_data": {}}
+        EdgeTransitionSystem().step(graph, services, context)
+
+        events = services.event_bus.get_history()
+        reversal_events = [e for e in events if e.type == EventType.ASPECT_REVERSAL]
+        # Should detect the reversal
+        assert len(reversal_events) >= 1

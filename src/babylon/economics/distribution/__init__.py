@@ -10,4 +10,33 @@ See Also:
     :mod:`babylon.economics.rent`: Ground rent extraction module
 """
 
-__all__: list[str] = []
+__all__: list[str] = [
+    # Types (types.py)
+    "DEBT_SPIRAL_THRESHOLD",
+    "DISTRIBUTION_EPSILON",
+    "SurplusValueDistribution",
+    "DebtAccumulation",
+    # Calculator (calculator.py)
+    "DistributionCalculator",
+    "DefaultDistributionCalculator",
+    # Data sources (data_sources.py)
+    "RentalIncomeSource",
+    "TaxOnSurplusSource",
+    "InterestIncomeSource",
+]
+
+from babylon.economics.distribution.calculator import (
+    DefaultDistributionCalculator,
+    DistributionCalculator,
+)
+from babylon.economics.distribution.data_sources import (
+    InterestIncomeSource,
+    RentalIncomeSource,
+    TaxOnSurplusSource,
+)
+from babylon.economics.distribution.types import (
+    DEBT_SPIRAL_THRESHOLD,
+    DISTRIBUTION_EPSILON,
+    DebtAccumulation,
+    SurplusValueDistribution,
+)

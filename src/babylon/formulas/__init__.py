@@ -38,6 +38,9 @@ from babylon.formulas.constants import (
     LOSS_AVERSION_COEFFICIENT,
 )
 
+# Re-export Curvature formulas (Feature 002 - Dialectical Field Topology)
+from babylon.formulas.curvature import compute_ollivier_ricci
+
 # Re-export Dynamic Balance formulas
 from babylon.formulas.dynamic_balance import (
     BourgeoisieDecision,
@@ -136,4 +139,6 @@ __all__ = [
     "calculate_wealth_acceleration",
     "calculate_wealth_flow",
     "invert_wealth_to_population",
+    # Curvature (Dialectical Field Topology)
+    "compute_ollivier_ricci",
 ]

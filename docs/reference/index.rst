@@ -23,11 +23,12 @@ Data Models
 
    data-models
    tensor
+   tensor-primitive
    precision
 
 Complete specification of data structures, entity collections, constrained
-types, graph structure, the Marxian value tensor, and the Gatekeeper Pattern
-for quantization.
+types, graph structure, the Marxian value tensor (ValueTensor4x3), tensor
+registry and hydration pipeline, and the Gatekeeper Pattern for quantization.
 
 Mathematical Formulas
 ---------------------

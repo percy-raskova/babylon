@@ -671,6 +671,8 @@ ADR0XX_descriptive_name:
 - SQLite (marxist-data-3NF.sqlite) — read-only during simulation (020-detroit-vertical-slice)
 - Python 3.12+ + NetworkX 3.x (graph), Pydantic 2.x (models), scipy (Wasserstein-1 LP for curvature) (002-dialectical-field-topology)
 - In-memory via GraphProtocol (`update_node`, `update_edge`) + `context.persistent_data` for cross-tick history (002-dialectical-field-topology)
+- Python 3.12+ (existing stack) + Pydantic 2.x (frozen models), NetworkX 3.x (graph), SQLAlchemy 2.x (ORM), SciPy (sigmoid optimization) (021-capital-volume-i)
+- SQLite (marxist-data-3NF.sqlite for reference data); in-memory via GraphProtocol for simulation state (021-capital-volume-i)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

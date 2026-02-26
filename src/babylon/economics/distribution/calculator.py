@@ -44,6 +44,7 @@ class DistributionCalculator(Protocol):
         total_surplus: float,
         county_profit_rate: float,
         national_interest_rate: float,
+        county_employment: float = 0.0,
     ) -> SurplusValueDistribution | NoDataSentinel:
         """Decompose surplus into p + i + r + t.
 
@@ -53,6 +54,9 @@ class DistributionCalculator(Protocol):
             total_surplus: Total surplus value from ValueTensor4x3.
             county_profit_rate: County-level profit rate (s/C).
             national_interest_rate: National average interest rate.
+            county_employment: County workers (from QCEW). Used to scale
+                national rent/tax totals to county level. Falls back to
+                capital-proxy scaling when 0.
 
         Returns:
             SurplusValueDistribution if data available, NoDataSentinel otherwise.
@@ -107,6 +111,7 @@ class DefaultDistributionCalculator:
         total_surplus: float,
         county_profit_rate: float,
         national_interest_rate: float,
+        county_employment: float = 0.0,
     ) -> SurplusValueDistribution | NoDataSentinel:
         """Decompose surplus into p + i + r + t.
 
@@ -116,6 +121,9 @@ class DefaultDistributionCalculator:
             total_surplus: Total surplus value from ValueTensor4x3.
             county_profit_rate: County-level profit rate (s/C).
             national_interest_rate: National average interest rate.
+            county_employment: County workers (from QCEW). Used to scale
+                national rent/tax totals to county level. Falls back to
+                capital-proxy scaling when 0.
 
         Returns:
             SurplusValueDistribution if all data available, NoDataSentinel otherwise.
@@ -131,18 +139,30 @@ class DefaultDistributionCalculator:
                 taxes_on_surplus=0.0,
             )
 
-        # Fetch data-driven national components and scale to county level.
-        # Implied county capital stock C ≈ surplus / profit_rate (Marx: s = r·C).
-        # County interest burden = effective_rate × C = rate × (surplus / profit_rate).
-        # National rent/tax totals are scaled by county's surplus share of
-        # national surplus (approximated as county_profit_rate × C_national proxy).
+        # County interest: effective_rate × implied_capital_stock (Marx: s = r·C)
         safe_profit_rate = max(county_profit_rate, 1e-4)
         implied_capital = total_surplus / safe_profit_rate
-
-        # County interest: derived from capital stock × effective rate (FR-003)
         county_interest = national_interest_rate * implied_capital
 
-        # National rent total → scaled to county by capital share
+        # County share of national rent/tax totals.
+        # Primary: employment share (QCEW-based, traceable to real data).
+        # Fallback: capital-stock proxy when employment unavailable.
+        _national_employment = 155_000_000.0  # QCEW national baseline
+        if county_employment > 0:
+            county_share = min(county_employment / _national_employment, 1.0)
+        else:
+            # Capital proxy: county_capital / national_capital_proxy
+            national_rent_check = self._rental_source.get_rental_income(fips, year)
+            if national_rent_check is None:
+                return NoDataSentinel(
+                    fips=fips,
+                    year=year,
+                    reason=f"Rental income data unavailable for {fips}/{year}",
+                )
+            national_surplus_proxy = max(national_rent_check / 0.08, 1.0)
+            county_share = min(total_surplus / national_surplus_proxy, 1.0)
+
+        # Fetch national rent and tax totals, scale to county
         national_rent = self._rental_source.get_rental_income(fips, year)
         if national_rent is None:
             return NoDataSentinel(
@@ -150,11 +170,6 @@ class DefaultDistributionCalculator:
                 year=year,
                 reason=f"Rental income data unavailable for {fips}/{year}",
             )
-
-        # Approximate county share: county surplus / national surplus proxy
-        # National surplus ≈ national_rent / rentier_share_of_surplus (≈8%)
-        national_surplus_proxy = national_rent / 0.08
-        county_share = min(total_surplus / max(national_surplus_proxy, 1.0), 1.0)
         rent = national_rent * county_share
 
         national_tax = self._tax_source.get_corporate_tax(fips, year)
@@ -167,8 +182,7 @@ class DefaultDistributionCalculator:
         tax = national_tax * county_share
 
         # Verify interest data availability (FR-015)
-        interest_check = self._interest_source.get_national_net_interest(year)
-        if interest_check is None:
+        if self._interest_source.get_national_net_interest(year) is None:
             return NoDataSentinel(
                 fips=fips,
                 year=year,

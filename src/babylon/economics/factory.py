@@ -159,16 +159,19 @@ def load_fred_series_from_db(
 
     # Unit normalisation rules applied at load time so all downstream
     # code works with consistent units: actual dollars, decimal rates.
-    # FRED stores percent series as e.g. 1.68 (meaning 1.68%) and
-    # dollar aggregates as millions (e.g. 30829535 meaning $30.8T).
+    # FRED stores percent series as e.g. 1.68 (meaning 1.68%).
+    # Dollar aggregates vary: GFDEBTN/TCMDO/NCBEILQ027S/B230RC0 are in
+    # "Millions of Dollars"; A054RC1Q027SBEA is NIPA "Billions of Dollars".
     _pct_to_decimal = {"FEDFUNDS", "DGS10", "BAA10Y"}  # divide by 100
     _millions_to_dollars = {
         "GFDEBTN",
         "TCMDO",
         "NCBEILQ027S",
         "B230RC0Q173SBEA",
-        "A054RC1Q027SBEA",
     }  # multiply by 1e6
+    _billions_to_dollars = {
+        "A054RC1Q027SBEA",  # NIPA Table: "Billions of Dollars"
+    }  # multiply by 1e9
 
     result: dict[str, dict[int, float]] = {}
     with session_factory() as session:
@@ -194,6 +197,8 @@ def load_fred_series_from_db(
                 value = value / 100.0
             elif code in _millions_to_dollars:
                 value = value * 1_000_000.0
+            elif code in _billions_to_dollars:
+                value = value * 1_000_000_000.0
             if code not in result:
                 result[code] = {}
             result[code][year] = value

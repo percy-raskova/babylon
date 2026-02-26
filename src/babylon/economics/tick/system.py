@@ -920,10 +920,13 @@ class TickDynamicsSystem:
         updates: dict[str, object] = {}
         total_surplus: float | None = None
 
+        # Use nearest available tensor year to handle year+1 advancement
+        tensor_year = self._get_best_tensor_year(fips, year, services)
+
         # Surplus distribution (s = p + i + r + t)
         if services.distribution_calculator is not None:
-            profit_rate = self._get_county_profit_rate(fips, year, services)
-            total_surplus = self._get_county_surplus(fips, year, services)
+            profit_rate = self._get_county_profit_rate(fips, tensor_year, services)
+            total_surplus = self._get_county_surplus(fips, tensor_year, services)
             if total_surplus is not None and total_surplus > 0:
                 dist = services.distribution_calculator.compute_distribution(
                     fips=fips,
@@ -931,6 +934,7 @@ class TickDynamicsSystem:
                     total_surplus=total_surplus,
                     county_profit_rate=profit_rate if profit_rate is not None else 0.05,
                     national_interest_rate=national_rate,
+                    county_employment=county.employment,
                 )
                 if not isinstance(dist, NoDataSentinel):
                     updates["surplus_distribution"] = dist
@@ -1002,6 +1006,36 @@ class TickDynamicsSystem:
             claims_exceed_surplus=bool(claims_exceed),
         )
         return result
+
+    def _get_best_tensor_year(
+        self,
+        fips: str,
+        year: int,
+        services: ServiceContainer,
+    ) -> int:
+        """Return nearest tensor-populated year for a county.
+
+        The simulation advances year by +1 each tick, but tensors are
+        hydrated only for the initial years. This method falls back to
+        the most recently available tensor year (up to 2 years back)
+        so the financial layer always draws real data, not None.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Requested simulation year.
+            services: ServiceContainer with tensor_registry.
+
+        Returns:
+            Best available year: current, current-1, or current-2.
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        if tensor_registry is None:
+            return year
+        for candidate in [year, year - 1, year - 2]:
+            tensor = tensor_registry.get(fips, candidate)
+            if not isinstance(tensor, NoDataSentinel):
+                return candidate
+        return year
 
     def _get_county_profit_rate(
         self,

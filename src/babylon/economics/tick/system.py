@@ -43,6 +43,7 @@ from babylon.economics.credit.types import FictitiousCapitalStock
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
+from babylon.economics.reserve_army.calculator import DefaultWagePressureCalculator
 from babylon.economics.tensor import NoDataSentinel
 from babylon.economics.tick.crisis_detector import (
     MultiPeriodCrisisDetector,
@@ -183,6 +184,9 @@ class TickDynamicsSystem:
 
         # Step 3b: Update smoothed coefficients
         coefficients = self._update_coefficients(national_params, prev_coefficients)
+
+        # Step 3.5: Compute Vol I production layer — wage pressure (Feature 021)
+        county_states = self._compute_vol1_layer(county_states, services, year)
 
         # Step 4: Compute imperial rent flows
         county_states = self._compute_imperial_rent(county_states, national_params, services)
@@ -834,6 +838,74 @@ class TickDynamicsSystem:
                 )
             )
 
+    def _compute_vol1_layer(
+        self,
+        county_states: dict[str, CountyEconomicState],
+        services: ServiceContainer,
+        year: int,
+    ) -> dict[str, CountyEconomicState]:
+        """Compute Volume I production layer — reserve army wage pressure.
+
+        Feature: 021-capital-volume-i
+        Derives reserve army state from FRED UNRATE + NROU, computes sigmoid
+        wage pressure, and applies it to county median_wage. Runs before
+        imperial rent (Step 4) so adjusted wages propagate through phi_hour.
+
+        Args:
+            county_states: Current county snapshots.
+            services: ServiceContainer with reserve_army_data_source.
+            year: Current simulation year.
+
+        Returns:
+            Updated county states with median_wage adjusted for wage pressure.
+        """
+        if services.reserve_army_data_source is None:
+            return county_states
+
+        wage_calc = DefaultWagePressureCalculator(getattr(services.defines, "reserve_army", None))
+
+        updated: dict[str, CountyEconomicState] = {}
+        max_counties = 3300
+        for idx, (fips, county) in enumerate(county_states.items()):
+            if idx >= max_counties:
+                logger.warning("County count exceeds %d, truncating Vol I layer", max_counties)
+                break
+            updated[fips] = self._compute_vol1_county_state(fips, county, services, year, wage_calc)
+
+        for fips, county in county_states.items():
+            if fips not in updated:
+                updated[fips] = county
+
+        return updated
+
+    def _compute_vol1_county_state(
+        self,
+        fips: str,
+        county: CountyEconomicState,
+        services: ServiceContainer,
+        year: int,
+        wage_calc: DefaultWagePressureCalculator,
+    ) -> CountyEconomicState:
+        """Apply Vol I wage pressure to a single county.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            county: Current county economic state.
+            services: ServiceContainer with reserve_army_data_source.
+            year: Current simulation year.
+            wage_calc: Pre-built wage pressure calculator.
+
+        Returns:
+            Updated CountyEconomicState with adjusted median_wage.
+        """
+        state = services.reserve_army_data_source.get_unemployment_decomposition(fips, year)
+        if state is None:
+            return county
+
+        pressure = wage_calc.compute_wage_pressure(state.reserve_ratio)
+        adjusted_wage = county.median_wage * (1.0 - pressure)
+        return county.model_copy(update={"median_wage": adjusted_wage})
+
     def _compute_circulation_layer(
         self,
         county_states: dict[str, CountyEconomicState],
@@ -1440,6 +1512,22 @@ class TickDynamicsSystem:
             if should_halt_accumulation(county.median_wage, DEFAULT_V_REPRODUCTION, floor_ratio):
                 effective_wage = 0.0  # Zero wage -> zero accumulation
 
+            # Use real dispossession rates if available (Feature 021)
+            foreclosure_rate = DEFAULT_FORECLOSURE_RATE
+            bankruptcy_rate = DEFAULT_BANKRUPTCY_RATE
+            eviction_rate = DEFAULT_EVICTION_RATE
+            if services.dispossession_data_source is not None:
+                disp = services.dispossession_data_source
+                fc = disp.get_foreclosure_rate(fips, clamped_year)
+                if fc is not None:
+                    foreclosure_rate = fc
+                bk = disp.get_bankruptcy_rate(fips, clamped_year)
+                if bk is not None:
+                    bankruptcy_rate = bk
+                ev = disp.get_eviction_rate(fips, clamped_year)
+                if ev is not None:
+                    eviction_rate = ev
+
             conditions = EconomicConditions(
                 fips=fips,
                 year=clamped_year,
@@ -1447,9 +1535,9 @@ class TickDynamicsSystem:
                 median_wage=effective_wage,
                 melt=national_params.tau,
                 phi_hour=county.phi_hour,
-                foreclosure_rate=DEFAULT_FORECLOSURE_RATE,
-                bankruptcy_rate=DEFAULT_BANKRUPTCY_RATE,
-                eviction_rate=DEFAULT_EVICTION_RATE,
+                foreclosure_rate=foreclosure_rate,
+                bankruptcy_rate=bankruptcy_rate,
+                eviction_rate=eviction_rate,
                 crisis=crisis_phase != CrisisPhase.NORMAL,
             )
 

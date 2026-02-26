@@ -483,10 +483,184 @@ def create_circulation_services(
     }
 
 
+def load_vol1_series_from_db(
+    session_factory: Callable[[], Session],
+) -> dict[str, dict[int, float]]:
+    """Load FRED Vol I production series from 3NF SQLite into cache dict.
+
+    Queries fred_series + fred_national tables for Volume I series with unit
+    conversions applied. OPHNFB and HOANBS are index values (2012=100) stored
+    as-is; NROU is a percent and is converted to decimal.
+
+    Feature: 021-capital-volume-i
+
+    Args:
+        session_factory: Callable returning a SQLAlchemy Session.
+
+    Returns:
+        Dict mapping FRED series IDs to year->value dicts.
+    """
+    from sqlalchemy import text
+
+    _vol1_series = ["OPHNFB", "HOANBS", "NROU", "UNRATE"]
+    _pct_to_decimal = {"NROU", "UNRATE"}  # percent → decimal (÷ 100)
+
+    result: dict[str, dict[int, float]] = {}
+    with session_factory() as session:
+        placeholders = ", ".join(f"'{s}'" for s in _vol1_series)
+        raw_query = text(f"""
+            SELECT fs.series_code, dt.year, AVG(fn.value) AS avg_value
+            FROM fact_fred_national fn
+            JOIN dim_fred_series fs ON fn.series_id = fs.series_id
+            JOIN dim_time dt ON fn.time_id = dt.time_id
+            WHERE fs.series_code IN ({placeholders})
+            GROUP BY fs.series_code, dt.year
+            ORDER BY fs.series_code, dt.year
+        """)
+        rows = session.execute(raw_query)
+        for row in rows:
+            code = str(row[0])
+            year = int(row[1])
+            value = float(row[2])
+            if code in _pct_to_decimal:
+                value = value / 100.0
+            if code not in result:
+                result[code] = {}
+            result[code][year] = value
+
+    return result
+
+
+def create_vol1_services(
+    vol1_series_cache: dict[str, dict[int, float]],
+    fred_series_cache: dict[str, dict[int, float]],  # noqa: ARG001 reserved for future use
+) -> dict[str, Any]:
+    """Create Volume I production calculators wired with real FRED data.
+
+    Provides three data source adapters for the Vol I production layer:
+    - reserve_army_data_source: derives ReserveArmyState from UNRATE + NROU
+    - productivity_data_source: derives WorkingDayState from OPHNFB + HOANBS
+    - dispossession_data_source: wraps hardcoded 2007-2020 + UNRATE proxy for 2021+
+
+    Feature: 021-capital-volume-i
+
+    Args:
+        vol1_series_cache: Pre-loaded Vol I FRED series (OPHNFB, HOANBS, NROU).
+        fred_series_cache: Pre-loaded Vol III FRED series containing UNRATE.
+
+    Returns:
+        Dict with keys matching ServiceContainer Vol I field names.
+    """
+    from babylon.economics.dynamics.hardcoded_data import HardcodedNationalDispossessionSource
+    from babylon.economics.reserve_army.types import ReserveArmyState
+    from babylon.economics.working_day.types import WorkingDayState
+
+    _HOURS_BASELINE = 34.5  # US average weekly hours baseline
+
+    class _FredReserveArmyAdapter:
+        """Adapter: FRED UNRATE + NROU -> ReserveArmyState.
+
+        Decomposes unemployment into cyclical (floating) and structural (latent)
+        reserve army components using Marx's four-category schema.
+        Normalized to labor_force = 1_000_000 so reserve_ratio is accurate.
+        """
+
+        def get_unemployment_decomposition(
+            self,
+            _fips: str,
+            year: int,
+        ) -> ReserveArmyState | None:
+            unrate = vol1_series_cache.get("UNRATE", {}).get(year)
+            nrou = vol1_series_cache.get("NROU", {}).get(year)
+            if unrate is None:
+                return None
+            nrou_val = nrou if nrou is not None else 0.04  # fallback 4% structural
+            labor_force = 1_000_000
+            floating = int(labor_force * max(0.0, unrate - nrou_val))
+            latent = int(labor_force * nrou_val)
+            stagnant = int(labor_force * unrate * 0.4)
+            pauperized = int(labor_force * 0.02)
+            return ReserveArmyState(
+                fips_code="00000",
+                year=min(max(year, 2005), 2030),
+                floating_reserve=floating,
+                latent_reserve=latent,
+                stagnant_reserve=stagnant,
+                pauperized=pauperized,
+                labor_force=labor_force,
+            )
+
+    class _FredProductivityAdapter:
+        """Adapter: FRED OPHNFB + HOANBS -> WorkingDayState.
+
+        Converts index values (2012=100) to absolute measures:
+        - labor_intensity_index = OPHNFB / 100 (1.0 = 2012 baseline)
+        - avg_weekly_hours = (HOANBS / 100) × 34.5 hours
+        Returns national productivity applied uniformly across NAICS sectors.
+        """
+
+        def get_working_day_state(
+            self,
+            fips_code: str,
+            naics_sector: str,
+            year: int,
+        ) -> WorkingDayState | None:
+            ophnfb = vol1_series_cache.get("OPHNFB", {}).get(year)
+            hoanbs = vol1_series_cache.get("HOANBS", {}).get(year)
+            intensity = ophnfb / 100.0 if ophnfb is not None else 1.0
+            hours = (hoanbs / 100.0) * _HOURS_BASELINE if hoanbs is not None else _HOURS_BASELINE
+            clamped_year = min(max(year, 2005), 2030)
+            return WorkingDayState(
+                fips_code=fips_code if len(fips_code) == 5 else "00000",
+                naics_sector=naics_sector[:2] if naics_sector else "00",
+                year=clamped_year,
+                avg_weekly_hours=round(hours, 2),
+                labor_intensity_index=round(intensity, 4),
+            )
+
+    _hardcoded = HardcodedNationalDispossessionSource()
+
+    class _FredDispossessionAdapter:
+        """Adapter: wraps hardcoded 2007-2020 + FRED UNRATE proxy for 2021+.
+
+        For 2007-2020: delegates to HardcodedNationalDispossessionSource.
+        For 2021+: derives rates from national UNRATE using empirical proxies:
+          foreclosure ≈ max(0.001, UNRATE × 0.08)
+          bankruptcy  ≈ max(0.001, UNRATE × 0.07)
+          eviction    ≈ max(0.015, UNRATE × 0.60 + 0.015)
+        """
+
+        def get_foreclosure_rate(self, fips: str, year: int) -> float | None:
+            if year <= 2020:
+                return _hardcoded.get_foreclosure_rate(fips, year)
+            unrate = vol1_series_cache.get("UNRATE", {}).get(year)
+            return max(0.001, unrate * 0.08) if unrate is not None else None
+
+        def get_bankruptcy_rate(self, fips: str, year: int) -> float | None:
+            if year <= 2020:
+                return _hardcoded.get_bankruptcy_rate(fips, year)
+            unrate = vol1_series_cache.get("UNRATE", {}).get(year)
+            return max(0.001, unrate * 0.07) if unrate is not None else None
+
+        def get_eviction_rate(self, fips: str, year: int) -> float | None:
+            if year <= 2020:
+                return _hardcoded.get_eviction_rate(fips, year)
+            unrate = vol1_series_cache.get("UNRATE", {}).get(year)
+            return max(0.015, unrate * 0.60 + 0.015) if unrate is not None else None
+
+    return {
+        "reserve_army_data_source": _FredReserveArmyAdapter(),
+        "productivity_data_source": _FredProductivityAdapter(),
+        "dispossession_data_source": _FredDispossessionAdapter(),
+    }
+
+
 __all__ = [
     "create_circulation_services",
     "create_economics_services",
     "create_financial_services",
+    "create_vol1_services",
     "load_circulation_series_from_db",
     "load_fred_series_from_db",
+    "load_vol1_series_from_db",
 ]

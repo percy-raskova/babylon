@@ -408,6 +408,10 @@ NATIONAL_SERIES = {
     "ISRATIO": "Total Business: Inventories to Sales Ratio",
     # GPDI: Gross Private Domestic Investment (proxy for replacement expenditure)
     "GPDI": "Gross Private Domestic Investment",
+    # Volume I Production Series (Feature 021)
+    "OPHNFB": "Nonfarm Business Sector: Labor Productivity (Index 2012=100)",
+    "HOANBS": "Nonfarm Business Sector: Hours of All Persons (Index 2012=100)",
+    "NROU": "Natural Rate of Unemployment (Long-Term), Percent",
 }
 
 

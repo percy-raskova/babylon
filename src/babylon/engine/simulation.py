@@ -261,6 +261,16 @@ class Simulation:
             )
             calculator_overrides.update(circulation_overrides)
 
+            # Feature 021: Wire Volume I production layer (reserve army, productivity, dispossession)
+            from babylon.economics.factory import create_vol1_services, load_vol1_series_from_db
+
+            vol1_cache = load_vol1_series_from_db(calc_session_factory)
+            vol1_overrides = create_vol1_services(
+                vol1_series_cache=vol1_cache,
+                fred_series_cache=fred_cache,
+            )
+            calculator_overrides.update(vol1_overrides)
+
         # Create base WorldState and config
         state = WorldState()
         config = SimulationConfig()

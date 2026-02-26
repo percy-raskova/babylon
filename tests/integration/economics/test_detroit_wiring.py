@@ -16,8 +16,6 @@ from pathlib import Path
 
 import pytest
 
-from babylon.economics.tick.graph_bridge import read_tick_state_from_graph
-
 # Skip entire module if database not available
 _DB_PATH = Path("data/sqlite/marxist-data-3NF.sqlite")
 
@@ -45,7 +43,13 @@ class TestDetroitWiring:
         assert sim._calculator_overrides is not None
         assert "melt_calculator" in sim._calculator_overrides
         assert "tensor_registry" in sim._calculator_overrides
-        assert len(sim._calculator_overrides) == 8
+        # Vol III financial (11) + Vol II circulation (3) + Vol I production (3) + base (8)
+        assert len(sim._calculator_overrides) == 25
+        # Key volume-specific calculators present
+        assert "interest_calculator" in sim._calculator_overrides
+        assert "distribution_calculator" in sim._calculator_overrides
+        assert "turnover_profile_source" in sim._calculator_overrides
+        assert "reserve_army_data_source" in sim._calculator_overrides
 
     def test_single_tick_runs_without_error(self) -> None:
         """A single simulation tick completes without error."""
@@ -61,7 +65,8 @@ class TestDetroitWiring:
         sim.step()
 
     def test_year_boundary_produces_tick_state(self) -> None:
-        """After 52 ticks, TickDynamicsSystem writes state to graph."""
+        """After 52 ticks, TickDynamicsSystem writes state to persistent context."""
+        from babylon.economics.tick.graph_bridge import _reconstruct_tick_state
         from babylon.engine.simulation import Simulation
 
         sim = Simulation.from_sqlite(
@@ -74,16 +79,15 @@ class TestDetroitWiring:
         for _ in range(52):
             sim.step()
 
-        # Extract tick state from final graph
-        history = sim.get_history()
-        final_state = history[-1]
-        graph = final_state.to_graph()
-        tick_state = read_tick_state_from_graph(graph)
+        # Verify tick state via persistent_context snapshots
+        # (to_graph() round-trip loses tick_* attributes — see CLAUDE.md gotchas)
+        snapshots = sim._persistent_context.get("_tick_dynamics_snapshots", [])
+        assert len(snapshots) >= 1, "No tick dynamics snapshots after 52 ticks"
 
-        # If TickDynamicsSystem ran, tick_state should exist
-        # (it may be None if calculators returned early for other reasons)
-        if tick_state is not None:
-            assert tick_state.year >= 2022
+        tick_state = _reconstruct_tick_state(snapshots[-1])
+        assert tick_state is not None
+        assert tick_state.year >= 2022
+        assert len(tick_state.county_states) >= 1
 
     def test_get_time_series_returns_records(self) -> None:
         """get_time_series() returns records after year boundary."""
@@ -101,15 +105,55 @@ class TestDetroitWiring:
 
         records = sim.get_time_series()
 
-        # Should have records (2 counties x 1 year boundary)
-        # May be empty if TickDynamicsSystem didn't produce county states
-        if records:
-            assert len(records) >= 1
-            first = records[0]
-            assert "year" in first
-            assert "fips" in first
-            assert "la_share" in first
-            assert "data_source" in first
+        # Must have records (2 counties x 1 year boundary)
+        assert len(records) >= 1
+        first = records[0]
+        assert "year" in first
+        assert "fips" in first
+        assert "la_share" in first
+        assert "data_source" in first
+
+    def test_time_series_includes_volume_fields(self) -> None:
+        """Time series records contain Vol I/II/III fields after year boundary."""
+        from babylon.engine.simulation import Simulation
+
+        sim = Simulation.from_sqlite(
+            ["26163", "26125"],
+            year=2022,
+            years=[2022],
+        )
+
+        for _ in range(52):
+            sim.step()
+
+        records = sim.get_time_series()
+        assert len(records) >= 1
+        first = records[0]
+
+        # Vol I production fields
+        assert "capital_stock" in first
+        assert "median_wage" in first
+        assert "employment" in first
+        assert first["capital_stock"] is not None
+        assert first["capital_stock"] > 0
+
+        # Vol II circulation fields (always present via default)
+        assert "circuit_money" in first
+        assert "liquidity_ratio" in first
+
+        # Vol III finance fields (keys present, values may be None without FRED)
+        assert "surplus_total" in first
+        assert "interest_payments" in first
+        assert "profit_of_enterprise" in first
+        assert "overaccumulation" in first
+        assert "profit_squeeze" in first
+
+        # Profit rate must be a reasonable value, not capital_stock
+        assert "profit_rate" in first
+        if first["profit_rate"] is not None:
+            assert -1.0 < first["profit_rate"] < 1.0, (
+                f"profit_rate={first['profit_rate']} looks like capital_stock, not a rate"
+            )
 
     def test_calculator_overrides_none_without_years(self) -> None:
         """from_sqlite WITHOUT years param does NOT wire calculators."""

@@ -610,8 +610,16 @@ class Simulation:
         county-level economic state computed by TickDynamicsSystem.
 
         Returns:
-            List of dicts, each containing: year, fips, class_distribution
-            shares, profit_rate, phi_hour, throughput_position, and data_source.
+            List of dicts with keys: year, fips, class distribution shares
+            (bourgeoisie_share, petit_bourgeoisie_share, la_share,
+            proletariat_share, lumpen_share), profit_rate, phi_hour,
+            throughput_position, data_source, and Vol I/II/III fields:
+            capital_stock, median_wage, employment (Vol I);
+            circuit_money, circuit_productive, circuit_commodity,
+            liquidity_ratio, realization_crisis (Vol II);
+            surplus_total, interest_payments, ground_rent,
+            profit_of_enterprise, financialization_share,
+            overaccumulation, profit_squeeze (Vol III).
 
         Example:
             >>> sim = Simulation.from_sqlite(["26163"], year=2022, years=[2022])
@@ -620,11 +628,13 @@ class Simulation:
             >>> for record in ts:
             ...     print(f"{record['year']} {record['fips']}: LA={record['la_share']:.2f}")
         """
+        from babylon.economics.tick.derived_rates import DerivedRateCalculator
         from babylon.economics.tick.graph_bridge import (
             _reconstruct_tick_state,
         )
 
         records: list[dict[str, Any]] = []
+        rate_calc = DerivedRateCalculator()
 
         # Read accumulated snapshots from persistent context
         raw_snapshots = self._persistent_context.get("_tick_dynamics_snapshots", [])
@@ -637,6 +647,13 @@ class Simulation:
 
             for fips, county in tick_state.county_states.items():
                 dist = county.class_distribution
+                rates = rate_calc.compute_county_rates(
+                    county,
+                    tick_state.national_params,
+                )
+                circ = county.circulation_state
+                surplus = county.surplus_distribution
+                crisis = county.financial_crisis
                 records.append(
                     {
                         "year": tick_state.year,
@@ -646,10 +663,42 @@ class Simulation:
                         "la_share": dist.labor_aristocracy_share,
                         "proletariat_share": dist.proletariat_share,
                         "lumpen_share": dist.lumpenproletariat_share,
-                        "profit_rate": county.capital_stock,  # from tensor
+                        "profit_rate": rates.profit_rate,
                         "phi_hour": county.phi_hour,
                         "throughput_position": county.throughput_position,
                         "data_source": "simulation",
+                        # Vol I production
+                        "capital_stock": county.capital_stock,
+                        "median_wage": county.median_wage,
+                        "employment": county.employment,
+                        # Vol II circulation
+                        "circuit_money": circ.circuit_state.money_capital,
+                        "circuit_productive": circ.circuit_state.productive_capital,
+                        "circuit_commodity": circ.circuit_state.commodity_capital,
+                        "liquidity_ratio": circ.circuit_state.liquidity_ratio,
+                        "realization_crisis": (
+                            circ.latest_assessment.realization_crisis
+                            if circ.latest_assessment is not None
+                            else None
+                        ),
+                        # Vol III finance
+                        "surplus_total": (
+                            surplus.total_surplus_produced if surplus is not None else None
+                        ),
+                        "interest_payments": (
+                            surplus.interest_payments if surplus is not None else None
+                        ),
+                        "ground_rent": (surplus.ground_rent if surplus is not None else None),
+                        "profit_of_enterprise": (
+                            surplus.profit_of_enterprise if surplus is not None else None
+                        ),
+                        "financialization_share": (
+                            surplus.financialization_share if surplus is not None else None
+                        ),
+                        "overaccumulation": (
+                            crisis.overaccumulation if crisis is not None else None
+                        ),
+                        "profit_squeeze": (crisis.profit_squeeze if crisis is not None else None),
                     }
                 )
 

@@ -23,11 +23,13 @@ if TYPE_CHECKING:
     from babylon.engine.graph_protocol import GraphProtocol
 
 from babylon.economics.dynamics.types import ClassDistribution
+from babylon.economics.tick.derived_rates import DerivedRateCalculator
 from babylon.economics.tick.types import (
     BifurcationRiskMetric,
     CountyEconomicState,
     CrisisPhase,
     CrisisState,
+    DerivedRates,
     NationalTickParameters,
     SimulationTickState,
     SmoothedCoefficients,
@@ -74,6 +76,15 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
         },
     )  # pragma: no mutate
 
+    # Pre-compute per-county derived rates for graph persistence
+    rate_calc = DerivedRateCalculator()  # pragma: no mutate
+    county_rates: dict[str, DerivedRates] = {}  # pragma: no mutate
+    for fips, county in state.county_states.items():  # pragma: no mutate
+        county_rates[fips] = rate_calc.compute_county_rates(  # pragma: no mutate
+            county,
+            state.national_params,  # pragma: no mutate
+        )  # pragma: no mutate
+
     # Write county-level state to Territory nodes
     for fips, county in state.county_states.items():  # pragma: no mutate
         node = graph.get_node(fips)  # pragma: no mutate
@@ -83,6 +94,7 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
         if node.node_type != "territory":  # pragma: no mutate
             continue  # pragma: no mutate
 
+        rates = county_rates[fips]  # pragma: no mutate
         graph.update_node(  # pragma: no mutate
             fips,  # pragma: no mutate
             tick_capital_stock=county.capital_stock,  # pragma: no mutate
@@ -102,10 +114,10 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
             },  # pragma: no mutate
             tick_unemployment_rate=county.unemployment_rate,  # pragma: no mutate
             tick_median_wage=county.median_wage,  # pragma: no mutate
-            # Derived rates (from DerivedRates if available)
-            tick_profit_rate=None,  # pragma: no mutate
-            tick_occ=None,  # pragma: no mutate
-            tick_exploitation_rate=None,  # pragma: no mutate
+            # Derived rates (computed per-county)
+            tick_profit_rate=rates.profit_rate,  # pragma: no mutate
+            tick_occ=rates.organic_composition,  # pragma: no mutate
+            tick_exploitation_rate=rates.exploitation_rate,  # pragma: no mutate
             # Circulation state (Feature 023)
             tick_liquidity_ratio=county.circulation_state.circuit_state.liquidity_ratio,  # pragma: no mutate
             tick_commodity_overhang=county.circulation_state.circuit_state.commodity_overhang,  # pragma: no mutate

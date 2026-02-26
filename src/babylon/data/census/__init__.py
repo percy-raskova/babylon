@@ -41,6 +41,7 @@ from babylon.data.census.database import (
     get_census_db,
     init_census_db,
 )
+from babylon.data.census.housing_loader import CensusHousingLoader
 from babylon.data.census.loader_3nf import (
     ALL_TABLES,
     MARXIAN_TABLES,
@@ -86,6 +87,7 @@ __all__ = [
     "fetch_county_table",
     # Loaders
     "CensusLoader",  # 3NF direct loader (recommended)
+    "CensusHousingLoader",  # ACS housing data loader (Feature 024)
     # Table constants
     "ALL_TABLES",
     "ORIGINAL_TABLES",

@@ -395,6 +395,14 @@ NATIONAL_SERIES = {
     "M2SL": "M2 Money Stock",
     "PPPTTLUSA618NUPN": "Purchasing Power Parity over GDP",
     "RGDPCHUSA625NUPN": "Real GDP per Capita (PPP)",
+    # Volume III Financial Series (Feature 024)
+    "FEDFUNDS": "Federal Funds Effective Rate",
+    "DGS10": "Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity",
+    "BAA10Y": "Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury",
+    "TCMDO": "All Sectors; Credit Market Instruments; Liability, Level",
+    "WILL5000PR": "Wilshire 5000 Total Market Full Cap Index",
+    "B230RC0Q173SBEA": "Rental Income of Persons with Capital Consumption Adjustment",
+    "A054RC1Q027SBEA": "Taxes on Corporate Income",
 }
 
 

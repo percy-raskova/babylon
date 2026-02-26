@@ -127,3 +127,104 @@ class Z1FinancialAccountsSource(Protocol):
             Derivatives notional in current dollars, or None if unavailable.
         """
         ...
+
+
+# ---------------------------------------------------------------------------
+# Concrete adapters (Feature 024)
+# ---------------------------------------------------------------------------
+
+
+class FredInterestRateAdapter:
+    """Adapts FRED data to :class:`InterestRateSource` protocol.
+
+    Takes a pre-loaded mapping of series_id -> {year -> value} and
+    exposes it through the protocol methods.
+
+    Args:
+        series_data: Dict mapping FRED series IDs to yearly value dicts.
+            Expected keys: ``"FEDFUNDS"``, ``"DGS10"``, ``"BAA10Y"``.
+    """
+
+    def __init__(self, series_data: dict[str, dict[int, float]]) -> None:
+        self._series = series_data
+
+    def get_federal_funds_rate(self, year: int) -> float | None:
+        """Get annual average federal funds effective rate.
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            Rate as decimal (e.g., 0.05 for 5%), or None if unavailable.
+        """
+        return self._series.get("FEDFUNDS", {}).get(year)
+
+    def get_treasury_10y(self, year: int) -> float | None:
+        """Get annual average 10-year Treasury constant maturity rate.
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            Rate as decimal, or None if unavailable.
+        """
+        return self._series.get("DGS10", {}).get(year)
+
+    def get_baa_spread(self, year: int) -> float | None:
+        """Get annual average Moody's Baa corporate bond spread over 10Y Treasury.
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            Spread as decimal, or None if unavailable.
+        """
+        return self._series.get("BAA10Y", {}).get(year)
+
+
+class FredCreditAggregateAdapter:
+    """Adapts FRED data to :class:`CreditAggregateSource` protocol.
+
+    Takes a pre-loaded mapping of series_id -> {year -> value} and
+    exposes it through the protocol methods.
+
+    Args:
+        series_data: Dict mapping FRED series IDs to yearly value dicts.
+            Expected keys: ``"TCMDO"``, ``"GFDEBTN"``, ``"WILL5000PR"``.
+    """
+
+    def __init__(self, series_data: dict[str, dict[int, float]]) -> None:
+        self._series = series_data
+
+    def get_total_credit(self, year: int) -> float | None:
+        """Get total credit market debt outstanding (TCMDO).
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            Total credit in current dollars, or None if unavailable.
+        """
+        return self._series.get("TCMDO", {}).get(year)
+
+    def get_government_debt(self, year: int) -> float | None:
+        """Get federal debt total public debt (GFDEBTN).
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            Government debt in current dollars, or None if unavailable.
+        """
+        return self._series.get("GFDEBTN", {}).get(year)
+
+    def get_equity_market_cap(self, year: int) -> float | None:
+        """Get equity market capitalization proxy (Wilshire 5000).
+
+        Args:
+            year: Calendar year.
+
+        Returns:
+            Market cap in current dollars, or None if unavailable.
+        """
+        return self._series.get("WILL5000PR", {}).get(year)

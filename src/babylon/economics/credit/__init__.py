@@ -8,11 +8,19 @@ See Also:
     :mod:`babylon.economics.financial_crisis`: Integrated crisis assessment
 """
 
+# Data source protocols and adapters
 # Types and constants
 # Credit cycle detection
 from babylon.economics.credit.credit_cycle import (
     CreditCycleDetector,
     DefaultCreditCycleDetector,
+)
+from babylon.economics.credit.data_sources import (
+    CreditAggregateSource,
+    FredCreditAggregateAdapter,
+    FredInterestRateAdapter,
+    InterestRateSource,
+    Z1FinancialAccountsSource,
 )
 
 # Fictitious capital computation
@@ -64,4 +72,11 @@ __all__: list[str] = [
     # Fictitious capital computation
     "FictitiousCapitalCalculator",
     "DefaultFictitiousCapitalCalculator",
+    # Data source protocols (Feature 024)
+    "InterestRateSource",
+    "CreditAggregateSource",
+    "Z1FinancialAccountsSource",
+    # Concrete adapters (Feature 024)
+    "FredInterestRateAdapter",
+    "FredCreditAggregateAdapter",
 ]

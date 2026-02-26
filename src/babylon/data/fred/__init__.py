@@ -77,6 +77,7 @@ from babylon.data.fred.schema import (
     FredWealthLevel,
     FredWealthShare,
 )
+from babylon.data.fred.z1_loader import Z1Loader
 
 __all__ = [
     # API Client
@@ -95,6 +96,7 @@ __all__ = [
     "DFA_WEALTH_SHARE_SERIES",
     # Loaders
     "FredLoader",  # 3NF direct loader (recommended)
+    "Z1Loader",  # Z.1 Financial Accounts loader (Feature 024)
     "ALL_NATIONAL_SERIES",  # National + Productivity series
     "PRODUCTIVITY_SERIES",  # Productivity series only
     # Parser

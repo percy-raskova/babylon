@@ -124,6 +124,62 @@ def create_economics_services(
     }
 
 
+def load_fred_series_from_db(
+    session_factory: Callable[[], Session],
+) -> dict[str, dict[int, float]]:
+    """Load FRED time series from 3NF SQLite into cache dict.
+
+    Queries fred_series + fred_national tables for Volume III series
+    and returns {series_id: {year: annual_avg_value}} format.
+
+    Feature: 024-capital-volume-iii
+
+    Args:
+        session_factory: Callable returning a SQLAlchemy Session.
+
+    Returns:
+        Dict mapping FRED series IDs to year->value dicts.
+        Empty dict for series with no observations.
+    """
+    from sqlalchemy import text
+
+    # Volume III FRED series IDs
+    vol3_series = [
+        "FEDFUNDS",
+        "DGS10",
+        "BAA10Y",
+        "TCMDO",
+        "GFDEBTN",
+        "WILL5000PR",
+        "B230RC0Q173SBEA",
+        "A054RC1Q027SBEA",
+        "CPIAUCSL",
+        "GDPDEF",
+    ]
+
+    result: dict[str, dict[int, float]] = {}
+    with session_factory() as session:
+        placeholders = ", ".join(f"'{s}'" for s in vol3_series)
+        raw_query = text(f"""
+            SELECT fs.series_id AS sid, fn.year, AVG(fn.value) AS avg_value
+            FROM fred_national fn
+            JOIN fred_series fs ON fn.series_id = fs.id
+            WHERE fs.series_id IN ({placeholders})
+            GROUP BY fs.series_id, fn.year
+            ORDER BY fs.series_id, fn.year
+        """)
+        rows = session.execute(raw_query)
+        for row in rows:
+            sid = str(row[0])
+            year = int(row[1])
+            value = float(row[2])
+            if sid not in result:
+                result[sid] = {}
+            result[sid][year] = value
+
+    return result
+
+
 def create_financial_services(
     fred_series_cache: dict[str, dict[int, float]] | None = None,
 ) -> dict[str, Any]:
@@ -270,4 +326,4 @@ def create_financial_services(
     }
 
 
-__all__ = ["create_economics_services", "create_financial_services"]
+__all__ = ["create_economics_services", "create_financial_services", "load_fred_series_from_db"]

@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 
 import networkx as nx
 
+from babylon.economics.credit.types import FictitiousCapitalStock
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.economics.crisis.wage_compression import should_halt_accumulation
 from babylon.economics.dynamics.types import ClassDistribution, EconomicConditions
@@ -178,6 +179,14 @@ class TickDynamicsSystem:
 
         # Step 5: Check crisis triggers (batch-within-step quarterly evaluation)
         county_states = self._check_crisis_triggers(county_states, services, tick)
+
+        # Step 5.5: Compute financial layer (Feature 024)
+        county_states = self._compute_financial_layer(
+            county_states,
+            national_params,
+            services,
+            year,
+        )
 
         # Step 6: Simulate class transitions (with cascade tracking)
         county_states = self._simulate_transitions(
@@ -811,6 +820,242 @@ class TickDynamicsSystem:
                     },
                 )
             )
+
+    def _compute_financial_layer(
+        self,
+        county_states: dict[str, CountyEconomicState],
+        _national_params: NationalTickParameters,
+        services: ServiceContainer,
+        year: int,
+    ) -> dict[str, CountyEconomicState]:
+        """Compute Volume III financial distribution layer.
+
+        Feature: 024-capital-volume-iii
+        Computes national financial parameters once, then distributes
+        surplus value and assesses financial crisis per county.
+
+        Args:
+            county_states: Current county snapshots.
+            _national_params: National economic context (reserved for future use).
+            services: ServiceContainer with financial calculators.
+            year: Current simulation year.
+
+        Returns:
+            Updated county states with financial fields populated.
+        """
+        # Graceful skip if financial calculators not configured
+        if services.interest_calculator is None:
+            return county_states
+
+        national_rate, fictitious = self._compute_national_financial_state(services, year)
+
+        # County-level computation
+        updated: dict[str, CountyEconomicState] = {}
+        max_counties = 3300
+        for idx, (fips, county) in enumerate(county_states.items()):
+            if idx >= max_counties:
+                logger.warning("County count exceeds %d, truncating financial layer", max_counties)
+                break
+            updated[fips] = self._compute_county_financial_state(
+                fips,
+                county,
+                services,
+                year,
+                national_rate,
+                fictitious,
+            )
+
+        # Preserve any remaining counties not processed (if truncated)
+        for fips, county in county_states.items():
+            if fips not in updated:
+                updated[fips] = county
+
+        return updated
+
+    def _compute_national_financial_state(
+        self,
+        services: ServiceContainer,
+        year: int,
+    ) -> tuple[float, FictitiousCapitalStock | None]:
+        """Compute national-level financial parameters once per tick.
+
+        Returns:
+            Tuple of (national_interest_rate, fictitious_capital_or_none).
+        """
+        interest_state = services.interest_calculator.compute_interest_rate_state(year)
+        if isinstance(interest_state, NoDataSentinel):
+            interest_state = None
+        national_rate = interest_state.effective_rate if interest_state is not None else 0.0
+
+        fictitious = None
+        if services.fictitious_capital_calculator is not None:
+            fict_result = services.fictitious_capital_calculator.compute_fictitious_capital(year)
+            if not isinstance(fict_result, NoDataSentinel):
+                fictitious = fict_result
+
+        return national_rate, fictitious
+
+    def _compute_county_financial_state(
+        self,
+        fips: str,
+        county: CountyEconomicState,
+        services: ServiceContainer,
+        year: int,
+        national_rate: float,
+        fictitious: FictitiousCapitalStock | None,
+    ) -> CountyEconomicState:
+        """Compute financial fields for a single county.
+
+        Args:
+            fips: County FIPS code.
+            county: Current county state.
+            services: ServiceContainer with financial calculators.
+            year: Current simulation year.
+            national_rate: National effective interest rate.
+            fictitious: FictitiousCapitalStock or None.
+
+        Returns:
+            Updated CountyEconomicState with financial fields.
+        """
+        updates: dict[str, object] = {}
+        total_surplus: float | None = None
+
+        # Surplus distribution (s = p + i + r + t)
+        if services.distribution_calculator is not None:
+            profit_rate = self._get_county_profit_rate(fips, year, services)
+            total_surplus = self._get_county_surplus(fips, year, services)
+            if total_surplus is not None and total_surplus > 0:
+                dist = services.distribution_calculator.compute_distribution(
+                    fips=fips,
+                    year=year,
+                    total_surplus=total_surplus,
+                    county_profit_rate=profit_rate if profit_rate is not None else 0.05,
+                    national_interest_rate=national_rate,
+                )
+                if not isinstance(dist, NoDataSentinel):
+                    updates["surplus_distribution"] = dist
+                    if county.debt_accumulation is not None:
+                        from babylon.economics.distribution.types import DebtAccumulation
+
+                        updates["debt_accumulation"] = DebtAccumulation.update(
+                            county.debt_accumulation,
+                            dist.profit_of_enterprise,
+                            year,
+                        )
+
+        # Rent extraction
+        if services.rent_calculator is not None:
+            rent_result = services.rent_calculator.compute_rent_extraction(fips, year)
+            if not isinstance(rent_result, NoDataSentinel):
+                updates["rent_extraction"] = rent_result
+
+        # Housing decomposition
+        if services.housing_calculator is not None:
+            housing_result = services.housing_calculator.decompose_housing_value(fips, year)
+            if not isinstance(housing_result, NoDataSentinel):
+                updates["housing_decomposition"] = housing_result
+
+        # Financial crisis assessment
+        if services.financial_crisis_assessor is not None and "surplus_distribution" in updates:
+            assessment = self._assess_county_financial_crisis(
+                fips,
+                year,
+                updates,
+                services,
+                national_rate,
+                fictitious,
+                total_surplus,
+            )
+            if assessment is not None:
+                updates["financial_crisis"] = assessment
+
+        if updates:
+            return county.model_copy(update=updates)
+        return county
+
+    def _assess_county_financial_crisis(
+        self,
+        fips: str,
+        year: int,
+        updates: dict[str, object],
+        services: ServiceContainer,
+        national_rate: float,
+        fictitious: FictitiousCapitalStock | None,
+        total_surplus: float | None,
+    ) -> object | None:
+        """Assess financial crisis for a single county."""
+        surplus_dist = updates["surplus_distribution"]
+        fin_share = getattr(surplus_dist, "financialization_share", 0.0)
+        claims_exceed = getattr(surplus_dist, "claims_exceed_surplus", False)
+        fin_ratio = 0.0
+        max_counties = 3300
+        if fictitious is not None and total_surplus is not None and total_surplus > 0:
+            fin_ratio = fictitious.ratio_to_real(total_surplus * max_counties)
+
+        result: object | None = services.financial_crisis_assessor.assess(
+            fips=fips,
+            year=year,
+            interest_burden_ratio=float(fin_share),
+            financialization_ratio=fin_ratio,
+            default_rate=0.02,  # Placeholder
+            credit_spread=national_rate,
+            claims_exceed_surplus=bool(claims_exceed),
+        )
+        return result
+
+    def _get_county_profit_rate(
+        self,
+        fips: str,
+        year: int,
+        services: ServiceContainer,
+    ) -> float | None:
+        """Get county profit rate from tensor registry.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Calendar year.
+            services: ServiceContainer with tensor_registry.
+
+        Returns:
+            Profit rate if available, None otherwise.
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        if tensor_registry is None:
+            return None
+        tensor = tensor_registry.get(fips, year)
+        if isinstance(tensor, NoDataSentinel):
+            return None
+        profit_rate = getattr(tensor, "profit_rate", None)
+        if profit_rate is not None:
+            return float(profit_rate)
+        return None
+
+    def _get_county_surplus(
+        self,
+        fips: str,
+        year: int,
+        services: ServiceContainer,
+    ) -> float | None:
+        """Get county total surplus from tensor registry.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            year: Calendar year.
+            services: ServiceContainer with tensor_registry.
+
+        Returns:
+            Total surplus if available, None otherwise.
+        """
+        tensor_registry = getattr(services, "tensor_registry", None)
+        if tensor_registry is None:
+            return None
+        tensor = tensor_registry.get(fips, year)
+        if isinstance(tensor, NoDataSentinel):
+            return None
+        total_s = getattr(tensor, "total_s", None)
+        if total_s is not None:
+            return float(total_s)
+        return None
 
     def _compute_bifurcation_risk(
         self,

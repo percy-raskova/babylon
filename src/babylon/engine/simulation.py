@@ -238,6 +238,16 @@ class Simulation:
             calc_session_factory = get_normalized_session_factory()
             calculator_overrides = create_economics_services(calc_session_factory, tensor_registry)
 
+            # Feature 024: Wire Volume III financial calculators with real data
+            from babylon.economics.factory import (
+                create_financial_services,
+                load_fred_series_from_db,
+            )
+
+            fred_cache = load_fred_series_from_db(calc_session_factory)
+            financial_overrides = create_financial_services(fred_series_cache=fred_cache)
+            calculator_overrides.update(financial_overrides)
+
         # Create base WorldState and config
         state = WorldState()
         config = SimulationConfig()

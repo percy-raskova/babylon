@@ -131,36 +131,49 @@ class DefaultDistributionCalculator:
                 taxes_on_surplus=0.0,
             )
 
-        # Fetch data-driven components
-        rent = self._rental_source.get_rental_income(fips, year)
-        if rent is None:
+        # Fetch data-driven national components and scale to county level.
+        # Implied county capital stock C ≈ surplus / profit_rate (Marx: s = r·C).
+        # County interest burden = effective_rate × C = rate × (surplus / profit_rate).
+        # National rent/tax totals are scaled by county's surplus share of
+        # national surplus (approximated as county_profit_rate × C_national proxy).
+        safe_profit_rate = max(county_profit_rate, 1e-4)
+        implied_capital = total_surplus / safe_profit_rate
+
+        # County interest: derived from capital stock × effective rate (FR-003)
+        county_interest = national_interest_rate * implied_capital
+
+        # National rent total → scaled to county by capital share
+        national_rent = self._rental_source.get_rental_income(fips, year)
+        if national_rent is None:
             return NoDataSentinel(
                 fips=fips,
                 year=year,
                 reason=f"Rental income data unavailable for {fips}/{year}",
             )
 
-        tax = self._tax_source.get_corporate_tax(fips, year)
-        if tax is None:
+        # Approximate county share: county surplus / national surplus proxy
+        # National surplus ≈ national_rent / rentier_share_of_surplus (≈8%)
+        national_surplus_proxy = national_rent / 0.08
+        county_share = min(total_surplus / max(national_surplus_proxy, 1.0), 1.0)
+        rent = national_rent * county_share
+
+        national_tax = self._tax_source.get_corporate_tax(fips, year)
+        if national_tax is None:
             return NoDataSentinel(
                 fips=fips,
                 year=year,
                 reason=f"Corporate tax data unavailable for {fips}/{year}",
             )
+        tax = national_tax * county_share
 
-        interest = self._interest_source.get_national_net_interest(year)
-        if interest is None:
+        # Verify interest data availability (FR-015)
+        interest_check = self._interest_source.get_national_net_interest(year)
+        if interest_check is None:
             return NoDataSentinel(
                 fips=fips,
                 year=year,
                 reason=f"National interest data unavailable for {year}",
             )
-
-        # Scale national interest to county level using profit rate ratio.
-        # County's share of national interest burden is proportional to
-        # its capital intensity relative to the national average.
-        safe_national_rate = max(national_interest_rate, 1e-10)
-        county_interest = interest * (county_profit_rate / safe_national_rate)
 
         return SurplusValueDistribution(
             fips_code=fips,

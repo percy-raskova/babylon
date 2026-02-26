@@ -157,6 +157,19 @@ def load_fred_series_from_db(
         "GDPDEF",
     ]
 
+    # Unit normalisation rules applied at load time so all downstream
+    # code works with consistent units: actual dollars, decimal rates.
+    # FRED stores percent series as e.g. 1.68 (meaning 1.68%) and
+    # dollar aggregates as millions (e.g. 30829535 meaning $30.8T).
+    _pct_to_decimal = {"FEDFUNDS", "DGS10", "BAA10Y"}  # divide by 100
+    _millions_to_dollars = {
+        "GFDEBTN",
+        "TCMDO",
+        "NCBEILQ027S",
+        "B230RC0Q173SBEA",
+        "A054RC1Q027SBEA",
+    }  # multiply by 1e6
+
     result: dict[str, dict[int, float]] = {}
     with session_factory() as session:
         placeholders = ", ".join(f"'{s}'" for s in vol3_series)
@@ -177,6 +190,10 @@ def load_fred_series_from_db(
             code = str(row[0])
             year = int(row[1])
             value = float(row[2])
+            if code in _pct_to_decimal:
+                value = value / 100.0
+            elif code in _millions_to_dollars:
+                value = value * 1_000_000.0
             if code not in result:
                 result[code] = {}
             result[code][year] = value

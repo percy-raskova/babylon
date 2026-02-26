@@ -27,7 +27,13 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.economics.circulation.types import CirculationCrisisState
+from babylon.economics.counter_tendencies.types import CounterTendencyStrength
+from babylon.economics.credit.types import CreditState, FictitiousCapitalStock, InterestRateState
+from babylon.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
 from babylon.economics.dynamics.types import ClassDistribution
+from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
+from babylon.economics.monetary.types import MonetaryAdjustment
+from babylon.economics.rent.types import HousingValueDecomposition, RentExtraction
 
 
 class CrisisPhase(StrEnum):
@@ -322,6 +328,27 @@ class CountyEconomicState(BaseModel):
         default_factory=CirculationCrisisState.default,
         description="Capital circulation state (Feature 023)",
     )
+    # Financial distribution state (Feature 024)
+    surplus_distribution: SurplusValueDistribution | None = Field(
+        default=None,
+        description="Surplus value distribution (Feature 024)",
+    )
+    rent_extraction: RentExtraction | None = Field(
+        default=None,
+        description="Ground rent by category (Feature 024)",
+    )
+    housing_decomposition: HousingValueDecomposition | None = Field(
+        default=None,
+        description="Housing value decomposition (Feature 024)",
+    )
+    debt_accumulation: DebtAccumulation | None = Field(
+        default=None,
+        description="Cumulative debt tracker (Feature 024)",
+    )
+    financial_crisis: FinancialCrisisAssessment | None = Field(
+        default=None,
+        description="Integrated financial crisis assessment (Feature 024)",
+    )
 
 
 class SmoothedCoefficients(BaseModel):
@@ -395,6 +422,48 @@ class TickSummary(BaseModel):
     )
 
 
+class NationalFinancialParameters(BaseModel):
+    """National-level financial state computed once per tick.
+
+    Feature: 024-capital-volume-iii
+
+    Contains interest rates, credit state, fictitious capital,
+    counter-tendencies, and monetary adjustment factors.
+
+    Args:
+        interest_rate_state: National interest rate environment.
+        credit_state: Credit system health.
+        fictitious_capital: Accumulated financial claims.
+        counter_tendencies: TRPF counter-tendency indicators.
+        monetary_adjustment: Value basis conversion factors.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    interest_rate_state: InterestRateState | None = Field(
+        default=None, description="National interest rate environment"
+    )
+    credit_state: CreditState | None = Field(default=None, description="Credit system health")
+    fictitious_capital: FictitiousCapitalStock | None = Field(
+        default=None, description="Accumulated financial claims"
+    )
+    counter_tendencies: CounterTendencyStrength | None = Field(
+        default=None, description="TRPF counter-tendency indicators"
+    )
+    monetary_adjustment: MonetaryAdjustment | None = Field(
+        default=None, description="Value basis conversion factors"
+    )
+
+    @classmethod
+    def empty(cls) -> NationalFinancialParameters:
+        """Factory for initial state with no financial data.
+
+        Returns:
+            NationalFinancialParameters with all fields set to None.
+        """
+        return cls()
+
+
 class SimulationTickState(BaseModel):
     """Complete simulation state at a point in time.
 
@@ -449,6 +518,7 @@ __all__ = [
     "CrisisPhase",
     "CrisisState",
     "DerivedRates",
+    "NationalFinancialParameters",
     "NationalTickParameters",
     "PhasedAmplificationProfile",
     "SimulationTickState",

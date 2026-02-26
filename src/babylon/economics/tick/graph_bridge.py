@@ -70,6 +70,7 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
             "tick_summary": state.tick_summary,  # pragma: no mutate
             "is_year_boundary": True,  # pragma: no mutate
             "county_states": state.county_states,  # pragma: no mutate
+            "credit_cycle_phase": "expansion",  # pragma: no mutate  # Feature 024
         },
     )  # pragma: no mutate
 
@@ -128,6 +129,52 @@ def write_tick_state_to_graph(  # pragma: no mutate — data serialization
                 county.circulation_state.latest_assessment.reproduction_crisis  # pragma: no mutate
                 if county.circulation_state.latest_assessment is not None  # pragma: no mutate
                 else False  # pragma: no mutate
+            ),  # pragma: no mutate
+            # Financial distribution state (Feature 024)
+            tick_interest_burden=(  # pragma: no mutate
+                county.surplus_distribution.interest_payments  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_ground_rent=(  # pragma: no mutate
+                county.rent_extraction.total_rent  # pragma: no mutate
+                if county.rent_extraction is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_rentier_share=(  # pragma: no mutate
+                county.surplus_distribution.rentier_share  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_profit_of_enterprise=(  # pragma: no mutate
+                county.surplus_distribution.profit_of_enterprise  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_financialization_share=(  # pragma: no mutate
+                county.surplus_distribution.financialization_share  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_accumulated_debt=(  # pragma: no mutate
+                county.debt_accumulation.accumulated_debt  # pragma: no mutate
+                if county.debt_accumulation is not None  # pragma: no mutate
+                else 0.0  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_claims_exceed_surplus=(  # pragma: no mutate
+                county.surplus_distribution.claims_exceed_surplus  # pragma: no mutate
+                if county.surplus_distribution is not None  # pragma: no mutate
+                else False  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_housing_fictitious_fraction=(  # pragma: no mutate
+                county.housing_decomposition.fictitious_fraction  # pragma: no mutate
+                if county.housing_decomposition is not None  # pragma: no mutate
+                else None  # pragma: no mutate
+            ),  # pragma: no mutate
+            tick_financial_crisis_signals=(  # pragma: no mutate
+                county.financial_crisis.active_signals  # pragma: no mutate
+                if county.financial_crisis is not None  # pragma: no mutate
+                else 0  # pragma: no mutate
             ),  # pragma: no mutate
         )  # pragma: no mutate
 

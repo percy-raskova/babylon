@@ -9,6 +9,9 @@ from __future__ import annotations
 import networkx as nx
 from tests.unit.economics.tick.conftest import WAYNE_FIPS, build_territory_graph
 
+from babylon.economics.distribution.types import DebtAccumulation, SurplusValueDistribution
+from babylon.economics.financial_crisis.types import FinancialCrisisAssessment
+from babylon.economics.rent.types import HousingValueDecomposition, RentExtraction
 from babylon.economics.tick.graph_bridge import (
     TICK_DYNAMICS_KEY,
     read_tick_state_from_graph,
@@ -197,3 +200,130 @@ class TestReadTickStateFromGraph:
         assert recovered.crisis_state.crisis_duration == 8
         assert recovered.crisis_state.cumulative_wage_compression == 0.15
         assert recovered.bifurcation_risk.score == -0.42
+
+
+class TestWriteFinancialState:
+    """Tests for Feature 024 financial tick attributes on graph bridge."""
+
+    def test_writes_default_financial_attrs_when_none(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify default (None) financial fields produce sensible defaults on nodes."""
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, sample_tick_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        assert node_data["tick_interest_burden"] == 0.0
+        assert node_data["tick_ground_rent"] == 0.0
+        assert node_data["tick_rentier_share"] == 0.0
+        assert node_data["tick_profit_of_enterprise"] == 0.0
+        assert node_data["tick_financialization_share"] == 0.0
+        assert node_data["tick_accumulated_debt"] == 0.0
+        assert node_data["tick_claims_exceed_surplus"] is False
+        assert node_data["tick_housing_fictitious_fraction"] is None
+        assert node_data["tick_financial_crisis_signals"] == 0
+
+    def test_writes_populated_financial_attrs(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify financial fields written when populated on county state."""
+        svd = SurplusValueDistribution(
+            fips_code="26163",
+            year=2015,
+            total_surplus_produced=1000.0,
+            interest_payments=200.0,
+            ground_rent=100.0,
+            taxes_on_surplus=50.0,
+        )
+        rent = RentExtraction(
+            fips_code="26163",
+            year=2015,
+            agricultural_rent=50.0,
+            resource_rent=30.0,
+            urban_rent=200.0,
+        )
+        housing = HousingValueDecomposition(
+            fips_code="26163",
+            year=2015,
+            construction_value=100000.0,
+            ground_rent_capitalized=50000.0,
+            speculative_premium=30000.0,
+        )
+        debt = DebtAccumulation(
+            fips_code="26163",
+            year=2015,
+            accumulated_debt=500.0,
+            consecutive_deficit_ticks=3,
+        )
+        crisis = FinancialCrisisAssessment(
+            fips_code="26163",
+            year=2015,
+            profit_squeeze=True,
+            overaccumulation=True,
+            credit_fragility=True,
+            claims_exceed_surplus=True,
+        )
+
+        original_county = sample_tick_state.county_states[WAYNE_FIPS]
+        modified_county = original_county.model_copy(
+            update={
+                "surplus_distribution": svd,
+                "rent_extraction": rent,
+                "housing_decomposition": housing,
+                "debt_accumulation": debt,
+                "financial_crisis": crisis,
+            }
+        )
+        modified_state = sample_tick_state.model_copy(
+            update={"county_states": {WAYNE_FIPS: modified_county}}
+        )
+
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, modified_state)
+
+        node_data = graph.nodes[WAYNE_FIPS]
+        assert node_data["tick_interest_burden"] == 200.0
+        assert node_data["tick_ground_rent"] == 280.0  # 50 + 30 + 200
+        assert node_data["tick_rentier_share"] == 0.1  # 100 / 1000
+        assert node_data["tick_profit_of_enterprise"] == 650.0
+        assert node_data["tick_financialization_share"] == 0.2  # 200 / 1000
+        assert node_data["tick_accumulated_debt"] == 500.0
+        assert node_data["tick_claims_exceed_surplus"] is False  # 200+100+50 < 1000
+        expected_fict = (50000.0 + 30000.0) / 180000.0
+        assert abs(node_data["tick_housing_fictitious_fraction"] - expected_fict) < 1e-9
+        assert node_data["tick_financial_crisis_signals"] == 4
+
+    def test_credit_cycle_phase_in_metadata(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify credit_cycle_phase written to graph metadata dict."""
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, sample_tick_state)
+
+        tick_data = graph.graph[TICK_DYNAMICS_KEY]
+        assert tick_data["credit_cycle_phase"] == "expansion"
+
+    def test_round_trip_financial_fields_default_to_none(
+        self,
+        sample_tick_state: SimulationTickState,
+    ) -> None:
+        """Verify read reconstructs county with None financial fields.
+
+        The read path does not reconstruct full Pydantic financial objects
+        from scalar node attributes. Financial fields remain at their
+        default None values after round-trip.
+        """
+        graph = build_territory_graph()
+        write_tick_state_to_graph(graph, sample_tick_state)
+        result = read_tick_state_from_graph(graph)
+
+        assert result is not None
+        recovered = result.county_states[WAYNE_FIPS]
+        assert recovered.surplus_distribution is None
+        assert recovered.rent_extraction is None
+        assert recovered.housing_decomposition is None
+        assert recovered.debt_accumulation is None
+        assert recovered.financial_crisis is None

@@ -47,6 +47,10 @@ from babylon.economics.credit.types import (
     FictitiousCapitalStock,
     InterestRateState,
 )
+from babylon.economics.credit.validation import (
+    validate_financialization_index,
+    validate_interest_burden_ratio,
+)
 
 __all__: list[str] = [
     # Types (enums and models)
@@ -79,4 +83,7 @@ __all__: list[str] = [
     # Concrete adapters (Feature 024)
     "FredInterestRateAdapter",
     "FredCreditAggregateAdapter",
+    # Validation (Feature 024, Phase 12)
+    "validate_financialization_index",
+    "validate_interest_burden_ratio",
 ]

@@ -23,6 +23,8 @@ __all__: list[str] = [
     "RentalIncomeSource",
     "TaxOnSurplusSource",
     "InterestIncomeSource",
+    # Validation (Feature 024, Phase 12)
+    "validate_rentier_share",
 ]
 
 from babylon.economics.distribution.calculator import (
@@ -39,4 +41,7 @@ from babylon.economics.distribution.types import (
     DISTRIBUTION_EPSILON,
     DebtAccumulation,
     SurplusValueDistribution,
+)
+from babylon.economics.distribution.validation import (
+    validate_rentier_share,
 )

@@ -124,4 +124,150 @@ def create_economics_services(
     }
 
 
-__all__ = ["create_economics_services"]
+def create_financial_services(
+    fred_series_cache: dict[str, dict[int, float]] | None = None,
+) -> dict[str, Any]:
+    """Create all Volume III financial calculators wired with real data sources.
+
+    Resolves the dependency graph for national financial state and county-level
+    surplus distribution. Uses FRED API for interest rates and credit aggregates,
+    Z.1 hardcoded defaults for balance sheet data, and Census/ACS defaults for
+    housing data.
+
+    Feature: 024-capital-volume-iii
+
+    Args:
+        fred_series_cache: Optional pre-loaded FRED series data as
+            {series_id: {year: value}}. If None, uses hardcoded defaults.
+
+    Returns:
+        Dict with keys matching ServiceContainer financial field names.
+    """
+    from babylon.data.census.housing_loader import CensusHousingLoader
+    from babylon.data.fred.z1_loader import Z1Loader
+    from babylon.economics.counter_tendencies.calculator import (
+        DefaultCounterTendencyCalculator,
+    )
+    from babylon.economics.credit.credit_cycle import DefaultCreditCycleDetector
+    from babylon.economics.credit.data_sources import (
+        FredCreditAggregateAdapter,
+        FredInterestRateAdapter,
+    )
+    from babylon.economics.credit.fictitious_capital import (
+        DefaultFictitiousCapitalCalculator,
+    )
+    from babylon.economics.credit.interest import DefaultInterestCalculator
+    from babylon.economics.distribution.calculator import (
+        DefaultDistributionCalculator,
+    )
+    from babylon.economics.financial_crisis.assessment import (
+        DefaultFinancialCrisisAssessor,
+    )
+    from babylon.economics.monetary.converter import DefaultValueBasisConverter
+    from babylon.economics.rent.calculator import (
+        DefaultHousingDecompositionCalculator,
+        DefaultRentCalculator,
+    )
+
+    # Build FRED series cache (use provided or empty)
+    series: dict[str, dict[int, float]] = fred_series_cache or {}
+
+    # Level 0: Data source adapters
+    interest_rates = FredInterestRateAdapter(series)
+    credit_aggregates = FredCreditAggregateAdapter(series)
+    z1 = Z1Loader()  # Uses hardcoded Z.1 defaults
+    housing = CensusHousingLoader()  # Uses hardcoded Census defaults
+
+    # Level 0.5: Price index adapter (wraps FRED CPI + GDP deflator)
+    class _FredPriceIndexAdapter:
+        """Adapter: FRED CPIAUCSL/GDPDEF -> PriceIndexSource."""
+
+        def get_cpi(self, year: int) -> float | None:
+            return series.get("CPIAUCSL", {}).get(year)
+
+        def get_gdp_deflator(self, year: int) -> float | None:
+            return series.get("GDPDEF", {}).get(year)
+
+        def get_total_labor_hours(self, _year: int) -> float | None:
+            # Derive from QCEW employment * 2080 hours/year (standard)
+            # For now return None — will be populated when QCEW is loaded
+            return None
+
+        def get_nominal_gdp(self, _year: int) -> float | None:
+            return None  # Populated via BEA data, not in FRED cache
+
+    # Level 1: National-level calculators
+    interest_calc = DefaultInterestCalculator(interest_rates)
+    credit_cycle = DefaultCreditCycleDetector()
+    fictitious_calc = DefaultFictitiousCapitalCalculator(credit_aggregates, z1)
+    counter_tendency = DefaultCounterTendencyCalculator()
+    value_converter = DefaultValueBasisConverter(_FredPriceIndexAdapter())
+
+    # Level 2: County-level calculators
+    # Distribution needs rental income, taxes, and national interest data.
+    # These use BEA NIPA series from FRED cache.
+    class _FredRentalAdapter:
+        """Adapter: FRED B230RC0Q173SBEA -> RentalIncomeSource."""
+
+        def get_rental_income(self, _fips: str, year: int) -> float | None:
+            # National rental income, not county-specific
+            return series.get("B230RC0Q173SBEA", {}).get(year)
+
+    class _FredTaxAdapter:
+        """Adapter: FRED A054RC1Q027SBEA -> TaxOnSurplusSource."""
+
+        def get_corporate_tax(self, _fips: str, year: int) -> float | None:
+            return series.get("A054RC1Q027SBEA", {}).get(year)
+
+    class _FredInterestIncomeAdapter:
+        """Adapter: derives interest income from rates and credit aggregates."""
+
+        def get_national_net_interest(self, year: int) -> float | None:
+            rate = interest_rates.get_federal_funds_rate(year)
+            credit = credit_aggregates.get_total_credit(year)
+            if rate is None or credit is None:
+                return None
+            return rate * credit  # Approximate net interest = rate * total credit
+
+    distribution = DefaultDistributionCalculator(
+        rental_source=_FredRentalAdapter(),
+        tax_source=_FredTaxAdapter(),
+        interest_source=_FredInterestIncomeAdapter(),
+    )
+
+    # Rent calculators use Census data
+
+    class _DefaultCountyRentalAdapter:
+        """Stub: returns None until BEA REIS county data is loaded."""
+
+        def get_agricultural_rent(self, _fips: str, _year: int) -> float | None:
+            return None
+
+        def get_resource_rent(self, _fips: str, _year: int) -> float | None:
+            return None
+
+        def get_urban_rent(self, _fips: str, _year: int) -> float | None:
+            return None
+
+    rent_calc = DefaultRentCalculator(_DefaultCountyRentalAdapter())
+    # Default 5% interest rate for rent capitalization; overridden per-tick
+    _default_interest = 0.05
+    housing_calc = DefaultHousingDecompositionCalculator(housing, _default_interest)
+    crisis_assessor = DefaultFinancialCrisisAssessor()
+
+    return {
+        "distribution_calculator": distribution,
+        "interest_calculator": interest_calc,
+        "credit_cycle_detector": credit_cycle,
+        "fictitious_capital_calculator": fictitious_calc,
+        "rent_calculator": rent_calc,
+        "housing_calculator": housing_calc,
+        "counter_tendency_calculator": counter_tendency,
+        "value_basis_converter": value_converter,
+        "financial_crisis_assessor": crisis_assessor,
+        "z1_source": z1,
+        "housing_data_source": housing,
+    }
+
+
+__all__ = ["create_economics_services", "create_financial_services"]

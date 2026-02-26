@@ -91,6 +91,19 @@ class ServiceContainer:
     # Hypergraph community layer (Feature 022 - optional, default None)
     community_hypergraph: Any = field(default=None)
 
+    # Capital Volume III financial layer (Feature 024 - optional, default None)
+    distribution_calculator: Any = field(default=None)
+    interest_calculator: Any = field(default=None)
+    credit_cycle_detector: Any = field(default=None)
+    fictitious_capital_calculator: Any = field(default=None)
+    rent_calculator: Any = field(default=None)
+    housing_calculator: Any = field(default=None)
+    counter_tendency_calculator: Any = field(default=None)
+    value_basis_converter: Any = field(default=None)
+    financial_crisis_assessor: Any = field(default=None)
+    z1_source: Any = field(default=None)
+    housing_data_source: Any = field(default=None)
+
     @classmethod
     def create(
         cls,
@@ -111,6 +124,17 @@ class ServiceContainer:
         imperial_rent_calculator: Any = None,
         tensor_registry: Any = None,
         community_hypergraph: Any = None,
+        distribution_calculator: Any = None,
+        interest_calculator: Any = None,
+        credit_cycle_detector: Any = None,
+        fictitious_capital_calculator: Any = None,
+        rent_calculator: Any = None,
+        housing_calculator: Any = None,
+        counter_tendency_calculator: Any = None,
+        value_basis_converter: Any = None,
+        financial_crisis_assessor: Any = None,
+        z1_source: Any = None,
+        housing_data_source: Any = None,
     ) -> ServiceContainer:
         """Factory method to create a fully-initialized container.
 
@@ -162,4 +186,15 @@ class ServiceContainer:
             imperial_rent_calculator=imperial_rent_calculator,
             tensor_registry=tensor_registry,
             community_hypergraph=community_hypergraph,
+            distribution_calculator=distribution_calculator,
+            interest_calculator=interest_calculator,
+            credit_cycle_detector=credit_cycle_detector,
+            fictitious_capital_calculator=fictitious_capital_calculator,
+            rent_calculator=rent_calculator,
+            housing_calculator=housing_calculator,
+            counter_tendency_calculator=counter_tendency_calculator,
+            value_basis_converter=value_basis_converter,
+            financial_crisis_assessor=financial_crisis_assessor,
+            z1_source=z1_source,
+            housing_data_source=housing_data_source,
         )

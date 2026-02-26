@@ -116,15 +116,15 @@ ______________________________________________________________________
 
 ### Tests for User Story 3
 
-- [ ] T037 [US3] RED: Write type tests for `FictitiousCapitalStock` in `tests/unit/economics/credit/test_fictitious_capital.py` — frozen model, computed total_claims (excludes derivatives), ratio_to_real method
-- [ ] T038 [P] [US3] RED: Write calculator tests in `tests/unit/economics/credit/test_fictitious_capital_calc.py` — compute_fictitious_capital from Z.1 data, financialization_index = total_claims / real_gdp, overaccumulation signal when ratio exceeds FINANCIALIZATION_BUBBLE threshold, NoDataSentinel when Z.1 data unavailable
+- [x] T037 [US3] RED: Write type tests for `FictitiousCapitalStock` in `tests/unit/economics/credit/test_fictitious_capital.py` — frozen model, computed total_claims (excludes derivatives), ratio_to_real method
+- [x] T038 [P] [US3] RED: Write calculator tests in `tests/unit/economics/credit/test_fictitious_capital_calc.py` — compute_fictitious_capital from Z.1 data, financialization_index = total_claims / real_gdp, overaccumulation signal when ratio exceeds FINANCIALIZATION_BUBBLE threshold, NoDataSentinel when Z.1 data unavailable
 
 ### Implementation for User Story 3
 
-- [ ] T039 [US3] GREEN: Implement `FictitiousCapitalStock` frozen Pydantic model in `src/babylon/economics/credit/types.py`
-- [ ] T040 [US3] GREEN: Implement `FictitiousCapitalCalculator` protocol and `DefaultFictitiousCapitalCalculator` in `src/babylon/economics/credit/fictitious_capital.py` — compute from Z.1 + FRED, financialization_index method
-- [ ] T041 [US3] Update `src/babylon/economics/credit/__init__.py` with FictitiousCapitalStock and FictitiousCapitalCalculator exports
-- [ ] T042 [US3] REFACTOR: Verify all fictitious capital tests pass, run `mypy --strict`
+- [x] T039 [US3] GREEN: Implement `FictitiousCapitalStock` frozen Pydantic model in `src/babylon/economics/credit/types.py`
+- [x] T040 [US3] GREEN: Implement `FictitiousCapitalCalculator` protocol and `DefaultFictitiousCapitalCalculator` in `src/babylon/economics/credit/fictitious_capital.py` — compute from Z.1 + FRED, financialization_index method
+- [x] T041 [US3] Update `src/babylon/economics/credit/__init__.py` with FictitiousCapitalStock and FictitiousCapitalCalculator exports
+- [x] T042 [US3] REFACTOR: Verify all fictitious capital tests pass, run `mypy --strict`
 
 **Checkpoint**: Fictitious capital tracking with financialization index — independently testable.
 
@@ -138,18 +138,18 @@ ______________________________________________________________________
 
 ### Tests for User Story 4
 
-- [ ] T043 [US4] RED: Write type tests for `RentExtraction` in `tests/unit/economics/rent/test_rent_types.py` — frozen model, computed total_rent, rent_share_of_surplus method
-- [ ] T044 [US4] RED: Write type tests for `HousingValueDecomposition` in `tests/unit/economics/rent/test_housing_types.py` — frozen model, computed market_price, fictitious_fraction
-- [ ] T045 [P] [US4] RED: Write calculator tests in `tests/unit/economics/rent/test_calculator.py` — compute_rent_extraction from Census data, compute_rent_share (returns 0 for zero surplus), decompose_housing_value with construction/rent/speculation summing to market_price, NoDataSentinel when Census data unavailable
+- [x] T043 [US4] RED: Write type tests for `RentExtraction` in `tests/unit/economics/rent/test_rent_types.py` — frozen model, computed total_rent, rent_share_of_surplus method
+- [x] T044 [US4] RED: Write type tests for `HousingValueDecomposition` in `tests/unit/economics/rent/test_housing_types.py` — frozen model, computed market_price, fictitious_fraction
+- [x] T045 [P] [US4] RED: Write calculator tests in `tests/unit/economics/rent/test_calculator.py` — compute_rent_extraction from Census data, compute_rent_share (returns 0 for zero surplus), decompose_housing_value with construction/rent/speculation summing to market_price, NoDataSentinel when Census data unavailable
 
 ### Implementation for User Story 4
 
-- [ ] T046 [P] [US4] GREEN: Implement `RentExtraction` frozen Pydantic model in `src/babylon/economics/rent/types.py`
-- [ ] T047 [P] [US4] GREEN: Implement `HousingValueDecomposition` frozen Pydantic model in `src/babylon/economics/rent/types.py`
-- [ ] T048 [US4] GREEN: Implement `RentCalculator` protocol and `DefaultRentCalculator` in `src/babylon/economics/rent/calculator.py`
-- [ ] T049 [US4] GREEN: Implement `HousingDecompositionCalculator` protocol and `DefaultHousingDecompositionCalculator` in `src/babylon/economics/rent/calculator.py`
-- [ ] T050 [US4] Update `src/babylon/economics/rent/__init__.py` with grouped `__all__` exports
-- [ ] T051 [US4] REFACTOR: Verify all rent tests pass, run `mypy --strict` on rent module
+- [x] T046 [P] [US4] GREEN: Implement `RentExtraction` frozen Pydantic model in `src/babylon/economics/rent/types.py`
+- [x] T047 [P] [US4] GREEN: Implement `HousingValueDecomposition` frozen Pydantic model in `src/babylon/economics/rent/types.py`
+- [x] T048 [US4] GREEN: Implement `RentCalculator` protocol and `DefaultRentCalculator` in `src/babylon/economics/rent/calculator.py`
+- [x] T049 [US4] GREEN: Implement `HousingDecompositionCalculator` protocol and `DefaultHousingDecompositionCalculator` in `src/babylon/economics/rent/calculator.py`
+- [x] T050 [US4] Update `src/babylon/economics/rent/__init__.py` with grouped `__all__` exports
+- [x] T051 [US4] REFACTOR: Verify all rent tests pass, run `mypy --strict` on rent module
 
 **Checkpoint**: Ground rent decomposition and housing value analysis — independently testable.
 
@@ -163,15 +163,15 @@ ______________________________________________________________________
 
 ### Tests for User Story 5
 
-- [ ] T052 [P] [US5] RED: Write type tests for `CounterTendencyStrength` in `tests/unit/economics/counter_tendencies/test_types.py` — frozen model, computed net_counter_tendency, all six indicators
-- [ ] T053 [P] [US5] RED: Write calculator tests in `tests/unit/economics/counter_tendencies/test_calculator.py` — compute from indicator values, positive net when counter-tendencies dominate, negative net when TRPF dominates, correlation check with profit rate direction, NoDataSentinel when indicator data unavailable
+- [x] T052 [P] [US5] RED: Write type tests for `CounterTendencyStrength` in `tests/unit/economics/counter_tendencies/test_types.py` — frozen model, computed net_counter_tendency, all six indicators
+- [x] T053 [P] [US5] RED: Write calculator tests in `tests/unit/economics/counter_tendencies/test_calculator.py` — compute from indicator values, positive net when counter-tendencies dominate, negative net when TRPF dominates, correlation check with profit rate direction, NoDataSentinel when indicator data unavailable
 
 ### Implementation for User Story 5
 
-- [ ] T054 [P] [US5] GREEN: Implement `CounterTendencyStrength` frozen Pydantic model in `src/babylon/economics/counter_tendencies/types.py`
-- [ ] T055 [US5] GREEN: Implement `CounterTendencyCalculator` protocol and `DefaultCounterTendencyCalculator` in `src/babylon/economics/counter_tendencies/calculator.py` — weighted sum of normalized indicators, imperial rent references existing phi_hour
-- [ ] T056 [US5] Update `src/babylon/economics/counter_tendencies/__init__.py` with grouped `__all__` exports
-- [ ] T057 [US5] REFACTOR: Verify all counter-tendency tests pass, run `mypy --strict`
+- [x] T054 [P] [US5] GREEN: Implement `CounterTendencyStrength` frozen Pydantic model in `src/babylon/economics/counter_tendencies/types.py`
+- [x] T055 [US5] GREEN: Implement `CounterTendencyCalculator` protocol and `DefaultCounterTendencyCalculator` in `src/babylon/economics/counter_tendencies/calculator.py` — weighted sum of normalized indicators, imperial rent references existing phi_hour
+- [x] T056 [US5] Update `src/babylon/economics/counter_tendencies/__init__.py` with grouped `__all__` exports
+- [x] T057 [US5] REFACTOR: Verify all counter-tendency tests pass, run `mypy --strict`
 
 **Checkpoint**: TRPF counter-tendency tracking — independently testable.
 
@@ -185,15 +185,15 @@ ______________________________________________________________________
 
 ### Tests for User Story 6
 
-- [ ] T058 [US6] RED: Write type tests for `FinancialCrisisAssessment` and `CreditCrisisIndicator` in `tests/unit/economics/financial_crisis/test_types.py` — frozen models, computed active_signals, crisis_probability, overproduction/profit_squeeze/liquidity_crisis flags
-- [ ] T059 [P] [US6] RED: Write assessment tests in `tests/unit/economics/financial_crisis/test_assessment.py` — all three signals active, latent vulnerability (NORMAL production but rising financialization), cascade detection across phases, claims_exceed_surplus triggers structural crisis
+- [x] T058 [US6] RED: Write type tests for `FinancialCrisisAssessment` and `CreditCrisisIndicator` in `tests/unit/economics/financial_crisis/test_types.py` — frozen models, computed active_signals, crisis_probability, overproduction/profit_squeeze/liquidity_crisis flags
+- [x] T059 [P] [US6] RED: Write assessment tests in `tests/unit/economics/financial_crisis/test_assessment.py` — all three signals active, latent vulnerability (NORMAL production but rising financialization), cascade detection across phases, claims_exceed_surplus triggers structural crisis
 
 ### Implementation for User Story 6
 
-- [ ] T060 [US6] GREEN: Implement `FinancialCrisisAssessment` and `CreditCrisisIndicator` frozen Pydantic models in `src/babylon/economics/financial_crisis/types.py`
-- [ ] T061 [US6] GREEN: Implement `FinancialCrisisAssessor` protocol and `DefaultFinancialCrisisAssessor` in `src/babylon/economics/financial_crisis/assessment.py` — integrates profit squeeze, overaccumulation, credit fragility, claims_exceed_surplus
-- [ ] T062 [US6] Update `src/babylon/economics/financial_crisis/__init__.py` with grouped `__all__` exports
-- [ ] T063 [US6] REFACTOR: Verify all financial crisis tests pass, run `mypy --strict`
+- [x] T060 [US6] GREEN: Implement `FinancialCrisisAssessment` and `CreditCrisisIndicator` frozen Pydantic models in `src/babylon/economics/financial_crisis/types.py`
+- [x] T061 [US6] GREEN: Implement `FinancialCrisisAssessor` protocol and `DefaultFinancialCrisisAssessor` in `src/babylon/economics/financial_crisis/assessment.py` — integrates profit squeeze, overaccumulation, credit fragility, claims_exceed_surplus
+- [x] T062 [US6] Update `src/babylon/economics/financial_crisis/__init__.py` with grouped `__all__` exports
+- [x] T063 [US6] REFACTOR: Verify all financial crisis tests pass, run `mypy --strict`
 
 **Checkpoint**: Integrated financial crisis assessment — independently testable.
 
@@ -207,15 +207,15 @@ ______________________________________________________________________
 
 ### Tests for User Story 7
 
-- [ ] T064 [P] [US7] RED: Write type tests for `MonetaryAdjustment` in `tests/unit/economics/monetary/test_types.py` — frozen model, field constraints (cpi > 0, deflator > 0, snlt_per_dollar > 0)
-- [ ] T065 [P] [US7] RED: Write converter tests in `tests/unit/economics/monetary/test_converter.py` — nominal_to_real, nominal_to_labor_time, real_to_nominal, round-trip consistency (nominal->real->nominal within EPSILON), SNLT computation (total_hours / nominal_gdp), NoDataSentinel when CPI/deflator data unavailable
+- [x] T064 [P] [US7] RED: Write type tests for `MonetaryAdjustment` in `tests/unit/economics/monetary/test_types.py` — frozen model, field constraints (cpi > 0, deflator > 0, snlt_per_dollar > 0)
+- [x] T065 [P] [US7] RED: Write converter tests in `tests/unit/economics/monetary/test_converter.py` — nominal_to_real, nominal_to_labor_time, real_to_nominal, round-trip consistency (nominal->real->nominal within EPSILON), SNLT computation (total_hours / nominal_gdp), NoDataSentinel when CPI/deflator data unavailable
 
 ### Implementation for User Story 7
 
-- [ ] T066 [P] [US7] GREEN: Implement `MonetaryAdjustment` frozen Pydantic model in `src/babylon/economics/monetary/types.py`
-- [ ] T067 [US7] GREEN: Implement `ValueBasisConverter` protocol and `DefaultValueBasisConverter` in `src/babylon/economics/monetary/converter.py`
-- [ ] T068 [US7] Update `src/babylon/economics/monetary/__init__.py` with grouped `__all__` exports
-- [ ] T069 [US7] REFACTOR: Verify all monetary tests pass, run `mypy --strict`
+- [x] T066 [P] [US7] GREEN: Implement `MonetaryAdjustment` frozen Pydantic model in `src/babylon/economics/monetary/types.py`
+- [x] T067 [US7] GREEN: Implement `ValueBasisConverter` protocol and `DefaultValueBasisConverter` in `src/babylon/economics/monetary/converter.py`
+- [x] T068 [US7] Update `src/babylon/economics/monetary/__init__.py` with grouped `__all__` exports
+- [x] T069 [US7] REFACTOR: Verify all monetary tests pass, run `mypy --strict`
 
 **Checkpoint**: Value basis conversion with round-trip consistency — independently testable.
 

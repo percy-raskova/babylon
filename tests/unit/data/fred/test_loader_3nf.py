@@ -237,25 +237,28 @@ class TestIdempotency:
             mock_clear.assert_called_once()
 
     def test_clear_fred_tables_does_not_touch_shared_dims(self) -> None:
-        """_clear_fred_tables should not delete DimState, DimIndustry, DimTime."""
+        """_clear_fred_tables should not delete DimState, DimIndustry, DimTime.
+
+        The implementation uses raw SQL DELETE (session.execute) to bypass
+        SQLAlchemy's ORM identity map, avoiding UNIQUE constraint errors on
+        subsequent re-insertion within the same transaction.
+        """
         loader = FredLoader()
         mock_session = MagicMock()
-        mock_query = MagicMock()
-        mock_session.query.return_value = mock_query
 
         loader._clear_fred_tables(mock_session)
 
-        # Get all tables that were queried for deletion
-        deleted_tables = [call[0][0].__name__ for call in mock_session.query.call_args_list]
+        # Collect all SQL strings passed to session.execute()
+        executed_sqls = [str(call[0][0]) for call in mock_session.execute.call_args_list]
 
-        # Should NOT include shared dimensions
-        assert "DimState" not in deleted_tables
-        assert "DimIndustry" not in deleted_tables
-        assert "DimTime" not in deleted_tables
+        # Should NOT delete shared dimensions
+        assert not any("dim_state" in sql for sql in executed_sqls)
+        assert not any("dim_industry" in sql for sql in executed_sqls)
+        assert not any("dim_time" in sql for sql in executed_sqls)
 
-        # Should include FRED-specific tables
-        assert "FactFredNational" in deleted_tables
-        assert "DimFredSeries" in deleted_tables
+        # Should delete FRED-specific fact and dimension tables
+        assert any("fact_fred_national" in sql for sql in executed_sqls)
+        assert any("dim_fred_series" in sql for sql in executed_sqls)
 
     def test_series_loader_uses_get_or_create(self) -> None:
         """_load_series_dimension should reuse existing series records."""

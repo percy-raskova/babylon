@@ -29,6 +29,16 @@ from typing import TYPE_CHECKING
 
 import networkx as nx
 
+from babylon.economics.circulation.circuit import initialize_circuit_state
+from babylon.economics.circulation.crisis import assess_circulation_crisis
+from babylon.economics.circulation.defaults import FALLBACK_PROFILE
+from babylon.economics.circulation.types import (
+    CirculationCrisisState,
+    DepreciationFundState,
+    InventoryState,
+    ReproductionAnalysis,
+    ReproductionBalance,
+)
 from babylon.economics.credit.types import FictitiousCapitalStock
 from babylon.economics.crisis.bifurcation import BifurcationRiskCalculator
 from babylon.economics.crisis.wage_compression import should_halt_accumulation
@@ -176,6 +186,9 @@ class TickDynamicsSystem:
 
         # Step 4: Compute imperial rent flows
         county_states = self._compute_imperial_rent(county_states, national_params, services)
+
+        # Step 4.5: Compute circulation layer (Feature 023)
+        county_states = self._compute_circulation_layer(county_states, services, year)
 
         # Step 5: Check crisis triggers (batch-within-step quarterly evaluation)
         county_states = self._check_crisis_triggers(county_states, services, tick)
@@ -820,6 +833,201 @@ class TickDynamicsSystem:
                     },
                 )
             )
+
+    def _compute_circulation_layer(
+        self,
+        county_states: dict[str, CountyEconomicState],
+        services: ServiceContainer,
+        year: int,
+    ) -> dict[str, CountyEconomicState]:
+        """Compute Volume II circulation state per county.
+
+        Feature: 023-capital-volume-ii
+        Computes national circulation parameters once from FRED data, then
+        applies per-county circuit/inventory/depreciation state and crisis assessment.
+
+        Args:
+            county_states: Current county snapshots.
+            services: ServiceContainer with circulation data sources.
+            year: Current simulation year.
+
+        Returns:
+            Updated county states with circulation_state populated.
+        """
+        if services.turnover_profile_source is None:
+            return county_states
+
+        national = self._compute_national_circulation_state(services, year)
+        days_raw, days_finished, national_inventory, annual_depr, gross_inv = national
+
+        updated: dict[str, CountyEconomicState] = {}
+        max_counties = 3300
+        for idx, (fips, county) in enumerate(county_states.items()):
+            if idx >= max_counties:
+                logger.warning(
+                    "County count exceeds %d, truncating circulation layer", max_counties
+                )
+                break
+            updated[fips] = self._compute_county_circulation_state(
+                fips,
+                county,
+                services,
+                year,
+                days_raw,
+                days_finished,
+                national_inventory,
+                annual_depr,
+                gross_inv,
+            )
+
+        for fips, county in county_states.items():
+            if fips not in updated:
+                updated[fips] = county
+
+        return updated
+
+    def _compute_national_circulation_state(
+        self,
+        services: ServiceContainer,
+        year: int,
+    ) -> tuple[float | None, float | None, float | None, float | None, float | None]:
+        """Extract national circulation parameters from data sources.
+
+        Returns:
+            Tuple of (days_raw, days_finished, national_inventory,
+            annual_depreciation, gross_investment). Each may be None if
+            data unavailable.
+        """
+        inv_src = services.inventory_data_source
+        depr_src = services.depreciation_data_source
+
+        days_raw: float | None = None
+        days_finished: float | None = None
+        national_inventory: float | None = None
+        annual_depr: float | None = None
+        gross_inv: float | None = None
+
+        if inv_src is not None:
+            days_raw = getattr(inv_src, "get_days_inventory_raw", lambda _: None)(year)
+            days_finished = getattr(inv_src, "get_days_inventory_finished", lambda _: None)(year)
+            national_inventory = getattr(inv_src, "get_national_inventory", lambda _: None)(year)
+
+        if depr_src is not None:
+            annual_depr = getattr(depr_src, "get_annual_depreciation", lambda _: None)(year)
+            gross_inv = getattr(depr_src, "get_gross_investment", lambda _: None)(year)
+
+        return days_raw, days_finished, national_inventory, annual_depr, gross_inv
+
+    def _compute_county_circulation_state(
+        self,
+        fips: str,
+        county: CountyEconomicState,
+        services: ServiceContainer,
+        year: int,
+        days_raw: float | None,
+        days_finished: float | None,
+        national_inventory: float | None,
+        annual_depr_national: float | None,
+        gross_inv_national: float | None,
+    ) -> CountyEconomicState:
+        """Compute circulation state for a single county.
+
+        Args:
+            fips: 5-digit county FIPS code.
+            county: Current county economic state.
+            services: ServiceContainer with circulation sources.
+            year: Current simulation year.
+            days_raw: National raw-materials days-of-inventory (or None).
+            days_finished: National finished-goods days-of-inventory (or None).
+            national_inventory: National manufacturer inventory in dollars (or None).
+            annual_depr_national: National annual depreciation in dollars (or None).
+            gross_inv_national: National gross private investment in dollars (or None).
+
+        Returns:
+            Updated CountyEconomicState with circulation_state populated.
+        """
+        capital_stock = county.capital_stock
+        if capital_stock <= 0:
+            return county
+
+        # Resolve turnover profile via NAICS (fallback to generic)
+        profile = FALLBACK_PROFILE
+        if services.turnover_profile_source is not None:
+            resolved = services.turnover_profile_source.get_turnover_profile(fips[:2])
+            if resolved is not None:
+                profile = resolved
+
+        # National employment share for county scaling
+        national_employment = 155_000_000.0
+        county_share = county.employment / national_employment if county.employment > 0 else 0.0
+
+        # Build CircuitState from capital_stock + turnover profile
+        from babylon.models.types import Currency
+
+        circuit = initialize_circuit_state(
+            fips_code=fips,
+            year=year,
+            total_capital=Currency(capital_stock),
+            turnover=profile,
+        )
+
+        # Build InventoryState: scale national inventory to county
+        county_inventory = (national_inventory * county_share) if national_inventory else 0.0
+        county_raw = county_inventory * profile.fixed_capital_ratio
+        county_finished = county_inventory * (1.0 - profile.fixed_capital_ratio)
+        inventory = InventoryState(
+            fips_code=fips,
+            year=year,
+            raw_materials=county_raw,
+            work_in_progress=0.0,
+            finished_goods=county_finished,
+            days_inventory_raw=days_raw if days_raw is not None else 30.0,
+            days_inventory_finished=days_finished if days_finished is not None else 30.0,
+        )
+
+        # Build DepreciationFundState: scale national depreciation to county
+        county_depr = (annual_depr_national * county_share) if annual_depr_national else 0.0
+        county_repl = (gross_inv_national * county_share) if gross_inv_national else 0.0
+        # Ensure annual_depreciation_flow > 0 (required by model)
+        safe_depr = max(county_depr, 1.0)
+        depreciation = DepreciationFundState(
+            fips_code=fips,
+            year=year,
+            total_fixed_capital=circuit.fixed_capital,
+            accumulated_depreciation=safe_depr,
+            annual_depreciation_flow=safe_depr,
+            replacement_expenditure=county_repl,
+        )
+
+        # Reproduction defaults: assume balanced reproduction
+        repro_balance = ReproductionBalance(
+            condition_met=True,
+            gap=0.0,
+            interpretation="Default reproduction balance",
+        )
+        repro_analysis = ReproductionAnalysis(
+            labor_power_demand=county.employment,
+            reproduction_capacity=county.employment,
+            gap=0.0,
+            sustainability=True,
+        )
+
+        assessment = assess_circulation_crisis(
+            circuit_state=circuit,
+            turnover=profile,
+            inventory=inventory,
+            reproduction_balance=repro_balance,
+            reproduction_analysis=repro_analysis,
+        )
+
+        new_circ_state = CirculationCrisisState(
+            circuit_state=circuit,
+            inventory_state=inventory,
+            depreciation_fund=depreciation,
+            latest_assessment=assessment,
+        )
+
+        return county.model_copy(update={"circulation_state": new_circ_state})
 
     def _compute_financial_layer(
         self,

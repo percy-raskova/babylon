@@ -248,6 +248,19 @@ class Simulation:
             financial_overrides = create_financial_services(fred_series_cache=fred_cache)
             calculator_overrides.update(financial_overrides)
 
+            # Feature 023: Wire Volume II circulation calculators
+            from babylon.economics.factory import (
+                create_circulation_services,
+                load_circulation_series_from_db,
+            )
+
+            circulation_cache = load_circulation_series_from_db(calc_session_factory)
+            circulation_overrides = create_circulation_services(
+                circulation_series_cache=circulation_cache,
+                fred_series_cache=fred_cache,
+            )
+            calculator_overrides.update(circulation_overrides)
+
         # Create base WorldState and config
         state = WorldState()
         config = SimulationConfig()

@@ -403,6 +403,11 @@ NATIONAL_SERIES = {
     "NCBEILQ027S": "Nonfinancial Corporate Business; Corporate Equities; Liability",
     "B230RC0Q173SBEA": "Rental Income of Persons with Capital Consumption Adjustment",
     "A054RC1Q027SBEA": "Taxes on Corporate Income",
+    # Volume II Circulation Series (Feature 023)
+    # ISRATIO: months-of-inventory used for days_inventory (× 30.4 in factory)
+    "ISRATIO": "Total Business: Inventories to Sales Ratio",
+    # GPDI: Gross Private Domestic Investment (proxy for replacement expenditure)
+    "GPDI": "Gross Private Domestic Investment",
 }
 
 

@@ -321,21 +321,34 @@ class FredLoader(ApiLoaderBase):
         SQLite enforces FK constraints within transactions when PRAGMA
         foreign_keys=ON is set (configured via event listener in database.py).
         """
-        # Clear fact tables first (they reference dimensions)
-        fact_tables = [
-            FactFredNational,
-            FactFredWealthLevels,
-            FactFredWealthShares,
-            FactFredIndustryUnemployment,
-            FactFredStateUnemployment,
-        ]
-        for table in fact_tables:
-            session.query(table).delete()
+        # Use raw SQL DELETE to bypass the ORM identity map entirely.
+        # ORM bulk delete (session.query().delete()) does not reliably purge
+        # the identity map, causing UNIQUE constraint errors on subsequent
+        # INSERT of the same primary keys within the same transaction.
+        from sqlalchemy import text as _text
 
-        # Clear FRED-specific dimensions (after facts are gone)
-        dim_tables = [DimFredSeries, DimWealthClass, DimAssetCategory]
-        for table in dim_tables:
-            session.query(table).delete()
+        fact_table_names = [
+            "fact_fred_national",
+            "fact_fred_wealth_levels",
+            "fact_fred_wealth_shares",
+            "fact_fred_industry_unemployment",
+            "fact_fred_state_unemployment",
+        ]
+        for tname in fact_table_names:
+            session.execute(_text(f"DELETE FROM {tname}"))  # noqa: S608
+
+        dim_table_names = [
+            "dim_fred_series",
+            "dim_wealth_class",
+            "dim_asset_category",
+        ]
+        for tname in dim_table_names:
+            session.execute(_text(f"DELETE FROM {tname}"))  # noqa: S608
+
+        # Flush SQL to DB and clear the ORM identity map so subsequent
+        # session.add() / session.query() calls see the now-empty tables.
+        session.flush()
+        session.expire_all()
 
         # Note: Do NOT clear DimState, DimIndustry, DimTime - shared dimensions
 

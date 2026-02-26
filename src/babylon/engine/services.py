@@ -91,6 +91,11 @@ class ServiceContainer:
     # Hypergraph community layer (Feature 022 - optional, default None)
     community_hypergraph: Any = field(default=None)
 
+    # Capital Volume II circulation layer (Feature 023 - optional, default None)
+    turnover_profile_source: Any = field(default=None)
+    inventory_data_source: Any = field(default=None)
+    depreciation_data_source: Any = field(default=None)
+
     # Capital Volume III financial layer (Feature 024 - optional, default None)
     distribution_calculator: Any = field(default=None)
     interest_calculator: Any = field(default=None)
@@ -124,6 +129,9 @@ class ServiceContainer:
         imperial_rent_calculator: Any = None,
         tensor_registry: Any = None,
         community_hypergraph: Any = None,
+        turnover_profile_source: Any = None,
+        inventory_data_source: Any = None,
+        depreciation_data_source: Any = None,
         distribution_calculator: Any = None,
         interest_calculator: Any = None,
         credit_cycle_detector: Any = None,
@@ -186,6 +194,9 @@ class ServiceContainer:
             imperial_rent_calculator=imperial_rent_calculator,
             tensor_registry=tensor_registry,
             community_hypergraph=community_hypergraph,
+            turnover_profile_source=turnover_profile_source,
+            inventory_data_source=inventory_data_source,
+            depreciation_data_source=depreciation_data_source,
             distribution_calculator=distribution_calculator,
             interest_calculator=interest_calculator,
             credit_cycle_detector=credit_cycle_detector,

@@ -352,4 +352,141 @@ def create_financial_services(
     }
 
 
-__all__ = ["create_economics_services", "create_financial_services", "load_fred_series_from_db"]
+def load_circulation_series_from_db(
+    session_factory: Callable[[], Session],
+) -> dict[str, dict[int, float]]:
+    """Load FRED circulation series from 3NF SQLite into cache dict.
+
+    Queries fred_series + fred_national tables for Volume II circulation series
+    and returns {series_id: {year: annual_avg_value}} with unit conversions applied.
+
+    Unit conversions:
+        - MNFCTIRSA, ISRATIO: months → days (× 30.4)
+        - AMDMNO: millions of dollars → dollars (× 1e6)
+        - A271RX1Q020SBEA, GPDI: billions of dollars → dollars (× 1e9)
+
+    Feature: 023-capital-volume-ii
+
+    Args:
+        session_factory: Callable returning a SQLAlchemy Session.
+
+    Returns:
+        Dict mapping FRED series IDs to year->value dicts.
+        Empty dict for series with no observations.
+    """
+    from sqlalchemy import text
+
+    _circulation_series = [
+        "ISRATIO",  # Total Business: Inventories to Sales Ratio (months)
+        "GPDI",  # Gross Private Domestic Investment (billions of dollars)
+    ]
+
+    # Unit normalisation rules
+    _ratio_to_days = {"ISRATIO"}  # months → days (× 30.4)
+    _millions_to_dollars: set[str] = set()
+    _billions_to_dollars = {"GPDI"}  # × 1e9
+
+    result: dict[str, dict[int, float]] = {}
+    with session_factory() as session:
+        placeholders = ", ".join(f"'{s}'" for s in _circulation_series)
+        raw_query = text(f"""
+            SELECT fs.series_code, dt.year, AVG(fn.value) AS avg_value
+            FROM fact_fred_national fn
+            JOIN dim_fred_series fs ON fn.series_id = fs.series_id
+            JOIN dim_time dt ON fn.time_id = dt.time_id
+            WHERE fs.series_code IN ({placeholders})
+            GROUP BY fs.series_code, dt.year
+            ORDER BY fs.series_code, dt.year
+        """)
+        rows = session.execute(raw_query)
+        for row in rows:
+            code = str(row[0])
+            year = int(row[1])
+            value = float(row[2])
+            if code in _ratio_to_days:
+                value = value * 30.4
+            elif code in _millions_to_dollars:
+                value = value * 1_000_000.0
+            elif code in _billions_to_dollars:
+                value = value * 1_000_000_000.0
+            if code not in result:
+                result[code] = {}
+            result[code][year] = value
+
+    return result
+
+
+def create_circulation_services(
+    circulation_series_cache: dict[str, dict[int, float]],
+    fred_series_cache: dict[str, dict[int, float]],  # noqa: ARG001 reserved for future use
+) -> dict[str, Any]:
+    """Create Volume II circulation calculators wired with real FRED data.
+
+    Builds three service adapters for the circulation layer:
+    - turnover_profile_source: NAICS sector turnover profiles
+    - inventory_data_source: National inventory levels / days-of-inventory
+    - depreciation_data_source: Fixed capital depreciation and replacement
+
+    Feature: 023-capital-volume-ii
+
+    Args:
+        circulation_series_cache: Pre-loaded circulation FRED series as
+            {series_id: {year: value}} with unit conversions applied.
+        fred_series_cache: Pre-loaded Vol III FRED series (reused cache).
+
+    Returns:
+        Dict with keys matching ServiceContainer circulation field names.
+    """
+    from babylon.economics.circulation.turnover import DefaultTurnoverProfileSource
+
+    series = circulation_series_cache  # local alias
+
+    class _InventoryDataSource:
+        """Adapter: FRED ISRATIO -> inventory days data.
+
+        ISRATIO (Total Business: Inventories to Sales Ratio) is used for
+        both raw and finished goods days-of-inventory. Unit conversion
+        (months → days × 30.4) is applied in load_circulation_series_from_db().
+        National inventory stock is derived as GPDI × 0.2 (rough proxy).
+        """
+
+        def get_days_inventory_raw(self, year: int) -> float | None:
+            return series.get("ISRATIO", {}).get(year)
+
+        def get_days_inventory_finished(self, year: int) -> float | None:
+            return series.get("ISRATIO", {}).get(year)
+
+        def get_national_inventory(self, year: int) -> float | None:
+            # Derive national inventory stock from GPDI (20% proxy)
+            gpdi = series.get("GPDI", {}).get(year)
+            return gpdi * 0.20 if gpdi is not None else None
+
+    class _DepreciationDataSource:
+        """Adapter: FRED GPDI -> depreciation data.
+
+        GPDI (Gross Private Domestic Investment) used as a proxy for
+        replacement investment. Annual depreciation (CCA) is approximated
+        as 70% of GPDI following BEA Fixed Asset Tables ratios.
+        """
+
+        def get_annual_depreciation(self, year: int) -> float | None:
+            gpdi = series.get("GPDI", {}).get(year)
+            return gpdi * 0.70 if gpdi is not None else None
+
+        def get_gross_investment(self, year: int) -> float | None:
+            return series.get("GPDI", {}).get(year)
+
+    return {
+        "turnover_profile_source": DefaultTurnoverProfileSource(),
+        "inventory_data_source": _InventoryDataSource(),
+        "depreciation_data_source": _DepreciationDataSource(),
+    }
+
+
+__all__ = [
+    "create_circulation_services",
+    "create_economics_services",
+    "create_financial_services",
+    "load_circulation_series_from_db",
+    "load_fred_series_from_db",
+]

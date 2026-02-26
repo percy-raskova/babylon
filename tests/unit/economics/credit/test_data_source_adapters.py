@@ -79,7 +79,7 @@ class TestFredCreditAggregateAdapter:
 
     def test_get_equity_market_cap(self) -> None:
         """Returns equity market cap from series data."""
-        data: dict[str, dict[int, float]] = {"WILL5000PR": {2007: 15_000_000_000_000.0}}
+        data: dict[str, dict[int, float]] = {"NCBEILQ027S": {2007: 15_000_000_000_000.0}}
         adapter = FredCreditAggregateAdapter(data)
         assert adapter.get_equity_market_cap(2007) == 15_000_000_000_000.0
 
@@ -110,7 +110,7 @@ class TestFredCreditAggregateAdapter:
         data: dict[str, dict[int, float]] = {
             "TCMDO": {2020: 83e12, 2022: 92e12},
             "GFDEBTN": {2020: 27e12, 2022: 31e12},
-            "WILL5000PR": {2020: 36e12, 2022: 33e12},
+            "NCBEILQ027S": {2020: 36e12, 2022: 33e12},
         }
         adapter = FredCreditAggregateAdapter(data)
         assert adapter.get_total_credit(2020) == 83e12

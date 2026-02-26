@@ -150,7 +150,7 @@ def load_fred_series_from_db(
         "BAA10Y",
         "TCMDO",
         "GFDEBTN",
-        "WILL5000PR",
+        "NCBEILQ027S",
         "B230RC0Q173SBEA",
         "A054RC1Q027SBEA",
         "CPIAUCSL",
@@ -160,22 +160,26 @@ def load_fred_series_from_db(
     result: dict[str, dict[int, float]] = {}
     with session_factory() as session:
         placeholders = ", ".join(f"'{s}'" for s in vol3_series)
+        # Schema: dim_fred_series(series_id PK int, series_code str, ...)
+        #         fact_fred_national(series_id FK, time_id FK, value)
+        #         dim_time(time_id PK, year, is_annual bool)
         raw_query = text(f"""
-            SELECT fs.series_id AS sid, fn.year, AVG(fn.value) AS avg_value
-            FROM fred_national fn
-            JOIN fred_series fs ON fn.series_id = fs.id
-            WHERE fs.series_id IN ({placeholders})
-            GROUP BY fs.series_id, fn.year
-            ORDER BY fs.series_id, fn.year
+            SELECT fs.series_code, dt.year, AVG(fn.value) AS avg_value
+            FROM fact_fred_national fn
+            JOIN dim_fred_series fs ON fn.series_id = fs.series_id
+            JOIN dim_time dt ON fn.time_id = dt.time_id
+            WHERE fs.series_code IN ({placeholders})
+            GROUP BY fs.series_code, dt.year
+            ORDER BY fs.series_code, dt.year
         """)
         rows = session.execute(raw_query)
         for row in rows:
-            sid = str(row[0])
+            code = str(row[0])
             year = int(row[1])
             value = float(row[2])
-            if sid not in result:
-                result[sid] = {}
-            result[sid][year] = value
+            if code not in result:
+                result[code] = {}
+            result[code][year] = value
 
     return result
 

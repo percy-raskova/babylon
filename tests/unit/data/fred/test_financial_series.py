@@ -16,7 +16,7 @@ VOLUME_III_SERIES: dict[str, str] = {
     "DGS10": "Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity",
     "BAA10Y": "Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury",
     "TCMDO": "All Sectors; Credit Market Instruments; Liability, Level",
-    "WILL5000PR": "Wilshire 5000 Total Market Full Cap Index",
+    "NCBEILQ027S": "Nonfinancial Corporate Business; Corporate Equities; Liability",
     "GFDEBTN": "Federal Debt: Total Public Debt",
     "B230RC0Q173SBEA": "Rental Income of Persons with Capital Consumption Adjustment",
     "A054RC1Q027SBEA": "Taxes on Corporate Income",
@@ -60,9 +60,9 @@ class TestVolumeIIIFinancialSeries:
         """TCMDO has expected description."""
         assert "Credit Market" in NATIONAL_SERIES["TCMDO"]
 
-    def test_will5000pr_description(self) -> None:
-        """WILL5000PR has expected description."""
-        assert "Wilshire" in NATIONAL_SERIES["WILL5000PR"]
+    def test_ncbeilq027s_description(self) -> None:
+        """NCBEILQ027S has expected description."""
+        assert "Corporate Equities" in NATIONAL_SERIES["NCBEILQ027S"]
 
     def test_gfdebtn_already_existed(self) -> None:
         """GFDEBTN was already in NATIONAL_SERIES (pre-existing)."""

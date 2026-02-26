@@ -51,7 +51,7 @@ class InterestRateSource(Protocol):
 class CreditAggregateSource(Protocol):
     """Protocol for FRED credit aggregate data (national-level).
 
-    Data sources: TCMDO, GFDEBTN, WILL5000PR.
+    Data sources: TCMDO, GFDEBTN, NCBEILQ027S.
     """
 
     def get_total_credit(self, year: int) -> float | None:
@@ -190,7 +190,7 @@ class FredCreditAggregateAdapter:
 
     Args:
         series_data: Dict mapping FRED series IDs to yearly value dicts.
-            Expected keys: ``"TCMDO"``, ``"GFDEBTN"``, ``"WILL5000PR"``.
+            Expected keys: ``"TCMDO"``, ``"GFDEBTN"``, ``"NCBEILQ027S"``.
     """
 
     def __init__(self, series_data: dict[str, dict[int, float]]) -> None:
@@ -227,4 +227,4 @@ class FredCreditAggregateAdapter:
         Returns:
             Market cap in current dollars, or None if unavailable.
         """
-        return self._series.get("WILL5000PR", {}).get(year)
+        return self._series.get("NCBEILQ027S", {}).get(year)

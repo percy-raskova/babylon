@@ -400,7 +400,7 @@ NATIONAL_SERIES = {
     "DGS10": "Market Yield on U.S. Treasury Securities at 10-Year Constant Maturity",
     "BAA10Y": "Moody's Seasoned Baa Corporate Bond Yield Relative to Yield on 10-Year Treasury",
     "TCMDO": "All Sectors; Credit Market Instruments; Liability, Level",
-    "WILL5000PR": "Wilshire 5000 Total Market Full Cap Index",
+    "NCBEILQ027S": "Nonfinancial Corporate Business; Corporate Equities; Liability",
     "B230RC0Q173SBEA": "Rental Income of Persons with Capital Consumption Adjustment",
     "A054RC1Q027SBEA": "Taxes on Corporate Income",
 }

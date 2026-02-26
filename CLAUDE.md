@@ -679,6 +679,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. Circulation state persists via CountyEconomicState in the graph bridge. (023-capital-volume-ii)
 - Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), existing economics module infrastructure (Features 011-023), httpx (FRED API via existing FredAPIClient) (024-capital-volume-iii)
 - In-memory via GraphProtocol. No new database tables. National financial state persists via `NationalTickParameters` extension. County-level distribution persists via `CountyEconomicState` in the graph bridge. FRED/Z.1/Census data loaded via existing `FredAPIClient` + SQLite 3NF schema. (024-capital-volume-iii)
+- Python 3.12+ + Pydantic 2.x (frozen models), NumPy (matrix ops), SciPy (sparse matrices, eigendecomposition), SQLAlchemy 2.x (ORM), NetworkX 3.x (graph) (025-tensor-hierarchy)
+- SQLite (`data/sqlite/marxist-data-3NF.sqlite` via `NormalizedBase` ORM) (025-tensor-hierarchy)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

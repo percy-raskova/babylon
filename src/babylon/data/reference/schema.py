@@ -2192,6 +2192,111 @@ class FactBLSProductivity(NormalizedBase):
 
 
 # =============================================================================
+# BEA I-O COEFFICIENT TABLES (Feature 025: Tensor Hierarchy)
+# =============================================================================
+
+
+class DimBEAIOTableType(NormalizedBase):
+    """BEA input-output table type dimension.
+
+    Classifies which BEA I-O table a coefficient was derived from.
+    Supports Use, Make, Supply, and Total Requirements tables.
+
+    Feature 025: Tensor Hierarchy (T009).
+    """
+
+    __tablename__ = "dim_bea_io_table_type"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    table_type: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(
+            "table_type IN ('USE', 'MAKE', 'SUPPLY', 'TOTAL_REQ')",
+            name="ck_bea_io_table_type_valid",
+        ),
+    )
+
+
+class FactBEAIOCoefficient(NormalizedBase):
+    """BEA I-O direct requirements coefficients by year and industry pair.
+
+    Stores A[i,j]: value of industry i output required per dollar of industry j
+    output, from BEA Use table (direct requirements). One row per (year, table_type,
+    source_industry, target_industry) combination.
+
+    Feature 025: Tensor Hierarchy (T009, T019).
+    """
+
+    __tablename__ = "fact_bea_io_coefficient"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_id: Mapped[int] = mapped_column(ForeignKey("dim_time.time_id"), nullable=False)
+    table_type_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_io_table_type.id"), nullable=False
+    )
+    source_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), nullable=False
+    )
+    target_industry_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_bea_industry.bea_industry_id"), nullable=False
+    )
+    coefficient: Mapped[float] = mapped_column(Float, nullable=False)
+
+    __table_args__ = (
+        Index("idx_bea_io_coeff_time", "time_id"),
+        Index("idx_bea_io_coeff_table_type", "table_type_id"),
+        Index("idx_bea_io_coeff_source", "source_industry_id"),
+        Index("idx_bea_io_coeff_target", "target_industry_id"),
+        UniqueConstraint(
+            "time_id",
+            "table_type_id",
+            "source_industry_id",
+            "target_industry_id",
+            name="uq_bea_io_coeff",
+        ),
+    )
+
+
+class FactFAFCommodityFlow(NormalizedBase):
+    """BTS FAF commodity flows at CFS Area resolution.
+
+    Stores origin-destination flows from the Bureau of Transportation Statistics
+    Freight Analysis Framework (FAF5). Uses CFS Area FKs (not county FKs) to
+    preserve FAF's native ~130-area geographic resolution.
+
+    Distinct from fact_commodity_flow (county-level Census CFS data).
+
+    Feature 025: Tensor Hierarchy (T009, T036).
+    """
+
+    __tablename__ = "fact_faf_commodity_flow"
+
+    flow_id: Mapped[int] = mapped_column(primary_key=True)
+    origin_cfs_area_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_cfs_area.cfs_area_id"), nullable=False
+    )
+    dest_cfs_area_id: Mapped[int] = mapped_column(
+        ForeignKey("dim_cfs_area.cfs_area_id"), nullable=False
+    )
+    sctg_id: Mapped[int] = mapped_column(ForeignKey("dim_sctg_commodity.sctg_id"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("dim_data_source.source_id"), nullable=False)
+    year: Mapped[int] = mapped_column(nullable=False)
+    value_millions: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # USD millions
+    tons_thousands: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # Thousands of tons
+    ton_miles_millions: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))  # Million ton-miles
+    mode_code: Mapped[str | None] = mapped_column(String(10))  # Transport mode
+
+    __table_args__ = (
+        Index("idx_faf_flow_origin", "origin_cfs_area_id"),
+        Index("idx_faf_flow_dest", "dest_cfs_area_id"),
+        Index("idx_faf_flow_sctg", "sctg_id"),
+        Index("idx_faf_flow_year", "year"),
+    )
+
+
+# =============================================================================
 # EXPORTS
 # =============================================================================
 
@@ -2303,4 +2408,8 @@ __all__ = [
     "FactForeclosureRate",
     "FactCensusInstitutionalOwnership",
     "FactBLSProductivity",
+    # Tensor Hierarchy (Feature 025)
+    "DimBEAIOTableType",
+    "FactBEAIOCoefficient",
+    "FactFAFCommodityFlow",
 ]

@@ -55,6 +55,43 @@ The scale represents not moral value but **organizational allegiance**:
 - Negative values → International proletarian solidarity
 - Positive values → National/imperial identification
 
+ConsciousnessTendency and the Three Directions
+-----------------------------------------------
+
+Feature 029 formalizes Jackson's insight into a per-community
+``ConsciousnessTendency`` enum with three values that correspond to the
+directions consciousness can take under crisis and repression:
+
+**LIBERAL** — The default. Seeks inclusion in existing institutions
+without transforming them. In Jackson's analysis, this is the dominant
+tendency in communities whose material conditions have not yet forced a
+break with the system. Most communities default to LIBERAL in the
+simulation's initial state.
+
+**FASCIST** — Collaboration with the hegemonic order for individual
+escape. Jackson identified this as the tendency that emerges when
+crisis hits but solidarity networks are absent — the agent seeks to
+climb out of the marginalized category rather than destroy the
+category itself. This maps to the +1 ideology direction in the
+bifurcation model above.
+
+**REVOLUTIONARY** — Oppositional collective identity, independent
+power. The contradiction is material, not a misunderstanding. This
+maps to the -1 ideology direction. In the simulation's default
+consciousness values, only FIRST_NATIONS and INCARCERATED communities
+start with REVOLUTIONARY tendency — communities whose material
+experience has foreclosed the liberal option.
+
+The ``CommunityConsciousness`` model adds two further dimensions:
+``collective_identity`` (how strongly the community identifies as a
+collective subject) and ``ideological_contestation`` (how actively the
+three tendencies compete within the community). High contestation
+communities are sites of ideological struggle; low contestation
+communities have a settled dominant tendency.
+
+See :doc:`consciousness-taxonomy` for the full model specification
+and default values for all 14 community types.
+
 Consciousness Drift Formula
 ---------------------------
 
@@ -213,9 +250,10 @@ For revolutionary movements in the simulation:
 See Also
 --------
 
-- :doc:`/concepts/survival-calculus` - How agents choose acquiescence vs revolution
-- :doc:`/concepts/topology` - SOLIDARITY edge dynamics
-- :doc:`/concepts/percolation-theory` - Network condensation and resilience
-- :doc:`/reference/formulas` - Complete formula reference
-- :doc:`/reference/configuration` - GameDefines parameters
-- :py:mod:`babylon.engine.systems.ideology` - Implementation details
+- :doc:`consciousness-taxonomy` -- Three-category taxonomy and consciousness model
+- :doc:`/concepts/survival-calculus` -- How agents choose acquiescence vs revolution
+- :doc:`/concepts/topology` -- SOLIDARITY edge dynamics
+- :doc:`/concepts/percolation-theory` -- Network condensation and resilience
+- :doc:`/reference/formulas` -- Complete formula reference
+- :doc:`/reference/configuration` -- GameDefines parameters
+- :py:mod:`babylon.engine.systems.ideology` -- Implementation details

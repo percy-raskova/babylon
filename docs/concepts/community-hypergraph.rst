@@ -131,9 +131,32 @@ This implements Constitution I.8 (Tragedy of Inevitability): existence
 costs calories. Communities, like everything else in the simulation,
 tend toward entropy without active maintenance.
 
+Structural Differentiation (Feature 029)
+-----------------------------------------
+
+Feature 029 extends the hypergraph layer by differentiating community
+hyperedges into three structural categories: **contradiction pairs**
+(both hegemonic and marginalized sides exist as real hyperedges),
+**institutional exclusion** (only the marginalized side organizes),
+and **lifecycle phases** (universal temporal positions in the D-P-D'
+circuit).
+
+This taxonomy enables:
+
+- **Contradiction axes** that formalize extraction relationships between
+  hegemonic and marginalized communities
+- **Community consciousness** modeling the ideological dimension of each
+  hyperedge (collective identity, dominant tendency, contestation)
+- **Infiltration resistance** derived from consciousness and cohesion
+- **Cross-class bridge detection** where institutional exclusion
+  communities span contradiction axes
+
+See :doc:`consciousness-taxonomy` for the full theoretical treatment.
+
 See Also
 --------
 
+- :doc:`consciousness-taxonomy` -- Three-category taxonomy and consciousness model
 - :doc:`/reference/community-system` -- Complete API reference
 - :doc:`topology` -- NetworkX graph model and solidarity networks
 - :doc:`george-jackson-model` -- Bifurcation and solidarity routing

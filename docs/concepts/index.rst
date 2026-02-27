@@ -79,6 +79,7 @@ Consciousness & Organization
 
    george-jackson-model
    community-hypergraph
+   consciousness-taxonomy
    dialectical-field-theory
    percolation-theory
    topology
@@ -86,9 +87,11 @@ Consciousness & Organization
 How revolutionary consciousness forms, spreads, and condenses into
 organized movements capable of collective action. The community hypergraph
 layer (Feature 022) models n-ary identity memberships as XGI hyperedges,
-creating solidarity potential from community overlap. The dialectical field
-topology framework formalizes Mao's *On Contradiction* as computable
-field operations on the simulation graph.
+creating solidarity potential from community overlap. Feature 029 adds a
+three-category structural taxonomy, community consciousness model, and
+infiltration resistance mechanics. The dialectical field topology framework
+formalizes Mao's *On Contradiction* as computable field operations on the
+simulation graph.
 
 State Repression
 ----------------

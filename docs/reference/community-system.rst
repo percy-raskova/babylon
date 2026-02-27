@@ -1,11 +1,13 @@
 Community System Reference
 ==========================
 
-API reference for the hypergraph community layer (Feature 022).
+API reference for the hypergraph community layer (Features 022 and 029).
 
 The community system maintains an XGI hypergraph alongside the NetworkX
 flow graph. Communities are n-ary membership structures (hyperedges);
-value/solidarity/repression flows remain NetworkX edges.
+value/solidarity/repression flows remain NetworkX edges. Feature 029
+adds a three-category taxonomy, contradiction axes, community
+consciousness, infiltration resistance, and cross-class bridge detection.
 
 .. contents:: On this page
    :local:
@@ -17,38 +19,105 @@ Enums
 CommunityType
 ~~~~~~~~~~~~~
 
+14 community types organized into three structural categories.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 25 55
+
+   * - Value
+     - Category
+     - Description
+   * - ``settler``
+     - CONTRADICTION_PAIR
+     - Settler nation (hegemonic). HOAs, police unions, border militias.
+   * - ``patriarchal``
+     - CONTRADICTION_PAIR
+     - Patriarchal order (hegemonic). Gendered wage systems, family structure.
+   * - ``new_afrikan``
+     - CONTRADICTION_PAIR
+     - New Afrikan / Black internal nation (marginalized)
+   * - ``first_nations``
+     - CONTRADICTION_PAIR
+     - Indigenous / First Nations peoples (marginalized)
+   * - ``chicano``
+     - CONTRADICTION_PAIR
+     - Chicano / Mexican-American nation (marginalized)
+   * - ``women``
+     - CONTRADICTION_PAIR
+     - Women — reproductive labor allocation (marginalized)
+   * - ``trans``
+     - CONTRADICTION_PAIR
+     - Transgender / gender non-conforming (marginalized)
+   * - ``disabled``
+     - INSTITUTIONAL_EXCLUSION
+     - Built environment assumes able-bodiedness
+   * - ``queer``
+     - INSTITUTIONAL_EXCLUSION
+     - Institutional heteronormativity
+   * - ``undocumented``
+     - INSTITUTIONAL_EXCLUSION
+     - Legal exclusion from protections
+   * - ``incarcerated``
+     - INSTITUTIONAL_EXCLUSION
+     - Carceral system, civil death
+   * - ``youth``
+     - LIFECYCLE_PHASE
+     - D phase. Pre-productive, dependent, receives socialization.
+   * - ``adult``
+     - LIFECYCLE_PHASE
+     - P phase. Sells labor-power. Where C-M-C and M-C-M' operate.
+   * - ``elder``
+     - LIFECYCLE_PHASE
+     - D' phase. Post-productive. Legitimation bargain.
+
+Defined in :py:class:`~babylon.models.enums.CommunityType`.
+
+HyperedgeCategory
+~~~~~~~~~~~~~~~~~
+
+Structural category for community hyperedges (Feature 029).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Value
+     - Description
+   * - ``contradiction_pair``
+     - Both hegemonic and marginalized sides exist as real hyperedges
+       with extraction flows between them.
+   * - ``institutional_exclusion``
+     - Only the marginalized side exists. Oppression flows through
+       institutional defaults, not a paired oppressor community.
+   * - ``lifecycle_phase``
+     - Universal temporal positions in D-P-D' intergenerational
+       lifecycle. Defined by relationship to production.
+
+Defined in :py:class:`~babylon.models.enums.HyperedgeCategory`.
+
+ConsciousnessTendency
+~~~~~~~~~~~~~~~~~~~~~
+
+Dominant ideological tendency within a community (Feature 029).
+
 .. list-table::
    :header-rows: 1
    :widths: 25 75
 
    * - Value
      - Description
-   * - ``new_afrikan``
-     - New Afrikan / Black internal nation
-   * - ``first_nations``
-     - Indigenous / First Nations peoples
-   * - ``chicano``
-     - Chicano / Mexican-American nation
-   * - ``white``
-     - White settler nation (hegemonic)
-   * - ``queer``
-     - Queer / LGBQ sexuality
-   * - ``heterosexual``
-     - Heterosexual (hegemonic sexuality)
-   * - ``trans``
-     - Transgender / gender non-conforming
-   * - ``cisgender``
-     - Cisgender (hegemonic gender identity)
-   * - ``disabled``
-     - Disabled / disability community
-   * - ``abled``
-     - Able-bodied (hegemonic ability)
-   * - ``undocumented``
-     - Undocumented immigration status
-   * - ``women``
-     - Women (reproductive labor allocation)
+   * - ``liberal``
+     - Seeks inclusion in existing institutions without transforming them.
+       Organizational vehicle: liberal CSOs, Democratic Party.
+   * - ``fascist``
+     - Collaboration with hegemonic order for individual escape. Strategy:
+       shrink the marginalized definition, exclude the most marginal.
+   * - ``revolutionary``
+     - Oppositional collective identity, independent power. The
+       contradiction is material, not a misunderstanding.
 
-Defined in :mod:`babylon.models.enums`.
+Defined in :py:class:`~babylon.models.enums.ConsciousnessTendency`.
 
 LegalStatus
 ~~~~~~~~~~~
@@ -108,10 +177,77 @@ MembershipRole
 Models
 ------
 
+CommunityConsciousness
+~~~~~~~~~~~~~~~~~~~~~~
+
+Frozen Pydantic model. Ideological dimension of a community hyperedge
+(Feature 029).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 15 35
+
+   * - Field
+     - Type
+     - Default
+     - Description
+   * - ``collective_identity``
+     - Probability
+     - 0.3
+     - Oppositional consciousness [0, 1]
+   * - ``dominant_tendency``
+     - ConsciousnessTendency
+     - LIBERAL
+     - Prevailing ideological direction
+   * - ``ideological_contestation``
+     - Probability
+     - 0.2
+     - Active debate between tendencies [0, 1]
+
+Defined in :py:class:`~babylon.models.entities.community.CommunityConsciousness`.
+
+ContradictionAxis
+~~~~~~~~~~~~~~~~~
+
+Frozen Pydantic model. Structural axis of contradiction with hegemonic
+and marginalized sides (Feature 029).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 55
+
+   * - Field
+     - Type
+     - Description
+   * - ``id``
+     - str
+     - Short identifier (``"colonial"``, ``"patriarchal"``)
+   * - ``name``
+     - str
+     - Human-readable axis name
+   * - ``hegemonic``
+     - CommunityType
+     - The hegemonic community type on this axis
+   * - ``marginalized``
+     - list[CommunityType]
+     - Marginalized community types on this axis
+   * - ``extraction_mechanism``
+     - str
+     - Description of the material extraction
+   * - ``exclusive``
+     - bool
+     - Whether membership is mutually exclusive
+   * - ``permeable``
+     - bool
+     - Whether agents can cross the axis boundary
+
+Defined in :py:class:`~babylon.models.entities.community.ContradictionAxis`.
+
 CommunityState
 ~~~~~~~~~~~~~~
 
-Frozen Pydantic model. Per-community attributes.
+Frozen Pydantic model. Per-community attributes including Feature 029
+additions (``category``, ``consciousness``, computed properties).
 
 .. list-table::
    :header-rows: 1
@@ -125,6 +261,10 @@ Frozen Pydantic model. Per-community attributes.
      - CommunityType
      - *required*
      - Community identity
+   * - ``category``
+     - HyperedgeCategory
+     - *auto-assigned*
+     - Structural category from ``COMMUNITY_CATEGORY_MAP``
    * - ``heat``
      - Probability
      - 0.0
@@ -153,8 +293,23 @@ Frozen Pydantic model. Per-community attributes.
      - Coefficient
      - 1.0
      - Multiplier on imperial rent received [0, 1]
+   * - ``consciousness``
+     - CommunityConsciousness
+     - *(default factory)*
+     - Ideological dimension of the community
 
-Defined in :mod:`babylon.models.entities.community`.
+**Computed properties:**
+
+- ``infiltration_resistance`` — Community resistance to state infiltration.
+  See :ref:`infiltration-resistance-formula`.
+- ``is_cross_class_bridge`` — ``True`` if ``category`` is
+  ``INSTITUTIONAL_EXCLUSION``, indicating structural potential for
+  bridging contradiction axes.
+
+The ``category`` field is auto-assigned via a model validator that reads
+``COMMUNITY_CATEGORY_MAP[community_type]``.
+
+Defined in :py:class:`~babylon.models.entities.community.CommunityState`.
 
 CommunityMembership
 ~~~~~~~~~~~~~~~~~~~
@@ -196,6 +351,162 @@ Frozen Pydantic model. Per-agent-per-community relationship.
 
 **Computed property:** ``effective_visibility`` returns 1.0 if ``overt``
 is True, otherwise returns the base ``visibility`` value.
+
+Constants
+---------
+
+Category and Side Mappings
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**COMMUNITY_CATEGORY_MAP** — Maps every ``CommunityType`` to exactly one
+``HyperedgeCategory``. Fixed at import time. Exhaustively validated —
+missing types raise ``RuntimeError``.
+
+**HEGEMONIC_COMMUNITIES** — ``frozenset({SETTLER, PATRIARCHAL})``
+
+**MARGINALIZED_COMMUNITIES** — ``frozenset({NEW_AFRIKAN, FIRST_NATIONS,
+CHICANO, WOMEN, TRANS, DISABLED, QUEER, UNDOCUMENTED, INCARCERATED})``
+
+**LIFECYCLE_COMMUNITIES** — ``frozenset({YOUTH, ADULT, ELDER})``
+
+Contradiction Axes
+~~~~~~~~~~~~~~~~~~
+
+**COLONIAL_AXIS** — Hegemonic: SETTLER. Marginalized: NEW_AFRIKAN,
+FIRST_NATIONS, CHICANO. Extraction: land, imperial rent, carceral labor,
+property value regimes. Exclusive, not permeable.
+
+**PATRIARCHAL_AXIS** — Hegemonic: PATRIARCHAL. Marginalized: WOMEN,
+TRANS. Extraction: unwaged reproductive labor, wage gap, care
+externalization. Exclusive, not permeable.
+
+**CONTRADICTION_AXES** — ``[COLONIAL_AXIS, PATRIARCHAL_AXIS]``
+
+Default Consciousness Values
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**CONSCIOUSNESS_DEFAULTS** — Starting values for all 14 community types.
+Synthetic data for Detroit 2010 test case.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 20 20
+
+   * - Community
+     - Collective Identity
+     - Tendency
+     - Contestation
+   * - SETTLER
+     - 0.4
+     - LIBERAL
+     - 0.3
+   * - PATRIARCHAL
+     - 0.3
+     - LIBERAL
+     - 0.2
+   * - NEW_AFRIKAN
+     - 0.5
+     - LIBERAL
+     - 0.4
+   * - FIRST_NATIONS
+     - 0.6
+     - REVOLUTIONARY
+     - 0.3
+   * - CHICANO
+     - 0.4
+     - LIBERAL
+     - 0.3
+   * - WOMEN
+     - 0.3
+     - LIBERAL
+     - 0.3
+   * - TRANS
+     - 0.5
+     - LIBERAL
+     - 0.4
+   * - DISABLED
+     - 0.3
+     - LIBERAL
+     - 0.2
+   * - QUEER
+     - 0.4
+     - LIBERAL
+     - 0.4
+   * - UNDOCUMENTED
+     - 0.5
+     - LIBERAL
+     - 0.3
+   * - INCARCERATED
+     - 0.6
+     - REVOLUTIONARY
+     - 0.3
+   * - YOUTH
+     - 0.2
+     - LIBERAL
+     - 0.5
+   * - ADULT
+     - 0.1
+     - LIBERAL
+     - 0.1
+   * - ELDER
+     - 0.3
+     - LIBERAL
+     - 0.2
+
+Infiltration Constants
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 15 45
+
+   * - Constant
+     - Value
+     - Purpose
+   * - ``INFILTRATION_CI_WEIGHT``
+     - 0.6
+     - Weight of collective identity in resistance formula
+   * - ``INFILTRATION_COHESION_WEIGHT``
+     - 0.3
+     - Weight of cohesion in resistance formula
+   * - ``INFILTRATION_INTERACTION_WEIGHT``
+     - 0.1
+     - Weight of CI * cohesion interaction term
+   * - ``INFILTRATION_CEILING_FACTOR``
+     - 0.7
+     - How much max resistance reduces infiltration ceiling
+
+All constants defined in :py:mod:`babylon.models.entities.community`.
+
+.. _infiltration-resistance-formula:
+
+Infiltration Resistance
+-----------------------
+
+Community resistance to state infiltration, computed from collective
+identity and internal cohesion.
+
+**Resistance formula:**
+
+.. math::
+
+   IR = CI \times 0.6 + \text{cohesion} \times 0.3 + CI \times \text{cohesion} \times 0.1
+
+The interaction term means collective identity and cohesion reinforce
+each other. Maximum resistance is 1.0 (when CI = 1.0 and cohesion = 1.0).
+
+**Effective ceiling reduction:**
+
+.. math::
+
+   \text{ceiling}_{\text{eff}} = \text{ceiling}_{\text{base}} \times (1 - IR_{\max} \times 0.7)
+
+Where :math:`IR_{\max}` is the highest infiltration resistance across all
+communities the target belongs to. At maximum resistance, the effective
+ceiling drops to 30% of base.
+
+Implemented as computed property ``CommunityState.infiltration_resistance``
+and standalone function ``effective_infiltration_ceiling()``.
 
 Formulas
 --------
@@ -357,13 +668,37 @@ Configuration
 Helper Functions
 ~~~~~~~~~~~~~~~~
 
+**Feature 022 helpers** (from :py:mod:`babylon.engine.systems.community`):
+
 - ``build_community_hypergraph(memberships, community_states)`` -- Builds XGI Hypergraph.
 - ``shared_communities(H, agent_a, agent_b)`` -- Returns set of shared hyperedge IDs.
 - ``community_overlap_matrix(H)`` -- Returns ``(overlap_ndarray, node_index_dict)``.
 
+**Feature 029 helpers** (from :py:mod:`babylon.models.entities.community`):
+
+- ``get_contradiction_axis(community)`` -- Returns the ``ContradictionAxis`` a
+  community belongs to, or ``None`` if not a contradiction pair.
+- ``is_hegemonic(community)`` -- ``True`` if on the hegemonic side of any axis.
+- ``is_marginalized(community)`` -- ``True`` if marginalized (including
+  institutional exclusion).
+- ``get_opposing_communities(community)`` -- Returns communities on the
+  opposite side of the contradiction axis. Empty list if not a pair.
+- ``shared_marginalized_communities(agent_a_communities, agent_b_communities)``
+  -- Returns marginalized communities shared by two agents.
+- ``effective_infiltration_ceiling(base_ceiling, target_community_states)``
+  -- Computes effective ceiling reduced by community resistance.
+
+**Feature 029 helpers** (from :py:mod:`babylon.engine.systems.community`):
+
+- ``communities_spanning_axis(H, axis)`` -- Finds institutional exclusion
+  communities that bridge a contradiction axis by containing members from
+  both hegemonic and marginalized sides.
+
 See Also
 --------
 
+- :doc:`/concepts/consciousness-taxonomy` -- Taxonomy theory and consciousness model
 - :doc:`/concepts/community-hypergraph` -- Why hyperedges, not pairwise edges
+- :doc:`/concepts/george-jackson-model` -- Bifurcation and consciousness tendencies
 - :doc:`/reference/formulas` -- All simulation formulas
 - :doc:`/reference/systems` -- System execution order

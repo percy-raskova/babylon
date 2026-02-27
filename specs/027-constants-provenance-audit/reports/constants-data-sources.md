@@ -39,7 +39,9 @@ duplicates) are excluded since they will be deleted, not sourced.
 | None (game design) | 42 | N/A -- narrative pacing |
 | Duplicate (Tier B) | 83 | N/A -- eliminate |
 
-**Total constants**: 247 (138 GameDefines + 109 inline literals)
+**Total constants**: 247 (136 GameDefines + 2 FormulaConstants + 109 inline literals)
+
+**Note**: Tier counts in this report may differ from `constants-classification.md` (the authoritative source) because this report independently assessed tiers for data source mapping purposes. The classification report's tier assignments (A=37, B=34, C=63, D=14, E=99) are canonical.
 
 ---
 
@@ -291,6 +293,37 @@ The following inline literals in `src/babylon/economics/tick/initializer.py` are
 - **Derivation**: Meillassoux's reproduction externalization heuristic. Fraction of reproductive labor externalized to periphery. Derivable from ATUS unpaid care hours data cross-referenced with Census demographic composition.
 - **Existing Adapter**: `MVPUnpaidCareHoursSource` at `src/babylon/economics/gamma/adapters.py` (line 154)
 - **Pipeline Ready**: Partial (ATUS adapter exists; externalization ratio formula needed)
+
+### Class Dynamics ODE Coefficients (FRED-fitted)
+
+| Constant ID | Value | Data Source |
+|---|---|---|
+| `class_dynamics:58:alpha_41` | 0.0 | FRED |
+| `class_dynamics:59:alpha_31` | 0.0 | FRED |
+| `class_dynamics:60:alpha_21` | 0.0006 | FRED |
+| `class_dynamics:61:alpha_32` | 0.0 | FRED |
+| `class_dynamics:62:alpha_42` | 0.0 | FRED |
+| `class_dynamics:63:alpha_43` | 0.0 | FRED |
+| `class_dynamics:66:delta_1` | 0.001 | FRED |
+| `class_dynamics:67:delta_2` | 0.002 | FRED |
+| `class_dynamics:68:delta_3` | 0.001 | FRED |
+| `class_dynamics:71:gamma_3` | 0.0057 | FRED |
+
+- **Constitution Ref**: Article III.4 (FRED)
+- **Derivation**: These 10 ODE coefficients were fitted against FRED macroeconomic time series (GDP, employment, income distribution). The alpha matrix represents inter-class extraction rates, delta vector represents redistribution flows, and gamma_3 is the imperial rent formation rate. Re-derivation requires regression against updated FRED series.
+- **Existing Adapter**: `FredAPIClient` at `src/babylon/economics/fred/client.py` provides API access. Regression pipeline not yet implemented.
+- **Pipeline Ready**: Partial (FRED adapter exists; ODE fitting pipeline needed)
+
+### TRPF Efficiency Floor
+
+| Constant ID | Value | Data Source |
+|---|---|---|
+| `economy.trpf_efficiency_floor` | 0.1 | BEA |
+
+- **Constitution Ref**: Article III.4 (BEA)
+- **Derivation**: Minimum extraction efficiency derived from BEA industry-level profit rates. Represents the floor below which capital cannot extract surplus (structural inefficiency). Derivable from historical minimum profit rate observations via `InterpolatingBEASource`.
+- **Existing Adapter**: `InterpolatingBEASource` at `src/babylon/economics/bea/source.py`
+- **Pipeline Ready**: Partial (BEA adapter exists; floor derivation formula needed)
 
 ---
 

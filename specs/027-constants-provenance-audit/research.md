@@ -157,7 +157,7 @@ The audit is the systematic enforcement mechanism for these principles.
 - `crisis_wage_delta` (-0.15)
 - `crisis_repression_delta` (0.20)
 - `bribery_tension_threshold` (0.3)
-- `iron_fist_tension_threshold` (0.3)
+- `iron_fist_tension_threshold` (0.5)
 - `pool_high_threshold` (0.7)
 - `pool_low_threshold` (0.3)
 - `pool_critical_threshold` (0.1)

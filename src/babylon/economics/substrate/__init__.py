@@ -1,0 +1,78 @@
+"""Tri-county economic substrate module.
+
+Feature: 026-tri-county-economic-substrate
+Date: 2026-02-26
+
+Integrates Capital Volumes I (Production), II (Circulation), and III
+(Equalization) onto an H3 resolution 7 spatial mesh covering Wayne (26163),
+Oakland (26125), and Macomb (26099) counties.
+
+See Also:
+    :mod:`babylon.economics.tensor_hierarchy`: Level 1/2 tensor infrastructure.
+    :mod:`babylon.economics.tensor`: Level 0 ValueTensor4x3 primitive.
+"""
+
+from __future__ import annotations
+
+from babylon.economics.substrate.aggregation import DefaultResolutionAggregator
+from babylon.economics.substrate.circulation import DefaultHexCirculationComputer
+from babylon.economics.substrate.conservation import (
+    CONSERVATION_TOLERANCE,
+    DefaultConservationChecker,
+)
+from babylon.economics.substrate.equalization import DefaultHexEqualizationComputer
+from babylon.economics.substrate.hydrator import hydrate_hex_grid
+from babylon.economics.substrate.production import DefaultHexProductionComputer
+from babylon.economics.substrate.protocols import (
+    CommuterFlowSource,
+    ConservationChecker,
+    HexCirculationComputer,
+    HexEqualizationComputer,
+    HexProductionComputer,
+    ResolutionAggregator,
+    SpatialSubstrateSource,
+    TractDemographicSource,
+)
+from babylon.economics.substrate.spatial import (
+    DefaultSpatialSubstrateSource,
+    generate_tri_county_mesh,
+)
+from babylon.economics.substrate.types import (
+    TRI_COUNTY_FIPS,
+    BoundaryFlowRegister,
+    HexEconomicState,
+    HexGrid,
+    SubstrateConfig,
+    TractWeight,
+)
+
+__all__ = [
+    # Constants
+    "CONSERVATION_TOLERANCE",
+    "TRI_COUNTY_FIPS",
+    # Types
+    "BoundaryFlowRegister",
+    "HexEconomicState",
+    "HexGrid",
+    "SubstrateConfig",
+    "TractWeight",
+    # Protocols
+    "CommuterFlowSource",
+    "ConservationChecker",
+    "HexCirculationComputer",
+    "HexEqualizationComputer",
+    "HexProductionComputer",
+    "ResolutionAggregator",
+    "SpatialSubstrateSource",
+    "TractDemographicSource",
+    # Default implementations
+    "DefaultConservationChecker",
+    "DefaultHexCirculationComputer",
+    "DefaultHexEqualizationComputer",
+    "DefaultHexProductionComputer",
+    "DefaultResolutionAggregator",
+    "DefaultSpatialSubstrateSource",
+    # Convenience functions
+    "generate_tri_county_mesh",
+    "hydrate_hex_grid",
+]

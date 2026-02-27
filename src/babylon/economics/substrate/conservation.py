@@ -64,15 +64,28 @@ class DefaultConservationChecker:
 
     Attributes:
         tolerance: Maximum acceptable deviation (default 1e-10).
+        circulation_tolerance: Wider tolerance for circulation operations
+            (default 1e-8) to accommodate floating-point accumulation in
+            sparse matrix multiply with large hex grids.
     """
 
-    def __init__(self, tolerance: float = CONSERVATION_TOLERANCE) -> None:
+    def __init__(
+        self,
+        tolerance: float = CONSERVATION_TOLERANCE,
+        circulation_tolerance: float = 1e-8,
+    ) -> None:
         """Initialize conservation checker.
 
         Args:
-            tolerance: Maximum acceptable absolute deviation.
+            tolerance: Maximum acceptable absolute deviation for most operations.
+            circulation_tolerance: Maximum acceptable deviation for circulation
+                (wage redistribution via sparse OD matrix). Wider than default
+                because ``od_matrix.T @ v_vec`` with ~1000+ hexes accumulates
+                ~1e-9 floating-point error that exceeds 1e-10 but is well
+                within economic significance.
         """
         self._tolerance = tolerance
+        self._circulation_tolerance = circulation_tolerance
 
     def check_total_capital(self, pre_grid: HexGrid, post_grid: HexGrid, operation: str) -> bool:
         """Check sum(c+v+s) conservation between pre and post grids.
@@ -103,22 +116,32 @@ class DefaultConservationChecker:
 
         return True
 
-    def check_variable_capital(self, pre_grid: HexGrid, post_grid: HexGrid, operation: str) -> bool:
+    def check_variable_capital(
+        self,
+        pre_grid: HexGrid,
+        post_grid: HexGrid,
+        operation: str,
+        use_circulation_tolerance: bool = False,
+    ) -> bool:
         """Check sum(v) conservation between pre and post grids.
 
         Args:
             pre_grid: Grid state before operation.
             post_grid: Grid state after operation.
             operation: Name of the operation for logging.
+            use_circulation_tolerance: If True, use the wider circulation
+                tolerance (1e-8) instead of the default (1e-10). Set this
+                for wage redistribution via sparse OD matrix operations.
 
         Returns:
             True if conservation holds within tolerance, False otherwise.
         """
+        tol = self._circulation_tolerance if use_circulation_tolerance else self._tolerance
         pre_v = _sum_variable_capital(pre_grid)
         post_v = _sum_variable_capital(post_grid)
         diff = abs(pre_v - post_v)
 
-        if diff >= self._tolerance:
+        if diff >= tol:
             logger.warning(
                 "Conservation violation in %s: variable capital diff=%.2e "
                 "(pre=%.6f, post=%.6f, tolerance=%.0e)",
@@ -126,7 +149,7 @@ class DefaultConservationChecker:
                 diff,
                 pre_v,
                 post_v,
-                self._tolerance,
+                tol,
             )
             return False
 

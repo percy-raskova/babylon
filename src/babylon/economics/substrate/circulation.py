@@ -8,7 +8,10 @@ residence hexes using LODES origin-destination commute data.
 Two-stage disaggregation: county-to-county flows from ``fact_lodes``
 are distributed to hex-to-hex using tract employment weights.
 
-Conservation: sum(v) preserved within 1e-10 via explicit rescaling.
+Conservation: sum(v) preserved via explicit rescaling. The sparse matrix
+multiply ``od_matrix.T @ v_vec`` with ~1000+ hexes accumulates ~1e-9
+floating-point error, so circulation conservation uses a wider tolerance
+(1e-8) than other operations (1e-10). See ``DefaultConservationChecker``.
 
 See Also:
     :mod:`babylon.economics.substrate.types`: HexGrid, BoundaryFlowRegister.

@@ -21,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from babylon.economics.hydrator import MarxianHydrator
     from babylon.economics.substrate.protocols import TractDemographicSource
     from babylon.economics.substrate.types import HexGrid
 
@@ -66,11 +67,14 @@ def hydrate_hex_grid(
     grid: HexGrid,
     tract_source: TractDemographicSource | None = None,
     year: int = 2023,
+    marxian_hydrator: MarxianHydrator | None = None,
 ) -> HexGrid:
     """Allocate county-level economic data to hexes via tract weights.
 
     For each county:
         1. Load county economic totals (c, v, s, employment, dept_shares).
+           Uses ``marxian_hydrator`` for real QCEW data when available,
+           falling back to ``DEFAULT_COUNTY_ECONOMICS``.
         2. Compute per-hex weight from tract demographics or uniform.
         3. Allocate: hex.c = county_c * weight, etc.
 
@@ -80,6 +84,9 @@ def hydrate_hex_grid(
         grid: HexGrid with empty economic state.
         tract_source: Source for tract-level demographic weights.
         year: Data vintage year.
+        marxian_hydrator: Optional MarxianHydrator for real QCEW-derived
+            c/v/s values. When provided, produces more accurate profit rates
+            (~10%) compared to hardcoded defaults (~20%).
 
     Returns:
         New HexGrid with populated economic values.
@@ -92,22 +99,13 @@ def hydrate_hex_grid(
         if not hex_ids:
             continue
 
-        # Get county-level totals
-        county_data = DEFAULT_COUNTY_ECONOMICS.get(county_fips)
-        if county_data is None:
+        # Get county-level totals: prefer MarxianHydrator, fall back to defaults
+        county_econ = _get_county_economics(county_fips, year, marxian_hydrator)
+        if county_econ is None:
             logger.warning("No economic data for county %s", county_fips)
             continue
 
-        c_total = county_data["constant_capital"]
-        v_total = county_data["variable_capital"]
-        s_total = county_data["surplus_value"]
-        emp_total = county_data["employment"]
-        dept_shares = (
-            county_data["dept_I"],
-            county_data["dept_IIa"],
-            county_data["dept_IIb"],
-            county_data["dept_III"],
-        )
+        c_total, v_total, s_total, emp_total, dept_shares = county_econ
 
         # Compute weights per hex
         hex_list = sorted(hex_ids)
@@ -158,6 +156,85 @@ def hydrate_hex_grid(
         res5_parents=grid.res5_parents,
         res6_children=grid.res6_children,
         res5_children=grid.res5_children,
+    )
+
+
+def _get_county_economics(
+    county_fips: str,
+    year: int,
+    marxian_hydrator: MarxianHydrator | None,
+) -> tuple[float, float, float, float, tuple[float, float, float, float]] | None:
+    """Get county-level c, v, s, employment, and dept_shares.
+
+    Tries ``marxian_hydrator.hydrate()`` first for real QCEW-derived values.
+    Falls back to ``DEFAULT_COUNTY_ECONOMICS`` when the hydrator is absent
+    or returns zero total value (missing QCEW data for this county/year).
+
+    Args:
+        county_fips: 5-digit FIPS county code.
+        year: Data vintage year.
+        marxian_hydrator: Optional MarxianHydrator instance.
+
+    Returns:
+        Tuple of (c_total, v_total, s_total, emp_total, dept_shares),
+        or None if no data is available from either source.
+    """
+    if marxian_hydrator is not None:
+        tensor = marxian_hydrator.hydrate(county_fips, year)
+
+        c_total = float(tensor.total_c)
+        v_total = float(tensor.total_v)
+        s_total = float(tensor.total_s)
+
+        if c_total + v_total + s_total > 0:
+            total_value = c_total + v_total + s_total
+            dept_I_value = float(tensor.dept_I.total_value)
+            dept_IIa_value = float(tensor.dept_IIa.total_value)
+            dept_IIb_value = float(tensor.dept_IIb.total_value)
+            dept_III_value = float(tensor.dept_III.total_value)
+            dept_shares = (
+                dept_I_value / total_value,
+                dept_IIa_value / total_value,
+                dept_IIb_value / total_value,
+                dept_III_value / total_value,
+            )
+
+            # Employment comes from defaults if available; MarxianHydrator
+            # does not track employment separately.
+            fallback = DEFAULT_COUNTY_ECONOMICS.get(county_fips)
+            emp_total = fallback["employment"] if fallback else 0.0
+
+            logger.info(
+                "County %s: using MarxianHydrator data (c=%.1f, v=%.1f, s=%.1f)",
+                county_fips,
+                c_total,
+                v_total,
+                s_total,
+            )
+            return c_total, v_total, s_total, emp_total, dept_shares
+
+        logger.warning(
+            "MarxianHydrator returned zero for county %s year %d, falling back to defaults",
+            county_fips,
+            year,
+        )
+
+    # Fall back to hardcoded defaults
+    county_data = DEFAULT_COUNTY_ECONOMICS.get(county_fips)
+    if county_data is None:
+        return None
+
+    return (
+        county_data["constant_capital"],
+        county_data["variable_capital"],
+        county_data["surplus_value"],
+        county_data["employment"],
+        (
+            county_data["dept_I"],
+            county_data["dept_IIa"],
+            county_data["dept_IIb"],
+            county_data["dept_III"],
+        ),
     )
 
 

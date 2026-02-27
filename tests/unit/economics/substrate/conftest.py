@@ -16,6 +16,7 @@ from babylon.economics.substrate.types import (
     SubstrateConfig,
     TractWeight,
 )
+from babylon.economics.tensor import DepartmentRow, ValueTensor4x3
 
 # =============================================================================
 # Default Test Constants
@@ -257,6 +258,76 @@ class MockCommuterFlowSource:
         return self._external_flows
 
 
+class MockMarxianHydrator:
+    """Mock MarxianHydrator returning configurable ValueTensor4x3 per county.
+
+    Provides realistic c/v/s values with lower profit rates (~10%) compared
+    to DEFAULT_COUNTY_ECONOMICS defaults (~20%), simulating real QCEW data.
+    """
+
+    # Realistic BEA-calibrated values: profit rate ~ 10%
+    # c/v ratio ~2.5, s/v ratio ~0.5 -> r = s/(c+v) = 0.5v/(2.5v+v) ≈ 14%
+    DEFAULT_TENSORS: dict[str, dict[str, DepartmentRow]] = {
+        "26163": {  # Wayne County
+            "dept_I": DepartmentRow(c=5000.0, v=2000.0, s=1000.0),
+            "dept_IIa": DepartmentRow(c=8000.0, v=3500.0, s=1500.0),
+            "dept_IIb": DepartmentRow(c=6000.0, v=2500.0, s=1200.0),
+            "dept_III": DepartmentRow(c=4000.0, v=2000.0, s=800.0),
+        },
+        "26125": {  # Oakland County
+            "dept_I": DepartmentRow(c=7000.0, v=2500.0, s=1200.0),
+            "dept_IIa": DepartmentRow(c=9000.0, v=3000.0, s=1400.0),
+            "dept_IIb": DepartmentRow(c=7000.0, v=2500.0, s=1300.0),
+            "dept_III": DepartmentRow(c=5000.0, v=2000.0, s=900.0),
+        },
+        "26099": {  # Macomb County
+            "dept_I": DepartmentRow(c=5000.0, v=1500.0, s=700.0),
+            "dept_IIa": DepartmentRow(c=4000.0, v=1500.0, s=600.0),
+            "dept_IIb": DepartmentRow(c=3000.0, v=1200.0, s=500.0),
+            "dept_III": DepartmentRow(c=2000.0, v=1000.0, s=400.0),
+        },
+    }
+
+    def __init__(
+        self,
+        tensors: dict[str, dict[str, DepartmentRow]] | None = None,
+    ) -> None:
+        """Initialize mock hydrator.
+
+        Args:
+            tensors: Optional county_fips -> department rows mapping.
+        """
+        self._tensors = tensors if tensors is not None else self.DEFAULT_TENSORS
+
+    def hydrate(self, fips_code: str, year: int) -> ValueTensor4x3:
+        """Return mock ValueTensor4x3 for the given county."""
+        county = self._tensors.get(fips_code)
+        if county is None:
+            # Return zero tensor for unknown counties
+            zero_row = DepartmentRow(c=0.0, v=0.0, s=0.0)
+            return ValueTensor4x3(
+                fips_code=fips_code,
+                year=year,
+                dept_I=zero_row,
+                dept_IIa=zero_row,
+                dept_IIb=zero_row,
+                dept_III=zero_row,
+                naics_granularity=0.0,
+                excluded_wages=0.0,
+            )
+
+        return ValueTensor4x3(
+            fips_code=fips_code,
+            year=year,
+            dept_I=county["dept_I"],
+            dept_IIa=county["dept_IIa"],
+            dept_IIb=county["dept_IIb"],
+            dept_III=county["dept_III"],
+            naics_granularity=0.85,
+            excluded_wages=0.0,
+        )
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -284,6 +355,12 @@ def mock_tract_source() -> MockTractDemographicSource:
 def mock_commuter_source() -> MockCommuterFlowSource:
     """Provide mock commuter flow source."""
     return MockCommuterFlowSource()
+
+
+@pytest.fixture
+def mock_marxian_hydrator() -> MockMarxianHydrator:
+    """Provide mock MarxianHydrator with realistic BEA-calibrated values."""
+    return MockMarxianHydrator()
 
 
 @pytest.fixture

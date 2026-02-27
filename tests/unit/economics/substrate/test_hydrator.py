@@ -24,6 +24,7 @@ from .conftest import (
     MACOMB_HEX_IDS,
     OAKLAND_HEX_IDS,
     WAYNE_HEX_IDS,
+    MockMarxianHydrator,
     MockTractDemographicSource,
 )
 
@@ -199,3 +200,165 @@ class TestHydrateHexGrid:
         """Test that hydration preserves county-to-hex mapping."""
         result = hydrate_hex_grid(sample_hex_grid, tract_source=None)
         assert result.county_hex_ids == sample_hex_grid.county_hex_ids
+
+
+@pytest.mark.unit
+class TestHydrateWithMarxianHydrator:
+    """Tests for hydrate_hex_grid with MarxianHydrator integration."""
+
+    def test_marxian_hydrator_values_used(
+        self,
+        sample_hex_grid: HexGrid,
+        mock_marxian_hydrator: MockMarxianHydrator,
+    ) -> None:
+        """Test that MarxianHydrator c/v/s values replace defaults."""
+        result = hydrate_hex_grid(
+            sample_hex_grid,
+            tract_source=None,
+            marxian_hydrator=mock_marxian_hydrator,
+        )
+
+        # Wayne County total c from mock: 5000 + 8000 + 6000 + 4000 = 23000
+        wayne_c = sum(result.hexes[h].constant_capital for h in WAYNE_HEX_IDS)
+        assert wayne_c == pytest.approx(23000.0, abs=1e-10)
+
+        # Wayne County total v from mock: 2000 + 3500 + 2500 + 2000 = 10000
+        wayne_v = sum(result.hexes[h].variable_capital for h in WAYNE_HEX_IDS)
+        assert wayne_v == pytest.approx(10000.0, abs=1e-10)
+
+        # Wayne County total s from mock: 1000 + 1500 + 1200 + 800 = 4500
+        wayne_s = sum(result.hexes[h].surplus_value for h in WAYNE_HEX_IDS)
+        assert wayne_s == pytest.approx(4500.0, abs=1e-10)
+
+    def test_marxian_hydrator_differs_from_defaults(
+        self,
+        sample_hex_grid: HexGrid,
+        mock_marxian_hydrator: MockMarxianHydrator,
+    ) -> None:
+        """Test that MarxianHydrator values differ from DEFAULT_COUNTY_ECONOMICS."""
+        default_result = hydrate_hex_grid(sample_hex_grid, tract_source=None)
+        marxian_result = hydrate_hex_grid(
+            sample_hex_grid,
+            tract_source=None,
+            marxian_hydrator=mock_marxian_hydrator,
+        )
+
+        # Values should differ because MarxianHydrator uses different c/v/s
+        wayne_c_default = sum(default_result.hexes[h].constant_capital for h in WAYNE_HEX_IDS)
+        wayne_c_marxian = sum(marxian_result.hexes[h].constant_capital for h in WAYNE_HEX_IDS)
+        assert wayne_c_default != pytest.approx(wayne_c_marxian)
+
+    def test_marxian_hydrator_lower_profit_rate(
+        self,
+        sample_hex_grid: HexGrid,
+        mock_marxian_hydrator: MockMarxianHydrator,
+    ) -> None:
+        """Test that MarxianHydrator produces lower profit rate than defaults."""
+        default_result = hydrate_hex_grid(sample_hex_grid, tract_source=None)
+        marxian_result = hydrate_hex_grid(
+            sample_hex_grid,
+            tract_source=None,
+            marxian_hydrator=mock_marxian_hydrator,
+        )
+
+        def _metro_profit_rate(grid: HexGrid) -> float:
+            total_c = sum(h.constant_capital for h in grid.hexes.values())
+            total_v = sum(h.variable_capital for h in grid.hexes.values())
+            total_s = sum(h.surplus_value for h in grid.hexes.values())
+            return total_s / (total_c + total_v) if (total_c + total_v) > 0 else 0.0
+
+        default_pr = _metro_profit_rate(default_result)
+        marxian_pr = _metro_profit_rate(marxian_result)
+
+        # Default profit rate ~15.8%, MarxianHydrator ~13.6%
+        assert marxian_pr < default_pr
+
+    def test_marxian_hydrator_conservation(
+        self,
+        sample_hex_grid: HexGrid,
+        mock_marxian_hydrator: MockMarxianHydrator,
+    ) -> None:
+        """Test conservation holds when using MarxianHydrator."""
+        result = hydrate_hex_grid(
+            sample_hex_grid,
+            tract_source=None,
+            marxian_hydrator=mock_marxian_hydrator,
+        )
+
+        # Check all three counties
+        tensor_data = MockMarxianHydrator.DEFAULT_TENSORS
+        county_hex_map = {
+            "26163": WAYNE_HEX_IDS,
+            "26125": OAKLAND_HEX_IDS,
+            "26099": MACOMB_HEX_IDS,
+        }
+
+        for fips, hex_ids in county_hex_map.items():
+            depts = tensor_data[fips]
+            expected_c = sum(
+                float(depts[d].c) for d in ["dept_I", "dept_IIa", "dept_IIb", "dept_III"]
+            )
+            actual_c = sum(result.hexes[h].constant_capital for h in hex_ids)
+            assert abs(actual_c - expected_c) < 1e-10, (
+                f"County {fips}: sum(c)={actual_c} != expected {expected_c}"
+            )
+
+    def test_marxian_hydrator_dept_shares_from_tensor(
+        self,
+        sample_hex_grid: HexGrid,
+        mock_marxian_hydrator: MockMarxianHydrator,
+    ) -> None:
+        """Test that dept_shares are computed from tensor department values."""
+        result = hydrate_hex_grid(
+            sample_hex_grid,
+            tract_source=None,
+            marxian_hydrator=mock_marxian_hydrator,
+        )
+
+        # Wayne County total value per dept:
+        # I: 5000+2000+1000 = 8000, IIa: 8000+3500+1500 = 13000
+        # IIb: 6000+2500+1200 = 9700, III: 4000+2000+800 = 6800
+        # Total: 37500
+        total_val = 37500.0
+        expected_shares = (
+            8000.0 / total_val,
+            13000.0 / total_val,
+            9700.0 / total_val,
+            6800.0 / total_val,
+        )
+
+        wayne_hex = result.hexes[WAYNE_HEX_IDS[0]]
+        for actual, expected in zip(wayne_hex.dept_shares, expected_shares, strict=True):
+            assert actual == pytest.approx(expected, abs=1e-10)
+
+    def test_fallback_when_hydrator_returns_zero(
+        self,
+        sample_hex_grid: HexGrid,
+    ) -> None:
+        """Test fallback to defaults when MarxianHydrator returns zero tensor."""
+        from babylon.economics.tensor import DepartmentRow
+
+        # Create hydrator that returns zero for all counties
+        zero_row = DepartmentRow(c=0.0, v=0.0, s=0.0)
+        zero_tensors: dict[str, dict[str, DepartmentRow]] = {
+            fips: {
+                "dept_I": zero_row,
+                "dept_IIa": zero_row,
+                "dept_IIb": zero_row,
+                "dept_III": zero_row,
+            }
+            for fips in ["26163", "26125", "26099"]
+        }
+        zero_hydrator = MockMarxianHydrator(tensors=zero_tensors)
+
+        result = hydrate_hex_grid(
+            sample_hex_grid,
+            tract_source=None,
+            marxian_hydrator=zero_hydrator,
+        )
+
+        # Should fall back to DEFAULT_COUNTY_ECONOMICS
+        wayne_c = sum(result.hexes[h].constant_capital for h in WAYNE_HEX_IDS)
+        assert wayne_c == pytest.approx(
+            DEFAULT_COUNTY_ECONOMICS["26163"]["constant_capital"], abs=1e-10
+        )

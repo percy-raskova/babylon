@@ -54,6 +54,22 @@ Capital Volume II circulation dynamics (turnover, reproduction, crisis),
 labor aristocracy, survival calculus, Piketty's rate of return framework,
 and proletarian feminist analysis of reproductive labor.
 
+Tensor Hierarchy (Feature 025)
+-------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   tensor-hierarchy
+   leontief-analysis
+   imperial-rent-field
+   class-mobility
+
+The three-level tensor hierarchy that bridges federal empirical data to the
+simulation engine: BEA Input-Output Leontief analysis, BTS FAF5 freight flow
+imperial rent computation, and Markov chain class mobility — all grounded in
+Marxian department theory.
+
 Consciousness & Organization
 ----------------------------
 

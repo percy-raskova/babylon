@@ -78,6 +78,23 @@ Empirical data sources for Marxian analysis:
 - **FRED**: CPI, wages, unemployment, fiscal indicators, PPP metrics
 - **QCEW**: Employment/wages by county, state, and metro area with hybrid API/file loading
 
+Tensor Hierarchy (Feature 025)
+-------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   tensor-hierarchy
+   tensor-hierarchy-schema
+   bea-io-tables
+   faf-freight-data
+   bea-department-mapping
+
+Multi-level tensor hierarchy data dictionary: all nine tensor types and
+protocols, the six new SQLite tables, BEA Input-Output data format and
+loader API, BTS FAF5 freight data format and loader API, and the complete
+BEA-to-Marxian-department industry classification mapping.
+
 Event System
 ------------
 

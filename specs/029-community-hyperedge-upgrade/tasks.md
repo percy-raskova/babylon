@@ -69,18 +69,18 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T013 [US2] Write failing tests for ContradictionAxis model and COLONIAL_AXIS/PATRIARCHAL_AXIS constants in `tests/unit/models/test_community_models.py`: correct hegemonic/marginalized members per contract
-- [ ] T014 [US2] Write failing tests for axis query functions in `tests/unit/models/test_community_models.py`: `get_contradiction_axis`, `is_hegemonic`, `is_marginalized`, `get_opposing_communities`, `shared_marginalized_communities` per contracts/taxonomy-api.md test cases
+- [x] T013 [US2] Write failing tests for ContradictionAxis model and COLONIAL_AXIS/PATRIARCHAL_AXIS constants in `tests/unit/models/test_community_models.py`: correct hegemonic/marginalized members per contract
+- [x] T014 [US2] Write failing tests for axis query functions in `tests/unit/models/test_community_models.py`: `get_contradiction_axis`, `is_hegemonic`, `is_marginalized`, `get_opposing_communities`, `shared_marginalized_communities` per contracts/taxonomy-api.md test cases
 
 ### Implementation (GREEN phase)
 
-- [ ] T015 [US2] Add `ContradictionAxis` frozen Pydantic model to `src/babylon/models/entities/community.py` with fields: id, name, hegemonic (CommunityType), marginalized (list[CommunityType]), extraction_mechanism, exclusive, permeable
-- [ ] T016 [US2] Add `COLONIAL_AXIS`, `PATRIARCHAL_AXIS`, and `CONTRADICTION_AXES` list constants in `src/babylon/models/entities/community.py`
-- [ ] T017 [US2] Implement `get_contradiction_axis(community) -> ContradictionAxis | None` in `src/babylon/models/entities/community.py`
-- [ ] T018 [US2] Implement `is_hegemonic(community) -> bool` and `is_marginalized(community) -> bool` in `src/babylon/models/entities/community.py`
-- [ ] T019 [US2] Implement `get_opposing_communities(community) -> list[CommunityType]` in `src/babylon/models/entities/community.py`
-- [ ] T020 [US2] Implement `shared_marginalized_communities(set, set) -> set[CommunityType]` in `src/babylon/models/entities/community.py`
-- [ ] T021 [US2] Verify all T013-T014 tests now pass (GREEN) and all pre-existing tests still pass
+- [x] T015 [US2] Add `ContradictionAxis` frozen Pydantic model to `src/babylon/models/entities/community.py` with fields: id, name, hegemonic (CommunityType), marginalized (list[CommunityType]), extraction_mechanism, exclusive, permeable
+- [x] T016 [US2] Add `COLONIAL_AXIS`, `PATRIARCHAL_AXIS`, and `CONTRADICTION_AXES` list constants in `src/babylon/models/entities/community.py`
+- [x] T017 [US2] Implement `get_contradiction_axis(community) -> ContradictionAxis | None` in `src/babylon/models/entities/community.py`
+- [x] T018 [US2] Implement `is_hegemonic(community) -> bool` and `is_marginalized(community) -> bool` in `src/babylon/models/entities/community.py`
+- [x] T019 [US2] Implement `get_opposing_communities(community) -> list[CommunityType]` in `src/babylon/models/entities/community.py`
+- [x] T020 [US2] Implement `shared_marginalized_communities(set, set) -> set[CommunityType]` in `src/babylon/models/entities/community.py`
+- [x] T021 [US2] Verify all T013-T014 tests now pass (GREEN) and all pre-existing tests still pass
 
 **Checkpoint**: Axis queries functional. `mise run check` passes.
 

@@ -57,31 +57,40 @@ class MockSession:
         for naics in self._years:
             self._years[naics].sort()
 
-    def execute(self, query: object, params: dict[str, object]) -> MagicMock:
+    def execute(self, query: object, params: dict[str, object] | None = None) -> MagicMock:
         """Mock execute that returns appropriate data based on query."""
         query_str = str(query)
         mock_result = MagicMock()
 
-        if "DISTINCT dt.year" in query_str:
+        if "sqlite_master" in query_str:
+            # Table existence check — pretend _cache table exists
+            # so we skip the CREATE TABLE path in tests
+            mock_result.fetchone.return_value = ("_cache_national_wages_bea",)
+            return mock_result
+
+        elif "DISTINCT dt.year" in query_str:
             # Year availability query
+            params = params or {}
             naics = params["naics_code"]
             years = self._years.get(naics, [])
             mock_result.__iter__ = lambda _self, y=years: iter((yr,) for yr in y)
             return mock_result
 
-        elif "SUM(fq.total_wages_usd)" in query_str:
-            # National wages query
+        elif "_cache_national_wages_bea" in query_str:
+            # Pre-aggregated national wages lookup
+            params = params or {}
             bea_id = params["bea_industry_id"]
             year = params["year"]
             wages = self._wages_data.get((bea_id, year))
             if wages is not None:
                 mock_result.fetchone.return_value = (wages,)
             else:
-                mock_result.fetchone.return_value = (0.0,)
+                mock_result.fetchone.return_value = None
             return mock_result
 
         elif "gross_output_millions" in query_str:
             # BEA ratio query -> (bea_industry_id, GO_m, II_m, VA_m)
+            params = params or {}
             naics = params["naics_code"]
             year = params["year"]
             if (naics, year) in self._bea_data:

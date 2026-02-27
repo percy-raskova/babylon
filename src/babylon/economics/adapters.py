@@ -22,9 +22,12 @@ See Also:
 
 from __future__ import annotations
 
+import logging
 from typing import Protocol, runtime_checkable
 
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -239,6 +242,8 @@ class InterpolatingBEASource:
         self._year_cache: dict[str, list[int]] = {}
         # Cache for national wages: (bea_industry_id, year) -> total_wages_usd
         self._wages_cache: dict[tuple[int, int], float] = {}
+        # Whether the pre-aggregated wages table has been verified/created
+        self._wages_table_ready: bool = False
 
     def get_sv_ratio(self, naics_code: str, year: int) -> float | None:
         """Get the surplus value to variable capital ratio (s/v) with interpolation.
@@ -453,9 +458,9 @@ class InterpolatingBEASource:
     def _query_national_wages(self, bea_industry_id: int, year: int) -> float | None:
         """Get total national QCEW wages for all NAICS codes in a BEA industry.
 
-        Aggregates wages across all NAICS codes that map to the same
-        bea_industry_id, ensuring the denominator matches the BEA
-        industry-level numerator.
+        Uses a pre-aggregated cache table to avoid scanning the 43M-row
+        fact_qcew_annual table at query time. The cache table is created
+        on first use and persists in the SQLite database.
 
         Args:
             bea_industry_id: BEA industry foreign key.
@@ -468,16 +473,14 @@ class InterpolatingBEASource:
         if cache_key in self._wages_cache:
             return self._wages_cache[cache_key]
 
+        # Ensure the pre-aggregated table exists
+        self._ensure_wages_aggregate_table()
+
         wages_query = """
-            SELECT COALESCE(SUM(fq.total_wages_usd), 0.0)
-            FROM fact_qcew_annual fq
-            JOIN dim_industry di ON fq.industry_id = di.industry_id
-            JOIN bridge_naics_bea bnb ON di.industry_id = bnb.industry_id
-            JOIN dim_time dt ON fq.time_id = dt.time_id
-            WHERE bnb.bea_industry_id = :bea_industry_id
-              AND dt.year = :year
-              AND dt.is_annual = 1
-              AND fq.total_wages_usd IS NOT NULL
+            SELECT total_wages_usd
+            FROM _cache_national_wages_bea
+            WHERE bea_industry_id = :bea_industry_id
+              AND year = :year
         """
 
         result = self._session.execute(
@@ -493,6 +496,112 @@ class InterpolatingBEASource:
         total_wages: float = float(row[0])
         self._wages_cache[cache_key] = total_wages
         return total_wages if total_wages > 0 else None
+
+    def _ensure_wages_aggregate_table(self) -> None:
+        """Create the pre-aggregated national wages table if it doesn't exist.
+
+        Collapses ~43M fact_qcew_annual rows into ~800 summary rows grouped
+        by (bea_industry_id, year). Uses indexed per-industry lookups to avoid
+        full table scans on the large QCEW table. One-time cost ~80s on first
+        run, then all subsequent queries are instant.
+        """
+        if self._wages_table_ready:
+            return
+
+        sa = __import__("sqlalchemy")
+
+        # Check if table already exists
+        check = self._session.execute(
+            sa.text(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name='_cache_national_wages_bea'"
+            )
+        )
+        if check.fetchone() is not None:
+            self._wages_table_ready = True
+            return
+
+        logger.info("Building national wages aggregate table (one-time, ~80s)...")
+
+        self._build_wages_table_indexed()
+        self._wages_table_ready = True
+
+    def _build_wages_table_indexed(self) -> None:
+        """Build aggregate table using indexed per-industry lookups.
+
+        Strategy: instead of one massive JOIN over 43M rows, we:
+        1. Load the 466-row bridge table into Python
+        2. Load annual time_ids (~35 rows) into Python
+        3. Execute ~16K small indexed queries (fast with idx_qcew_industry_time)
+        4. Aggregate industry -> bea_industry in Python
+        5. Write ~800 result rows into a persistent cache table
+        """
+        sa = __import__("sqlalchemy")
+        import time as _time
+
+        t0 = _time.perf_counter()
+
+        # Load dimension tables (instant)
+        bridge_rows = self._session.execute(
+            sa.text("SELECT industry_id, bea_industry_id FROM bridge_naics_bea")
+        ).fetchall()
+        ind_to_bea: dict[int, int] = {int(r[0]): int(r[1]) for r in bridge_rows}
+        industry_ids = list(ind_to_bea.keys())
+
+        time_rows = self._session.execute(
+            sa.text("SELECT time_id, year FROM dim_time WHERE is_annual = 1")
+        ).fetchall()
+
+        # Aggregate per (industry_id, time_id) using index
+        result: dict[tuple[int, int], float] = {}
+        wage_query = sa.text(
+            "SELECT SUM(total_wages_usd) FROM fact_qcew_annual "
+            "WHERE industry_id = :iid AND time_id = :tid "
+            "AND total_wages_usd IS NOT NULL"
+        )
+
+        max_years = len(time_rows)
+        for year_idx, (tid, year) in enumerate(time_rows):
+            for ind_id in industry_ids:
+                row = self._session.execute(wage_query, {"iid": ind_id, "tid": int(tid)}).fetchone()
+                if row and row[0]:
+                    bea_id = ind_to_bea[ind_id]
+                    key = (bea_id, int(year))
+                    result[key] = result.get(key, 0.0) + float(row[0])
+
+            if (year_idx + 1) % 5 == 0 or year_idx == max_years - 1:
+                elapsed = _time.perf_counter() - t0
+                logger.info(
+                    "  Aggregating year %d/%d (%.0fs elapsed, %d entries)...",
+                    year_idx + 1,
+                    max_years,
+                    elapsed,
+                    len(result),
+                )
+
+        # Create and populate the cache table
+        self._session.execute(
+            sa.text(
+                "CREATE TABLE _cache_national_wages_bea ("
+                "  bea_industry_id INTEGER NOT NULL,"
+                "  year INTEGER NOT NULL,"
+                "  total_wages_usd REAL NOT NULL,"
+                "  PRIMARY KEY (bea_industry_id, year)"
+                ")"
+            )
+        )
+
+        insert_stmt = sa.text(
+            "INSERT INTO _cache_national_wages_bea "
+            "(bea_industry_id, year, total_wages_usd) "
+            "VALUES (:bea_id, :year, :wages)"
+        )
+        for (bea_id, year), wages in result.items():
+            self._session.execute(insert_stmt, {"bea_id": bea_id, "year": year, "wages": wages})
+
+        self._session.commit()
+        elapsed = _time.perf_counter() - t0
+        logger.info("Aggregate table ready: %d entries in %.0fs", len(result), elapsed)
 
 
 __all__ = [

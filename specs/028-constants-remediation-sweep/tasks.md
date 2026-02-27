@@ -169,10 +169,10 @@ ______________________________________________________________________
 
 **Purpose**: Full verification across all user stories. Update project documentation.
 
-- [ ] T047 Run `mise run test:all` — full non-AI test suite passes
-- [ ] T048 Run `mise run qa:regression` — final baseline comparison (if baselines regenerated, compare against Phase 3 baselines)
-- [ ] T049 Validate FR-008 accountability: confirm disposition count in triage report matches 247
-- [ ] T050 Update `ai-docs/state.yaml` with feature 028 completion status, new test counts, and component changes
+- [x] T047 Run `mise run test:all` — full non-AI test suite passes
+- [x] T048 Run `mise run qa:regression` — final baseline comparison (if baselines regenerated, compare against Phase 3 baselines)
+- [x] T049 Validate FR-008 accountability: confirm disposition count in triage report matches 247
+- [x] T050 Update `ai-docs/state.yaml` with feature 028 completion status, new test counts, and component changes
 
 ______________________________________________________________________
 

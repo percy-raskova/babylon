@@ -3,8 +3,8 @@
 
 meta:
   version: "2.1.0"
-  updated: "2026-02-01"
-  last_sprint: "011-fundamental-tensor-primitive (Phase 7 Complete)"
+  updated: "2026-02-27"
+  last_sprint: "028-constants-remediation-sweep (Complete)"
   principle: "Be honest about what's implemented vs aspirational"
   architecture_model: "Epoch + Slice (supersedes Six-Phase Fractal Evolution)"
   canonical_roadmap: "ai-docs/epochs-overview.md"
@@ -1709,8 +1709,32 @@ current_focus:
   milestone_date: "2026-01-01"
   milestone_document: "ai-docs/epoch1-mvp-complete.md"
   next_milestone: "Slice 1.5: Dashboard wire-up (visualization only - mechanics complete)"
-  test_count: 3050
-  test_count_note: "Updated 2026-01-01 - Epoch 1 MVP complete, all 4 terminal crisis phases validated"
+  test_count: 7570
+  test_count_note: "Updated 2026-02-27 - Feature 028 constants remediation sweep complete"
+
+  constants_remediation_sweep:
+    status: "COMPLETE"
+    date: "2026-02-27"
+    feature: "028-constants-remediation-sweep"
+    scope: "247 constants across ~20 source files"
+    deliverables:
+      - "3 Tier A constants wired to federal data (QCEW, BLS OES, FRED)"
+      - "34 Tier B dead code / deprecated constants eliminated"
+      - "28 Tier C inline constants centralized into GameDefines"
+      - "12 Tier D engineering constants documented with rationale"
+      - "96 Tier E game design constants documented"
+      - "25 Tier A constants deferred (blocked by features 002/013/021/024)"
+      - "247-disposition triage report (FR-008 accountability verified)"
+    new_gamedefines_subsections:
+      - "ClassDynamicsDefines (alpha_21, gamma_3, equilibrium targets)"
+      - "EdgeTransitionDefines (16 edge mode transition thresholds)"
+    files_modified:
+      - "src/babylon/config/defines.py (197+ lines added)"
+      - "src/babylon/engine/systems/edge_transition.py (refactored to _build_transitions())"
+      - "src/babylon/formulas/ (6 formula modules wired to GameDefines)"
+      - "src/babylon/engine/simulation.py (hydration at from_sqlite)"
+      - "src/babylon/data/reference/hydrator.py (3 new hydration functions)"
+    regression: "5/5 scenarios PASS, 7570 tests PASS, zero behavioral deviation"
 
   magic_number_refactoring:
     status: "COMPLETE"

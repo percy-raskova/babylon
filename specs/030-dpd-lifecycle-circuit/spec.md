@@ -131,6 +131,33 @@ A simulation operator observes that intergenerational class mobility in the simu
 
 ______________________________________________________________________
 
+### User Story 7 - Dual Circuit Interference (D-P-D' x P-D-P') (Priority: P2)
+
+The D-P-D' individual lifecycle circuit and the P_g1-D_g2-P_g2 class reproduction circuit run simultaneously but can **desynchronize under stress**, producing emergent crisis dynamics that neither circuit shows alone. A simulation operator observes these interference patterns:
+
+**The Resource Competition**: P-phase workers must simultaneously fund three demands from a single wage: (1) their own daily reproduction (C-M-C), (2) their future D' security (savings, pension contributions), and (3) the next generation's D phase (child-rearing, education, housing). When M-C-M' accelerates extraction (wage cuts, austerity, longer hours), P-phase resources shrink and workers face a zero-sum choice between self-preservation (D-P-D') and class reproduction (P-D-P'). This is the **intergenerational austerity trap**.
+
+**The Shadow Subsidy Extraction**: Capital receives P_g2 workers without paying for D_g2 socialization — the entire cost of producing the next generation's labor-power falls on P_g1 families. The gap between what capital pays (wages for P_g1's labor) and what it receives (a fully-formed P_g2 worker) is the generational shadow subsidy. This is the lifecycle analog of Department III's daily shadow subsidy (gamma visibility), operating at generational timescale.
+
+**The Dispossession Short-Circuit**: When dispossession events (foreclosure, pension default) extract accumulated wealth from P_g1 families, this wealth transfers to capital rather than flowing through the P-D-P' circuit to D_g2. Dispossession is the mechanism by which capital **short-circuits P-D-P' to feed M-C-M'** — it interrupts class reproduction to accelerate capital accumulation. The dual circuit view reveals that dispossession doesn't just harm individual families (D-P-D' reading) but **structurally breaks class reproduction for targeted lineages** (P-D-P' reading).
+
+**The Legitimation-Fertility Nexus**: When the D' promise fails (legitimation crisis), P_g1 workers respond in two ways that the dual circuit reveals: (1) In D-P-D', they become agitated (George Jackson bifurcation). (2) In P-D-P', they **reduce investment in the class circuit** — birth rates fall because raising children for a system that won't care for you is irrational. Or, they radicalize their D_g2 children (ideology transmission shifts toward revolutionary consciousness). The legitimation crisis doesn't just destabilize the current generation — it alters the **quality and quantity** of the next generation.
+
+**The Sandwich Squeeze**: When D'_g1 (this generation's elderly) and D_g2 (next generation's children) both depend on P_g1 simultaneously, the P-phase worker is squeezed between the two circuits. This "sandwich generation" effect compounds the resource competition: P_g1 must fund their parents' D' phase AND their children's D phase from a single P-phase income. High dependency ratios make this structurally inevitable.
+
+**Why this priority**: Elevated to P2 because the dual circuit interference is the central theoretical contribution of this feature — it's what makes D-P-D' more than demographic bookkeeping. The interference patterns explain real-world phenomena (declining birth rates, sandwich generation, "OK Boomer" intergenerational conflict, student debt as D→P transition burden) as emergent properties of circuit desynchronization. Without modeling interference, the simulation has two independent circuits that don't interact; with it, the circuits produce the contradictions that drive historical dynamics.
+
+**Independent Test**: Can be tested by creating a county where P-phase resources are progressively squeezed (wages decline, extraction increases), and observing: (a) the intergenerational austerity trap forces tradeoffs between D' funding and D_g2 funding, (b) dispossession events break the P-D-P' inheritance pathway, (c) legitimation collapse produces measurable fertility rate decline and/or ideology transmission shift.
+
+**Acceptance Scenarios**:
+
+1. **Given** a county where P-phase wages are cut by 20% (M-C-M' acceleration), **When** P-phase workers can no longer fully fund both D' savings and D_g2 child-rearing, **Then** the system models the tradeoff: either D' funding declines (legitimation weakens) or D_g2 investment declines (next generation's class mobility degrades), or both. The specific split depends on the legitimation index — workers with high D' confidence prioritize children; workers with low D' confidence prioritize self-preservation.
+2. **Given** a county where dispossession events extract $X from P_g1 families, **When** the dual circuit processes this, **Then** $X is removed from the P-D-P' inheritance pathway (D_g2 receives less), AND the D-P-D' circuit registers the wealth loss (D' security weakened). The same event produces effects in both circuits simultaneously.
+3. **Given** a county in legitimation crisis (index < 0.3), **When** the P-D-P' circuit processes the next generation, **Then** fertility rate declines (fewer D_g2 births) AND ideology transmission shifts (D_g2 cohorts receive higher class consciousness / lower acquiescence from their radicalized P_g1 caregivers). Both effects are measurable and directionally correct.
+4. **Given** a county with high dependency ratio (many D' + many D relative to P), **When** the sandwich squeeze is computed, **Then** P-phase per-capita resources decline, D_g2 investment quality degrades, AND the class mobility function produces worse P_g2 outcomes — the sandwich effect propagates from the current generation's resource constraint to the next generation's class position.
+
+______________________________________________________________________
+
 ### Edge Cases
 
 - What happens when pop_P reaches zero (no productive workers)? The system must handle division by zero in dependency_ratio and signal economic collapse.
@@ -138,6 +165,9 @@ ______________________________________________________________________
 - What happens when legitimation_index is exactly at a threshold boundary (0.3 or 0.5)? The categorization uses consistent boundary rules: CRISIS if index < 0.3, UNSTABLE if 0.3 <= index < 0.5, STABLE if index >= 0.5.
 - How does mass mortality (pandemic, war) affect phase transitions? A sudden spike in P-to-death or D'-to-death rates must be processable without numerical instability.
 - What happens when dispossession severs the inheritance mechanism mid-simulation? The system must handle the case where accumulated wealth is forcibly transferred to capital rather than heirs.
+- What happens when both circuits collapse simultaneously (legitimation crisis AND demographic crisis)? The system must handle the compound case where P-phase workers cannot fund either D' or D_g2 — a total reproduction failure.
+- How does the sandwich squeeze interact with dispossession? If a sandwiched P-phase worker is dispossessed, the cascading effect hits both D' dependents (immediate care crisis) and D_g2 children (inheritance pathway destroyed).
+- What happens when fertility rate drops to zero due to legitimation collapse? The P-D-P' circuit halts entirely — no new D_g2 births. The system must signal a class reproduction extinction event while the D-P-D' circuit continues for existing cohorts.
 
 ## Requirements *(mandatory)*
 
@@ -161,6 +191,11 @@ ______________________________________________________________________
 - **FR-016**: System MUST model a class mobility function for the D-to-P transition: given a parent's income percentile and race, what income percentile does the child reach? Default parameters calibrated from Mobility Atlas KFR data (e.g., P25 parents → ~P45 child pooled; Black children ~3-7 percentiles below White at same parental class). These parameters shift in-game in response to events (e.g., increased racial discrimination widens the racial gap; improved education narrows it).
 - **FR-017**: System MUST derive premature P-phase exit rate parameters from Mobility Atlas mortality data (fraction dead by age 32, by race and parental income). Default: ~0.4% for P25 pooled. Race-specific differentials are tunable coefficients that shift with simulation events (carceral expansion, healthcare access changes).
 - **FR-018**: System MUST expose ALL population dynamics parameters (fertility rate, D-to-P rate, P-to-D' rate, D'-to-death rate, class mobility rates, racial gap coefficients, premature mortality rates) as tunable coefficients in GameDefines with scientifically-based defaults. Each parameter MUST include: (a) default value, (b) source citation (Mobility Atlas table/column or demographic research), (c) explicit disclaimer that values are parameterized approximations. Parameters are modifiable by in-game events to model dynamic shifts (e.g., austerity policies degrade mobility, racial justice movements narrow gaps).
+- **FR-019**: System MUST model the resource competition between D-P-D' and P-D-P' circuits: when P-phase per-capita resources decline (wage cuts, extraction increases), the system computes a tradeoff between D' savings (individual lifecycle security) and D_g2 investment (next-generation child-rearing). The allocation split depends on the current legitimation index — high legitimation biases toward D_g2 investment; low legitimation biases toward D' self-preservation.
+- **FR-020**: System MUST model the dispossession short-circuit: when dispossession events extract wealth from P_g1 families, the extracted amount is simultaneously removed from (a) the D-P-D' circuit (D' security weakened) and (b) the P-D-P' circuit (inheritance pathway reduced). A single dispossession event produces effects in both circuits.
+- **FR-021**: System MUST model the legitimation-fertility nexus: when legitimation index drops below configurable thresholds, fertility rate declines (P-D-P' quantity effect) AND ideology transmission during D-to-P shifts toward higher class consciousness (P-D-P' quality effect). Both effects are proportional to the legitimation deficit.
+- **FR-022**: System MUST compute the sandwich squeeze: when dependency ratio exceeds a configurable threshold, P-phase per-capita resources are reduced by the combined burden of D' care AND D_g2 investment, degrading both the current generation's D' security and the next generation's class mobility outcomes.
+- **FR-023**: System MUST compute a generational shadow subsidy metric: the difference between the cost of producing a P_g2 worker (D_g2 socialization costs borne by P_g1 families) and the wage premium capital pays for that labor-power. This metric quantifies the unpaid intergenerational reproduction cost extracted by M-C-M'.
 
 ### Key Entities
 
@@ -185,6 +220,10 @@ ______________________________________________________________________
 - **SC-008**: All D-P-D' models validate against existing constrained types (Probability, Currency, Gini, Coefficient) with no type violations at runtime.
 - **SC-009**: All tunable population dynamics and class mobility parameters have documented provenance (source, derivation method, default value) and respond correctly to in-game events that modify them (e.g., a racial discrimination event widens the racial mobility gap parameter).
 - **SC-010**: Default class mobility parameters produce D-to-P transition outcomes consistent with Mobility Atlas empirical values (within 5% tolerance for pooled KFR at P25, P50, P75).
+- **SC-011**: When P-phase wages are reduced by 20%, the dual circuit resource competition produces a measurable shift in the D' savings vs D_g2 investment allocation, and the direction of the shift correlates with the current legitimation index.
+- **SC-012**: A single dispossession event produces measurable effects in both circuits simultaneously: reduced D' security (D-P-D' reading) AND reduced inheritance pathway (P-D-P' reading).
+- **SC-013**: Counties in legitimation crisis (index < 0.3) show both lower fertility rates AND higher class consciousness in the D_g2 cohort compared to counties with stable legitimation (index >= 0.5).
+- **SC-014**: The generational shadow subsidy metric is positive for all class configurations (capital always extracts more from P_g2 than it paid to produce them through P_g1 wages).
 
 ## Assumptions
 

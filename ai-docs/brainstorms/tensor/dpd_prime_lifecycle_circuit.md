@@ -38,10 +38,10 @@ Generation N:     D ──► P ──► D' ──► [death]
                         │
                         │ produces & raises
                         ▼
-Generation N+1:   D ──► P ──► D' ──► [death]
-                        │
-                        ▼
-Generation N+2:   D ──► ...
+Generation N+1:         D ──► P ──► D' ──► [death]
+                              │
+                              ▼
+Generation N+2:               D ──► ...
 ```
 
 The "return" to D happens not for the same person but for their offspring. The circuit reproduces *the class* across generations even as individuals traverse it once.

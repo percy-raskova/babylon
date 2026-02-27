@@ -36,8 +36,10 @@ from babylon.models.entities import (
     TriggerCondition,
 )
 from babylon.models.entities.community import (
+    CommunityConsciousness,
     CommunityMembership,
     CommunityState,
+    ContradictionAxis,
 )
 
 # Entity Registry (single source of truth for entity IDs)
@@ -187,4 +189,6 @@ __all__ = [
     # Community Hyperedge Upgrade (Feature 029)
     "HyperedgeCategory",
     "ConsciousnessTendency",
+    "CommunityConsciousness",
+    "ContradictionAxis",
 ]

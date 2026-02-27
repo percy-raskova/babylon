@@ -160,11 +160,11 @@ ______________________________________________________________________
 
 **Purpose**: Final verification, exports, and documentation
 
-- [ ] T044 Update `__init__.py` exports: add HyperedgeCategory, ConsciousnessTendency, CommunityConsciousness, ContradictionAxis, and all new functions/constants to package `__all__` in `src/babylon/models/__init__.py` and `src/babylon/models/entities/__init__.py`
-- [ ] T045 Run `mise run check` (lint + format + typecheck + test:unit)
-- [ ] T046 Run `mise run test:unit` (full unit suite, not just community tests)
-- [ ] T047 Validate quickstart.md scenarios: execute each integration scenario from `specs/029-community-hyperedge-upgrade/quickstart.md` in a test or REPL
-- [ ] T048 Commit final implementation with conventional commit message
+- [x] T044 Update `__init__.py` exports: add HyperedgeCategory, ConsciousnessTendency, CommunityConsciousness, ContradictionAxis, and all new functions/constants to package `__all__` in `src/babylon/models/__init__.py` and `src/babylon/models/entities/__init__.py`
+- [x] T045 Run `mise run check` (lint + format + typecheck + test:unit)
+- [x] T046 Run `mise run test:unit` (full unit suite, not just community tests)
+- [x] T047 Validate quickstart.md scenarios: execute each integration scenario from `specs/029-community-hyperedge-upgrade/quickstart.md` in a test or REPL
+- [x] T048 Commit final implementation with conventional commit message
 
 ______________________________________________________________________
 

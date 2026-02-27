@@ -1,0 +1,2981 @@
+constants:
+  - constant_id: crisis.crisis_period_ticks
+    location:
+      file: src/babylon/config/defines.py
+      line: 35
+      source_type: GameDefines
+    value: 13
+    value_type: int
+    purpose: Ticks per crisis evaluation period (13 = quarterly, prime for desync)
+    consumers: []
+    tier: null
+  - constant_id: crisis.r_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 41
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Profit rate threshold below which crisis accumulates
+    consumers:
+      - system: TickDynamicsSystem._run_crisis_detection
+        file: src/babylon/economics/tick/system.py
+        line: 634
+        usage: direct
+    tier: null
+  - constant_id: crisis.n_consecutive
+    location:
+      file: src/babylon/config/defines.py
+      line: 47
+      source_type: GameDefines
+    value: 3
+    value_type: int
+    purpose: Consecutive below-threshold periods for crisis onset
+    consumers:
+      - system: TickDynamicsSystem._run_crisis_detection
+        file: src/babylon/economics/tick/system.py
+        line: 635
+        usage: direct
+    tier: null
+  - constant_id: crisis.m_recovery
+    location:
+      file: src/babylon/config/defines.py
+      line: 53
+      source_type: GameDefines
+    value: 2
+    value_type: int
+    purpose: Consecutive above-threshold periods for recovery start
+    consumers:
+      - system: TickDynamicsSystem._run_crisis_detection
+        file: src/babylon/economics/tick/system.py
+        line: 636
+        usage: direct
+    tier: null
+  - constant_id: crisis.r_cap
+    location:
+      file: src/babylon/config/defines.py
+      line: 59
+      source_type: GameDefines
+    value: 8
+    value_type: int
+    purpose: Maximum recovery duration (periods)
+    consumers:
+      - system: TickDynamicsSystem._run_crisis_detection
+        file: src/babylon/economics/tick/system.py
+        line: 637
+        usage: direct
+    tier: null
+  - constant_id: crisis.hysteresis_coefficient
+    location:
+      file: src/babylon/config/defines.py
+      line: 67
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: "Recovery hysteresis: effective = normal * (1 - h^k)"
+    consumers: []
+    tier: null
+  - constant_id: crisis.wage_compression_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 73
+      source_type: GameDefines
+    value: 0.02
+    value_type: float
+    purpose: Per-period wage compression during DEEP crisis
+    consumers:
+      - system: TickDynamicsSystem._run_crisis_detection
+        file: src/babylon/economics/tick/system.py
+        line: 643
+        usage: direct
+    tier: null
+  - constant_id: crisis.wage_compression_floor_ratio
+    location:
+      file: src/babylon/config/defines.py
+      line: 79
+      source_type: GameDefines
+    value: 0.8
+    value_type: float
+    purpose: Wage floor as fraction of subsistence (below = accumulation halt)
+    consumers:
+      - system: TickDynamicsSystem._run_class_transitions
+        file: src/babylon/economics/tick/system.py
+        line: 1502
+        usage: direct
+    tier: null
+  - constant_id: crisis.bifurcation_solidarity_weight
+    location:
+      file: src/babylon/config/defines.py
+      line: 87
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: Weight for solidarity density in bifurcation formula (w_s)
+    consumers:
+      - system: TickDynamicsSystem._run_bifurcation_risk
+        file: src/babylon/economics/tick/system.py
+        line: 1405
+        usage: direct
+    tier: null
+  - constant_id: crisis.bifurcation_burden_weight
+    location:
+      file: src/babylon/config/defines.py
+      line: 92
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: Weight for class burden ratio in bifurcation formula (w_b)
+    consumers:
+      - system: TickDynamicsSystem._run_bifurcation_risk
+        file: src/babylon/economics/tick/system.py
+        line: 1406
+        usage: direct
+    tier: null
+  - constant_id: crisis.class_burden_epsilon
+    location:
+      file: src/babylon/config/defines.py
+      line: 97
+      source_type: GameDefines
+    value: 0.001
+    value_type: float
+    purpose: Division-by-zero guard for class burden ratio
+    consumers:
+      - system: TickDynamicsSystem._run_bifurcation_risk
+        file: src/babylon/economics/tick/system.py
+        line: 1407
+        usage: direct
+    tier: null
+  - constant_id: crisis.bifurcation_event_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 103
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: "|score| threshold for BIFURCATION_THRESHOLD event emission"
+    consumers:
+      - system: TickDynamicsSystem._run_bifurcation_risk
+        file: src/babylon/economics/tick/system.py
+        line: 1410
+        usage: direct
+    tier: null
+  - constant_id: economy.extraction_efficiency
+    location:
+      file: src/babylon/config/defines.py
+      line: 123
+      source_type: GameDefines
+    value: 0.8
+    value_type: float
+    purpose: Alpha - how efficiently core extracts value from periphery
+    consumers:
+      - system: ImperialRentSystem._process_extraction_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 161
+        usage: direct
+      - system: ImperialRentSystem._process_wages_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 333
+        usage: direct
+    tier: null
+  - constant_id: economy.comprador_cut
+    location:
+      file: src/babylon/config/defines.py
+      line: 129
+      source_type: GameDefines
+    value: 0.9
+    value_type: float
+    purpose: Fraction of wealth kept by comprador class (prevents Comprador Liquidation)
+    consumers:
+      - system: ImperialRentSystem._process_tribute_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 256
+        usage: direct
+    tier: null
+  - constant_id: economy.base_labor_power
+    location:
+      file: src/babylon/config/defines.py
+      line: 137
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: Base value produced per tick by worker with full biocapacity
+    consumers:
+      - system: ProductionSystem.step
+        file: src/babylon/engine/systems/production.py
+        line: 99
+        usage: direct
+    tier: null
+  - constant_id: economy.super_wage_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 144
+      source_type: GameDefines
+    value: 0.2
+    value_type: float
+    purpose: Fraction of tribute paid as super-wages
+    consumers:
+      - system: ImperialRentSystem._load_economy
+        file: src/babylon/engine/systems/economic.py
+        line: 710
+        usage: direct
+    tier: null
+  - constant_id: economy.superwage_multiplier
+    location:
+      file: src/babylon/config/defines.py
+      line: 150
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: PPP multiplier for labor aristocracy purchasing power
+    consumers:
+      - system: ImperialRentSystem._process_wages_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 331
+        usage: direct
+      - system: apply_scenario
+        file: src/babylon/engine/scenarios.py
+        line: 626
+        usage: direct
+    tier: null
+  - constant_id: economy.superwage_ppp_impact
+    location:
+      file: src/babylon/config/defines.py
+      line: 155
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: How much extraction translates to PPP bonus
+    consumers:
+      - system: ImperialRentSystem._process_wages_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 332
+        usage: direct
+    tier: null
+  - constant_id: economy.initial_rent_pool
+    location:
+      file: src/babylon/config/defines.py
+      line: 163
+      source_type: GameDefines
+    value: 100.0
+    value_type: float
+    purpose: Starting imperial rent pool
+    consumers:
+      - system: ImperialRentSystem.step
+        file: src/babylon/engine/systems/economic.py
+        line: 72
+        usage: direct
+      - system: ImperialRentSystem._load_economy
+        file: src/babylon/engine/systems/economic.py
+        line: 709
+        usage: direct
+    tier: null
+  - constant_id: economy.pool_high_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 168
+      source_type: GameDefines
+    value: 0.7
+    value_type: float
+    purpose: Pool ratio for prosperity mode
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 596
+        usage: direct
+    tier: null
+  - constant_id: economy.pool_low_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 174
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Pool ratio for austerity mode
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 597
+        usage: direct
+    tier: null
+  - constant_id: economy.pool_critical_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 180
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Pool ratio for ECONOMIC_CRISIS
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 598
+        usage: direct
+    tier: null
+  - constant_id: economy.min_wage_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 188
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Minimum super-wage rate during crisis
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 631
+        usage: direct
+    tier: null
+  - constant_id: economy.max_wage_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 194
+      source_type: GameDefines
+    value: 0.35
+    value_type: float
+    purpose: Maximum super-wage rate during prosperity
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 632
+        usage: direct
+    tier: null
+  - constant_id: economy.subsidy_conversion_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 202
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Rate at which wealth converts to repression
+    consumers:
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 458
+        usage: direct
+    tier: null
+  - constant_id: economy.subsidy_trigger_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 208
+      source_type: GameDefines
+    value: 0.8
+    value_type: float
+    purpose: "P(S|R)/P(S|A) ratio threshold for subsidy"
+    consumers:
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 457
+        usage: direct
+    tier: null
+  - constant_id: economy.shadow_wage_hourly
+    location:
+      file: src/babylon/config/defines.py
+      line: 216
+      source_type: GameDefines
+    value: 15.43
+    value_type: float
+    purpose: Shadow labor hourly rate (BLS 31-1120 home health aide median, May 2023)
+    consumers:
+      - system: ATUSDBLoader.get_shadow_wage
+        file: src/babylon/data/atus/db_loader.py
+        line: 179
+        usage: direct
+    tier: null
+  - constant_id: economy.negligible_rent
+    location:
+      file: src/babylon/config/defines.py
+      line: 223
+      source_type: GameDefines
+    value: 0.01
+    value_type: float
+    purpose: Rent below this threshold skips event emission
+    consumers:
+      - system: ImperialRentSystem._process_extraction_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 225
+        usage: direct
+      - system: ImperialRentSystem._process_wages_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 339
+        usage: direct
+    tier: null
+  - constant_id: economy.negligible_subsidy
+    location:
+      file: src/babylon/config/defines.py
+      line: 228
+      source_type: GameDefines
+    value: 0.01
+    value_type: float
+    purpose: Subsidy below this threshold skips processing
+    consumers:
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 532
+        usage: direct
+    tier: null
+  - constant_id: economy.base_subsistence
+    location:
+      file: src/babylon/config/defines.py
+      line: 238
+      source_type: GameDefines
+    value: 0.0005
+    value_type: float
+    purpose: "Biological floor: fixed cost per tick (LINEAR), scaled by class multiplier"
+    consumers:
+      - system: ImperialRentSystem._process_subsistence_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 116
+        usage: direct
+      - system: VitalitySystem.step
+        file: src/babylon/engine/systems/vitality.py
+        line: 104
+        usage: direct
+    tier: null
+  - constant_id: economy.death_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 246
+      source_type: GameDefines
+    value: 0.001
+    value_type: float
+    purpose: Wealth threshold below which entities die (zombie prevention failsafe)
+    consumers:
+      - system: VitalitySystem.step
+        file: src/babylon/engine/systems/vitality.py
+        line: 165
+        usage: direct
+    tier: null
+  - constant_id: economy.trpf_coefficient
+    location:
+      file: src/babylon/config/defines.py
+      line: 254
+      source_type: GameDefines
+    value: 0.0005
+    value_type: float
+    purpose: Rate at which extraction efficiency declines per tick (TRPF surrogate)
+    consumers:
+      - system: ImperialRentSystem._process_extraction_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 167
+        usage: direct
+    tier: null
+  - constant_id: economy.rent_pool_decay
+    location:
+      file: src/babylon/config/defines.py
+      line: 260
+      source_type: GameDefines
+    value: 0.002
+    value_type: float
+    purpose: Background evaporation rate of imperial rent pool per tick
+    consumers:
+      - system: ImperialRentSystem._save_economy
+        file: src/babylon/engine/systems/economic.py
+        line: 735
+        usage: direct
+    tier: null
+  - constant_id: economy.bribery_wage_delta
+    location:
+      file: src/babylon/config/defines.py
+      line: 268
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Wage increase during prosperity (BRIBERY policy)
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 602
+        usage: direct
+    tier: null
+  - constant_id: economy.austerity_wage_delta
+    location:
+      file: src/babylon/config/defines.py
+      line: 274
+      source_type: GameDefines
+    value: -0.05
+    value_type: float
+    purpose: Wage cut during low pool (AUSTERITY policy)
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 603
+        usage: direct
+    tier: null
+  - constant_id: economy.iron_fist_repression_delta
+    location:
+      file: src/babylon/config/defines.py
+      line: 280
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Repression increase during high tension (IRON_FIST policy)
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 604
+        usage: direct
+    tier: null
+  - constant_id: economy.crisis_wage_delta
+    location:
+      file: src/babylon/config/defines.py
+      line: 286
+      source_type: GameDefines
+    value: -0.15
+    value_type: float
+    purpose: Emergency wage cut during crisis
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 605
+        usage: direct
+    tier: null
+  - constant_id: economy.crisis_repression_delta
+    location:
+      file: src/babylon/config/defines.py
+      line: 292
+      source_type: GameDefines
+    value: 0.2
+    value_type: float
+    purpose: Emergency repression spike during crisis
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 606
+        usage: direct
+    tier: null
+  - constant_id: economy.bribery_tension_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 300
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Maximum aggregate tension for bribery policy
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 607
+        usage: direct
+    tier: null
+  - constant_id: economy.iron_fist_tension_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 306
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Minimum aggregate tension for iron fist policy
+    consumers:
+      - system: ImperialRentSystem._process_decision_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 608
+        usage: direct
+    tier: null
+  - constant_id: economy.trpf_efficiency_floor
+    location:
+      file: src/babylon/config/defines.py
+      line: 314
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Minimum extraction efficiency after TRPF decay
+    consumers:
+      - system: ImperialRentSystem._process_extraction_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 168
+        usage: direct
+    tier: null
+  - constant_id: survival.steepness_k
+    location:
+      file: src/babylon/config/defines.py
+      line: 328
+      source_type: GameDefines
+    value: 10.0
+    value_type: float
+    purpose: Sigmoid sharpness in acquiescence probability
+    consumers:
+      - system: SurvivalSystem.step
+        file: src/babylon/engine/systems/survival.py
+        line: 110
+        usage: direct
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 501
+        usage: direct
+    tier: null
+  - constant_id: survival.default_subsistence
+    location:
+      file: src/babylon/config/defines.py
+      line: 333
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Minimum wealth for survival through compliance
+    consumers:
+      - system: SurvivalSystem.step
+        file: src/babylon/engine/systems/survival.py
+        line: 111
+        usage: direct
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 488
+        usage: deprecated
+    tier: null
+  - constant_id: survival.default_organization
+    location:
+      file: src/babylon/config/defines.py
+      line: 341
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Fallback organization value
+    consumers:
+      - system: SurvivalSystem.step
+        file: src/babylon/engine/systems/survival.py
+        line: 126
+        usage: deprecated
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 482
+        usage: deprecated
+    tier: null
+  - constant_id: survival.default_repression
+    location:
+      file: src/babylon/config/defines.py
+      line: 347
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Fallback repression value
+    consumers:
+      - system: SurvivalSystem.step
+        file: src/babylon/engine/systems/survival.py
+        line: 127
+        usage: deprecated
+      - system: ImperialRentSystem._process_subsidy_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 485
+        usage: deprecated
+      - system: ImperialRentSystem._load_economy
+        file: src/babylon/engine/systems/economic.py
+        line: 711
+        usage: direct
+      - system: StruggleSystem._process_agency
+        file: src/babylon/engine/systems/struggle.py
+        line: 308
+        usage: deprecated
+    tier: null
+  - constant_id: survival.revolution_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 353
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: "Tipping point for P(S|R) formula"
+    consumers: []
+    tier: null
+  - constant_id: survival.repression_base
+    location:
+      file: src/babylon/config/defines.py
+      line: 358
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Base resistance to revolution in denominator
+    consumers: []
+    tier: null
+  - constant_id: vitality.base_mortality_factor
+    location:
+      file: src/babylon/config/defines.py
+      line: 386
+      source_type: GameDefines
+    value: 0.01
+    value_type: float
+    purpose: Fraction of at-risk population that dies per tick
+    consumers: []
+    tier: null
+  - constant_id: vitality.inequality_impact
+    location:
+      file: src/babylon/config/defines.py
+      line: 392
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: How strongly inequality affects marginal wealth (1.0=full effect)
+    consumers: []
+    tier: null
+  - constant_id: solidarity.scaling_factor
+    location:
+      file: src/babylon/config/defines.py
+      line: 405
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Multiplier for graph edge weights affecting organization
+    consumers: []
+    tier: null
+  - constant_id: solidarity.activation_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 411
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Minimum source consciousness for transmission
+    consumers:
+      - system: SolidaritySystem.step
+        file: src/babylon/engine/systems/solidarity.py
+        line: 128
+        usage: direct
+      - system: ConsciousnessSystem.step
+        file: src/babylon/engine/systems/ideology.py
+        line: 152
+        usage: direct
+    tier: null
+  - constant_id: solidarity.mass_awakening_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 417
+      source_type: GameDefines
+    value: 0.6
+    value_type: float
+    purpose: Target consciousness for MASS_AWAKENING event
+    consumers:
+      - system: SolidaritySystem.step
+        file: src/babylon/engine/systems/solidarity.py
+        line: 129
+        usage: direct
+    tier: null
+  - constant_id: solidarity.negligible_transmission
+    location:
+      file: src/babylon/config/defines.py
+      line: 423
+      source_type: GameDefines
+    value: 0.01
+    value_type: float
+    purpose: Threshold below which transmissions are skipped
+    consumers:
+      - system: SolidaritySystem.step
+        file: src/babylon/engine/systems/solidarity.py
+        line: 171
+        usage: deprecated
+    tier: null
+  - constant_id: solidarity.superwage_impact
+    location:
+      file: src/babylon/config/defines.py
+      line: 428
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: How much imperial extraction affects Core wealth
+    consumers: []
+    tier: null
+  - constant_id: behavioral.loss_aversion_lambda
+    location:
+      file: src/babylon/config/defines.py
+      line: 440
+      source_type: GameDefines
+    value: 2.25
+    value_type: float
+    purpose: Kahneman-Tversky loss aversion coefficient
+    consumers:
+      - system: calculate_consciousness_drift
+        file: src/babylon/formulas/fundamental_theorem.py
+        line: 95
+        usage: direct
+      - system: apply_loss_aversion
+        file: src/babylon/formulas/survival_calculus.py
+        line: 103
+        usage: direct
+      - system: calculate_ideological_routing
+        file: src/babylon/formulas/ideological_routing.py
+        line: 107
+        usage: direct
+    tier: null
+  - constant_id: tension.accumulation_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 452
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Rate at which tension accumulates from wealth gaps
+    consumers:
+      - system: ContradictionSystem.step
+        file: src/babylon/engine/systems/contradiction.py
+        line: 39
+        usage: direct
+    tier: null
+  - constant_id: consciousness.sensitivity
+    location:
+      file: src/babylon/config/defines.py
+      line: 465
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: How quickly consciousness responds to material conditions
+    consumers: []
+    tier: null
+  - constant_id: consciousness.decay_lambda
+    location:
+      file: src/babylon/config/defines.py
+      line: 471
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Decay rate for consciousness without material basis
+    consumers: []
+    tier: null
+  - constant_id: territory.heat_decay_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 483
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Heat decay for LOW_PROFILE territories
+    consumers:
+      - system: TerritorySystem._process_heat
+        file: src/babylon/engine/systems/territory.py
+        line: 118
+        usage: direct
+    tier: null
+  - constant_id: territory.high_profile_heat_gain
+    location:
+      file: src/babylon/config/defines.py
+      line: 489
+      source_type: GameDefines
+    value: 0.15
+    value_type: float
+    purpose: Heat gain for HIGH_PROFILE territories
+    consumers:
+      - system: TerritorySystem._process_heat
+        file: src/babylon/engine/systems/territory.py
+        line: 119
+        usage: direct
+    tier: null
+  - constant_id: territory.eviction_heat_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 495
+      source_type: GameDefines
+    value: 0.8
+    value_type: float
+    purpose: Heat threshold for eviction pipeline
+    consumers:
+      - system: TerritorySystem._process_eviction
+        file: src/babylon/engine/systems/territory.py
+        line: 226
+        usage: direct
+    tier: null
+  - constant_id: territory.rent_spike_multiplier
+    location:
+      file: src/babylon/config/defines.py
+      line: 501
+      source_type: GameDefines
+    value: 1.5
+    value_type: float
+    purpose: Rent multiplier during eviction
+    consumers:
+      - system: TerritorySystem._process_eviction
+        file: src/babylon/engine/systems/territory.py
+        line: 227
+        usage: direct
+    tier: null
+  - constant_id: territory.displacement_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 506
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Population displacement during eviction
+    consumers:
+      - system: TerritorySystem._process_eviction
+        file: src/babylon/engine/systems/territory.py
+        line: 228
+        usage: direct
+    tier: null
+  - constant_id: territory.heat_spillover_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 512
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Heat spillover via ADJACENCY edges
+    consumers:
+      - system: TerritorySystem._process_spillover
+        file: src/babylon/engine/systems/territory.py
+        line: 286
+        usage: direct
+    tier: null
+  - constant_id: territory.clarity_profile_coefficient
+    location:
+      file: src/babylon/config/defines.py
+      line: 518
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Clarity bonus for HIGH_PROFILE territories
+    consumers: []
+    tier: null
+  - constant_id: territory.concentration_camp_decay_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 524
+      source_type: GameDefines
+    value: 0.2
+    value_type: float
+    purpose: Population decay rate in CONCENTRATION_CAMP territories (elimination)
+    consumers:
+      - system: TerritorySystem._process_sink_effects
+        file: src/babylon/engine/systems/territory.py
+        line: 333
+        usage: direct
+    tier: null
+  - constant_id: territory.elimination_rent_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 539
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Imperial rent ratio below which ELIMINATION mode activates
+    consumers: []
+    tier: null
+  - constant_id: territory.elimination_tension_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 545
+      source_type: GameDefines
+    value: 0.8
+    value_type: float
+    purpose: Tension threshold above which ELIMINATION mode activates
+    consumers: []
+    tier: null
+  - constant_id: territory.containment_rent_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 551
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Imperial rent ratio below which CONTAINMENT mode activates
+    consumers: []
+    tier: null
+  - constant_id: territory.containment_tension_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 557
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Tension threshold above which CONTAINMENT mode activates
+    consumers: []
+    tier: null
+  - constant_id: topology.gaseous_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 577
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Percolation ratio below this = atomized (no collective action)
+    consumers:
+      - system: TopologyMonitor.__init__
+        file: src/babylon/engine/topology_monitor.py
+        line: 331
+        usage: fallback
+    tier: null
+  - constant_id: topology.condensation_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 583
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Percolation ratio for phase transition (gaseous→liquid/solid)
+    consumers:
+      - system: TopologyMonitor.__init__
+        file: src/babylon/engine/topology_monitor.py
+        line: 336
+        usage: fallback
+    tier: null
+  - constant_id: topology.vanguard_density_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 589
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Cadre density threshold for vanguard party (liquid→solid)
+    consumers:
+      - system: TopologyMonitor.__init__
+        file: src/babylon/engine/topology_monitor.py
+        line: 341
+        usage: fallback
+    tier: null
+  - constant_id: metabolism.entropy_factor
+    location:
+      file: src/babylon/config/defines.py
+      line: 607
+      source_type: GameDefines
+    value: 1.2
+    value_type: float
+    purpose: Extraction costs more than it yields (thermodynamic inefficiency)
+    consumers:
+      - system: MetabolismSystem.step
+        file: src/babylon/engine/systems/metabolism.py
+        line: 77
+        usage: direct
+    tier: null
+  - constant_id: metabolism.overshoot_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 613
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: Consumption/biocapacity ratio triggering ECOLOGICAL_OVERSHOOT
+    consumers:
+      - system: MetabolismSystem.step
+        file: src/babylon/engine/systems/metabolism.py
+        line: 78
+        usage: direct
+    tier: null
+  - constant_id: metabolism.max_overshoot_ratio
+    location:
+      file: src/babylon/config/defines.py
+      line: 619
+      source_type: GameDefines
+    value: 999.0
+    value_type: float
+    purpose: Cap for overshoot ratio when biocapacity depleted
+    consumers:
+      - system: MetabolismSystem.step
+        file: src/babylon/engine/systems/metabolism.py
+        line: 118
+        usage: direct
+    tier: null
+  - constant_id: struggle.spark_probability_scale
+    location:
+      file: src/babylon/config/defines.py
+      line: 643
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: "Base 10% chance scaled by repression_faced for EXCESSIVE_FORCE"
+    consumers:
+      - system: StruggleSystem._process_agency
+        file: src/babylon/engine/systems/struggle.py
+        line: 276
+        usage: direct
+    tier: null
+  - constant_id: struggle.resistance_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 649
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Minimum agitation level for uprising to trigger
+    consumers:
+      - system: StruggleSystem._process_agency
+        file: src/babylon/engine/systems/struggle.py
+        line: 277
+        usage: direct
+    tier: null
+  - constant_id: struggle.wealth_destruction_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 655
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Fraction of wealth destroyed during uprising (riot damage)
+    consumers:
+      - system: StruggleSystem._process_agency
+        file: src/babylon/engine/systems/struggle.py
+        line: 278
+        usage: direct
+    tier: null
+  - constant_id: struggle.solidarity_gain_per_uprising
+    location:
+      file: src/babylon/config/defines.py
+      line: 661
+      source_type: GameDefines
+    value: 0.2
+    value_type: float
+    purpose: Solidarity strength increase on edges per uprising
+    consumers:
+      - system: StruggleSystem._process_agency
+        file: src/babylon/engine/systems/struggle.py
+        line: 279
+        usage: direct
+    tier: null
+  - constant_id: struggle.jackson_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 669
+      source_type: GameDefines
+    value: 0.4
+    value_type: float
+    purpose: "Revolutionary capacity threshold (org * consciousness) for organized response"
+    consumers:
+      - system: StruggleSystem._check_george_jackson_bifurcation
+        file: src/babylon/engine/systems/struggle.py
+        line: 473
+        usage: direct
+    tier: null
+  - constant_id: struggle.revolutionary_agitation_boost
+    location:
+      file: src/babylon/config/defines.py
+      line: 675
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Agitation boost for periphery proletariat during revolutionary offensive
+    consumers:
+      - system: StruggleSystem._apply_revolutionary_offensive
+        file: src/babylon/engine/systems/struggle.py
+        line: 504
+        usage: direct
+    tier: null
+  - constant_id: struggle.fascist_identity_boost
+    location:
+      file: src/babylon/config/defines.py
+      line: 681
+      source_type: GameDefines
+    value: 0.2
+    value_type: float
+    purpose: National identity boost for core workers during fascist turn
+    consumers:
+      - system: StruggleSystem._apply_fascist_revanchism
+        file: src/babylon/engine/systems/struggle.py
+        line: 549
+        usage: direct
+    tier: null
+  - constant_id: struggle.fascist_acquiescence_boost
+    location:
+      file: src/babylon/config/defines.py
+      line: 687
+      source_type: GameDefines
+    value: 0.2
+    value_type: float
+    purpose: Acquiescence boost for core workers during fascist turn
+    consumers:
+      - system: StruggleSystem._apply_fascist_revanchism
+        file: src/babylon/engine/systems/struggle.py
+        line: 553
+        usage: direct
+    tier: null
+  - constant_id: carceral.control_capacity
+    location:
+      file: src/babylon/config/defines.py
+      line: 719
+      source_type: GameDefines
+    value: 4
+    value_type: int
+    purpose: "Prisoners one enforcer can control (1:N). US average ~4, crisis >15."
+    consumers:
+      - system: ControlRatioSystem.step
+        file: src/babylon/engine/systems/control_ratio.py
+        line: 148
+        usage: direct
+    tier: null
+  - constant_id: carceral.enforcer_fraction
+    location:
+      file: src/babylon/config/defines.py
+      line: 725
+      source_type: GameDefines
+    value: 0.15
+    value_type: float
+    purpose: "After SUPERWAGE_CRISIS: % of former LA who BECOME guards/cops"
+    consumers:
+      - system: DecompositionSystem._execute_decomposition
+        file: src/babylon/engine/systems/decomposition.py
+        line: 234
+        usage: direct
+    tier: null
+  - constant_id: carceral.proletariat_fraction
+    location:
+      file: src/babylon/config/defines.py
+      line: 731
+      source_type: GameDefines
+    value: 0.85
+    value_type: float
+    purpose: "After SUPERWAGE_CRISIS: % of former LA who BECOME prisoners"
+    consumers:
+      - system: DecompositionSystem._execute_decomposition
+        file: src/babylon/engine/systems/decomposition.py
+        line: 235
+        usage: direct
+    tier: null
+  - constant_id: carceral.revolution_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 737
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Average prisoner organization threshold for revolution (vs genocide)
+    consumers:
+      - system: ControlRatioSystem._emit_terminal_decision
+        file: src/babylon/engine/systems/control_ratio.py
+        line: 221
+        usage: direct
+    tier: null
+  - constant_id: carceral.decomposition_delay
+    location:
+      file: src/babylon/config/defines.py
+      line: 745
+      source_type: GameDefines
+    value: 52
+    value_type: int
+    purpose: Ticks to wait after SUPERWAGE_CRISIS before CLASS_DECOMPOSITION (1 year default)
+    consumers:
+      - system: DecompositionSystem.step
+        file: src/babylon/engine/systems/decomposition.py
+        line: 184
+        usage: direct
+    tier: null
+  - constant_id: carceral.control_ratio_delay
+    location:
+      file: src/babylon/config/defines.py
+      line: 751
+      source_type: GameDefines
+    value: 52
+    value_type: int
+    purpose: Ticks to wait after CLASS_DECOMPOSITION before checking control ratio (1 year default)
+    consumers:
+      - system: ControlRatioSystem.step
+        file: src/babylon/engine/systems/control_ratio.py
+        line: 134
+        usage: direct
+    tier: null
+  - constant_id: carceral.terminal_decision_delay
+    location:
+      file: src/babylon/config/defines.py
+      line: 757
+      source_type: GameDefines
+    value: 1
+    value_type: int
+    purpose: Ticks to wait after CONTROL_RATIO_CRISIS before TERMINAL_DECISION
+    consumers:
+      - system: ControlRatioSystem.step
+        file: src/babylon/engine/systems/control_ratio.py
+        line: 168
+        usage: direct
+    tier: null
+  - constant_id: endgame.revolutionary_percolation_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 794
+      source_type: GameDefines
+    value: 0.7
+    value_type: float
+    purpose: "Percolation ratio threshold for revolutionary victory (70%)"
+    consumers:
+      - system: EndgameDetector._check_revolutionary_victory
+        file: src/babylon/engine/observers/endgame_detector.py
+        line: 275
+        usage: direct
+    tier: null
+  - constant_id: endgame.revolutionary_consciousness_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 800
+      source_type: GameDefines
+    value: 0.8
+    value_type: float
+    purpose: "Average consciousness threshold for revolutionary victory (80%)"
+    consumers:
+      - system: EndgameDetector._check_revolutionary_victory
+        file: src/babylon/engine/observers/endgame_detector.py
+        line: 297
+        usage: direct
+    tier: null
+  - constant_id: endgame.ecological_overshoot_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 806
+      source_type: GameDefines
+    value: 2.0
+    value_type: float
+    purpose: Overshoot ratio threshold for ecological collapse tracking
+    consumers:
+      - system: EndgameDetector._check_ecological_collapse
+        file: src/babylon/engine/observers/endgame_detector.py
+        line: 336
+        usage: direct
+    tier: null
+  - constant_id: endgame.ecological_sustained_ticks
+    location:
+      file: src/babylon/config/defines.py
+      line: 811
+      source_type: GameDefines
+    value: 5
+    value_type: int
+    purpose: Consecutive ticks of overshoot before collapse triggers
+    consumers:
+      - system: EndgameDetector._check_ecological_collapse
+        file: src/babylon/engine/observers/endgame_detector.py
+        line: 341
+        usage: direct
+    tier: null
+  - constant_id: endgame.fascist_majority_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 817
+      source_type: GameDefines
+    value: 3
+    value_type: int
+    purpose: "Minimum nodes with national_identity > class_consciousness"
+    consumers:
+      - system: EndgameDetector._check_fascist_consolidation
+        file: src/babylon/engine/observers/endgame_detector.py
+        line: 371
+        usage: direct
+    tier: null
+  - constant_id: initial.worker_wealth
+    location:
+      file: src/babylon/config/defines.py
+      line: 830
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Starting wealth for periphery worker
+    consumers: []
+    tier: null
+  - constant_id: initial.owner_wealth
+    location:
+      file: src/babylon/config/defines.py
+      line: 835
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Starting wealth for core owner
+    consumers: []
+    tier: null
+  - constant_id: initial.default_population
+    location:
+      file: src/babylon/config/defines.py
+      line: 840
+      source_type: GameDefines
+    value: 1
+    value_type: int
+    purpose: >-
+      Default population for test entities. pop=1 ensures per-capita
+      survival mechanics are tested without large denominators masking issues.
+    consumers: []
+    tier: null
+  - constant_id: precision.decimal_places
+    location:
+      file: src/babylon/config/defines.py
+      line: 864
+      source_type: GameDefines
+    value: 6
+    value_type: int
+    purpose: Quantization precision (10^-n). Default 6 = 0.000001
+    consumers: []
+    tier: null
+  - constant_id: precision.epsilon
+    location:
+      file: src/babylon/config/defines.py
+      line: 874
+      source_type: GameDefines
+    value: 1e-09
+    value_type: float
+    purpose: Division-by-zero guard for formulas. Must be < grid precision (1e-9 < 1e-6).
+    consumers:
+      - system: calculate_revolution_probability
+        file: src/babylon/formulas/survival_calculus.py
+        line: 58
+        usage: direct
+    tier: null
+  - constant_id: precision.comparison_epsilon
+    location:
+      file: src/babylon/config/defines.py
+      line: 880
+      source_type: GameDefines
+    value: 1e-10
+    value_type: float
+    purpose: Float equality tolerance for tests (1e-10). Used with pytest.approx.
+    consumers: []
+    tier: null
+  - constant_id: timescale.tick_duration_days
+    location:
+      file: src/babylon/config/defines.py
+      line: 1079
+      source_type: GameDefines
+    value: 7
+    value_type: int
+    purpose: Real-world days per tick. Default 7 = weekly.
+    consumers: []
+    tier: null
+  - constant_id: timescale.weeks_per_year
+    location:
+      file: src/babylon/config/defines.py
+      line: 1085
+      source_type: GameDefines
+    value: 52
+    value_type: int
+    purpose: Weeks per year for flow conversion.
+    consumers:
+      - system: ImperialRentSystem._process_extraction_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 162
+        usage: direct
+      - system: ImperialRentSystem._process_wages_phase
+        file: src/babylon/engine/systems/economic.py
+        line: 327
+        usage: direct
+      - system: ProductionSystem.step
+        file: src/babylon/engine/systems/production.py
+        line: 100
+        usage: direct
+    tier: null
+  - constant_id: contradiction_field.field_min
+    location:
+      file: src/babylon/config/defines.py
+      line: 1121
+      source_type: GameDefines
+    value: 0.0
+    value_type: float
+    purpose: Minimum normalized field value
+    consumers:
+      - system: ContradictionFieldSystem.step
+        file: src/babylon/engine/systems/contradiction_field.py
+        line: 86
+        usage: direct
+    tier: null
+  - constant_id: contradiction_field.field_max
+    location:
+      file: src/babylon/config/defines.py
+      line: 1126
+      source_type: GameDefines
+    value: 10.0
+    value_type: float
+    purpose: Maximum normalized field value
+    consumers:
+      - system: ContradictionFieldSystem.step
+        file: src/babylon/engine/systems/contradiction_field.py
+        line: 87
+        usage: direct
+    tier: null
+  - constant_id: contradiction_field.history_window
+    location:
+      file: src/babylon/config/defines.py
+      line: 1133
+      source_type: GameDefines
+    value: 3
+    value_type: int
+    purpose: Rolling tick window for temporal derivative computation
+    consumers: []
+    tier: null
+  - constant_id: contradiction_field.curvature_alpha
+    location:
+      file: src/babylon/config/defines.py
+      line: 1141
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Self-loop weight for Ollivier-Ricci probability measures
+    consumers: []
+    tier: null
+  - constant_id: contradiction_field.co_optive_suppression_rate
+    location:
+      file: src/babylon/config/defines.py
+      line: 1149
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: Fraction of df/dt suppressed by CO-OPTIVE edges
+    consumers:
+      - system: _handle_co_optive_suppression
+        file: src/babylon/engine/systems/edge_transition.py
+        line: 676
+        usage: direct
+    tier: null
+  - constant_id: contradiction_field.latent_release_multiplier
+    location:
+      file: src/babylon/config/defines.py
+      line: 1155
+      source_type: GameDefines
+    value: 1.5
+    value_type: float
+    purpose: Multiplier applied to released latent contradictions
+    consumers:
+      - system: _handle_co_optive_breakdowns
+        file: src/babylon/engine/systems/edge_transition.py
+        line: 731
+        usage: direct
+    tier: null
+  - constant_id: contradiction_field.default_transition_priority
+    location:
+      file: src/babylon/config/defines.py
+      line: 1163
+      source_type: GameDefines
+    value: 0
+    value_type: int
+    purpose: Default priority for transitions without explicit priority
+    consumers: []
+    tier: null
+  - constant_id: reserve_army.sigmoid_k
+    location:
+      file: src/babylon/config/defines.py
+      line: 1183
+      source_type: GameDefines
+    value: 20.0
+    value_type: float
+    purpose: "Sigmoid steepness for reserve_ratio -> wage_pressure mapping"
+    consumers:
+      - system: DefaultWagePressureCalculator.compute_wage_pressure
+        file: src/babylon/economics/reserve_army/calculator.py
+        line: 44
+        usage: direct
+    tier: null
+  - constant_id: reserve_army.sigmoid_r0
+    location:
+      file: src/babylon/config/defines.py
+      line: 1189
+      source_type: GameDefines
+    value: 0.08
+    value_type: float
+    purpose: Reserve ratio at sigmoid midpoint (inflection point)
+    consumers:
+      - system: DefaultWagePressureCalculator.compute_wage_pressure
+        file: src/babylon/economics/reserve_army/calculator.py
+        line: 45
+        usage: direct
+    tier: null
+  - constant_id: reserve_army.wage_pressure_ceiling
+    location:
+      file: src/babylon/config/defines.py
+      line: 1197
+      source_type: GameDefines
+    value: 0.5
+    value_type: float
+    purpose: Maximum wage pressure coefficient (prevents total wage elimination)
+    consumers:
+      - system: DefaultWagePressureCalculator.compute_wage_pressure
+        file: src/babylon/economics/reserve_army/calculator.py
+        line: 46
+        usage: direct
+    tier: null
+  - constant_id: reserve_army.min_employed_fraction
+    location:
+      file: src/babylon/config/defines.py
+      line: 1205
+      source_type: GameDefines
+    value: 0.01
+    value_type: float
+    purpose: Minimum fraction of labor force that must remain employed
+    consumers: []
+    tier: null
+  - constant_id: dispossession.weight_foreclosure
+    location:
+      file: src/babylon/config/defines.py
+      line: 1226
+      source_type: GameDefines
+    value: 0.4
+    value_type: float
+    purpose: Weight for foreclosure events
+    consumers:
+      - system: DispossessionIntensityCalculator.compute_intensity
+        file: src/babylon/economics/dispossession/intensity.py
+        line: 42
+        usage: direct
+    tier: null
+  - constant_id: dispossession.weight_eviction
+    location:
+      file: src/babylon/config/defines.py
+      line: 1229
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Weight for eviction events
+    consumers:
+      - system: DispossessionIntensityCalculator.compute_intensity
+        file: src/babylon/economics/dispossession/intensity.py
+        line: 43
+        usage: direct
+    tier: null
+  - constant_id: dispossession.weight_displacement
+    location:
+      file: src/babylon/config/defines.py
+      line: 1232
+      source_type: GameDefines
+    value: 0.15
+    value_type: float
+    purpose: Weight for gentrification displacement events
+    consumers:
+      - system: DispossessionIntensityCalculator.compute_intensity
+        file: src/babylon/economics/dispossession/intensity.py
+        line: 44
+        usage: direct
+    tier: null
+  - constant_id: dispossession.weight_tax_sale
+    location:
+      file: src/babylon/config/defines.py
+      line: 1238
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Weight for tax sale events
+    consumers:
+      - system: DispossessionIntensityCalculator.compute_intensity
+        file: src/babylon/economics/dispossession/intensity.py
+        line: 45
+        usage: direct
+    tier: null
+  - constant_id: dispossession.weight_eminent_domain
+    location:
+      file: src/babylon/config/defines.py
+      line: 1241
+      source_type: GameDefines
+    value: 0.02
+    value_type: float
+    purpose: Weight for eminent domain events
+    consumers:
+      - system: DispossessionIntensityCalculator.compute_intensity
+        file: src/babylon/economics/dispossession/intensity.py
+        line: 46
+        usage: direct
+    tier: null
+  - constant_id: dispossession.weight_wage_theft
+    location:
+      file: src/babylon/config/defines.py
+      line: 1247
+      source_type: GameDefines
+    value: 0.03
+    value_type: float
+    purpose: Weight for wage theft events
+    consumers: []
+    tier: null
+  - constant_id: dispossession.weight_incarceration_seizure
+    location:
+      file: src/babylon/config/defines.py
+      line: 1250
+      source_type: GameDefines
+    value: 0.03
+    value_type: float
+    purpose: Weight for incarceration-related seizure events
+    consumers: []
+    tier: null
+  - constant_id: dispossession.weight_pension_default
+    location:
+      file: src/babylon/config/defines.py
+      line: 1256
+      source_type: GameDefines
+    value: 0.02
+    value_type: float
+    purpose: Weight for pension default events
+    consumers: []
+    tier: null
+  - constant_id: dispossession.deadweight_loss_fraction
+    location:
+      file: src/babylon/config/defines.py
+      line: 1264
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Fraction of transferred value lost as deadweight (not received by anyone)
+    consumers:
+      - system: DispossessionIntensityCalculator.compute_value_transfer
+        file: src/babylon/economics/dispossession/intensity.py
+        line: 72
+        usage: direct
+    tier: null
+  - constant_id: working_day.absolute_hours_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 1285
+      source_type: GameDefines
+    value: 45.0
+    value_type: float
+    purpose: Weekly hours above which exploitation is ABSOLUTE_DOMINANT
+    consumers: []
+    tier: null
+  - constant_id: working_day.relative_hours_threshold
+    location:
+      file: src/babylon/config/defines.py
+      line: 1291
+      source_type: GameDefines
+    value: 40.0
+    value_type: float
+    purpose: Weekly hours at or below which exploitation may be RELATIVE_DOMINANT
+    consumers: []
+    tier: null
+  - constant_id: working_day.intensity_threshold_high
+    location:
+      file: src/babylon/config/defines.py
+      line: 1299
+      source_type: GameDefines
+    value: 1.2
+    value_type: float
+    purpose: Labor intensity above which exploitation is RELATIVE_DOMINANT (with low hours)
+    consumers: []
+    tier: null
+  - constant_id: working_day.intensity_threshold_low
+    location:
+      file: src/babylon/config/defines.py
+      line: 1304
+      source_type: GameDefines
+    value: 1.1
+    value_type: float
+    purpose: Labor intensity below which exploitation is ABSOLUTE_DOMINANT (with high hours)
+    consumers: []
+    tier: null
+  - constant_id: working_day.absolute_visibility
+    location:
+      file: src/babylon/config/defines.py
+      line: 1311
+      source_type: GameDefines
+    value: 1.0
+    value_type: float
+    purpose: Consciousness visibility modifier for ABSOLUTE exploitation
+    consumers: []
+    tier: null
+  - constant_id: working_day.relative_visibility
+    location:
+      file: src/babylon/config/defines.py
+      line: 1317
+      source_type: GameDefines
+    value: 0.3
+    value_type: float
+    purpose: Consciousness visibility modifier for RELATIVE exploitation
+    consumers: []
+    tier: null
+  - constant_id: community.heat_decay_alpha
+    location:
+      file: src/babylon/config/defines.py
+      line: 1336
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Rate at which community heat decays toward 0 without provocation
+    consumers:
+      - system: _apply_decay
+        file: src/babylon/engine/systems/community.py
+        line: 443
+        usage: direct
+    tier: null
+  - constant_id: community.cohesion_decay_alpha
+    location:
+      file: src/babylon/config/defines.py
+      line: 1342
+      source_type: GameDefines
+    value: 0.03
+    value_type: float
+    purpose: Rate at which cohesion decays without organizing work
+    consumers:
+      - system: _apply_decay
+        file: src/babylon/engine/systems/community.py
+        line: 446
+        usage: direct
+    tier: null
+  - constant_id: community.infrastructure_decay_alpha
+    location:
+      file: src/babylon/config/defines.py
+      line: 1348
+      source_type: GameDefines
+    value: 0.04
+    value_type: float
+    purpose: Rate at which infrastructure decays without maintenance
+    consumers:
+      - system: _apply_decay
+        file: src/babylon/engine/systems/community.py
+        line: 452
+        usage: direct
+    tier: null
+  - constant_id: community.community_overlap_bonus
+    location:
+      file: src/babylon/config/defines.py
+      line: 1356
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Solidarity potential bonus per shared community membership
+    consumers: []
+    tier: null
+  - constant_id: community.rent_differential_penalty
+    location:
+      file: src/babylon/config/defines.py
+      line: 1361
+      source_type: GameDefines
+    value: 0.05
+    value_type: float
+    purpose: Solidarity potential penalty per unit of imperial rent differential
+    consumers: []
+    tier: null
+  - constant_id: community.core_organizer_maintenance_factor
+    location:
+      file: src/babylon/config/defines.py
+      line: 1368
+      source_type: GameDefines
+    value: 0.1
+    value_type: float
+    purpose: Infrastructure maintenance contribution per CORE_ORGANIZER member
+    consumers:
+      - system: _apply_decay
+        file: src/babylon/engine/systems/community.py
+        line: 454
+        usage: direct
+    tier: null
+  - constant_id: formulas.LOSS_AVERSION_COEFFICIENT
+    location:
+      file: src/babylon/formulas/constants.py
+      line: 17
+      source_type: FormulaConstant
+    value: 2.25
+    value_type: float
+    purpose: Kahneman-Tversky loss aversion coefficient (re-exported from behavioral.loss_aversion_lambda)
+    consumers:
+      - system: calculate_consciousness_drift
+        file: src/babylon/formulas/fundamental_theorem.py
+        line: 95
+        usage: direct
+      - system: apply_loss_aversion
+        file: src/babylon/formulas/survival_calculus.py
+        line: 103
+        usage: direct
+      - system: calculate_ideological_routing
+        file: src/babylon/formulas/ideological_routing.py
+        line: 107
+        usage: direct
+    tier: null
+  - constant_id: formulas.EPSILON
+    location:
+      file: src/babylon/formulas/constants.py
+      line: 21
+      source_type: FormulaConstant
+    value: 1e-09
+    value_type: float
+    purpose: Division-by-zero guard (re-exported from precision.epsilon)
+    consumers:
+      - system: calculate_revolution_probability
+        file: src/babylon/formulas/survival_calculus.py
+        line: 58
+        usage: direct
+    tier: null
+  - constant_id: "class_dynamics:58:alpha_41"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 58
+      source_type: InlineLiteral
+    value: 0.0
+    value_type: float
+    purpose: "Extraction rate: proletariat to bourgeoisie (alpha_41)"
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:59:alpha_31"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 59
+      source_type: InlineLiteral
+    value: 0.0
+    value_type: float
+    purpose: "Extraction rate: labor aristocracy to bourgeoisie (alpha_31)"
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:60:alpha_21"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 60
+      source_type: InlineLiteral
+    value: 0.0006
+    value_type: float
+    purpose: "Extraction rate: petty bourgeoisie to bourgeoisie (alpha_21)"
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:61:alpha_32"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 61
+      source_type: InlineLiteral
+    value: 0.0
+    value_type: float
+    purpose: "Extraction rate: labor aristocracy to petty bourgeoisie (alpha_32)"
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:62:alpha_42"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 62
+      source_type: InlineLiteral
+    value: 0.0
+    value_type: float
+    purpose: "Extraction rate: proletariat to petty bourgeoisie (alpha_42)"
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:63:alpha_43"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 63
+      source_type: InlineLiteral
+    value: 0.0
+    value_type: float
+    purpose: "Extraction rate: proletariat to labor aristocracy (alpha_43)"
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:66:delta_1"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 66
+      source_type: InlineLiteral
+    value: 0.001
+    value_type: float
+    purpose: Redistribution rate from bourgeoisie (delta_1)
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:67:delta_2"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 67
+      source_type: InlineLiteral
+    value: 0.002
+    value_type: float
+    purpose: Redistribution rate from petty bourgeoisie (delta_2)
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:68:delta_3"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 68
+      source_type: InlineLiteral
+    value: 0.001
+    value_type: float
+    purpose: Redistribution rate from labor aristocracy (delta_3)
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:71:gamma_3"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 71
+      source_type: InlineLiteral
+    value: 0.0057
+    value_type: float
+    purpose: Imperial rent formation rate quarterly (gamma_3)
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:187:beta_default"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 187
+      source_type: InlineLiteral
+    value: -0.1
+    value_type: float
+    purpose: Default damping coefficient for wealth acceleration
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:188:omega_default"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 188
+      source_type: InlineLiteral
+    value: 0.05
+    value_type: float
+    purpose: Default natural frequency for wealth acceleration
+    consumers: []
+    tier: null
+  - constant_id: "class_dynamics:289:target_pct"
+    location:
+      file: src/babylon/formulas/class_dynamics.py
+      line: 289
+      source_type: InlineLiteral
+    value: 33.333
+    value_type: float
+    purpose: Default target wealth percentage for population inversion
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:28:high_threshold"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 28
+      source_type: InlineLiteral
+    value: 0.7
+    value_type: float
+    purpose: High pool_ratio threshold for prosperity (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:29:low_threshold"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 29
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Low pool_ratio threshold for austerity (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:30:critical_threshold"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 30
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Critical pool_ratio threshold for crisis (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:32:bribery_delta"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 32
+      source_type: InlineLiteral
+    value: 0.05
+    value_type: float
+    purpose: Bribery wage increase delta (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:33:austerity_delta"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 33
+      source_type: InlineLiteral
+    value: -0.05
+    value_type: float
+    purpose: Austerity wage cut delta (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:34:iron_fist_delta"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 34
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Iron fist repression delta (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:35:crisis_wage_delta"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 35
+      source_type: InlineLiteral
+    value: -0.15
+    value_type: float
+    purpose: Crisis emergency wage cut delta (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:36:crisis_repr_delta"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 36
+      source_type: InlineLiteral
+    value: 0.2
+    value_type: float
+    purpose: Crisis emergency repression delta (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:38:bribery_tension"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 38
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Max tension for bribery policy (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "dynamic_balance:39:iron_fist_tension"
+    location:
+      file: src/babylon/formulas/dynamic_balance.py
+      line: 39
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: Min tension for iron fist policy (fallback default)
+    consumers: []
+    tier: null
+  - constant_id: "vitality:42:attrition_base"
+    location:
+      file: src/babylon/formulas/vitality.py
+      line: 42
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: Attrition base rate in deficit formula
+    consumers: []
+    tier: null
+  - constant_id: "survival_calculus:36:exp_clamp_low"
+    location:
+      file: src/babylon/formulas/survival_calculus.py
+      line: 36
+      source_type: InlineLiteral
+    value: -500
+    value_type: int
+    purpose: Overflow prevention lower bound for sigmoid exponent
+    consumers: []
+    tier: null
+  - constant_id: "survival_calculus:36:exp_clamp_high"
+    location:
+      file: src/babylon/formulas/survival_calculus.py
+      line: 36
+      source_type: InlineLiteral
+    value: 500
+    value_type: int
+    purpose: Overflow prevention upper bound for sigmoid exponent
+    consumers: []
+    tier: null
+  - constant_id: "solidarity:14:activation_default"
+    location:
+      file: src/babylon/formulas/solidarity.py
+      line: 14
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Default activation threshold for solidarity transmission
+    consumers: []
+    tier: null
+  - constant_id: "metabolic_rift:14:entropy_default"
+    location:
+      file: src/babylon/formulas/metabolic_rift.py
+      line: 14
+      source_type: InlineLiteral
+    value: 1.2
+    value_type: float
+    purpose: Default entropy factor for extraction waste
+    consumers: []
+    tier: null
+  - constant_id: "metabolic_rift:59:max_ratio_default"
+    location:
+      file: src/babylon/formulas/metabolic_rift.py
+      line: 59
+      source_type: InlineLiteral
+    value: 999.0
+    value_type: float
+    purpose: Default max ratio cap when biocapacity depleted
+    consumers: []
+    tier: null
+  - constant_id: "ideological_routing:39:routing_scale"
+    location:
+      file: src/babylon/formulas/ideological_routing.py
+      line: 39
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Routing scale factor converting agitation to consciousness change
+    consumers: []
+    tier: null
+  - constant_id: "ideological_routing:82:decay_rate"
+    location:
+      file: src/babylon/formulas/ideological_routing.py
+      line: 82
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Default agitation decay rate per tick
+    consumers: []
+    tier: null
+  - constant_id: "curvature:32:alpha_default"
+    location:
+      file: src/babylon/formulas/curvature.py
+      line: 32
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: Default alpha self-loop weight for Ollivier-Ricci
+    consumers: []
+    tier: null
+  - constant_id: "community_formula:21:overlap_bonus"
+    location:
+      file: src/babylon/formulas/community.py
+      line: 21
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Default overlap bonus per shared community
+    consumers: []
+    tier: null
+  - constant_id: "community_formula:22:rent_penalty"
+    location:
+      file: src/babylon/formulas/community.py
+      line: 22
+      source_type: InlineLiteral
+    value: 0.05
+    value_type: float
+    purpose: Default rent penalty per unit of rent differential
+    consumers: []
+    tier: null
+  - constant_id: "community_formula:81:maint_factor"
+    location:
+      file: src/babylon/formulas/community.py
+      line: 81
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Default infrastructure maintenance factor per CORE_ORGANIZER
+    consumers: []
+    tier: null
+  - constant_id: "trpf:25:efficiency_floor"
+    location:
+      file: src/babylon/formulas/trpf.py
+      line: 25
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Default floor for TRPF efficiency multiplier
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:55:GASEOUS_THRESHOLD"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 55
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: "GASEOUS_THRESHOLD: percolation gaseous phase boundary"
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:56:CONDENSATION_THRESHOLD"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 56
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: "CONDENSATION_THRESHOLD: percolation condensation boundary"
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:57:BRITTLE_MULTIPLIER"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 57
+      source_type: InlineLiteral
+    value: 2
+    value_type: int
+    purpose: "BRITTLE_MULTIPLIER: fragility amplification factor"
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:60:POTENTIAL_MIN_STRENGTH"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 60
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: "POTENTIAL_MIN_STRENGTH: min solidarity for potential edge"
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:61:ACTUAL_MIN_STRENGTH"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 61
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: "ACTUAL_MIN_STRENGTH: min solidarity for actual edge"
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:64:DEFAULT_REMOVAL_RATE"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 64
+      source_type: InlineLiteral
+    value: 0.2
+    value_type: float
+    purpose: "DEFAULT_REMOVAL_RATE: resilience test edge removal fraction"
+    consumers: []
+    tier: null
+  - constant_id: "topology_monitor:65:DEFAULT_SURVIVAL_THRESHOLD"
+    location:
+      file: src/babylon/engine/topology_monitor.py
+      line: 65
+      source_type: InlineLiteral
+    value: 0.4
+    value_type: float
+    purpose: "DEFAULT_SURVIVAL_THRESHOLD: resilience test survival threshold"
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:103:extraction_contested"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 103
+      source_type: InlineLiteral
+    value: 5.0
+    value_type: float
+    purpose: Exploitation threshold for extraction contested
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:128:extraction_broken"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 128
+      source_type: InlineLiteral
+    value: 2.0
+    value_type: float
+    purpose: Exploitation threshold for extraction broken
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:147:concessions_offered"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 147
+      source_type: InlineLiteral
+    value: 3.0
+    value_type: float
+    purpose: Exploitation threshold for concessions offered
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:171:mutual_aid_src"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 171
+      source_type: InlineLiteral
+    value: 2.0
+    value_type: float
+    purpose: Exploitation threshold (source) for mutual aid
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:197:market_failure"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 197
+      source_type: InlineLiteral
+    value: 1.0
+    value_type: float
+    purpose: Immiseration df_dt threshold for market failure
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:214:power_asymmetry"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 214
+      source_type: InlineLiteral
+    value: 5.0
+    value_type: float
+    purpose: Exploitation threshold for power asymmetry re-emergence
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:233:co_optive_power"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 233
+      source_type: InlineLiteral
+    value: 3.0
+    value_type: float
+    purpose: Imperial rent threshold for co-optive power
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:252:solidarity_degrades"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 252
+      source_type: InlineLiteral
+    value: 6.0
+    value_type: float
+    purpose: Immiseration threshold for solidarity degradation
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:271:betrayal"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 271
+      source_type: InlineLiteral
+    value: 3.0
+    value_type: float
+    purpose: Exploitation df_dt threshold for betrayal
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:296:conflict_resolved"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 296
+      source_type: InlineLiteral
+    value: 3.0
+    value_type: float
+    purpose: Exploitation value threshold for conflict resolved
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:314:shared_enemy_src"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 314
+      source_type: InlineLiteral
+    value: 7.0
+    value_type: float
+    purpose: Exploitation threshold (source) for shared enemy alliance
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:339:reform_concession"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 339
+      source_type: InlineLiteral
+    value: 3.0
+    value_type: float
+    purpose: Imperial rent threshold for reform concession
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:367:co_opt_normalizes"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 367
+      source_type: InlineLiteral
+    value: 2.0
+    value_type: float
+    purpose: Exploitation threshold for co-optation normalizes
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:392:co_opt_breakdown"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 392
+      source_type: InlineLiteral
+    value: 1.0
+    value_type: float
+    purpose: Exploitation df_dt threshold for co-optive breakdown
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:411:co_opt_recognized_src"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 411
+      source_type: InlineLiteral
+    value: 5.0
+    value_type: float
+    purpose: Exploitation threshold (source) for co-optation recognized
+    consumers: []
+    tier: null
+  - constant_id: "edge_transition:434:concessions_withdrawn"
+    location:
+      file: src/babylon/engine/systems/edge_transition.py
+      line: 434
+      source_type: InlineLiteral
+    value: 1.0
+    value_type: float
+    purpose: Imperial rent threshold for concessions withdrawn
+    consumers: []
+    tier: null
+  - constant_id: "endgame_detector:53:PERCOLATION_THRESHOLD"
+    location:
+      file: src/babylon/engine/observers/endgame_detector.py
+      line: 53
+      source_type: InlineLiteral
+    value: 0.7
+    value_type: float
+    purpose: PERCOLATION_THRESHOLD for imperial collapse (deprecated duplicate)
+    consumers: []
+    tier: null
+  - constant_id: "endgame_detector:54:CONSCIOUSNESS_THRESHOLD"
+    location:
+      file: src/babylon/engine/observers/endgame_detector.py
+      line: 54
+      source_type: InlineLiteral
+    value: 0.8
+    value_type: float
+    purpose: CONSCIOUSNESS_THRESHOLD for awakening (deprecated duplicate)
+    consumers: []
+    tier: null
+  - constant_id: "endgame_detector:57:OVERSHOOT_THRESHOLD"
+    location:
+      file: src/babylon/engine/observers/endgame_detector.py
+      line: 57
+      source_type: InlineLiteral
+    value: 2.0
+    value_type: float
+    purpose: OVERSHOOT_THRESHOLD for ecological collapse (deprecated duplicate)
+    consumers: []
+    tier: null
+  - constant_id: "endgame_detector:58:OVERSHOOT_CONSECUTIVE"
+    location:
+      file: src/babylon/engine/observers/endgame_detector.py
+      line: 58
+      source_type: InlineLiteral
+    value: 5
+    value_type: int
+    purpose: OVERSHOOT_CONSECUTIVE_TICKS for ecological collapse (deprecated duplicate)
+    consumers: []
+    tier: null
+  - constant_id: "endgame_detector:61:FASCIST_NODES"
+    location:
+      file: src/babylon/engine/observers/endgame_detector.py
+      line: 61
+      source_type: InlineLiteral
+    value: 3
+    value_type: int
+    purpose: FASCIST_NODES_THRESHOLD for fascist turn (deprecated duplicate)
+    consumers: []
+    tier: null
+  - constant_id: "metrics:41:DEATH_THRESHOLD"
+    location:
+      file: src/babylon/engine/observers/metrics.py
+      line: 41
+      source_type: InlineLiteral
+    value: 0.001
+    value_type: float
+    purpose: DEATH_THRESHOLD for zero-population detection
+    consumers: []
+    tier: null
+  - constant_id: "metrics:59:rolling_window"
+    location:
+      file: src/babylon/engine/observers/metrics.py
+      line: 59
+      source_type: InlineLiteral
+    value: 50
+    value_type: int
+    purpose: Default rolling window size for MetricsCollector
+    consumers: []
+    tier: null
+  - constant_id: "metrics:264:fallback_wage_rate"
+    location:
+      file: src/babylon/engine/observers/metrics.py
+      line: 264
+      source_type: InlineLiteral
+    value: 0.2
+    value_type: float
+    purpose: Fallback current_super_wage_rate
+    consumers: []
+    tier: null
+  - constant_id: "metrics:265:fallback_repression"
+    location:
+      file: src/babylon/engine/observers/metrics.py
+      line: 265
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: Fallback current_repression_level
+    consumers: []
+    tier: null
+  - constant_id: "metrics:266:fallback_pool_ratio"
+    location:
+      file: src/babylon/engine/observers/metrics.py
+      line: 266
+      source_type: InlineLiteral
+    value: 1.0
+    value_type: float
+    purpose: Fallback pool_ratio
+    consumers: []
+    tier: null
+  - constant_id: "metrics:270:pool_divisor"
+    location:
+      file: src/babylon/engine/observers/metrics.py
+      line: 270
+      source_type: InlineLiteral
+    value: 100.0
+    value_type: float
+    purpose: Pool ratio divisor (initial_pool proxy)
+    consumers: []
+    tier: null
+  - constant_id: "gamma_adapters:40:care_fraction_61"
+    location:
+      file: src/babylon/economics/gamma/adapters.py
+      line: 40
+      source_type: InlineLiteral
+    value: 0.6
+    value_type: float
+    purpose: Care fraction for NAICS 61 (Education)
+    consumers: []
+    tier: null
+  - constant_id: "gamma_adapters:41:care_fraction_62"
+    location:
+      file: src/babylon/economics/gamma/adapters.py
+      line: 41
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Care fraction for NAICS 62 (Healthcare)
+    consumers: []
+    tier: null
+  - constant_id: "gamma_adapters:42:care_fraction_814"
+    location:
+      file: src/babylon/economics/gamma/adapters.py
+      line: 42
+      source_type: InlineLiteral
+    value: 1.0
+    value_type: float
+    purpose: Care fraction for NAICS 814 (Private Households)
+    consumers: []
+    tier: null
+  - constant_id: "gamma_adapters:56:HOURS_PER_YEAR"
+    location:
+      file: src/babylon/economics/gamma/adapters.py
+      line: 56
+      source_type: InlineLiteral
+    value: 2080
+    value_type: int
+    purpose: HOURS_PER_YEAR standard annual work hours
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:20:HOURS_PER_YEAR"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 20
+      source_type: InlineLiteral
+    value: 2080
+    value_type: int
+    purpose: HOURS_PER_YEAR standard annual work hours
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:24:savings_bourgeoisie"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 24
+      source_type: InlineLiteral
+    value: 0.38
+    value_type: float
+    purpose: "Default savings rate: BOURGEOISIE"
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:25:savings_petit_b"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 25
+      source_type: InlineLiteral
+    value: 0.2
+    value_type: float
+    purpose: "Default savings rate: PETIT_BOURGEOISIE"
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:26:savings_la"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 26
+      source_type: InlineLiteral
+    value: 0.12
+    value_type: float
+    purpose: "Default savings rate: LABOR_ARISTOCRACY"
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:27:savings_proletariat"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 27
+      source_type: InlineLiteral
+    value: 0.03
+    value_type: float
+    purpose: "Default savings rate: PROLETARIAT"
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:28:savings_lumpen"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 28
+      source_type: InlineLiteral
+    value: 0.0
+    value_type: float
+    purpose: "Default savings rate: LUMPENPROLETARIAT"
+    consumers: []
+    tier: null
+  - constant_id: "savings_schedule:32:phi_cap"
+    location:
+      file: src/babylon/economics/dynamics/savings_schedule.py
+      line: 32
+      source_type: InlineLiteral
+    value: 0.05
+    value_type: float
+    purpose: Default phi cap for imperial rent capping
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_dyn:30:fc_weight_la_p"
+    location:
+      file: src/babylon/economics/dynamics/dispossession.py
+      line: 30
+      source_type: InlineLiteral
+    value: 0.6
+    value_type: float
+    purpose: Foreclosure weight for LA-to-P transition
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_dyn:31:bk_weight_la_p"
+    location:
+      file: src/babylon/economics/dynamics/dispossession.py
+      line: 31
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Bankruptcy weight for LA-to-P transition
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_dyn:32:ev_weight_la_p"
+    location:
+      file: src/babylon/economics/dynamics/dispossession.py
+      line: 32
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Eviction weight for LA-to-P transition
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_dyn:33:fc_weight_p_l"
+    location:
+      file: src/babylon/economics/dynamics/dispossession.py
+      line: 33
+      source_type: InlineLiteral
+    value: 0.1
+    value_type: float
+    purpose: Foreclosure weight for P-to-L transition
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_dyn:34:bk_weight_p_l"
+    location:
+      file: src/babylon/economics/dynamics/dispossession.py
+      line: 34
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Bankruptcy weight for P-to-L transition
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_dyn:35:ev_weight_p_l"
+    location:
+      file: src/babylon/economics/dynamics/dispossession.py
+      line: 35
+      source_type: InlineLiteral
+    value: 0.6
+    value_type: float
+    purpose: Eviction weight for P-to-L transition
+    consumers: []
+    tier: null
+  - constant_id: "accumulation:26:scf_threshold"
+    location:
+      file: src/babylon/economics/dynamics/accumulation.py
+      line: 26
+      source_type: InlineLiteral
+    value: 142000.0
+    value_type: float
+    purpose: Fed SCF p50 net worth threshold for LA entry
+    consumers: []
+    tier: null
+  - constant_id: "crisis_dyn:20:amplifier_default"
+    location:
+      file: src/babylon/economics/dynamics/crisis.py
+      line: 20
+      source_type: InlineLiteral
+    value: 2.5
+    value_type: float
+    purpose: Default crisis amplifier multiplier
+    consumers: []
+    tier: null
+  - constant_id: "crisis_dyn:21:dampener_default"
+    location:
+      file: src/babylon/economics/dynamics/crisis.py
+      line: 21
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Default recovery dampener multiplier
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:32:share_bourgeoisie"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 32
+      source_type: InlineLiteral
+    value: 0.01
+    value_type: float
+    purpose: Default bourgeoisie class share
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:33:share_petit_b"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 33
+      source_type: InlineLiteral
+    value: 0.09
+    value_type: float
+    purpose: Default petit bourgeoisie class share
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:34:share_la"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 34
+      source_type: InlineLiteral
+    value: 0.4
+    value_type: float
+    purpose: Default labor aristocracy class share
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:35:share_proletariat"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 35
+      source_type: InlineLiteral
+    value: 0.35
+    value_type: float
+    purpose: Default proletariat class share
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:36:share_lumpen"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 36
+      source_type: InlineLiteral
+    value: 0.15
+    value_type: float
+    purpose: Default lumpenproletariat class share
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:39:unemployment_rate"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 39
+      source_type: InlineLiteral
+    value: 0.05
+    value_type: float
+    purpose: Default unemployment rate
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:43:median_wage"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 43
+      source_type: InlineLiteral
+    value: 21.0
+    value_type: float
+    purpose: Default median wage ($/hr)
+    consumers: []
+    tier: null
+  - constant_id: "tick_init:108:tau_default"
+    location:
+      file: src/babylon/economics/tick/initializer.py
+      line: 108
+      source_type: InlineLiteral
+    value: 62.0
+    value_type: float
+    purpose: Default tau (MELT) if calculator unavailable
+    consumers: []
+    tier: null
+  - constant_id: "distribution:25:EPSILON"
+    location:
+      file: src/babylon/economics/distribution/types.py
+      line: 25
+      source_type: InlineLiteral
+    value: 1e-09
+    value_type: float
+    purpose: DISTRIBUTION_EPSILON for surplus identity verification
+    consumers: []
+    tier: null
+  - constant_id: "reproduction:63:externalization"
+    location:
+      file: src/babylon/economics/reproduction.py
+      line: 63
+      source_type: InlineLiteral
+    value: 0.2
+    value_type: float
+    purpose: Repro externalization factor (Meillassoux heuristic)
+    consumers: []
+    tier: null
+  - constant_id: "basket_vis:22:MVP_ALPHA"
+    location:
+      file: src/babylon/economics/melt/basket_visibility.py
+      line: 22
+      source_type: InlineLiteral
+    value: 0.25
+    value_type: float
+    purpose: "MVP_ALPHA: import share per Hickel et al."
+    consumers: []
+    tier: null
+  - constant_id: "basket_vis:23:MVP_GAMMA_IMPORT"
+    location:
+      file: src/babylon/economics/melt/basket_visibility.py
+      line: 23
+      source_type: InlineLiteral
+    value: 0.35
+    value_type: float
+    purpose: "MVP_GAMMA_IMPORT: trade-weighted average ERDI"
+    consumers: []
+    tier: null
+  - constant_id: "basket_vis:24:MVP_GAMMA_BASKET"
+    location:
+      file: src/babylon/economics/melt/basket_visibility.py
+      line: 24
+      source_type: InlineLiteral
+    value: 0.68
+    value_type: float
+    purpose: "MVP_GAMMA_BASKET: computed basket visibility"
+    consumers: []
+    tier: null
+  - constant_id: "derived_rates:23:ANNUAL_HOURS"
+    location:
+      file: src/babylon/economics/tick/derived_rates.py
+      line: 23
+      source_type: InlineLiteral
+    value: 2080
+    value_type: int
+    purpose: ANNUAL_HOURS_PER_WORKER standard work hours
+    consumers: []
+    tier: null
+  - constant_id: "struggle:370:consciousness_mult"
+    location:
+      file: src/babylon/engine/systems/struggle.py
+      line: 370
+      source_type: InlineLiteral
+    value: 0.5
+    value_type: float
+    purpose: Consciousness boost multiplier from solidarity gain
+    consumers: []
+    tier: null
+  - constant_id: "community_sys:156:heat_increase"
+    location:
+      file: src/babylon/engine/systems/community.py
+      line: 156
+      source_type: InlineLiteral
+    value: 0.3
+    value_type: float
+    purpose: Default heat increase for designate_community
+    consumers: []
+    tier: null
+  - constant_id: "community_sys:174:cohesion_reduce"
+    location:
+      file: src/babylon/engine/systems/community.py
+      line: 174
+      source_type: InlineLiteral
+    value: 0.2
+    value_type: float
+    purpose: Default cohesion reduction for infiltrate_community
+    consumers: []
+    tier: null
+  - constant_id: "community_sys:191:infra_reduce"
+    location:
+      file: src/babylon/engine/systems/community.py
+      line: 191
+      source_type: InlineLiteral
+    value: 0.4
+    value_type: float
+    purpose: Default infrastructure reduction for disrupt_infrastructure
+    consumers: []
+    tier: null
+  - constant_id: "dispossession_events:91:scale_factor"
+    location:
+      file: src/babylon/engine/systems/dispossession_events.py
+      line: 91
+      source_type: InlineLiteral
+    value: 0.01
+    value_type: float
+    purpose: Scale factor for value transfer from intensity
+    consumers: []
+    tier: null
+metadata:
+  total_count: 247
+  inline_count: 109
+  search_patterns:
+    - 'defines\.\w+\.\w+'
+    - 'services\.defines\.\w+\.\w+'
+    - 'self\._defines\.\w+\.\w+'
+    - 'LOSS_AVERSION_COEFFICIENT|EPSILON'
+    - 'defines\.DEFAULT_\w+'
+    - 'Field\(default=[\d.e-]+'
+    - '^\s*\w+\s*[:=]\s*[\d.e-]+'
+    - 'Final\[(float|int)\]\s*='
+  directories_searched:
+    - src/babylon/config/
+    - src/babylon/formulas/
+    - src/babylon/engine/systems/
+    - src/babylon/engine/observers/
+    - src/babylon/engine/
+    - src/babylon/economics/
+    - src/babylon/data/atus/
+    - src/babylon/models/
+  known_gaps:
+    - "circulation/defaults.py: ~65 NAICS sector profile constants excluded (data table, not individual constants)"
+    - "dynamics/hardcoded_data.py: ~42 historical rate entries excluded (annual time series, not individual constants)"
+    - "dynamics/crisis.py: ~20 phase multiplier entries partially sampled (data table of 5 phases x 4 multipliers)"
+    - "engine/factories.py: entity creation defaults not enumerated (test infrastructure)"
+    - "engine/scenarios.py: scenario-specific overrides not enumerated (configuration, not constants)"
+  generation_date: "2026-02-27"

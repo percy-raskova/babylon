@@ -28,14 +28,13 @@ Processing Strategy:
 
 from __future__ import annotations
 
-import csv
-import gzip
 import hashlib
 import logging
-from collections import defaultdict
+import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TextIO
+from typing import TYPE_CHECKING, Any
 
+import polars as pl
 from sqlalchemy import delete
 
 from babylon.data.loader_base import DataLoader, LoadStats
@@ -195,37 +194,6 @@ def _find_od_file(data_dir: Path, state_fips: str, year: int) -> Path | None:
     return None
 
 
-def _open_csv(path: Path) -> TextIO:
-    """Open CSV file, handling gzip compression."""
-    if path.suffix == ".gz":
-        return gzip.open(path, "rt", encoding="utf-8")
-    return path.open("r", encoding="utf-8", newline="")
-
-
-def _parse_int(value: str | None) -> int:
-    """Parse integer, defaulting to 0 for empty/None."""
-    if not value:
-        return 0
-    try:
-        return int(value)
-    except ValueError:
-        return 0
-
-
-def _block_to_county_fips(block_geoid: str) -> str:
-    """Extract 5-digit county FIPS from 15-digit block GEOID.
-
-    Block GEOID format: SSCCCTTTTTTBBBB
-        SS: State FIPS (2 digits)
-        CCC: County FIPS (3 digits)
-        TTTTTT: Tract (6 digits)
-        BBBB: Block (4 digits)
-    """
-    if len(block_geoid) >= 5:
-        return block_geoid[:5]
-    return ""
-
-
 class LODESODLoader(DataLoader):
     """Loader for LODES Origin-Destination commuter flow data.
 
@@ -336,8 +304,57 @@ class LODESODLoader(DataLoader):
         # Build lookups
         lookups = self._initialize_lookups(session)
 
+        result = self._load_all_files(session, data_dir, years, states, lookups, verbose)
+
+        session.commit()
+
+        stats.files_processed = result["files_processed"]
+        stats.facts_loaded["lodes_commuter_flow"] = result["total_loaded"]
+        stats.record_ingest("lodes_od:flows", result["total_loaded"])
+
+        return stats
+
+    def _count_available_files(
+        self,
+        data_dir: Path,
+        years: list[Any],
+        states: list[Any],
+        lookups: dict[str, Any],
+    ) -> int:
+        """Count OD files available for processing."""
+        total = 0
+        for year in years:
+            if lookups["time"].get(year) is None:
+                continue
+            for state_fips in states:
+                if _find_od_file(data_dir, state_fips, year) is not None:
+                    total += 1
+        return total
+
+    def _load_all_files(
+        self,
+        session: Session,
+        data_dir: Path,
+        years: list[Any],
+        states: list[Any],
+        lookups: dict[str, Any],
+        verbose: bool,
+    ) -> dict[str, int]:
+        """Process all OD files with progress tracking.
+
+        Returns:
+            Dict with total_loaded, files_processed, files_skipped counts.
+        """
+        total_files = self._count_available_files(data_dir, years, states, lookups)
         total_loaded = 0
         files_processed = 0
+        files_skipped = 0
+        file_counter = 0
+        t_start = time.monotonic()
+
+        if verbose:
+            print(f"\nLODES OD Import: {total_files} files to process")
+            print(f"{'=' * 60}")
 
         for year in years:
             time_id = lookups["time"].get(year)
@@ -351,39 +368,90 @@ class LODESODLoader(DataLoader):
                 if od_path is None:
                     continue
 
-                # Check checkpoint
-                file_hash = self._get_file_hash(od_path)
-                if self._is_completed(session, "lodes_od", year, file_hash, state_fips, "T"):
-                    if verbose:
-                        logger.debug("Skipping completed: %s %d", state_fips, year)
-                    continue
+                file_counter += 1
+                result = self._load_single_file(
+                    session,
+                    od_path,
+                    time_id,
+                    state_fips,
+                    year,
+                    lookups,
+                    verbose,
+                    file_counter,
+                    total_files,
+                    t_start,
+                )
 
-                if verbose:
-                    logger.info("Loading %s year %d from %s", state_fips, year, od_path.name)
-
-                loaded = self._process_od_file(session, od_path, time_id, lookups, verbose)
-
-                if loaded > 0:
-                    self._mark_completed(
-                        session, "lodes_od", year, file_hash, state_fips, "T", loaded
-                    )
-                    total_loaded += loaded
+                if result == -1:
+                    files_skipped += 1
+                elif result > 0:
+                    total_loaded += result
                     files_processed += 1
 
-        session.commit()
+        elapsed_total = time.monotonic() - t_start
+        if verbose:
+            print(f"{'=' * 60}")
+            print(
+                f"LODES OD complete: {total_loaded} county-pair flows "
+                f"from {files_processed} files in {elapsed_total:.1f}s"
+            )
+            if files_skipped > 0:
+                print(f"  ({files_skipped} files skipped via checkpoint)")
 
-        stats.files_processed = files_processed
-        stats.facts_loaded["lodes_commuter_flow"] = total_loaded
-        stats.record_ingest("lodes_od:flows", total_loaded)
+        return {
+            "total_loaded": total_loaded,
+            "files_processed": files_processed,
+            "files_skipped": files_skipped,
+        }
+
+    def _load_single_file(
+        self,
+        session: Session,
+        od_path: Path,
+        time_id: int,
+        state_fips: str,
+        year: int,
+        lookups: dict[str, Any],
+        verbose: bool,
+        file_counter: int,
+        total_files: int,
+        t_start: float,
+    ) -> int:
+        """Load a single OD file with checkpoint check and progress printing.
+
+        Returns:
+            Number of county-pairs loaded, or -1 if skipped via checkpoint.
+        """
+        file_hash = self._get_file_hash(od_path)
+        if self._is_completed(session, "lodes_od", year, file_hash, state_fips, "T"):
+            if verbose:
+                print(f"  [{file_counter}/{total_files}] {state_fips} {year}: skipped (checkpoint)")
+            return -1
+
+        t_file = time.monotonic()
+        state_abbrev = STATE_FIPS_TO_ABBREV.get(state_fips, state_fips)
+
+        loaded = self._process_od_file(session, od_path, time_id, lookups, verbose)
+
+        if loaded > 0:
+            self._mark_completed(session, "lodes_od", year, file_hash, state_fips, "T", loaded)
+
+        elapsed_file = time.monotonic() - t_file
+        elapsed_total = time.monotonic() - t_start
+        remaining_files = total_files - file_counter
+        avg_per_file = elapsed_total / file_counter
+        eta = avg_per_file * remaining_files
 
         if verbose:
-            logger.info(
-                "LODES OD loading complete: %d county-pair flows from %d files",
-                total_loaded,
-                files_processed,
+            print(
+                f"  [{file_counter}/{total_files}] "
+                f"{state_abbrev.upper()} {year}: "
+                f"{loaded} county-pairs "
+                f"({elapsed_file:.1f}s, "
+                f"~{eta:.0f}s remaining)"
             )
 
-        return stats
+        return loaded
 
     def _clear_existing_data(self, session: Session, verbose: bool) -> None:
         """Clear existing LODES commuter flow data."""
@@ -423,93 +491,64 @@ class LODESODLoader(DataLoader):
     ) -> int:
         """Process a single OD file and aggregate to county-pair flows.
 
-        In-memory aggregation strategy:
-            1. Stream rows from gzipped CSV
-            2. Extract county FIPS from block GEOIDs
-            3. Aggregate job counts by (home_county, work_county)
-            4. Batch write aggregated rows
+        Uses Polars for vectorized CSV parsing and aggregation:
+            1. Read gzipped CSV with Polars (Rust-native gzip decompression)
+            2. Extract county FIPS via vectorized str.slice(0, 5)
+            3. Group by county pair and sum job counts (Rust groupby)
+            4. Iterate aggregated rows (~500-5000) and batch write
 
-        This keeps memory bounded per state (~5MB typical) while avoiding
-        per-row database operations.
+        Memory: ~200-500 MB per file (columnar in-memory), bounded per file.
         """
         county_lookup = lookups["county"]
+        job_columns = ["S000", "SA01", "SA02", "SA03", "SE01", "SE02", "SE03"]
 
-        # Aggregation dict: (home_county_id, work_county_id) -> {S000, SA01, ...}
-        aggregation: dict[tuple[int, int], dict[str, int]] = defaultdict(
-            lambda: {
-                "S000": 0,
-                "SA01": 0,
-                "SA02": 0,
-                "SA03": 0,
-                "SE01": 0,
-                "SE02": 0,
-                "SE03": 0,
-            }
+        # Read only needed columns from gzipped CSV via Polars (Rust engine)
+        df = pl.read_csv(
+            od_path,
+            columns=["w_geocode", "h_geocode", *job_columns],
+            schema_overrides={"w_geocode": pl.Utf8, "h_geocode": pl.Utf8},
+            null_values=[""],
         )
 
-        rows_read = 0
-        rows_skipped = 0
+        # Vectorized FIPS extraction: first 5 chars of 15-digit block GEOID
+        df = df.with_columns(
+            pl.col("h_geocode").str.slice(0, 5).alias("home_fips"),
+            pl.col("w_geocode").str.slice(0, 5).alias("work_fips"),
+        )
 
-        with _open_csv(od_path) as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                rows_read += 1
+        # Aggregate to county-pair level (Rust groupby + sum)
+        agg_df = df.group_by(["home_fips", "work_fips"]).agg([pl.col(c).sum() for c in job_columns])
 
-                # Extract county FIPS from block GEOIDs
-                home_block = row.get("h_geocode", "")
-                work_block = row.get("w_geocode", "")
+        # Filter out zero-flow pairs
+        agg_df = agg_df.filter(pl.col("S000") > 0)
 
-                home_fips = _block_to_county_fips(home_block)
-                work_fips = _block_to_county_fips(work_block)
-
-                # Look up county IDs
-                home_county_id = county_lookup.get(home_fips)
-                work_county_id = county_lookup.get(work_fips)
-
-                if home_county_id is None or work_county_id is None:
-                    rows_skipped += 1
-                    continue
-
-                # Aggregate
-                key = (home_county_id, work_county_id)
-                agg = aggregation[key]
-                agg["S000"] += _parse_int(row.get("S000"))
-                agg["SA01"] += _parse_int(row.get("SA01"))
-                agg["SA02"] += _parse_int(row.get("SA02"))
-                agg["SA03"] += _parse_int(row.get("SA03"))
-                agg["SE01"] += _parse_int(row.get("SE01"))
-                agg["SE02"] += _parse_int(row.get("SE02"))
-                agg["SE03"] += _parse_int(row.get("SE03"))
-
-        if verbose and rows_skipped > 0:
-            logger.debug(
-                "Read %d rows, skipped %d (missing county mapping)",
-                rows_read,
-                rows_skipped,
-            )
-
-        # Batch write aggregated rows
+        # Map FIPS to county IDs and batch write
         writer = BatchWriter(session, self.config.batch_size)
         batch: list[dict[str, Any]] = []
+        pairs_written = 0
 
-        for (home_county_id, work_county_id), agg in aggregation.items():
-            if agg["S000"] == 0:
-                continue  # Skip zero-flow pairs
+        for row in agg_df.iter_rows(named=True):
+            home_county_id = county_lookup.get(row["home_fips"])
+            work_county_id = county_lookup.get(row["work_fips"])
+
+            if home_county_id is None or work_county_id is None:
+                continue
 
             batch.append(
                 {
                     "home_county_id": home_county_id,
                     "work_county_id": work_county_id,
                     "time_id": time_id,
-                    "total_jobs": agg["S000"],
-                    "jobs_age_29_under": agg["SA01"] or None,
-                    "jobs_age_30_54": agg["SA02"] or None,
-                    "jobs_age_55_plus": agg["SA03"] or None,
-                    "jobs_earn_low": agg["SE01"] or None,
-                    "jobs_earn_mid": agg["SE02"] or None,
-                    "jobs_earn_high": agg["SE03"] or None,
+                    "total_jobs": row["S000"],
+                    "jobs_age_29_under": row["SA01"] or None,
+                    "jobs_age_30_54": row["SA02"] or None,
+                    "jobs_age_55_plus": row["SA03"] or None,
+                    "jobs_earn_low": row["SE01"] or None,
+                    "jobs_earn_mid": row["SE02"] or None,
+                    "jobs_earn_high": row["SE03"] or None,
                 }
             )
+            pairs_written += 1
 
             if len(batch) >= self.config.batch_size:
                 writer.write(FactLodesCommuterFlow, batch)
@@ -518,7 +557,15 @@ class LODESODLoader(DataLoader):
         if batch:
             writer.write(FactLodesCommuterFlow, batch)
 
-        return len(aggregation)
+        if verbose:
+            logger.debug(
+                "Aggregated %d input rows to %d county pairs (%d written)",
+                len(df),
+                len(agg_df),
+                pairs_written,
+            )
+
+        return pairs_written
 
     def _get_file_hash(self, path: Path) -> str:
         """Create a short hash of file path for checkpoint key."""

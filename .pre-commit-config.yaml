@@ -47,6 +47,7 @@ repos:
           - sphinx>=7
           - pyproj>=3.5
           - shapely>=2.0
+          - polars>=1.0
         args: [--config-file=pyproject.toml]
         exclude: ^tests/|^examples/|^src/babylon/rag/|^src/babylon/__main__.py|^src/babylon/metrics/|^tools/|^assets/music/|^specs/
 

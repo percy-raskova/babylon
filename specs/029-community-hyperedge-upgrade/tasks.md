@@ -19,8 +19,8 @@ ______________________________________________________________________
 
 **Purpose**: Verify clean baseline before any changes
 
-- [ ] T001 Run `mise run check` to verify clean lint/typecheck/test state
-- [ ] T002 Run existing community tests to establish passing baseline: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py -v`
+- [x] T001 Run `mise run check` to verify clean lint/typecheck/test state
+- [x] T002 Run existing community tests to establish passing baseline: `poetry run pytest tests/unit/models/test_community_models.py tests/unit/engine/systems/test_community_system.py tests/unit/formulas/test_community_formulas.py -v`
 
 ______________________________________________________________________
 
@@ -30,9 +30,9 @@ ______________________________________________________________________
 
 **CRITICAL**: No user story work can begin until these enums exist
 
-- [ ] T003 Add `HyperedgeCategory` enum (CONTRADICTION_PAIR, INSTITUTIONAL_EXCLUSION, LIFECYCLE_PHASE) to `src/babylon/models/enums.py` after CommunityType
-- [ ] T004 Add `ConsciousnessTendency` enum (ASSIMILATIONIST_LIBERAL, ASSIMILATIONIST_FASCIST, REVOLUTIONARY) to `src/babylon/models/enums.py` after HyperedgeCategory
-- [ ] T005 Update `src/babylon/models/enums.py` `__all__` or package exports in `src/babylon/models/__init__.py` to include new enums
+- [x] T003 Add `HyperedgeCategory` enum (CONTRADICTION_PAIR, INSTITUTIONAL_EXCLUSION, LIFECYCLE_PHASE) to `src/babylon/models/enums.py` after CommunityType
+- [x] T004 Add `ConsciousnessTendency` enum (ASSIMILATIONIST_LIBERAL, ASSIMILATIONIST_FASCIST, REVOLUTIONARY) to `src/babylon/models/enums.py` after HyperedgeCategory
+- [x] T005 Update `src/babylon/models/enums.py` `__all__` or package exports in `src/babylon/models/__init__.py` to include new enums
 
 **Checkpoint**: New enums importable, `mise run check` passes
 

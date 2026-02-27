@@ -57,7 +57,9 @@ from babylon.models.entity_registry import (
 )
 from babylon.models.enums import (
     CommunityType,
+    ConsciousnessTendency,
     EdgeType,
+    HyperedgeCategory,
     IntensityLevel,
     LegalStatus,
     MembershipRole,
@@ -182,4 +184,7 @@ __all__ = [
     "MembershipRole",
     "CommunityState",
     "CommunityMembership",
+    # Community Hyperedge Upgrade (Feature 029)
+    "HyperedgeCategory",
+    "ConsciousnessTendency",
 ]

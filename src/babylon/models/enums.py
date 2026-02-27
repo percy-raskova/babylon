@@ -469,6 +469,46 @@ class CommunityType(StrEnum):
     ELDER = "elder"
 
 
+class HyperedgeCategory(StrEnum):
+    """Structural category for community hyperedges (Feature 029, Constitution II.7).
+
+    Three qualitatively distinct categories with different material bases,
+    relationships to oppression, and modeling requirements.
+
+    Values:
+        CONTRADICTION_PAIR: Both hegemonic and marginalized sides exist as real
+            hyperedges with extraction flows between them.
+        INSTITUTIONAL_EXCLUSION: Only marginalized side exists. Oppression flows
+            through institutional defaults, not a paired oppressor community.
+        LIFECYCLE_PHASE: Temporal positions in D-P-D' intergenerational lifecycle.
+            Universal, temporally permeable, defined by relationship to production.
+    """
+
+    CONTRADICTION_PAIR = "contradiction_pair"
+    INSTITUTIONAL_EXCLUSION = "institutional_exclusion"
+    LIFECYCLE_PHASE = "lifecycle_phase"
+
+
+class ConsciousnessTendency(StrEnum):
+    """Dominant ideological tendency within a community (Feature 029).
+
+    Represents the prevailing direction of collective consciousness — the
+    default drift without active organizing.
+
+    Values:
+        ASSIMILATIONIST_LIBERAL: Seeks inclusion in existing institutions
+            without transforming them. Organizational vehicle: liberal CSOs.
+        ASSIMILATIONIST_FASCIST: Collaboration with hegemonic order for
+            individual escape. Strategy: shrink the marginalized definition.
+        REVOLUTIONARY: Oppositional collective identity, independent power.
+            The contradiction is material, not a misunderstanding.
+    """
+
+    ASSIMILATIONIST_LIBERAL = "assimilationist_liberal"
+    ASSIMILATIONIST_FASCIST = "assimilationist_fascist"
+    REVOLUTIONARY = "revolutionary"
+
+
 class LegalStatus(StrEnum):
     """Legal designation status for community-level state repression.
 

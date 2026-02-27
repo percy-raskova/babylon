@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from babylon.models.enums import (
     CommunityType,
+    ConsciousnessTendency,
     HyperedgeCategory,
     LegalStatus,
     MembershipRole,
@@ -229,6 +230,119 @@ def shared_marginalized_communities(
     return shared & MARGINALIZED_COMMUNITIES
 
 
+# === Feature 029: Community Consciousness Model (US3) ===
+
+
+class CommunityConsciousness(BaseModel):
+    """The ideological dimension of a community hyperedge.
+
+    Args:
+        collective_identity: Oppositional consciousness [0, 1].
+        dominant_tendency: Prevailing ideological direction.
+        ideological_contestation: Active debate between tendencies [0, 1].
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    collective_identity: Probability = Field(
+        default=Probability(0.3),
+        description="Oppositional consciousness [0, 1]",
+    )
+    dominant_tendency: ConsciousnessTendency = Field(
+        default=ConsciousnessTendency.LIBERAL,
+        description="Prevailing ideological direction",
+    )
+    ideological_contestation: Probability = Field(
+        default=Probability(0.2),
+        description="Active debate between tendencies [0, 1]",
+    )
+
+
+# SYNTHETIC starting values for all 14 community types.
+# Detroit test case, circa 2010. Values are placeholders for calibration.
+CONSCIOUSNESS_DEFAULTS: dict[CommunityType, CommunityConsciousness] = {
+    # Contradiction pairs — hegemonic
+    CommunityType.SETTLER: CommunityConsciousness(
+        collective_identity=Probability(0.4),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.3),
+    ),
+    CommunityType.PATRIARCHAL: CommunityConsciousness(
+        collective_identity=Probability(0.3),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.2),
+    ),
+    # Contradiction pairs — marginalized
+    CommunityType.NEW_AFRIKAN: CommunityConsciousness(
+        collective_identity=Probability(0.5),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.4),
+    ),
+    CommunityType.FIRST_NATIONS: CommunityConsciousness(
+        collective_identity=Probability(0.6),
+        dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
+        ideological_contestation=Probability(0.3),
+    ),
+    CommunityType.CHICANO: CommunityConsciousness(
+        collective_identity=Probability(0.4),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.3),
+    ),
+    CommunityType.WOMEN: CommunityConsciousness(
+        collective_identity=Probability(0.3),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.3),
+    ),
+    CommunityType.TRANS: CommunityConsciousness(
+        collective_identity=Probability(0.5),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.4),
+    ),
+    # Institutional exclusion
+    CommunityType.DISABLED: CommunityConsciousness(
+        collective_identity=Probability(0.3),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.2),
+    ),
+    CommunityType.QUEER: CommunityConsciousness(
+        collective_identity=Probability(0.4),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.4),
+    ),
+    CommunityType.UNDOCUMENTED: CommunityConsciousness(
+        collective_identity=Probability(0.5),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.3),
+    ),
+    CommunityType.INCARCERATED: CommunityConsciousness(
+        collective_identity=Probability(0.6),
+        dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
+        ideological_contestation=Probability(0.3),
+    ),
+    # Lifecycle phases
+    CommunityType.YOUTH: CommunityConsciousness(
+        collective_identity=Probability(0.2),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.5),
+    ),
+    CommunityType.ADULT: CommunityConsciousness(
+        collective_identity=Probability(0.1),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.1),
+    ),
+    CommunityType.ELDER: CommunityConsciousness(
+        collective_identity=Probability(0.3),
+        dominant_tendency=ConsciousnessTendency.LIBERAL,
+        ideological_contestation=Probability(0.2),
+    ),
+}
+
+# Import-time exhaustiveness validation (FR-004)
+_missing_consciousness = set(CommunityType) - set(CONSCIOUSNESS_DEFAULTS.keys())
+if _missing_consciousness:
+    raise RuntimeError(f"CONSCIOUSNESS_DEFAULTS missing types: {_missing_consciousness}")
+
+
 class CommunityState(BaseModel):
     """State of a community, independent of its members.
 
@@ -282,6 +396,10 @@ class CommunityState(BaseModel):
     rent_access_modifier: Coefficient = Field(
         default=Coefficient(1.0),
         description="Multiplier on imperial rent received by members",
+    )
+    consciousness: CommunityConsciousness = Field(
+        default_factory=CommunityConsciousness,
+        description="Ideological dimension of the community",
     )
 
     @model_validator(mode="after")

@@ -94,17 +94,17 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T022 [US3] Write failing tests for CommunityConsciousness model in `tests/unit/models/test_community_models.py`: creation, validation (CI and contestation constrained to [0,1]), frozen immutability
-- [ ] T023 [US3] Write failing tests for CONSCIOUSNESS_DEFAULTS in `tests/unit/models/test_community_models.py`: all 14 types present, INCARCERATED=REVOLUTIONARY, FIRST_NATIONS=REVOLUTIONARY CI=0.6, SETTLER=ASSIMILATIONIST_LIBERAL, YOUTH contestation=0.5
-- [ ] T024 [P] [US3] Write failing test for consciousness serialization roundtrip in `tests/unit/models/test_community_models.py`: model_dump(mode="json")→model_validate preserves all fields exactly for all 14 defaults
+- [x] T022 [US3] Write failing tests for CommunityConsciousness model in `tests/unit/models/test_community_models.py`: creation, validation (CI and contestation constrained to [0,1]), frozen immutability
+- [x] T023 [US3] Write failing tests for CONSCIOUSNESS_DEFAULTS in `tests/unit/models/test_community_models.py`: all 14 types present, INCARCERATED=REVOLUTIONARY, FIRST_NATIONS=REVOLUTIONARY CI=0.6, SETTLER=ASSIMILATIONIST_LIBERAL, YOUTH contestation=0.5
+- [x] T024 [P] [US3] Write failing test for consciousness serialization roundtrip in `tests/unit/models/test_community_models.py`: model_dump(mode="json")→model_validate preserves all fields exactly for all 14 defaults
 
 ### Implementation (GREEN phase)
 
-- [ ] T025 [US3] Add `CommunityConsciousness` frozen Pydantic model to `src/babylon/models/entities/community.py` with fields: collective_identity (Probability, default 0.3), dominant_tendency (ConsciousnessTendency, default ASSIMILATIONIST_LIBERAL), ideological_contestation (Probability, default 0.2)
-- [ ] T026 [US3] Add `consciousness` field (CommunityConsciousness, default_factory) to CommunityState in `src/babylon/models/entities/community.py`
-- [ ] T027 [US3] Add `CONSCIOUSNESS_DEFAULTS` dict mapping all 14 CommunityType→CommunityConsciousness with SYNTHETIC values per spec in `src/babylon/models/entities/community.py`
-- [ ] T028 [US3] Add import-time exhaustiveness validation for CONSCIOUSNESS_DEFAULTS (same pattern as T010) in `src/babylon/models/entities/community.py`
-- [ ] T029 [US3] Verify all T022-T024 tests now pass (GREEN) and all pre-existing tests still pass
+- [x] T025 [US3] Add `CommunityConsciousness` frozen Pydantic model to `src/babylon/models/entities/community.py` with fields: collective_identity (Probability, default 0.3), dominant_tendency (ConsciousnessTendency, default ASSIMILATIONIST_LIBERAL), ideological_contestation (Probability, default 0.2)
+- [x] T026 [US3] Add `consciousness` field (CommunityConsciousness, default_factory) to CommunityState in `src/babylon/models/entities/community.py`
+- [x] T027 [US3] Add `CONSCIOUSNESS_DEFAULTS` dict mapping all 14 CommunityType→CommunityConsciousness with SYNTHETIC values per spec in `src/babylon/models/entities/community.py`
+- [x] T028 [US3] Add import-time exhaustiveness validation for CONSCIOUSNESS_DEFAULTS (same pattern as T010) in `src/babylon/models/entities/community.py`
+- [x] T029 [US3] Verify all T022-T024 tests now pass (GREEN) and all pre-existing tests still pass
 
 **Checkpoint**: Consciousness model complete. Serialization verified. `mise run check` passes.
 

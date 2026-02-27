@@ -584,6 +584,182 @@ class TestAxisQueryFunctions:
 
 
 @pytest.mark.unit
+class TestCommunityConsciousness:
+    """Validate CommunityConsciousness model (Feature 029, US3)."""
+
+    def test_create_with_defaults(self) -> None:
+        """CommunityConsciousness creates with default values."""
+        from babylon.models.entities.community import CommunityConsciousness
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CommunityConsciousness()
+        assert cc.collective_identity == pytest.approx(0.3, abs=1e-4)
+        assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
+        assert cc.ideological_contestation == pytest.approx(0.2, abs=1e-4)
+
+    def test_create_with_custom_values(self) -> None:
+        """CommunityConsciousness accepts custom values."""
+        from babylon.models.entities.community import CommunityConsciousness
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CommunityConsciousness(
+            collective_identity=0.8,  # type: ignore[arg-type]
+            dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
+            ideological_contestation=0.6,  # type: ignore[arg-type]
+        )
+        assert cc.collective_identity == pytest.approx(0.8, abs=1e-4)
+        assert cc.dominant_tendency == ConsciousnessTendency.REVOLUTIONARY
+        assert cc.ideological_contestation == pytest.approx(0.6, abs=1e-4)
+
+    def test_collective_identity_constrained(self) -> None:
+        """collective_identity must be in [0, 1]."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        with pytest.raises(ValidationError):
+            CommunityConsciousness(collective_identity=1.5)  # type: ignore[arg-type]
+        with pytest.raises(ValidationError):
+            CommunityConsciousness(collective_identity=-0.1)  # type: ignore[arg-type]
+
+    def test_contestation_constrained(self) -> None:
+        """ideological_contestation must be in [0, 1]."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        with pytest.raises(ValidationError):
+            CommunityConsciousness(ideological_contestation=2.0)  # type: ignore[arg-type]
+        with pytest.raises(ValidationError):
+            CommunityConsciousness(ideological_contestation=-0.5)  # type: ignore[arg-type]
+
+    def test_frozen_immutability(self) -> None:
+        """CommunityConsciousness is frozen."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cc = CommunityConsciousness()
+        with pytest.raises(ValidationError):
+            cc.collective_identity = 0.9  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestConsciousnessDefaults:
+    """Validate CONSCIOUSNESS_DEFAULTS for all 14 types (Feature 029, US3)."""
+
+    def test_all_14_types_present(self) -> None:
+        """Every CommunityType has a default consciousness."""
+        from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
+
+        assert set(CONSCIOUSNESS_DEFAULTS.keys()) == set(CommunityType)
+
+    def test_incarcerated_is_revolutionary(self) -> None:
+        """INCARCERATED default tendency is REVOLUTIONARY (George Jackson tradition)."""
+        from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CONSCIOUSNESS_DEFAULTS[CommunityType.INCARCERATED]
+        assert cc.dominant_tendency == ConsciousnessTendency.REVOLUTIONARY
+        assert cc.collective_identity == pytest.approx(0.6, abs=1e-4)
+
+    def test_first_nations_is_revolutionary(self) -> None:
+        """FIRST_NATIONS default tendency is REVOLUTIONARY (sovereignty framing)."""
+        from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CONSCIOUSNESS_DEFAULTS[CommunityType.FIRST_NATIONS]
+        assert cc.dominant_tendency == ConsciousnessTendency.REVOLUTIONARY
+        assert cc.collective_identity == pytest.approx(0.6, abs=1e-4)
+
+    def test_settler_is_liberal(self) -> None:
+        """SETTLER default tendency is LIBERAL (passive beneficiary)."""
+        from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CONSCIOUSNESS_DEFAULTS[CommunityType.SETTLER]
+        assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
+        assert cc.collective_identity == pytest.approx(0.4, abs=1e-4)
+
+    def test_youth_high_contestation(self) -> None:
+        """YOUTH has high contestation (0.5) despite low CI (0.2)."""
+        from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CONSCIOUSNESS_DEFAULTS[CommunityType.YOUTH]
+        assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
+        assert cc.collective_identity == pytest.approx(0.2, abs=1e-4)
+        assert cc.ideological_contestation == pytest.approx(0.5, abs=1e-4)
+
+    def test_adult_low_contestation(self) -> None:
+        """ADULT has low contestation (0.1) — most settled lifecycle phase."""
+        from babylon.models.entities.community import CONSCIOUSNESS_DEFAULTS
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CONSCIOUSNESS_DEFAULTS[CommunityType.ADULT]
+        assert cc.dominant_tendency == ConsciousnessTendency.LIBERAL
+        assert cc.collective_identity == pytest.approx(0.1, abs=1e-4)
+        assert cc.ideological_contestation == pytest.approx(0.1, abs=1e-4)
+
+
+@pytest.mark.unit
+class TestConsciousnessSerialization:
+    """Validate consciousness JSON roundtrip (Feature 029, US3)."""
+
+    def test_roundtrip_all_defaults(self) -> None:
+        """All 14 consciousness defaults survive model_dump→model_validate."""
+        from babylon.models.entities.community import (
+            CONSCIOUSNESS_DEFAULTS,
+            CommunityConsciousness,
+        )
+
+        for ct, original in CONSCIOUSNESS_DEFAULTS.items():
+            data = original.model_dump(mode="json")
+            restored = CommunityConsciousness.model_validate(data)
+            assert restored == original, f"Roundtrip failed for {ct}"
+
+    def test_consciousness_on_community_state_roundtrip(self) -> None:
+        """CommunityState with consciousness survives serialization roundtrip."""
+        from babylon.models.entities.community import CommunityConsciousness
+        from babylon.models.enums import ConsciousnessTendency
+
+        cs = CommunityState(
+            community_type=CommunityType.INCARCERATED,
+            consciousness=CommunityConsciousness(
+                collective_identity=0.8,  # type: ignore[arg-type]
+                dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
+                ideological_contestation=0.4,  # type: ignore[arg-type]
+            ),
+        )
+        data = cs.model_dump(mode="json")
+        restored = CommunityState.model_validate(data)
+        assert restored.consciousness == cs.consciousness
+
+
+@pytest.mark.unit
+class TestCommunityStateConsciousnessField:
+    """Validate consciousness field on CommunityState (Feature 029, US3)."""
+
+    def test_default_consciousness(self) -> None:
+        """CommunityState gets default CommunityConsciousness if not specified."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(community_type=CommunityType.SETTLER)
+        assert isinstance(cs.consciousness, CommunityConsciousness)
+
+    def test_custom_consciousness(self) -> None:
+        """CommunityState accepts custom consciousness."""
+        from babylon.models.entities.community import CommunityConsciousness
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CommunityConsciousness(
+            collective_identity=0.9,  # type: ignore[arg-type]
+            dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
+            ideological_contestation=0.7,  # type: ignore[arg-type]
+        )
+        cs = CommunityState(
+            community_type=CommunityType.NEW_AFRIKAN,
+            consciousness=cc,
+        )
+        assert cs.consciousness.collective_identity == pytest.approx(0.9, abs=1e-4)
+        assert cs.consciousness.dominant_tendency == ConsciousnessTendency.REVOLUTIONARY
+
+
+@pytest.mark.unit
 class TestCommunityReproductionCost:
     """Tests for compute_community_cost_modifier (Feature 022, US4)."""
 

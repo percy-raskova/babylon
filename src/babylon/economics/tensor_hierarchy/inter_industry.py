@@ -316,7 +316,7 @@ class DefaultDepartmentAggregator:
         try:
             import tomllib
         except ImportError:
-            import tomli as tomllib  # type: ignore[no-redef,import-not-found]
+            import tomli as tomllib  # type: ignore[no-redef]
 
         if not _TOML_PATH.exists():
             logger.warning("TOML mapping not found at %s", _TOML_PATH)

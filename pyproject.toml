@@ -219,6 +219,7 @@ module = [
     "alembic.*",
     "h3",
     "h3.*",
+    "tomli",
 ]
 ignore_missing_imports = true
 

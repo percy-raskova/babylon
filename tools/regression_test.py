@@ -92,7 +92,7 @@ SCENARIOS: Final[dict[str, dict[str, Any]]] = {
         "factory": "create_imperial_circuit_scenario",
         "defines_overrides": {
             "economy.extraction_efficiency": 0.7,
-            "consciousness.drift_sensitivity_k": 0.3,
+            "consciousness.sensitivity": 0.3,
         },
     },
 }

@@ -1,0 +1,95 @@
+{
+  "scenario": "glut",
+  "description": "High extraction with metabolic overshoot",
+  "generated_at": "2026-02-27T18:52:51+00:00",
+  "defines_hash": "6a63f72fccba3ac5",
+  "max_ticks": 52,
+  "checkpoints": [
+    {
+      "tick": 0,
+      "p_w_wealth": 0.6,
+      "p_c_wealth": 1.2,
+      "c_b_wealth": 0.9,
+      "c_w_wealth": 0.18,
+      "imperial_rent_pool": 100.0,
+      "exploitation_tension": 0.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.0,
+      "p_w_active": true
+    },
+    {
+      "tick": 10,
+      "p_w_wealth": 0.739449,
+      "p_c_wealth": 0.416134,
+      "c_b_wealth": 1.552267,
+      "c_w_wealth": 58.519793,
+      "imperial_rent_pool": 98.760808,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.2,
+      "p_w_active": true
+    },
+    {
+      "tick": 20,
+      "p_w_wealth": 0.870165,
+      "p_c_wealth": 0.147904,
+      "c_b_wealth": 1.722998,
+      "c_w_wealth": 94.292783,
+      "imperial_rent_pool": 97.070597,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.2,
+      "p_w_active": true
+    },
+    {
+      "tick": 30,
+      "p_w_wealth": 0.992791,
+      "p_c_wealth": 0.059087,
+      "c_b_wealth": 1.723391,
+      "c_w_wealth": 124.60359,
+      "imperial_rent_pool": 95.245712,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.2,
+      "p_w_active": true
+    },
+    {
+      "tick": 40,
+      "p_w_wealth": 1.107924,
+      "p_c_wealth": 0.032482,
+      "c_b_wealth": 1.66938,
+      "c_w_wealth": 153.121423,
+      "imperial_rent_pool": 93.403294,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.2,
+      "p_w_active": true
+    },
+    {
+      "tick": 50,
+      "p_w_wealth": 1.216119,
+      "p_c_wealth": 0.027247,
+      "c_b_wealth": 1.601022,
+      "c_w_wealth": 181.00921,
+      "imperial_rent_pool": 91.583238,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.2,
+      "p_w_active": true
+    },
+    {
+      "tick": 52,
+      "p_w_wealth": 1.236971,
+      "p_c_wealth": 0.027293,
+      "c_b_wealth": 1.587046,
+      "c_w_wealth": 186.552804,
+      "imperial_rent_pool": 91.223278,
+      "exploitation_tension": 1.0,
+      "p_w_consciousness": 0.0,
+      "p_w_p_revolution": 0.2,
+      "p_w_active": true
+    }
+  ],
+  "final_outcome": "SURVIVED",
+  "ticks_survived": 52
+}

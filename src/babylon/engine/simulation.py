@@ -192,7 +192,12 @@ class Simulation:
         from pathlib import Path
 
         from babylon.data.reference.database import get_reference_session
-        from babylon.data.reference.hydrator import StubBEASource, hydrate_territories
+        from babylon.data.reference.hydrator import (
+            StubBEASource,
+            hydrate_economy_constants,
+            hydrate_reserve_army,
+            hydrate_territories,
+        )
         from babylon.economics.adapters import SQLiteQCEWSource
         from babylon.economics.department_mapper import DepartmentMapper
         from babylon.economics.hydrator import MarxianHydrator
@@ -228,6 +233,31 @@ class Simulation:
             len(fips_codes),
             len(hydration_years),
         )
+
+        # Hydrate Tier A constants from federal data (Feature 028)
+        if defines is None:
+            defines = GameDefines.load_default()
+        primary_fips = fips_codes[0]
+        economy_data = hydrate_economy_constants(primary_fips, year)
+        reserve_data = hydrate_reserve_army(primary_fips, year)
+
+        # Override GameDefines with data-derived values
+        updates: dict[str, Any] = {}
+        if economy_data.get("extraction_efficiency") is not None:
+            updates["economy"] = defines.economy.model_copy(
+                update={"extraction_efficiency": economy_data["extraction_efficiency"]}
+            )
+        if economy_data.get("shadow_wage_hourly") is not None:
+            updates["economy"] = updates.get("economy", defines.economy).model_copy(
+                update={"shadow_wage_hourly": economy_data["shadow_wage_hourly"]}
+            )
+        if reserve_data.get("sigmoid_r0") is not None:
+            updates["reserve_army"] = defines.reserve_army.model_copy(
+                update={"sigmoid_r0": reserve_data["sigmoid_r0"]}
+            )
+        if updates:
+            defines = defines.model_copy(update=updates)
+            logger.info("Tier A constants hydrated from %s/%d: %s", primary_fips, year, updates)
 
         # Wire calculator factory if multi-year mode requested
         calculator_overrides: dict[str, Any] | None = None

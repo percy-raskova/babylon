@@ -29,6 +29,10 @@ See Also:
 
 from dataclasses import dataclass
 
+from babylon.config.defines import GameDefines
+
+_CD = GameDefines().class_dynamics
+
 
 @dataclass(frozen=True)
 class ClassDynamicsParams:
@@ -57,7 +61,7 @@ class ClassDynamicsParams:
     # Extraction rates (per quarter, fitted from FRED 2015-2025)
     alpha_41: float = 0.0000  # proletariat → bourgeoisie
     alpha_31: float = 0.0000  # labor aristocracy → bourgeoisie
-    alpha_21: float = 0.0006  # petty bourgeoisie → bourgeoisie
+    alpha_21: float = _CD.alpha_21  # petty bourgeoisie → bourgeoisie
     alpha_32: float = 0.0000  # labor aristocracy → petty bourgeoisie
     alpha_42: float = 0.0000  # proletariat → petty bourgeoisie
     alpha_43: float = 0.0000  # proletariat → labor aristocracy
@@ -68,7 +72,7 @@ class ClassDynamicsParams:
     delta_3: float = 0.0010  # from labor aristocracy
 
     # Imperial rent formation (superwages to core workers)
-    gamma_3: float = 0.0057  # quarterly injection rate
+    gamma_3: float = _CD.gamma_3  # quarterly injection rate
 
 
 @dataclass(frozen=True)
@@ -88,7 +92,12 @@ class SecondOrderParams:
 
     beta: tuple[float, float, float, float] = (-0.10, -0.15, -0.10, -0.05)
     omega: tuple[float, float, float, float] = (0.05, 0.08, 0.05, 0.03)
-    equilibrium: tuple[float, float, float, float] = (0.305, 0.382, 0.294, 0.020)
+    equilibrium: tuple[float, float, float, float] = (
+        _CD.equilibrium_w1,
+        _CD.equilibrium_w2,
+        _CD.equilibrium_w3,
+        _CD.equilibrium_w4,
+    )
 
 
 def calculate_wealth_flow(

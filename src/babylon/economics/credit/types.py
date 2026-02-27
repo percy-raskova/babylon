@@ -10,6 +10,8 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from babylon.config.defines import GameDefines
+
 
 class CreditCyclePhase(StrEnum):
     """Credit cycle phase for multi-period credit dynamics.
@@ -90,7 +92,7 @@ Traceability: FRED BAA-AAA spread * Moody's default rate product. During
 (~4%) exceeded 0.02. Below this threshold, credit system is stable.
 """
 
-STAGNATION_CREDIT_GROWTH: Final[float] = 0.01
+STAGNATION_CREDIT_GROWTH: Final[float] = GameDefines().crisis.stagnation_credit_growth
 """Credit expansion rate threshold for stagnation diagnosis.
 
 Traceability: FRED TCMDO YoY growth rate. When credit growth falls below

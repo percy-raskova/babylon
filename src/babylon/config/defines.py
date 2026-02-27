@@ -112,6 +112,12 @@ class CrisisDefines(BaseModel):
         default=[0.05, 0.10, 0.15],
         description="LA share decline milestones for DISPOSSESSION_CASCADE events",
     )
+    stagnation_credit_growth: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=0.5,
+        description="Credit expansion rate threshold for stagnation phase diagnosis",
+    )
 
 
 class EconomyDefines(BaseModel):
@@ -395,6 +401,12 @@ class VitalityDefines(BaseModel):
         le=2.0,
         description="How strongly inequality affects marginal wealth (1.0=full effect)",
     )
+    attrition_base_factor: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=2.0,
+        description="Base multiplier in grinding attrition: deficit * (factor + inequality)",
+    )
 
 
 class SolidarityDefines(BaseModel):
@@ -472,6 +484,18 @@ class ConsciousnessDefines(BaseModel):
         default=0.1,
         gt=0.0,
         description="Decay rate for consciousness without material basis",
+    )
+    routing_scale: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Converts agitation energy to consciousness change magnitude",
+    )
+    agitation_decay_rate: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Per-tick decay rate for accumulated agitation energy",
     )
 
 
@@ -693,6 +717,12 @@ class StruggleDefines(BaseModel):
         ge=0.0,
         le=1.0,
         description="Solidarity strength increase on edges per uprising",
+    )
+    consciousness_solidarity_boost: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of solidarity gain that converts to consciousness boost",
     )
 
     # George Jackson Bifurcation parameters
@@ -1297,6 +1327,12 @@ class DispossessionDefines(BaseModel):
         le=1.0,
         description="Fraction of transferred value lost as deadweight (not received by anyone)",
     )
+    transfer_scale: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="Scale factor for wealth transfer amount: territory_wealth * intensity * scale",
+    )
 
 
 class WorkingDayDefines(BaseModel):
@@ -1403,6 +1439,161 @@ class CommunityDefines(BaseModel):
     )
 
 
+class ClassDynamicsDefines(BaseModel):
+    """Class dynamics coefficients (FRED DFA-derived, Feature 016).
+
+    Parameters fitted to FRED Distributional Financial Accounts (2015-2025)
+    for class wealth flow dynamics.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    alpha_21: float = Field(
+        default=0.0006,
+        ge=0.0,
+        le=0.01,
+        description="Extraction rate from petty bourgeoisie to bourgeoisie (quarterly)",
+    )
+    gamma_3: float = Field(
+        default=0.0057,
+        ge=0.0,
+        le=0.1,
+        description="Imperial rent formation rate — superwages to core workers (quarterly)",
+    )
+    equilibrium_w1: float = Field(
+        default=0.305,
+        ge=0.0,
+        le=1.0,
+        description="Target equilibrium wealth share for class 1 (bourgeoisie)",
+    )
+    equilibrium_w2: float = Field(
+        default=0.382,
+        ge=0.0,
+        le=1.0,
+        description="Target equilibrium wealth share for class 2 (petty bourgeoisie)",
+    )
+    equilibrium_w3: float = Field(
+        default=0.294,
+        ge=0.0,
+        le=1.0,
+        description="Target equilibrium wealth share for class 3 (proletariat)",
+    )
+    equilibrium_w4: float = Field(
+        default=0.020,
+        ge=0.0,
+        le=1.0,
+        description="Target equilibrium wealth share for class 4 (lumpenproletariat)",
+    )
+
+
+class EdgeTransitionDefines(BaseModel):
+    """Edge mode transition threshold values (Feature 002, FR-010).
+
+    Configures the threshold values used in predicate conditions
+    that determine when edges transition between modes (EXTRACTIVE,
+    TRANSACTIONAL, CO-OPTIVE, etc.).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    extraction_contested_threshold: float = Field(
+        default=5.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation tension threshold for EXTRACTIVE -> CONTESTED",
+    )
+    extraction_broken_threshold: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold for CONTESTED -> BROKEN",
+    )
+    concessions_exploitation_threshold: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold for EXTRACTIVE -> CONCESSIONS_OFFERED",
+    )
+    concessions_rent_threshold: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=10.0,
+        description="Imperial rent threshold for EXTRACTIVE -> CONCESSIONS_OFFERED",
+    )
+    mutual_aid_threshold: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold (both directions) for BROKEN -> MUTUAL_AID",
+    )
+    market_failure_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description="Immiseration threshold for TRANSACTIONAL -> MUTUAL_AID",
+    )
+    power_asymmetry_threshold: float = Field(
+        default=5.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold for TRANSACTIONAL -> POWER_ASYMMETRY",
+    )
+    co_optive_power_threshold: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=10.0,
+        description="Imperial rent threshold for POWER_ASYMMETRY -> CO_OPTIVE",
+    )
+    solidarity_degrades_threshold: float = Field(
+        default=6.0,
+        ge=0.0,
+        le=10.0,
+        description="Immiseration threshold for SOLIDARITY -> CONTESTED",
+    )
+    betrayal_threshold: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold for SOLIDARITY -> BROKEN",
+    )
+    conflict_resolved_threshold: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold (below) for CONTESTED -> TRANSACTIONAL",
+    )
+    shared_enemy_threshold: float = Field(
+        default=7.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold (both) for CONTESTED -> SOLIDARITY",
+    )
+    reform_rent_threshold: float = Field(
+        default=3.0,
+        ge=0.0,
+        le=10.0,
+        description="Imperial rent threshold for CO_OPTIVE -> CONCESSIONS_OFFERED",
+    )
+    co_optation_normalizes_threshold: float = Field(
+        default=2.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold (below) for CO_OPTIVE -> TRANSACTIONAL",
+    )
+    co_optive_breakdown_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description="Exploitation threshold (below) for CO_OPTIVE -> BROKEN",
+    )
+    concessions_withdrawn_threshold: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=10.0,
+        description="Imperial rent threshold (below) for CONCESSIONS_OFFERED -> EXTRACTIVE",
+    )
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -1435,6 +1626,8 @@ class GameDefines(BaseModel):
     - dispossession: Dispossession event intensity weights (Feature 021)
     - working_day: Working day characterization thresholds (Feature 021)
     - community: Hypergraph community layer coefficients (Feature 022)
+    - class_dynamics: Class wealth flow dynamics (Feature 016, FRED DFA-derived)
+    - edge_transition: Edge mode transition thresholds (Feature 002)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -1466,6 +1659,10 @@ class GameDefines(BaseModel):
     working_day: WorkingDayDefines = Field(default_factory=WorkingDayDefines)
     # Hypergraph Community Layer (Feature 022)
     community: CommunityDefines = Field(default_factory=CommunityDefines)
+    # Class Dynamics (Feature 016, FRED DFA-derived)
+    class_dynamics: ClassDynamicsDefines = Field(default_factory=ClassDynamicsDefines)
+    # Edge Transition Thresholds (Feature 002/028)
+    edge_transition: EdgeTransitionDefines = Field(default_factory=EdgeTransitionDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure

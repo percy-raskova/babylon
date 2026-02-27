@@ -88,7 +88,7 @@ class DispossessionEventSystem:
 
             # Compute value transfer (clamped to available wealth)
             territory_wealth = _get_float(data, "wealth")
-            transfer_amount = territory_wealth * intensity * 0.01  # Scale factor
+            transfer_amount = territory_wealth * intensity * defines.transfer_scale
             transfer_amount = min(transfer_amount, territory_wealth)  # Clamp
 
             if transfer_amount > 0.0:

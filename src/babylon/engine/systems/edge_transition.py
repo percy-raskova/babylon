@@ -88,357 +88,366 @@ class EdgeModeTransition(BaseModel):
 # Transition Definitions (FR-010: 17 permissible transitions)
 # ─────────────────────────────────────────────────────────────────────
 
-_TRANSITIONS: list[EdgeModeTransition] = [
-    # EXTRACTIVE transitions
-    EdgeModeTransition(
-        from_mode=EdgeMode.EXTRACTIVE,
-        to_mode=EdgeMode.ANTAGONISTIC,
-        predicate=CompoundPredicate(
-            name="extraction_contested",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=5.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="df_dt",
-                    operator="gt",
-                    threshold=0.0,
-                    scope="source",
-                ),
-            ],
+
+def _build_transitions() -> list[EdgeModeTransition]:
+    """Build edge mode transitions from GameDefines thresholds."""
+    from babylon.config.defines import GameDefines
+
+    et = GameDefines().edge_transition
+    return [
+        # EXTRACTIVE transitions
+        EdgeModeTransition(
+            from_mode=EdgeMode.EXTRACTIVE,
+            to_mode=EdgeMode.ANTAGONISTIC,
+            predicate=CompoundPredicate(
+                name="extraction_contested",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.extraction_contested_threshold,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="df_dt",
+                        operator="gt",
+                        threshold=0.0,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=10,
+            description="Extraction contested: exploitation high and rising",
         ),
-        priority=10,
-        description="Extraction contested: exploitation high and rising",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.EXTRACTIVE,
-        to_mode=EdgeMode.TRANSACTIONAL,
-        predicate=CompoundPredicate(
-            name="extraction_broken",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="lt",
-                    threshold=2.0,
-                    scope="source",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.EXTRACTIVE,
+            to_mode=EdgeMode.TRANSACTIONAL,
+            predicate=CompoundPredicate(
+                name="extraction_broken",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="lt",
+                        threshold=et.extraction_broken_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=5,
+            description="Extraction broken: exploitation reduced below threshold",
         ),
-        priority=5,
-        description="Extraction broken: exploitation reduced below threshold",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.EXTRACTIVE,
-        to_mode=EdgeMode.CO_OPTIVE,
-        predicate=CompoundPredicate(
-            name="concessions_offered",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=3.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="imperial_rent",
-                    metric="value",
-                    operator="gt",
-                    threshold=2.0,
-                    scope="target",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.EXTRACTIVE,
+            to_mode=EdgeMode.CO_OPTIVE,
+            predicate=CompoundPredicate(
+                name="concessions_offered",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.concessions_exploitation_threshold,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="imperial_rent",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.concessions_rent_threshold,
+                        scope="target",
+                    ),
+                ],
+            ),
+            priority=8,
+            description="Concessions offered to prevent resistance",
         ),
-        priority=8,
-        description="Concessions offered to prevent resistance",
-    ),
-    # TRANSACTIONAL transitions
-    EdgeModeTransition(
-        from_mode=EdgeMode.TRANSACTIONAL,
-        to_mode=EdgeMode.SOLIDARISTIC,
-        predicate=CompoundPredicate(
-            name="mutual_aid_established",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="lt",
-                    threshold=2.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="lt",
-                    threshold=2.0,
-                    scope="target",
-                ),
-            ],
+        # TRANSACTIONAL transitions
+        EdgeModeTransition(
+            from_mode=EdgeMode.TRANSACTIONAL,
+            to_mode=EdgeMode.SOLIDARISTIC,
+            predicate=CompoundPredicate(
+                name="mutual_aid_established",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="lt",
+                        threshold=et.mutual_aid_threshold,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="lt",
+                        threshold=et.mutual_aid_threshold,
+                        scope="target",
+                    ),
+                ],
+            ),
+            priority=5,
+            description="Mutual aid: low exploitation on both sides",
         ),
-        priority=5,
-        description="Mutual aid: low exploitation on both sides",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.TRANSACTIONAL,
-        to_mode=EdgeMode.ANTAGONISTIC,
-        predicate=CompoundPredicate(
-            name="market_failure",
-            conditions=[
-                PredicateCondition(
-                    field="immiseration",
-                    metric="df_dt",
-                    operator="gt",
-                    threshold=1.0,
-                    scope="source",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.TRANSACTIONAL,
+            to_mode=EdgeMode.ANTAGONISTIC,
+            predicate=CompoundPredicate(
+                name="market_failure",
+                conditions=[
+                    PredicateCondition(
+                        field="immiseration",
+                        metric="df_dt",
+                        operator="gt",
+                        threshold=et.market_failure_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=10,
+            description="Market failure: immiseration rapidly increasing",
         ),
-        priority=10,
-        description="Market failure: immiseration rapidly increasing",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.TRANSACTIONAL,
-        to_mode=EdgeMode.EXTRACTIVE,
-        predicate=CompoundPredicate(
-            name="power_asymmetry_emerges",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=5.0,
-                    scope="source",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.TRANSACTIONAL,
+            to_mode=EdgeMode.EXTRACTIVE,
+            predicate=CompoundPredicate(
+                name="power_asymmetry_emerges",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.power_asymmetry_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=7,
+            description="Power asymmetry: exploitation re-emerges",
         ),
-        priority=7,
-        description="Power asymmetry: exploitation re-emerges",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.TRANSACTIONAL,
-        to_mode=EdgeMode.CO_OPTIVE,
-        predicate=CompoundPredicate(
-            name="co_optive_power",
-            conditions=[
-                PredicateCondition(
-                    field="imperial_rent",
-                    metric="value",
-                    operator="gt",
-                    threshold=3.0,
-                    scope="target",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.TRANSACTIONAL,
+            to_mode=EdgeMode.CO_OPTIVE,
+            predicate=CompoundPredicate(
+                name="co_optive_power",
+                conditions=[
+                    PredicateCondition(
+                        field="imperial_rent",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.co_optive_power_threshold,
+                        scope="target",
+                    ),
+                ],
+            ),
+            priority=6,
+            description="One party offers above-market benefits for loyalty",
         ),
-        priority=6,
-        description="One party offers above-market benefits for loyalty",
-    ),
-    # SOLIDARISTIC transitions
-    EdgeModeTransition(
-        from_mode=EdgeMode.SOLIDARISTIC,
-        to_mode=EdgeMode.TRANSACTIONAL,
-        predicate=CompoundPredicate(
-            name="solidarity_degrades",
-            conditions=[
-                PredicateCondition(
-                    field="immiseration",
-                    metric="value",
-                    operator="gt",
-                    threshold=6.0,
-                    scope="source",
-                ),
-            ],
+        # SOLIDARISTIC transitions
+        EdgeModeTransition(
+            from_mode=EdgeMode.SOLIDARISTIC,
+            to_mode=EdgeMode.TRANSACTIONAL,
+            predicate=CompoundPredicate(
+                name="solidarity_degrades",
+                conditions=[
+                    PredicateCondition(
+                        field="immiseration",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.solidarity_degrades_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=5,
+            description="Solidarity degrades under crisis pressure",
         ),
-        priority=5,
-        description="Solidarity degrades under crisis pressure",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.SOLIDARISTIC,
-        to_mode=EdgeMode.ANTAGONISTIC,
-        predicate=CompoundPredicate(
-            name="betrayal",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="df_dt",
-                    operator="gt",
-                    threshold=3.0,
-                    scope="source",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.SOLIDARISTIC,
+            to_mode=EdgeMode.ANTAGONISTIC,
+            predicate=CompoundPredicate(
+                name="betrayal",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="df_dt",
+                        operator="gt",
+                        threshold=et.betrayal_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=10,
+            description="Betrayal: exploitation spikes within solidarity",
         ),
-        priority=10,
-        description="Betrayal: exploitation spikes within solidarity",
-    ),
-    # ANTAGONISTIC transitions
-    EdgeModeTransition(
-        from_mode=EdgeMode.ANTAGONISTIC,
-        to_mode=EdgeMode.TRANSACTIONAL,
-        predicate=CompoundPredicate(
-            name="conflict_resolved",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="df_dt",
-                    operator="lte",
-                    threshold=0.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="lt",
-                    threshold=3.0,
-                    scope="source",
-                ),
-            ],
+        # ANTAGONISTIC transitions
+        EdgeModeTransition(
+            from_mode=EdgeMode.ANTAGONISTIC,
+            to_mode=EdgeMode.TRANSACTIONAL,
+            predicate=CompoundPredicate(
+                name="conflict_resolved",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="df_dt",
+                        operator="lte",
+                        threshold=0.0,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="lt",
+                        threshold=et.conflict_resolved_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=5,
+            description="Conflict resolved: exploitation falling and low",
         ),
-        priority=5,
-        description="Conflict resolved: exploitation falling and low",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.ANTAGONISTIC,
-        to_mode=EdgeMode.SOLIDARISTIC,
-        predicate=CompoundPredicate(
-            name="shared_enemy_alliance",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=7.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=7.0,
-                    scope="target",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.ANTAGONISTIC,
+            to_mode=EdgeMode.SOLIDARISTIC,
+            predicate=CompoundPredicate(
+                name="shared_enemy_alliance",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.shared_enemy_threshold,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.shared_enemy_threshold,
+                        scope="target",
+                    ),
+                ],
+            ),
+            priority=8,
+            description="Shared enemy produces alliance (I.15 united front)",
         ),
-        priority=8,
-        description="Shared enemy produces alliance (I.15 united front)",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.ANTAGONISTIC,
-        to_mode=EdgeMode.CO_OPTIVE,
-        predicate=CompoundPredicate(
-            name="reform_concession",
-            conditions=[
-                PredicateCondition(
-                    field="imperial_rent",
-                    metric="value",
-                    operator="gt",
-                    threshold=3.0,
-                    scope="target",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="df_dt",
-                    operator="lt",
-                    threshold=0.0,
-                    scope="source",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.ANTAGONISTIC,
+            to_mode=EdgeMode.CO_OPTIVE,
+            predicate=CompoundPredicate(
+                name="reform_concession",
+                conditions=[
+                    PredicateCondition(
+                        field="imperial_rent",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.reform_rent_threshold,
+                        scope="target",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="df_dt",
+                        operator="lt",
+                        threshold=0.0,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=6,
+            description="Conflict resolved through concession (reform)",
         ),
-        priority=6,
-        description="Conflict resolved through concession (reform)",
-    ),
-    # CO-OPTIVE transitions
-    EdgeModeTransition(
-        from_mode=EdgeMode.CO_OPTIVE,
-        to_mode=EdgeMode.TRANSACTIONAL,
-        predicate=CompoundPredicate(
-            name="co_optation_normalizes",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="lt",
-                    threshold=2.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="df_dt",
-                    operator="lte",
-                    threshold=0.0,
-                    scope="source",
-                ),
-            ],
+        # CO-OPTIVE transitions
+        EdgeModeTransition(
+            from_mode=EdgeMode.CO_OPTIVE,
+            to_mode=EdgeMode.TRANSACTIONAL,
+            predicate=CompoundPredicate(
+                name="co_optation_normalizes",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="lt",
+                        threshold=et.co_optation_normalizes_threshold,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="df_dt",
+                        operator="lte",
+                        threshold=0.0,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=5,
+            description="Co-optation normalizes into market relations",
         ),
-        priority=5,
-        description="Co-optation normalizes into market relations",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.CO_OPTIVE,
-        to_mode=EdgeMode.ANTAGONISTIC,
-        predicate=CompoundPredicate(
-            name="co_optive_breakdown",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="df_dt",
-                    operator="gt",
-                    threshold=1.0,
-                    scope="source",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.CO_OPTIVE,
+            to_mode=EdgeMode.ANTAGONISTIC,
+            predicate=CompoundPredicate(
+                name="co_optive_breakdown",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="df_dt",
+                        operator="gt",
+                        threshold=et.co_optive_breakdown_threshold,
+                        scope="source",
+                    ),
+                ],
+            ),
+            priority=10,
+            description="CO-OPTIVE breakdown: material basis erodes (George Jackson)",
         ),
-        priority=10,
-        description="CO-OPTIVE breakdown: material basis erodes (George Jackson)",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.CO_OPTIVE,
-        to_mode=EdgeMode.SOLIDARISTIC,
-        predicate=CompoundPredicate(
-            name="co_optation_recognized",
-            conditions=[
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=5.0,
-                    scope="source",
-                ),
-                PredicateCondition(
-                    field="exploitation",
-                    metric="value",
-                    operator="gt",
-                    threshold=5.0,
-                    scope="target",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.CO_OPTIVE,
+            to_mode=EdgeMode.SOLIDARISTIC,
+            predicate=CompoundPredicate(
+                name="co_optation_recognized",
+                conditions=[
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.extraction_contested_threshold,
+                        scope="source",
+                    ),
+                    PredicateCondition(
+                        field="exploitation",
+                        metric="value",
+                        operator="gt",
+                        threshold=et.extraction_contested_threshold,
+                        scope="target",
+                    ),
+                ],
+            ),
+            priority=3,
+            description="Co-opted party recognizes co-optation, chooses solidarity",
         ),
-        priority=3,
-        description="Co-opted party recognizes co-optation, chooses solidarity",
-    ),
-    EdgeModeTransition(
-        from_mode=EdgeMode.CO_OPTIVE,
-        to_mode=EdgeMode.EXTRACTIVE,
-        predicate=CompoundPredicate(
-            name="concessions_withdrawn",
-            conditions=[
-                PredicateCondition(
-                    field="imperial_rent",
-                    metric="value",
-                    operator="lt",
-                    threshold=1.0,
-                    scope="target",
-                ),
-            ],
+        EdgeModeTransition(
+            from_mode=EdgeMode.CO_OPTIVE,
+            to_mode=EdgeMode.EXTRACTIVE,
+            predicate=CompoundPredicate(
+                name="concessions_withdrawn",
+                conditions=[
+                    PredicateCondition(
+                        field="imperial_rent",
+                        metric="value",
+                        operator="lt",
+                        threshold=et.concessions_withdrawn_threshold,
+                        scope="target",
+                    ),
+                ],
+            ),
+            priority=7,
+            description="Concessions withdrawn, reverts to extraction",
         ),
-        priority=7,
-        description="Concessions withdrawn, reverts to extraction",
-    ),
-]
+    ]
+
+
+_TRANSITIONS: list[EdgeModeTransition] = _build_transitions()
 
 # Build lookup: from_mode -> list of transitions
 _TRANSITION_MAP: dict[EdgeMode, list[EdgeModeTransition]] = {}

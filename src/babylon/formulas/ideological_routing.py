@@ -35,10 +35,9 @@ See Also
 
 from babylon.config.defines import GameDefines
 
-LOSS_AVERSION_COEFFICIENT = GameDefines().behavioral.loss_aversion_lambda
-
-# Routing scale factor (converts agitation to consciousness change)
-_ROUTING_SCALE = 0.1
+_DEFINES = GameDefines()
+LOSS_AVERSION_COEFFICIENT = _DEFINES.behavioral.loss_aversion_lambda
+_ROUTING_SCALE = _DEFINES.consciousness.routing_scale
 
 
 def _calculate_material_loss(wage_change: float, wealth_change: float) -> float:
@@ -81,7 +80,7 @@ def calculate_ideological_routing(
     current_class_consciousness: float,
     current_national_identity: float,
     current_agitation: float,
-    agitation_decay: float = 0.1,
+    agitation_decay: float = _DEFINES.consciousness.agitation_decay_rate,
 ) -> tuple[float, float, float]:
     """Route agitation energy based on solidarity infrastructure.
 

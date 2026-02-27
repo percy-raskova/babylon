@@ -8,11 +8,16 @@ See Also:
     :class:`VitalitySystem` for system integration.
 """
 
+from babylon.config.defines import GameDefines
+
+_DEFINES = GameDefines()
+
 
 def calculate_mortality_rate(
     wealth_per_capita: float,
     subsistence_needs: float,
     inequality: float,
+    attrition_base_factor: float = _DEFINES.vitality.attrition_base_factor,
 ) -> float:
     """Calculate mortality rate using coverage_ratio threshold.
 
@@ -39,7 +44,7 @@ def calculate_mortality_rate(
 
     # Risk tail is exposed - calculate attrition
     deficit = threshold - coverage_ratio
-    attrition_rate = deficit * (0.5 + inequality)
+    attrition_rate = deficit * (attrition_base_factor + inequality)
 
     # Clamp to valid range
     return max(0.0, min(1.0, attrition_rate))

@@ -367,7 +367,9 @@ class StruggleSystem:
 
             # Class consciousness boost from shared struggle
             consciousness_before = _get_class_consciousness_from_node(attrs)
-            consciousness_boost = solidarity_gain * 0.5  # Half of solidarity gain
+            consciousness_boost = (
+                solidarity_gain * services.defines.struggle.consciousness_solidarity_boost
+            )
             new_ideology = _update_class_consciousness(attrs, consciousness_boost)
             graph.update_node(node.id, ideology=new_ideology)
 

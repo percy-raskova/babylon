@@ -496,16 +496,16 @@ class ConsciousnessTendency(StrEnum):
     default drift without active organizing.
 
     Values:
-        ASSIMILATIONIST_LIBERAL: Seeks inclusion in existing institutions
-            without transforming them. Organizational vehicle: liberal CSOs.
-        ASSIMILATIONIST_FASCIST: Collaboration with hegemonic order for
-            individual escape. Strategy: shrink the marginalized definition.
+        LIBERAL: Seeks inclusion in existing institutions without transforming
+            them. Organizational vehicle: liberal CSOs, Democratic Party.
+        FASCIST: Collaboration with hegemonic order for individual escape.
+            Strategy: shrink the marginalized definition, exclude the most marginal.
         REVOLUTIONARY: Oppositional collective identity, independent power.
             The contradiction is material, not a misunderstanding.
     """
 
-    ASSIMILATIONIST_LIBERAL = "assimilationist_liberal"
-    ASSIMILATIONIST_FASCIST = "assimilationist_fascist"
+    LIBERAL = "liberal"
+    FASCIST = "fascist"
     REVOLUTIONARY = "revolutionary"
 
 

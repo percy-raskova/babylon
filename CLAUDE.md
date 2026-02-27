@@ -683,6 +683,8 @@ ADR0XX_descriptive_name:
 - SQLite (`data/sqlite/marxist-data-3NF.sqlite` via `NormalizedBase` ORM) (025-tensor-hierarchy)
 - Python 3.12+ (read-only analysis of existing codebase) + None added. Analysis reads `defines.py` (Pydantic 2.x models), `defines.yaml`, formula modules, and engine systems. (027-constants-provenance-audit)
 - N/A (produces Markdown and YAML report files only) (027-constants-provenance-audit)
+- Python 3.12+ (existing stack) + Pydantic 2.x (GameDefines frozen models), SQLAlchemy 2.x (hydrator ORM), NetworkX 3.x (graph bridge) (028-constants-remediation-sweep)
+- SQLite (`marxist-data-3NF.sqlite` read-only for data hydration; in-memory for simulation) (028-constants-remediation-sweep)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

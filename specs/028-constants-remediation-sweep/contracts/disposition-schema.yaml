@@ -1,0 +1,99 @@
+# JSON Schema for Constants Disposition Tracking
+# Used to validate the triage report output (FR-003, FR-008)
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: ConstantDisposition
+description: |
+  Tracks the remediation disposition of each constant from the 027 inventory.
+  Every constant must have exactly one disposition. Sum of all dispositions = 247.
+
+type: object
+required:
+  - metadata
+  - dispositions
+
+properties:
+  metadata:
+    type: object
+    required:
+      - feature
+      - date
+      - total_constants
+      - disposition_counts
+    properties:
+      feature:
+        type: string
+        const: "028-constants-remediation-sweep"
+      date:
+        type: string
+        format: date
+      total_constants:
+        type: integer
+        const: 247
+      disposition_counts:
+        type: object
+        required:
+          - wired
+          - eliminated
+          - centralized
+          - documented
+          - deferred
+        properties:
+          wired:
+            type: integer
+            description: "Tier A pipeline-ready constants connected to data sources"
+          eliminated:
+            type: integer
+            description: "Tier B dead code/duplicates removed"
+          centralized:
+            type: integer
+            description: "Tier C constants moved to GameDefines with sweep bounds"
+          documented:
+            type: integer
+            description: "Tier D engineering + Tier E game design with explicit descriptions"
+          deferred:
+            type: integer
+            description: "Tier A constants gated by upstream features"
+        additionalProperties: false
+
+  dispositions:
+    type: array
+    minItems: 247
+    maxItems: 247
+    items:
+      type: object
+      required:
+        - constant_path
+        - tier
+        - disposition
+        - reason
+      properties:
+        constant_path:
+          type: string
+          description: "GameDefines path (e.g., 'economy.extraction_efficiency') or file:line for inline"
+        tier:
+          type: string
+          enum: ["A", "B", "C", "D", "E"]
+        disposition:
+          type: string
+          enum: ["WIRED", "ELIMINATED", "CENTRALIZED", "DOCUMENTED", "DEFERRED"]
+        reason:
+          type: string
+          description: "Brief justification for this disposition"
+        blocking_feature:
+          type: string
+          description: "Feature number blocking remediation (DEFERRED only)"
+        data_source:
+          type: string
+          description: "Constitution III.4 data source (WIRED only)"
+        falsifiability:
+          type: string
+          description: "What observation would disprove the derivation (WIRED only)"
+        old_value:
+          type: number
+          description: "Previous hardcoded value (WIRED and ELIMINATED)"
+        new_value:
+          type: number
+          description: "Data-derived value (WIRED only)"
+      additionalProperties: false
+
+additionalProperties: false

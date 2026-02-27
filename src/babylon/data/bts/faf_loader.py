@@ -285,13 +285,13 @@ class FAFLoader(DataLoader):
         if exact.exists():
             return exact
 
-        candidates = sorted(faf_dir.glob("FAF5*.csv"))
-        if candidates:
-            return candidates[0]
-
-        # Zone-level data lives in region/ subdirectory
+        # Prefer zone-level (region/) over state-level aggregation
         region_candidates = sorted((faf_dir / "region").glob("FAF5*.csv"))
-        return region_candidates[0] if region_candidates else None
+        if region_candidates:
+            return region_candidates[0]
+
+        candidates = sorted(faf_dir.glob("FAF5*.csv"))
+        return candidates[0] if candidates else None
 
     def _process_csv(
         self,

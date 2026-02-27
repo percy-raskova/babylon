@@ -5,6 +5,15 @@
 **Status**: Draft
 **Input**: User description: "The D-P-D' Circuit: Lifecycle Reproduction of Labor-Power — modeling intergenerational class reproduction through Dependent, Productive, Dependent' phases with ideology transmission, legitimation bargain, inheritance mechanics, and eugenics contradiction"
 
+## Clarifications
+
+### Session 2026-02-27
+
+- Q: How does new D-phase population enter the system (births)? → A: Endogenous — births = f(pop_P), a fertility rate applied to P-phase population each tick. Fertility rate parameters require empirical research from Census/CDC crude birth rate data.
+- Q: Should the new structural legitimation index replace or augment the existing agitation-inverse computation? → A: Weighted blend — legitimation = w * structural_index + (1-w) * agitation_inverse, where w is a tunable coefficient. Structural index captures long-term institutional D' promise; agitation-inverse captures short-term worker mood.
+- Q: What determines how much wealth transfers as inheritance vs consumed by D'-phase care? → A: Pareto wealth spread at the familial unit level (not individual). Top 1% of families owns 1/3 of wealth, next 9% owns 1/3, next 40% owns 1/3, bottom 50% owns net zero. Inheritance is emergent from the wealth distribution — families inherit whatever wealth the D' decedent family unit accumulated. No per-class transfer fractions needed.
+- Q: Does Feature 030 implement data ingestion or assume pre-existing data? → A: Feature 030 implements full data ingestion from Census ACS (age cohorts, home ownership, disability rates) and CDC WONDER (mortality rates) as part of its scope.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Population Cohort Tracking by Lifecycle Phase (Priority: P1)
@@ -49,9 +58,9 @@ A simulation operator observes that when agents in D' phase exit the simulation 
 
 **Acceptance Scenarios**:
 
-1. **Given** a bourgeois household with wealth=500,000 entering D' terminus, **When** the death transition fires, **Then** a large fraction of accumulated wealth transfers to the next-generation D-phase dependents, reproducing bourgeois class position.
-2. **Given** a proletarian household with wealth=5,000 entering D' terminus where D'-phase care costs are 4,500, **When** the death transition fires, **Then** only 500 (or less) transfers as inheritance, reproducing proletarian class position.
-3. **Given** a county where dispossession events (foreclosure) have stripped home equity from labor aristocracy households, **When** D' terminus occurs, **Then** inheritance is dramatically reduced compared to non-dispossessed households, and the next generation's D-phase starts at a lower wealth baseline.
+1. **Given** a bourgeois household (top 1%) with accumulated wealth representing ~1/3 of county wealth entering D' terminus, **When** the death transition fires, **Then** that accumulated wealth transfers to the next-generation D-phase dependents, reproducing bourgeois class position through the Pareto distribution.
+2. **Given** a bottom-50% proletarian household with net zero accumulated wealth entering D' terminus, **When** the death transition fires, **Then** zero (or negative) wealth transfers as inheritance, reproducing proletarian class position. The Pareto distribution ensures this outcome without imposed transfer fractions.
+3. **Given** a county where dispossession events (foreclosure) have stripped home equity from labor aristocracy households (next-40% tier), **When** D' terminus occurs, **Then** their inheritance drops toward the bottom-50% pattern (net zero), and the next generation's D-phase starts at a lower wealth baseline — dispossession pushes families down the Pareto distribution.
 
 ______________________________________________________________________
 
@@ -100,22 +109,24 @@ ______________________________________________________________________
 ### Functional Requirements
 
 - **FR-001**: System MUST track population distribution across three lifecycle phases (D, P, D') per county per simulation tick.
-- **FR-002**: System MUST compute transition rates (D-to-P, P-to-D', D'-to-death) from demographic data sources and apply them each tick to update phase populations.
+- **FR-002**: System MUST compute transition rates (D-to-P, P-to-D', D'-to-death) and a fertility rate from demographic data sources, applying them each tick to update phase populations. Births are endogenous: new D-phase population = fertility_rate * pop_P per tick. Fertility rate parameters require empirical research from Census/CDC data.
 - **FR-003**: System MUST compute dependency_ratio as (pop_D + pop_D_prime) / pop_P per county, handling the zero-population edge case gracefully.
 - **FR-004**: System MUST compute a legitimation index as a weighted composite of pension coverage, social security replacement rate, healthcare security, home ownership rate, and retirement confidence.
 - **FR-005**: System MUST classify legitimation crisis risk as CRISIS (index < 0.3), UNSTABLE (0.3 <= index < 0.5), or STABLE (index >= 0.5).
-- **FR-006**: System MUST feed the legitimation index into the existing BifurcationRiskMetric.legitimation field, replacing or augmenting the current agitation-inverse computation.
-- **FR-007**: System MUST model intergenerational wealth transfer at D' terminus, with transfer amounts differentiated by class position (bourgeoisie, labor aristocracy, proletariat, lumpenproletariat).
+- **FR-006**: System MUST compute effective legitimation as a weighted blend: legitimation = w * structural_index + (1-w) * agitation_inverse, where w is a tunable coefficient. The structural index captures long-term institutional D' promise credibility; the agitation-inverse captures short-term worker mood. The blended value feeds into the existing BifurcationRiskMetric.legitimation field.
+- **FR-007**: System MUST model intergenerational wealth transfer at D' terminus at the familial unit level. Inheritance amounts are emergent from the Pareto wealth distribution (top 1% of families owns 1/3, next 9% owns 1/3, next 40% owns 1/3, bottom 50% owns net zero). Families inherit whatever wealth the D' decedent family unit accumulated — class differentiation arises from wealth inequality, not imposed transfer fractions.
 - **FR-008**: System MUST reduce inheritance when dispossession events (foreclosure, pension default) have consumed accumulated wealth.
 - **FR-009**: System MUST transmit ideological orientation from P-phase caregivers to D-phase dependents during the D-to-P transition, with regression toward the population mean.
 - **FR-010**: System MUST support differential transition rates by demographic group (race, incarceration status, community type) to encode structural inequality in lifecycle duration.
 - **FR-011**: System MUST integrate D-phase dependency costs into the existing subsistence calculation, increasing the effective subsistence threshold for P-phase workers who support dependents.
 - **FR-012**: System MUST respond to DispossessionType.PENSION_DEFAULT events by degrading legitimation indicators.
 - **FR-013**: System MUST compute inheritance_gini as a measure of intergenerational transfer inequality per county.
+- **FR-014**: System MUST ingest county-level demographic data from Census ACS (age cohorts, home ownership rates, disability rates) and CDC WONDER (mortality rates by age/race/county) to initialize transition rates, fertility rates, and legitimation indicators.
+- **FR-015**: System MUST ingest legitimation indicator data from BLS (pension coverage, employment benefits) and ACS (home ownership, retirement income) to initialize the LegitimationState per county.
 
 ### Key Entities
 
-- **DPDState**: Per-county, per-tick snapshot of population distribution across D/P/D' phases, with transition rates and computed dependency ratio. Connects to existing SocialClass.population for demographic accounting.
+- **DPDState**: Per-county, per-tick snapshot of population distribution across D/P/D' phases, with transition rates (including endogenous fertility rate applied to pop_P for births) and computed dependency ratio. Connects to existing SocialClass.population for demographic accounting.
 - **LegitimationState**: Per-county measure of D' promise credibility, composed of objective indicators (pension, SS, healthcare, homeownership) and subjective confidence. Feeds into BifurcationRiskMetric.
 - **InheritanceFlow**: Per-county, per-tick record of intergenerational wealth transfer, differentiated by class origin. Tracks total inheritance and inheritance Gini coefficient.
 - **LifecyclePhase**: Enum representing D, P, D' phases. Maps to existing CommunityType values (YOUTH, ADULT, ELDER) already defined in Feature 029.
@@ -137,10 +148,10 @@ ______________________________________________________________________
 ## Assumptions
 
 - **A-001**: D-P-D' is modeled as population cohort dynamics (aggregate per-county), not individual agent lifecycles. This is a deliberate simplification for computational tractability at the county level.
-- **A-002**: Transition rates (D-to-P, P-to-D', D'-to-death) are derived from Census ACS age-cohort data and CDC mortality data, initialized at simulation start and modified by simulation events (dispossession, crisis, etc.).
+- **A-002**: Transition rates (D-to-P, P-to-D', D'-to-death) and fertility rates are derived from Census ACS age-cohort data and CDC WONDER mortality data, ingested by this feature's data pipeline. Rates are initialized at simulation start and modified by simulation events (dispossession, crisis, etc.).
 - **A-003**: The existing CommunityType values YOUTH/ADULT/ELDER (Feature 029) serve as the hyperedge representation of lifecycle phases, while the new DPDState model tracks the quantitative population dynamics.
-- **A-004**: Legitimation indicators (pension coverage, SS replacement rate, etc.) are initialized from BLS/ACS data at simulation start and evolve based on simulation events, not re-queried from external data each tick.
-- **A-005**: Inheritance transfer is modeled as an aggregate county-level flow differentiated by class, not as individual household-to-household transfers.
+- **A-004**: Legitimation indicators (pension coverage, SS replacement rate, etc.) are ingested from BLS/ACS data by this feature's data pipeline, initialized at simulation start, and evolve based on simulation events. Data is not re-queried from external APIs each tick.
+- **A-005**: Inheritance transfer operates at the familial unit level (not individual), aggregated to county-level flows differentiated by class. The Pareto wealth distribution determines transfer amounts emergently.
 - **A-006**: Ideology transmission uses a weighted blend of caregiver ideology and community ideology with regression toward mean, not a direct copy of parental values.
 - **A-007**: The generational timescale (~80 years) is compressed into the simulation's annual tick structure via transition rates, so a single tick represents one year of demographic change, not one full lifecycle.
 
@@ -154,7 +165,7 @@ ______________________________________________________________________
 ## Out of Scope
 
 - Individual agent-level lifecycle tracking (this feature uses cohort aggregates).
-- Real-time demographic data ingestion during simulation (data is initialized at start).
+- Real-time demographic data re-querying during simulation ticks (data is ingested once at initialization, not refreshed per tick).
 - Modeling of specific policy interventions (Social Security reform, Medicare expansion) — the feature provides the framework; policy scenarios are future work.
 - Immigration and emigration effects on D/P/D' population (designated as Phase 2 extension, per the reproduction.py TODO).
 - Eugenics as explicit policy mechanics — the feature encodes differential outcomes via transition rates, not policy decision trees.

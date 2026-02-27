@@ -1,0 +1,117 @@
+# JSON Schema for constants-inventory.yaml
+# Validates the Phase 0 inventory output (FR-001, FR-002)
+$schema: "https://json-schema.org/draft/2020-12/schema"
+title: "Constants Inventory"
+description: "Exhaustive census of numerical constants in the Babylon simulation codebase"
+
+type: object
+required: [constants, metadata]
+additionalProperties: false
+
+properties:
+  constants:
+    type: array
+    minItems: 136  # SC-001: zero omissions from defines.py (136 in-scope scalar fields)
+    items:
+      $ref: "#/$defs/ConstantEntry"
+
+  metadata:
+    type: object
+    required: [total_count, inline_count, search_patterns, directories_searched, generation_date]
+    properties:
+      total_count:
+        type: integer
+        minimum: 136
+        description: "Total constants inventoried (GameDefines + inline)"
+      inline_count:
+        type: integer
+        minimum: 0
+        description: "Best-effort count of inline literal constants"
+      search_patterns:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        description: "Regex/AST patterns used for inline literal search (SC-008)"
+      directories_searched:
+        type: array
+        items:
+          type: string
+        minItems: 1
+        description: "Directories searched for inline literals (SC-008)"
+      known_gaps:
+        type: array
+        items:
+          type: string
+        description: "Known gaps in inline literal coverage"
+      generation_date:
+        type: string
+        format: date
+
+$defs:
+  ConstantEntry:
+    type: object
+    required: [constant_id, location, value, value_type, purpose, consumers]
+    additionalProperties: false
+    properties:
+      constant_id:
+        type: string
+        description: "{subsection}.{field} for GameDefines; {module}:{line}:{id} for inline"
+      location:
+        $ref: "#/$defs/Location"
+      value:
+        oneOf:
+          - type: number
+          - type: integer
+      value_type:
+        type: string
+        enum: [float, int]
+      purpose:
+        type: string
+        minLength: 1
+        description: "From Field(description=), comment, or 'undocumented'"
+      consumers:
+        type: array
+        items:
+          $ref: "#/$defs/Consumer"
+        description: "May be empty for dead constants"
+      tier:
+        type: ["string", "null"]
+        enum: [A, B, C, D, E, null]
+        description: "Populated in Phase 1 classification"
+
+  Location:
+    type: object
+    required: [file, line, source_type]
+    properties:
+      file:
+        type: string
+        description: "Path relative to repo root"
+      line:
+        type: integer
+        minimum: 1
+      source_type:
+        type: string
+        enum:
+          - GameDefines
+          - YAML
+          - FormulaConstant
+          - InlineLiteral
+          - FunctionDefault
+          - ModuleConstant
+
+  Consumer:
+    type: object
+    required: [system, file, line, usage]
+    properties:
+      system:
+        type: string
+        description: "System class name or function name"
+      file:
+        type: string
+      line:
+        type: integer
+        minimum: 1
+      usage:
+        type: string
+        enum: [direct, fallback, deprecated]

@@ -21,7 +21,8 @@ Key Formulas:
    - Prebisch-Singer Effect
 """
 
-# Re-export constants
+from babylon.config.defines import GameDefines as _GameDefines
+
 # Re-export Class Dynamics formulas (FRED DFA-derived)
 from babylon.formulas.class_dynamics import (
     ClassDynamicsParams,
@@ -41,10 +42,6 @@ from babylon.formulas.community import (
     calculate_solidarity_potential,
     calculate_threat_score,
     compute_community_cost_modifier,
-)
-from babylon.formulas.constants import (
-    EPSILON,
-    LOSS_AVERSION_COEFFICIENT,
 )
 
 # Re-export Curvature formulas (Feature 002 - Dialectical Field Topology)
@@ -102,6 +99,11 @@ from babylon.formulas.unequal_exchange import (
 
 # Re-export Vitality formulas (Mass Line Refactor)
 from babylon.formulas.vitality import calculate_mortality_rate
+
+# Canonical constant re-exports from GameDefines
+_DEFINES = _GameDefines()
+EPSILON = _DEFINES.precision.epsilon
+LOSS_AVERSION_COEFFICIENT = _DEFINES.behavioral.loss_aversion_lambda
 
 __all__ = [
     # Constants

@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from babylon.config.defines import GameDefines
 from babylon.models.entity_registry import ENTITY_SLOT_NAMES, METRICS_ENTITY_IDS
 from babylon.models.enums import EdgeType
 from babylon.models.metrics import EdgeMetrics, EntityMetrics, SweepSummary, TickMetrics
@@ -36,9 +37,6 @@ if TYPE_CHECKING:
 ENTITY_SLOTS: Final[dict[str, str]] = {
     entity_id: ENTITY_SLOT_NAMES[entity_id] for entity_id in METRICS_ENTITY_IDS
 }
-
-# Death threshold for outcome determination
-DEATH_THRESHOLD: Final[float] = 0.001
 
 
 class TickStateRecorder:
@@ -378,7 +376,7 @@ class TickStateRecorder:
         # Determine outcome
         p_w_wealth = last_tick.p_w.wealth if last_tick.p_w is not None else 0.0
         outcome: Literal["SURVIVED", "DIED", "ERROR"] = (
-            "DIED" if p_w_wealth <= DEATH_THRESHOLD else "SURVIVED"
+            "DIED" if p_w_wealth <= GameDefines().economy.death_threshold else "SURVIVED"
         )
 
         # Final wealth values

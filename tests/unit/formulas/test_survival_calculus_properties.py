@@ -16,13 +16,15 @@ import pytest
 from hypothesis import assume, given
 from hypothesis import strategies as st
 
+from babylon.config.defines import GameDefines
 from babylon.formulas import (
     apply_loss_aversion,
     calculate_acquiescence_probability,
     calculate_crossover_threshold,
     calculate_revolution_probability,
 )
-from babylon.formulas.constants import LOSS_AVERSION_COEFFICIENT
+
+LOSS_AVERSION_COEFFICIENT = GameDefines().behavioral.loss_aversion_lambda
 
 # =============================================================================
 # P(S|A) - ACQUIESCENCE PROBABILITY PROPERTIES

@@ -33,7 +33,9 @@ See Also
 :mod:`~babylon.formulas.solidarity` : Solidarity transmission
 """
 
-from babylon.formulas.constants import LOSS_AVERSION_COEFFICIENT
+from babylon.config.defines import GameDefines
+
+LOSS_AVERSION_COEFFICIENT = GameDefines().behavioral.loss_aversion_lambda
 
 # Routing scale factor (converts agitation to consciousness change)
 _ROUTING_SCALE = 0.1

@@ -79,7 +79,7 @@ See ai-docs/carceral-equilibrium.md for the phase transition sequence:
 - Years 60-70: Stable Necropolis
 """
 
-DEATH_THRESHOLD: Final[float] = 0.001
+DEATH_THRESHOLD: Final[float] = GameDefines().economy.death_threshold
 """Wealth threshold for legacy death detection (use is_dead() instead)."""
 
 

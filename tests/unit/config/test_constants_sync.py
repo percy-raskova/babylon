@@ -15,7 +15,6 @@ import pytest
 from tests.constants import TestConstants
 
 from babylon.config.defines import GameDefines
-from babylon.formulas.constants import EPSILON, LOSS_AVERSION_COEFFICIENT
 
 TC = TestConstants
 
@@ -113,14 +112,28 @@ class TestConstantsSync:
 
 @pytest.mark.unit
 class TestFormulasConstantsSync:
-    """Verify formulas/constants.py matches GameDefines."""
+    """Verify formula module re-exports match GameDefines."""
 
     def test_epsilon_matches_game_defines(self) -> None:
-        """EPSILON in formulas should match GameDefines.precision.epsilon."""
+        """EPSILON in formulas package should match GameDefines.precision.epsilon."""
+        from babylon.formulas import EPSILON
+
         defines = GameDefines.load_default()
         assert defines.precision.epsilon == EPSILON
 
     def test_loss_aversion_matches_game_defines(self) -> None:
         """LOSS_AVERSION_COEFFICIENT should match GameDefines.behavioral."""
+        from babylon.formulas import LOSS_AVERSION_COEFFICIENT
+
         defines = GameDefines.load_default()
         assert defines.behavioral.loss_aversion_lambda == LOSS_AVERSION_COEFFICIENT
+
+    def test_topology_monitor_fields_in_game_defines(self) -> None:
+        """New TopologyDefines fields should have expected defaults."""
+        defines = GameDefines.load_default()
+        topo = defines.topology
+        assert topo.brittle_multiplier == 2.0
+        assert topo.solidarity_sympathizer_threshold == 0.1
+        assert topo.solidarity_cadre_threshold == 0.5
+        assert topo.resilience_removal_rate == 0.2
+        assert topo.resilience_survival_threshold == 0.4

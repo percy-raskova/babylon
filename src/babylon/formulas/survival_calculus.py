@@ -10,7 +10,11 @@ Core formulas for revolutionary decision-making:
 
 import math
 
-from babylon.formulas.constants import EPSILON, LOSS_AVERSION_COEFFICIENT
+from babylon.config.defines import GameDefines
+
+_DEFINES = GameDefines()
+EPSILON = _DEFINES.precision.epsilon
+LOSS_AVERSION_COEFFICIENT = _DEFINES.behavioral.loss_aversion_lambda
 
 
 def calculate_acquiescence_probability(

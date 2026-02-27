@@ -43,25 +43,6 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# LEGACY CONSTANTS (deprecated - use GameDefines.endgame instead)
-# =============================================================================
-
-# These constants are kept for backward compatibility with tests that import them.
-# New code should use GameDefines.endgame attributes instead.
-
-# Revolutionary victory thresholds
-PERCOLATION_THRESHOLD = 0.7  # 70% of nodes in giant component
-CONSCIOUSNESS_THRESHOLD = 0.8  # Average consciousness > 0.8
-
-# Ecological collapse thresholds
-OVERSHOOT_THRESHOLD = 2.0  # Consumption > 2x biocapacity
-OVERSHOOT_CONSECUTIVE_TICKS = 5  # Must persist for 5 ticks
-
-# Fascist consolidation thresholds
-FASCIST_NODES_THRESHOLD = 3  # At least 3 nodes with national_identity > class_consciousness
-
-
-# =============================================================================
 # ENDGAME DETECTOR OBSERVER
 # =============================================================================
 

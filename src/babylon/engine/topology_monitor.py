@@ -46,26 +46,6 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
-# CONSTANTS
-# =============================================================================
-
-# Thresholds for narrative detection (DEPRECATED: use GameDefines.topology.*)
-# These constants are kept for backward compatibility but should not be used
-# in new code. TopologyMonitor now accepts threshold parameters in __init__.
-GASEOUS_THRESHOLD = 0.1  # percolation_ratio below this = atomized
-CONDENSATION_THRESHOLD = 0.5  # percolation_ratio crossing this = phase shift
-BRITTLE_MULTIPLIER = 2  # potential > actual * this = brittle
-
-# Thresholds for liquidity classification
-POTENTIAL_MIN_STRENGTH = 0.1  # Sympathizer threshold
-ACTUAL_MIN_STRENGTH = 0.5  # Cadre threshold
-
-# Default resilience test parameters
-DEFAULT_REMOVAL_RATE = 0.2  # Remove 20% of nodes
-DEFAULT_SURVIVAL_THRESHOLD = 0.4  # L_max must survive at 40% of original
-
-
-# =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
 
@@ -155,21 +135,37 @@ def calculate_component_metrics(
     return (num_components, max_component_size, percolation_ratio)
 
 
-def calculate_liquidity(G: nx.DiGraph[str] | GraphProtocol) -> tuple[int, int]:
+def calculate_liquidity(
+    G: nx.DiGraph[str] | GraphProtocol,
+    sympathizer_threshold: float | None = None,
+    cadre_threshold: float | None = None,
+) -> tuple[int, int]:
     """Calculate liquidity metrics (potential vs actual solidarity).
 
     Measures the strength of the solidarity network by counting edges
     at different thresholds:
-    - Potential (sympathizers): edges > 0.1 strength
-    - Actual (cadre): edges > 0.5 strength
+    - Potential (sympathizers): edges > sympathizer_threshold strength
+    - Actual (cadre): edges > cadre_threshold strength
 
     Args:
         G: Graph from WorldState.to_graph() (raw or protocol-wrapped)
+        sympathizer_threshold: Minimum strength for sympathizer. Defaults to
+            GameDefines.topology.solidarity_sympathizer_threshold.
+        cadre_threshold: Minimum strength for cadre. Defaults to
+            GameDefines.topology.solidarity_cadre_threshold.
 
     Returns:
         Tuple of (potential_liquidity, actual_liquidity)
     """
+    from babylon.config.defines import GameDefines
     from babylon.engine.graph_protocol import GraphProtocol
+
+    if sympathizer_threshold is None or cadre_threshold is None:
+        defaults = GameDefines()
+        if sympathizer_threshold is None:
+            sympathizer_threshold = defaults.topology.solidarity_sympathizer_threshold
+        if cadre_threshold is None:
+            cadre_threshold = defaults.topology.solidarity_cadre_threshold
 
     if not isinstance(G, GraphProtocol):
         from babylon.engine.adapters.inmemory_adapter import NetworkXAdapter
@@ -181,9 +177,9 @@ def calculate_liquidity(G: nx.DiGraph[str] | GraphProtocol) -> tuple[int, int]:
 
     for edge in G.query_edges(edge_type=EdgeType.SOLIDARITY):
         strength = edge.attributes.get("solidarity_strength", 0.0)
-        if strength > POTENTIAL_MIN_STRENGTH:
+        if strength > sympathizer_threshold:
             potential += 1
-        if strength > ACTUAL_MIN_STRENGTH:
+        if strength > cadre_threshold:
             actual += 1
 
     return (potential, actual)
@@ -191,8 +187,8 @@ def calculate_liquidity(G: nx.DiGraph[str] | GraphProtocol) -> tuple[int, int]:
 
 def check_resilience(
     G: nx.DiGraph[str] | GraphProtocol,
-    removal_rate: float = DEFAULT_REMOVAL_RATE,
-    survival_threshold: float = DEFAULT_SURVIVAL_THRESHOLD,
+    removal_rate: float | None = None,
+    survival_threshold: float | None = None,
     seed: int | None = None,
 ) -> ResilienceResult:
     """Test if solidarity network survives targeted node removal.
@@ -203,8 +199,10 @@ def check_resilience(
 
     Args:
         G: Directed graph from WorldState.to_graph()
-        removal_rate: Fraction of nodes to remove (default 0.2 = 20%)
-        survival_threshold: Required fraction of original L_max to survive
+        removal_rate: Fraction of nodes to remove. Defaults to
+            GameDefines.topology.resilience_removal_rate.
+        survival_threshold: Required fraction of original L_max to survive.
+            Defaults to GameDefines.topology.resilience_survival_threshold.
         seed: RNG seed for reproducibility (None = random)
 
     Returns:
@@ -213,6 +211,15 @@ def check_resilience(
     Note:
         The original graph is NOT modified. Test operates on a copy.
     """
+    from babylon.config.defines import GameDefines
+
+    if removal_rate is None or survival_threshold is None:
+        defaults = GameDefines()
+        if removal_rate is None:
+            removal_rate = defaults.topology.resilience_removal_rate
+        if survival_threshold is None:
+            survival_threshold = defaults.topology.resilience_survival_threshold
+
     # Set up RNG
     rng = random.Random(seed)
 
@@ -289,7 +296,7 @@ class TopologyMonitor:
     def __init__(
         self,
         resilience_test_interval: int = 5,
-        resilience_removal_rate: float = DEFAULT_REMOVAL_RATE,
+        resilience_removal_rate: float | None = None,
         logger: logging.Logger | None = None,
         gaseous_threshold: float | None = None,
         condensation_threshold: float | None = None,
@@ -301,39 +308,44 @@ class TopologyMonitor:
             resilience_test_interval: Run resilience test every N ticks
                 (0 = disabled). Default 5.
             resilience_removal_rate: Fraction of nodes to remove in test.
-                Default 0.2 (20%).
+                Defaults to GameDefines.topology.resilience_removal_rate.
             logger: Logger instance (default: module logger)
             gaseous_threshold: Percolation ratio below this = atomized.
-                Defaults to GameDefines.topology.gaseous_threshold (0.1).
+                Defaults to GameDefines.topology.gaseous_threshold.
             condensation_threshold: Percolation ratio for phase transition.
-                Defaults to GameDefines.topology.condensation_threshold (0.5).
+                Defaults to GameDefines.topology.condensation_threshold.
             vanguard_threshold: Cadre density threshold for solid phase.
-                Defaults to GameDefines.topology.vanguard_density_threshold (0.5).
+                Defaults to GameDefines.topology.vanguard_density_threshold.
         """
         # Import here to avoid circular dependency
         from babylon.config.defines import GameDefines
 
         defaults = GameDefines()
+        topo = defaults.topology
 
         self._history: list[TopologySnapshot] = []
         self._previous_percolation: float = 0.0
         self._resilience_interval: int = resilience_test_interval
-        self._removal_rate: float = resilience_removal_rate
+        self._removal_rate: float = (
+            resilience_removal_rate
+            if resilience_removal_rate is not None
+            else topo.resilience_removal_rate
+        )
         self._logger: logging.Logger = logger or logging.getLogger(__name__)
         # Sprint 3.3: Phase transition event emission
         self._previous_phase: str | None = None
         self._pending_events: list[SimulationEvent] = []
+        # Brittle multiplier from GameDefines
+        self._brittle_multiplier: float = topo.brittle_multiplier
 
         # Configurable thresholds (defaults from GameDefines)
         self._gaseous_threshold: float = (
-            gaseous_threshold
-            if gaseous_threshold is not None
-            else defaults.topology.gaseous_threshold
+            gaseous_threshold if gaseous_threshold is not None else topo.gaseous_threshold
         )
         self._condensation_threshold: float = (
             condensation_threshold
             if condensation_threshold is not None
-            else defaults.topology.condensation_threshold
+            else topo.condensation_threshold
         )
         self._vanguard_threshold: float = (
             vanguard_threshold
@@ -543,7 +555,7 @@ class TopologyMonitor:
 
         # Brittle movement warning
         if (
-            snapshot.potential_liquidity > snapshot.actual_liquidity * BRITTLE_MULTIPLIER
+            snapshot.potential_liquidity > snapshot.actual_liquidity * self._brittle_multiplier
             and snapshot.actual_liquidity > 0
         ):
             self._logger.info(

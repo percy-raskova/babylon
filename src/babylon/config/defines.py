@@ -592,6 +592,36 @@ class TopologyDefines(BaseModel):
         le=1.0,
         description="Cadre density threshold for vanguard party (liquid→solid)",
     )
+    brittle_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=10.0,
+        description="Potential > actual * this = brittle network (fragile solidarity)",
+    )
+    solidarity_sympathizer_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum SOLIDARITY edge strength for sympathizer classification",
+    )
+    solidarity_cadre_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Minimum SOLIDARITY edge strength for cadre classification",
+    )
+    resilience_removal_rate: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of nodes removed during resilience test (default 20%)",
+    )
+    resilience_survival_threshold: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="L_max must survive at this fraction of original after removal",
+    )
 
 
 class MetabolismDefines(BaseModel):

@@ -687,6 +687,8 @@ ADR0XX_descriptive_name:
 - SQLite (`marxist-data-3NF.sqlite` read-only for data hydration; in-memory for simulation) (028-constants-remediation-sweep)
 - Python 3.12+ + Pydantic 2.x (frozen models, validation), XGI 0.10 (hypergraph), NetworkX 3.x (graph protocol) (029-community-hyperedge-upgrade)
 - In-memory via XGI Hypergraph + GraphProtocol. CommunityConsciousness serialized to JSON via Pydantic. No new database tables. (029-community-hyperedge-upgrade)
+- Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (GraphProtocol), XGI 0.10 (hypergraph — existing via Feature 022/029) (030-dpd-lifecycle-circuit)
+- In-memory via GraphProtocol. No new database tables. DPDState persists via CountyEconomicState extension in the graph bridge. Mobility Atlas CSVs read once during parameter derivation (development-time, not runtime). (030-dpd-lifecycle-circuit)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

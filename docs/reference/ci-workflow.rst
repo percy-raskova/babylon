@@ -36,8 +36,8 @@ Branch Structure
        DEV -->|"BD merge"| MAIN
        MAIN -.->|"hotfix backport"| DEV
 
-   %% Necropolis Codex styling
-   classDef protected fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef protected fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
    classDef work fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
 
    class MAIN,DEV protected

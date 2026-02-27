@@ -311,9 +311,9 @@ finite resources tracked via an ``imperial_rent_pool`` ("The Gas Tank"):
        C_b -.->|"DRAINS"| POOL
        POOL -->|"Phase 5: DECISION"| C_b
 
-   %% Necropolis Codex styling
-   classDef periphery fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
-   classDef core fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef periphery fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
+   classDef core fill:#DC143C,stroke:#696969,color:#F7F5F3
    classDef pool fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
 
    class P_w,P_c periphery

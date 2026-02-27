@@ -34,9 +34,9 @@ The event system implements the Observer pattern at the architecture level:
        STEP -->|"conversion"| WS
        WS -->|"reads"| AI
 
-   %% Necropolis Codex styling
-   classDef engine fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
-   classDef state fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef engine fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
+   classDef state fill:#DC143C,stroke:#696969,color:#F7F5F3
    classDef observer fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
 
    class SYS,BUS,STEP engine
@@ -148,9 +148,9 @@ Events undergo conversion from internal format to typed models:
        D --> E["5. Returns<br/>ExtractionEvent(tick=..., source_id=...)"]
        E --> F["6. WorldState.events.append()<br/>extraction_event"]
 
-   %% Necropolis Codex styling
-   classDef system fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
-   classDef bus fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef system fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
+   classDef bus fill:#DC143C,stroke:#696969,color:#F7F5F3
    classDef state fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
 
    class A system
@@ -205,8 +205,8 @@ for the current tick. They cannot add events to the current tick's state.
        N6 -.->|"next tick"| N7
        N7 --> N8 --> N9
 
-   %% Necropolis Codex styling
-   classDef tickN fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef tickN fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
    classDef tickN1 fill:#1A3A1A,stroke:#2A6B2A,color:#39FF14
 
    class N1,N2,N3,N4,N5,N6 tickN

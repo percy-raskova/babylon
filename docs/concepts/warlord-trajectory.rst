@@ -47,10 +47,10 @@ control them **by proxy through money**:
        ENF -->|"CONTROL"| TANKS & HELI & DRONES & GUNS & PRISON
        C_b -->|"PROFIT"| C_b
 
-   %% Necropolis Codex styling
-   classDef capital fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
-   classDef state fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
-   classDef violence fill:#0A0707,stroke:#4A1818,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef capital fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
+   classDef state fill:#DC143C,stroke:#696969,color:#F7F5F3
+   classDef violence fill:#1A0000,stroke:#8B0A1A,color:#F7F5F3
 
    class C_b capital
    class ENF state

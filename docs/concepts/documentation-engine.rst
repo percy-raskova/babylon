@@ -130,11 +130,12 @@ Build Commands
    # Live-reload development server
    mise run docs:live
 
-Necropolis Codex Theme
-----------------------
+Luxe Gothic Theme
+------------------
 
-The PDF output applies the "Necropolis Codex" aesthetic---leaked documents
-from the collapsing apparatus. See :doc:`aesthetics` for the full design system.
+The PDF output applies the "Luxe Gothic" aesthetic---derived from the Kitty
+terminal palette. Dark covers with crimson and gold accents frame white body
+pages. See :doc:`aesthetics` for the full design system.
 
    *"The collapse of American hegemony is not the end of history.
    It is the revelation of what was always underneath."*
@@ -149,24 +150,30 @@ Color Palette (LaTeX)
    * - Name
      - Hex
      - Usage
-   * - AbsoluteVoid
-     - ``#0A0707``
-     - Cover top gradient (deepest darkness)
-   * - DriedBlood
-     - ``#4A1818``
-     - Chapter headings, cover bottom (historical violence)
-   * - Rust
-     - ``#6B4A3A``
-     - Section headings, internal links (decaying infrastructure)
-   * - AshPaper
-     - ``#D4C9B8``
-     - Page backgrounds (cold institutional archive)
-   * - AshInk
-     - ``#3D3A36``
-     - Body text (charcoal, readable)
-   * - Bone
-     - ``#8B7B6B``
-     - Cover title, page numbers (grave markers)
+   * - BgDark
+     - ``#1A0000``
+     - Cover background (terminal darkness)
+   * - DeepCrimson
+     - ``#8B0A1A``
+     - Section headings, structural emphasis (congealed violence)
+   * - Crimson
+     - ``#DC143C``
+     - Active accents, borders, structural markers (arterial urgency)
+   * - Gold
+     - ``#FFD700``
+     - Cover rules, category labels (extracted wealth)
+   * - Silver
+     - ``#C0C0C0``
+     - Cover subtitle, body accents (industrial metal)
+   * - DimGray
+     - ``#696969``
+     - Page numbers, inactive elements (concrete)
+   * - BodyText
+     - ``#2D2D2D``
+     - Body text (near-black, AAA contrast)
+   * - WarmGray
+     - ``#F7F5F3``
+     - Code backgrounds, blockquote fills (institutional neutral)
    * - BuriedHope
      - ``#1A3A1A``
      - Cover line (barely visible seed)

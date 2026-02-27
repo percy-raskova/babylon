@@ -262,9 +262,9 @@ With RAG and vector database integration:
        D --> E["Periodically flush less relevant<br/>back to Vector DB"]
        E -.-> A
 
-   %% Necropolis Codex styling
-   classDef storage fill:#4A1818,stroke:#6B4A3A,color:#D4C9B8
-   classDef process fill:#6B4A3A,stroke:#8B7B6B,color:#D4C9B8
+   %% Luxe Gothic styling
+   classDef storage fill:#8B0A1A,stroke:#DC143C,color:#F7F5F3
+   classDef process fill:#DC143C,stroke:#696969,color:#F7F5F3
 
    class A,E storage
    class B,C,D process

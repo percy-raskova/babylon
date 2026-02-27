@@ -181,12 +181,12 @@ mermaid.initialize({
     startOnLoad: true,
     theme: 'neutral',
     themeVariables: {
-        primaryColor: '#4A1818',
-        primaryTextColor: '#3D3A36',
-        primaryBorderColor: '#6B4A3A',
-        lineColor: '#6B4A3A',
-        secondaryColor: '#D4C9B8',
-        tertiaryColor: '#8B7B6B'
+        primaryColor: '#8B0A1A',
+        primaryTextColor: '#2D2D2D',
+        primaryBorderColor: '#DC143C',
+        lineColor: '#DC143C',
+        secondaryColor: '#F7F5F3',
+        tertiaryColor: '#696969'
     }
 });
 """
@@ -239,7 +239,10 @@ latex_documents = [
 ]
 
 # LaTeX styling for professional book output
-# "Bunker Constructivism" aesthetic from docs/concepts/aesthetics.rst
+# "Luxe Gothic" aesthetic — Kitty terminal palette applied to Sphinx PDF
+# Color scheme: ~/.config/kitty/current-theme.conf
+# Design philosophy: ~/.config/kitty/docs/04-DESIGN-RATIONALE.md
+# Matches md-to-pdf skill template: ~/.claude/skills/md-to-pdf/assets/template.tex
 latex_elements = {
     "papersize": "letterpaper",
     "pointsize": "11pt",
@@ -256,13 +259,19 @@ latex_elements = {
 \setsansfont{TeX Gyre Heros}
 \setmonofont{DejaVu Sans Mono}
 """,
-    # Custom preamble: Bunker Constructivism Professional Book Edition
+    # Custom preamble: Luxe Gothic — Kitty terminal palette for Sphinx PDF
     "preamble": r"""
 % ============================================================================
-% NECROPOLIS CODEX THEME - The Machinery of Death Made Visible
-% "Leaked documents from the collapsing apparatus" - institutional, archival,
-% stained with historical violence. Hope appears only where organization is discussed.
-% See docs/concepts/aesthetics.rst
+% LUXE GOTHIC THEME — Kitty Terminal Palette for Sphinx PDF
+% Color scheme from ~/.config/kitty/current-theme.conf (Luxe Gothic / ksbc)
+% Design philosophy from ~/.config/kitty/docs/04-DESIGN-RATIONALE.md:
+%   Gold    = interactive / navigational (links, markers, separators)
+%   Crimson = structural accent (headings, borders, rules)
+%   Dimgray = inactive / structural (headers, attributions)
+%
+% Cover: dark (#1A0000) with crimson/gold accents.
+% Body pages: white with deep crimson headings, crimson accents.
+% Matches: ~/.claude/skills/md-to-pdf/assets/template.tex
 % ============================================================================
 
 % Better typography - subtle kerning and spacing improvements
@@ -278,41 +287,41 @@ latex_elements = {
 \addtolength{\topmargin}{-12pt}
 
 % ============================================================================
-% COLOR DEFINITIONS - Necropolis Codex Palette
-% The grim machinery of death made visible. Institutional archive colors.
-% See: /home/user/.claude/plans/splendid-inventing-sutton.md
+% COLOR DEFINITIONS — Kitty terminal "Luxe Gothic" palette
+% Source: ~/.config/kitty/current-theme.conf
+%         ~/.config/kitty/docs/02-DESIGN-TOKENS.md
 % ============================================================================
 
-% PRIMARY COLORS (The Machinery of Death)
-\definecolor{AbsoluteVoid}{HTML}{0A0707}    % Cover top - deepest darkness, death camp night
-\definecolor{DriedBlood}{HTML}{4A1818}      % Chapter headings - oxidized, historical violence
-\definecolor{Rust}{HTML}{6B4A3A}            % Section headings - decaying infrastructure
-\definecolor{Bone}{HTML}{8B7B6B}            % Grave markers, monuments - cover title text
-\definecolor{AshPaper}{HTML}{D4C9B8}        % Page backgrounds - cold institutional archive
-\definecolor{AshInk}{HTML}{3D3A36}          % Body text - charcoal, readable but grim
+% --- Core terminal colors (used on cover page) ---
+\definecolor{bgdark}{HTML}{1A0000}         % Terminal background: deep burgundy-black
+\definecolor{fglight}{HTML}{E8E8E8}        % Bright foreground
+\definecolor{silver}{HTML}{C0C0C0}         % Terminal foreground: silver
+\definecolor{gold}{HTML}{FFD700}           % color3 / interactive: gold
+\definecolor{crimson}{HTML}{DC143C}        % color1 / active border: crimson
+\definecolor{dimgray}{HTML}{696969}        % Muted gray (readable on light bg)
 
-% ACCENT COLORS (Buried Hope - Conditional on Organization)
-\definecolor{BuriedHope}{HTML}{1A3A1A}      % Cover line - barely visible seed underground
-\definecolor{ForestDim}{HTML}{2A6B2A}       % Section headings in revolutionary content
-\definecolor{PhosphorGreen}{HTML}{39FF14}   % Key phrases only - "Organization is the difference"
+% --- Semantic colors for light body pages ---
+\definecolor{bodytext}{HTML}{2D2D2D}       % Near-black: body text on white pages
+\definecolor{deepcrimson}{HTML}{8B0A1A}    % Deep crimson: chapter/section headings
+\definecolor{subheadcolor}{HTML}{3D3D3D}   % Charcoal: subsection headings
+\definecolor{darkgoldenrod}{HTML}{B8860B}  % Dark gold: external links
+\definecolor{boxbg}{HTML}{F0EDED}          % Warm light gray: admonitions, callouts
+\definecolor{codebg}{HTML}{F5F2F0}         % Pale warm gray: code blocks
+\definecolor{tablerule}{HTML}{CCCCCC}      % Light gray: table rules
 
-% LEGACY COLORS (For compatibility during transition)
-\definecolor{ThermalWarning}{HTML}{4A1818}  % Alias to DriedBlood for existing refs
-\definecolor{TheChassis}{HTML}{6B4A3A}      % Alias to Rust
-\definecolor{TheDust}{HTML}{8B7B6B}         % Alias to Bone
+% --- ANSI palette (for syntax highlighting) ---
+\definecolor{ansigreen}{HTML}{228B22}      % color2: forest green
+\definecolor{ansicyan}{HTML}{008B8B}       % color6: dark cyan
+
+% --- Revolutionary hope accent (conditional on organization) ---
+\definecolor{ForestDim}{HTML}{2A6B2A}      % Dim green: hope in revolutionary content
+\definecolor{PhosphorGreen}{HTML}{39FF14}  % Phosphor: "Organization is the difference"
 
 % ============================================================================
-% PAGE COLORS - Cold institutional archive aesthetic
-% Documents from the apparatus - under fluorescent light, stained with history
+% PAGE STYLING — White background, near-black body text
+% Cover uses TikZ overlay for dark background.
 % ============================================================================
-\definecolor{BunkerPaper}{HTML}{D4C9B8}     % Alias to AshPaper for compatibility
-\definecolor{BunkerInk}{HTML}{3D3A36}       % Alias to AshInk for compatibility
-
-% ============================================================================
-% PAGE STYLING - Quasi-dark mode for comfortable reading
-% ============================================================================
-\pagecolor{BunkerPaper}                     % Warm cream background on all pages
-\color{BunkerInk}                           % Warm dark gray body text
+\color{bodytext}
 
 % Enhanced PDF bookmarks (better than hyperref alone)
 \usepackage{bookmark}
@@ -321,61 +330,83 @@ latex_elements = {
 \usepackage{tikz}
 
 % ============================================================================
-% CUSTOM COVER PAGE - Necropolis Codex
-% Black-to-Rust gradient, institutional archive aesthetic
-% Hope appears only in the mantra - "The only escape is revolutionary organization."
+% CUSTOM COVER PAGE — Luxe Gothic
+% Dark burgundy-black with crimson accent bar, gold rules.
+% Matches md-to-pdf skill template cover design.
 % ============================================================================
 \makeatletter
 \renewcommand{\sphinxmaketitle}{%
   \begin{titlepage}%
-    % Full-page TikZ gradient background: AbsoluteVoid at top → DriedBlood at bottom
     \begin{tikzpicture}[remember picture,overlay]
-      \fill[top color=AbsoluteVoid, bottom color=DriedBlood]
-        (current page.north west) rectangle (current page.south east);
+      % Full page dark background (Luxe Gothic terminal bg)
+      \fill[bgdark] (current page.south west) rectangle (current page.north east);
+
+      % Subtle vertical crimson line on left (active border accent)
+      \fill[crimson]
+        ([xshift=0.9in]current page.south west) rectangle
+        ([xshift=0.93in]current page.north west);
+
+      % Gold rule near top
+      \draw[gold, line width=0.8pt]
+        ([xshift=1.15in, yshift=-2.2in]current page.north west) --
+        ([xshift=-1.15in, yshift=-2.2in]current page.north east);
+
+      % Category / subtitle (gold — navigational)
+      \node[anchor=north west, text width=5.5in, inner sep=0pt]
+        at ([xshift=1.3in, yshift=-2.6in]current page.north west)
+        {{\fontsize{11}{13}\selectfont\sffamily\color{gold}%
+          A SIMULATION OF IMPERIAL COLLAPSE}};
+
+      % Main title (bright white — emphasis)
+      \node[anchor=north west, text width=5.5in, inner sep=0pt]
+        at ([xshift=1.3in, yshift=-3.2in]current page.north west)
+        {{\fontsize{28}{34}\selectfont\sffamily\bfseries\color{fglight}%
+          \@title}};
+
+      % Mantra (silver italic)
+      \node[anchor=north west, text width=5.5in, inner sep=0pt]
+        at ([xshift=1.3in, yshift=-5.0in]current page.north west)
+        {{\fontsize{12}{15}\selectfont\itshape\color{silver}%
+          ``The only escape is revolutionary organization.''}};
+
+      % Crimson rule above author block
+      \draw[crimson, line width=0.6pt]
+        ([xshift=1.3in, yshift=3.2in]current page.south west) --
+        ([xshift=4.0in, yshift=3.2in]current page.south west);
+
+      % Author (bright white)
+      \node[anchor=north west, text width=5in, inner sep=0pt]
+        at ([xshift=1.3in, yshift=2.95in]current page.south west)
+        {{\fontsize{11}{14}\selectfont\sffamily\color{fglight}%
+          \@author}};
+
+      % Version (silver, dimmer)
+      \node[anchor=north west, text width=5in, inner sep=0pt]
+        at ([xshift=1.3in, yshift=2.5in]current page.south west)
+        {{\fontsize{9}{11}\selectfont\sffamily\color{silver}%
+          Version \py@release}};
+
+      % Gold rule near bottom
+      \draw[gold, line width=0.8pt]
+        ([xshift=1.15in, yshift=1.5in]current page.south west) --
+        ([xshift=-1.15in, yshift=1.5in]current page.south east);
+
     \end{tikzpicture}%
-    % Title content on gradient background
-    \vspace*{3cm}%
-    \begin{center}%
-      % Main title in Bone (grave marker, monument)
-      {\fontsize{48}{56}\selectfont\bfseries\color{Bone}\@title\par}%
-      \vspace{1.8cm}%
-      % Subtitle in AshInk (documents of the system)
-      {\Large\color{AshInk}A Simulation of Imperial Collapse\par}%
-      \vspace{0.6cm}%
-      {\large\color{AshInk}The Necropolitical Prison-Plantation\par}%
-      \vspace{3cm}%
-      % Decorative line - BuriedHope (thin, barely visible - the seed underground)
-      {\color{BuriedHope}\rule{0.6\textwidth}{0.3pt}\par}%
-      \vspace{1.5cm}%
-      % The Mantra - ForestDim italic (conditional hope, only for those who read)
-      {\large\itshape\color{ForestDim}``The only escape is revolutionary organization.''\par}%
-      \vspace{3cm}%
-      % Author in Bone
-      {\Large\color{Bone}\@author\par}%
-      \vspace{1.2cm}%
-      % Version in Bone (dimmer)
-      {\normalsize\color{Bone!70}Version \py@release\par}%
-    \end{center}%
   \end{titlepage}%
-  % Reset to AshPaper background for all content pages
-  \pagecolor{AshPaper}%
   \clearpage%
 }
 \makeatother
 
 % ============================================================================
-% HYPERLINK STYLING - Necropolis Navigation
-% Internal paths through the apparatus (Rust), external connections to knowledge (Bone)
+% HYPERLINK STYLING — Luxe Gothic Navigation
+% Internal: deep crimson (structural accent)
+% External: dark goldenrod (gold-derived, readable on white)
 % ============================================================================
 \hypersetup{
     colorlinks=true,
-    % Internal links (linkcolor): Rust - hot paths through the decaying apparatus
-    linkcolor=Rust,
-    % External URLs (urlcolor): Bone - connections to outside knowledge
-    urlcolor=Bone,
-    % Citations: AshInk - supporting material
-    citecolor=AshInk,
-    % PDF bookmarks and metadata
+    linkcolor=deepcrimson,
+    urlcolor=darkgoldenrod,
+    citecolor=deepcrimson,
     bookmarks=true,
     bookmarksnumbered=true,
     bookmarksopen=true,
@@ -384,38 +415,38 @@ latex_elements = {
 }
 
 % ============================================================================
-% HEADING COLORS - Necropolis Codex Hierarchy
-% DriedBlood (chapters) → Rust (sections) → AshInk (subsections)
-% Historical violence burns into memory, decaying infrastructure guides navigation
+% HEADING COLORS — Luxe Gothic Hierarchy
+% deepcrimson (chapters/sections) → subheadcolor (subsections)
+% Crimson = structural accent, readable on white pages
 % ============================================================================
 \usepackage{sectsty}
-\chapterfont{\color{DriedBlood}}        % Historical violence - burns into memory
-\sectionfont{\color{Rust}}              % Decaying infrastructure - navigating the apparatus
-\subsectionfont{\color{AshInk}}         % The fine print - details of the machinery
+\chapterfont{\color{deepcrimson}}
+\sectionfont{\color{deepcrimson}}
+\subsectionfont{\color{subheadcolor}}
 
 % ============================================================================
-% TABLE OF CONTENTS - Same hierarchical palette
+% TABLE OF CONTENTS — Luxe Gothic palette
 % ============================================================================
 \usepackage[titles]{tocloft}
-\renewcommand{\cftchapfont}{\bfseries\color{DriedBlood}}
-\renewcommand{\cftsecfont}{\color{Rust}}
-\renewcommand{\cftsubsecfont}{\color{AshInk}}
-\renewcommand{\cftchappagefont}{\bfseries\color{Bone}}
-\renewcommand{\cftsecpagefont}{\color{Bone}}
-\renewcommand{\cftsubsecpagefont}{\color{Bone!70}}
+\renewcommand{\cftchapfont}{\bfseries\color{deepcrimson}}
+\renewcommand{\cftsecfont}{\color{deepcrimson}}
+\renewcommand{\cftsubsecfont}{\color{subheadcolor}}
+\renewcommand{\cftchappagefont}{\bfseries\color{dimgray}}
+\renewcommand{\cftsecpagefont}{\color{dimgray}}
+\renewcommand{\cftsubsecpagefont}{\color{dimgray}}
 
 % ============================================================================
-% FANCY HEADERS - Necropolis archive aesthetic
+% FANCY HEADERS — Luxe Gothic
+% Dimgray text, crimson footer rule
 % ============================================================================
 \usepackage{fancyhdr}
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[LE,RO]{\color{Bone}\thepage}
-\fancyhead[RE]{\color{Rust}\nouppercase{\leftmark}}
-\fancyhead[LO]{\color{Rust}\nouppercase{\rightmark}}
-\renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\headrule}{\hbox to\headwidth{%
-    \color{Bone!30}\leaders\hrule height \headrulewidth\hfill}}
+\fancyhead[LE,RO]{\color{dimgray}\thepage}
+\fancyhead[RE]{\color{dimgray}\nouppercase{\leftmark}}
+\fancyhead[LO]{\color{dimgray}\nouppercase{\rightmark}}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{{\color{crimson}\rule{0.3\textwidth}{0.4pt}}}
 
 % Admonition styling
 \usepackage{tcolorbox}
@@ -424,11 +455,11 @@ latex_elements = {
 % Custom title page elements
 \newcommand{\babylonsubtitle}[1]{%
     \vspace{0.5em}%
-    {\Large\color{Bone}#1}%
+    {\Large\color{silver}#1}%
 }
 
 % ============================================================================
-% REVOLUTIONARY HOPE STYLING - Conditional hope for content about organization
+% REVOLUTIONARY HOPE STYLING — Conditional hope for content about organization
 % Use \hope{text} for PhosphorGreen text - only for:
 % - "Organization is the difference"
 % - P(S|R) > P(S|A) / Warsaw Ghetto Dynamic
@@ -439,14 +470,14 @@ latex_elements = {
 """,
     # Chapter heading style - Bjornstrup is professional book-like
     "fncychap": r"\usepackage[Bjornstrup]{fncychap}",
-    # Sphinx-specific styling (matches Necropolis Codex preamble colors)
-    # TitleColor: DriedBlood (74,24,24) - historical violence
-    # InnerLinkColor: Rust (107,74,58) - hot paths through apparatus
-    # OuterLinkColor: Bone (139,123,107) - connections to external knowledge
+    # Sphinx-specific styling — Luxe Gothic palette
+    # TitleColor: deepcrimson (139,10,26) — structural accent
+    # InnerLinkColor: deepcrimson (139,10,26) — internal navigation
+    # OuterLinkColor: darkgoldenrod (184,134,11) — external links
     "sphinxsetup": r"""
-        TitleColor={RGB}{74,24,24},
-        InnerLinkColor={RGB}{107,74,58},
-        OuterLinkColor={RGB}{139,123,107},
+        TitleColor={RGB}{139,10,26},
+        InnerLinkColor={RGB}{139,10,26},
+        OuterLinkColor={RGB}{184,134,11},
     """,
     # Index formatting
     "printindex": r"\footnotesize\raggedright\printindex",

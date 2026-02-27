@@ -127,14 +127,15 @@ Secondary Colors
      - Terminal prompts, secondary text, inactive elements. The dust that
        settles on everything in the bunker.
 
-Necropolis Codex (PDF Palette)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Luxe Gothic (PDF Palette)
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The PDF output uses a distinct "Necropolis Codex" palette---leaked documents
-from the collapsing apparatus. Institutional, archival, stained with historical
-violence. :hope:`Hope appears only where organization is discussed.`
+The PDF output uses the "Luxe Gothic" palette---derived from the Kitty terminal
+theme. Dark covers with crimson and gold accents frame white body pages. The
+aesthetic is brutalist institutional: concrete, steel, and arterial red.
+:hope:`Hope appears only where organization is discussed.`
 
-**Primary Colors (The Machinery of Death)**
+**Primary Colors (The Terminal Palette)**
 
 .. list-table::
    :header-rows: 1
@@ -143,24 +144,30 @@ violence. :hope:`Hope appears only where organization is discussed.`
    * - Hex
      - Name
      - Role
-   * - ``#0A0707``
-     - **AbsoluteVoid**
-     - Cover top gradient. Deepest darkness, the death camp night.
-   * - ``#4A1818``
-     - **DriedBlood**
-     - Chapter headings, cover bottom. Oxidized, historical violence.
-   * - ``#6B4A3A``
-     - **Rust**
-     - Section headings, internal links. Decaying infrastructure.
-   * - ``#D4C9B8``
-     - **AshPaper**
-     - Page backgrounds. Cold institutional archive under fluorescent light.
-   * - ``#8B7B6B``
-     - **Bone**
-     - Cover title, page numbers. Grave markers, monuments.
-   * - ``#3D3A36``
-     - **AshInk**
-     - Body text. Charcoal with slight warmth for readability.
+   * - ``#1A0000``
+     - **BgDark**
+     - Cover background. Deep burgundy-black, terminal darkness.
+   * - ``#8B0A1A``
+     - **DeepCrimson**
+     - Section headings, structural emphasis. Congealed violence.
+   * - ``#DC143C``
+     - **Crimson**
+     - Active accents, borders, structural markers. Arterial urgency.
+   * - ``#FFD700``
+     - **Gold**
+     - Cover rules, category labels, navigational elements. Extracted wealth.
+   * - ``#C0C0C0``
+     - **Silver**
+     - Cover subtitle, body accents. Industrial metal, functional.
+   * - ``#696969``
+     - **DimGray**
+     - Page numbers, inactive elements. Concrete, institutional.
+   * - ``#2D2D2D``
+     - **BodyText**
+     - Body text. Near-black for AAA contrast on white pages.
+   * - ``#F7F5F3``
+     - **WarmGray**
+     - Code backgrounds, blockquote fills. Institutional warm neutral.
 
 **Accent Colors (Buried Hope)**
 
@@ -209,11 +216,11 @@ The interface is layered with atmospheric effects that simulate hardware decay:
            end
        end
 
-   %% Necropolis Codex styling - layers from outer to inner
-   style L4 fill:#0A0707,stroke:#4A1818,color:#D4C9B8
+   %% Luxe Gothic styling - layers from outer to inner
+   style L4 fill:#1A0000,stroke:#8B0A1A,color:#F7F5F3
    style L3 fill:#1A1A1A,stroke:#404040,color:#C0C0C0
-   style L2 fill:#2D2A26,stroke:#6B4A3A,color:#D4C9B8
-   style L1 fill:#1A1A1A,stroke:#D40000,color:#F5F5F5
+   style L2 fill:#2D2D2D,stroke:#DC143C,color:#F7F5F3
+   style L1 fill:#1A1A1A,stroke:#DC143C,color:#F5F5F5
 
 Scanlines
 ~~~~~~~~~
@@ -299,11 +306,11 @@ splits and the suggestion of collapse/transformation:
        SPLIT --> V1["▼<br/>Collapse"]
        SPLIT --> V2["▼<br/>Transform"]
 
-   %% Necropolis Codex styling - vector traces on CRT
-   style A fill:#0A0707,stroke:#FFD700,color:#FFD700
-   style SPLIT fill:#0A0707,stroke:#D40000,color:#D40000
-   style V1 fill:#0A0707,stroke:#FFD700,color:#FFD700
-   style V2 fill:#0A0707,stroke:#39FF14,color:#39FF14
+   %% Luxe Gothic styling - vector traces on CRT
+   style A fill:#1A0000,stroke:#FFD700,color:#FFD700
+   style SPLIT fill:#1A0000,stroke:#DC143C,color:#DC143C
+   style V1 fill:#1A0000,stroke:#FFD700,color:#FFD700
+   style V2 fill:#1A0000,stroke:#39FF14,color:#39FF14
 
 Rendered as glowing lines against The Void, with subtle bloom on vertices.
 

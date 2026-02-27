@@ -685,6 +685,8 @@ ADR0XX_descriptive_name:
 - N/A (produces Markdown and YAML report files only) (027-constants-provenance-audit)
 - Python 3.12+ (existing stack) + Pydantic 2.x (GameDefines frozen models), SQLAlchemy 2.x (hydrator ORM), NetworkX 3.x (graph bridge) (028-constants-remediation-sweep)
 - SQLite (`marxist-data-3NF.sqlite` read-only for data hydration; in-memory for simulation) (028-constants-remediation-sweep)
+- Python 3.12+ + Pydantic 2.x (frozen models, validation), XGI 0.10 (hypergraph), NetworkX 3.x (graph protocol) (029-community-hyperedge-upgrade)
+- In-memory via XGI Hypergraph + GraphProtocol. CommunityConsciousness serialized to JSON via Pydantic. No new database tables. (029-community-hyperedge-upgrade)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

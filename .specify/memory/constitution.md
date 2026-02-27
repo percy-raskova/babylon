@@ -2,8 +2,11 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.7.0 → 1.8.0
-Bump Rationale: 3 new theoretical commitments + hyperedge categories + anti-pattern — MINOR
+Version Change: 1.8.0 → 1.8.1
+Bump Rationale: Added Chetty Opportunity Atlas to III.4 approved data sources — PATCH
+
+Previous Version Change: 1.7.0 → 1.8.0
+Previous Bump Rationale: 3 new theoretical commitments + hyperedge categories + anti-pattern — MINOR
 
 Modified Principles:
   - II.7 expanded with three hyperedge categories (contradiction pairs,
@@ -137,7 +140,7 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **3. Physics Cosplay Prohibition** — Tensor notation earns its keep through actual invariance. Reject formalism without transformation laws.
 
-**4. Data Source Traceability** — Approved: QCEW, Census/ACS, BEA, FRED, HIFLD, BTS, FCC, ATUS, CDC WONDER, Piketty/WID, PWT, Census Trade, Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF, Fed Z.1 Financial Accounts. New sources require explicit addition.
+**4. Data Source Traceability** — Approved: QCEW, Census/ACS, BEA, FRED, HIFLD, BTS, FCC, ATUS, CDC WONDER, Piketty/WID, PWT, Census Trade, Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF, Fed Z.1 Financial Accounts, Chetty Opportunity Atlas. New sources require explicit addition.
 
 **5. Empirical vs Strategic Separation** — Material conditions from data (nodes, constraints, extractive edges). Strategic intervention NOT from data (solidaristic edges, organizing, consciousness-raising).
 
@@ -211,4 +214,4 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 ______________________________________________________________________
 
-**Version**: 1.8.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-25
+**Version**: 1.8.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-27

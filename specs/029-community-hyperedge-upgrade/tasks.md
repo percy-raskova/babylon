@@ -140,17 +140,17 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T036 [US5] Write failing test for `is_cross_class_bridge` computed field in `tests/unit/models/test_community_models.py`: True for INSTITUTIONAL_EXCLUSION, False for CONTRADICTION_PAIR and LIFECYCLE_PHASE
-- [ ] T037 [US5] Write failing test for `communities_spanning_axis` in `tests/unit/engine/systems/test_community_system.py`: synthetic hypergraph with DISABLED members on both sides of colonial axis → DISABLED is bridge; QUEER only on marginalized side → not bridge
-- [ ] T038 [US5] Write failing test for updated `build_community_hypergraph` in `tests/unit/engine/systems/test_community_system.py`: hyperedge attributes include consciousness_ci, consciousness_tendency, consciousness_contestation, category
+- [x] T036 [US5] Write failing test for `is_cross_class_bridge` computed field in `tests/unit/models/test_community_models.py`: True for INSTITUTIONAL_EXCLUSION, False for CONTRADICTION_PAIR and LIFECYCLE_PHASE
+- [x] T037 [US5] Write failing test for `communities_spanning_axis` in `tests/unit/engine/systems/test_community_system.py`: synthetic hypergraph with DISABLED members on both sides of colonial axis → DISABLED is bridge; QUEER only on marginalized side → not bridge
+- [x] T038 [US5] Write failing test for updated `build_community_hypergraph` in `tests/unit/engine/systems/test_community_system.py`: hyperedge attributes include consciousness_ci, consciousness_tendency, consciousness_contestation, category
 
 ### Implementation (GREEN phase)
 
-- [ ] T039 [US5] Add `is_cross_class_bridge` as `@computed_field` on CommunityState in `src/babylon/models/entities/community.py`
-- [ ] T040 [US5] Implement `communities_spanning_axis(H, axis) -> list[CommunityType]` in `src/babylon/engine/systems/community.py`
-- [ ] T041 [US5] Update `build_community_hypergraph` in `src/babylon/engine/systems/community.py` to include consciousness and category attributes on hyperedges
-- [ ] T042 [US5] Verify all T036-T038 tests now pass (GREEN)
-- [ ] T043 [US5] Run all 43 pre-existing community tests and confirm zero failures (FR-008 backward compatibility)
+- [x] T039 [US5] Add `is_cross_class_bridge` as `@computed_field` on CommunityState in `src/babylon/models/entities/community.py`
+- [x] T040 [US5] Implement `communities_spanning_axis(H, axis) -> list[CommunityType]` in `src/babylon/engine/systems/community.py`
+- [x] T041 [US5] Update `build_community_hypergraph` in `src/babylon/engine/systems/community.py` to include consciousness and category attributes on hyperedges
+- [x] T042 [US5] Verify all T036-T038 tests now pass (GREEN)
+- [x] T043 [US5] Run all 43 pre-existing community tests and confirm zero failures (FR-008 backward compatibility)
 
 **Checkpoint**: Full feature complete. All stories functional. `mise run check` passes.
 

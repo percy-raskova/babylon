@@ -432,6 +432,19 @@ class CommunityState(BaseModel):
             + ci * coh * INFILTRATION_INTERACTION_WEIGHT
         )
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_cross_class_bridge(self) -> bool:
+        """Whether this community can span contradiction axes.
+
+        Only INSTITUTIONAL_EXCLUSION communities bridge across axes because
+        their members can come from both hegemonic and marginalized sides.
+
+        Returns:
+            True if the community is an institutional exclusion type.
+        """
+        return self.category == HyperedgeCategory.INSTITUTIONAL_EXCLUSION
+
 
 def effective_infiltration_ceiling(
     base_ceiling: float,

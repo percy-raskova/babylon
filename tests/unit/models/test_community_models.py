@@ -760,6 +760,39 @@ class TestCommunityStateConsciousnessField:
 
 
 @pytest.mark.unit
+class TestCrossClassBridge:
+    """Validate is_cross_class_bridge computed field (Feature 029, US5)."""
+
+    def test_institutional_exclusion_is_bridge(self) -> None:
+        """INSTITUTIONAL_EXCLUSION communities are cross-class bridges."""
+        for ct in [
+            CommunityType.DISABLED,
+            CommunityType.QUEER,
+            CommunityType.UNDOCUMENTED,
+            CommunityType.INCARCERATED,
+        ]:
+            cs = CommunityState(community_type=ct)
+            assert cs.is_cross_class_bridge is True, f"{ct} should be bridge"
+
+    def test_contradiction_pair_not_bridge(self) -> None:
+        """CONTRADICTION_PAIR communities are not bridges."""
+        for ct in [
+            CommunityType.SETTLER,
+            CommunityType.PATRIARCHAL,
+            CommunityType.NEW_AFRIKAN,
+            CommunityType.WOMEN,
+        ]:
+            cs = CommunityState(community_type=ct)
+            assert cs.is_cross_class_bridge is False, f"{ct} should not be bridge"
+
+    def test_lifecycle_not_bridge(self) -> None:
+        """LIFECYCLE_PHASE communities are not bridges."""
+        for ct in [CommunityType.YOUTH, CommunityType.ADULT, CommunityType.ELDER]:
+            cs = CommunityState(community_type=ct)
+            assert cs.is_cross_class_bridge is False, f"{ct} should not be bridge"
+
+
+@pytest.mark.unit
 class TestInfiltrationResistance:
     """Validate infiltration_resistance computed field (Feature 029, US4)."""
 

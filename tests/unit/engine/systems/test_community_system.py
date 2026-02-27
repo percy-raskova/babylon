@@ -411,3 +411,107 @@ class TestRepressionActions:
         )
         result = disrupt_infrastructure(cs)
         assert float(result.infrastructure) < 0.8
+
+
+@pytest.mark.unit
+class TestCommunitiesSpanningAxis:
+    """Validate communities_spanning_axis function (Feature 029, US5)."""
+
+    def test_disabled_bridges_colonial_axis(self) -> None:
+        """DISABLED with members on both sides of colonial axis is a bridge."""
+        from babylon.engine.systems.community import (
+            build_community_hypergraph,
+            communities_spanning_axis,
+        )
+        from babylon.models.entities.community import COLONIAL_AXIS
+
+        memberships = [
+            # DISABLED members from hegemonic side (SETTLER)
+            CommunityMembership(agent_id="settler_1", community_type=CommunityType.DISABLED),
+            # DISABLED members from marginalized side (NEW_AFRIKAN)
+            CommunityMembership(agent_id="na_1", community_type=CommunityType.DISABLED),
+            # SETTLER community to establish agent's hegemonic position
+            CommunityMembership(agent_id="settler_1", community_type=CommunityType.SETTLER),
+            CommunityMembership(agent_id="na_1", community_type=CommunityType.NEW_AFRIKAN),
+        ]
+        community_states = {
+            CommunityType.DISABLED: CommunityState(community_type=CommunityType.DISABLED),
+            CommunityType.SETTLER: CommunityState(community_type=CommunityType.SETTLER),
+            CommunityType.NEW_AFRIKAN: CommunityState(community_type=CommunityType.NEW_AFRIKAN),
+        }
+
+        H = build_community_hypergraph(memberships, community_states)
+        bridges = communities_spanning_axis(H, COLONIAL_AXIS)
+
+        assert CommunityType.DISABLED in bridges
+
+    def test_queer_only_marginalized_not_bridge(self) -> None:
+        """QUEER with members only on marginalized side is not a bridge."""
+        from babylon.engine.systems.community import (
+            build_community_hypergraph,
+            communities_spanning_axis,
+        )
+        from babylon.models.entities.community import COLONIAL_AXIS
+
+        memberships = [
+            CommunityMembership(agent_id="na_1", community_type=CommunityType.QUEER),
+            CommunityMembership(agent_id="na_2", community_type=CommunityType.QUEER),
+            CommunityMembership(agent_id="na_1", community_type=CommunityType.NEW_AFRIKAN),
+            CommunityMembership(agent_id="na_2", community_type=CommunityType.NEW_AFRIKAN),
+        ]
+        community_states = {
+            CommunityType.QUEER: CommunityState(community_type=CommunityType.QUEER),
+            CommunityType.NEW_AFRIKAN: CommunityState(community_type=CommunityType.NEW_AFRIKAN),
+        }
+
+        H = build_community_hypergraph(memberships, community_states)
+        bridges = communities_spanning_axis(H, COLONIAL_AXIS)
+
+        assert CommunityType.QUEER not in bridges
+
+
+@pytest.mark.unit
+class TestBuildCommunityHypergraphUpgrade:
+    """Validate updated build_community_hypergraph includes consciousness/category (Feature 029, US5)."""
+
+    def test_hyperedge_includes_category(self) -> None:
+        """Hyperedge attributes include category."""
+        from babylon.engine.systems.community import build_community_hypergraph
+
+        memberships = [
+            CommunityMembership(agent_id="A1", community_type=CommunityType.DISABLED),
+        ]
+        community_states = {
+            CommunityType.DISABLED: CommunityState(community_type=CommunityType.DISABLED),
+        }
+
+        H = build_community_hypergraph(memberships, community_states)
+        attrs = H.edges[CommunityType.DISABLED.value]
+        assert attrs["category"] == "institutional_exclusion"
+
+    def test_hyperedge_includes_consciousness(self) -> None:
+        """Hyperedge attributes include consciousness fields."""
+        from babylon.engine.systems.community import build_community_hypergraph
+        from babylon.models.entities.community import CommunityConsciousness
+        from babylon.models.enums import ConsciousnessTendency
+
+        cc = CommunityConsciousness(
+            collective_identity=0.8,  # type: ignore[arg-type]
+            dominant_tendency=ConsciousnessTendency.REVOLUTIONARY,
+            ideological_contestation=0.5,  # type: ignore[arg-type]
+        )
+        memberships = [
+            CommunityMembership(agent_id="A1", community_type=CommunityType.INCARCERATED),
+        ]
+        community_states = {
+            CommunityType.INCARCERATED: CommunityState(
+                community_type=CommunityType.INCARCERATED,
+                consciousness=cc,
+            ),
+        }
+
+        H = build_community_hypergraph(memberships, community_states)
+        attrs = H.edges[CommunityType.INCARCERATED.value]
+        assert attrs["consciousness_ci"] == pytest.approx(0.8, abs=1e-4)
+        assert attrs["consciousness_tendency"] == "revolutionary"
+        assert attrs["consciousness_contestation"] == pytest.approx(0.5, abs=1e-4)

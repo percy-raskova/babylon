@@ -24,8 +24,9 @@ from babylon.models.entities.community import (
     ROLE_STRENGTH_WEIGHTS,
     CommunityMembership,
     CommunityState,
+    ContradictionAxis,
 )
-from babylon.models.enums import CommunityType
+from babylon.models.enums import CommunityType, HyperedgeCategory
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,11 @@ def build_community_hypergraph(
             legal_status=state.legal_status.value,
             reproduction_cost_modifier=state.reproduction_cost_modifier,
             rent_access_modifier=float(state.rent_access_modifier),
+            # Feature 029: consciousness and category attributes
+            category=state.category.value,
+            consciousness_ci=float(state.consciousness.collective_identity),
+            consciousness_tendency=state.consciousness.dominant_tendency.value,
+            consciousness_contestation=float(state.consciousness.ideological_contestation),
         )
 
     return H
@@ -101,6 +107,53 @@ def shared_communities(
     memberships_a: set[Any] = H.nodes.memberships(agent_a)
     memberships_b: set[Any] = H.nodes.memberships(agent_b)
     return memberships_a & memberships_b
+
+
+def communities_spanning_axis(
+    H: xgi.Hypergraph,
+    axis: ContradictionAxis,
+) -> list[CommunityType]:
+    """Find institutional exclusion communities that bridge a contradiction axis.
+
+    A community spans an axis if it contains members who also belong to
+    communities on both the hegemonic and marginalized sides of that axis.
+
+    Args:
+        H: Community hypergraph.
+        axis: The contradiction axis to check bridging for.
+
+    Returns:
+        List of CommunityType values that bridge the axis.
+    """
+    hegemonic_edge_id = axis.hegemonic.value
+    marginalized_edge_ids = [m.value for m in axis.marginalized]
+
+    # Collect agents on hegemonic side
+    hegemonic_agents: set[str] = set()
+    if hegemonic_edge_id in H.edges:
+        hegemonic_agents = set(H.edges.members(hegemonic_edge_id))
+
+    # Collect agents on marginalized side
+    marginalized_agents: set[str] = set()
+    for m_id in marginalized_edge_ids:
+        if m_id in H.edges:
+            marginalized_agents.update(H.edges.members(m_id))
+
+    # Check each institutional exclusion community for bridging
+    bridges: list[CommunityType] = []
+    for edge_id in H.edges:
+        # Only check institutional exclusion communities
+        attrs = H.edges[edge_id]
+        if attrs.get("category") != HyperedgeCategory.INSTITUTIONAL_EXCLUSION.value:
+            continue
+
+        members = set(H.edges.members(edge_id))
+        has_hegemonic = bool(members & hegemonic_agents)
+        has_marginalized = bool(members & marginalized_agents)
+        if has_hegemonic and has_marginalized:
+            bridges.append(CommunityType(edge_id))
+
+    return bridges
 
 
 def community_overlap_matrix(

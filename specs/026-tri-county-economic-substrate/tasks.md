@@ -186,7 +186,7 @@ ______________________________________________________________________
 
 - [X] T030 [P] Update `__init__.py` with complete `__all__` exports for all public types, protocols, and functions in `src/babylon/economics/substrate/__init__.py`
 - [X] T031 Run quickstart.md validation end-to-end to verify setup instructions, test commands, and conservation verification code — VERIFIED: 119 unit + 6 integration tests pass, mypy strict clean
-- [ ] T032 Commit completed feature with conventional commit format on branch `026-tri-county-economic-substrate`
+- [X] T032 Commit completed feature with conventional commit format on branch `026-tri-county-economic-substrate`
 
 ______________________________________________________________________
 

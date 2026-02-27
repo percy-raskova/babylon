@@ -15,6 +15,23 @@
 - Q: Does Feature 030 implement data ingestion or assume pre-existing data? → A: Feature 030 ingests Census ACS (age cohorts, home ownership) and Chetty Opportunity Atlas mobility data (pre-collected CSVs). Population dynamics parameters (fertility, mortality, transition rates) use scientifically-based tunable defaults rather than CDC WONDER ingestion — explicitly declared as approximations, not empirical ingest. CDC ingestion was deemed too complex relative to simulation fidelity needs.
 - Q: What empirical data source grounds intergenerational class mobility? → A: Chetty Opportunity Atlas (Mobility Atlas) CSV files at /media/user/data/babylon-data/mobility-atlas/. 9 CSV files covering 3,191 counties, 740 CZs, 15 birth cohorts (1978-1992). Used as a **calibration source** to derive tunable parameters (not runtime ingest). Key metrics: KFR, EMP, mortality, education, poverty — broken down by race and parental income percentile. Parameters derived from this data are documented with provenance and exposed as tunable GameDefines coefficients so they can shift in-game (e.g., racial discrimination events widen the racial mobility gap).
 
+## Dual Circuit Ontology
+
+The D-P-D' circuit has a complementary circuit that extends Marx's circuit algebra to intergenerational reproduction:
+
+| Circuit | Formula | What It Traces | Analogous To |
+|---------|---------|----------------|--------------|
+| **D-P-D'** | Dependent → Productive → Dependent' | Individual lifecycle (one cohort traverses phases) | **C-M-C** (worker's daily circuit) |
+| **P-D-P'** | P_g1 → D_g2 → P_g2 | Class reproduction (one generation produces the next) | **M-C-M'** (capital's self-expansion) |
+
+**P-D-P' spelled out**: This generation's productive workers (P_g1) give birth to and raise the next generation's dependents (D_g2), who in turn grow into that generation's productive workers (P_g2). The subscripts denote distinct generations — P' is not the same person returning to P, but the *next generation's* P.
+
+**The parallel to Marx is exact**:
+- M-C-M' and C-M-C are complementary views of the same exchange relation (capital's circuit vs worker's circuit)
+- D-P-D' and P_g1-D_g2-P_g2 are complementary views of the same reproductive relation (individual lifecycle vs class reproduction)
+
+D-P-D' is where the individual traverses phases. P-D-P' is where the **class reproduces itself** across generations. The individual circuit is finite (one lifetime); the class circuit is potentially infinite (spiral across generations). This duality means every simulation mechanic has two readings: what it does to individuals in a lifecycle phase, and what it does to class reproduction across generations.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Population Cohort Tracking by Lifecycle Phase (Priority: P1)

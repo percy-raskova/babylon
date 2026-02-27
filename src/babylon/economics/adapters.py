@@ -164,7 +164,12 @@ class SQLiteQCEWSource:
             total_wages: Annual wages for the industry in the county.
             employment: Average annual employment count.
         """
-        # Use raw SQL for performance and explicit control over the query
+        # Use raw SQL for performance and explicit control over the query.
+        # Filter to naics_level=6 (6-digit national industry codes) to avoid
+        # hierarchy double-counting: QCEW reports wages at every NAICS level
+        # (2-digit sector totals through 6-digit leaf codes), where each parent
+        # level INCLUDES all children. Without this filter, wages are overcounted
+        # ~10x (e.g., Wayne County: $454B across all levels vs $43.7B at level 6).
         query = """
             SELECT
                 di.naics_code,
@@ -178,6 +183,7 @@ class SQLiteQCEWSource:
               AND dt.year = :year
               AND dt.is_annual = 1
               AND f.total_wages_usd IS NOT NULL
+              AND di.naics_level = 6
             GROUP BY di.naics_code
             ORDER BY total_wages DESC
         """
@@ -497,6 +503,9 @@ class InterpolatingBEASource:
         self._wages_cache[cache_key] = total_wages
         return total_wages if total_wages > 0 else None
 
+    # Cache table version — bump to force rebuild when aggregation logic changes
+    _CACHE_TABLE_VERSION: int = 2  # v2: leaf-only NAICS filtering
+
     def _ensure_wages_aggregate_table(self) -> None:
         """Create the pre-aggregated national wages table if it doesn't exist.
 
@@ -504,13 +513,16 @@ class InterpolatingBEASource:
         by (bea_industry_id, year). Uses indexed per-industry lookups to avoid
         full table scans on the large QCEW table. One-time cost ~80s on first
         run, then all subsequent queries are instant.
+
+        The table includes a ``cache_version`` column to detect stale caches
+        when the aggregation logic changes (e.g., leaf-only filtering).
         """
         if self._wages_table_ready:
             return
 
         sa = __import__("sqlalchemy")
 
-        # Check if table already exists
+        # Check if table exists and has correct version
         check = self._session.execute(
             sa.text(
                 "SELECT name FROM sqlite_master "
@@ -518,8 +530,20 @@ class InterpolatingBEASource:
             )
         )
         if check.fetchone() is not None:
-            self._wages_table_ready = True
-            return
+            # Check version — if missing or old, drop and rebuild
+            try:
+                ver_row = self._session.execute(
+                    sa.text("SELECT cache_version FROM _cache_national_wages_bea LIMIT 1")
+                ).fetchone()
+                if ver_row is not None and int(ver_row[0]) == self._CACHE_TABLE_VERSION:
+                    self._wages_table_ready = True
+                    return
+            except Exception:  # noqa: BLE001 — column may not exist in v1 table
+                pass
+
+            logger.info("Dropping stale wages cache (rebuilding with leaf-only filtering)...")
+            self._session.execute(sa.text("DROP TABLE _cache_national_wages_bea"))
+            self._session.commit()
 
         logger.info("Building national wages aggregate table (one-time, ~80s)...")
 
@@ -530,23 +554,56 @@ class InterpolatingBEASource:
         """Build aggregate table using indexed per-industry lookups.
 
         Strategy: instead of one massive JOIN over 43M rows, we:
-        1. Load the 466-row bridge table into Python
-        2. Load annual time_ids (~35 rows) into Python
-        3. Execute ~16K small indexed queries (fast with idx_qcew_industry_time)
-        4. Aggregate industry -> bea_industry in Python
-        5. Write ~800 result rows into a persistent cache table
+        1. Load the bridge table with NAICS codes and levels
+        2. Filter to leaf-only NAICS per BEA industry (no ancestors)
+        3. Load annual time_ids (~35 rows) into Python
+        4. Execute small indexed queries (fast with idx_qcew_industry_time)
+        5. Aggregate industry -> bea_industry in Python
+        6. Write result rows into a persistent cache table with version marker
+
+        Leaf filtering prevents NAICS hierarchy double-counting: if both
+        NAICS 3361 (level 4) and 336111 (level 6) map to the same BEA
+        industry, we only include 336111 since 3361's wages already
+        include 336111's wages.
         """
         sa = __import__("sqlalchemy")
         import time as _time
 
         t0 = _time.perf_counter()
 
-        # Load dimension tables (instant)
+        # Load bridge with NAICS codes for leaf detection
         bridge_rows = self._session.execute(
-            sa.text("SELECT industry_id, bea_industry_id FROM bridge_naics_bea")
+            sa.text(
+                "SELECT bnb.industry_id, bnb.bea_industry_id, di.naics_code "
+                "FROM bridge_naics_bea bnb "
+                "JOIN dim_industry di ON bnb.industry_id = di.industry_id"
+            )
         ).fetchall()
-        ind_to_bea: dict[int, int] = {int(r[0]): int(r[1]) for r in bridge_rows}
+
+        # Group by BEA industry and filter to leaf-only NAICS codes
+        bea_naics: dict[int, list[tuple[int, str]]] = {}
+        for row in bridge_rows:
+            ind_id, bea_id, naics = int(row[0]), int(row[1]), str(row[2])
+            if bea_id not in bea_naics:
+                bea_naics[bea_id] = []
+            bea_naics[bea_id].append((ind_id, naics))
+
+        # For each BEA industry, keep only leaf NAICS (no descendant also mapped)
+        # NAICS hierarchy is prefix-based: 3361 is parent of 33611, 336111, etc.
+        ind_to_bea: dict[int, int] = {}
+        for bea_id, mappings in bea_naics.items():
+            codes = {naics for _, naics in mappings}
+            for ind_id, naics in mappings:
+                is_parent = any(other.startswith(naics) and other != naics for other in codes)
+                if not is_parent:
+                    ind_to_bea[ind_id] = bea_id
+
         industry_ids = list(ind_to_bea.keys())
+        logger.info(
+            "Bridge: %d total mappings, %d leaf-only (after hierarchy filter)",
+            len(bridge_rows),
+            len(industry_ids),
+        )
 
         time_rows = self._session.execute(
             sa.text("SELECT time_id, year FROM dim_time WHERE is_annual = 1")
@@ -563,11 +620,13 @@ class InterpolatingBEASource:
         max_years = len(time_rows)
         for year_idx, (tid, year) in enumerate(time_rows):
             for ind_id in industry_ids:
-                row = self._session.execute(wage_query, {"iid": ind_id, "tid": int(tid)}).fetchone()
-                if row and row[0]:
+                wage_row = self._session.execute(
+                    wage_query, {"iid": ind_id, "tid": int(tid)}
+                ).fetchone()
+                if wage_row and wage_row[0]:
                     bea_id = ind_to_bea[ind_id]
                     key = (bea_id, int(year))
-                    result[key] = result.get(key, 0.0) + float(row[0])
+                    result[key] = result.get(key, 0.0) + float(wage_row[0])
 
             if (year_idx + 1) % 5 == 0 or year_idx == max_years - 1:
                 elapsed = _time.perf_counter() - t0
@@ -579,13 +638,14 @@ class InterpolatingBEASource:
                     len(result),
                 )
 
-        # Create and populate the cache table
+        # Create and populate the cache table (with version marker)
         self._session.execute(
             sa.text(
                 "CREATE TABLE _cache_national_wages_bea ("
                 "  bea_industry_id INTEGER NOT NULL,"
                 "  year INTEGER NOT NULL,"
                 "  total_wages_usd REAL NOT NULL,"
+                "  cache_version INTEGER NOT NULL DEFAULT 2,"
                 "  PRIMARY KEY (bea_industry_id, year)"
                 ")"
             )
@@ -593,11 +653,19 @@ class InterpolatingBEASource:
 
         insert_stmt = sa.text(
             "INSERT INTO _cache_national_wages_bea "
-            "(bea_industry_id, year, total_wages_usd) "
-            "VALUES (:bea_id, :year, :wages)"
+            "(bea_industry_id, year, total_wages_usd, cache_version) "
+            "VALUES (:bea_id, :year, :wages, :version)"
         )
         for (bea_id, year), wages in result.items():
-            self._session.execute(insert_stmt, {"bea_id": bea_id, "year": year, "wages": wages})
+            self._session.execute(
+                insert_stmt,
+                {
+                    "bea_id": bea_id,
+                    "year": year,
+                    "wages": wages,
+                    "version": self._CACHE_TABLE_VERSION,
+                },
+            )
 
         self._session.commit()
         elapsed = _time.perf_counter() - t0

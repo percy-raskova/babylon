@@ -68,6 +68,11 @@ class MockSession:
             mock_result.fetchone.return_value = ("_cache_national_wages_bea",)
             return mock_result
 
+        elif "cache_version" in query_str:
+            # Version check — return current version to skip rebuild
+            mock_result.fetchone.return_value = (2,)
+            return mock_result
+
         elif "DISTINCT dt.year" in query_str:
             # Year availability query
             params = params or {}

@@ -199,12 +199,15 @@ class InterpolatingBEASource:
     """BEA data source with temporal interpolation.
 
     This implementation queries the 3NF normalized BEA tables and applies
-    temporal interpolation when exact year data is unavailable.
+    temporal interpolation when exact year data is unavailable. Compensation
+    (variable capital) is derived from nationally-aggregated QCEW wages for
+    all NAICS codes mapping to the same BEA industry, ensuring the BEA
+    numerator and QCEW denominator are at the same aggregation level.
 
     The interpolation algorithm:
     1. Query for exact year match
     2. If no match, find nearest available year within max_delta
-    3. If still no match, return None (caller falls back to YAML defaults)
+    3. If still no match, return None
 
     For inter-year data:
     - Linear interpolation between the two nearest years
@@ -234,18 +237,18 @@ class InterpolatingBEASource:
         self._max_delta = max_delta
         # Cache for available years per industry to avoid repeated queries
         self._year_cache: dict[str, list[int]] = {}
+        # Cache for national wages: (bea_industry_id, year) -> total_wages_usd
+        self._wages_cache: dict[tuple[int, int], float] = {}
 
     def get_sv_ratio(self, naics_code: str, year: int) -> float | None:
         """Get the surplus value to variable capital ratio (s/v) with interpolation.
 
-        The s/v ratio is derived from BEA data:
-        s/v = (gross_output - intermediate_inputs - compensation) / compensation
+        The s/v ratio is derived from BEA + QCEW data:
+        s/v = (value_added - compensation) / compensation
 
         Where:
-        - gross_output = total output value
-        - intermediate_inputs = purchases from other industries
-        - compensation = employee wages and benefits (our "v")
-        - surplus = gross_output - intermediate_inputs - compensation (our "s")
+        - value_added = gross_output - intermediate_inputs (from BEA)
+        - compensation = national QCEW wages for all NAICS in same BEA industry
 
         Args:
             naics_code: NAICS industry code (2-6 digits).
@@ -259,12 +262,12 @@ class InterpolatingBEASource:
     def get_cv_ratio(self, naics_code: str, year: int) -> float | None:
         """Get the constant to variable capital ratio (c/v) with interpolation.
 
-        The c/v ratio is derived from BEA data:
+        The c/v ratio is derived from BEA + QCEW data:
         c/v = intermediate_inputs / compensation
 
         Where:
-        - intermediate_inputs = purchases from other industries (our "c")
-        - compensation = employee wages and benefits (our "v")
+        - intermediate_inputs = from BEA national industry accounts (our "c")
+        - compensation = national QCEW wages for all NAICS in same BEA industry
 
         Args:
             naics_code: NAICS industry code (2-6 digits).
@@ -341,6 +344,9 @@ class InterpolatingBEASource:
     def _get_available_years(self, naics_code: str) -> list[int]:
         """Get list of available years for a NAICS code.
 
+        Joins through dim_industry to resolve naics_code -> industry_id,
+        then through bridge_naics_bea to find matching BEA industries.
+
         Args:
             naics_code: NAICS code to look up.
 
@@ -350,14 +356,13 @@ class InterpolatingBEASource:
         if naics_code in self._year_cache:
             return self._year_cache[naics_code]
 
-        # Query available years from BEA national industry data
-        # We join through bridge_naics_bea to map NAICS to BEA industries
         query = """
             SELECT DISTINCT dt.year
             FROM fact_bea_national_industry f
             JOIN bridge_naics_bea bnb ON f.bea_industry_id = bnb.bea_industry_id
+            JOIN dim_industry di ON bnb.industry_id = di.industry_id
             JOIN dim_time dt ON f.time_id = dt.time_id
-            WHERE bnb.naics_code = :naics_code
+            WHERE di.naics_code = :naics_code
               AND dt.is_annual = 1
             ORDER BY dt.year
         """
@@ -374,6 +379,11 @@ class InterpolatingBEASource:
     def _query_ratio(self, naics_code: str, year: int, ratio_type: str) -> float | None:
         """Query BEA ratio for a specific NAICS code and year.
 
+        Two-step approach:
+        1. Get BEA industry data (GO, II, VA) for the NAICS code
+        2. Get national QCEW wages for ALL NAICS in the same BEA industry
+           (ensures BEA numerator and QCEW denominator at same aggregation level)
+
         Args:
             naics_code: NAICS code to look up.
             year: Specific year to query.
@@ -382,22 +392,24 @@ class InterpolatingBEASource:
         Returns:
             Computed ratio or None.
         """
-        # Query BEA national industry data with NAICS bridge
-        query = """
+        # Step 1: Get BEA industry data for this NAICS code
+        bea_query = """
             SELECT
-                f.gross_output,
-                f.intermediate_inputs,
-                f.compensation
+                f.bea_industry_id,
+                f.gross_output_millions,
+                f.intermediate_inputs_millions,
+                f.value_added_millions
             FROM fact_bea_national_industry f
             JOIN bridge_naics_bea bnb ON f.bea_industry_id = bnb.bea_industry_id
+            JOIN dim_industry di ON bnb.industry_id = di.industry_id
             JOIN dim_time dt ON f.time_id = dt.time_id
-            WHERE bnb.naics_code = :naics_code
+            WHERE di.naics_code = :naics_code
               AND dt.year = :year
               AND dt.is_annual = 1
         """
 
         result = self._session.execute(
-            __import__("sqlalchemy").text(query),
+            __import__("sqlalchemy").text(bea_query),
             {"naics_code": naics_code, "year": year},
         )
 
@@ -405,37 +417,82 @@ class InterpolatingBEASource:
         if row is None:
             return None
 
-        gross_output_raw = row[0]
-        intermediate_inputs_raw = row[1]
-        compensation_raw = row[2]  # This is "v" (variable capital)
+        bea_industry_id_raw = row[0]
+        go_raw = row[1]
+        ii_raw = row[2]
+        va_raw = row[3]
 
-        # Handle null values
-        if gross_output_raw is None or intermediate_inputs_raw is None or compensation_raw is None:
+        if bea_industry_id_raw is None or go_raw is None or ii_raw is None or va_raw is None:
             return None
 
-        # Cast to float for calculation
-        gross_output: float = float(gross_output_raw)
-        intermediate_inputs: float = float(intermediate_inputs_raw)
-        compensation: float = float(compensation_raw)
+        bea_industry_id: int = int(bea_industry_id_raw)
+        intermediate_inputs_m: float = float(ii_raw)
+        value_added_m: float = float(va_raw)
 
-        if compensation <= 0:
+        # Step 2: Get national QCEW wages for ALL NAICS in this BEA industry
+        national_wages = self._query_national_wages(bea_industry_id, year)
+        if national_wages is None or national_wages <= 0:
             return None
+
+        # Convert wages from dollars to millions for consistent units
+        compensation_m: float = national_wages / 1e6
 
         if ratio_type == "sv":
-            # s/v = (gross_output - intermediate_inputs - compensation) / compensation
-            # surplus = value_added - compensation = (gross_output - intermediate_inputs) - compensation
-            surplus = gross_output - intermediate_inputs - compensation
-            if surplus < 0:
-                # Negative surplus can happen in loss-making industries
-                # Return 0 to indicate no surplus extraction
+            # s/v = (value_added - compensation) / compensation
+            surplus_m = value_added_m - compensation_m
+            if surplus_m < 0:
                 return 0.0
-            return surplus / compensation
+            return surplus_m / compensation_m
 
         elif ratio_type == "cv":
             # c/v = intermediate_inputs / compensation
-            return intermediate_inputs / compensation
+            return intermediate_inputs_m / compensation_m
 
         return None
+
+    def _query_national_wages(self, bea_industry_id: int, year: int) -> float | None:
+        """Get total national QCEW wages for all NAICS codes in a BEA industry.
+
+        Aggregates wages across all NAICS codes that map to the same
+        bea_industry_id, ensuring the denominator matches the BEA
+        industry-level numerator.
+
+        Args:
+            bea_industry_id: BEA industry foreign key.
+            year: Data year.
+
+        Returns:
+            Total national wages in dollars, or None if unavailable.
+        """
+        cache_key = (bea_industry_id, year)
+        if cache_key in self._wages_cache:
+            return self._wages_cache[cache_key]
+
+        wages_query = """
+            SELECT COALESCE(SUM(fq.total_wages_usd), 0.0)
+            FROM fact_qcew_annual fq
+            JOIN dim_industry di ON fq.industry_id = di.industry_id
+            JOIN bridge_naics_bea bnb ON di.industry_id = bnb.industry_id
+            JOIN dim_time dt ON fq.time_id = dt.time_id
+            WHERE bnb.bea_industry_id = :bea_industry_id
+              AND dt.year = :year
+              AND dt.is_annual = 1
+              AND fq.total_wages_usd IS NOT NULL
+        """
+
+        result = self._session.execute(
+            __import__("sqlalchemy").text(wages_query),
+            {"bea_industry_id": bea_industry_id, "year": year},
+        )
+
+        row = result.fetchone()
+        if row is None or row[0] is None:
+            self._wages_cache[cache_key] = 0.0
+            return None
+
+        total_wages: float = float(row[0])
+        self._wages_cache[cache_key] = total_wages
+        return total_wages if total_wages > 0 else None
 
 
 __all__ = [

@@ -760,6 +760,143 @@ class TestCommunityStateConsciousnessField:
 
 
 @pytest.mark.unit
+class TestInfiltrationResistance:
+    """Validate infiltration_resistance computed field (Feature 029, US4)."""
+
+    def test_high_ci_high_cohesion(self) -> None:
+        """CI=0.9, cohesion=0.8 → resistance≈0.852."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(
+            community_type=CommunityType.NEW_AFRIKAN,
+            cohesion=0.8,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.9),  # type: ignore[arg-type]
+        )
+        assert cs.infiltration_resistance == pytest.approx(0.852, abs=1e-3)
+
+    def test_low_ci_low_cohesion(self) -> None:
+        """CI=0.1, cohesion=0.2 → resistance≈0.122."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(
+            community_type=CommunityType.SETTLER,
+            cohesion=0.2,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.1),  # type: ignore[arg-type]
+        )
+        assert cs.infiltration_resistance == pytest.approx(0.122, abs=1e-3)
+
+    def test_high_ci_low_cohesion(self) -> None:
+        """CI=0.9, cohesion=0.1 → resistance≈0.579."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(
+            community_type=CommunityType.INCARCERATED,
+            cohesion=0.1,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.9),  # type: ignore[arg-type]
+        )
+        assert cs.infiltration_resistance == pytest.approx(0.579, abs=1e-3)
+
+    def test_low_ci_high_cohesion(self) -> None:
+        """CI=0.1, cohesion=0.9 → resistance≈0.339."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(
+            community_type=CommunityType.DISABLED,
+            cohesion=0.9,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.1),  # type: ignore[arg-type]
+        )
+        assert cs.infiltration_resistance == pytest.approx(0.339, abs=1e-3)
+
+    def test_zero_boundary(self) -> None:
+        """CI=0, cohesion=0 → resistance=0."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(
+            community_type=CommunityType.ADULT,
+            cohesion=0.0,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.0),  # type: ignore[arg-type]
+        )
+        assert cs.infiltration_resistance == pytest.approx(0.0, abs=1e-6)
+
+    def test_max_boundary(self) -> None:
+        """CI=1, cohesion=1 → resistance=1."""
+        from babylon.models.entities.community import CommunityConsciousness
+
+        cs = CommunityState(
+            community_type=CommunityType.NEW_AFRIKAN,
+            cohesion=1.0,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=1.0),  # type: ignore[arg-type]
+        )
+        assert cs.infiltration_resistance == pytest.approx(1.0, abs=1e-6)
+
+
+@pytest.mark.unit
+class TestEffectiveInfiltrationCeiling:
+    """Validate effective_infiltration_ceiling function (Feature 029, US4)."""
+
+    def test_empty_list_returns_base(self) -> None:
+        """No community states → base ceiling unchanged."""
+        from babylon.models.entities.community import effective_infiltration_ceiling
+
+        assert effective_infiltration_ceiling(0.8, []) == pytest.approx(0.8, abs=1e-6)
+
+    def test_high_resistance_reduces_ceiling(self) -> None:
+        """High resistance community significantly reduces ceiling."""
+        from babylon.models.entities.community import (
+            CommunityConsciousness,
+            effective_infiltration_ceiling,
+        )
+
+        # Create a community with resistance ≈ 0.852
+        cs = CommunityState(
+            community_type=CommunityType.NEW_AFRIKAN,
+            cohesion=0.8,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.9),  # type: ignore[arg-type]
+        )
+        result = effective_infiltration_ceiling(0.8, [cs])
+        # 0.8 * (1.0 - 0.852 * 0.7) ≈ 0.8 * 0.4036 ≈ 0.3229
+        assert result == pytest.approx(0.323, abs=0.01)
+
+    def test_max_resistance_ceiling(self) -> None:
+        """Max resistance (1.0) drops ceiling to 30% of base."""
+        from babylon.models.entities.community import (
+            CommunityConsciousness,
+            effective_infiltration_ceiling,
+        )
+
+        cs = CommunityState(
+            community_type=CommunityType.NEW_AFRIKAN,
+            cohesion=1.0,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=1.0),  # type: ignore[arg-type]
+        )
+        result = effective_infiltration_ceiling(0.8, [cs])
+        # 0.8 * (1.0 - 1.0 * 0.7) = 0.8 * 0.3 = 0.24
+        assert result == pytest.approx(0.24, abs=1e-6)
+
+    def test_uses_max_resistance(self) -> None:
+        """Multiple communities → uses the max resistance."""
+        from babylon.models.entities.community import (
+            CommunityConsciousness,
+            effective_infiltration_ceiling,
+        )
+
+        cs_low = CommunityState(
+            community_type=CommunityType.SETTLER,
+            cohesion=0.2,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.1),  # type: ignore[arg-type]
+        )
+        cs_high = CommunityState(
+            community_type=CommunityType.INCARCERATED,
+            cohesion=0.8,  # type: ignore[arg-type]
+            consciousness=CommunityConsciousness(collective_identity=0.9),  # type: ignore[arg-type]
+        )
+        result = effective_infiltration_ceiling(0.8, [cs_low, cs_high])
+        # Should use max resistance (≈0.852), not average
+        expected = 0.8 * (1.0 - 0.852 * 0.7)
+        assert result == pytest.approx(expected, abs=0.01)
+
+
+@pytest.mark.unit
 class TestCommunityReproductionCost:
     """Tests for compute_community_cost_modifier (Feature 022, US4)."""
 

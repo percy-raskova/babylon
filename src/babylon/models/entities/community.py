@@ -342,6 +342,12 @@ _missing_consciousness = set(CommunityType) - set(CONSCIOUSNESS_DEFAULTS.keys())
 if _missing_consciousness:
     raise RuntimeError(f"CONSCIOUSNESS_DEFAULTS missing types: {_missing_consciousness}")
 
+# Named constants for infiltration resistance formula (Feature 029, US4)
+INFILTRATION_CI_WEIGHT: float = 0.6
+INFILTRATION_COHESION_WEIGHT: float = 0.3
+INFILTRATION_INTERACTION_WEIGHT: float = 0.1
+INFILTRATION_CEILING_FACTOR: float = 0.7
+
 
 class CommunityState(BaseModel):
     """State of a community, independent of its members.
@@ -407,6 +413,43 @@ class CommunityState(BaseModel):
         """Auto-assign category from community_type via COMMUNITY_CATEGORY_MAP."""
         object.__setattr__(self, "category", COMMUNITY_CATEGORY_MAP[self.community_type])
         return self
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def infiltration_resistance(self) -> float:
+        """Community resistance to state infiltration.
+
+        Formula: CI * 0.6 + cohesion * 0.3 + CI * cohesion * 0.1
+
+        Returns:
+            Resistance score in [0.0, 1.0].
+        """
+        ci = float(self.consciousness.collective_identity)
+        coh = float(self.cohesion)
+        return (
+            ci * INFILTRATION_CI_WEIGHT
+            + coh * INFILTRATION_COHESION_WEIGHT
+            + ci * coh * INFILTRATION_INTERACTION_WEIGHT
+        )
+
+
+def effective_infiltration_ceiling(
+    base_ceiling: float,
+    target_community_states: list[CommunityState],
+) -> float:
+    """Compute effective infiltration ceiling reduced by community resistance.
+
+    Args:
+        base_ceiling: Base infiltration ceiling [0, 1].
+        target_community_states: Communities the target belongs to.
+
+    Returns:
+        Reduced ceiling. At max resistance (~1.0), drops to ~30% of base.
+    """
+    if not target_community_states:
+        return base_ceiling
+    max_resistance = max(cs.infiltration_resistance for cs in target_community_states)
+    return base_ceiling * (1.0 - max_resistance * INFILTRATION_CEILING_FACTOR)
 
 
 class CommunityMembership(BaseModel):

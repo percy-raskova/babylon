@@ -118,15 +118,15 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T030 [US4] Write failing tests for `infiltration_resistance` computed field in `tests/unit/models/test_community_models.py`: 6 test cases from contracts/consciousness-api.md (high/low CI×cohesion, boundary 0/0 and 1/1, moderate combinations)
-- [ ] T031 [US4] Write failing tests for `effective_infiltration_ceiling` in `tests/unit/models/test_community_models.py`: empty list returns base unchanged, high-resistance reduces ceiling, test cases from contract
+- [x] T030 [US4] Write failing tests for `infiltration_resistance` computed field in `tests/unit/models/test_community_models.py`: 6 test cases from contracts/consciousness-api.md (high/low CI×cohesion, boundary 0/0 and 1/1, moderate combinations)
+- [x] T031 [US4] Write failing tests for `effective_infiltration_ceiling` in `tests/unit/models/test_community_models.py`: empty list returns base unchanged, high-resistance reduces ceiling, test cases from contract
 
 ### Implementation (GREEN phase)
 
-- [ ] T032 [US4] Add named constants `INFILTRATION_CI_WEIGHT`, `INFILTRATION_COHESION_WEIGHT`, `INFILTRATION_INTERACTION_WEIGHT`, `INFILTRATION_CEILING_FACTOR` in `src/babylon/models/entities/community.py`
-- [ ] T033 [US4] Add `infiltration_resistance` as `@computed_field` on CommunityState in `src/babylon/models/entities/community.py` using the formula: `CI*0.6 + cohesion*0.3 + CI*cohesion*0.1`
-- [ ] T034 [US4] Implement `effective_infiltration_ceiling(base_ceiling, target_community_states) -> float` in `src/babylon/models/entities/community.py`
-- [ ] T035 [US4] Verify all T030-T031 tests now pass (GREEN) and all pre-existing tests still pass
+- [x] T032 [US4] Add named constants `INFILTRATION_CI_WEIGHT`, `INFILTRATION_COHESION_WEIGHT`, `INFILTRATION_INTERACTION_WEIGHT`, `INFILTRATION_CEILING_FACTOR` in `src/babylon/models/entities/community.py`
+- [x] T033 [US4] Add `infiltration_resistance` as `@computed_field` on CommunityState in `src/babylon/models/entities/community.py` using the formula: `CI*0.6 + cohesion*0.3 + CI*cohesion*0.1`
+- [x] T034 [US4] Implement `effective_infiltration_ceiling(base_ceiling, target_community_states) -> float` in `src/babylon/models/entities/community.py`
+- [x] T035 [US4] Verify all T030-T031 tests now pass (GREEN) and all pre-existing tests still pass
 
 **Checkpoint**: Infiltration mechanics complete. `mise run check` passes.
 

@@ -63,6 +63,7 @@ contextvars = "^2.4"
 xgi = "^0.10"
 rstcheck = "^6.2.5"
 doc8 = "^2.0.0"
+polars = "^1.38.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

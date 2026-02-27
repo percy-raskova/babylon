@@ -169,20 +169,21 @@ class TestProductionSetsExtractionIntensity:
         Even with massive production, intensity is capped to prevent
         numerical instability in MetabolismSystem.
 
-        With weekly production = 1.0/52 ≈ 0.0192 per worker:
-        Need ~5200 workers to exceed max_biocapacity (100/0.0192).
-        Use 6000 workers to ensure we hit the cap.
+        Uses a tiny max_biocapacity so few workers exceed the cap:
+            production_per_worker = base_labor_power/52 * (biocapacity/max_biocapacity)
+            With max_biocapacity=0.01, biocapacity=0.01:
+                production_per_worker = 1.0/52 * 1.0 ≈ 0.0192
+            total_production = 6 * 0.0192 ≈ 0.1154
+            intensity = min(1.0, 0.1154 / 0.01) = min(1.0, 11.54) = 1.0
         """
         graph: nx.DiGraph = nx.DiGraph()
 
-        # Create enough workers to exceed max_biocapacity in production
-        # weekly_labor_power = 1.0/52 ≈ 0.0192
-        # Need 100/0.0192 ≈ 5208 workers to hit cap
-        for i in range(6000):
+        # 6 workers with tiny max_biocapacity to exceed cap without 6000 nodes
+        for i in range(6):
             _create_worker_node(graph, f"C{i:04d}", wealth=0.0)
             _create_tenancy_edge(graph, f"C{i:04d}", "T001")
 
-        _create_territory_node(graph, "T001", biocapacity=100.0, max_biocapacity=100.0)
+        _create_territory_node(graph, "T001", biocapacity=0.01, max_biocapacity=0.01)
 
         system = ProductionSystem()
         system.step(graph, services, {"tick": 1})
@@ -190,7 +191,7 @@ class TestProductionSetsExtractionIntensity:
         intensity = graph.nodes["T001"].get("extraction_intensity", 0.0)
         assert intensity <= 1.0, f"Intensity must be capped at 1.0, got {intensity:.4f}"
         assert intensity == pytest.approx(1.0, rel=0.01), (
-            f"With 6000 workers, intensity should hit cap: got {intensity:.4f}"
+            f"With 6 workers on tiny territory, intensity should hit cap: got {intensity:.4f}"
         )
 
     def test_no_workers_resets_intensity_to_zero(self, services: ServiceContainer) -> None:

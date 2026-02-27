@@ -96,6 +96,7 @@ class TestQcewAPIClient:
 
         assert exc_info.value.status_code == 500
 
+    @pytest.mark.slow
     @patch.object(httpx.Client, "get")
     def test_network_error_retries(self, mock_get: MagicMock) -> None:
         """Network errors retry then raise QcewAPIError."""

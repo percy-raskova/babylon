@@ -178,6 +178,7 @@ class TestDashboardWindowSize:
 class TestDashboardWindowTheme:
     """T045: Tests for theme application (QSS)."""
 
+    @pytest.mark.slow
     def test_stylesheet_applied(
         self, qtbot: QtBot, mock_simulation_detroit: MockSimulation
     ) -> None:

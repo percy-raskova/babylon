@@ -421,6 +421,7 @@ class TestSC008Performance:
     must complete within a generous wall-clock budget.
     """
 
+    @pytest.mark.red_phase
     def test_50_county_20_year_simulation_performance(self) -> None:
         """50-county, 20-year crisis lifecycle completes within 2 seconds.
 

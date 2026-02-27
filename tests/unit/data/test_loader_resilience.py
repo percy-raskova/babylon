@@ -326,6 +326,7 @@ class TestTimeoutHandling:
         assert client.timeout == 60.0
         client.close()
 
+    @pytest.mark.slow
     def test_httpx_timeout_converts_to_api_error(self) -> None:
         """Timeout exceptions should convert to domain-specific errors."""
         import httpx

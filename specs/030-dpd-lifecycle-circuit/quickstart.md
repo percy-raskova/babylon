@@ -45,14 +45,15 @@ Legitimation components:
 **Run**: Compute legitimation index
 
 **Verify**:
-- Index = 0.25×0.73 + 0.25×0.43 + 0.25×0.60 + 0.15×0.66 + 0.10×0.50
-- Index = 0.1825 + 0.1075 + 0.15 + 0.099 + 0.05 = 0.589
+- Index = 0.35×0.66 + 0.30×0.60 + 0.20×0.50 + 0.10×0.73 + 0.05×0.43
+- Index = 0.231 + 0.18 + 0.10 + 0.073 + 0.0215 = 0.6055
 - Classification = "STABLE" (>= 0.5)
+- Note: Weight ordering reflects political judgment (home_ownership > healthcare > retirement_confidence > pension > ss_replacement)
 
 **Degradation Test**:
 ```
 Set all components to 0.2:
-  Index = 0.25×0.2 + 0.25×0.2 + 0.25×0.2 + 0.15×0.2 + 0.10×0.2 = 0.2
+  Index = 0.35×0.2 + 0.30×0.2 + 0.20×0.2 + 0.10×0.2 + 0.05×0.2 = 0.2
   Classification = "CRISIS" (< 0.3)
 ```
 

@@ -53,7 +53,7 @@ pop_D_prime × rate_D_prime_to_death → [removed]
 | `retirement_confidence` | `Probability` | [0, 1] | Subjective D' security assessment |
 
 **Computed Fields**:
-- `legitimation_index: Probability` = weighted sum per FR-004 weights (0.25/0.25/0.25/0.15/0.10)
+- `legitimation_index: Probability` = weighted sum per FR-004 weights (home_ownership=0.35, healthcare=0.30, retirement_confidence=0.20, pension=0.10, ss_replacement=0.05). See FR-004 for ranking invariant.
 - `crisis_classification: str` = "CRISIS" if < 0.3, "UNSTABLE" if < 0.5, else "STABLE" (FR-006)
 
 **Validation Rules**:
@@ -141,6 +141,11 @@ pop_D_prime × rate_D_prime_to_death → [removed]
 | `ss_replacement_rate` | 0.426 | `Probability` | SSA 2024 |
 | `healthcare_security` | 0.60 | `Probability` | Estimated composite |
 | `retirement_confidence` | 0.50 | `Probability` | EBRI RCS survey |
+| `legit_w_home_ownership` | 0.35 | `Probability` | Political judgment (rank 1) |
+| `legit_w_healthcare_security` | 0.30 | `Probability` | Political judgment (rank 2) |
+| `legit_w_retirement_confidence` | 0.20 | `Probability` | Political judgment (rank 3) |
+| `legit_w_pension_coverage` | 0.10 | `Probability` | Political judgment (rank 4) |
+| `legit_w_ss_replacement` | 0.05 | `Probability` | Political judgment (rank 5) |
 | `legitimation_blend_weight` | 0.6 | `Probability` | Structural vs agitation weight |
 | `legitimation_crisis_threshold` | 0.3 | `Probability` | FR-006 boundary |
 | `legitimation_unstable_threshold` | 0.5 | `Probability` | FR-006 boundary |
@@ -158,6 +163,8 @@ pop_D_prime × rate_D_prime_to_death → [removed]
 - `initial_pop_D_frac + initial_pop_P_frac + initial_pop_D_prime_frac ≈ 1.0` (within 0.01)
 - `legitimation_crisis_threshold < legitimation_unstable_threshold`
 - `ideology_caregiver_weight + ideology_institutional_weight ≈ 1.0`
+- Legitimation weights must sum to 1.0: `legit_w_home_ownership + legit_w_healthcare_security + legit_w_retirement_confidence + legit_w_pension_coverage + legit_w_ss_replacement ≈ 1.0` (within 0.01)
+- **Ranking invariant** (design constraint, not just default): `legit_w_home_ownership >= legit_w_healthcare_security >= legit_w_retirement_confidence >= legit_w_pension_coverage >= legit_w_ss_replacement`. This ordering reflects an authorial political judgment about which material conditions most credibly underwrite the D' promise. Individual weight values are tunable; the ordinal ranking is not.
 
 ## Entity Relationships
 

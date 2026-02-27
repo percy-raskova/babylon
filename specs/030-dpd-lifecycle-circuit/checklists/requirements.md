@@ -33,5 +33,5 @@
 
 - All items pass validation. Spec is ready for `/speckit.clarify` or `/speckit.plan`.
 - The spec deliberately avoids prescribing data structures or module layout — those decisions belong in the planning phase.
-- Legitimation index weight values (0.25/0.25/0.25/0.15/0.10) are specified in acceptance scenarios as behavioral expectations, not implementation prescription.
+- Legitimation index weight values (home_ownership=0.35, healthcare=0.30, retirement_confidence=0.20, pension=0.10, ss_replacement=0.05) are specified in FR-004 as tunable defaults with a fixed ordinal ranking (authorial political judgment). Individual weights can be tuned; the ranking is a design invariant.
 - The spec references existing Feature 029 CommunityType values and Feature 018 BifurcationRiskMetric as integration points without prescribing how the integration should be implemented.

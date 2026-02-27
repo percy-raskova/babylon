@@ -178,6 +178,174 @@ class TestLookupDicts:
 
 
 @pytest.mark.unit
+class TestCommunityTaxonomy:
+    """Validate COMMUNITY_CATEGORY_MAP and category sets (Feature 029, US1)."""
+
+    def test_all_14_types_mapped(self) -> None:
+        """Every CommunityType has an entry in COMMUNITY_CATEGORY_MAP."""
+        from babylon.models.entities.community import COMMUNITY_CATEGORY_MAP
+
+        assert set(COMMUNITY_CATEGORY_MAP.keys()) == set(CommunityType)
+
+    def test_category_map_exhaustive(self) -> None:
+        """No unmapped CommunityType members exist."""
+        from babylon.models.entities.community import COMMUNITY_CATEGORY_MAP
+
+        unmapped = set(CommunityType) - set(COMMUNITY_CATEGORY_MAP.keys())
+        assert unmapped == set(), f"Unmapped types: {unmapped}"
+
+    def test_settler_is_contradiction_pair(self) -> None:
+        """SETTLER maps to CONTRADICTION_PAIR."""
+        from babylon.models.entities.community import COMMUNITY_CATEGORY_MAP
+        from babylon.models.enums import HyperedgeCategory
+
+        assert COMMUNITY_CATEGORY_MAP[CommunityType.SETTLER] == HyperedgeCategory.CONTRADICTION_PAIR
+
+    def test_disabled_is_institutional_exclusion(self) -> None:
+        """DISABLED maps to INSTITUTIONAL_EXCLUSION."""
+        from babylon.models.entities.community import COMMUNITY_CATEGORY_MAP
+        from babylon.models.enums import HyperedgeCategory
+
+        assert (
+            COMMUNITY_CATEGORY_MAP[CommunityType.DISABLED]
+            == HyperedgeCategory.INSTITUTIONAL_EXCLUSION
+        )
+
+    def test_youth_is_lifecycle_phase(self) -> None:
+        """YOUTH maps to LIFECYCLE_PHASE."""
+        from babylon.models.entities.community import COMMUNITY_CATEGORY_MAP
+        from babylon.models.enums import HyperedgeCategory
+
+        assert COMMUNITY_CATEGORY_MAP[CommunityType.YOUTH] == HyperedgeCategory.LIFECYCLE_PHASE
+
+    def test_correct_categories_per_contract(self) -> None:
+        """Specific types map to expected categories per taxonomy-api contract."""
+        from babylon.models.entities.community import COMMUNITY_CATEGORY_MAP
+        from babylon.models.enums import HyperedgeCategory
+
+        # All contradiction pair members
+        for ct in [
+            CommunityType.SETTLER,
+            CommunityType.PATRIARCHAL,
+            CommunityType.NEW_AFRIKAN,
+            CommunityType.FIRST_NATIONS,
+            CommunityType.CHICANO,
+            CommunityType.WOMEN,
+            CommunityType.TRANS,
+        ]:
+            assert COMMUNITY_CATEGORY_MAP[ct] == HyperedgeCategory.CONTRADICTION_PAIR, ct
+
+        # All institutional exclusion members
+        for ct in [
+            CommunityType.DISABLED,
+            CommunityType.QUEER,
+            CommunityType.UNDOCUMENTED,
+            CommunityType.INCARCERATED,
+        ]:
+            assert COMMUNITY_CATEGORY_MAP[ct] == HyperedgeCategory.INSTITUTIONAL_EXCLUSION, ct
+
+        # All lifecycle phase members
+        for ct in [CommunityType.YOUTH, CommunityType.ADULT, CommunityType.ELDER]:
+            assert COMMUNITY_CATEGORY_MAP[ct] == HyperedgeCategory.LIFECYCLE_PHASE, ct
+
+
+@pytest.mark.unit
+class TestCategorySets:
+    """Validate HEGEMONIC, MARGINALIZED, LIFECYCLE community sets (Feature 029, US1)."""
+
+    def test_hegemonic_communities_correct(self) -> None:
+        """Hegemonic set contains exactly SETTLER and PATRIARCHAL."""
+        from babylon.models.entities.community import HEGEMONIC_COMMUNITIES
+
+        assert (
+            frozenset({CommunityType.SETTLER, CommunityType.PATRIARCHAL}) == HEGEMONIC_COMMUNITIES
+        )
+
+    def test_marginalized_communities_correct(self) -> None:
+        """Marginalized set contains correct 9 types."""
+        from babylon.models.entities.community import MARGINALIZED_COMMUNITIES
+
+        expected = frozenset(
+            {
+                CommunityType.NEW_AFRIKAN,
+                CommunityType.FIRST_NATIONS,
+                CommunityType.CHICANO,
+                CommunityType.WOMEN,
+                CommunityType.TRANS,
+                CommunityType.DISABLED,
+                CommunityType.QUEER,
+                CommunityType.UNDOCUMENTED,
+                CommunityType.INCARCERATED,
+            }
+        )
+        assert expected == MARGINALIZED_COMMUNITIES
+
+    def test_lifecycle_communities_correct(self) -> None:
+        """Lifecycle set contains exactly YOUTH, ADULT, ELDER."""
+        from babylon.models.entities.community import LIFECYCLE_COMMUNITIES
+
+        expected = frozenset({CommunityType.YOUTH, CommunityType.ADULT, CommunityType.ELDER})
+        assert expected == LIFECYCLE_COMMUNITIES
+
+    def test_union_covers_all_types(self) -> None:
+        """Union of all three sets covers all 14 CommunityType members."""
+        from babylon.models.entities.community import (
+            HEGEMONIC_COMMUNITIES,
+            LIFECYCLE_COMMUNITIES,
+            MARGINALIZED_COMMUNITIES,
+        )
+
+        union = HEGEMONIC_COMMUNITIES | MARGINALIZED_COMMUNITIES | LIFECYCLE_COMMUNITIES
+        assert union == frozenset(CommunityType)
+
+    def test_sets_are_disjoint(self) -> None:
+        """The three category sets have no overlap."""
+        from babylon.models.entities.community import (
+            HEGEMONIC_COMMUNITIES,
+            LIFECYCLE_COMMUNITIES,
+            MARGINALIZED_COMMUNITIES,
+        )
+
+        assert frozenset() == HEGEMONIC_COMMUNITIES & MARGINALIZED_COMMUNITIES
+        assert frozenset() == HEGEMONIC_COMMUNITIES & LIFECYCLE_COMMUNITIES
+        assert frozenset() == MARGINALIZED_COMMUNITIES & LIFECYCLE_COMMUNITIES
+
+
+@pytest.mark.unit
+class TestCommunityStateCategory:
+    """Validate CommunityState.category auto-assignment (Feature 029, US1)."""
+
+    def test_category_auto_assigned_from_community_type(self) -> None:
+        """Category is auto-assigned based on community_type."""
+        from babylon.models.enums import HyperedgeCategory
+
+        cs = CommunityState(community_type=CommunityType.SETTLER)
+        assert cs.category == HyperedgeCategory.CONTRADICTION_PAIR
+
+    def test_category_auto_assigned_exclusion(self) -> None:
+        """DISABLED gets INSTITUTIONAL_EXCLUSION category."""
+        from babylon.models.enums import HyperedgeCategory
+
+        cs = CommunityState(community_type=CommunityType.DISABLED)
+        assert cs.category == HyperedgeCategory.INSTITUTIONAL_EXCLUSION
+
+    def test_category_auto_assigned_lifecycle(self) -> None:
+        """YOUTH gets LIFECYCLE_PHASE category."""
+        from babylon.models.enums import HyperedgeCategory
+
+        cs = CommunityState(community_type=CommunityType.YOUTH)
+        assert cs.category == HyperedgeCategory.LIFECYCLE_PHASE
+
+    def test_all_types_get_category(self) -> None:
+        """Every CommunityType produces a CommunityState with valid category."""
+        from babylon.models.enums import HyperedgeCategory
+
+        for ct in CommunityType:
+            cs = CommunityState(community_type=ct)
+            assert isinstance(cs.category, HyperedgeCategory), f"{ct} has no category"
+
+
+@pytest.mark.unit
 class TestCommunityReproductionCost:
     """Tests for compute_community_cost_modifier (Feature 022, US4)."""
 

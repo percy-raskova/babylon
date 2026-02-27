@@ -46,16 +46,16 @@ ______________________________________________________________________
 
 ### Tests (RED phase)
 
-- [ ] T006 [US1] Write failing tests for COMMUNITY_CATEGORY_MAP in `tests/unit/models/test_community_models.py`: all 14 types mapped, exhaustive (no unmapped), correct categories per contract (SETTLER→CONTRADICTION_PAIR, DISABLED→INSTITUTIONAL_EXCLUSION, YOUTH→LIFECYCLE_PHASE)
-- [ ] T007 [US1] Write failing tests for category sets (HEGEMONIC_COMMUNITIES, MARGINALIZED_COMMUNITIES, LIFECYCLE_COMMUNITIES) in `tests/unit/models/test_community_models.py`: correct membership, union covers all 14 types
+- [x] T006 [US1] Write failing tests for COMMUNITY_CATEGORY_MAP in `tests/unit/models/test_community_models.py`: all 14 types mapped, exhaustive (no unmapped), correct categories per contract (SETTLER→CONTRADICTION_PAIR, DISABLED→INSTITUTIONAL_EXCLUSION, YOUTH→LIFECYCLE_PHASE)
+- [x] T007 [US1] Write failing tests for category sets (HEGEMONIC_COMMUNITIES, MARGINALIZED_COMMUNITIES, LIFECYCLE_COMMUNITIES) in `tests/unit/models/test_community_models.py`: correct membership, union covers all 14 types
 
 ### Implementation (GREEN phase)
 
-- [ ] T008 [US1] Add `COMMUNITY_CATEGORY_MAP` dict mapping all 14 CommunityType→HyperedgeCategory in `src/babylon/models/entities/community.py`
-- [ ] T009 [US1] Add `HEGEMONIC_COMMUNITIES`, `MARGINALIZED_COMMUNITIES`, `LIFECYCLE_COMMUNITIES` as frozensets in `src/babylon/models/entities/community.py`
-- [ ] T010 [US1] Add import-time exhaustiveness validation: `assert set(COMMUNITY_CATEGORY_MAP.keys()) == set(CommunityType)` in `src/babylon/models/entities/community.py`
-- [ ] T011 [US1] Add `category` field (HyperedgeCategory) to CommunityState with `@model_validator(mode="after")` that auto-assigns from COMMUNITY_CATEGORY_MAP in `src/babylon/models/entities/community.py`
-- [ ] T012 [US1] Verify all T006-T007 tests now pass (GREEN) and all 43 pre-existing tests still pass
+- [x] T008 [US1] Add `COMMUNITY_CATEGORY_MAP` dict mapping all 14 CommunityType→HyperedgeCategory in `src/babylon/models/entities/community.py`
+- [x] T009 [US1] Add `HEGEMONIC_COMMUNITIES`, `MARGINALIZED_COMMUNITIES`, `LIFECYCLE_COMMUNITIES` as frozensets in `src/babylon/models/entities/community.py`
+- [x] T010 [US1] Add import-time exhaustiveness validation: `assert set(COMMUNITY_CATEGORY_MAP.keys()) == set(CommunityType)` in `src/babylon/models/entities/community.py`
+- [x] T011 [US1] Add `category` field (HyperedgeCategory) to CommunityState with `@model_validator(mode="after")` that auto-assigns from COMMUNITY_CATEGORY_MAP in `src/babylon/models/entities/community.py`
+- [x] T012 [US1] Verify all T006-T007 tests now pass (GREEN) and all 43 pre-existing tests still pass
 
 **Checkpoint**: Taxonomy complete. Every CommunityState has a category. `mise run check` passes.
 

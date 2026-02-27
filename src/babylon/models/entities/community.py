@@ -10,9 +10,14 @@ See Also:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from babylon.models.enums import CommunityType, LegalStatus, MembershipRole
+from babylon.models.enums import (
+    CommunityType,
+    HyperedgeCategory,
+    LegalStatus,
+    MembershipRole,
+)
 from babylon.models.types import Coefficient, Probability
 
 # Membership role strength weights (Feature 022, FR-004)
@@ -43,6 +48,60 @@ LEGAL_STATUS_ORDER: list[LegalStatus] = [
 ]
 
 
+# === Feature 029: Three-Category Taxonomy ===
+
+# Maps every CommunityType to exactly one HyperedgeCategory.
+# This assignment is FIXED (structural property, not runtime-configurable).
+COMMUNITY_CATEGORY_MAP: dict[CommunityType, HyperedgeCategory] = {
+    # Contradiction pairs — hegemonic side
+    CommunityType.SETTLER: HyperedgeCategory.CONTRADICTION_PAIR,
+    CommunityType.PATRIARCHAL: HyperedgeCategory.CONTRADICTION_PAIR,
+    # Contradiction pairs — marginalized side
+    CommunityType.NEW_AFRIKAN: HyperedgeCategory.CONTRADICTION_PAIR,
+    CommunityType.FIRST_NATIONS: HyperedgeCategory.CONTRADICTION_PAIR,
+    CommunityType.CHICANO: HyperedgeCategory.CONTRADICTION_PAIR,
+    CommunityType.WOMEN: HyperedgeCategory.CONTRADICTION_PAIR,
+    CommunityType.TRANS: HyperedgeCategory.CONTRADICTION_PAIR,
+    # Institutional exclusion
+    CommunityType.DISABLED: HyperedgeCategory.INSTITUTIONAL_EXCLUSION,
+    CommunityType.QUEER: HyperedgeCategory.INSTITUTIONAL_EXCLUSION,
+    CommunityType.UNDOCUMENTED: HyperedgeCategory.INSTITUTIONAL_EXCLUSION,
+    CommunityType.INCARCERATED: HyperedgeCategory.INSTITUTIONAL_EXCLUSION,
+    # Lifecycle phases
+    CommunityType.YOUTH: HyperedgeCategory.LIFECYCLE_PHASE,
+    CommunityType.ADULT: HyperedgeCategory.LIFECYCLE_PHASE,
+    CommunityType.ELDER: HyperedgeCategory.LIFECYCLE_PHASE,
+}
+
+# Import-time exhaustiveness validation (FR-001)
+_missing_category = set(CommunityType) - set(COMMUNITY_CATEGORY_MAP.keys())
+if _missing_category:
+    raise RuntimeError(f"COMMUNITY_CATEGORY_MAP missing types: {_missing_category}")
+
+# Which side of a contradiction axis a community is on
+HEGEMONIC_COMMUNITIES: frozenset[CommunityType] = frozenset(
+    {CommunityType.SETTLER, CommunityType.PATRIARCHAL}
+)
+
+MARGINALIZED_COMMUNITIES: frozenset[CommunityType] = frozenset(
+    {
+        CommunityType.NEW_AFRIKAN,
+        CommunityType.FIRST_NATIONS,
+        CommunityType.CHICANO,
+        CommunityType.WOMEN,
+        CommunityType.TRANS,
+        CommunityType.DISABLED,
+        CommunityType.QUEER,
+        CommunityType.UNDOCUMENTED,
+        CommunityType.INCARCERATED,
+    }
+)
+
+LIFECYCLE_COMMUNITIES: frozenset[CommunityType] = frozenset(
+    {CommunityType.YOUTH, CommunityType.ADULT, CommunityType.ELDER}
+)
+
+
 class CommunityState(BaseModel):
     """State of a community, independent of its members.
 
@@ -64,6 +123,10 @@ class CommunityState(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     community_type: CommunityType
+    category: HyperedgeCategory = Field(
+        default=HyperedgeCategory.CONTRADICTION_PAIR,
+        description="Structural category, auto-assigned from community_type",
+    )
     heat: Probability = Field(
         default=Probability(0.0),
         description="State attention/surveillance intensity",
@@ -93,6 +156,12 @@ class CommunityState(BaseModel):
         default=Coefficient(1.0),
         description="Multiplier on imperial rent received by members",
     )
+
+    @model_validator(mode="after")
+    def _assign_category(self) -> CommunityState:
+        """Auto-assign category from community_type via COMMUNITY_CATEGORY_MAP."""
+        object.__setattr__(self, "category", COMMUNITY_CATEGORY_MAP[self.community_type])
+        return self
 
 
 class CommunityMembership(BaseModel):

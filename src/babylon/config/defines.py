@@ -36,7 +36,7 @@ class CrisisDefines(BaseModel):
         default=13,
         ge=1,
         le=52,
-        description="Ticks per crisis evaluation period (13 = quarterly, prime for desync)",
+        description="Game design: ticks per crisis evaluation period (13 = quarterly, prime for desync).",
     )
     r_threshold: float = Field(
         default=0.05,
@@ -48,19 +48,19 @@ class CrisisDefines(BaseModel):
         default=3,
         ge=1,
         le=20,
-        description="Consecutive below-threshold periods for crisis onset",
+        description="Game design: consecutive below-threshold periods for crisis onset.",
     )
     m_recovery: int = Field(
         default=2,
         ge=1,
         le=20,
-        description="Consecutive above-threshold periods for recovery start",
+        description="Game design: consecutive above-threshold periods for recovery start.",
     )
     r_cap: int = Field(
         default=8,
         ge=1,
         le=52,
-        description="Maximum recovery duration (periods)",
+        description="Game design: maximum recovery duration (periods).",
     )
 
     # Hysteresis and wage compression (FR-009, FR-016, FR-017)
@@ -68,49 +68,49 @@ class CrisisDefines(BaseModel):
         default=0.5,
         gt=0,
         lt=1,
-        description="Recovery hysteresis: effective = normal * (1 - h^k)",
+        description="Game design: recovery hysteresis: effective = normal * (1 - h^k).",
     )
     wage_compression_rate: float = Field(
         default=0.02,
         ge=0,
         le=0.5,
-        description="Per-period wage compression during DEEP crisis",
+        description="Game design: per-period wage compression during DEEP crisis.",
     )
     wage_compression_floor_ratio: float = Field(
         default=0.8,
         ge=0,
         le=1,
-        description="Wage floor as fraction of subsistence (below = accumulation halt)",
+        description="Game design: wage floor as fraction of subsistence (below = accumulation halt).",
     )
 
     # Bifurcation risk (FR-011 through FR-014)
     bifurcation_solidarity_weight: float = Field(
         default=1.0,
         ge=0,
-        description="Weight for solidarity density in bifurcation formula (w_s)",
+        description="Game design: weight for solidarity density in bifurcation formula (w_s).",
     )
     bifurcation_burden_weight: float = Field(
         default=1.0,
         ge=0,
-        description="Weight for class burden ratio in bifurcation formula (w_b)",
+        description="Game design: weight for class burden ratio in bifurcation formula (w_b).",
     )
     class_burden_epsilon: float = Field(
         default=0.001,
         gt=0,
         le=0.1,
-        description="Division-by-zero guard for class burden ratio",
+        description="Engineering: division-by-zero guard for class burden ratio. Must be > 0 and small relative to burden values.",
     )
     bifurcation_event_threshold: float = Field(
         default=0.5,
         ge=0,
         le=1,
-        description="|score| threshold for BIFURCATION_THRESHOLD event emission",
+        description="Game design: |score| threshold for BIFURCATION_THRESHOLD event emission.",
     )
 
     # Dispossession cascade milestones (FR-022)
     dispossession_cascade_milestones: list[float] = Field(
         default=[0.05, 0.10, 0.15],
-        description="LA share decline milestones for DISPOSSESSION_CASCADE events",
+        description="Game design: LA share decline milestones for DISPOSSESSION_CASCADE events.",
     )
     stagnation_credit_growth: float = Field(
         default=0.01,
@@ -229,12 +229,12 @@ class EconomyDefines(BaseModel):
     negligible_rent: float = Field(
         default=0.01,
         ge=0.0,
-        description="Rent below this threshold skips event emission",
+        description="Engineering: noise filter. Rent below this threshold skips event emission to prevent bus saturation.",
     )
     negligible_subsidy: float = Field(
         default=0.01,
         ge=0.0,
-        description="Subsidy below this threshold skips processing",
+        description="Engineering: noise filter. Subsidy below this threshold skips processing to prevent bus saturation.",
     )
 
     # Entity operational costs (The Calorie Check - must be > 0 to prevent Eden Mode)
@@ -252,7 +252,7 @@ class EconomyDefines(BaseModel):
     death_threshold: float = Field(
         default=0.001,
         ge=0.0,
-        description="Wealth threshold below which entities die (zombie prevention failsafe)",
+        description="Engineering: zombie prevention failsafe. Entities below this wealth threshold are removed to prevent infinite-deficit accumulation.",
     )
 
     # TRPF Surrogate - Tendency of the Rate of Profit to Fall (Marx, Capital Vol. 3)
@@ -334,13 +334,13 @@ class SurvivalDefines(BaseModel):
     steepness_k: float = Field(
         default=10.0,
         gt=0.0,
-        description="Sigmoid sharpness in acquiescence probability",
+        description="Game design: sigmoid sharpness in acquiescence probability.",
     )
     default_subsistence: float = Field(
         default=0.3,
         ge=0.0,
         le=1.0,
-        description="Minimum wealth for survival through compliance",
+        description="Game design: minimum wealth for survival through compliance.",
     )
 
     # Revolution probability P(S|R)
@@ -348,24 +348,24 @@ class SurvivalDefines(BaseModel):
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Fallback organization value",
+        description="Game design: fallback organization value.",
     )
     default_repression: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Fallback repression value",
+        description="Game design: fallback repression value.",
     )
     revolution_threshold: float = Field(
         default=1.0,
         gt=0.0,
-        description="Tipping point for P(S|R) formula",
+        description="Game design: tipping point for P(S|R) formula.",
     )
     repression_base: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Base resistance to revolution in denominator",
+        description="Game design: base resistance to revolution in denominator.",
     )
 
 
@@ -393,13 +393,13 @@ class VitalityDefines(BaseModel):
         default=0.01,
         ge=0.0,
         le=1.0,
-        description="Fraction of at-risk population that dies per tick",
+        description="Game design: fraction of at-risk population that dies per tick.",
     )
     inequality_impact: float = Field(
         default=1.0,
         ge=0.0,
         le=2.0,
-        description="How strongly inequality affects marginal wealth (1.0=full effect)",
+        description="Game design: how strongly inequality affects marginal wealth (1.0=full effect).",
     )
     attrition_base_factor: float = Field(
         default=0.5,
@@ -418,29 +418,29 @@ class SolidarityDefines(BaseModel):
         default=0.5,
         ge=0.0,
         le=2.0,
-        description="Multiplier for graph edge weights affecting organization",
+        description="Game design: multiplier for graph edge weights affecting organization.",
     )
     activation_threshold: float = Field(
         default=0.3,
         ge=0.0,
         le=1.0,
-        description="Minimum source consciousness for transmission",
+        description="Game design: minimum source consciousness for transmission.",
     )
     mass_awakening_threshold: float = Field(
         default=0.6,
         ge=0.0,
         le=1.0,
-        description="Target consciousness for MASS_AWAKENING event",
+        description="Game design: target consciousness for MASS_AWAKENING event.",
     )
     negligible_transmission: float = Field(
         default=0.01,
         ge=0.0,
-        description="Threshold below which transmissions are skipped",
+        description="Engineering: noise filter. Transmissions below this threshold are skipped to prevent O(n^2) edge saturation.",
     )
     superwage_impact: float = Field(
         default=1.0,
         ge=0.0,
-        description="How much imperial extraction affects Core wealth",
+        description="Game design: how much imperial extraction affects Core wealth.",
     )
 
 
@@ -452,7 +452,7 @@ class BehavioralDefines(BaseModel):
     loss_aversion_lambda: float = Field(
         default=2.25,
         gt=0.0,
-        description="Kahneman-Tversky loss aversion coefficient",
+        description="Game design: Kahneman-Tversky loss aversion coefficient (empirical ~2.25).",
     )
 
 
@@ -465,7 +465,7 @@ class TensionDefines(BaseModel):
         default=0.05,
         ge=0.0,
         le=1.0,
-        description="Rate at which tension accumulates from wealth gaps",
+        description="Game design: rate at which tension accumulates from wealth gaps.",
     )
 
 
@@ -478,12 +478,12 @@ class ConsciousnessDefines(BaseModel):
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="How quickly consciousness responds to material conditions",
+        description="Game design: how quickly consciousness responds to material conditions.",
     )
     decay_lambda: float = Field(
         default=0.1,
         gt=0.0,
-        description="Decay rate for consciousness without material basis",
+        description="Game design: decay rate for consciousness without material basis.",
     )
     routing_scale: float = Field(
         default=0.1,
@@ -602,49 +602,49 @@ class TopologyDefines(BaseModel):
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Percolation ratio below this = atomized (no collective action)",
+        description="Game design: percolation ratio below this = atomized (no collective action).",
     )
     condensation_threshold: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Percolation ratio for phase transition (gaseous→liquid/solid)",
+        description="Game design: percolation ratio for phase transition (gaseous→liquid/solid).",
     )
     vanguard_density_threshold: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Cadre density threshold for vanguard party (liquid→solid)",
+        description="Game design: cadre density threshold for vanguard party (liquid→solid).",
     )
     brittle_multiplier: float = Field(
         default=2.0,
         ge=1.0,
         le=10.0,
-        description="Potential > actual * this = brittle network (fragile solidarity)",
+        description="Game design: potential > actual * this = brittle network (fragile solidarity).",
     )
     solidarity_sympathizer_threshold: float = Field(
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Minimum SOLIDARITY edge strength for sympathizer classification",
+        description="Game design: minimum SOLIDARITY edge strength for sympathizer classification.",
     )
     solidarity_cadre_threshold: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Minimum SOLIDARITY edge strength for cadre classification",
+        description="Game design: minimum SOLIDARITY edge strength for cadre classification.",
     )
     resilience_removal_rate: float = Field(
         default=0.2,
         ge=0.0,
         le=1.0,
-        description="Fraction of nodes removed during resilience test (default 20%)",
+        description="Game design: fraction of nodes removed during resilience test (default 20%).",
     )
     resilience_survival_threshold: float = Field(
         default=0.4,
         ge=0.0,
         le=1.0,
-        description="L_max must survive at this fraction of original after removal",
+        description="Game design: L_max must survive at this fraction of original after removal.",
     )
 
 
@@ -662,18 +662,18 @@ class MetabolismDefines(BaseModel):
         default=1.2,
         gt=1.0,
         le=3.0,
-        description="Extraction costs more than it yields (thermodynamic inefficiency)",
+        description="Game design: extraction costs more than it yields (thermodynamic inefficiency).",
     )
     overshoot_threshold: float = Field(
         default=1.0,
         gt=0.0,
         le=2.0,
-        description="Consumption/biocapacity ratio triggering ECOLOGICAL_OVERSHOOT",
+        description="Game design: consumption/biocapacity ratio triggering ECOLOGICAL_OVERSHOOT.",
     )
     max_overshoot_ratio: float = Field(
         default=999.0,
         gt=0.0,
-        description="Cap for overshoot ratio when biocapacity depleted",
+        description="Engineering: overflow cap. Prevents division-by-near-zero when biocapacity approaches 0.",
     )
 
 
@@ -698,25 +698,25 @@ class StruggleDefines(BaseModel):
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Base 10% chance scaled by repression_faced for EXCESSIVE_FORCE",
+        description="Game design: base 10% chance scaled by repression_faced for EXCESSIVE_FORCE.",
     )
     resistance_threshold: float = Field(
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Minimum agitation level for uprising to trigger",
+        description="Game design: minimum agitation level for uprising to trigger.",
     )
     wealth_destruction_rate: float = Field(
         default=0.05,
         ge=0.0,
         le=1.0,
-        description="Fraction of wealth destroyed during uprising (riot damage)",
+        description="Game design: fraction of wealth destroyed during uprising (riot damage).",
     )
     solidarity_gain_per_uprising: float = Field(
         default=0.2,
         ge=0.0,
         le=1.0,
-        description="Solidarity strength increase on edges per uprising",
+        description="Game design: solidarity strength increase on edges per uprising.",
     )
     consciousness_solidarity_boost: float = Field(
         default=0.5,
@@ -730,25 +730,25 @@ class StruggleDefines(BaseModel):
         default=0.4,
         ge=0.0,
         le=1.0,
-        description="Revolutionary capacity threshold (org * consciousness) for organized response",
+        description="Game design: revolutionary capacity threshold (org * consciousness) for organized response.",
     )
     revolutionary_agitation_boost: float = Field(
         default=0.5,
         ge=0.0,
         le=2.0,
-        description="Agitation boost for periphery proletariat during revolutionary offensive",
+        description="Game design: agitation boost for periphery proletariat during revolutionary offensive.",
     )
     fascist_identity_boost: float = Field(
         default=0.2,
         ge=0.0,
         le=1.0,
-        description="National identity boost for core workers during fascist turn",
+        description="Game design: national identity boost for core workers during fascist turn.",
     )
     fascist_acquiescence_boost: float = Field(
         default=0.2,
         ge=0.0,
         le=1.0,
-        description="Acquiescence boost for core workers during fascist turn",
+        description="Game design: acquiescence boost for core workers during fascist turn.",
     )
 
 
@@ -780,25 +780,25 @@ class CarceralDefines(BaseModel):
         default=4,
         ge=1,
         le=20,
-        description="Prisoners one enforcer can control (1:N). US average ~4, crisis >15.",
+        description="Game design: prisoners one enforcer can control (1:N). US average ~4, crisis >15.",
     )
     enforcer_fraction: float = Field(
         default=0.15,
         ge=0.05,
         le=0.50,
-        description="After SUPERWAGE_CRISIS: % of former LA who BECOME guards/cops",
+        description="Game design: after SUPERWAGE_CRISIS: % of former LA who BECOME guards/cops.",
     )
     proletariat_fraction: float = Field(
         default=0.85,
         ge=0.50,
         le=0.95,
-        description="After SUPERWAGE_CRISIS: % of former LA who BECOME prisoners",
+        description="Game design: after SUPERWAGE_CRISIS: % of former LA who BECOME prisoners.",
     )
     revolution_threshold: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
-        description="Average prisoner organization threshold for revolution (vs genocide)",
+        description="Game design: average prisoner organization threshold for revolution (vs genocide).",
     )
 
     # Phase staggering delays (ticks) - ensures temporal separation between phases
@@ -806,19 +806,19 @@ class CarceralDefines(BaseModel):
         default=52,
         ge=0,
         le=520,
-        description="Ticks to wait after SUPERWAGE_CRISIS before CLASS_DECOMPOSITION (1 year default)",
+        description="Game design: ticks to wait after SUPERWAGE_CRISIS before CLASS_DECOMPOSITION (1 year default).",
     )
     control_ratio_delay: int = Field(
         default=52,
         ge=0,
         le=520,
-        description="Ticks to wait after CLASS_DECOMPOSITION before checking control ratio (1 year default)",
+        description="Game design: ticks to wait after CLASS_DECOMPOSITION before checking control ratio (1 year default).",
     )
     terminal_decision_delay: int = Field(
         default=1,
         ge=0,
         le=52,
-        description="Ticks to wait after CONTROL_RATIO_CRISIS before TERMINAL_DECISION",
+        description="Game design: ticks to wait after CONTROL_RATIO_CRISIS before TERMINAL_DECISION.",
     )
 
 
@@ -855,30 +855,30 @@ class EndgameDefines(BaseModel):
         default=0.7,
         ge=0.0,
         le=1.0,
-        description="Percolation ratio threshold for revolutionary victory (70%)",
+        description="Game design: percolation ratio threshold for revolutionary victory (70%).",
     )
     revolutionary_consciousness_threshold: float = Field(
         default=0.8,
         ge=0.0,
         le=1.0,
-        description="Average consciousness threshold for revolutionary victory (80%)",
+        description="Game design: average consciousness threshold for revolutionary victory (80%).",
     )
     ecological_overshoot_threshold: float = Field(
         default=2.0,
         gt=0.0,
-        description="Overshoot ratio threshold for ecological collapse tracking",
+        description="Game design: overshoot ratio threshold for ecological collapse tracking.",
     )
     ecological_sustained_ticks: int = Field(
         default=5,
         ge=1,
         le=100,
-        description="Consecutive ticks of overshoot before collapse triggers",
+        description="Game design: consecutive ticks of overshoot before collapse triggers.",
     )
     fascist_majority_threshold: int = Field(
         default=3,
         ge=1,
         le=100,
-        description="Minimum nodes with national_identity > class_consciousness",
+        description="Game design: minimum nodes with national_identity > class_consciousness.",
     )
 
 
@@ -900,7 +900,7 @@ class InitialDefines(BaseModel):
     default_population: int = Field(
         default=1,
         ge=1,
-        description="Default population for test entities. pop=1 ensures per-capita survival mechanics are tested without large denominators masking issues.",
+        description="Game design: default population for test entities. pop=1 ensures per-capita survival mechanics are tested without large denominators masking issues.",
     )
 
 
@@ -925,7 +925,7 @@ class PrecisionDefines(BaseModel):
         default=6,
         ge=1,
         le=10,
-        description="Quantization precision (10^-n). Default 6 = 0.000001",
+        description="Engineering: quantization grid precision (10^-n). Structurally determined by IEEE 754 float64 and 5200-tick simulation horizon.",
     )
     rounding_mode: str = Field(
         default="ROUND_HALF_UP",
@@ -935,13 +935,13 @@ class PrecisionDefines(BaseModel):
         default=1e-9,
         gt=0.0,
         le=1e-3,
-        description="Division-by-zero guard for formulas. Must be < grid precision (1e-9 < 1e-6).",
+        description="Engineering: division-by-zero guard. Must satisfy epsilon < 10^-decimal_places to stay below quantization grid.",
     )
     comparison_epsilon: float = Field(
         default=1e-10,
         gt=0.0,
         le=1e-6,
-        description="Float equality tolerance for tests (1e-10). Used with pytest.approx.",
+        description="Engineering: float equality tolerance for deterministic test assertions. Must be < epsilon to detect precision violations.",
     )
 
 
@@ -1140,12 +1140,12 @@ class TimescaleDefines(BaseModel):
         default=7,
         ge=1,
         le=365,
-        description="Real-world days per tick. Default 7 = weekly.",
+        description="Engineering: physical constant. 7 days/week is a calendar invariant, not a tunable parameter.",
     )
     weeks_per_year: int = Field(
         default=52,
         ge=1,
-        description="Weeks per year for flow conversion.",
+        description="Engineering: physical constant. 52 weeks/year for annual-to-tick rate conversion.",
     )
 
     @property
@@ -1181,12 +1181,12 @@ class ContradictionFieldDefines(BaseModel):
     field_min: float = Field(
         default=0.0,
         ge=0.0,
-        description="Minimum normalized field value",
+        description="Game design: minimum normalized field value.",
     )
     field_max: float = Field(
         default=10.0,
         gt=0.0,
-        description="Maximum normalized field value",
+        description="Game design: maximum normalized field value.",
     )
 
     # History window for temporal derivatives (FR-006)
@@ -1194,7 +1194,7 @@ class ContradictionFieldDefines(BaseModel):
         default=3,
         ge=2,
         le=10,
-        description="Rolling tick window for temporal derivative computation",
+        description="Game design: rolling tick window for temporal derivative computation.",
     )
 
     # Curvature parameters (FR-005, R-004)
@@ -1210,20 +1210,20 @@ class ContradictionFieldDefines(BaseModel):
         default=1.0,
         ge=0.0,
         le=1.0,
-        description="Fraction of df/dt suppressed by CO-OPTIVE edges",
+        description="Game design: fraction of df/dt suppressed by CO-OPTIVE edges.",
     )
     latent_release_multiplier: float = Field(
         default=1.5,
         ge=1.0,
         le=5.0,
-        description="Multiplier applied to released latent contradictions",
+        description="Game design: multiplier applied to released latent contradictions.",
     )
 
     # Transition thresholds (FR-010)
     default_transition_priority: int = Field(
         default=0,
         ge=0,
-        description="Default priority for transitions without explicit priority",
+        description="Game design: default priority for transitions without explicit priority.",
     )
 
 
@@ -1284,40 +1284,40 @@ class DispossessionDefines(BaseModel):
 
     # Intensity weights per dispossession type (must sum to ~1.0)
     weight_foreclosure: float = Field(
-        default=0.40, ge=0.0, le=1.0, description="Weight for foreclosure events"
+        default=0.40, ge=0.0, le=1.0, description="Game design: weight for foreclosure events."
     )
     weight_eviction: float = Field(
-        default=0.30, ge=0.0, le=1.0, description="Weight for eviction events"
+        default=0.30, ge=0.0, le=1.0, description="Game design: weight for eviction events."
     )
     weight_displacement: float = Field(
         default=0.15,
         ge=0.0,
         le=1.0,
-        description="Weight for gentrification displacement events",
+        description="Game design: weight for gentrification displacement events.",
     )
     weight_tax_sale: float = Field(
-        default=0.05, ge=0.0, le=1.0, description="Weight for tax sale events"
+        default=0.05, ge=0.0, le=1.0, description="Game design: weight for tax sale events."
     )
     weight_eminent_domain: float = Field(
         default=0.02,
         ge=0.0,
         le=1.0,
-        description="Weight for eminent domain events",
+        description="Game design: weight for eminent domain events.",
     )
     weight_wage_theft: float = Field(
-        default=0.03, ge=0.0, le=1.0, description="Weight for wage theft events"
+        default=0.03, ge=0.0, le=1.0, description="Game design: weight for wage theft events."
     )
     weight_incarceration_seizure: float = Field(
         default=0.03,
         ge=0.0,
         le=1.0,
-        description="Weight for incarceration-related seizure events",
+        description="Game design: weight for incarceration-related seizure events.",
     )
     weight_pension_default: float = Field(
         default=0.02,
         ge=0.0,
         le=1.0,
-        description="Weight for pension default events",
+        description="Game design: weight for pension default events.",
     )
 
     # Deadweight loss fraction for value transfers
@@ -1325,7 +1325,7 @@ class DispossessionDefines(BaseModel):
         default=0.05,
         ge=0.0,
         le=1.0,
-        description="Fraction of transferred value lost as deadweight (not received by anyone)",
+        description="Game design: fraction of transferred value lost as deadweight (not received by anyone).",
     )
     transfer_scale: float = Field(
         default=0.01,
@@ -1352,25 +1352,25 @@ class WorkingDayDefines(BaseModel):
         default=45.0,
         gt=0.0,
         le=168.0,
-        description="Weekly hours above which exploitation is ABSOLUTE_DOMINANT",
+        description="Game design: weekly hours above which exploitation is ABSOLUTE_DOMINANT.",
     )
     relative_hours_threshold: float = Field(
         default=40.0,
         gt=0.0,
         le=168.0,
-        description="Weekly hours at or below which exploitation may be RELATIVE_DOMINANT",
+        description="Game design: weekly hours at or below which exploitation may be RELATIVE_DOMINANT.",
     )
 
     # Intensity thresholds for exploitation mode classification
     intensity_threshold_high: float = Field(
         default=1.2,
         gt=0.0,
-        description="Labor intensity above which exploitation is RELATIVE_DOMINANT (with low hours)",
+        description="Game design: labor intensity above which exploitation is RELATIVE_DOMINANT (with low hours).",
     )
     intensity_threshold_low: float = Field(
         default=1.1,
         gt=0.0,
-        description="Labor intensity below which exploitation is ABSOLUTE_DOMINANT (with high hours)",
+        description="Game design: labor intensity below which exploitation is ABSOLUTE_DOMINANT (with high hours).",
     )
 
     # Visibility modifiers for consciousness dynamics
@@ -1378,13 +1378,13 @@ class WorkingDayDefines(BaseModel):
         default=1.0,
         ge=0.0,
         le=1.0,
-        description="Consciousness visibility modifier for ABSOLUTE exploitation",
+        description="Game design: consciousness visibility modifier for ABSOLUTE exploitation.",
     )
     relative_visibility: float = Field(
         default=0.3,
         ge=0.0,
         le=1.0,
-        description="Consciousness visibility modifier for RELATIVE exploitation",
+        description="Game design: consciousness visibility modifier for RELATIVE exploitation.",
     )
 
 
@@ -1403,31 +1403,31 @@ class CommunityDefines(BaseModel):
         default=0.05,
         ge=0.0,
         le=1.0,
-        description="Rate at which community heat decays toward 0 without provocation",
+        description="Game design: rate at which community heat decays toward 0 without provocation.",
     )
     cohesion_decay_alpha: float = Field(
         default=0.03,
         ge=0.0,
         le=1.0,
-        description="Rate at which cohesion decays without organizing work",
+        description="Game design: rate at which cohesion decays without organizing work.",
     )
     infrastructure_decay_alpha: float = Field(
         default=0.04,
         ge=0.0,
         le=1.0,
-        description="Rate at which infrastructure decays without maintenance",
+        description="Game design: rate at which infrastructure decays without maintenance.",
     )
 
     # Solidarity potential coefficients
     community_overlap_bonus: float = Field(
         default=0.1,
         ge=0.0,
-        description="Solidarity potential bonus per shared community membership",
+        description="Game design: solidarity potential bonus per shared community membership.",
     )
     rent_differential_penalty: float = Field(
         default=0.05,
         ge=0.0,
-        description="Solidarity potential penalty per unit of imperial rent differential",
+        description="Game design: solidarity potential penalty per unit of imperial rent differential.",
     )
 
     # Infrastructure maintenance
@@ -1435,7 +1435,7 @@ class CommunityDefines(BaseModel):
         default=0.1,
         ge=0.0,
         le=1.0,
-        description="Infrastructure maintenance contribution per CORE_ORGANIZER member",
+        description="Game design: infrastructure maintenance contribution per CORE_ORGANIZER member.",
     )
 
 
@@ -1500,97 +1500,97 @@ class EdgeTransitionDefines(BaseModel):
         default=5.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation tension threshold for EXTRACTIVE -> CONTESTED",
+        description="Game design: exploitation tension threshold for EXTRACTIVE -> CONTESTED.",
     )
     extraction_broken_threshold: float = Field(
         default=2.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold for CONTESTED -> BROKEN",
+        description="Game design: exploitation threshold for CONTESTED -> BROKEN.",
     )
     concessions_exploitation_threshold: float = Field(
         default=3.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold for EXTRACTIVE -> CONCESSIONS_OFFERED",
+        description="Game design: exploitation threshold for EXTRACTIVE -> CONCESSIONS_OFFERED.",
     )
     concessions_rent_threshold: float = Field(
         default=2.0,
         ge=0.0,
         le=10.0,
-        description="Imperial rent threshold for EXTRACTIVE -> CONCESSIONS_OFFERED",
+        description="Game design: imperial rent threshold for EXTRACTIVE -> CONCESSIONS_OFFERED.",
     )
     mutual_aid_threshold: float = Field(
         default=2.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold (both directions) for BROKEN -> MUTUAL_AID",
+        description="Game design: exploitation threshold (both directions) for BROKEN -> MUTUAL_AID.",
     )
     market_failure_threshold: float = Field(
         default=1.0,
         ge=0.0,
         le=10.0,
-        description="Immiseration threshold for TRANSACTIONAL -> MUTUAL_AID",
+        description="Game design: immiseration threshold for TRANSACTIONAL -> MUTUAL_AID.",
     )
     power_asymmetry_threshold: float = Field(
         default=5.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold for TRANSACTIONAL -> POWER_ASYMMETRY",
+        description="Game design: exploitation threshold for TRANSACTIONAL -> POWER_ASYMMETRY.",
     )
     co_optive_power_threshold: float = Field(
         default=3.0,
         ge=0.0,
         le=10.0,
-        description="Imperial rent threshold for POWER_ASYMMETRY -> CO_OPTIVE",
+        description="Game design: imperial rent threshold for POWER_ASYMMETRY -> CO_OPTIVE.",
     )
     solidarity_degrades_threshold: float = Field(
         default=6.0,
         ge=0.0,
         le=10.0,
-        description="Immiseration threshold for SOLIDARITY -> CONTESTED",
+        description="Game design: immiseration threshold for SOLIDARITY -> CONTESTED.",
     )
     betrayal_threshold: float = Field(
         default=3.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold for SOLIDARITY -> BROKEN",
+        description="Game design: exploitation threshold for SOLIDARITY -> BROKEN.",
     )
     conflict_resolved_threshold: float = Field(
         default=3.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold (below) for CONTESTED -> TRANSACTIONAL",
+        description="Game design: exploitation threshold (below) for CONTESTED -> TRANSACTIONAL.",
     )
     shared_enemy_threshold: float = Field(
         default=7.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold (both) for CONTESTED -> SOLIDARITY",
+        description="Game design: exploitation threshold (both) for CONTESTED -> SOLIDARITY.",
     )
     reform_rent_threshold: float = Field(
         default=3.0,
         ge=0.0,
         le=10.0,
-        description="Imperial rent threshold for CO_OPTIVE -> CONCESSIONS_OFFERED",
+        description="Game design: imperial rent threshold for CO_OPTIVE -> CONCESSIONS_OFFERED.",
     )
     co_optation_normalizes_threshold: float = Field(
         default=2.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold (below) for CO_OPTIVE -> TRANSACTIONAL",
+        description="Game design: exploitation threshold (below) for CO_OPTIVE -> TRANSACTIONAL.",
     )
     co_optive_breakdown_threshold: float = Field(
         default=1.0,
         ge=0.0,
         le=10.0,
-        description="Exploitation threshold (below) for CO_OPTIVE -> BROKEN",
+        description="Game design: exploitation threshold (below) for CO_OPTIVE -> BROKEN.",
     )
     concessions_withdrawn_threshold: float = Field(
         default=1.0,
         ge=0.0,
         le=10.0,
-        description="Imperial rent threshold (below) for CONCESSIONS_OFFERED -> EXTRACTIVE",
+        description="Game design: imperial rent threshold (below) for CONCESSIONS_OFFERED -> EXTRACTIVE.",
     )
 
 

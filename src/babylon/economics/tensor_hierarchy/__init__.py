@@ -26,6 +26,34 @@ See Also:
 
 from __future__ import annotations
 
+from babylon.economics.tensor_hierarchy.class_transition import (
+    DefaultClassTransitionComputer,
+    DefaultClassTransitionSource,
+)
+from babylon.economics.tensor_hierarchy.geographic_flow import (
+    DefaultGeographicAggregator,
+    DefaultGeographicFlowSource,
+    DefaultImperialRentComputer,
+)
+from babylon.economics.tensor_hierarchy.inter_industry import (
+    DefaultDepartmentAggregator,
+    DefaultInterIndustryFlowSource,
+    DefaultLeontiefComputer,
+)
+from babylon.economics.tensor_hierarchy.protocols import (
+    ClassTransitionSource,
+    DepartmentAggregator,
+    GeographicFlowSource,
+    ImperialRentComputer,
+    InterIndustryFlowSource,
+    LeontiefComputer,
+    ReproductionSource,
+    VisibilitySource,
+)
+from babylon.economics.tensor_hierarchy.reproduction import (
+    DefaultReproductionRequirementsComputer,
+    DefaultReproductionSource,
+)
 from babylon.economics.tensor_hierarchy.types import (
     ClassTransitionMatrix,
     Department,
@@ -39,17 +67,41 @@ from babylon.economics.tensor_hierarchy.types import (
     StationaryDistribution,
     VisibilityMetric,
 )
+from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
 __all__ = [
+    # Types (Level 1)
     "ClassTransitionMatrix",
     "Department",
     "GeographicFlow",
-    "ImperialRentField",
     "InterIndustryFlow",
     "IOTableType",
-    "LeontiefInverse",
     "ReproductionRequirements",
+    "VisibilityMetric",
+    # Types (Level 2)
+    "ImperialRentField",
+    "LeontiefInverse",
     "ShadowSubsidyTensor",
     "StationaryDistribution",
-    "VisibilityMetric",
+    # Protocols
+    "ClassTransitionSource",
+    "DepartmentAggregator",
+    "GeographicFlowSource",
+    "ImperialRentComputer",
+    "InterIndustryFlowSource",
+    "LeontiefComputer",
+    "ReproductionSource",
+    "VisibilitySource",
+    # Default implementations
+    "DefaultClassTransitionComputer",
+    "DefaultClassTransitionSource",
+    "DefaultDepartmentAggregator",
+    "DefaultGeographicAggregator",
+    "DefaultGeographicFlowSource",
+    "DefaultImperialRentComputer",
+    "DefaultInterIndustryFlowSource",
+    "DefaultLeontiefComputer",
+    "DefaultReproductionRequirementsComputer",
+    "DefaultReproductionSource",
+    "DefaultVisibilitySource",
 ]

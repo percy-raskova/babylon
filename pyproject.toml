@@ -61,6 +61,8 @@ scipy = ">=1.11.0"
 uuid = "^1.30"
 contextvars = "^2.4"
 xgi = "^0.10"
+rstcheck = "^6.2.5"
+doc8 = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

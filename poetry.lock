@@ -1137,12 +1137,30 @@ files = [
 ]
 
 [[package]]
+name = "doc8"
+version = "2.0.0"
+description = "Style checker for Sphinx (or other) RST documentation"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "doc8-2.0.0-py3-none-any.whl", hash = "sha256:9862710027f793c25f9b1899150660e4bf1d4c9a6738742e71f32011e2e3f590"},
+    {file = "doc8-2.0.0.tar.gz", hash = "sha256:1267ad32758971fbcf991442417a3935c7bc9e52550e73622e0e56ba55ea1d40"},
+]
+
+[package.dependencies]
+docutils = ">=0.19,<=0.21.2"
+Pygments = "*"
+restructuredtext-lint = ">=0.7"
+stevedore = "*"
+
+[[package]]
 name = "docutils"
 version = "0.21.2"
 description = "Docutils -- Python Documentation Utilities"
 optional = false
 python-versions = ">=3.9"
-groups = ["docs"]
+groups = ["main", "docs"]
 files = [
     {file = "docutils-0.21.2-py3-none-any.whl", hash = "sha256:dafca5b9e384f0e419294eb4d2ff9fa826435bf15f15b7bd45723e8ad76811b2"},
     {file = "docutils-0.21.2.tar.gz", hash = "sha256:3a6b18732edf182daa3cd12775bbb338cf5691468f91eeeb109deff6ebfa986f"},
@@ -5748,6 +5766,21 @@ files = [
 packaging = ">=23.2"
 
 [[package]]
+name = "restructuredtext-lint"
+version = "2.0.2"
+description = "reStructuredText linter"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "restructuredtext_lint-2.0.2-py3-none-any.whl", hash = "sha256:374c0d3e7e0867b2335146a145343ac619400623716b211b9a010c94426bbed7"},
+    {file = "restructuredtext_lint-2.0.2.tar.gz", hash = "sha256:dd25209b9e0b726929d8306339faf723734a3137db382bcf27294fa18a6bc52b"},
+]
+
+[package.dependencies]
+docutils = ">=0.11,<1.0"
+
+[[package]]
 name = "rich"
 version = "14.3.3"
 description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
@@ -5917,6 +5950,55 @@ files = [
     {file = "rpds_py-0.30.0-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:ac37f9f516c51e5753f27dfdef11a88330f04de2d564be3991384b2f3535d02e"},
     {file = "rpds_py-0.30.0.tar.gz", hash = "sha256:dd8ff7cf90014af0c0f787eea34794ebf6415242ee1d6fa91eaba725cc441e84"},
 ]
+
+[[package]]
+name = "rstcheck"
+version = "6.2.5"
+description = "Checks syntax of reStructuredText and code blocks nested within it"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "rstcheck-6.2.5-py3-none-any.whl", hash = "sha256:09af9555cf05f23651189154066d483ced25d36ebb3f01dc3a5d27524e4a5fdc"},
+    {file = "rstcheck-6.2.5.tar.gz", hash = "sha256:122b6d6b953fa1a09d7e7de42ac5d8938da291c6f68351ace6166bb50fc3bd6c"},
+]
+
+[package.dependencies]
+rstcheck-core = ">=1.1"
+typer = ">=0.12.0"
+
+[package.extras]
+dev = ["rstcheck[docs,sphinx,testing,toml,type-check]", "tox (>=3.15)"]
+docs = ["myst-parser (>=3)", "sphinx (>=6.0)", "sphinx-autobuild (>=2021.3.14)", "sphinx-click (>=4.0.3)", "sphinx-rtd-theme (>=1.2)", "sphinxcontrib-spelling (>=7.3)"]
+sphinx = ["sphinx (>=6.0)"]
+testing = ["coverage-conditional-plugin (>=0.5)", "coverage[toml] (>=6.0)", "pytest (>=7.2)", "pytest-cov (>=3.0)", "pytest-randomly (>=3.0)", "pytest-sugar (>=0.9.5)"]
+toml = ["tomli (>=2.0) ; python_version <= \"3.10\""]
+type-check = ["mypy (>=1.0)"]
+
+[[package]]
+name = "rstcheck-core"
+version = "1.2.2"
+description = "Checks syntax of reStructuredText and code blocks nested within it"
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "rstcheck_core-1.2.2-py3-none-any.whl", hash = "sha256:2af6be0f91c8bed88f05ae9695331dc0f329ac379e98d469f4ff4536ef95e718"},
+    {file = "rstcheck_core-1.2.2.tar.gz", hash = "sha256:9e4842efcc32fe6dbe1767bf1f96225495369c82a2b5e0ed2969082f1ed56c9e"},
+]
+
+[package.dependencies]
+docutils = ">=0.7"
+pydantic = ">=2"
+
+[package.extras]
+dev = ["rstcheck-core[docs,sphinx,testing,toml,type-check,yaml]", "tox (>=3.15)"]
+docs = ["myst-parser (>=3)", "sphinx (>=6.0,!=7.2.5)", "sphinx-autobuild (>=2021.3.14)", "sphinx-autodoc-typehints (>=1.15)", "sphinx-rtd-theme (>=1.2)", "sphinxcontrib-apidoc (>=0.3)", "sphinxcontrib-spelling (>=7.3)"]
+sphinx = ["sphinx (>=6.0)"]
+testing = ["coverage-conditional-plugin (>=0.5)", "coverage[toml] (>=6.0)", "pytest (>=7.2)", "pytest-cov (>=3.0)", "pytest-mock (>=3.7)", "pytest-randomly (>=3.0)", "pytest-sugar (>=0.9.5)"]
+toml = ["tomli (>=2.0) ; python_version <= \"3.10\""]
+type-check = ["mypy (>=1.0)", "types-PyYAML (>=6.0.0)", "types-docutils (>=0.18)"]
+yaml = ["pyyaml (>=6.0.0)"]
 
 [[package]]
 name = "ruff"
@@ -6743,6 +6825,18 @@ typing-extensions = {version = ">=4.10.0", markers = "python_version < \"3.13\""
 
 [package.extras]
 full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.18)", "pyyaml"]
+
+[[package]]
+name = "stevedore"
+version = "5.7.0"
+description = "Manage dynamic plugins for Python applications"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "stevedore-5.7.0-py3-none-any.whl", hash = "sha256:fd25efbb32f1abb4c9e502f385f0018632baac11f9ee5d1b70f88cc5e22ad4ed"},
+    {file = "stevedore-5.7.0.tar.gz", hash = "sha256:31dd6fe6b3cbe921e21dcefabc9a5f1cf848cf538a1f27543721b8ca09948aa3"},
+]
 
 [[package]]
 name = "sympy"
@@ -7862,4 +7956,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "61bf92e71ff17d6b5ce89654ac06adf1b4dbe6e6f88475822d81948f70579dac"
+content-hash = "a54ad71caabc786ee2eefa9fe65c5b0e1c6f1d13d8efe1ef25c557708419cefb"

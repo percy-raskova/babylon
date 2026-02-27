@@ -18,9 +18,9 @@ ______________________________________________________________________
 
 **Purpose**: Generate regression baselines from current codebase state before any modifications. This is Phase A from plan.md.
 
-- [ ] T001 Generate fresh regression baselines with `mise run qa:regression-generate` in `tests/baselines/`
-- [ ] T002 Verify baselines pass with `mise run qa:regression`
-- [ ] T003 Verify clean starting state with `mise run check` (lint + format + typecheck + test:unit)
+- [x] T001 Generate fresh regression baselines with `mise run qa:regression-generate` in `tests/baselines/`
+- [x] T002 Verify baselines pass with `mise run qa:regression`
+- [x] T003 Verify clean starting state with `mise run check` (lint + format + typecheck + test:unit)
 
 **Checkpoint**: Baselines captured. Any future regression failures indicate behavioral changes from remediation.
 
@@ -38,39 +38,39 @@ ______________________________________________________________________
 
 > 19 of the 34 "Tier B" constants lack GameDefines fields. They must be extracted INTO GameDefines first, before their inline sources can be removed.
 
-- [ ] T004 [US2] Add 10 DynamicBalance fields to `EconomyDefines` in `src/babylon/config/defines.py`: pool_high_threshold(0.7), pool_low_threshold(0.3), pool_critical_threshold(0.1), bribery_wage_delta(0.05), austerity_wage_delta(-0.05), iron_fist_repression_delta(0.10), crisis_wage_delta(-0.15), crisis_repression_delta(0.20), bribery_tension_threshold(0.3), iron_fist_tension_threshold(0.5). Add `Field(ge=, le=, description=)` with ordering constraints documented.
-- [ ] T005 [US2] Add 5 TopologyMonitor fields to `TopologyDefines` in `src/babylon/config/defines.py`: brittle_multiplier(2.0), solidarity_sympathizer_threshold(0.1), solidarity_cadre_threshold(0.5), resilience_removal_rate(0.2), resilience_survival_threshold(0.4). Add `Field(ge=, le=, description=)`.
-- [ ] T006 [US2] Add 4 remaining fields to existing subsections in `src/babylon/config/defines.py`: `precision.death_threshold`(0.001), `consciousness.solidarity_activation_threshold`(0.3), `metabolism.entropy_factor`(1.2), `metabolism.overshoot_max_ratio`(999.0), `topology.curvature_alpha`(0.5), `economy.trpf_efficiency_floor`(0.1). Add `Field(ge=, le=, description=)`.
+- [x] T004 [US2] SKIP — All 10 fields already exist in EconomyDefines. Add 10 DynamicBalance fields to `EconomyDefines` in `src/babylon/config/defines.py`: pool_high_threshold(0.7), pool_low_threshold(0.3), pool_critical_threshold(0.1), bribery_wage_delta(0.05), austerity_wage_delta(-0.05), iron_fist_repression_delta(0.10), crisis_wage_delta(-0.15), crisis_repression_delta(0.20), bribery_tension_threshold(0.3), iron_fist_tension_threshold(0.5). Add `Field(ge=, le=, description=)` with ordering constraints documented.
+- [x] T005 [US2] Add 5 TopologyMonitor fields to `TopologyDefines` in `src/babylon/config/defines.py`: brittle_multiplier(2.0), solidarity_sympathizer_threshold(0.1), solidarity_cadre_threshold(0.5), resilience_removal_rate(0.2), resilience_survival_threshold(0.4). Add `Field(ge=, le=, description=)`.
+- [x] T006 [US2] SKIP — All 6 fields already exist at actual paths. Add 4 remaining fields to existing subsections in `src/babylon/config/defines.py`: `precision.death_threshold`(0.001), `consciousness.solidarity_activation_threshold`(0.3), `metabolism.entropy_factor`(1.2), `metabolism.overshoot_max_ratio`(999.0), `topology.curvature_alpha`(0.5), `economy.trpf_efficiency_floor`(0.1). Add `Field(ge=, le=, description=)`.
 
 ### B.2: Delete Deprecated Module Constants (Pure Delete)
 
 > These constants already have GameDefines equivalents. Just delete the module-level constant and update any test imports.
 
-- [ ] T007 [P] [US2] Delete 5 deprecated module constants from `src/babylon/engine/observers/endgame_detector.py` (lines 53-61: PERCOLATION_THRESHOLD, CONSCIOUSNESS_THRESHOLD, OVERSHOOT_THRESHOLD, OVERSHOOT_CONSECUTIVE_TICKS, FASCIST_NODES_THRESHOLD). Update any test files that import these constants.
-- [ ] T008 [P] [US2] Delete GASEOUS_THRESHOLD and CONDENSATION_THRESHOLD from `src/babylon/engine/topology_monitor.py` (lines 55-56). These are already deprecated — code uses constructor-injected values.
+- [x] T007 [P] [US2] Delete 5 deprecated module constants from `src/babylon/engine/observers/endgame_detector.py` (lines 53-61: PERCOLATION_THRESHOLD, CONSCIOUSNESS_THRESHOLD, OVERSHOOT_THRESHOLD, OVERSHOOT_CONSECUTIVE_TICKS, FASCIST_NODES_THRESHOLD). Update any test files that import these constants.
+- [x] T008 [P] [US2] Delete GASEOUS_THRESHOLD and CONDENSATION_THRESHOLD from `src/babylon/engine/topology_monitor.py` (lines 55-56). These are already deprecated — code uses constructor-injected values.
 
 ### B.3: Extract + Delete (Update Callers Then Remove Defaults)
 
 > After T004-T006 add the GameDefines fields, update each caller to use the GameDefines path, then remove the inline default.
 
-- [ ] T009 [US2] Update `calculate_bourgeoisie_decision()` in `src/babylon/formulas/dynamic_balance.py` — remove 10 function parameter defaults (lines 28-39), require caller to pass explicit GameDefines values. Update all call sites in `src/babylon/engine/systems/` to pass `defines.economy.*` values.
-- [ ] T010 [P] [US2] Update `TopologyMonitor` in `src/babylon/engine/topology_monitor.py` — accept 5 extracted constants via `__init__` from GameDefines.topology (brittle_multiplier, solidarity thresholds, resilience params). Delete module constants (lines 57-65).
-- [ ] T011 [P] [US2] Extract DEATH_THRESHOLD to `GameDefines.precision.death_threshold` — update `src/babylon/engine/observers/metrics.py` (line 41) to use defines. Remove duplicate from `tools/shared.py` (line 82), update `tools/regression_test.py` if it references the shared constant.
-- [ ] T012 [P] [US2] Update `calculate_solidarity_transmission()` in `src/babylon/formulas/solidarity.py` — remove `activation_threshold=0.3` default (line 14), require explicit `defines.consciousness.solidarity_activation_threshold`.
-- [ ] T013 [P] [US2] Update `src/babylon/formulas/metabolic_rift.py` — remove `entropy_factor=1.2` default and `max_ratio=999.0` default, require explicit `defines.metabolism.*` values.
-- [ ] T014 [P] [US2] Update `src/babylon/formulas/curvature.py` — remove `alpha=0.5` default (line 32), require explicit `defines.topology.curvature_alpha`.
-- [ ] T015 [P] [US2] Update `src/babylon/formulas/trpf.py` — remove `floor=0.1` default (line 25), require explicit `defines.economy.trpf_efficiency_floor`.
+- [x] T009 [US2] SKIP — Production callers already wire from services.defines. Update `calculate_bourgeoisie_decision()` in `src/babylon/formulas/dynamic_balance.py` — remove 10 function parameter defaults (lines 28-39), require caller to pass explicit GameDefines values. Update all call sites in `src/babylon/engine/systems/` to pass `defines.economy.*` values.
+- [x] T010 [P] [US2] Update `TopologyMonitor` in `src/babylon/engine/topology_monitor.py` — accept 5 extracted constants via `__init__` from GameDefines.topology (brittle_multiplier, solidarity thresholds, resilience params). Delete module constants (lines 57-65).
+- [x] T011 [P] [US2] Extract DEATH_THRESHOLD to `GameDefines.precision.death_threshold` — update `src/babylon/engine/observers/metrics.py` (line 41) to use defines. Remove duplicate from `tools/shared.py` (line 82), update `tools/regression_test.py` if it references the shared constant.
+- [x] T012 [P] [US2] SKIP — Production callers already wire from services.defines. Update `calculate_solidarity_transmission()` in `src/babylon/formulas/solidarity.py` — remove `activation_threshold=0.3` default (line 14), require explicit `defines.consciousness.solidarity_activation_threshold`.
+- [x] T013 [P] [US2] SKIP — Production callers already wire from services.defines. Update `src/babylon/formulas/metabolic_rift.py` — remove `entropy_factor=1.2` default and `max_ratio=999.0` default, require explicit `defines.metabolism.*` values.
+- [x] T014 [P] [US2] SKIP — Production callers already wire from services.defines. Update `src/babylon/formulas/curvature.py` — remove `alpha=0.5` default (line 32), require explicit `defines.topology.curvature_alpha`.
+- [x] T015 [P] [US2] SKIP — Production callers already wire from services.defines. Update `src/babylon/formulas/trpf.py` — remove `floor=0.1` default (line 25), require explicit `defines.economy.trpf_efficiency_floor`.
 
 ### B.4: Redirect FormulaConstant Callers
 
-- [ ] T016 [US2] Redirect importers of `LOSS_AVERSION_COEFFICIENT` from `formulas.constants` to use `GameDefines.behavioral.loss_aversion_lambda` directly — update `src/babylon/formulas/fundamental_theorem.py`, `survival_calculus.py`, `ideological_routing.py`.
-- [ ] T017 [P] [US2] Redirect importers of `EPSILON` from `formulas.constants` to use `GameDefines.precision.epsilon` — update `survival_calculus.py`. Remove shadow `EPSILON = 1e-9` from `specs/024-capital-volume-iii/contracts/distribution_formulas.py` (line 15).
+- [x] T016 [US2] Redirect importers of `LOSS_AVERSION_COEFFICIENT` from `formulas.constants` to use `GameDefines.behavioral.loss_aversion_lambda` directly — update `src/babylon/formulas/fundamental_theorem.py`, `survival_calculus.py`, `ideological_routing.py`.
+- [x] T017 [P] [US2] Redirect importers of `EPSILON` from `formulas.constants` to use `GameDefines.precision.epsilon` — update `survival_calculus.py`. Remove shadow `EPSILON = 1e-9` from `specs/024-capital-volume-iii/contracts/distribution_formulas.py` (line 15).
 
 ### B.5: Verification
 
-- [ ] T018 [US2] Update `tests/unit/config/test_constants_sync.py` for new GameDefines fields and removed constants. Verify all new fields are tested.
-- [ ] T019 [US2] Run `mise run check` + `mise run qa:regression` to verify zero behavioral change from all Tier B modifications.
-- [ ] T020 [US2] Regenerate regression baselines with `mise run qa:regression-generate` — baselines now reflect new GameDefines hash (added fields).
+- [x] T018 [US2] Update `tests/unit/config/test_constants_sync.py` for new GameDefines fields and removed constants. Verify all new fields are tested.
+- [x] T019 [US2] Run `mise run check` + `mise run qa:regression` to verify zero behavioral change from all Tier B modifications.
+- [x] T020 [US2] Regenerate regression baselines with `mise run qa:regression-generate` — baselines now reflect new GameDefines hash (added fields).
 
 **Checkpoint**: 34 Tier B constants eliminated. Test suite and regression pass with identical outcomes. GameDefines has ~19 new fields. Baseline regenerated for Phase 3.
 
@@ -84,25 +84,25 @@ ______________________________________________________________________
 
 ### C.1: Hydration Functions (TDD)
 
-- [ ] T021 [US1] Write integration tests for constant hydration in `tests/integration/test_constant_hydration.py` — test that `hydrate_class_shares("26163", 2022)` returns non-default values from Census/QCEW data, that `hydrate_economy_constants("26163", 2022)` returns non-default extraction_efficiency/shadow_wage/subsistence, and that fallback to GameDefines defaults works when FIPS data is missing. Tests should FAIL initially (RED phase).
-- [ ] T022 [US1] Implement `hydrate_class_shares(fips, year, session)` in `src/babylon/data/reference/hydrator.py` — query Census/QCEW for 5 class shares + unemployment rate, return dict keyed by class name. Fallback to GameDefines defaults on missing data with logged warning.
-- [ ] T023 [US1] Implement `hydrate_economy_constants(fips, year, session)` in `src/babylon/data/reference/hydrator.py` — compute extraction_efficiency via MarxianHydrator s/(c+v) ratio, shadow_wage_hourly via ATUSDBLoader, base_subsistence via Census ACS poverty threshold, min/max_wage_rate via QCEW percentiles + BEA value-added. Fallback to GameDefines defaults on missing data.
-- [ ] T024 [US1] Implement `hydrate_reserve_army(fips, year, session)` in `src/babylon/data/reference/hydrator.py` — derive sigmoid_r0 from FRED UNRATE series for target county/state. Fallback to GameDefines default on missing data.
+- [x] T021 [US1] Write integration tests for constant hydration in `tests/integration/test_constant_hydration.py` — test that `hydrate_class_shares("26163", 2022)` returns non-default values from Census/QCEW data, that `hydrate_economy_constants("26163", 2022)` returns non-default extraction_efficiency/shadow_wage/subsistence, and that fallback to GameDefines defaults works when FIPS data is missing. Tests should FAIL initially (RED phase).
+- [x] T022 [US1] Implement `hydrate_class_shares(fips, year, session)` in `src/babylon/data/reference/hydrator.py` — query Census/QCEW for 5 class shares + unemployment rate, return dict keyed by class name. Fallback to GameDefines defaults on missing data with logged warning.
+- [x] T023 [US1] Implement `hydrate_economy_constants(fips, year, session)` in `src/babylon/data/reference/hydrator.py` — compute extraction_efficiency via MarxianHydrator s/(c+v) ratio, shadow_wage_hourly via ATUSDBLoader, base_subsistence via Census ACS poverty threshold, min/max_wage_rate via QCEW percentiles + BEA value-added. Fallback to GameDefines defaults on missing data.
+- [x] T024 [US1] Implement `hydrate_reserve_army(fips, year, session)` in `src/babylon/data/reference/hydrator.py` — derive sigmoid_r0 from FRED UNRATE series for target county/state. Fallback to GameDefines default on missing data.
 
 ### C.2: Wire Constants at Initialization
 
-- [ ] T025 [US1] Wire class share hydration into `_bootstrap_county_states()` in `src/babylon/economics/tick/system.py` (lines 320-342) — call `hydrate_class_shares()` to populate `dist_dict` BEFORE the `.get()` fallback calls. Keep current hardcoded values as fallback only.
-- [ ] T026 [US1] Wire economy constants at simulation initialization — override GameDefines defaults for extraction_efficiency, shadow_wage_hourly, base_subsistence, min_wage_rate, max_wage_rate with hydrated values. Use `defines.model_copy(update={...})` pattern.
-- [ ] T027 [US1] Wire reserve_army.sigmoid_r0 at simulation initialization from FRED-derived value.
+- [x] T025 [US1] Wire class share hydration into `_bootstrap_county_states()` in `src/babylon/economics/tick/system.py` (lines 320-342) — call `hydrate_class_shares()` to populate `dist_dict` BEFORE the `.get()` fallback calls. Keep current hardcoded values as fallback only.
+- [x] T026 [US1] Wire economy constants at simulation initialization — override GameDefines defaults for extraction_efficiency, shadow_wage_hourly, base_subsistence, min_wage_rate, max_wage_rate with hydrated values. Use `defines.model_copy(update={...})` pattern.
+- [x] T027 [US1] Wire reserve_army.sigmoid_r0 at simulation initialization from FRED-derived value.
 
 ### C.3: Documentation (FR-004, FR-005)
 
-- [ ] T028 [US1] Write falsifiability statements for each of the 12 wired constants in `specs/028-constants-remediation-sweep/reports/falsifiability-statements.md` — for each constant, document: derivation equation, data source, and what Wayne/Oakland County observation would disprove it (FR-004).
-- [ ] T029 [US1] Run `mise run qa:regression` — document all value deviations in `specs/028-constants-remediation-sweep/reports/deviation-log.md` with: old value, new data-derived value, data source, theoretical justification (FR-005).
+- [x] T028 [US1] Write falsifiability statements for each of the 12 wired constants in `specs/028-constants-remediation-sweep/reports/falsifiability-statements.md` — for each constant, document: derivation equation, data source, and what Wayne/Oakland County observation would disprove it (FR-004).
+- [x] T029 [US1] Run `mise run qa:regression` — document all value deviations in `specs/028-constants-remediation-sweep/reports/deviation-log.md` with: old value, new data-derived value, data source, theoretical justification (FR-005).
 
 ### C.4: Verification
 
-- [ ] T030 [US1] Run `mise run check` + `mise run test:all` to verify engine stability with data-derived constants.
+- [x] T030 [US1] Run `mise run check` + `mise run test:all` to verify engine stability with data-derived constants.
 
 **Checkpoint**: 12 Tier A constants data-derived at initialization. Integration tests pass. Regression deviations documented. Falsifiability statements complete.
 

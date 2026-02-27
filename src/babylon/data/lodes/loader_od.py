@@ -40,7 +40,6 @@ from sqlalchemy import delete
 from babylon.data.loader_base import DataLoader, LoadStats
 from babylon.data.reference.schema import (
     DimCounty,
-    DimTime,
     FactLodesCommuterFlow,
 )
 from babylon.data.utils import BatchWriter
@@ -301,8 +300,8 @@ class LODESODLoader(DataLoader):
             self._clear_checkpoints(session, "lodes_od")
             session.flush()
 
-        # Build lookups
-        lookups = self._initialize_lookups(session)
+        # Build lookups (ensures DimTime rows exist for requested years)
+        lookups = self._initialize_lookups(session, years)
 
         result = self._load_all_files(session, data_dir, years, states, lookups, verbose)
 
@@ -460,21 +459,24 @@ class LODESODLoader(DataLoader):
         session.execute(delete(FactLodesCommuterFlow))
         session.flush()
 
-    def _initialize_lookups(self, session: Session) -> dict[str, Any]:
-        """Initialize lookup dictionaries from dimension tables."""
+    def _initialize_lookups(
+        self,
+        session: Session,
+        years: list[Any],
+    ) -> dict[str, Any]:
+        """Initialize lookup dictionaries from dimension tables.
+
+        Ensures DimTime rows exist for all requested years via
+        the base class _get_or_create_time method.
+        """
         # County FIPS -> county_id
         county_lookup = {c.fips: c.county_id for c in session.query(DimCounty).all()}
 
-        # Year -> time_id (annual only)
-        time_lookup = {
-            t.year: t.time_id
-            for t in session.query(DimTime).filter(DimTime.is_annual.is_(True)).all()
-        }
-
-        # Block crosswalk lookup: block_geoid -> county_id
-        # This is used when block-level precision is needed
-        # For performance, we use direct FIPS extraction from block GEOID
-        # (first 5 digits = county FIPS) rather than loading full crosswalk
+        # Ensure DimTime rows exist for all requested years, then build lookup
+        time_lookup: dict[int, int] = {}
+        for year in years:
+            time_id = self._get_or_create_time(session, int(year))
+            time_lookup[int(year)] = time_id
 
         return {
             "county": county_lookup,

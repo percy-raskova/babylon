@@ -7,6 +7,7 @@ TDD Phase: GREEN (validation is implemented)
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from babylon.economics.tensor_hierarchy.validation import (
     validate_g33,
@@ -254,3 +255,208 @@ class TestValidateTransitionMatrix:
         P = np.array([[0.9, 0.2], [0.3, 0.7]])  # row 0 sums to 1.1
         valid, msg = validate_transition_matrix(P)
         assert valid is False
+
+
+# =============================================================================
+# FR-017 Commutativity tests
+# =============================================================================
+
+
+class TestGeographicFlowCommutativity:
+    """Commutativity of aggregate-then-transform vs. transform-then-aggregate.
+
+    FR-017: For GeographicFlow, phi (imperial rent) is linear in the flow
+    matrix F, so aggregating flows then computing phi equals computing phi
+    at the fine level then aggregating — EXACTLY.
+
+    phi_state[s] = sum_{a in s} phi_area[a]
+
+    This is because phi[a] = inflow[a] - outflow[a] is a linear function of F.
+    Summing phi over a group of areas equals computing phi on the grouped flow.
+    """
+
+    @pytest.mark.math
+    def test_aggregate_then_phi_equals_phi_then_aggregate(self) -> None:
+        """phi(aggregate(F)) == aggregate(phi(F)) for GeographicFlow.
+
+        Verifies that the two operation orders produce identical results:
+        1. Aggregate CFS area flows to state → compute imperial rent per state
+        2. Compute imperial rent per CFS area → aggregate rent to state level
+        """
+        from babylon.economics.tensor_hierarchy.geographic_flow import (
+            DefaultGeographicAggregator,
+            DefaultImperialRentComputer,
+        )
+        from babylon.economics.tensor_hierarchy.types import GeographicFlow
+
+        # 4-area flow matrix (areas 0-3)
+        areas = ["11", "12", "119", "120"]
+        flow_matrix = np.array(
+            [
+                [100.0, 200.0, 50.0, 30.0],
+                [80.0, 150.0, 40.0, 20.0],
+                [60.0, 70.0, 90.0, 25.0],
+                [10.0, 15.0, 5.0, 200.0],
+            ],
+            dtype=np.float64,
+        )
+        flow = GeographicFlow(year=2022, areas=areas, flow_matrix=flow_matrix)
+        mapping = {"11": "MA", "12": "MA", "119": "NY", "120": "NY"}
+
+        computer = DefaultImperialRentComputer()
+        aggregator = DefaultGeographicAggregator()
+
+        # Path 1: Aggregate flow then compute phi
+        agg_flow = aggregator.aggregate(flow, mapping)
+        phi_of_agg = computer.compute_rent(agg_flow)
+
+        # Path 2: Compute phi then aggregate phi values
+        phi_original = computer.compute_rent(flow)
+        # Manually aggregate phi: phi_state[s] = sum phi_area[a] for a in s
+        phi_ma = float(phi_original.phi[0] + phi_original.phi[1])  # areas 11, 12
+        phi_ny = float(phi_original.phi[2] + phi_original.phi[3])  # areas 119, 120
+
+        # The aggregated phi should match (up to ordering in agg_flow.areas)
+        state_to_idx = {s: i for i, s in enumerate(phi_of_agg.areas)}
+        np.testing.assert_allclose(
+            phi_of_agg.phi[state_to_idx["MA"]],
+            phi_ma,
+            atol=1e-9,
+            err_msg="phi(aggregate(F))[MA] must equal aggregate(phi(F))[MA]",
+        )
+        np.testing.assert_allclose(
+            phi_of_agg.phi[state_to_idx["NY"]],
+            phi_ny,
+            atol=1e-9,
+            err_msg="phi(aggregate(F))[NY] must equal aggregate(phi(F))[NY]",
+        )
+
+    @pytest.mark.math
+    def test_commutativity_conservation_preserved(self) -> None:
+        """sum(phi) == 0 holds at both CFS area and aggregated state level."""
+        from babylon.economics.tensor_hierarchy.geographic_flow import (
+            DefaultGeographicAggregator,
+            DefaultImperialRentComputer,
+        )
+        from babylon.economics.tensor_hierarchy.types import GeographicFlow
+
+        areas = ["11", "12", "119"]
+        flow_matrix = np.array(
+            [[100.0, 200.0, 50.0], [80.0, 150.0, 40.0], [60.0, 70.0, 90.0]],
+            dtype=np.float64,
+        )
+        flow = GeographicFlow(year=2022, areas=areas, flow_matrix=flow_matrix)
+        mapping = {"11": "state_A", "12": "state_A", "119": "state_B"}
+
+        computer = DefaultImperialRentComputer()
+        aggregator = DefaultGeographicAggregator()
+
+        phi_area = computer.compute_rent(flow)
+        agg_flow = aggregator.aggregate(flow, mapping)
+        phi_state = computer.compute_rent(agg_flow)
+
+        # Both should sum to near zero
+        assert float(phi_area.phi.sum()) == pytest.approx(0.0, abs=1e-9)
+        assert float(phi_state.phi.sum()) == pytest.approx(0.0, abs=1e-9)
+
+
+class TestClassTransitionCommutativity:
+    """Commutativity tests for ClassTransitionMatrix aggregation and stationary distribution.
+
+    The stationary distribution is nonlinear (eigenvector), so exact commutativity
+    cannot be guaranteed. However, the aggregated matrix must always yield a
+    valid stationary distribution that is consistent with the aggregated structure.
+    """
+
+    @pytest.mark.math
+    def test_aggregated_stationary_is_valid(self) -> None:
+        """Stationary distribution of aggregated matrix sums to 1.0."""
+        from babylon.economics.tensor_hierarchy.class_transition import (
+            DefaultClassTransitionComputer,
+        )
+        from babylon.economics.tensor_hierarchy.types import ClassTransitionMatrix
+
+        classes = ["proletariat", "lumpen", "petit_bourgeois", "bourgeoisie"]
+        mat = np.array(
+            [
+                [0.7, 0.1, 0.15, 0.05],
+                [0.3, 0.4, 0.2, 0.1],
+                [0.1, 0.05, 0.7, 0.15],
+                [0.02, 0.01, 0.07, 0.9],
+            ],
+            dtype=np.float64,
+        )
+        ctm = ClassTransitionMatrix(period=(2015, 2020), classes=classes, transition_matrix=mat)
+        mapping = {
+            "proletariat": "labor",
+            "lumpen": "labor",
+            "petit_bourgeois": "capital",
+            "bourgeoisie": "capital",
+        }
+        computer = DefaultClassTransitionComputer()
+
+        # Aggregate then compute stationary
+        agg_ctm = computer.aggregate_classes(ctm, mapping)
+        pi_agg = computer.stationary_distribution(agg_ctm)
+
+        assert float(pi_agg.distribution.sum()) == pytest.approx(1.0, abs=1e-9)
+        assert np.all(pi_agg.distribution >= -1e-12)
+        # SC-004: pi_agg @ P_agg == pi_agg
+        np.testing.assert_allclose(
+            pi_agg.distribution @ agg_ctm.transition_matrix,
+            pi_agg.distribution,
+            atol=1e-8,
+        )
+
+    @pytest.mark.math
+    def test_aggregated_stationary_is_self_consistent(self) -> None:
+        """Stationary distribution of aggregated matrix satisfies pi @ P = pi.
+
+        The stationary distribution is non-linear (eigenvector), so the
+        coarse stationary is NOT necessarily the marginal of the fine stationary.
+        However, the aggregated matrix must have a self-consistent stationary
+        distribution that satisfies the fixed-point equation.
+
+        This verifies two-step commutativity:
+        - aggregate_classes produces a valid ClassTransitionMatrix
+        - stationary_distribution of the coarse matrix is self-consistent
+        """
+        from babylon.economics.tensor_hierarchy.class_transition import (
+            DefaultClassTransitionComputer,
+        )
+        from babylon.economics.tensor_hierarchy.types import ClassTransitionMatrix
+
+        # 4-class mixing matrix with unique stationary distribution
+        mat = np.array(
+            [
+                [0.7, 0.1, 0.15, 0.05],
+                [0.2, 0.6, 0.15, 0.05],
+                [0.05, 0.1, 0.75, 0.10],
+                [0.02, 0.01, 0.07, 0.9],
+            ],
+            dtype=np.float64,
+        )
+        classes = ["proletariat", "lumpen", "petit_bourgeois", "bourgeoisie"]
+        ctm = ClassTransitionMatrix(period=(2015, 2020), classes=classes, transition_matrix=mat)
+        mapping = {
+            "proletariat": "labor",
+            "lumpen": "labor",
+            "petit_bourgeois": "capital",
+            "bourgeoisie": "capital",
+        }
+        computer = DefaultClassTransitionComputer()
+
+        # Aggregate then compute stationary
+        agg_ctm = computer.aggregate_classes(ctm, mapping)
+        pi_coarse = computer.stationary_distribution(agg_ctm)
+
+        # pi_coarse must be a valid probability distribution
+        assert float(pi_coarse.distribution.sum()) == pytest.approx(1.0, abs=1e-9)
+        assert np.all(pi_coarse.distribution >= -1e-12)
+        # SC-004 at coarse level: pi_coarse @ P_coarse == pi_coarse
+        np.testing.assert_allclose(
+            pi_coarse.distribution @ agg_ctm.transition_matrix,
+            pi_coarse.distribution,
+            atol=1e-8,
+            err_msg="Coarse stationary must satisfy fixed-point equation pi @ P = pi",
+        )

@@ -44,6 +44,7 @@ Economic Theory
    volume-i-theory
    capital-circulation
    piketty-profit-rate
+   naics-hierarchy
    survival-calculus
    reproductive-labor
 

@@ -16,8 +16,8 @@ QCEW is integrated into Babylon to provide:
 - **Location quotients**: Industry concentration metrics for comparative analysis
 - **Class composition**: NAICS industry mapping to Marxian class categories
 
-All data is stored in ``data/duckdb/marxist-data-3NF.duckdb`` using a normalized
-star schema with DuckDB's columnar storage for analytical query performance.
+All data is stored in ``data/sqlite/marxist-data-3NF.sqlite`` using a normalized
+star schema.
 
 Setup
 -----
@@ -167,6 +167,84 @@ Fact Tables
 **fact_qcew_state_annual** and **fact_qcew_metro_annual** follow the same
 structure, with FK references to ``dim_state`` and ``dim_metro_area`` respectively.
 
+NAICS Hierarchy Levels
+^^^^^^^^^^^^^^^^^^^^^^
+
+The ``dim_industry`` table includes a ``naics_level`` column indicating
+each code's position in the NAICS hierarchy:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 40 45
+
+   * - naics_level
+     - Meaning
+     - Example
+   * - 0
+     - Grand total (all industries)
+     - ``10``
+   * - 2
+     - Sector (includes compound codes)
+     - ``31-33``, ``44-45``, ``48-49``
+   * - 3
+     - Subsector
+     - ``336``
+   * - 4
+     - Industry group
+     - ``3361``
+   * - 5
+     - NAICS industry
+     - ``33611``
+   * - 6
+     - National industry (leaf)
+     - ``336111``
+   * - 98
+     - BLS ownership variants
+     - (special codes)
+   * - 99
+     - BLS supersectors
+     - ``1011``--``1029``
+
+.. warning::
+
+   QCEW reports wages at **every** hierarchy level. Parent-level wages
+   **include all children**. Summing across levels without filtering
+   produces catastrophic double-counting (empirically 10.4x in Wayne
+   County). Always filter to ``naics_level = 6`` when aggregating
+   wages. See :doc:`/concepts/naics-hierarchy` for full explanation.
+
+National Wages Cache Table
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``InterpolatingBEASource`` maintains a materialized cache table
+``_cache_national_wages_bea`` to avoid repeated aggregation of the
+43M-row ``fact_qcew_annual`` table. The cache stores pre-aggregated
+national wages per BEA industry per year.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 25 50
+
+   * - Column
+     - Type
+     - Description
+   * - bea_industry_id
+     - INT
+     - FK to ``dim_bea_industry``
+   * - year
+     - INT
+     - Data year
+   * - national_wages_usd
+     - REAL
+     - Sum of ``total_wages_usd`` for all leaf NAICS in this BEA industry
+   * - cache_version
+     - INT
+     - Schema version (current: 2). Stale caches are auto-rebuilt.
+
+The cache is built on first use and persists across sessions. When the
+``cache_version`` column is missing or does not match the current version,
+the table is dropped and rebuilt with leaf-only NAICS filtering.
+
 SQL Queries
 -----------
 
@@ -284,7 +362,10 @@ Cross-geographic wage comparisons reveal unequal exchange dynamics:
 See Also
 --------
 
+- :doc:`/concepts/naics-hierarchy` - Why NAICS hierarchy causes double-counting
+  and the leaf-only filtering solution
 - :doc:`fred-data` - FRED macroeconomic data
 - :doc:`census-analysis` - Census ACS demographics
+- :doc:`bea-department-mapping` - BEA industry to Marxian department mapping
 - :mod:`babylon.data.qcew` - API reference
 - `BLS QCEW Open Data <https://www.bls.gov/cew/additional-resources/open-data/>`_

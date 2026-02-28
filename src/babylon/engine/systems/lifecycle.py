@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 from babylon.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
 from babylon.economics.lifecycle.inheritance import DefaultInheritanceCalculator
 from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
-from babylon.economics.lifecycle.types import DPDState, LegitimationState
+from babylon.economics.lifecycle.mobility import DefaultClassMobilityCalculator
+from babylon.economics.lifecycle.types import ClassMobilityParams, DPDState, LegitimationState
 from babylon.engine.event_bus import Event
 from babylon.models.enums import EventType, LegitimationClassification
 
@@ -48,6 +49,7 @@ class LifecycleSystem:
         self._cohort_calc = DefaultCohortDynamicsCalculator()
         self._legit_calc = DefaultLegitimationCalculator()
         self._inherit_calc = DefaultInheritanceCalculator()
+        self._mobility_calc = DefaultClassMobilityCalculator()
 
     def step(
         self,
@@ -181,6 +183,37 @@ class LifecycleSystem:
                         },
                     )
                 )
+
+            # Step 5: Apply class mobility parameters
+            mobility_data = attrs.get("mobility_params")
+            if mobility_data is not None and isinstance(mobility_data, dict):
+                mobility_params = ClassMobilityParams(**mobility_data)
+            elif isinstance(mobility_data, ClassMobilityParams):
+                mobility_params = mobility_data
+            else:
+                mobility_params = ClassMobilityParams(
+                    mobility_base_rate=defines.mobility_base_rate,
+                    mobility_base_rate_p75=defines.mobility_base_rate_p75,
+                    mobility_racial_gap=defines.mobility_racial_gap,
+                    carceral_modifier=defines.carceral_transition_modifier,
+                    early_mortality_modifier=defines.early_mortality_modifier,
+                    baseline_gini=defines.baseline_gini,
+                    poverty_share=defines.poverty_share,
+                    employment_rate=defines.employment_rate,
+                    single_parent_fraction=defines.single_parent_fraction,
+                    college_rate=defines.college_rate,
+                )
+            # Store mobility-adjusted P→D' rate on graph for downstream use
+            adjusted_p_to_d_prime = self._mobility_calc.compute_premature_exit_rate(
+                base_rate=new_state.rate_p_to_d_prime,
+                mortality_modifier=mobility_params.early_mortality_modifier,
+                carceral_modifier=1.0,  # Carceral applied per-subpopulation, not aggregate
+            )
+            graph.update_node(
+                territory_id,
+                mobility_params=mobility_params.model_dump(),
+                adjusted_p_to_d_prime=adjusted_p_to_d_prime,
+            )
 
     @staticmethod
     def _read_legitimation_state(

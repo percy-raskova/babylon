@@ -2126,6 +2126,353 @@ class EdgeTransitionDefines(BaseModel):
     )
 
 
+class OODADefines(BaseModel):
+    """OODA Loop System tunable coefficients (Feature 032).
+
+    Controls cycle time computation, initiative scoring, action costs,
+    consciousness effect multipliers, and propagation parameters.
+
+    See Also:
+        ``specs/032-ooda-loop-system/data-model.md``: Full specification.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # --- Cycle time weights (OODA profile contract) ---
+    base_observe_time: float = Field(
+        default=1.0,
+        gt=0,
+        description="Base Observe phase duration.",
+    )
+    latency_weight: float = Field(
+        default=0.5,
+        ge=0,
+        description="Weight of sensor_latency on Observe phase.",
+    )
+    base_orient_time: float = Field(
+        default=2.0,
+        gt=0,
+        description="Base Orient phase duration.",
+    )
+    coherence_weight: float = Field(
+        default=0.6,
+        ge=0,
+        le=1.0,
+        description="Weight of ideological_coherence on Orient phase.",
+    )
+    base_act_time: float = Field(
+        default=1.0,
+        gt=0,
+        description="Base Act phase duration (fixed).",
+    )
+    coord_weight: float = Field(
+        default=0.3,
+        ge=0,
+        description="Weight of coordination on Act phase (reserved).",
+    )
+    depth_weight: float = Field(
+        default=0.4,
+        ge=0,
+        description="Weight of bureaucratic_depth on Decide phase.",
+    )
+
+    # --- Decision mode base times ---
+    decision_mode_base_autocratic: float = Field(
+        default=1.0,
+        gt=0,
+        description="AUTOCRATIC decision mode base time.",
+    )
+    decision_mode_base_delegate: float = Field(
+        default=2.0,
+        gt=0,
+        description="DELEGATE decision mode base time.",
+    )
+    decision_mode_base_democratic: float = Field(
+        default=3.0,
+        gt=0,
+        description="DEMOCRATIC decision mode base time.",
+    )
+    decision_mode_base_consensus: float = Field(
+        default=5.0,
+        gt=0,
+        description="CONSENSUS decision mode base time.",
+    )
+
+    # --- Initiative scoring weights ---
+    initiative_weight_speed: float = Field(
+        default=2.0,
+        ge=0,
+        description="Weight for speed component in initiative score.",
+    )
+    initiative_weight_institutional: float = Field(
+        default=1.0,
+        ge=0,
+        description="Weight for institutional component in initiative score.",
+    )
+    initiative_weight_counterintel: float = Field(
+        default=1.5,
+        ge=0,
+        description="Weight for counter-intelligence component.",
+    )
+    initiative_weight_embeddedness: float = Field(
+        default=1.0,
+        ge=0,
+        description="Weight for community embeddedness component.",
+    )
+    initiative_weight_momentum: float = Field(
+        default=0.5,
+        ge=0,
+        description="Weight for momentum component.",
+    )
+
+    # --- Institutional bonus by jurisdiction ---
+    institutional_bonus_federal: float = Field(
+        default=5.0,
+        ge=0,
+        description="Initiative bonus for NATIONAL (federal) jurisdiction.",
+    )
+    institutional_bonus_state: float = Field(
+        default=3.0,
+        ge=0,
+        description="Initiative bonus for STATE jurisdiction.",
+    )
+    institutional_bonus_local: float = Field(
+        default=1.5,
+        ge=0,
+        description="Initiative bonus for COUNTY/MUNICIPAL jurisdiction.",
+    )
+    institutional_bonus_nonstate: float = Field(
+        default=0.0,
+        ge=0,
+        description="Initiative bonus for non-state organizations.",
+    )
+
+    # --- Momentum ---
+    momentum_decay: float = Field(
+        default=0.8,
+        ge=0,
+        lt=1.0,
+        description="Exponential decay factor for momentum per tick.",
+    )
+    momentum_success_bonus: float = Field(
+        default=0.2,
+        ge=0,
+        description="Momentum bonus per successful action.",
+    )
+
+    # --- Action cost modifiers ---
+    embeddedness_discount: float = Field(
+        default=0.5,
+        ge=0,
+        le=1.0,
+        description="Cost discount factor for embedded orgs.",
+    )
+    contradiction_cost_multiplier: float = Field(
+        default=2.5,
+        gt=1.0,
+        description="Cost multiplier across contradiction axis.",
+    )
+    outsider_cost_multiplier: float = Field(
+        default=1.5,
+        gt=1.0,
+        description="Cost multiplier for non-member orgs.",
+    )
+    min_cost_modifier: float = Field(
+        default=0.5,
+        gt=0,
+        le=1.0,
+        description="Floor cost modifier for embedded orgs.",
+    )
+
+    # --- Consciousness effect limits ---
+    max_ci_delta_per_tick: float = Field(
+        default=0.05,
+        gt=0,
+        le=1.0,
+        description="Maximum |CI delta| per action per tick.",
+    )
+
+    # --- Action base consciousness multipliers ---
+    action_base_educate: float = Field(
+        default=1.2,
+        ge=0,
+        description="Consciousness multiplier for EDUCATE action.",
+    )
+    action_base_agitate: float = Field(
+        default=0.0,
+        ge=0,
+        description="Consciousness multiplier for AGITATE (zero = no CI effect).",
+    )
+    action_base_provide_service: float = Field(
+        default=0.6,
+        ge=0,
+        description="Consciousness multiplier for PROVIDE_SERVICE.",
+    )
+    action_base_recruit: float = Field(
+        default=0.3,
+        ge=0,
+        description="Consciousness multiplier for RECRUIT.",
+    )
+    action_base_organize: float = Field(
+        default=0.5,
+        ge=0,
+        description="Consciousness multiplier for ORGANIZE.",
+    )
+    action_base_propagandize: float = Field(
+        default=0.8,
+        ge=0,
+        description="Consciousness multiplier for PROPAGANDIZE.",
+    )
+    action_base_repress: float = Field(
+        default=0.8,
+        ge=0,
+        description="Backfire CI multiplier for REPRESS.",
+    )
+    action_base_surveil: float = Field(
+        default=0.2,
+        ge=0,
+        description="Backfire CI multiplier for SURVEIL.",
+    )
+    action_base_assimilate: float = Field(
+        default=1.0,
+        ge=0,
+        description="Negative CI multiplier for ASSIMILATE.",
+    )
+
+    # --- Autonomy tradeoff ---
+    autonomy_effectiveness_scale: float = Field(
+        default=0.5,
+        ge=0,
+        le=1.0,
+        description="Scale factor for autonomy effectiveness tradeoff.",
+    )
+
+    # --- Agitation -> contestation ---
+    agitation_contestation_delta: float = Field(
+        default=0.1,
+        ge=0,
+        le=1.0,
+        description="Contestation increase per AGITATE action.",
+    )
+    agitation_educate_bonus: float = Field(
+        default=1.5,
+        ge=1.0,
+        description="EDUCATE multiplier when contestation > threshold.",
+    )
+    contestation_threshold: float = Field(
+        default=0.3,
+        ge=0,
+        le=1.0,
+        description="Contestation level for EDUCATE bonus to activate.",
+    )
+
+    # --- Lifecycle modifiers ---
+    elder_legitimacy_multiplier: float = Field(
+        default=1.3,
+        ge=1.0,
+        description="CI delta multiplier when elder proportion > 0.",
+    )
+
+    # --- Counter-intelligence ---
+    counter_intel_increment: float = Field(
+        default=0.1,
+        ge=0,
+        le=1.0,
+        description="Counter-intel score increment per successful COUNTER_INTEL.",
+    )
+
+    # --- Base action point costs ---
+    base_cost_recruit: int = Field(default=2, ge=1, description="AP cost: RECRUIT")
+    base_cost_organize: int = Field(default=2, ge=1, description="AP cost: ORGANIZE")
+    base_cost_educate: int = Field(default=1, ge=1, description="AP cost: EDUCATE")
+    base_cost_agitate: int = Field(default=1, ge=1, description="AP cost: AGITATE")
+    base_cost_propagandize: int = Field(default=2, ge=1, description="AP cost: PROPAGANDIZE")
+    base_cost_fundraise: int = Field(default=1, ge=1, description="AP cost: FUNDRAISE")
+    base_cost_provide_service: int = Field(default=2, ge=1, description="AP cost: PROVIDE_SERVICE")
+    base_cost_employ: int = Field(default=1, ge=1, description="AP cost: EMPLOY")
+    base_cost_repress: int = Field(default=2, ge=1, description="AP cost: REPRESS")
+    base_cost_protest: int = Field(default=2, ge=1, description="AP cost: PROTEST")
+    base_cost_strike: int = Field(default=3, ge=1, description="AP cost: STRIKE")
+    base_cost_expropriate: int = Field(default=3, ge=1, description="AP cost: EXPROPRIATE")
+    base_cost_surveil: int = Field(default=1, ge=1, description="AP cost: SURVEIL")
+    base_cost_infiltrate: int = Field(default=3, ge=1, description="AP cost: INFILTRATE")
+    base_cost_counter_intel: int = Field(default=2, ge=1, description="AP cost: COUNTER_INTEL")
+    base_cost_map_network: int = Field(default=1, ge=1, description="AP cost: MAP_NETWORK")
+    base_cost_propose_alliance: int = Field(
+        default=1, ge=1, description="AP cost: PROPOSE_ALLIANCE"
+    )
+    base_cost_denounce: int = Field(default=1, ge=1, description="AP cost: DENOUNCE")
+    base_cost_build_infrastructure: int = Field(
+        default=3, ge=1, description="AP cost: BUILD_INFRASTRUCTURE"
+    )
+    base_cost_attack_infrastructure: int = Field(
+        default=2, ge=1, description="AP cost: ATTACK_INFRASTRUCTURE"
+    )
+    base_cost_assimilate: int = Field(default=2, ge=1, description="AP cost: ASSIMILATE")
+
+    def get_base_cost(self, action_type: str) -> int:
+        """Look up base AP cost for an action type.
+
+        Args:
+            action_type: ActionType value string.
+
+        Returns:
+            Base AP cost for the action.
+
+        Raises:
+            KeyError: If action_type is not recognized.
+        """
+        cost_map: dict[str, int] = {
+            "recruit": self.base_cost_recruit,
+            "organize": self.base_cost_organize,
+            "educate": self.base_cost_educate,
+            "agitate": self.base_cost_agitate,
+            "propagandize": self.base_cost_propagandize,
+            "fundraise": self.base_cost_fundraise,
+            "provide_service": self.base_cost_provide_service,
+            "employ": self.base_cost_employ,
+            "repress": self.base_cost_repress,
+            "protest": self.base_cost_protest,
+            "strike": self.base_cost_strike,
+            "expropriate": self.base_cost_expropriate,
+            "surveil": self.base_cost_surveil,
+            "infiltrate": self.base_cost_infiltrate,
+            "counter_intel": self.base_cost_counter_intel,
+            "map_network": self.base_cost_map_network,
+            "propose_alliance": self.base_cost_propose_alliance,
+            "denounce": self.base_cost_denounce,
+            "build_infrastructure": self.base_cost_build_infrastructure,
+            "attack_infrastructure": self.base_cost_attack_infrastructure,
+            "assimilate": self.base_cost_assimilate,
+        }
+        if action_type not in cost_map:
+            msg = f"Unknown action type: {action_type}"
+            raise KeyError(msg)
+        return cost_map[action_type]
+
+    def get_action_base(self, action_type: str) -> float:
+        """Look up consciousness base multiplier for an action type.
+
+        Args:
+            action_type: ActionType value string.
+
+        Returns:
+            Consciousness base multiplier (0.0 means no CI effect).
+        """
+        base_map: dict[str, float] = {
+            "educate": self.action_base_educate,
+            "agitate": self.action_base_agitate,
+            "provide_service": self.action_base_provide_service,
+            "recruit": self.action_base_recruit,
+            "organize": self.action_base_organize,
+            "propagandize": self.action_base_propagandize,
+            "repress": self.action_base_repress,
+            "surveil": self.action_base_surveil,
+            "assimilate": self.action_base_assimilate,
+        }
+        return base_map.get(action_type, 0.0)
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -2200,6 +2547,8 @@ class GameDefines(BaseModel):
     lifecycle: LifecycleDefines = Field(default_factory=LifecycleDefines)
     # Organization Base Model (Feature 031)
     organization: OrganizationDefines = Field(default_factory=OrganizationDefines)
+    # OODA Loop System (Feature 032)
+    ooda: OODADefines = Field(default_factory=OODADefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure

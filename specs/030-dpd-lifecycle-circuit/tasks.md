@@ -20,9 +20,9 @@ ______________________________________________________________________
 **Purpose**: Create module structure, shared types, GameDefines category, and EventType values that all user stories depend on.
 
 - [ ] T001 Create lifecycle module directory structure: `src/babylon/economics/lifecycle/` with `__init__.py`, and `tests/unit/economics/lifecycle/` with `__init__.py`
-- [ ] T002 Add `LifecycleDefines` frozen Pydantic model (29 fields with defaults and provenance) to `src/babylon/config/defines.py`, wire into `GameDefines` and `_from_yaml_dict`. Include legitimation weight ranking invariant validation. See data-model.md LifecycleDefines table for all fields.
+- [ ] T002 Add `LifecycleDefines` frozen Pydantic model (36 fields with defaults and provenance) to `src/babylon/config/defines.py`, wire into `GameDefines` and `_from_yaml_dict`. Include legitimation weight ranking invariant validation and mobility P25<=P75 validation. See data-model.md LifecycleDefines table for all fields, including covariate defaults and ideology_regression_coefficient.
 - [ ] T003 [P] Add 5 lifecycle `EventType` values (`LIFECYCLE_TRANSITION`, `LEGITIMATION_CRISIS`, `LEGITIMATION_RECOVERY`, `INHERITANCE_TRANSFER`, `DUAL_CIRCUIT_INTERFERENCE`) and `LegitimationClassification` enum (`CRISIS`, `UNSTABLE`, `STABLE`) to `src/babylon/models/enums.py`
-- [ ] T004 [P] Create lifecycle types (`DPDState`, `LegitimationState`, `InheritanceFlow`, `ClassMobilityParams`) as frozen Pydantic models with constrained types in `src/babylon/economics/lifecycle/types.py`. See data-model.md for fields, constraints, and computed properties. All populations as `float >= 0`, rates as `Coefficient`, legitimation components as `Probability`, wealth as `Currency`, gini as `Gini`.
+- [ ] T004 [P] Create lifecycle types (`DPDState`, `LegitimationState`, `InheritanceFlow`, `ClassMobilityParams`) as frozen Pydantic models with constrained types in `src/babylon/economics/lifecycle/types.py`. See data-model.md for fields, constraints, and computed properties. All populations as `float >= 0`, rates as `Coefficient`, legitimation components as `Probability`, wealth as `Currency`, gini as `Gini`. ClassMobilityParams includes 10 fields: mobility rates (P25, P75), racial gap, carceral/mortality modifiers, and 5 D-phase context covariates (baseline_gini, poverty_share, employment_rate, single_parent_fraction, college_rate).
 
 **Checkpoint**: Module structure exists. Types importable. GameDefines has lifecycle category. Enums extended.
 
@@ -48,7 +48,7 @@ ______________________________________________________________________
 
 ### Tests for US1
 
-- [ ] T008 [US1] Write failing tests for cohort dynamics calculator in `tests/unit/economics/lifecycle/test_cohort_dynamics.py`. Use `@pytest.mark.unit`. Cover: single-tick population flow with known inputs (quickstart Scenario 1 values), population conservation within 0.1% tolerance (SC-001), zero D-phase edge case (US1 acceptance #2), high dependency ratio burden (US1 acceptance #3), negative population clamping, births = birth_rate × pop_P.
+- [ ] T008 [US1] Write failing tests for cohort dynamics calculator in `tests/unit/economics/lifecycle/test_cohort_dynamics.py`. Use `@pytest.mark.unit`. Cover: single-tick population flow with known inputs (quickstart Scenario 1 values), population conservation within 0.1% tolerance (SC-001), zero D-phase edge case (US1 acceptance #2), zero P-phase edge case (pop_P=0 → dependency_ratio=inf, per contract error handling), high dependency ratio burden (US1 acceptance #3), negative population clamping, births = birth_rate × pop_P.
 
 ### Implementation for US1
 
@@ -128,11 +128,11 @@ ______________________________________________________________________
 
 ### Tests for US6
 
-- [ ] T022 [P] [US6] Write failing tests for mobility calculator in `tests/unit/economics/lifecycle/test_mobility.py`. Use `@pytest.mark.unit`. Cover: baseline mobility KFR_P25=0.445 (SC-010 within 5%), racial gap Black-White=0.134, carceral modifier 2.8x, early mortality modifier 1.24x, in-game event widens racial gap (US6 acceptance #2), premature P-phase exit rate matches calibrated default 0.004 (FR-017), parameter provenance documentation exists for each default.
+- [ ] T022 [P] [US6] Write failing tests for mobility calculator in `tests/unit/economics/lifecycle/test_mobility.py`. Use `@pytest.mark.unit`. Cover: baseline mobility KFR_P25=0.445 and KFR_P75=0.580 (SC-010 within 5% at both percentiles), linear interpolation between P25/P75 anchors, racial gap Black-White=0.134, carceral modifier 2.8x, early mortality modifier 1.24x, in-game event widens racial gap (US6 acceptance #2), premature P-phase exit rate matches calibrated default 0.004 (FR-017), D-phase context covariates (baseline_gini, poverty_share, etc.) affect mobility outcome (FR-015), parameter provenance documentation exists for each default.
 
 ### Implementation for US6
 
-- [ ] T023 [US6] Implement `ClassMobilityCalculator` (Protocol + Default) in `src/babylon/economics/lifecycle/mobility.py`. Methods: `compute_mobility_outcome(parental_percentile, race, params) -> float` per FR-016, `compute_premature_exit_rate(base_rate, race_modifier, carceral_modifier) -> Coefficient` per FR-017, `apply_event_modifier(params, event_type, magnitude) -> ClassMobilityParams` per FR-018 (in-game events shift parameters).
+- [ ] T023 [US6] Implement `ClassMobilityCalculator` (Protocol + Default) in `src/babylon/economics/lifecycle/mobility.py`. Methods: `compute_mobility_outcome(parental_percentile, race, params) -> float` per FR-016 (linear interpolation between P25/P75 anchor rates, racial gap applied additively), `compute_premature_exit_rate(base_rate, race_modifier, carceral_modifier) -> Coefficient` per FR-017, `apply_covariate_adjustment(base_outcome, covariates) -> float` per FR-015 (D-phase context covariates modify mobility outcome), `apply_event_modifier(params, event_type, magnitude) -> ClassMobilityParams` per FR-018 (in-game events shift parameters).
 - [ ] T024 [US6] Wire mobility parameters into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: read ClassMobilityParams per county, apply to D-to-P transitions (class outcome), apply premature exit rates to P-to-D' transitions.
 
 **Checkpoint**: `poetry run pytest tests/unit/economics/lifecycle/test_mobility.py -v` passes. Default KFR within 5% of Atlas values. Racial gap coefficients applied. Events modify parameters.

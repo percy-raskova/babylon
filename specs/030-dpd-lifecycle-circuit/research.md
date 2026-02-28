@@ -29,7 +29,7 @@
 | `home_ownership_rate` | 0.656 | Census Bureau 2024 | 65.6% overall |
 | `ss_replacement_rate` | 0.426 | SSA Office of the Actuary | Medium earner replacement rate |
 
-**Critical Correction**: The elderly mortality rate computes empirically to 0.039, substantially lower than a naive 1/15 = 0.067 heuristic. Actual life expectancy at age 65 is 19.5 years (CDC 2023). The spec's US1 acceptance scenario uses 0.067 as a test-only value, which is acceptable for testing but must not be the production default.
+**Critical Correction**: The elderly mortality rate computes empirically to 0.039, substantially lower than a naive 1/15 = 0.067 heuristic. Actual life expectancy at age 65 is 19.5 years (CDC 2023). All artifacts now use the corrected 0.039 value.
 
 **Supplementary Data by Demographics**:
 

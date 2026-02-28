@@ -42,9 +42,9 @@ Model intergenerational class reproduction through the D-P-D' lifecycle circuit 
 | **VI.1 Material Base First** | PASS | Population dynamics (material base) computed before legitimation (superstructure) and ideology transmission. Turn order respects causality. |
 | **VIII.6 Constants Without Data Sources** | PASS | Every default parameter has provenance citation (FR-018). _REPRO_EXTERNALIZATION_FACTOR TODO addressed by shadow subsidy metric. |
 
-**New Data Source Required**: Chetty Opportunity Atlas (calibration-only, not runtime). This requires explicit addition per III.4. The Mobility Atlas provides county-level class mobility data (KFR by parental income and race) used to derive tunable parameters — not ingested at runtime.
+**New Data Source**: Chetty Opportunity Atlas (calibration-only, not runtime). Added to constitution III.4 approved list in v1.8.1 (BD-approved 2026-02-27). The Mobility Atlas provides county-level class mobility data (KFR by parental income and race) used to derive tunable parameters — not ingested at runtime.
 
-**Gate Result**: PASS (no violations). One new data source addition required.
+**Gate Result**: PASS (no violations).
 
 ## Project Structure
 
@@ -114,8 +114,8 @@ tests/
 | **II.2 Primitives vs Derived** | PASS | PASS | data-model.md confirms: store pop_D/P/D', rates, wealth. Compute dependency_ratio, legitimation_index, inheritance_gini. No derived quantities stored. |
 | **II.6 State is Data, Engine is Transformation** | PASS | PASS | DPDState, LegitimationState, InheritanceFlow all frozen Pydantic. LifecycleSystem contract specifies pure step() transformation. |
 | **II.7 Category 3 Lifecycle** | PASS | PASS | DPDState is quantitative layer alongside qualitative XGI YOUTH/ADULT/ELDER hyperedges. No conflation. |
-| **III.1 No Magic Constants** | PASS | PASS | LifecycleDefines has 24 parameters, each with documented provenance in data-model.md. |
-| **III.4 Data Source Traceability** | PASS | PASS | research.md documents all sources: CDC NVSS, Census, BLS NCS, SSA, Fed SCF, Chetty Opportunity Atlas. Chetty addition still required per III.4 governance. |
+| **III.1 No Magic Constants** | PASS | PASS | LifecycleDefines has 36 parameters, each with documented provenance in data-model.md. |
+| **III.4 Data Source Traceability** | PASS | PASS | research.md documents all sources: CDC NVSS, Census, BLS NCS, SSA, Fed SCF, Chetty Opportunity Atlas. Chetty added to constitution III.4 approved list (v1.8.1). |
 | **VI.1 Material Base First** | PASS | PASS | Contract specifies: population dynamics (steps 1-6) before legitimation (7-8) before ideology (10). Turn order position 7 confirmed. |
 
 **Post-Design Gate Result**: PASS. No new violations introduced during design phase.

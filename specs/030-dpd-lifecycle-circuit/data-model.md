@@ -113,13 +113,20 @@ pop_D_prime × rate_D_prime_to_death → [removed]
 | Field | Type | Constraints | Source |
 |-------|------|-------------|--------|
 | `mobility_base_rate` | `Coefficient` | [0, 1] | KFR pooled at P25 (default 0.445) |
+| `mobility_base_rate_p75` | `Coefficient` | [0, 1] | KFR pooled at P75 (default 0.580) |
 | `mobility_racial_gap` | `Coefficient` | [0, 1] | Black-White KFR gap (default 0.134) |
 | `carceral_modifier` | `Coefficient` | [0, 10] | Incarceration rate multiplier |
 | `early_mortality_modifier` | `Coefficient` | [0, 10] | Premature death multiplier |
+| `baseline_gini` | `Gini` | [0, 1] | County Gini coefficient (Chetty Table 8) |
+| `poverty_share` | `Probability` | [0, 1] | Fraction below poverty line (Chetty Table 8) |
+| `employment_rate` | `Probability` | [0, 1] | Employment-to-population ratio (Chetty Table 8) |
+| `single_parent_fraction` | `Probability` | [0, 1] | Single-parent household share (Chetty Table 8) |
+| `college_rate` | `Probability` | [0, 1] | College graduation rate (Chetty Table 8) |
 
 **Validation Rules**:
 - `mobility_racial_gap <= mobility_base_rate` (gap cannot exceed base)
-- All fields are Coefficients with documented provenance
+- `mobility_base_rate <= mobility_base_rate_p75` (P75 outcome >= P25 outcome)
+- All fields are Coefficients/Probabilities with documented provenance
 
 ### LifecycleDefines
 
@@ -152,11 +159,18 @@ pop_D_prime × rate_D_prime_to_death → [removed]
 | `pareto_alpha` | 1.5 | `Coefficient` | Fed SCF wealth dist |
 | `care_cost_fraction` | 0.4 | `Probability` | Fraction of D' wealth consumed by care |
 | `mobility_base_rate` | 0.445 | `Coefficient` | Chetty KFR pooled P25 |
+| `mobility_base_rate_p75` | 0.580 | `Coefficient` | Chetty KFR pooled P75 |
 | `mobility_racial_gap` | 0.134 | `Coefficient` | Chetty Black-White KFR gap P25 |
 | `carceral_transition_modifier` | 2.8 | `Coefficient` | Chetty jail ratio |
 | `early_mortality_modifier` | 1.24 | `Coefficient` | Chetty mortality ratio |
+| `baseline_gini` | 0.485 | `Gini` | Chetty Table 8 national median |
+| `poverty_share` | 0.126 | `Probability` | Chetty Table 8 national avg |
+| `employment_rate` | 0.60 | `Probability` | Chetty Table 8 national avg |
+| `single_parent_fraction` | 0.234 | `Probability` | Chetty Table 8 national avg |
+| `college_rate` | 0.33 | `Probability` | Chetty Table 8 national avg |
 | `ideology_caregiver_weight` | 0.7 | `Probability` | FR-009 caregiver influence |
 | `ideology_institutional_weight` | 0.3 | `Probability` | FR-009 institutional influence |
+| `ideology_regression_coefficient` | 0.4 | `Probability` | FR-009 regression toward mean strength |
 | `sandwich_squeeze_threshold` | 0.6 | `Probability` | FR-022 dependency ratio threshold |
 
 **Validation Rules**:

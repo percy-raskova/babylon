@@ -47,13 +47,15 @@ Economic Theory
    naics-hierarchy
    survival-calculus
    reproductive-labor
+   dpd-lifecycle-circuit
 
 The mathematical foundations: the Marxian value tensor, the economics
 pipeline (capital stock, MELT, throughput, visibility, class dynamics),
 Imperial Rent extraction, Capital Volume I production dynamics,
 Capital Volume II circulation dynamics (turnover, reproduction, crisis),
 labor aristocracy, survival calculus, Piketty's rate of return framework,
-and proletarian feminist analysis of reproductive labor.
+proletarian feminist analysis of reproductive labor, and the D-P-D'
+lifecycle circuit modeling intergenerational class reproduction.
 
 Tensor Hierarchy (Feature 025)
 -------------------------------

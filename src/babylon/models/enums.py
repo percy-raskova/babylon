@@ -16,6 +16,12 @@ Enums defined:
 - ContradictionCharacter: Antagonistic vs non-antagonistic flag (Feature 002)
 - DispossessionType: Categories of ongoing primitive accumulation (Feature 021)
 - ExploitationMode: Surplus value extraction mode classification (Feature 021)
+- OrgType: Organization category discriminator (Feature 031)
+- ClassCharacter: Which class an organization serves (Feature 031)
+- TopologyType: Computed internal topology classification (Feature 031)
+- LegalStanding: Legal status of an organization (Feature 031)
+- JurisdictionLevel: State apparatus jurisdiction scope (Feature 031)
+- ServiceType: Civil society service domain (Feature 031)
 """
 
 from enum import StrEnum
@@ -82,6 +88,12 @@ class EdgeType(StrEnum):
     CLIENT_STATE = "client_state"
     TENANCY = "tenancy"
     ADJACENCY = "adjacency"
+    # Organization Base Model (Feature 031)
+    MEMBERSHIP = "membership"  # Organization → SocialClass (weighted by population)
+    RECRUITMENT = "recruitment"  # Organization → SocialClass (active pipeline)
+    EMPLOYMENT = "employment"  # Business → SocialClass (employer relationship)
+    COMMAND = "command"  # KeyFigure → KeyFigure (internal hierarchy)
+    PRESENCE = "presence"  # Organization → Territory (operational footprint)
 
 
 class IntensityLevel(StrEnum):
@@ -574,3 +586,135 @@ class MembershipRole(StrEnum):
     PARTICIPANT = "participant"
     PERIPHERAL = "peripheral"
     SYMPATHIZER = "sympathizer"
+
+
+# Organization Base Model (Feature 031)
+
+
+class OrgType(StrEnum):
+    """Organization category discriminator (Feature 031).
+
+    Used as the Pydantic discriminated union discriminator field to dispatch
+    to the correct Organization subtype.
+
+    Values:
+        STATE_APPARATUS: Wields state violence/surveillance
+        BUSINESS: Accumulates capital, employs labor
+        POLITICAL_FACTION: Contests political power
+        CIVIL_SOCIETY: Non-state, non-business collective
+    """
+
+    STATE_APPARATUS = "state_apparatus"
+    BUSINESS = "business"
+    POLITICAL_FACTION = "political_faction"
+    CIVIL_SOCIETY = "civil_society"
+
+
+class ClassCharacter(StrEnum):
+    """Which class an organization objectively serves (Feature 031).
+
+    May differ from the organization's stated mission or membership
+    composition. Determined by material analysis of the organization's
+    structural role in class reproduction.
+
+    Values:
+        BOURGEOIS: Serves bourgeois class interests
+        PETTY_BOURGEOIS: Serves petty bourgeois class interests
+        LABOR_ARISTOCRATIC: Serves labor aristocracy interests
+        PROLETARIAN: Serves proletarian class interests
+        LUMPEN: Serves lumpenproletariat interests
+        CONTESTED: Class character actively contested
+    """
+
+    BOURGEOIS = "bourgeois"
+    PETTY_BOURGEOIS = "petty_bourgeois"
+    LABOR_ARISTOCRATIC = "labor_aristocratic"
+    PROLETARIAN = "proletarian"
+    LUMPEN = "lumpen"
+    CONTESTED = "contested"
+
+
+class TopologyType(StrEnum):
+    """Computed internal topology classification (Feature 031).
+
+    Derived from COMMAND edge subgraph analysis — NEVER stored on the
+    Organization model. The graph speaks the truth.
+
+    Values:
+        STAR: Centralized around single leader (efficient, fragile)
+        HIERARCHY: Multi-level command chain (scalable, vulnerable at branch points)
+        MESH: Fully connected peers (resilient, slow to coordinate)
+        CELL: Isolated cells connected by cutouts (resilient, compartmentalized)
+    """
+
+    STAR = "star"
+    HIERARCHY = "hierarchy"
+    MESH = "mesh"
+    CELL = "cell"
+
+
+class LegalStanding(StrEnum):
+    """Legal status of an organization (Feature 031).
+
+    Determines the organization's relationship to the state legal apparatus
+    and affects credibility derivation for consciousness effect calculations.
+
+    Values:
+        SOVEREIGN: State itself (government agencies)
+        CHARTERED: State-authorized entity (corporations, licensed orgs)
+        REGISTERED: Officially registered (nonprofits, registered parties)
+        INFORMAL: No legal registration (neighborhood groups, informal networks)
+        UNDERGROUND: Explicitly illegal (banned organizations, clandestine cells)
+    """
+
+    SOVEREIGN = "sovereign"
+    CHARTERED = "chartered"
+    REGISTERED = "registered"
+    INFORMAL = "informal"
+    UNDERGROUND = "underground"
+
+
+class JurisdictionLevel(StrEnum):
+    """Scope of state apparatus authority (Feature 031).
+
+    Used exclusively by StateApparatus subtypes to define the geographical
+    and legal scope of their jurisdiction.
+
+    Values:
+        NATIONAL: Federal jurisdiction
+        STATE: State-level jurisdiction
+        COUNTY: County-level jurisdiction
+        MUNICIPAL: City/municipal jurisdiction
+    """
+
+    NATIONAL = "national"
+    STATE = "state"
+    COUNTY = "county"
+    MUNICIPAL = "municipal"
+
+
+class ServiceType(StrEnum):
+    """Civil society service domain (Feature 031).
+
+    Categorizes the primary service provided by a CivilSocietyOrg.
+    Affects legitimacy derivation and community trust.
+
+    Values:
+        RELIGIOUS: Churches, mosques, temples
+        EDUCATIONAL: Schools, universities, training programs
+        HEALTHCARE: Hospitals, clinics, health collectives
+        LEGAL_AID: Legal defense, bail funds
+        MUTUAL_AID: Direct material support networks
+        CULTURAL: Arts, cultural preservation organizations
+        MEDIA: News, broadcasting, publishing
+        LABOR: Unions, worker centers, cooperatives
+    """
+
+    RELIGIOUS = "religious"
+    EDUCATIONAL = "educational"
+    HEALTHCARE = "healthcare"
+    LEGAL_AID = "legal_aid"
+    MUTUAL_AID = "mutual_aid"
+    CULTURAL = "cultural"
+    MEDIA = "media"
+    LABOR = "labor"

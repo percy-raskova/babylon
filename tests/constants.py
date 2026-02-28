@@ -613,15 +613,54 @@ class AttritionDefaults:
 
 @dataclass(frozen=True)
 class OrganizationDefaults:
-    """OrganizationComponent model default values.
+    """OrganizationComponent and Organization entity default values.
 
-    Source: OrganizationComponent model.
-    Represents organizational capacity: cohesion and cadre quality.
+    Source: OrganizationComponent model + Feature 031 Organization entities.
+    Represents organizational capacity, consciousness, and structure.
     """
 
-    # Default values
+    # Legacy OrganizationComponent defaults
     DEFAULT_COHESION: float = 0.1  # Low cohesion
     DEFAULT_CADRE: float = 0.0  # No cadre leadership
+
+    # Organization entity defaults (Feature 031)
+    DEFAULT_BUDGET: float = 0.0
+    DEFAULT_HEAT: float = 0.0
+    DEFAULT_LEGITIMACY: float = 0.5  # CivilSocietyOrg default
+
+    # Subtype-specific test values
+    DETROIT_PD_VIOLENCE_CAPACITY: float = 0.6
+    DETROIT_PD_SURVEILLANCE_CAPACITY: float = 0.4
+    FORD_EMPLOYMENT_COUNT: int = 5000
+    FORD_SURPLUS_EXTRACTION: float = 0.3
+    FORD_REVENUE: float = 1000.0
+    RWP_CADRE_LEVEL: float = 0.7
+    RWP_COHESION: float = 0.6
+    CHURCH_CADRE_LEVEL: float = 0.3
+    CHURCH_COHESION: float = 0.8
+    CHURCH_LEGITIMACY: float = 0.7
+
+    # IntelMethodology presets (Sparrow calibration)
+    CEILING_LOCAL_PD: float = 0.2
+    CEILING_FUSION: float = 0.5
+    CEILING_FBI: float = 0.4
+
+    # Consciousness formula expected values (Detroit worked example)
+    RWP_CI_DELTA: float = 0.0315  # 0.15 × 0.7 × 0.6 × 0.5
+    CHURCH_CI_DELTA: float = -0.0084  # -0.05 × 0.3 × 0.8 × 0.7
+    FORD_CI_DELTA: float = -0.000675  # -0.05 × 0.1 × 0.9 × 0.15
+    DETROIT_TOTAL_CI_DELTA: float = 0.022225  # sum of above
+
+    # OrganizationDefines values
+    ELDER_CAPACITY_FACTOR: float = 0.2
+    TENDENCY_MOD_REVOLUTIONARY: float = 0.15
+    TENDENCY_MOD_LIBERAL: float = -0.05
+    TENDENCY_MOD_FASCIST: float = 0.10
+    COHESION_LOSS_PER_KF: float = 0.2
+    MIN_COHESION_THRESHOLD: float = 0.05
+    CREDIBILITY_DEFAULT_FACTION: float = 0.5
+    CREDIBILITY_SOVEREIGN: float = 0.8
+    CREDIBILITY_CHARTERED: float = 0.6
 
 
 @dataclass(frozen=True)

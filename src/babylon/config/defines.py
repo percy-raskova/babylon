@@ -1799,6 +1799,115 @@ class LifecycleDefines(BaseModel):
         return self
 
 
+class OrganizationDefines(BaseModel):
+    """Organization system tunable coefficients (Feature 031).
+
+    14 parameters controlling consciousness effects, intelligence methodology
+    ceilings, cohesion mechanics, credibility defaults, and capacity factors.
+
+    See Also:
+        ``specs/031-organization-base-model/data-model.md``: Full provenance table.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # --- Lifecycle capacity ---
+    elder_capacity_factor: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="BLS 65+ LFPR: D'-phase capacity scalar.",
+    )
+
+    # --- Consciousness tendency modifiers ---
+    tendency_modifier_revolutionary: float = Field(
+        default=0.15,
+        ge=-1.0,
+        le=1.0,
+        description="Game design: CI delta multiplier for REVOLUTIONARY tendency.",
+    )
+    tendency_modifier_liberal: float = Field(
+        default=-0.05,
+        ge=-1.0,
+        le=1.0,
+        description="Game design: CI delta multiplier for LIBERAL tendency.",
+    )
+    tendency_modifier_fascist: float = Field(
+        default=0.10,
+        ge=-1.0,
+        le=1.0,
+        description="Game design: tendency pressure multiplier for FASCIST tendency.",
+    )
+
+    # --- Intelligence observation ceilings (Sparrow calibration) ---
+    observation_ceiling_local_pd: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Sparrow calibration: Local PD observation ceiling.",
+    )
+    observation_ceiling_fusion: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Sparrow calibration: Fusion center observation ceiling.",
+    )
+    observation_ceiling_fbi: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Sparrow calibration: FBI observation ceiling.",
+    )
+
+    # --- Cohesion mechanics ---
+    cohesion_loss_per_key_figure: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description="Game design: cohesion drop per key figure removal.",
+    )
+    min_cohesion_threshold: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Game design: floor cohesion (never reaches zero).",
+    )
+
+    # --- Credibility defaults ---
+    credibility_default_faction: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Game design: default PoliticalFaction credibility.",
+    )
+    credibility_sovereign: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Game design: SOVEREIGN legal standing credibility.",
+    )
+    credibility_chartered: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Game design: CHARTERED legal standing credibility.",
+    )
+
+    # --- Capacity defaults (pending Phase 2/3 attention threads) ---
+    violence_capacity_default: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Game design: default StateApparatus violence capacity.",
+    )
+    surveillance_capacity_default: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Game design: default StateApparatus surveillance capacity.",
+    )
+
+
 class EdgeTransitionDefines(BaseModel):
     """Edge mode transition threshold values (Feature 002, FR-010).
 
@@ -1941,6 +2050,7 @@ class GameDefines(BaseModel):
     - community: Hypergraph community layer coefficients (Feature 022)
     - class_dynamics: Class wealth flow dynamics (Feature 016, FRED DFA-derived)
     - edge_transition: Edge mode transition thresholds (Feature 002)
+    - organization: Organization system coefficients (Feature 031)
     """
 
     model_config = ConfigDict(frozen=True)
@@ -1978,6 +2088,8 @@ class GameDefines(BaseModel):
     edge_transition: EdgeTransitionDefines = Field(default_factory=EdgeTransitionDefines)
     # D-P-D' Lifecycle Circuit (Feature 030)
     lifecycle: LifecycleDefines = Field(default_factory=LifecycleDefines)
+    # Organization Base Model (Feature 031)
+    organization: OrganizationDefines = Field(default_factory=OrganizationDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -2085,6 +2197,7 @@ class GameDefines(BaseModel):
             contradiction_field=ContradictionFieldDefines(**data.get("contradiction_field", {})),
             community=CommunityDefines(**data.get("community", {})),
             lifecycle=LifecycleDefines(**data.get("lifecycle", {})),
+            organization=OrganizationDefines(**data.get("organization", {})),
         )
 
     @classmethod

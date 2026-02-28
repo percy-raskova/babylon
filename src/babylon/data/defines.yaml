@@ -214,3 +214,20 @@ external_data:
     mirta_layer: 0
     electric_transmission: "Electric_Power_Transmission_Lines"
     electric_transmission_layer: 0
+
+# Organization Base Model (Feature 031)
+organization:
+  elder_capacity_factor: 0.2               # BLS 65+ LFPR: D'-phase capacity scalar
+  tendency_modifier_revolutionary: 0.15    # Game design: CI delta for REVOLUTIONARY
+  tendency_modifier_liberal: -0.05         # Game design: CI delta for LIBERAL
+  tendency_modifier_fascist: 0.10          # Game design: tendency pressure for FASCIST
+  observation_ceiling_local_pd: 0.2        # Sparrow: Local PD ceiling
+  observation_ceiling_fusion: 0.5          # Sparrow: Fusion center ceiling
+  observation_ceiling_fbi: 0.4             # Sparrow: FBI ceiling
+  cohesion_loss_per_key_figure: 0.2        # Game design: cohesion drop per KF removal
+  min_cohesion_threshold: 0.05             # Game design: floor cohesion
+  credibility_default_faction: 0.5         # Game design: default PoliticalFaction credibility
+  credibility_sovereign: 0.8               # Game design: SOVEREIGN standing credibility
+  credibility_chartered: 0.6               # Game design: CHARTERED standing credibility
+  violence_capacity_default: 0.5           # Game design: default violence capacity
+  surveillance_capacity_default: 0.3       # Game design: default surveillance capacity

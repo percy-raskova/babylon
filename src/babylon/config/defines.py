@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CrisisDefines(BaseModel):
@@ -1486,6 +1486,319 @@ class ClassDynamicsDefines(BaseModel):
     )
 
 
+class LifecycleDefines(BaseModel):
+    """D-P-D' Lifecycle Circuit coefficients (Feature 030).
+
+    36 tunable parameters for intergenerational class reproduction.
+    All defaults have documented provenance (CDC, Census, Chetty, etc.).
+
+    The legitimation weight ranking is a design invariant reflecting
+    authorial political judgment; individual values are tunable but the
+    ordinal ranking is not.
+
+    See Also:
+        ``specs/030-dpd-lifecycle-circuit/data-model.md``: Full provenance table.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # --- Population rates (CDC NVSS, Census) ---
+    birth_rate: float = Field(
+        default=0.0107,
+        ge=0.0,
+        le=1.0,
+        description="CDC NVSS 2023: births per P-phase person per tick.",
+    )
+    rate_d_to_p: float = Field(
+        default=0.0556,
+        ge=0.0,
+        le=1.0,
+        description="Census: 1/18 years average D-to-P transition.",
+    )
+    rate_p_to_d_prime: float = Field(
+        default=0.0213,
+        ge=0.0,
+        le=1.0,
+        description="Census: 1/47 years average P-to-D' transition.",
+    )
+    rate_d_prime_to_death: float = Field(
+        default=0.039,
+        ge=0.0,
+        le=1.0,
+        description="CDC WONDER + Census 2023: D' annual mortality.",
+    )
+
+    # --- Initial population fractions (Census 2024) ---
+    initial_pop_d_frac: float = Field(
+        default=0.215,
+        ge=0.0,
+        le=1.0,
+        description="Census 2024: initial D phase fraction.",
+    )
+    initial_pop_p_frac: float = Field(
+        default=0.605,
+        ge=0.0,
+        le=1.0,
+        description="Census 2024: initial P phase fraction.",
+    )
+    initial_pop_d_prime_frac: float = Field(
+        default=0.180,
+        ge=0.0,
+        le=1.0,
+        description="Census 2024: initial D' phase fraction.",
+    )
+
+    # --- Legitimation component defaults ---
+    pension_coverage_rate: float = Field(
+        default=0.73,
+        ge=0.0,
+        le=1.0,
+        description="BLS NCS 2024: fraction of P-phase with pension access.",
+    )
+    home_ownership_rate: float = Field(
+        default=0.656,
+        ge=0.0,
+        le=1.0,
+        description="Census 2024: P-phase home ownership rate.",
+    )
+    ss_replacement_rate: float = Field(
+        default=0.426,
+        ge=0.0,
+        le=1.0,
+        description="SSA 2024: Social Security replacement ratio.",
+    )
+    healthcare_security: float = Field(
+        default=0.60,
+        ge=0.0,
+        le=1.0,
+        description="Estimated composite: fraction with secure D' healthcare.",
+    )
+    retirement_confidence: float = Field(
+        default=0.50,
+        ge=0.0,
+        le=1.0,
+        description="EBRI RCS survey: subjective D' security assessment.",
+    )
+
+    # --- Legitimation weights (political judgment, rank-ordered) ---
+    legit_w_home_ownership: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        description="Political judgment (rank 1): home ownership weight.",
+    )
+    legit_w_healthcare_security: float = Field(
+        default=0.30,
+        ge=0.0,
+        le=1.0,
+        description="Political judgment (rank 2): healthcare security weight.",
+    )
+    legit_w_retirement_confidence: float = Field(
+        default=0.20,
+        ge=0.0,
+        le=1.0,
+        description="Political judgment (rank 3): retirement confidence weight.",
+    )
+    legit_w_pension_coverage: float = Field(
+        default=0.10,
+        ge=0.0,
+        le=1.0,
+        description="Political judgment (rank 4): pension coverage weight.",
+    )
+    legit_w_ss_replacement: float = Field(
+        default=0.05,
+        ge=0.0,
+        le=1.0,
+        description="Political judgment (rank 5): SS replacement weight.",
+    )
+
+    # --- Legitimation thresholds ---
+    legitimation_blend_weight: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="Structural vs agitation blend weight for bifurcation feed.",
+    )
+    legitimation_crisis_threshold: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="FR-006: legitimation index below this is CRISIS.",
+    )
+    legitimation_unstable_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="FR-006: legitimation index below this is UNSTABLE.",
+    )
+
+    # --- Inheritance parameters ---
+    pareto_alpha: float = Field(
+        default=1.5,
+        gt=0.0,
+        le=10.0,
+        description="Fed SCF: Pareto shape parameter for wealth distribution.",
+    )
+    care_cost_fraction: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of D' wealth consumed by end-of-life care.",
+    )
+
+    # --- Chetty Opportunity Atlas mobility parameters ---
+    mobility_base_rate: float = Field(
+        default=0.445,
+        ge=0.0,
+        le=1.0,
+        description="Chetty KFR pooled at P25.",
+    )
+    mobility_base_rate_p75: float = Field(
+        default=0.580,
+        ge=0.0,
+        le=1.0,
+        description="Chetty KFR pooled at P75.",
+    )
+    mobility_racial_gap: float = Field(
+        default=0.134,
+        ge=0.0,
+        le=1.0,
+        description="Chetty Black-White KFR gap at P25.",
+    )
+    # These exceed [0,1] — use float with explicit bounds
+    carceral_transition_modifier: float = Field(
+        default=2.8,
+        ge=0.0,
+        le=10.0,
+        description="Chetty: incarceration rate multiplier on P→D' transition.",
+    )
+    early_mortality_modifier: float = Field(
+        default=1.24,
+        ge=0.0,
+        le=10.0,
+        description="Chetty: premature death multiplier on P→D' transition.",
+    )
+
+    # --- Chetty Table 8 covariate defaults ---
+    baseline_gini: float = Field(
+        default=0.485,
+        ge=0.0,
+        le=1.0,
+        description="Chetty Table 8: national median Gini.",
+    )
+    poverty_share: float = Field(
+        default=0.126,
+        ge=0.0,
+        le=1.0,
+        description="Chetty Table 8: national average poverty share.",
+    )
+    employment_rate: float = Field(
+        default=0.60,
+        ge=0.0,
+        le=1.0,
+        description="Chetty Table 8: national average employment rate.",
+    )
+    single_parent_fraction: float = Field(
+        default=0.234,
+        ge=0.0,
+        le=1.0,
+        description="Chetty Table 8: national average single-parent fraction.",
+    )
+    college_rate: float = Field(
+        default=0.33,
+        ge=0.0,
+        le=1.0,
+        description="Chetty Table 8: national average college graduation rate.",
+    )
+
+    # --- Ideology transmission ---
+    ideology_caregiver_weight: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="FR-009: caregiver influence weight in D→P ideology transmission.",
+    )
+    ideology_institutional_weight: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="FR-009: institutional hegemony weight in D→P ideology transmission.",
+    )
+    ideology_regression_coefficient: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description="FR-009: regression toward mean strength for ideology.",
+    )
+
+    # --- Dual circuit interference ---
+    sandwich_squeeze_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=10.0,
+        description="FR-022: dependency ratio threshold for sandwich squeeze.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_invariants(self) -> LifecycleDefines:
+        """Validate sum constraints, weight ranking, and threshold ordering."""
+        # Population fractions sum to ~1.0
+        pop_sum = self.initial_pop_d_frac + self.initial_pop_p_frac + self.initial_pop_d_prime_frac
+        if abs(pop_sum - 1.0) > 0.01:
+            msg = f"Initial population fractions must sum to 1.0 (got {pop_sum:.4f})"
+            raise ValueError(msg)
+
+        # Legitimation weights sum to ~1.0
+        weight_sum = (
+            self.legit_w_home_ownership
+            + self.legit_w_healthcare_security
+            + self.legit_w_retirement_confidence
+            + self.legit_w_pension_coverage
+            + self.legit_w_ss_replacement
+        )
+        if abs(weight_sum - 1.0) > 0.01:
+            msg = f"Legitimation weights must sum to 1.0 (got {weight_sum:.4f})"
+            raise ValueError(msg)
+
+        # Legitimation weight ranking invariant (political judgment)
+        if not (
+            self.legit_w_home_ownership
+            >= self.legit_w_healthcare_security
+            >= self.legit_w_retirement_confidence
+            >= self.legit_w_pension_coverage
+            >= self.legit_w_ss_replacement
+        ):
+            msg = (
+                "Legitimation weight ranking violated: "
+                "home_ownership >= healthcare >= retirement_confidence >= pension >= ss_replacement"
+            )
+            raise ValueError(msg)
+
+        # Ideology weights sum to ~1.0
+        ideology_sum = self.ideology_caregiver_weight + self.ideology_institutional_weight
+        if abs(ideology_sum - 1.0) > 0.01:
+            msg = f"Ideology weights must sum to 1.0 (got {ideology_sum:.4f})"
+            raise ValueError(msg)
+
+        # Crisis threshold < unstable threshold
+        if self.legitimation_crisis_threshold >= self.legitimation_unstable_threshold:
+            msg = (
+                f"Crisis threshold ({self.legitimation_crisis_threshold}) must be < "
+                f"unstable threshold ({self.legitimation_unstable_threshold})"
+            )
+            raise ValueError(msg)
+
+        # Mobility P25 <= P75
+        if self.mobility_base_rate > self.mobility_base_rate_p75 + 0.001:
+            msg = (
+                f"mobility_base_rate ({self.mobility_base_rate}) > "
+                f"mobility_base_rate_p75 ({self.mobility_base_rate_p75})"
+            )
+            raise ValueError(msg)
+
+        return self
+
+
 class EdgeTransitionDefines(BaseModel):
     """Edge mode transition threshold values (Feature 002, FR-010).
 
@@ -1663,6 +1976,8 @@ class GameDefines(BaseModel):
     class_dynamics: ClassDynamicsDefines = Field(default_factory=ClassDynamicsDefines)
     # Edge Transition Thresholds (Feature 002/028)
     edge_transition: EdgeTransitionDefines = Field(default_factory=EdgeTransitionDefines)
+    # D-P-D' Lifecycle Circuit (Feature 030)
+    lifecycle: LifecycleDefines = Field(default_factory=LifecycleDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure
@@ -1769,6 +2084,7 @@ class GameDefines(BaseModel):
             external_data=external_data,
             contradiction_field=ContradictionFieldDefines(**data.get("contradiction_field", {})),
             community=CommunityDefines(**data.get("community", {})),
+            lifecycle=LifecycleDefines(**data.get("lifecycle", {})),
         )
 
     @classmethod

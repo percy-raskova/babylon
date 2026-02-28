@@ -201,6 +201,29 @@ class EventType(StrEnum):
     DISPOSSESSION_EVENT = "dispossession_event"  # Aggregate dispossession recorded
     VALUE_TRANSFER = "value_transfer"  # Inter-territory value transfer from dispossession
     EXPLOITATION_MODE_SHIFT = "exploitation_mode_shift"  # Exploitation mode reclassified
+    # D-P-D' Lifecycle Circuit (Feature 030)
+    LIFECYCLE_TRANSITION = "lifecycle_transition"  # Population moved between phases
+    LEGITIMATION_CRISIS = "legitimation_crisis"  # Classification changed to CRISIS
+    LEGITIMATION_RECOVERY = "legitimation_recovery"  # Classification improved from CRISIS
+    INHERITANCE_TRANSFER = "inheritance_transfer"  # D' death triggered inheritance flow
+    DUAL_CIRCUIT_INTERFERENCE = "dual_circuit_interference"  # Resource competition detected
+
+
+class LegitimationClassification(StrEnum):
+    """Crisis classification for the legitimation index (Feature 030).
+
+    Classifies the legitimation index into three regimes based on
+    material conditions underwriting the D' promise.
+
+    Values:
+        CRISIS: Index < 0.3 — D' promise not credible, agitation routes to bifurcation.
+        UNSTABLE: Index < 0.5 — D' promise weakening, risk accumulating.
+        STABLE: Index >= 0.5 — D' promise credible, acquiescence maintained.
+    """
+
+    CRISIS = "crisis"
+    UNSTABLE = "unstable"
+    STABLE = "stable"
 
 
 class DispossessionType(StrEnum):

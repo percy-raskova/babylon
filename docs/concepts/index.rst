@@ -79,6 +79,7 @@ Consciousness & Organization
 .. toctree::
    :maxdepth: 1
 
+   organization-model
    george-jackson-model
    community-hypergraph
    consciousness-taxonomy
@@ -87,7 +88,11 @@ Consciousness & Organization
    topology
 
 How revolutionary consciousness forms, spreads, and condenses into
-organized movements capable of collective action. The community hypergraph
+organized movements capable of collective action. The organization
+model (Feature 031) defines four frozen subtypes representing state
+apparatus, capital, political factions, and civil society, with
+emergent topology classification and a five-factor consciousness
+effect formula. The community hypergraph
 layer (Feature 022) models n-ary identity memberships as XGI hyperedges,
 creating solidarity potential from community overlap. Feature 029 adds a
 three-category structural taxonomy, community consciousness model, and

@@ -46,6 +46,18 @@ drift, solidarity transmission, dynamic balance, class wealth dynamics ODEs,
 the economics pipeline (capital stock, MELT, throughput, visibility, class
 dynamics), and Capital Volume I production dynamics.
 
+Organization Base Model (Feature 031)
+-------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   organizations
+
+Entity models (StateApparatus, Business, PoliticalFaction, CivilSocietyOrg),
+discriminated union dispatch, composition calculators, consciousness effect
+formula, topology classification, key figure analysis, and legacy migration.
+
 Simulation Systems
 ------------------
 

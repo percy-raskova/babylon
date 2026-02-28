@@ -179,6 +179,12 @@ Node Types
    * - ``territory``
      - T001, T002, ...
      - heat, profile, sector_type, territory_type
+   * - ``organization``
+     - org_*, sa-*, biz-*, pf-*, cso-*
+     - org_type, class_character, cohesion, cadre_level (Feature 031)
+   * - ``key_figure``
+     - kf_*, kf-*
+     - organization_id, role, structural_importance (Feature 031)
 
 Edge Types
 ~~~~~~~~~~
@@ -208,6 +214,21 @@ Edge Types
    * - ``ADJACENCY``
      - territory → territory
      - Spatial proximity (spillover routes)
+   * - ``MEMBERSHIP``
+     - organization → social_class
+     - Weighted population membership (Feature 031)
+   * - ``RECRUITMENT``
+     - organization → social_class
+     - Active recruitment pipeline (Feature 031)
+   * - ``EMPLOYMENT``
+     - business → social_class
+     - Employer relationship (Feature 031)
+   * - ``COMMAND``
+     - key_figure → key_figure
+     - Internal hierarchy (Feature 031)
+   * - ``PRESENCE``
+     - organization → territory
+     - Operational footprint (Feature 031)
 
 Entity Collections
 ------------------

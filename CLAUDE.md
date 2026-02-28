@@ -689,6 +689,8 @@ ADR0XX_descriptive_name:
 - In-memory via XGI Hypergraph + GraphProtocol. CommunityConsciousness serialized to JSON via Pydantic. No new database tables. (029-community-hyperedge-upgrade)
 - Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (GraphProtocol), XGI 0.10 (hypergraph — existing via Feature 022/029) (030-dpd-lifecycle-circuit)
 - In-memory via GraphProtocol. No new database tables. DPDState persists via CountyEconomicState extension in the graph bridge. Mobility Atlas CSVs read once during parameter derivation (development-time, not runtime). (030-dpd-lifecycle-circuit)
+- Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, discriminated unions), NetworkX 3.x (GraphProtocol), XGI 0.10 (hypergraph — existing via Feature 022/029) (031-organization-base-model)
+- In-memory via GraphProtocol. No new database tables. Organization state persists via WorldState serialization (`_node_type="organization"`). Key Figures as separate nodes (`_node_type="key_figure"`). (031-organization-base-model)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

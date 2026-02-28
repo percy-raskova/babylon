@@ -691,6 +691,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. DPDState persists via CountyEconomicState extension in the graph bridge. Mobility Atlas CSVs read once during parameter derivation (development-time, not runtime). (030-dpd-lifecycle-circuit)
 - Python 3.12+ (existing stack) + Pydantic 2.x (frozen models, discriminated unions), NetworkX 3.x (GraphProtocol), XGI 0.10 (hypergraph — existing via Feature 022/029) (031-organization-base-model)
 - In-memory via GraphProtocol. No new database tables. Organization state persists via WorldState serialization (`_node_type="organization"`). Key Figures as separate nodes (`_node_type="key_figure"`). (031-organization-base-model)
+- Python 3.12+ (existing project standard) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (GraphProtocol via NetworkXAdapter), XGI 0.10 (hypergraph, existing via Feature 022/029) (032-ooda-loop-system)
+- In-memory via GraphProtocol. No new database tables. Organization OODA profiles stored as graph node attributes. Action results as tick events. (032-ooda-loop-system)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

@@ -96,6 +96,22 @@ class EdgeType(StrEnum):
     PRESENCE = "presence"  # Organization → Territory (operational footprint)
 
 
+def resolve_edge_type(raw: str | EdgeType | None) -> EdgeType | None:
+    """Coerce a raw edge type value (str or enum) to EdgeType.
+
+    Args:
+        raw: String value, EdgeType instance, or None.
+
+    Returns:
+        EdgeType enum or None if input is None.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        return EdgeType(raw)
+    return raw
+
+
 class IntensityLevel(StrEnum):
     """Intensity scale for contradictions and tensions.
 

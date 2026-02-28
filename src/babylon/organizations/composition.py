@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from babylon.models.enums import EdgeType
+from babylon.models.enums import EdgeType, resolve_edge_type
 from babylon.organizations.types import CompositionResult
 
 if TYPE_CHECKING:
@@ -20,10 +20,7 @@ def _membership_targets(org_id: str, G: nx.DiGraph[str]) -> list[tuple[str, floa
     """Extract (target_id, weight) for all MEMBERSHIP edges from org_id."""
     targets: list[tuple[str, float]] = []
     for _, target, data in G.out_edges(org_id, data=True):
-        edge_type = data.get("edge_type")
-        if isinstance(edge_type, str):
-            edge_type = EdgeType(edge_type)
-        if edge_type == EdgeType.MEMBERSHIP:
+        if resolve_edge_type(data.get("edge_type")) == EdgeType.MEMBERSHIP:
             weight = float(data.get("weight", 1.0))
             targets.append((target, weight))
     return targets

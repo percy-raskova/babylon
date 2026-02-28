@@ -44,7 +44,7 @@ def derive_credibility(
             return defines.credibility_sovereign
         if org.legal_standing == LegalStanding.CHARTERED:
             return defines.credibility_chartered
-        return 0.5
+        return defines.credibility_default_state
 
     if isinstance(org, Business):
         if community_workforce is None or community_workforce <= 0:

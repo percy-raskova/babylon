@@ -229,5 +229,6 @@ organization:
   credibility_default_faction: 0.5         # Game design: default PoliticalFaction credibility
   credibility_sovereign: 0.8               # Game design: SOVEREIGN standing credibility
   credibility_chartered: 0.6               # Game design: CHARTERED standing credibility
+  credibility_default_state: 0.5           # Game design: StateApparatus fallthrough credibility
   violence_capacity_default: 0.5           # Game design: default violence capacity
   surveillance_capacity_default: 0.3       # Game design: default surveillance capacity

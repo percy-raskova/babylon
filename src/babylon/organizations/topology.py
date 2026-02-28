@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import networkx as nx
 
 from babylon.models.entities.organization import KeyFigure
-from babylon.models.enums import EdgeType, TopologyType
+from babylon.models.enums import EdgeType, TopologyType, resolve_edge_type
 from babylon.organizations.types import TopologyClassification
 
 if TYPE_CHECKING:
@@ -42,10 +42,7 @@ def _extract_command_subgraph(
     for src, tgt, data in G.edges(data=True):
         if src not in members or tgt not in members:
             continue
-        edge_type = data.get("edge_type")
-        if isinstance(edge_type, str):
-            edge_type = EdgeType(edge_type)
-        if edge_type == EdgeType.COMMAND:
+        if resolve_edge_type(data.get("edge_type")) == EdgeType.COMMAND:
             undirected.add_edge(src, tgt)
 
     return undirected
@@ -91,16 +88,19 @@ def classify_topology(
     is_connected = components == 1
     density = nx.density(subgraph)
 
-    # Classification rules (applied in priority order):
-    # 1. MESH: high edge density (> threshold), requires 3+ nodes
-    #    (2-node graphs trivially have density 1.0, not meaningfully MESH)
-    if n >= 3 and density > _MESH_DENSITY_THRESHOLD:
+    def _result(topology_type: TopologyType | None) -> TopologyClassification:
         return TopologyClassification(
-            topology_type=TopologyType.MESH,
+            topology_type=topology_type,
             articulation_points=art_points,
             component_count=components,
             is_connected=is_connected,
         )
+
+    # Classification rules (applied in priority order):
+    # 1. MESH: high edge density (> threshold), requires 3+ nodes
+    #    (2-node graphs trivially have density 1.0, not meaningfully MESH)
+    if n >= 3 and density > _MESH_DENSITY_THRESHOLD:
+        return _result(TopologyType.MESH)
 
     # 2. STAR: single hub with degree >= N-1 (connected to all others)
     #    Requires 3+ nodes (a 2-node dyad is a minimal HIERARCHY, not a STAR)
@@ -109,48 +109,18 @@ def classify_topology(
         max_degree_node = max(degrees, key=degrees.get)  # type: ignore[arg-type]
         max_deg = degrees[max_degree_node]
         if max_deg >= n - 1:
-            return TopologyClassification(
-                topology_type=TopologyType.STAR,
-                articulation_points=art_points,
-                component_count=components,
-                is_connected=is_connected,
-            )
+            return _result(TopologyType.STAR)
 
     # 3. CELL: has articulation points connecting clusters, with cycles (not a tree)
     if art_points and is_connected and edge_count > n - 1:
-        return TopologyClassification(
-            topology_type=TopologyType.CELL,
-            articulation_points=art_points,
-            component_count=components,
-            is_connected=is_connected,
-        )
+        return _result(TopologyType.CELL)
 
-    # 4. HIERARCHY: tree structure (N-1 edges, connected, acyclic)
-    if is_connected and edge_count == n - 1:
-        return TopologyClassification(
-            topology_type=TopologyType.HIERARCHY,
-            articulation_points=art_points,
-            component_count=components,
-            is_connected=is_connected,
-        )
-
-    # Fallback: connected but doesn't match any clear pattern
-    # Treat sparse connected graphs as HIERARCHY
+    # 4. HIERARCHY: tree or sparse connected graph
     if is_connected:
-        return TopologyClassification(
-            topology_type=TopologyType.HIERARCHY,
-            articulation_points=art_points,
-            component_count=components,
-            is_connected=is_connected,
-        )
+        return _result(TopologyType.HIERARCHY)
 
     # Disconnected graph
-    return TopologyClassification(
-        topology_type=None,
-        articulation_points=art_points,
-        component_count=components,
-        is_connected=False,
-    )
+    return _result(None)
 
 
 def identify_key_figures(

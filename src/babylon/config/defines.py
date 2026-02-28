@@ -1892,6 +1892,12 @@ class OrganizationDefines(BaseModel):
         le=1.0,
         description="Game design: CHARTERED legal standing credibility.",
     )
+    credibility_default_state: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Game design: StateApparatus fallthrough credibility (non-SOVEREIGN, non-CHARTERED).",
+    )
 
     # --- Capacity defaults (pending Phase 2/3 attention threads) ---
     violence_capacity_default: float = Field(

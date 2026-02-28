@@ -221,6 +221,9 @@ class WorldState(BaseModel):
             "p_revolution",
             "dpd_state",
             "dependency_ratio",
+            "legitimation_index",
+            "legitimation_crisis",
+            "legitimation_state",
         }
 
         for node_id, data in G.nodes(data=True):

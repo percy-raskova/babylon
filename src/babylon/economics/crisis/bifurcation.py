@@ -50,6 +50,7 @@ class BifurcationRiskCalculator:
         solidarity_weight: Weight for solidarity in formula (w_s).
         burden_weight: Weight for class burden in formula (w_b).
         epsilon: Division-by-zero guard for burden ratio.
+        blend_weight: Structural vs agitation blend for legitimation (Feature 030).
 
     Example:
         >>> calc = BifurcationRiskCalculator()
@@ -62,10 +63,12 @@ class BifurcationRiskCalculator:
         solidarity_weight: float = 1.0,
         burden_weight: float = 1.0,
         epsilon: float = 0.001,
+        blend_weight: float = 0.6,
     ) -> None:
         self._w_s = solidarity_weight
         self._w_b = burden_weight
         self._epsilon = epsilon
+        self._blend_weight = blend_weight
 
     def compute(
         self,
@@ -100,7 +103,17 @@ class BifurcationRiskCalculator:
 
         # Compute components
         solidarity = self._compute_solidarity_density(graph, fips)
-        legitimation = self._compute_legitimation(graph, fips)
+
+        # Read lifecycle legitimation from territory node if available (Feature 030)
+        lifecycle_legit: float | None = None
+        for node in graph.query_nodes(node_type="territory"):
+            if node.id == fips:
+                lifecycle_legit = node.attributes.get("legitimation_index")
+                break
+
+        legitimation = self._compute_legitimation(
+            graph, fips, lifecycle_legitimation=lifecycle_legit
+        )
         burden = self._compute_class_burden_ratio(
             previous_distribution,
             current_distribution,
@@ -184,14 +197,22 @@ class BifurcationRiskCalculator:
         self,
         graph: nx.DiGraph[str] | GraphProtocol,
         fips: str,
+        lifecycle_legitimation: float | None = None,
     ) -> float:
         """Compute legitimation index (FR-013).
 
-        legitimation = 1 - mean(agitation) across county social class nodes.
+        When lifecycle_legitimation is provided (from LifecycleSystem),
+        blends structural legitimation with agitation-based inverse
+        using the configured blend weight.
+
+        Without lifecycle data, falls back to: 1 - mean(agitation).
 
         Args:
             graph: Simulation graph.
             fips: County FIPS code.
+            lifecycle_legitimation: Optional structural legitimation from
+                LifecycleSystem (Feature 030). When present, blended with
+                agitation inverse using legitimation_blend_weight.
 
         Returns:
             Legitimation index [0, 1].
@@ -218,10 +239,20 @@ class BifurcationRiskCalculator:
             agitations.append(float(agitation))
 
         if not agitations:
-            return 1.0  # No nodes = full legitimation (no agitation)
+            agitation_inverse = 1.0
+        else:
+            mean_agitation = sum(agitations) / len(agitations)
+            agitation_inverse = max(0.0, min(1.0, 1.0 - mean_agitation))
 
-        mean_agitation = sum(agitations) / len(agitations)
-        return max(0.0, min(1.0, 1.0 - mean_agitation))
+        if lifecycle_legitimation is not None:
+            # Blend structural (lifecycle) with agitation-based legitimation
+            blend_weight = self._blend_weight
+            blended = (
+                blend_weight * lifecycle_legitimation + (1.0 - blend_weight) * agitation_inverse
+            )
+            return max(0.0, min(1.0, blended))
+
+        return agitation_inverse
 
     def _compute_class_burden_ratio(
         self,

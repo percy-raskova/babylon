@@ -16,9 +16,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from babylon.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
-from babylon.economics.lifecycle.types import DPDState
+from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
+from babylon.economics.lifecycle.types import DPDState, LegitimationState
 from babylon.engine.event_bus import Event
-from babylon.models.enums import EventType
+from babylon.models.enums import EventType, LegitimationClassification
 
 if TYPE_CHECKING:
     import networkx as nx
@@ -44,6 +45,7 @@ class LifecycleSystem:
 
     def __init__(self) -> None:
         self._cohort_calc = DefaultCohortDynamicsCalculator()
+        self._legit_calc = DefaultLegitimationCalculator()
 
     def step(
         self,
@@ -103,11 +105,18 @@ class LifecycleSystem:
                     territory_id,
                 )
 
+            # Step 3: Compute legitimation index
+            legit_state = self._read_legitimation_state(attrs, defines)
+            legitimation_index = self._legit_calc.compute_index(legit_state, defines)
+            crisis_class = self._legit_calc.classify_crisis(legitimation_index, defines)
+
             # Write updated state to graph
             graph.update_node(
                 territory_id,
                 dpd_state=new_state.model_dump(),
                 dependency_ratio=new_state.dependency_ratio,
+                legitimation_index=legitimation_index,
+                legitimation_crisis=crisis_class.value,
             )
 
             # Emit transition event
@@ -124,6 +133,71 @@ class LifecycleSystem:
                     },
                 )
             )
+
+            # Emit crisis/recovery events
+            prev_crisis = attrs.get("legitimation_crisis")
+            if crisis_class == LegitimationClassification.CRISIS and prev_crisis != "CRISIS":
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.LEGITIMATION_CRISIS,
+                        tick=tick,
+                        payload={
+                            "territory_id": territory_id,
+                            "legitimation_index": legitimation_index,
+                        },
+                    )
+                )
+            elif crisis_class == LegitimationClassification.STABLE and prev_crisis == "CRISIS":
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.LEGITIMATION_RECOVERY,
+                        tick=tick,
+                        payload={
+                            "territory_id": territory_id,
+                            "legitimation_index": legitimation_index,
+                        },
+                    )
+                )
+
+    @staticmethod
+    def _read_legitimation_state(
+        attrs: dict[str, object],
+        defines: object,
+    ) -> LegitimationState:
+        """Read or initialize LegitimationState from territory attributes.
+
+        Args:
+            attrs: Node attributes dict.
+            defines: LifecycleDefines with default component values.
+
+        Returns:
+            LegitimationState for this territory.
+        """
+        legit_data = attrs.get("legitimation_state")
+        if legit_data is not None and isinstance(legit_data, dict):
+            return LegitimationState(**legit_data)
+        if isinstance(legit_data, LegitimationState):
+            return legit_data
+
+        # Initialize from defines defaults
+        from babylon.config.defines import LifecycleDefines
+
+        if isinstance(defines, LifecycleDefines):
+            return LegitimationState(
+                pension_coverage=defines.pension_coverage_rate,
+                ss_replacement_rate=defines.ss_replacement_rate,
+                healthcare_security=defines.healthcare_security,
+                home_ownership_rate=defines.home_ownership_rate,
+                retirement_confidence=defines.retirement_confidence,
+            )
+        # Fallback to moderate values
+        return LegitimationState(
+            pension_coverage=0.5,
+            ss_replacement_rate=0.4,
+            healthcare_security=0.6,
+            home_ownership_rate=0.64,
+            retirement_confidence=0.5,
+        )
 
 
 __all__ = ["LifecycleSystem"]

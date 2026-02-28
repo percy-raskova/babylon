@@ -16,6 +16,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from babylon.economics.lifecycle.cohort_dynamics import DefaultCohortDynamicsCalculator
+from babylon.economics.lifecycle.inheritance import DefaultInheritanceCalculator
 from babylon.economics.lifecycle.legitimation import DefaultLegitimationCalculator
 from babylon.economics.lifecycle.types import DPDState, LegitimationState
 from babylon.engine.event_bus import Event
@@ -46,6 +47,7 @@ class LifecycleSystem:
     def __init__(self) -> None:
         self._cohort_calc = DefaultCohortDynamicsCalculator()
         self._legit_calc = DefaultLegitimationCalculator()
+        self._inherit_calc = DefaultInheritanceCalculator()
 
     def step(
         self,
@@ -155,6 +157,27 @@ class LifecycleSystem:
                         payload={
                             "territory_id": territory_id,
                             "legitimation_index": legitimation_index,
+                        },
+                    )
+                )
+
+            # Step 4: Compute inheritance flow when deaths > 0
+            inheritance_flow = self._inherit_calc.compute_inheritance_flow(
+                dpd_state=new_state,
+                pareto_alpha=defines.pareto_alpha,
+                care_cost_fraction=defines.care_cost_fraction,
+            )
+            if inheritance_flow is not None:
+                services.event_bus.publish(
+                    Event(
+                        type=EventType.INHERITANCE_TRANSFER,
+                        tick=tick,
+                        payload={
+                            "territory_id": territory_id,
+                            "total_transferred": float(inheritance_flow.total_transferred),
+                            "care_consumed": float(inheritance_flow.care_consumed),
+                            "net_inheritance": float(inheritance_flow.net_inheritance),
+                            "inheritance_gini": float(inheritance_flow.inheritance_gini),
                         },
                     )
                 )

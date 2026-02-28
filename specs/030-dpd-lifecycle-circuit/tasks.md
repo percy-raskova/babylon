@@ -109,12 +109,12 @@ ______________________________________________________________________
 
 ### Tests for US3
 
-- [ ] T019 [P] [US3] Write failing tests for inheritance calculator in `tests/unit/economics/lifecycle/test_inheritance.py`. Use `@pytest.mark.unit`. Cover: Pareto distribution with α=1.5 produces Gini≈0.5, care cost fraction reduces net inheritance (quickstart Scenario 3), net inheritance non-negative (care capped at wealth), SC-003 inheritance_gini > income_gini, dispossession reduces inheritance to zero for affected households (FR-008), bottom-50% families pass net zero (US3 acceptance #2).
+- [X] T019 [P] [US3] Write failing tests for inheritance calculator in `tests/unit/economics/lifecycle/test_inheritance.py`. Use `@pytest.mark.unit`. Cover: Pareto distribution with α=1.5 produces Gini≈0.5, care cost fraction reduces net inheritance (quickstart Scenario 3), net inheritance non-negative (care capped at wealth), SC-003 inheritance_gini > income_gini, dispossession reduces inheritance to zero for affected households (FR-008), bottom-50% families pass net zero (US3 acceptance #2).
 
 ### Implementation for US3
 
-- [ ] T020 [US3] Implement `InheritanceCalculator` (Protocol + Default) in `src/babylon/economics/lifecycle/inheritance.py`. Methods: `compute_inheritance_flow(dpd_state, wealth_d_prime, deaths, care_cost_fraction, pareto_alpha) -> InheritanceFlow` applying Pareto at familial unit level per FR-007, `apply_dispossession_reduction(flow, dispossession_amount) -> InheritanceFlow` per FR-008, `compute_inheritance_gini(pareto_alpha) -> Gini` per FR-013.
-- [ ] T021 [US3] Wire inheritance computation into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: when deaths > 0, compute InheritanceFlow, write to graph node, emit `INHERITANCE_TRANSFER` event.
+- [X] T020 [US3] Implement `InheritanceCalculator` (Protocol + Default) in `src/babylon/economics/lifecycle/inheritance.py`. Methods: `compute_inheritance_flow(dpd_state, wealth_d_prime, deaths, care_cost_fraction, pareto_alpha) -> InheritanceFlow` applying Pareto at familial unit level per FR-007, `apply_dispossession_reduction(flow, dispossession_amount) -> InheritanceFlow` per FR-008, `compute_inheritance_gini(pareto_alpha) -> Gini` per FR-013.
+- [X] T021 [US3] Wire inheritance computation into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: when deaths > 0, compute InheritanceFlow, write to graph node, emit `INHERITANCE_TRANSFER` event.
 
 **Checkpoint**: `poetry run pytest tests/unit/economics/lifecycle/test_inheritance.py -v` passes. Pareto α=1.5 → Gini≈0.5. Care costs capped. Dispossession reduces inheritance.
 

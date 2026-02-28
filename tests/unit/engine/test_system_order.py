@@ -48,6 +48,7 @@ class TestMaterialistCausalityOrder:
             # Capital Volume I (Feature 021)
             "reserve_army",  # ReserveArmySystem - wage pressure
             "community",  # CommunitySystem - hypergraph layer (Feature 022)
+            "Lifecycle Circuit",  # LifecycleSystem - D-P-D' circuit (Feature 030)
             "Solidarity",  # SolidaritySystem
             "Imperial Rent",  # ImperialRentSystem
             "dispossession_events",  # DispossessionEventSystem - value transfer
@@ -146,6 +147,6 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_eighteen_systems_present(self) -> None:
-        """All 19 systems must be registered (13 core + 2 Volume I + 1 community + 3 field topology)."""
-        assert len(_DEFAULT_SYSTEMS) == 19, f"Expected 19 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_twenty_systems_present(self) -> None:
+        """All 20 systems must be registered (13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology)."""
+        assert len(_DEFAULT_SYSTEMS) == 20, f"Expected 20 systems, got {len(_DEFAULT_SYSTEMS)}"

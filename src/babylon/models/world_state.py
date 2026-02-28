@@ -214,8 +214,14 @@ class WorldState(BaseModel):
         social_class_computed = {"consumption_needs"}
 
         # Fields that systems may add to graph but Territory doesn't accept
-        # (e.g., SurvivalSystem adds p_acquiescence/p_revolution to all nodes)
-        territory_excluded = {"p_acquiescence", "p_revolution"}
+        # (e.g., SurvivalSystem adds p_acquiescence/p_revolution to all nodes,
+        # LifecycleSystem adds dpd_state/dependency_ratio to territory nodes)
+        territory_excluded = {
+            "p_acquiescence",
+            "p_revolution",
+            "dpd_state",
+            "dependency_ratio",
+        }
 
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")

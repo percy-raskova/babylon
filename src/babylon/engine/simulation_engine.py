@@ -51,6 +51,7 @@ from babylon.engine.systems.economic import ImperialRentSystem
 from babylon.engine.systems.edge_transition import EdgeTransitionSystem
 from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
+from babylon.engine.systems.lifecycle import LifecycleSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.protocol import ContextType, System
@@ -186,7 +187,8 @@ _DEFAULT_SYSTEMS: list[System] = [
     TickDynamicsSystem(),  # 4. Tick dynamics (Economic State Evolution)
     ReserveArmySystem(),  # 5. Reserve army wage pressure (Feature 021)
     CommunitySystem(),  # 6. Community hypergraph layer (Feature 022)
-    SolidaritySystem(),  # 7. Organization calculation (Political Organization)
+    LifecycleSystem(),  # 7. D-P-D' lifecycle circuit (Feature 030)
+    SolidaritySystem(),  # 8. Organization calculation (Political Organization)
     ImperialRentSystem(),  # 7. Value extraction (The Extraction)
     DispossessionEventSystem(),  # 8. Dispossession events + value transfer (Feature 021)
     DecompositionSystem(),  # 9. LA decomposition (Terminal Crisis Dynamics)

@@ -649,7 +649,7 @@ class OrganizationDefaults:
     RWP_CI_DELTA: float = 0.0315  # 0.15 × 0.7 × 0.6 × 0.5
     CHURCH_CI_DELTA: float = -0.0084  # -0.05 × 0.3 × 0.8 × 0.7
     FORD_CI_DELTA: float = -0.000675  # -0.05 × 0.1 × 0.9 × 0.15
-    DETROIT_TOTAL_CI_DELTA: float = 0.022225  # sum of above
+    DETROIT_TOTAL_CI_DELTA: float = 0.022425  # sum of above
 
     # OrganizationDefines values
     ELDER_CAPACITY_FACTOR: float = 0.2

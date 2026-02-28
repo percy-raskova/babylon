@@ -208,7 +208,7 @@ tendency_pressure = LIBERAL, magnitude = 0.000675
 
 **Aggregation**
 ```
-total_ci_delta = 0.0315 + (-0.0084) + (-0.000675) = +0.022225
+total_ci_delta = 0.0315 + (-0.0084) + (-0.000675) = +0.022425
   → CI increases slightly (revolutionary org outweighs liberal orgs)
 
 Tendency weights:

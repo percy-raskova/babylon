@@ -185,11 +185,11 @@ ______________________________________________________________________
 
 **Purpose**: Integration wiring, package validation, reproduction.py shadow subsidy connection, full system integration test.
 
-- [ ] T031 Wire shadow subsidy metric from `DualCircuitCalculator` to `_REPRO_EXTERNALIZATION_FACTOR` in `src/babylon/economics/reproduction.py` per research.md R-006 (FR-023 addresses existing TODO)
-- [ ] T032 Validate and finalize package exports in `src/babylon/economics/lifecycle/__init__.py` — ensure all public types and calculators are exported with `__all__`
-- [ ] T033 [P] Write integration test in `tests/integration/test_lifecycle_system.py` covering quickstart.md Scenario 8 (multi-tick steady state: 100 ticks, conservation holds, populations non-negative, dependency ratio stabilizes) and Scenario 9 (dispossession short-circuit)
-- [ ] T034 Run full quickstart.md scenario validation — verify all 9 scenarios produce expected outputs
-- [ ] T035 Run `mise run check` (lint + format + typecheck + test:unit) and fix any issues across all new files
+- [X] T031 Wire shadow subsidy metric from `DualCircuitCalculator` to `_REPRO_EXTERNALIZATION_FACTOR` in `src/babylon/economics/reproduction.py` per research.md R-006 (FR-023 addresses existing TODO)
+- [X] T032 Validate and finalize package exports in `src/babylon/economics/lifecycle/__init__.py` — ensure all public types and calculators are exported with `__all__`
+- [X] T033 [P] Write integration test in `tests/integration/test_lifecycle_system.py` covering quickstart.md Scenario 8 (multi-tick steady state: 100 ticks, conservation holds, populations non-negative, dependency ratio stabilizes) and Scenario 9 (dispossession short-circuit)
+- [X] T034 Run full quickstart.md scenario validation — verify all 9 scenarios produce expected outputs
+- [X] T035 Run `mise run check` (lint + format + typecheck + test:unit) and fix any issues across all new files
 
 ______________________________________________________________________
 

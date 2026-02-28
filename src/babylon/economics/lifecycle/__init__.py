@@ -15,6 +15,26 @@ See Also:
     ``specs/030-dpd-lifecycle-circuit/spec.md``: Feature specification.
 """
 
+from babylon.economics.lifecycle.cohort_dynamics import (
+    CohortDynamicsCalculator,
+    DefaultCohortDynamicsCalculator,
+)
+from babylon.economics.lifecycle.dual_circuit import (
+    DefaultDualCircuitCalculator,
+    DualCircuitCalculator,
+)
+from babylon.economics.lifecycle.inheritance import (
+    DefaultInheritanceCalculator,
+    InheritanceCalculator,
+)
+from babylon.economics.lifecycle.legitimation import (
+    DefaultLegitimationCalculator,
+    LegitimationCalculator,
+)
+from babylon.economics.lifecycle.mobility import (
+    ClassMobilityCalculator,
+    DefaultClassMobilityCalculator,
+)
 from babylon.economics.lifecycle.types import (
     ClassMobilityParams,
     DPDState,
@@ -23,8 +43,20 @@ from babylon.economics.lifecycle.types import (
 )
 
 __all__ = [
+    # Types
     "ClassMobilityParams",
     "DPDState",
     "InheritanceFlow",
     "LegitimationState",
+    # Calculators (Protocol + Default)
+    "CohortDynamicsCalculator",
+    "DefaultCohortDynamicsCalculator",
+    "DualCircuitCalculator",
+    "DefaultDualCircuitCalculator",
+    "InheritanceCalculator",
+    "DefaultInheritanceCalculator",
+    "LegitimationCalculator",
+    "DefaultLegitimationCalculator",
+    "ClassMobilityCalculator",
+    "DefaultClassMobilityCalculator",
 ]

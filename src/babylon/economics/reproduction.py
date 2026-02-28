@@ -59,8 +59,10 @@ from babylon.economics.tensor import ValueTensor4x3
 from babylon.models.types import Currency
 
 # Heuristic coefficient for externalized reproduction costs (Meillassoux "free gift")
-# TODO(Phase 3): Wire to Demographics module for migrant labor data
-_REPRO_EXTERNALIZATION_FACTOR = 0.2  # 20% of UE rent comes from avoided child-rearing
+# Default 0.2 (20% of UE rent from avoided child-rearing). Feature 030's
+# DualCircuitCalculator.compute_shadow_subsidy() provides dynamic override
+# via the repro_externalization_factor parameter in calculate_rent_trinity().
+_REPRO_EXTERNALIZATION_FACTOR = 0.2
 
 
 class RentStructure(BaseModel):
@@ -325,6 +327,7 @@ class ImperialRentCalculator:
         self,
         tensor: ValueTensor4x3,
         wage_gap_ratio: float,
+        repro_externalization_factor: float | None = None,
     ) -> RentStructure:
         """Calculate imperial rent with three-component breakdown.
 
@@ -336,14 +339,18 @@ class ImperialRentCalculator:
         2. **Φ_Shadow** = tensor.shadow_subsidy
            Domestic shadow labor appropriation (Fortunati).
 
-        3. **Φ_Repro** = Φ_UE × 0.2 (heuristic placeholder)
-           Externalized reproduction "free gift" (Meillassoux).
-           TODO(Phase 3): Wire to Demographics module.
+        3. **Φ_Repro** = Φ_UE × externalization_factor (Meillassoux)
+           Externalized reproduction "free gift" of migrant labor.
+           Feature 030: DualCircuitCalculator.compute_shadow_subsidy()
+           can provide a dynamic factor based on D-P-D' lifecycle data.
 
         Args:
             tensor: The Marxian value tensor with visibility_g33 set.
             wage_gap_ratio: Core wages / Periphery wages ratio.
                 1.0 = parity, 1.5 = core 50% higher, etc.
+            repro_externalization_factor: Dynamic externalization coefficient
+                from lifecycle module. Defaults to _REPRO_EXTERNALIZATION_FACTOR
+                (0.2) when not provided.
 
         Returns:
             RentStructure with total_phi and component breakdown.
@@ -355,6 +362,12 @@ class ImperialRentCalculator:
             >>> result.total_phi  # Expanded view of exploitation
             80.0
         """
+        factor = (
+            repro_externalization_factor
+            if repro_externalization_factor is not None
+            else _REPRO_EXTERNALIZATION_FACTOR
+        )
+
         # Component 1: Unequal Exchange (Ricci)
         # Φ_UE = v_paid × (wage_gap - 1.0), clamped to non-negative
         v_paid = float(tensor.monetized_v)
@@ -366,9 +379,9 @@ class ImperialRentCalculator:
         phi_shadow = float(tensor.shadow_subsidy)
 
         # Component 3: Externalized Reproduction (Meillassoux)
-        # Heuristic: 20% of UE rent comes from avoided child-rearing costs
-        # TODO(Phase 3): Wire to Demographics module for migrant labor data
-        phi_repro = phi_ue * _REPRO_EXTERNALIZATION_FACTOR
+        # Default: 20% of UE rent from avoided child-rearing costs
+        # Feature 030: Can be dynamically computed from D-P-D' shadow subsidy
+        phi_repro = phi_ue * factor
 
         # Total rent is the sum of all three components
         total_phi = phi_ue + phi_shadow + phi_repro

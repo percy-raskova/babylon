@@ -1,7 +1,8 @@
-"""Tests for CohortDynamicsCalculator (Feature 030, US1, US4).
+"""Tests for CohortDynamicsCalculator (Feature 030, US1, US4, US5).
 
 Covers population conservation, births computation, edge cases,
-subsistence burden calculation, and ideology transmission (US4).
+subsistence burden calculation, ideology transmission (US4),
+and differential P-phase duration (US5).
 """
 
 from __future__ import annotations
@@ -329,3 +330,158 @@ class TestIdeologyTransmission:
         )
         assert 0.0 <= result_high <= 1.0
         assert 0.0 <= result_low <= 1.0
+
+
+class TestDifferentialRates:
+    """T028: Differential P-phase duration by race/carceral (US5)."""
+
+    @pytest.fixture
+    def calc(self) -> DefaultCohortDynamicsCalculator:
+        return DefaultCohortDynamicsCalculator()
+
+    @pytest.fixture
+    def defines(self) -> LifecycleDefines:
+        return LifecycleDefines()
+
+    @pytest.fixture
+    def base_state(self) -> DPDState:
+        """Standard population state for differential rate tests."""
+        return DPDState(
+            pop_d=2150.0,
+            pop_p=6050.0,
+            pop_d_prime=1800.0,
+            rate_d_to_p=0.0556,
+            rate_p_to_d_prime=0.0213,
+            rate_d_prime_to_death=0.039,
+            birth_rate=0.0107,
+            wealth_d_prime=10_000_000.0,
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_early_mortality_increases_p_to_d_prime(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+        base_state: DPDState,
+    ) -> None:
+        """Black P→D' rate > White via early_mortality_modifier=1.24."""
+        white_state = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=1.0
+        )
+        black_state = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=1.24
+        )
+        assert black_state.rate_p_to_d_prime > white_state.rate_p_to_d_prime
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_carceral_modifier_increases_exit_rate(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+        base_state: DPDState,
+    ) -> None:
+        """Carceral modifier > 1.0 increases P→D' transition rate."""
+        no_carceral = calc.apply_differential_rates(base_state, defines, carceral_modifier=1.0)
+        with_carceral = calc.apply_differential_rates(base_state, defines, carceral_modifier=2.8)
+        assert with_carceral.rate_p_to_d_prime > no_carceral.rate_p_to_d_prime
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_combined_modifiers_compound(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+        base_state: DPDState,
+    ) -> None:
+        """Both modifiers compound to increase P→D' rate further."""
+        mortality_only = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=1.24
+        )
+        carceral_only = calc.apply_differential_rates(base_state, defines, carceral_modifier=2.8)
+        both = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=1.24, carceral_modifier=2.8
+        )
+        assert both.rate_p_to_d_prime > mortality_only.rate_p_to_d_prime
+        assert both.rate_p_to_d_prime > carceral_only.rate_p_to_d_prime
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_modified_rate_capped_at_one(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+        base_state: DPDState,
+    ) -> None:
+        """Extreme modifiers cannot push rate above 1.0."""
+        extreme = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=50.0, carceral_modifier=50.0
+        )
+        assert extreme.rate_p_to_d_prime <= 1.0
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_modified_rate_non_negative(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+        base_state: DPDState,
+    ) -> None:
+        """Modified rate never goes below 0.0."""
+        result = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=0.0, carceral_modifier=0.0
+        )
+        assert result.rate_p_to_d_prime >= 0.0
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_no_modifiers_preserves_rate(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+        base_state: DPDState,
+    ) -> None:
+        """Default modifiers (1.0) preserve original rate."""
+        result = calc.apply_differential_rates(
+            base_state, defines, early_mortality_modifier=1.0, carceral_modifier=1.0
+        )
+        assert abs(result.rate_p_to_d_prime - base_state.rate_p_to_d_prime) < 0.0001
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_differential_rates_compound_dependency_burden(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+    ) -> None:
+        """SC-004: Higher P→D' rate compounds into higher dependency burden.
+
+        With differential rates, more P exits to D' → fewer productive workers
+        → higher dependency ratio → structural inequality compounds.
+        """
+        white = DPDState(
+            pop_d=2000.0,
+            pop_p=6000.0,
+            pop_d_prime=2000.0,
+            rate_d_to_p=0.055,
+            rate_p_to_d_prime=0.021,
+            rate_d_prime_to_death=0.039,
+            birth_rate=0.011,
+            wealth_d_prime=1_000_000.0,
+        )
+        black = calc.apply_differential_rates(
+            white, defines, early_mortality_modifier=1.24, carceral_modifier=2.8
+        )
+
+        # Simulate 5 ticks of transitions
+        white_state = white
+        black_state = black
+        for _ in range(5):
+            white_state = calc.compute_transitions(white_state, defines)
+            black_state = calc.compute_transitions(black_state, defines)
+
+        # Black population has fewer productive workers (shorter P phase)
+        assert black_state.pop_p < white_state.pop_p
+        # Black population has higher dependency ratio (more D' burden)
+        assert black_state.dependency_ratio > white_state.dependency_ratio

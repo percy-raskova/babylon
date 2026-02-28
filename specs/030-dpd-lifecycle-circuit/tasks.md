@@ -170,12 +170,12 @@ ______________________________________________________________________
 
 ### Tests for US5
 
-- [ ] T028 [US5] Write failing tests for differential rate computation in `tests/unit/economics/lifecycle/test_cohort_dynamics.py` (extend existing file). Cover: Black P→D' rate > White P→D' rate with early_mortality_modifier=1.24 (US5 acceptance #1), incarceration removes P-phase individuals (premature P→D' at carceral_modifier rate, US5 acceptance #2), environmental racism elevates rate_P_to_D_prime for affected groups (US5 acceptance #3), 5-generational wealth gap compounds (SC-004).
+- [X] T028 [US5] Write failing tests for differential rate computation in `tests/unit/economics/lifecycle/test_cohort_dynamics.py` (extend existing file). Cover: Black P→D' rate > White P→D' rate with early_mortality_modifier=1.24 (US5 acceptance #1), incarceration removes P-phase individuals (premature P→D' at carceral_modifier rate, US5 acceptance #2), environmental racism elevates rate_P_to_D_prime for affected groups (US5 acceptance #3), 5-generational wealth gap compounds (SC-004).
 
 ### Implementation for US5
 
-- [ ] T029 [US5] Add differential rate computation to `CohortDynamicsCalculator` in `src/babylon/economics/lifecycle/cohort_dynamics.py`: `apply_differential_rates(base_rates, racial_modifiers, carceral_modifiers, community_type) -> dict[str, Coefficient]` per FR-010. Modify `compute_transitions()` to accept and apply per-group modifiers.
-- [ ] T030 [US5] Wire differential rates into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: read racial/carceral modifiers from ClassMobilityParams, apply via CohortDynamicsCalculator, track per-group population dynamics.
+- [X] T029 [US5] Add differential rate computation to `CohortDynamicsCalculator` in `src/babylon/economics/lifecycle/cohort_dynamics.py`: `apply_differential_rates(base_rates, racial_modifiers, carceral_modifiers, community_type) -> dict[str, Coefficient]` per FR-010. Modify `compute_transitions()` to accept and apply per-group modifiers.
+- [X] T030 [US5] Wire differential rates into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: read racial/carceral modifiers from ClassMobilityParams, apply via CohortDynamicsCalculator, track per-group population dynamics.
 
 **Checkpoint**: Black P→D' rate is 1.24× White rate. Carceral modifier removes P-phase population. 5-generation simulation shows compounding wealth gap.
 

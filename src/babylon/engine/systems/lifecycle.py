@@ -233,6 +233,19 @@ class LifecycleSystem:
                 adjusted_p_to_d_prime=adjusted_p_to_d_prime,
             )
 
+            # Step 7: Apply differential rates for structural inequality
+            differential_state = self._cohort_calc.apply_differential_rates(
+                new_state,
+                defines,
+                early_mortality_modifier=mobility_params.early_mortality_modifier,
+                carceral_modifier=mobility_params.carceral_modifier,
+            )
+            # Write differential-adjusted rate for downstream use
+            graph.update_node(
+                territory_id,
+                differential_p_to_d_prime=differential_state.rate_p_to_d_prime,
+            )
+
     @staticmethod
     def _read_legitimation_state(
         attrs: dict[str, object],

@@ -1,6 +1,7 @@
-"""Tests for IntelMethodology and KeyFigure (Feature 031, T010).
+"""Tests for IntelMethodology and KeyFigure (Feature 031, T010/T023).
 
-Tests IntelMethodology frozen model with 3 presets and KeyFigure entity.
+Tests IntelMethodology frozen model with 3 presets (default + defines-driven)
+and KeyFigure entity.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 from tests.constants import TestConstants
 
+from babylon.config.defines import OrganizationDefines
 from babylon.models.entities.organization import IntelMethodology, KeyFigure
 
 TC = TestConstants
@@ -84,6 +86,120 @@ class TestIntelMethodologyPresets:
         assert im.template_matching is True
         assert im.temporal_analysis is True
         assert im.observation_ceiling == pytest.approx(TC.Organization.CEILING_FBI)
+
+
+class TestIntelMethodologyDefinesDriven:
+    """T023: Presets read ceiling values from OrganizationDefines, not hardcoded."""
+
+    @pytest.mark.math
+    def test_local_pd_uses_defines_ceiling(self) -> None:
+        """local_pd() uses defines.observation_ceiling_local_pd."""
+        custom = OrganizationDefines(observation_ceiling_local_pd=0.35)
+        im = IntelMethodology.local_pd(defines=custom)
+        assert im.observation_ceiling == pytest.approx(0.35)
+
+    @pytest.mark.math
+    def test_fusion_uses_defines_ceiling(self) -> None:
+        """fusion_center() uses defines.observation_ceiling_fusion."""
+        custom = OrganizationDefines(observation_ceiling_fusion=0.65)
+        im = IntelMethodology.fusion_center(defines=custom)
+        assert im.observation_ceiling == pytest.approx(0.65)
+
+    @pytest.mark.math
+    def test_fbi_uses_defines_ceiling(self) -> None:
+        """fbi() uses defines.observation_ceiling_fbi."""
+        custom = OrganizationDefines(observation_ceiling_fbi=0.55)
+        im = IntelMethodology.fbi(defines=custom)
+        assert im.observation_ceiling == pytest.approx(0.55)
+
+    @pytest.mark.math
+    def test_default_defines_match_hardcoded_defaults(self) -> None:
+        """Default OrganizationDefines produce same result as no-arg presets."""
+        defaults = OrganizationDefines()
+        assert IntelMethodology.local_pd().observation_ceiling == pytest.approx(
+            IntelMethodology.local_pd(defines=defaults).observation_ceiling
+        )
+        assert IntelMethodology.fusion_center().observation_ceiling == pytest.approx(
+            IntelMethodology.fusion_center(defines=defaults).observation_ceiling
+        )
+        assert IntelMethodology.fbi().observation_ceiling == pytest.approx(
+            IntelMethodology.fbi(defines=defaults).observation_ceiling
+        )
+
+
+class TestIntelMethodologyTierDifferentiation:
+    """T023: Three tiers are observably different."""
+
+    @pytest.mark.math
+    def test_tiers_have_different_ceilings(self) -> None:
+        """Each tier has a distinct observation ceiling."""
+        pd = IntelMethodology.local_pd()
+        fusion = IntelMethodology.fusion_center()
+        fbi = IntelMethodology.fbi()
+        ceilings = {pd.observation_ceiling, fusion.observation_ceiling, fbi.observation_ceiling}
+        assert len(ceilings) == 3
+
+    @pytest.mark.math
+    def test_tiers_have_different_capability_sets(self) -> None:
+        """Each tier has a distinct combination of boolean capabilities."""
+        pd = IntelMethodology.local_pd()
+        fusion = IntelMethodology.fusion_center()
+        fbi = IntelMethodology.fbi()
+
+        pd_caps = (
+            pd.centrality_analysis,
+            pd.equivalence_analysis,
+            pd.template_matching,
+            pd.temporal_analysis,
+        )
+        fusion_caps = (
+            fusion.centrality_analysis,
+            fusion.equivalence_analysis,
+            fusion.template_matching,
+            fusion.temporal_analysis,
+        )
+        fbi_caps = (
+            fbi.centrality_analysis,
+            fbi.equivalence_analysis,
+            fbi.template_matching,
+            fbi.temporal_analysis,
+        )
+        assert pd_caps != fusion_caps
+        assert fusion_caps != fbi_caps
+        assert pd_caps != fbi_caps
+
+    @pytest.mark.math
+    def test_capability_count_increases_with_tier(self) -> None:
+        """Higher tiers have strictly more capabilities enabled."""
+        pd = IntelMethodology.local_pd()
+        fusion = IntelMethodology.fusion_center()
+        fbi = IntelMethodology.fbi()
+
+        pd_count = sum(
+            [
+                pd.centrality_analysis,
+                pd.equivalence_analysis,
+                pd.template_matching,
+                pd.temporal_analysis,
+            ]
+        )
+        fusion_count = sum(
+            [
+                fusion.centrality_analysis,
+                fusion.equivalence_analysis,
+                fusion.template_matching,
+                fusion.temporal_analysis,
+            ]
+        )
+        fbi_count = sum(
+            [
+                fbi.centrality_analysis,
+                fbi.equivalence_analysis,
+                fbi.template_matching,
+                fbi.temporal_analysis,
+            ]
+        )
+        assert pd_count < fusion_count < fbi_count
 
 
 class TestKeyFigureCreation:

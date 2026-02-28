@@ -10,7 +10,7 @@ for automatic subtype selection during deserialization.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -23,6 +23,9 @@ from babylon.models.enums import (
     ServiceType,
 )
 from babylon.models.types import Coefficient, Currency, Probability
+
+if TYPE_CHECKING:
+    from babylon.config.defines import OrganizationDefines
 
 
 class IntelMethodology(BaseModel):
@@ -63,31 +66,46 @@ class IntelMethodology(BaseModel):
     )
 
     @classmethod
-    def local_pd(cls) -> IntelMethodology:
-        """Local PD preset: centrality only, low ceiling."""
+    def local_pd(cls, defines: OrganizationDefines | None = None) -> IntelMethodology:
+        """Local PD preset: centrality only, low ceiling.
+
+        Args:
+            defines: Optional OrganizationDefines for tunable ceiling value.
+        """
+        ceiling = defines.observation_ceiling_local_pd if defines is not None else 0.2
         return cls(
             centrality_analysis=True,
-            observation_ceiling=0.2,
+            observation_ceiling=ceiling,
         )
 
     @classmethod
-    def fusion_center(cls) -> IntelMethodology:
-        """Fusion Center preset: centrality + temporal, medium ceiling."""
+    def fusion_center(cls, defines: OrganizationDefines | None = None) -> IntelMethodology:
+        """Fusion Center preset: centrality + temporal, medium ceiling.
+
+        Args:
+            defines: Optional OrganizationDefines for tunable ceiling value.
+        """
+        ceiling = defines.observation_ceiling_fusion if defines is not None else 0.5
         return cls(
             centrality_analysis=True,
             temporal_analysis=True,
-            observation_ceiling=0.5,
+            observation_ceiling=ceiling,
         )
 
     @classmethod
-    def fbi(cls) -> IntelMethodology:
-        """FBI preset: all capabilities, FBI-level ceiling."""
+    def fbi(cls, defines: OrganizationDefines | None = None) -> IntelMethodology:
+        """FBI preset: all capabilities, FBI-level ceiling.
+
+        Args:
+            defines: Optional OrganizationDefines for tunable ceiling value.
+        """
+        ceiling = defines.observation_ceiling_fbi if defines is not None else 0.4
         return cls(
             centrality_analysis=True,
             equivalence_analysis=True,
             template_matching=True,
             temporal_analysis=True,
-            observation_ceiling=0.4,
+            observation_ceiling=ceiling,
         )
 
 

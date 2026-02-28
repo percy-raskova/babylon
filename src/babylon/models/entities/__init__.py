@@ -37,6 +37,16 @@ from babylon.models.entities.event_template import (
     Resolution,
     TemplateEffect,
 )
+from babylon.models.entities.organization import (
+    Business,
+    CivilSocietyOrg,
+    IntelMethodology,
+    KeyFigure,
+    Organization,
+    OrganizationType,
+    PoliticalFaction,
+    StateApparatus,
+)
 from babylon.models.entities.precarity_state import PrecarityState
 from babylon.models.entities.relationship import FlowComponent, Relationship
 from babylon.models.entities.revolutionary_finance import RevolutionaryFinance
@@ -92,4 +102,13 @@ __all__ = [
     "StateFinance",
     "RevolutionaryFinance",
     "PrecarityState",
+    # Organization Base Model (Feature 031)
+    "Organization",
+    "StateApparatus",
+    "Business",
+    "PoliticalFaction",
+    "CivilSocietyOrg",
+    "OrganizationType",
+    "IntelMethodology",
+    "KeyFigure",
 ]

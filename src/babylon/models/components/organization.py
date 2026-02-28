@@ -6,11 +6,25 @@ quality of organizational leadership (cadre level).
 
 This component is essential for modeling collective action capacity and
 the ability to coordinate resistance or maintain social order.
+
+.. deprecated:: Feature 031
+    Superseded by :class:`babylon.models.entities.organization.Organization`
+    and its subtypes. This component will be removed in a future release.
 """
+
+import warnings
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.models.types import Probability
+
+warnings.warn(
+    "OrganizationComponent is deprecated. Use babylon.models.entities.organization.Organization "
+    "and its subtypes (StateApparatus, Business, PoliticalFaction, CivilSocietyOrg) instead. "
+    "See Feature 031.",
+    DeprecationWarning,
+    stacklevel=1,
+)
 
 
 class OrganizationComponent(BaseModel):

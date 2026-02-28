@@ -23,11 +23,15 @@ import networkx as nx
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from babylon.models.entities.economy import GlobalEconomy
+from babylon.models.entities.organization import (
+    KeyFigure,
+    OrganizationType,
+)
 from babylon.models.entities.relationship import Relationship
 from babylon.models.entities.social_class import SocialClass
 from babylon.models.entities.state_finance import StateFinance
 from babylon.models.entities.territory import Territory
-from babylon.models.enums import EdgeType, OperationalProfile, SectorType
+from babylon.models.enums import EdgeType, OperationalProfile, OrgType, SectorType
 from babylon.models.events import SimulationEvent, deserialize_event
 from babylon.models.types import Currency
 
@@ -101,6 +105,16 @@ class WorldState(BaseModel):
         description="Financial state for each sovereign entity (Epoch 1: The Ledger)",
     )
 
+    # Organization Base Model (Feature 031)
+    organizations: dict[str, OrganizationType] = Field(
+        default_factory=dict,
+        description="Map of organization ID to Organization subtype (Feature 031)",
+    )
+    key_figures: dict[str, KeyFigure] = Field(
+        default_factory=dict,
+        description="Map of key figure ID to KeyFigure (Feature 031)",
+    )
+
     # =========================================================================
     # NetworkX Conversion
     # =========================================================================
@@ -150,6 +164,18 @@ class WorldState(BaseModel):
         # Add territory nodes with _node_type marker
         for territory_id, territory in self.territories.items():
             G.add_node(territory_id, _node_type="territory", **territory.model_dump())
+
+        # Add organization nodes with _node_type marker (Feature 031)
+        for org_id, org in self.organizations.items():
+            G.add_node(org_id, _node_type="organization", **org.model_dump())
+            # Create PRESENCE edges for all territory_ids
+            for tid in org.territory_ids:
+                if tid in G:
+                    G.add_edge(org_id, tid, edge_type=EdgeType.PRESENCE.value)
+
+        # Add key figure nodes with _node_type marker (Feature 031)
+        for kf_id, kf in self.key_figures.items():
+            G.add_node(kf_id, _node_type="key_figure", **kf.model_dump())
 
         # Add edges with relationship data
         for rel in self.relationships:
@@ -209,6 +235,8 @@ class WorldState(BaseModel):
         # Reconstruct entities and territories from nodes based on _node_type
         entities: dict[str, SocialClass] = {}
         territories: dict[str, Territory] = {}
+        organizations: dict[str, OrganizationType] = {}
+        key_figures_dict: dict[str, KeyFigure] = {}
 
         # Computed fields to exclude during reconstruction (Slice 1.4)
         social_class_computed = {"consumption_needs"}
@@ -230,6 +258,9 @@ class WorldState(BaseModel):
             "differential_p_to_d_prime",
         }
 
+        # Computed/cached fields to exclude for Organization reconstruction (Feature 031)
+        organization_excluded = {"effective_capacity", "composition_cache"}
+
         for node_id, data in G.nodes(data=True):
             node_type = data.get("_node_type", "social_class")
             # Create a copy without _node_type for model construction
@@ -247,6 +278,41 @@ class WorldState(BaseModel):
                 if isinstance(profile, str):
                     territory_data["profile"] = OperationalProfile(profile)
                 territories[node_id] = Territory(**territory_data)
+            elif node_type == "organization":
+                # Reconstruct Organization subtype via discriminated union (Feature 031)
+                org_data = {k: v for k, v in node_data.items() if k not in organization_excluded}
+                # Import subtypes for dispatch
+                from babylon.models.entities.organization import (
+                    Business,
+                    CivilSocietyOrg,
+                    PoliticalFaction,
+                    StateApparatus,
+                )
+
+                org_type_raw = org_data.get("org_type")
+                if org_type_raw is None:
+                    msg = f"Organization node {node_id} missing org_type"
+                    raise KeyError(msg)
+                org_type_enum = (
+                    OrgType(org_type_raw) if isinstance(org_type_raw, str) else org_type_raw
+                )
+                subtype_map: dict[
+                    OrgType,
+                    type[StateApparatus]
+                    | type[Business]
+                    | type[PoliticalFaction]
+                    | type[CivilSocietyOrg],
+                ] = {
+                    OrgType.STATE_APPARATUS: StateApparatus,
+                    OrgType.BUSINESS: Business,
+                    OrgType.POLITICAL_FACTION: PoliticalFaction,
+                    OrgType.CIVIL_SOCIETY: CivilSocietyOrg,
+                }
+                org_cls = subtype_map[org_type_enum]
+                organizations[node_id] = org_cls(**org_data)
+            elif node_type == "key_figure":
+                # Reconstruct KeyFigure (Feature 031)
+                key_figures_dict[node_id] = KeyFigure(**node_data)
             else:
                 # Reconstruct SocialClass (default for backward compatibility)
                 # Filter out computed fields that shouldn't be passed to constructor
@@ -285,6 +351,8 @@ class WorldState(BaseModel):
             events=events or [],
             economy=economy,
             state_finances=state_finances,
+            organizations=organizations,
+            key_figures=key_figures_dict,
         )
 
     # =========================================================================

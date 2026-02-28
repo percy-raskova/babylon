@@ -149,12 +149,12 @@ ______________________________________________________________________
 
 ### Tests for US4
 
-- [ ] T025 [US4] Write failing tests for ideology transmission in `tests/unit/economics/lifecycle/test_cohort_dynamics.py` (extend existing file). Cover: caregiver_weight=0.7 × ideology=0.3 + institutional_weight=0.3 × hegemony=0.8 = 0.45 (quickstart Scenario 6), regression toward population mean (SC-005: correlation r > 0.3 between caregiver and new-worker consciousness), community ConsciousnessTendency amplification (US4 acceptance #2), strong hegemonic schooling pulls toward dominant ideology (US4 acceptance #3).
+- [X] T025 [US4] Write failing tests for ideology transmission in `tests/unit/economics/lifecycle/test_cohort_dynamics.py` (extend existing file). Cover: caregiver_weight=0.7 × ideology=0.3 + institutional_weight=0.3 × hegemony=0.8 = 0.45 (quickstart Scenario 6), regression toward population mean (SC-005: correlation r > 0.3 between caregiver and new-worker consciousness), community ConsciousnessTendency amplification (US4 acceptance #2), strong hegemonic schooling pulls toward dominant ideology (US4 acceptance #3).
 
 ### Implementation for US4
 
-- [ ] T026 [US4] Add ideology transmission method to `CohortDynamicsCalculator` in `src/babylon/economics/lifecycle/cohort_dynamics.py`: `compute_ideology_transmission(caregiver_ideology, institutional_ideology, caregiver_weight, community_tendency, population_mean) -> float` per FR-009. Apply regression toward mean. Account for community consciousness tendency amplification.
-- [ ] T027 [US4] Wire ideology transmission into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: during D-to-P transition processing, compute transmitted ideology for entering P-phase cohort, apply to consciousness baseline via graph node update.
+- [X] T026 [US4] Add ideology transmission method to `CohortDynamicsCalculator` in `src/babylon/economics/lifecycle/cohort_dynamics.py`: `compute_ideology_transmission(caregiver_ideology, institutional_ideology, caregiver_weight, community_tendency, population_mean) -> float` per FR-009. Apply regression toward mean. Account for community consciousness tendency amplification.
+- [X] T027 [US4] Wire ideology transmission into `LifecycleSystem.step()` in `src/babylon/engine/systems/lifecycle.py`: during D-to-P transition processing, compute transmitted ideology for entering P-phase cohort, apply to consciousness baseline via graph node update.
 
 **Checkpoint**: Ideology transmission produces Scenario 6 values. Correlation between caregiver and new-worker consciousness > 0.3. Community tendency amplifies transmission.
 

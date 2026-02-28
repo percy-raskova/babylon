@@ -226,6 +226,7 @@ class WorldState(BaseModel):
             "legitimation_state",
             "mobility_params",
             "adjusted_p_to_d_prime",
+            "transmitted_ideology",
         }
 
         for node_id, data in G.nodes(data=True):

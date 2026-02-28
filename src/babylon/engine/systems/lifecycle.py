@@ -184,7 +184,25 @@ class LifecycleSystem:
                     )
                 )
 
-            # Step 5: Apply class mobility parameters
+            # Step 5: Compute ideology transmission for D→P cohort
+            caregiver_ideology = float(attrs.get("caregiver_ideology", 0.5))
+            institutional_hegemony = float(attrs.get("institutional_hegemony", 0.5))
+            community_tendency_raw = attrs.get("community_tendency")
+            community_tendency = (
+                float(community_tendency_raw) if community_tendency_raw is not None else None
+            )
+            transmitted_ideology = self._cohort_calc.compute_ideology_transmission(
+                caregiver_ideology=caregiver_ideology,
+                institutional_hegemony=institutional_hegemony,
+                defines=defines,
+                community_tendency=community_tendency,
+            )
+            graph.update_node(
+                territory_id,
+                transmitted_ideology=transmitted_ideology,
+            )
+
+            # Step 6: Apply class mobility parameters
             mobility_data = attrs.get("mobility_params")
             if mobility_data is not None and isinstance(mobility_data, dict):
                 mobility_params = ClassMobilityParams(**mobility_data)

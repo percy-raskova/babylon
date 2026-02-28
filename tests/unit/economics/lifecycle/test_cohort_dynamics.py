@@ -1,7 +1,7 @@
-"""Tests for CohortDynamicsCalculator (Feature 030, US1).
+"""Tests for CohortDynamicsCalculator (Feature 030, US1, US4).
 
 Covers population conservation, births computation, edge cases,
-and subsistence burden calculation.
+subsistence burden calculation, and ideology transmission (US4).
 """
 
 from __future__ import annotations
@@ -158,3 +158,174 @@ class TestCohortDynamicsCalculator:
         new_state = calc.compute_transitions(scenario_1_dpd_state, defines)
         assert new_state.wealth_d_prime < scenario_1_dpd_state.wealth_d_prime
         assert new_state.wealth_d_prime >= 0.0
+
+
+class TestIdeologyTransmission:
+    """T025: Ideology transmission during D→P transition (US4)."""
+
+    @pytest.fixture
+    def calc(self) -> DefaultCohortDynamicsCalculator:
+        return DefaultCohortDynamicsCalculator()
+
+    @pytest.fixture
+    def defines(self) -> LifecycleDefines:
+        return LifecycleDefines()
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_scenario_6_raw_blending(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+    ) -> None:
+        """Scenario 6: 0.7×0.3 + 0.3×0.8 = 0.45 raw blend.
+
+        With regression (r=0) disabled, expect exactly 0.45.
+        """
+        defines_no_regression = LifecycleDefines(ideology_regression_coefficient=0.0)
+        result = calc.compute_ideology_transmission(
+            caregiver_ideology=0.3,
+            institutional_hegemony=0.8,
+            defines=defines_no_regression,
+        )
+        assert abs(result - 0.45) < 0.001
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_scenario_6_with_regression(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+    ) -> None:
+        """Scenario 6 with default regression (r=0.4).
+
+        raw = 0.45
+        regressed = 0.45 * (1 - 0.4) + 0.5 * 0.4 = 0.27 + 0.20 = 0.47
+        """
+        result = calc.compute_ideology_transmission(
+            caregiver_ideology=0.3,
+            institutional_hegemony=0.8,
+            defines=defines,
+        )
+        expected = 0.45 * 0.6 + 0.5 * 0.4
+        assert abs(result - expected) < 0.001
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_regression_toward_mean(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+    ) -> None:
+        """SC-005: Regression pulls extreme values toward 0.5 population mean.
+
+        With extreme caregiver (1.0) and extreme institutional (1.0):
+        raw = 0.7*1.0 + 0.3*1.0 = 1.0
+        regressed = 1.0*(1-0.4) + 0.5*0.4 = 0.6 + 0.2 = 0.8
+        Result is closer to 0.5 than input.
+        """
+        result = calc.compute_ideology_transmission(
+            caregiver_ideology=1.0,
+            institutional_hegemony=1.0,
+            defines=defines,
+        )
+        # Must be pulled toward mean (< 1.0)
+        assert result < 1.0
+        assert result > 0.5
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_regression_preserves_correlation(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+    ) -> None:
+        """SC-005: Correlation r > 0.3 between caregiver and transmitted ideology.
+
+        Higher caregiver ideology → higher transmitted value (monotonic).
+        """
+        results = []
+        for caregiver in [0.1, 0.3, 0.5, 0.7, 0.9]:
+            r = calc.compute_ideology_transmission(
+                caregiver_ideology=caregiver,
+                institutional_hegemony=0.5,
+                defines=defines,
+            )
+            results.append(r)
+        # Monotonically increasing
+        for i in range(len(results) - 1):
+            assert results[i] < results[i + 1]
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_community_tendency_amplification(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+    ) -> None:
+        """Community tendency pulls transmitted ideology toward community value.
+
+        With community_tendency > raw: result shifts upward.
+        With community_tendency < raw: result shifts downward.
+        """
+        base = calc.compute_ideology_transmission(
+            caregiver_ideology=0.3,
+            institutional_hegemony=0.8,
+            defines=defines,
+        )
+        with_high_community = calc.compute_ideology_transmission(
+            caregiver_ideology=0.3,
+            institutional_hegemony=0.8,
+            defines=defines,
+            community_tendency=0.9,
+        )
+        with_low_community = calc.compute_ideology_transmission(
+            caregiver_ideology=0.3,
+            institutional_hegemony=0.8,
+            defines=defines,
+            community_tendency=0.1,
+        )
+        assert with_high_community > base
+        assert with_low_community < base
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_strong_hegemonic_schooling(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+    ) -> None:
+        """Strong institutional hegemony pulls toward dominant ideology.
+
+        When institutional_hegemony=1.0 and caregiver=0.0,
+        result reflects institutional weight (0.3 × 1.0 = 0.3 raw).
+        """
+        defines_no_regression = LifecycleDefines(ideology_regression_coefficient=0.0)
+        result = calc.compute_ideology_transmission(
+            caregiver_ideology=0.0,
+            institutional_hegemony=1.0,
+            defines=defines_no_regression,
+        )
+        # 0.7*0.0 + 0.3*1.0 = 0.3
+        assert abs(result - 0.3) < 0.001
+
+    @pytest.mark.unit
+    @pytest.mark.math
+    def test_output_clamped_to_unit_interval(
+        self,
+        calc: DefaultCohortDynamicsCalculator,
+        defines: LifecycleDefines,
+    ) -> None:
+        """Output is always clamped to [0, 1]."""
+        result_high = calc.compute_ideology_transmission(
+            caregiver_ideology=1.0,
+            institutional_hegemony=1.0,
+            defines=defines,
+            community_tendency=1.0,
+        )
+        result_low = calc.compute_ideology_transmission(
+            caregiver_ideology=0.0,
+            institutional_hegemony=0.0,
+            defines=defines,
+            community_tendency=0.0,
+        )
+        assert 0.0 <= result_high <= 1.0
+        assert 0.0 <= result_low <= 1.0

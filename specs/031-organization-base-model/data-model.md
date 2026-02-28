@@ -195,6 +195,8 @@ All tunable coefficients for the organization system.
 | `credibility_default_faction` | float | 0.5 | Game design | Default PoliticalFaction credibility |
 | `credibility_sovereign` | float | 0.8 | Game design | SOVEREIGN standing credibility |
 | `credibility_chartered` | float | 0.6 | Game design | CHARTERED standing credibility |
+| `violence_capacity_default` | float | 0.5 | Game design (pending Phase 2/3) | Default StateApparatus violence capacity |
+| `surveillance_capacity_default` | float | 0.3 | Game design (pending Phase 2/3 attention threads) | Default StateApparatus surveillance capacity |
 
 ### Computed Types (Calculator Results)
 
@@ -216,6 +218,12 @@ TopologyType is NEVER stored on the Organization model. It is computed from the 
 - `tendency_pressure`: ConsciousnessTendency — Direction of pressure
 - `tendency_magnitude`: float — Strength of tendency pressure
 - `source_org_id`: str — Which organization caused this
+
+**AggregatedEffect** (frozen):
+- `total_ci_delta`: float — Sum of all organization CI deltas (may be positive or negative)
+- `dominant_tendency`: ConsciousnessTendency | None — Tendency with strongest weighted presence (None if tied and no change)
+- `tendency_weights`: dict[ConsciousnessTendency, float] — Magnitude per tendency for tie analysis
+- `new_ci`: float — Clamped [0, 1] result after applying total_ci_delta to current CI
 
 **CompositionResult** (frozen):
 - `distribution`: dict[str, float] — Proportional breakdown (key depends on axis)

@@ -176,7 +176,7 @@ elif node_type == "key_figure":
 
 ## R10: OrganizationDefines Parameter Set
 
-**Decision**: New `OrganizationDefines` category in GameDefines with 12 parameters.
+**Decision**: New `OrganizationDefines` category in GameDefines with 14 parameters.
 
 | Parameter | Default | Provenance | Description |
 |-----------|---------|------------|-------------|
@@ -192,6 +192,8 @@ elif node_type == "key_figure":
 | `credibility_default_faction` | 0.5 | Game design | Default credibility for PoliticalFaction |
 | `credibility_sovereign` | 0.8 | Game design | StateApparatus SOVEREIGN credibility |
 | `credibility_chartered` | 0.6 | Game design | StateApparatus CHARTERED credibility |
+| `violence_capacity_default` | 0.5 | Game design (pending Phase 2/3) | Default StateApparatus violence capacity |
+| `surveillance_capacity_default` | 0.3 | Game design (pending Phase 2/3 attention threads) | Default StateApparatus surveillance capacity |
 
 All exposed in `defines.yaml` under `organization:` key. Loaded via `GameDefines._from_yaml_dict()`.
 

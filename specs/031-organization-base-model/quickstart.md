@@ -244,7 +244,7 @@ delta.source_org_id == "org_rwp"
 
 ---
 
-## Scenario 8: Key Figure Identification (US4, SC-005)
+## Scenario 8: Key Figure Identification (US5, SC-005)
 
 **Goal**: Identify structurally critical nodes from COMMAND edge analysis.
 
@@ -287,7 +287,7 @@ assert new_cohesion == pytest.approx(0.6)
 
 ---
 
-## Scenario 9: Graph Round-Trip (US6, SC-006)
+## Scenario 9: Graph Round-Trip (US1, SC-001/SC-007)
 
 **Goal**: Organization survives WorldState serialization round-trip.
 
@@ -353,5 +353,5 @@ assert graph.nodes["kf_pastor"]["_node_type"] == "key_figure"
 | 5. Class Composition | US2 | SC-002 | (any) |
 | 6. Lifecycle Composition | US2 | SC-002 | (any) |
 | 7. Consciousness Effect | US3 | SC-003 | PoliticalFaction |
-| 8. Key Figure ID | US4 | SC-005 | CivilSocietyOrg |
-| 9. Graph Round-Trip | US6 | SC-006 | All four |
+| 8. Key Figure ID | US5 | SC-005 | CivilSocietyOrg |
+| 9. Graph Round-Trip | US1 | SC-001, SC-007 | All four |

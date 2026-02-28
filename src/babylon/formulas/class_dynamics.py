@@ -59,17 +59,17 @@ class ClassDynamicsParams:
     """
 
     # Extraction rates (per quarter, fitted from FRED 2015-2025)
-    alpha_41: float = 0.0000  # proletariat → bourgeoisie
-    alpha_31: float = 0.0000  # labor aristocracy → bourgeoisie
+    alpha_41: float = _CD.alpha_41  # proletariat → bourgeoisie
+    alpha_31: float = _CD.alpha_31  # labor aristocracy → bourgeoisie
     alpha_21: float = _CD.alpha_21  # petty bourgeoisie → bourgeoisie
-    alpha_32: float = 0.0000  # labor aristocracy → petty bourgeoisie
-    alpha_42: float = 0.0000  # proletariat → petty bourgeoisie
-    alpha_43: float = 0.0000  # proletariat → labor aristocracy
+    alpha_32: float = _CD.alpha_32  # labor aristocracy → petty bourgeoisie
+    alpha_42: float = _CD.alpha_42  # proletariat → petty bourgeoisie
+    alpha_43: float = _CD.alpha_43  # proletariat → labor aristocracy
 
     # Redistribution rates (progressive taxation, inheritance)
-    delta_1: float = 0.0010  # from bourgeoisie
-    delta_2: float = 0.0020  # from petty bourgeoisie
-    delta_3: float = 0.0010  # from labor aristocracy
+    delta_1: float = _CD.delta_1  # from bourgeoisie
+    delta_2: float = _CD.delta_2  # from petty bourgeoisie
+    delta_3: float = _CD.delta_3  # from labor aristocracy
 
     # Imperial rent formation (superwages to core workers)
     gamma_3: float = _CD.gamma_3  # quarterly injection rate
@@ -90,8 +90,18 @@ class SecondOrderParams:
         (0.305, 0.382, 0.294, 0.02)
     """
 
-    beta: tuple[float, float, float, float] = (-0.10, -0.15, -0.10, -0.05)
-    omega: tuple[float, float, float, float] = (0.05, 0.08, 0.05, 0.03)
+    beta: tuple[float, float, float, float] = (
+        _CD.beta_1,
+        _CD.beta_2,
+        _CD.beta_3,
+        _CD.beta_4,
+    )
+    omega: tuple[float, float, float, float] = (
+        _CD.omega_1,
+        _CD.omega_2,
+        _CD.omega_3,
+        _CD.omega_4,
+    )
     equilibrium: tuple[float, float, float, float] = (
         _CD.equilibrium_w1,
         _CD.equilibrium_w2,

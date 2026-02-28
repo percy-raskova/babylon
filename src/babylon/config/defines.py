@@ -1485,6 +1485,110 @@ class ClassDynamicsDefines(BaseModel):
         description="Target equilibrium wealth share for class 4 (lumpenproletariat)",
     )
 
+    # --- Extraction rates (FRED DFA-fitted, per quarter) ---
+    alpha_41: float = Field(
+        default=0.0000,
+        ge=0.0,
+        le=0.01,
+        description="FRED DFA-fitted: proletariat -> bourgeoisie extraction rate (quarterly)",
+    )
+    alpha_31: float = Field(
+        default=0.0000,
+        ge=0.0,
+        le=0.01,
+        description="FRED DFA-fitted: labor aristocracy -> bourgeoisie extraction rate (quarterly)",
+    )
+    alpha_32: float = Field(
+        default=0.0000,
+        ge=0.0,
+        le=0.01,
+        description="FRED DFA-fitted: labor aristocracy -> petty bourgeoisie extraction rate (quarterly)",
+    )
+    alpha_42: float = Field(
+        default=0.0000,
+        ge=0.0,
+        le=0.01,
+        description="FRED DFA-fitted: proletariat -> petty bourgeoisie extraction rate (quarterly)",
+    )
+    alpha_43: float = Field(
+        default=0.0000,
+        ge=0.0,
+        le=0.01,
+        description="FRED DFA-fitted: proletariat -> labor aristocracy extraction rate (quarterly)",
+    )
+
+    # --- Redistribution rates (FRED DFA-fitted) ---
+    delta_1: float = Field(
+        default=0.0010,
+        ge=0.0,
+        le=0.1,
+        description="FRED DFA-fitted: redistribution from bourgeoisie (taxation, quarterly)",
+    )
+    delta_2: float = Field(
+        default=0.0020,
+        ge=0.0,
+        le=0.1,
+        description="FRED DFA-fitted: redistribution from petty bourgeoisie (quarterly)",
+    )
+    delta_3: float = Field(
+        default=0.0010,
+        ge=0.0,
+        le=0.1,
+        description="FRED DFA-fitted: redistribution from labor aristocracy (quarterly)",
+    )
+
+    # --- Damping coefficients (game design, negative = mean-reverting) ---
+    beta_1: float = Field(
+        default=-0.10,
+        ge=-1.0,
+        le=0.0,
+        description="Game design: bourgeoisie damping coefficient",
+    )
+    beta_2: float = Field(
+        default=-0.15,
+        ge=-1.0,
+        le=0.0,
+        description="Game design: petty bourgeoisie damping coefficient",
+    )
+    beta_3: float = Field(
+        default=-0.10,
+        ge=-1.0,
+        le=0.0,
+        description="Game design: labor aristocracy damping coefficient",
+    )
+    beta_4: float = Field(
+        default=-0.05,
+        ge=-1.0,
+        le=0.0,
+        description="Game design: proletariat damping coefficient",
+    )
+
+    # --- Oscillation frequencies (game design, strictly positive) ---
+    omega_1: float = Field(
+        default=0.05,
+        gt=0.0,
+        le=1.0,
+        description="Game design: bourgeoisie oscillation frequency",
+    )
+    omega_2: float = Field(
+        default=0.08,
+        gt=0.0,
+        le=1.0,
+        description="Game design: petty bourgeoisie oscillation frequency",
+    )
+    omega_3: float = Field(
+        default=0.05,
+        gt=0.0,
+        le=1.0,
+        description="Game design: labor aristocracy oscillation frequency",
+    )
+    omega_4: float = Field(
+        default=0.03,
+        gt=0.0,
+        le=1.0,
+        description="Game design: proletariat oscillation frequency",
+    )
+
 
 class LifecycleDefines(BaseModel):
     """D-P-D' Lifecycle Circuit coefficients (Feature 030).
@@ -2202,6 +2306,11 @@ class GameDefines(BaseModel):
             external_data=external_data,
             contradiction_field=ContradictionFieldDefines(**data.get("contradiction_field", {})),
             community=CommunityDefines(**data.get("community", {})),
+            class_dynamics=ClassDynamicsDefines(**data.get("class_dynamics", {})),
+            reserve_army=ReserveArmyDefines(**data.get("reserve_army", {})),
+            dispossession=DispossessionDefines(**data.get("dispossession", {})),
+            working_day=WorkingDayDefines(**data.get("working_day", {})),
+            edge_transition=EdgeTransitionDefines(**data.get("edge_transition", {})),
             lifecycle=LifecycleDefines(**data.get("lifecycle", {})),
             organization=OrganizationDefines(**data.get("organization", {})),
         )

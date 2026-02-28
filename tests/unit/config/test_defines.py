@@ -270,3 +270,122 @@ class TestCrisisDefines:
         defines = GameDefines()
         with pytest.raises((TypeError, ValueError)):
             defines.crisis.r_threshold = 0.10  # type: ignore[misc]
+
+
+# =============================================================================
+# CLASS DYNAMICS DEFINES SYNC TESTS (Feature 028 remediation)
+# =============================================================================
+
+
+@pytest.mark.unit
+class TestClassDynamicsDefinesSync:
+    """Verify 16 centralized class_dynamics constants match hardcoded defaults.
+
+    These tests ensure that ClassDynamicsDefines fields exist with the exact
+    values previously hardcoded in class_dynamics.py, and that YAML roundtrip
+    preserves them.
+    """
+
+    # --- Alpha fields (extraction rates) ---
+
+    def test_alpha_41_default(self) -> None:
+        """alpha_41: proletariat -> bourgeoisie extraction rate."""
+        defines = GameDefines()
+        assert defines.class_dynamics.alpha_41 == 0.0000
+
+    def test_alpha_31_default(self) -> None:
+        """alpha_31: labor aristocracy -> bourgeoisie extraction rate."""
+        defines = GameDefines()
+        assert defines.class_dynamics.alpha_31 == 0.0000
+
+    def test_alpha_32_default(self) -> None:
+        """alpha_32: labor aristocracy -> petty bourgeoisie extraction rate."""
+        defines = GameDefines()
+        assert defines.class_dynamics.alpha_32 == 0.0000
+
+    def test_alpha_42_default(self) -> None:
+        """alpha_42: proletariat -> petty bourgeoisie extraction rate."""
+        defines = GameDefines()
+        assert defines.class_dynamics.alpha_42 == 0.0000
+
+    def test_alpha_43_default(self) -> None:
+        """alpha_43: proletariat -> labor aristocracy extraction rate."""
+        defines = GameDefines()
+        assert defines.class_dynamics.alpha_43 == 0.0000
+
+    # --- Delta fields (redistribution rates) ---
+
+    def test_delta_1_default(self) -> None:
+        """delta_1: redistribution from bourgeoisie."""
+        defines = GameDefines()
+        assert defines.class_dynamics.delta_1 == 0.0010
+
+    def test_delta_2_default(self) -> None:
+        """delta_2: redistribution from petty bourgeoisie."""
+        defines = GameDefines()
+        assert defines.class_dynamics.delta_2 == 0.0020
+
+    def test_delta_3_default(self) -> None:
+        """delta_3: redistribution from labor aristocracy."""
+        defines = GameDefines()
+        assert defines.class_dynamics.delta_3 == 0.0010
+
+    # --- Beta fields (damping coefficients) ---
+
+    def test_beta_1_default(self) -> None:
+        """beta_1: bourgeoisie damping coefficient."""
+        defines = GameDefines()
+        assert defines.class_dynamics.beta_1 == -0.10
+
+    def test_beta_2_default(self) -> None:
+        """beta_2: petty bourgeoisie damping coefficient."""
+        defines = GameDefines()
+        assert defines.class_dynamics.beta_2 == -0.15
+
+    def test_beta_3_default(self) -> None:
+        """beta_3: labor aristocracy damping coefficient."""
+        defines = GameDefines()
+        assert defines.class_dynamics.beta_3 == -0.10
+
+    def test_beta_4_default(self) -> None:
+        """beta_4: proletariat damping coefficient."""
+        defines = GameDefines()
+        assert defines.class_dynamics.beta_4 == -0.05
+
+    # --- Omega fields (oscillation frequencies) ---
+
+    def test_omega_1_default(self) -> None:
+        """omega_1: bourgeoisie oscillation frequency."""
+        defines = GameDefines()
+        assert defines.class_dynamics.omega_1 == 0.05
+
+    def test_omega_2_default(self) -> None:
+        """omega_2: petty bourgeoisie oscillation frequency."""
+        defines = GameDefines()
+        assert defines.class_dynamics.omega_2 == 0.08
+
+    def test_omega_3_default(self) -> None:
+        """omega_3: labor aristocracy oscillation frequency."""
+        defines = GameDefines()
+        assert defines.class_dynamics.omega_3 == 0.05
+
+    def test_omega_4_default(self) -> None:
+        """omega_4: proletariat oscillation frequency."""
+        defines = GameDefines()
+        assert defines.class_dynamics.omega_4 == 0.03
+
+    # --- YAML roundtrip ---
+
+    def test_yaml_roundtrip_preserves_class_dynamics(self) -> None:
+        """YAML loading via load_default() preserves class_dynamics values."""
+        defines = GameDefines.load_default()
+        assert defines.class_dynamics.alpha_41 == 0.0000
+        assert defines.class_dynamics.delta_1 == 0.0010
+        assert defines.class_dynamics.beta_1 == -0.10
+        assert defines.class_dynamics.omega_1 == 0.05
+
+    def test_class_dynamics_frozen(self) -> None:
+        """ClassDynamicsDefines is frozen."""
+        defines = GameDefines()
+        with pytest.raises((TypeError, ValueError)):
+            defines.class_dynamics.alpha_41 = 0.5  # type: ignore[misc]

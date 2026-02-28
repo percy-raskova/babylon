@@ -215,6 +215,43 @@ external_data:
     electric_transmission: "Electric_Power_Transmission_Lines"
     electric_transmission_layer: 0
 
+# Class wealth dynamics (Feature 016, FRED DFA-derived)
+# Parameters for the 4-class ODE system modeling wealth flows
+class_dynamics:
+  # Extraction rates (FRED DFA-fitted, per quarter, 2015-2025)
+  alpha_21: 0.0006        # petty bourgeoisie -> bourgeoisie
+  alpha_41: 0.0000        # proletariat -> bourgeoisie
+  alpha_31: 0.0000        # labor aristocracy -> bourgeoisie
+  alpha_32: 0.0000        # labor aristocracy -> petty bourgeoisie
+  alpha_42: 0.0000        # proletariat -> petty bourgeoisie
+  alpha_43: 0.0000        # proletariat -> labor aristocracy
+
+  # Imperial rent formation
+  gamma_3: 0.0057         # superwages to core workers (quarterly injection rate)
+
+  # Redistribution rates (progressive taxation, inheritance)
+  delta_1: 0.0010         # from bourgeoisie
+  delta_2: 0.0020         # from petty bourgeoisie
+  delta_3: 0.0010         # from labor aristocracy
+
+  # Equilibrium attractor wealth shares (W*)
+  equilibrium_w1: 0.305   # bourgeoisie target
+  equilibrium_w2: 0.382   # petty bourgeoisie target
+  equilibrium_w3: 0.294   # labor aristocracy target
+  equilibrium_w4: 0.020   # proletariat target
+
+  # Damping coefficients (negative = mean-reverting)
+  beta_1: -0.10           # bourgeoisie damping
+  beta_2: -0.15           # petty bourgeoisie damping
+  beta_3: -0.10           # labor aristocracy damping
+  beta_4: -0.05           # proletariat damping
+
+  # Oscillation frequencies
+  omega_1: 0.05           # bourgeoisie frequency
+  omega_2: 0.08           # petty bourgeoisie frequency
+  omega_3: 0.05           # labor aristocracy frequency
+  omega_4: 0.03           # proletariat frequency
+
 # Organization Base Model (Feature 031)
 organization:
   elder_capacity_factor: 0.2               # BLS 65+ LFPR: D'-phase capacity scalar

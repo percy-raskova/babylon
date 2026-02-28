@@ -85,6 +85,7 @@ ______________________________________________________________________
 - [ ] T037 [US1] Implement `process_layer0()` in `src/babylon/ooda/layer0.py` — identify Business orgs in graph, run automatic surplus extraction, D-P-D' population transitions (delegate to existing systems or stub)
 - [ ] T038 [US1] Implement `select_npc_actions()` in `src/babylon/ooda/npc_stub.py` per research.md R8 — priority queue by org type, filter by eligibility and affordability, deterministic
 - [ ] T039 [US1] Implement `OODASystem` class in `src/babylon/engine/systems/ooda.py` — `name = "OODA Loop"`, `step()` method with auto-wrap guard, three-phase orchestration (Layer 0, Action Phase with initiative ordering, Layer 3 stub)
+- [ ] T039a [US1] Implement player action input pathway in `src/babylon/ooda/npc_stub.py` or `src/babylon/engine/systems/ooda.py` — accept pre-formed `list[Action]` for the player's organization (FR-039). NPC stub handles non-player orgs; player org actions are injected directly, bypassing NPC selection. Player UI is deferred.
 - [ ] T040 [US1] Register `OODASystem()` at position 14 in `_DEFAULT_SYSTEMS` list in `src/babylon/engine/simulation_engine.py` (after MetabolismSystem, before SurvivalSystem) per research.md R6
 - [ ] T041 [US1] Run all US1 tests green: `poetry run pytest tests/unit/ooda/test_cycle_time.py tests/unit/ooda/test_initiative.py tests/unit/ooda/test_layer0.py tests/unit/ooda/test_npc_stub.py tests/unit/ooda/test_ooda_system.py -v`
 
@@ -186,7 +187,7 @@ ______________________________________________________________________
 
 - [ ] T075 [US5] Implement `compute_lifecycle_capacity()` in `src/babylon/ooda/types.py` or `src/babylon/ooda/initiative.py` — use existing `lifecycle_composition()` + `effective_capacity()` from `babylon.organizations.composition` to weight action_points by lifecycle distribution
 - [ ] T076 [US5] Implement elder legitimacy bonus in `src/babylon/ooda/action_effects.py` — detect elder proportion from lifecycle composition, apply `elder_legitimacy_multiplier` to consciousness delta for consciousness-affecting actions
-- [ ] T077 [US5] Implement youth institution EDUCATE in `src/babylon/ooda/action_effects.py` — if org has `controls_youth_institution` attribute (or presence in D-phase community), allow EDUCATE targeting youth, apply ideological socialization effect
+- [ ] T077 [US5] Implement youth institution EDUCATE in `src/babylon/ooda/action_effects.py` — if org has `is_institution == True` and has membership overlap with a D-phase (youth) community via lifecycle composition, allow EDUCATE targeting youth with ideological socialization effect
 - [ ] T078 [US5] Integrate lifecycle capacity into `OODASystem.step()` in `src/babylon/engine/systems/ooda.py` — compute effective AP from lifecycle composition, use as actual AP budget for the tick
 - [ ] T079 [US5] Run all US5 tests green: `poetry run pytest tests/unit/ooda/test_lifecycle_capacity.py -v`
 

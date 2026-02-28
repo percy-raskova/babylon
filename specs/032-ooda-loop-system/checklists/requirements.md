@@ -29,8 +29,14 @@
 - [x] Feature meets measurable outcomes defined in Success Criteria
 - [x] No implementation details leak into specification
 
+## Clarification Session (2026-02-28)
+
+- [x] Q1: coordination_range and autonomy behavior specified (FR-040, FR-041 added, US2 scenarios 5-6 added)
+- [x] Q2: Resource cost model clarified — action_points enforced now, resource costs forward-compatible with Vanguard Economy (FR-010 updated, Action entity updated)
+
 ## Notes
 
-- All items pass validation. Spec is ready for `/speckit.clarify` or `/speckit.plan`.
-- Consciousness effect magnitudes are intentionally left to GameDefines configuration (per FR-034) rather than specified as hard numbers, preserving the data-driven design principle.
-- The spec references existing infrastructure (GraphProtocol, EventBus, GameDefines) by name but does not prescribe implementation patterns — these are domain vocabulary, not implementation details.
+- All items pass validation. Spec is ready for `/speckit.plan`.
+- Consciousness effect magnitudes are intentionally left to GameDefines configuration (per FR-034).
+- Resource cost fields (cadre_labor_cost, sympathizer_labor_cost, budget_cost) are defined in the Action model for forward compatibility but NOT enforced in this feature. Enforcement deferred to Vanguard Economy (Epoch 3).
+- coordination_range and autonomy have full behavioral specifications (FR-040, FR-041) with acceptance scenarios.

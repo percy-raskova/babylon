@@ -328,6 +328,13 @@ class OODADefines(BaseModel):
     # Agitation -> contestation
     agitation_contestation_delta: float = 0.1
     agitation_educate_bonus: float = 1.5
+    contestation_threshold: float = 0.3
+
+    # Lifecycle modifiers
+    elder_legitimacy_multiplier: float = 1.3
+
+    # Counter-intelligence
+    counter_intel_increment: float = 0.1
 
     # Base action point costs
     base_cost_recruit: int = 2

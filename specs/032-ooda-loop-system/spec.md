@@ -5,32 +5,41 @@
 **Status**: Draft
 **Input**: OODA Loop System — organizational action resolution. Organizations are agents; OODA loops are their metabolism. Ticks represent ~1 week (52/year). Orgs act in layers per tick, with community hyperedges affecting action costs, eligibility, and consciousness effects.
 
+## Clarifications
+
+### Session 2026-02-28
+
+- Q: What should happen with coordination_range and autonomy in the OODA ACT phase? They're specified in FR-005 but have no behavioral requirements. → A: Specify behavior now. coordination_range limits the number of distinct territories an org can target per tick. autonomy modifies the effectiveness-breadth tradeoff: high autonomy distributes actions across more targets with diluted effect; low autonomy concentrates actions with amplified effect.
+- Q: Do organizational actions consume only action_points per tick, or also budget/monetary resources? → A: Actions are primarily constrained by action_points (OODA ACT phase capacity). The Action model MUST include resource cost fields (cadre_labor_cost, sympathizer_labor_cost, budget_cost) for forward compatibility with the Vanguard Economy (Epoch 3, see ai-docs/epochs/epoch3/vanguard-economy.yaml). In this feature, action_points is enforced; resource costs are defined but not enforced until the Vanguard Economy is integrated.
+- Design correction: Initiative is dynamic, not fixed. The original spec assumed state always acts first (Layer 1 before Layer 2). Corrected to: initiative is a computed score combining OODA cycle time, institutional bonus, counter-intelligence, community embeddedness, and momentum. State starts with high institutional bonus but revolutionaries can seize the initiative. Layers 1/2 merged into a single Action Phase resolved by initiative score.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Layer-Ordered Turn Resolution (Priority: P1)
 
-The simulation resolves one tick of organizational activity by processing actions in four ordered layers: Layer 0 (automatic economic metabolism), Layer 1 (state apparatus actions with institutional priority), Layer 2 (political factions and civil society organizations resolved by OODA speed), and Layer 3 (consequence propagation). This layering ensures the state always acts before non-state organizations, and faster organizations act before slower ones within the same layer.
+The simulation resolves one tick of organizational activity in three phases: Layer 0 (automatic economic metabolism), the Action Phase (all organizations resolved in initiative order), and Layer 3 (consequence propagation). Within the Action Phase, each organization's initiative score determines who acts first. The state begins the game with a large institutional initiative bonus, but this advantage can erode as revolutionary organizations build counter-intelligence, community embeddedness, momentum from successful actions, and superior OODA speed. Initiative is not a fixed privilege — it is a contested terrain.
 
-**Why this priority**: Layer ordering is the structural foundation. Without it, no organizational action can be meaningfully resolved. The state-first principle (Layer 1 before Layer 2) encodes the material reality that state apparatus wields institutional advantage.
+**Why this priority**: Initiative ordering is the structural foundation. Without it, no organizational action can be meaningfully resolved. The dynamic initiative model encodes the material reality that state power is contingent, not absolute — the state starts with institutional advantage but revolutionary organizations can seize the initiative through organization, speed, and popular support.
 
-**Independent Test**: Can be fully tested by creating a minimal tick with one StateApparatus, one PoliticalFaction, and one Business, verifying that Layer 0 runs automatically, Layer 1 processes state actions before Layer 2, and Layer 2 resolves organizations by OODA cycle time (fastest first).
+**Independent Test**: Can be fully tested by creating a minimal tick with one StateApparatus, one PoliticalFaction, and one Business, verifying that Layer 0 runs automatically, the Action Phase resolves organizations by initiative score (state first in early game), and Layer 3 propagates consequences.
 
 **Acceptance Scenarios**:
 
-1. **Given** a tick with a Business, an FBI StateApparatus, and a revolutionary PoliticalFaction, **When** the turn resolves, **Then** Layer 0 processes business surplus extraction automatically, Layer 1 processes FBI actions, Layer 2 processes the faction's actions, and Layer 3 propagates consequences.
-2. **Given** two PoliticalFactions in Layer 2 with different OODA cycle times, **When** the turn resolves, **Then** the faster organization (lower cycle_time) acts before the slower one.
-3. **Given** a StateApparatus and a PoliticalFaction targeting the same community, **When** both act in the same tick, **Then** the StateApparatus action resolves first (Layer 1) and the PoliticalFaction sees the updated state (Layer 2).
+1. **Given** a tick at game start with a Business, an FBI StateApparatus, and a revolutionary PoliticalFaction, **When** the turn resolves, **Then** Layer 0 processes business surplus extraction automatically, the FBI acts before the faction in the Action Phase (institutional initiative bonus dominates early), and Layer 3 propagates consequences.
+2. **Given** two PoliticalFactions in the Action Phase with different initiative scores, **When** the turn resolves, **Then** the organization with the higher initiative score acts first.
+3. **Given** a revolutionary PoliticalFaction that has built strong counter-intelligence, community embeddedness, and momentum from recent successes, **When** its initiative score is computed against a local police StateApparatus, **Then** the faction's initiative score can exceed the police's, causing the faction to act first.
 4. **Given** a tick with no organizations present, **When** the turn resolves, **Then** Layer 0 still processes automatic metabolism and no errors occur.
+5. **Given** an FBI StateApparatus (national jurisdiction, high institutional bonus) vs the same revolutionary faction, **When** initiative scores are compared, **Then** the FBI's institutional bonus is harder to overcome than the local police's, reflecting the material reality that federal state power is more entrenched than local.
 
 ______________________________________________________________________
 
 ### User Story 2 - OODA Profile and Cycle Time (Priority: P2)
 
-Each organization has an OODA profile describing its observe, orient, decide, and act capabilities. The profile determines a computed cycle time that governs action ordering within Layer 2 and constrains the number and scope of actions the organization can take per tick.
+Each organization has an OODA profile describing its observe, orient, decide, and act capabilities. The profile contributes to a computed initiative score (along with institutional bonus, counter-intelligence, community embeddedness, and momentum) that governs action ordering in the Action Phase, and constrains the number and scope of actions the organization can take per tick.
 
-**Why this priority**: The OODA profile is the data model that all action mechanics depend on. It encodes the fundamental tradeoff: small autocratic organizations cycle fast but coordinate poorly; large democratic organizations cycle slowly but achieve coherent strategy. Democratic centralism (fast decide + democratic orient + disciplined act) represents a specific and historically significant optimization.
+**Why this priority**: The OODA profile is the data model that all action mechanics depend on. It encodes the fundamental tradeoff: small autocratic organizations cycle fast but coordinate poorly; large democratic organizations cycle slowly but achieve coherent strategy. Democratic centralism (fast decide + democratic orient + disciplined act) represents a specific and historically significant optimization. The initiative score integrates OODA speed with situational factors — a fast organization embedded in a supportive community with counter-intelligence capability can seize the initiative from the state.
 
-**Independent Test**: Can be fully tested by constructing organizations with different OODA profiles and verifying that cycle_time calculations produce the correct ordering, and that action_points constrain available actions per tick.
+**Independent Test**: Can be fully tested by constructing organizations with different OODA profiles and initiative factors, verifying that initiative scores produce the correct ordering, and that action_points constrain available actions per tick.
 
 **Acceptance Scenarios**:
 
@@ -38,6 +47,8 @@ Each organization has an OODA profile describing its observe, orient, decide, an
 2. **Given** an organization with DEMOCRATIC decision mode and high ideological coherence, **When** its cycle time is computed, **Then** the orient phase contributes less delay than an organization with low coherence (coherent organizations orient faster).
 3. **Given** an organization with 3 action_points, **When** it submits 4 actions in a single tick, **Then** only the first 3 are executed and the 4th is rejected.
 4. **Given** two organizations with identical profiles except sensor_latency (1 tick vs 3 ticks), **When** their cycle times are compared, **Then** the organization with lower latency has a shorter cycle time.
+5. **Given** an organization with coordination_range of 1 and headquarters in territory A, **When** it attempts to target territory B (not adjacent), **Then** the action is rejected as out of range.
+6. **Given** two identical organizations except autonomy (0.2 vs 0.8), both performing EDUCATE on the same community, **When** the consciousness effects are compared, **Then** the low-autonomy organization produces a larger per-action consciousness effect while the high-autonomy organization can spread actions across more targets.
 
 ______________________________________________________________________
 
@@ -97,16 +108,16 @@ ______________________________________________________________________
 
 ### User Story 6 - Layer 3 Consequence Propagation (Priority: P6)
 
-After all organizational actions resolve (Layers 0-2), Layer 3 propagates consequences: heat changes on communities targeted by state action, edge transformations (TRANSACTIONAL to SOLIDARISTIC from ORGANIZE actions), community consciousness shifts (aggregate collective_identity and dominant_tendency updates), infrastructure effects, and legitimation index updates.
+After Layer 0 and the Action Phase complete, Layer 3 propagates consequences: heat changes on communities targeted by state action, edge transformations (TRANSACTIONAL to SOLIDARISTIC from ORGANIZE actions), community consciousness shifts (aggregate collective_identity and dominant_tendency updates), infrastructure effects, and legitimation index updates.
 
 **Why this priority**: Consequence propagation is what connects organizational actions to the broader simulation. Without it, actions are isolated events with no systemic impact.
 
-**Independent Test**: Can be fully tested by executing a set of actions across Layers 0-2, then running Layer 3 propagation and verifying that community states, edge modes, heat levels, and legitimation indices update correctly.
+**Independent Test**: Can be fully tested by executing a set of actions across Layer 0 and the Action Phase, then running Layer 3 propagation and verifying that community states, edge modes, heat levels, and legitimation indices update correctly.
 
 **Acceptance Scenarios**:
 
-1. **Given** a StateApparatus that performed SURVEIL on a community in Layer 1, **When** Layer 3 propagates, **Then** that community's heat increases.
-2. **Given** a PoliticalFaction that performed ORGANIZE in Layer 2, **When** Layer 3 propagates, **Then** affected edges shift from TRANSACTIONAL toward SOLIDARISTIC mode.
+1. **Given** a StateApparatus that performed SURVEIL on a community in the Action Phase, **When** Layer 3 propagates, **Then** that community's heat increases.
+2. **Given** a PoliticalFaction that performed ORGANIZE in the Action Phase, **When** Layer 3 propagates, **Then** affected edges shift from TRANSACTIONAL toward SOLIDARISTIC mode.
 3. **Given** multiple organizations that targeted the same community with consciousness-affecting actions, **When** Layer 3 propagates, **Then** the aggregate consciousness effect is computed (summing deltas, dominant tendency by weight) and the community's collective_identity and dominant_tendency update accordingly.
 4. **Given** ATTACK_INFRASTRUCTURE against a community, **When** Layer 3 propagates, **Then** the community's infrastructure decreases and reproduction costs increase for members.
 5. **Given** a tick's worth of D-P-D' transitions in Layer 0, **When** Layer 3 propagates, **Then** the legitimation index updates based on population reproduction dynamics.
@@ -119,28 +130,30 @@ A single tick resolves with four organizations operating in Detroit: the FBI (St
 
 **Why this priority**: This is the integration test that validates all components working together. Detroit is the canonical test territory because it sits at the intersection of colonial, class, and lifecycle contradictions.
 
-**Independent Test**: Can be fully tested by constructing a Detroit scenario with four organizations, running one tick, and verifying that each layer processed correctly, consciousness effects reflect organizational tendencies, and state action occurred before non-state action.
+**Independent Test**: Can be fully tested by constructing a Detroit scenario with four organizations, running one tick, and verifying that initiative ordering is correct, consciousness effects reflect organizational tendencies, and the state's institutional bonus gives it early-game priority.
 
 **Acceptance Scenarios**:
 
-1. **Given** the FBI performing SURVEIL on a NEW_AFRIKAN community, **When** the tick completes, **Then** that community's heat has increased and visibility has risen.
+1. **Given** the FBI performing SURVEIL on a NEW_AFRIKAN community at game start, **When** the tick completes, **Then** the FBI acted before the revolutionary faction (institutional initiative bonus) and that community's heat has increased and visibility has risen.
 2. **Given** the revolutionary faction performing EDUCATE in a community where it has members, **When** the tick completes, **Then** collective_identity in that community has increased (small per-tick amount).
 3. **Given** the liberal church performing PROVIDE_SERVICE to the same community, **When** the tick completes, **Then** collective_identity has not increased from the church's action (neutral/slightly negative consciousness effect despite material benefit).
 4. **Given** the auto manufacturer in Layer 0, **When** the tick completes, **Then** surplus extraction and wage payments processed automatically without OODA involvement.
 5. **Given** all four organizations acted, **When** Layer 3 propagates, **Then** the aggregate consciousness effect on each targeted community reflects the net of all acting organizations' tendencies.
+6. **Given** the same Detroit scenario but 20 ticks later, with the revolutionary faction having built strong counter-intelligence and community embeddedness, **When** initiative scores are computed, **Then** the faction's initiative score has risen relative to the local police (though the FBI's federal bonus remains harder to overcome).
 
 ______________________________________________________________________
 
 ### Edge Cases
 
 - What happens when an organization has zero action points (fully elder/youth composition)?
-- What happens when two organizations in Layer 2 have identical cycle times? (Resolution: deterministic tiebreaker by organization ID)
+- What happens when two organizations in the Action Phase have identical initiative scores? (Resolution: deterministic tiebreaker by organization ID)
 - What happens when a community's collective_identity would exceed 1.0 or drop below 0.0 from aggregate effects? (Clamped to [0, 1])
 - What happens when an organization targets a community that no longer exists (dissolved between ticks)? (Action fails gracefully, action points not consumed)
 - What happens when a StateApparatus with EXTRALEGAL standing attempts REPRESS? (Allowed but generates higher heat on the org itself)
 - What happens when AGITATE is performed in a community with ideological_contestation already at 1.0? (No additional contestation increase; contestation is clamped)
 - What happens when an organization attempts an action it is not eligible for (e.g., a Business attempting REPRESS)? (Action rejected; action points not consumed)
 - What happens when Layer 0 economic metabolism produces negative surplus for a Business? (Business operates at a loss; no surplus extraction, but wage obligations remain)
+- What happens when a revolutionary org's initiative score exactly equals a StateApparatus's score? (Tiebreaker by organization ID, same as any other tie — no inherent state advantage in ties)
 
 ## Requirements *(mandatory)*
 
@@ -148,22 +161,27 @@ ______________________________________________________________________
 
 **Turn Resolution**
 
-- **FR-001**: System MUST resolve each tick's organizational actions in four ordered layers: Layer 0 (automatic economic metabolism), Layer 1 (state apparatus actions), Layer 2 (non-state organizational actions sorted by OODA cycle time ascending), Layer 3 (consequence propagation).
-- **FR-002**: System MUST process Layer 1 before Layer 2 within every tick, ensuring state apparatus institutional advantage.
-- **FR-003**: System MUST resolve Layer 2 organizations in ascending cycle_time order (fastest first). Organizations with identical cycle times MUST be resolved in deterministic order (by organization ID).
+- **FR-001**: System MUST resolve each tick's organizational actions in three phases: Layer 0 (automatic economic metabolism), Action Phase (all organizations resolved in descending initiative score order), and Layer 3 (consequence propagation).
+- **FR-002**: System MUST compute an initiative score for each organization each tick. The initiative score MUST be a function of: OODA cycle time (faster = higher initiative), institutional initiative bonus (state apparatus starts high, non-state starts low), counter-intelligence capability, community embeddedness, and momentum from recent successful actions.
+- **FR-003**: System MUST resolve Action Phase organizations in descending initiative score order (highest first). Organizations with identical initiative scores MUST be resolved in deterministic order (by organization ID).
 - **FR-004**: Layer 0 MUST NOT involve OODA processing; economic metabolism (surplus extraction, wage payment, D-P-D' population transitions) runs automatically each tick.
+- **FR-042**: StateApparatus organizations MUST receive an institutional initiative bonus that is high at game start, reflecting entrenched state power. This bonus MUST be configurable in GameDefines and MUST vary by jurisdiction level (federal > state > local).
+- **FR-043**: Non-state organizations MUST be able to increase their initiative score through: faster OODA cycle times, successful counter-intelligence (COUNTER_INTEL actions), deep community embeddedness (high membership overlap in target communities), and momentum (accumulated from recent successful actions).
+- **FR-044**: Initiative advantage MUST be contestable: a revolutionary organization with superior OODA speed, strong community roots, and successful counter-intelligence MUST be able to exceed a local police StateApparatus's initiative score. Federal-level state apparatus (FBI) MUST have a higher institutional bonus that is harder but not impossible to overcome.
 
 **OODA Profile**
 
 - **FR-005**: Each organization MUST have an OODAProfile with four phases: OBSERVE (intelligence, sensor_latency), ORIENT (ideological_coherence, analytical_capacity), DECIDE (decision_mode, bureaucratic_depth), and ACT (action_points, coordination_range, autonomy).
-- **FR-006**: System MUST compute cycle_time from the OODAProfile such that AUTOCRATIC decision mode produces shorter cycle times than DELEGATE, which is shorter than DEMOCRATIC, which is shorter than CONSENSUS.
+- **FR-006**: System MUST compute cycle_time from the OODAProfile such that AUTOCRATIC decision mode produces shorter cycle times than DELEGATE, which is shorter than DEMOCRATIC, which is shorter than CONSENSUS. Faster cycle_time MUST contribute to a higher initiative score.
 - **FR-007**: System MUST constrain the number of actions per tick to the organization's action_points. Actions beyond this limit MUST be rejected.
-- **FR-008**: sensor_latency MUST represent the delay (in ticks) before observed information becomes available to the orient phase. An organization with sensor_latency of 2 observes state from 2 ticks ago.
+- **FR-008**: sensor_latency MUST represent the delay (in ticks) before observed information becomes available to the orient phase. In this feature, sensor_latency is used as a cycle time weight in the OBSERVE phase computation (higher latency → slower cycle time). Delayed-observation semantics (observing state from N ticks ago) are deferred to a future enhancement.
+- **FR-040**: coordination_range MUST limit the number of distinct territories an organization can target with actions in a single tick. An organization can only act within territories reachable from its headquarters or territory_ids within its coordination_range. StateApparatus organizations with national jurisdiction MUST have coordination_range covering all territories in their jurisdiction.
+- **FR-041**: autonomy MUST modify the effectiveness-breadth tradeoff of organizational actions. High autonomy (close to 1.0) allows distributing actions across more targets per tick but reduces per-action consciousness effect magnitude. Low autonomy (close to 0.0) concentrates actions on fewer targets but amplifies per-action consciousness effect. "Disciplined ACT" (democratic centralism pattern) corresponds to low autonomy with high coordination.
 
 **Action Types**
 
 - **FR-009**: System MUST support the following action types: RECRUIT, ORGANIZE, EDUCATE, AGITATE, PROPAGANDIZE, FUNDRAISE, PROVIDE_SERVICE, EMPLOY, REPRESS, PROTEST, STRIKE, EXPROPRIATE, SURVEIL, INFILTRATE, COUNTER_INTEL, MAP_NETWORK, PROPOSE_ALLIANCE, DENOUNCE, BUILD_INFRASTRUCTURE, ATTACK_INFRASTRUCTURE, ASSIMILATE.
-- **FR-010**: Each action type MUST have a base action point cost, an eligibility set (which organization types can perform it), and a consciousness effect profile.
+- **FR-010**: Each action type MUST have a base action point cost, an eligibility set (which organization types can perform it), a consciousness effect profile, and resource cost fields (cadre_labor_cost, sympathizer_labor_cost, budget_cost) for forward compatibility with the Vanguard Economy. In this feature, only action_points are enforced; resource costs are defined but deferred.
 - **FR-011**: REPRESS and SURVEIL MUST be restricted to StateApparatus organizations (and organizations with violence_capacity or surveillance_capacity respectively).
 - **FR-012**: ASSIMILATE MUST be available to StateApparatus and organizations with LIBERAL consciousness tendency that have institutional backing.
 - **FR-013**: EMPLOY MUST be restricted to Business organizations.
@@ -196,7 +214,7 @@ ______________________________________________________________________
 **Layer 3 Propagation**
 
 - **FR-030**: Layer 3 MUST aggregate all consciousness deltas targeting each community and apply them as a single update to collective_identity and dominant_tendency, using the existing aggregation formula (sum deltas, clamp to [0, 1], dominant tendency by weight).
-- **FR-031**: Layer 3 MUST update community heat based on state surveillance and repression actions from Layer 1.
+- **FR-031**: Layer 3 MUST update community heat based on state surveillance and repression actions from the Action Phase.
 - **FR-032**: Layer 3 MUST process edge transformations triggered by ORGANIZE actions (TRANSACTIONAL to SOLIDARISTIC mode transitions).
 - **FR-033**: Layer 3 MUST update community infrastructure levels based on BUILD_INFRASTRUCTURE and ATTACK_INFRASTRUCTURE actions.
 - **FR-034**: All configurable coefficients (action costs, consciousness effect magnitudes, cost modifiers, cycle time weights) MUST be centralized in GameDefines, not hardcoded.
@@ -213,17 +231,18 @@ ______________________________________________________________________
 
 - **OODAProfile**: Four-phase organizational capability profile (observe, orient, decide, act) with a computed cycle_time. Determines action ordering and capacity per tick.
 - **ActionType**: Enumeration of all organizational actions (21 types across 7 categories: recruitment, consciousness work, resources, conflict, intelligence, diplomacy, infrastructure).
-- **Action**: A single organizational action for a tick, specifying the acting organization, action type, target (community, organization, or territory), and resource cost.
+- **Action**: A single organizational action for a tick, specifying the acting organization, action type, target (community, organization, or territory), action point cost, and forward-compatible resource costs (cadre_labor_cost, sympathizer_labor_cost, budget_cost) for Vanguard Economy integration.
 - **ActionResult**: The outcome of executing an action, including direct effects, consciousness delta, resource expenditure, and any events generated.
 - **ConsciousnessDelta**: The consciousness side-effect of an action on a target community (collective_identity change, contestation change, tendency pressure). Extends the existing Feature 031 model.
-- **TurnResolution**: The complete processing of one tick across all four layers, collecting all action results and propagating Layer 3 consequences.
+- **TurnResolution**: The complete processing of one tick across all three phases (Layer 0, Action Phase, Layer 3), collecting all action results and propagating consequences.
 - **ActionCostModifier**: The computed cost adjustment for an action based on org-community relationship (shared membership, contradiction axis, embeddedness).
+- **InitiativeScore**: The computed per-tick ordering value for each organization, combining OODA cycle time, institutional bonus, counter-intelligence, community embeddedness, and momentum. Determines who acts first in the Action Phase.
 
 ## Success Criteria *(mandatory)*
 
 ### Measurable Outcomes
 
-- **SC-001**: A single tick with four organizations (StateApparatus, PoliticalFaction, CivilSocietyOrg, Business) resolves within the existing tick pipeline, producing correct layer ordering (state before non-state, faster before slower).
+- **SC-001**: A single tick with four organizations (StateApparatus, PoliticalFaction, CivilSocietyOrg, Business) resolves within the existing tick pipeline, producing correct initiative ordering (state first at game start due to institutional bonus; non-state organizations can seize initiative as conditions change).
 - **SC-002**: CONSENSUS organizations consistently produce longer cycle times than AUTOCRATIC organizations across all valid parameter combinations.
 - **SC-003**: RECRUIT within a shared community costs measurably fewer action points than RECRUIT across a contradiction pair.
 - **SC-004**: EDUCATE by a REVOLUTIONARY organization produces a positive collective_identity delta, while EDUCATE by a LIBERAL organization produces a zero or negative delta, for the same target community.

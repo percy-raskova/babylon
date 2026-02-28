@@ -119,4 +119,12 @@ class FormulaRegistry:
         registry.register("infrastructure_decay", formulas.calculate_infrastructure_decay)
         registry.register("solidarity_amplification", formulas.calculate_solidarity_amplification)
 
+        # D-P-D' Lifecycle Circuit formulas (Feature 030)
+        registry.register("population_flow", formulas.compute_population_flow)
+        registry.register("dependency_ratio", formulas.compute_dependency_ratio)
+        registry.register("legitimation_index", formulas.compute_legitimation_index)
+        registry.register("pareto_gini", formulas.compute_pareto_gini)
+        registry.register("ideology_transmission", formulas.compute_ideology_transmission)
+        registry.register("shadow_subsidy", formulas.compute_shadow_subsidy)
+
         return registry

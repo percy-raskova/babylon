@@ -109,7 +109,7 @@ class TestServiceContainer:
 
         try:
             formulas = container.formulas.list_formulas()
-            assert len(formulas) == 18  # 14 original + 4 community layer (Feature 022)
+            assert len(formulas) == 24  # 18 prior + 6 lifecycle (Feature 030)
             assert "imperial_rent" in formulas
             assert "revolution_probability" in formulas
             assert "solidarity_transmission" in formulas  # Sprint 3.4.2

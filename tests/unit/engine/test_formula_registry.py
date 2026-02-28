@@ -110,7 +110,7 @@ class TestFormulaRegistry:
             "solidarity_amplification",  # Feature 022
         ]
 
-        assert len(formulas) == 18
+        assert len(formulas) == 24  # 18 prior + 6 lifecycle (Feature 030)
         for name in expected_formulas:
             assert name in formulas, f"Missing formula: {name}"
 

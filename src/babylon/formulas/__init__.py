@@ -64,6 +64,16 @@ from babylon.formulas.fundamental_theorem import (
 # Re-export Ideological Routing formula
 from babylon.formulas.ideological_routing import calculate_ideological_routing
 
+# Re-export D-P-D' Lifecycle Circuit formulas (Feature 030)
+from babylon.formulas.lifecycle import (
+    compute_dependency_ratio,
+    compute_ideology_transmission,
+    compute_legitimation_index,
+    compute_pareto_gini,
+    compute_population_flow,
+    compute_shadow_subsidy,
+)
+
 # Re-export Metabolic Rift formulas
 from babylon.formulas.metabolic_rift import (
     calculate_biocapacity_delta,
@@ -158,4 +168,11 @@ __all__ = [
     "calculate_infrastructure_decay",
     "calculate_solidarity_amplification",
     "compute_community_cost_modifier",
+    # D-P-D' Lifecycle Circuit (Feature 030)
+    "compute_population_flow",
+    "compute_dependency_ratio",
+    "compute_legitimation_index",
+    "compute_pareto_gini",
+    "compute_ideology_transmission",
+    "compute_shadow_subsidy",
 ]

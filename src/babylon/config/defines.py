@@ -2568,6 +2568,140 @@ class OODADefines(BaseModel):
         return base_map.get(action_type, 0.0)
 
 
+class BifurcationDefines(BaseModel):
+    """Bifurcation Topology Analysis coefficients (Feature 033).
+
+    Configures consciousness-weighted solidarity analysis that predicts
+    whether crisis routes to fascism or revolution. The core innovation:
+    a nonlinear sigmoid of collective_identity weights solidarity edges
+    so assimilationist solidarity classifies as fragile/fascist.
+
+    See Also:
+        :mod:`babylon.bifurcation.consciousness`: Sigmoid weighting.
+        :mod:`babylon.bifurcation.analysis`: Full bifurcation orchestrator.
+        ``specs/033-bifurcation-topology/spec.md``: Feature specification.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    # Consciousness sigmoid (US1)
+    consciousness_sigmoid_midpoint: float = Field(
+        default=0.4,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Behavior-tuned: CI value at sigmoid inflection. Below-center "
+            "so breakage cliff catches assimilated communities (CI<0.4). "
+            "Analogous to SurvivalDefines.default_subsistence=0.3."
+        ),
+    )
+    consciousness_sigmoid_steepness: float = Field(
+        default=10.0,
+        gt=0.0,
+        le=50.0,
+        description=(
+            "Codebase precedent: matches SurvivalDefines.steepness_k=10.0. "
+            "Slope at inflection (higher = sharper cliff)."
+        ),
+    )
+    consciousness_filter_threshold: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Derived: sigmoid(CI=0.27, midpoint=0.4, k=10)~0.21. "
+            "Minimum sigmoid output to include edge in filtered subgraph."
+        ),
+    )
+
+    # Classification (US5)
+    indeterminate_dead_zone: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Game design: score within [-x, +x] of threshold = indeterminate. "
+            "Analogous to CrisisDefines.bifurcation_event_threshold=0.5."
+        ),
+    )
+    axis_tendency_epsilon: float = Field(
+        default=0.001,
+        gt=0.0,
+        le=0.1,
+        description=(
+            "Engineering: matches CrisisDefines.class_burden_epsilon=0.001. "
+            "Division guard for cross/lateral ratio."
+        ),
+    )
+
+    # Legitimation amplifier (US7)
+    legitimation_amplifier_scale: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=10.0,
+        description=(
+            "Behavior-tuned: at zero legitimation, crisis intensity doubles. "
+            "Conservative start vs legacy _DEFAULT_CRISIS_AMPLIFIER=2.5."
+        ),
+    )
+
+    # Solidarity ceiling (US6)
+    wage_ceiling_high_ratio: float = Field(
+        default=10.0,
+        ge=1.0,
+        description=(
+            "Theoretical: 10x wage gap = qualitatively different material "
+            "conditions (core bourgeoisie vs periphery proletariat)."
+        ),
+    )
+    wage_ceiling_low_ratio: float = Field(
+        default=2.0,
+        ge=1.0,
+        description=(
+            "Theoretical: <2x wage gap = roughly similar material conditions "
+            "(within same class fraction)."
+        ),
+    )
+    wage_ceiling_min: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Theoretical: extreme wage gaps severely limit but don't eliminate "
+            "solidarity potential."
+        ),
+    )
+    wage_ceiling_max: float = Field(
+        default=0.9,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Theoretical: similar wages allow strong but not unlimited "
+            "solidarity (other factors still matter)."
+        ),
+    )
+    shared_exploitation_bonus: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Theoretical: matches _REPRO_EXTERNALIZATION_FACTOR=0.2. "
+            "Shared enemy raises solidarity potential."
+        ),
+    )
+
+    # Purge resilience (US4)
+    purge_removal_rate: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Codebase precedent: matches TopologyDefines.resilience_removal_rate=0.2. "
+            "Fraction removed during bifurcation-specific purge test."
+        ),
+    )
+
+
 class GameDefines(BaseModel):
     """Centralized game coefficients extracted from hardcoded values.
 
@@ -2644,6 +2778,8 @@ class GameDefines(BaseModel):
     organization: OrganizationDefines = Field(default_factory=OrganizationDefines)
     # OODA Loop System (Feature 032)
     ooda: OODADefines = Field(default_factory=OODADefines)
+    # Bifurcation Topology Analysis (Feature 033)
+    bifurcation: BifurcationDefines = Field(default_factory=BifurcationDefines)
 
     # Legacy flat attributes for backward compatibility
     # These delegate to the nested structure

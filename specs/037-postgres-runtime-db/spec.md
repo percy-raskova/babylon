@@ -7,6 +7,13 @@
 **Supersedes**: SQLite runtime database (`babylon/persistence/runtime_db.py`, `runtime_schema.py`)
 **Depends On**: Constitution, ADR030/031/032/033, Features 011-036
 
+## Clarifications
+
+### Session 2026-03-01
+
+- Q: Should Feature 036 infrastructure topology state (terrain, biocapacity, internet consciousness, infrastructure links) have dedicated persistence entities, or is it already covered by Node State/Edge State JSONB attributes? → A: Add dedicated infrastructure entities. Feature 036 state requires its own persistence tables, not generic JSONB blobs.
+- Q: Should Feature 002 contradiction field and edge curvature tables be included in the initial schema or deferred? → A: Include as standard (non-provisional) tables. Feature 002 is fully implemented in the codebase (3 engine systems, field registry, curvature formula, full test suite), so these are required tables, not forward-looking.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Simulation State Survives Restarts (Priority: P1)
@@ -15,13 +22,13 @@ A player starts a game session, plays through several ticks, then closes the app
 
 **Why this priority**: Without reliable state persistence, no other feature matters. The simulation engine currently holds state in-memory; a crash or restart loses everything. This is the foundation that every other user story builds on.
 
-**Independent Test**: Start a game, advance 10 ticks, restart the application, verify all state matches pre-restart values exactly (node attributes, edge weights, community consciousness, hex economics).
+**Independent Test**: Start a game, advance 10 ticks, restart the application, verify all state matches pre-restart values exactly (node attributes, edge weights, community consciousness, hex economics, infrastructure topology).
 
 **Acceptance Scenarios**:
 
 1. **Given** a game at tick 42 with 35 nodes, 55 edges, 14 communities, and 1500 hex cells, **When** the application restarts and reloads the session, **Then** all state values match the pre-restart snapshot exactly (zero data loss).
 2. **Given** a game session in progress, **When** the engine completes a tick, **Then** the full state snapshot is persisted before the player sees results, ensuring crash safety.
-3. **Given** a game session with active player organizations, **When** a new tick begins, **Then** the engine hydrates the complete state from persistent storage, including graph metadata (economy, state finances, tick dynamics), community memberships, and spatial hex data.
+3. **Given** a game session with active player organizations, **When** a new tick begins, **Then** the engine hydrates the complete state from persistent storage, including graph metadata (economy, state finances, tick dynamics), community memberships, spatial hex data, and infrastructure topology (terrain, biocapacity, internet access).
 
 ______________________________________________________________________
 
@@ -147,7 +154,7 @@ ______________________________________________________________________
 
 - **FR-005**: System MUST persist complete state snapshots each tick (full snapshots, not diffs) covering graph nodes (4 types: social_class, territory, organization, key_figure), graph edges (all edge types), graph-level metadata (economy, state finances, tick dynamics), and community hypergraph state.
 - **FR-006**: System MUST persist per-hex economic state (~1,500 rows per tick for tri-county Detroit) including capital composition, employment, departmental shares, profit rate, and exploitation rate.
-- **FR-007**: System MUST hydrate complete simulation state from persistent storage at tick start, reconstructing nodes, edges, metadata, community hypergraph, and hex grid.
+- **FR-007**: System MUST hydrate complete simulation state from persistent storage at tick start, reconstructing nodes, edges, metadata, community hypergraph, hex grid, and infrastructure topology.
 - **FR-008**: System MUST scope ALL simulation data by session identifier to ensure complete isolation between concurrent games.
 - **FR-009**: System MUST persist pre-aggregated tick summaries for time-series display including key economic ratios, edge mode counts, organization counts, and event counts.
 - **FR-010**: System MUST persist tick replay metadata including RNG state, mutation summaries, invariant checks, per-system timings, and total wall time.
@@ -164,6 +171,12 @@ ______________________________________________________________________
 - **FR-015**: System MUST maintain a static hex cell reference table mapping H3 indices to county FIPS codes, parent cells, and geographic boundaries.
 - **FR-016**: System MUST support spatial queries filtering hex cells by geographic region (county, polygon intersection).
 - **FR-017**: System MUST support time-series queries on individual hex cells or aggregated county regions.
+
+**Infrastructure Topology (Feature 036)**
+
+- **FR-026**: System MUST persist per-hex terrain classification (land/water/resource type, coverage fractions) and biocapacity stock state (stock type, initial value, current value, depletion status) each tick.
+- **FR-027**: System MUST persist per-edge infrastructure link state (link type, capacity per flow category, condition/health, ownership) and aggregated edge capacity each tick.
+- **FR-028**: System MUST persist per-hex internet access state (access level, response mode, surveillance coupling) and internet consciousness field values each tick.
 
 **Archival Pipeline**
 
@@ -194,12 +207,16 @@ ______________________________________________________________________
 - **Hex Cell**: Static spatial reference mapping H3 indices to geographic boundaries and county assignments. Shared across sessions.
 - **Hex State**: Per-tick economic state of each hex cell. Contains capital composition, employment, departmental shares, and derived ratios.
 - **Action Result**: Resolution outcome of a player action. Contains initiative score, cost, success flag, and state deltas applied.
-- **Contradiction Field**: Per-tick dialectical field values at each node (exploitation, immiseration, imperial rent, displacement) with spatial and temporal derivatives.
-- **Edge Curvature**: Ollivier-Ricci curvature per edge, recomputed on topology changes. Contains per-field gradients.
+- **Contradiction Field**: Per-tick dialectical field values at each node (exploitation, immiseration, imperial rent, displacement) with spatial Laplacian and temporal derivatives (df/dt, d2f/dt2). Computed by ContradictionFieldSystem and FieldDerivativeSystem each tick.
+- **Edge Curvature**: Ollivier-Ricci curvature per edge, computed via Wasserstein-1 optimal transport LP. Contains per-field gradients along each edge. Recomputed by FieldDerivativeSystem.
 - **Simulation Event**: Append-only ledger of simulation events (uprisings, repressions, edge transitions, etc.) with tick, type, entity, and detail payload.
 - **Tick Summary**: Pre-aggregated metrics per tick for time-series endpoints: economic totals, ratios, edge counts, organization counts, event counts.
 - **Tick Log**: Deterministic replay metadata: RNG state, mutation summaries, invariant checks, per-system timings.
 - **Trace Entry**: Structured execution trace event: system name, verbosity level, event type, optional node reference, and data payload.
+- **Terrain State**: Per-tick terrain classification for each hex cell. Contains land/water/resource type and coverage fractions. Derived from Natural Earth data at initialization, mutable during simulation.
+- **Biocapacity State**: Per-tick biocapacity stock for each hex cell. Contains stock type, initial value, current value, depletion history, and depletion flag. Tracks ecological resource dynamics.
+- **Infrastructure Link State**: Per-tick infrastructure link on graph edges. Contains link type, capacity per flow category, condition/health, and ownership. Tracks transport and utility infrastructure.
+- **Internet Access State**: Per-tick internet access and consciousness field for each hex cell. Contains access level, response mode (permit/throttle/sever), and surveillance coupling. Tracks state apparatus control of information flow.
 - **Document Chunk**: Text chunk from theory or game corpus with vector embedding for semantic similarity search. Optionally scoped to a session.
 
 ## Success Criteria *(mandatory)*
@@ -234,4 +251,4 @@ ______________________________________________________________________
 - **ADR031**: Tick-keyed temporal storage pattern with (session_id, tick, entity_id) composite keys
 - **ADR032**: OODA action system (action results, initiative scoring)
 - **Features 011-036**: All simulation subsystems that produce state requiring persistence
-- **Feature 002**: Contradiction field topology (forward-looking schema, may adjust during implementation)
+- **Feature 002**: Contradiction field topology (fully implemented: ContradictionFieldSystem, FieldDerivativeSystem, EdgeTransitionSystem, FieldRegistry, Ollivier-Ricci curvature)

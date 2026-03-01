@@ -331,32 +331,47 @@ class InternetAccessManager(Protocol):
         ``specs/036-infrastructure-topology/spec.md``: FR-023 through FR-029
     """
 
-    def initialize_from_broadband(
-        self,
-        broadband_data: dict[str, float],
-        hex_to_county: dict[str, str],
-        access_threshold: float,
-    ) -> dict[str, InternetAccessState]:
-        """Initialize internet access from FCC broadband data.
+    def get_state(self, h3_index: str) -> InternetAccessState | None:
+        """Get internet state for a hex.
 
         Args:
-            broadband_data: County FIPS to broadband penetration percentage.
-            hex_to_county: Mapping of h3_index to county FIPS.
-            access_threshold: Minimum penetration for internet_access=True.
+            h3_index: H3 cell identifier.
+
+        Returns:
+            Internet access state, or None if not initialized.
+        """
+        ...
+
+    def set_state(self, state: InternetAccessState) -> None:
+        """Set internet state for a hex.
+
+        Args:
+            state: Internet access state to store.
+        """
+        ...
+
+    def get_all_states(self) -> dict[str, InternetAccessState]:
+        """Get all internet states.
 
         Returns:
             Dict mapping h3_index to InternetAccessState.
         """
         ...
 
-    def get_access(self, h3_index: str) -> InternetAccessState | None:
-        """Get internet access state for a hex.
+    def initialize_from_broadband(
+        self,
+        broadband: dict[str, float],
+        hex_to_county: dict[str, str],
+        quality_data: dict[str, float] | None,
+        water_hexes: set[str] | None,
+    ) -> None:
+        """Initialize internet access from FCC broadband data.
 
         Args:
-            h3_index: H3 cell identifier.
-
-        Returns:
-            Internet access state, or None if hex not tracked.
+            broadband: County FIPS → penetration fraction [0.0, 1.0].
+            hex_to_county: H3 index → county FIPS mapping.
+            quality_data: County FIPS → high-speed fraction.
+            water_hexes: Set of H3 indices classified as WATER (EC-009).
         """
         ...
 
@@ -365,34 +380,36 @@ class InternetAccessManager(Protocol):
         h3_index: str,
         org_id: str,
         opsec_investment: float,
-        tradeoff_ratio: float,
+        infra_defines: object,
     ) -> OpsecResult:
-        """Apply COUNTER_INTEL action to reduce surveillance coupling.
+        """Apply OPSEC to reduce surveillance coupling at a hex.
 
         Args:
-            h3_index: H3 cell where OPSEC is applied.
+            h3_index: Target hex.
             org_id: Organization investing in OPSEC.
-            opsec_investment: Amount of OPSEC investment (AP spent).
-            tradeoff_ratio: Coupling-reduction-to-throughput-loss ratio.
+            opsec_investment: Investment magnitude [0.0, 1.0].
+            infra_defines: InfrastructureDefines for opsec_tradeoff_ratio.
 
         Returns:
-            OpsecResult documenting the coupling and throughput changes.
+            OpsecResult with before/after coupling and throughput reduction.
         """
         ...
 
     def set_response_mode(
         self,
         h3_index: str,
-        new_mode: str,
+        mode: str,
+        infra_defines: object,
     ) -> InternetResponseResult:
-        """Set state apparatus response mode for a hex's internet access.
+        """Set state apparatus internet response mode for a hex.
 
         Args:
-            h3_index: H3 cell to modify.
-            new_mode: New response mode (PERMIT, THROTTLE, or SEVER).
+            h3_index: Target hex.
+            mode: InternetResponseMode value.
+            infra_defines: InfrastructureDefines for throttle parameters.
 
         Returns:
-            InternetResponseResult with effects of the mode change.
+            InternetResponseResult with effects.
         """
         ...
 
@@ -431,16 +448,16 @@ class InternetFieldOperator(Protocol):
 
     def generate_surveillance(
         self,
-        field_values: dict[str, float],
-        state_analytical_capacity: float,
+        flow_magnitudes: dict[str, float],
+        analytical_capacity: float,
     ) -> list[SurveillanceResult]:
-        """Generate state intelligence from internet consciousness flows.
+        """Generate surveillance intelligence from consciousness flow.
 
         Args:
-            field_values: Current consciousness field values per h3_index.
-            state_analytical_capacity: State apparatus analytical capacity.
+            flow_magnitudes: H3 index → consciousness flow magnitude.
+            analytical_capacity: State apparatus analytical capacity [0.0, 1.0].
 
         Returns:
-            List of surveillance results for hexes with nonzero intelligence.
+            List of SurveillanceResult for each hex with surveillance.
         """
         ...

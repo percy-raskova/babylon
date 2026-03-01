@@ -32,7 +32,7 @@ Extend TopologyMonitor with consciousness-weighted bifurcation analysis that pre
 | I.18 Material-Ideological Distinction | ALIGNED | Gap between material position and ideological consciousness IS the consciousness weighting |
 | II.5 AI Observes, Never Controls | ALIGNED | BifurcationMonitor is read-only observer, no graph writes |
 | II.7 Edges vs Hyperedges | ALIGNED | Uses NetworkX (solidarity edges) + XGI (community hyperedges) as separate layers |
-| III.1 No Magic Constants | MUST VERIFY | All thresholds in BifurcationDefines with documented sources |
+| III.1 No Magic Constants | ALIGNED | All 12 BifurcationDefines constants have provenance documented in data-model.md: 2 codebase precedent (steepness, purge_rate), 1 engineering (epsilon), 5 theoretical/spec-defined (wage thresholds, exploitation bonus), 4 behavior-tuned with derivation (sigmoid midpoint, filter threshold, dead zone, amplifier scale) |
 | VIII.1 Solidarity as Scalar | ALIGNED | Nonlinear sigmoid explicitly prevents scalar multiplication |
 | VIII.9 Community as Pairwise Edge | ALIGNED | Communities accessed via XGI hyperedges, not combinatorial pairs |
 

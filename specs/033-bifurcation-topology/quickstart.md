@@ -9,10 +9,8 @@ No new dependencies. Uses existing NetworkX, XGI, and Pydantic.
 ### Basic — Register BifurcationMonitor
 
 ```python
-from babylon.engine.bifurcation_monitor import (
-    BifurcationMonitor,
-    InMemoryCommunityStateStore,
-)
+from babylon.engine.bifurcation_monitor import BifurcationMonitor
+from babylon.engine.community_state_store import InMemoryCommunityStateStore
 from babylon.engine.simulation import Simulation
 
 # Community states from existing CommunitySystem wiring

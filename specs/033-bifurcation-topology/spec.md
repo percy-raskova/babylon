@@ -176,10 +176,10 @@ ______________________________________________________________________
 
 - **SC-001**: The assimilation trap test passes — a graph with 20+ cross-line solidarity edges but collective_identity below 0.2 across all marginalized communities classifies as "fascist", not "revolutionary".
 - **SC-002**: Pure within-group solidarity (zero cross-line edges) always classifies as "fascist" regardless of collective_identity levels.
-- **SC-003**: Cross-line solidarity with collective_identity above 0.7 across marginalized communities classifies as "revolutionary" when topological resilience is adequate (mesh topology, not star).
+- **SC-003**: Cross-line solidarity with collective_identity above 0.7 across marginalized communities classifies as "revolutionary" when resilience_under_targeted_purge >= 0.5 (mesh topology, not star).
 - **SC-004**: Removing a single hub node from a star-topology solidarity network drops resilience below 0.3; removing any single node from a mesh-topology network keeps resilience above 0.7.
 - **SC-005**: Bridge potential for a community with collective_identity=0.1 is less than 15% of the same community's bridge potential at collective_identity=0.8.
-- **SC-006**: Lowering legitimation index from 0.8 to 0.2 produces a measurably more decisive bifurcation result (larger absolute tendency score, less "indeterminate" classification).
+- **SC-006**: Lowering legitimation index from 0.8 to 0.2 shifts the overall tendency from "indeterminate" toward "fascist" or "revolutionary" (exits the dead zone), or if already outside the dead zone, increases the weakest axis's antagonism-dominance ratio by at least 0.3.
 - **SC-007**: All analysis functions execute within the existing tick budget — the full bifurcation computation adds no more than 10% overhead to an average simulation tick.
 - **SC-008**: Per-axis analysis correctly identifies antagonism-dominant vs solidarity-dominant for each contradiction axis independently, verified across at least 5 distinct graph configurations per axis.
 

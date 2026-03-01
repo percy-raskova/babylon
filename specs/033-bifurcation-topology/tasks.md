@@ -183,7 +183,7 @@ ______________________________________________________________________
 
 - [ ] T029 [US5] Implement helper to extract solidarity subgraph (raw + consciousness-filtered) in `src/babylon/bifurcation/analysis.py`
 - [ ] T030 [US5] Implement helper to collect agent memberships from graph node attributes in `src/babylon/bifurcation/analysis.py`
-- [ ] T031 [US5] Implement `bifurcation_tendency()` orchestrator in `src/babylon/bifurcation/analysis.py` per contracts/analysis.md — combines per-axis tendency (weakest-link), bridge potential, legitimation amplifier, two-pass topology (raw + filtered Betti), classification logic (revolutionary/fascist/indeterminate)
+- [ ] T031 [US5] Implement `bifurcation_tendency()` orchestrator in `src/babylon/bifurcation/analysis.py` per contracts/analysis.md — combines per-axis tendency (weakest-link), bridge potential, legitimation amplifier, two-pass topology (raw + filtered Betti), classification logic (revolutionary/fascist/indeterminate), including FR-014 degenerate case handling (no SOLIDARITY edges→"fascist", no marginalized communities→"indeterminate", empty hypergraph→unweighted fallback with warning)
 
 **Checkpoint**: `poetry run pytest tests/unit/bifurcation/test_analysis.py -v` — all GREEN, including the assimilation trap
 
@@ -198,6 +198,7 @@ ______________________________________________________________________
 - [ ] T034 [P] Populate `src/babylon/bifurcation/__init__.py` with public API exports per plan.md (bifurcation_tendency, consciousness_weighted_solidarity, compute_betti_numbers, detect_bridges, compute_solidarity_ceiling, compute_legitimation_amplifier, all types)
 - [ ] T035 Run full test suite `poetry run pytest tests/unit/bifurcation/ tests/integration/topology/test_bifurcation_integration.py -v` and fix any failures
 - [ ] T036 Run `poetry run mypy src/babylon/bifurcation/ src/babylon/engine/bifurcation_monitor.py src/babylon/engine/community_state_store.py --strict` and fix type errors
+- [ ] T037 [P] Benchmark `bifurcation_tendency()` performance per SC-007 — construct a representative graph (50+ nodes, 100+ edges), time the full analysis, verify <10% overhead vs baseline tick duration (use `time.perf_counter` or `pytest-benchmark`)
 
 ______________________________________________________________________
 

@@ -89,20 +89,20 @@ Material constraints on solidarity formation between two agents.
 
 New section in GameDefines. Frozen Pydantic model.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `consciousness_sigmoid_midpoint` | `float` | 0.4 | CI value at sigmoid inflection point |
-| `consciousness_sigmoid_steepness` | `float` | 10.0 | Slope at inflection (higher = sharper cliff) |
-| `consciousness_filter_threshold` | `float` | 0.2 | Minimum sigmoid output to include edge in filtered subgraph |
-| `indeterminate_dead_zone` | `float` | 0.2 | Score within [-x, +x] of threshold = "indeterminate" |
-| `axis_tendency_epsilon` | `float` | 0.001 | Division guard for cross/lateral ratio |
-| `legitimation_amplifier_scale` | `float` | 2.0 | Max crisis amplifier when legitimation → 0 |
-| `wage_ceiling_high_ratio` | `float` | 10.0 | Wage gap ratio above which ceiling = 0.3 |
-| `wage_ceiling_low_ratio` | `float` | 2.0 | Wage gap ratio below which ceiling = 0.9 |
-| `wage_ceiling_min` | `float` | 0.3 | Ceiling for agents with extreme wage gap |
-| `wage_ceiling_max` | `float` | 0.9 | Ceiling for agents with similar wages |
-| `shared_exploitation_bonus` | `float` | 0.2 | Bonus for shared exploitation source |
-| `purge_removal_rate` | `float` | 0.2 | Fraction removed during bifurcation-specific purge test |
+| Field | Type | Default | Provenance | Description |
+|-------|------|---------|------------|-------------|
+| `consciousness_sigmoid_midpoint` | `float` | 0.4 | Behavior-tuned: inflection below center so breakage cliff catches assimilated communities (CI<0.4). Analogous to `SurvivalDefines.default_subsistence=0.3` (P(S\|A) midpoint). | CI value at sigmoid inflection point |
+| `consciousness_sigmoid_steepness` | `float` | 10.0 | Codebase precedent: matches `SurvivalDefines.steepness_k=10.0` (P(S\|A) sigmoid sharpness). | Slope at inflection (higher = sharper cliff) |
+| `consciousness_filter_threshold` | `float` | 0.2 | Derived: sigmoid(CI=0.27, midpoint=0.4, k=10)≈0.21. Filters edges where consciousness weighting drops below 20% of full strength. | Minimum sigmoid output to include edge in filtered subgraph |
+| `indeterminate_dead_zone` | `float` | 0.2 | Game design: analogous to `CrisisDefines.bifurcation_event_threshold=0.5` and `LifecycleDefines.legitimation_unstable_threshold=0.5`. Prevents oscillation near boundary. | Score within [-x, +x] of threshold = "indeterminate" |
+| `axis_tendency_epsilon` | `float` | 0.001 | Engineering: matches `CrisisDefines.class_burden_epsilon=0.001` — domain-specific division guard. | Division guard for cross/lateral ratio |
+| `legitimation_amplifier_scale` | `float` | 2.0 | Behavior-tuned: at zero legitimation, crisis intensity doubles. Compare `_DEFAULT_CRISIS_AMPLIFIER=2.5` (legacy crisis multiplier). Conservative start. | Max crisis amplifier when legitimation → 0 |
+| `wage_ceiling_high_ratio` | `float` | 10.0 | Theoretical: spec-defined. 10x wage gap = qualitatively different material conditions (core bourgeoisie vs periphery proletariat scale). | Wage gap ratio above which ceiling = 0.3 |
+| `wage_ceiling_low_ratio` | `float` | 2.0 | Theoretical: spec-defined. <2x wage gap = roughly similar material conditions (within same class fraction). | Wage gap ratio below which ceiling = 0.9 |
+| `wage_ceiling_min` | `float` | 0.3 | Theoretical: spec-defined. Extreme wage gaps severely limit but don't eliminate solidarity potential. | Ceiling for agents with extreme wage gap |
+| `wage_ceiling_max` | `float` | 0.9 | Theoretical: spec-defined. Similar wages allow strong but not unlimited solidarity (other factors still matter). | Ceiling for agents with similar wages |
+| `shared_exploitation_bonus` | `float` | 0.2 | Theoretical: spec-defined. Matches `_REPRO_EXTERNALIZATION_FACTOR=0.2` magnitude pattern. Shared enemy raises solidarity potential. | Bonus for shared exploitation source |
+| `purge_removal_rate` | `float` | 0.2 | Codebase precedent: matches `TopologyDefines.resilience_removal_rate=0.2` (20% targeted purge). Same concept, parallel domain. | Fraction removed during bifurcation-specific purge test |
 
 ## Event Types
 

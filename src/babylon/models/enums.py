@@ -77,6 +77,8 @@ class EdgeType(StrEnum):
         CLIENT_STATE: Imperial subsidy to maintain client state stability
         TENANCY: Occupant -> Territory relationship (Sprint 3.5.1)
         ADJACENCY: Territory -> Territory spatial connectivity (Sprint 3.5.1)
+        TRANSACTIONAL: Service-for-support exchange (org-community, Feature 032)
+        SOLIDARISTIC: Deep mutual commitment (org-community, Feature 032)
     """
 
     EXPLOITATION = "exploitation"
@@ -94,6 +96,9 @@ class EdgeType(StrEnum):
     EMPLOYMENT = "employment"  # Business → SocialClass (employer relationship)
     COMMAND = "command"  # KeyFigure → KeyFigure (internal hierarchy)
     PRESENCE = "presence"  # Organization → Territory (operational footprint)
+    # OODA Loop System (Feature 032)
+    TRANSACTIONAL = "transactional"  # Organization → Community (service-for-support exchange)
+    SOLIDARISTIC = "solidaristic"  # Organization → Community (deep mutual commitment)
 
 
 def resolve_edge_type(raw: str | EdgeType | None) -> EdgeType | None:

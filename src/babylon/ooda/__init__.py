@@ -23,6 +23,7 @@ from babylon.ooda.initiative import (
     update_momentum,
 )
 from babylon.ooda.layer0 import process_layer0
+from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.lifecycle_capacity import compute_lifecycle_modifier, elder_legitimacy_bonus
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.ooda.types import (
@@ -50,6 +51,7 @@ __all__ = [
     "compute_initiative_score",
     "elder_legitimacy_bonus",
     "process_layer0",
+    "process_layer3",
     "resolve_action_order",
     "select_npc_actions",
     "update_momentum",

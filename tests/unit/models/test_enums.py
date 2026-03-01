@@ -152,8 +152,8 @@ class TestEdgeType:
             EdgeType("friendship")  # Not a structural relationship
 
     def test_edge_type_count(self) -> None:
-        """Exactly 14 edge types defined (9 original + 5 organization Feature 031)."""
-        assert len(EdgeType) == 14
+        """Exactly 16 edge types defined (9 original + 5 org + 2 OODA)."""
+        assert len(EdgeType) == 16
 
     def test_territory_edge_types_exist(self) -> None:
         """Territory edge types for Layer 0 (Sprint 3.5.1).

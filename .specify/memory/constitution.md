@@ -2,34 +2,49 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.8.1 → 1.8.2
-Bump Rationale: Added Natural Earth SQLite to III.4 approved data sources — PATCH
-
-Previous Version Change: 1.8.0 → 1.8.1
-Previous Bump Rationale: Added Chetty Opportunity Atlas to III.4 approved data sources — PATCH
+Version Change: 1.8.2 → 1.10.0
+Bump Rationale: Two MINOR additions — Article X (Deployment Infrastructure,
+  6 principles) and II.8 (Client as Presentation Layer). Each is a new
+  principle/section → MINOR per governance policy. Combined: 1.9.0 + 1.10.0.
 
 Modified Principles:
-  - II.7 expanded with three hyperedge categories (contradiction pairs,
-    institutional exclusion, lifecycle phases)
+  - II: Added II.8 Client as Presentation Layer
 
 Added Sections:
-  - I.16 Organization vs Institution (voluntary coordination vs crystallized relations)
-  - I.17 OODA Loop as Organizational Metabolism (action capacity per turn)
-  - I.18 Material-Ideological Distinction on Hyperedges (class-in-itself vs class-for-itself)
-  - II.7 Category 1: Contradiction Pairs (only marginalized side as hyperedge)
-  - II.7 Category 2: Institutional Exclusion (denial of access, not bilateral contradiction)
-  - II.7 Category 3: Lifecycle Phases / D-P-D' Circuit (temporal, not identity)
-  - VIII.10 Hegemonic Community as Hyperedge (anti-pattern)
+  - II.8 Client as Presentation Layer (browser as viewport, JSON contracts,
+    disposable frontend, React pragmatic choice)
+  - X. Deployment Infrastructure (new article, 6 principles):
+    X.1 Bare Metal, Ansible-Managed
+    X.2 Terraform Provisions, cloud-init Bridges, Ansible Configures
+    X.3 Postgres Bare Metal from PGDG
+    X.4 systemd as Sole Supervisor
+    X.5 Cloudflare Edge, Hetzner Compute
+    X.6 Solo-Developer Constraint
 
 Removed Sections: None
 
 Cross-References Added:
-  - I.16 references V (player builds orgs, state operates institutions)
-  - I.17 references V (OODA constrains verb availability per tick)
-  - I.18 references I.7 (gap between material/ideological = political struggle terrain)
-  - VIII.10 references II.7 Category 1
+  - II.8 references II.5 (AI Observes — browser is third observer)
+  - II.8 references II.6 (State is Data — client-side complement)
+  - II.8 references VII.1 (UI Observes, Never Controls)
+  - X.3 references II.6 (Hydration Pattern — Postgres replaces SQLite for runtime)
+  - X.5 references II.5 (AI via Workers AI on Cloudflare edge)
+  - X.6 references IX (governance filter for infrastructure additions)
 
-Previous Follow-up TODOs (1.8.0):
+Templates Requiring Updates:
+  ✅ plan-template.md: No hardcoded principle numbers
+  ✅ spec-template.md: No constitution references
+  ✅ tasks-template.md: No constitution references
+  ✅ checklist-template.md: No constitution references
+  ✅ agent-file-template.md: No constitution references
+
+Follow-up TODOs:
+  - SPEC: Verify spec 038 section 2.4 aligns with II.8 (elevates to
+    constitutional commitment)
+  - CODE: Ensure all future frontend specs reference II.8 for JSON
+    contract requirement
+
+Previous Follow-up TODOs (1.8.2):
   - CODE: Restructure CommunityType enum per three-category taxonomy:
     Category 1 hegemonic: rename WHITE→SETTLER, add PATRIARCHAL
     Category 1 marginalized: keep NEW_AFRIKAN, FIRST_NATIONS, CHICANO, WOMEN, TRANS
@@ -39,23 +54,17 @@ Previous Follow-up TODOs (1.8.0):
   - CODE: Update tests to reflect new taxonomy
   - SPEC: Update Feature 022 spec FR-003 with corrected community types
 
-Follow-up TODOs: None
-
-Templates Requiring Updates:
-  ✅ plan-template.md: No hardcoded principle numbers
-  ✅ spec-template.md: No constitution references
-  ✅ tasks-template.md: No constitution references
-  ✅ checklist-template.md: No constitution references
-  ✅ agent-file-template.md: No constitution references
-
 Previous Version History:
+  1.8.2 (2026-03-01): Added Natural Earth SQLite to III.4 approved data sources
+  1.8.1 (2026-02-27): Added Chetty Opportunity Atlas to III.4 approved data sources
+  1.8.0 (2026-02-26): Added I.16-I.18 (Organization, OODA, Material-Ideological),
+                      expanded II.7 with three hyperedge categories, added VIII.10
   1.7.0 (2026-02-25): Added V. State AI Verbs (6 verbs, asymmetric)
   1.6.1 (2026-02-25): Structural reorganization — annex architecture, core condensed ~78%
   1.6.0 (2026-02-25): Added II.7 Edges vs Hyperedges, VIII.9 Community as Pairwise Edge
   1.5.0 (2026-02-24): Added I.12-I.15 (Catastrophe Surface, Principal Contradiction,
                       Contradiction Internals, Edge Mode Transition Topology)
   1.4.0 (2026-02-24): Added V. Player Action Vocabulary (9 verbs, dual grouping)
-  1.8.1 (2026-02-27): Added Chetty Opportunity Atlas to III.4 approved data sources
   1.3.2 (2026-02-05): Added dispossession data sources to III.4 table
   1.3.1 (2026-02-05): Added PWT and Census Trade to III.4 approved sources
   1.3.0 (2026-01-31): Added VIII. Visual Design Principles (new article)
@@ -132,6 +141,8 @@ Governing document for the political simulation engine testing MLM-TW political 
 - **Category 1 — Contradiction Pairs**: Both hegemonic and marginalized sides are real hyperedges with members, institutions, and political projects. SETTLER ↔ NEW_AFRIKAN/FIRST_NATIONS/CHICANO (land, imperial rent, carceral labor). PATRIARCHAL ↔ WOMEN/TRANS (unwaged reproductive labor, Dept III). Hegemonic hyperedges recruit, organize, and defend extraction positions.
 - **Category 2 — Institutional Exclusion**: Only the marginalized side exists as a real hyperedge. No paired oppressor community — oppression flows through institutional defaults. DISABLED (built environment assumes able-bodiedness), QUEER (institutional heteronormativity), UNDOCUMENTED (legal exclusion), INCARCERATED (carceral system, civil death).
 - **Category 3 — Lifecycle Phases (D-P-D' Circuit)**: Temporal positions in the intergenerational lifecycle. NOT identity communities — structural phases with distinct material conditions. YOUTH (D: pre-productive, dependent), ADULT (P: sells labor-power), ELDER (D': post-productive, legitimation bargain). Dependency ratio = (Pop_D + Pop_D') / Pop_P.
+
+**8. Client as Presentation Layer** — The browser is a viewport into server-computed state, not a participant in computation. The frontend receives game state as JSON, renders it, and emits player intents as JSON. It never runs simulation logic, never hydrates graphs, never resolves ticks. The Django REST API is the durable contract; the frontend framework is disposable and replaceable without affecting the engine, the API, or the database. JSON is the interchange format at every system boundary.
 
 ## III. Methodological Constraints
 
@@ -213,8 +224,24 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 **Amendment**: Propose → demonstrate consistency → update artifacts → increment version.
 **Versioning**: MAJOR (removal/redefinition), MINOR (new principle), PATCH (clarification).
-**Compliance triggers**: New system, formula change, data source addition, scope expansion, UI implementation.
+**Compliance triggers**: New system, formula change, data source addition, scope expansion, UI implementation, infrastructure/deployment change.
+
+## X. Deployment Infrastructure
+
+> Full article: `constitution/article-x-infrastructure.md`
+
+**1. Bare Metal, Ansible-Managed** — No Docker, no Nix, no containerization. Everything installs on the host OS via apt packages and is configured declaratively by Ansible playbooks. The entire server state is described in version-controlled roles. Nothing is installed by hand on the VPS.
+
+**2. Terraform Provisions, cloud-init Bridges, Ansible Configures** — Terraform creates and destroys cloud resources (servers, firewalls, DNS records, object storage). cloud-init creates the deploy user on first boot — the only thing it does. Ansible configures everything after. These three tools have non-overlapping responsibilities.
+
+**3. Postgres Bare Metal from PGDG** — PostgreSQL installs from the upstream PGDG apt repository directly on the host. Extensions (PostGIS, pgvector) install as apt packages. Ansible's `community.postgresql` collection manages database creation, roles, extensions, and pg_hba declaratively. Postgres listens on Unix socket only — never exposed to the network.
+
+**4. systemd as Sole Supervisor** — All processes (Postgres, Gunicorn, Nginx, Woodpecker) run as systemd units. No additional supervisors. Service dependencies, restart policies, and cgroup resource limits are declared in unit files deployed by Ansible.
+
+**5. Cloudflare Edge, Hetzner Compute** — Nothing computes on Cloudflare; nothing reaches users without Cloudflare first. Cloudflare handles DNS, SSL, DDoS, WAF, CDN, R2 storage, and Workers AI. Hetzner handles Django, Postgres, NetworkX, and CI/CD. Division of labor is strict — no function is shared between the two.
+
+**6. Solo-Developer Constraint** — Every infrastructure component is filtered through: does this require a second full-time job to maintain? If yes, reject it. Kubernetes, Prometheus+Grafana, HashiCorp Vault, service meshes, and container orchestration are explicitly rejected until scale demands them.
 
 ______________________________________________________________________
 
-**Version**: 1.8.2 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-03-01
+**Version**: 1.10.0 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-03-01

@@ -183,3 +183,72 @@ PATRIARCHAL has institutions (patriarchal family structure, gendered wage system
 | ELDER | D' (Dependent') | Post-productive. The D' promise (Social Security, pensions) is the legitimation bargain. |
 
 Universal traversal, temporal permeability. Dependency ratio = (Pop_D + Pop_D') / Pop_P.
+
+### 8. Client as Presentation Layer
+
+The browser is a viewport into server-computed state, not a participant
+in computation. The frontend receives game state as JSON, renders it,
+and emits player intents as JSON. It never runs simulation logic, never
+hydrates graphs, never resolves ticks. The Django REST API is the durable
+contract; the frontend framework is disposable and replaceable without
+affecting the engine, the API, or the database. JSON is the interchange
+format at every system boundary.
+
+**The Request Path**:
+
+```
+Player intent (click/input)
+  → React component emits JSON action
+    → Cloudflare (X.5: DNS, SSL, WAF)
+      → Nginx (reverse proxy)
+        → Gunicorn (WSGI)
+          → Django REST API (durable contract)
+            → Engine (NetworkX, Systems, Formulas)
+              → Postgres (state persistence)
+            ← Engine returns new state
+          ← Django serializes to JSON
+        ← Gunicorn returns response
+      ← Nginx forwards
+    ← Cloudflare forwards
+  ← React renders new state
+```
+
+**Three Architectural Commitments**:
+
+1. **The client is a viewport, not a brain.** The browser renders state
+   received as JSON. It never runs simulation logic, never computes tick
+   resolution, never touches the graph directly. If the frontend
+   disappears, the engine still works. This is the client-side complement
+   to II.5 (AI Observes, Never Controls) — the browser is a third
+   observer alongside the AI narrative layer.
+
+2. **JSON is the boundary contract.** React ↔ Django, Django ↔ Engine,
+   Engine ↔ Postgres — JSON at every seam. Any layer can be replaced
+   without touching the others. A `curl` and `jq` can inspect any
+   boundary. This extends II.6 (State is Data) to the network boundary.
+
+3. **The frontend is disposable.** The Django API is the durable surface.
+   React today, Godot tomorrow, a CLI tool, a different web framework —
+   all consume the same JSON contract. No frontend-specific logic leaks
+   into the engine or the API.
+
+**Why React (pragmatic, not aesthetic)**:
+
+React is chosen for AI-assisted development reliability, not technical
+merit. Svelte is arguably better for this use case (smaller bundles,
+less boilerplate, simpler mental model). But React's dominance in
+training data means higher vibe-coding reliability — AI tools produce
+more correct React code more often. This is a pragmatic choice,
+explicitly reversible, and documented as such.
+
+**Relationship to VII.1**: Article VII principle 1 (UI Observes, Never
+Controls) governs the visual design layer. II.8 governs the architectural
+layer. VII.1 says the UI emits intents and never mutates state. II.8 says
+the entire frontend is a replaceable viewport consuming a JSON contract.
+They are complementary — VII.1 constrains what the UI does; II.8
+constrains what the UI is.
+
+**Frontend Investment Deferral**: Frontend development is deferred until
+beta validates the engine. The engine, API, and database are the durable
+investments. The frontend is the last layer built and the first layer
+replaceable.

@@ -28,5 +28,7 @@ All features, formulas, and systems MUST be verifiable against this constitution
 - Data source addition
 - Scope expansion
 - **UI component implementation** (must verify against Article VII)
+- **Infrastructure or deployment change** (must verify against Article X;
+  solo-developer constraint X.6 requires constitutional amendment to override)
 
 Non-compliant code MUST be flagged and corrected before merge.

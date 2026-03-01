@@ -43,7 +43,6 @@ repos:
           - backoff>=2.0
           - ratelimit>=2.0
           - openai>=2.0
-          - nicegui>=2.0
           - sphinx>=7
           - pyproj>=3.5
           - shapely>=2.0

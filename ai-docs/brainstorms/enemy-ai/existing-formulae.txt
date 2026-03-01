@@ -1,0 +1,864 @@
+       COMPREHENSIVE ANALYSIS: EXISTING ECONOMIC FORMULAS, TENSORS, AND THEORETICAL PRIMITIVES IN BABYLON
+
+       Based on my thorough examination of the codebase, here is the complete inventory of existing mathematical
+       formulas, economic primitives, and theoretical structures that serve as building blocks for the OODA Loop
+       System.
+
+       ---
+       PART 1: FORMULA INVENTORY (17 CORE FORMULAS)
+
+       A. Fundamental Theorem of MLM-TW (4 formulas)
+
+       Module: src/babylon/formulas/fundamental_theorem.py
+
+       1. Imperial Rent (Phi)
+         - Formula: Φ = α × W_p × (1 - Ψ_p)
+         - Parameters: extraction_efficiency (α), periphery_wages, periphery_consciousness
+         - Returns: Value extracted from periphery
+         - Existing GameDefines: EconomyDefines.extraction_efficiency (default 0.8)
+       2. Labor Aristocracy Ratio
+         - Formula: W_c / V_c
+         - Parameters: core_wages, value_produced
+         - Returns: Ratio (>1 indicates superwages)
+         - Historical context: Empirically calibrated from FRED DFA 2015-2025
+       3. Is Labor Aristocracy Classifier
+         - Formula: W_c > V_c
+         - Parameters: core_wages, value_produced
+         - Returns: Boolean classification
+         - Connected to: Class position classifier (separate from imperial rent flow)
+       4. Consciousness Drift ODE
+         - Formula: dΨ/dt = k(1 - W_c/V_c) - λΨ + bifurcation
+         - Parameters:
+             - sensitivity_k: Material conditions sensitivity
+           - decay_lambda: Consciousness decay rate
+           - solidarity_pressure: Incoming solidarity edge strength
+           - wage_change: Negative signals crisis
+         - Includes: Fascist bifurcation routing (George Jackson framework)
+         - Existing GameDefines:
+             - BehavioralDefines.loss_aversion_lambda (2.25)
+           - ConsciousnessDefines.sensitivity_k (default varies)
+           - ConsciousnessDefines.decay_lambda (default varies)
+
+       ---
+       B. Survival Calculus (4 formulas)
+
+       Module: src/babylon/formulas/survival_calculus.py
+
+       5. Acquiescence Probability
+         - Formula: P(S|A) = 1 / (1 + e^(-k(wealth - threshold)))
+         - Parameters: wealth, subsistence_threshold, steepness_k
+         - Returns: Probability [0, 1]
+         - At threshold: exactly 0.5
+       6. Revolution Probability
+         - Formula: P(S|R) = cohesion / (repression + ε)
+         - Parameters: cohesion, repression, epsilon (precision constant)
+         - Returns: Probability [0, 1] capped at 1.0
+         - Existing GameDefines: PrecisionDefines.epsilon (default 1e-8)
+       7. Crossover Threshold
+         - Formula: Solves P(S|R) = P(S|A) for wealth
+         - Returns: Wealth level where revolution becomes rational
+         - Application: Determines when rupture events trigger
+       8. Loss Aversion
+         - Formula: amplified_loss = loss × λ (λ = 2.25)
+         - Parameters: value (negative for losses)
+         - Returns: Perceived magnitude
+         - Basis: Kahneman-Tversky behavioral economics
+         - Existing GameDefines: BehavioralDefines.loss_aversion_lambda (2.25)
+
+       ---
+       C. Unequal Exchange (4 formulas)
+
+       Module: src/babylon/formulas/unequal_exchange.py
+
+       9. Exchange Ratio
+         - Formula: ε = (L_p / L_c) × (W_c / W_p)
+         - Parameters: periphery_labor_hours, core_labor_hours, core_wage, periphery_wage
+         - Returns: Exchange ratio (>1 indicates exploitation)
+         - When ε=1: fair exchange; ε=2: 100% exploitation
+       10. Exploitation Rate
+         - Formula: rate = (ε - 1) × 100
+         - Parameters: exchange_ratio
+         - Returns: Exploitation as percentage
+       11. Value Transfer
+         - Formula: V_transfer = V_prod × (1 - 1/ε)
+         - Parameters: production_value, exchange_ratio
+         - Returns: Value transferred from periphery to core
+       12. Prebisch-Singer Effect
+         - Formula: P_new = P_initial × (1 + elasticity × production_increase)
+         - Parameters: initial_price, production_increase, elasticity
+         - Returns: New price after production increase
+         - Historical context: Terms of trade decline for commodity exporters
+
+       ---
+       D. Solidarity Transmission (1 formula)
+
+       Module: src/babylon/formulas/solidarity.py
+
+       13. Solidarity Transmission
+         - Formula: dΨ = σ × (Ψ_src - Ψ_tgt) (if Ψ_src > threshold AND σ > 0)
+         - Parameters:
+             - source_consciousness
+           - target_consciousness
+           - solidarity_strength (edge weight)
+           - activation_threshold (default 0.3)
+         - Returns: Consciousness delta
+         - Key property: Requires solidarity edge presence (fascist bifurcation)
+
+       ---
+       E. Ideological Routing (1 formula group)
+
+       Module: src/babylon/formulas/ideological_routing.py
+
+       14. Ideological Routing (George Jackson Framework)
+         - Theory: When material loss occurs, agitation energy routes to:
+             - Class consciousness (if solidarity present)
+           - National identity/fascism (if no solidarity)
+         - Formulas:
+             - agitation = |loss| × λ
+           - class_delta = agitation × solidarity_factor × 0.1
+           - nation_delta = agitation × (1 - solidarity_factor) × 0.1
+         - Parameters:
+             - wage_change
+           - wealth_change
+           - solidarity_pressure
+           - current_class_consciousness
+           - current_national_identity
+           - current_agitation
+           - agitation_decay (default 0.1)
+         - Existing GameDefines: ConsciousnessDefines.routing_scale (typically 0.1)
+
+       ---
+       F. TRPF (Tendency of Rate of Profit to Fall) (2 formulas)
+
+       Module: src/babylon/formulas/trpf.py
+
+       15. TRPF Efficiency Multiplier (Epoch 1 Surrogate)
+         - Formula: m = max(floor, 1.0 - coeff × tick)
+         - Parameters:
+             - tick (0-indexed)
+           - trpf_coefficient (default 0.0005)
+           - floor (default 0.1)
+         - Returns: Multiplier [0.1, 1.0]
+         - Timeline at defaults:
+             - tick 520 (10 years): 74% efficiency
+           - tick 1040 (20 years): 48% efficiency
+           - tick 1800+: floors at 10%
+         - Existing GameDefines: EconomyDefines.trpf_coefficient (0.0005)
+       16. Rent Pool Decay (Background Evaporation)
+         - Formula: pool_new = pool × (1 - decay_rate)
+         - Parameters: current_pool, decay_rate (default 0.002)
+         - Returns: Decayed pool value (≥0)
+         - Timeline at defaults:
+             - After 52 ticks (1 year): ~90% remaining
+           - After 1040 ticks (20 years): ~12% remaining
+         - Existing GameDefines: EconomyDefines.rent_pool_decay (0.002)
+       17. Rate of Profit (Epoch 2 Placeholder)
+         - Formula: p' = s / (c + v)
+         - Parameters: surplus_value, constant_capital, variable_capital
+         - Status: Placeholder for Epoch 2 (not yet fully implemented)
+         - Organic Composition: OCC = c / v
+
+       ---
+       G. Metabolic Rift (2 formulas)
+
+       Module: src/babylon/formulas/metabolic_rift.py
+
+       18. Biocapacity Delta
+         - Formula: dB = R - (E × η) where η is entropy factor
+         - Parameters:
+             - regeneration_rate
+           - max_biocapacity
+           - extraction_intensity
+           - current_biocapacity
+           - entropy_factor (default 1.2)
+         - Returns: Change in biocapacity (positive=regen, negative=depletion)
+         - Property: Extraction always costs more than raw value due to entropy
+       19. Overshoot Ratio
+         - Formula: O = C / B
+         - Parameters: total_consumption, total_biocapacity, max_ratio (default 999.0)
+         - Returns: Overshoot ratio (>1 = ecological overshoot)
+         - Property: When B≤0, returns max_ratio to prevent division errors
+
+       ---
+       H. Community Layer (5 formulas)
+
+       Module: src/babylon/formulas/community.py
+
+       20. Solidarity Potential
+         - Formula: potential = base + (overlap_bonus × shared_count) - (rent_penalty × |rent_diff|)
+         - Parameters:
+             - base_solidarity
+           - shared_count (communities both share)
+           - rent_a, rent_b (imperial rent divergence)
+           - overlap_bonus (default 0.1)
+           - rent_penalty (default 0.05)
+         - Returns: Potential score (may be negative)
+         - Theory: Shared communities create solidarity, but imperial rent gap impedes it
+       21. Threat Score
+         - Formula: threat = Σ(heat × visibility × role_weight × legal_mult)
+         - Parameters: List of (heat, effective_visibility, role_weight, legal_status_multiplier) tuples
+         - Returns: Cumulative threat score
+         - Application: Determines state surveillance pressure
+       22. Infrastructure Decay
+         - Formula: new = current × (1 - α) + maintenance × α
+       where maintenance = min(core_organizers × factor, 1.0)
+         - Parameters:
+             - current (infrastructure level [0,1])
+           - decay_alpha (decay rate per tick [0,1])
+           - core_organizer_count
+           - maintenance_factor (default 0.1)
+         - Returns: New infrastructure [0,1]
+         - Theory: Infrastructure decays without maintenance
+       23. Solidarity Amplification
+         - Formula: amplified = base × (1 + Σ(infra × cohesion × str_a × str_b))
+         - Parameters:
+             - base_strength (SOLIDARITY edge weight)
+           - shared_communities: list of (infrastructure, cohesion, strength_a, strength_b)
+         - Returns: Amplified solidarity strength
+         - Theory: Shared community infrastructure strengthens solidarity
+       24. Community Cost Modifier
+         - Formula: modifier = ∏ community_modifiers (product across all community memberships)
+         - Parameters: memberships, community_states
+         - Returns: Multiplicative compound modifier (1.0 if no memberships)
+         - Application: Modulates reproduction costs
+
+       ---
+       I. Vitality (1 formula)
+
+       Module: src/babylon/formulas/vitality.py
+
+       25. Mortality Rate (Grinding Attrition)
+         - Formula:
+             - coverage_ratio = wealth_per_capita / subsistence_needs
+           - threshold = 1.0 + inequality
+           - If coverage_ratio ≥ threshold: returns 0.0
+           - Else: attrition_rate = deficit × (attrition_base_factor + inequality) clamped to [0,1]
+         - Parameters:
+             - wealth_per_capita
+           - subsistence_needs
+           - inequality (Gini coefficient [0,1])
+           - attrition_base_factor
+         - Returns: Mortality rate [0,1]
+         - Theory: Inequality exposes marginal workers to mortality even with sufficient average wealth
+         - Existing GameDefines: VitalityDefines.attrition_base_factor (varies)
+
+       ---
+       J. Class Dynamics (3 formulas + 2 parameterized systems)
+
+       Module: src/babylon/formulas/class_dynamics.py
+
+       26. Wealth Flow (First-Order ODE)
+         - Formula: dW = α × W_source × (1 - resistance)
+         - Parameters:
+             - source_share (wealth percentage)
+           - extraction_rate (α coefficient)
+           - resistance (consciousness resistance [0,1])
+         - Returns: Wealth delta
+         - Property: Consciousness reduces extraction
+       27. Class Dynamics Derivative (Four-Class System)
+         - Formula (First-Order):
+         dW₁/dt = α₄₁W₄ + α₃₁W₃ + α₂₁W₂ - δ₁W₁
+       dW₂/dt = α₃₂W₃ + α₄₂W₄ - α₂₁W₂ - δ₂W₂
+       dW₃/dt = α₄₃W₄ + γ₃ - α₃₁W₃ - α₃₂W₃ - δ₃W₃
+       dW₄/dt = -(dW₁ + dW₂ + dW₃)  [constraint]
+         - Four Classes:
+             - W₁: Core Bourgeoisie (Top 1%)
+           - W₂: Petty Bourgeoisie (90-99%)
+           - W₃: Labor Aristocracy (50-90%)
+           - W₄: Internal Proletariat (Bottom 50%)
+         - Extraction Rates (fitted from FRED DFA 2015-2025):
+             - α₄₁ (proletariat→bourgeoisie)
+           - α₃₁ (labor aristocracy→bourgeoisie)
+           - α₂₁ (petty bourgeoisie→bourgeoisie)
+           - α₃₂ (labor aristocracy→petty bourgeoisie)
+           - α₄₂ (proletariat→petty bourgeoisie)
+           - α₄₃ (proletariat→labor aristocracy)
+         - Redistribution Rates:
+             - δ₁ (from bourgeoisie, progressive taxation)
+           - δ₂ (from petty bourgeoisie)
+           - δ₃ (from labor aristocracy)
+         - Imperial Rent:
+             - γ₃ (superwages injection to labor aristocracy)
+         - Existing GameDefines: ClassDynamicsDefines with all α, δ, γ coefficients
+       28. Wealth Acceleration (Second-Order Dynamics)
+         - Formula: d²W/dt² = β(dW/dt) - ω²(W - W*)
+         - Parameters:
+             - wealth_share (W)
+           - velocity (dW/dt)
+           - equilibrium (W* attractor)
+           - damping (β, negative = mean-reverting)
+           - frequency (ω, natural frequency)
+         - Returns: Second derivative
+         - Theory: Models momentum and oscillation around equilibrium
+         - Property: Empirically equilibrium from FRED DFA:
+             - W₁* = 0.305 (30.5% for bourgeoisie)
+           - W₂* = 0.382 (38.2% for petty bourgeoisie)
+           - W₃* = 0.294 (29.4% for labor aristocracy)
+           - W₄* = 0.020 (2% for proletariat)
+       29. Full Dynamics (Combined First + Second Order)
+         - Returns: (first_derivatives, second_derivatives)
+         - Application: Complete wealth distribution evolution
+         - Properties:
+             - Sum-to-one invariant maintained
+           - Momentum effects captured via second-order terms
+           - Resistance factors dampen extraction rates
+       30. Equilibrium Deviation
+         - Formula: deviation = Σ(W_i - W_i*)²
+         - Parameters: wealth_shares, equilibrium (optional, defaults to FRED values)
+         - Returns: Sum of squared deviations
+         - Application: Detects when system is far from steady state
+       31. Wealth-to-Population Inversion
+         - Formula: Linear interpolation on cumulative distribution
+         - Parameters:
+             - wealth_shares (tuple of four class shares)
+           - target_wealth_pct (default 33.333%)
+         - Returns: Population percentile owning target wealth
+         - Application: Inverse wealth distribution for scenario definition
+
+       ---
+       K. D-P-D' Lifecycle Circuit (6 formulas)
+
+       Module: src/babylon/formulas/lifecycle.py
+
+       32. Population Flow
+         - Formulas:
+         births = birth_rate × pop_p
+       d_to_p = rate_d_to_p × pop_d
+       p_to_d_prime = rate_p_to_d_prime × pop_p
+       deaths = rate_d_prime_to_death × pop_d_prime
+
+       new_d = max(0, pop_d + births - d_to_p)
+       new_p = max(0, pop_p + d_to_p - p_to_d_prime)
+       new_d_prime = max(0, pop_d_prime + p_to_d_prime - deaths)
+         - Parameters:
+             - pop_d (infancy/youth phase)
+           - pop_p (productive phase)
+           - pop_d_prime (retirement phase)
+           - birth_rate
+           - rate_d_to_p (transition D→P)
+           - rate_p_to_d_prime (transition P→D')
+           - rate_d_prime_to_death (mortality)
+         - Returns: (new_pop_d, new_pop_p, new_pop_d_prime, births, deaths)
+       33. Dependency Ratio
+         - Formula: ratio = (pop_d + pop_d_prime) / pop_p or ∞ if pop_p=0
+         - Parameters: pop_d, pop_p, pop_d_prime
+         - Returns: Non-productive to productive ratio
+         - Application: Social reproduction constraint
+       34. Legitimation Index (Five-Factor Weighted)
+         - Formula: index = w_home×ownership + w_health×healthcare + w_retire×retirement + w_pension×pension +
+       w_ss×ss_rate
+         - Parameters:
+             - pension_coverage [0,1]
+           - ss_replacement_rate [0,1]
+           - healthcare_security [0,1]
+           - home_ownership_rate [0,1]
+           - retirement_confidence [0,1]
+           - w_home, w_health, w_retire, w_pension, w_ss (weights)
+         - Returns: Index [0,1]
+         - Theory: Measures credibility of D' promise
+       35. Pareto-Gini Conversion
+         - Formula: Gini = 1 / (2α - 1) for Pareto α > 0.5
+         - Parameters: alpha (Pareto shape)
+         - Returns: Gini coefficient
+         - Application: Connect inequality measurements
+       36. Ideology Transmission
+         - Formulas: (Multiple pathways)
+             - D→P: career advancement transmission
+           - P→D': retirement promise transmission
+           - Family inheritance transmission
+         - Parameters: Various (legitimation index, inheritance rates)
+         - Theory: How ideology reproduces across lifecycle phases
+       37. Shadow Subsidy
+         - Formula: Complex multi-factor calculation
+         - Parameters: Household characteristics, policy parameters
+         - Returns: Implicit subsidy (social reproduction support)
+         - Application: D' phase sustainability measure
+
+       ---
+       PART 2: ECONOMIC TENSOR & CALCULATOR INFRASTRUCTURE
+
+       A. MELT (Monetary Expression of Labor Time) System
+
+       Module: src/babylon/economics/melt/
+
+       - MELTCalculator Protocol
+         - Formula: τ = GDP / L where L = employment × 2080 hours/year
+         - Returns: $/labor-hour (national aggregate, single per currency zone)
+         - Data sources: BEA GDP + QCEW employment
+         - Sanity ranges:
+             - Expected: $55-75/hour (typical 2010-2024)
+           - Warning: $40-100/hour (unusual)
+           - Fail: <$20 or >$200/hour
+         - Constant: HOURS_PER_YEAR = 2080
+
+       B. Imperial Rent Calculation (TVT Axioms E3-E4)
+
+       Module: src/babylon/economics/melt/imperial_rent.py
+
+       - ImperialRentCalculator Protocol
+         - Formula 1 (Φ_hour): Φ = (W/τ) × (1/γ_basket) - 1
+             - Measures extraction rate (flow), NOT class position
+           - Positive: worker extracts labor through consumption
+           - Negative: worker is net exploited
+           - Range: approaches -1 as W→0
+         - Formula 2 (L_commanded): L_cmd = (W/τ) × (1/γ_basket)
+             - Labor hours commanded per hour worked
+           - Relationship: Φ = L_cmd - 1
+           - Labor aristocracy threshold: L_cmd > 1 (equivalently W > τ_effective)
+         - Break-even: At W = τ_effective = τ × γ_basket, Φ = 0
+         - Key distinction: Imperial rent (extraction) ≠ Class position (wealth percentile)
+
+       C. Basket Visibility (γ_basket)
+
+       Module: src/babylon/economics/melt/basket_visibility.py
+
+       - BasketVisibilityCalculator Protocol
+         - Measures imperial subsidy visibility through consumption basket
+         - Formula: γ_basket = cost_basket_domestic / cost_basket_international
+         - Returns: Dimensionless ratio
+         - Data: US Census, BLS expenditure surveys
+         - Three-tier validation:
+             - Expected range: [0.55, 0.75]
+           - Warning range: [0.40, 0.90]
+           - Fail range: <0.20 or >1.20
+
+       D. Class Position Classifier
+
+       Module: src/babylon/economics/melt/class_position.py
+
+       - ClassPositionClassifier Protocol
+         - Classifies by wealth percentile (separate from imperial rent)
+         - Four classes:
+             - Bourgeoisie: Top 1% (W₁)
+           - Petty Bourgeoisie: 90-99% (W₂)
+           - Labor Aristocracy: 50-90% (W₃)
+           - Internal Proletariat: Bottom 50% (W₄)
+         - Key insight: A proletarian (bottom 50%) can have Φ_hour > 0
+
+       E. Economic Tick System
+
+       Module: src/babylon/economics/tick/system.py
+
+       - TickDynamicsSystem (integrates Features 012-016)
+       - 8-step pipeline:
+         a. Load economic data (init only)
+         b. Compute national parameters (τ, γ_basket, γ_III)
+       3a. Compute county-level state (K, π, D per county)
+       3b. Apply coefficient smoothing
+         c. Compute imperial rent flows (Φ_hour per county)
+         d. Check crisis triggers
+         e. Simulate class transitions (Feature 016)
+         f. Validate class distribution (sum-to-one invariant)
+         g. Compute derived rates and assemble TickSummary
+
+       F. Crisis Detection
+
+       - MultiPeriodCrisisDetector: Multi-period accumulation logic
+       - ThresholdCrisisDetector: Simple profit rate threshold
+       - Parameters: crisis_period_ticks (13), r_threshold (0.05), n_consecutive (3)
+
+       ---
+       PART 3: ORGANIZATION & CONSCIOUSNESS SYSTEM
+
+       A. Organization Consciousness Effect
+
+       Module: src/babylon/organizations/consciousness.py
+
+       - Five-Factor Product Formula
+       consciousness_delta = tendency_modifier × cadre_level × cohesion × credibility
+       - Credibility Derivation by Organization Type
+         - CivilSocietyOrg: credibility = legitimacy
+         - PoliticalFaction: credibility = default (0.5)
+         - StateApparatus (SOVEREIGN): credibility = 0.8
+         - StateApparatus (CHARTERED): credibility = 0.6
+         - StateApparatus (other): credibility = 0.5
+         - Business: credibility = employment_share (capped at 1.0)
+       - Tendency Modifiers (from OrganizationDefines):
+         - REVOLUTIONARY: +0.15
+         - LIBERAL: -0.05
+         - FASCIST: +0.10 (special: zero CI delta, non-zero tendency pressure)
+
+       B. Aggregated Consciousness Effects
+
+       - Multiple org effects sum CI deltas
+       - Tendency pressures compete — strongest magnitude wins
+       - Result CI clamped to [0,1]
+
+       ---
+       PART 4: OODA LOOP SYSTEM COEFFICIENTS
+
+       A. Cycle Time Weights (OODADefines)
+
+       Module: src/babylon/config/defines.py (lines 2129-2429)
+
+       - Observe Phase
+         - base_observe_time: 1.0
+         - latency_weight: 0.5 (weight of sensor_latency)
+       - Orient Phase
+         - base_orient_time: 2.0
+         - coherence_weight: 0.6 (weight of ideological_coherence)
+       - Act Phase
+         - base_act_time: 1.0 (fixed)
+         - coord_weight: 0.3 (weight of coordination, reserved)
+       - Decide Phase
+         - depth_weight: 0.4 (weight of bureaucratic_depth)
+       - Decision Mode Base Times
+         - AUTOCRATIC: 1.0
+         - DELEGATE: 2.0
+         - DEMOCRATIC: 3.0
+         - CONSENSUS: 5.0
+
+       B. Initiative Scoring Weights
+
+       - initiative_weight_speed: 2.0
+       - initiative_weight_institutional: 1.0
+       - initiative_weight_counterintel: 1.5
+       - initiative_weight_embeddedness: 1.0
+       - initiative_weight_momentum: 0.5
+
+       C. Institutional Bonuses by Jurisdiction
+
+       - NATIONAL (federal): 5.0
+       - STATE: 3.0
+       - COUNTY/MUNICIPAL: 1.5
+       - NON-STATE: 0.0
+
+       D. Momentum
+
+       - momentum_decay: 0.8 (exponential decay per tick)
+       - momentum_success_bonus: 0.2 (per successful action)
+
+       E. Action Cost Modifiers
+
+       - embeddedness_discount: 0.5 (cost reduction for embedded orgs)
+       - contradiction_cost_multiplier: 2.5 (cost across contradiction axis)
+       - outsider_cost_multiplier: 1.5 (non-member orgs)
+       - min_cost_modifier: 0.5 (floor for embedded orgs)
+
+       F. Consciousness Effect Limits & Action Multipliers
+
+       - max_ci_delta_per_tick: 0.05 (maximum |CI delta| per action)
+       - action_base_educate: 1.2
+       - action_base_agitate: 0.0 (zero = no CI effect)
+       - action_base_provide_service: 0.6
+       - action_base_recruit: 0.3
+       - action_base_organize: 0.5
+       - action_base_propagandize: 0.8
+       - action_base_repress: 0.8 (backfire multiplier)
+       - action_base_surveil: 0.2 (backfire multiplier)
+       - action_base_assimilate: 1.0 (negative CI multiplier)
+
+       G. Layer 3 Propagation Coefficients
+
+       - repress_heat_delta: 0.15 (heat increase per REPRESS)
+       - surveil_heat_delta: 0.05 (heat increase per SURVEIL)
+       - build_infrastructure_delta: 0.1 (infrastructure increase per BUILD)
+       - attack_infrastructure_delta: 0.1 (infrastructure decrease per ATTACK)
+
+       H. Base Action Point Costs (21 action types)
+
+       - RECRUIT: 2 AP
+       - ORGANIZE: 2 AP
+       - EDUCATE: 1 AP
+       - AGITATE: 1 AP
+       - PROPAGANDIZE: 2 AP
+       - FUNDRAISE: 1 AP
+       - PROVIDE_SERVICE: 2 AP
+       - EMPLOY: 1 AP
+       - REPRESS: 2 AP
+       - PROTEST: 2 AP
+       - STRIKE: 3 AP
+       - EXPROPRIATE: 3 AP
+       - SURVEIL: 1 AP
+       - INFILTRATE: 3 AP
+       - COUNTER_INTEL: 2 AP
+       - MAP_NETWORK: 1 AP
+       - PROPOSE_ALLIANCE: 1 AP
+       - DENOUNCE: 1 AP
+       - BUILD_INFRASTRUCTURE: 3 AP
+       - ATTACK_INFRASTRUCTURE: 2 AP
+       - ASSIMILATE: 2 AP
+
+       I. Agitation Mechanics
+
+       - agitation_contestation_delta: 0.1 (contestation increase per AGITATE)
+       - agitation_educate_bonus: 1.5 (EDUCATE multiplier when contestation > threshold)
+       - contestation_threshold: 0.3 (contestation level for EDUCATE bonus)
+
+       J. Lifecycle Modifiers
+
+       - elder_capacity_factor: 0.2 (BLS 65+ LFPR, capacity in D' phase)
+       - elder_legitimacy_multiplier: 1.3 (CI delta multiplier when elder proportion > 0)
+
+       K. Counter-Intelligence
+
+       - counter_intel_increment: 0.1 (score increment per successful action)
+
+       L. Autonomy Tradeoff
+
+       - autonomy_effectiveness_scale: 0.5 (scale factor for autonomy effectiveness)
+
+       ---
+       PART 5: KEY ECONOMIC PRIMITIVES & GAMEDEFINES STRUCTURE
+
+       A. GameDefines Class Hierarchy
+
+       Module: src/babylon/config/defines.py
+
+       1. CrisisDefines — Crisis detection, wage compression, bifurcation
+         - crisis_period_ticks: 13 (quarterly, prime for desync)
+         - r_threshold: 0.05 (profit rate threshold)
+         - n_consecutive: 3 (periods for onset)
+         - m_recovery: 2 (periods for recovery start)
+         - r_cap: 8 (max recovery duration)
+         - hysteresis_coefficient: 0.5
+         - wage_compression_rate: 0.02
+         - wage_compression_floor_ratio: 0.8
+         - bifurcation weights: solidarity (1.0), burden (1.0)
+       2. EconomyDefines — Core economic coefficients
+         - extraction_efficiency (α): 0.8
+         - comprador_cut: 0.90 (prevents liquidation)
+         - base_labor_power: 1.0 (value per tick)
+         - super_wage_rate: 0.20 (fraction of tribute)
+         - superwage_multiplier: 1.0
+         - superwage_ppp_impact: 0.5
+         - initial_rent_pool: 100.0
+         - pool thresholds: high (0.7), low (0.3), critical (0.1)
+         - min_wage_rate: 0.05, max_wage_rate: 0.35
+         - subsidy_conversion_rate: 0.1
+         - subsidy_trigger_threshold: 0.8
+         - shadow_wage_hourly: 15.43 (BLS home health aide)
+         - base_subsistence: 0.0005 (LINEAR burn, not percentage)
+         - death_threshold: 0.001 (zombie prevention)
+         - trpf_coefficient: 0.0005 (per-tick decay)
+         - rent_pool_decay: 0.002
+         - Bourgeoisie decision policy deltas:
+             - bribery_wage_delta: 0.05
+           - austerity_wage_delta: -0.05
+           - iron_fist_repression_delta: 0.10
+           - crisis_wage_delta: -0.15
+           - crisis_repression_delta: 0.20
+       3. SurvivalDefines — P(S|A) and P(S|R) parameters
+         - Default steepness_k values
+         - Crossover threshold mechanics
+       4. VitalityDefines — Mortality & attrition
+         - attrition_base_factor (varies by configuration)
+       5. SolidarityDefines — Edge weight evolution
+         - Solidarity potential thresholds
+       6. BehavioralDefines — Behavioral economics
+         - loss_aversion_lambda: 2.25
+       7. TensionDefines — Social tension metrics
+       8. ConsciousnessDefines — Consciousness mechanics
+         - sensitivity_k (material conditions sensitivity)
+         - decay_lambda (consciousness decay)
+         - routing_scale: 0.1 (ideological routing)
+         - agitation_decay_rate: 0.1
+       9. TerritoryDefines — Heat, eviction, carceral geography
+       10. ReserveArmyDefines — Unemployment mechanics
+       11. WorkingDayDefines — Labor time metrics
+       12. CommunityDefines — Hypergraph community layer
+       13. ClassDynamicsDefines — All extraction rates, redistributions, equilibria
+         - alpha_41, alpha_31, alpha_21, alpha_32, alpha_42, alpha_43
+         - delta_1, delta_2, delta_3
+         - gamma_3 (imperial rent injection)
+         - beta_1..4 (damping coefficients)
+         - omega_1..4 (natural frequencies)
+         - equilibrium_w1: 0.305, w2: 0.382, w3: 0.294, w4: 0.020
+       14. LifecycleDefines — D-P-D' phase parameters
+         - Population transition rates
+         - Legitimation index weights
+       15. OrganizationDefines (Feature 031)
+         - elder_capacity_factor: 0.2
+         - tendency_modifiers: revolutionary (0.15), liberal (-0.05), fascist (0.10)
+         - observation ceilings: local_pd (0.2), fusion (0.5), fbi (0.4)
+         - cohesion_loss_per_key_figure: 0.2
+         - min_cohesion_threshold: 0.05
+         - credibility_defaults: faction (0.5), sovereign (0.8), chartered (0.6), state (0.5)
+         - All action base multipliers and AP costs
+       16. OODADefines (Feature 032)
+         - All cycle time weights, initiative weights, jurisdiction bonuses, momentum, action modifiers,
+       consciousness effect limits, action multipliers, AP costs, and Layer 3 propagation coefficients (see Part
+       4)
+
+       ---
+       PART 6: THEORETICAL CONNECTIONS FOR OODA COEFFICIENT DERIVATION
+
+       A. Potential Derivations from Existing Formulas
+
+       1. repress_heat_delta (currently 0.15) ← Can be derived from:
+       - Imperial rent extraction rates (higher extraction → more repression needed)
+       - Consciousness sensitivity (k value: higher consciousness drift → more repression)
+       - Profit rate decline (TRPF multiplier: as multiplier falls, repression intensity increases)
+       - Crisis phase intensity (CrisisDefines: high crisis phase → higher repression response)
+
+       2. institutional_bonus_federal (currently 5.0) ← Can be derived from:
+       - Jurisdiction control over national economic data (QCEW, BEA aggregation)
+       - Federal rent pool distribution mechanisms (EconomyDefines.initial_rent_pool)
+       - Centralized labor aristocracy mechanism (γ₃: super-wage injection at federal level)
+       - State apparatus verticality structure
+
+       3. action_base_educate (currently 1.2) ← Can be derived from:
+       - Consciousness drift sensitivity_k (higher k → more education effectiveness)
+       - Activation threshold for solidarity transmission (0.3: need to reach this to propagate)
+       - Consciousness routing scale (0.1: education routes agitation to class consciousness)
+
+       4. embeddedness_discount (currently 0.5) ← Can be derived from:
+       - Infrastructure maintenance factor (0.1: how CORE_ORGANIZER members reduce decay)
+       - Community solidarity amplification coefficients
+       - Membership strength effects in solidarity potential
+
+       5. momentum_decay (currently 0.8) ← Can be derived from:
+       - Consciousness decay_lambda (similar exponential decay pattern)
+       - Agitation decay_rate (0.1: agitation dissipates, momentum dissipates)
+       - Rent pool decay rate (0.002: background evaporation pattern)
+
+       6. contradiction_cost_multiplier (currently 2.5) ← Can be derived from:
+       - Exchange ratio differential (ε values: greater exchange ratio = harder to operate across contradiction)
+       - Imperial rent extraction efficiency (α: how well core maintains domination)
+       - Bifurcation risk (class_burden_epsilon prevents division issues during contradiction spikes)
+
+       7. Action Point Costs ← Can be derived from:
+       - Class dynamics extraction rates (higher extraction from target class → higher cost)
+       - Contradiction field metrics (crossing axes requires more resources)
+       - Community cost modifiers (multiply by community reproduction costs)
+
+       8. max_ci_delta_per_tick (currently 0.05) ← Can be derived from:
+       - Consciousness drift ODE (dΨ/dt bounds)
+       - Solidarity transmission activation threshold (can't grow faster than solidarity can propagate)
+       - Routing scale factors (0.1: limits how fast agitation can route)
+
+       ---
+       B. Existing Systems That Feed OODA Coefficients
+
+       1. Crisis Detection System → informs repression intensity
+       2. Class Dynamics System → determines class-specific action effectiveness
+       3. Imperial Rent System → grounds institutional bonuses in material conditions
+       4. Consciousness System → limits education/propaganda effectiveness
+       5. Community Layer → amplifies/dampens action costs via embeddedness
+       6. Momentum System → decay factor tied to agitation dynamics
+
+       ---
+       PART 7: CRITICAL GAPS FOR OODA DERIVATION
+
+       Questions for theoretical grounding:
+
+       1. Cycle Time Derivation: Are the base times (Observe: 1.0, Orient: 2.0, Act: 1.0, Decision modes: 1-5)
+       arbitrary, or do they derive from decision-making theory (e.g., OODA Loop literature)?
+       2. Initiative Scoring Weights: The weights (speed: 2.0, institutional: 1.0, counterintel: 1.5,
+       embeddedness: 1.0, momentum: 0.5) seem tuned for balance—do they reflect any theoretical ratio?
+       3. Jurisdiction Bonuses: Federal (5.0), State (3.0), Local (1.5)—is this a logarithmic or power-law
+       relationship with institutional reach?
+       4. Decision Mode Progression: AUTOCRATIC (1.0) → DELEGATE (2.0) → DEMOCRATIC (3.0) → CONSENSUS (5.0)—does
+       this follow deliberation theory?
+       5. Counter-Intelligence Ceiling: Why LOCAL_PD (0.2), FUSION (0.5), FBI (0.4)? What's the theoretical basis
+       (Sparrow calibration)?
+
+       ---
+       SUMMARY TABLE: FORMULA CROSS-REFERENCES
+
+       ┌────────────────────────┬────────────────┬─────────────────────────────────┬──────────────────────────────
+       ────┐
+       │        Formula         │    Category    │      Existing GameDefines       │       Potential OODA Uses
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Imperial Rent (Φ)      │ Fund. Theorem  │ extraction_efficiency (0.8)     │ repress_heat_delta, action
+       costs │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Labor Aristocracy      │ Fund. Theorem  │ (class_dynamics coefficients)   │ action effectiveness per
+       class   │
+       │ Ratio                  │                │                                 │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Consciousness Drift    │ Fund. Theorem  │ sensitivity_k, decay_lambda     │ action_base_educate,
+           │
+       │ (dΨ/dt)                │                │                                 │ max_ci_delta
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Acquiescence P(S|A)    │ Survival       │ (steepness_k)                   │ institutional_bonus scaling
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Revolution P(S|R)      │ Survival       │ (cohesion/repression ratio)     │ repress_heat_delta inverse
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Loss Aversion          │ Behavioral     │ loss_aversion_lambda (2.25)     │ agitation generation in
+       routing  │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Exchange Ratio (ε)     │ Unequal        │ (derived from class dynamics)   │ contradiction_cost_multiplier
+           │
+       │                        │ Exchange       │                                 │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Solidarity             │ Solidarity     │ activation_threshold (0.3)      │ action effectiveness
+       thresholds  │
+       │ Transmission           │                │                                 │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Ideological Routing    │ Consciousness  │ routing_scale (0.1),            │ momentum_decay analogs
+           │
+       │                        │                │ agitation_decay                 │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ TRPF Multiplier        │ TRPF           │ trpf_coefficient (0.0005)       │ repress_heat_delta over time
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Rent Pool Decay        │ TRPF           │ rent_pool_decay (0.002)         │ momentum_decay, resource
+           │
+       │                        │                │                                 │ constraints
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Solidarity Potential   │ Community      │ rent_penalty (0.05),            │ embeddedness_discount
+           │
+       │                        │                │ overlap_bonus (0.1)             │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Infrastructure Decay   │ Community      │ decay_alpha, maintenance_factor │ embeddedness sustainability
+           │
+       │                        │                │  (0.1)                          │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Mortality Rate         │ Vitality       │ attrition_base_factor +         │ casualty rates in actions
+           │
+       │                        │                │ inequality                      │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Class Dynamics (dW/dt) │ Class Dynamics │ α, δ, γ coefficients            │ class-specific action
+           │
+       │                        │                │                                 │ effectiveness
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Wealth Acceleration    │ Class Dynamics │ β (damping), ω (frequency)      │ momentum_decay pattern
+           │
+       │ (d²W/dt²)              │                │                                 │
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Population Flow        │ Lifecycle      │ transition rates                │ D' phase resource constraints
+           │
+       ├────────────────────────┼────────────────┼─────────────────────────────────┼──────────────────────────────
+       ────┤
+       │ Legitimation Index     │ Lifecycle      │ 5-factor weights                │ institutional bonus scaling
+           │
+       └────────────────────────┴────────────────┴─────────────────────────────────┴──────────────────────────────
+       ────┘
+
+       ---
+       This inventory provides the complete theoretical foundation for deriving OODA coefficients from first
+       principles rather than magic numbers. Each coefficient has potential grounding in existing formulas, either
+        directly (via parameter substitution) or indirectly (via structural analogy with similar
+       exponential/linear decay patterns).

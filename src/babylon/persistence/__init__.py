@@ -17,6 +17,8 @@ Architecture (ADR030/031/032/033 + Feature 037):
     the RuntimePersistence protocol.
 """
 
+from babylon.persistence.pgvector_store import PgVectorStore
+from babylon.persistence.postgres_runtime import PostgresRuntime
 from babylon.persistence.protocols import (
     PostgresRuntimeExtensions,
     RuntimePersistence,
@@ -29,6 +31,8 @@ from babylon.persistence.runtime_schema import RUNTIME_SCHEMA_DDL
 from babylon.persistence.trace_recorder import TraceRecorder
 
 __all__ = [
+    "PgVectorStore",
+    "PostgresRuntime",
     "PostgresRuntimeExtensions",
     "RUNTIME_SCHEMA_DDL",
     "RuntimeDatabase",

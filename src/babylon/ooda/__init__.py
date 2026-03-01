@@ -23,6 +23,7 @@ from babylon.ooda.initiative import (
     update_momentum,
 )
 from babylon.ooda.layer0 import process_layer0
+from babylon.ooda.lifecycle_capacity import compute_lifecycle_modifier, elder_legitimacy_bonus
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.ooda.types import (
     Action,
@@ -43,9 +44,11 @@ __all__ = [
     "TurnResolution",
     "check_eligibility",
     "compute_action_cost",
+    "compute_lifecycle_modifier",
     "compute_community_embeddedness",
     "compute_cycle_time",
     "compute_initiative_score",
+    "elder_legitimacy_bonus",
     "process_layer0",
     "resolve_action_order",
     "select_npc_actions",

@@ -305,26 +305,44 @@ def _has_cross_axis_antagonism(
 def _classify_tendency(
     per_axis_tendency: dict[str, float],
     has_any_axis_edges: bool,
+    cross_line_count: int,
+    weighted_cross: float,
     defines: BifurcationDefines,
 ) -> str:
-    """Classify overall tendency using weakest-link model.
+    """Classify overall tendency using weakest-link model + assimilation trap.
 
     Rules:
     - If no axes analyzed or no relevant edges exist → "indeterminate"
-    - If all axes have tendency_ratio > (1.0 + dead_zone) → "revolutionary"
-    - If any axis has tendency_ratio < (1.0 - dead_zone) → "fascist"
+    - Assimilation trap: cross-line solidarity edges exist but mean
+      consciousness-weighted solidarity per edge < filter threshold → "fascist"
+      (high density + low CI = assimilated)
+    - If all active axes have tendency_ratio > (1.0 + dead_zone) → "revolutionary"
+    - If any active axis has tendency_ratio < (1.0 - dead_zone) → "fascist"
     - Otherwise → "indeterminate"
 
     Args:
-        per_axis_tendency: Axis ID to tendency ratio.
+        per_axis_tendency: Axis ID to tendency ratio (active axes only).
         has_any_axis_edges: Whether any axis had solidarity or antagonism edges.
-        defines: Contains indeterminate_dead_zone.
+        cross_line_count: Number of raw cross-line solidarity edges.
+        weighted_cross: Consciousness-weighted cross-line solidarity sum.
+        defines: Contains indeterminate_dead_zone, consciousness_filter_threshold.
 
     Returns:
         "revolutionary", "fascist", or "indeterminate".
     """
-    if not per_axis_tendency or not has_any_axis_edges:
+    if not has_any_axis_edges:
         return "indeterminate"
+
+    # No active axes but cross-axis antagonism exists → pure antagonism = fascist
+    if not per_axis_tendency:
+        return "fascist"
+
+    # Assimilation trap: cross-line edges exist but consciousness weighting
+    # collapsed them to near-zero (Democratic Party coalition pattern)
+    if cross_line_count > 0:
+        mean_weighted = weighted_cross / cross_line_count
+        if mean_weighted < defines.consciousness_filter_threshold:
+            return "fascist"
 
     dead_zone = defines.indeterminate_dead_zone
     upper = 1.0 + dead_zone
@@ -380,6 +398,7 @@ def bifurcation_tendency(
     """
     # 1. Per-axis tendency analysis
     per_axis_tendency: dict[str, float] = {}
+    active_axis_tendency: dict[str, float] = {}  # Only axes with edges
     total_lateral_count = 0
     total_upward_count = 0
     has_any_axis_edges = False
@@ -403,6 +422,7 @@ def bifurcation_tendency(
         )
         if axis_edge_total > 0:
             has_any_axis_edges = True
+            active_axis_tendency[axis.id] = axis_result.tendency_ratio
 
     # 2. Edge counts and weighted cross-line solidarity
     cross_count, within_count, weighted_cross = _compute_edge_counts(
@@ -450,8 +470,10 @@ def bifurcation_tendency(
     singletons = find_critical_singletons(filtered_subgraph)
     cutsets = find_critical_cutsets(filtered_subgraph)
 
-    # 10. Overall classification (weakest-link)
-    overall_tendency = _classify_tendency(per_axis_tendency, has_any_axis_edges, defines)
+    # 10. Overall classification (weakest-link + assimilation trap)
+    overall_tendency = _classify_tendency(
+        active_axis_tendency, has_any_axis_edges, cross_count, weighted_cross, defines
+    )
 
     return BifurcationResult(
         overall_tendency=overall_tendency,  # type: ignore[arg-type]

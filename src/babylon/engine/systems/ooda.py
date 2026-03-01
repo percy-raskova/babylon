@@ -3,7 +3,7 @@
 Orchestrates the three-layer turn resolution each tick:
 1. Layer 0: Automatic metabolism (Business self-sustaining activity)
 2. Action Phase: Initiative-ordered organizational actions
-3. Layer 3: Consequence propagation (stub — implemented in Commit 7)
+3. Layer 3: Consequence propagation (consciousness, heat, edges, infrastructure)
 
 See Also:
     ``specs/032-ooda-loop-system/spec.md``
@@ -22,6 +22,7 @@ from babylon.ooda.initiative import (
     resolve_action_order,
 )
 from babylon.ooda.layer0 import process_layer0
+from babylon.ooda.layer3 import process_layer3
 from babylon.ooda.npc_stub import select_npc_actions
 from babylon.ooda.types import ActionResult, OODAProfile, TurnResolution
 
@@ -38,7 +39,7 @@ class OODASystem:
     Three-phase turn resolution:
     1. Layer 0 — automatic metabolism for Business orgs
     2. Action Phase — initiative-ordered actions for all orgs
-    3. Layer 3 — consequence propagation (stub until Commit 7)
+    3. Layer 3 — consequence propagation
     """
 
     @property
@@ -161,8 +162,9 @@ class OODASystem:
                     )
                     action_phase_results.append(result)
 
-        # --- Phase 3: Layer 3 (stub — replaced in Commit 7) ---
-        layer3_effects: dict[str, Any] = {}
+        # --- Phase 3: Layer 3 (consequence propagation) ---
+        all_results = layer0_results + action_phase_results
+        layer3_effects = process_layer3(all_results, graph, defines)
 
         # Store turn resolution on context for downstream systems
         _resolution = TurnResolution(

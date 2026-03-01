@@ -19,6 +19,7 @@ from babylon.organizations.consciousness import (
     aggregate_consciousness_effects,
     consciousness_effect,
     derive_credibility,
+    tendency_modifier,
 )
 
 # Legacy migration
@@ -53,6 +54,7 @@ __all__ = [
     "aggregate_consciousness_effects",
     "consciousness_effect",
     "derive_credibility",
+    "tendency_modifier",
     # Topology
     "classify_topology",
     "cohesion_loss_on_removal",

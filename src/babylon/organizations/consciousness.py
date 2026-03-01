@@ -55,7 +55,7 @@ def derive_credibility(
     return 0.0
 
 
-def _tendency_modifier(
+def tendency_modifier(
     tendency: ConsciousnessTendency,
     defines: OrganizationDefines,
 ) -> float:
@@ -97,7 +97,7 @@ def consciousness_effect(
             source_org_id=org.id,
         )
 
-    modifier = _tendency_modifier(org.consciousness_tendency, defines)
+    modifier = tendency_modifier(org.consciousness_tendency, defines)
     raw_product = modifier * float(org.cadre_level) * float(org.cohesion) * credibility
 
     if org.consciousness_tendency == ConsciousnessTendency.FASCIST:

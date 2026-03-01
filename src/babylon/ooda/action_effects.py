@@ -1,7 +1,345 @@
 """Action resolution and consciousness effects (Feature 032).
 
+Extends the Feature 031 five-factor consciousness formula with
+action-type-specific multipliers, membership overlap credibility,
+AGITATE-EDUCATE coupling, and per-tick delta clamping.
+
 See Also:
     ``specs/032-ooda-loop-system/contracts/consciousness-effect-contract.md``
 """
 
-__all__: list[str] = []
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from babylon.config.defines import OODADefines, OrganizationDefines
+from babylon.models.enums import ActionType, ConsciousnessTendency, EdgeType, EventType
+from babylon.ooda.types import Action, ActionResult
+from babylon.organizations.consciousness import tendency_modifier
+from babylon.organizations.types import ConsciousnessDelta
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+
+def compute_consciousness_delta(
+    org_attrs: dict[str, Any],
+    target_community_id: str,
+    action_type: ActionType,
+    graph: nx.DiGraph[str],
+    defines: OODADefines,
+    org_defines: OrganizationDefines,
+) -> ConsciousnessDelta | None:
+    """Compute consciousness effect of an action on a target community.
+
+    Args:
+        org_attrs: Organization node attributes dict.
+        target_community_id: Target community node ID.
+        action_type: The action being performed.
+        graph: World graph.
+        defines: OODADefines coefficients.
+        org_defines: OrganizationDefines for credibility/tendency.
+
+    Returns:
+        ConsciousnessDelta or None if action has no CI effect.
+    """
+    action_base = _get_effective_action_base(action_type, org_attrs, defines)
+    if action_base == 0.0:
+        return None
+
+    org_id = str(org_attrs.get("id", ""))
+    tendency_str = org_attrs.get("consciousness_tendency", "liberal")
+    tendency = ConsciousnessTendency(tendency_str)
+    cadre_level = float(org_attrs.get("cadre_level", 0.0))
+    cohesion = float(org_attrs.get("cohesion", 0.0))
+
+    # Short-circuit on zero factors
+    if cadre_level == 0.0 or cohesion == 0.0:
+        return ConsciousnessDelta(
+            collective_identity_delta=0.0,
+            tendency_pressure=tendency,
+            tendency_magnitude=0.0,
+            source_org_id=org_id,
+        )
+
+    # Step 2-3: Membership overlap and effective credibility
+    overlap = _compute_membership_overlap(org_id, target_community_id, graph)
+    base_credibility = _derive_credibility_from_attrs(org_attrs, org_defines)
+    effective_credibility = base_credibility * max(overlap, 0.01)
+
+    # Step 4: Base delta (five-factor formula)
+    modifier = tendency_modifier(tendency, org_defines)
+    base_delta = modifier * cadre_level * cohesion * effective_credibility
+
+    # Step 5: Scale by action base
+    scaled_delta = base_delta * action_base
+
+    # Step 7: EDUCATE contestation bonus
+    if action_type == ActionType.EDUCATE:
+        target_data = graph.nodes.get(target_community_id, {})
+        contestation = float(target_data.get("ideological_contestation", 0.0))
+        if contestation > defines.contestation_threshold:
+            scaled_delta *= defines.agitation_educate_bonus
+
+    # Step 8: Clamp to max per-tick delta
+    scaled_delta = max(
+        -defines.max_ci_delta_per_tick,
+        min(defines.max_ci_delta_per_tick, scaled_delta),
+    )
+
+    return ConsciousnessDelta(
+        collective_identity_delta=scaled_delta,
+        tendency_pressure=tendency,
+        tendency_magnitude=abs(scaled_delta),
+        source_org_id=org_id,
+    )
+
+
+def resolve_action(
+    action: Action,
+    org_attrs: dict[str, Any],
+    graph: nx.DiGraph[str],
+    defines: OODADefines,
+    org_defines: OrganizationDefines,
+) -> ActionResult:
+    """Resolve a single action, computing effects.
+
+    Args:
+        action: The action to resolve.
+        org_attrs: Acting organization's node attributes.
+        graph: World graph.
+        defines: OODADefines coefficients.
+        org_defines: OrganizationDefines for credibility.
+
+    Returns:
+        ActionResult with success status and effects.
+    """
+    action_type = action.action_type
+    target_id = action.target_id
+
+    # Dispatch to specialized resolvers
+    if action_type == ActionType.AGITATE:
+        return _resolve_agitate(action, defines)
+
+    if action_type in {ActionType.REPRESS, ActionType.SURVEIL}:
+        return _resolve_repressive(action, org_attrs, graph, defines, org_defines)
+
+    if action_type == ActionType.ASSIMILATE:
+        return _resolve_assimilate(action, org_attrs, graph, defines, org_defines)
+
+    # Consciousness-affecting actions
+    ci_delta = compute_consciousness_delta(
+        org_attrs,
+        target_id,
+        action_type,
+        graph,
+        defines,
+        org_defines,
+    )
+
+    events: list[str] = [EventType.ORGANIZATIONAL_ACTION.value]
+
+    return ActionResult(
+        action=action,
+        success=True,
+        consciousness_delta=ci_delta,
+        events_generated=events,
+    )
+
+
+def _resolve_agitate(
+    action: Action,
+    defines: OODADefines,
+) -> ActionResult:
+    """AGITATE: no CI delta, increases contestation."""
+    return ActionResult(
+        action=action,
+        success=True,
+        consciousness_delta=None,
+        direct_effects={
+            "contestation_delta": defines.agitation_contestation_delta,
+        },
+        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+    )
+
+
+def _resolve_repressive(
+    action: Action,
+    org_attrs: dict[str, Any],
+    graph: nx.DiGraph[str],  # noqa: ARG001 — reserved for future location-dependent backfire
+    defines: OODADefines,
+    org_defines: OrganizationDefines,
+) -> ActionResult:
+    """REPRESS/SURVEIL: backfire raises target CI."""
+    action_type = action.action_type
+
+    base_credibility = _derive_credibility_from_attrs(org_attrs, org_defines)
+    action_base = defines.get_action_base(action_type.value)
+
+    backfire_delta = action_base * base_credibility
+    backfire_delta = min(backfire_delta, defines.max_ci_delta_per_tick)
+
+    ci_delta = ConsciousnessDelta(
+        collective_identity_delta=backfire_delta,
+        tendency_pressure=ConsciousnessTendency.REVOLUTIONARY,
+        tendency_magnitude=backfire_delta,
+        source_org_id=str(org_attrs.get("id", "")),
+    )
+
+    event_type = (
+        EventType.STATE_REPRESSION.value
+        if action_type == ActionType.REPRESS
+        else EventType.STATE_SURVEILLANCE.value
+    )
+
+    return ActionResult(
+        action=action,
+        success=True,
+        consciousness_delta=ci_delta,
+        direct_effects={"backfire": True},
+        events_generated=[event_type],
+    )
+
+
+def _resolve_assimilate(
+    action: Action,
+    org_attrs: dict[str, Any],
+    graph: nx.DiGraph[str],  # noqa: ARG001 — reserved for future location-dependent assimilation
+    defines: OODADefines,
+    org_defines: OrganizationDefines,
+) -> ActionResult:
+    """ASSIMILATE: negative CI effect, pushes LIBERAL tendency."""
+    base_credibility = _derive_credibility_from_attrs(org_attrs, org_defines)
+    ci_raw = -(defines.action_base_assimilate * base_credibility)
+    ci_clamped = max(-defines.max_ci_delta_per_tick, ci_raw)
+
+    ci_delta = ConsciousnessDelta(
+        collective_identity_delta=ci_clamped,
+        tendency_pressure=ConsciousnessTendency.LIBERAL,
+        tendency_magnitude=abs(ci_clamped),
+        source_org_id=str(org_attrs.get("id", "")),
+    )
+
+    return ActionResult(
+        action=action,
+        success=True,
+        consciousness_delta=ci_delta,
+        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+    )
+
+
+def _get_effective_action_base(
+    action_type: ActionType,
+    org_attrs: dict[str, Any],
+    defines: OODADefines,
+) -> float:
+    """Get effective action base, handling PROVIDE_SERVICE tendency split."""
+    if action_type == ActionType.PROVIDE_SERVICE:
+        tendency_str = org_attrs.get("consciousness_tendency", "liberal")
+        tendency = ConsciousnessTendency(tendency_str)
+        if tendency == ConsciousnessTendency.REVOLUTIONARY:
+            return defines.action_base_provide_service
+        if tendency == ConsciousnessTendency.LIBERAL:
+            return defines.action_base_provide_service * 0.3
+        return 0.0
+
+    return defines.get_action_base(action_type.value)
+
+
+def _compute_membership_overlap(
+    org_id: str,
+    community_id: str,
+    graph: nx.DiGraph[str],
+) -> float:
+    """Compute membership overlap between org and community.
+
+    Args:
+        org_id: Organization node ID.
+        community_id: Community node ID.
+        graph: World graph.
+
+    Returns:
+        Overlap ratio in [0, 1].
+    """
+    # Get org member IDs via MEMBERSHIP edges
+    org_members: set[str] = set()
+    for _, target, data in graph.out_edges(org_id, data=True):
+        edge_type = data.get("edge_type", "")
+        if edge_type == EdgeType.MEMBERSHIP.value or edge_type == EdgeType.MEMBERSHIP:
+            org_members.add(target)
+
+    if not org_members:
+        return 0.0
+
+    # Get community member IDs
+    community_data = graph.nodes.get(community_id, {})
+    community_member_ids: list[str] = community_data.get("member_node_ids", [])
+
+    # Also find nodes that reference this community
+    if not community_member_ids:
+        community_members: set[str] = set()
+        max_nodes = 1000
+        count = 0
+        for node_id, node_data in graph.nodes(data=True):
+            if node_data.get("community_id") == community_id:
+                community_members.add(node_id)
+            count += 1  # noqa: SIM113 — enumerate breaks mypy with NodeView unpacking
+            if count >= max_nodes:
+                break
+    else:
+        community_members = set(community_member_ids)
+
+    if not community_members:
+        return 0.0
+
+    overlap_count = len(org_members & community_members)
+    return overlap_count / len(community_members)
+
+
+def _derive_credibility_from_attrs(
+    org_attrs: dict[str, Any],
+    org_defines: OrganizationDefines,
+) -> float:
+    """Derive credibility from org attributes dict (without full Organization model).
+
+    Args:
+        org_attrs: Organization node attributes.
+        org_defines: OrganizationDefines with credibility defaults.
+
+    Returns:
+        Credibility value in [0, 1].
+    """
+    from babylon.models.enums import OrgType
+
+    org_type = org_attrs.get("org_type", "")
+
+    if org_type == OrgType.CIVIL_SOCIETY.value:
+        return float(org_attrs.get("legitimacy", org_defines.credibility_default_faction))
+
+    if org_type == OrgType.POLITICAL_FACTION.value:
+        return org_defines.credibility_default_faction
+
+    if org_type == OrgType.STATE_APPARATUS.value:
+        from babylon.models.enums import LegalStanding
+
+        legal_standing = org_attrs.get("legal_standing", "")
+        if legal_standing == LegalStanding.SOVEREIGN.value:
+            return org_defines.credibility_sovereign
+        if legal_standing == LegalStanding.CHARTERED.value:
+            return org_defines.credibility_chartered
+        return org_defines.credibility_default_state
+
+    if org_type == OrgType.BUSINESS.value:
+        emp = int(org_attrs.get("employment_count", 0))
+        workforce = int(org_attrs.get("community_workforce", 1))
+        if workforce <= 0:
+            return 0.0
+        return min(emp / workforce, 1.0)
+
+    return 0.0
+
+
+__all__ = [
+    "compute_consciousness_delta",
+    "resolve_action",
+]

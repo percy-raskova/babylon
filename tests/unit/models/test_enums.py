@@ -331,8 +331,8 @@ class TestEventType:
             EventType("random_event")
 
     def test_event_type_count(self) -> None:
-        """Exactly 36 event types (19 original + 5 Terminal + 3 Crisis + 5 Field Topology + 4 Volume I)."""
-        assert len(EventType) == 41
+        """47 event types (19 original + 5 Terminal + 3 Crisis + 5 Field Topology + 4 Volume I + 5 Community + 6 OODA)."""
+        assert len(EventType) == 47
 
     def test_terminal_crisis_event_types_exist(self) -> None:
         """Terminal Crisis Dynamics: Events for endgame arc.

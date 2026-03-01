@@ -697,6 +697,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. BifurcationSnapshot stored in monitor history list. (033-bifurcation-topology)
 - Python 3.12+ (existing project standard) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (GraphProtocol via NetworkXAdapter), h3 4.2 (spatial indexing), Shapely 2.x (spatial intersection for NE snapping), SciPy (weighted curvature LP) (036-infrastructure-topology)
 - In-memory via GraphProtocol. No new database tables. Infrastructure entities stored separately from WorldState.relationships. Natural Earth SQLite (423MB) read-only external data source. FCC broadband data via existing FCCBroadbandLoader. (036-infrastructure-topology)
+- Python 3.12+ + psycopg 3.x + psycopg_pool (bulk simulation writes), Django 5.x (game management ORM), PostGIS (spatial queries on hex geometries), pgvector (semantic search replacing ChromaDB), PyArrow (Parquet export), boto3/s3fs (R2 upload), DuckDB (cross-game analytics over archived Parquet) (037-postgres-runtime-db)
+- PostgreSQL 16+ (runtime state), SQLite (read-only reference `marxist-data-3NF.sqlite`), Cloudflare R2 (archived Parquet files) (037-postgres-runtime-db)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

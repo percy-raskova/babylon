@@ -54,6 +54,15 @@ Organization Base Model (Feature 031)
 
    organizations
 
+OODA Loop System (Feature 032)
+-------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   ooda-loop-system
+   ooda-coefficients
+
 Entity models (StateApparatus, Business, PoliticalFaction, CivilSocietyOrg),
 discriminated union dispatch, composition calculators, consciousness effect
 formula, topology classification, key figure analysis, and legacy migration.

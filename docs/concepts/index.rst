@@ -80,6 +80,7 @@ Consciousness & Organization
    :maxdepth: 1
 
    organization-model
+   ooda-loop-system
    george-jackson-model
    community-hypergraph
    consciousness-taxonomy

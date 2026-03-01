@@ -37,12 +37,15 @@ from babylon.data.h3.loader import (
     generate_h3_cells,
     wkt_to_polygon,
 )
+from babylon.data.h3.mesh import enumerate_edges, enumerate_vertices
 
 __all__ = [
     "DEFAULT_H3_RESOLUTION",
     "DEFAULT_H3_RESOLUTIONS",
     "H3GridLoader",
     "cell_to_latlon",
+    "enumerate_edges",
+    "enumerate_vertices",
     "generate_h3_cells",
     "wkt_to_polygon",
 ]

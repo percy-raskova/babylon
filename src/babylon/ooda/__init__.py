@@ -13,6 +13,7 @@ See Also:
     ``specs/032-ooda-loop-system/spec.md``: Full specification.
 """
 
+from babylon.ooda.action_costs import compute_action_cost
 from babylon.ooda.action_eligibility import ELIGIBILITY_MAP, check_eligibility
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
@@ -41,6 +42,7 @@ __all__ = [
     "OODAProfile",
     "TurnResolution",
     "check_eligibility",
+    "compute_action_cost",
     "compute_community_embeddedness",
     "compute_cycle_time",
     "compute_initiative_score",

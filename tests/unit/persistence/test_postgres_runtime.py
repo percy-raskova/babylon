@@ -1007,10 +1007,12 @@ class TestPersistenceObserver:
             session_id=uuid4(),
         )
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
-        graph.add_node("a", type="SocialClass")
+        from tests.factories import DomainFactory
 
-        observer.on_tick(tick=0, graph=graph, events=[])
+        factory = DomainFactory()
+        state = factory.create_world_state()
+
+        observer.on_tick(previous_state=state, new_state=state)
 
         mock_persistence.persist_tick.assert_called_once()
 
@@ -1029,10 +1031,14 @@ class TestPersistenceObserver:
             tracer=mock_tracer,
         )
 
-        graph: nx.DiGraph[str] = nx.DiGraph()
-        observer.on_tick(tick=0, graph=graph, events=[])
+        from tests.factories import DomainFactory
 
-        mock_tracer.flush.assert_called_once_with(session_id=sid, tick=0)
+        factory = DomainFactory()
+        state = factory.create_world_state()
+
+        observer.on_tick(previous_state=state, new_state=state)
+
+        mock_tracer.flush.assert_called_once_with(sid, state.tick)
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -239,12 +239,12 @@ class TestVisibilityPipeline:
         """DefaultVisibilitySource constructs VisibilityMetric from gamma output."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.gamma.gamma_iii import GammaIIIResult
+        from babylon.economics.gamma.types import GammaIII
         from babylon.economics.tensor_hierarchy.types import VisibilityMetric
         from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
         # Mock a valid GammaIIIResult
-        mock_result = MagicMock(spec=GammaIIIResult)
+        mock_result = MagicMock(spec=GammaIII)
         mock_result.gamma_iii = 0.333
         mock_result.year = 2022
 
@@ -259,33 +259,38 @@ class TestVisibilityPipeline:
         result = source.get_visibility(2022)
         assert isinstance(result, VisibilityMetric)
         assert result.g_33 == pytest.approx(0.333)
-        assert result.g_11 == pytest.approx(1.0)
+        assert result.g_11 == pytest.approx(0.97)  # QCEW coverage rate for productive depts
         assert result.year == 2022
 
     def test_shadow_subsidy_computation(self) -> None:
-        """ShadowSubsidy computed correctly from visibility and dept III value."""
+        """ShadowSubsidy computed correctly from visibility via gamma module."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.gamma.gamma_iii import GammaIIIResult
+        from babylon.economics.gamma.types import GammaIII, ShadowSubsidy
         from babylon.economics.tensor_hierarchy.types import ShadowSubsidyTensor
         from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
-        mock_result = MagicMock(spec=GammaIIIResult)
+        mock_result = MagicMock(spec=GammaIII)
         mock_result.gamma_iii = 0.5
         mock_result.year = 2022
 
         mock_gamma = MagicMock()
         mock_gamma.compute.return_value = mock_result
+
+        # Shadow calculator returns a ShadowSubsidy object
+        mock_shadow_result = MagicMock(spec=ShadowSubsidy)
+        mock_shadow_result.phi_iii_labor_hours = 50.0
+        mock_shadow_result.phi_iii_dollars = None
+        mock_shadow_result.melt_available = False
+
         mock_shadow = MagicMock()
-        # Shadow calculator returns phi_iii_labor_hours
-        mock_shadow.compute_phi_iii.return_value = 50.0
+        mock_shadow.compute_phi_iii.return_value = mock_shadow_result
 
         source = DefaultVisibilitySource(
             gamma_calculator=mock_gamma,
             shadow_calculator=mock_shadow,
         )
-        # dept_iii_value = 100.0 hours; g_33 = 0.5 → subsidy = 100 * (1-0.5) = 50
-        result = source.get_shadow_subsidy(2022, dept_iii_value=100.0)
+        result = source.get_shadow_subsidy(2022)
         assert isinstance(result, ShadowSubsidyTensor)
         assert result.phi_iii_labor_hours > 0.0
         assert result.year == 2022
@@ -294,11 +299,11 @@ class TestVisibilityPipeline:
         """VisibilityMetric maintains g_33 < g_11 constraint."""
         from unittest.mock import MagicMock
 
-        from babylon.economics.gamma.gamma_iii import GammaIIIResult
+        from babylon.economics.gamma.types import GammaIII
         from babylon.economics.tensor_hierarchy.types import VisibilityMetric
         from babylon.economics.tensor_hierarchy.visibility import DefaultVisibilitySource
 
-        mock_result = MagicMock(spec=GammaIIIResult)
+        mock_result = MagicMock(spec=GammaIII)
         mock_result.gamma_iii = 0.333
         mock_result.year = 2020
 

@@ -42,6 +42,7 @@ from babylon.reference.schema import (
     DimIndustry,
     DimOwnership,
     DimTime,
+    FactBEACountyGDP,
     FactBEANationalIndustry,
     FactQcewAnnual,
 )
@@ -90,6 +91,10 @@ class SQLiteBEANationalGDPSource:
     def get_gdp(self, year: int) -> float | None:
         """Get national GDP for a given year.
 
+        Tries FactBEANationalIndustry first (pre-aggregated national row).
+        Falls back to SUM(FactBEACountyGDP.gdp_millions) when the national
+        table is empty (common when only county-level BEA data was loaded).
+
         Args:
             year: Calendar year (typically 2010-2023).
 
@@ -108,6 +113,7 @@ class SQLiteBEANationalGDPSource:
             if time_dim is None:
                 return None
 
+            # Primary: pre-aggregated national row
             result = (
                 session.query(FactBEANationalIndustry.value_added_millions)
                 .filter(
@@ -119,6 +125,23 @@ class SQLiteBEANationalGDPSource:
 
             if result and result[0] is not None:
                 return float(result[0]) * MILLIONS_TO_DOLLARS
+
+            # Fallback: sum county GDP for 'All industries' (line_number=1)
+            county_total = (
+                session.query(func.sum(FactBEACountyGDP.gdp_millions))
+                .filter(
+                    FactBEACountyGDP.bea_industry_id == total_industry_id,
+                    FactBEACountyGDP.time_id == time_dim.time_id,
+                )
+                .scalar()
+            )
+
+            if county_total is not None:
+                logger.info(
+                    "BEA national GDP derived from county sum for year %d",
+                    year,
+                )
+                return float(county_total) * MILLIONS_TO_DOLLARS
             return None
 
 

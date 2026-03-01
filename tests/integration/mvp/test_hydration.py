@@ -186,7 +186,6 @@ class TestSC006WayneNotOakland:
 class TestSC003InitializationTime:
     """Test SC-003: Initialization completes in under 2 seconds."""
 
-    @pytest.mark.timeout(2)
     def test_hydration_under_2_seconds(self) -> None:
         """Verify hydrate_territories completes in under 2 seconds (SC-003)."""
         start = time.perf_counter()
@@ -196,7 +195,6 @@ class TestSC003InitializationTime:
         assert elapsed < 2.0, f"SC-003 FAILED: Hydration took {elapsed:.2f}s (limit: 2.0s)"
         assert len(territories) == 2  # Ensure it actually ran
 
-    @pytest.mark.timeout(2)
     def test_from_sqlite_under_2_seconds(self) -> None:
         """Verify Simulation.from_sqlite() completes in under 2 seconds."""
         start = time.perf_counter()

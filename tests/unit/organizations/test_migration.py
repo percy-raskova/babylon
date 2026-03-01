@@ -22,7 +22,7 @@ from babylon.organizations.migration import (
     migrate_institution,
 )
 
-DATA_DIR = Path(__file__).resolve().parents[3] / "src" / "babylon" / "data" / "game"
+DATA_DIR = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "test_data" / "game"
 
 
 class TestMigrateFaction:

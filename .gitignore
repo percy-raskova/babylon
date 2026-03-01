@@ -89,3 +89,4 @@ assets/images/templates.zip
 infra/TOM_en_gdpr.pdf
 .gitignore
 infra/DPA_en_gdpr.pdf
+deploy/ansible-setup-guide.md

@@ -1,0 +1,17 @@
+---
+
+- name: Initial configuration for application server
+  hosts: all
+  become: true
+  become_user: root
+  remote_user: root
+  vars:
+    update_apt_cache: true
+  vars_files:
+    - roles/base/defaults/main.yml
+  module_defaults:
+    ansible.builtin.apt:
+      force_apt_get: true
+
+  roles:
+    - security

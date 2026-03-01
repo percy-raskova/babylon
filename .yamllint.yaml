@@ -62,3 +62,4 @@ ignore: |
   brainstorm/
   docs/character_sheets/
   ai-docs/
+  deploy/terraform/cloud-init.yaml

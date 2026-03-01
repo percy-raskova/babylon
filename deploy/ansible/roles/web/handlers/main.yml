@@ -1,0 +1,4 @@
+---
+
+- name: Restart application
+  community.general.supervisorctl: name={{ application_name }} state=restarted

@@ -1,0 +1,41 @@
+---
+
+- name: Install Certbot
+  ansible.builtin.apt:
+    update_cache: "{{ update_apt_cache }}"
+    state: present
+    name:
+      - certbot
+      - python3-certbot-nginx
+  tags: packages
+
+- name: Check if Nginx exists
+  ansible.builtin.stat: path=/etc/init.d/nginx
+  register: nginx_status
+
+- name: Ensure Nginx is stopped
+  ansible.builtin.service: name=nginx state=stopped
+  when: nginx_status.stat.exists
+
+- name: Install certbot and generate cert
+  ansible.builtin.command: >-
+    {{ certbot_script }} certonly --noninteractive --agree-tos --standalone
+    --email {{ certbot_admin_email }} -d {{ inventory_hostname }}
+  args:
+    creates: "{{ certbot_output_dir }}"
+
+- name: Ensure Nginx is started
+  ansible.builtin.service: name=nginx state=started
+  when: nginx_status.stat.exists
+
+- name: Ensure a cron job to auto-renew the cert exists
+  ansible.builtin.cron:
+    name: "daily auto renew cert"
+    special_time: daily
+    job: >-
+      {{ certbot_script }} renew --standalone --no-self-upgrade
+      --pre-hook "service nginx stop"
+      --post-hook "service nginx start"
+      --quiet
+    state: present
+  when: certbot_auto_renew

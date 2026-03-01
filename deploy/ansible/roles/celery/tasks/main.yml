@@ -1,0 +1,7 @@
+---
+
+- ansible.builtin.import_tasks: copy_scripts.yml
+  tags: celery
+
+- ansible.builtin.import_tasks: setup_supervisor.yml
+  tags: celery

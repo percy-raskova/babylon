@@ -1,0 +1,22 @@
+---
+
+- name: Create application virtual machine via vagrant
+  hosts: all
+  become: true
+  become_user: root
+  remote_user: vagrant
+  vars:
+    update_apt_cache: true
+  module_defaults:
+    ansible.builtin.apt:
+      force_apt_get: true
+
+  roles:
+    - base
+    - avahi
+    - db
+    - rabbitmq
+    - web
+    - celery
+    - memcached
+    - nginx

@@ -1,0 +1,11 @@
+# playbooks/site.yml
+- name: Configure server
+  hosts: webservers
+  become: true
+  roles:
+    - geerlingguy.security
+    - geerlingguy.docker
+    - common
+    - firewall
+    - certbot
+    - app

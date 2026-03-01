@@ -28,7 +28,7 @@ from babylon.infrastructure.types import (
 from babylon.models.enums import FlowCategory, InfrastructureType, JunctionType
 
 if TYPE_CHECKING:
-    from babylon.data.natural_earth.reader import (
+    from babylon.infrastructure.natural_earth_reader import (
         NaturalEarthReader,
         RoadFeature,
     )

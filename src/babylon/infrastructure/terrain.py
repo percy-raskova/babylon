@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 import h3
 
 from babylon.config.defines import InfraTerrainDefines
-from babylon.data.natural_earth.reader import RESOURCE_FEATURECLA
+from babylon.infrastructure.natural_earth_reader import RESOURCE_FEATURECLA
 from babylon.infrastructure.types import (
     BiocapacityStockState,
     ExtractionResult,
@@ -28,7 +28,7 @@ from babylon.infrastructure.types import (
 from babylon.models.enums import BiocapacityType, TerrainType
 
 if TYPE_CHECKING:
-    from babylon.data.natural_earth.reader import NaturalEarthReader
+    from babylon.infrastructure.natural_earth_reader import NaturalEarthReader
 
 logger = logging.getLogger(__name__)
 

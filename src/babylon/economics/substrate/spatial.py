@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 import h3
 
-from babylon.data.h3.loader import generate_h3_cells, wkt_to_geometry
+from babylon.economics.substrate.h3_utils import generate_h3_cells, wkt_to_geometry
 from babylon.economics.substrate.types import (
     HexEconomicState,
     HexGrid,

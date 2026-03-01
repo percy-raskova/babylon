@@ -695,6 +695,8 @@ ADR0XX_descriptive_name:
 - In-memory via GraphProtocol. No new database tables. Organization OODA profiles stored as graph node attributes. Action results as tick events. (032-ooda-loop-system)
 - Python 3.12+ + NetworkX 3.x (graph analysis), XGI 0.10 (hypergraph), Pydantic 2.x (frozen models) (033-bifurcation-topology)
 - In-memory via GraphProtocol. No new database tables. BifurcationSnapshot stored in monitor history list. (033-bifurcation-topology)
+- Python 3.12+ (existing project standard) + Pydantic 2.x (frozen models, validation), NetworkX 3.x (GraphProtocol via NetworkXAdapter), h3 4.2 (spatial indexing), Shapely 2.x (spatial intersection for NE snapping), SciPy (weighted curvature LP) (036-infrastructure-topology)
+- In-memory via GraphProtocol. No new database tables. Infrastructure entities stored separately from WorldState.relationships. Natural Earth SQLite (423MB) read-only external data source. FCC broadband data via existing FCCBroadbandLoader. (036-infrastructure-topology)
 
 ## Recent Changes
 - 013-melt-basket-visibility: Added MELT calculator, basket visibility, class position classifier, imperial rent calculator (TVT formulas)

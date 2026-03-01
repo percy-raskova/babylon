@@ -40,13 +40,15 @@ graph = container.persistence.hydrate_graph(
 ## 2. PostgresRuntime Initialization
 
 ```python
+from psycopg_pool import ConnectionPool
 from babylon.persistence.postgres_runtime import PostgresRuntime
 
-runtime = PostgresRuntime(
-    dsn="postgresql://babylon:secret@localhost:5432/babylon",
-    pool_min=2,
-    pool_max=10,
+pool = ConnectionPool(
+    conninfo="postgresql://babylon:secret@localhost:5432/babylon",
+    min_size=2,
+    max_size=10,
 )
+runtime = PostgresRuntime(pool)
 
 # Persist full simulation state (called by Simulation after each tick)
 runtime.persist_tick(tick=42, graph=graph, session_id=session_id)
@@ -120,9 +122,7 @@ print(f"Buffered events: {tracer.buffer_size}")
 ```python
 from babylon.persistence.pgvector_store import PgVectorStore
 
-store = PgVectorStore(
-    dsn="postgresql://babylon:secret@localhost:5432/babylon",
-)
+store = PgVectorStore(pool, dimension=1536, collection="default")
 
 # Add document chunks (same interface as ChromaDB VectorStore)
 store.add_chunks(chunks)  # list of Embeddable objects with embeddings
@@ -163,7 +163,7 @@ runtime.drop_session_partition(session_id)
 from babylon.persistence.runtime_db import RuntimeDatabase
 
 # Existing SQLite backend satisfies RuntimePersistence protocol
-sqlite_runtime = RuntimeDatabase(db_path=":memory:")
+sqlite_runtime = RuntimeDatabase(in_memory=True)
 
 # Same interface, no Postgres required
 sqlite_runtime.persist_tick(tick=1, graph=graph)

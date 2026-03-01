@@ -88,6 +88,10 @@ class BiocapacityStockState(BaseModel):
     stock_type: str = Field(description="BiocapacityType value")
     initial_value: float = Field(ge=0.0, description="Stock at initialization")
     current_value: float = Field(ge=0.0, description="Current stock level")
+    depletion_history: list[float] = Field(
+        default_factory=list,
+        description="Extraction amounts per tick",
+    )
     depleted: bool = Field(
         default=False,
         description="True when current_value == 0.0",

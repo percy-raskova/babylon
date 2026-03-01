@@ -179,6 +179,11 @@ ______________________________________________________________________
 - [ ] T046 [P] Write end-to-end integration test in `tests/integration/test_infrastructure_e2e.py`: full pipeline from NE data → terrain classification → infrastructure snapping → capacity computation → weighted Laplacian → field derivative output. Verify all 8 success criteria (SC-001 through SC-008).
 - [ ] T047 Update package exports in `src/babylon/infrastructure/__init__.py`: ensure all public classes, protocols, and DTOs are exported with complete `__all__` list. Update `src/babylon/data/natural_earth/__init__.py` exports.
 - [ ] T048 Run quickstart.md validation: execute code examples from `specs/036-infrastructure-topology/quickstart.md` against implementation and verify they produce expected outputs (adjust import paths if needed).
+- [ ] T049 Implement tick-snapshot serialization for infrastructure state: ensure DefaultInfrastructureInventory and DefaultBiocapacityStore can serialize their state to a dict (via Pydantic `model_dump()`) and reconstruct from a dict, so infrastructure state participates in the existing WorldState tick-keyed snapshot mechanism. This is interim storage pending the PostgreSQL migration — no new persistence layer, just round-trip serialization compatibility. Covers FR-032.
+
+**Deferred to cross-system integration (post-PostgreSQL migration)**:
+- **FR-031** (Volume II capacity-constrained flow routing): Requires modifying Feature 026 wage circulation to respect edge capacity. Deferred because it touches Volume II internals, not infrastructure topology.
+- **FR-033** (flow conservation enforcement): Conservation is a mathematical property of the weighted Laplacian (verified in T029 / SC-007). Explicit enforcement of flow redistribution/queuing when capacity is exceeded belongs in the Volume II integration pass.
 
 ______________________________________________________________________
 
@@ -289,8 +294,8 @@ ______________________________________________________________________
 | 6. US3 Vertex Infra | P2 | T030-T033 (4) | T030, T031 |
 | 7. US4 Nonlocal Edges | P2 | T034-T038 (5) | T034, T035 |
 | 8. US5 Internet | P3 | T039-T044 (6) | T039, T040, T041 |
-| 9. Polish | -- | T045-T048 (4) | T045, T046 |
-| **Total** | | **48 tasks** | |
+| 9. Polish | -- | T045-T049 (5) | T045, T046 |
+| **Total** | | **49 tasks** | |
 
 ______________________________________________________________________
 

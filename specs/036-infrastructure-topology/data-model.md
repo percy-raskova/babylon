@@ -146,7 +146,7 @@ A single infrastructure element on an edge or vertex.
 | `owner_org_id` | str or None | FK to organization | Owning organization |
 | `ne_source_id` | str or None | | Natural Earth feature ID for provenance |
 
-**Lifecycle**: Created during initialization from NE data (FR-011) or via BUILD_INFRASTRUCTURE action (FR-030). Condition degrades via ATTACK_INFRASTRUCTURE (FR-018). Condition at 0.0 = destroyed (zero effective capacity).
+**Lifecycle**: Created during initialization from NE data (FR-011) or via BUILD_INFRASTRUCTURE action (Feature 032). Condition degrades via ATTACK_INFRASTRUCTURE (FR-018). Condition at 0.0 = destroyed (zero effective capacity).
 
 **Effective capacity**: `capacity[category] * condition` for each flow category.
 

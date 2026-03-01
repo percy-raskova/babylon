@@ -38,8 +38,8 @@ Natural Earth tables used:
 | `ne_10m_geography_regions_polys` | RESOURCE hex classification (Range/mtn, Plateau, etc.) | US1, FR-003 |
 | `ne_10m_airports` | Nonlocal edge anchor points (DTW: scalerank 3, iata DTW) | US4, FR-015 |
 | `ne_10m_ports` | Nonlocal edge anchor points, PORT vertex classification (Detroit: scalerank 4) | US4, FR-016 |
-| `ne_10m_roads` + `ne_10m_roads_north_america` | Edge infrastructure initialization (highway corridors; NA supplement has prefix/number for route ID e.g. I-75, I-94) | US2, FR-007 |
-| `ne_10m_railroads` + `ne_10m_railroads_north_america` | Edge infrastructure initialization (rail corridors) | US2, FR-007 |
+| `ne_10m_roads` + `ne_10m_roads_north_america` | Edge infrastructure initialization (highway corridors; NA supplement has prefix/number for route ID e.g. I-75, I-94) | US2, FR-011 |
+| `ne_10m_railroads` + `ne_10m_railroads_north_america` | Edge infrastructure initialization (rail corridors) | US2, FR-011 |
 
 **Verified data availability** (2026-03-01 against v5.1.2 SQLite):
 - Michigan interstates present in `ne_10m_roads_north_america`: I-75 (scalerank 3), I-94 (scalerank 5), I-96 (scalerank 5-6), I-275/375/475/696 (scalerank 4-6)

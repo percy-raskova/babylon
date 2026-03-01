@@ -60,7 +60,12 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 if TYPE_CHECKING:
-    from babylon.data.atus.models import ATUSHouseholdSummary, VisibilityDecomposition
+    from typing import Any
+
+    # ATUS models (ATUSHouseholdSummary, VisibilityDecomposition) are defined
+    # in babylon-data. Use Any until babylon-data is available as a package.
+    ATUSHouseholdSummary = Any
+    VisibilityDecomposition = Any
 
 
 class ReproductionLoaderProtocol(ABC):

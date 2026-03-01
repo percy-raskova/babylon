@@ -9,7 +9,6 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from babylon.data.chroma_manager import ChromaManager
 from babylon.rag.chunker import DocumentProcessor
 from babylon.rag.embeddings import EmbeddingManager
 from babylon.rag.exceptions import RagError
@@ -63,7 +62,7 @@ class RagPipeline:
     def __init__(
         self,
         config: RagConfig | None = None,
-        chroma_manager: ChromaManager | None = None,
+        chroma_manager: Any | None = None,
         embedding_manager: EmbeddingManager | None = None,
     ):
         """Initialize the RAG pipeline.
@@ -74,7 +73,12 @@ class RagPipeline:
             embedding_manager: Embedding manager (creates new if None)
         """
         self.config = config or RagConfig()
-        self.chroma_manager = chroma_manager or ChromaManager()
+        if chroma_manager is None:
+            raise NotImplementedError(
+                "ChromaDB has been removed. Use babylon.persistence.pgvector_store.PgVectorStore "
+                "for vector storage (Feature 037)."
+            )
+        self.chroma_manager = chroma_manager
         self.embedding_manager = embedding_manager or EmbeddingManager(
             batch_size=self.config.embedding_batch_size,
             max_concurrent_requests=self.config.max_concurrent_embeds,

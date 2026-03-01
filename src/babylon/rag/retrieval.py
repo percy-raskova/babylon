@@ -6,7 +6,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from babylon.data.chroma_manager import ChromaManager
 from babylon.rag.chunker import DocumentChunk
 from babylon.rag.embeddings import EmbeddingManager
 from babylon.rag.exceptions import RagError
@@ -71,12 +70,17 @@ class QueryResponse(BaseModel):
 
 
 class VectorStore:
-    """Interface to ChromaDB for storing and retrieving document vectors."""
+    """Interface to ChromaDB for storing and retrieving document vectors.
+
+    .. deprecated::
+        ChromaDB is being replaced by pgvector (Feature 037).
+        Use :class:`babylon.persistence.pgvector_store.PgVectorStore` instead.
+    """
 
     def __init__(
         self,
         collection_name: str = "documents",
-        chroma_manager: ChromaManager | None = None,
+        chroma_manager: Any = None,
     ):
         """Initialize the vector store.
 
@@ -85,7 +89,12 @@ class VectorStore:
             chroma_manager: Optional ChromaManager instance (creates new if None)
         """
         self.collection_name = collection_name
-        self.chroma_manager = chroma_manager or ChromaManager()
+        if chroma_manager is None:
+            raise NotImplementedError(
+                "ChromaDB has been removed. Use babylon.persistence.pgvector_store.PgVectorStore "
+                "for vector storage (Feature 037)."
+            )
+        self.chroma_manager = chroma_manager
         self._collection: Any = None
 
     @property

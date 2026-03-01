@@ -10,7 +10,7 @@ The SessionRecorder creates a comprehensive black box recording:
 - Tick log: RNG state and mutation summary for replay
 
 Usage:
-    from babylon.data.simulation import SimulationDB
+    from babylon.engine.simulation import SimulationDB
     from babylon.engine.observers.session_recorder import SessionRecorder
 
     db = SimulationDB(run_id="experiment_001")
@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 from babylon.models.enums import EdgeType
 
 if TYPE_CHECKING:
-    from babylon.data.simulation import SimulationDB
+    from babylon.engine.simulation.database import SimulationDB
     from babylon.models.config import SimulationConfig
     from babylon.models.world_state import WorldState
 

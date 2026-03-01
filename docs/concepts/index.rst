@@ -73,6 +73,20 @@ simulation engine: BEA Input-Output Leontief analysis, BTS FAF5 freight flow
 imperial rent computation, and Markov chain class mobility — all grounded in
 Marxian department theory.
 
+Material Geography (Feature 036)
+---------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   infrastructure-topology
+
+How terrain, physical infrastructure, and internet connectivity shape the
+material substrate on which class struggle unfolds. Infrastructure capacity
+determines flow ceilings, biocapacity stocks model ecological limits, and
+internet connectivity creates the central dialectic of consciousness
+acceleration versus state surveillance.
+
 Consciousness & Organization
 ----------------------------
 

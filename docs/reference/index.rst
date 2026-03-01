@@ -154,6 +154,18 @@ Percolation theory metrics, TopologyMonitor observer, resilience testing,
 and the dialectical field topology framework (contradiction fields,
 derivatives, curvature, edge mode state machine).
 
+Infrastructure Topology (Feature 036)
+-------------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   infrastructure-topology
+
+Terrain classification, typed infrastructure on H3 mesh edges, biocapacity
+extraction, nonlocal edges, internet consciousness field operations, and
+configuration parameters.
+
 Design System
 -------------
 

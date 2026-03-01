@@ -38,13 +38,13 @@ The system runs locally without external servers, using the **Embedded Trinity**
      - Technology
      - Purpose
    * - **The Ledger**
-     - DuckDB (data warehouse) / SQLite (game state) / Pydantic (validation)
+     - DuckDB (data warehouse) / SQLite or PostgreSQL (game state) / Pydantic (validation)
      - Rigid material state (wealth, organization, empirical data)
    * - **The Topology**
      - NetworkX
      - Fluid relational state (solidarity, exploitation)
    * - **The Archive**
-     - ChromaDB
+     - ChromaDB / pgvector
      - Semantic history for AI narrative
 
 See :doc:`/concepts/architecture` for detailed architecture documentation.

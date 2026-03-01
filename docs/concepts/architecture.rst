@@ -15,9 +15,9 @@ the **Embedded Trinity**:
    Architecture diagram (The Embedded Trinity) planned for future addition.
 
 1. **The Ledger** - Rigid material state (DuckDB data warehouse /
-   SQLite game state / Pydantic validation)
+   SQLite or PostgreSQL game state / Pydantic validation)
 2. **The Topology** - Fluid relational state (NetworkX)
-3. **The Archive** - Semantic history (ChromaDB)
+3. **The Archive** - Semantic history (ChromaDB / pgvector)
 
 This architecture separates concerns:
 
@@ -59,10 +59,12 @@ The Ledger uses three complementary systems:
    Stores economic indicators, demographic data, infrastructure, and geographic
    information. Located at ``data/duckdb/marxist-data-3NF.duckdb``.
 
-**SQLite Game State**
-   Persistent storage for simulation history and checkpoints. The
-   :py:class:`~babylon.engine.database.DatabaseConnection` class manages
-   SQLAlchemy sessions. Isolated from the DuckDB research database.
+**SQLite / PostgreSQL Game State**
+   Per-simulation runtime state storage. SQLite (``RuntimeDatabase``)
+   for development and testing; PostgreSQL (``PostgresRuntime``) for
+   production with concurrent session support, spatial queries, and
+   vector search. Both implement the ``RuntimePersistence`` protocol.
+   See :doc:`/concepts/persistence-architecture` for design rationale.
 
 Entity Collections
 ^^^^^^^^^^^^^^^^^^
@@ -229,6 +231,12 @@ Babylon uses ChromaDB as a vector database:
    retriever = Retriever(store)
    results = retriever.query(query="factory occupation", k=5)
 
+.. note::
+
+   Feature 037 adds ``PgVectorStore`` as an alternative to ChromaDB,
+   using PostgreSQL's pgvector extension. Both implement
+   ``VectorStoreProtocol``. See :doc:`/reference/persistence`.
+
 The Archive enables:
 
 - AI narrative generation from simulation state
@@ -324,6 +332,8 @@ Current observers:
 - **TopologyMonitor** - Tracks solidarity network condensation via percolation theory
 - **EconomyMonitor** - Detects economic crises (>20% imperial rent pool drops)
 - **CausalChainObserver** - Detects Shock Doctrine pattern (crash → austerity → radicalization)
+- **PersistenceObserver** - Persists simulation state to
+  ``RuntimePersistence`` backend after each tick
 
 Validation utilities (in ``babylon.engine.observers``):
 
@@ -373,6 +383,8 @@ Key Design Principles
 See Also
 --------
 
+- :doc:`/concepts/persistence-architecture` - Persistence layer design rationale
+- :doc:`/reference/persistence` - Persistence API reference
 - :doc:`/concepts/topology` - Graph structure details
 - :doc:`/concepts/simulation-systems` - System architecture explanation
 - :doc:`/reference/data-models` - Complete entity and type specifications

@@ -14,11 +14,13 @@ Architecture
    :maxdepth: 1
 
    architecture
+   persistence-architecture
    simulation-systems
    event-system
 
 Understanding the Embedded Trinity architecture (Ledger, Topology, Archive),
-how the seven simulation systems work together, the event system that enables
+the persistence layer design (dual-backend protocols, session isolation),
+how the simulation systems work together, the event system that enables
 AI observation, and how data flows through the simulation engine.
 
 Theoretical Foundation

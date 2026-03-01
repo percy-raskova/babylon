@@ -84,6 +84,19 @@ API reference for the simulation systems, the community hypergraph layer
 Volume II circulation layer (Feature 023), and demographics mechanics
 including the Mass Line population block paradigm.
 
+Persistence Layer (Feature 037)
+-------------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   persistence
+
+Protocols (``RuntimePersistence``, ``VectorStoreProtocol``, ``TraceCollector``),
+concrete implementations (``PostgresRuntime``, ``RuntimeDatabase``,
+``PgVectorStore``, ``TraceRecorder``), database schema, and the
+``PersistenceObserver`` lifecycle hook.
+
 Economic Data Sources
 ---------------------
 

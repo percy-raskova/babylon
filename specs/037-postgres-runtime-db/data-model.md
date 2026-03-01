@@ -5,7 +5,7 @@
 
 ## Entity Catalog
 
-21 entities organized into 6 layers: Game Management (3), Simulation State (9), Spatial (3), Infrastructure (3), Trace (1), Semantic (1), Archival Metadata (1).
+19 entities organized into 6 layers: Game Management (3), Simulation State (10), Spatial (3), Infrastructure (1), Trace (1), Semantic (1).
 
 ## Layer 1: Game Management (Django ORM)
 

@@ -213,10 +213,8 @@ ______________________________________________________________________
 - **Tick Summary**: Pre-aggregated metrics per tick for time-series endpoints: economic totals, ratios, edge counts, organization counts, event counts.
 - **Tick Log**: Deterministic replay metadata: RNG state, mutation summaries, invariant checks, per-system timings.
 - **Trace Entry**: Structured execution trace event: system name, verbosity level, event type, optional node reference, and data payload.
-- **Terrain State**: Per-tick terrain classification for each hex cell. Contains land/water/resource type and coverage fractions. Derived from Natural Earth data at initialization, mutable during simulation.
-- **Biocapacity State**: Per-tick biocapacity stock for each hex cell. Contains stock type, initial value, current value, depletion history, and depletion flag. Tracks ecological resource dynamics.
+- **Hex Terrain State**: Per-tick combined terrain, biocapacity, and internet state for each hex cell. Contains terrain classification (land/water/resource, coverage fractions), biocapacity stocks (stock type, initial/current values, depletion history), and internet access (access level, response mode, surveillance coupling). Consolidates three per-hex Feature 036 dimensions into one table for query efficiency.
 - **Infrastructure Link State**: Per-tick infrastructure link on graph edges. Contains link type, capacity per flow category, condition/health, and ownership. Tracks transport and utility infrastructure.
-- **Internet Access State**: Per-tick internet access and consciousness field for each hex cell. Contains access level, response mode (permit/throttle/sever), and surveillance coupling. Tracks state apparatus control of information flow.
 - **Document Chunk**: Text chunk from theory or game corpus with vector embedding for semantic similarity search. Optionally scoped to a session.
 
 ## Success Criteria *(mandatory)*

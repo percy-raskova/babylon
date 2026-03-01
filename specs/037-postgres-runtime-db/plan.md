@@ -17,7 +17,7 @@ Replace all non-reference runtime storage with PostgreSQL. The current persisten
 **Project Type**: Single project (extends existing `src/babylon/` package)
 **Performance Goals**: <2s persist/tick, <1s hydrate/tick, <500ms semantic search, <20% trace overhead at DEBUG level
 **Constraints**: Zero DB I/O during tick computation (Constitution II.6), full snapshots not diffs, session-scoped isolation for all data
-**Scale/Scope**: 10 concurrent beta testers, ~1,500 hexes per game, ~125MB active data per 260-tick session, archival to ~15MB Parquet per session
+**Scale/Scope**: 10 concurrent beta testers, ~1,500 hexes per game, ~245MB active data per 260-tick session (~960 KB/tick), archival to ~25-30MB Parquet per session (zstd compression)
 
 ## Constitution Check
 
@@ -43,7 +43,7 @@ No violations detected. No complexity tracking needed.
 specs/037-postgres-runtime-db/
 ├── plan.md              # This file
 ├── research.md          # Phase 0: codebase analysis + technology decisions
-├── data-model.md        # Phase 1: all 21 entity schemas
+├── data-model.md        # Phase 1: all 19 entity schemas
 ├── quickstart.md        # Phase 1: usage examples
 ├── contracts/           # Phase 1: protocol interfaces
 │   ├── persistence.py   # RuntimePersistence protocol + PostgresRuntime extensions
@@ -61,15 +61,15 @@ src/babylon/persistence/
 ├── runtime_schema.py         # EXISTING: SQLite DDL (kept)
 ├── protocols.py              # NEW: RuntimePersistence protocol definition
 ├── postgres_runtime.py       # NEW: PostgresRuntime implementation (psycopg 3)
-├── postgres_schema.py        # NEW: Postgres DDL for all 20 tables
+├── postgres_schema.py        # NEW: Postgres DDL for all 19 tables
 ├── trace_recorder.py         # NEW: TraceRecorder observer (buffered flush)
 ├── archival.py               # NEW: Parquet export + R2 upload pipeline
 └── pgvector_store.py         # NEW: PgVectorStore (VectorStore protocol impl)
 
 src/babylon/engine/
 ├── services.py               # MODIFIED: Add persistence + tracer fields to ServiceContainer
-├── simulation.py             # MODIFIED: Wire PostgresRuntime via ServiceContainer
 └── observers/
+    ├── persistence_observer.py # NEW: PersistenceObserver (calls persist_tick + extensions after each tick)
     └── session_recorder.py   # MODIFIED: Use RuntimePersistence protocol instead of SimulationDB
 
 src/babylon/rag/
@@ -77,7 +77,6 @@ src/babylon/rag/
 
 tests/
 ├── unit/persistence/
-│   ├── test_protocols.py             # Protocol compliance tests
 │   ├── test_postgres_runtime.py      # Unit tests (mocked psycopg)
 │   ├── test_trace_recorder.py        # TraceRecorder buffer/flush tests
 │   ├── test_archival.py              # Parquet export unit tests
@@ -86,7 +85,7 @@ tests/
 │   ├── test_postgres_integration.py  # End-to-end persist/hydrate with real Postgres
 │   └── test_archival_integration.py  # Full export-upload-query cycle
 └── contract/
-    └── test_persistence_contracts.py # RuntimePersistence protocol compliance
+    └── test_persistence_contracts.py # RuntimePersistence protocol compliance (isinstance checks)
 ```
 
 **Structure Decision**: Extends the existing `src/babylon/persistence/` package where `RuntimeDatabase` already lives. New files follow the established protocol + default implementation pattern (e.g., `protocols.py` + `postgres_runtime.py`, mirroring Feature 036's `protocols.py` + concrete implementations). Django models for game management live in a future Django app, not in `src/babylon/persistence/` — the Postgres schema DDL creates the tables, and Django discovers them via `managed = False` or `RunSQL` migrations.

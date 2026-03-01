@@ -32,7 +32,7 @@ ______________________________________________________________________
 - [ ] T004 Create RuntimePersistence protocol, PostgresRuntimeExtensions protocol, TraceLevel enum, TraceCollector protocol, and VectorStoreProtocol in src/babylon/persistence/protocols.py (translate from specs/037-postgres-runtime-db/contracts/ to production code)
 - [ ] T005 Write protocol compliance contract tests in tests/contract/test_persistence_contracts.py — verify RuntimeDatabase satisfies RuntimePersistence via isinstance() check (follow existing pattern in tests/contract/test_infrastructure_contracts.py)
 - [ ] T006 [P] Add missing methods to RuntimeDatabase in src/babylon/persistence/runtime_db.py so it satisfies RuntimePersistence protocol (add session_id parameter to persist_tick and hydrate_graph; add log_tick system_timings parameter if missing)
-- [ ] T007 Create Postgres DDL for all 21 tables in src/babylon/persistence/postgres_schema.py — Layer 1 (game_session, game_turn, action_result), Layer 2 (node_state, edge_state, graph_metadata, community_state, community_membership, contradiction_field, edge_curvature, simulation_event, tick_log, tick_summary), Layer 3 (hex_cell, hex_state, hex_terrain_state), Layer 4 (infrastructure_link_state), Layer 5 (trace_log UNLOGGED), Layer 6 (document_chunk with vector(768)) — reference data-model.md for exact schema
+- [ ] T007 Create Postgres DDL for all 19 tables in src/babylon/persistence/postgres_schema.py — Layer 1 (game_session, game_turn, action_result), Layer 2 (node_state, edge_state, graph_metadata, community_state, community_membership, contradiction_field, edge_curvature, simulation_event, tick_log, tick_summary), Layer 3 (hex_cell, hex_state, hex_terrain_state), Layer 4 (infrastructure_link_state), Layer 5 (trace_log UNLOGGED), Layer 6 (document_chunk with vector(768)) — reference data-model.md for exact schema
 - [ ] T008 [P] Add persistence (RuntimePersistence | None) and tracer (TraceCollector | None) fields to ServiceContainer in src/babylon/engine/services.py — default None, add to create() factory
 - [ ] T009 Create PostgresRuntime base class in src/babylon/persistence/postgres_runtime.py — __init__ with psycopg_pool.ConnectionPool, close(), context manager, _execute_batch() helper for bulk inserts via executemany/COPY
 - [ ] T010 Update src/babylon/persistence/__init__.py — export RuntimePersistence, PostgresRuntimeExtensions, TraceLevel, TraceCollector, VectorStoreProtocol, PostgresRuntime, and existing RuntimeDatabase/RUNTIME_SCHEMA_DDL
@@ -51,9 +51,9 @@ ______________________________________________________________________
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [ ] T011 [P] [US1] Write unit tests for PostgresRuntime.persist_tick (node_state and edge_state inserts) in tests/unit/persistence/test_postgres_runtime.py — mock psycopg connection, verify SQL and parameter binding for 4 node types and all edge types
-- [ ] T012 [P] [US1] Write unit tests for PostgresRuntime.hydrate_graph (graph reconstruction from node_state, edge_state, graph_metadata) in tests/unit/persistence/test_postgres_runtime.py — verify round-trip fidelity of JSONB attributes
-- [ ] T013 [P] [US1] Write unit tests for persist_graph_metadata, persist_community_state, persist_hex_state, persist_infrastructure_state, persist_contradiction_fields in tests/unit/persistence/test_postgres_runtime.py — mock psycopg, verify bulk insert row counts
+- [ ] T011 [US1] Write unit tests for PostgresRuntime.persist_tick (node_state and edge_state inserts) in tests/unit/persistence/test_postgres_runtime.py — mock psycopg connection, verify SQL and parameter binding for 4 node types and all edge types
+- [ ] T012 [US1] Write unit tests for PostgresRuntime.hydrate_graph (graph reconstruction from node_state, edge_state, graph_metadata) in tests/unit/persistence/test_postgres_runtime.py — verify round-trip fidelity of JSONB attributes
+- [ ] T013 [US1] Write unit tests for persist_graph_metadata, persist_community_state, persist_hex_state, persist_infrastructure_state, persist_contradiction_fields in tests/unit/persistence/test_postgres_runtime.py — mock psycopg, verify bulk insert row counts
 - [ ] T014 [P] [US1] Write integration test for full persist/hydrate round-trip in tests/integration/test_postgres_integration.py — real Postgres, persist tick with all subsystems, hydrate, compare graph node/edge attributes
 
 ### Implementation for User Story 1
@@ -172,7 +172,7 @@ ______________________________________________________________________
 - [ ] T046 [US6] Implement upload_to_r2 in src/babylon/persistence/archival.py — upload Parquet files to R2 bucket via boto3 S3 interface, verify checksums
 - [ ] T047 [US6] Implement purge_session in src/babylon/persistence/archival.py — DELETE session data from all tables after verified export, preserve game_session record with status='archived'
 - [ ] T048 [US6] Implement query_archived_session in src/babylon/persistence/archival.py — use DuckDB to read Parquet files directly from R2 (or local path), return query results
-- [ ] T049 [US6] Create Django management command for archival in src/babylon/persistence/management/commands/archive_sessions.py — find completed sessions older than 24h, run export → upload → purge pipeline
+- [ ] T049 [US6] Create archival CLI script in tools/archive_sessions.py — find completed sessions older than 24h, run export → upload → purge pipeline (follows existing tools/ convention; not a Django management command since persistence/ is not a Django app)
 
 **Checkpoint**: Archival pipeline functional. Completed games compressed to Parquet (~8:1 ratio), uploaded to R2, queryable via DuckDB.
 
@@ -208,6 +208,9 @@ ______________________________________________________________________
 - [ ] T057 Run protocol compliance contract tests (T005) to confirm both RuntimeDatabase and PostgresRuntime satisfy RuntimePersistence
 - [ ] T058 Update src/babylon/persistence/__init__.py with final exports — all new types, PostgresRuntime, TraceRecorder, PgVectorStore, archival functions
 - [ ] T059 Validate quickstart.md code examples against actual API — run each snippet mentally or as doctest to verify method signatures match implementation
+- [ ] T060 [P] Write SC-004 trace overhead benchmark in tests/integration/test_postgres_integration.py — run 10 ticks with trace_level=NONE, then 10 ticks with trace_level=DEBUG, assert DEBUG wall time < 1.2× NONE wall time (20% overhead budget)
+- [ ] T061 [P] Write SC-009 cross-backend equivalence test in tests/integration/test_postgres_integration.py — run Detroit scenario for 10 ticks with SQLite RuntimeDatabase and PostgresRuntime using same RNG seed, compare final WorldState node/edge attributes for exact match
+- [ ] T062 [P] Write SC-005 concurrent session stress test in tests/integration/test_postgres_integration.py — create 10 sessions, persist 5 ticks each concurrently, verify zero cross-session data leakage and per-session persist time within 10% of single-session baseline
 
 ______________________________________________________________________
 
@@ -238,21 +241,19 @@ ______________________________________________________________________
 
 - T002, T003 can run in parallel (different conftest files)
 - T005, T006, T007, T008 can run in parallel after T004 (different files)
-- T011, T012, T013, T014 can run in parallel (test files, all RED phase)
+- T011, T012, T013 are sequential (same file); T014 can run in parallel with them (different file)
 - US2, US3, US4, US5, US7 can all start in parallel after Phase 2
 - T043, T044 can run in parallel (different test files)
-- T055, T056 can run in parallel (different test targets)
+- T055, T056, T060, T061, T062 can run in parallel (different test targets/scenarios)
 
 ______________________________________________________________________
 
 ## Parallel Example: User Story 1
 
 ```text
-# RED phase — Launch all tests in parallel (all should FAIL):
-Task T011: "Unit tests for persist_tick in tests/unit/persistence/test_postgres_runtime.py"
-Task T012: "Unit tests for hydrate_graph in tests/unit/persistence/test_postgres_runtime.py"
-Task T013: "Unit tests for subsystem persist methods in tests/unit/persistence/test_postgres_runtime.py"
-Task T014: "Integration test for persist/hydrate round-trip in tests/integration/test_postgres_integration.py"
+# RED phase — Write unit tests sequentially (same file), integration test in parallel:
+Task T011 → T012 → T013: "Unit tests in tests/unit/persistence/test_postgres_runtime.py" (sequential, same file)
+Task T014: "Integration test in tests/integration/test_postgres_integration.py" (parallel with T011-T013, different file)
 
 # GREEN phase — Implement sequentially (same file):
 Task T015 → T016 → T017 → T018 → T019 → T020 → T021 → T022 → T023 → T024 → T025
@@ -300,15 +301,15 @@ ______________________________________________________________________
 |-------|-------|-------|----------|
 | 1. Setup | — | 3 | 2 |
 | 2. Foundational | — | 7 | 4 |
-| 3. US1 State Persistence | P1 MVP | 15 | 4 |
+| 3. US1 State Persistence | P1 MVP | 15 | 1 |
 | 4. US2 Turn Submission | P1 | 4 | 1 |
 | 5. US3 Session Management | P1 | 4 | 1 |
 | 6. US4 Trace Debugging | P2 | 5 | 1 |
 | 7. US5 Spatial Queries | P2 | 4 | 1 |
 | 8. US6 Archival | P3 | 7 | 2 |
 | 9. US7 Semantic Search | P3 | 4 | 1 |
-| 10. Polish | — | 6 | 2 |
-| **Total** | | **59** | **19** |
+| 10. Polish | — | 9 | 5 |
+| **Total** | | **62** | **22** |
 
 ______________________________________________________________________
 

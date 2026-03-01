@@ -38,7 +38,6 @@ chromadb/
 
 #pycache
 *__pycache__*
-.mypy_cache/
 .pytest_cache/
 .ruff_cache/
 .venv/
@@ -84,8 +83,5 @@ src/babylon/data/dot/*.json
 
 # Test coverage output
 coverage.json
-
-.mypy_cache/
-
-# Large binary assets (stored externally)
-assets/
+assets/images/ff-template.zip
+assets/images/templates.zip

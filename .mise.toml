@@ -94,19 +94,23 @@ run = "poetry run pytest tests/scenarios -v --tb=short"
 
 [tasks."test:all"]
 description = "Run all non-AI tests"
-run = "poetry run pytest -m 'not ai' --tb=short"
+run = "poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui --tb=short"
 
 [tasks."test:ai"]
 description = "Run AI/narrative evaluation tests (slow)"
-run = "poetry run pytest -m 'ai' --tb=short"
+run = "poetry run pytest tests/unit/ai --tb=short"
+
+[tasks."test:ui"]
+description = "Run UI tests (unit + integration UI suites)"
+run = "QT_QPA_PLATFORM=offscreen poetry run pytest tests/unit/ui tests/integration/ui --tb=short"
 
 [tasks."test:cov"]
 description = "Run tests with coverage report"
-run = "poetry run pytest -m 'not ai' --cov=src/babylon --cov-report=term-missing"
+run = "poetry run pytest --ignore=tests/unit/ai --ignore=tests/unit/ui --ignore=tests/integration/ui --cov=src/babylon --cov-report=term-missing"
 
 [tasks."test:doctest"]
 description = "Run doctest examples in formulas module"
-run = "poetry run pytest --doctest-modules src/babylon/formulas/formulas.py -v"
+run = "poetry run pytest --doctest-modules src/babylon/formulas -v"
 
 # =============================================================================
 # SIMULATION (Namespaced)
@@ -276,12 +280,12 @@ description = "Verify hexagon UI isolation from database layer (SC-002)"
 run = "poetry run python tools/verify_hexagon_isolation.py --ci"
 
 [tasks."qa:patterns"]
-description = "Run semgrep architectural pattern checks (all severities)"
-run = "semgrep --config .semgrep.yml src/"
+description = "Run semgrep architectural pattern checks (ERROR severity)"
+run = "poetry run pre-commit run semgrep --all-files"
 
 [tasks."qa:patterns-strict"]
 description = "Run semgrep pattern checks (ERROR only, CI mode)"
-run = "semgrep --config .semgrep.yml --severity ERROR --error src/"
+run = "poetry run pre-commit run semgrep --all-files"
 
 [tasks."qa:deps"]
 description = "Run dependency audit (security + outdated + dead code)"
@@ -492,7 +496,7 @@ depends = ["check"]
 
 [tasks.hooks]
 description = "Install pre-commit hooks"
-run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit"
+run = "poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push"
 
 [tasks."hooks:run"]
 description = "Run all pre-commit hooks on all files"

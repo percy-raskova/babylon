@@ -66,10 +66,10 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Run trace analysis
-        run: mise run analyze-trace
+        run: mise run sim:trace
 
       - name: Run parameter sweep
-        run: mise run analyze-sweep
+        run: mise run sim:sweep
 
       - name: Upload analysis results
         uses: actions/upload-artifact@v4

@@ -1,5 +1,5 @@
 # Pre-commit hooks for Babylon
-# Install: poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit
+# Install: poetry run pre-commit install --hook-type commit-msg --hook-type pre-commit --hook-type pre-push
 # Run manually: poetry run pre-commit run --all-files
 
 repos:
@@ -61,7 +61,7 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-commit]
+        stages: [pre-push]
 
   # ==========================================================================
   # COMPLEXITY GATE - Catch high-complexity functions before CI
@@ -74,20 +74,20 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
-        stages: [pre-commit]
+        stages: [pre-push]
 
   # ==========================================================================
   # SEMGREP - Architectural Pattern Enforcement
   # ==========================================================================
-  - repo: local
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.153.0
     hooks:
       - id: semgrep
         name: semgrep (patterns)
-        entry: semgrep --config .semgrep.yml --severity ERROR --error --quiet
-        language: system
+        args: [--config, .semgrep.yml, --severity, ERROR, --error, --quiet, src/]
         pass_filenames: false
         always_run: true
-        stages: [pre-commit]
+        stages: [pre-push]
 
   # ==========================================================================
   # COMMITIZEN - Conventional Commits

@@ -65,6 +65,8 @@ psycopg-pool = "^3.3.0"
 pyarrow = "^23.0.1"
 boto3 = "^1.42.59"
 duckdb = "^1.4.4"
+pgvector = "^0.3"
+ansible-dev-tools = "^26.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
@@ -143,6 +145,7 @@ markers = [
     "theory: Marxian theory validation tests (Capital Volume 2 reproduction schema)",
     "empirical: Empirical validation tests requiring real QCEW data (deselect with '-m \"not empirical\"')",
     "benchmark: Performance and memory benchmarks for tensor operations",
+    "requires_postgres: Tests requiring a running PostgreSQL instance (skipped if unavailable)",
 ]
 addopts = [
     "-v",                      # Verbose output (already have)
@@ -246,6 +249,7 @@ module = [
     "h3",
     "h3.*",
     "tomli",
+    "pgvector.*",
 ]
 ignore_missing_imports = true
 

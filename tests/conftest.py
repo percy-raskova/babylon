@@ -35,6 +35,9 @@ from unittest.mock import MagicMock
 import pytest
 from hypothesis import HealthCheck, settings
 
+if TYPE_CHECKING:
+    from psycopg_pool import ConnectionPool
+
 # Register a Hypothesis profile for mutmut runs.
 # mutmut executes tests from a different executor context, which triggers
 # Hypothesis's differing_executors health check (false positive).
@@ -258,3 +261,42 @@ def qtbot_headless(qapp_args: list[str], qtbot):  # type: ignore[no-untyped-def]
         The qtbot fixture, configured for headless operation.
     """
     return qtbot
+
+
+# =============================================================================
+# POSTGRES FIXTURES (Feature 037: PostgreSQL Runtime Database)
+# =============================================================================
+
+
+@pytest.fixture(scope="session")
+def pg_dsn() -> str:
+    """PostgreSQL DSN for integration tests.
+
+    Reads from BABYLON_TEST_PG_DSN env var or defaults to localhost.
+    """
+    return os.environ.get(
+        "BABYLON_TEST_PG_DSN",
+        "dbname=babylon_test host=localhost",
+    )
+
+
+@pytest.fixture(scope="session")
+def pg_pool(pg_dsn: str) -> Generator["ConnectionPool", None, None]:
+    """Session-scoped connection pool for Postgres integration tests.
+
+    Skips all tests requiring Postgres if the database is unavailable.
+    """
+    from psycopg import OperationalError
+    from psycopg_pool import ConnectionPool
+
+    try:
+        pool = ConnectionPool(conninfo=pg_dsn, min_size=1, max_size=4, open=True)
+        # Verify the connection is actually usable
+        with pool.connection() as conn:
+            conn.execute("SELECT 1")
+    except (OperationalError, OSError):
+        pytest.skip("PostgreSQL not available (set BABYLON_TEST_PG_DSN)")
+        return  # unreachable, but satisfies type checker
+
+    yield pool
+    pool.close()

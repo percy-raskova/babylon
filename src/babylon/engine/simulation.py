@@ -191,7 +191,6 @@ class Simulation:
         """
         from pathlib import Path
 
-        from babylon.data.reference.database import get_reference_session
         from babylon.economics.adapters import SQLiteQCEWSource
         from babylon.economics.department_mapper import DepartmentMapper
         from babylon.economics.hydrator import MarxianHydrator
@@ -202,6 +201,7 @@ class Simulation:
             hydrate_reserve_army,
             hydrate_territories,
         )
+        from babylon.reference.database import get_reference_session
 
         # Validate input
         if not fips_codes:
@@ -262,8 +262,8 @@ class Simulation:
         # Wire calculator factory if multi-year mode requested
         calculator_overrides: dict[str, Any] | None = None
         if years is not None:
-            from babylon.data.reference.database import get_normalized_session_factory
             from babylon.economics.factory import create_economics_services
+            from babylon.reference.database import get_normalized_session_factory
 
             calc_session_factory = get_normalized_session_factory()
             calculator_overrides = create_economics_services(calc_session_factory, tensor_registry)

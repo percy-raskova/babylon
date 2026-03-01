@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.data.reference.database import get_normalized_session_factory
 from babylon.economics.throughput.adapters import (
     NAICS_2DIGIT_SECTORS,
     SQLiteBEACountyGDPSource,
     SQLiteQCEWCountyNAICSSource,
 )
+from babylon.reference.database import get_normalized_session_factory
 
 # Mark all tests in this module as integration tests (require actual database)
 pytestmark = pytest.mark.integration

@@ -248,7 +248,7 @@ def import_to_database(
     """Import downloaded OD files into the 3NF database."""
     from babylon.data.loader_base import LoaderConfig
     from babylon.data.lodes.loader_od import LODESODLoader
-    from babylon.data.reference.database import get_normalized_session, init_normalized_db
+    from babylon.reference.database import get_normalized_session, init_normalized_db
 
     # Ensure all tables exist (creates missing tables like fact_lodes_commuter_flow)
     init_normalized_db()

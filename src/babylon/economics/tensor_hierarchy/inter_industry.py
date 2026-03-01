@@ -83,7 +83,7 @@ class DefaultInterIndustryFlowSource:
         Returns:
             InterIndustryFlow with the A matrix, or NoDataSentinel if unavailable.
         """
-        from babylon.data.reference.schema import (
+        from babylon.reference.schema import (
             DimBEAIndustry,
             DimBEAIOTableType,
             DimTime,
@@ -172,7 +172,7 @@ class DefaultInterIndustryFlowSource:
         if self._industry_codes_cache is not None:
             return self._industry_codes_cache
 
-        from babylon.data.reference.schema import DimBEAIndustry
+        from babylon.reference.schema import DimBEAIndustry
 
         with self._session_factory() as session:
             industries = (
@@ -193,7 +193,7 @@ class DefaultInterIndustryFlowSource:
         if self._available_years_cache is not None:
             return self._available_years_cache
 
-        from babylon.data.reference.schema import DimTime, FactBEAIOCoefficient
+        from babylon.reference.schema import DimTime, FactBEAIOCoefficient
 
         with self._session_factory() as session:
             time_ids = session.query(FactBEAIOCoefficient.time_id).distinct().all()

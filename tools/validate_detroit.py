@@ -26,8 +26,8 @@ import logging
 
 from sqlalchemy import text
 
-from babylon.data.reference.database import get_normalized_session_factory
 from babylon.engine.simulation import Simulation
+from babylon.reference.database import get_normalized_session_factory
 
 logger = logging.getLogger(__name__)
 

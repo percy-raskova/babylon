@@ -7,7 +7,7 @@ Feature: 014-throughput-position
 Date: 2026-02-02
 
 Usage:
-    from babylon.data.reference.database import get_normalized_session_factory
+    from babylon.reference.database import get_normalized_session_factory
     from babylon.economics.throughput.adapters import (
         SQLiteBEACountyGDPSource,
         SQLiteQCEWCountyNAICSSource,
@@ -27,7 +27,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from babylon.data.reference.schema import (
+from babylon.reference.schema import (
     DimBEAIndustry,
     DimCounty,
     DimIndustry,

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from babylon.data.reference.database import get_normalized_session_factory
+from babylon.reference.database import get_normalized_session_factory
 
 # Output directory
 OUTPUT_DIR = Path("data/diagnostics")

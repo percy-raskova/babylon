@@ -49,7 +49,7 @@ class TestInterIndustryFlowPipeline:
     @pytest.fixture()
     def in_memory_session_factory(self):  # type: ignore[no-untyped-def]
         """Provide an in-memory SQLite session factory with 3NF schema."""
-        from babylon.data.reference.schema import NormalizedBase
+        from babylon.reference.schema import NormalizedBase
 
         engine = create_engine("sqlite:///:memory:", echo=False)
         NormalizedBase.metadata.create_all(engine)

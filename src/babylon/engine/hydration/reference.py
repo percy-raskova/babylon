@@ -24,9 +24,9 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from babylon.data.reference.database import get_reference_session
-from babylon.data.reference.schema import BridgeCountyH3, DimCounty
 from babylon.models.snapshots import HexState, TerritoryState
+from babylon.reference.database import get_reference_session
+from babylon.reference.schema import BridgeCountyH3, DimCounty
 
 logger = logging.getLogger(__name__)
 
@@ -246,7 +246,7 @@ def hydrate_class_shares(
 
     try:
         with get_reference_session() as session:
-            from babylon.data.reference.schema import (
+            from babylon.reference.schema import (
                 DimCounty,
                 DimIndustry,
                 DimTime,
@@ -425,7 +425,7 @@ def hydrate_economy_constants(
             # shadow_wage_hourly from QCEW average wages
             from sqlalchemy import func
 
-            from babylon.data.reference.schema import (
+            from babylon.reference.schema import (
                 DimCounty,
                 DimIndustry,
                 DimTime,
@@ -491,7 +491,7 @@ def hydrate_reserve_army(
         with get_reference_session() as session:
             from sqlalchemy import func
 
-            from babylon.data.reference.schema import (
+            from babylon.reference.schema import (
                 DimCounty,
                 DimIndustry,
                 DimTime,

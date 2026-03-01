@@ -7,7 +7,7 @@ Feature: 014-throughput-position (T034-T036)
 Date: 2026-02-03
 
 Usage:
-    from babylon.data.reference.database import get_normalized_session_factory
+    from babylon.reference.database import get_normalized_session_factory
     from babylon.economics.throughput.adapters_lodes import SQLiteLODESCommuterFlowSource
 
     session_factory = get_normalized_session_factory()
@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func
 from sqlalchemy.exc import OperationalError
 
-from babylon.data.reference.schema import (
+from babylon.reference.schema import (
     DimCounty,
     DimTime,
     FactLodesCommuterFlow,

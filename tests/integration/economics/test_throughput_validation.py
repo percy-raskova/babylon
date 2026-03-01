@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import pytest
 
-from babylon.data.reference.database import get_normalized_session_factory
 from babylon.economics.tensor import NoDataSentinel
 from babylon.economics.throughput import (
     CorrelationResult,
@@ -34,6 +33,7 @@ from babylon.economics.throughput import (
 )
 from babylon.economics.throughput.adapters_lodes import SQLiteLODESCommuterFlowSource
 from babylon.economics.throughput.types import CommuterAdjustedMetrics
+from babylon.reference.database import get_normalized_session_factory
 
 # Test constants - Detroit metro area
 WAYNE_FIPS = "26163"  # Wayne County, MI (Detroit)

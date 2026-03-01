@@ -163,7 +163,7 @@ def _load_county_geometry(session: Session, county_fips: str) -> object:
     Returns:
         Shapely geometry or None.
     """
-    from babylon.data.reference.schema import DimCounty, DimCountyGeometry
+    from babylon.reference.schema import DimCounty, DimCountyGeometry
 
     geom_row = (
         session.query(DimCountyGeometry)
@@ -228,7 +228,7 @@ def generate_tri_county_mesh(config: SubstrateConfig) -> HexGrid:
     Returns:
         HexGrid for the tri-county area.
     """
-    from babylon.data.reference.database import get_normalized_session_factory
+    from babylon.reference.database import get_normalized_session_factory
 
     session_factory = get_normalized_session_factory()
     source = DefaultSpatialSubstrateSource(session_factory)

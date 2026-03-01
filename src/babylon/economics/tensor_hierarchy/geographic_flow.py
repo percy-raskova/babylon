@@ -73,7 +73,7 @@ class DefaultGeographicFlowSource:
             GeographicFlow with CFS areas and flow matrix, or NoDataSentinel
             if no flow records exist for that year.
         """
-        from babylon.data.reference.schema import DimCFSArea, FactFAFCommodityFlow
+        from babylon.reference.schema import DimCFSArea, FactFAFCommodityFlow
 
         with self._session_factory() as session:
             flows = (
@@ -114,7 +114,7 @@ class DefaultGeographicFlowSource:
         if self._available_years_cache is not None:
             return self._available_years_cache
 
-        from babylon.data.reference.schema import FactFAFCommodityFlow
+        from babylon.reference.schema import FactFAFCommodityFlow
 
         with self._session_factory() as session:
             rows = session.query(FactFAFCommodityFlow.year).distinct().all()

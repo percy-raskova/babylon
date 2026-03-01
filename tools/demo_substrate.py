@@ -65,7 +65,6 @@ def run_pipeline(
     lodes_year: int = 2021,
 ) -> None:
     """Run the substrate pipeline with or without MarxianHydrator."""
-    from babylon.data.reference.database import get_normalized_session_factory
     from babylon.economics.substrate import (
         DefaultHexCirculationComputer,
         DefaultHexEqualizationComputer,
@@ -75,6 +74,7 @@ def run_pipeline(
         generate_tri_county_mesh,
         hydrate_hex_grid,
     )
+    from babylon.reference.database import get_normalized_session_factory
 
     logger.info("=" * 70)
     logger.info("  %s", label)

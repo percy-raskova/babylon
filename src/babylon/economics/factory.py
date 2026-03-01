@@ -15,7 +15,7 @@ Dependency wiring order (3 levels):
     Level 3: Calculators with calculator deps (throughput, transition engine)
 
 Usage:
-    from babylon.data.reference.database import get_normalized_session_factory
+    from babylon.reference.database import get_normalized_session_factory
     from babylon.economics.factory import create_economics_services
 
     session_factory = get_normalized_session_factory()

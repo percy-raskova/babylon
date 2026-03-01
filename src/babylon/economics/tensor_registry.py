@@ -522,7 +522,7 @@ class TensorRegistry:
             >>> # Now all Michigan counties are loaded for those years
         """
         # Lazy import to avoid circular dependencies
-        from babylon.data.reference.database import get_reference_session
+        from babylon.reference.database import get_reference_session
 
         # Query all counties in this state
         query = """

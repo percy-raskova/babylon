@@ -11,7 +11,7 @@ These adapters provide *national-level* aggregates for MELT (tau) computation:
 - QCEW Employment: Total employment across all counties
 
 Usage:
-    from babylon.data.reference.database import get_normalized_session_factory
+    from babylon.reference.database import get_normalized_session_factory
     from babylon.economics.melt.adapters import (
         SQLiteBEANationalGDPSource,
         SQLiteQCEWNationalEmploymentSource,
@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import func
 
-from babylon.data.reference.schema import (
+from babylon.reference.schema import (
     DimBEAIndustry,
     DimIndustry,
     DimOwnership,

@@ -325,3 +325,150 @@ def assign_communities_to_graph(
     for node_id, communities in agent_memberships.items():
         if node_id in graph.nodes:
             graph.nodes[node_id]["community_memberships"] = communities
+
+
+# =============================================================================
+# Ceiling Test Helpers
+# =============================================================================
+
+
+def build_ceiling_test_graph(
+    wealth_a: float = 50.0,
+    wealth_b: float = 50.0,
+    shared_exploiter: bool = False,
+    node_a_id: str = "worker_a",
+    node_b_id: str = "worker_b",
+) -> nx.DiGraph:
+    """Build a minimal graph for solidarity ceiling tests.
+
+    Args:
+        wealth_a: Wealth of node A.
+        wealth_b: Wealth of node B.
+        shared_exploiter: If True, add a third node that exploits both A and B.
+        node_a_id: ID for the first agent node.
+        node_b_id: ID for the second agent node.
+
+    Returns:
+        DiGraph with social_class nodes and optional EXPLOITATION edges.
+    """
+    graph: nx.DiGraph = nx.DiGraph()
+    graph.add_node(node_a_id, _node_type="social_class", wealth=wealth_a)
+    graph.add_node(node_b_id, _node_type="social_class", wealth=wealth_b)
+
+    if shared_exploiter:
+        exploiter_id = "bourgeois_exploiter"
+        graph.add_node(exploiter_id, _node_type="social_class", wealth=500.0)
+        graph.add_edge(
+            exploiter_id,
+            node_a_id,
+            edge_type=EdgeType.EXPLOITATION,
+            solidarity_strength=0.0,
+        )
+        graph.add_edge(
+            exploiter_id,
+            node_b_id,
+            edge_type=EdgeType.EXPLOITATION,
+            solidarity_strength=0.0,
+        )
+
+    return graph
+
+
+# =============================================================================
+# Undirected Graph Fixtures (for resilience metrics)
+# =============================================================================
+
+
+@pytest.fixture
+def empty_graph() -> nx.Graph:
+    """Create an empty undirected graph (no nodes, no edges)."""
+    return nx.Graph()
+
+
+@pytest.fixture
+def star_graph() -> nx.Graph:
+    """Create a star graph with 1 hub and 5 spokes (6 nodes, 5 edges).
+
+    Topology: hub connects to each spoke; spokes are not connected
+    to each other. Hub is an articulation point.
+    """
+    G: nx.Graph = nx.Graph()
+    G.add_node("hub")
+    for i in range(5):
+        spoke = f"spoke_{i}"
+        G.add_node(spoke)
+        G.add_edge("hub", spoke)
+    return G
+
+
+@pytest.fixture
+def complete_k5() -> nx.Graph:
+    """Create a complete graph K5 (5 nodes, 10 edges).
+
+    Every node connects to every other node. No articulation points.
+    Highly resilient topology.
+    """
+    G: nx.Graph = nx.Graph()
+    nodes = [f"n{i}" for i in range(5)]
+    for node in nodes:
+        G.add_node(node)
+    for i in range(5):
+        for j in range(i + 1, 5):
+            G.add_edge(nodes[i], nodes[j])
+    return G
+
+
+@pytest.fixture
+def ring_graph() -> nx.Graph:
+    """Create a ring (cycle) graph with 5 nodes.
+
+    Topology: n0-n1-n2-n3-n4-n0. One cycle, no articulation points.
+    beta_0=1, beta_1=1.
+    """
+    G: nx.Graph = nx.Graph()
+    nodes = [f"n{i}" for i in range(5)]
+    for node in nodes:
+        G.add_node(node)
+    for i in range(5):
+        G.add_edge(nodes[i], nodes[(i + 1) % 5])
+    return G
+
+
+@pytest.fixture
+def three_disconnected() -> nx.Graph:
+    """Create 3 disconnected single-node components.
+
+    beta_0=3, beta_1=0.
+    """
+    G: nx.Graph = nx.Graph()
+    G.add_node("a")
+    G.add_node("b")
+    G.add_node("c")
+    return G
+
+
+@pytest.fixture
+def bridge_graph() -> nx.Graph:
+    """Create a graph with a bridge edge connecting two cliques.
+
+    Topology: (a-b-c triangle) -- bridge edge (c-d) -- (d-e-f triangle).
+    The bridge edge {c, d} is a minimum cut of size 1.
+    """
+    G: nx.Graph = nx.Graph()
+    # Left clique
+    G.add_node("a")
+    G.add_node("b")
+    G.add_node("c")
+    G.add_edge("a", "b")
+    G.add_edge("b", "c")
+    G.add_edge("a", "c")
+    # Right clique
+    G.add_node("d")
+    G.add_node("e")
+    G.add_node("f")
+    G.add_edge("d", "e")
+    G.add_edge("e", "f")
+    G.add_edge("d", "f")
+    # Bridge
+    G.add_edge("c", "d")
+    return G

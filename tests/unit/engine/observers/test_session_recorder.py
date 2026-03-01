@@ -9,8 +9,8 @@ from __future__ import annotations
 import pytest
 from tests.factories import DomainFactory
 
-from babylon.data.simulation import SimulationDB
 from babylon.engine.observers.session_recorder import SessionRecorder
+from babylon.engine.simdb import SimulationDB
 from babylon.models.config import SimulationConfig
 
 

@@ -1,340 +1,20 @@
 """Regression tests for RAG retrieval system.
 
-These tests ensure we don't regress on bugs fixed during development.
-
-Bug History:
-- NoneType subscript error when ChromaDB returns None for "embeddings" key
-  (fixed: lines 189-196 in retrieval.py with safe falsy checks)
+Tests for QueryResult, QueryResponse, and Retriever functionality.
+VectorStore-specific tests have been removed (ChromaDB removed in favor of pgvector).
 """
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# =============================================================================
-# FIXTURES
-# =============================================================================
-
-
-@pytest.fixture
-def mock_chroma_manager() -> MagicMock:
-    """Create a mock ChromaManager."""
-    manager = MagicMock()
-    manager.get_or_create_collection.return_value = MagicMock()
-    return manager
-
-
-@pytest.fixture
-def mock_collection() -> MagicMock:
-    """Create a mock ChromaDB collection."""
-    return MagicMock()
-
+from babylon.rag.chunker import DocumentChunk
+from babylon.rag.retrieval import QueryResponse, QueryResult
 
 # =============================================================================
-# REGRESSION: ChromaDB None Results Bug
-# =============================================================================
-
-
-@pytest.mark.unit
-class TestVectorStoreQueryNoneHandling:
-    """Tests for handling None values in ChromaDB query results.
-
-    ChromaDB returns None for keys not included in the 'include' parameter.
-    Before the fix, this caused:
-        TypeError: 'NoneType' object is not subscriptable
-
-    The fix ensures safe access with falsy checks:
-        embeddings_result = results.get("embeddings")
-        embeddings = embeddings_result[0] if embeddings_result else []
-    """
-
-    def test_handles_none_embeddings_in_query_results(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar handles None embeddings gracefully.
-
-        This was the original bug: ChromaDB returns None for "embeddings"
-        when not in include list, causing crash on results["embeddings"][0].
-        """
-        from babylon.rag.retrieval import VectorStore
-
-        # Simulate ChromaDB returning None for embeddings (not in include list)
-        mock_collection.query.return_value = {
-            "ids": [["id1", "id2"]],
-            "documents": [["doc1", "doc2"]],
-            "embeddings": None,  # THE BUG: None when not included
-            "metadatas": [[{"source": "test1"}, {"source": "test2"}]],
-            "distances": [[0.1, 0.2]],
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        # This should NOT raise TypeError
-        ids, documents, embeddings, metadatas, distances = vector_store.query_similar(
-            query_embedding=[0.1] * 768,
-            k=5,
-            include=["documents", "metadatas", "distances"],  # No embeddings
-        )
-
-        assert ids == ["id1", "id2"]
-        assert documents == ["doc1", "doc2"]
-        assert embeddings == []  # Should be empty list, not crash
-        assert metadatas == [{"source": "test1"}, {"source": "test2"}]
-        assert distances == [0.1, 0.2]
-
-    def test_handles_none_documents_in_query_results(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar handles None documents gracefully."""
-        from babylon.rag.retrieval import VectorStore
-
-        mock_collection.query.return_value = {
-            "ids": [["id1"]],
-            "documents": None,  # None when not included
-            "embeddings": [[[0.1] * 768]],
-            "metadatas": [[{"source": "test"}]],
-            "distances": [[0.1]],
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        ids, documents, embeddings, metadatas, distances = vector_store.query_similar(
-            query_embedding=[0.1] * 768,
-            k=5,
-        )
-
-        assert ids == ["id1"]
-        assert documents == []  # Empty list, not crash
-        assert len(embeddings) == 1
-
-    def test_handles_none_metadatas_in_query_results(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar handles None metadatas gracefully."""
-        from babylon.rag.retrieval import VectorStore
-
-        mock_collection.query.return_value = {
-            "ids": [["id1"]],
-            "documents": [["doc1"]],
-            "embeddings": None,
-            "metadatas": None,  # None when not included
-            "distances": [[0.1]],
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        ids, documents, embeddings, metadatas, distances = vector_store.query_similar(
-            query_embedding=[0.1] * 768,
-            k=5,
-        )
-
-        assert ids == ["id1"]
-        assert metadatas == []  # Empty list, not crash
-
-    def test_handles_none_distances_in_query_results(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar handles None distances gracefully."""
-        from babylon.rag.retrieval import VectorStore
-
-        mock_collection.query.return_value = {
-            "ids": [["id1"]],
-            "documents": [["doc1"]],
-            "embeddings": None,
-            "metadatas": [[{}]],
-            "distances": None,  # None edge case
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        ids, documents, embeddings, metadatas, distances = vector_store.query_similar(
-            query_embedding=[0.1] * 768,
-            k=5,
-        )
-
-        assert distances == []  # Empty list, not crash
-
-    def test_handles_empty_ids_in_query_results(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar handles empty results gracefully."""
-        from babylon.rag.retrieval import VectorStore
-
-        mock_collection.query.return_value = {
-            "ids": [[]],  # Empty results
-            "documents": [[]],
-            "embeddings": None,
-            "metadatas": [[]],
-            "distances": [[]],
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        ids, documents, embeddings, metadatas, distances = vector_store.query_similar(
-            query_embedding=[0.1] * 768,
-            k=5,
-        )
-
-        assert ids == []
-        assert documents == []
-        assert embeddings == []
-        assert metadatas == []
-        assert distances == []
-
-    def test_handles_missing_ids_key_entirely(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar handles missing keys gracefully."""
-        from babylon.rag.retrieval import VectorStore
-
-        # Extreme edge case: keys missing entirely
-        mock_collection.query.return_value = {}
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        ids, documents, embeddings, metadatas, distances = vector_store.query_similar(
-            query_embedding=[0.1] * 768,
-            k=5,
-        )
-
-        # All should be empty lists, not crashes
-        assert ids == []
-        assert documents == []
-        assert embeddings == []
-        assert metadatas == []
-        assert distances == []
-
-
-# =============================================================================
-# REGRESSION: Retriever Zip Bug (embeddings must be included)
-# =============================================================================
-
-
-@pytest.mark.unit
-class TestRetrieverZipBug:
-    """Tests for the Retriever zip bug where empty embeddings caused 0 results.
-
-    Bug: When VectorStore.query_similar() returned empty embeddings list,
-    the zip() in Retriever.aquery() would produce zero iterations because
-    zip stops at the shortest list.
-
-    Fix: VectorStore must include 'embeddings' in the default include list.
-    """
-
-    def test_vector_store_default_include_has_embeddings(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.query_similar includes embeddings by default.
-
-        This is critical: if embeddings are not included, the returned
-        embeddings list is empty, and zip() in Retriever produces 0 results.
-        """
-        from babylon.rag.retrieval import VectorStore
-
-        mock_collection.query.return_value = {
-            "ids": [["id1", "id2"]],
-            "documents": [["doc1", "doc2"]],
-            "embeddings": [[[0.1] * 768, [0.2] * 768]],
-            "metadatas": [[{}, {}]],
-            "distances": [[0.1, 0.2]],
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        # Query with default include (no explicit include param)
-        vector_store.query_similar(query_embedding=[0.1] * 768, k=5)
-
-        # Verify that 'embeddings' was in the include list
-        call_args = mock_collection.query.call_args
-        include_list = call_args.kwargs.get("include", [])
-        assert "embeddings" in include_list, (
-            f"'embeddings' must be in default include list to prevent zip bug. Got: {include_list}"
-        )
-
-    def test_retriever_returns_results_when_embeddings_present(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """Retriever.aquery returns results when VectorStore returns embeddings.
-
-        This tests the full path: VectorStore -> Retriever -> results.
-        If embeddings are empty, zip() would produce 0 iterations.
-        """
-        from unittest.mock import AsyncMock
-
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.embeddings import EmbeddingManager
-        from babylon.rag.retrieval import Retriever, VectorStore
-
-        # Setup mock VectorStore to return results with embeddings
-        mock_collection.query.return_value = {
-            "ids": [["id1", "id2"]],
-            "documents": [["doc content 1", "doc content 2"]],
-            "embeddings": [[[0.1] * 768, [0.2] * 768]],  # Non-empty!
-            "metadatas": [[{"source": "test1"}, {"source": "test2"}]],
-            "distances": [[0.3, 0.4]],  # Low distance = high similarity
-        }
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
-        )
-
-        # Setup mock EmbeddingManager
-        mock_embedding_manager = MagicMock(spec=EmbeddingManager)
-        embedded_query = DocumentChunk(id="query", content="test query")
-        embedded_query.embedding = [0.1] * 768
-        mock_embedding_manager.aembed = AsyncMock(return_value=embedded_query)
-
-        retriever = Retriever(
-            vector_store=vector_store,
-            embedding_manager=mock_embedding_manager,
-        )
-
-        # Run async query
-        import asyncio
-
-        response = asyncio.run(retriever.aquery("test query", k=5))
-
-        # Should return 2 results (not 0!)
-        assert len(response.results) == 2, (
-            f"Retriever should return 2 results, not {len(response.results)}. "
-            "This may indicate the zip bug where empty embeddings caused 0 iterations."
-        )
-
-
-# =============================================================================
-# REGRESSION: Query Result Processing
+# QueryResult and QueryResponse Tests
 # =============================================================================
 
 
@@ -344,14 +24,10 @@ class TestQueryResultProcessing:
 
     def test_query_result_converts_similarity_to_distance(self) -> None:
         """QueryResult correctly converts similarity to distance."""
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.retrieval import QueryResult
-
         chunk = DocumentChunk(id="test", content="Test content")
         result = QueryResult(
             chunk=chunk,
             similarity_score=0.8,
-            # distance not provided, should be calculated
         )
 
         assert result.similarity_score == 0.8
@@ -359,9 +35,6 @@ class TestQueryResultProcessing:
 
     def test_query_response_get_top_k(self) -> None:
         """QueryResponse.get_top_k returns correct top results."""
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.retrieval import QueryResponse, QueryResult
-
         results = [
             QueryResult(
                 chunk=DocumentChunk(id=f"test{i}", content=f"Content {i}"),
@@ -383,10 +56,6 @@ class TestQueryResultProcessing:
 
     def test_query_response_get_combined_context_respects_max_length(self) -> None:
         """QueryResponse.get_combined_context respects max_length."""
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.retrieval import QueryResponse, QueryResult
-
-        # Create chunks with known content lengths
         results = [
             QueryResult(
                 chunk=DocumentChunk(id=f"test{i}", content="A" * 100),
@@ -401,80 +70,81 @@ class TestQueryResultProcessing:
             total_results=5,
         )
 
-        # Request max 250 chars - should get 2 full chunks + separator
         context = response.get_combined_context(max_length=250, separator="\n\n")
-
-        # Should be under limit
         assert len(context) <= 250
 
 
 # =============================================================================
-# REGRESSION: VectorStore Add/Delete Operations
+# Retriever Tests (with mock VectorStoreProtocol)
 # =============================================================================
 
 
 @pytest.mark.unit
-class TestVectorStoreOperations:
-    """Tests for VectorStore add and delete operations."""
+class TestRetrieverWithProtocol:
+    """Tests for Retriever using mock VectorStoreProtocol."""
 
-    def test_add_chunks_validates_embeddings(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.add_chunks raises error for chunks without embeddings."""
-        from babylon.rag.chunker import DocumentChunk
-        from babylon.rag.exceptions import RagError
-        from babylon.rag.retrieval import VectorStore
+    def test_retriever_returns_results(self) -> None:
+        """Retriever returns results from VectorStoreProtocol."""
+        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.rag.retrieval import Retriever
 
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
+        # Mock vector store implementing VectorStoreProtocol
+        mock_store = MagicMock()
+        mock_store.query_similar.return_value = (
+            ["id1", "id2"],
+            ["doc content 1", "doc content 2"],
+            [[0.1] * 768, [0.2] * 768],
+            [{"source_file": "test1.txt"}, {"source_file": "test2.txt"}],
+            [0.3, 0.4],
         )
 
-        # Chunk without embedding
-        chunk = DocumentChunk(id="test", content="Test content")
+        # Mock EmbeddingManager
+        mock_embedding_manager = MagicMock(spec=EmbeddingManager)
+        embedded_query = DocumentChunk(id="query", content="test query")
+        embedded_query.embedding = [0.1] * 768
+        mock_embedding_manager.aembed = AsyncMock(return_value=embedded_query)
 
-        with pytest.raises(RagError) as exc_info:
-            vector_store.add_chunks([chunk])
-
-        assert exc_info.value.error_code == "RAG_301"
-        assert "missing embeddings" in exc_info.value.message.lower()
-
-    def test_add_chunks_handles_empty_list(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.add_chunks handles empty list gracefully."""
-        from babylon.rag.retrieval import VectorStore
-
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
-
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
+        retriever = Retriever(
+            vector_store=mock_store,
+            embedding_manager=mock_embedding_manager,
         )
 
-        # Should not raise
-        vector_store.add_chunks([])
+        import asyncio
 
-        # Collection.add should not be called
-        mock_collection.add.assert_not_called()
+        response = asyncio.run(retriever.aquery("test query", k=5))
 
-    def test_delete_chunks_handles_empty_list(
-        self, mock_chroma_manager: MagicMock, mock_collection: MagicMock
-    ) -> None:
-        """VectorStore.delete_chunks handles empty list gracefully."""
-        from babylon.rag.retrieval import VectorStore
+        assert len(response.results) == 2
+        assert response.results[0].similarity_score == pytest.approx(0.7)
+        assert response.results[1].similarity_score == pytest.approx(0.6)
 
-        mock_chroma_manager.get_or_create_collection.return_value = mock_collection
+    def test_retriever_filters_by_similarity_threshold(self) -> None:
+        """Retriever filters results below similarity_threshold."""
+        from babylon.rag.embeddings import EmbeddingManager
+        from babylon.rag.retrieval import Retriever
 
-        vector_store = VectorStore(
-            collection_name="test",
-            chroma_manager=mock_chroma_manager,
+        mock_store = MagicMock()
+        mock_store.query_similar.return_value = (
+            ["id1", "id2"],
+            ["doc1", "doc2"],
+            [[0.1] * 768, [0.2] * 768],
+            [{}, {}],
+            [0.2, 0.9],  # 0.2 distance = 0.8 similarity, 0.9 distance = 0.1 similarity
         )
 
-        # Should not raise
-        vector_store.delete_chunks([])
+        mock_embedding_manager = MagicMock(spec=EmbeddingManager)
+        embedded_query = DocumentChunk(id="query", content="test")
+        embedded_query.embedding = [0.1] * 768
+        mock_embedding_manager.aembed = AsyncMock(return_value=embedded_query)
 
-        # Collection.delete should not be called
-        mock_collection.delete.assert_not_called()
+        retriever = Retriever(
+            vector_store=mock_store,
+            embedding_manager=mock_embedding_manager,
+        )
+
+        import asyncio
+
+        response = asyncio.run(retriever.aquery("test", k=5, similarity_threshold=0.5))
+
+        # Only id1 (0.8 similarity) should pass threshold of 0.5
+        assert len(response.results) == 1
+        assert response.results[0].similarity_score == pytest.approx(0.8)

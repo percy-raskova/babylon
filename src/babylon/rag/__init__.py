@@ -4,7 +4,7 @@ This module implements a Retrieval Augmented Generation system with:
 - Object lifecycle management
 - Embeddings and debeddings
 - Document chunking and preprocessing
-- Vector storage and retrieval
+- Vector storage and retrieval via VectorStoreProtocol
 - End-to-end RAG pipeline
 - Pre-embeddings system
 - Context window management
@@ -15,7 +15,6 @@ Main Components:
 - RagPipeline: Main orchestrator for ingestion and querying
 - DocumentProcessor: Text preprocessing and chunking
 - EmbeddingManager: OpenAI-based embedding generation
-- VectorStore: ChromaDB-based vector storage
 - Retriever: High-level retrieval interface
 
 Usage:
@@ -23,10 +22,12 @@ Usage:
 
     ```python
     from babylon.rag import RagPipeline, RagConfig
+    from babylon.persistence.pgvector_store import PgVectorStore
 
-    # Initialize pipeline with custom config
+    # Initialize with a vector store backend
+    vector_store = PgVectorStore(pool=pool, collection="rag_documents")
     config = RagConfig(chunk_size=1000, default_top_k=5)
-    pipeline = RagPipeline(config=config)
+    pipeline = RagPipeline(vector_store=vector_store, config=config)
 
     # Ingest documents
     result = pipeline.ingest_text("Your document content here", "doc_1")
@@ -41,7 +42,7 @@ Usage:
     Or use individual components:
 
     ```python
-    from babylon.rag import DocumentProcessor, EmbeddingManager, VectorStore
+    from babylon.rag import DocumentProcessor, EmbeddingManager
 
     # Process documents
     processor = DocumentProcessor()
@@ -50,10 +51,6 @@ Usage:
     # Generate embeddings
     embedding_manager = EmbeddingManager()
     embedded_chunks = await embedding_manager.aembed_batch(chunks)
-
-    # Store in vector database
-    vector_store = VectorStore("my_collection")
-    vector_store.add_chunks(embedded_chunks)
     ```
 """
 
@@ -86,28 +83,24 @@ _import_errors: list[str] = []
 RagPipeline: type[Any]
 RagConfig: type[Any]
 EmbeddingManager: type[Any] | None
-VectorStore: type[Any] | None
 Retriever: type[Any] | None
 QueryResponse: type[Any] | None
 QueryResult: type[Any] | None
 IngestionResult: type[Any] | None
-quick_ingest_text: Any
-quick_query: Any
 
 try:
-    # Main RAG pipeline
     # Embeddings
     from .embeddings import EmbeddingManager
+
+    # Main RAG pipeline
     from .rag_pipeline import (
         IngestionResult,
         RagConfig,
         RagPipeline,
-        quick_ingest_text,
-        quick_query,
     )
 
-    # Vector storage and retrieval
-    from .retrieval import QueryResponse, QueryResult, Retriever, VectorStore
+    # Retrieval
+    from .retrieval import QueryResponse, QueryResult, Retriever
 
 except ImportError as e:
     _optional_imports_available = False
@@ -117,13 +110,13 @@ except ImportError as e:
     class _RagPipelinePlaceholder:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise ImportError(
-                f"RAG pipeline requires additional dependencies. Install with: pip install chromadb numpy. Errors: {_import_errors}"
+                f"RAG pipeline requires additional dependencies. Errors: {_import_errors}"
             )
 
     class _RagConfigPlaceholder:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
             raise ImportError(
-                f"RAG config requires additional dependencies. Install with: pip install chromadb numpy. Errors: {_import_errors}"
+                f"RAG config requires additional dependencies. Errors: {_import_errors}"
             )
 
     RagPipeline = _RagPipelinePlaceholder
@@ -131,13 +124,10 @@ except ImportError as e:
 
     # Define other placeholder values
     EmbeddingManager = None
-    VectorStore = None
     Retriever = None
     QueryResponse = None
     QueryResult = None
     IngestionResult = None
-    quick_ingest_text = None
-    quick_query = None
 
 __all__ = [
     # Always available - core functionality
@@ -161,10 +151,7 @@ __all__ = [
     "RagPipeline",
     "RagConfig",
     "IngestionResult",
-    "quick_ingest_text",
-    "quick_query",
     "EmbeddingManager",
-    "VectorStore",
     "Retriever",
     "QueryResponse",
     "QueryResult",

@@ -43,7 +43,7 @@ file_level = "TRACE"
 [tool.babylon.logging.modules]
 "test.module1" = "DEBUG"
 "test.module2" = "ERROR"
-"chromadb" = "CRITICAL"
+"httpx" = "CRITICAL"
 """
     pyproject_path = tmp_path / "pyproject.toml"
     pyproject_path.write_text(content)
@@ -128,7 +128,7 @@ class TestLoadLoggingConfig:
 
         assert config.modules.get("test.module1") == "DEBUG"
         assert config.modules.get("test.module2") == "ERROR"
-        assert config.modules.get("chromadb") == "CRITICAL"
+        assert config.modules.get("httpx") == "CRITICAL"
 
     def test_returns_defaults_for_missing_file(self) -> None:
         """load_logging_config returns defaults when file doesn't exist."""
@@ -321,7 +321,7 @@ class TestSetupLogging:
         # Check module-specific levels
         assert logging.getLogger("test.module1").level == logging.DEBUG
         assert logging.getLogger("test.module2").level == logging.ERROR
-        assert logging.getLogger("chromadb").level == logging.CRITICAL
+        assert logging.getLogger("httpx").level == logging.CRITICAL
 
     def test_creates_all_handlers(self, tmp_path: Path) -> None:
         """setup_logging creates console, main file, and error file handlers."""

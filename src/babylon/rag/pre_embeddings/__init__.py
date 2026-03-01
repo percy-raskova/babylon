@@ -1,7 +1,7 @@
 """Pre-embedding pipeline for RAG document processing.
 
 This package handles the preprocessing stages before documents are
-embedded into the ChromaDB vector store:
+embedded into a vector store (e.g., PgVectorStore):
 
 Modules:
     cache_manager: Manages embedding cache to avoid recomputation.

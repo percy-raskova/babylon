@@ -38,15 +38,14 @@ from rich.text import Text
 from babylon.ai.director import NarrativeDirector
 from babylon.ai.llm_provider import DeepSeekClient, MockLLM
 from babylon.ai.prompt_builder import DialecticalPromptBuilder
-from babylon.config.chromadb_config import ChromaDBConfig
 from babylon.config.llm_config import LLMConfig
 from babylon.engine.scenarios import create_imperial_circuit_scenario
 from babylon.engine.simulation import Simulation
-from babylon.rag.rag_pipeline import RagConfig, RagPipeline
 
 if TYPE_CHECKING:
     from babylon.ai.llm_provider import LLMProvider
     from babylon.models.world_state import WorldState
+    from babylon.rag.rag_pipeline import RagPipeline
 
 # Constants
 MAX_TICKS: int = 10
@@ -366,7 +365,7 @@ class VerboseNarrativeDirector(NarrativeDirector):
                     results_count=len(response.results),
                     results=results_data,
                     query_embedding_dim=LLMConfig.get_model_dimensions(),
-                    collection_embedding_dim=None,  # Would need to query ChromaDB metadata
+                    collection_embedding_dim=None,
                     duration_ms=duration_ms,
                     success=True,
                 )
@@ -518,54 +517,19 @@ def setup_llm(console: Console, logger: StructuredLogger) -> LLMProvider:
     )
 
 
-def setup_rag(console: Console, logger: StructuredLogger) -> RagPipeline | None:
-    """Set up RAG pipeline, returning None if unavailable."""
-    try:
-        # Use the same collection as the ingest script (marxist_theory)
-        config = RagConfig(collection_name=ChromaDBConfig.THEORY_COLLECTION)
-        console.print(f"[dim]  Collection: {ChromaDBConfig.THEORY_COLLECTION}[/dim]")
-
-        # Get embedding configuration for logging
-        embedding_model = LLMConfig.EMBEDDING_MODEL
-        embedding_dim = LLMConfig.get_model_dimensions()
-        console.print(f"[dim]  Embedding Model: {embedding_model}[/dim]")
-        console.print(f"[dim]  Embedding Dimension: {embedding_dim}[/dim]")
-
-        rag = RagPipeline(config=config)
-        stats = rag.get_stats()
-        chunk_count = stats.get("total_chunks", 0)
-
-        if chunk_count > 0:
-            console.print(f"[green]✓[/green] RAG loaded ({chunk_count} chunks)")
-        else:
-            console.print(f"[yellow]⚠[/yellow] RAG loaded but EMPTY ({chunk_count} chunks)")
-            console.print(
-                "[dim]  Run: poetry run python tools/ingest_corpus.py --import-from /media/user/marxists.org/www.marxists.org/[/dim]"
-            )
-
-        logger.log_rag_setup(
-            collection_name=ChromaDBConfig.THEORY_COLLECTION,
-            chunk_count=chunk_count,
-            embedding_model=embedding_model,
-            embedding_dimension=embedding_dim,
-            success=True,
-        )
-
-        return rag
-
-    except Exception as e:
-        error_tb = traceback.format_exc()
-        console.print(f"[red]✗[/red] RAG unavailable: {e}")
-
-        logger.log_rag_setup(
-            collection_name=ChromaDBConfig.THEORY_COLLECTION,
-            chunk_count=0,
-            embedding_model=LLMConfig.EMBEDDING_MODEL,
-            embedding_dimension=LLMConfig.get_model_dimensions(),
-            success=False,
-            error=f"{e}\n{error_tb}",
-        )
-        return None
+def setup_rag(console: Console, logger: StructuredLogger) -> None:
+    """Set up RAG pipeline, returning None (requires pgvector)."""
+    collection_name = "marxist_theory"
+    console.print("[yellow]⚠[/yellow] RAG requires pgvector (Feature 037). Skipping.")
+    logger.log_rag_setup(
+        collection_name=collection_name,
+        chunk_count=0,
+        embedding_model=LLMConfig.EMBEDDING_MODEL,
+        embedding_dimension=LLMConfig.get_model_dimensions(),
+        success=False,
+        error="RAG requires pgvector backend (Feature 037)",
+    )
+    return None
 
 
 def display_banner(console: Console) -> None:

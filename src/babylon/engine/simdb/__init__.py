@@ -14,7 +14,7 @@ Implements ADR030 (Unified SQLite Runtime Architecture) - uses SQLite
 instead of the previous DuckDB implementation.
 
 Usage:
-    from babylon.engine.simulation import SimulationDB
+    from babylon.engine.simdb import SimulationDB
 
     # In-memory for testing
     with SimulationDB(in_memory=True) as sim:
@@ -33,6 +33,6 @@ Architecture:
                              Created fresh, discarded after analysis
 """
 
-from babylon.engine.simulation.database import SimulationDB
+from babylon.engine.simdb.database import SimulationDB
 
 __all__ = ["SimulationDB"]

@@ -149,57 +149,6 @@ def mock_llm_provider() -> MagicMock:
 
 
 @pytest.fixture
-def mock_chroma_client() -> MagicMock:
-    """Mock ChromaDB client for RAG tests.
-
-    Note: Uses plain MagicMock without spec= because ChromaDB is an external
-    library and we don't want strict interface validation for external deps.
-
-    Returns:
-        MagicMock with query/add methods configured for typical usage.
-
-    Example:
-        def test_vector_store_query(mock_chroma_client):
-            mock_chroma_client.query.return_value = {"ids": [["id1"]]}
-            store = VectorStore(chroma_client=mock_chroma_client)
-            results = store.query_similar(embedding)
-    """
-    mock = MagicMock()
-    mock.query.return_value = {
-        "ids": [[]],
-        "documents": [[]],
-        "embeddings": None,
-        "metadatas": [[]],
-        "distances": [[]],
-    }
-    mock.add.return_value = None
-    mock.get.return_value = {"ids": [], "documents": [], "metadatas": []}
-    return mock
-
-
-@pytest.fixture
-def mock_chroma_collection() -> MagicMock:
-    """Mock ChromaDB collection for VectorStore tests.
-
-    Pre-configured to return empty results to prevent None subscript errors.
-
-    Returns:
-        MagicMock with query/add methods configured.
-    """
-    mock = MagicMock()
-    mock.query.return_value = {
-        "ids": [[]],
-        "documents": [[]],
-        "embeddings": None,
-        "metadatas": [[]],
-        "distances": [[]],
-    }
-    mock.add.return_value = None
-    mock.count.return_value = 0
-    return mock
-
-
-@pytest.fixture
 def mock_simulation() -> MagicMock:
     """Mock Simulation for engine tests.
 

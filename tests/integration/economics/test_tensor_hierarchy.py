@@ -58,7 +58,8 @@ class TestInterIndustryFlowPipeline:
 
     def test_bea_loader_ingests_xlsx(self, in_memory_session_factory) -> None:  # type: ignore[no-untyped-def]
         """BEAIOLoader parses XLSX and inserts coefficients into SQLite."""
-        from babylon.data.bea.io_loader import BEAIOLoader
+        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
+        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
 
         loader = BEAIOLoader(data_dir=_PROJECT_ROOT / "data")
         with in_memory_session_factory() as session:
@@ -73,7 +74,9 @@ class TestInterIndustryFlowPipeline:
         in_memory_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """DefaultInterIndustryFlowSource reads SQLite and returns InterIndustryFlow."""
-        from babylon.data.bea.io_loader import BEAIOLoader
+        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
+        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
+
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
         )
@@ -98,7 +101,9 @@ class TestInterIndustryFlowPipeline:
         in_memory_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Leontief inverse has non-negative elements (Perron-Frobenius)."""
-        from babylon.data.bea.io_loader import BEAIOLoader
+        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
+        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
+
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultInterIndustryFlowSource,
             DefaultLeontiefComputer,
@@ -129,7 +134,9 @@ class TestInterIndustryFlowPipeline:
         in_memory_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Department aggregation reduces ~70 industries to 4x4 matrix."""
-        from babylon.data.bea.io_loader import BEAIOLoader
+        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
+        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
+
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
             DefaultInterIndustryFlowSource,
@@ -158,7 +165,9 @@ class TestInterIndustryFlowPipeline:
         in_memory_session_factory,  # type: ignore[no-untyped-def]
     ) -> None:
         """Full pipeline: XLSX → SQLite → InterIndustryFlow → Leontief → Departments."""
-        from babylon.data.bea.io_loader import BEAIOLoader
+        pytest.importorskip("babylon_data", reason="BEAIOLoader requires babylon-data package")
+        from babylon_data.bea.io_loader import BEAIOLoader  # type: ignore[import-not-found]
+
         from babylon.economics.tensor_hierarchy.inter_industry import (
             DefaultDepartmentAggregator,
             DefaultInterIndustryFlowSource,

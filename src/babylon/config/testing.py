@@ -27,9 +27,6 @@ class TestingConfig:
     # === Metrics ===
     METRICS_ENABLED: Final[bool] = True
 
-    # === ChromaDB ===
-    CHROMADB_PERSIST_DIR: Final[str] = "/tmp/babylon_test_chroma"
-
     # === Flags ===
     TESTING: Final[bool] = True
     DEBUG: Final[bool] = True

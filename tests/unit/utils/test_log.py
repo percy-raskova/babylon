@@ -896,7 +896,7 @@ class TestSetupLoggingHandlers:
                     root_logger.removeHandler(h)
 
     def test_setup_logging_suppresses_noisy_loggers(self) -> None:
-        """setup_logging() suppresses chromadb, httpx, httpcore loggers."""
+        """setup_logging() suppresses httpx, httpcore loggers."""
         with tempfile.TemporaryDirectory() as tmpdir:
             log_dir = Path(tmpdir)
 
@@ -905,7 +905,6 @@ class TestSetupLoggingHandlers:
 
                 setup_logging()
 
-                assert logging.getLogger("chromadb").level >= logging.WARNING
                 assert logging.getLogger("httpx").level >= logging.WARNING
                 assert logging.getLogger("httpcore").level >= logging.WARNING
 

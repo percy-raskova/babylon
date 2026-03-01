@@ -323,108 +323,13 @@ description = "Narrative U-curve sweep with MockLLM"
 run = "poetry run python tools/narrative_sweep.py --mock"
 
 # =============================================================================
-# DATA (Namespaced) - Unified 3NF Loaders
+# DATA (Namespaced)
+# ETL loaders moved to babylon-data package. Only local utilities remain.
 # =============================================================================
-
-[tasks."data:load"]
-description = "Load all data sources into 3NF database"
-run = "poetry run python -m babylon.data.cli load"
-
-[tasks."data:census"]
-description = "Load Census ACS data into 3NF database"
-run = "poetry run python -m babylon.data.cli census"
-
-[tasks."data:tiger"]
-description = "Load TIGER county geometries into 3NF database"
-run = "poetry run python -m babylon.data.cli tiger"
-
-[tasks."data:h3"]
-description = "Generate H3 hex grid from county geometries"
-run = "poetry run python -m babylon.data.cli h3"
-
-[tasks."data:fred"]
-description = "Load FRED macroeconomic data into 3NF database"
-run = "poetry run python -m babylon.data.cli fred"
-
-[tasks."data:bea-national"]
-description = "Load BEA national GDP-by-industry data into 3NF database"
-run = "poetry run python -m babylon.data.cli bea-national"
-
-[tasks."data:bea-county"]
-description = "Load BEA county GDP data into 3NF database"
-run = "poetry run python -m babylon.data.cli bea-county"
-
-[tasks."data:naics-bea"]
-description = "Load NAICS-BEA industry concordance into bridge table"
-run = "poetry run python -m babylon.data.cli naics-bea"
-
-[tasks."data:energy"]
-description = "Load EIA energy data into 3NF database"
-run = "poetry run python -m babylon.data.cli energy"
-
-[tasks."data:qcew"]
-description = "Load BLS QCEW employment data into 3NF database"
-run = "poetry run python -m babylon.data.cli qcew"
-
-[tasks."data:qcew-download"]
-description = "Download QCEW bulk files from BLS (2010-2024)"
-run = "poetry run python -m babylon.data.cli qcew-download"
-
-[tasks."data:trade"]
-description = "Load UN trade data into 3NF database"
-run = "poetry run python -m babylon.data.cli trade"
-
-[tasks."data:materials"]
-description = "Load USGS materials data into 3NF database"
-run = "poetry run python -m babylon.data.cli materials"
-
-[tasks."data:hifld-prisons"]
-description = "Load HIFLD Prison Boundaries into 3NF database"
-run = "poetry run python -m babylon.data.cli hifld-prisons"
-
-[tasks."data:hifld-police"]
-description = "Load HIFLD Local Law Enforcement Locations into 3NF database"
-run = "poetry run python -m babylon.data.cli hifld-police"
-
-[tasks."data:mirta"]
-description = "Load MIRTA Military Installations into 3NF database"
-run = "poetry run python -m babylon.data.cli mirta"
-
-[tasks."data:fcc-download"]
-description = "Download FCC BDC broadband data for a state"
-run = "poetry run python -m babylon.data.cli fcc-download"
-
-[tasks."data:fcc"]
-description = "Load FCC broadband coverage into 3NF database"
-run = "poetry run python -m babylon.data.cli fcc"
-
-[tasks."data:geography"]
-description = "Load geographic hierarchy (state-to-county allocation weights)"
-run = "poetry run python -m babylon.data.cli geography"
-
-[tasks."data:atus"]
-description = "Load ATUS reproductive labor data for Department III shadow labor"
-run = "poetry run python -m babylon.data.cli atus"
-
-[tasks."data:cfs"]
-description = "Load Census Commodity Flow Survey data"
-run = "poetry run python -m babylon.data.cli cfs"
-
-[tasks."data:lodes"]
-description = "Load LODES crosswalk data (block to county mapping)"
-run = "poetry run python -m babylon.data.cli lodes"
-
-[tasks."data:lodes-od"]
-description = "Load LODES OD commuter flow data (county-to-county flows)"
-run = "poetry run python -m babylon.data.cli lodes-od"
 
 [tasks."data:query"]
 description = "Open SQLite CLI for 3NF database"
 run = "sqlite3 data/sqlite/marxist-data-3NF.sqlite"
-
-[tasks."data:ingest"]
-description = "Ingest Marxist corpus into ChromaDB"
-run = "poetry run python tools/ingest_corpus.py"
 
 [tasks."data:db-init"]
 description = "Initialize SQLite database schema"

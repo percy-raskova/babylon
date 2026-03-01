@@ -375,7 +375,7 @@ class TraceCollector(Protocol):
 class VectorStoreProtocol(Protocol):
     """Backend-agnostic vector storage for semantic search.
 
-    Implementations: ChromaDB VectorStore (existing), PgVectorStore (new).
+    Implementations: PgVectorStore (Feature 037).
     The Retriever interacts only through this protocol.
     """
 

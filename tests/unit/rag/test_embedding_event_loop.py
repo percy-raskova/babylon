@@ -287,10 +287,10 @@ class TestRetrievalEventLoop:
     def test_retriever_query_sync_completes_within_timeout(self) -> None:
         """Retriever.query() sync wrapper should complete without hanging."""
         from babylon.rag.embeddings import EmbeddingManager
-        from babylon.rag.retrieval import Retriever, VectorStore
+        from babylon.rag.retrieval import Retriever
 
         # Create mocks
-        mock_vector_store = MagicMock(spec=VectorStore)
+        mock_vector_store = MagicMock()
         mock_vector_store.query_similar.return_value = (
             ["id1"],  # ids
             ["doc content"],  # documents
@@ -333,38 +333,34 @@ class TestRagPipelineEventLoop:
         """RagPipeline.query() sync wrapper should complete without hanging."""
         from babylon.rag.rag_pipeline import RagConfig, RagPipeline
 
-        # Mock ChromaManager to avoid real DB
-        with patch("babylon.rag.rag_pipeline.ChromaManager") as mock_chroma:
-            mock_collection = MagicMock()
-            mock_collection.count.return_value = 10
-            mock_collection.query.return_value = {
-                "ids": [["id1"]],
-                "documents": [["test doc"]],
-                "embeddings": [[[0.1] * 768]],
-                "metadatas": [[{"source_file": "test.txt"}]],
-                "distances": [[0.1]],
-            }
-            mock_chroma.return_value.get_or_create_collection.return_value = mock_collection
+        # Mock vector store implementing VectorStoreProtocol
+        mock_vector_store = MagicMock()
+        mock_vector_store.get_collection_count.return_value = 10
+        mock_vector_store.query_similar.return_value = (
+            ["id1"],
+            ["test doc"],
+            [[0.1] * 768],
+            [{"source_file": "test.txt"}],
+            [0.1],
+        )
 
-            # Mock embedding generation
-            with patch(
-                "babylon.rag.embeddings.EmbeddingManager._generate_embedding_api"
-            ) as mock_embed:
+        # Mock embedding generation
+        with patch("babylon.rag.embeddings.EmbeddingManager._generate_embedding_api") as mock_embed:
 
-                async def mock_generate(_content: str) -> list[float]:
-                    return [0.1] * 768
+            async def mock_generate(_content: str) -> list[float]:
+                return [0.1] * 768
 
-                mock_embed.side_effect = mock_generate
+            mock_embed.side_effect = mock_generate
 
-                config = RagConfig(collection_name="test_collection")
-                pipeline = RagPipeline(config=config)
+            config = RagConfig(collection_name="test_collection")
+            pipeline = RagPipeline(vector_store=mock_vector_store, config=config)
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(pipeline.query, "test query", 3)
-                    try:
-                        response = future.result(timeout=10.0)
-                    except concurrent.futures.TimeoutError:
-                        pytest.fail("RagPipeline.query() hung - asyncio event loop deadlock.")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(pipeline.query, "test query", 3)
+                try:
+                    response = future.result(timeout=10.0)
+                except concurrent.futures.TimeoutError:
+                    pytest.fail("RagPipeline.query() hung - asyncio event loop deadlock.")
 
-                # If we got here, no deadlock occurred
-                assert response is not None
+            # If we got here, no deadlock occurred
+            assert response is not None

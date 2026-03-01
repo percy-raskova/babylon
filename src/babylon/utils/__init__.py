@@ -4,7 +4,6 @@ These are the tools of production - the means by which
 the engine transforms inputs into outputs.
 """
 
-from babylon.utils.backup import backup_chroma, restore_chroma
 from babylon.utils.exceptions import (
     BabylonError,
     ConfigurationError,
@@ -23,8 +22,6 @@ __all__ = [
     "EmbeddingError",
     "ValidationError",
     "retry_on_exception",
-    "backup_chroma",
-    "restore_chroma",
     "quantize",
     "get_precision",
     "set_precision",

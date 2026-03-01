@@ -13,7 +13,7 @@ import pytest
 from shapely.geometry import LineString, Polygon  # type: ignore[import-untyped]
 
 from babylon.config.defines import InfrastructureDefines
-from babylon.data.natural_earth.reader import (
+from babylon.infrastructure.natural_earth_reader import (
     AirportFeature,
     PortFeature,
     RailroadFeature,

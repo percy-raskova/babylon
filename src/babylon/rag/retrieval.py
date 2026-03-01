@@ -1,14 +1,21 @@
-"""Query and retrieval interface for the RAG system."""
+"""Query and retrieval interface for the RAG system.
+
+Uses VectorStoreProtocol from babylon.persistence for backend-agnostic
+vector storage. Implementations include PgVectorStore (Feature 037).
+"""
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from babylon.rag.chunker import DocumentChunk
 from babylon.rag.embeddings import EmbeddingManager
 from babylon.rag.exceptions import RagError
+
+if TYPE_CHECKING:
+    from babylon.persistence.protocols import VectorStoreProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -69,198 +76,21 @@ class QueryResponse(BaseModel):
         return separator.join(context_parts)
 
 
-class VectorStore:
-    """Interface to ChromaDB for storing and retrieving document vectors.
+class Retriever:
+    """High-level retrieval interface for RAG queries.
 
-    .. deprecated::
-        ChromaDB is being replaced by pgvector (Feature 037).
-        Use :class:`babylon.persistence.pgvector_store.PgVectorStore` instead.
+    Uses VectorStoreProtocol for backend-agnostic similarity search.
     """
 
     def __init__(
         self,
-        collection_name: str = "documents",
-        chroma_manager: Any = None,
-    ):
-        """Initialize the vector store.
-
-        Args:
-            collection_name: Name of the ChromaDB collection
-            chroma_manager: Optional ChromaManager instance (creates new if None)
-        """
-        self.collection_name = collection_name
-        if chroma_manager is None:
-            raise NotImplementedError(
-                "ChromaDB has been removed. Use babylon.persistence.pgvector_store.PgVectorStore "
-                "for vector storage (Feature 037)."
-            )
-        self.chroma_manager = chroma_manager
-        self._collection: Any = None
-
-    @property
-    def collection(self) -> Any:
-        """Get or create the ChromaDB collection."""
-        if self._collection is None:
-            self._collection = self.chroma_manager.get_or_create_collection(self.collection_name)
-        return self._collection
-
-    def add_chunks(self, chunks: list[DocumentChunk]) -> None:
-        """Add document chunks to the vector store.
-
-        Args:
-            chunks: List of DocumentChunk objects with embeddings
-
-        Raises:
-            RagError: If chunks are missing embeddings or storage fails
-        """
-        if not chunks:
-            return
-
-        # Validate that all chunks have embeddings
-        chunks_without_embeddings = [c for c in chunks if not c.embedding]
-        if chunks_without_embeddings:
-            raise RagError(
-                message=f"{len(chunks_without_embeddings)} chunks are missing embeddings",
-                error_code="RAG_301",
-                details={"chunk_ids": [c.id for c in chunks_without_embeddings[:5]]},
-            )
-
-        try:
-            # Prepare data for ChromaDB
-            ids = [chunk.id for chunk in chunks]
-            documents = [chunk.content for chunk in chunks]
-            embeddings = [chunk.embedding for chunk in chunks]
-            metadatas = []
-
-            for chunk in chunks:
-                metadata = chunk.metadata.copy() if chunk.metadata else {}
-                metadata.update(
-                    {
-                        "source_file": chunk.source_file,
-                        "chunk_index": chunk.chunk_index,
-                        "start_char": chunk.start_char,
-                        "end_char": chunk.end_char,
-                        "content_length": len(chunk.content),
-                    }
-                )
-                metadatas.append(metadata)
-
-            # Add to ChromaDB
-            self.collection.add(
-                ids=ids,
-                documents=documents,
-                embeddings=embeddings,
-                metadatas=metadatas,
-            )
-
-            logger.info(
-                f"Added {len(chunks)} chunks to vector store collection '{self.collection_name}'"
-            )
-
-        except Exception as e:
-            raise RagError(
-                message=f"Failed to add chunks to vector store: {str(e)}",
-                error_code="RAG_302",
-                details={"collection_name": self.collection_name},
-            ) from e
-
-    def query_similar(
-        self,
-        query_embedding: list[float],
-        k: int = 10,
-        where: dict[str, Any] | None = None,
-        include: list[str] | None = None,
-    ) -> tuple[list[str], list[str], list[list[float]], list[dict[str, Any]], list[float]]:
-        """Query for similar chunks using embedding.
-
-        Args:
-            query_embedding: Query vector embedding
-            k: Number of results to return
-            where: Optional metadata filters
-            include: Fields to include in results
-
-        Returns:
-            Tuple of (ids, documents, embeddings, metadatas, distances)
-
-        Raises:
-            RagError: If query fails
-        """
-        try:
-            include = include or ["documents", "metadatas", "distances", "embeddings"]
-
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=k,
-                where=where,
-                include=include,
-            )
-
-            # Unpack results (ChromaDB returns lists of lists)
-            # Note: ChromaDB may return None for keys not in include list
-            ids = results["ids"][0] if results.get("ids") else []
-            documents = results["documents"][0] if results.get("documents") else []
-            embeddings_result = results.get("embeddings")
-            embeddings = embeddings_result[0] if embeddings_result else []
-            metadatas = results["metadatas"][0] if results.get("metadatas") else []
-            distances = results["distances"][0] if results.get("distances") else []
-
-            return ids, documents, embeddings, metadatas, distances
-
-        except Exception as e:
-            raise RagError(
-                message=f"Failed to query vector store: {str(e)}",
-                error_code="RAG_303",
-                details={"collection_name": self.collection_name},
-            ) from e
-
-    def delete_chunks(self, chunk_ids: list[str]) -> None:
-        """Delete chunks from the vector store.
-
-        Args:
-            chunk_ids: List of chunk IDs to delete
-
-        Raises:
-            RagError: If deletion fails
-        """
-        if not chunk_ids:
-            return
-
-        try:
-            self.collection.delete(ids=chunk_ids)
-            logger.info(f"Deleted {len(chunk_ids)} chunks from vector store")
-
-        except Exception as e:
-            raise RagError(
-                message=f"Failed to delete chunks from vector store: {str(e)}",
-                error_code="RAG_304",
-                details={"chunk_ids": chunk_ids[:5]},
-            ) from e
-
-    def get_collection_count(self) -> int:
-        """Get the number of chunks in the collection."""
-        try:
-            count: int = self.collection.count()
-            return count
-        except Exception as e:
-            raise RagError(
-                message=f"Failed to get collection count: {str(e)}",
-                error_code="RAG_305",
-                details={"collection_name": self.collection_name},
-            ) from e
-
-
-class Retriever:
-    """High-level retrieval interface for RAG queries."""
-
-    def __init__(
-        self,
-        vector_store: VectorStore,
+        vector_store: "VectorStoreProtocol",
         embedding_manager: EmbeddingManager,
     ):
         """Initialize the retriever.
 
         Args:
-            vector_store: VectorStore instance for similarity search
+            vector_store: Any VectorStoreProtocol implementation
             embedding_manager: EmbeddingManager for query embedding
         """
         self.vector_store = vector_store
@@ -291,7 +121,6 @@ class Retriever:
 
         try:
             # Create a temporary object for embedding the query
-            # Use DocumentChunk directly since EmbeddingManager expects it
             query_obj = DocumentChunk(id="query", content=query)
 
             # Generate embedding for the query
@@ -320,7 +149,7 @@ class Retriever:
             for _i, (chunk_id, doc, embedding, metadata, distance) in enumerate(
                 zip(ids, documents, embeddings, metadatas, distances, strict=False)
             ):
-                similarity_score = max(0.0, 1.0 - distance)  # Convert distance to similarity
+                similarity_score = max(0.0, 1.0 - distance)
 
                 if similarity_score >= similarity_threshold:
                     chunk = DocumentChunk(
@@ -379,9 +208,6 @@ class Retriever:
         metadata_filter: dict[str, Any] | None = None,
     ) -> QueryResponse:
         """Synchronously query for relevant document chunks.
-
-        This is a convenience wrapper around aquery for synchronous code.
-        For better performance in async contexts, use aquery directly.
 
         Args:
             query: Query text to search for

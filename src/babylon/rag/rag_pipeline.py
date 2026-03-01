@@ -1,18 +1,25 @@
-"""Main RAG pipeline service that orchestrates document ingestion and query processing."""
+"""Main RAG pipeline service that orchestrates document ingestion and query processing.
+
+Uses VectorStoreProtocol from babylon.persistence for backend-agnostic
+vector storage. ChromaDB has been removed; use PgVectorStore (Feature 037).
+"""
 
 import asyncio
 import logging
 import time
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from babylon.rag.chunker import DocumentProcessor
 from babylon.rag.embeddings import EmbeddingManager
 from babylon.rag.exceptions import RagError
-from babylon.rag.retrieval import QueryResponse, Retriever, VectorStore
+from babylon.rag.retrieval import QueryResponse, Retriever
+
+if TYPE_CHECKING:
+    from babylon.persistence.protocols import VectorStoreProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -53,32 +60,29 @@ class RagConfig(BaseModel):
 
     # Storage config
     collection_name: str = "rag_documents"
-    use_persistent_storage: bool = True
 
 
 class RagPipeline:
-    """Main RAG pipeline that orchestrates ingestion and retrieval."""
+    """Main RAG pipeline that orchestrates ingestion and retrieval.
+
+    Requires a VectorStoreProtocol implementation (e.g. PgVectorStore).
+    """
 
     def __init__(
         self,
+        vector_store: "VectorStoreProtocol",
         config: RagConfig | None = None,
-        chroma_manager: Any | None = None,
         embedding_manager: EmbeddingManager | None = None,
     ):
         """Initialize the RAG pipeline.
 
         Args:
-            config: RAG configuration (uses default if None)
-            chroma_manager: ChromaDB manager (creates new if None)
-            embedding_manager: Embedding manager (creates new if None)
+            vector_store: VectorStoreProtocol implementation for storage.
+            config: RAG configuration (uses default if None).
+            embedding_manager: Embedding manager (creates new if None).
         """
         self.config = config or RagConfig()
-        if chroma_manager is None:
-            raise NotImplementedError(
-                "ChromaDB has been removed. Use babylon.persistence.pgvector_store.PgVectorStore "
-                "for vector storage (Feature 037)."
-            )
-        self.chroma_manager = chroma_manager
+        self.vector_store = vector_store
         self.embedding_manager = embedding_manager or EmbeddingManager(
             batch_size=self.config.embedding_batch_size,
             max_concurrent_requests=self.config.max_concurrent_embeds,
@@ -86,10 +90,6 @@ class RagPipeline:
 
         # Initialize components
         self.document_processor = DocumentProcessor()
-        self.vector_store = VectorStore(
-            collection_name=self.config.collection_name,
-            chroma_manager=self.chroma_manager,
-        )
         self.retriever = Retriever(
             vector_store=self.vector_store,
             embedding_manager=self.embedding_manager,
@@ -155,7 +155,8 @@ class RagPipeline:
 
             logger.info(
                 f"Ingested '{source_id}': {len(chunks)} chunks in {total_time:.2f}ms "
-                f"(processing: {process_time:.2f}ms, embedding: {embed_time:.2f}ms, storage: {store_time:.2f}ms)"
+                f"(processing: {process_time:.2f}ms, embedding: {embed_time:.2f}ms, "
+                f"storage: {store_time:.2f}ms)"
             )
 
             return IngestionResult(
@@ -194,9 +195,6 @@ class RagPipeline:
         metadata: dict[str, Any] | None = None,
     ) -> IngestionResult:
         """Synchronously ingest text content into the RAG system.
-
-        This is a convenience wrapper around aingest_text for synchronous code.
-        For better performance in async contexts, use aingest_text directly.
 
         Args:
             content: Text content to ingest
@@ -407,30 +405,15 @@ class RagPipeline:
 
         WARNING: This will delete all ingested documents!
         """
-        try:
-            # Get all chunk IDs and delete them
-            results = self.vector_store.collection.get()
-            if results and results.get("ids"):
-                chunk_ids = results["ids"]
-                self.vector_store.delete_chunks(chunk_ids)
-                logger.info(
-                    f"Cleared {len(chunk_ids)} chunks from collection '{self.config.collection_name}'"
-                )
-            else:
-                logger.info(f"Collection '{self.config.collection_name}' is already empty")
-        except Exception as e:
-            logger.error(f"Failed to clear collection: {str(e)}")
-            raise RagError(
-                message=f"Failed to clear collection: {str(e)}",
-                error_code="RAG_320",
-                details={"collection_name": self.config.collection_name},
-            ) from e
+        raise NotImplementedError(
+            "clear_collection requires backend-specific implementation. "
+            "Use PgVectorStore methods directly for PostgreSQL."
+        )
 
     async def aclose(self) -> None:
         """Asynchronously close the RAG pipeline and clean up resources."""
         try:
             await self.embedding_manager.close()
-            self.chroma_manager.cleanup()
             logger.info("RAG pipeline closed successfully")
         except Exception as e:
             logger.error(f"Error closing RAG pipeline: {str(e)}")
@@ -451,46 +434,3 @@ class RagPipeline:
     ) -> None:
         """Context manager exit with cleanup."""
         self.close()
-
-
-# Convenience functions for quick RAG operations
-async def quick_ingest_text(
-    content: str, source_id: str, collection_name: str = "quick_rag"
-) -> IngestionResult:
-    """Quickly ingest text content using default settings.
-
-    Args:
-        content: Text content to ingest
-        source_id: Unique identifier for the content
-        collection_name: ChromaDB collection name
-
-    Returns:
-        IngestionResult with processing statistics
-    """
-    config = RagConfig(collection_name=collection_name)
-    pipeline = RagPipeline(config=config)
-    try:
-        return await pipeline.aingest_text(content, source_id)
-    finally:
-        await pipeline.aclose()
-
-
-async def quick_query(
-    query: str, collection_name: str = "quick_rag", top_k: int = 5
-) -> QueryResponse:
-    """Quickly query the RAG system using default settings.
-
-    Args:
-        query: Query text to search for
-        collection_name: ChromaDB collection name
-        top_k: Number of results to return
-
-    Returns:
-        QueryResponse with search results
-    """
-    config = RagConfig(collection_name=collection_name, default_top_k=top_k)
-    pipeline = RagPipeline(config=config)
-    try:
-        return await pipeline.aquery(query)
-    finally:
-        await pipeline.aclose()

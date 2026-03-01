@@ -36,13 +36,13 @@ import pytest
 from pydantic import ValidationError
 from tests.constants import TestConstants
 
-from babylon.data.atus import (
+from babylon.economics.atus_compat import (
     ATUSActivityRecord,
     ATUSHouseholdSummary,
     MockReproductionLoader,
-    ReproductionLoaderProtocol,
 )
 from babylon.economics.shadow_labor import (
+    ReproductionLoaderProtocol,
     ShadowLaborConfig,
     ShadowLaborResult,
     ShadowLaborService,

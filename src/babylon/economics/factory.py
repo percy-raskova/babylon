@@ -225,8 +225,6 @@ def create_financial_services(
     Returns:
         Dict with keys matching ServiceContainer financial field names.
     """
-    from babylon.data.census.housing_loader import CensusHousingLoader
-    from babylon.data.fred.z1_loader import Z1Loader
     from babylon.economics.counter_tendencies.calculator import (
         DefaultCounterTendencyCalculator,
     )
@@ -239,6 +237,7 @@ def create_financial_services(
         DefaultFictitiousCapitalCalculator,
     )
     from babylon.economics.credit.interest import DefaultInterestCalculator
+    from babylon.economics.data_adapters import CensusHousingLoader, Z1Loader
     from babylon.economics.distribution.calculator import (
         DefaultDistributionCalculator,
     )

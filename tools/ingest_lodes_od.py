@@ -1,30 +1,15 @@
 #!/usr/bin/env python3
 """Download and import LODES Origin-Destination commuter flow data.
 
-Downloads OD files from the LEHD Census server for all 51 states (50 + DC),
-then imports county-to-county aggregated flows into the 3NF database.
-
-Data Source:
-    https://lehd.ces.census.gov/data/lodes/LODES8/
+NOTE: The database import portion of this tool requires the babylon-data
+package. The download functionality remains available standalone.
 
 Usage:
-    # Download + import all states, years 2010-2025 (skips missing years)
-    poetry run python tools/ingest_lodes_od.py
-
-    # Download only (no import)
+    # Download only (no database import)
     poetry run python tools/ingest_lodes_od.py --download-only
 
-    # Import only (assumes files already downloaded)
-    poetry run python tools/ingest_lodes_od.py --import-only
-
-    # Single state
-    poetry run python tools/ingest_lodes_od.py --states mi
-
-    # Custom year range
-    poetry run python tools/ingest_lodes_od.py --start-year 2015 --end-year 2021
-
-    # Dry run (show what would be downloaded)
-    poetry run python tools/ingest_lodes_od.py --dry-run
+    # Single state download
+    poetry run python tools/ingest_lodes_od.py --download-only --states mi
 """
 
 from __future__ import annotations
@@ -125,7 +110,7 @@ def _download_file(
         try:
             with client.stream("GET", url) as response:
                 if response.status_code == 404:
-                    return False  # File doesn't exist on server
+                    return False
                 response.raise_for_status()
 
                 dest.parent.mkdir(parents=True, exist_ok=True)
@@ -192,11 +177,9 @@ def download_all(
                 completed += 1
                 filename = f"{state_abbrev}_od_main_JT00_{year}.csv.gz"
                 dest = od_dir / filename
-                url = _build_url(state_abbrev, year)
 
                 progress = f"  ({completed}/{total_combos})"
 
-                # Skip if already downloaded
                 if dest.exists() and dest.stat().st_size > 0:
                     print(
                         f"  {year}: exists ({dest.stat().st_size / 1024 / 1024:.1f} MB) {progress}"
@@ -206,18 +189,17 @@ def download_all(
                     continue
 
                 if dry_run:
-                    print(f"  {year}: would download {url} {progress}")
+                    print(f"  {year}: would download {_build_url(state_abbrev, year)} {progress}")
                     continue
 
                 print(f"  {year}: downloading... {progress}", end="", flush=True)
-                if _download_file(client, url, dest):
+                if _download_file(client, _build_url(state_abbrev, year), dest):
                     state_years.append(year)
                     downloaded += 1
                 else:
                     print("    not available on server")
                     not_available += 1
 
-                # Brief pause between downloads to be polite to the server
                 time.sleep(0.3)
 
             results[state_abbrev] = state_years
@@ -236,61 +218,33 @@ def download_all(
 
 
 # ---------------------------------------------------------------------------
-# Import
-# ---------------------------------------------------------------------------
-
-
-def import_to_database(
-    od_dir: Path,
-    years: list[int],
-    states: list[str],
-) -> None:
-    """Import downloaded OD files into the 3NF database."""
-    from babylon.data.loader_base import LoaderConfig
-    from babylon.data.lodes.loader_od import LODESODLoader
-    from babylon.reference.database import get_normalized_session, init_normalized_db
-
-    # Ensure all tables exist (creates missing tables like fact_lodes_commuter_flow)
-    init_normalized_db()
-
-    print(f"\n{'=' * 60}")
-    print("LODES OD Import to marxist-data-3NF.sqlite")
-    print(f"{'=' * 60}\n")
-
-    config = LoaderConfig(
-        state_fips_list=states,
-        batch_size=10_000,
-    )
-    loader = LODESODLoader(config)
-
-    with get_normalized_session() as session:
-        stats = loader.load(
-            session,
-            reset=True,
-            verbose=True,
-            data_dir=od_dir,
-            years=years,
-            states=states,
-        )
-
-    print(f"\n{stats}")
-    print()
-
-    if stats.has_errors:
-        print("ERRORS:")
-        for error in stats.errors:
-            print(f"  - {error}")
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Parse command-line arguments."""
+def _resolve_state_fips(state_inputs: list[str] | None) -> list[str]:
+    """Convert state abbreviations or FIPS codes to FIPS codes."""
+    if state_inputs is None:
+        return sorted(STATE_ABBREVS.keys())
+
+    abbrev_to_fips = {v: k for k, v in STATE_ABBREVS.items()}
+
+    fips_list: list[str] = []
+    for s in state_inputs:
+        s_lower = s.lower().strip()
+        if s_lower in abbrev_to_fips:
+            fips_list.append(abbrev_to_fips[s_lower])
+        elif s_lower in STATE_ABBREVS:
+            fips_list.append(s_lower)
+        else:
+            print(f"WARNING: Unknown state '{s}', skipping")
+    return sorted(fips_list)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Entry point."""
     parser = argparse.ArgumentParser(
-        description="Download and import LODES OD commuter flow data",
+        description="Download LODES OD commuter flow data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -302,7 +256,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--import-only",
         action="store_true",
-        help="Import already-downloaded files (skip download)",
+        help="Import already-downloaded files (requires babylon-data package)",
     )
     parser.add_argument(
         "--dry-run",
@@ -333,36 +287,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_OD_DIR,
         help=f"Directory to store OD files (default: {DEFAULT_OD_DIR})",
     )
-    return parser.parse_args(argv)
-
-
-def _resolve_state_fips(state_inputs: list[str] | None) -> list[str]:
-    """Convert state abbreviations or FIPS codes to FIPS codes."""
-    if state_inputs is None:
-        return sorted(STATE_ABBREVS.keys())
-
-    # Build reverse lookup
-    abbrev_to_fips = {v: k for k, v in STATE_ABBREVS.items()}
-
-    fips_list: list[str] = []
-    for s in state_inputs:
-        s_lower = s.lower().strip()
-        if s_lower in abbrev_to_fips:
-            fips_list.append(abbrev_to_fips[s_lower])
-        elif s_lower in STATE_ABBREVS:
-            fips_list.append(s_lower)
-        else:
-            print(f"WARNING: Unknown state '{s}', skipping")
-    return sorted(fips_list)
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Entry point."""
-    import logging
-
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-
-    args = parse_args(argv)
+    args = parser.parse_args(argv)
 
     years = list(range(args.start_year, args.end_year + 1))
     states = _resolve_state_fips(args.states)
@@ -375,25 +300,32 @@ def main(argv: list[str] | None = None) -> int:
     print(f"States: {', '.join(state_names)} ({len(states)} total)")
     print(f"Years:  {years[0]}-{years[-1]} ({len(years)} years)")
 
-    # Download phase
-    if not args.import_only:
-        download_all(
-            od_dir=args.od_dir,
-            states=states,
-            years=years,
-            dry_run=args.dry_run,
+    # Import-only requires babylon-data
+    if args.import_only:
+        print(
+            "\nERROR: Database import requires the babylon-data package.\n"
+            "The data loading infrastructure was extracted from babylon.\n"
+            "Use --download-only to download files without importing.",
+            file=sys.stderr,
         )
+        return 1
+
+    # Download phase
+    download_all(
+        od_dir=args.od_dir,
+        states=states,
+        years=years,
+        dry_run=args.dry_run,
+    )
 
     if args.dry_run:
-        print("Dry run complete. No files downloaded or imported.")
+        print("Dry run complete. No files downloaded.")
         return 0
 
-    # Import phase
     if not args.download_only:
-        import_to_database(
-            od_dir=args.od_dir,
-            years=years,
-            states=states,
+        print(
+            "\nNOTE: Database import requires the babylon-data package.\n"
+            "Files have been downloaded. To import, use babylon-data CLI."
         )
 
     return 0

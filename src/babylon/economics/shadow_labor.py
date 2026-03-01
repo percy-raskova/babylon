@@ -36,8 +36,8 @@ alternative decomposition for analytical purposes.
 
 Example:
     >>> from babylon.economics.shadow_labor import ShadowLaborService
-    >>> from babylon.data.atus import MockReproductionLoader
-    >>> loader = MockReproductionLoader(
+    >>> from babylon.economics.shadow_labor import ShadowLaborService
+    >>> loader = MockReproductionLoader(  # doctest: +SKIP
     ...     default_weekly_hours=1000/52,  # 1000 annual hours
     ...     shadow_wage_hourly=15.43,
     ... )
@@ -47,7 +47,7 @@ Example:
     15430.0
 
 See Also:
-    :mod:`babylon.data.atus`: ATUS data loading infrastructure.
+    :mod:`babylon_data.atus`: ATUS data loading infrastructure.
     :mod:`babylon.economics.reproduction`: Imperial rent calculation.
     :mod:`babylon.economics.tensor`: ValueTensor4x3 (economic primitive).
 """
@@ -76,7 +76,7 @@ class ReproductionLoaderProtocol(ABC):
     easy testing with mock data.
 
     See Also:
-        :mod:`babylon.data.atus.mock_loader`: Mock implementation.
+        :mod:`babylon_data.atus.mock_loader`: Mock implementation.
         :mod:`babylon.economics.adapters`: Similar adapter patterns.
     """
 
@@ -125,7 +125,7 @@ class VisibilityComputerProtocol(ABC):
     data sources (ATUS, OEWS, QCEW weights).
 
     See Also:
-        :mod:`babylon.data.atus.visibility`: Reference implementation.
+        :mod:`babylon_data.atus.visibility`: Reference implementation.
     """
 
     @abstractmethod
@@ -355,7 +355,7 @@ class ShadowLaborService:
         visibility_computer: Optional VisibilityComputer for data-driven g₃₃.
 
     Example:
-        >>> from babylon.data.atus import MockReproductionLoader, VisibilityComputer
+        >>> from babylon_data.atus import MockReproductionLoader, VisibilityComputer
         >>> loader = MockReproductionLoader()
         >>> computer = VisibilityComputer()
         >>> service = ShadowLaborService(loader=loader, visibility_computer=computer)

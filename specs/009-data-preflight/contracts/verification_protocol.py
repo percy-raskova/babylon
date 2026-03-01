@@ -1,16 +1,16 @@
 """Contract: VerificationProtocol for loader source file verification.
 
 This is a reference implementation showing the expected interface.
-The actual implementation will be in src/babylon/data/loader_base.py.
+The actual implementation is in the babylon-data package.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Any, Protocol
 
-if TYPE_CHECKING:
-    from babylon.data.preflight import PreflightCheck
+# PreflightCheck moved to babylon-data package
+PreflightCheck = Any  # type: ignore[assignment,misc]
 
 
 class VerificationProtocol(Protocol):

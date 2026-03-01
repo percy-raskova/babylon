@@ -9,14 +9,12 @@ This module defines the interface contracts for QCEW bulk file downloads.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Any, Protocol
 
-if TYPE_CHECKING:
-    from babylon.data.qcew.downloader import (
-        DownloadConfig,
-        DownloadReport,
-        DownloadResult,
-    )
+# QCEW downloader moved to babylon-data package
+DownloadConfig = Any  # type: ignore[assignment,misc]
+DownloadReport = Any  # type: ignore[assignment,misc]
+DownloadResult = Any  # type: ignore[assignment,misc]
 
 
 class QcewDownloaderProtocol(Protocol):

@@ -10,7 +10,7 @@ Design Philosophy:
 - Fail-safe: errors don't propagate to simulation (ADR003)
 
 Sprint 3.2: Added RAG integration for historical/theoretical context.
-The Materialist Retrieval bridges Engine with the Archive (ChromaDB).
+The Materialist Retrieval bridges Engine with the Archive.
 
 Sprint 4.1: Updated to consume typed SimulationEvent objects from
 state.events instead of string-based event_log.
@@ -80,8 +80,8 @@ class NarrativeDirector:
     narrative describing the class struggle dynamics.
 
     Sprint 3.2: Added RAG integration for "The Materialist Retrieval".
-    The Director can now query the Archive (ChromaDB) for historical
-    and theoretical context to inform narrative generation.
+    The Director can now query the Archive for historical and
+    theoretical context to inform narrative generation.
 
     Sprint 3.4: Added Semantic Bridge to translate simulation event keywords
     into theoretical query strings for better RAG retrieval.

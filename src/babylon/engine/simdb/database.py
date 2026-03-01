@@ -9,7 +9,7 @@ This module replaces the previous DuckDB implementation per ADR030
 (Unified SQLite Runtime Architecture).
 
 Usage:
-    from babylon.engine.simulation import SimulationDB
+    from babylon.engine.simdb import SimulationDB
 
     # In-memory for tests
     with SimulationDB(in_memory=True) as sim:

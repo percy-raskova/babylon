@@ -112,13 +112,6 @@ class TestPostgresRuntimeCompliance:
 class TestVectorStoreProtocolCompliance:
     """Verify VectorStoreProtocol implementations via isinstance()."""
 
-    def test_chromadb_vectorstore_satisfies_protocol(self) -> None:
-        """Existing ChromaDB VectorStore satisfies VectorStoreProtocol."""
-        from babylon.rag.retrieval import VectorStore
-
-        # VectorStore has the 4 required methods
-        assert issubclass(VectorStore, VectorStoreProtocol)
-
     def test_pgvector_store_satisfies_protocol(self) -> None:
         """PgVectorStore satisfies VectorStoreProtocol."""
         from babylon.persistence.pgvector_store import PgVectorStore

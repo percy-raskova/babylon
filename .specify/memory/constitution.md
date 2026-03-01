@@ -2,11 +2,11 @@
 ================================================================================
 SYNC IMPACT REPORT
 ================================================================================
-Version Change: 1.8.0 → 1.8.1
-Bump Rationale: Added Chetty Opportunity Atlas to III.4 approved data sources — PATCH
+Version Change: 1.8.1 → 1.8.2
+Bump Rationale: Added Natural Earth SQLite to III.4 approved data sources — PATCH
 
-Previous Version Change: 1.7.0 → 1.8.0
-Previous Bump Rationale: 3 new theoretical commitments + hyperedge categories + anti-pattern — MINOR
+Previous Version Change: 1.8.0 → 1.8.1
+Previous Bump Rationale: Added Chetty Opportunity Atlas to III.4 approved data sources — PATCH
 
 Modified Principles:
   - II.7 expanded with three hyperedge categories (contradiction pairs,
@@ -29,7 +29,7 @@ Cross-References Added:
   - I.18 references I.7 (gap between material/ideological = political struggle terrain)
   - VIII.10 references II.7 Category 1
 
-Follow-up TODOs:
+Previous Follow-up TODOs (1.8.0):
   - CODE: Restructure CommunityType enum per three-category taxonomy:
     Category 1 hegemonic: rename WHITE→SETTLER, add PATRIARCHAL
     Category 1 marginalized: keep NEW_AFRIKAN, FIRST_NATIONS, CHICANO, WOMEN, TRANS
@@ -38,6 +38,8 @@ Follow-up TODOs:
     Category 3 lifecycle: add YOUTH, ADULT, ELDER
   - CODE: Update tests to reflect new taxonomy
   - SPEC: Update Feature 022 spec FR-003 with corrected community types
+
+Follow-up TODOs: None
 
 Templates Requiring Updates:
   ✅ plan-template.md: No hardcoded principle numbers
@@ -53,6 +55,7 @@ Previous Version History:
   1.5.0 (2026-02-24): Added I.12-I.15 (Catastrophe Surface, Principal Contradiction,
                       Contradiction Internals, Edge Mode Transition Topology)
   1.4.0 (2026-02-24): Added V. Player Action Vocabulary (9 verbs, dual grouping)
+  1.8.1 (2026-02-27): Added Chetty Opportunity Atlas to III.4 approved data sources
   1.3.2 (2026-02-05): Added dispossession data sources to III.4 table
   1.3.1 (2026-02-05): Added PWT and Census Trade to III.4 approved sources
   1.3.0 (2026-01-31): Added VIII. Visual Design Principles (new article)
@@ -140,7 +143,7 @@ Governing document for the political simulation engine testing MLM-TW political 
 
 **3. Physics Cosplay Prohibition** — Tensor notation earns its keep through actual invariance. Reject formalism without transformation laws.
 
-**4. Data Source Traceability** — Approved: QCEW, Census/ACS, BEA, FRED, HIFLD, BTS, FCC, ATUS, CDC WONDER, Piketty/WID, PWT, Census Trade, Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF, Fed Z.1 Financial Accounts, Chetty Opportunity Atlas. New sources require explicit addition.
+**4. Data Source Traceability** — Approved: QCEW, Census/ACS, BEA, FRED, HIFLD, BTS, FCC, ATUS, CDC WONDER, Piketty/WID, PWT, Census Trade, Eviction Lab, US Courts, ATTOM/CoreLogic, Fed SCF, Fed Z.1 Financial Accounts, Chetty Opportunity Atlas, Natural Earth. New sources require explicit addition.
 
 **5. Empirical vs Strategic Separation** — Material conditions from data (nodes, constraints, extractive edges). Strategic intervention NOT from data (solidaristic edges, organizing, consciousness-raising).
 
@@ -214,4 +217,4 @@ No separate state Negotiate verb — negotiation is a mode of Withdraw (terms of
 
 ______________________________________________________________________
 
-**Version**: 1.8.1 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-02-27
+**Version**: 1.8.2 | **Ratified**: 2026-01-30 | **Last Amended**: 2026-03-01

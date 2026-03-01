@@ -1,0 +1,229 @@
+"""OODA Loop System — organizational action resolution (Feature 032).
+
+Orchestrates the three-layer turn resolution each tick:
+1. Layer 0: Automatic metabolism (Business self-sustaining activity)
+2. Action Phase: Initiative-ordered organizational actions
+3. Layer 3: Consequence propagation (stub — implemented in Commit 7)
+
+See Also:
+    ``specs/032-ooda-loop-system/spec.md``
+"""
+
+from __future__ import annotations
+
+import contextlib
+from typing import TYPE_CHECKING, Any
+
+from babylon.models.enums import EventType, OrgType
+from babylon.ooda.cycle_time import compute_cycle_time
+from babylon.ooda.initiative import (
+    compute_community_embeddedness,
+    compute_initiative_score,
+    resolve_action_order,
+)
+from babylon.ooda.layer0 import process_layer0
+from babylon.ooda.npc_stub import select_npc_actions
+from babylon.ooda.types import ActionResult, OODAProfile, TurnResolution
+
+if TYPE_CHECKING:
+    import networkx as nx
+
+    from babylon.engine.services import ServiceContainer
+    from babylon.engine.systems.protocol import ContextType
+
+
+class OODASystem:
+    """Orchestrates organizational action resolution each tick.
+
+    Three-phase turn resolution:
+    1. Layer 0 — automatic metabolism for Business orgs
+    2. Action Phase — initiative-ordered actions for all orgs
+    3. Layer 3 — consequence propagation (stub until Commit 7)
+    """
+
+    @property
+    def name(self) -> str:
+        """System identifier."""
+        return "ooda"
+
+    def step(
+        self,
+        graph: nx.DiGraph[str],
+        services: ServiceContainer,
+        context: ContextType,
+    ) -> None:
+        """Execute OODA loop for all organizations.
+
+        Args:
+            graph: Mutable world graph.
+            services: ServiceContainer with defines, event_bus.
+            context: TickContext or dict with 'tick'.
+        """
+        defines = services.defines.ooda
+        tick = context.get("tick", 0) if isinstance(context, dict) else getattr(context, "tick", 0)
+
+        # --- Phase 1: Layer 0 (automatic metabolism) ---
+        layer0_results = process_layer0(graph, services)
+
+        # --- Phase 2: Action Phase ---
+        # Collect all org nodes
+        org_nodes = _collect_org_nodes(graph)
+
+        # Compute initiative scores
+        initiative_scores = []
+        max_orgs = 1000
+        for org_id, org_data in org_nodes[:max_orgs]:
+            profile_data = org_data.get("ooda_profile", {})
+            profile = OODAProfile(**profile_data) if profile_data else OODAProfile()
+
+            cycle_time = compute_cycle_time(profile, defines)
+
+            # Jurisdiction for state apparatus
+            jurisdiction = None
+            if org_data.get("org_type") == OrgType.STATE_APPARATUS.value:
+                from babylon.models.enums import JurisdictionLevel
+
+                jur_val = org_data.get("jurisdiction")
+                if jur_val:
+                    with contextlib.suppress(ValueError):
+                        jurisdiction = JurisdictionLevel(jur_val)
+
+            counter_intel = float(org_data.get("counter_intel_score", 0.0))
+            embeddedness = compute_community_embeddedness(org_id, graph)
+            momentum = float(org_data.get("momentum", 0.0))
+
+            score = compute_initiative_score(
+                org_id=org_id,
+                cycle_time=cycle_time,
+                jurisdiction=jurisdiction,
+                counter_intel_score=counter_intel,
+                community_embeddedness=embeddedness,
+                momentum=momentum,
+                defines=defines,
+            )
+            initiative_scores.append(score)
+
+        # Sort by initiative
+        initiative_order = resolve_action_order(initiative_scores)
+
+        # Resolve actions in initiative order
+        action_phase_results: list[ActionResult] = []
+
+        # Get player actions from context
+        player_actions: dict[str, Any] = {}
+        if isinstance(context, dict):
+            player_actions = context.get("persistent_data", {}).get("player_actions", {})
+        else:
+            pd = getattr(context, "persistent_data", {})
+            player_actions = pd.get("player_actions", {}) if isinstance(pd, dict) else {}
+
+        max_actions_total = 500
+        for score in initiative_order:
+            if len(action_phase_results) >= max_actions_total:
+                break
+
+            org_data_lookup = dict(org_nodes)
+            org_data = org_data_lookup.get(score.org_id, {})
+
+            # Skip Business orgs (handled in Layer 0)
+            if org_data.get("org_type") == OrgType.BUSINESS.value:
+                continue
+
+            # Check for player-provided actions
+            org_player_actions = player_actions.get(score.org_id)
+            if org_player_actions:
+                # Player actions are pre-validated Action dicts
+                for action_data in org_player_actions:
+                    result = ActionResult(
+                        action=action_data
+                        if not isinstance(action_data, dict)
+                        else _action_from_dict(action_data, score.org_id),
+                        success=True,
+                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                    )
+                    action_phase_results.append(result)
+            else:
+                # NPC action selection
+                territory_ids: list[str] = org_data.get("territory_ids", [])
+                target_id = territory_ids[0] if territory_ids else score.org_id
+
+                npc_actions = select_npc_actions(
+                    org_id=score.org_id,
+                    org_attrs=org_data,
+                    target_id=target_id,
+                    defines=defines,
+                )
+                for action in npc_actions:
+                    result = ActionResult(
+                        action=action,
+                        success=True,
+                        events_generated=[EventType.ORGANIZATIONAL_ACTION.value],
+                    )
+                    action_phase_results.append(result)
+
+        # --- Phase 3: Layer 3 (stub — replaced in Commit 7) ---
+        layer3_effects: dict[str, Any] = {}
+
+        # Store turn resolution on context for downstream systems
+        _resolution = TurnResolution(
+            tick=tick,
+            layer0_results=layer0_results,
+            initiative_order=initiative_order,
+            action_phase_results=action_phase_results,
+            layer3_effects=layer3_effects,
+        )
+
+        # Emit summary event
+        if services.event_bus:
+            from babylon.engine.event_bus import Event
+
+            services.event_bus.publish(
+                Event(
+                    type=EventType.ORGANIZATIONAL_ACTION,
+                    tick=tick,
+                    payload={
+                        "layer0_count": len(layer0_results),
+                        "action_count": len(action_phase_results),
+                        "org_count": len(initiative_order),
+                    },
+                )
+            )
+
+
+def _collect_org_nodes(graph: nx.DiGraph[str]) -> list[tuple[str, dict[str, Any]]]:
+    """Collect all organization nodes from the graph.
+
+    Args:
+        graph: World graph.
+
+    Returns:
+        List of (node_id, node_data) for organization nodes.
+    """
+    orgs: list[tuple[str, dict[str, Any]]] = []
+    max_nodes = 1000
+    for node_id, data in graph.nodes(data=True):
+        if data.get("_node_type") == "organization":
+            orgs.append((node_id, dict(data)))
+        if len(orgs) >= max_nodes:
+            break
+    return orgs
+
+
+def _action_from_dict(data: dict[str, Any], org_id: str) -> Any:
+    """Convert a dict to an Action instance.
+
+    Args:
+        data: Action dict with action_type, target_id, etc.
+        org_id: Fallback org_id if not in dict.
+
+    Returns:
+        Action instance.
+    """
+    from babylon.ooda.types import Action
+
+    return Action(
+        org_id=data.get("org_id", org_id),
+        action_type=data["action_type"],
+        target_id=data["target_id"],
+        action_point_cost=data.get("action_point_cost", 1),
+    )

@@ -53,6 +53,7 @@ from babylon.engine.systems.field_derivative import FieldDerivativeSystem
 from babylon.engine.systems.ideology import ConsciousnessSystem
 from babylon.engine.systems.lifecycle import LifecycleSystem
 from babylon.engine.systems.metabolism import MetabolismSystem
+from babylon.engine.systems.ooda import OODASystem
 from babylon.engine.systems.production import ProductionSystem
 from babylon.engine.systems.protocol import ContextType, System
 from babylon.engine.systems.reserve_army import ReserveArmySystem
@@ -202,6 +203,8 @@ _DEFAULT_SYSTEMS: list[System] = [
     ContradictionFieldSystem(),  # 16. Contradiction field computation
     FieldDerivativeSystem(),  # 17. Spatial/temporal derivatives + principal
     EdgeTransitionSystem(),  # 18. Compound predicates + edge mode transitions
+    # OODA Loop System (Feature 032)
+    OODASystem(),  # 19. Organizational action resolution
 ]
 
 _DEFAULT_ENGINE = SimulationEngine(_DEFAULT_SYSTEMS)

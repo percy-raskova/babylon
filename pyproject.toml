@@ -143,6 +143,34 @@ markers = [
     "empirical: Empirical validation tests requiring real QCEW data (deselect with '-m \"not empirical\"')",
     "benchmark: Performance and memory benchmarks for tensor operations",
 ]
+addopts = [
+    "-v",                      # Verbose output (already have)
+    "--tb=short",              # Short traceback format (already have)
+    "--strict-markers",        # Enforce marker registration (already have)
+    "--strict-config",         # Enforce config correctness (already have)
+    "-ra",                     # Show summary of all test outcomes (already have)
+
+    # Performance
+    "--durations=10",          # Show 10 slowest tests
+
+    # Coverage (when running with --cov)
+    "--cov-report=term-missing",  # Show lines missing coverage
+    "--cov-report=html",          # Generate HTML coverage report
+
+    # Output control
+    "--color=yes",             # Force colored output
+
+    # Debugging aids
+    "-l",                      # Show locals (shorter alias)
+
+    # Doctest integration
+    "--doctest-modules",       # Run doctests in .py files
+    "--doctest-continue-on-failure",  # Don't stop on first doctest failure
+
+    # Ignored Paths
+    "--ignore-glob=tests/**/ai/",
+    "--ignore-glob=tests/**/ui/",
+]
 
 [tool.ruff]
 line-length = 100

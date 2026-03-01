@@ -14,6 +14,15 @@ See Also:
 """
 
 from babylon.ooda.action_eligibility import ELIGIBILITY_MAP, check_eligibility
+from babylon.ooda.cycle_time import compute_cycle_time
+from babylon.ooda.initiative import (
+    compute_community_embeddedness,
+    compute_initiative_score,
+    resolve_action_order,
+    update_momentum,
+)
+from babylon.ooda.layer0 import process_layer0
+from babylon.ooda.npc_stub import select_npc_actions
 from babylon.ooda.types import (
     Action,
     ActionCostModifier,
@@ -32,4 +41,11 @@ __all__ = [
     "OODAProfile",
     "TurnResolution",
     "check_eligibility",
+    "compute_community_embeddedness",
+    "compute_cycle_time",
+    "compute_initiative_score",
+    "process_layer0",
+    "resolve_action_order",
+    "select_npc_actions",
+    "update_momentum",
 ]

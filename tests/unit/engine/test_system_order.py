@@ -63,6 +63,8 @@ class TestMaterialistCausalityOrder:
             "contradiction_field",  # ContradictionFieldSystem
             "field_derivative",  # FieldDerivativeSystem
             "edge_transition",  # EdgeTransitionSystem
+            # OODA Loop System (Feature 032)
+            "ooda",  # OODASystem - organizational action resolution
         ]
         actual_order = [s.name for s in _DEFAULT_SYSTEMS]
         assert actual_order == expected_order, (
@@ -147,6 +149,6 @@ class TestMaterialistCausalityOrder:
             "ContradictionSystem must be registered"
         )
 
-    def test_all_twenty_systems_present(self) -> None:
-        """All 20 systems must be registered (13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology)."""
-        assert len(_DEFAULT_SYSTEMS) == 20, f"Expected 20 systems, got {len(_DEFAULT_SYSTEMS)}"
+    def test_all_twenty_one_systems_present(self) -> None:
+        """All 21 systems must be registered (13 core + 2 Volume I + 1 community + 1 lifecycle + 3 field topology + 1 OODA)."""
+        assert len(_DEFAULT_SYSTEMS) == 21, f"Expected 21 systems, got {len(_DEFAULT_SYSTEMS)}"

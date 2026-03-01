@@ -13,8 +13,6 @@ from babylon.config.defines import OODADefines
 from babylon.models.enums import DecisionMode
 from babylon.ooda.types import OODAProfile
 
-_ORIENT_FLOOR = 0.1  # Minimum orient phase duration
-
 
 def compute_cycle_time(profile: OODAProfile, defines: OODADefines) -> float:
     """Compute total OODA cycle time from a profile and defines.
@@ -31,7 +29,7 @@ def compute_cycle_time(profile: OODAProfile, defines: OODADefines) -> float:
     orient_raw = defines.base_orient_time * (
         1.0 - profile.ideological_coherence * defines.coherence_weight
     )
-    orient_time = max(orient_raw, _ORIENT_FLOOR)
+    orient_time = max(orient_raw, defines.orient_time_floor)
 
     decision_base = _decision_mode_base(profile.decision_mode, defines)
     decide_time = decision_base * (1.0 + profile.bureaucratic_depth * defines.depth_weight)

@@ -20,19 +20,11 @@ from babylon.organizations.types import ConsciousnessDelta
 if TYPE_CHECKING:
     import networkx as nx
 
-# Heat increment per repressive action
-_REPRESS_HEAT_DELTA = 0.15
-_SURVEIL_HEAT_DELTA = 0.05
-
-# Infrastructure deltas
-_BUILD_INFRA_DELTA = 0.1
-_ATTACK_INFRA_DELTA = -0.1
-
 
 def process_layer3(
     action_results: list[ActionResult],
     graph: nx.DiGraph[str],
-    defines: OODADefines,  # noqa: ARG001 — reserved for future coefficient-driven propagation
+    defines: OODADefines,
 ) -> dict[str, Any]:
     """Propagate action consequences to communities.
 
@@ -54,9 +46,9 @@ def process_layer3(
     summary: dict[str, Any] = {}
 
     summary["consciousness"] = _propagate_consciousness(action_results, graph)
-    summary["heat_updates"] = _propagate_heat(action_results, graph)
+    summary["heat_updates"] = _propagate_heat(action_results, graph, defines)
     summary["edge_transitions"] = _propagate_edge_transitions(action_results, graph)
-    summary["infrastructure_updates"] = _propagate_infrastructure(action_results, graph)
+    summary["infrastructure_updates"] = _propagate_infrastructure(action_results, graph, defines)
     summary["contestation_updates"] = _propagate_contestation(action_results, graph)
 
     return summary
@@ -105,12 +97,14 @@ def _propagate_consciousness(
 def _propagate_heat(
     results: list[ActionResult],
     graph: nx.DiGraph[str],
+    defines: OODADefines,
 ) -> int:
     """Increase community heat from REPRESS/SURVEIL actions.
 
     Args:
         results: Action results.
         graph: World graph (mutated).
+        defines: OODADefines with heat delta coefficients.
 
     Returns:
         Number of heat updates.
@@ -132,7 +126,9 @@ def _propagate_heat(
             continue
 
         heat_delta = (
-            _REPRESS_HEAT_DELTA if action_type == ActionType.REPRESS else _SURVEIL_HEAT_DELTA
+            defines.repress_heat_delta
+            if action_type == ActionType.REPRESS
+            else defines.surveil_heat_delta
         )
         current_heat = float(node_data.get("heat", 0.0))
         graph.nodes[target]["heat"] = min(1.0, current_heat + heat_delta)
@@ -184,12 +180,14 @@ def _propagate_edge_transitions(
 def _propagate_infrastructure(
     results: list[ActionResult],
     graph: nx.DiGraph[str],
+    defines: OODADefines,
 ) -> int:
     """Apply BUILD/ATTACK_INFRASTRUCTURE effects to communities.
 
     Args:
         results: Action results.
         graph: World graph (mutated).
+        defines: OODADefines with infrastructure delta coefficients.
 
     Returns:
         Number of infrastructure updates.
@@ -199,9 +197,9 @@ def _propagate_infrastructure(
     for idx, result in enumerate(results):
         action_type = result.action.action_type
         if action_type == ActionType.BUILD_INFRASTRUCTURE:
-            delta = _BUILD_INFRA_DELTA
+            delta = defines.build_infrastructure_delta
         elif action_type == ActionType.ATTACK_INFRASTRUCTURE:
-            delta = _ATTACK_INFRA_DELTA
+            delta = -defines.attack_infrastructure_delta
         else:
             if idx >= max_results:
                 break

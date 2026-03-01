@@ -2410,6 +2410,23 @@ class OODADefines(BaseModel):
     )
     base_cost_assimilate: int = Field(default=2, ge=1, description="AP cost: ASSIMILATE")
 
+    # --- Layer 3 propagation coefficients ---
+    repress_heat_delta: float = Field(
+        default=0.15, ge=0.0, le=1.0, description="Heat increase per REPRESS action"
+    )
+    surveil_heat_delta: float = Field(
+        default=0.05, ge=0.0, le=1.0, description="Heat increase per SURVEIL action"
+    )
+    build_infrastructure_delta: float = Field(
+        default=0.1, ge=0.0, le=1.0, description="Infrastructure increase per BUILD action"
+    )
+    attack_infrastructure_delta: float = Field(
+        default=0.1, ge=0.0, le=1.0, description="Infrastructure decrease per ATTACK action"
+    )
+    orient_time_floor: float = Field(
+        default=0.1, ge=0.0, description="Minimum orient phase duration"
+    )
+
     def get_base_cost(self, action_type: str) -> int:
         """Look up base AP cost for an action type.
 

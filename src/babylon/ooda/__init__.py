@@ -14,7 +14,13 @@ See Also:
 """
 
 from babylon.ooda.action_costs import compute_action_cost
+from babylon.ooda.action_effects import compute_consciousness_delta, resolve_action
 from babylon.ooda.action_eligibility import ELIGIBILITY_MAP, check_eligibility
+from babylon.ooda.constraints import (
+    apply_autonomy_modifier,
+    enforce_action_points,
+    enforce_coordination_range,
+)
 from babylon.ooda.cycle_time import compute_cycle_time
 from babylon.ooda.initiative import (
     compute_community_embeddedness,
@@ -43,15 +49,20 @@ __all__ = [
     "InitiativeScore",
     "OODAProfile",
     "TurnResolution",
+    "apply_autonomy_modifier",
     "check_eligibility",
     "compute_action_cost",
-    "compute_lifecycle_modifier",
     "compute_community_embeddedness",
+    "compute_consciousness_delta",
     "compute_cycle_time",
     "compute_initiative_score",
+    "compute_lifecycle_modifier",
     "elder_legitimacy_bonus",
+    "enforce_action_points",
+    "enforce_coordination_range",
     "process_layer0",
     "process_layer3",
+    "resolve_action",
     "resolve_action_order",
     "select_npc_actions",
     "update_momentum",

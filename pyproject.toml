@@ -67,6 +67,7 @@ boto3 = "^1.42.59"
 duckdb = "^1.4.4"
 pgvector = "^0.3"
 ansible-dev-tools = "^26.2.0"
+uuid = "^1.30"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
